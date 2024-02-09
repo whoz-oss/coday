@@ -2,46 +2,59 @@ import * as readlineSync from 'readline-sync';
 import {handlers} from "./src/handlers";
 import {CommandContext} from "./src/command-context";
 import os from 'os';
-import {existsSync, mkdirSync, writeFileSync} from "node:fs";
+import {existsSync, mkdirSync, readdirSync} from "node:fs";
 import {SaveHandler} from "./src/save-handler";
+import {readFileSync} from "fs";
 
 const PROJECT_ROOT: string = '/Users/vincent.audibert/Workspace/biznet.io/app/whoz'
 const DATA_PATH: string = "/.coday/"
 
 class MainHandler {
 
-    context: CommandContext
     codayPath: string
+    userInfo: os.UserInfo<string>
 
     constructor() {
-        const userInfo = os.userInfo()
-        this.context = {
-            projectRootPath: PROJECT_ROOT,
-            username: userInfo.username
-        }
-        this.codayPath = `${userInfo.homedir}${DATA_PATH}`
-
-        try {
-            if (!existsSync(this.codayPath)) {
-                mkdirSync(this.codayPath, { recursive: true });
-                console.log(`Coday data folder created at: ${this.codayPath}`);
-            } else {
-                console.log(`Coday data folder used: ${this.codayPath}`);
-            }
-        } catch (error) {
-            console.error(`Error creating directory:`, error);
-        }
+        this.userInfo = os.userInfo()
+        this.codayPath = this.initCodayPath(this.userInfo)
         handlers.push(new SaveHandler(this.codayPath))
     }
 
     async run(): Promise<void> {
-        do {
-            const command = readlineSync.question(`${this.context.username} : `)
+        let context: CommandContext | null = null
 
-            const handler = handlers.find(h => h.accept(command, this.context))
+        do {
+            if (!context) {
+                const files = readdirSync(this.codayPath)
+                if (files.length) {
+                    console.log("Select a context file:")
+                    for (let i = 0; i < files.length; i++) {
+                        console.log(`  ${i + 1} - ${files[i]}`)
+                    }
+                    const selection = readlineSync.question("Type file number: ")
+                    if (!!selection) {
+                        const index = parseInt(selection)-1
+                        const path = `${this.codayPath}/${files[index]}`
+                        const data = readFileSync(path, 'utf-8')
+                        context = JSON.parse(data)
+                    }
+                }
+                if (!context) {
+                    console.log("Defaulting on new context")
+                    context = {
+                        projectRootPath: PROJECT_ROOT,
+                        username: this.userInfo.username
+                    }
+                }
+            }
+
+
+            const command = readlineSync.question(`${context.username} : `)
+
+            const handler = handlers.find(h => h.accept(command, context!))
 
             if (handler) {
-                this.context = await handler.handle(command, this.context)
+                context = await handler.handle(command, context)
             } else if (command === "exit") {
                 break;
             } else {
@@ -50,6 +63,22 @@ class MainHandler {
             }
 
         } while (true)
+    }
+
+    private initCodayPath(userInfo: os.UserInfo<string>): string {
+        const codayPath = `${userInfo.homedir}${DATA_PATH}`
+
+        try {
+            if (!existsSync(codayPath)) {
+                mkdirSync(codayPath, {recursive: true});
+                console.log(`Coday data folder created at: ${codayPath}`);
+            } else {
+                console.log(`Coday data folder used: ${codayPath}`);
+            }
+        } catch (error) {
+            console.error(`Error creating directory:`, error);
+        }
+        return codayPath
     }
 }
 
