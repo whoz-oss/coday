@@ -1,0 +1,11 @@
+{
+  "name": "coday",
+  "version": "1.0.0",
+  "description": "AI tool to code with us",
+  "main": "index.js",
+  "author": "vincent.audibert@whoz.com",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}
