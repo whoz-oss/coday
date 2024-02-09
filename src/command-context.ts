@@ -1,5 +1,6 @@
 type Task = {
     description: string
+    key: string
     data?: any
 }
 

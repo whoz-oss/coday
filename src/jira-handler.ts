@@ -65,8 +65,9 @@ export class JiraHandler extends CommandHandler {
             return {
                 ...context, task: {
                     description: issue.summary + "\n" + issue.description, // TODO: replace this by better
-                    data: issue
-                }
+                    data: issue,
+                    key
+                },
             }
         } catch (error) {
             console.error('Error fetching JIRA issue:', error);
