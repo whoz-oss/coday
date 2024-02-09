@@ -5,8 +5,18 @@
   "main": "index.js",
   "author": "vincent.audibert@whoz.com",
   "license": "MIT",
+  "scripts": {
+    "start": "npx ts-node index.ts"
+  },
   "devDependencies": {
+    "@types/node": "^20.11.17",
+    "@types/readline-sync": "^1.4.8",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "axios": "^1.6.7",
+    "readline-sync": "^1.4.10",
+    "simple-git": "^3.22.0"
   }
 }
