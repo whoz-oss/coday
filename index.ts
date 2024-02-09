@@ -5,6 +5,7 @@ import os from 'os';
 import {existsSync, mkdirSync, readdirSync} from "node:fs";
 import {SaveHandler} from "./src/save-handler";
 import {readFileSync} from "fs";
+import {LoadHandler} from "./src/load-handler";
 
 const PROJECT_ROOT: string = '/Users/vincent.audibert/Workspace/biznet.io/app/whoz'
 const DATA_PATH: string = "/.coday/"
@@ -13,11 +14,14 @@ class MainHandler {
 
     codayPath: string
     userInfo: os.UserInfo<string>
+    loadHandler: LoadHandler
 
     constructor() {
         this.userInfo = os.userInfo()
         this.codayPath = this.initCodayPath(this.userInfo)
+        this.loadHandler = new LoadHandler(this.codayPath, PROJECT_ROOT, this.userInfo.username)
         handlers.push(new SaveHandler(this.codayPath))
+        handlers.push(this.loadHandler)
     }
 
     async run(): Promise<void> {
@@ -25,41 +29,27 @@ class MainHandler {
 
         do {
             if (!context) {
-                const files = readdirSync(this.codayPath)
-                if (files.length) {
-                    console.log("Select a context file:")
-                    for (let i = 0; i < files.length; i++) {
-                        console.log(`  ${i + 1} - ${files[i]}`)
-                    }
-                    const selection = readlineSync.question("Type file number: ")
-                    if (!!selection) {
-                        const index = parseInt(selection)-1
-                        const path = `${this.codayPath}/${files[index]}`
-                        const data = readFileSync(path, 'utf-8')
-                        context = JSON.parse(data)
-                    }
-                }
-                if (!context) {
-                    console.log("Defaulting on new context")
-                    context = {
-                        projectRootPath: PROJECT_ROOT,
-                        username: this.userInfo.username
-                    }
-                }
+                context = await this.loadHandler.handle("load", this.loadHandler.defaultContext)
             }
 
-
+            // allow user input
+            console.log("")
             const command = readlineSync.question(`${context.username} : `)
 
+            // find first handler
             const handler = handlers.find(h => h.accept(command, context!))
 
             if (handler) {
                 context = await handler.handle(command, context)
             } else if (command === "exit") {
                 break;
-            } else {
-                console.log("Command not understood, available commands:")
+            } else if (!command || command === "help" || command === "h") {
+                console.log("Available commands:")
+                console.log("  - help : displays this help message")
                 handlers.forEach(h => console.log(`  - ${h.commandWord} : ${h.description}`))
+                console.log("  - [any other text] : asks ChatGPT with the current context.")
+            } else {
+                console.log("ChatGPT part not yet ready...")
             }
 
         } while (true)
