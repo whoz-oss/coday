@@ -2,24 +2,31 @@ import * as readlineSync from 'readline-sync';
 import {handlers} from "./src/handlers";
 import {CommandContext} from "./src/command-context";
 import os from 'os';
-import {existsSync, mkdirSync, readdirSync} from "node:fs";
+import {existsSync, mkdirSync} from "node:fs";
 import {SaveHandler} from "./src/save-handler";
-import {readFileSync} from "fs";
 import {LoadHandler} from "./src/load-handler";
+import OpenAI from "openai";
 
 const PROJECT_ROOT: string = '/Users/vincent.audibert/Workspace/biznet.io/app/whoz'
 const DATA_PATH: string = "/.coday/"
+
+const OPENAI_API_KEY = process.env['OPENAI_API_KEY'];
 
 class MainHandler {
 
     codayPath: string
     userInfo: os.UserInfo<string>
     loadHandler: LoadHandler
+    openai: OpenAI
+
 
     constructor() {
         this.userInfo = os.userInfo()
         this.codayPath = this.initCodayPath(this.userInfo)
         this.loadHandler = new LoadHandler(this.codayPath, PROJECT_ROOT, this.userInfo.username)
+        this.openai = new OpenAI({
+            apiKey: OPENAI_API_KEY
+        })
         handlers.push(new SaveHandler(this.codayPath))
         handlers.push(this.loadHandler)
     }
