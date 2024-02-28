@@ -74,7 +74,7 @@ export class GitBranchHandler extends CommandHandler {
 
             // Create and checkout the new branch
             const newBranch = `solve-conflict/${username}/${destinationBranch}-${branchName}-${N}`;
-            await git.checkoutBranch(newBranch, destinationBranch);
+            await git.checkoutBranch(newBranch, `${rootKey}${destinationBranch}`);
 
             // Merge the initial branch into the current branch
             let error = undefined
@@ -107,12 +107,12 @@ export class GitBranchHandler extends CommandHandler {
 
                         // commit
                         await git.commit('merge conflict resolved')
-                        await git.push()
+                        await git.push('origin', newBranch, ['--set-upstream'])
                     }
                 }
             } else {
                 // merge successful
-                await git.push()
+                await git.push('origin', newBranch, ['--set-upstream'])
             }
             // Checkout the original dev branch
             await git.checkout(devBranch)
