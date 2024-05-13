@@ -4,5 +4,5 @@ import {JiraHandler} from "./jira-handler";
 
 export const handlers: CommandHandler[] = [
     new GitBranchHandler(),
-    new JiraHandler()
+    new JiraHandler(),
 ]

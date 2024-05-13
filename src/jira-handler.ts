@@ -68,6 +68,7 @@ export class JiraHandler extends CommandHandler {
                     data: issue,
                     key
                 },
+                history: [...context.history, { command, response: issue.summary }]
             }
         } catch (error) {
             console.error('Error fetching JIRA issue:', error);

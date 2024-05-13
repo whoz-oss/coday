@@ -13,7 +13,9 @@ export class LoadHandler extends CommandHandler {
         super()
         this.defaultContext = {
             projectRootPath: this.projectRoot,
-            username: this.username
+            username: this.username,
+            commandQueue: [],
+            history: []
         }
     }
 

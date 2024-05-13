@@ -7,9 +7,9 @@ const openaiCodayAssistantId = process.env['CODAY_ASSISTANT_ID'] ?? ""
 if (!openaiApiKey) {
     console.warn('Missing OPENAI_API_KEY, no ChatGPT call will work')
 }
-if (!openaiCodayAssistantId) {
-    console.warn('Missing CODAY_ASSISTANT_ID, no ChatGPT call will work')
-}
+// if (!openaiCodayAssistantId) {
+//     console.warn('Missing CODAY_ASSISTANT_ID, no ChatGPT call will work')
+// }
 
 export class OpenaiFunction {
     openai = new OpenAI({

@@ -4,8 +4,9 @@ type Task = {
     data?: any
 }
 
-type Openai = {
-    threadId: string
+type History = {
+    command: string
+    response: string
 }
 
 export type CommandContext = {
@@ -13,5 +14,6 @@ export type CommandContext = {
     task?: Task
     sourceBranch?: string
     username: string
-    openai?: Openai
+    commandQueue: string[]
+    history: History[]
 }
