@@ -19,6 +19,7 @@ class MainHandler {
     userInfo: os.UserInfo<string>
     loadHandler: LoadHandler
     openaiHandler: OpenaiHandler
+    context: CommandContext | null = null
 
     constructor() {
         this.userInfo = os.userInfo()
@@ -33,17 +34,17 @@ class MainHandler {
     }
 
     async run(): Promise<void> {
-        let context: CommandContext | null = null
 
         // Main loop to keep waiting for user input
         do {
-            if (!context) {
-                context = await this.loadHandler.handle("load", this.loadHandler.defaultContext)
+            // initiate context
+            if (!this.context) {
+                this.context = await this.loadHandler.handle("load", this.loadHandler.defaultContext)
             }
 
             // allow user input
             console.log("")
-            const userCommand = readlineSync.question(`${context.username} : `)
+            const userCommand = readlineSync.question(`${this.context.username} : `)
 
             // quit loop if user wants to exit
             if (userCommand === "exit") {
@@ -56,26 +57,26 @@ class MainHandler {
             }
 
             // add the user command to the queue and let handlers decompose it in many and resolve them ultimately
-            context.commandQueue.push(userCommand)
+            this.context.commandQueue.push(userCommand)
 
             let count = 0
-            while (context && context.commandQueue.length > 0 && count < MAX_ITERATIONS) {
+            while (this.context && this.context.commandQueue.length > 0 && count < MAX_ITERATIONS) {
                 count++
-                const command: string | undefined = context.commandQueue.shift()
+                const command: string | undefined = this.context.commandQueue.shift()
                 if (!command) {
                     continue;
                 }
 
                 // find first handler
-                const handler: CommandHandler | undefined = handlers.find(h => h.accept(command, context!))
+                const handler: CommandHandler | undefined = handlers.find((h: CommandHandler) => h.accept(command, this.context!))
 
                 try {
                     // try handlers in their preference order
                     if (handler) {
-                        context = await handler.handle(command, context)
+                        this.context = await handler.handle(command, this.context)
                     }  else {
                         // default case: repackage the command as an open question for AI
-                        context.commandQueue.unshift(`${this.openaiHandler.commandWord} ${command}`)
+                        this.context.commandQueue.unshift(`${this.openaiHandler.commandWord} ${command}`)
                     }
                 } catch (error) {
                     console.error(`An error occurred while trying to process your request: ${error}`)

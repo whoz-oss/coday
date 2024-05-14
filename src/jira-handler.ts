@@ -14,10 +14,6 @@ export class JiraHandler extends CommandHandler {
     commandWord: string = "jira"
     description: string = "sources an issue, usage: jira wz-1234"
 
-    accept(command: string, context: CommandContext): boolean {
-        return !!command && command.toLowerCase().startsWith("jira")
-    }
-
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
         const subCommand = command.slice(4).trim()
         console.log("got sub-command: ", subCommand)

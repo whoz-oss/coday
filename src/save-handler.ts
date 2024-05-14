@@ -11,10 +11,6 @@ export class SaveHandler extends CommandHandler {
         super()
     }
 
-    accept(command: string, context: CommandContext): boolean {
-        return command.trim() === this.commandWord
-    }
-
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
         let key: string
         if (!context?.task?.key) {

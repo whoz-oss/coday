@@ -19,10 +19,6 @@ export class LoadHandler extends CommandHandler {
         }
     }
 
-    accept(command: string, context: CommandContext): boolean {
-        return command.trim() === this.commandWord
-    }
-
     async handle(command: string, currentContext: CommandContext): Promise<CommandContext> {
         let context: CommandContext | null = null
         const files = readdirSync(this.codayPath)

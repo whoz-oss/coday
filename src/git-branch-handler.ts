@@ -16,10 +16,6 @@ export class GitBranchHandler extends CommandHandler {
     commandWord: string = "git"
     description: string = "wrapper for ai-git operations"
 
-    accept(command: string, context: CommandContext): boolean {
-        return command.startsWith(keyCommand)
-    }
-
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
         const subCommand = command.slice(keyCommand.length).trim()
 

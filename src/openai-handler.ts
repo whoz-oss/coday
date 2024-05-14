@@ -19,10 +19,6 @@ export class OpenaiHandler extends CommandHandler {
 
     }
 
-    accept(command: string, context: CommandContext): boolean {
-        return command.startsWith(this.commandWord)
-    }
-
     handle(command: string, context: CommandContext): Promise<CommandContext> {
         const cmd = command.substring(this.commandWord.length).trim()
         return new Promise<CommandContext>((resolve, reject) => {
