@@ -1,7 +1,7 @@
 import {CommandHandler} from "./command-handler";
 import {CommandContext} from "./command-context";
 import * as readlineSync from "readline-sync";
-import {readdirSync, writeFileSync} from "node:fs";
+import {readdirSync} from "node:fs";
 import {readFileSync} from "fs";
 
 export class LoadHandler extends CommandHandler {

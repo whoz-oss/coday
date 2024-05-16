@@ -3,7 +3,6 @@ import {simpleGit, SimpleGit, SimpleGitOptions} from "simple-git";
 import {CommandContext} from "./command-context";
 import * as readlineSync from 'readline-sync';
 
-const keyCommand: string = "git"
 const rootKey: string = "remotes/origin/"
 const releaseKey: string = `${rootKey}release`
 const serviceKey: string = `${rootKey}service`
@@ -17,7 +16,7 @@ export class GitBranchHandler extends CommandHandler {
     description: string = "wrapper for ai-git operations"
 
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
-        const subCommand = command.slice(keyCommand.length).trim()
+        const subCommand = command.slice(this.commandWord.length).trim()
 
         const options: Partial<SimpleGitOptions> = {
             baseDir: context.projectRootPath,
