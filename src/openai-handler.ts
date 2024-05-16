@@ -1,6 +1,7 @@
 import {CommandContext} from "./command-context";
 import {CommandHandler} from "./command-handler";
 import OpenAI from "openai";
+import {Interactor} from "./interactor";
 
 const OPENAI_API_KEY = process.env['OPENAI_API_KEY'];
 
@@ -14,7 +15,7 @@ export class OpenaiHandler extends CommandHandler {
     openai: OpenAI | undefined
     threadId: string | null = null
 
-    constructor() {
+    constructor(private interactor: Interactor) {
         super()
         this.openai = OPENAI_API_KEY ? new OpenAI({
             apiKey: process.env['OPENAI_API_KEY'],
@@ -23,11 +24,11 @@ export class OpenaiHandler extends CommandHandler {
 
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
         if (!this.openai) {
-            console.warn('OPENAI_API_KEY not set, skipping AI command')
+            this.interactor.warn('OPENAI_API_KEY not set, skipping AI command')
             return context
         }
 
-        const cmd = command.substring(this.commandWord.length).trim()
+        const cmd = this.getSubCommand(command)
 
         if (!this.threadId) {
             const thread = (await this.openai.beta.threads.create())
@@ -47,7 +48,7 @@ export class OpenaiHandler extends CommandHandler {
             result += diff.value;
         });
         await run.finalRun();
-        console.log(`${result}`)
+        this.interactor.displayText(`Coday: ${result}`)
         return {...context, history: [...context.history, {command, response: result}]}
     }
 }

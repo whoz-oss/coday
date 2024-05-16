@@ -2,6 +2,7 @@ import {CommandHandler} from "./command-handler";
 import {simpleGit, SimpleGit, SimpleGitOptions} from "simple-git";
 import {CommandContext} from "./command-context";
 import * as readlineSync from 'readline-sync';
+import {Interactor} from "./interactor";
 
 const rootKey: string = "remotes/origin/"
 const releaseKey: string = `${rootKey}release`
@@ -15,8 +16,12 @@ export class GitBranchHandler extends CommandHandler {
     commandWord: string = "git"
     description: string = "wrapper for ai-git operations"
 
+    constructor(private interactor: Interactor) {
+        super()
+    }
+
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
-        const subCommand = command.slice(this.commandWord.length).trim()
+        const subCommand = this.getSubCommand(command)
 
         const options: Partial<SimpleGitOptions> = {
             baseDir: context.projectRootPath,
@@ -122,8 +127,8 @@ export class GitBranchHandler extends CommandHandler {
     private async branch(context: CommandContext, git: SimpleGit): Promise<CommandContext> {
         // try to select the source branch
         const branch = await git.branch()
-        console.log("Current branch: ", branch.current)
-        console.log("")
+        this.interactor.displayText(`Current branch: ${branch.current}`)
+        this.interactor.addSeparator()
 
         const releaseBranches = branch.all.filter(b => b.includes(releaseKey))
         const serviceBranches = branch.all.filter(b => b.includes(serviceKey))
@@ -133,21 +138,21 @@ export class GitBranchHandler extends CommandHandler {
         // select source branch
         let sourceBranch: string | undefined = undefined
         if (!context.task) {
-            console.warn(`No task data, select manually the relevant branch (from ${rootKey}):`)
+            this.interactor.warn(`No task data, select manually the relevant branch (from ${rootKey}):`)
             for (let i = 0; i < branches.length; i++) {
-                console.log(`${i + 1} - ${branches[i].slice(rootKey.length)}`)
+                this.interactor.displayText(`${i + 1} - ${branches[i].slice(rootKey.length)}`)
             }
             const sourceSelection = readlineSync.question("Type branch number (or else to abort):")
             try {
                 const index = parseInt(sourceSelection) - 1
                 if (!!index && index > 0) {
                     sourceBranch = branches[index]
-                    console.log("Selected source branch:", sourceBranch)
+                    this.interactor.displayText(`Selected source branch: ${sourceBranch}`)
                     return {...context, sourceBranch}
                 }
             } catch (e) {
             }
-            console.log("No source branch selected")
+            this.interactor.displayText("No source branch selected")
         } else {
             // todo: do something with context.task and chatGPT to select a branch
         }

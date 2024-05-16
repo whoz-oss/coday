@@ -1,6 +1,7 @@
 import {CommandHandler} from "./command-handler";
 import axios from "axios";
 import {CommandContext} from "./command-context";
+import {Interactor} from "./interactor";
 
 
 const jiraDomain = 'https://whoz.atlassian.net'
@@ -14,8 +15,17 @@ export class JiraHandler extends CommandHandler {
     commandWord: string = "jira"
     description: string = "sources an issue, usage: jira wz-1234"
 
+    constructor(private interactor: Interactor) {
+        super()
+    }
+
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
-        const subCommand = command.slice(4).trim()
+        if (!apiToken) {
+            this.interactor.warn("JIRA_API_TOKEN is not set in the environment")
+            return context
+        }
+
+        const subCommand = this.getSubCommand(command)
         console.log("got sub-command: ", subCommand)
         try {
             const response = await axios.get(`${jiraDomain}/rest/api/2/issue/${subCommand}`, {

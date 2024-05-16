@@ -5,6 +5,8 @@ import os from 'os';
 import {existsSync, mkdirSync} from "node:fs";
 import {LoadHandler} from "./src/load-handler";
 import {SaveHandler} from "./src/save-handler";
+import {Interactor} from "./src/interactor";
+import {TerminalInteractor} from "./src/terminal-interactor";
 
 const PROJECT_ROOT: string = '/Users/vincent.audibert/Workspace/coday'
 const DATA_PATH: string = "/.coday/"
@@ -18,15 +20,16 @@ class Coday {
     context: CommandContext | null = null
     mainHandler: MainHandler
 
-    constructor() {
+    constructor(private interactor: Interactor) {
         this.userInfo = os.userInfo()
         this.codayPath = this.initCodayPath(this.userInfo)
-        this.loadHandler = new LoadHandler(this.codayPath, PROJECT_ROOT, this.userInfo.username)
+        this.loadHandler = new LoadHandler(interactor, this.codayPath, PROJECT_ROOT, this.userInfo.username)
         this.mainHandler = new MainHandler(
+            interactor,
             MAX_ITERATIONS,
             [
-                new SaveHandler(this.codayPath),
-                    this.loadHandler
+                new SaveHandler(interactor, this.codayPath),
+                this.loadHandler
             ]
         )
     }
@@ -39,7 +42,7 @@ class Coday {
                 this.context = await this.loadHandler.handle("load", this.loadHandler.defaultContext)
             }
             // allow user input
-            console.log("")
+            this.interactor.addSeparator()
             const userCommand = readlineSync.question(`${this.context.username} : `)
 
             // quit loop if user wants to exit
@@ -62,15 +65,15 @@ class Coday {
         try {
             if (!existsSync(codayPath)) {
                 mkdirSync(codayPath, {recursive: true});
-                console.log(`Coday data folder created at: ${codayPath}`);
+                this.interactor.displayText(`Coday data folder created at: ${codayPath}`);
             } else {
-                console.log(`Coday data folder used: ${codayPath}`);
+                this.interactor.displayText(`Coday data folder used: ${codayPath}`);
             }
         } catch (error) {
-            console.error(`Error creating directory:`, error);
+            this.interactor.error(`Error creating directory: ${error}`);
         }
         return codayPath
     }
 }
 
-new Coday().run()
+new Coday(new TerminalInteractor()).run()

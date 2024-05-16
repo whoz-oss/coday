@@ -4,9 +4,10 @@ import {JiraHandler} from "./jira-handler";
 import {NestedHandler} from "./nested-handler";
 import {CommandContext} from "./command-context";
 import {OpenaiHandler} from "./openai-handler";
+import {Interactor} from "./interactor";
 
 
-export class MainHandler implements NestedHandler {
+export class MainHandler extends NestedHandler {
     commandWord: string = ''
     description: string = ''
     exitWord = 'exit'
@@ -14,14 +15,16 @@ export class MainHandler implements NestedHandler {
     openaiHandler: OpenaiHandler
 
     constructor(
+        private interactor: Interactor,
         private maxIterations: number = 10,
         defaultHandlers: CommandHandler[] = []
     ) {
-        this.openaiHandler = new OpenaiHandler()
+        super()
+        this.openaiHandler = new OpenaiHandler(interactor)
         this.handlers = [
             ...defaultHandlers,
-            new GitBranchHandler(),
-            new JiraHandler(),
+            new GitBranchHandler(interactor),
+            new JiraHandler(interactor),
             this.openaiHandler
         ]
     }
@@ -37,11 +40,11 @@ export class MainHandler implements NestedHandler {
             count++
             const command: string | undefined = innerContext.commandQueue.shift()
             if (!command || command ===  'help' || command === 'h') {
-                console.log("Available commands:")
-                console.log(`  - ${this.exitWord} : quits the program`)
-                console.log("  - help : displays this help message")
-                this.handlers.forEach(h => console.log(`  - ${h.commandWord} : ${h.description}`))
-                console.log("  - [any other text] : defaults to asking the AI with the current context.")
+                this.interactor.displayText("Available commands:")
+                this.interactor.displayText(`  - ${this.exitWord} : quits the program`)
+                this.interactor.displayText("  - help : displays this help message")
+                this.handlers.forEach(h => this.interactor.displayText(`  - ${h.commandWord} : ${h.description}`))
+                this.interactor.displayText("  - [any other text] : defaults to asking the AI with the current context.")
                 continue;
             }
 
@@ -57,11 +60,11 @@ export class MainHandler implements NestedHandler {
                     innerContext.commandQueue.unshift(`${this.openaiHandler.commandWord} ${command}`)
                 }
             } catch (error) {
-                console.error(`An error occurred while trying to process your request: ${error}`)
+                this.interactor.error(`An error occurred while trying to process your request: ${error}`)
             }
         }
         if (count > this.maxIterations) {
-            console.warn('Maximum iterations reached for a command')
+            this.interactor.warn('Maximum iterations reached for a command')
         }
         return innerContext
     }
