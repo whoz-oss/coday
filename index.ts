@@ -7,6 +7,10 @@ import {LoadHandler} from "./src/load-handler";
 import {SaveHandler} from "./src/save-handler";
 import {Interactor} from "./src/interactor";
 import {TerminalInteractor} from "./src/terminal-interactor";
+import {readFileSync} from "fs";
+import {RunnableToolFunction} from "openai/lib/RunnableFunction";
+import {Beta} from "openai/resources";
+import AssistantTool = Beta.AssistantTool;
 
 const PROJECT_ROOT: string = '/Users/vincent.audibert/Workspace/coday'
 const DATA_PATH: string = "/.coday/"
@@ -20,6 +24,35 @@ class Coday {
     context: CommandContext | null = null
     mainHandler: MainHandler
 
+
+    readFileByPath = ({path}: {path: string}) => {
+        const fullPath = `${PROJECT_ROOT}/${path}`
+        try {
+            this.interactor.displayText(`reading file ${path}`)
+            return readFileSync(fullPath).toString()
+        } catch (err) {
+            this.interactor.error(`Error reading file ${path}`)
+            console.error(err)
+            return "Error reading file"
+        }
+    }
+
+    readFileByPathFunction: AssistantTool & RunnableToolFunction<{path: string}> = {
+        type: "function",
+        function: {
+            name: "readFileByPath",
+            description: "read the content of the file at the given path in the project",
+            parameters: {
+                type: "object",
+                properties: {
+                    path: { type: "string" }
+                }
+            },
+            parse: JSON.parse,
+            function: this.readFileByPath
+        }
+    }
+
     constructor(private interactor: Interactor) {
         this.userInfo = os.userInfo()
         this.codayPath = this.initCodayPath(this.userInfo)
@@ -30,7 +63,8 @@ class Coday {
             [
                 new SaveHandler(interactor, this.codayPath),
                 this.loadHandler
-            ]
+            ],
+            [this.readFileByPathFunction]
         )
     }
 

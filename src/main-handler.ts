@@ -5,6 +5,9 @@ import {NestedHandler} from "./nested-handler";
 import {CommandContext} from "./command-context";
 import {OpenaiHandler} from "./openai-handler";
 import {Interactor} from "./interactor";
+import {Beta} from "openai/resources";
+import {RunnableToolFunction} from "openai/lib/RunnableFunction";
+import AssistantTool = Beta.AssistantTool;
 
 
 export class MainHandler extends NestedHandler {
@@ -17,10 +20,11 @@ export class MainHandler extends NestedHandler {
     constructor(
         private interactor: Interactor,
         private maxIterations: number = 10,
-        defaultHandlers: CommandHandler[] = []
+        defaultHandlers: CommandHandler[] = [],
+        tools: (AssistantTool & RunnableToolFunction<any>)[] = []
     ) {
         super()
-        this.openaiHandler = new OpenaiHandler(interactor)
+        this.openaiHandler = new OpenaiHandler(interactor, tools)
         this.handlers = [
             ...defaultHandlers,
             new GitBranchHandler(interactor),
