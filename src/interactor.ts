@@ -3,6 +3,6 @@ export interface Interactor {
     chooseOption(options: string[], question: string, invite?: string): string
     displayText(text: string): void
     warn(warning: string): void
-    error(error: string): void
+    error(error: unknown): void
     addSeparator(): void
 }

@@ -1,4 +1,4 @@
-import {CommandContext} from "./command-context";
+import {CommandContext} from "../command-context";
 
 
 export abstract class CommandHandler {

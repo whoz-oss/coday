@@ -1,8 +1,8 @@
 import {CommandHandler} from "./command-handler";
 import {simpleGit, SimpleGit, SimpleGitOptions} from "simple-git";
-import {CommandContext} from "./command-context";
+import {CommandContext} from "../command-context";
 import * as readlineSync from 'readline-sync';
-import {Interactor} from "./interactor";
+import {Interactor} from "../interactor";
 
 const rootKey: string = "remotes/origin/"
 const releaseKey: string = `${rootKey}release`

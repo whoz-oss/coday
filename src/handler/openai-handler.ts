@@ -1,33 +1,14 @@
-import {CommandContext} from "./command-context";
+import {CommandContext} from "../command-context";
 import {CommandHandler} from "./command-handler";
 import OpenAI from "openai";
-import {Interactor} from "./interactor";
-import {Beta, Chat} from "openai/resources";
+import {Interactor} from "../interactor";
+import {Beta} from "openai/resources";
 import {RunnableToolFunction} from "openai/lib/RunnableFunction";
-import {AssistantStreamEvent} from "openai/resources/beta";
 import {AssistantStream} from "openai/lib/AssistantStream";
 import AssistantTool = Beta.AssistantTool;
-import ChatCompletionMessage = Chat.ChatCompletionMessage;
+import {readFileByPath} from "../function";
 
 const OPENAI_API_KEY = process.env['OPENAI_API_KEY'];
-
-function messageReducer(previous: ChatCompletionMessage, item: AssistantStreamEvent): ChatCompletionMessage {
-    const reduce = (acc: any, delta: any) => {
-        acc = {...acc};
-        for (const [key, value] of Object.entries(delta)) {
-            if (acc[key] === undefined || acc[key] === null) {
-                acc[key] = value;
-            } else if (typeof acc[key] === 'string' && typeof value === 'string') {
-                (acc[key] as string) += value;
-            } else if (typeof acc[key] === 'object' && !Array.isArray(acc[key])) {
-                acc[key] = reduce(acc[key], value);
-            }
-        }
-        return acc;
-    };
-
-    return reduce(previous, item.data) as ChatCompletionMessage;
-}
 
 export class OpenaiHandler extends CommandHandler {
     commandWord: string = 'ai'
@@ -37,8 +18,10 @@ export class OpenaiHandler extends CommandHandler {
     threadId: string | null = null
     assistantId: string | null = null
     textAccumulator: string = ""
+    tools: (AssistantTool & RunnableToolFunction<any>)[] = []
+    lastToolInitContext: CommandContext | null = null
 
-    constructor(private interactor: Interactor, private tools: (AssistantTool & RunnableToolFunction<any>)[]) {
+    constructor(private interactor: Interactor) {
         super()
         this.openai = OPENAI_API_KEY ? new OpenAI({
             apiKey: process.env['OPENAI_API_KEY'],
@@ -46,9 +29,9 @@ export class OpenaiHandler extends CommandHandler {
     }
 
 
-    async init(): Promise<boolean> {
+    async initOpenai(): Promise<boolean> {
         if (!OPENAI_API_KEY) {
-            this.interactor.warn('OPENAI_API_KEY not set, skipping AI command')
+            this.interactor.warn('OPENAI_API_KEY env var not set, skipping AI command')
             return false
         }
 
@@ -81,13 +64,53 @@ export class OpenaiHandler extends CommandHandler {
         return true
     }
 
+    private contextHasNotChanged(command: CommandContext): boolean {
+        if (!this.lastToolInitContext) {
+            this.lastToolInitContext = command
+            return false
+        }
+        return !!this.lastToolInitContext &&
+            command.projectRootPath === this.lastToolInitContext?.projectRootPath
+    }
+
+    initTools(context: CommandContext) {
+        if (this.contextHasNotChanged(context)) {
+            return
+        }
+        const readProjectFile = ({path}: {path:string}) => {
+            return readFileByPath({path, root: context.projectRootPath, interactor:this.interactor})
+        }
+
+        const readProjectFileFunction: AssistantTool & RunnableToolFunction<{path: string}> = {
+            type: "function",
+            function: {
+                name: "readProjectFile",
+                description: "read the content of the file at the given path in the project",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        path: { type: "string" }
+                    }
+                },
+                parse: JSON.parse,
+                function: readProjectFile
+            }
+        }
+
+        this.tools = [
+            readProjectFileFunction,
+        ]
+    }
+
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
         this.textAccumulator = ""
         try {
 
-            if (!(await this.init()) || !this.openai || !this.assistantId) {
+            if (!(await this.initOpenai()) || !this.openai || !this.assistantId) {
                 return context
             }
+
+            this.initTools(context)
 
             const cmd = this.getSubCommand(command)
 
@@ -134,15 +157,24 @@ export class OpenaiHandler extends CommandHandler {
                             throw new Error(`Function ${toolCall.function.name} not found.`);
                         }
 
-                        const args: any = [JSON.parse(toolCall.function.arguments)];
-                        const output = await funcWrapper.function.function.apply(funcWrapper, args);
+                        const toolFunc = funcWrapper.function.function;
 
+                        // implicit assumption: have only a single object as input for all toolFunction...
+                        const args: any = [JSON.parse(toolCall.function.arguments)];
+                        let output;
+                        try {
+                            output = await toolFunc.apply(null, args);
+                        } catch (err) {
+                            this.interactor.error(err);
+                            output = `Error on executing function`;
+                        }
                         // Ensure output is a string as expected
                         if (typeof output !== 'string') {
-                            throw new Error(`Tool function ${funcWrapper.function.name} did not return a string.`);
+                            output = `Tool function ${funcWrapper.function.name} did not return a string.`
+                            this.interactor.error(output)
                         }
 
-                        return {tool_call_id: toolCall.id, output};
+                        return {tool_call_id: toolCall.id, output: output as string};
                     }));
 
                     const newStream = this.openai!.beta.threads.runs.submitToolOutputsStream(

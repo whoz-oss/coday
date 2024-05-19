@@ -1,7 +1,7 @@
 import {CommandHandler} from "./command-handler";
 import axios from "axios";
-import {CommandContext} from "./command-context";
-import {Interactor} from "./interactor";
+import {CommandContext} from "../command-context";
+import {Interactor} from "../interactor";
 
 
 const jiraDomain = 'https://whoz.atlassian.net'

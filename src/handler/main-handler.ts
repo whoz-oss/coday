@@ -2,13 +2,10 @@ import {GitBranchHandler} from "./git-branch-handler";
 import {CommandHandler} from "./command-handler";
 import {JiraHandler} from "./jira-handler";
 import {NestedHandler} from "./nested-handler";
-import {CommandContext} from "./command-context";
+import {CommandContext} from "../command-context";
 import {OpenaiHandler} from "./openai-handler";
-import {Interactor} from "./interactor";
-import {Beta} from "openai/resources";
-import {RunnableToolFunction} from "openai/lib/RunnableFunction";
-import AssistantTool = Beta.AssistantTool;
-
+import {Interactor} from "../interactor";
+import {TestHandler} from "./test";
 
 export class MainHandler extends NestedHandler {
     commandWord: string = ''
@@ -21,14 +18,14 @@ export class MainHandler extends NestedHandler {
         private interactor: Interactor,
         private maxIterations: number = 10,
         defaultHandlers: CommandHandler[] = [],
-        tools: (AssistantTool & RunnableToolFunction<any>)[] = []
     ) {
         super()
-        this.openaiHandler = new OpenaiHandler(interactor, tools)
+        this.openaiHandler = new OpenaiHandler(interactor)
         this.handlers = [
             ...defaultHandlers,
             new GitBranchHandler(interactor),
             new JiraHandler(interactor),
+            new TestHandler(interactor),
             this.openaiHandler
         ]
     }

@@ -1,8 +1,8 @@
 import {CommandHandler} from "./command-handler";
-import {CommandContext} from "./command-context";
+import {CommandContext} from "../command-context";
 import {readdirSync} from "node:fs";
 import {readFileSync} from "fs";
-import {Interactor} from "./interactor";
+import {Interactor} from "../interactor";
 
 export class LoadHandler extends CommandHandler {
     commandWord: string = "load"

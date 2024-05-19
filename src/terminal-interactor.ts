@@ -25,7 +25,7 @@ export class TerminalInteractor implements Interactor {
         console.warn(warning)
     }
 
-    error(error: string): void {
+    error(error: unknown): void {
         console.error(error)
     }
 

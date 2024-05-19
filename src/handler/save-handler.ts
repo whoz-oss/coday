@@ -1,8 +1,8 @@
-import {CommandContext} from "./command-context";
+import {CommandContext} from "../command-context";
 import {CommandHandler} from "./command-handler";
 import * as readlineSync from "readline-sync";
 import {writeFileSync} from "node:fs";
-import {Interactor} from "./interactor";
+import {Interactor} from "../interactor";
 
 export class SaveHandler extends CommandHandler {
     commandWord: string = "save"
