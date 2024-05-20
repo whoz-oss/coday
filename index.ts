@@ -5,10 +5,6 @@ import os from 'os';
 import {existsSync, mkdirSync} from "node:fs";
 import {Interactor} from "./src/interactor";
 import {TerminalInteractor} from "./src/terminal-interactor";
-import {RunnableToolFunction} from "openai/lib/RunnableFunction";
-import {Beta} from "openai/resources";
-import {readFileByPath} from "./src/function";
-import AssistantTool = Beta.AssistantTool;
 
 const PROJECT_ROOT: string = '/Users/vincent.audibert/Workspace/coday'
 const DATA_PATH: string = "/.coday/"

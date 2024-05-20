@@ -5,8 +5,8 @@ import {Interactor} from "../interactor";
 import {Beta} from "openai/resources";
 import {RunnableToolFunction} from "openai/lib/RunnableFunction";
 import {AssistantStream} from "openai/lib/AssistantStream";
+import {readFileByPath, writeFile} from "../function";
 import AssistantTool = Beta.AssistantTool;
-import {readFileByPath} from "../function";
 
 const OPENAI_API_KEY = process.env['OPENAI_API_KEY'];
 
@@ -64,24 +64,15 @@ export class OpenaiHandler extends CommandHandler {
         return true
     }
 
-    private contextHasNotChanged(command: CommandContext): boolean {
-        if (!this.lastToolInitContext) {
-            this.lastToolInitContext = command
-            return false
-        }
-        return !!this.lastToolInitContext &&
-            command.projectRootPath === this.lastToolInitContext?.projectRootPath
-    }
-
     initTools(context: CommandContext) {
         if (this.contextHasNotChanged(context)) {
             return
         }
-        const readProjectFile = ({path}: {path:string}) => {
-            return readFileByPath({path, root: context.projectRootPath, interactor:this.interactor})
+        const readProjectFile = ({path}: { path: string }) => {
+            return readFileByPath({path, root: context.projectRootPath, interactor: this.interactor})
         }
 
-        const readProjectFileFunction: AssistantTool & RunnableToolFunction<{path: string}> = {
+        const readProjectFileFunction: AssistantTool & RunnableToolFunction<{ path: string }> = {
             type: "function",
             function: {
                 name: "readProjectFile",
@@ -89,7 +80,7 @@ export class OpenaiHandler extends CommandHandler {
                 parameters: {
                     type: "object",
                     properties: {
-                        path: { type: "string" }
+                        path: {type: "string", description: "file path relative to the project root (not exposed)"}
                     }
                 },
                 parse: JSON.parse,
@@ -97,8 +88,30 @@ export class OpenaiHandler extends CommandHandler {
             }
         }
 
+        const writeProjectFile = ({path, content}: { path: string, content: string }) => {
+            return writeFile({path, root: context.projectRootPath, interactor: this.interactor, content})
+        }
+
+        const writeProjectFileFunction: AssistantTool & RunnableToolFunction<{ path: string, content: string }> = {
+            type: "function",
+            function: {
+                name: "writeProjectFile",
+                description: "write the content of the file at the given path in the project",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        path: {type: "string", description: "file path relative to the project root (not exposed)"},
+                        content: {type: "string", description: "content of the file to write"}
+                    }
+                },
+                parse: JSON.parse,
+                function: writeProjectFile
+            }
+        }
+
         this.tools = [
             readProjectFileFunction,
+            writeProjectFileFunction
         ]
     }
 
@@ -160,7 +173,12 @@ export class OpenaiHandler extends CommandHandler {
                         const toolFunc = funcWrapper.function.function;
 
                         // implicit assumption: have only a single object as input for all toolFunction...
-                        const args: any = [JSON.parse(toolCall.function.arguments)];
+                        let args: any = JSON.parse(toolCall.function.arguments);
+
+                        // re-wrap a non-array argument for .apply()
+                        if (!Array.isArray(args)) {
+                            args = [args]
+                        }
                         let output;
                         try {
                             output = await toolFunc.apply(null, args);
@@ -190,6 +208,15 @@ export class OpenaiHandler extends CommandHandler {
                 }
             }
         }
+    }
+
+    private contextHasNotChanged(command: CommandContext): boolean {
+        if (!this.lastToolInitContext) {
+            this.lastToolInitContext = command
+            return false
+        }
+        return !!this.lastToolInitContext &&
+            command.projectRootPath === this.lastToolInitContext?.projectRootPath
     }
 
 
