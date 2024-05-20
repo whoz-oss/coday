@@ -2,6 +2,7 @@ import {FilePath} from "./path";
 import {writeFileSync} from "node:fs";
 
 export const writeFile = ({path, root, interactor, content}: FilePath & {content: string}) => {
+
     // need to prevent double slashes
     const tweakedPath = path.startsWith('/')
         ? path.substring(1)
@@ -11,7 +12,7 @@ export const writeFile = ({path, root, interactor, content}: FilePath & {content
     try {
         interactor?.displayText(`writing file ${fullPath}`)
         const data = new Uint8Array(Buffer. from(content))
-        writeFileSync('message. txt', data)
+        writeFileSync(fullPath, data)
         return "File write success"
     } catch (err) {
         interactor?.error(`Error writing file ${fullPath}`)
