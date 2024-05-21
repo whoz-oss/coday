@@ -7,6 +7,7 @@ import {RunnableToolFunction} from "openai/lib/RunnableFunction";
 import {AssistantStream} from "openai/lib/AssistantStream";
 import {readFileByPath, writeFile} from "../function";
 import AssistantTool = Beta.AssistantTool;
+import {findFilesByName} from "../function/find-files-by-name";
 
 const OPENAI_API_KEY = process.env['OPENAI_API_KEY'];
 
@@ -109,9 +110,31 @@ export class OpenaiHandler extends CommandHandler {
             }
         }
 
+        const searchProjectFile = ({text, path}: {text: string, path?: string}) => {
+            return findFilesByName({text, path, root: context.projectRootPath, interactor: this.interactor})
+        }
+
+        const searchProjectFileFunction: AssistantTool & RunnableToolFunction<{ text: string, path?: string }> = {
+            type: "function",
+            function: {
+                name: "searchProjectFile",
+                description: "search in the project for files named starting by the given text. The output is a list of paths relative to the project root.",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        text: {type: "string", description: "start of the name of files to search for"},
+                        path: {type: "string", description: "optional file path relative to the project root from which to start the search"},
+                    }
+                },
+                parse: JSON.parse,
+                function: searchProjectFile
+            }
+        }
+
         this.tools = [
             readProjectFileFunction,
-            writeProjectFileFunction
+            writeProjectFileFunction,
+            searchProjectFileFunction,
         ]
     }
 
@@ -172,7 +195,7 @@ export class OpenaiHandler extends CommandHandler {
 
                         const toolFunc = funcWrapper.function.function;
 
-                        // implicit assumption: have only a single object as input for all toolFunction...
+                        // implicit assumption: have only a single object as input for all toolFunction?
                         let args: any = JSON.parse(toolCall.function.arguments);
 
                         // re-wrap a non-array argument for .apply()
@@ -184,15 +207,20 @@ export class OpenaiHandler extends CommandHandler {
                             output = await toolFunc.apply(null, args);
                         } catch (err) {
                             this.interactor.error(err);
-                            output = `Error on executing function`;
+                            output = `Error on executing function, got error: ${JSON.stringify(err)}`;
                         }
-                        // Ensure output is a string as expected
-                        if (typeof output !== 'string') {
-                            output = `Tool function ${funcWrapper.function.name} did not return a string.`
+
+                        // Ensure output is at least something
+                        if (!output) {
+                            output = `Tool function ${funcWrapper.function.name} did not return a value.`
                             this.interactor.error(output)
                         }
 
-                        return {tool_call_id: toolCall.id, output: output as string};
+                        if (typeof output !== 'string') {
+                            output = JSON.stringify(output)
+                        }
+
+                        return {tool_call_id: toolCall.id, output};
                     }));
 
                     const newStream = this.openai!.beta.threads.runs.submitToolOutputsStream(

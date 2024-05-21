@@ -1,7 +1,14 @@
-import {FilePath} from "./path";
 import {writeFileSync} from "node:fs";
+import {Interactor} from "../interactor";
 
-export const writeFile = ({path, root, interactor, content}: FilePath & {content: string}) => {
+type WriteFileByPathInput = {
+    path: string
+    root: string
+    interactor?: Interactor
+    content: string
+}
+
+export const writeFile = ({path, root, interactor, content}: WriteFileByPathInput) => {
 
     // need to prevent double slashes
     const tweakedPath = path.startsWith('/')

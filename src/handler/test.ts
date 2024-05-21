@@ -1,7 +1,7 @@
-import { CommandContext } from "../command-context";
+import {CommandContext} from "../command-context";
 import {CommandHandler} from "./command-handler";
-import {readFileByPath} from "../function";
 import {Interactor} from "../interactor";
+import {findFilesByName} from "../function/find-files-by-name";
 
 export class TestHandler extends CommandHandler {
     commandWord: string = 'debug'
@@ -12,16 +12,14 @@ export class TestHandler extends CommandHandler {
     }
 
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
-        const readProjectFile = ({path}: {path:string}) => {
-            readFileByPath({path, root: context.projectRootPath, interactor: this.interactor})
+        const method = ({text, path}: {text: string, path?: string}) => {
+            return findFilesByName({text, path, root: context.projectRootPath, interactor: this.interactor})
         }
-        const args = {path: 'index.ts'}
+        const args = {text: 'tESt.ts'}
         console.log("direct read")
-        readProjectFile(args)
+        const result = await method(args)
 
-        console.log("by apply")
-        readProjectFile.apply(readProjectFile, [args])
-
+        console.log(result)
         return context
     }
 
