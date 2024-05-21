@@ -8,6 +8,7 @@ import {AssistantStream} from "openai/lib/AssistantStream";
 import {readFileByPath, writeFile} from "../function";
 import AssistantTool = Beta.AssistantTool;
 import {findFilesByName} from "../function/find-files-by-name";
+import {listFilesAndDirectories} from "../function/list-files-and-directories";
 
 const OPENAI_API_KEY = process.env['OPENAI_API_KEY'];
 
@@ -131,10 +132,31 @@ export class OpenaiHandler extends CommandHandler {
             }
         }
 
+        const listProjectFilesAndDirectories = ({relPath}: { relPath: string }) => {
+            return listFilesAndDirectories({relPath, root: context.projectRootPath, interactor: this.interactor})
+        }
+
+        const listFilesAndDirectoriesFunction: AssistantTool & RunnableToolFunction<{ relPath: string }> = {
+            type: "function",
+            function: {
+                name: "listFilesAndDirectories",
+                description: "list the directories and files in a folder (similar to the ls Unix command). Directories end with a slash.",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        relPath: {type: "string", description: "path relative to the project root"}
+                    }
+                },
+                parse: JSON.parse,
+                function: listProjectFilesAndDirectories
+            }
+        }
+
         this.tools = [
             readProjectFileFunction,
             writeProjectFileFunction,
             searchProjectFileFunction,
+            listFilesAndDirectoriesFunction
         ]
     }
 
