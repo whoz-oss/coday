@@ -1,7 +1,7 @@
 import {CommandContext} from "../command-context";
 import {CommandHandler} from "./command-handler";
 import {Interactor} from "../interactor";
-import {findFilesByName} from "../function/find-files-by-name";
+import {runBash} from "../function/run-bash";
 
 export class TestHandler extends CommandHandler {
     commandWord: string = 'debug'
@@ -12,10 +12,10 @@ export class TestHandler extends CommandHandler {
     }
 
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
-        const method = ({text, path}: {text: string, path?: string}) => {
-            return findFilesByName({text, path, root: context.projectRootPath, interactor: this.interactor})
+        const method = ({command}: {command: string}) => {
+            return runBash({command, root: context.projectRootPath, interactor: this.interactor})
         }
-        const args = {text: 'tESt.ts'}
+        const args = {command: 'git status'}
         console.log("direct read")
         const result = await method(args)
 
