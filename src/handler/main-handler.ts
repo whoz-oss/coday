@@ -1,4 +1,3 @@
-import {GitBranchHandler} from "./git-branch-handler";
 import {CommandHandler} from "./command-handler";
 import {JiraHandler} from "./jira-handler";
 import {NestedHandler} from "./nested-handler";
@@ -7,6 +6,7 @@ import {OpenaiHandler} from "./openai-handler";
 import {Interactor} from "../interactor";
 import {TestHandler} from "./test";
 import {ResetHandler} from "./reset-handler";
+import { GitHandler } from "./git-handler";
 
 export class MainHandler extends NestedHandler {
     commandWord: string = ''
@@ -24,7 +24,7 @@ export class MainHandler extends NestedHandler {
         this.openaiHandler = new OpenaiHandler(interactor)
         this.handlers = [
             ...defaultHandlers,
-            new GitBranchHandler(interactor),
+            new GitHandler(interactor),
             new JiraHandler(interactor),
             new TestHandler(interactor),
             new ResetHandler(interactor),
