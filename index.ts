@@ -1,4 +1,3 @@
-import * as readlineSync from 'readline-sync';
 import {LoadHandler, MainHandler, ResetHandler, SaveHandler} from "./src/handler";
 import {CommandContext} from "./src/command-context";
 import os from 'os';
@@ -43,7 +42,7 @@ class Coday {
             }
             // allow user input
             this.interactor.addSeparator()
-            const userCommand = readlineSync.question(`${this.context.username} : `)
+            const userCommand = this.interactor.promptText(`${this.context.username} : `)
 
             // quit loop if user wants to exit
             if (userCommand === this.mainHandler.exitWord) {

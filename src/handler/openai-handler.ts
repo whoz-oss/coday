@@ -180,7 +180,7 @@ export class OpenaiHandler extends CommandHandler {
 
     async processStream(stream: AssistantStream) {
         stream.on('textDone', (diff) => {
-            this.interactor.displayText(`Coday: ${diff.value}`)
+            this.interactor.displayText(diff.value, 'Coday')
             this.textAccumulator += diff.value
         })
         for await (const chunk of stream) {

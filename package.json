@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "axios": "^1.6.7",
+    "chalk": "^4.1.2",
     "glob": "^10.3.15",
     "openai": "^4.47.1",
     "readline-sync": "^1.4.10",

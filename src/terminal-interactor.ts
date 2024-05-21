@@ -1,9 +1,10 @@
 import {Interactor} from "./interactor";
 import * as readlineSync from 'readline-sync';
+import chalk from "chalk";
 
 export class TerminalInteractor implements Interactor {
     promptText(invite: string, defaultText?: string): string {
-        return readlineSync.question(invite, {defaultInput: defaultText})
+        return readlineSync.question(chalk.black.bgWhite(invite), {defaultInput: defaultText})
     }
 
     chooseOption(options: string[], question: string, invite?: string): string {
@@ -17,8 +18,9 @@ export class TerminalInteractor implements Interactor {
 
     }
 
-    displayText(text: string): void {
-        console.log(text)
+    displayText(text: string, speaker?: string): void {
+        const formattedText = speaker ? `${chalk.black.bgWhite(speaker)} : ${text}`: text
+        console.log(formattedText)
     }
 
     warn(warning: string): void {
