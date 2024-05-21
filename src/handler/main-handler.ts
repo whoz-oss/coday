@@ -6,6 +6,7 @@ import {CommandContext} from "../command-context";
 import {OpenaiHandler} from "./openai-handler";
 import {Interactor} from "../interactor";
 import {TestHandler} from "./test";
+import {ResetHandler} from "./reset-handler";
 
 export class MainHandler extends NestedHandler {
     commandWord: string = ''
@@ -26,12 +27,13 @@ export class MainHandler extends NestedHandler {
             new GitBranchHandler(interactor),
             new JiraHandler(interactor),
             new TestHandler(interactor),
+            new ResetHandler(interactor),
             this.openaiHandler
         ]
     }
 
     accept(command: string, context: CommandContext): boolean {
-        return true;
+        return true
     }
 
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
@@ -46,7 +48,7 @@ export class MainHandler extends NestedHandler {
                 this.interactor.displayText("  - help : displays this help message")
                 this.handlers.forEach(h => this.interactor.displayText(`  - ${h.commandWord} : ${h.description}`))
                 this.interactor.displayText("  - [any other text] : defaults to asking the AI with the current context.")
-                continue;
+                continue
             }
 
             // find first handler

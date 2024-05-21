@@ -1,5 +1,5 @@
 import * as readlineSync from 'readline-sync';
-import {LoadHandler, MainHandler, SaveHandler} from "./src/handler";
+import {LoadHandler, MainHandler, ResetHandler, SaveHandler} from "./src/handler";
 import {CommandContext} from "./src/command-context";
 import os from 'os';
 import {existsSync, mkdirSync} from "node:fs";
@@ -7,6 +7,7 @@ import {Interactor} from "./src/interactor";
 import {TerminalInteractor} from "./src/terminal-interactor";
 
 const PROJECT_ROOT: string = '/Users/vincent.audibert/Workspace/coday'
+// const PROJECT_ROOT: string = '/Users/vincent.audibert/Workspace/biznet.io/app/whoz'
 const DATA_PATH: string = "/.coday/"
 const MAX_ITERATIONS: number = 10
 
@@ -27,7 +28,8 @@ class Coday {
             MAX_ITERATIONS,
             [
                 new SaveHandler(interactor, this.codayPath),
-                this.loadHandler
+                this.loadHandler,
+                new ResetHandler(interactor)
             ],
         )
     }
