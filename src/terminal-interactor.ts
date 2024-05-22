@@ -4,7 +4,7 @@ import chalk from "chalk";
 
 export class TerminalInteractor implements Interactor {
     promptText(invite: string, defaultText?: string): string {
-        return readlineSync.question(chalk.black.bgWhite(invite), {defaultInput: defaultText})
+        return readlineSync.question(`${chalk.black.bgWhite(invite)} : `, {defaultInput: defaultText})
     }
 
     chooseOption(options: string[], question: string, invite?: string): string {

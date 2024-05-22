@@ -42,7 +42,8 @@ class Coday {
             }
             // allow user input
             this.interactor.addSeparator()
-            const userCommand = this.interactor.promptText(`${this.context.username} : `)
+            const userCommand = this.interactor.promptText(`${this.context.username}`)
+            this.interactor.addSeparator()
 
             // quit loop if user wants to exit
             if (userCommand === this.mainHandler.exitWord) {

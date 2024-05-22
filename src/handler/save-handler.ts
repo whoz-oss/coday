@@ -15,10 +15,10 @@ export class SaveHandler extends CommandHandler {
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
         let key: string
         if (!context?.task?.key) {
-            key = this.interactor.promptText("No task defined yet, enter a title:")
+            key = this.interactor.promptText("No task defined yet, enter a title")
         } else {
             key = this.interactor.promptText(
-                `Suggested name : '${context.task.key}', type new name or leave empty to accept suggestion:`
+                `Suggested name : '${context.task.key}', type new name or leave empty to accept suggestion`
                 ,  context.task.key
             )
         }
