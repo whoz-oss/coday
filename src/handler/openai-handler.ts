@@ -1,16 +1,11 @@
-import {CommandContext} from "../command-context";
-import {CommandHandler} from "./command-handler";
-import OpenAI from "openai";
-import {Interactor} from "../interactor";
-import {Beta} from "openai/resources";
-import {RunnableToolFunction} from "openai/lib/RunnableFunction";
-import {AssistantStream} from "openai/lib/AssistantStream";
-import {readFileByPath, writeFile} from "../function";
-import AssistantTool = Beta.AssistantTool;
-import {findFilesByName} from "../function/find-files-by-name";
-import {listFilesAndDirectories} from "../function";
+import {CommandContext} from "../command-context"
+import {CommandHandler} from "./command-handler"
+import OpenAI from "openai"
+import {Interactor} from "../interactor"
+import {AssistantStream} from "openai/lib/AssistantStream"
+import {OpenaiTools, Tool} from "./init-tools";
 
-const OPENAI_API_KEY = process.env['OPENAI_API_KEY'];
+const OPENAI_API_KEY = process.env['OPENAI_API_KEY']
 
 export class OpenaiHandler extends CommandHandler {
     commandWord: string = 'ai'
@@ -20,14 +15,15 @@ export class OpenaiHandler extends CommandHandler {
     threadId: string | null = null
     assistantId: string | null = null
     textAccumulator: string = ""
-    tools: (AssistantTool & RunnableToolFunction<any>)[] = []
-    lastToolInitContext: CommandContext | null = null
+
+    openaiTools: OpenaiTools
 
     constructor(private interactor: Interactor) {
         super()
         this.openai = OPENAI_API_KEY ? new OpenAI({
             apiKey: process.env['OPENAI_API_KEY'],
         }) : undefined
+        this.openaiTools = new OpenaiTools(interactor)
     }
 
 
@@ -66,100 +62,6 @@ export class OpenaiHandler extends CommandHandler {
         return true
     }
 
-    initTools(context: CommandContext) {
-        if (this.contextHasNotChanged(context)) {
-            return
-        }
-        const readProjectFile = ({path}: { path: string }) => {
-            return readFileByPath({relPath: path, root: context.projectRootPath, interactor: this.interactor})
-        }
-
-        const readProjectFileFunction: AssistantTool & RunnableToolFunction<{ path: string }> = {
-            type: "function",
-            function: {
-                name: "readProjectFile",
-                description: "read the content of the file at the given path in the project",
-                parameters: {
-                    type: "object",
-                    properties: {
-                        path: {type: "string", description: "file path relative to the project root (not exposed)"}
-                    }
-                },
-                parse: JSON.parse,
-                function: readProjectFile
-            }
-        }
-
-        const writeProjectFile = ({path, content}: { path: string, content: string }) => {
-            return writeFile({relPath: path, root: context.projectRootPath, interactor: this.interactor, content})
-        }
-
-        const writeProjectFileFunction: AssistantTool & RunnableToolFunction<{ path: string, content: string }> = {
-            type: "function",
-            function: {
-                name: "writeProjectFile",
-                description: "write the content of the file at the given path in the project",
-                parameters: {
-                    type: "object",
-                    properties: {
-                        path: {type: "string", description: "file path relative to the project root (not exposed)"},
-                        content: {type: "string", description: "content of the file to write"}
-                    }
-                },
-                parse: JSON.parse,
-                function: writeProjectFile
-            }
-        }
-
-        const searchProjectFile = ({text, path}: {text: string, path?: string}) => {
-            return findFilesByName({text, path, root: context.projectRootPath, interactor: this.interactor})
-        }
-
-        const searchProjectFileFunction: AssistantTool & RunnableToolFunction<{ text: string, path?: string }> = {
-            type: "function",
-            function: {
-                name: "searchProjectFile",
-                description: "search in the project for files named starting by the given text. The output is a list of paths relative to the project root.",
-                parameters: {
-                    type: "object",
-                    properties: {
-                        text: {type: "string", description: "start of the name of files to search for"},
-                        path: {type: "string", description: "optional file path relative to the project root from which to start the search"},
-                    }
-                },
-                parse: JSON.parse,
-                function: searchProjectFile
-            }
-        }
-
-        const listProjectFilesAndDirectories = ({relPath}: { relPath: string }) => {
-            return listFilesAndDirectories({relPath, root: context.projectRootPath, interactor: this.interactor})
-        }
-
-        const listFilesAndDirectoriesFunction: AssistantTool & RunnableToolFunction<{ relPath: string }> = {
-            type: "function",
-            function: {
-                name: "listFilesAndDirectories",
-                description: "list the directories and files in a folder (similar to the ls Unix command). Directories end with a slash.",
-                parameters: {
-                    type: "object",
-                    properties: {
-                        relPath: {type: "string", description: "path relative to the project root"}
-                    }
-                },
-                parse: JSON.parse,
-                function: listProjectFilesAndDirectories
-            }
-        }
-
-        this.tools = [
-            readProjectFileFunction,
-            writeProjectFileFunction,
-            searchProjectFileFunction,
-            listFilesAndDirectoriesFunction
-        ]
-    }
-
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
         this.textAccumulator = ""
         try {
@@ -168,7 +70,7 @@ export class OpenaiHandler extends CommandHandler {
                 return context
             }
 
-            this.initTools(context)
+            const tools = this.openaiTools.getTools(context)
 
             const cmd = this.getSubCommand(command)
 
@@ -186,13 +88,13 @@ export class OpenaiHandler extends CommandHandler {
             console.debug("asking OpenAI...")
             const assistantStream = this.openai.beta.threads.runs.stream(this.threadId, {
                 assistant_id: this.assistantId,
-                tools: this.tools,
+                tools,
                 tool_choice: "auto"
             })
 
-            await this.processStream(assistantStream)
+            await this.processStream(assistantStream, tools)
 
-            await assistantStream.finalRun();
+            await assistantStream.finalRun()
             return {...context, history: [...context.history, {command, response: this.textAccumulator}]}
         } catch (error) {
             console.error(error)
@@ -200,7 +102,7 @@ export class OpenaiHandler extends CommandHandler {
         }
     }
 
-    async processStream(stream: AssistantStream) {
+    async processStream(stream: AssistantStream, tools: Tool[]) {
         stream.on('textDone', (diff) => {
             this.interactor.displayText(diff.value, 'Coday')
             this.textAccumulator += diff.value
@@ -208,28 +110,28 @@ export class OpenaiHandler extends CommandHandler {
         for await (const chunk of stream) {
             if (chunk.event === "thread.run.requires_action") {
                 try {
-                    const toolCalls = chunk.data.required_action?.submit_tool_outputs.tool_calls ?? [];
+                    const toolCalls = chunk.data.required_action?.submit_tool_outputs.tool_calls ?? []
                     const toolOutputs = await Promise.all(toolCalls.map(async (toolCall) => {
-                        const funcWrapper = this.tools.find(t => t.function.name === toolCall.function.name);
+                        const funcWrapper = tools.find(t => t.function.name === toolCall.function.name)
                         if (!funcWrapper) {
-                            throw new Error(`Function ${toolCall.function.name} not found.`);
+                            throw new Error(`Function ${toolCall.function.name} not found.`)
                         }
 
-                        const toolFunc = funcWrapper.function.function;
+                        const toolFunc = funcWrapper.function.function
 
                         // implicit assumption: have only a single object as input for all toolFunction?
-                        let args: any = JSON.parse(toolCall.function.arguments);
+                        let args: any = JSON.parse(toolCall.function.arguments)
 
                         // re-wrap a non-array argument for .apply()
                         if (!Array.isArray(args)) {
                             args = [args]
                         }
-                        let output;
+                        let output
                         try {
-                            output = await toolFunc.apply(null, args);
+                            output = await toolFunc.apply(null, args)
                         } catch (err) {
-                            this.interactor.error(err);
-                            output = `Error on executing function, got error: ${JSON.stringify(err)}`;
+                            this.interactor.error(err)
+                            output = `Error on executing function, got error: ${JSON.stringify(err)}`
                         }
 
                         // Ensure output is at least something
@@ -242,32 +144,21 @@ export class OpenaiHandler extends CommandHandler {
                             output = JSON.stringify(output)
                         }
 
-                        return {tool_call_id: toolCall.id, output};
-                    }));
+                        return {tool_call_id: toolCall.id, output}
+                    }))
 
                     const newStream = this.openai!.beta.threads.runs.submitToolOutputsStream(
                         this.threadId!,
                         chunk.data.id,
                         {tool_outputs: toolOutputs}
-                    );
+                    )
 
                     // Recursively process the newly returned stream
-                    await this.processStream.call(this, newStream);
+                    await this.processStream.call(this, newStream, tools)
                 } catch (error) {
-                    console.error(`Error processing tool call`, error);
+                    console.error(`Error processing tool call`, error)
                 }
             }
         }
     }
-
-    private contextHasNotChanged(command: CommandContext): boolean {
-        if (!this.lastToolInitContext) {
-            this.lastToolInitContext = command
-            return false
-        }
-        return !!this.lastToolInitContext &&
-            command.projectRootPath === this.lastToolInitContext?.projectRootPath
-    }
-
-
 }

@@ -17,9 +17,9 @@ export const findFilesByName = async ({text, path, root, interactor, timeout}: F
         ? path.substring(1)
         : path
 
-    const expression = `${path ? tweakedPath + '/': ''}**/${text}*`
+    const expression = `${path ? tweakedPath + '/': ''}**/*${text}*`
 
-    interactor?.displayText(`Looking for files : ${expression} ...`)
+    interactor?.displayText(`Looking for "${expression}" in ${root}`)
     const results = await glob(expression, {
         cwd: root,
         absolute: false,

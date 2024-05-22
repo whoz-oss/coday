@@ -4,7 +4,7 @@ import {runBash} from "../function/run-bash";
 import {Interactor} from "../interactor";
 
 export class GitDefaultHandler extends CommandHandler {
-    commandWord = "";
+    commandWord = "[anything else]";
     description = "Executes git commands";
 
     constructor(private readonly interactor: Interactor) {

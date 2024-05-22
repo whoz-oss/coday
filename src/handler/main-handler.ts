@@ -4,9 +4,9 @@ import {NestedHandler} from "./nested-handler";
 import {CommandContext} from "../command-context";
 import {OpenaiHandler} from "./openai-handler";
 import {Interactor} from "../interactor";
-import {TestHandler} from "./test";
 import {ResetHandler} from "./reset-handler";
 import { GitHandler } from "./git-handler";
+import {DebugHandler} from "./debug-handler";
 
 export class MainHandler extends NestedHandler {
     commandWord: string = ''
@@ -26,7 +26,7 @@ export class MainHandler extends NestedHandler {
             ...defaultHandlers,
             new GitHandler(interactor),
             new JiraHandler(interactor),
-            new TestHandler(interactor),
+            new DebugHandler(interactor),
             new ResetHandler(interactor),
             this.openaiHandler
         ]
