@@ -71,7 +71,7 @@ export class OpenaiHandler extends CommandHandler {
             return
         }
         const readProjectFile = ({path}: { path: string }) => {
-            return readFileByPath({path, root: context.projectRootPath, interactor: this.interactor})
+            return readFileByPath({relPath: path, root: context.projectRootPath, interactor: this.interactor})
         }
 
         const readProjectFileFunction: AssistantTool & RunnableToolFunction<{ path: string }> = {
@@ -91,7 +91,7 @@ export class OpenaiHandler extends CommandHandler {
         }
 
         const writeProjectFile = ({path, content}: { path: string, content: string }) => {
-            return writeFile({path, root: context.projectRootPath, interactor: this.interactor, content})
+            return writeFile({relPath: path, root: context.projectRootPath, interactor: this.interactor, content})
         }
 
         const writeProjectFileFunction: AssistantTool & RunnableToolFunction<{ path: string, content: string }> = {

@@ -1,20 +1,17 @@
 import {readFileSync} from "fs";
 import {existsSync} from "node:fs";
 import {Interactor} from "../interactor";
+import path from "path";
 
 type ReadFileByPathInput = {
-    path: string
+    relPath: string
     root: string
     interactor?: Interactor
 }
 
-export const readFileByPath = ({path, root, interactor}: ReadFileByPathInput) => {
+export const readFileByPath = ({relPath, root, interactor}: ReadFileByPathInput) => {
     // need to prevent double slashes
-    const tweakedPath = path.startsWith('/')
-        ? path.substring(1)
-        : path
-
-    const fullPath = `${root}/${tweakedPath}`
+    const fullPath = relPath ? path.resolve(root, relPath) : root
     try {
         interactor?.displayText(`reading file ${fullPath}`)
         if (existsSync(fullPath)) {

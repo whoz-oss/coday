@@ -1,21 +1,19 @@
 import {writeFileSync} from "node:fs";
 import {Interactor} from "../interactor";
+import path from "path";
 
 type WriteFileByPathInput = {
-    path: string
+    relPath: string
     root: string
     interactor?: Interactor
     content: string
 }
 
-export const writeFile = ({path, root, interactor, content}: WriteFileByPathInput) => {
+export const writeFile = ({relPath, root, interactor, content}: WriteFileByPathInput) => {
 
     // need to prevent double slashes
-    const tweakedPath = path.startsWith('/')
-        ? path.substring(1)
-        : path
+    const fullPath = relPath ? path.resolve(root, relPath) : root
 
-    const fullPath = `${root}/${tweakedPath}`
     try {
         interactor?.displayText(`writing file ${fullPath}`)
         const data = new Uint8Array(Buffer. from(content))

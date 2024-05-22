@@ -1,6 +1,6 @@
-import {Interactor} from "../interactor";
-import {exec} from 'child_process';
-import {promisify} from 'util';
+import { Interactor } from "../interactor";
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import * as path from 'path';
 
 const execAsync = promisify(exec);
@@ -27,8 +27,7 @@ export const runBash = async ({ command, relPath, root, requireConfirmation, int
 
     try {
         // Resolve the absolute path from root and relPath
-        const resolvedPath = relPath ? path.resolve(root, relPath): root
-
+        const resolvedPath = relPath ? path.resolve(root, relPath) : root;
 
         // Log the command that will run
         interactor.displayText(`Running command: ${command} in ${resolvedPath}`);
@@ -36,7 +35,7 @@ export const runBash = async ({ command, relPath, root, requireConfirmation, int
         // If confirmation is required, ask for it
         if (requireConfirmation) {
             const rejectReason = interactor.promptText(`Please type the reason to reject this command (nothing = validate)`);
-            if (!rejectReason) {
+            if (rejectReason) {
                 interactor.displayText('Command execution was cancelled by user.');
                 return `Command execution was cancelled by user with following reason: ${rejectReason}`;
             }
