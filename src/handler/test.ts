@@ -12,10 +12,10 @@ export class TestHandler extends CommandHandler {
     }
 
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
-        const method = ({command}: {command: string}) => {
+        const method = ({command, relPath}: {command: string, relPath: string}) => {
             return runBash({command, root: context.projectRootPath, interactor: this.interactor})
         }
-        const args = {command: 'git status'}
+        const args = {command: 'ls', relPath: '/src/function'}
         console.log("direct read")
         const result = await method(args)
 

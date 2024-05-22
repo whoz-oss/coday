@@ -31,7 +31,7 @@ export const runBash = async ({ command, relPath, root, requireConfirmation, int
 
 
         // Log the command that will run
-        interactor.displayText(`Running command: ${command}`);
+        interactor.displayText(`Running command: ${command} in ${resolvedPath}`);
 
         // If confirmation is required, ask for it
         if (requireConfirmation) {
