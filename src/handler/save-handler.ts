@@ -1,6 +1,5 @@
 import {CommandContext} from "../command-context";
 import {CommandHandler} from "./command-handler";
-import * as readlineSync from "readline-sync";
 import {writeFileSync} from "node:fs";
 import {Interactor} from "../interactor";
 

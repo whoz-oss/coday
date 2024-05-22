@@ -16,11 +16,11 @@ export class MainHandler extends NestedHandler {
     openaiHandler: OpenaiHandler
 
     constructor(
-        private interactor: Interactor,
+        interactor: Interactor,
         private maxIterations: number = 10,
         defaultHandlers: CommandHandler[] = [],
     ) {
-        super()
+        super(interactor)
         this.openaiHandler = new OpenaiHandler(interactor)
         this.handlers = [
             ...defaultHandlers,
@@ -42,22 +42,19 @@ export class MainHandler extends NestedHandler {
         while (innerContext.commandQueue.length > 0 && count < this.maxIterations) {
             count++
             const command: string | undefined = innerContext.commandQueue.shift()
-            if (!command || command ===  'help' || command === 'h') {
-                this.interactor.displayText("Available commands:")
-                this.interactor.displayText(`  - ${this.exitWord} : quits the program`)
-                this.interactor.displayText("  - help : displays this help message")
-                this.handlers.forEach(h => this.interactor.displayText(`  - ${h.commandWord} : ${h.description}`))
+            if (this.isHelpAsked(command)) {
                 this.interactor.displayText("  - [any other text] : defaults to asking the AI with the current context.")
+                this.interactor.displayText(`  - ${this.exitWord} : quits the program`)
                 continue
             }
 
             // find first handler
-            const handler: CommandHandler | undefined = this.handlers.find((h: CommandHandler) => h.accept(command, innerContext!))
+            const handler: CommandHandler | undefined = this.handlers.find((h: CommandHandler) => h.accept(command!, innerContext!))
 
             try {
                 // try handlers in their preference order
                 if (handler) {
-                    innerContext = await handler.handle(command, innerContext)
+                    innerContext = await handler.handle(command!, innerContext)
                 } else {
                     // default case: repackage the command as an open question for AI
                     innerContext.commandQueue.unshift(`${this.openaiHandler.commandWord} ${command}`)

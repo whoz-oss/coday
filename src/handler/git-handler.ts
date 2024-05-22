@@ -1,13 +1,16 @@
 import { NestedHandler } from './nested-handler';
 import { Interactor } from '../interactor';
+import { GitDefaultHandler } from './git-default-handler'; // Import the new handler
 
 export class GitHandler extends NestedHandler {
     commandWord: string = 'git';
     description: string = 'handles git-related commands';
 
-    constructor(private interactor: Interactor) {
-        super();
+    constructor(interactor: Interactor) {
+        super(interactor);
+        this.handlers = [
+            new GitDefaultHandler(interactor) // IMPORTANT to keep in last position
+        ]
     }
 
-    // You can add methods and inner handlers later as needed
 }

@@ -8,7 +8,7 @@ import {AssistantStream} from "openai/lib/AssistantStream";
 import {readFileByPath, writeFile} from "../function";
 import AssistantTool = Beta.AssistantTool;
 import {findFilesByName} from "../function/find-files-by-name";
-import {listFilesAndDirectories} from "../function/list-files-and-directories";
+import {listFilesAndDirectories} from "../function";
 
 const OPENAI_API_KEY = process.env['OPENAI_API_KEY'];
 
