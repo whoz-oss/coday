@@ -8,6 +8,8 @@ This project is an AI LLM (default being Openai/ChatGPT) wrapper to allow natura
 - [future] automatically split a work assignment into tasks and sub-tasks
 - [future] expose a selection of APIs: Jira, Gitlab, git
 
+The core principle is to exhaust a FILO queue of commands, the first one being the request typed by the user. Each command being consumed by the first accepting handler found. Handlers can push several commands in the queue, decomposing high-level instructions into lower-level ones.
+
 The final aim is to let Coday read a user story and do the heavy work of splitting it, branching, writing code in between workflow steps (compile, run tests, etc...).
 
 ## Roadmap
@@ -26,8 +28,10 @@ Ensure you have the following installed:
 - yarn
 
 1. Clone the repository
-̏̏    
-    ```TODO once shared 🤡```
+
+    ```sh
+   git clone git@gitlab.com:vincent.audibert/coday.git
+   ```
 
 2. Update/install dependencies
    ```sh
