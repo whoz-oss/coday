@@ -3,6 +3,7 @@ import {listFilesAndDirectories, readFileByPath, writeFile} from "../function"
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
 import {findFilesByName} from "../function/find-files-by-name"
 import {Interactor} from "../interactor"
+import {runBash} from "../function/run-bash";
 import {Beta} from "openai/resources"
 import AssistantTool = Beta.AssistantTool;
 
@@ -92,7 +93,7 @@ export class OpenaiTools {
             return listFilesAndDirectories({relPath, root: context.projectRootPath, interactor: this.interactor})
         }
 
-        const listFilesAndDirectoriesFunction: AssistantTool & RunnableToolFunction<{ relPath: string }> = {
+        const listProjectFilesAndDirectoriesFunction: AssistantTool & RunnableToolFunction<{ relPath: string }> = {
             type: "function",
             function: {
                 name: "listFilesAndDirectories",
@@ -108,11 +109,57 @@ export class OpenaiTools {
             }
         }
 
+        const gitStatus = async () => {
+            return await runBash({
+                command: 'git status',
+                root: context.projectRootPath,
+                interactor: this.interactor
+            });
+        }
+
+        const gitStatusFunction: AssistantTool & RunnableToolFunction<{}> = {
+            type: "function",
+            function: {
+                name: "gitStatusFunction",
+                description: "run git status command, providing a status of all modified files since last commit.",
+                parameters: {
+                    type: "object",
+                    properties: {}
+                },
+                parse: JSON.parse,
+                function: gitStatus
+            }
+        }
+
+        const gitDiff = async () => {
+            return await runBash({
+                command: 'git diff',
+                root: context.projectRootPath,
+                interactor: this.interactor
+            });
+        }
+
+        const gitDiffFunction: AssistantTool & RunnableToolFunction<{}> = {
+            type: "function",
+            function: {
+                name: "gitDiffFunction",
+                description: "run git diff command, an exhaustive list of all changes in progress.",
+                parameters: {
+                    type: "object",
+                    properties: {}
+                },
+                parse: JSON.parse,
+                function: gitDiff
+            }
+        }
+
         this.tools = [
             readProjectFileFunction,
             writeProjectFileFunction,
             searchProjectFileFunction,
-            listFilesAndDirectoriesFunction
+            listProjectFilesAndDirectoriesFunction,
+            gitStatusFunction,
+            gitDiffFunction
         ]
         return this.tools
     }
@@ -126,4 +173,3 @@ export class OpenaiTools {
             command.projectRootPath === this.lastToolInitContext?.projectRootPath
     }
 }
-

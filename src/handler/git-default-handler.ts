@@ -17,16 +17,14 @@ export class GitDefaultHandler extends CommandHandler {
     }
 
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
-        const subCommand = this.getSubCommand(command);
-
-        if (!subCommand) {
+        if (!command) {
             this.interactor.error("No git command provided.");
             return context;
         }
 
         try {
             const result = await runBash({
-                command: `git ${subCommand}`,
+                command: `git ${command}`,
                 root: context.projectRootPath,
                 interactor: this.interactor,
                 requireConfirmation: true // Always require confirmation
