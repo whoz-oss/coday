@@ -1,4 +1,4 @@
-type CodayConfig = {
+export type CodayConfig = {
     projectPaths: {
         [key: string]: string;
     }

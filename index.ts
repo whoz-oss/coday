@@ -70,9 +70,9 @@ class Coday {
         try {
             if (!existsSync(codayPath)) {
                 mkdirSync(codayPath, {recursive: true});
-                this.interactor.displayText(`Coday data folder created at: ${codayPath}`);
+                this.interactor.displayText(`Coday config folder created at: ${codayPath}`);
             } else {
-                this.interactor.displayText(`Coday data folder used: ${codayPath}`);
+                this.interactor.displayText(`Coday config folder used: ${codayPath}`);
             }
         } catch (error) {
             this.interactor.error(`Error creating directory: ${error}`);
