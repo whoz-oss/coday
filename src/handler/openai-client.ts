@@ -5,6 +5,11 @@ import {CommandContext} from "../command-context";
 import {AssistantStream} from "openai/lib/AssistantStream";
 
 const OPENAI_API_KEY = process.env['OPENAI_API_KEY']
+const ASSISTANT_INSTRUCTIONS = `
+You are Coday, an AI assistant used interactively by users through a chat or alike interface.
+By providing a sound and logic reasoning, you answer concisely to the user requests.
+Among the provided functions, you shall use all that help you answer the request.
+Unless explicitly asked for, keep your answers short.`
 
 export class OpenaiClient {
     openai: OpenAI | undefined
@@ -43,7 +48,7 @@ export class OpenaiClient {
                 mine = await this.openai.beta.assistants.create({
                     name: `Coday_alpha`,
                     model: "gpt-4o",
-                    instructions: "You are an assistant for Whoz, a company developing a staffing SAAS solution for large companies. As such, you are knowledgeable in staffing management, in product design, and in the used software stack (frontend in Angular & typescript, backend in Spring & kotlin/groovy + mongodb & neo4j). You strive to provide concise and correct answers and always construct a sound reasoning that you'll expose briefly when answering.",
+                    instructions: ASSISTANT_INSTRUCTIONS,
                 })
                 this.interactor.displayText(`Created assistant ${mine.id}`)
             }
