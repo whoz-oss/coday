@@ -51,7 +51,7 @@ export class OpenaiTools {
             type: "function",
             function: {
                 name: "writeProjectFile",
-                description: "write the content of the file at the given path in the project",
+                description: "write the content of the file at the given path in the project. IMPORTANT: the whole file is written, do not write it partially.",
                 parameters: {
                     type: "object",
                     properties: {

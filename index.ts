@@ -5,8 +5,8 @@ import {existsSync, mkdirSync} from "node:fs";
 import {Interactor} from "./src/interactor";
 import {TerminalInteractor} from "./src/terminal-interactor";
 
-const PROJECT_ROOT: string = '/Users/vincent.audibert/Workspace/coday'
-// const PROJECT_ROOT: string = '/Users/vincent.audibert/Workspace/biznet.io/app/whoz'
+// const PROJECT_ROOT: string = '/Users/vincent.audibert/Workspace/coday'
+const PROJECT_ROOT: string = '/Users/vincent.audibert/Workspace/biznet.io/app/whoz'
 const DATA_PATH: string = "/.coday/"
 const MAX_ITERATIONS: number = 10
 
