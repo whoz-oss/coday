@@ -16,7 +16,7 @@ export const writeFile = ({relPath, root, interactor, content}: WriteFileByPathI
 
     try {
         interactor?.displayText(`writing file ${fullPath}`)
-        const data = new Uint8Array(Buffer. from(content))
+        const data = new Uint8Array(Buffer.from(content))
         writeFileSync(fullPath, data)
         return "File write success"
     } catch (err) {

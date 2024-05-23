@@ -4,7 +4,6 @@ import {NestedHandler} from "./nested-handler";
 import {CommandContext} from "../command-context";
 import {OpenaiHandler} from "./openai-handler";
 import {Interactor} from "../interactor";
-import {ResetHandler} from "./reset-handler";
 import { GitHandler } from "./git-handler";
 import {DebugHandler} from "./debug-handler";
 
@@ -12,6 +11,7 @@ export class MainHandler extends NestedHandler {
     commandWord: string = ''
     description: string = ''
     exitWord = 'exit'
+    resetWord = 'reset'
     handlers: CommandHandler[]
     openaiHandler: OpenaiHandler
 
@@ -27,7 +27,6 @@ export class MainHandler extends NestedHandler {
             new GitHandler(interactor),
             new JiraHandler(interactor),
             new DebugHandler(interactor),
-            new ResetHandler(interactor),
             this.openaiHandler
         ]
     }
@@ -44,6 +43,7 @@ export class MainHandler extends NestedHandler {
             const command: string | undefined = innerContext.commandQueue.shift()
             if (this.isHelpAsked(command)) {
                 this.interactor.displayText("  - [any other text] : defaults to asking the AI with the current context.")
+                this.interactor.displayText(`  - ${this.resetWord} : quits the program`)
                 this.interactor.displayText(`  - ${this.exitWord} : quits the program`)
                 continue
             }
