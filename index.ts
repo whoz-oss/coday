@@ -4,7 +4,8 @@ import os from 'os';
 import {existsSync, mkdirSync} from "node:fs";
 import {Interactor} from "./src/interactor";
 import {TerminalInteractor} from "./src/terminal-interactor";
-import {ProjectHandler} from "./src/handler/project-handler";
+import {ConfigHandler} from "./src/handler/config-handler";
+import {ConfigService} from "./src/service/config-service";
 
 const DATA_PATH: string = "/.coday/"
 const MAX_ITERATIONS: number = 10
@@ -15,12 +16,14 @@ class Coday {
     userInfo: os.UserInfo<string>
     context: CommandContext | null = null
     mainHandler: MainHandler
-    projectHandler: ProjectHandler
+    projectHandler: ConfigHandler
+    configService: ConfigService
 
     constructor(private interactor: Interactor) {
         this.userInfo = os.userInfo()
         this.codayPath = this.initCodayPath(this.userInfo)
-        this.projectHandler = new ProjectHandler(interactor, this.codayPath, this.userInfo.username)
+        this.configService = new ConfigService(this.codayPath)
+        this.projectHandler = new ConfigHandler(interactor, this.configService, this.userInfo.username)
         this.mainHandler = new MainHandler(
             interactor,
             MAX_ITERATIONS,
