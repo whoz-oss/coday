@@ -12,7 +12,7 @@ export class GitHandler extends NestedHandler {
         super(interactor);
         this.handlers = [
             new GitStatusHandler(interactor),
-            new GitCommitHandler(interactor),
+            // new GitCommitHandler(interactor), // still some glitches
             new GitDefaultHandler(interactor) // IMPORTANT to keep in last position
         ];
     }
