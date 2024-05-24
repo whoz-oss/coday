@@ -3,6 +3,8 @@ import OpenAI from "openai";
 import {OpenaiTools, Tool} from "./init-tools";
 import {CommandContext} from "../command-context";
 import {AssistantStream} from "openai/lib/AssistantStream";
+import {Beta} from "openai/resources";
+import Assistant = Beta.Assistant;
 
 const OPENAI_API_KEY = process.env['OPENAI_API_KEY']
 const ASSISTANT_INSTRUCTIONS = `
@@ -38,11 +40,21 @@ export class OpenaiClient {
 
         if (!this.assistantId) {
             // list assistants to find mine
-            const assistants = (await this.openai.beta.assistants.list({
-                order: 'asc',
-                limit: 100 // TODO: exhaust list or find another way to find the wanted assistant
-            }).withResponse()).data.getPaginatedItems()
-            let mine = assistants.find(a => a.name === `Coday_alpha`)
+            let after: string | undefined
+            let mine: Assistant | undefined
+            do {
+                const fetchedAssistants: Assistant[] = (await this.openai.beta.assistants.list({
+                    order: 'asc',
+                    after,
+                    limit: 100,
+                }).withResponse()
+                )
+                    .data
+                    .getPaginatedItems()
+                mine = fetchedAssistants.find(a => a.name === `Coday_alpha`)
+                after = fetchedAssistants.length > 0 ? fetchedAssistants[fetchedAssistants.length - 1].id : undefined;
+            } while (after && !mine);
+
 
             if (!mine) {
                 mine = await this.openai.beta.assistants.create({
