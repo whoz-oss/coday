@@ -6,6 +6,7 @@ import {OpenaiHandler} from "./openai-handler";
 import {Interactor} from "../interactor";
 import { GitHandler } from "./git-handler";
 import {DebugHandler} from "./debug-handler";
+import {RunBashHandler} from "./run-bash-handler";
 
 export class MainHandler extends NestedHandler {
     commandWord: string = ''
@@ -26,6 +27,7 @@ export class MainHandler extends NestedHandler {
             ...defaultHandlers,
             new GitHandler(interactor),
             new JiraHandler(interactor),
+            new RunBashHandler(interactor),
             new DebugHandler(interactor),
             this.openaiHandler
         ]
