@@ -19,7 +19,7 @@ export class GitCommitHandler extends CommandHandler {
 
         const result = await runBash({
             command: `git ${command}"`,
-            root: context.projectRootPath,
+            root: context.project.root,
             interactor: this.interactor,
         });
         this.interactor.displayText(result);

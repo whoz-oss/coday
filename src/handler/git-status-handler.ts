@@ -14,7 +14,7 @@ export class GitStatusHandler extends CommandHandler {
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
         const result = await runBash({
             command: 'git status',
-            root: context.projectRootPath,
+            root: context.project.root,
             interactor: this.interactor,
         });
         this.interactor.displayText(result);

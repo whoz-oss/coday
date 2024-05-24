@@ -1,4 +1,4 @@
-import {MainHandler, SaveHandler} from "./src/handler";
+import {MainHandler} from "./src/handler";
 import {CommandContext} from "./src/command-context";
 import os from 'os';
 import {existsSync, mkdirSync} from "node:fs";
@@ -7,7 +7,7 @@ import {TerminalInteractor} from "./src/terminal-interactor";
 import {ConfigHandler} from "./src/handler/config-handler";
 import {ConfigService} from "./src/service/config-service";
 
-const DATA_PATH: string = "/.coday/"
+const DATA_PATH: string = "/.coday"
 const MAX_ITERATIONS: number = 10
 
 class Coday {
@@ -28,7 +28,6 @@ class Coday {
             interactor,
             MAX_ITERATIONS,
             [
-                new SaveHandler(interactor, this.codayPath),
                 this.projectHandler,
             ],
         )

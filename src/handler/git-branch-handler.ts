@@ -24,7 +24,7 @@ export class GitBranchHandler extends CommandHandler {
         const subCommand = this.getSubCommand(command)
 
         const options: Partial<SimpleGitOptions> = {
-            baseDir: context.projectRootPath,
+            baseDir: context.project.root,
             binary: 'git',
             maxConcurrentProcesses: 2,
             trimmed: false

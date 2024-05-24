@@ -25,7 +25,7 @@ export class GitDefaultHandler extends CommandHandler {
         try {
             const result = await runBash({
                 command: `git ${command}`,
-                root: context.projectRootPath,
+                root: context.project.root,
                 interactor: this.interactor,
                 requireConfirmation: true // Always require confirmation
             });

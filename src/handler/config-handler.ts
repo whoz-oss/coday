@@ -2,6 +2,7 @@ import {Interactor} from '../interactor';
 import {CommandHandler} from './command-handler';
 import {CommandContext} from '../command-context';
 import {ConfigService} from '../service/config-service';
+import {loadOrInitProjectConfig} from "../service/project-service";
 
 export class ConfigHandler extends CommandHandler {
     commandWord: string = 'config';
@@ -81,10 +82,21 @@ export class ConfigHandler extends CommandHandler {
             this.interactor.error(err.message)
             return null
         }
+        if (!projectPath) {
+            this.interactor.error(`No path found to project ${name}`)
+            return null
+        }
+
+        const projectConfig = loadOrInitProjectConfig(projectPath)
+
         this.interactor.displayText(`Project ${name} selected`);
 
         return {
-            projectRootPath: projectPath,
+            project: {
+                root: projectPath,
+                description: projectConfig?.description,
+                scripts: projectConfig?.scripts
+            },
             username: this.username,
             commandQueue: [],
             history: []

@@ -13,7 +13,7 @@ export class DebugHandler extends CommandHandler {
 
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
         const method = ({command, relPath}: {command: string, relPath: string}) => {
-            return runBash({command, root: context.projectRootPath, interactor: this.interactor})
+            return runBash({command, root: context.project.root, interactor: this.interactor})
         }
         const args = {command: 'ls', relPath: '/src/function'}
         console.log("direct read")

@@ -135,10 +135,8 @@ export class OpenaiClient {
                             output = `Error on executing function, got error: ${JSON.stringify(err)}`
                         }
 
-                        // Ensure output is at least something
                         if (!output) {
-                            output = `Tool function ${funcWrapper.function.name} did not return a value.`
-                            this.interactor.error(output)
+                            output = `Tool function ${funcWrapper.function.name} finished without error.`
                         }
 
                         if (typeof output !== 'string') {

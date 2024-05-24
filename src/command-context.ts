@@ -1,3 +1,5 @@
+import {Scripts} from "./service/scripts";
+
 type Task = {
     description: string
     key: string
@@ -10,7 +12,11 @@ type History = {
 }
 
 export type CommandContext = {
-    projectRootPath: string
+    project: {
+        root: string
+        description?: string
+        scripts?: Scripts
+    }
     task?: Task
     sourceBranch?: string
     username: string

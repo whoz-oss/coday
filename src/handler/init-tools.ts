@@ -6,6 +6,7 @@ import {Interactor} from "../interactor"
 import {runBash} from "../function/run-bash";
 import {Beta} from "openai/resources"
 import AssistantTool = Beta.AssistantTool;
+import {Scripts} from "../service/scripts";
 
 export type Tool = AssistantTool & RunnableToolFunction<any>
 
@@ -25,7 +26,7 @@ export class OpenaiTools {
         }
 
         const readProjectFile = ({path}: { path: string }) => {
-            return readFileByPath({relPath: path, root: context.projectRootPath, interactor: this.interactor})
+            return readFileByPath({relPath: path, root: context.project.root, interactor: this.interactor})
         }
 
         const readProjectFileFunction: AssistantTool & RunnableToolFunction<{ path: string }> = {
@@ -45,7 +46,7 @@ export class OpenaiTools {
         }
 
         const writeProjectFile = ({path, content}: { path: string, content: string }) => {
-            return writeFile({relPath: path, root: context.projectRootPath, interactor: this.interactor, content})
+            return writeFile({relPath: path, root: context.project.root, interactor: this.interactor, content})
         }
 
         const writeProjectFileFunction: AssistantTool & RunnableToolFunction<{ path: string, content: string }> = {
@@ -66,7 +67,7 @@ export class OpenaiTools {
         }
 
         const searchProjectFile = ({text, path}: { text: string, path?: string }) => {
-            return findFilesByName({text, path, root: context.projectRootPath, interactor: this.interactor})
+            return findFilesByName({text, path, root: context.project.root, interactor: this.interactor})
         }
 
         const searchProjectFileFunction: AssistantTool & RunnableToolFunction<{ text: string, path?: string }> = {
@@ -90,7 +91,7 @@ export class OpenaiTools {
         }
 
         const listProjectFilesAndDirectories = ({relPath}: { relPath: string }) => {
-            return listFilesAndDirectories({relPath, root: context.projectRootPath, interactor: this.interactor})
+            return listFilesAndDirectories({relPath, root: context.project.root, interactor: this.interactor})
         }
 
         const listProjectFilesAndDirectoriesFunction: AssistantTool & RunnableToolFunction<{ relPath: string }> = {
@@ -112,7 +113,7 @@ export class OpenaiTools {
         const gitStatus = async () => {
             return await runBash({
                 command: 'git status',
-                root: context.projectRootPath,
+                root: context.project.root,
                 interactor: this.interactor
             });
         }
@@ -134,7 +135,7 @@ export class OpenaiTools {
         const gitDiff = async () => {
             return await runBash({
                 command: 'git diff',
-                root: context.projectRootPath,
+                root: context.project.root,
                 interactor: this.interactor
             });
         }
@@ -152,6 +153,32 @@ export class OpenaiTools {
                 function: gitDiff
             }
         }
+        const scripts:Scripts | undefined = context.project.scripts
+        const scriptFunctions = scripts ?
+            Object.entries(scripts).map(entry => {
+                const script = async () => {
+                    return await runBash({
+                        command: entry[1].command,
+                        root: context.project.root,
+                        interactor: this.interactor,
+                        requireConfirmation: false
+                    })
+                }
+                const scriptFunction: AssistantTool & RunnableToolFunction<{}> = {
+                    type: "function",
+                    function: {
+                        name: entry[0],
+                        description: entry[1].description,
+                        parameters: {
+                            type: "object",
+                            properties: {}
+                        },
+                        parse: JSON.parse,
+                        function: script
+                    }
+                }
+                return scriptFunction
+            }) : []
 
         this.tools = [
             readProjectFileFunction,
@@ -159,7 +186,8 @@ export class OpenaiTools {
             searchProjectFileFunction,
             listProjectFilesAndDirectoriesFunction,
             gitStatusFunction,
-            gitDiffFunction
+            gitDiffFunction,
+            ...scriptFunctions
         ]
         return this.tools
     }
@@ -170,6 +198,6 @@ export class OpenaiTools {
             return false
         }
         return !!this.lastToolInitContext &&
-            command.projectRootPath === this.lastToolInitContext?.projectRootPath
+            command.project.root === this.lastToolInitContext?.project.root
     }
 }

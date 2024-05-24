@@ -22,7 +22,7 @@ export class RunBashHandler extends CommandHandler {
         try {
             const result = await runBash({
                 command: bashCommand,
-                root: context.projectRootPath,
+                root: context.project.root,
                 interactor: this.interactor,
                 requireConfirmation: false
             });
