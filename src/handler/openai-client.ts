@@ -26,7 +26,7 @@ export class OpenaiClient {
         this.openaiTools = new OpenaiTools(interactor)
     }
 
-    async isReady(): Promise<boolean> {
+    async isReady(context: CommandContext): Promise<boolean> {
         if (!OPENAI_API_KEY) {
             this.interactor.warn('OPENAI_API_KEY env var not set, skipping AI command')
             return false
@@ -71,6 +71,12 @@ export class OpenaiClient {
         if (!this.threadId) {
             const thread = (await this.openai.beta.threads.create())
             this.threadId = thread.id
+
+            // add the custom instructions
+            await this.openai.beta.threads.messages.create(this.threadId, {
+                role: 'assistant',
+                content: `Specific project context: ${context.project.description}`
+            })
         }
 
         return true
@@ -78,7 +84,7 @@ export class OpenaiClient {
 
     async answer(command: string, context: CommandContext): Promise<string> {
         this.textAccumulator = ""
-        if (!await this.isReady()) {
+        if (!await this.isReady(context)) {
             return "Openai client not ready"
         }
 

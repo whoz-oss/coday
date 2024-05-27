@@ -1,11 +1,12 @@
-import {MainHandler} from "./src/handler";
-import {CommandContext} from "./src/command-context";
-import os from 'os';
-import {existsSync, mkdirSync} from "node:fs";
-import {Interactor} from "./src/interactor";
-import {TerminalInteractor} from "./src/terminal-interactor";
-import {ConfigHandler} from "./src/handler/config-handler";
-import {ConfigService} from "./src/service/config-service";
+import {MainHandler} from "./src/handler"
+import {CommandContext} from "./src/command-context"
+import os from 'os'
+import {existsSync, mkdirSync} from "node:fs"
+import {Interactor} from "./src/interactor"
+import {TerminalInteractor} from "./src/terminal-interactor"
+import {ConfigHandler} from "./src/handler/config-handler"
+import {ConfigService} from "./src/service/config-service"
+import path from 'path'
 
 const DATA_PATH: string = "/.coday"
 const MAX_ITERATIONS: number = 10
@@ -48,7 +49,7 @@ class Coday {
 
             // quit loop if user wants to exit
             if (userCommand === this.mainHandler.exitWord) {
-                break;
+                break
             }
             // reset context and project selection
             if (userCommand === this.mainHandler.resetWord) {
@@ -66,18 +67,17 @@ class Coday {
     }
 
     private initCodayPath(userInfo: os.UserInfo<string>): string {
-        // define data path to store settings and other
-        const codayPath = `${userInfo.homedir}${DATA_PATH}`
+        const codayPath = path.join(userInfo.homedir, DATA_PATH)
 
         try {
             if (!existsSync(codayPath)) {
-                mkdirSync(codayPath, {recursive: true});
-                this.interactor.displayText(`Coday config folder created at: ${codayPath}`);
+                mkdirSync(codayPath, {recursive: true})
+                this.interactor.displayText(`Coday config folder created at: ${codayPath}`)
             } else {
-                this.interactor.displayText(`Coday config folder used: ${codayPath}`);
+                this.interactor.displayText(`Coday config folder used: ${codayPath}`)
             }
         } catch (error) {
-            this.interactor.error(`Error creating directory: ${error}`);
+            this.interactor.error(`Error creating directory: ${error}`)
         }
         return codayPath
     }
