@@ -22,7 +22,6 @@ export class OpenaiClient {
     openaiTools: OpenaiTools
 
     constructor(private interactor: Interactor) {
-
         this.openaiTools = new OpenaiTools(interactor)
     }
 
@@ -39,7 +38,6 @@ export class OpenaiClient {
         }
 
         if (!this.assistantId) {
-            // list assistants to find mine
             let after: string | undefined
             let mine: Assistant | undefined
             do {
@@ -54,7 +52,6 @@ export class OpenaiClient {
                 mine = fetchedAssistants.find(a => a.name === `Coday_alpha`)
                 after = fetchedAssistants.length > 0 ? fetchedAssistants[fetchedAssistants.length - 1].id : undefined;
             } while (after && !mine);
-
 
             if (!mine) {
                 mine = await this.openai.beta.assistants.create({
@@ -72,7 +69,6 @@ export class OpenaiClient {
             const thread = (await this.openai.beta.threads.create())
             this.threadId = thread.id
 
-            // add the custom instructions
             await this.openai.beta.threads.messages.create(this.threadId, {
                 role: 'assistant',
                 content: `Specific project context: ${context.project.description}`
@@ -90,7 +86,6 @@ export class OpenaiClient {
 
         const tools = this.openaiTools.getTools(context)
 
-        // add the message from the user to the existing thread
         await this.openai!.beta.threads.messages.create(this.threadId!, {
             role: 'user',
             content: command
@@ -126,10 +121,8 @@ export class OpenaiClient {
 
                         const toolFunc = funcWrapper.function.function
 
-                        // implicit assumption: have only a single object as input for all toolFunction?
                         let args: any = JSON.parse(toolCall.function.arguments)
 
-                        // re-wrap a non-array argument for .apply()
                         if (!Array.isArray(args)) {
                             args = [args]
                         }
@@ -158,12 +151,16 @@ export class OpenaiClient {
                         {tool_outputs: toolOutputs}
                     )
 
-                    // Recursively process the newly returned stream
                     await this.processStream.call(this, newStream, tools)
                 } catch (error) {
                     console.error(`Error processing tool call`, error)
                 }
             }
         }
+    }
+
+    reset(): void {
+        this.threadId = null
+        this.interactor.displayText("Thread ID has been reset")
     }
 }
