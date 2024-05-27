@@ -38,7 +38,7 @@ export class OpenaiClient {
         }
 
         if (!this.assistantId) {
-            let after: string | undefined
+            let after: string | undefined = undefined
             let mine: Assistant | undefined
             do {
                 const fetchedAssistants: Assistant[] = (await this.openai.beta.assistants.list({
@@ -161,6 +161,6 @@ export class OpenaiClient {
 
     reset(): void {
         this.threadId = null
-        this.interactor.displayText("Thread ID has been reset")
+        this.interactor.displayText("Thread has been reset")
     }
 }

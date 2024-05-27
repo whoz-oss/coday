@@ -4,6 +4,7 @@
 
 This project is an AI LLM (default being Openai/ChatGPT) wrapper to allow natural and semi-autonomous task handling by:
 - exposing a project's files (read, write, search, list)
+- interaction along a thread, keeping context between requests
 - higher level instructions by combining several low-level ones
 - [future] automatically split a work assignment into tasks and sub-tasks
 - [future] expose a selection of APIs: Jira, Gitlab, git
@@ -16,8 +17,6 @@ The final aim is to let Coday read a user story and do the heavy work of splitti
 
 A roadmap is a joke as of writing 🤣, but the following points need to be addressed:
 - heuristic to decide when to split a task (number of impacted files ?) and how to proceed (identify tasks that are deploy-ready vs sub-tasks that just compile?) ?
-- project discovery: how the LLM can understand a new project ? It needs to dig in source code and get an understanding
-- use project tools: how to compile a project ? how to update its dependencies ? Should the LLM guess the commandlines to run (dangerous ?) or should the project be "Coday-ready" by exposing directly a `build-frontend.sh` script ?
 
 ## Installation
 Ensure you have the following installed:
@@ -39,11 +38,29 @@ Ensure you have the following installed:
     ```
 ## Usage
 
-Run the start point
+For auto-updates and smooth-as-possible start (might require `chmod +x ./start-in-terminal.sh`). This will check the repo and the dependencies before starting Coday.
+   ```
+      ./start-in-terminal.sh 
+   ```
+
+Otherwise directly run the start point
    ```sh
       npx ts-node index.ts
    ```
 
-## Contact
+## Configuration
 
-For further information, you can reach out to us at support@whoz.com.
+### Coday
+
+Under `~/.coday/config.json` is the list of the known projects Coday is configured on, as well as the last one visited (for automatic selection at start up).
+
+To change the selected project `config select-projet` or `reset` (more brutal), to add one `config add-project`.
+
+### by project
+
+For each project, Coday expects (or writes a dummy) `./coday.json` to exist, where are:
+
+- `description` of the project: dump all that is useful to Coday, architecture, tech stack, preferences, domain, **all that is specific and necessary**. This is added at each thread creation.
+- `scripts`: collection of project-related commands **Coday can run autonomously** eg: build, lint, test. No arguments possible for now, make sure they work and are safe. Each entry should be `[unique name of the script]: { description: "...", command: "..."}`
+
+
