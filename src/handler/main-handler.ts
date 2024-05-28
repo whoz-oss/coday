@@ -7,6 +7,7 @@ import {Interactor} from "../interactor";
 import { GitHandler } from "./git-handler";
 import {DebugHandler} from "./debug-handler";
 import {RunBashHandler} from "./run-bash-handler";
+import {CodeFlowHandler} from "./code-flow.handler";
 
 export class MainHandler extends NestedHandler {
     commandWord: string = ''
@@ -29,6 +30,7 @@ export class MainHandler extends NestedHandler {
             new JiraHandler(interactor),
             new RunBashHandler(interactor),
             new DebugHandler(interactor),
+            new CodeFlowHandler(),
             this.openaiHandler
         ]
     }
@@ -45,7 +47,7 @@ export class MainHandler extends NestedHandler {
             const command: string | undefined = innerContext.commandQueue.shift()
             if (this.isHelpAsked(command)) {
                 this.interactor.displayText("  - [any other text] : defaults to asking the AI with the current context.")
-                this.interactor.displayText(`  - ${this.resetWord} : quits the program`)
+                this.interactor.displayText(`  - ${this.resetWord} : resets Coday's context`)
                 this.interactor.displayText(`  - ${this.exitWord} : quits the program`)
                 continue
             }
