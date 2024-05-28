@@ -47,25 +47,6 @@ export class OpenaiTools {
             }
         }
 
-        const readProjectFileWithLines = ({path}: { path: string }) => {
-            return readFileWithLinesByPath({relPath: path, root: context.project.root, interactor: this.interactor})
-        }
-
-        const readProjectFileWithLinesFunction: AssistantTool & RunnableToolFunction<{ path: string }> = {
-            type: "function",
-            function: {
-                name: "readProjectFileWithLines",
-                description: "read the content of the file at the given path in the project, but returns payload as a map of line number to line content. Use for later partial editions (even if already read in full without line numbers).",
-                parameters: {
-                    type: "object",
-                    properties: {
-                        path: {type: "string", description: "file path relative to the project root (not exposed)"}
-                    }
-                },
-                parse: JSON.parse,
-                function: readProjectFileWithLines
-            }
-        }
 
         const writeProjectFile = ({path, content}: { path: string, content: string }) => {
             return writeFile({relPath: path, root: context.project.root, interactor: this.interactor, content})
@@ -88,50 +69,70 @@ export class OpenaiTools {
             }
         }
 
-        const writePartialProjectFile = ({path, changes}: { path: string, changes: Change[] }) => {
-            return partialWriteFile({relPath: path, root: context.project.root, interactor: this.interactor, changes})
-        }
-
-        const writePartialProjectFileFunction: AssistantTool & RunnableToolFunction<{
-            path: string,
-            changes: Change[]
-        }> = {
-            type: "function",
-            function: {
-                name: "writePartialProjectFile",
-                description: "edit a file by applying partial changes. Use it for all but short files and give only lines or groups of lines to change.",
-                parameters: {
-                    type: "object",
-                    properties: {
-                        path: {type: "string", description: "file path relative to the project root (not exposed)"},
-                        changes: {
-                            type: "array",
-                            description: "list of changes, each change being a range of line counts that are included",
-                            items: {
-                                type: "object",
-                                properties: {
-                                    fromLine: {
-                                        type: "number",
-                                        description: "first included line to replace by the content"
-                                    },
-                                    toLine: {
-                                        type: "number",
-                                        description: "last included line to replace by the content"
-                                    },
-                                    content: {
-                                        type: "string",
-                                        description: "content, can be a string with line separators to save on data"
-                                    },
-                                }
-                            }
-                        }
-                    }
-                },
-                parse: JSON.parse,
-                function: writePartialProjectFile
-            }
-        }
-
+        // TODO: does not work even though if close, ChatGPT still messes lines 😭
+        // const writePartialProjectFile = ({path, changes}: { path: string, changes: Change[] }) => {
+        //     return partialWriteFile({relPath: path, root: context.project.root, interactor: this.interactor, changes})
+        // }
+        //
+        // const writePartialProjectFileFunction: AssistantTool & RunnableToolFunction<{
+        //     path: string,
+        //     changes: Change[]
+        // }> = {
+        //     type: "function",
+        //     function: {
+        //         name: "writePartialProjectFile",
+        //         description: "edit a file by applying partial changes. Use it for all but short files and give only lines or groups of lines to change.",
+        //         parameters: {
+        //             type: "object",
+        //             properties: {
+        //                 path: {type: "string", description: "file path relative to the project root (not exposed)"},
+        //                 changes: {
+        //                     type: "array",
+        //                     description: "list of changes, each change being a range of line counts that are included",
+        //                     items: {
+        //                         type: "object",
+        //                         properties: {
+        //                             fromLine: {
+        //                                 type: "number",
+        //                                 description: "first included line to replace by the content"
+        //                             },
+        //                             toLine: {
+        //                                 type: "number",
+        //                                 description: "last included line to replace by the content"
+        //                             },
+        //                             content: {
+        //                                 type: "string",
+        //                                 description: "content, can be a string with line separators to save on data"
+        //                             },
+        //                         }
+        //                     }
+        //                 }
+        //             }
+        //         },
+        //         parse: JSON.parse,
+        //         function: writePartialProjectFile
+        //     }
+        // }
+        //
+        // const readProjectFileWithLines = ({path}: { path: string }) => {
+        //     return readFileWithLinesByPath({relPath: path, root: context.project.root, interactor: this.interactor})
+        // }
+        //
+        // const readProjectFileWithLinesFunction: AssistantTool & RunnableToolFunction<{ path: string }> = {
+        //     type: "function",
+        //     function: {
+        //         name: "readProjectFileWithLines",
+        //         description: "read the content of the file at the given path in the project, but returns payload as a map of line number to line content.",
+        //         parameters: {
+        //             type: "object",
+        //             properties: {
+        //                 path: {type: "string", description: "file path relative to the project root (not exposed)"}
+        //             }
+        //         },
+        //         parse: JSON.parse,
+        //         function: readProjectFileWithLines
+        //     }
+        // }
 
         const searchProjectFile = ({text, path}: { text: string, path?: string }) => {
             return findFilesByName({text, path, root: context.project.root, interactor: this.interactor})
@@ -249,9 +250,9 @@ export class OpenaiTools {
 
         this.tools = [
             readProjectFileFunction,
-            readProjectFileWithLinesFunction,
+            // readProjectFileWithLinesFunction,
             writeProjectFileFunction,
-            writePartialProjectFileFunction,
+            // writePartialProjectFileFunction,
             searchProjectFileFunction,
             listProjectFilesAndDirectoriesFunction,
             gitStatusFunction,
