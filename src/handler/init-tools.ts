@@ -8,6 +8,7 @@ import {Beta} from "openai/resources"
 import {Scripts} from "../service/scripts";
 import {Change, partialWriteFile} from "../function/partial-write-file";
 import AssistantTool = Beta.AssistantTool;
+import {readFileWithLinesByPath} from "../function/read-file-with-lines-by-path";
 
 export type Tool = AssistantTool & RunnableToolFunction<any>
 
@@ -34,7 +35,7 @@ export class OpenaiTools {
             type: "function",
             function: {
                 name: "readProjectFile",
-                description: "read the content of the file at the given path in the project",
+                description: "read the content of the file at the given path in the project. DO re-read with line to edit file is average size or more",
                 parameters: {
                     type: "object",
                     properties: {
@@ -43,6 +44,26 @@ export class OpenaiTools {
                 },
                 parse: JSON.parse,
                 function: readProjectFile
+            }
+        }
+
+        const readProjectFileWithLines = ({path}: { path: string }) => {
+            return readFileWithLinesByPath({relPath: path, root: context.project.root, interactor: this.interactor})
+        }
+
+        const readProjectFileWithLinesFunction: AssistantTool & RunnableToolFunction<{ path: string }> = {
+            type: "function",
+            function: {
+                name: "readProjectFileWithLines",
+                description: "read the content of the file at the given path in the project, but returns payload as a map of line number to line content. Use for later partial editions (even if already read in full without line numbers).",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        path: {type: "string", description: "file path relative to the project root (not exposed)"}
+                    }
+                },
+                parse: JSON.parse,
+                function: readProjectFileWithLines
             }
         }
 
@@ -78,7 +99,7 @@ export class OpenaiTools {
             type: "function",
             function: {
                 name: "writePartialProjectFile",
-                description: "edit a file by applying changes identified by line counts, suited for long files to edit only in some places.",
+                description: "edit a file by applying partial changes. Use it for all but short files and give only lines or groups of lines to change.",
                 parameters: {
                     type: "object",
                     properties: {
@@ -228,6 +249,7 @@ export class OpenaiTools {
 
         this.tools = [
             readProjectFileFunction,
+            readProjectFileWithLinesFunction,
             writeProjectFileFunction,
             writePartialProjectFileFunction,
             searchProjectFileFunction,

@@ -16,10 +16,11 @@ export type PartialWriteFileInput = {
 }
 
 const applyChanges = (fileContent: string[], changes: Change[]): string[] => {
-    // order changes by decreasing line order to not mess with previous line counts
+    // Order changes by decreasing line order to not mess with previous line counts
     changes.sort((a, b) => b.fromLine - a.fromLine)
     for (const change of changes) {
-        fileContent.splice(change.fromLine, change.toLine - change.fromLine + 1, ...change.content.split('\n'))
+        console.debug(`apply for lines ${change.fromLine} to ${change.toLine} : ${change.content}`)
+        fileContent.splice(change.fromLine-1, change.toLine - change.fromLine + 1, ...change.content.split('\n'))
     }
     return fileContent
 }
