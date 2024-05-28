@@ -1,25 +1,14 @@
 {
-  "name": "coday",
+  "name": "project",
   "version": "1.0.0",
-  "description": "AI tool to code with us",
+  "description": "",
   "main": "index.js",
-  "author": "vincent.audibert@whoz.com",
-  "license": "MIT",
   "scripts": {
     "start": "npx ts-node index.ts"
   },
+  "author": "vincent.audibert@whoz.com",
+  "license": "MIT",
   "devDependencies": {
-    "@types/node": "^20.11.17",
-    "@types/readline-sync": "^1.4.8",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.3.3"
-  },
-  "dependencies": {
-    "axios": "^1.6.7",
-    "chalk": "^4.1.2",
-    "glob": "^10.3.15",
-    "openai": "^4.47.1",
-    "readline-sync": "^1.4.10",
-    "simple-git": "^3.22.0"
+    "@types/node": "^20.11.17"
   }
 }

@@ -5,8 +5,9 @@ import {findFilesByName} from "../function/find-files-by-name"
 import {Interactor} from "../interactor"
 import {runBash} from "../function/run-bash";
 import {Beta} from "openai/resources"
-import AssistantTool = Beta.AssistantTool;
 import {Scripts} from "../service/scripts";
+import {Change, partialWriteFile} from "../function/partial-write-file";
+import AssistantTool = Beta.AssistantTool;
 
 export type Tool = AssistantTool & RunnableToolFunction<any>
 
@@ -65,6 +66,51 @@ export class OpenaiTools {
                 function: writeProjectFile
             }
         }
+
+        const writePartialProjectFile = ({path, changes}: { path: string, changes: Change[] }) => {
+            return partialWriteFile({relPath: path, root: context.project.root, interactor: this.interactor, changes})
+        }
+
+        const writePartialProjectFileFunction: AssistantTool & RunnableToolFunction<{
+            path: string,
+            changes: Change[]
+        }> = {
+            type: "function",
+            function: {
+                name: "writePartialProjectFile",
+                description: "edit a file by applying changes identified by line counts, suited for long files to edit only in some places.",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        path: {type: "string", description: "file path relative to the project root (not exposed)"},
+                        changes: {
+                            type: "array",
+                            description: "list of changes, each change being a range of line counts that are included",
+                            items: {
+                                type: "object",
+                                properties: {
+                                    fromLine: {
+                                        type: "number",
+                                        description: "first included line to replace by the content"
+                                    },
+                                    toLine: {
+                                        type: "number",
+                                        description: "last included line to replace by the content"
+                                    },
+                                    content: {
+                                        type: "string",
+                                        description: "content, can be a string with line separators to save on data"
+                                    },
+                                }
+                            }
+                        }
+                    }
+                },
+                parse: JSON.parse,
+                function: writePartialProjectFile
+            }
+        }
+
 
         const searchProjectFile = ({text, path}: { text: string, path?: string }) => {
             return findFilesByName({text, path, root: context.project.root, interactor: this.interactor})
@@ -153,7 +199,7 @@ export class OpenaiTools {
                 function: gitDiff
             }
         }
-        const scripts:Scripts | undefined = context.project.scripts
+        const scripts: Scripts | undefined = context.project.scripts
         const scriptFunctions = scripts ?
             Object.entries(scripts).map(entry => {
                 const script = async () => {
@@ -183,6 +229,7 @@ export class OpenaiTools {
         this.tools = [
             readProjectFileFunction,
             writeProjectFileFunction,
+            writePartialProjectFileFunction,
             searchProjectFileFunction,
             listProjectFilesAndDirectoriesFunction,
             gitStatusFunction,
