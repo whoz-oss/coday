@@ -1,12 +1,13 @@
 import { existsSync, writeFileSync, readFileSync } from 'fs';
 import { CodayConfig } from '../coday-config';
+import {Interactor} from "../interactor";
 
 export class ConfigService {
     private static readonly CONFIG_FILENAME = 'config.json';
     private config: CodayConfig | null = null;
     private readonly configPath: string
 
-    constructor(private codayPath: string) {
+    constructor(private codayPath: string, private interactor: Interactor) {
         this.configPath = `${this.codayPath}/${ConfigService.CONFIG_FILENAME}`
     }
 
@@ -23,7 +24,8 @@ export class ConfigService {
         let config: CodayConfig;
         if (!existsSync(this.configPath)) {
             config = {
-                projectPaths: {}
+                projectPaths: {},
+                apiKeys: {}
             };
             this.writeConfigFile(config);
         } else {
@@ -67,5 +69,22 @@ export class ConfigService {
         const config = this.getConfig();
         config.lastProject = undefined;
         this.writeConfigFile(config);
+    }
+
+    getApiKey(keyName: string): string {
+        if (process.env[keyName]) {
+            return process.env[keyName]!;
+        }
+
+        const config = this.getConfig();
+        if (config.apiKeys && config.apiKeys[keyName]) {
+            return config.apiKeys[keyName];
+        }
+
+        const apiKey = this.interactor.promptText(`API key for ${keyName} not set. Please enter it now to save it under ${this.configPath}`);
+        config.apiKeys = config.apiKeys || {};
+        config.apiKeys[keyName] = apiKey;
+        this.writeConfigFile(config);
+        return apiKey;
     }
 }

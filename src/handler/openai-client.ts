@@ -6,7 +6,6 @@ import {AssistantStream} from "openai/lib/AssistantStream";
 import {Beta} from "openai/resources";
 import Assistant = Beta.Assistant;
 
-const OPENAI_API_KEY = process.env['OPENAI_API_KEY']
 const ASSISTANT_INSTRUCTIONS = `
 You are Coday, an AI assistant used interactively by users through a chat or alike interface.
 By providing a sound and logic reasoning, you answer concisely to the user requests.
@@ -20,20 +19,22 @@ export class OpenaiClient {
     textAccumulator: string = ""
 
     openaiTools: OpenaiTools
+    apiKey: string | undefined
 
-    constructor(private interactor: Interactor) {
+    constructor(private interactor: Interactor, private apiKeyProvider: () => string) {
         this.openaiTools = new OpenaiTools(interactor)
     }
 
     async isReady(context: CommandContext): Promise<boolean> {
-        if (!OPENAI_API_KEY) {
+        this.apiKey = this.apiKeyProvider()
+        if (!this.apiKey) {
             this.interactor.warn('OPENAI_API_KEY env var not set, skipping AI command')
             return false
         }
 
         if (!this.openai) {
             this.openai = new OpenAI({
-                apiKey: OPENAI_API_KEY,
+                apiKey: this.apiKey,
             })
         }
 
@@ -42,10 +43,10 @@ export class OpenaiClient {
             let mine: Assistant | undefined
             do {
                 const fetchedAssistants: Assistant[] = (await this.openai.beta.assistants.list({
-                    order: 'asc',
-                    after,
-                    limit: 100,
-                }).withResponse()
+                        order: 'asc',
+                        after,
+                        limit: 100,
+                    }).withResponse()
                 )
                     .data
                     .getPaginatedItems()
@@ -114,20 +115,21 @@ export class OpenaiClient {
                 try {
                     const toolCalls = chunk.data.required_action?.submit_tool_outputs.tool_calls ?? []
                     const toolOutputs = await Promise.all(toolCalls.map(async (toolCall) => {
+                        let output
                         const funcWrapper = tools.find(t => t.function.name === toolCall.function.name)
                         if (!funcWrapper) {
-                            throw new Error(`Function ${toolCall.function.name} not found.`)
+                            output = `Function ${toolCall.function.name} not found.`
+                            return {tool_call_id: toolCall.id, output}
                         }
 
                         const toolFunc = funcWrapper.function.function
 
-                        let args: any = JSON.parse(toolCall.function.arguments)
-
-                        if (!Array.isArray(args)) {
-                            args = [args]
-                        }
-                        let output
                         try {
+                            let args: any = JSON.parse(toolCall.function.arguments)
+
+                            if (!Array.isArray(args)) {
+                                args = [args]
+                            }
                             output = await toolFunc.apply(null, args)
                         } catch (err) {
                             this.interactor.error(err)

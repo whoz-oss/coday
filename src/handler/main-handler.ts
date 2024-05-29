@@ -8,6 +8,7 @@ import { GitHandler } from "./git-handler";
 import {DebugHandler} from "./debug-handler";
 import {RunBashHandler} from "./run-bash-handler";
 import {CodeFlowHandler} from "./code-flow.handler";
+import {ConfigService} from "../service/config-service";
 
 export class MainHandler extends NestedHandler {
     commandWord: string = ''
@@ -21,9 +22,10 @@ export class MainHandler extends NestedHandler {
         interactor: Interactor,
         private maxIterations: number = 10,
         defaultHandlers: CommandHandler[] = [],
+        configService: ConfigService
     ) {
         super(interactor)
-        this.openaiHandler = new OpenaiHandler(interactor)
+        this.openaiHandler = new OpenaiHandler(interactor, configService)
         this.handlers = [
             ...defaultHandlers,
             new GitHandler(interactor),

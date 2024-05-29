@@ -23,7 +23,7 @@ class Coday {
     constructor(private interactor: Interactor) {
         this.userInfo = os.userInfo()
         this.codayPath = this.initCodayPath(this.userInfo)
-        this.configService = new ConfigService(this.codayPath)
+        this.configService = new ConfigService(this.codayPath, this.interactor)
         this.projectHandler = new ConfigHandler(interactor, this.configService, this.userInfo.username)
         this.mainHandler = new MainHandler(
             interactor,
@@ -31,6 +31,7 @@ class Coday {
             [
                 this.projectHandler,
             ],
+            this.configService
         )
     }
 

@@ -3,4 +3,7 @@ export type CodayConfig = {
         [key: string]: string;
     }
     lastProject?: string
+    apiKeys: {
+        [key: string]: string;
+    }
 }
