@@ -6,9 +6,7 @@ import {Interactor} from "../interactor"
 import {runBash} from "../function/run-bash";
 import {Beta} from "openai/resources"
 import {Scripts} from "../service/scripts";
-import {Change, partialWriteFile} from "../function/partial-write-file";
 import AssistantTool = Beta.AssistantTool;
-import {readFileWithLinesByPath} from "../function/read-file-with-lines-by-path";
 
 export type Tool = AssistantTool & RunnableToolFunction<any>
 

@@ -1,11 +1,11 @@
 import {existsSync, readFileSync, writeFileSync} from "fs";
-import {ProjectConfig} from "./project-config";
+import {ProjectDescription} from "./project-description";
 
 const CONFIG_FILENAME= 'coday.json'
 
-export const loadOrInitProjectConfig = (projectPath: string): ProjectConfig | null => {
+export const loadOrInitProjectConfig = (projectPath: string): ProjectDescription | null => {
     const projectConfigPath = `${projectPath}/${CONFIG_FILENAME}`
-    let projectConfig: ProjectConfig;
+    let projectConfig: ProjectDescription;
     if (!existsSync(projectConfigPath)) {
         projectConfig = {
             description : `Dummy description of the project. Write here a description of the project with all that matters: purpose, users, technologies, frameworks, conventions, tools, architecture... You can also write the paths to some relevant files the LLM could get on the go.`,
@@ -19,7 +19,7 @@ export const loadOrInitProjectConfig = (projectPath: string): ProjectConfig | nu
         const json = JSON.stringify(projectConfig, null, 2);
         writeFileSync(projectConfigPath, json);
     } else {
-        projectConfig = JSON.parse(readFileSync(projectConfigPath, 'utf-8')) as ProjectConfig;
+        projectConfig = JSON.parse(readFileSync(projectConfigPath, 'utf-8')) as ProjectDescription;
     }
     return projectConfig;
 }

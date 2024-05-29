@@ -5,7 +5,6 @@ import {existsSync, mkdirSync} from "node:fs"
 import {Interactor} from "./src/interactor"
 import {TerminalInteractor} from "./src/terminal-interactor"
 import {ConfigHandler} from "./src/handler/config-handler"
-import {ConfigService} from "./src/service/config-service"
 import path from 'path'
 
 const DATA_PATH: string = "/.coday"
@@ -18,20 +17,17 @@ class Coday {
     context: CommandContext | null = null
     mainHandler: MainHandler
     projectHandler: ConfigHandler
-    configService: ConfigService
 
     constructor(private interactor: Interactor) {
         this.userInfo = os.userInfo()
         this.codayPath = this.initCodayPath(this.userInfo)
-        this.configService = new ConfigService(this.codayPath, this.interactor)
-        this.projectHandler = new ConfigHandler(interactor, this.configService, this.userInfo.username)
+        this.projectHandler = new ConfigHandler(interactor, this.userInfo.username)
         this.mainHandler = new MainHandler(
             interactor,
             MAX_ITERATIONS,
             [
                 this.projectHandler,
             ],
-            this.configService
         )
     }
 

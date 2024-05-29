@@ -2,16 +2,16 @@ import {CommandContext} from "../command-context"
 import {CommandHandler} from "./command-handler"
 import {Interactor} from "../interactor"
 import {OpenaiClient} from "./openai-client"
-import {ConfigService} from "../service/config-service";
+import {configService} from "../service/config-service";
 
 export class OpenaiHandler extends CommandHandler {
     commandWord: string = 'ai'
     description: string = "calls the AI with the given command and current context. 'reset' for using a new thread."
     openaiClient: OpenaiClient
 
-    constructor(interactor: Interactor, configService: ConfigService) {
+    constructor(interactor: Interactor) {
         super()
-        const apiKeyProvider = () => configService.getApiKey("OPENAI_API_KEY")
+        const apiKeyProvider = () => configService.getApiKey("OPENAI")
         this.openaiClient = new OpenaiClient(interactor, apiKeyProvider)
     }
 

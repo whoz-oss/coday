@@ -21,7 +21,7 @@ export class OpenaiClient {
     openaiTools: OpenaiTools
     apiKey: string | undefined
 
-    constructor(private interactor: Interactor, private apiKeyProvider: () => string) {
+    constructor(private interactor: Interactor, private apiKeyProvider: () => string | undefined) {
         this.openaiTools = new OpenaiTools(interactor)
     }
 

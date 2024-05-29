@@ -1,90 +1,126 @@
-import { existsSync, writeFileSync, readFileSync } from 'fs';
-import { CodayConfig } from '../coday-config';
-import {Interactor} from "../interactor";
+import {existsSync, readFileSync, writeFileSync} from 'fs';
+import {ApiIntegration, ApiName, CodayConfig, Project} from './coday-config';
+import os from "os";
+import path from "path";
+import {mkdirSync} from "node:fs";
 
-export class ConfigService {
-    private static readonly CONFIG_FILENAME = 'config.json';
+const DATA_PATH: string = "/.coday"
+const CONFIG_FILENAME = 'config.json'
+const API_KEY_SUFFIX = "_API_KEY"
+
+class ConfigService {
     private config: CodayConfig | null = null;
     private readonly configPath: string
 
-    constructor(private codayPath: string, private interactor: Interactor) {
-        this.configPath = `${this.codayPath}/${ConfigService.CONFIG_FILENAME}`
+    constructor() {
+        const userInfo = os.userInfo()
+        const codayPath = path.join(userInfo.homedir, DATA_PATH)
+        this.configPath = `${codayPath}/${CONFIG_FILENAME}`
     }
 
     get lastProject() {
-        return this.getConfig().lastProject
+        this.initConfig()
+        return this.config!.currentProject
     }
 
     get projectNames() {
-        const config = this.getConfig();
-        return Object.keys(config.projectPaths);
+        this.initConfig();
+        return Object.keys(this.config!.project);
     }
 
-    private loadConfigFromDisk(): CodayConfig {
-        let config: CodayConfig;
-        if (!existsSync(this.configPath)) {
-            config = {
-                projectPaths: {},
-                apiKeys: {}
-            };
-            this.writeConfigFile(config);
-        } else {
-            config = JSON.parse(readFileSync(this.configPath, 'utf-8')) as CodayConfig;
-        }
-        return config;
+    get integrations() {
+        this.initConfig()
+        const project = this.getProject()
+        return project!.integration!
     }
 
-    getConfig(): CodayConfig {
-        if (!this.config) {
-            this.config = this.loadConfigFromDisk();
-        }
-        return this.config;
-    }
-
-    writeConfigFile(config: CodayConfig): void {
-        const json = JSON.stringify(config, null, 2);
-        writeFileSync(this.configPath, json);
-        this.config = config; // Update the in-memory config
-    }
-
-    addProject(projectName: string, projectPath: string): CodayConfig {
-        const config = this.getConfig();
-        config.projectPaths[projectName] = projectPath;
-        this.writeConfigFile(config);
-        return config;
+    addProject(projectName: string, projectPath: string) {
+        this.initConfig();
+        this.config!.project[projectName] = {path: projectPath, integration: {}};
+        this.saveConfigFile();
     }
 
     selectProject(name: string): string {
-        const config = this.getConfig();
-        const projectPath = config.projectPaths[name]
+        this.initConfig();
+        const projectPath: string | undefined = this.config!.project[name]?.path
         if (!projectPath) {
             throw new Error("Invalid selection")
         }
-        config.lastProject = name;
-        this.writeConfigFile(config);
+        this.config!.currentProject = name;
+        this.saveConfigFile();
         return projectPath;
     }
 
     resetProjectSelection(): void {
-        const config = this.getConfig();
-        config.lastProject = undefined;
-        this.writeConfigFile(config);
+        this.initConfig();
+        this.config!.currentProject = undefined;
+        this.saveConfigFile();
     }
 
-    getApiKey(keyName: string): string {
-        if (process.env[keyName]) {
-            return process.env[keyName]!;
+    getApiKey(keyName: string): string | undefined {
+        if (!(keyName in ApiName)) {
+            return undefined
+        }
+        const apiName: ApiName = keyName as unknown as ApiName
+        const envApiKey: string | undefined = process.env[`${apiName}${API_KEY_SUFFIX}`]
+        // shortcut if an env var is set for this typedKey
+        if (envApiKey) {
+            return envApiKey
         }
 
-        const config = this.getConfig();
-        if (config.apiKeys && config.apiKeys[keyName]) {
-            return config.apiKeys[keyName];
+        const project: Project | undefined = this.getProject()
+        if (!project) {
+            return undefined
         }
+        let integration: ApiIntegration | undefined = project.integration[apiName]
+        if (!integration) {
+            return undefined
+        }
+        return integration.apiKey
+    }
 
-        const apiKey = this.interactor.promptText(`API key for ${keyName} not set. Please enter it now to save it under ${this.configPath}`);
-        config.apiKeys = config.apiKeys || {};
-        config.apiKeys[keyName] = apiKey;
-        this.writeConfigFile(config);
-        return apiKey;
+    private initConfig() {
+        if (!this.config) {
+            const dir = path.dirname(this.configPath)
+            if (!existsSync(dir)) {
+                mkdirSync(dir, {recursive: true})
+            }
+            if (!existsSync(this.configPath)) {
+                this.config = {
+                    project: {},
+                };
+                this.saveConfigFile();
+            } else {
+                this.config = JSON.parse(readFileSync(this.configPath, 'utf-8')) as CodayConfig;
+            }
+        }
+    }
+
+    private saveConfigFile(): void {
+        const json = JSON.stringify(this.config, null, 2);
+        writeFileSync(this.configPath, json);
+    }
+
+
+    private getProject(): Project | undefined {
+        this.initConfig()
+        const projectName = this.config!.currentProject
+
+        // shortcut if no selected project
+        if (!projectName) {
+            return undefined
+        }
+        return this.config!.project[projectName]
+    }
+
+    setIntegration(selectedName: ApiName, integration: ApiIntegration) {
+        const project = this.getProject()
+        if (!project) {
+            return
+        }
+        project.integration[selectedName] = integration
+        this.saveConfigFile()
     }
 }
+
+export const configService = new ConfigService()
