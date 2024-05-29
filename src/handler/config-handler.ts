@@ -17,7 +17,7 @@ export class ConfigHandler extends CommandHandler {
         const cmd = this.getSubCommand(command)
         let result: CommandContext | null = context
         if (!cmd) {
-            this.interactor.displayText(`${this.commandWord} can accept sub-commands: add-project, select-project.`);
+            this.interactor.displayText(`${this.commandWord} can accept sub-commands: add-project, select-project, edit-integration.`);
         }
         if (cmd === "add-project") {
             result = this.addProject()
@@ -117,12 +117,11 @@ export class ConfigHandler extends CommandHandler {
         }
         // Mention all available integrations
         const apiNames = Object.keys(ApiName)
-        this.interactor.displayText(`Integrations are tools behind some commands and/or functions for AI. Available ones are ${apiNames.join(', ')}.\n`)
 
         // List all set integrations and prompt to choose one to edit (or type name of wanted one)
         const currentIntegrations = configService.integrations
         const existingIntegrationNames: ApiName[] = currentIntegrations ? Object.keys(currentIntegrations) as ApiName[] : []
-        const answer = this.interactor.chooseOption(existingIntegrationNames, "Select an integration to edit by number (or type name of integration to add or nothing to escape)", `Integrations are tools behind some commands and/or functions for AI. Available ones are ${apiNames.join(', ')}.\n`).toUpperCase()
+        const answer = this.interactor.chooseOption(existingIntegrationNames, "Select an integration to edit by number (or type name of integration to add or nothing to escape): ", `Integrations are tools behind some commands and/or functions for AI. Available ones are ${apiNames.join(', ')}.\nHere are the configured ones:`).toUpperCase()
         if (!answer) {
             return
         }
