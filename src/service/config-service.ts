@@ -34,6 +34,11 @@ class ConfigService {
         return project!.integration!
     }
 
+    hasIntegration(name: ApiName): boolean {
+        this.initConfig()
+        return Object.keys(this.getProject()!.integration).includes(name)
+    }
+
     addProject(projectName: string, projectPath: string) {
         this.initConfig();
         this.config!.project[projectName] = {path: projectPath, integration: {}};

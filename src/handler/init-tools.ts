@@ -10,20 +10,35 @@ import AssistantTool = Beta.AssistantTool;
 
 export type Tool = AssistantTool & RunnableToolFunction<any>
 
-export class OpenaiTools {
-
+export abstract class AssistantToolFactory {
     tools: Tool[] = []
-
     lastToolInitContext: CommandContext | null = null
-
-    constructor(private interactor: Interactor) {
+    protected constructor(protected interactor: Interactor) {
     }
+    protected abstract hasChanged(context: CommandContext): boolean
+    protected abstract buildTools(context: CommandContext): Tool[]
 
     getTools(context: CommandContext): Tool[] {
-
-        if (this.contextHasNotChanged(context)) {
-            return this.tools
+        if (!this.lastToolInitContext || this.hasChanged(context)) {
+            this.lastToolInitContext = context
+            this.tools = this.buildTools(context)
         }
+        return this.tools
+    }
+}
+
+export class OpenaiTools extends AssistantToolFactory {
+
+    constructor(interactor: Interactor) {
+        super(interactor)
+    }
+
+    protected hasChanged(context: CommandContext): boolean {
+        return this.lastToolInitContext?.project.root !== context.project.root
+    }
+
+    protected buildTools(context: CommandContext): Tool[] {
+        const result: Tool[] = []
 
         const readProjectFile = ({path}: { path: string }) => {
             return readFileByPath({relPath: path, root: context.project.root, interactor: this.interactor})
@@ -44,7 +59,7 @@ export class OpenaiTools {
                 function: readProjectFile
             }
         }
-
+        result.push(readProjectFileFunction)
 
         const writeProjectFile = ({path, content}: { path: string, content: string }) => {
             return writeFile({relPath: path, root: context.project.root, interactor: this.interactor, content})
@@ -66,6 +81,7 @@ export class OpenaiTools {
                 function: writeProjectFile
             }
         }
+        result.push(writeProjectFileFunction)
 
         // TODO: does not work even though if close, ChatGPT still messes lines 😭
         // const writePartialProjectFile = ({path, changes}: { path: string, changes: Change[] }) => {
@@ -155,6 +171,7 @@ export class OpenaiTools {
                 function: searchProjectFile
             }
         }
+        result.push(searchProjectFileFunction)
 
         const listProjectFilesAndDirectories = ({relPath}: { relPath: string }) => {
             return listFilesAndDirectories({relPath, root: context.project.root, interactor: this.interactor})
@@ -175,6 +192,7 @@ export class OpenaiTools {
                 function: listProjectFilesAndDirectories
             }
         }
+        result.push(listProjectFilesAndDirectoriesFunction)
 
         const gitStatus = async () => {
             return await runBash({
@@ -197,6 +215,7 @@ export class OpenaiTools {
                 function: gitStatus
             }
         }
+        result.push(gitStatusFunction)
 
         const gitDiff = async () => {
             return await runBash({
@@ -219,6 +238,8 @@ export class OpenaiTools {
                 function: gitDiff
             }
         }
+        result.push(gitDiffFunction)
+
         const scripts: Scripts | undefined = context.project.scripts
         const scriptFunctions = scripts ?
             Object.entries(scripts).map(entry => {
@@ -246,26 +267,8 @@ export class OpenaiTools {
                 return scriptFunction
             }) : []
 
-        this.tools = [
-            readProjectFileFunction,
-            // readProjectFileWithLinesFunction,
-            writeProjectFileFunction,
-            // writePartialProjectFileFunction,
-            searchProjectFileFunction,
-            listProjectFilesAndDirectoriesFunction,
-            gitStatusFunction,
-            gitDiffFunction,
-            ...scriptFunctions
-        ]
-        return this.tools
-    }
+        result.push(...scriptFunctions)
 
-    private contextHasNotChanged(command: CommandContext): boolean {
-        if (!this.lastToolInitContext) {
-            this.lastToolInitContext = command
-            return false
-        }
-        return !!this.lastToolInitContext &&
-            command.project.root === this.lastToolInitContext?.project.root
+        return result
     }
 }

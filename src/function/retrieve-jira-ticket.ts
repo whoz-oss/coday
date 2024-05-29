@@ -1,16 +1,6 @@
 import axios from 'axios'
 
-interface JiraTicket {
-  id: string
-  key: string
-  fields: {
-    summary: string
-    description: string
-    [key: string]: any
-  }
-}
-
-export async function retrieveJiraTicket(ticketId: string, jiraBaseUrl: string, jiraApiToken: string, jiraUsername: string): Promise<JiraTicket> {
+export async function retrieveJiraTicket(ticketId: string, jiraBaseUrl: string, jiraApiToken: string, jiraUsername: string): Promise<any> {
 
   if (!jiraBaseUrl || !jiraApiToken || !jiraUsername) {
     throw new Error('Jira environment variables are not set')
