@@ -129,7 +129,7 @@ export class ConfigHandler extends CommandHandler {
         let apiIntegration: ApiIntegration = {}
         let selectedName: ApiName
         if (!!choice) { // choice is a number
-            if (choice >= 1 && choice <= existingIntegrationNames.length) {
+            if (choice >= 0 && choice < existingIntegrationNames.length) {
                 this.interactor.warn("Number selection out of available options.")
                 return
             }

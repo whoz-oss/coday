@@ -1,5 +1,4 @@
 import {CommandHandler} from "./command-handler";
-import {JiraHandler} from "./jira-handler";
 import {NestedHandler} from "./nested-handler";
 import {CommandContext} from "../command-context";
 import {OpenaiHandler} from "./openai-handler";
@@ -27,7 +26,6 @@ export class MainHandler extends NestedHandler {
         this.handlers = [
             ...defaultHandlers,
             new GitHandler(interactor),
-            new JiraHandler(interactor),
             new RunBashHandler(interactor),
             new DebugHandler(interactor),
             new CodeFlowHandler(),
