@@ -4,6 +4,8 @@ import {OpenaiTools, Tool} from "./init-tools";
 import {CommandContext} from "../command-context";
 import {AssistantStream} from "openai/lib/AssistantStream";
 import {Beta} from "openai/resources";
+import {JiraTools} from "./jira-tools";
+import {GitTools} from "./git-tools";
 import Assistant = Beta.Assistant;
 
 const ASSISTANT_INSTRUCTIONS = `
@@ -19,10 +21,14 @@ export class OpenaiClient {
     textAccumulator: string = ""
 
     openaiTools: OpenaiTools
+    jiraTools: JiraTools
+    gitTools: GitTools
     apiKey: string | undefined
 
     constructor(private interactor: Interactor, private apiKeyProvider: () => string | undefined) {
         this.openaiTools = new OpenaiTools(interactor)
+        this.jiraTools = new JiraTools(interactor)
+        this.gitTools = new GitTools(interactor)
     }
 
     async isReady(context: CommandContext): Promise<boolean> {
@@ -85,7 +91,11 @@ export class OpenaiClient {
             return "Openai client not ready"
         }
 
-        const tools = this.openaiTools.getTools(context)
+        const tools = [
+            ...this.openaiTools.getTools(context),
+            ...this.jiraTools.getTools(context),
+            ...this.gitTools.getTools(context)
+        ]
 
         await this.openai!.beta.threads.messages.create(this.threadId!, {
             role: 'user',

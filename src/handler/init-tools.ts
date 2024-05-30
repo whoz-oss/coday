@@ -3,18 +3,17 @@ import {listFilesAndDirectories, readFileByPath, writeFile} from "../function"
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
 import {findFilesByName} from "../function/find-files-by-name"
 import {Interactor} from "../interactor"
-import {runBash} from "../function/run-bash";
 import {Beta} from "openai/resources"
-import {Scripts} from "../service/scripts";
-import AssistantTool = Beta.AssistantTool;
+import {Scripts} from "../service/scripts"
+import AssistantTool = Beta.AssistantTool
+import {runBash} from "../function/run-bash";
 
 export type Tool = AssistantTool & RunnableToolFunction<any>
 
 export abstract class AssistantToolFactory {
     tools: Tool[] = []
     lastToolInitContext: CommandContext | null = null
-    protected constructor(protected interactor: Interactor) {
-    }
+    protected constructor(protected interactor: Interactor) {}
     protected abstract hasChanged(context: CommandContext): boolean
     protected abstract buildTools(context: CommandContext): Tool[]
 
@@ -83,71 +82,6 @@ export class OpenaiTools extends AssistantToolFactory {
         }
         result.push(writeProjectFileFunction)
 
-        // TODO: does not work even though if close, ChatGPT still messes lines 😭
-        // const writePartialProjectFile = ({path, changes}: { path: string, changes: Change[] }) => {
-        //     return partialWriteFile({relPath: path, root: context.project.root, interactor: this.interactor, changes})
-        // }
-        //
-        // const writePartialProjectFileFunction: AssistantTool & RunnableToolFunction<{
-        //     path: string,
-        //     changes: Change[]
-        // }> = {
-        //     type: "function",
-        //     function: {
-        //         name: "writePartialProjectFile",
-        //         description: "edit a file by applying partial changes. Use it for all but short files and give only lines or groups of lines to change.",
-        //         parameters: {
-        //             type: "object",
-        //             properties: {
-        //                 path: {type: "string", description: "file path relative to the project root (not exposed)"},
-        //                 changes: {
-        //                     type: "array",
-        //                     description: "list of changes, each change being a range of line counts that are included",
-        //                     items: {
-        //                         type: "object",
-        //                         properties: {
-        //                             fromLine: {
-        //                                 type: "number",
-        //                                 description: "first included line to replace by the content"
-        //                             },
-        //                             toLine: {
-        //                                 type: "number",
-        //                                 description: "last included line to replace by the content"
-        //                             },
-        //                             content: {
-        //                                 type: "string",
-        //                                 description: "content, can be a string with line separators to save on data"
-        //                             },
-        //                         }
-        //                     }
-        //                 }
-        //             }
-        //         },
-        //         parse: JSON.parse,
-        //         function: writePartialProjectFile
-        //     }
-        // }
-        //
-        // const readProjectFileWithLines = ({path}: { path: string }) => {
-        //     return readFileWithLinesByPath({relPath: path, root: context.project.root, interactor: this.interactor})
-        // }
-        //
-        // const readProjectFileWithLinesFunction: AssistantTool & RunnableToolFunction<{ path: string }> = {
-        //     type: "function",
-        //     function: {
-        //         name: "readProjectFileWithLines",
-        //         description: "read the content of the file at the given path in the project, but returns payload as a map of line number to line content.",
-        //         parameters: {
-        //             type: "object",
-        //             properties: {
-        //                 path: {type: "string", description: "file path relative to the project root (not exposed)"}
-        //             }
-        //         },
-        //         parse: JSON.parse,
-        //         function: readProjectFileWithLines
-        //     }
-        // }
-
         const searchProjectFile = ({text, path}: { text: string, path?: string }) => {
             return findFilesByName({text, path, root: context.project.root, interactor: this.interactor})
         }
@@ -162,9 +96,7 @@ export class OpenaiTools extends AssistantToolFactory {
                     properties: {
                         text: {type: "string", description: "start of the name of files to search for"},
                         path: {
-                            type: "string",
-                            description: "optional file path relative to the project root from which to start the search"
-                        },
+                            type: "string", description: "optional file path relative to the project root from which to start the search"}
                     }
                 },
                 parse: JSON.parse,
@@ -193,52 +125,6 @@ export class OpenaiTools extends AssistantToolFactory {
             }
         }
         result.push(listProjectFilesAndDirectoriesFunction)
-
-        const gitStatus = async () => {
-            return await runBash({
-                command: 'git status',
-                root: context.project.root,
-                interactor: this.interactor
-            });
-        }
-
-        const gitStatusFunction: AssistantTool & RunnableToolFunction<{}> = {
-            type: "function",
-            function: {
-                name: "gitStatusFunction",
-                description: "run git status command, providing a status of all modified files since last commit.",
-                parameters: {
-                    type: "object",
-                    properties: {}
-                },
-                parse: JSON.parse,
-                function: gitStatus
-            }
-        }
-        result.push(gitStatusFunction)
-
-        const gitDiff = async () => {
-            return await runBash({
-                command: 'git diff',
-                root: context.project.root,
-                interactor: this.interactor
-            });
-        }
-
-        const gitDiffFunction: AssistantTool & RunnableToolFunction<{}> = {
-            type: "function",
-            function: {
-                name: "gitDiffFunction",
-                description: "run git diff command, an exhaustive list of all changes in progress.",
-                parameters: {
-                    type: "object",
-                    properties: {}
-                },
-                parse: JSON.parse,
-                function: gitDiff
-            }
-        }
-        result.push(gitDiffFunction)
 
         const scripts: Scripts | undefined = context.project.scripts
         const scriptFunctions = scripts ?

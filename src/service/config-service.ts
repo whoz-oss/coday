@@ -126,6 +126,30 @@ class ConfigService {
         project.integration[selectedName] = integration
         this.saveConfigFile()
     }
+
+    getApiUrl(apiName: ApiName): string | undefined {
+        const project: Project | undefined = this.getProject()
+        if (!project) {
+            return undefined
+        }
+        let integration: ApiIntegration | undefined = project.integration[apiName]
+        if (!integration) {
+            return undefined
+        }
+        return integration.apiUrl
+    }
+
+    getUsername(apiName: ApiName): string | undefined {
+        const project: Project | undefined = this.getProject()
+        if (!project) {
+            return undefined
+        }
+        let integration: ApiIntegration | undefined = project.integration[apiName]
+        if (!integration) {
+            return undefined
+        }
+        return integration.username
+    }
 }
 
 export const configService = new ConfigService()
