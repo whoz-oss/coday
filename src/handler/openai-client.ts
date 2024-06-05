@@ -1,12 +1,14 @@
 import {Interactor} from "../interactor";
 import OpenAI from "openai";
-import {OpenaiTools, Tool} from "./init-tools";
 import {CommandContext} from "../command-context";
 import {AssistantStream} from "openai/lib/AssistantStream";
 import {Beta} from "openai/resources";
 import {JiraTools} from "./jira-tools";
 import {GitTools} from "./git-tools";
 import Assistant = Beta.Assistant;
+import {OpenaiTools} from "./openai-tools";
+import {Tool} from "./init-tools";
+import {ScriptsTools} from "./scripts-tools";
 
 const ASSISTANT_INSTRUCTIONS = `
 You are Coday, an AI assistant used interactively by users through a chat or alike interface.
@@ -23,12 +25,14 @@ export class OpenaiClient {
     openaiTools: OpenaiTools
     jiraTools: JiraTools
     gitTools: GitTools
+    scriptTools: ScriptsTools
     apiKey: string | undefined
 
     constructor(private interactor: Interactor, private apiKeyProvider: () => string | undefined) {
         this.openaiTools = new OpenaiTools(interactor)
         this.jiraTools = new JiraTools(interactor)
         this.gitTools = new GitTools(interactor)
+        this.scriptTools = new ScriptsTools(interactor)
     }
 
     async isReady(context: CommandContext): Promise<boolean> {
