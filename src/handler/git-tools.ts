@@ -8,9 +8,9 @@ import {gitAdd} from "../function/git-add"
 import {gitCommit} from "../function/git-commit"
 import {gitListBranches} from "../function/git-list-branches"
 import {gitCreateBranch} from "../function/git-create-branch"
-import AssistantTool = Beta.AssistantTool
 import {configService} from "../service/config-service"
 import {ApiName} from "../service/coday-config"
+import AssistantTool = Beta.AssistantTool;
 
 export class GitTools extends AssistantToolFactory {
     constructor(interactor: Interactor) {
@@ -49,7 +49,6 @@ export class GitTools extends AssistantToolFactory {
                 function: gitStatus
             }
         }
-        result.push(gitStatusFunction)
 
         const gitDiff = async () => {
             return await runBash({
@@ -72,9 +71,8 @@ export class GitTools extends AssistantToolFactory {
                 function: gitDiff
             }
         }
-        result.push(gitDiffFunction)
 
-        const addFilesToStaging = async ({filePaths}: {filePaths: string[]}) => {
+        const addFilesToStaging = async ({filePaths}: { filePaths: string[] }) => {
             return await gitAdd({
                 filePaths,
                 root: context.project.root,
@@ -103,9 +101,8 @@ export class GitTools extends AssistantToolFactory {
                 function: addFilesToStaging
             }
         }
-        result.push(gitAddFunction)
 
-        const commitChanges = async ({message}: {message: string}) => {
+        const commitChanges = async ({message}: { message: string }) => {
             return await gitCommit({
                 message,
                 root: context.project.root,
@@ -131,7 +128,6 @@ export class GitTools extends AssistantToolFactory {
                 function: commitChanges
             }
         }
-        result.push(gitCommitFunction)
 
         const listGitBranches = async () => {
             return await gitListBranches({
@@ -153,9 +149,8 @@ export class GitTools extends AssistantToolFactory {
                 function: listGitBranches
             }
         }
-        result.push(gitListBranchesFunction)
 
-        const createBranch = async ({branchName, baseBranch}: {branchName: string, baseBranch?: string}) => {
+        const createBranch = async ({branchName, baseBranch}: { branchName: string, baseBranch?: string }) => {
             return await gitCreateBranch({
                 branchName,
                 baseBranch,
@@ -164,7 +159,10 @@ export class GitTools extends AssistantToolFactory {
             })
         }
 
-        const gitCreateBranchFunction: AssistantTool & RunnableToolFunction<{ branchName: string, baseBranch?: string }> = {
+        const gitCreateBranchFunction: AssistantTool & RunnableToolFunction<{
+            branchName: string,
+            baseBranch?: string
+        }> = {
             type: "function",
             function: {
                 name: "gitCreateBranchFunction",
@@ -186,7 +184,16 @@ export class GitTools extends AssistantToolFactory {
                 function: createBranch
             }
         }
-        result.push(gitCreateBranchFunction)
+
+        result.push(...[
+                gitListBranchesFunction,
+                gitCommitFunction,
+                gitDiffFunction,
+                gitAddFunction,
+                gitStatusFunction,
+                gitCreateBranchFunction,
+            ]
+        )
 
         return result
     }

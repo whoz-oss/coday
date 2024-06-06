@@ -8,8 +8,8 @@ export const gitCreateBranch = async ({ branchName, baseBranch, root, interactor
   interactor: Interactor
 }): Promise<string> => {
   const command = baseBranch
-    ? `git checkout -b ${branchName} ${baseBranch}`
-    : `git checkout -b ${branchName}`;
+    ? `git fetch --all && git checkout -b ${branchName} ${baseBranch}`
+    : `git fetch --all && git checkout -b ${branchName}`;
   return await runBash({
     command,
     root,
