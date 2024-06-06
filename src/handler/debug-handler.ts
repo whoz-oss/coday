@@ -1,7 +1,7 @@
 import {CommandHandler} from "./command-handler";
 import {Interactor} from "../interactor";
 import {runBash} from "../function/run-bash";
-import {CommandContext} from "../context";
+import {CommandContext} from "../command-context";
 
 export class DebugHandler extends CommandHandler {
     commandWord: string = 'debug'

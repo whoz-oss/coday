@@ -10,7 +10,7 @@ import {gitCreateBranch} from "../function/git-create-branch"
 import {configService} from "../service/config-service"
 import {ApiName} from "../service/coday-config"
 import AssistantTool = Beta.AssistantTool;
-import {CommandContext} from "../context";
+import {CommandContext} from "../command-context";
 
 export class GitTools extends AssistantToolFactory {
     constructor(interactor: Interactor) {

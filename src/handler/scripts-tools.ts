@@ -5,7 +5,7 @@ import {Scripts} from "../service/scripts"
 import {AssistantToolFactory, Tool} from "./init-tools"
 import AssistantTool = Beta.AssistantTool
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
-import {CommandContext} from "../context";
+import {CommandContext} from "../command-context";
 
 export class ScriptsTools extends AssistantToolFactory {
 

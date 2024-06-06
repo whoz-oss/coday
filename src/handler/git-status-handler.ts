@@ -1,7 +1,7 @@
 import { runBash } from '../function/run-bash';
 import { Interactor } from '../interactor';
 import {CommandHandler} from "./command-handler";
-import {CommandContext} from "../context";
+import {CommandContext} from "../command-context";
 
 export class GitStatusHandler extends CommandHandler {
     commandWord = 'status'

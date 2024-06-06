@@ -8,7 +8,7 @@ import Assistant = Beta.Assistant;
 import {OpenaiTools} from "./openai-tools";
 import {Tool} from "./init-tools";
 import {ScriptsTools} from "./scripts-tools";
-import {CommandContext} from "../context";
+import {CommandContext} from "../command-context";
 
 const ASSISTANT_INSTRUCTIONS = `
 You are Coday, an AI assistant used interactively by users through a chat or alike interface.

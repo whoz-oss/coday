@@ -6,7 +6,7 @@ import {Beta} from "openai/resources"
 import {configService} from "../service/config-service";
 import {ApiName} from "../service/coday-config";
 import AssistantTool = Beta.AssistantTool;
-import {CommandContext} from "../context";
+import {CommandContext} from "../command-context";
 
 export class JiraTools extends AssistantToolFactory {
 

@@ -2,7 +2,7 @@ import {CommandHandler} from "./command-handler"
 import {Interactor} from "../interactor"
 import {OpenaiClient} from "./openai-client"
 import {configService} from "../service/config-service";
-import {CommandContext} from "../context";
+import {CommandContext} from "../command-context";
 
 export class OpenaiHandler extends CommandHandler {
     commandWord: string = 'ai'

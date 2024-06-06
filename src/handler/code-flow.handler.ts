@@ -1,5 +1,5 @@
 import { CommandHandler } from "./command-handler"
-import {CommandContext} from "../context";
+import {CommandContext} from "../command-context";
 
 export class CodeFlowHandler extends CommandHandler {
     commandWord: string = 'code'

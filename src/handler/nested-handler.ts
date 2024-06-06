@@ -1,6 +1,6 @@
 import {CommandHandler} from "./command-handler";
 import {Interactor} from "../interactor";
-import {CommandContext} from "../context";
+import {CommandContext} from "../command-context";
 
 export abstract class NestedHandler extends CommandHandler {
     handlers: CommandHandler[] = []

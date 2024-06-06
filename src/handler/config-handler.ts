@@ -1,6 +1,6 @@
 import {Interactor} from '../interactor';
 import {CommandHandler} from './command-handler';
-import {CommandContext} from '../context';
+import {CommandContext} from '../command-context';
 import {loadOrInitProjectConfig} from "../service/project-service";
 import {configService} from "../service/config-service";
 import {ApiIntegration, ApiName} from "../service/coday-config";

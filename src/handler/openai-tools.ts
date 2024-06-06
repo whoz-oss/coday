@@ -5,7 +5,7 @@ import {Interactor} from "../interactor"
 import {Beta} from "openai/resources"
 import {AssistantToolFactory, Tool} from "./init-tools";
 import AssistantTool = Beta.AssistantTool;
-import {CommandContext} from "../context";
+import {CommandContext} from "../command-context";
 
 export class OpenaiTools extends AssistantToolFactory {
 

@@ -6,7 +6,7 @@ import {GitHandler} from "./git-handler";
 import {DebugHandler} from "./debug-handler";
 import {RunBashHandler} from "./run-bash-handler";
 import {CodeFlowHandler} from "./code-flow.handler";
-import {CommandContext} from "../context";
+import {CommandContext} from "../command-context";
 
 export class MainHandler extends NestedHandler {
     commandWord: string = ''

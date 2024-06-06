@@ -5,7 +5,7 @@ import {Interactor} from "./src/interactor"
 import {TerminalInteractor} from "./src/terminal-interactor"
 import {ConfigHandler} from "./src/handler/config-handler"
 import path from 'path'
-import {CommandContext} from "./src/context";
+import {CommandContext} from "./src/command-context";
 
 const DATA_PATH: string = "/.coday"
 const MAX_ITERATIONS: number = 10
