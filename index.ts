@@ -1,11 +1,11 @@
 import {MainHandler} from "./src/handler"
-import {Context} from "./src/context"
 import os from 'os'
 import {existsSync, mkdirSync} from "node:fs"
 import {Interactor} from "./src/interactor"
 import {TerminalInteractor} from "./src/terminal-interactor"
 import {ConfigHandler} from "./src/handler/config-handler"
 import path from 'path'
+import {CommandContext} from "./src/context";
 
 const DATA_PATH: string = "/.coday"
 const MAX_ITERATIONS: number = 10
@@ -14,7 +14,7 @@ class Coday {
 
     codayPath: string
     userInfo: os.UserInfo<string>
-    context: Context | null = null
+    context: CommandContext | null = null
     mainHandler: MainHandler
     projectHandler: ConfigHandler
 
@@ -56,8 +56,9 @@ class Coday {
             }
 
             // add the user command to the queue and let handlers decompose it in many and resolve them ultimately
-            this.context.commandQueue.push(userCommand)
+            this.context.addCommands(userCommand)
 
+            // TODO: rework this signature, userCommand already added in the context...
             this.context = await this.mainHandler.handle(userCommand, this.context)
 
         } while (true)

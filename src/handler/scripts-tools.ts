@@ -1,11 +1,11 @@
 import {runBash} from "../function/run-bash"
-import {Context} from "../context"
 import {Interactor} from "../interactor"
 import {Beta} from "openai/resources"
 import {Scripts} from "../service/scripts"
 import {AssistantToolFactory, Tool} from "./init-tools"
 import AssistantTool = Beta.AssistantTool
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
+import {CommandContext} from "../context";
 
 export class ScriptsTools extends AssistantToolFactory {
 
@@ -13,11 +13,11 @@ export class ScriptsTools extends AssistantToolFactory {
         super(interactor)
     }
 
-    protected hasChanged(context: Context): boolean {
+    protected hasChanged(context: CommandContext): boolean {
         return this.lastToolInitContext?.project.scripts !== context.project.scripts
     }
 
-    protected buildTools(context: Context): Tool[] {
+    protected buildTools(context: CommandContext): Tool[] {
         const result: Tool[] = []
 
         const scripts: Scripts | undefined = context.project.scripts

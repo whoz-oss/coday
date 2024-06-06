@@ -1,6 +1,5 @@
 import {Interactor} from "../interactor";
 import OpenAI from "openai";
-import {Context} from "../context";
 import {AssistantStream} from "openai/lib/AssistantStream";
 import {Beta} from "openai/resources";
 import {JiraTools} from "./jira-tools";
@@ -9,6 +8,7 @@ import Assistant = Beta.Assistant;
 import {OpenaiTools} from "./openai-tools";
 import {Tool} from "./init-tools";
 import {ScriptsTools} from "./scripts-tools";
+import {CommandContext} from "../context";
 
 const ASSISTANT_INSTRUCTIONS = `
 You are Coday, an AI assistant used interactively by users through a chat or alike interface.
@@ -35,7 +35,7 @@ export class OpenaiClient {
         this.scriptTools = new ScriptsTools(interactor)
     }
 
-    async isReady(context: Context): Promise<boolean> {
+    async isReady(context: CommandContext): Promise<boolean> {
         this.apiKey = this.apiKeyProvider()
         if (!this.apiKey) {
             this.interactor.warn('OPENAI_API_KEY env var not set, skipping AI command')
@@ -89,7 +89,7 @@ export class OpenaiClient {
         return true
     }
 
-    async answer(command: string, context: Context): Promise<string> {
+    async answer(command: string, context: CommandContext): Promise<string> {
         this.textAccumulator = ""
         if (!await this.isReady(context)) {
             return "Openai client not ready"

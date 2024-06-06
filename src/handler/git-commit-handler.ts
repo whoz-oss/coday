@@ -1,7 +1,7 @@
 import { runBash } from '../function/run-bash';
-import { Context } from '../context';
 import { Interactor } from '../interactor';
 import { CommandHandler } from './command-handler';
+import {CommandContext} from "../context";
 
 export class GitCommitHandler extends CommandHandler {
     commandWord = 'commit';
@@ -11,7 +11,7 @@ export class GitCommitHandler extends CommandHandler {
         super();
     }
 
-    async handle(command: string, context: Context): Promise<Context> {
+    async handle(command: string, context: CommandContext): Promise<CommandContext> {
         if (!command) {
             this.interactor.error('Commit message is required.');
             return context;

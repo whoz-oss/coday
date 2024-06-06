@@ -1,8 +1,8 @@
-import {Context} from "../context"
 import {CommandHandler} from "./command-handler"
 import {Interactor} from "../interactor"
 import {OpenaiClient} from "./openai-client"
 import {configService} from "../service/config-service";
+import {CommandContext} from "../context";
 
 export class OpenaiHandler extends CommandHandler {
     commandWord: string = 'ai'
@@ -15,7 +15,7 @@ export class OpenaiHandler extends CommandHandler {
         this.openaiClient = new OpenaiClient(interactor, apiKeyProvider)
     }
 
-    async handle(command: string, context: Context): Promise<Context> {
+    async handle(command: string, context: CommandContext): Promise<CommandContext> {
         const cmd = this.getSubCommand(command)
 
         // Reset threadId when command is "reset"
@@ -31,6 +31,6 @@ export class OpenaiHandler extends CommandHandler {
             console.error(error)
             fullTextAnswer = error.toString()
         }
-        return {...context, history: [...context.history, {command, response: fullTextAnswer}]}
+        return context
     }
 }

@@ -1,11 +1,11 @@
 import {listFilesAndDirectories, readFileByPath, writeFile} from "../function"
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
 import {findFilesByName} from "../function/find-files-by-name"
-import {Context} from "../context"
 import {Interactor} from "../interactor"
 import {Beta} from "openai/resources"
 import {AssistantToolFactory, Tool} from "./init-tools";
 import AssistantTool = Beta.AssistantTool;
+import {CommandContext} from "../context";
 
 export class OpenaiTools extends AssistantToolFactory {
 
@@ -13,11 +13,11 @@ export class OpenaiTools extends AssistantToolFactory {
         super(interactor)
     }
 
-    protected hasChanged(context: Context): boolean {
+    protected hasChanged(context: CommandContext): boolean {
         return this.lastToolInitContext?.project.root !== context.project.root
     }
 
-    protected buildTools(context: Context): Tool[] {
+    protected buildTools(context: CommandContext): Tool[] {
         const result: Tool[] = []
 
         const readProjectFile = ({path}: { path: string }) => {
@@ -111,9 +111,9 @@ export class OpenaiTools extends AssistantToolFactory {
 
         const subTask = ({subTasks}: { subTasks: {description: string}[] }) => {
             subTasks.forEach(
-                subTask => this.interactor.displayText(`Sub-task received: ${subTask.description}`)
+                subTask => this.interactor.displayText(`Sub-task queued: ${subTask.description}`)
             )
-            context.commandQueue.unshift(...subTasks.map(subTask => `ai ${subTask.description}`))
+            context.addCommands(...subTasks.map(subTask => `ai ${subTask.description}`))
             return "sub-tasks received and queued for execution"
         }
 

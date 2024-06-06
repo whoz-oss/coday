@@ -1,5 +1,4 @@
-import {Context} from "../context";
-
+import {CommandContext} from "../context";
 
 export abstract class CommandHandler {
     abstract commandWord: string
@@ -8,9 +7,9 @@ export abstract class CommandHandler {
         return command.slice(this.commandWord.length).trim()
     }
 
-    accept(command: string, context: Context): boolean {
+    accept(command: string, context: CommandContext): boolean {
         return !!command && command.toLowerCase().startsWith(this.commandWord)
     }
 
-    abstract handle(command: string, context: Context): Promise<Context>
+    abstract handle(command: string, context: CommandContext): Promise<CommandContext>
 }

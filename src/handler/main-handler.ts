@@ -1,12 +1,12 @@
 import {CommandHandler} from "./command-handler";
 import {NestedHandler} from "./nested-handler";
-import {Context} from "../context";
 import {OpenaiHandler} from "./openai-handler";
 import {Interactor} from "../interactor";
 import {GitHandler} from "./git-handler";
 import {DebugHandler} from "./debug-handler";
 import {RunBashHandler} from "./run-bash-handler";
 import {CodeFlowHandler} from "./code-flow.handler";
+import {CommandContext} from "../context";
 
 export class MainHandler extends NestedHandler {
     commandWord: string = ''
@@ -33,16 +33,15 @@ export class MainHandler extends NestedHandler {
         ]
     }
 
-    accept(command: string, context: Context): boolean {
+    accept(command: string, context: CommandContext): boolean {
         return true
     }
 
-    async handle(command: string, context: Context): Promise<Context> {
+    async handle(_: string, context: CommandContext): Promise<CommandContext> {
         let count = 0
-        let innerContext = context
-        while (innerContext.commandQueue.length > 0 && count < this.maxIterations) {
+        let command = context.getFirstCommand()
+        while (!!command && count < this.maxIterations) {
             count++
-            const command: string | undefined = innerContext.commandQueue.shift()
             if (this.isHelpAsked(command)) {
                 this.interactor.displayText("  - [any other text] : defaults to asking the AI with the current context.")
                 this.interactor.displayText(`  - ${this.resetWord} : resets Coday's context`)
@@ -51,24 +50,28 @@ export class MainHandler extends NestedHandler {
             }
 
             // find first handler
-            const handler: CommandHandler | undefined = this.handlers.find((h: CommandHandler) => h.accept(command!, innerContext!))
+            const handler: CommandHandler | undefined = this.handlers.find((h: CommandHandler) => h.accept(command!, context))
 
             try {
                 // try handlers in their preference order
                 if (handler) {
-                    innerContext = await handler.handle(command!, innerContext)
+                    // TODO: remove very bad pattern of re-assigning context
+                    context = await handler.handle(command!, context)
                 } else {
                     // default case: repackage the command as an open question for AI
-                    innerContext.commandQueue.unshift(`${this.openaiHandler.commandWord} ${command}`)
+                    context.addCommands(`${this.openaiHandler.commandWord} ${command}`)
                 }
             } catch (error) {
                 this.interactor.error(`An error occurred while trying to process your request: ${error}`)
             }
+
+            // take next command for next loop
+            command = context.getFirstCommand()
         }
         if (count > this.maxIterations) {
             this.interactor.warn('Maximum iterations reached for a command')
         }
-        return innerContext
+        return context
     }
 
 }

@@ -1,4 +1,3 @@
-import {Context} from "../context"
 import {retrieveJiraTicket} from "../function"
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
 import {AssistantToolFactory, Tool} from "./init-tools"
@@ -7,6 +6,7 @@ import {Beta} from "openai/resources"
 import {configService} from "../service/config-service";
 import {ApiName} from "../service/coday-config";
 import AssistantTool = Beta.AssistantTool;
+import {CommandContext} from "../context";
 
 export class JiraTools extends AssistantToolFactory {
 
@@ -14,11 +14,11 @@ export class JiraTools extends AssistantToolFactory {
         super(interactor)
     }
 
-    protected hasChanged(context: Context): boolean {
+    protected hasChanged(context: CommandContext): boolean {
         return this.lastToolInitContext?.project.root !== context.project.root
     }
 
-    protected buildTools(context: Context): Tool[] {
+    protected buildTools(context: CommandContext): Tool[] {
         const result: Tool[] = []
         if (!configService.hasIntegration(ApiName.JIRA)) {
             return result

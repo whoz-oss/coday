@@ -1,7 +1,7 @@
 import {CommandHandler} from "./command-handler";
-import {Context} from "../context";
 import {runBash} from "../function/run-bash";
 import {Interactor} from "../interactor";
+import {CommandContext} from "../context";
 
 export class GitDefaultHandler extends CommandHandler {
     commandWord = "[anything else]";
@@ -11,12 +11,12 @@ export class GitDefaultHandler extends CommandHandler {
         super();
     }
 
-    accept(command: string, context: Context): boolean {
+    accept(command: string, context: CommandContext): boolean {
         // as a default, all checks have been already made
         return true
     }
 
-    async handle(command: string, context: Context): Promise<Context> {
+    async handle(command: string, context: CommandContext): Promise<CommandContext> {
         if (!command) {
             this.interactor.error("No git command provided.");
             return context;
