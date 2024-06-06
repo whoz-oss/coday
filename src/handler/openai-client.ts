@@ -1,6 +1,6 @@
 import {Interactor} from "../interactor";
 import OpenAI from "openai";
-import {CommandContext} from "../command-context";
+import {Context} from "../context";
 import {AssistantStream} from "openai/lib/AssistantStream";
 import {Beta} from "openai/resources";
 import {JiraTools} from "./jira-tools";
@@ -35,7 +35,7 @@ export class OpenaiClient {
         this.scriptTools = new ScriptsTools(interactor)
     }
 
-    async isReady(context: CommandContext): Promise<boolean> {
+    async isReady(context: Context): Promise<boolean> {
         this.apiKey = this.apiKeyProvider()
         if (!this.apiKey) {
             this.interactor.warn('OPENAI_API_KEY env var not set, skipping AI command')
@@ -89,7 +89,7 @@ export class OpenaiClient {
         return true
     }
 
-    async answer(command: string, context: CommandContext): Promise<string> {
+    async answer(command: string, context: Context): Promise<string> {
         this.textAccumulator = ""
         if (!await this.isReady(context)) {
             return "Openai client not ready"

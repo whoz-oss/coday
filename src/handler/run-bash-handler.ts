@@ -1,5 +1,5 @@
 import {CommandHandler} from "./command-handler";
-import {CommandContext} from "../command-context";
+import {Context} from "../context";
 import {runBash} from "../function/run-bash";
 import {Interactor} from "../interactor";
 
@@ -11,7 +11,7 @@ export class RunBashHandler extends CommandHandler {
         super();
     }
 
-    async handle(command: string, context: CommandContext): Promise<CommandContext> {
+    async handle(command: string, context: Context): Promise<Context> {
         const bashCommand = this.getSubCommand(command);
 
         if (!bashCommand) {

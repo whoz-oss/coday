@@ -1,4 +1,4 @@
-import {CommandContext} from "../command-context";
+import {Context} from "../context";
 import {CommandHandler} from "./command-handler";
 import {Interactor} from "../interactor";
 import {runBash} from "../function/run-bash";
@@ -11,7 +11,7 @@ export class DebugHandler extends CommandHandler {
         super()
     }
 
-    async handle(command: string, context: CommandContext): Promise<CommandContext> {
+    async handle(command: string, context: Context): Promise<Context> {
         const method = ({command, relPath}: {command: string, relPath: string}) => {
             return runBash({command, root: context.project.root, interactor: this.interactor})
         }

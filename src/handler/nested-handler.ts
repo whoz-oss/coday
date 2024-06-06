@@ -1,5 +1,5 @@
 import {CommandHandler} from "./command-handler";
-import {CommandContext} from "../command-context";
+import {Context} from "../context";
 import {Interactor} from "../interactor";
 
 export abstract class NestedHandler extends CommandHandler {
@@ -9,7 +9,7 @@ export abstract class NestedHandler extends CommandHandler {
         super()
     }
 
-    override accept(command: string, context: CommandContext): boolean {
+    override accept(command: string, context: Context): boolean {
         if (!super.accept(command, context)) {
             return false
         }
@@ -19,7 +19,7 @@ export abstract class NestedHandler extends CommandHandler {
         return !subCommand || !!this.handlers.find((h) => h.accept(subCommand, context))
     }
 
-    async handle(command: string, context: CommandContext): Promise<CommandContext> {
+    async handle(command: string, context: Context): Promise<Context> {
         const subCommand = this.getSubCommand(command)
 
         if (this.isHelpAsked(subCommand)) {

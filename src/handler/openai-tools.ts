@@ -1,7 +1,7 @@
 import {listFilesAndDirectories, readFileByPath, writeFile} from "../function"
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
 import {findFilesByName} from "../function/find-files-by-name"
-import {CommandContext} from "../command-context"
+import {Context} from "../context"
 import {Interactor} from "../interactor"
 import {Beta} from "openai/resources"
 import {AssistantToolFactory, Tool} from "./init-tools";
@@ -13,11 +13,11 @@ export class OpenaiTools extends AssistantToolFactory {
         super(interactor)
     }
 
-    protected hasChanged(context: CommandContext): boolean {
+    protected hasChanged(context: Context): boolean {
         return this.lastToolInitContext?.project.root !== context.project.root
     }
 
-    protected buildTools(context: CommandContext): Tool[] {
+    protected buildTools(context: Context): Tool[] {
         const result: Tool[] = []
 
         const readProjectFile = ({path}: { path: string }) => {

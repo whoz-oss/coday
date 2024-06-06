@@ -5,7 +5,7 @@ type History = {
     response: string
 }
 
-export type CommandContext = {
+export type Context = {
     project: {
         root: string
         description?: string

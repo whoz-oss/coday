@@ -1,11 +1,11 @@
-import { CommandContext } from "../command-context"
+import { Context } from "../context"
 import { CommandHandler } from "./command-handler"
 
 export class CodeFlowHandler extends CommandHandler {
     commandWord: string = 'code'
     description: string = 'expand the request into a flow of request : analysis, implementation, test and review'
 
-    async handle(command: string, context: CommandContext): Promise<CommandContext> {
+    async handle(command: string, context: Context): Promise<Context> {
         const cmd = this.getSubCommand(command)
         
         const expertInstructions = `

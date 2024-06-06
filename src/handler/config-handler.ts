@@ -1,6 +1,6 @@
 import {Interactor} from '../interactor';
 import {CommandHandler} from './command-handler';
-import {CommandContext} from '../command-context';
+import {Context} from '../context';
 import {loadOrInitProjectConfig} from "../service/project-service";
 import {configService} from "../service/config-service";
 import {ApiIntegration, ApiName} from "../service/coday-config";
@@ -13,9 +13,9 @@ export class ConfigHandler extends CommandHandler {
         super();
     }
 
-    async handle(command: string, context: CommandContext): Promise<CommandContext> {
+    async handle(command: string, context: Context): Promise<Context> {
         const cmd = this.getSubCommand(command)
-        let result: CommandContext | null = context
+        let result: Context | null = context
         if (!cmd) {
             this.interactor.displayText(`${this.commandWord} can accept sub-commands: add-project, select-project, edit-integration.`);
         }
@@ -39,7 +39,7 @@ export class ConfigHandler extends CommandHandler {
     /**
      * Initialize the CommandContext when starting Coday interactive loop.
      */
-    initContext(): CommandContext | null {
+    initContext(): Context | null {
         if (!configService.projectNames.length) { // no projects at all, force user define one
             this.interactor.displayText("No existing project, please define one by its name");
             return this.addProject();
@@ -52,7 +52,7 @@ export class ConfigHandler extends CommandHandler {
         return this.selectProject(lastProject);
     }
 
-    private chooseProject(): CommandContext|null {
+    private chooseProject(): Context|null {
         const names = configService.projectNames
         const selection = this.interactor.chooseOption(names, 'Selection: ', 'Choose an existing project by number, type "new" to create one');
         if (selection === 'new') {
@@ -67,7 +67,7 @@ export class ConfigHandler extends CommandHandler {
         }
     }
 
-    private addProject(): CommandContext | null {
+    private addProject(): Context | null {
         const projectName = this.interactor.promptText("Project name");
         const projectPath = this.interactor.promptText("Project path, no trailing slash");
         configService.addProject(projectName, projectPath);
@@ -78,7 +78,7 @@ export class ConfigHandler extends CommandHandler {
         configService.resetProjectSelection();
     }
 
-    private selectProject(name: string): CommandContext | null {
+    private selectProject(name: string): Context | null {
         if (!name && !configService.lastProject) {
             this.interactor.error("No project selected nor known.");
             return null;

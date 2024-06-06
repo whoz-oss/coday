@@ -1,6 +1,6 @@
 import {CommandHandler} from "./command-handler";
 import {NestedHandler} from "./nested-handler";
-import {CommandContext} from "../command-context";
+import {Context} from "../context";
 import {OpenaiHandler} from "./openai-handler";
 import {Interactor} from "../interactor";
 import {GitHandler} from "./git-handler";
@@ -33,11 +33,11 @@ export class MainHandler extends NestedHandler {
         ]
     }
 
-    accept(command: string, context: CommandContext): boolean {
+    accept(command: string, context: Context): boolean {
         return true
     }
 
-    async handle(command: string, context: CommandContext): Promise<CommandContext> {
+    async handle(command: string, context: Context): Promise<Context> {
         let count = 0
         let innerContext = context
         while (innerContext.commandQueue.length > 0 && count < this.maxIterations) {

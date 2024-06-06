@@ -1,4 +1,4 @@
-import {CommandContext} from "../command-context"
+import {Context} from "../context"
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
 import {Interactor} from "../interactor"
 import {Beta} from "openai/resources"
@@ -8,12 +8,12 @@ export type Tool = AssistantTool & RunnableToolFunction<any>
 
 export abstract class AssistantToolFactory {
     tools: Tool[] = []
-    lastToolInitContext: CommandContext | null = null
+    lastToolInitContext: Context | null = null
     protected constructor(protected interactor: Interactor) {}
-    protected abstract hasChanged(context: CommandContext): boolean
-    protected abstract buildTools(context: CommandContext): Tool[]
+    protected abstract hasChanged(context: Context): boolean
+    protected abstract buildTools(context: Context): Tool[]
 
-    getTools(context: CommandContext): Tool[] {
+    getTools(context: Context): Tool[] {
         if (!this.lastToolInitContext || this.hasChanged(context)) {
             this.lastToolInitContext = context
             this.tools = this.buildTools(context)

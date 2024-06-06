@@ -1,4 +1,4 @@
-import {CommandContext} from "../command-context"
+import {Context} from "../context"
 import {CommandHandler} from "./command-handler"
 import {Interactor} from "../interactor"
 import {OpenaiClient} from "./openai-client"
@@ -15,7 +15,7 @@ export class OpenaiHandler extends CommandHandler {
         this.openaiClient = new OpenaiClient(interactor, apiKeyProvider)
     }
 
-    async handle(command: string, context: CommandContext): Promise<CommandContext> {
+    async handle(command: string, context: Context): Promise<Context> {
         const cmd = this.getSubCommand(command)
 
         // Reset threadId when command is "reset"

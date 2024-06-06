@@ -1,5 +1,5 @@
 import {MainHandler} from "./src/handler"
-import {CommandContext} from "./src/command-context"
+import {Context} from "./src/context"
 import os from 'os'
 import {existsSync, mkdirSync} from "node:fs"
 import {Interactor} from "./src/interactor"
@@ -14,7 +14,7 @@ class Coday {
 
     codayPath: string
     userInfo: os.UserInfo<string>
-    context: CommandContext | null = null
+    context: Context | null = null
     mainHandler: MainHandler
     projectHandler: ConfigHandler
 
