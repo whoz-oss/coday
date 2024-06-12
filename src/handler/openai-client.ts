@@ -4,11 +4,11 @@ import {AssistantStream} from "openai/lib/AssistantStream";
 import {Beta} from "openai/resources";
 import {JiraTools} from "./jira-tools";
 import {GitTools} from "./git-tools";
-import Assistant = Beta.Assistant;
 import {OpenaiTools} from "./openai-tools";
 import {Tool} from "./init-tools";
 import {ScriptsTools} from "./scripts-tools";
 import {CommandContext} from "../command-context";
+import Assistant = Beta.Assistant;
 
 const ASSISTANT_INSTRUCTIONS = `
 You are Coday, an AI assistant used interactively by users through a chat or alike interface.
@@ -16,10 +16,11 @@ By providing a sound and logic reasoning, you answer concisely to the user reque
 You are curious and will use the provided functions to gather a bit more knowledge than you need to answer the request.
 Unless explicitly asked for, keep your answers short.`
 
+type AssistantReference = { name: string, id: string }
+
 export class OpenaiClient {
     openai: OpenAI | undefined
     threadId: string | null = null
-    assistantId: string | null = null
     textAccumulator: string = ""
 
     openaiTools: OpenaiTools
@@ -27,6 +28,8 @@ export class OpenaiClient {
     gitTools: GitTools
     scriptTools: ScriptsTools
     apiKey: string | undefined
+    assistants: AssistantReference[] = []
+    assistant: AssistantReference | undefined
 
     constructor(private interactor: Interactor, private apiKeyProvider: () => string | undefined) {
         this.openaiTools = new OpenaiTools(interactor)
@@ -35,7 +38,7 @@ export class OpenaiClient {
         this.scriptTools = new ScriptsTools(interactor)
     }
 
-    async isReady(context: CommandContext): Promise<boolean> {
+    async isReady(assistantName: string, context: CommandContext): Promise<boolean> {
         this.apiKey = this.apiKeyProvider()
         if (!this.apiKey) {
             this.interactor.warn('OPENAI_API_KEY env var not set, skipping AI command')
@@ -48,33 +51,7 @@ export class OpenaiClient {
             })
         }
 
-        if (!this.assistantId) {
-            let after: string | undefined = undefined
-            let mine: Assistant | undefined
-            do {
-                const fetchedAssistants: Assistant[] = (await this.openai.beta.assistants.list({
-                        order: 'asc',
-                        after,
-                        limit: 100,
-                    }).withResponse()
-                )
-                    .data
-                    .getPaginatedItems()
-                mine = fetchedAssistants.find(a => a.name === `Coday_alpha`)
-                after = fetchedAssistants.length > 0 ? fetchedAssistants[fetchedAssistants.length - 1].id : undefined;
-            } while (after && !mine);
-
-            if (!mine) {
-                mine = await this.openai.beta.assistants.create({
-                    name: `Coday_alpha`,
-                    model: "gpt-4o",
-                    instructions: ASSISTANT_INSTRUCTIONS,
-                })
-                this.interactor.displayText(`Created assistant ${mine.id}`)
-            }
-
-            this.assistantId = mine.id
-        }
+        this.assistant = await this.findAssistant(assistantName, context)
 
         if (!this.threadId) {
             const thread = (await this.openai.beta.threads.create())
@@ -89,9 +66,11 @@ export class OpenaiClient {
         return true
     }
 
-    async answer(command: string, context: CommandContext): Promise<string> {
+    async answer(name: string, command: string, context: CommandContext): Promise<string> {
+        const assistantName = name.toLowerCase()
+
         this.textAccumulator = ""
-        if (!await this.isReady(context)) {
+        if (!await this.isReady(assistantName, context)) {
             return "Openai client not ready"
         }
 
@@ -105,9 +84,8 @@ export class OpenaiClient {
             role: 'user',
             content: command
         })
-        this.interactor.displayText("Asking Openai...")
         const assistantStream = this.openai!.beta.threads.runs.stream(this.threadId!, {
-            assistant_id: this.assistantId!,
+            assistant_id: this.assistant!.id,
             tools,
             tool_choice: "auto"
         })
@@ -121,7 +99,7 @@ export class OpenaiClient {
 
     async processStream(stream: AssistantStream, tools: Tool[]) {
         stream.on('textDone', (diff) => {
-            this.interactor.displayText(diff.value, 'Coday')
+            this.interactor.displayText(diff.value, this.assistant?.name)
             this.textAccumulator += diff.value
         })
         for await (const chunk of stream) {
@@ -178,5 +156,52 @@ export class OpenaiClient {
     reset(): void {
         this.threadId = null
         this.interactor.displayText("Thread has been reset")
+    }
+
+    private async findAssistant(name: string, context: CommandContext): Promise<AssistantReference> {
+
+        // init map name -> id
+        if (!this.assistants.length) {
+            let after: string | undefined = undefined
+            do {
+                const fetchedAssistants: Assistant[] = (await this.openai!.beta.assistants.list({
+                        order: 'asc',
+                        after,
+                        limit: 100,
+                    }).withResponse()
+                )
+                    .data
+                    .getPaginatedItems()
+                this.assistants.push(...fetchedAssistants.filter(a => !!a.name).map(a => ({
+                    name: a.name as string,
+                    id: a.id
+                })))
+                after = fetchedAssistants.length > 0 ? fetchedAssistants[fetchedAssistants.length - 1].id : undefined;
+            } while (after);
+        }
+
+        // then find all names that could match the given one
+        const matchingAssistants = this.assistants.filter(a => a.name.toLowerCase().startsWith(name))
+
+        if (matchingAssistants.length === 1) {
+            return matchingAssistants[0]
+        }
+        if (matchingAssistants.length > 1) {
+            const selection = this.interactor.chooseOption(matchingAssistants.map(m => m.name), "Type the assistant number you want", `Found ${matchingAssistants.length} assistants that start with ${name}/`)
+            const index = parseInt(selection)
+            return matchingAssistants[index]
+        }
+        throw new Error("no matching assistant")
+
+        // TODO: adapt this previous fallback on creating the assistant when not existing but on the project assistant description
+        // if (!mine) {
+        //     mine = await this.openai.beta.assistants.create({
+        //         name: `Coday_alpha`,
+        //         model: "gpt-4o",
+        //         instructions: ASSISTANT_INSTRUCTIONS,
+        //     })
+        //     this.interactor.displayText(`Created assistant ${mine.id}`)
+        // }
+
     }
 }
