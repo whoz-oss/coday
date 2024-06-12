@@ -1,7 +1,25 @@
-export type Task = {
-    command: string
-    aiId?: string // absent = use current or default, present = use defined one
-    threadId?: string | null // absent = use current or default, present falsy = need a new one, present truthy = use it
+export type Data = {[key: string]: string }
+
+export type ICommand = {
+    getCommandToStart(): string
+    getData(key: string): string | undefined
+    setData(key: string, value: string): void
 }
 
-export type NestableTask = Task | Task[]
+export class Command implements ICommand {
+    constructor(private readonly command: string) {}
+
+    data = new Map<string, string>()
+
+    getData(key: string): string | undefined {
+        return this.data.get(key)
+    }
+    setData(key: string, value: string): void {
+        this.data.set(key, value)
+    }
+    getCommandToStart(): string {
+        return this.command
+    }
+
+
+}

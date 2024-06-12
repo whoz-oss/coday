@@ -37,7 +37,7 @@ export abstract class NestedHandler extends CommandHandler {
     }
 
     isHelpAsked(command?: string): boolean {
-        const help = !command || command === "help" || command === "h"
+        const help = command === "" || command === "help" || command === "h"
         if (help) {
             this.interactor.displayText("Available commands:")
             this.interactor.displayText("  - help/h : displays this help message")

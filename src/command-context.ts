@@ -1,8 +1,8 @@
 import {Scripts} from "./service/scripts";
 
-type History = {
-    command: string
-    response: string
+type CommandQueue = {
+    commands: (string|CommandQueue)[]
+    data: {[key: string]: string }
 }
 
 export type Project = {

@@ -39,13 +39,18 @@ export class MainHandler extends NestedHandler {
 
     async handle(_: string, context: CommandContext): Promise<CommandContext> {
         let count = 0
-        let command = context.getFirstCommand()
-        while (!!command && count < this.maxIterations) {
+        let command: string | undefined
+        do {
+            command = context.getFirstCommand()
             count++
             if (this.isHelpAsked(command)) {
                 this.interactor.displayText("  - [any other text] : defaults to asking the AI with the current context.")
                 this.interactor.displayText(`  - ${this.resetWord} : resets Coday's context`)
                 this.interactor.displayText(`  - ${this.exitWord} : quits the program`)
+                command = undefined
+                continue
+            }
+            if (!command) {
                 continue
             }
 
@@ -53,7 +58,6 @@ export class MainHandler extends NestedHandler {
             const handler: CommandHandler | undefined = this.handlers.find((h: CommandHandler) => h.accept(command!, context))
 
             try {
-                // try handlers in their preference order
                 if (handler) {
                     // TODO: remove very bad pattern of re-assigning context
                     context = await handler.handle(command!, context)
@@ -64,11 +68,8 @@ export class MainHandler extends NestedHandler {
             } catch (error) {
                 this.interactor.error(`An error occurred while trying to process your request: ${error}`)
             }
-
-            // take next command for next loop
-            command = context.getFirstCommand()
-        }
-        if (count > this.maxIterations) {
+        } while (!!command && count < this.maxIterations)
+        if (count >= this.maxIterations) {
             this.interactor.warn('Maximum iterations reached for a command')
         }
         return context
