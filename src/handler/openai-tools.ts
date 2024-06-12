@@ -109,42 +109,43 @@ export class OpenaiTools extends AssistantToolFactory {
         }
         result.push(listProjectFilesAndDirectoriesFunction)
 
-        const subTask = ({subTasks}: { subTasks: {description: string}[] }) => {
-            subTasks.forEach(
-                subTask => this.interactor.displayText(`Sub-task queued: ${subTask.description}`)
-            )
-            context.addCommands(...subTasks.map(subTask => `ai ${subTask.description}`))
-            return "sub-tasks received and queued for execution"
-        }
-
-        const subTaskFunction: AssistantTool & RunnableToolFunction<{ subTasks: {description: string}[] }> = {
-            type: "function",
-            function: {
-                name: "subTask",
-                description: "Break down the current assignment into several simpler sub-tasks that will be run sequentially.",
-                parameters: {
-                    type: "object",
-                    properties: {
-                        subTasks: {
-                            type: "array",
-                            description: "Ordered list of sub-tasks",
-                            items: {
-                                type: "object",
-                                properties: {
-                                    description: {
-                                        type: "string",
-                                        description: "Description of the sub-task. Take care to add a little bit of context but mainly focus on the task, describing the expectations on its completion."
-                                    }
-                                }
-                            }
-                        },
-                    }
-                },
-                parse: JSON.parse,
-                function: subTask
-            }
-        }
-        result.push(subTaskFunction)
+        // TODO: not really working, LLM tries by itself to do all tasks defined before they are consumed from the queue
+        // const subTask = ({subTasks}: { subTasks: {description: string}[] }) => {
+        //     subTasks.forEach(
+        //         subTask => this.interactor.displayText(`Sub-task queued: ${subTask.description}`)
+        //     )
+        //     context.addCommands(...subTasks.map(subTask => `ai ${subTask.description}`))
+        //     return "sub-tasks received and queued for execution"
+        // }
+        //
+        // const subTaskFunction: AssistantTool & RunnableToolFunction<{ subTasks: {description: string}[] }> = {
+        //     type: "function",
+        //     function: {
+        //         name: "subTask",
+        //         description: "Break down the current assignment into several simpler sub-tasks that will be run sequentially.",
+        //         parameters: {
+        //             type: "object",
+        //             properties: {
+        //                 subTasks: {
+        //                     type: "array",
+        //                     description: "Ordered list of sub-tasks",
+        //                     items: {
+        //                         type: "object",
+        //                         properties: {
+        //                             description: {
+        //                                 type: "string",
+        //                                 description: "Description of the sub-task. Take care to add a little bit of context but mainly focus on the task, describing the expectations on its completion."
+        //                             }
+        //                         }
+        //                     }
+        //                 },
+        //             }
+        //         },
+        //         parse: JSON.parse,
+        //         function: subTask
+        //     }
+        // }
+        // result.push(subTaskFunction)
 
         return result
 

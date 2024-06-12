@@ -100,9 +100,8 @@ export class ConfigHandler extends CommandHandler {
         this.interactor.displayText(`Project ${name} selected`);
 
         return new CommandContext({
+            ...projectConfig,
             root: projectPath,
-            description: projectConfig?.description,
-            scripts: projectConfig?.scripts
         }, this.username)
     }
 
