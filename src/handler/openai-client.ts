@@ -92,7 +92,8 @@ export class OpenaiClient {
         const tools = [
             ...this.openaiTools.getTools(context),
             ...this.jiraTools.getTools(context),
-            ...this.gitTools.getTools(context)
+            ...this.gitTools.getTools(context),
+            ...this.scriptTools.getTools(context)
         ]
 
         await this.openai!.beta.threads.messages.create(this.threadId!, {
