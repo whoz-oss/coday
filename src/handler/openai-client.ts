@@ -81,10 +81,6 @@ export class OpenaiClient {
         return true
     }
 
-    private getProjectAssistants(context: CommandContext): AssistantDescription[] | undefined {
-        return context.project.assistants ? [CODAY_DESCRIPTION, ...context.project.assistants] : undefined
-    }
-
     async answer(name: string, command: string, context: CommandContext): Promise<string> {
         const assistantName = name.toLowerCase()
 
@@ -114,9 +110,7 @@ export class OpenaiClient {
         await assistantStream.finalRun()
 
         // here, to loop among assistants mentioning each other, we should check for '@name' tokens in the text and add as many commands in the context to answer
-        // get all assistant names of the project
-        const projectAssistantNames = context.project.assistants?.map(a => a.name)
-        const mentionsToSearch = projectAssistantNames?.filter(n => n !== this.assistant?.name).map(name => `@${name}`)
+        const mentionsToSearch = this.getProjectAssistants(context)?.map(a => a.name)?.filter(n => n !== this.assistant?.name).map(name => `@${name}`)
 
         // search for mentions
         mentionsToSearch?.forEach(mention => {
@@ -188,6 +182,10 @@ export class OpenaiClient {
     reset(): void {
         this.threadId = null
         this.interactor.displayText("Thread has been reset")
+    }
+
+    private getProjectAssistants(context: CommandContext): AssistantDescription[] | undefined {
+        return context.project.assistants ? [CODAY_DESCRIPTION, ...context.project.assistants] : undefined
     }
 
     private async initAssistantList(): Promise<void> {
