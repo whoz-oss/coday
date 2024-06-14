@@ -23,9 +23,10 @@ export class ScriptsTools extends AssistantToolFactory {
         const scripts: Scripts | undefined = context.project.scripts
         const scriptFunctions = scripts ?
             Object.entries(scripts).map(entry => {
-                const script = async () => {
+                const script = async (params: {[param: string]: string}) => {
+                    const commandWithParams = `${entry[1].command} ${Object.values(params).join(' ')}
                     return await runBash({
-                        command: entry[1].command,
+                        command: commandWithParams,
                         root: context.project.root,
                         interactor: this.interactor,
                         requireConfirmation: false
@@ -38,8 +39,12 @@ export class ScriptsTools extends AssistantToolFactory {
                         description: entry[1].description,
                         parameters: {
                             type: "object",
-                            properties: {}
+                            properties: entry[1].parameters.reduce((acc, param) => {
+                                acc[param] = { type: "string" }
+                                return acc
+                            }, {})
                         },
+                        required: entry[1].parameters,
                         parse: JSON.parse,
                         function: script
                     }
