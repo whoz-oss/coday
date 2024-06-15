@@ -3,9 +3,9 @@ import {Interactor} from "../interactor"
 import {Beta} from "openai/resources"
 import {Scripts} from "../service/scripts"
 import {AssistantToolFactory, Tool} from "./init-tools"
-import AssistantTool = Beta.AssistantTool
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
 import {CommandContext} from "../command-context";
+import AssistantTool = Beta.AssistantTool;
 
 export class ScriptsTools extends AssistantToolFactory {
 
@@ -23,8 +23,8 @@ export class ScriptsTools extends AssistantToolFactory {
         const scripts: Scripts | undefined = context.project.scripts
         const scriptFunctions = scripts ?
             Object.entries(scripts).map(entry => {
-                const script = async (params: {[param: string]: string}) => {
-                    const commandWithParams = `${entry[1].command} ${Object.values(params).join(' ')}
+                const script = async (params: any) => {
+                    const commandWithParams = `${entry[1].command} ${params?.stringParameters ?? ''}`
                     return await runBash({
                         command: commandWithParams,
                         root: context.project.root,
@@ -39,12 +39,8 @@ export class ScriptsTools extends AssistantToolFactory {
                         description: entry[1].description,
                         parameters: {
                             type: "object",
-                            properties: entry[1].parameters.reduce((acc, param) => {
-                                acc[param] = { type: "string" }
-                                return acc
-                            }, {})
+                            properties: entry[1].parametersDescription ? { stringParameters: {type: "string", description: entry[1].parametersDescription}} : {}
                         },
-                        required: entry[1].parameters,
                         parse: JSON.parse,
                         function: script
                     }
