@@ -40,7 +40,7 @@ export abstract class NestedHandler extends CommandHandler {
         const help = command === "" || command === "help" || command === "h"
         if (help) {
             this.interactor.displayText("Available commands:")
-            this.interactor.displayText("  - help/h : displays this help message")
+            this.interactor.displayText("  - help/h/[nothing] : displays this help message")
             this.handlers
                 .slice()
                 .sort((a, b) => a.commandWord.localeCompare(b.commandWord))

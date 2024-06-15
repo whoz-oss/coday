@@ -6,7 +6,7 @@ import {CommandContext} from "../command-context";
 
 export class OpenaiHandler extends CommandHandler {
     commandWord: string = '@'
-    description: string = "calls the AI with the given command and current context. 'reset' for using a new thread."
+    description: string = "calls the AI with the given command and current context. 'reset' for using a new thread. You can call whatever assistant in your openai account by its name, ex: joke_generator called by @jok (choice prompt if multiple matches)."
     openaiClient: OpenaiClient
 
     constructor(private interactor: Interactor) {
