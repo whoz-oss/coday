@@ -4,8 +4,8 @@ import {Beta} from "openai/resources"
 import {Scripts} from "../service/scripts"
 import {AssistantToolFactory, Tool} from "./init-tools"
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
-import {CommandContext} from "../command-context";
-import AssistantTool = Beta.AssistantTool;
+import {CommandContext} from "../command-context"
+import AssistantTool = Beta.AssistantTool
 
 export class ScriptsTools extends AssistantToolFactory {
 
@@ -24,7 +24,12 @@ export class ScriptsTools extends AssistantToolFactory {
         const scriptFunctions = scripts ?
             Object.entries(scripts).map(entry => {
                 const script = async (params: any) => {
-                    const commandWithParams = `${entry[1].command} ${params?.stringParameters ?? ''}`
+                    let commandWithParams
+                    if (entry[1].command.includes("PARAMETERS")) {
+                        commandWithParams = entry[1].command.replace("PARAMETERS", params?.stringParameters ?? '')
+                    } else {
+                        commandWithParams = `${entry[1].command} ${params?.stringParameters ?? ''}`
+                    }
                     return await runBash({
                         command: commandWithParams,
                         root: context.project.root,
