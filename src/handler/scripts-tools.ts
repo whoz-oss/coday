@@ -7,6 +7,8 @@ import {RunnableToolFunction} from "openai/lib/RunnableFunction"
 import {CommandContext} from "../command-context"
 import AssistantTool = Beta.AssistantTool
 
+const PARAMETERS: string = "PARAMETERS"
+
 export class ScriptsTools extends AssistantToolFactory {
 
     constructor(interactor: Interactor) {
@@ -25,8 +27,8 @@ export class ScriptsTools extends AssistantToolFactory {
             Object.entries(scripts).map(entry => {
                 const script = async (params: any) => {
                     let commandWithParams
-                    if (entry[1].command.includes("PARAMETERS")) {
-                        commandWithParams = entry[1].command.replace("PARAMETERS", params?.stringParameters ?? '')
+                    if (entry[1].command.includes(PARAMETERS)) {
+                        commandWithParams = entry[1].command.replace(PARAMETERS, params?.stringParameters ?? '')
                     } else {
                         commandWithParams = `${entry[1].command} ${params?.stringParameters ?? ''}`
                     }
