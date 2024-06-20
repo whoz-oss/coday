@@ -72,7 +72,11 @@ export class OpenaiClient {
             if (projectAssistantReferences?.length) {
                 await this.openai.beta.threads.messages.create(this.threadId, {
                     role: 'assistant',
-                    content: `Here the assistants available on this project (by name : description) : \n${projectAssistantReferences.join("\n")}\nTo involve them in the thread, just mention them with an '@' prefix on their name and explain what is expected from them.\nExample: '... and by the way, @otherAssistant, check this part of the request'.`
+                    content: `Here the assistants available on this project (by name : description) : \n${projectAssistantReferences.join("\n")}\n
+                    
+                    Try as much as you can to delegate to other assistants.
+                    
+                    To involve them in the thread, just mention them with an '@' prefix on their name and explain what is expected from them.\nExample: '... and by the way, @otherAssistant, check this part of the request'.`
                 })
             }
 
