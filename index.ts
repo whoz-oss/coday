@@ -36,7 +36,7 @@ class Coday {
         do {
             // initiate context in loop for when context is cleared
             if (!this.context) {
-                this.context = this.projectHandler.initContext()
+                this.context = await this.projectHandler.initContext()
                 continue
             }
             // allow user input

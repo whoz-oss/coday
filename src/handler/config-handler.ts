@@ -20,10 +20,10 @@ export class ConfigHandler extends CommandHandler {
             this.interactor.displayText(`${this.commandWord} can accept sub-commands: add-project, select-project, edit-integration.`);
         }
         if (cmd === "add-project") {
-            result = this.addProject()
+            result = await this.addProject()
         }
         if (cmd === "select-project") {
-            result = this.chooseProject()
+            result = await this.chooseProject()
         }
         if (cmd === "edit-integration") {
             // nothing to do on the context here
@@ -39,7 +39,7 @@ export class ConfigHandler extends CommandHandler {
     /**
      * Initialize the CommandContext when starting Coday interactive loop.
      */
-    initContext(): CommandContext | null {
+    async initContext(): Promise<CommandContext | null> {
         if (!configService.projectNames.length) { // no projects at all, force user define one
             this.interactor.displayText("No existing project, please define one by its name");
             return this.addProject();
@@ -47,12 +47,12 @@ export class ConfigHandler extends CommandHandler {
         const lastProject = configService.lastProject
         if (!lastProject) { // projects but no previous selection
             // no last project selected, force selection of one
-            return this.chooseProject()
+            return await this.chooseProject()
         }
-        return this.selectProject(lastProject);
+        return await this.selectProject(lastProject);
     }
 
-    private chooseProject(): CommandContext|null {
+    private async chooseProject(): Promise<CommandContext|null> {
         const names = configService.projectNames
         const selection = this.interactor.chooseOption(names, 'Selection: ', 'Choose an existing project by number, type "new" to create one');
         if (selection === 'new') {
@@ -60,25 +60,25 @@ export class ConfigHandler extends CommandHandler {
         }
         try {
             const index = parseInt(selection);
-            return this.selectProject(names[index]);
+            return await this.selectProject(names[index]);
         } catch (_) {
             this.interactor.error("Invalid project selection");
             return null;
         }
     }
 
-    private addProject(): CommandContext | null {
+    private async addProject(): Promise<CommandContext | null> {
         const projectName = this.interactor.promptText("Project name");
         const projectPath = this.interactor.promptText("Project path, no trailing slash");
         configService.addProject(projectName, projectPath);
-        return this.selectProject(projectName);
+        return await this.selectProject(projectName);
     }
 
     resetProjectSelection(): void {
         configService.resetProjectSelection();
     }
 
-    private selectProject(name: string): CommandContext | null {
+    private async selectProject(name: string): Promise<CommandContext | null> {
         if (!name && !configService.lastProject) {
             this.interactor.error("No project selected nor known.");
             return null;
@@ -95,7 +95,7 @@ export class ConfigHandler extends CommandHandler {
             return null
         }
 
-        const projectConfig = loadOrInitProjectConfig(projectPath)
+        const projectConfig = await loadOrInitProjectConfig(projectPath, this.interactor)
 
         this.interactor.displayText(`Project ${name} selected`);
 
