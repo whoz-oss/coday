@@ -64,7 +64,10 @@ export class OpenaiClient {
 
             await this.openai.beta.threads.messages.create(this.threadId, {
                 role: 'assistant',
-                content: `Specific project context: ${context.project.description}`
+                content: `Specific project context: ${context.project.description}
+                
+                You are interacting with a human with username:${context.username}
+                `
             })
 
             const projectAssistants = this.getProjectAssistants(context)
