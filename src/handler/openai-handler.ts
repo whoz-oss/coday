@@ -8,6 +8,7 @@ export class OpenaiHandler extends CommandHandler {
     commandWord: string = '@'
     description: string = "calls the AI with the given command and current context. 'reset' for using a new thread. You can call whatever assistant in your openai account by its name, ex: joke_generator called by @jok (choice prompt if multiple matches)."
     openaiClient: OpenaiClient
+    lastAssistantName?: string
 
     constructor(private interactor: Interactor) {
         super()
@@ -20,15 +21,18 @@ export class OpenaiHandler extends CommandHandler {
         // Reset threadId when command is "reset"
         if (cmd.trim() === "reset") {
             this.openaiClient.reset()
+            this.lastAssistantName = undefined
             return context
         }
 
-        const assistantName = this.getAssistantNameIfValid(cmd)
+        let assistantName = this.getAssistantNameIfValid(cmd) || this.lastAssistantName
         if (!assistantName) {
             // no valid command
             this.interactor.warn("command not understood, skipped.")
             return context
         }
+
+        this.lastAssistantName = assistantName // Store the assistant name
 
         let fullTextAnswer: string
         try {
@@ -46,6 +50,5 @@ export class OpenaiHandler extends CommandHandler {
             return undefined
         }
         return firstSpaceIndex === 0 ? "Coday_alpha" : cmd.slice(0, firstSpaceIndex)
-
     }
 }
