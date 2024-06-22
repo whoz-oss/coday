@@ -1,5 +1,5 @@
 #!/bin/bash
 
-git pull
-yarn install
+./update.sh
+yarn update
 yarn run start

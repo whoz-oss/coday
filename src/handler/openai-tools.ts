@@ -1,6 +1,5 @@
-import {listFilesAndDirectories, readFileByPath, writeFile} from "../function"
+import {listFilesAndDirectories, readFileByPath, writeFile, findFilesByText, findFilesByName} from "../function"
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
-import {findFilesByName} from "../function/find-files-by-name"
 import {Interactor} from "../interactor"
 import {Beta} from "openai/resources"
 import {AssistantToolFactory, Tool} from "./init-tools";
@@ -109,45 +108,42 @@ export class OpenaiTools extends AssistantToolFactory {
         }
         result.push(listProjectFilesAndDirectoriesFunction)
 
-        // TODO: not really working, LLM tries by itself to do all tasks defined before they are consumed from the queue
-        // const subTask = ({subTasks}: { subTasks: {description: string}[] }) => {
-        //     subTasks.forEach(
-        //         subTask => this.interactor.displayText(`Sub-task queued: ${subTask.description}`)
-        //     )
-        //     context.addCommands(...subTasks.map(subTask => `ai ${subTask.description}`))
-        //     return "sub-tasks received and queued for execution"
-        // }
-        //
-        // const subTaskFunction: AssistantTool & RunnableToolFunction<{ subTasks: {description: string}[] }> = {
-        //     type: "function",
-        //     function: {
-        //         name: "subTask",
-        //         description: "Break down the current assignment into several simpler sub-tasks that will be run sequentially.",
-        //         parameters: {
-        //             type: "object",
-        //             properties: {
-        //                 subTasks: {
-        //                     type: "array",
-        //                     description: "Ordered list of sub-tasks",
-        //                     items: {
-        //                         type: "object",
-        //                         properties: {
-        //                             description: {
-        //                                 type: "string",
-        //                                 description: "Description of the sub-task. Take care to add a little bit of context but mainly focus on the task, describing the expectations on its completion."
-        //                             }
-        //                         }
-        //                     }
-        //                 },
-        //             }
-        //         },
-        //         parse: JSON.parse,
-        //         function: subTask
-        //     }
-        // }
-        // result.push(subTaskFunction)
+        const searchFilesByText = ({text, path, fileTypes}: { text: string, path?: string, fileTypes?: string[] }) => {
+            return findFilesByText({
+                text,
+                path,
+                root: context.project.root,
+                interactor: this.interactor,
+                fileTypes,
+            })
+        }
+
+        const searchFilesByTextFunction: AssistantTool & RunnableToolFunction<{ text: string, path?: string, fileTypes?: string[] }> = {
+            type: "function",
+            function: {
+                name: "searchFilesByText",
+                description: "search in the project for files containing the given text. The output is a list of paths relative to the project root. This function is slow, restrict scope by giving a path and fileTypes if possible, to avoid a timeout.",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        text: {type: "string", description: "text to search for inside files"},
+                        path: {
+                            type: "string",
+                            description: "optional file path relative to the project root from which to start the search"
+                        },
+                        fileTypes: {
+                            type: "array",
+                            items: {type: "string"},
+                            description: "optional but highly recommended array of file extensions to limit the search (e.g., ['js', 'ts'])"
+                        }
+                    }
+                },
+                parse: JSON.parse,
+                function: searchFilesByText
+            }
+        }
+        result.push(searchFilesByTextFunction)
 
         return result
-
     }
 }

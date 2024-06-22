@@ -25,7 +25,7 @@ export class OpenaiHandler extends CommandHandler {
             return context
         }
 
-        let assistantName = this.getAssistantNameIfValid(cmd) || this.lastAssistantName
+        let assistantName = this.getAssistantNameIfValid(cmd)
         if (!assistantName) {
             // no valid command
             this.interactor.warn("command not understood, skipped.")
@@ -46,9 +46,9 @@ export class OpenaiHandler extends CommandHandler {
 
     private getAssistantNameIfValid(cmd: string): string | undefined {
         const firstSpaceIndex = cmd.indexOf(" ")
-        if (firstSpaceIndex <= 0) {
+        if (firstSpaceIndex < 0) {
             return undefined
         }
-        return cmd.slice(0, firstSpaceIndex)
+        return cmd.slice(0, firstSpaceIndex) || this.lastAssistantName || "Coday"
     }
 }
