@@ -46,9 +46,9 @@ export class OpenaiHandler extends CommandHandler {
 
     private getAssistantNameIfValid(cmd: string): string | undefined {
         const firstSpaceIndex = cmd.indexOf(" ")
-        if (firstSpaceIndex < 0) {
+        if (firstSpaceIndex <= 0) {
             return undefined
         }
-        return firstSpaceIndex === 0 ? "Coday_alpha" : cmd.slice(0, firstSpaceIndex)
+        return cmd.slice(0, firstSpaceIndex)
     }
 }
