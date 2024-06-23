@@ -1,6 +1,6 @@
 import { Interactor } from "../interactor";
-import { exec } from "child_process";
-import {promisify} from "util";
+import { exec } from "child_process"
+import {promisify} from "util"
 
 const execAsync = promisify(exec)
 
@@ -16,6 +16,10 @@ type FindFilesByTextInput = {
 const defaultTimeout = 10000;
 const defaultMaxBuffer = 10 * 1024 * 1024; // 10MB
 
+const escapeRegExp = (string: string) => {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+};
+
 export const findFilesByText = async ({
   text,
   path,
@@ -24,9 +28,10 @@ export const findFilesByText = async ({
   interactor,
   timeout = defaultTimeout,
 }: FindFilesByTextInput): Promise<string> => {
+  const escapedText = escapeRegExp(text);
   const fileTypePattern = fileTypes.length > 0 ? fileTypes.map(type => `-g "*.${type}"`).join(' ') : '';
   const searchPath = path ?? '.';
-  const searchCommand = `rg ${text} ${searchPath} ${fileTypePattern} --color never -l`;
+  const searchCommand = `rg "${escapedText}" ${searchPath} ${fileTypePattern} --color never -l`;
 
   interactor.displayText(`Executing search command: ${searchCommand}`);
 
@@ -37,12 +42,12 @@ export const findFilesByText = async ({
 
     execAsync(searchCommand, { cwd: root, maxBuffer: defaultMaxBuffer })
       .then(({ stdout }) => {
-        clearTimeout(timer);
-        resolve(stdout);
+        clearTimeout(timer)
+        resolve(stdout)
       })
       .catch(({ _, stderr }) => {
-        clearTimeout(timer);
-        reject(`Error: ${stderr}`);
-      });
-  });
-};
+        clearTimeout(timer)
+        reject(`Error: ${stderr}`)
+      })
+  })
+}
