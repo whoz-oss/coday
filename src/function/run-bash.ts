@@ -70,9 +70,12 @@ export const runBash = async ({
 
         const limitedOutput = limitOutputLines(stdout, lineLimit)
         const limitedErr = limitOutputLines(stderr, lineLimit)
-        return `Output:\n${limitedOutput}\n\nError:\n${limitedErr}`
-    } catch (error) {
-        interactor.error(`An error occurred while executing the command: ${error}`)
-        return `Got an error: ${error}`
+        return `Output:\n${limitedOutput}${limitedErr ? `\n\nError:\n${limitedErr}` : ""}`
+    } catch (error:any) {
+        const stdout = error.stdout ? `\n\nstdout: ${limitOutputLines(error.stdout, lineLimit)}`: ""
+        const stderr = error.stderr ? `\n\nstderr: ${limitOutputLines(error.stderr, lineLimit)}`: ""
+
+        interactor.error(`An error occurred while executing the command: ${error}${stdout}${stderr}`)
+        return `Got an error: ${error}${stdout}${stderr}`
     }
 }

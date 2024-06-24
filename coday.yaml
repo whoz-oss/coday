@@ -21,7 +21,7 @@ description: |
 scripts:
   compile:
     description: compile the typescript project to raise any issue on code correctness, it does not run the tests.
-    command: tsc
+    command: yarn run tsc
 
 assistants:
   - name: aitutor_coday
