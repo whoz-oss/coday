@@ -4,6 +4,7 @@ import chalk from "chalk";
 
 export class TerminalInteractor implements Interactor {
     promptText(invite: string, defaultText?: string): string {
+        this.addSeparator()
         return readlineSync.question(`${chalk.black.bgWhite(invite)} : `, {defaultInput: defaultText})
     }
 
@@ -19,7 +20,7 @@ export class TerminalInteractor implements Interactor {
     }
 
     displayText(text: string, speaker?: string): void {
-        const formattedText = speaker ? `${chalk.black.bgWhite(speaker)} : ${text}`: text
+        const formattedText = speaker ? `\n${chalk.black.bgWhite(speaker)} : ${text}\n`: text
         console.log(formattedText)
     }
 

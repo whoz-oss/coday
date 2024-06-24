@@ -34,10 +34,6 @@ const projectName = argv.project || (argv._[0] as string)
 const prompts = (argv.prompt || argv._.slice(1)) as string[]
 const interactive = !argv.oneshot
 
-// console.log(`Project Name: ${projectName}`)
-// console.log(`Prompts: ${prompts}`)
-// console.log(`Interactive: ${interactive}`)
-
 const options = {
   interactive: interactive,
   project: projectName,

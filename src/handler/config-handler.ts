@@ -41,6 +41,7 @@ export class ConfigHandler extends CommandHandler {
      */
     async initContext(initialProject: string | undefined): Promise<CommandContext | null> {
         if (initialProject) {
+            console.log(`selecting ${initialProject}...`)
             return await this.selectProject(initialProject)
         }
 
