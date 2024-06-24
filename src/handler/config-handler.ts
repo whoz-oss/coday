@@ -39,7 +39,11 @@ export class ConfigHandler extends CommandHandler {
     /**
      * Initialize the CommandContext when starting Coday interactive loop.
      */
-    async initContext(): Promise<CommandContext | null> {
+    async initContext(initialProject: string | undefined): Promise<CommandContext | null> {
+        if (initialProject) {
+            return await this.selectProject(initialProject)
+        }
+
         if (!configService.projectNames.length) { // no projects at all, force user define one
             this.interactor.displayText("No existing project, please define one by its name");
             return this.addProject();
