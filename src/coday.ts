@@ -1,16 +1,21 @@
-import {MainHandler} from "./src/handler"
-import os from 'os'
-import {existsSync, mkdirSync} from "node:fs"
-import {Interactor} from "./src/interactor"
-import {TerminalInteractor} from "./src/terminal-interactor"
-import {ConfigHandler} from "./src/handler/config-handler"
-import path from 'path'
-import {CommandContext} from "./src/command-context";
+import os from "os";
+import {CommandContext} from "./command-context";
+import {MainHandler} from "./handler";
+import {ConfigHandler} from "./handler/config-handler";
+import {Interactor} from "./interactor";
+import path from "path";
+import {existsSync, mkdirSync} from "node:fs";
 
-const DATA_PATH: string = "/.coday"
-const MAX_ITERATIONS: number = 10
+const DATA_PATH = "/.coday"
+const MAX_ITERATIONS = 10
 
-class Coday {
+interface CodayOptions {
+    interactive: boolean
+    project?: string
+    prompts?: string[]
+}
+
+export class Coday {
 
     codayPath: string
     userInfo: os.UserInfo<string>
@@ -18,7 +23,7 @@ class Coday {
     mainHandler: MainHandler
     projectHandler: ConfigHandler
 
-    constructor(private interactor: Interactor) {
+    constructor(private interactor: Interactor, private options: CodayOptions) {
         this.userInfo = os.userInfo()
         this.codayPath = this.initCodayPath(this.userInfo)
         this.projectHandler = new ConfigHandler(interactor, this.userInfo.username)
@@ -61,7 +66,7 @@ class Coday {
             // TODO: rework this signature, userCommand already added in the context...
             this.context = await this.mainHandler.handle(userCommand, this.context)
 
-        } while (true)
+        } while (this.options.interactive)
     }
 
     private initCodayPath(userInfo: os.UserInfo<string>): string {
@@ -80,5 +85,3 @@ class Coday {
         return codayPath
     }
 }
-
-new Coday(new TerminalInteractor()).run()
