@@ -2,18 +2,19 @@ import {listFilesAndDirectories, readFileByPath, writeFile, findFilesByText, fin
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
 import {Interactor} from "../interactor"
 import {Beta} from "openai/resources"
-import {AssistantToolFactory, Tool} from "./init-tools";
 import AssistantTool = Beta.AssistantTool;
 import {CommandContext} from "../command-context";
+import {AssistantToolFactory, Tool} from "./assistant-tool-factory";
 
 export class OpenaiTools extends AssistantToolFactory {
+    private subTaskAllowed: boolean = false
 
     constructor(interactor: Interactor) {
         super(interactor)
     }
 
     protected hasChanged(context: CommandContext): boolean {
-        return this.lastToolInitContext?.project.root !== context.project.root
+        return true
     }
 
     protected buildTools(context: CommandContext): Tool[] {
@@ -143,6 +144,46 @@ export class OpenaiTools extends AssistantToolFactory {
             }
         }
         result.push(searchFilesByTextFunction)
+
+        context.canSubTask(() => {
+
+        const subTask = ({subTasks}: { subTasks: {description: string}[] }) => {
+            subTasks.forEach(
+                subTask => this.interactor.displayText(`Sub-task received: ${subTask.description}`)
+            )
+            context.addSubTasks(...subTasks.map(subTask => subTask.description))
+            return "sub-tasks received and queued for execution"
+        }
+
+        const subTaskFunction: AssistantTool & RunnableToolFunction<{ subTasks: {description: string}[] }> = {
+            type: "function",
+            function: {
+                name: "subTask",
+                description: "Queue tasks that will be runned sequentially after the current answer. DO NOT TRY TO COMPLETE THESE TASKS, JUST DEFINE THEM HERE.",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        subTasks: {
+                            type: "array",
+                            description: "Ordered list of sub-tasks",
+                            items: {
+                                type: "object",
+                                properties: {
+                                    description: {
+                                        type: "string",
+                                        description: "Description of the sub-task, add details on what is specific to this task and what are the expectations on its completion."
+                                    }
+                                }
+                            }
+                        },
+                    }
+                },
+                parse: JSON.parse,
+                function: subTask
+            }
+        }
+            result.push(subTaskFunction)
+        })
 
         return result
     }

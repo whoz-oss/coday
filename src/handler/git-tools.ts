@@ -1,5 +1,4 @@
 import {runBash} from "../function/run-bash"
-import {AssistantToolFactory, Tool} from "./init-tools"
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
 import {Interactor} from "../interactor"
 import {Beta} from "openai/resources"
@@ -11,6 +10,7 @@ import {configService} from "../service/config-service"
 import {ApiName} from "../service/coday-config"
 import AssistantTool = Beta.AssistantTool;
 import {CommandContext} from "../command-context";
+import {AssistantToolFactory, Tool} from "./assistant-tool-factory";
 
 export class GitTools extends AssistantToolFactory {
     constructor(interactor: Interactor) {

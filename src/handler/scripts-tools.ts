@@ -2,10 +2,10 @@ import {runBash} from "../function/run-bash"
 import {Interactor} from "../interactor"
 import {Beta} from "openai/resources"
 import {Scripts} from "../service/scripts"
-import {AssistantToolFactory, Tool} from "./init-tools"
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
 import {CommandContext} from "../command-context"
 import AssistantTool = Beta.AssistantTool
+import {AssistantToolFactory, Tool} from "./assistant-tool-factory";
 
 const PARAMETERS: string = "PARAMETERS"
 

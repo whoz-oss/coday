@@ -38,6 +38,7 @@ export type Project = {
 
 export class CommandContext {
     private commandQueue: string[] = []
+    private subTaskCount: number = 0
 
     constructor(
         readonly project:Project,
@@ -52,5 +53,24 @@ export class CommandContext {
 
     getFirstCommand(): string | undefined {
         return this.commandQueue.shift()
+    }
+
+    canSubTask(callback: () => void): boolean {
+        const subTaskAvailable = this.subTaskCount !== 0
+        if (subTaskAvailable) {
+            callback()
+        }
+        return subTaskAvailable
+    }
+
+    addSubTasks(...commands: string[]): void {
+        if (this.subTaskCount > 0) {
+            this.subTaskCount--
+        }
+        this.addCommands(...commands)
+    }
+
+    setSubTask(value: number): void {
+        this.subTaskCount = value
     }
 }

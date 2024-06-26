@@ -5,10 +5,10 @@ import {Beta} from "openai/resources";
 import {JiraTools} from "./jira-tools";
 import {GitTools} from "./git-tools";
 import {OpenaiTools} from "./openai-tools";
-import {Tool} from "./init-tools";
 import {ScriptsTools} from "./scripts-tools";
 import {AssistantDescription, CommandContext} from "../command-context";
 import Assistant = Beta.Assistant;
+import {Tool} from "./assistant-tool-factory";
 
 const CODAY_DESCRIPTION: AssistantDescription = {
     name: "Coday_alpha",
