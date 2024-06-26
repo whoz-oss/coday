@@ -49,12 +49,12 @@ export const runBash = async ({
         const resolvedPath = relPath ? path.resolve(root, relPath) : root
 
         // Log the command that will run
-        interactor.displayText(`Running command: ${command} in ${resolvedPath}`)
+        interactor.displayText(`\nRunning command: ${command} in ${resolvedPath}`)
 
         // If confirmation is required, ask for it
         if (requireConfirmation) {
             const rejectReason = interactor.promptText(
-                `Please type the reason to reject this command (nothing = validate)`
+                `\nPlease type the reason to reject this command (nothing = validate)`
             )
             if (rejectReason) {
                 interactor.displayText("Command execution was cancelled by user.")
@@ -74,8 +74,8 @@ export const runBash = async ({
     } catch (error:any) {
         const stdout = error.stdout ? `\nstdout: ${limitOutputLines(error.stdout, lineLimit)}`: ""
         const stderr = error.stderr ? `\nstderr: ${limitOutputLines(error.stderr, lineLimit)}`: ""
-
-        interactor.error(`An error occurred while executing the command: ${error}${stdout}${stderr}`)
-        return `Got an error: ${error}${stdout}${stderr}`
+        const message = `An error occurred while executing the command: ${error}${stdout}${stderr}`
+        interactor.error(message)
+        return message
     }
 }

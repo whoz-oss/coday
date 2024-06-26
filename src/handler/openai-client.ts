@@ -110,7 +110,9 @@ export class OpenaiClient {
         const assistantStream = this.openai!.beta.threads.runs.stream(this.threadId!, {
             assistant_id: this.assistant!.id,
             tools,
-            tool_choice: "auto"
+            tool_choice: "auto",
+            max_completion_tokens: 120000,
+            max_prompt_tokens: 120000
         })
 
         await this.processStream(assistantStream, tools)
