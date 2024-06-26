@@ -2,11 +2,11 @@ import {Scripts} from "./service/scripts";
 import {ApiName} from "./service/coday-config";
 
 type CommandQueue = {
-    commands: (string|CommandQueue)[]
-    data: {[key: string]: string }
+    commands: (string | CommandQueue)[]
+    data: { [key: string]: string }
 }
 
-export type AssistantDescription= {
+export type AssistantDescription = {
     /**
      * Should be the name of the assistant as declared in the platform.
      * Matching will be done on star of the name in lowercase but still, please put full name.
@@ -41,7 +41,7 @@ export class CommandContext {
     private subTaskCount: number = 0
 
     constructor(
-        readonly project:Project,
+        readonly project: Project,
         readonly username: string,
     ) {
 
@@ -63,11 +63,15 @@ export class CommandContext {
         return subTaskAvailable
     }
 
-    addSubTasks(...commands: string[]): void {
-        if (this.subTaskCount > 0) {
-            this.subTaskCount--
+    addSubTasks(...commands: string[]): boolean {
+        if (this.subTaskCount !== 0) {
+            if (this.subTaskCount > 0) {
+                this.subTaskCount--
+            }
+            this.addCommands(...commands)
+            return true
         }
-        this.addCommands(...commands)
+        return false
     }
 
     setSubTask(value: number): void {

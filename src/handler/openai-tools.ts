@@ -151,15 +151,18 @@ export class OpenaiTools extends AssistantToolFactory {
             subTasks.forEach(
                 subTask => this.interactor.displayText(`Sub-task received: ${subTask.description}`)
             )
-            context.addSubTasks(...subTasks.map(subTask => subTask.description))
-            return "sub-tasks received and queued for execution"
+            if (context.addSubTasks(...subTasks.map(subTask => subTask.description))) {
+            return "sub-tasks received and queued for execution, will be runned after this current run."
+
+            }
+            return "sub-tasks could not be queued, no more sub-tasking allowed for now."
         }
 
         const subTaskFunction: AssistantTool & RunnableToolFunction<{ subTasks: {description: string}[] }> = {
             type: "function",
             function: {
                 name: "subTask",
-                description: "Queue tasks that will be runned sequentially after the current answer. DO NOT TRY TO COMPLETE THESE TASKS, JUST DEFINE THEM HERE.",
+                description: "Queue tasks that will be runned sequentially after the current run. DO NOT TRY TO COMPLETE THESE TASKS, JUST DEFINE THEM HERE.",
                 parameters: {
                     type: "object",
                     properties: {

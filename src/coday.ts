@@ -8,7 +8,8 @@ import {
     DebugHandler,
     GitHandler,
     OpenaiHandler,
-    RunBashHandler
+    RunBashHandler,
+    SubTaskHandler // Import the new handler
 } from "./handler";
 
 const MAX_ITERATIONS = 10
@@ -48,6 +49,7 @@ export class Coday {
             new RunBashHandler(interactor),
             new DebugHandler(interactor),
             new CodeFlowHandler(),
+            new SubTaskHandler(interactor),
             this.openaiHandler
         ]
     }
