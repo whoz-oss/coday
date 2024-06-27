@@ -7,7 +7,6 @@ import {CommandContext} from "../command-context";
 import {AssistantToolFactory, Tool} from "./assistant-tool-factory";
 
 export class OpenaiTools extends AssistantToolFactory {
-    private subTaskAllowed: boolean = false
 
     constructor(interactor: Interactor) {
         super(interactor)

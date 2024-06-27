@@ -3,29 +3,56 @@ import {CommandContext} from "../command-context";
 
 export class CodeFlowHandler extends CommandHandler {
     commandWord: string = 'code'
-    description: string = 'expand the request into a flow of request : analysis, implementation, test and review'
+    description: string = 'expand the request into a flow of requests : analysis, plan, sub-tasking, implementation, review'
 
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
         const cmd = this.getSubCommand(command)
         
-        const expertInstructions = `
-        You are given this assignment: ${cmd}. 
-        To complete it:
-        1. Analyse the request thoroughly, identifying all impacted files and any dependencies.
-        2. Break down the assignment into smaller sequential steps using the 'subTask' provided function.
-        3. Consider the project's architecture and code conventions as described in the project description for technical sub-tasks.
-        4. For each sub-task, think about how an expert software developer would approach the problem:
-            - Initial setup and preparation.
-            - Implementation details.
-            - Testing strategies, including writing new tests if necessary or requested or allowed.
-            - Validation and debugging using project scripts if appropriate.
-            - Commit messages and documentation.
+        const expertInstructions = [
+            // PREPARATION
+            // gather data
+            `You are given this assignment: ${cmd}
+            
+            As a first step, analyse the assignment, search for keywords, files or external references using available functions, search also for validation or review material, being documentation or existing tests.
+            If other relevant assistants available to do their research and complement your findings, or delegate entirely this research to them.
+            Do not start working on the solution (either you or other assistant), just gather data to get a more detailed and deeper understanding of the assignment.`,
 
-        Make sure each sub-task is as atomic as possible and logically ordered to ensure efficient workflow.
-        `
+            // other assistants may intervene here, let them "speak"...
+            // ... then collect their findings
+            // `Give an expanded summary of all the previous findings, explaining the assignment. Do not start working on the solution.`,
+            `Prepare the workspace by following project rules on workflow (example: create the git branch dedicated to the assignment)`,
 
-        const newCommand = `ai ${expertInstructions}`
-        context.addCommands(newCommand)
+            // EXECUTION
+            // build a plan
+            `Build at least 3 rough plans of actions on how to complete the assignment. 
+            Then evaluate quickly the pros and cons of each.
+            Finally, choose the best option in regard of the project rules, and review how implementing it would complete the assignment`,
+
+            // execute the plan
+            `sub-task 3`, // arbitrary sub-task token count to cover at least the initial sub-tasking
+            `Expand on the chosen plan by detailing a sequential plan of all the tasks to implement (no less than 2, no more than 10).
+             
+            Each task should:
+             - be as independent and atomic as possible and contain a clear definition of what is to be done.
+             - incorporate already known details such as files, references or key words
+             - be fully delegated to a known relevant assistant by pre-fixing its description with the assistant name
+             - include the expectations and ways or functions to use to validate its execution depending on the project rules
+             - be commited or saved once completed and validated, by following the project rules
+             
+             DO NOT COMPLETE THESE TASKS NOW, but send them to the subTask function (for later sequential execution).`,
+
+            // ...sub-tasks are run and burn a hole in the token quota of the month...
+            `sub-task false`, // removal to prevent any later over-complexity
+
+            // review
+            `Review the plan completion regarding the given assignment and make sure work done satisfies the quality constraints of the project.`,
+
+            // CLOSURE
+            `Prepare a short presentation of the work done.
+            If available, publish it for manual review and validation.`
+        ]
+
+        context.addCommands(...expertInstructions)
         return context
     }
 }

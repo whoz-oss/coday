@@ -12,7 +12,7 @@ import {
     SubTaskHandler // Import the new handler
 } from "./handler";
 
-const MAX_ITERATIONS = 10
+const MAX_ITERATIONS = 100
 
 interface CodayOptions {
     interactive: boolean
@@ -139,7 +139,7 @@ export class Coday {
             } catch (error) {
                 this.interactor.error(`An error occurred while trying to process your request: ${error}`)
             }
-        } while (!!currentCommand && count < this.maxIterations)
+        } while (!!currentCommand && (this.options.interactive || count < this.maxIterations))
         if (count >= this.maxIterations) {
             this.interactor.warn('Maximum iterations reached for a command')
         }
