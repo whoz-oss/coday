@@ -1,28 +1,75 @@
+# Description of the current project, it should contain the same high-level information and rules about the project anyone of the team should know.
+#
+# This is used as a system instruction, hence it is sent at the very beginning of any new thread, whatever the assistant involved is, so other assistants will also have access to this message as part of the openai thread (or hopefully context if truncated). If using the default Coday assistant (that is kept quite generic and close to default LLM), the more detailed and broad the description, the more Coday's responses are relevant (by a very wide margin).
+#
+# Recommendations: write it in markdown as you would write human-intended documentation
 description: |
-  This is a chat AI assistant running by calling an online LLM.
-  It is only in typescript and currently only running in a terminal. To avoid coupling to the 'console.log' and alike, the interface 'interactor.ts' is used and implemented by the 'terminal-interactor.ts'.
+  ## Project description
   
-  The core principle is to answer user's single command (one at a time) by passing it to all registered handlers.
-  The first handler that accepts the command take it and handlers can be nested to cover more complex commands.
+  This project is a chat AI assistant running by calling an online LLM.
+  
+  The interface is kept very simple, presently only through a terminal, but could later run as a local application with dedicated GUI or as a web page or an IDE extension.
+  The goal is to integrate the LLM with as much tools as needed to increase its efficiency and relevance.
+  
+  
+  ## Architecture
+  
+  The core principle is to answer user's single command (one at a time) by passing it to all registered handlers, that can themselves generate other commands to add in the fifo queue.
+  The first handler that accepts a command take it and handlers can be nested to cover more complex commands.
   Handlers then extends either 'command-handler.ts' or 'nested-handler.ts' and can themselves decompose a command into several others that are added on the pile.
   
   Associated to the command, the 'command-context.ts' is also given to carry data relevant for some handlers. It is built initially when loading a 'project-config.ts' on project selection.
-  A project is a directory whose files should be readable and editable and where 'coday.json' add some customizations.
   
-  The most interesting handler is 'openai-handler.ts' that uses 'openai-client.ts' that wraps the complexity around the library openai. 
-  This client leverages the ability to submit function declaration for ChatGPT to call, hence the need on our part to run the function with the given arguments and return the answer.
-  These exposed functions are based on those in /src/function where files can be listed, read and written. And the 'run-bash.ts' function allows to expose some specific commands to ChatGPT (no free access).
+  
+  ## Configuration
+  
+  The program uses a configuration file in user home directory under '.coday/config.json', that lists the project and their non-sharable and user-related configuration (API key notably).
+  A project is a directory whose files should be readable and editable and where a 'coday.yaml' configuration file reside (can be nested) to add some customizations. As such, the 'config.json' is entirely private to the user and 'coday.yaml' is exposed to all users of the project.
+  
+  
+  ## AI/LLM integration
+  
+  The 'openai-handler.ts' that uses 'openai-client.ts' wraps the complexity around the library openai and serves as a default handler for commands not picked by any other handler. 
+  This client leverages the ability to submit function declaration for LLM to call, hence the need on our part to run the function with the given arguments and return the answer.
+  These functions can be provided to the LLM depending on the user configuration and the project configuration.
+  
 
-  Code conventions:
+  ## Code conventions:
+  
   - inject in constructors
   - no ';' to separate lines
   - prefer 1 file for 1 class or function or type
+  
+  
+  ## Git process
+  
+  All developments should not happen on 'master' branch, but on a dedicated and named by type of dev (feat, bugfix, other...), user name, and a title .
+  Ex: `bugfix/johndoe/find-by-text-errors`
 
+# Scripts are AssistantTools declared to openai on each call (for now), so always available.
+# Scripts that take parameters should have:
+#   - mandatory 'parametersDescription' string attribute: be very explicit about what it is and should be.
+#   - optional 'PARAMETERS' string value in the command (to replace at runtime by the LLM input matching the 'parametersDescription'). If absent, the LLM input parameters are added as suffix to the command.
+# Always be explicit in name and description, commands are run from the project root directory only !
+#
+# example:
+#   say-something:
+#    description: Just says something, serves as demo of a project script with parameters
+#    command: echo "PARAMETERS"
+#    parametersDescription: text that will be displayed to the user
+#
 scripts:
   compile:
     description: compile the typescript project to raise any issue on code correctness, it does not run the tests.
     command: yarn run tsc
 
+# Multiple specialized assistants can be declared on a project: they "know" each-other by their description and can cooperate on a same thread if asked to. They can also be called directly.
+# Of the parameters:
+#   - name: should be the full name of the assistant as per the LLM provider. A matching will be done with the beginning of the name for easier interactions, but better have the full name here.
+#   - description: what the other assistants should know of this assistant. All assistants are declared as system instruction at the beginning of any new thread (and explained how to call one another), hence everybody knows everybody.
+#   - systemInstructions: used for automatic assistant creation only. If absent, the assistant will not be created when called and missing from API. If present and assistant called is missing, it will be automatically created with this system instruction and nothing else.
+#
+# NOTE: It is possible to use customized assistants (with files or fine-tuning or whatever: call them by name) but not create them through Coday.
 assistants:
   - name: aitutor_coday
     description: counselor in LLM use to create AI agents
