@@ -1,7 +1,7 @@
 import {existsSync, readFileSync, writeFileSync} from 'fs'
 import * as yaml from 'yaml'
 import {ProjectDescription} from './project-description'
-import {findFilesByName} from '../function/find-files-by-name'
+import {findFilesByName} from '../function'
 import {join} from 'path'
 import {Interactor} from "../interactor";
 
