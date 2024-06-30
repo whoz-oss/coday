@@ -2,6 +2,7 @@ import os from "os";
 import {CommandContext} from "./command-context";
 import {Interactor} from "./interactor";
 import {
+    AddMessageHandler,
     CodeFlowHandler,
     CommandHandler,
     ConfigHandler,
@@ -11,6 +12,7 @@ import {
     RunBashHandler,
     SubTaskHandler // Import the new handler
 } from "./handler";
+import {SmallTaskFlowHandler} from "./handler/small-task-flow.handler";
 
 const MAX_ITERATIONS = 100
 
@@ -18,7 +20,6 @@ interface CodayOptions {
     interactive: boolean
     project?: string
     prompts?: string[]
-    maxIterations?: number
 }
 
 export class Coday {
@@ -39,17 +40,17 @@ export class Coday {
     constructor(private interactor: Interactor, private options: CodayOptions) {
         this.userInfo = os.userInfo()
         this.configHandler = new ConfigHandler(interactor, this.userInfo.username)
-
-        // Initialize MainHandler properties
         this.openaiHandler = new OpenaiHandler(interactor)
-        this.maxIterations = options.maxIterations || MAX_ITERATIONS
+        this.maxIterations = MAX_ITERATIONS
         this.handlers = [
             this.configHandler,
             new GitHandler(interactor),
             new RunBashHandler(interactor),
             new DebugHandler(interactor),
             new CodeFlowHandler(),
+            new SmallTaskFlowHandler(),
             new SubTaskHandler(interactor),
+            new AddMessageHandler(interactor, this.openaiHandler.openaiClient), // TODO: rework this bad pattern, expose openaiClient otherwise ?
             this.openaiHandler
         ]
     }
@@ -91,6 +92,7 @@ export class Coday {
             // reset context and project selection
             if (userCommand === this.resetWord) {
                 this.context = null
+                this.openaiHandler.reset()
                 this.configHandler.resetProjectSelection()
                 continue
             }

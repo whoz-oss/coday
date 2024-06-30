@@ -16,12 +16,16 @@ export class OpenaiHandler extends CommandHandler {
         this.openaiClient = new OpenaiClient(interactor, apiKeyProvider)
     }
 
+    reset(): void {
+        this.openaiClient.reset()
+        this.lastAssistantName = undefined
+    }
+
     async handle(command: string, context: CommandContext): Promise<CommandContext> {
         const cmd = command.slice(this.commandWord.length)
         // Reset threadId when command is "reset"
         if (cmd.trim() === "reset") {
-            this.openaiClient.reset()
-            this.lastAssistantName = undefined
+            this.reset()
             return context
         }
 

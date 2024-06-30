@@ -43,7 +43,7 @@ export class OpenaiClient {
         this.scriptTools = new ScriptsTools(interactor)
     }
 
-    async isReady(assistantName: string, context: CommandContext): Promise<boolean> {
+    private isOpenaiReady(): boolean {
         this.apiKey = this.apiKeyProvider()
         if (!this.apiKey) {
             this.interactor.warn('OPENAI_API_KEY env var not set, skipping AI command')
@@ -55,14 +55,21 @@ export class OpenaiClient {
                 apiKey: this.apiKey,
             })
         }
+        return true
+    }
+
+    async isReady(assistantName: string, context: CommandContext): Promise<boolean> {
+        if (!this.isOpenaiReady()) {
+            return false
+        }
 
         this.assistant = await this.findAssistant(assistantName, context)
 
         if (!this.threadId) {
-            const thread = (await this.openai.beta.threads.create())
+            const thread = (await this.openai!.beta.threads.create())
             this.threadId = thread.id
 
-            await this.openai.beta.threads.messages.create(this.threadId, {
+            await this.openai!.beta.threads.messages.create(this.threadId, {
                 role: 'assistant',
                 content: `Specific project context: ${context.project.description}
                 
@@ -73,7 +80,7 @@ export class OpenaiClient {
             const projectAssistants = this.getProjectAssistants(context)
             const projectAssistantReferences = projectAssistants?.map(a => `${a.name} : ${a.description}`)
             if (projectAssistantReferences?.length) {
-                await this.openai.beta.threads.messages.create(this.threadId, {
+                await this.openai!.beta.threads.messages.create(this.threadId, {
                     role: 'assistant',
                     content: `Here the assistants available on this project (by name : description) : \n${projectAssistantReferences.join("\n")}\n
                     
@@ -82,10 +89,20 @@ export class OpenaiClient {
                     To involve them in the thread, just mention them with an '@' prefix on their name and explain what is expected from them.\nExample: '... and by the way, @otherAssistant, check this part of the request'.`
                 })
             }
-
         }
 
         return true
+    }
+
+    async addMessage(message: string, context: CommandContext): Promise<void> {
+        if (!this.threadId || !this.openai) {
+            throw new Error("Cannot add message if no thread or openai defined yet")
+        }
+
+        await this.openai!.beta.threads.messages.create(this.threadId, {
+            role: 'user',
+            content: message
+        })
     }
 
     async answer(name: string, command: string, context: CommandContext): Promise<string> {
