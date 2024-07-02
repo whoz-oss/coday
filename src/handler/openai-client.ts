@@ -1,24 +1,34 @@
-import {Interactor} from "../interactor";
-import OpenAI from "openai";
-import {AssistantStream} from "openai/lib/AssistantStream";
-import {Beta} from "openai/resources";
-import {JiraTools} from "./jira-tools";
-import {GitTools} from "./git-tools";
-import {OpenaiTools} from "./openai-tools";
-import {ScriptsTools} from "./scripts-tools";
-import {AssistantDescription, CommandContext} from "../command-context";
-import Assistant = Beta.Assistant;
-import {Tool} from "./assistant-tool-factory";
+import {Interactor} from "../interactor"
+import OpenAI from "openai"
+import {AssistantStream} from "openai/lib/AssistantStream"
+import {Beta} from "openai/resources"
+import {JiraTools} from "./jira-tools"
+import {GitTools} from "./git-tools"
+import {OpenaiTools} from "./openai-tools"
+import {ScriptsTools} from "./scripts-tools"
+import {AssistantDescription, CommandContext} from "../command-context"
+import Assistant = Beta.Assistant
+import {Tool} from "./assistant-tool-factory"
+
+const DEFAULT_MODEL : string ="gpt-4o"
+const DEFAULT_TEMPERATURE: number = 0.75
+
 
 const CODAY_DESCRIPTION: AssistantDescription = {
     name: "Coday_alpha",
     description: "main assistant, the one that handles all requests by default",
     systemInstructions: `
-You are Coday, an AI assistant used interactively by users through a chat or alike interface.
-By providing a sound and logic reasoning, you answer concisely to the user requests.
-You are curious and will use the provided functions to gather a bit more knowledge than you need to answer the request.
-Unless explicitly asked for, keep your answers short.
-If available, do not hesitate to involve other assistants of the project.`
+    You are Coday, an AI assistant designed for interactive usage by users through various chat-like interfaces. Answer clearly and logically. Follow these guidelines:
+
+1. **Truth seeking**
+   - Always utilize the provided functions to search for and verify information, ensuring that your responses are based on sound and reliable data
+   - Never speculate or guess. If uncertain, resolve it by a research or clearly state your limitations.
+
+2. **Logical Reasoning**
+   - Base answers on solid reasoning and thorough exploration of available resources to complete user's requests.
+   - Unless specifically asked for detailed answers, keep your responses brief and direct. When the user requests more information, be prepared to deliver it comprehensively.
+`,
+    temperature: 0.75
 }
 
 type AssistantReference = { name: string, id: string }
@@ -68,6 +78,7 @@ export class OpenaiClient {
         if (!this.threadId) {
             const thread = (await this.openai!.beta.threads.create())
             this.threadId = thread.id
+            this.interactor.displayText(`Thread created with ID: ${this.threadId}`)
 
             await this.openai!.beta.threads.messages.create(this.threadId, {
                 role: 'assistant',
@@ -82,11 +93,13 @@ export class OpenaiClient {
             if (projectAssistantReferences?.length) {
                 await this.openai!.beta.threads.messages.create(this.threadId, {
                     role: 'assistant',
-                    content: `Here the assistants available on this project (by name : description) : \n${projectAssistantReferences.join("\n")}\n
+                    content: `IMPORTANT!
+                    Here the assistants available on this project (by name : description) : \n- ${projectAssistantReferences.join("\n- ")}\n
                     
-                    Try as much as you can to delegate to other assistants.
-                    
-                    To involve them in the thread, just mention them with an '@' prefix on their name and explain what is expected from them.\nExample: '... and by the way, @otherAssistant, check this part of the request'.`
+                    Rules:
+                    - **Active delegation**: Always delegate parts of complex requests to the relevant assistants given their domain of expertise.
+                    - **Coordinator**: ${CODAY_DESCRIPTION.name} coordinate the team and have a central role
+                    - **Calling**: To involve an assistant in the thread, mention it with an '@' prefix on their name and explain what is expected from him. The called assistant will be called after the current run. Example: '... and by the way, @otherAssistant, check this part of the request'.`
                 })
             }
         }
@@ -94,7 +107,7 @@ export class OpenaiClient {
         return true
     }
 
-    async addMessage(message: string, context: CommandContext): Promise<void> {
+    async addMessage(message: string): Promise<void> {
         if (!this.threadId || !this.openai) {
             throw new Error("Cannot add message if no thread or openai defined yet")
         }
@@ -129,7 +142,8 @@ export class OpenaiClient {
             tools,
             tool_choice: "auto",
             max_completion_tokens: 120000,
-            max_prompt_tokens: 120000
+            max_prompt_tokens: 120000,
+            parallel_tool_calls: false
         })
 
         await this.processStream(assistantStream, tools)
@@ -276,8 +290,9 @@ export class OpenaiClient {
 
         const createdAssistant = await this.openai!.beta.assistants.create({
             name: assistantToCreate?.name,
-            model: "gpt-4o",
+            model: assistantToCreate.model ?? DEFAULT_MODEL,
             instructions: assistantToCreate?.systemInstructions,
+            temperature: assistantToCreate.temperature ?? DEFAULT_TEMPERATURE
         })
         this.interactor.displayText(`Created assistant ${createdAssistant.id}`)
         const createdReference: AssistantReference = {name: assistantToCreate.name, id: createdAssistant.id}

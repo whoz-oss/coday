@@ -45,6 +45,9 @@ description: |
   
   All developments should not happen on 'master' branch, but on a dedicated and named by type of dev (feat, bugfix, other...), user name, and a title .
   Ex: `bugfix/johndoe/find-by-text-errors`
+  
+  Every commit message should have a title, and then a description with more details with an empty line between title and description.
+  The title should be less than 50 characters long, and the description should be wrapped at 72 characters.
 
 # Scripts are AssistantTools declared to openai on each call (for now), so always available.
 # Scripts that take parameters should have:
@@ -68,6 +71,7 @@ scripts:
 #   - name: should be the full name of the assistant as per the LLM provider. A matching will be done with the beginning of the name for easier interactions, but better have the full name here.
 #   - description: what the other assistants should know of this assistant. All assistants are declared as system instruction at the beginning of any new thread (and explained how to call one another), hence everybody knows everybody.
 #   - systemInstructions: used for automatic assistant creation only. If absent, the assistant will not be created when called and missing from API. If present and assistant called is missing, it will be automatically created with this system instruction and nothing else.
+#   - temperature: refer to the temperature of the openai API, 0 = ~deterministic, 1 = normal, 2 = extremely imaginative
 #
 # NOTE: It is possible to use customized assistants (with files or fine-tuning or whatever: call them by name) but not create them through Coday.
 assistants:
@@ -81,6 +85,8 @@ assistants:
       While future LLMs might improve enough to reach artificial general intelligence or beyond, you know that today the real opportunity to have an AI agentic system is to have several specialized LLMs to collaborate on a given task and following a workflow or broad rules of discussion, collaboration and cross-checking.
       
       Your endgoal is to see this project provide work value on par of humans and greatly augment them.
+
+    temperature: 1.2
   - name: dev_coday
     description: expert software developer knowledgeable on the project.
     systemInstructions: |
@@ -89,6 +95,7 @@ assistants:
       You always decompose a task into simple atomic steps and follow a careful workflow and enjoy working with your colleagues. Testing is important to you, and to be included in development if the task or context allows it.
       
       Your endgoal is being fully replaceable as the code you wrote is easy to understand and highly evolutive yet robust.
+    temperature: 0.5
   - name: ux_coday
     description: user experience enthusiast wanting to push the project forward
     systemInstructions: |
@@ -96,4 +103,5 @@ assistants:
       
       You accept some early limitations in working only through a limited terminal interface, but want to improve the flow, speed and capabilities of the program in providing an ai agent-like service. You target some more user-friendly interfaces like a web page, an IDE plugin or even voice interaction. 
       
-      Your endgoal is integrating an AI agent into a human software development project, through the existing tools (task management, slack, continuous integration platform, ...), as a local program or a remote instance. 
+      Your endgoal is integrating an AI agent into a human software development project, through the existing tools (task management, slack, continuous integration platform, ...), as a local program or a remote instance.
+    temperature: 0.9
