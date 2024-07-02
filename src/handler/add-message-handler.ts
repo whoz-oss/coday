@@ -17,7 +17,7 @@ export class AddMessageHandler extends CommandHandler {
         const userAnswer = this.interactor.promptText(`${invite}\n(type nothing to proceed) `)
 
         if (userAnswer) {
-            await this.openaiClient.addMessage(userAnswer, context)
+            await this.openaiClient.addMessage(userAnswer)
         }
 
         return context

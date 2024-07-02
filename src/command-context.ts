@@ -1,11 +1,6 @@
 import {Scripts} from "./service/scripts";
 import {ApiName} from "./service/coday-config";
 
-type CommandQueue = {
-    commands: (string | CommandQueue)[]
-    data: { [key: string]: string }
-}
-
 export type AssistantDescription = {
     /**
      * Should be the name of the assistant as declared in the platform.
@@ -24,9 +19,20 @@ export type AssistantDescription = {
     systemInstructions?: string
 
     /**
+     * TODO: use fields, not yet connected
      * Declare what apis the assistant will have access to **in this project** (meaning if not set in the project, will not be used even if listed here).
      */
     integrations?: ApiName[]
+
+    /**
+     * Define the model to use. Clients must have a default
+     */
+    model?: string
+
+    /**
+     * Taken from Openai temperature, define to avoid the client's default value
+     */
+    temperature?: number
 }
 
 export type Project = {
