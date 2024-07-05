@@ -1,5 +1,3 @@
-import {Interactor} from "./interactor";
-import * as readlineSync from 'readline-sync';
 import chalk from "chalk";
 import {TerminalInteractor} from "./terminal-interactor";
 

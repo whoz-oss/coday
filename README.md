@@ -11,13 +11,23 @@ Basically: git clone, yarn install, start-in-terminal.sh.
 
 ## Usage
 
-- for "user-friendly", just `./start-in-terminal.sh` (may need `chmod +x ./start-in-terminal.sh` 😅)
-- for devs: `yarn start`
+Just run 
+```sh
+yarn start
+```
+...and define your first project.
 
 [More on usage here](./USAGE.md)
 
 
-## Configuration files
+## Setting integrations
+
+Add/edit integrations with `config edit-integration`.
+
+[More on integrations](./INTEGRATIONS.md)
+
+
+## Configuration
 
 - `~/.coday/config.json` should not be edited directly, [see usage](./USAGE.md) and `config` command.
 - `coday.yaml` must be edited directly at will !!! 

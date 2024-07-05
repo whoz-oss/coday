@@ -1,6 +1,5 @@
 export * from './read-file-by-path'
 export * from './write-file'
 export * from './list-files-and-directories'
-export * from './retrieve-jira-ticket'
 export * from './find-files-by-text'
 export * from './find-files-by-name'
