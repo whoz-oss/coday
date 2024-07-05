@@ -1,21 +1,11 @@
 ## 👟 START
 
-### With implicit update
-
-For auto-updates and smooth-as-possible start (might require `chmod +x ./start-in-terminal.sh`). This will check the repo and the dependencies before starting Coday.
-```sh
-./start-in-terminal.sh 
-```
-
-
-### With yarn
-
 The `package.json` defines the standard start script that will run in terminal:
 ```sh
 yarn start
 ```
 
-This command can accept several parameters:
+This command can accept several parameters (by default without = start interactive in terminal):
 
 - `--project=[project name]` to directly select a project instead of relying on the last visited one.
 - `--oneshot=[true|false]`: in oneshot, Coday will answer the prompt(s) and not tolerate any interaction in request completion. Use with `--project` argument or risk working on the wrong project.

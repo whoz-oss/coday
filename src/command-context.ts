@@ -30,13 +30,14 @@ export type AssistantDescription = {
     model?: string
 
     /**
-     * Taken from Openai temperature, define to avoid the client's default value
+     * Taken from Openai temperature, define to avoid the client’s default value
      */
     temperature?: number
 }
 
 export type Project = {
     root: string
+    id?: string  // Add the id property
     description?: string
     scripts?: Scripts
     assistants?: AssistantDescription[]
@@ -49,9 +50,7 @@ export class CommandContext {
     constructor(
         readonly project: Project,
         readonly username: string,
-    ) {
-
-    }
+    ) {}
 
     addCommands(...commands: string[]): void {
         this.commandQueue.unshift(...commands)

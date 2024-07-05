@@ -2,11 +2,12 @@ import { Interactor } from "../interactor"
 import OpenAI from "openai"
 import { AssistantStream } from "openai/lib/AssistantStream"
 import { Beta } from "openai/resources"
-import { JiraTools } from "./jira-tools"
+import { JiraTools } from "../integration/jira/jira-tools"
 import { GitTools } from "./git-tools"
 import { OpenaiTools } from "./openai-tools"
 import { ScriptsTools } from "./scripts-tools"
 import { AssistantDescription, CommandContext } from "../command-context"
+import {GitLabTools} from "../integration/gitlab/gitlab-tools"
 import Assistant = Beta.Assistant
 import { Tool } from "./assistant-tool-factory"
 
@@ -20,7 +21,8 @@ const CODAY_DESCRIPTION: AssistantDescription = {
     You are Coday, an AI assistant designed for interactive usage by users through various chat-like interfaces. Answer clearly and logically. Follow these guidelines:
 
 1. **Truth seeking**
-   - Always utilize the provided functions to search for and verify information, ensuring that your responses are based on sound and reliable data
+   - Always utilize the provided functions to search for and verify information, ensuring that your responses are based on sound and reliable data,
+   - Be curious in gathering data and always try to know more than strictly needed.
    - Never speculate or guess. If uncertain, resolve it by a research or clearly state your limitations.
 
 2. **Logical Reasoning**
@@ -41,7 +43,7 @@ export class OpenaiClient {
   jiraTools: JiraTools
   gitTools: GitTools
   scriptTools: ScriptsTools
-  apiKey: string | undefined
+  gitlabTools: GitLabToolsapiKey: string | undefined
   assistants: AssistantReference[] = []
   assistant: AssistantReference | undefined
 
@@ -53,7 +55,8 @@ export class OpenaiClient {
     this.jiraTools = new JiraTools(interactor)
     this.gitTools = new GitTools(interactor)
     this.scriptTools = new ScriptsTools(interactor)
-  }
+  this.gitlabTools = new GitLabTools(interactor)
+    }
 
   private isOpenaiReady(): boolean {
     this.apiKey = this.apiKeyProvider()
@@ -144,7 +147,8 @@ export class OpenaiClient {
       ...this.jiraTools.getTools(context),
       ...this.gitTools.getTools(context),
       ...this.scriptTools.getTools(context),
-    ]
+    ...this.gitlabTools.getTools(context)
+        ]
 
     await this.openai!.beta.threads.messages.create(this.threadId!, {
       role: "user",
