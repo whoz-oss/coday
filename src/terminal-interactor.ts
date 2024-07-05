@@ -5,10 +5,12 @@ import chalk from "chalk"
 export class TerminalInteractor implements Interactor {
   async promptText(invite: string, defaultText?: string): Promise<string> {
     this.addSeparator()
-    return await input({
+    const text = await input({
       message: `${chalk.black.bgWhite(invite)} : `,
       default: defaultText,
     })
+      this.addSeparator()
+      return text
   }
 
   async chooseOption(

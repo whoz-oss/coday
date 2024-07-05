@@ -13,6 +13,7 @@ import {
   SubTaskHandler, // Import the new handler
 } from "./handler"
 import { SmallTaskFlowHandler } from "./handler/small-task-flow.handler"
+import { GitlabReviewHandler } from "./handler/gitlab-review.handler"
 
 const MAX_ITERATIONS = 100
 
@@ -51,10 +52,11 @@ export class Coday {
       new DebugHandler(interactor),
       new CodeFlowHandler(),
       new SmallTaskFlowHandler(),
+        new SubTaskHandler(interactor),
       new SubTaskHandler(interactor),
       new AddMessageHandler(interactor, this.openaiHandler.openaiClient), // TODO: rework this bad pattern, expose openaiClient otherwise ?
-      this.openaiHandler,
     ]
+      this.handlers.push(this.openaiHandler) // IMPORTANT, keep in last position, openai is the least priority handler
   }
 
   async run(): Promise<void> {

@@ -1,5 +1,5 @@
 import axios from 'axios'
-import {Interactor} from "../interactor";
+import {Interactor} from "../../interactor";
 
 export async function retrieveJiraTicket(ticketId: string, jiraBaseUrl: string, jiraApiToken: string, jiraUsername: string, interactor: Interactor): Promise<any> {
 
