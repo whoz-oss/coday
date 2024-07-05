@@ -149,12 +149,12 @@ export class ConfigHandler extends CommandHandler {
       : []
     const answer = (
       await this.interactor.chooseOption(
-        apiNames,
+        [...apiNames, "exit"],
         "Select an integration to edit",
         `Integrations are tools behind some commands and/or functions for AI.\nHere are the configured ones: (${existingIntegrationNames.join(", ")})`,
       )
     ).toUpperCase()
-    if (!answer) {
+    if (!answer || answer === "EXIT") {
       return
     }
     let apiIntegration: ApiIntegration =

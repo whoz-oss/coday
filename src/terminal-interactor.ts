@@ -18,13 +18,13 @@ export class TerminalInteractor implements Interactor {
     question: string,
     invite?: string,
   ): Promise<string> {
-    return await select({
+    return select({
       message: `${invite} :\n${question}`,
       choices: options.map((option) => ({
         name: option,
         value: option,
       })),
-    })
+    });
   }
 
   displayText(text: string, speaker?: string): void {

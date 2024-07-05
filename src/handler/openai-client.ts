@@ -43,7 +43,8 @@ export class OpenaiClient {
   jiraTools: JiraTools
   gitTools: GitTools
   scriptTools: ScriptsTools
-  gitlabTools: GitLabToolsapiKey: string | undefined
+  gitlabTools: GitLabTools
+  apiKey: string | undefined
   assistants: AssistantReference[] = []
   assistant: AssistantReference | undefined
 
