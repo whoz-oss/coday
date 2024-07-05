@@ -22,4 +22,5 @@ export enum ApiName {
     GIT = "GIT",
     JIRA = "JIRA",
     OPENAI = "OPENAI",
+    GITLAB = "GITLAB",
 }

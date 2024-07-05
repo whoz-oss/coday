@@ -11,8 +11,7 @@ Ensure you have the following installed:
 
 Recommended:
 
-- brew on macos (to install ripgrep)
-- ripgrep if not on macos
+- ripgrep (can be installed on macos with brew)
 
 ## 💿 Install 
 

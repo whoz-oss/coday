@@ -27,6 +27,10 @@ description: |
   A project is a directory whose files should be readable and editable and where a 'coday.yaml' configuration file reside (can be nested) to add some customizations. As such, the 'config.json' is entirely private to the user and 'coday.yaml' is exposed to all users of the project.
   
   
+  ## Integrations
+  
+  An integration is the activation of a group of tool functions provided to the LLM, with and depending on some configuration present in the project configuration in 'config.json'. The user manages this through the config handler and service.
+  
   ## AI/LLM integration
   
   The 'openai-handler.ts' that uses 'openai-client.ts' wraps the complexity around the library openai and serves as a default handler for commands not picked by any other handler. 
@@ -46,7 +50,8 @@ description: |
   All developments should not happen on 'master' branch, but on a dedicated and named by type of dev (feat, bugfix, other...), user name, and a title .
   Ex: `bugfix/johndoe/find-by-text-errors`
   
-  Every commit message should have a title, and then a description with more details with an empty line between title and description.
+  Commit only after compilation success.
+  Every commit message should have a title summarizing the change (do not repeat the branch name), and then a description with more details with an empty line between title and description.
   The title should be less than 50 characters long, and the description should be wrapped at 72 characters.
 
 # Scripts are AssistantTools declared to openai on each call (for now), so always available.
