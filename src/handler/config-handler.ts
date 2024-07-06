@@ -1,21 +1,23 @@
-import { Interactor } from "../interactor"
-import { CommandHandler } from "./command-handler"
-import { CommandContext } from "../command-context"
-import { loadOrInitProjectConfig } from "../service/project-service"
-import { configService } from "../service/config-service"
-import { ApiIntegration, ApiName } from "../service/coday-config"
+import {Interactor} from "../model/interactor"
+import {CommandHandler} from "./command-handler"
+import {CommandContext} from "../model/command-context"
+import {loadOrInitProjectDescription} from "../service/project-service"
+import {configService} from "../service/config-service"
+import {IntegrationName} from "../model/integration-name"
+import {IntegrationConfig} from "../model/integration-config"
 
 export class ConfigHandler extends CommandHandler {
-  commandWord: string = "config"
-  description: string = "handles config related commands"
-
+  
   constructor(
     private interactor: Interactor,
     private username: string,
   ) {
-    super()
+    super({
+      commandWord: "config",
+      description: "handles config related commands"
+    })
   }
-
+  
   async handle(
     command: string,
     context: CommandContext,
@@ -37,13 +39,13 @@ export class ConfigHandler extends CommandHandler {
       // nothing to do on the context here
       await this.editIntegration()
     }
-
+    
     if (!result) {
       throw new Error("Context lost in the process")
     }
     return result
   }
-
+  
   /**
    * Initialize the CommandContext when starting Coday interactive loop.
    */
@@ -54,7 +56,7 @@ export class ConfigHandler extends CommandHandler {
       console.log(`selecting ${initialProject}...`)
       return await this.selectProject(initialProject)
     }
-
+    
     if (!configService.projectNames.length) {
       // no projects at all, force user define one
       this.interactor.displayText(
@@ -70,13 +72,17 @@ export class ConfigHandler extends CommandHandler {
     }
     return await this.selectProject(lastProject)
   }
-
+  
+  resetProjectSelection(): void {
+    configService.resetProjectSelection()
+  }
+  
   private async chooseProject(): Promise<CommandContext | null> {
     const names = configService.projectNames
     const selection = await this.interactor.chooseOption(
       [...names, "new"],
       "Selection: ",
-      'Choose an existing project or select "new" to create one',
+      "Choose an existing project or select \"new\" to create one",
     )
     if (selection === "new") {
       return this.addProject()
@@ -88,7 +94,7 @@ export class ConfigHandler extends CommandHandler {
       return null
     }
   }
-
+  
   private async addProject(): Promise<CommandContext | null> {
     const projectName = await this.interactor.promptText("Project name")
     const projectPath = await this.interactor.promptText(
@@ -97,11 +103,7 @@ export class ConfigHandler extends CommandHandler {
     configService.addProject(projectName, projectPath)
     return await this.selectProject(projectName)
   }
-
-  resetProjectSelection(): void {
-    configService.resetProjectSelection()
-  }
-
+  
   private async selectProject(name: string): Promise<CommandContext | null> {
     if (!name && !configService.lastProject) {
       this.interactor.error("No project selected nor known.")
@@ -118,14 +120,14 @@ export class ConfigHandler extends CommandHandler {
       this.interactor.error(`No path found to project ${name}`)
       return null
     }
-
-    const projectConfig = await loadOrInitProjectConfig(
+    
+    const projectConfig = await loadOrInitProjectDescription(
       projectPath,
       this.interactor,
     )
-
+    
     this.interactor.displayText(`Project ${name} selected`)
-
+    
     return new CommandContext(
       {
         ...projectConfig,
@@ -134,18 +136,18 @@ export class ConfigHandler extends CommandHandler {
       this.username,
     )
   }
-
+  
   private async editIntegration() {
     if (!configService.lastProject) {
       this.interactor.displayText("No current project, select one first.")
     }
     // Mention all available integrations
-    const apiNames = Object.keys(ApiName)
-
+    const apiNames = Object.keys(IntegrationName)
+    
     // List all set integrations and prompt to choose one to edit (or type name of wanted one)
     const currentIntegrations = configService.integrations
-    const existingIntegrationNames: ApiName[] = currentIntegrations
-      ? (Object.keys(currentIntegrations) as ApiName[])
+    const existingIntegrationNames: IntegrationName[] = currentIntegrations
+      ? (Object.keys(currentIntegrations) as IntegrationName[])
       : []
     const answer = (
       await this.interactor.chooseOption(
@@ -157,10 +159,10 @@ export class ConfigHandler extends CommandHandler {
     if (!answer || answer === "EXIT") {
       return
     }
-    let apiIntegration: ApiIntegration =
-      currentIntegrations[answer as ApiName] || {}
-    let selectedName = answer as ApiName
-
+    let apiIntegration: IntegrationConfig =
+      currentIntegrations[answer as IntegrationName] || {}
+    let selectedName = answer as IntegrationName
+    
     // take all fields with existing values if available
     const apiUrl = await this.interactor.promptText(
       "Api url (if applicable)",
@@ -174,7 +176,7 @@ export class ConfigHandler extends CommandHandler {
       "Api key (if applicable)",
       apiIntegration.apiKey,
     ) // TODO see another way to update an api key ?
-
-    configService.setIntegration(selectedName, { apiUrl, username, apiKey })
+    
+    configService.setIntegration(selectedName, {apiUrl, username, apiKey})
   }
 }

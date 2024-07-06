@@ -1,15 +1,15 @@
 import {existsSync, readFileSync, writeFileSync} from 'fs'
 import * as yaml from 'yaml'
-import {ProjectDescription} from './project-description'
-import {findFilesByName} from '../function'
+import {ProjectDescription} from '../model/project-description'
 import {join} from 'path'
-import {Interactor} from "../interactor";
+import {Interactor} from "../model/interactor";
+import {findFilesByName} from "../function/find-files-by-name";
 
 const CONFIG_FILENAME_YAML = 'coday.yaml'
 
-export const loadOrInitProjectConfig = async (projectPath: string, interactor: Interactor): Promise<ProjectDescription | null> => {
-  let absoluteProjectConfigPath: string | null = null
-  let projectConfig: ProjectDescription
+export const loadOrInitProjectDescription = async (projectPath: string, interactor: Interactor): Promise<ProjectDescription> => {
+  let absoluteProjectDescriptionPath: string | null = null
+  let projectDescription: ProjectDescription
 
   const foundFiles = await findFilesByName({text: CONFIG_FILENAME_YAML, root: projectPath})
 
@@ -17,11 +17,11 @@ export const loadOrInitProjectConfig = async (projectPath: string, interactor: I
     throw new Error(`Multiple files found for ${CONFIG_FILENAME_YAML}. Please ensure there is only one file with this name.`)
   }
   if (foundFiles.length === 1) {
-    absoluteProjectConfigPath = join(projectPath, foundFiles[0])
+    absoluteProjectDescriptionPath = join(projectPath, foundFiles[0])
   }
 
-  if (!absoluteProjectConfigPath || (!existsSync(absoluteProjectConfigPath) && !existsSync(absoluteProjectConfigPath))) {
-    projectConfig = {
+  if (!absoluteProjectDescriptionPath || (!existsSync(absoluteProjectDescriptionPath) && !existsSync(absoluteProjectDescriptionPath))) {
+    projectDescription = {
       description: `Dummy description of the project. Write here a description of the project with all that matters: purpose, users, technologies, frameworks, conventions, tools, architecture... You can also write the paths to some relevant files the LLM could get on the go.`,
       scripts: {
         example: {
@@ -30,14 +30,14 @@ export const loadOrInitProjectConfig = async (projectPath: string, interactor: I
         }
       }
     }
-    const yamlConfig = yaml.stringify(projectConfig)
+    const yamlConfig = yaml.stringify(projectDescription)
     const projectConfigPath = join(projectPath, CONFIG_FILENAME_YAML)
     writeFileSync(projectConfigPath, yamlConfig)
     interactor.displayText(`Project configuration created at: ${projectConfigPath}`)
   } else {
-    const fileContent = readFileSync(absoluteProjectConfigPath, 'utf-8')
-    projectConfig = yaml.parse(fileContent) as ProjectDescription
-    interactor.displayText(`Project configuration used: ${absoluteProjectConfigPath}`)
+    const fileContent = readFileSync(absoluteProjectDescriptionPath, 'utf-8')
+    projectDescription = yaml.parse(fileContent) as ProjectDescription
+    interactor.displayText(`Project configuration used: ${absoluteProjectDescriptionPath}`)
   }
-  return projectConfig
+  return projectDescription
 }

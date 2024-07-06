@@ -1,6 +1,6 @@
 import axios from 'axios'
 import * as crypto from 'crypto'
-import {Interactor} from "../../interactor";
+import {Interactor} from "../../model/interactor";
 
 export async function addMRThread({
                                       mergeRequestId,

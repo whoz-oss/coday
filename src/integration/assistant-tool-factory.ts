@@ -1,8 +1,8 @@
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
-import {Interactor} from "../interactor"
+import {Interactor} from "../model/interactor"
 import {Beta} from "openai/resources"
 import AssistantTool = Beta.AssistantTool;
-import {CommandContext} from "../command-context";
+import {CommandContext} from "../model/command-context";
 
 export type Tool = AssistantTool & RunnableToolFunction<any>
 

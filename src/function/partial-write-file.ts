@@ -1,5 +1,5 @@
 import {readFileSync, existsSync, mkdirSync, writeFileSync} from "node:fs"
-import {Interactor} from "../interactor"
+import {Interactor} from "../model/interactor"
 import path from "path"
 
 export interface Change {

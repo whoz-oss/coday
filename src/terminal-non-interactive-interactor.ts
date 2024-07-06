@@ -1,4 +1,4 @@
-import { Interactor } from "./interactor"
+import {Interactor} from "./model/interactor"
 import chalk from "chalk"
 
 export class TerminalNonInteractiveInteractor implements Interactor {
