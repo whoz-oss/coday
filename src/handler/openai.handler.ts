@@ -1,9 +1,9 @@
-import {CommandHandler} from "./command-handler"
+import {CommandHandler} from "./command.handler"
 import {Interactor} from "../model/interactor"
 import {OpenaiClient} from "./openai-client"
-import {configService} from "../service/config-service"
 import {CommandContext} from "../model/command-context"
 import {IntegrationName} from "../model/integration-name"
+import {integrationService} from "../service/integration.service"
 
 export class OpenaiHandler extends CommandHandler {
   openaiClient: OpenaiClient
@@ -15,7 +15,7 @@ export class OpenaiHandler extends CommandHandler {
       description: "calls the AI with the given command and current context. 'reset' for using a new thread. You can call whatever assistant in your openai account by its name, ex: joke_generator called by @jok (choice prompt if multiple matches).",
       requiredIntegrations: [IntegrationName.OPENAI]
     })
-    const apiKeyProvider = () => configService.getApiKey("OPENAI")
+    const apiKeyProvider = () => integrationService.getApiKey("OPENAI")
     this.openaiClient = new OpenaiClient(interactor, apiKeyProvider)
   }
   

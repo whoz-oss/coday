@@ -7,14 +7,15 @@ import {
   GitHandler,
   OpenaiHandler,
   RunBashHandler,
-  SubTaskHandler
+  SubTaskHandler,
+  ThreadHandler
 } from "./handler"
 import {Interactor} from "./model/interactor"
 import {CommandContext} from "./model/command-context"
 import {SmallTaskFlowHandler} from "./handler/small-task-flow.handler"
-import {configService} from "./service/config-service"
 import {keywords} from "./keywords"
 import {GitlabReviewHandler} from "./handler/gitlab-review.handler"
+import {integrationService} from "./service/integration.service"
 
 const MAX_ITERATIONS = 100
 
@@ -40,9 +41,10 @@ export class HandlerLooper {
         new SubTaskHandler(this.interactor),
         new AddMessageHandler(this.interactor, this.openaiHandler.openaiClient),
         new GitlabReviewHandler(),
+        new ThreadHandler(this.interactor, this.openaiHandler.openaiClient),
         this.openaiHandler
       ].filter(handler =>
-        handler.requiredIntegrations.every(requiredIntegration => configService.hasIntegration(requiredIntegration))
+        handler.requiredIntegrations.every(requiredIntegration => integrationService.hasIntegration(requiredIntegration))
       )
     } catch (error) {
       this.interactor.error(`Error initializing handlers: ${error}`)
@@ -65,16 +67,14 @@ export class HandlerLooper {
           ...this.handlers
             .slice().filter(h => !h.isInternal).map(h => this.formatHelp(h.commandWord, h.description)).sort(),
           this.formatHelp("[any other text]", "defaults to asking the AI with the current context."),
-          this.formatHelp(`${keywords.reset}`, "resets Coday's context."),
-          this.formatHelp(`${keywords.exit}`, "quits the program."),
+          this.formatHelp(keywords.reset, "resets Coday's context."),
+          this.formatHelp(keywords.exit, "quits the program."),
         ]
         handlerHelpMessages.forEach(msg => this.interactor.displayText(msg))
-        
-        currentCommand = undefined
         continue
       }
       if (!currentCommand) {
-        continue
+        break
       }
       
       // find first handler

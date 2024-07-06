@@ -1,4 +1,4 @@
-import {CommandHandler} from "./command-handler"
+import {CommandHandler} from "./command.handler"
 import {Interactor} from "../model/interactor"
 import {runBash} from "../function/run-bash"
 import {CommandContext} from "../model/command-context"
