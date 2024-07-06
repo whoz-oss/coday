@@ -1,8 +1,8 @@
-import { TerminalInteractor } from "./src/terminal-interactor"
-import { Coday } from "./src/coday"
+import {TerminalInteractor} from "./src/terminal-interactor"
+import {Coday} from "./src/coday"
 import yargs from "yargs"
-import { hideBin } from "yargs/helpers"
-import { TerminalNonInteractiveInteractor } from "./src/terminal-non-interactive-interactor"
+import {hideBin} from "yargs/helpers"
+import {TerminalNonInteractiveInteractor} from "./src/terminal-non-interactive-interactor"
 
 // Define the argv type
 interface Argv {
@@ -31,16 +31,16 @@ const argv: Argv = yargs(hideBin(process.argv))
 
 const projectName = argv.project || (argv._[0] as string)
 const prompts = (argv.prompt || argv._.slice(1)) as string[]
-const interactive = !argv.oneshot
+const oneshot = !!argv.oneshot
 
 const options = {
-  interactive: interactive,
+  oneshot: oneshot,
   project: projectName,
   prompts: prompts,
 }
 
-const interactor = options.interactive
-  ? new TerminalInteractor()
-  : new TerminalNonInteractiveInteractor()
+const interactor = options.oneshot
+  ? new TerminalNonInteractiveInteractor()
+  : new TerminalInteractor()
 
 new Coday(interactor, options).run()

@@ -1,16 +1,16 @@
-import {runBash} from "../function/run-bash"
+import {runBash} from "../../function/run-bash"
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
-import {Interactor} from "../interactor"
+import {Interactor} from "../../model/interactor"
 import {Beta} from "openai/resources"
-import {gitAdd} from "../function/git-add"
-import {gitCommit} from "../function/git-commit"
-import {gitListBranches} from "../function/git-list-branches"
-import {gitCreateBranch} from "../function/git-create-branch"
-import {configService} from "../service/config-service"
-import {ApiName} from "../service/coday-config"
+import {gitAdd} from "./git-add"
+import {gitCommit} from "./git-commit"
+import {gitListBranches} from "./git-list-branches"
+import {gitCreateBranch} from "./git-create-branch"
+import {configService} from "../../service/config-service"
 import AssistantTool = Beta.AssistantTool;
-import {CommandContext} from "../command-context";
-import {AssistantToolFactory, Tool} from "./assistant-tool-factory";
+import {CommandContext} from "../../model/command-context";
+import {AssistantToolFactory, Tool} from "../assistant-tool-factory";
+import {IntegrationName} from "../../model/integration-name";
 
 export class GitTools extends AssistantToolFactory {
     constructor(interactor: Interactor) {
@@ -23,8 +23,8 @@ export class GitTools extends AssistantToolFactory {
 
     protected buildTools(context: CommandContext): Tool[] {
         const result: Tool[] = []
-
-        if (!configService.hasIntegration(ApiName.GIT)) {
+      
+      if (!configService.hasIntegration(IntegrationName.GIT)) {
             return result
         }
 

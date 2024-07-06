@@ -1,5 +1,5 @@
-import {runBash} from "./run-bash";
-import {Interactor} from "../interactor";
+import {runBash} from "../../function/run-bash";
+import {Interactor} from "../../model/interactor";
 
 export const gitAdd = async ({ filePaths, root, interactor }: {
   filePaths: string[],

@@ -1,4 +1,4 @@
-import { Interactor } from "../interactor";
+import {Interactor} from "../../model/interactor";
 import { exec } from "child_process"
 import {promisify} from "util"
 

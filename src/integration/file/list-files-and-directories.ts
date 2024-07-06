@@ -1,4 +1,4 @@
-import { Interactor } from "../interactor";
+import {Interactor} from "../../model/interactor";
 import * as fs from 'fs';
 import * as path from 'path';
 
