@@ -1,15 +1,17 @@
-import { Interactor } from "../interactor"
+import {Interactor} from "../model/interactor"
 import OpenAI from "openai"
 import { AssistantStream } from "openai/lib/AssistantStream"
 import { Beta } from "openai/resources"
 import { JiraTools } from "../integration/jira/jira-tools"
-import { GitTools } from "./git-tools"
-import { OpenaiTools } from "./openai-tools"
-import { ScriptsTools } from "./scripts-tools"
-import { AssistantDescription, CommandContext } from "../command-context"
+import {GitTools} from "../integration/git/git-tools"
+import {OpenaiTools} from "../integration/openai/openai-tools"
+import {ScriptsTools} from "../integration/scripts-tools"
 import {GitLabTools} from "../integration/gitlab/gitlab-tools"
 import Assistant = Beta.Assistant
-import { Tool } from "./assistant-tool-factory"
+import {Tool} from "../integration/assistant-tool-factory"
+import {FileTools} from "../integration/file/file-tools";
+import {AssistantDescription} from "../model/assistant-description";
+import {CommandContext} from "../model/command-context";
 
 const DEFAULT_MODEL: string = "gpt-4o"
 const DEFAULT_TEMPERATURE: number = 0.75
@@ -40,6 +42,7 @@ export class OpenaiClient {
   textAccumulator: string = ""
 
   openaiTools: OpenaiTools
+  fileTools: FileTools
   jiraTools: JiraTools
   gitTools: GitTools
   scriptTools: ScriptsTools
@@ -53,6 +56,7 @@ export class OpenaiClient {
     private apiKeyProvider: () => string | undefined,
   ) {
     this.openaiTools = new OpenaiTools(interactor)
+    this.fileTools = new FileTools(interactor)
     this.jiraTools = new JiraTools(interactor)
     this.gitTools = new GitTools(interactor)
     this.scriptTools = new ScriptsTools(interactor)
@@ -145,6 +149,7 @@ export class OpenaiClient {
 
     const tools = [
       ...this.openaiTools.getTools(context),
+      ...this.fileTools.getTools(context),
       ...this.jiraTools.getTools(context),
       ...this.gitTools.getTools(context),
       ...this.scriptTools.getTools(context),

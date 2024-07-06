@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { Interactor } from "../../interactor"
+import {Interactor} from "../../model/interactor"
 
 export async function getIssue(issueId: string, gitlabBaseUrl: string, gitlabApiToken: string, gitlabUsername: string, interactor: Interactor): Promise<any> {
 

@@ -1,5 +1,5 @@
-import {runBash} from "./run-bash";
-import {Interactor} from "../interactor";
+import {runBash} from "../../function/run-bash";
+import {Interactor} from "../../model/interactor";
 
 export const gitListBranches = async ({ root, interactor }: {
   root: string,

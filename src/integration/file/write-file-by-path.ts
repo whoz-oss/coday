@@ -1,5 +1,5 @@
 import {existsSync, mkdirSync, writeFileSync} from "node:fs";
-import {Interactor} from "../interactor";
+import {Interactor} from "../../model/interactor";
 import path from "path";
 
 type WriteFileByPathInput = {
@@ -9,7 +9,7 @@ type WriteFileByPathInput = {
     content: string
 }
 
-export const writeFile = ({relPath, root, interactor, content}: WriteFileByPathInput) => {
+export const writeFileByPath = ({relPath, root, interactor, content}: WriteFileByPathInput) => {
 
     // need to prevent double slashes
     const fullPath = relPath ? path.resolve(root, relPath) : root
