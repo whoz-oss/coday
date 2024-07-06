@@ -1,8 +1,7 @@
-import {AssistantToolFactory, Tool} from "../../handler/assistant-tool-factory"
-import {CommandContext} from "../../command-context"
+import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
+import {CommandContext} from "../../model/command-context"
 import {configService} from "../../service/config-service"
-import {ApiName} from "../../service/coday-config"
-import {Interactor} from "../../interactor"
+import {Interactor} from "../../model/interactor"
 import {getMergeRequest} from "./get-merge-request"
 import {addGlobalComment} from "./add-global-comment"
 import {addMRThread} from "./add-mr-thread"
@@ -10,6 +9,7 @@ import {Beta} from "openai/resources"
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
 import {getIssue} from "./get-issue"
 import AssistantTool = Beta.AssistantTool;
+import {IntegrationName} from "../../model/integration-name";
 
 export class GitLabTools extends AssistantToolFactory {
     constructor(interactor: Interactor) {
@@ -22,13 +22,13 @@ export class GitLabTools extends AssistantToolFactory {
 
     protected buildTools(context: CommandContext): Tool[] {
         const result: Tool[] = []
-        if (!configService.hasIntegration(ApiName.GITLAB)) {
+      if (!configService.hasIntegration(IntegrationName.GITLAB)) {
             return result
         }
-
-        const gitlabBaseUrl = configService.getApiUrl(ApiName.GITLAB)
-        const gitlabUsername = configService.getUsername(ApiName.GITLAB)
-        const gitlabApiToken = configService.getApiKey(ApiName.GITLAB)
+      
+      const gitlabBaseUrl = configService.getApiUrl(IntegrationName.GITLAB)
+      const gitlabUsername = configService.getUsername(IntegrationName.GITLAB)
+      const gitlabApiToken = configService.getApiKey(IntegrationName.GITLAB)
         if (!(gitlabBaseUrl && gitlabUsername && gitlabApiToken)) {
             return result
         }

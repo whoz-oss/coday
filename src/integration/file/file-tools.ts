@@ -1,12 +1,17 @@
-import {listFilesAndDirectories, readFileByPath, writeFile, findFilesByText, findFilesByName} from "../function"
-import {RunnableToolFunction} from "openai/lib/RunnableFunction"
-import {Interactor} from "../interactor"
-import {Beta} from "openai/resources"
+import {AssistantToolFactory, Tool} from "../assistant-tool-factory";
+import {Interactor} from "../../model/interactor";
+import {CommandContext} from "../../model/command-context";
+import {Beta} from "openai/resources";
 import AssistantTool = Beta.AssistantTool;
-import {CommandContext} from "../command-context";
-import {AssistantToolFactory, Tool} from "./assistant-tool-factory";
+import {RunnableToolFunction} from "openai/lib/RunnableFunction";
+import {readFileByPath} from "./read-file-by-path";
+import {writeFileByPath} from "./write-file-by-path";
+import {findFilesByName} from "../../function/find-files-by-name";
+import {listFilesAndDirectories} from "./list-files-and-directories";
+import {findFilesByText} from "./find-files-by-text";
 
-export class OpenaiTools extends AssistantToolFactory {
+
+export class FileTools extends AssistantToolFactory {
 
     constructor(interactor: Interactor) {
         super(interactor)
@@ -41,7 +46,7 @@ export class OpenaiTools extends AssistantToolFactory {
         result.push(readProjectFileFunction)
 
         const writeProjectFile = ({path, content}: { path: string, content: string }) => {
-            return writeFile({relPath: path, root: context.project.root, interactor: this.interactor, content})
+          return writeFileByPath({relPath: path, root: context.project.root, interactor: this.interactor, content})
         }
 
         const writeProjectFileFunction: AssistantTool & RunnableToolFunction<{ path: string, content: string }> = {
@@ -143,49 +148,6 @@ export class OpenaiTools extends AssistantToolFactory {
             }
         }
         result.push(searchFilesByTextFunction)
-
-        context.canSubTask(() => {
-
-        const subTask = ({subTasks}: { subTasks: {description: string}[] }) => {
-            subTasks.forEach(
-                subTask => this.interactor.displayText(`Sub-task received: ${subTask.description}`)
-            )
-            if (context.addSubTasks(...subTasks.map(subTask => subTask.description))) {
-            return "sub-tasks received and queued for execution, will be runned after this current run."
-
-            }
-            return "sub-tasks could not be queued, no more sub-tasking allowed for now."
-        }
-
-        const subTaskFunction: AssistantTool & RunnableToolFunction<{ subTasks: {description: string}[] }> = {
-            type: "function",
-            function: {
-                name: "subTask",
-                description: "Queue tasks that will be runned sequentially after the current run. DO NOT TRY TO COMPLETE THESE TASKS, JUST DEFINE THEM HERE.",
-                parameters: {
-                    type: "object",
-                    properties: {
-                        subTasks: {
-                            type: "array",
-                            description: "Ordered list of sub-tasks",
-                            items: {
-                                type: "object",
-                                properties: {
-                                    description: {
-                                        type: "string",
-                                        description: "Description of the sub-task, add details on what is specific to this task and what are the expectations on its completion."
-                                    }
-                                }
-                            }
-                        },
-                    }
-                },
-                parse: JSON.parse,
-                function: subTask
-            }
-        }
-            result.push(subTaskFunction)
-        })
 
         return result
     }

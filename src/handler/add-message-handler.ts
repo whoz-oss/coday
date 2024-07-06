@@ -1,19 +1,21 @@
-import { CommandHandler } from "./command-handler"
-import { Interactor } from "../interactor"
-import { CommandContext } from "../command-context"
-import { OpenaiClient } from "./openai-client"
+import {CommandHandler} from "./command-handler"
+import {Interactor} from "../model/interactor"
+import {CommandContext} from "../model/command-context"
+import {OpenaiClient} from "./openai-client"
 
 export class AddMessageHandler extends CommandHandler {
-  commandWord = "add-message"
-  description = "[internal] used to allow user feedback between flow commands."
-
+  
   constructor(
     private interactor: Interactor,
     private openaiClient: OpenaiClient,
   ) {
-    super()
+    super({
+      commandWord: "add-message",
+      description: "[internal] used to allow user feedback between flow commands.",
+      isInternal: true,
+    })
   }
-
+  
   async handle(
     command: string,
     context: CommandContext,
@@ -23,11 +25,11 @@ export class AddMessageHandler extends CommandHandler {
     const userAnswer = await this.interactor.promptText(
       `${invite}\n(type nothing to proceed) `,
     )
-
+    
     if (userAnswer) {
       await this.openaiClient.addMessage(userAnswer)
     }
-
+    
     return context
   }
 }

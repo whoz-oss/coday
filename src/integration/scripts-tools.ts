@@ -1,9 +1,9 @@
 import {runBash} from "../function/run-bash"
-import {Interactor} from "../interactor"
+import {Interactor} from "../model/interactor"
 import {Beta} from "openai/resources"
-import {Scripts} from "../service/scripts"
+import {Scripts} from "../model/scripts"
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
-import {CommandContext} from "../command-context"
+import {CommandContext} from "../model/command-context"
 import AssistantTool = Beta.AssistantTool
 import {AssistantToolFactory, Tool} from "./assistant-tool-factory";
 

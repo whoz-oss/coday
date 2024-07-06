@@ -1,24 +1,14 @@
 import os from "os"
-import { CommandContext } from "./command-context"
-import { Interactor } from "./interactor"
-import {
-  AddMessageHandler,
-  CodeFlowHandler,
-  CommandHandler,
-  ConfigHandler,
-  DebugHandler,
-  GitHandler,
-  OpenaiHandler,
-  RunBashHandler,
-  SubTaskHandler, // Import the new handler
-} from "./handler"
-import { SmallTaskFlowHandler } from "./handler/small-task-flow.handler"
-import { GitlabReviewHandler } from "./handler/gitlab-review.handler"
+import {CommandContext} from "./model/command-context"
+import {Interactor} from "./model/interactor"
+import {ConfigHandler, OpenaiHandler,} from "./handler"
+import {HandlerLooper} from "./handler-looper"
+import {keywords} from "./keywords"
 
 const MAX_ITERATIONS = 100
 
 interface CodayOptions {
-  interactive: boolean
+  oneshot: boolean
   project?: string
   prompts?: string[]
 }
@@ -27,16 +17,11 @@ export class Coday {
   userInfo: os.UserInfo<string>
   context: CommandContext | null = null
   configHandler: ConfigHandler
-
-  // Properties from MainHandler
-  commandWord: string = ""
-  description: string = ""
-  exitWord = "exit"
-  resetWord = "reset"
-  handlers: CommandHandler[]
+  
+  handlerLooper: HandlerLooper
   openaiHandler: OpenaiHandler
   maxIterations: number
-
+  
   constructor(
     private interactor: Interactor,
     private options: CodayOptions,
@@ -44,21 +29,10 @@ export class Coday {
     this.userInfo = os.userInfo()
     this.configHandler = new ConfigHandler(interactor, this.userInfo.username)
     this.openaiHandler = new OpenaiHandler(interactor)
+    this.handlerLooper = new HandlerLooper(interactor, this.openaiHandler)
     this.maxIterations = MAX_ITERATIONS
-    this.handlers = [
-      this.configHandler,
-      new GitHandler(interactor),
-      new RunBashHandler(interactor),
-      new DebugHandler(interactor),
-      new CodeFlowHandler(),
-      new SmallTaskFlowHandler(),
-        new SubTaskHandler(interactor),
-      new SubTaskHandler(interactor),
-      new AddMessageHandler(interactor, this.openaiHandler.openaiClient), // TODO: rework this bad pattern, expose openaiClient otherwise ?
-    ]
-      this.handlers.push(this.openaiHandler) // IMPORTANT, keep in last position, openai is the least priority handler
   }
-
+  
   async run(): Promise<void> {
     let prompts = this.options.prompts ? [...this.options.prompts] : []
     // Main loop to keep waiting for user input
@@ -68,13 +42,15 @@ export class Coday {
         this.context = await this.configHandler.initContext(
           this.options.project,
         )
-        if (!this.options.interactive && !this.context) {
+        if (this.options.oneshot && !this.context) {
           this.interactor.error("Could not initialize context")
           break
         }
+        this.context!.oneshot = this.options.oneshot
+        this.handlerLooper.init(this.userInfo.username)
         continue
       }
-
+      
       let userCommand: string
       if (prompts.length) {
         // if initial prompt(s), set the first as userCommand and add the others to the queue
@@ -83,7 +59,7 @@ export class Coday {
           this.context.addCommands(...prompts)
           prompts = [] // clear the prompts
         }
-      } else if (this.options.interactive) {
+      } else if (!this.options.oneshot) {
         // allow user input
         userCommand = await this.interactor.promptText(
           `${this.userInfo.username}`,
@@ -92,92 +68,23 @@ export class Coday {
         // default case: no initial prompt and not interactive = get out
         break
       }
-
+      
       // quit loop if user wants to exit
-      if (userCommand === this.exitWord) {
+      if (userCommand === keywords.exit) {
         break
       }
       // reset context and project selection
-      if (userCommand === this.resetWord) {
+      if (userCommand === keywords.reset) {
         this.context = null
         this.openaiHandler.reset()
         this.configHandler.resetProjectSelection()
         continue
       }
-
+      
       // add the user command to the queue and let handlers decompose it in many and resolve them ultimately
       this.context.addCommands(userCommand)
-
-      this.context = await this.handle(userCommand, this.context)
-    } while (this.options.interactive)
-  }
-
-  async handle(
-    command: string,
-    context: CommandContext,
-  ): Promise<CommandContext> {
-    let count = 0
-    let currentCommand: string | undefined = command
-    do {
-      currentCommand = context.getFirstCommand()
-      count++
-      if (this.isHelpAsked(currentCommand)) {
-        this.interactor.displayText("Available commands:")
-        this.interactor.displayText(
-          "  - help/h/[nothing] : displays this help message",
-        )
-        this.handlers
-          .slice()
-          .sort((a, b) => a.commandWord.localeCompare(b.commandWord))
-          .forEach((h) =>
-            this.interactor.displayText(
-              `  - ${h.commandWord} : ${h.description}`,
-            ),
-          )
-        this.interactor.displayText(
-          "  - [any other text] : defaults to asking the AI with the current context.",
-        )
-        this.interactor.displayText(
-          `  - ${this.resetWord} : resets Coday's context`,
-        )
-        this.interactor.displayText(`  - ${this.exitWord} : quits the program`)
-        currentCommand = undefined
-        continue
-      }
-      if (!currentCommand) {
-        continue
-      }
-
-      // find first handler
-      const handler: CommandHandler | undefined = this.handlers.find((h) =>
-        h.accept(currentCommand!, context),
-      )
-
-      try {
-        if (handler) {
-          context = await handler.handle(currentCommand, context)
-        } else {
-          // default case: repackage the command as an open question for AI
-          context.addCommands(
-            `${this.openaiHandler.commandWord} ${currentCommand}`,
-          )
-        }
-      } catch (error) {
-        this.interactor.error(
-          `An error occurred while trying to process your request: ${error}`,
-        )
-      }
-    } while (
-      !!currentCommand &&
-      (this.options.interactive || count < this.maxIterations)
-    )
-    if (count >= this.maxIterations) {
-      this.interactor.warn("Maximum iterations reached for a command")
-    }
-    return context
-  }
-
-  private isHelpAsked(command: string | undefined): boolean {
-    return command === "" || command === "help" || command === "h"
+      
+      this.context = await this.handlerLooper.handle(this.context)
+    } while (!(this.context?.oneshot))
   }
 }

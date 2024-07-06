@@ -1,4 +1,4 @@
-import { Interactor } from "./interactor"
+import {Interactor} from "./model/interactor"
 import { input, select } from "@inquirer/prompts"
 import chalk from "chalk"
 

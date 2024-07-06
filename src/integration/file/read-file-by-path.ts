@@ -1,6 +1,6 @@
 import {readFileSync} from "fs";
 import {existsSync} from "node:fs";
-import {Interactor} from "../interactor";
+import {Interactor} from "../../model/interactor";
 import path from "path";
 
 type ReadFileByPathInput = {

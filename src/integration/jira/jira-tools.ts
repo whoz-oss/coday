@@ -1,12 +1,12 @@
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
-import {Interactor} from "../../interactor"
+import {Interactor} from "../../model/interactor"
 import {Beta} from "openai/resources"
 import {configService} from "../../service/config-service";
-import {ApiName} from "../../service/coday-config";
 import AssistantTool = Beta.AssistantTool;
-import {CommandContext} from "../../command-context";
-import {AssistantToolFactory, Tool} from "../../handler/assistant-tool-factory";
+import {CommandContext} from "../../model/command-context";
+import {AssistantToolFactory, Tool} from "../assistant-tool-factory";
 import {retrieveJiraTicket} from "./retrieve-jira-ticket";
+import {IntegrationName} from "../../model/integration-name";
 
 export class JiraTools extends AssistantToolFactory {
 
@@ -20,13 +20,13 @@ export class JiraTools extends AssistantToolFactory {
 
     protected buildTools(context: CommandContext): Tool[] {
         const result: Tool[] = []
-        if (!configService.hasIntegration(ApiName.JIRA)) {
+      if (!configService.hasIntegration(IntegrationName.JIRA)) {
             return result
         }
-
-        const jiraBaseUrl = configService.getApiUrl(ApiName.JIRA)
-        const jiraUsername = configService.getUsername(ApiName.JIRA)
-        const jiraApiToken = configService.getApiKey(ApiName.JIRA)
+      
+      const jiraBaseUrl = configService.getApiUrl(IntegrationName.JIRA)
+      const jiraUsername = configService.getUsername(IntegrationName.JIRA)
+      const jiraApiToken = configService.getApiKey(IntegrationName.JIRA)
         if (!(jiraBaseUrl && jiraUsername && jiraApiToken)) {
             return result
         }
