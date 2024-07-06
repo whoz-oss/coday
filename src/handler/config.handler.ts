@@ -1,10 +1,12 @@
 import {Interactor} from "../model/interactor"
-import {CommandHandler} from "./command-handler"
+import {CommandHandler} from "./command.handler"
 import {CommandContext} from "../model/command-context"
-import {loadOrInitProjectDescription} from "../service/project-service"
-import {configService} from "../service/config-service"
+import {loadOrInitProjectDescription} from "../service/load-or-init-project-description"
+import {configService} from "../service/config.service"
 import {IntegrationName} from "../model/integration-name"
 import {IntegrationConfig} from "../model/integration-config"
+import {integrationService} from "../service/integration.service"
+import {keywords} from "../keywords"
 
 export class ConfigHandler extends CommandHandler {
   
@@ -145,18 +147,18 @@ export class ConfigHandler extends CommandHandler {
     const apiNames = Object.keys(IntegrationName)
     
     // List all set integrations and prompt to choose one to edit (or type name of wanted one)
-    const currentIntegrations = configService.integrations
+    const currentIntegrations = integrationService.integrations
     const existingIntegrationNames: IntegrationName[] = currentIntegrations
       ? (Object.keys(currentIntegrations) as IntegrationName[])
       : []
     const answer = (
       await this.interactor.chooseOption(
-        [...apiNames, "exit"],
+        [...apiNames, keywords.exit],
         "Select an integration to edit",
         `Integrations are tools behind some commands and/or functions for AI.\nHere are the configured ones: (${existingIntegrationNames.join(", ")})`,
       )
     ).toUpperCase()
-    if (!answer || answer === "EXIT") {
+    if (!answer || answer === keywords.exit.toUpperCase()) {
       return
     }
     let apiIntegration: IntegrationConfig =
@@ -177,6 +179,6 @@ export class ConfigHandler extends CommandHandler {
       apiIntegration.apiKey,
     ) // TODO see another way to update an api key ?
     
-    configService.setIntegration(selectedName, {apiUrl, username, apiKey})
+    integrationService.setIntegration(selectedName, {apiUrl, username, apiKey})
   }
 }
