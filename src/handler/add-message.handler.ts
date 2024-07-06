@@ -1,4 +1,4 @@
-import {CommandHandler} from "./command-handler"
+import {CommandHandler} from "./command.handler"
 import {Interactor} from "../model/interactor"
 import {CommandContext} from "../model/command-context"
 import {OpenaiClient} from "./openai-client"

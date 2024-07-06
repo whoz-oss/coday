@@ -1,17 +1,17 @@
 import {Interactor} from "../model/interactor"
 import OpenAI from "openai"
-import { AssistantStream } from "openai/lib/AssistantStream"
-import { Beta } from "openai/resources"
-import { JiraTools } from "../integration/jira/jira-tools"
-import {GitTools} from "../integration/git/git-tools"
+import {AssistantStream} from "openai/lib/AssistantStream"
+import {Beta} from "openai/resources"
+import {JiraTools} from "../integration/jira/jira.tools"
+import {GitTools} from "../integration/git/git.tools"
 import {OpenaiTools} from "../integration/openai/openai-tools"
-import {ScriptsTools} from "../integration/scripts-tools"
-import {GitLabTools} from "../integration/gitlab/gitlab-tools"
-import Assistant = Beta.Assistant
+import {ScriptsTools} from "../integration/scripts.tools"
+import {GitLabTools} from "../integration/gitlab/gitlab.tools"
 import {Tool} from "../integration/assistant-tool-factory"
-import {FileTools} from "../integration/file/file-tools";
-import {AssistantDescription} from "../model/assistant-description";
-import {CommandContext} from "../model/command-context";
+import {FileTools} from "../integration/file/file.tools"
+import {AssistantDescription} from "../model/assistant-description"
+import {CommandContext} from "../model/command-context"
+import Assistant = Beta.Assistant
 
 const DEFAULT_MODEL: string = "gpt-4o"
 const DEFAULT_TEMPERATURE: number = 0.75
@@ -40,7 +40,7 @@ export class OpenaiClient {
   openai: OpenAI | undefined
   threadId: string | null = null
   textAccumulator: string = ""
-
+  
   openaiTools: OpenaiTools
   fileTools: FileTools
   jiraTools: JiraTools
@@ -50,7 +50,7 @@ export class OpenaiClient {
   apiKey: string | undefined
   assistants: AssistantReference[] = []
   assistant: AssistantReference | undefined
-
+  
   constructor(
     private interactor: Interactor,
     private apiKeyProvider: () => string | undefined,
@@ -60,9 +60,9 @@ export class OpenaiClient {
     this.jiraTools = new JiraTools(interactor)
     this.gitTools = new GitTools(interactor)
     this.scriptTools = new ScriptsTools(interactor)
-  this.gitlabTools = new GitLabTools(interactor)
-    }
-
+    this.gitlabTools = new GitLabTools(interactor)
+  }
+  
   private isOpenaiReady(): boolean {
     this.apiKey = this.apiKeyProvider()
     if (!this.apiKey) {
@@ -71,7 +71,7 @@ export class OpenaiClient {
       )
       return false
     }
-
+    
     if (!this.openai) {
       this.openai = new OpenAI({
         apiKey: this.apiKey,
@@ -79,7 +79,7 @@ export class OpenaiClient {
     }
     return true
   }
-
+  
   async isReady(
     assistantName: string,
     context: CommandContext,
@@ -87,14 +87,14 @@ export class OpenaiClient {
     if (!this.isOpenaiReady()) {
       return false
     }
-
+    
     this.assistant = await this.findAssistant(assistantName, context)
-
+    
     if (!this.threadId) {
       const thread = await this.openai!.beta.threads.create()
       this.threadId = thread.id
       this.interactor.displayText(`Thread created with ID: ${this.threadId}`)
-
+      
       await this.openai!.beta.threads.messages.create(this.threadId, {
         role: "assistant",
         content: `Specific project context: ${context.project.description}
@@ -102,7 +102,7 @@ export class OpenaiClient {
                 You are interacting with a human with username:${context.username}
                 `,
       })
-
+      
       const projectAssistants = this.getProjectAssistants(context)
       const projectAssistantReferences = projectAssistants?.map(
         (a) => `${a.name} : ${a.description}`,
@@ -120,42 +120,42 @@ export class OpenaiClient {
         })
       }
     }
-
+    
     return true
   }
-
+  
   async addMessage(message: string): Promise<void> {
     if (!this.threadId || !this.openai) {
       throw new Error("Cannot add message if no thread or openai defined yet")
     }
-
+    
     await this.openai!.beta.threads.messages.create(this.threadId, {
       role: "user",
       content: message,
     })
   }
-
+  
   async answer(
     name: string,
     command: string,
     context: CommandContext,
   ): Promise<string> {
     const assistantName = name.toLowerCase()
-
+    
     this.textAccumulator = ""
     if (!(await this.isReady(assistantName, context))) {
       return "Openai client not ready"
     }
-
+    
     const tools = [
       ...this.openaiTools.getTools(context),
       ...this.fileTools.getTools(context),
       ...this.jiraTools.getTools(context),
       ...this.gitTools.getTools(context),
       ...this.scriptTools.getTools(context),
-    ...this.gitlabTools.getTools(context)
-        ]
-
+      ...this.gitlabTools.getTools(context)
+    ]
+    
     await this.openai!.beta.threads.messages.create(this.threadId!, {
       role: "user",
       content: command,
@@ -171,17 +171,17 @@ export class OpenaiClient {
         parallel_tool_calls: false,
       },
     )
-
+    
     await this.processStream(assistantStream, tools)
-
+    
     await assistantStream.finalRun()
-
+    
     // here, to loop among assistants mentioning each other, we should check for '@name' tokens in the text and add as many commands in the context to answer
     const mentionsToSearch = this.getProjectAssistants(context)
       ?.map((a) => a.name)
       ?.filter((n) => n !== this.assistant?.name)
       .map((name) => `@${name}`)
-
+    
     // search for mentions
     mentionsToSearch?.forEach((mention) => {
       if (this.textAccumulator.includes(mention)) {
@@ -191,10 +191,10 @@ export class OpenaiClient {
         )
       }
     })
-
+    
     return this.textAccumulator
   }
-
+  
   async processStream(stream: AssistantStream, tools: Tool[]) {
     stream.on("textDone", (diff) => {
       this.interactor.displayText(diff.value, this.assistant?.name)
@@ -213,14 +213,14 @@ export class OpenaiClient {
               )
               if (!funcWrapper) {
                 output = `Function ${toolCall.function.name} not found.`
-                return { tool_call_id: toolCall.id, output }
+                return {tool_call_id: toolCall.id, output}
               }
-
+              
               const toolFunc = funcWrapper.function.function
-
+              
               try {
                 let args: any = JSON.parse(toolCall.function.arguments)
-
+                
                 if (!Array.isArray(args)) {
                   args = [args]
                 }
@@ -229,26 +229,26 @@ export class OpenaiClient {
                 this.interactor.error(err)
                 output = `Error on executing function, got error: ${JSON.stringify(err)}`
               }
-
+              
               if (!output) {
                 output = `Tool function ${funcWrapper.function.name} finished without error.`
               }
-
+              
               if (typeof output !== "string") {
                 output = JSON.stringify(output)
               }
-
-              return { tool_call_id: toolCall.id, output }
+              
+              return {tool_call_id: toolCall.id, output}
             }),
           )
-
+          
           const newStream =
             this.openai!.beta.threads.runs.submitToolOutputsStream(
               this.threadId!,
               chunk.data.id,
-              { tool_outputs: toolOutputs },
+              {tool_outputs: toolOutputs},
             )
-
+          
           await this.processStream.call(this, newStream, tools)
         } catch (error) {
           console.error(`Error processing tool call`, error)
@@ -256,12 +256,12 @@ export class OpenaiClient {
       }
     }
   }
-
+  
   reset(): void {
     this.threadId = null
     this.interactor.displayText("Thread has been reset")
   }
-
+  
   private getProjectAssistants(
     context: CommandContext,
   ): AssistantDescription[] | undefined {
@@ -269,7 +269,7 @@ export class OpenaiClient {
       ? [CODAY_DESCRIPTION, ...context.project.assistants]
       : undefined
   }
-
+  
   private async initAssistantList(): Promise<void> {
     // init map name -> id
     if (!this.assistants.length) {
@@ -297,18 +297,18 @@ export class OpenaiClient {
       } while (after)
     }
   }
-
+  
   private async findAssistant(
     name: string,
     context: CommandContext,
   ): Promise<AssistantReference> {
     await this.initAssistantList()
-
+    
     // then find all names that could match the given one
     const matchingAssistants = this.assistants.filter((a) =>
       a.name.toLowerCase().startsWith(name),
     )
-
+    
     if (matchingAssistants.length === 1) {
       return matchingAssistants[0]
     }
@@ -320,7 +320,7 @@ export class OpenaiClient {
       )
       return matchingAssistants.find((m) => m.name === selection)!
     }
-
+    
     // no existing assistant found, let's check the project ones that do have systemInstructions
     const projectAssistants = this.getProjectAssistants(context)
     const matchingProjectAssistants = projectAssistants?.filter(
@@ -329,7 +329,7 @@ export class OpenaiClient {
     if (!matchingProjectAssistants?.length) {
       throw new Error("no matching assistant")
     }
-
+    
     let assistantToCreate: AssistantDescription | undefined
     if (matchingProjectAssistants?.length === 1) {
       assistantToCreate = matchingProjectAssistants[0]
@@ -347,11 +347,11 @@ export class OpenaiClient {
     this.interactor.displayText(
       `No existing assistant found for ${name}, will try to create it`,
     )
-
+    
     if (!assistantToCreate) {
       throw new Error("no matching assistant")
     }
-
+    
     const createdAssistant = await this.openai!.beta.assistants.create({
       name: assistantToCreate?.name,
       model: assistantToCreate.model ?? DEFAULT_MODEL,
@@ -364,7 +364,7 @@ export class OpenaiClient {
       id: createdAssistant.id,
     }
     this.assistants.push(createdReference)
-
+    
     return createdReference
   }
 }
