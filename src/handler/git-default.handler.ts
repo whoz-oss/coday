@@ -1,35 +1,38 @@
-import {CommandHandler} from "./command-handler"
+import {CommandHandler} from "./command.handler"
 import {runBash} from "../function/run-bash"
 import {Interactor} from "../model/interactor"
 import {CommandContext} from "../model/command-context"
 
-export class RunBashHandler extends CommandHandler {
+export class GitDefaultHandler extends CommandHandler {
   
   constructor(private readonly interactor: Interactor) {
     super({
-      commandWord: "run-bash",
-      description: "Executes bash commands",
+      commandWord: "[anything else]",
+      description: "Executes git commands",
     })
   }
   
+  accept(command: string, context: CommandContext): boolean {
+    // as a default, all checks have been already made
+    return true
+  }
+  
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
-    const bashCommand = this.getSubCommand(command)
-    
-    if (!bashCommand) {
-      this.interactor.error("No bash command provided.")
+    if (!command) {
+      this.interactor.error("No git command provided.")
       return context
     }
     
     try {
       const result = await runBash({
-        command: bashCommand,
+        command: `git ${command}`,
         root: context.project.root,
         interactor: this.interactor,
-        requireConfirmation: false
+        requireConfirmation: true // Always require confirmation
       })
       this.interactor.displayText(result)
     } catch (error) {
-      this.interactor.error(`Error executing bash command: ${error}`)
+      this.interactor.error(`Error executing git command: ${error}`)
     }
     
     return context

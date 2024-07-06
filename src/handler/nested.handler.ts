@@ -1,4 +1,4 @@
-import {CommandHandler, CommandHandlerConstructorInput} from "./command-handler"
+import {CommandHandler, CommandHandlerConstructorInput} from "./command.handler"
 import {Interactor} from "../model/interactor"
 import {CommandContext} from "../model/command-context"
 

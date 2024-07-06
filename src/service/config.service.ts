@@ -3,15 +3,12 @@ import os from "os"
 import path from "path"
 import {mkdirSync} from "node:fs"
 import {CodayConfig} from "../model/coday-config"
-import {IntegrationName} from "../model/integration-name"
 import {ProjectConfig} from "../model/project-config"
-import {IntegrationConfig} from "../model/integration-config"
 
 const DATA_PATH: string = "/.coday"
 const CONFIG_FILENAME = "config.json"
-const API_KEY_SUFFIX = "_API_KEY"
 
-class ConfigService {
+export class ConfigService {
   private config: CodayConfig | null = null
   private readonly configPath: string
   
@@ -29,16 +26,6 @@ class ConfigService {
   get projectNames() {
     this.initConfig()
     return Object.keys(this.config!.project)
-  }
-  
-  get integrations() {
-    const project = this.getProject()
-    return project!.integration!
-  }
-  
-  hasIntegration(name: IntegrationName): boolean {
-    this.initConfig()
-    return Object.keys(this.getProject()!.integration).includes(name)
   }
   
   addProject(projectName: string, projectPath: string) {
@@ -64,62 +51,7 @@ class ConfigService {
     this.saveConfigFile()
   }
   
-  getApiKey(keyName: string): string | undefined {
-    if (!(keyName in IntegrationName)) {
-      return undefined
-    }
-    const apiName: IntegrationName = keyName as unknown as IntegrationName
-    const envApiKey: string | undefined = process.env[`${apiName}${API_KEY_SUFFIX}`]
-    // shortcut if an env var is set for this typedKey
-    if (envApiKey) {
-      return envApiKey
-    }
-    
-    const project: ProjectConfig | undefined = this.getProject()
-    if (!project) {
-      return undefined
-    }
-    let integration: IntegrationConfig | undefined = project.integration[apiName]
-    if (!integration) {
-      return undefined
-    }
-    return integration.apiKey
-  }
-  
-  setIntegration(selectedName: IntegrationName, integration: IntegrationConfig) {
-    const project = this.getProject()
-    if (!project) {
-      return
-    }
-    project.integration[selectedName] = integration
-    this.saveConfigFile()
-  }
-  
-  getApiUrl(apiName: IntegrationName): string | undefined {
-    const project: ProjectConfig | undefined = this.getProject()
-    if (!project) {
-      return undefined
-    }
-    let integration: IntegrationConfig | undefined = project.integration[apiName]
-    if (!integration) {
-      return undefined
-    }
-    return integration.apiUrl
-  }
-  
-  getUsername(apiName: IntegrationName): string | undefined {
-    const project: ProjectConfig | undefined = this.getProject()
-    if (!project) {
-      return undefined
-    }
-    let integration: IntegrationConfig | undefined = project.integration[apiName]
-    if (!integration) {
-      return undefined
-    }
-    return integration.username
-  }
-  
-  private initConfig() {
+  initConfig() {
     if (!this.config) {
       const dir = path.dirname(this.configPath)
       if (!existsSync(dir)) {
@@ -136,12 +68,12 @@ class ConfigService {
     }
   }
   
-  private saveConfigFile(): void {
+  saveConfigFile(): void {
     const json = JSON.stringify(this.config, null, 2)
     writeFileSync(this.configPath, json)
   }
   
-  private getProject(): ProjectConfig | undefined {
+  getProject(): ProjectConfig | undefined {
     this.initConfig()
     const projectName = this.config!.currentProject
     
