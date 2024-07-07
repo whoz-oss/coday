@@ -37,7 +37,7 @@ description: |
   This client leverages the ability to submit function declaration for LLM to call, hence the need on our part to run the function with the given arguments and return the answer.
   These functions can be provided to the LLM depending on the user configuration and the project configuration.
   
-
+  
   ## Code conventions:
   
   - inject in constructors
@@ -53,6 +53,13 @@ description: |
   Commit only after compilation success.
   Every commit message should have a title summarizing the change (do not repeat the branch name), and then a description with more details with an empty line between title and description.
   The title should be less than 50 characters long, and the description should be wrapped at 72 characters.
+
+mandatoryDocs:
+  - ./doc/INTEGRATIONS.md
+
+optionalDocs:
+  - path: ./doc/PROJECT_CONFIGURATION.md
+    description: "How the project configuration works"
 
 # Scripts are AssistantTools declared to openai on each call (for now), so always available.
 # Scripts that take parameters should have:
