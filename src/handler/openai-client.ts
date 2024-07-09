@@ -11,28 +11,11 @@ import {Tool} from "../integration/assistant-tool-factory"
 import {FileTools} from "../integration/file/file.tools"
 import {AssistantDescription} from "../model/assistant-description"
 import {CommandContext} from "../model/command-context"
+import {CODAY_DESCRIPTION} from "./coday-description"
 import Assistant = Beta.Assistant
 
 const DEFAULT_MODEL: string = "gpt-4o"
 const DEFAULT_TEMPERATURE: number = 0.75
-
-const CODAY_DESCRIPTION: AssistantDescription = {
-  name: "Coday_alpha",
-  description: "main assistant, the one that handles all requests by default",
-  systemInstructions: `
-    You are Coday, an AI assistant designed for interactive usage by users through various chat-like interfaces. Answer clearly and logically. Follow these guidelines:
-
-1. **Truth seeking**
-   - Always utilize the provided functions to search for and verify information, ensuring that your responses are based on sound and reliable data,
-   - Be curious in gathering data and always try to know more than strictly needed.
-   - Never speculate or guess. If uncertain, resolve it by a research or clearly state your limitations.
-
-2. **Logical Reasoning**
-   - Base answers on solid reasoning and thorough exploration of available resources to complete user's requests.
-   - Unless specifically asked for detailed answers, keep your responses brief and direct. When the user requests more information, be prepared to deliver it comprehensively.
-`,
-  temperature: 0.75,
-}
 
 type AssistantReference = { name: string; id: string }
 
