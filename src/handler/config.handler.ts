@@ -1,62 +1,42 @@
 import {Interactor} from "../model/interactor"
-import {CommandHandler} from "./command.handler"
+import {NestedHandler} from "./nested.handler"
+import {AddProjectHandler} from "./config/add-project.handler"
+import {SelectProjectHandler} from "./config/select-project.handler"
+import {EditIntegrationHandler} from "./config/edit-integration.handler"
 import {CommandContext} from "../model/command-context"
-import {loadOrInitProjectDescription} from "../service/load-or-init-project-description"
 import {configService} from "../service/config.service"
-import {IntegrationName} from "../model/integration-name"
-import {IntegrationConfig} from "../model/integration-config"
-import {integrationService} from "../service/integration.service"
-import {keywords} from "../keywords"
+import {addProject} from "./config/add-project"
+import {selectProject} from "./config/select-project"
 
-export class ConfigHandler extends CommandHandler {
+export class ConfigHandler extends NestedHandler {
+  protected interactor: Interactor
+  protected username: string
   
   constructor(
-    private interactor: Interactor,
-    private username: string,
+    interactor: Interactor,
+    username: string,
   ) {
     super({
       commandWord: "config",
       description: "handles config related commands"
-    })
-  }
-  
-  async handle(
-    command: string,
-    context: CommandContext,
-  ): Promise<CommandContext> {
-    const cmd = this.getSubCommand(command)
-    let result: CommandContext | null = context
-    if (!cmd) {
-      this.interactor.displayText(
-        `${this.commandWord} can accept sub-commands: add-project, select-project, edit-integration.`,
-      )
-    }
-    if (cmd === "add-project") {
-      result = await this.addProject()
-    }
-    if (cmd === "select-project") {
-      result = await this.chooseProject()
-    }
-    if (cmd === "edit-integration") {
-      // nothing to do on the context here
-      await this.editIntegration()
-    }
+    }, interactor)
     
-    if (!result) {
-      throw new Error("Context lost in the process")
-    }
-    return result
+    this.interactor = interactor
+    this.username = username
+    
+    this.handlers = [
+      new AddProjectHandler(this.interactor, this.username),
+      new SelectProjectHandler(this.interactor, this.username),
+      new EditIntegrationHandler(this.interactor)
+    ]
   }
   
-  /**
-   * Initialize the CommandContext when starting Coday interactive loop.
-   */
   async initContext(
     initialProject: string | undefined,
   ): Promise<CommandContext | null> {
     if (initialProject) {
       console.log(`selecting ${initialProject}...`)
-      return await this.selectProject(initialProject)
+      return await selectProject(initialProject, this.interactor, this.username)
     }
     
     if (!configService.projectNames.length) {
@@ -64,7 +44,7 @@ export class ConfigHandler extends CommandHandler {
       this.interactor.displayText(
         "No existing project, please define one by its name",
       )
-      return this.addProject()
+      return addProject(this.interactor, this.username)
     }
     const lastProject = configService.lastProject
     if (!lastProject) {
@@ -72,7 +52,7 @@ export class ConfigHandler extends CommandHandler {
       // no last project selected, force selection of one
       return await this.chooseProject()
     }
-    return await this.selectProject(lastProject)
+    return await selectProject(lastProject, this.interactor, this.username)
   }
   
   resetProjectSelection(): void {
@@ -87,98 +67,13 @@ export class ConfigHandler extends CommandHandler {
       "Choose an existing project or select \"new\" to create one",
     )
     if (selection === "new") {
-      return this.addProject()
+      return addProject(this.interactor, this.username)
     }
     try {
-      return await this.selectProject(selection)
+      return await selectProject(selection, this.interactor, this.username)
     } catch (_) {
       this.interactor.error("Invalid project selection")
       return null
     }
-  }
-  
-  private async addProject(): Promise<CommandContext | null> {
-    const projectName = await this.interactor.promptText("Project name")
-    const projectPath = await this.interactor.promptText(
-      "Project path, no trailing slash",
-    )
-    configService.addProject(projectName, projectPath)
-    return await this.selectProject(projectName)
-  }
-  
-  private async selectProject(name: string): Promise<CommandContext | null> {
-    if (!name && !configService.lastProject) {
-      this.interactor.error("No project selected nor known.")
-      return null
-    }
-    let projectPath: string
-    try {
-      projectPath = configService.selectProject(name)
-    } catch (err: any) {
-      this.interactor.error(err.message)
-      return null
-    }
-    if (!projectPath) {
-      this.interactor.error(`No path found to project ${name}`)
-      return null
-    }
-    
-    const projectConfig = await loadOrInitProjectDescription(
-      projectPath,
-      this.interactor,
-    )
-    
-    this.interactor.displayText(`Project ${name} selected`)
-    
-    return new CommandContext(
-      {
-        ...projectConfig,
-        root: projectPath,
-      },
-      this.username,
-    )
-  }
-  
-  private async editIntegration() {
-    if (!configService.lastProject) {
-      this.interactor.displayText("No current project, select one first.")
-    }
-    // Mention all available integrations
-    const apiNames = Object.keys(IntegrationName)
-    
-    // List all set integrations and prompt to choose one to edit (or type name of wanted one)
-    const currentIntegrations = integrationService.integrations
-    const existingIntegrationNames: IntegrationName[] = currentIntegrations
-      ? (Object.keys(currentIntegrations) as IntegrationName[])
-      : []
-    const answer = (
-      await this.interactor.chooseOption(
-        [...apiNames, keywords.exit],
-        "Select an integration to edit",
-        `Integrations are tools behind some commands and/or functions for AI.\nHere are the configured ones: (${existingIntegrationNames.join(", ")})`,
-      )
-    ).toUpperCase()
-    if (!answer || answer === keywords.exit.toUpperCase()) {
-      return
-    }
-    let apiIntegration: IntegrationConfig =
-      currentIntegrations[answer as IntegrationName] || {}
-    let selectedName = answer as IntegrationName
-    
-    // take all fields with existing values if available
-    const apiUrl = await this.interactor.promptText(
-      "Api url (if applicable)",
-      apiIntegration.apiUrl,
-    )
-    const username = await this.interactor.promptText(
-      "username (if applicable)",
-      apiIntegration.username,
-    )
-    const apiKey = await this.interactor.promptText(
-      "Api key (if applicable)",
-      apiIntegration.apiKey,
-    ) // TODO see another way to update an api key ?
-    
-    integrationService.setIntegration(selectedName, {apiUrl, username, apiKey})
   }
 }
