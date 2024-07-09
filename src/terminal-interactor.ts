@@ -1,5 +1,5 @@
 import {Interactor} from "./model/interactor"
-import { input, select } from "@inquirer/prompts"
+import {input, select} from "@inquirer/prompts"
 import chalk from "chalk"
 
 export class TerminalInteractor implements Interactor {
@@ -9,10 +9,10 @@ export class TerminalInteractor implements Interactor {
       message: `${chalk.black.bgWhite(invite)} : `,
       default: defaultText,
     })
-      this.addSeparator()
-      return text
+    this.addSeparator()
+    return text
   }
-
+  
   async chooseOption(
     options: string[],
     question: string,
@@ -24,24 +24,24 @@ export class TerminalInteractor implements Interactor {
         name: option,
         value: option,
       })),
-    });
+    })
   }
-
+  
   displayText(text: string, speaker?: string): void {
     const formattedText = speaker
       ? `\n${chalk.black.bgWhite(speaker)} : ${text}\n`
       : text
     console.log(formattedText)
   }
-
+  
   warn(warning: string): void {
     console.warn(warning)
   }
-
+  
   error(error: unknown): void {
     console.error(error)
   }
-
+  
   addSeparator(): void {
     console.log("")
   }
