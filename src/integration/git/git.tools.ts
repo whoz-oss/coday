@@ -6,6 +6,8 @@ import {gitAdd} from "./git-add"
 import {gitCommit} from "./git-commit"
 import {gitListBranches} from "./git-list-branches"
 import {gitCreateBranch} from "./git-create-branch"
+import {gitLog} from "./git-log"
+import {gitShow} from "./git-show"
 import {CommandContext} from "../../model/command-context"
 import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
 import {IntegrationName} from "../../model/integration-name"
@@ -36,10 +38,10 @@ export class GitTools extends AssistantToolFactory {
       })
     }
     
-    const gitStatusFunction: AssistantTool & RunnableToolFunction<{}> = {
+    const gitStatusTool: AssistantTool & RunnableToolFunction<{}> = {
       type: "function",
       function: {
-        name: "gitStatusFunction",
+        name: "gitStatusTool",
         description: "run git status command, providing a status of all modified files since last commit.",
         parameters: {
           type: "object",
@@ -58,10 +60,10 @@ export class GitTools extends AssistantToolFactory {
       })
     }
     
-    const gitDiffFunction: AssistantTool & RunnableToolFunction<{}> = {
+    const gitDiffTool: AssistantTool & RunnableToolFunction<{}> = {
       type: "function",
       function: {
-        name: "gitDiffFunction",
+        name: "gitDiffTool",
         description: "run git diff command, an exhaustive list of all changes in progress.",
         parameters: {
           type: "object",
@@ -80,10 +82,10 @@ export class GitTools extends AssistantToolFactory {
       })
     }
     
-    const gitAddFunction: AssistantTool & RunnableToolFunction<{ filePaths: string[] }> = {
+    const gitAddTool: AssistantTool & RunnableToolFunction<{ filePaths: string[] }> = {
       type: "function",
       function: {
-        name: "gitAddFunction",
+        name: "gitAddTool",
         description: "DO NOT USE UNLESS EXPLICITLY ASKED TO.Add files to staging area. Please add only relevant files and check with git status before.",
         parameters: {
           type: "object",
@@ -110,10 +112,10 @@ export class GitTools extends AssistantToolFactory {
       })
     }
     
-    const gitCommitFunction: AssistantTool & RunnableToolFunction<{ message: string }> = {
+    const gitCommitTool: AssistantTool & RunnableToolFunction<{ message: string }> = {
       type: "function",
       function: {
-        name: "gitCommitFunction",
+        name: "gitCommitTool",
         description: "DO NOT USE UNLESS EXPLICITLY ASKED TO. Commit changes with a message. Write a short commit message starting with the id of the current task or ticket or subject. Add a short paragraph after if significant changes (ie not for typos or comments commits).",
         parameters: {
           type: "object",
@@ -136,10 +138,10 @@ export class GitTools extends AssistantToolFactory {
       })
     }
     
-    const gitListBranchesFunction: AssistantTool & RunnableToolFunction<{}> = {
+    const gitListBranchesTool: AssistantTool & RunnableToolFunction<{}> = {
       type: "function",
       function: {
-        name: "gitListBranchesFunction",
+        name: "gitListBranchesTool",
         description: "List all git branches, local and remote.",
         parameters: {
           type: "object",
@@ -159,13 +161,10 @@ export class GitTools extends AssistantToolFactory {
       })
     }
     
-    const gitCreateBranchFunction: AssistantTool & RunnableToolFunction<{
-      branchName: string,
-      baseBranch?: string
-    }> = {
+    const gitCreateBranchTool: AssistantTool & RunnableToolFunction<{ branchName: string, baseBranch?: string }> = {
       type: "function",
       function: {
-        name: "gitCreateBranchFunction",
+        name: "gitCreateBranchTool",
         description: "DO NOT USE UNLESS EXPLICITLY ASKED TO. Create a new branch from the head of another branch or the current branch.",
         parameters: {
           type: "object",
@@ -185,14 +184,69 @@ export class GitTools extends AssistantToolFactory {
       }
     }
     
-    result.push(...[
-        gitListBranchesFunction,
-        gitCommitFunction,
-        gitDiffFunction,
-        gitAddFunction,
-        gitStatusFunction,
-        gitCreateBranchFunction,
-      ]
+    const gitLogFunction = async ({params}: { params: string }) => {
+      return await gitLog({
+        params,
+        root: context.project.root,
+        interactor: this.interactor
+      })
+    }
+    
+    const gitLogTool: AssistantTool & RunnableToolFunction<{ params: string }> = {
+      type: "function",
+      function: {
+        name: "gitLogTool",
+        description: "run git log command to list commits made in the repository. The params parameter allows you to pass additional arguments to the git log command.",
+        parameters: {
+          type: "object",
+          properties: {
+            params: {
+              type: "string",
+              description: "Additional parameters for the git log command"
+            }
+          },
+        },
+        parse: JSON.parse,
+        function: gitLogFunction
+      }
+    }
+    
+    const gitShowFunction = async ({params}: { params: string }) => {
+      return await gitShow({
+        params,
+        root: context.project.root,
+        interactor: this.interactor
+      })
+    }
+    
+    const gitShowTool: AssistantTool & RunnableToolFunction<{ params: string }> = {
+      type: "function",
+      function: {
+        name: "gitShowTool",
+        description: "run git show command with the specified parameters.",
+        parameters: {
+          type: "object",
+          properties: {
+            params: {
+              type: "string",
+              description: "Parameters for the git show command"
+            }
+          },
+        },
+        parse: JSON.parse,
+        function: gitShowFunction
+      }
+    }
+    
+    result.push(
+      gitListBranchesTool,
+      gitCommitTool,
+      gitDiffTool,
+      gitAddTool,
+      gitStatusTool,
+      gitCreateBranchTool,
+      gitLogTool,
+      gitShowTool
     )
     
     return result
