@@ -19,7 +19,7 @@ export class TerminalInteractor implements Interactor {
     invite?: string,
   ): Promise<string> {
     return select({
-      message: `${invite} :\n${question}`,
+      message: invite ? `${invite} :\n${question}` : question,
       choices: options.map((option) => ({
         name: option,
         value: option,
