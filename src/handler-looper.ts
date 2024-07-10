@@ -86,10 +86,14 @@ export class HandlerLooper {
         if (handler) {
           context = await handler.handle(currentCommand, context)
         } else {
-          // default case: repackage the command as an open question for AI
-          context.addCommands(
-            `${this.openaiHandler.commandWord} ${currentCommand}`,
-          )
+          if (!currentCommand.startsWith(this.openaiHandler.commandWord)) {
+            // default case: repackage the command as an open question for AI
+            context.addCommands(
+              `${this.openaiHandler.commandWord} ${currentCommand}`,
+            )
+          } else {
+            this.interactor.error(`Could not handle request ${currentCommand}, check your AI integration`)
+          }
         }
       } catch (error) {
         this.interactor.error(
