@@ -81,12 +81,14 @@ description: |
 
 mandatoryDocs:
   - ./doc/INTEGRATIONS.md
+  - ./src/model/command-context.ts
+  - ./src/coday.ts
+  - ./src/handler-looper.ts
+  - ./src/handler/command.handler.ts
 
 optionalDocs:
   - path: ./doc/PROJECT_CONFIGURATION.md
     description: How the project configuration works
-  - path: ./src/handler/command.handler.ts
-    description: Basic abstract class all handlers should extend and provides the basic behavior and utilities for accepting commands
   - path: ./src/handler/nested.handler.ts
     description: Handler for complex commands that host sub-commands, each to be taken care of by another handler
 
@@ -106,6 +108,16 @@ scripts:
   compile:
     description: compile the typescript project to raise any issue on code correctness, it does not run the tests.
     command: yarn run tsc
+
+prompts:
+  say-hello:
+    description: |
+      a dummy prompt chain for demo, the `PROMPT` value comes from the sub-command, ex: `say-hello answer with banana` => PROMPT = `answer with banana`. PROMPT can be used in several commands.
+    commands:
+      - "@ hello, PROMPT"
+      - "@ how are you ?"
+    requiredIntegrations:
+      - "GIT"
 
 # Multiple specialized assistants can be declared on a project: they "know" each-other by their description and can cooperate on a same thread if asked to. They can also be called directly.
 # Of the parameters:

@@ -71,7 +71,7 @@ export class Coday {
       )
       if (this.context) {
         this.context.oneshot = this.options.oneshot
-        this.handlerLooper.init(this.userInfo.username)
+        this.handlerLooper.init(this.userInfo.username, this.context.project)
       }
     }
   }
