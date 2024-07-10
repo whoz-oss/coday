@@ -16,6 +16,8 @@ import {SmallTaskFlowHandler} from "./handler/small-task-flow.handler"
 import {keywords} from "./keywords"
 import {GitlabReviewHandler} from "./handler/gitlab-review.handler"
 import {integrationService} from "./service/integration.service"
+import {PromptChainHandler} from "./handler/prompt-chain.handler"
+import {ProjectDescription, PromptChain} from "./model/project-description"
 
 const MAX_ITERATIONS = 100
 
@@ -29,7 +31,7 @@ export class HandlerLooper {
   ) {
   }
   
-  init(username: string) {
+  init(username: string, projectDescription: ProjectDescription | null) {
     try {
       this.handlers = [
         new ConfigHandler(this.interactor, username),
@@ -41,9 +43,20 @@ export class HandlerLooper {
         new SubTaskHandler(this.interactor),
         new AddMessageHandler(this.interactor, this.openaiHandler.openaiClient),
         new GitlabReviewHandler(),
-        new ThreadHandler(this.interactor, this.openaiHandler.openaiClient),
-        this.openaiHandler
-      ].filter(handler =>
+        new ThreadHandler(this.interactor, this.openaiHandler.openaiClient)
+      ]
+      
+      if (projectDescription?.prompts) {
+        for (const [promptName, promptChain] of Object.entries(projectDescription.prompts)) {
+          this.handlers.push(new PromptChainHandler(this.interactor, promptChain as PromptChain, promptName, promptChain.description))
+        }
+      }
+      
+      // Add openaiHandler at the end
+      this.handlers.push(this.openaiHandler)
+      
+      // Apply filtering based on required integrations
+      this.handlers = this.handlers.filter(handler =>
         handler.requiredIntegrations.every(requiredIntegration => integrationService.hasIntegration(requiredIntegration))
       )
     } catch (error) {

@@ -1,5 +1,6 @@
 import {Scripts} from "./scripts"
 import {AssistantDescription} from "./assistant-description"
+import {IntegrationName} from "./integration-name"
 
 export type ProjectDescription = {
   /**
@@ -36,7 +37,35 @@ export type ProjectDescription = {
    * Experimental section to expose several assistants, thus made available for "spontaneous" cross-assistant calls
    */
   assistants?: AssistantDescription[]
+  
+  /**
+   * Custom prompts exposed as tools to the LLM
+   */
+  prompts?: {
+    [key: string]: PromptChain
+  }
 }
+
+/**
+ * A chain of prompts to be used sequentially.
+ */
+export type PromptChain = {
+  /**
+   * Description of the prompt chain
+   */
+  description: string
+  
+  /**
+   * List of commands in the prompt chain
+   */
+  commands: string[]
+  
+  /**
+   * Optional list of required integrations for this prompt chain
+   */
+  requiredIntegrations?: IntegrationName[]
+}
+
 
 type DocumentationFile = {
   /**
