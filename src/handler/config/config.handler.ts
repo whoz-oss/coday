@@ -1,12 +1,12 @@
-import {Interactor} from "../model/interactor"
-import {NestedHandler} from "./nested.handler"
-import {AddProjectHandler} from "./config/add-project.handler"
-import {SelectProjectHandler} from "./config/select-project.handler"
-import {EditIntegrationHandler} from "./config/edit-integration.handler"
-import {CommandContext} from "../model/command-context"
-import {configService} from "../service/config.service"
-import {addProject} from "./config/add-project"
-import {selectProject} from "./config/select-project"
+import {Interactor} from "../../model/interactor"
+import {NestedHandler} from "../nested.handler"
+import {AddProjectHandler} from "./add-project.handler"
+import {SelectProjectHandler} from "./select-project.handler"
+import {EditIntegrationHandler} from "./edit-integration.handler"
+import {CommandContext} from "../../model/command-context"
+import {configService} from "../../service/config.service"
+import {addProject} from "./add-project"
+import {selectProject} from "./select-project"
 
 export class ConfigHandler extends NestedHandler {
   protected interactor: Interactor
