@@ -29,12 +29,11 @@ export async function selectProject(
     interactor,
   )
   
-  interactor.displayText(`Project ${name} selected`)
-  
   return new CommandContext(
     {
       ...projectConfig,
       root: projectPath,
+      name: name
     },
     username,
   )

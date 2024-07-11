@@ -38,22 +38,21 @@ export class ConfigHandler extends NestedHandler {
       console.log(`selecting ${initialProject}...`)
       return await selectProject(initialProject, this.interactor, this.username)
     }
-    
-    if (!configService.projectNames.length) {
+    const projectNames = configService.projectNames
+    if (!projectNames.length) {
       // no projects at all, force user define one
       this.interactor.displayText(
         "No existing project, please define one by its name",
       )
       return addProject(this.interactor, this.username)
     }
-    const lastProject = configService.lastProject
-    if (!lastProject) {
-      // projects but no previous selection
-      // no last project selected, force selection of one
-      return await this.chooseProject()
+    if (projectNames.length === 1) {
+      return await selectProject(projectNames[0], this.interactor, this.username)
     }
-    return await selectProject(lastProject, this.interactor, this.username)
+    
+    return await this.chooseProject()
   }
+  
   
   resetProjectSelection(): void {
     configService.resetProjectSelection()

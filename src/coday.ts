@@ -87,8 +87,9 @@ export class Coday {
       }
     } else if (!this.options.oneshot) {
       // allow user input
+      const projectName = this.context?.project.name
       userCommand = await this.interactor.promptText(
-        `${this.userInfo.username}`,
+        `${this.userInfo.username} (${projectName})`,
       )
     }
     return userCommand
