@@ -1,5 +1,6 @@
-import {ProjectDescription} from "./project-description";
+import {ProjectDescription} from "./project-description"
 
 export type Project = ProjectDescription & {
   root: string
+  name: string
 }
