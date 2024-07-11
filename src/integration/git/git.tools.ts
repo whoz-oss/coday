@@ -12,6 +12,7 @@ import {CommandContext} from "../../model/command-context"
 import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
 import {IntegrationName} from "../../model/integration-name"
 import {integrationService} from "../../service/integration.service"
+import {gitCheckoutBranch} from "./git-checkout-branch"
 import AssistantTool = Beta.AssistantTool
 
 export class GitTools extends AssistantToolFactory {
@@ -238,6 +239,33 @@ export class GitTools extends AssistantToolFactory {
       }
     }
     
+    const checkoutBranch = async ({branchName}: { branchName: string }) => {
+      return await gitCheckoutBranch({
+        branchName,
+        root: context.project.root,
+        interactor: this.interactor
+      })
+    }
+    
+    const gitCheckoutBranchTool: AssistantTool & RunnableToolFunction<{ branchName: string }> = {
+      type: "function",
+      function: {
+        name: "gitCheckoutBranchTool",
+        description: "Checkout an existing branch.",
+        parameters: {
+          type: "object",
+          properties: {
+            branchName: {
+              type: "string",
+              description: "Name of the branch to checkout"
+            }
+          },
+        },
+        parse: JSON.parse,
+        function: checkoutBranch
+      }
+    }
+    
     result.push(
       gitListBranchesTool,
       gitCommitTool,
@@ -246,7 +274,8 @@ export class GitTools extends AssistantToolFactory {
       gitStatusTool,
       gitCreateBranchTool,
       gitLogTool,
-      gitShowTool
+      gitShowTool,
+      gitCheckoutBranchTool
     )
     
     return result
