@@ -11,7 +11,7 @@ export class SaveThreadHandler extends CommandHandler {
   ) {
     super({
       commandWord: "save",
-      description: "Save the current thread"
+      description: "Save the current thread, will ask for title if not provided"
     })
   }
   
@@ -21,8 +21,17 @@ export class SaveThreadHandler extends CommandHandler {
       this.interactor.warn("Currently no thread started, nothing to save.")
       return context
     }
-    const name = await this.interactor.promptText("Thread title :")
+    
+    const name = await this.getThreadName(command)
     threadService.saveThread(threadId, name)
     return context
+  }
+  
+  private async getThreadName(command: string): Promise<string> {
+    const subCommand = this.getSubCommand(command)
+    if (subCommand) {
+      return subCommand
+    }
+    return await this.interactor.promptText("Thread title :")
   }
 }
