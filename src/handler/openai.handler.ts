@@ -4,6 +4,7 @@ import {OpenaiClient} from "./openai-client"
 import {CommandContext} from "../model/command-context"
 import {IntegrationName} from "../model/integration-name"
 import {integrationService} from "../service/integration.service"
+import {CODAY_DESCRIPTION} from "./coday-description"
 
 export class OpenaiHandler extends CommandHandler {
   openaiClient: OpenaiClient
@@ -26,36 +27,58 @@ export class OpenaiHandler extends CommandHandler {
   
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
     const cmd = command.slice(this.commandWord.length)
-    // Reset threadId when command is "reset"
+    
     if (cmd.trim() === "reset") {
       this.reset()
       return context
     }
     
-    let assistantName = this.getAssistantNameIfValid(cmd)
+    const assistantName = this.getAssistantNameIfValid(cmd)
+    
     if (!assistantName) {
-      // no valid command
-      this.interactor.warn("command not understood, skipped.")
+      this.interactor.warn("Command not understood, skipped.")
       return context
     }
     
     this.lastAssistantName = assistantName // Store the assistant name
     
-    let fullTextAnswer: string
-    try {
-      fullTextAnswer = await this.openaiClient.answer(assistantName, cmd, context)
-    } catch (error: any) {
-      console.error(error)
-      fullTextAnswer = error.toString()
+    if (!cmd.includes(" ")) {
+      this.interactor.displayText(`Assistant ${assistantName} selected.`)
+      return context
     }
+    
+    try {
+      await this.openaiClient.answer(assistantName, cmd, context)
+    } catch (error: any) {
+      this.interactor.error(`Error processing command: ${error}`)
+    }
+    
     return context
   }
   
+  /**
+   * cmd can be:
+   *   - "" (empty) => this.lastAssistant or default
+   *   - " " (one space) => same
+   *   - "[name]" (just name) => name
+   *   - "[name] [text]" (name then text) => name
+   *   - " [text]" (some text after space) => this.last or default
+   * @param cmd
+   * @private
+   */
   private getAssistantNameIfValid(cmd: string): string | undefined {
-    const firstSpaceIndex = cmd.indexOf(" ")
-    if (firstSpaceIndex < 0) {
+    if (!cmd) {
       return undefined
     }
-    return cmd.slice(0, firstSpaceIndex) || this.lastAssistantName || "Coday"
+    const defaultAssistant = this.lastAssistantName || CODAY_DESCRIPTION.name
+    if (cmd[0] === " ") {
+      return defaultAssistant
+    }
+    
+    const firstSpaceIndex = cmd.indexOf(" ")
+    if (firstSpaceIndex < 0) {
+      return cmd
+    }
+    return cmd.slice(0, firstSpaceIndex)
   }
 }
