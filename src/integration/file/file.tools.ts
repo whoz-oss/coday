@@ -5,11 +5,11 @@ import {Beta} from "openai/resources"
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
 import {readFileByPath} from "./read-file-by-path"
 import {writeFileByPath} from "./write-file-by-path"
+import {writeFileChunk} from "./write-file-chunk"
 import {findFilesByName} from "../../function/find-files-by-name"
 import {listFilesAndDirectories} from "./list-files-and-directories"
 import {findFilesByText} from "./find-files-by-text"
 import AssistantTool = Beta.AssistantTool
-
 
 export class FileTools extends AssistantToolFactory {
   
@@ -53,7 +53,7 @@ export class FileTools extends AssistantToolFactory {
       type: "function",
       function: {
         name: "writeProjectFile",
-        description: "write the content of the file at the given path in the project. IMPORTANT: the whole file is written, do not write it partially.",
+        description: "write the content of the file at the given path in the project. IMPORTANT: the whole file is written, do not write it partially. Prefer this tool for first writes or really full edits. For partial edits, use `writeFileChunk` tool.",
         parameters: {
           type: "object",
           properties: {
@@ -66,6 +66,47 @@ export class FileTools extends AssistantToolFactory {
       }
     }
     result.push(writeProjectFileFunction)
+    
+    const writeFileChunkFunction = ({path, replacements}: {
+      path: string,
+      replacements: { oldPart: string, newPart: string }[]
+    }) => {
+      return writeFileChunk({relPath: path, root: context.project.root, interactor: this.interactor, replacements})
+    }
+    
+    const writeFileChunkTool: AssistantTool & RunnableToolFunction<{
+      path: string,
+      replacements: { oldPart: string, newPart: string }[]
+    }> = {
+      type: "function",
+      function: {
+        name: "writeFileChunk",
+        description: "Replace specified parts of an existing file with new parts. The function reads the entire file content, performs the replacements, and writes the modified content back to the file. Useful for handling large files efficiently.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {type: "string", description: "File path relative to the project root"},
+            replacements: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  oldPart: {
+                    type: "string",
+                    description: "The part of the file content to be replaced, it should be large enough to be unique."
+                  },
+                  newPart: {type: "string", description: "The new content to replace all the old part."}
+                }
+              },
+              description: "Array of objects specifying the parts to replace and their respective replacements."
+            }
+          }
+        },
+        parse: JSON.parse,
+        function: writeFileChunkFunction
+      }
+    }
+    result.push(writeFileChunkTool)
     
     const searchProjectFile = ({text, path}: { text: string, path?: string }) => {
       return findFilesByName({text, path, root: context.project.root, interactor: this.interactor})
