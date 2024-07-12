@@ -5,6 +5,7 @@ import {CommandContext} from "../model/command-context"
 import {IntegrationName} from "../model/integration-name"
 import {integrationService} from "../service/integration.service"
 import {CODAY_DESCRIPTION} from "./coday-description"
+import {keywords} from "../keywords"
 
 export class OpenaiHandler extends CommandHandler {
   openaiClient: OpenaiClient
@@ -12,7 +13,7 @@ export class OpenaiHandler extends CommandHandler {
   
   constructor(private interactor: Interactor) {
     super({
-      commandWord: "@",
+      commandWord: keywords.assistantPrefix,
       description: "calls the AI with the given command and current context. 'reset' for using a new thread. You can call whatever assistant in your openai account by its name, ex: joke_generator called by @jok (choice prompt if multiple matches).",
       requiredIntegrations: [IntegrationName.OPENAI]
     })

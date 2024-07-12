@@ -1,5 +1,5 @@
 import {
-  AddMessageHandler,
+  AddQueryHandler,
   CodeFlowHandler,
   CommandHandler,
   ConfigHandler,
@@ -41,7 +41,7 @@ export class HandlerLooper {
         new CodeFlowHandler(),
         new SmallTaskFlowHandler(),
         new SubTaskHandler(this.interactor),
-        new AddMessageHandler(this.interactor, this.openaiHandler.openaiClient),
+        new AddQueryHandler(this.interactor),
         new GitlabReviewHandler(),
         new ThreadHandler(this.interactor, this.openaiHandler.openaiClient)
       ]

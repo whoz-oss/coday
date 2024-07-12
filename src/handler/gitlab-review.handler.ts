@@ -7,7 +7,7 @@ export class GitlabReviewHandler extends CommandHandler {
   
   constructor() {
     super({
-      commandWord: "review",
+      commandWord: "gitlab-review",
       description: "takes the ID of the merge request to perform a comprehensive review.",
       requiredIntegrations: [IntegrationName.OPENAI, IntegrationName.GITLAB]
     })
@@ -22,14 +22,14 @@ export class GitlabReviewHandler extends CommandHandler {
             Summarize the impact these changes will have on existing features.
             Do not add comments yet.`,
       
-      `add-message Would you like to add or correct anything regarding the impact on existing features?`,
+      `add-query Would you like to add or correct anything regarding the impact on existing features?`,
       
       `@ Identify any potentially problematic or suspicious code within the changes.
             List specific changes that could be enhanced, and suggest new source code where applicable.
             Evaluate the relevance of names used for files, classes, methods, or fields, and propose better alternatives if needed.
             Do not add comments yet.`,
       
-      `add-message What would you like to add or change regarding this review?`,
+      `add-query What would you like to add or change regarding this review?`,
       
       `@ Apply your feedback to the merge request:
             - add a global comment to provide overarching feedback that applies to the entire MR.
