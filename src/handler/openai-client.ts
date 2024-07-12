@@ -295,6 +295,7 @@ export class OpenaiClient {
     if (matchingAssistants.length === 1) {
       return matchingAssistants[0]
     }
+    
     if (matchingAssistants.length > 1) {
       const selection = await this.interactor.chooseOption(
         matchingAssistants.map((m) => m.name),
@@ -309,8 +310,9 @@ export class OpenaiClient {
     const matchingProjectAssistants = projectAssistants?.filter(
       (a) => a.name.toLowerCase().startsWith(name) && !!a.systemInstructions,
     )
+    
     if (!matchingProjectAssistants?.length) {
-      throw new Error("no matching assistant")
+      throw new Error("No matching assistant")
     }
     
     let assistantToCreate: AssistantDescription | undefined
@@ -327,13 +329,15 @@ export class OpenaiClient {
         (m) => m.name === selection,
       )
     }
+    
+    if (!assistantToCreate) {
+      throw new Error("No matching assistant")
+    }
+    
     this.interactor.displayText(
       `No existing assistant found for ${name}, will try to create it`,
     )
     
-    if (!assistantToCreate) {
-      throw new Error("no matching assistant")
-    }
     
     const createdAssistant = await this.openai!.beta.assistants.create({
       name: assistantToCreate?.name,
