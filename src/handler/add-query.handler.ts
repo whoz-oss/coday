@@ -1,16 +1,15 @@
 import {CommandHandler} from "./command.handler"
 import {Interactor} from "../model/interactor"
 import {CommandContext} from "../model/command-context"
-import {OpenaiClient} from "./openai-client"
+import {keywords} from "../keywords"
 
-export class AddMessageHandler extends CommandHandler {
+export class AddQueryHandler extends CommandHandler {
   
   constructor(
     private interactor: Interactor,
-    private openaiClient: OpenaiClient,
   ) {
     super({
-      commandWord: "add-message",
+      commandWord: "add-query",
       description: "[internal] used to allow user feedback between flow commands.",
       isInternal: true,
     })
@@ -20,14 +19,17 @@ export class AddMessageHandler extends CommandHandler {
     command: string,
     context: CommandContext,
   ): Promise<CommandContext> {
-    const msg = this.getSubCommand(command)
-    const invite = msg || "What message would you want to add ?"
+    const query = this.getSubCommand(command)
+    const invite = query || "What message would you want to add ?"
     const userAnswer = await this.interactor.promptText(
       `${invite}\n(type nothing to proceed) `,
     )
     
-    if (userAnswer) {
-      await this.openaiClient.addMessage(userAnswer)
+    const wrappedMsg: string = query ? `To the following query: "${query}"\nI answer: ` : ""
+    const wrappedAnswer: string = userAnswer ? `"${userAnswer}"` : query ? `nothing."` : ""
+    
+    if (userAnswer || query) {
+      context.addCommands(`${keywords.assistantPrefix} ${wrappedMsg}${wrappedAnswer}`)
     }
     
     return context
