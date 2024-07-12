@@ -1,4 +1,5 @@
 export enum keywords {
   exit = "exit",
-  reset = "reset"
+  reset = "reset",
+  assistantPrefix = "@"
 }

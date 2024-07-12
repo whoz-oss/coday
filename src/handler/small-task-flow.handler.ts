@@ -25,13 +25,13 @@ export class SmallTaskFlowHandler extends CommandHandler {
             
             As a first step, analyse the task, search for keywords, files or external references using available functions, search also for validation or review material, being documentation or existing tests.
             Do not start working on the solution, just gather data to get a more detailed and deeper understanding of the task.`,
-      `add-message Was something missed in this analysis ?`,
+      `add-query Was something missed in this analysis ?`,
       `@ Now build a sound and reasonable plan on how to complete the task. Don't get carried over, keep things simple and respect the spirit or flavor of the project.
             DO NOT EXECUTE THE PLAN NOW !`,
       `@ Then review your plan, search for improvements and weaknesses to cover, still in the spirit of the project.
             DO NOT EXECUTE THE PLAN NOW !`,
       
-      `add-message Anything to add before executing this plan ?`,
+      `add-query Anything to add before executing this plan ?`,
       
       // EXECUTION
       `@ Execute the built plan, taking into account any previous message, and all project rules.

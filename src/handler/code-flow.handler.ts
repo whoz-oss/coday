@@ -26,14 +26,14 @@ export class CodeFlowHandler extends CommandHandler {
       // other assistants may intervene here, let them "speak"...
       // ... then collect their findings
       `@ Give an expanded summary of all the previous findings, explaining the assignment. Do not start working on the solution.`,
-      `add-message Do you have anything to add or correct about this analyse ?`,
+      `add-query Do you have anything to add or correct about this analyse ?`,
       `@ Prepare the workspace by following project rules on workflow (example: create the git branch dedicated to the assignment)`,
       
       // EXECUTION
       // build a plan
       `@ Build one or more rough plans of actions on how to complete the assignment.
             Then evaluate quickly the pros and cons of each.`,
-      `add-message Do you have anything to add or correct about these plans ?`,
+      `add-query Do you have anything to add or correct about these plans ?`,
       `@ Finally, choose the best option in regard of the project rules, and review how implementing it would complete the assignment`,
       
       // execute the plan
@@ -57,7 +57,7 @@ export class CodeFlowHandler extends CommandHandler {
       
       // CLOSURE
       `@ Prepare a short presentation of the work done.`,
-      `add-message How do you want to conclude this flow ?`,
+      `add-query How do you want to conclude this flow ?`,
       // `If available, publish it for manual review and validation.`
     ]
     
