@@ -1,11 +1,11 @@
-import {CommandHandler} from "./command.handler"
-import {Interactor} from "../model/interactor"
-import {OpenaiClient} from "./openai-client"
-import {CommandContext} from "../model/command-context"
-import {IntegrationName} from "../model/integration-name"
-import {integrationService} from "../service/integration.service"
 import {CODAY_DESCRIPTION} from "./coday-description"
-import {keywords} from "../keywords"
+import {CommandHandler} from "../../model/command.handler"
+import {Interactor} from "../../model/interactor"
+import {keywords} from "../../keywords"
+import {IntegrationName} from "../../model/integration-name"
+import {integrationService} from "../../service/integration.service"
+import {CommandContext} from "../../model/command-context"
+import {OpenaiClient} from "../openai-client"
 
 export class OpenaiHandler extends CommandHandler {
   openaiClient: OpenaiClient

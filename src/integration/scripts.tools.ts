@@ -4,7 +4,7 @@ import {Beta} from "openai/resources"
 import {Scripts} from "../model/scripts"
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
 import {CommandContext} from "../model/command-context"
-import {AssistantToolFactory, Tool} from "./assistant-tool-factory"
+import {AssistantToolFactory, Tool} from "../model/assistant-tool-factory"
 import AssistantTool = Beta.AssistantTool
 
 const PARAMETERS: string = "PARAMETERS"

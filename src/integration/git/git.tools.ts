@@ -9,10 +9,10 @@ import {gitCreateBranch} from "./git-create-branch"
 import {gitLog} from "./git-log"
 import {gitShow} from "./git-show"
 import {CommandContext} from "../../model/command-context"
-import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
 import {IntegrationName} from "../../model/integration-name"
 import {integrationService} from "../../service/integration.service"
 import {gitCheckoutBranch} from "./git-checkout-branch"
+import {AssistantToolFactory, Tool} from "../../model/assistant-tool-factory"
 import AssistantTool = Beta.AssistantTool
 
 export class GitTools extends AssistantToolFactory {

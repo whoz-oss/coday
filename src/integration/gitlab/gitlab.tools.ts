@@ -1,4 +1,4 @@
-import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
+import {AssistantToolFactory, Tool} from "../../model/assistant-tool-factory"
 import {CommandContext} from "../../model/command-context"
 import {Interactor} from "../../model/interactor"
 import {getMergeRequest} from "./get-merge-request"

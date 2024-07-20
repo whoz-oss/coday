@@ -1,6 +1,6 @@
 import {CommandHandler, CommandHandlerConstructorInput} from "./command.handler"
-import {Interactor} from "../model/interactor"
-import {CommandContext} from "../model/command-context"
+import {Interactor} from "./interactor"
+import {CommandContext} from "./command-context"
 
 export abstract class NestedHandler extends CommandHandler {
   protected handlers: CommandHandler[] = []

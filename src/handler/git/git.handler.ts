@@ -1,8 +1,8 @@
-import {NestedHandler} from "./nested.handler"
-import {Interactor} from "../model/interactor"
 import {GitDefaultHandler} from "./git-default.handler"
 import {GitStatusHandler} from "./git-status.handler"
-import {IntegrationName} from "../model/integration-name"
+import {NestedHandler} from "../../model/nested.handler"
+import {Interactor} from "../../model/interactor"
+import {IntegrationName} from "../../model/integration-name"
 
 export class GitHandler extends NestedHandler {
   

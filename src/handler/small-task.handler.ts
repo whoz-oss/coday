@@ -1,8 +1,8 @@
-import {CommandHandler} from "./command.handler"
 import {CommandContext} from "../model/command-context"
 import {IntegrationName} from "../model/integration-name"
+import {CommandHandler} from "../model/command.handler"
 
-export class SmallTaskFlowHandler extends CommandHandler {
+export class SmallTaskHandler extends CommandHandler {
   
   constructor() {
     super({

@@ -1,5 +1,5 @@
-import {CommandHandler} from "./command.handler"
 import {CommandContext} from "../model/command-context"
+import {CommandHandler} from "../model/command.handler"
 
 export class CodeFlowHandler extends CommandHandler {
   

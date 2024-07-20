@@ -1,9 +1,9 @@
-import {CommandHandler} from "../command.handler"
 import {CommandContext} from "../../model/command-context"
 import {Interactor} from "../../model/interactor"
 import {configService} from "../../service/config.service"
 import {addProject} from "./add-project"
 import {selectProject} from "./select-project"
+import {CommandHandler} from "../../model/command.handler"
 
 export class SelectProjectHandler extends CommandHandler {
   constructor(

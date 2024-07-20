@@ -2,10 +2,10 @@ import {RunnableToolFunction} from "openai/lib/RunnableFunction"
 import {Interactor} from "../../model/interactor"
 import {Beta} from "openai/resources"
 import {CommandContext} from "../../model/command-context"
-import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
 import {retrieveJiraTicket} from "./retrieve-jira-ticket"
 import {IntegrationName} from "../../model/integration-name"
 import {integrationService} from "../../service/integration.service"
+import {AssistantToolFactory, Tool} from "../../model/assistant-tool-factory"
 import AssistantTool = Beta.AssistantTool
 
 export class JiraTools extends AssistantToolFactory {

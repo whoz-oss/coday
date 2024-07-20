@@ -1,4 +1,3 @@
-import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
 import {Interactor} from "../../model/interactor"
 import {CommandContext} from "../../model/command-context"
 import {Beta} from "openai/resources"
@@ -9,6 +8,7 @@ import {writeFileChunk} from "./write-file-chunk"
 import {findFilesByName} from "../../function/find-files-by-name"
 import {listFilesAndDirectories} from "./list-files-and-directories"
 import {findFilesByText} from "./find-files-by-text"
+import {AssistantToolFactory, Tool} from "../../model/assistant-tool-factory"
 import AssistantTool = Beta.AssistantTool
 
 export class FileTools extends AssistantToolFactory {
