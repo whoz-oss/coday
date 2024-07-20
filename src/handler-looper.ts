@@ -1,21 +1,21 @@
-import {Interactor} from "./model/interactor"
-import {CommandContext} from "./model/command-context"
-import {SmallTaskHandler} from "./handler/small-task.handler"
-import {keywords} from "./keywords"
-import {GitlabReviewHandler} from "./handler/gitlab-review.handler"
+import {CommandContext, CommandHandler, Interactor, ProjectDescription, PromptChain} from "./model"
+import {
+  AddQueryHandler,
+  CodeFlowHandler,
+  ConfigHandler,
+  DebugHandler,
+  GitHandler,
+  GitlabReviewHandler,
+  OpenaiHandler,
+  PromptChainHandler,
+  RunBashHandler,
+  SmallTaskHandler,
+  SubTaskHandler,
+  ThreadHandler
+} from "./handler"
 import {integrationService} from "./service/integration.service"
-import {PromptChainHandler} from "./handler/prompt-chain.handler"
-import {ProjectDescription, PromptChain} from "./model/project-description"
-import {CommandHandler} from "./model/command.handler"
-import {OpenaiHandler} from "./handler/openai/openai.handler"
-import {GitHandler} from "./handler/git/git.handler"
-import {ConfigHandler} from "./handler/config/config.handler"
-import {RunBashHandler} from "./handler/run-bash.handler"
-import {DebugHandler} from "./handler/debug.handler"
-import {CodeFlowHandler} from "./handler/code-flow.handler"
-import {SubTaskHandler} from "./handler/sub-task.handler"
-import {AddQueryHandler} from "./handler/add-query.handler"
-import {ThreadHandler} from "./handler/thread/thread.handler"
+import {keywords} from "./keywords"
+
 
 const MAX_ITERATIONS = 100
 

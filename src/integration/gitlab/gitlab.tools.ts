@@ -1,14 +1,13 @@
-import {AssistantToolFactory, Tool} from "../../model/assistant-tool-factory"
-import {CommandContext} from "../../model/command-context"
-import {Interactor} from "../../model/interactor"
 import {getMergeRequest} from "./get-merge-request"
 import {addGlobalComment} from "./add-global-comment"
 import {addMRThread} from "./add-mr-thread"
 import {Beta} from "openai/resources"
 import {RunnableToolFunction} from "openai/lib/RunnableFunction"
 import {getIssue} from "./get-issue"
-import {IntegrationName} from "../../model/integration-name"
 import {integrationService} from "../../service/integration.service"
+import {AssistantToolFactory, CommandContext, IntegrationName, Interactor, Tool} from "../../model"
+import {listIssues} from "./list-issues"
+import {listMergeRequests} from "./list-merge-requests"
 import AssistantTool = Beta.AssistantTool
 
 export class GitLabTools extends AssistantToolFactory {
@@ -22,19 +21,24 @@ export class GitLabTools extends AssistantToolFactory {
   
   protected buildTools(context: CommandContext): Tool[] {
     const result: Tool[] = []
-    if (!integrationService.hasIntegration(IntegrationName.GITLAB)) {
+    const gitlab = integrationService.getIntegration(IntegrationName.GITLAB)
+    if (!gitlab) {
       return result
     }
+    const {apiUrl, apiKey} = gitlab
     
-    const gitlabBaseUrl = integrationService.getApiUrl(IntegrationName.GITLAB)
-    const gitlabUsername = integrationService.getUsername(IntegrationName.GITLAB)
-    const gitlabApiToken = integrationService.getApiKey(IntegrationName.GITLAB)
-    if (!(gitlabBaseUrl && gitlabUsername && gitlabApiToken)) {
+    if (!apiKey) {
+      this.interactor.warn("Gitlab access token not set")
+    }
+    if (!apiUrl) {
+      this.interactor.warn("Gitlab api url not set")
+    }
+    if (!apiKey || !apiUrl) {
       return result
     }
     
     const retrieveMR = ({mergeRequestId}: { mergeRequestId: string }) => {
-      return getMergeRequest(mergeRequestId, gitlabBaseUrl, gitlabApiToken, gitlabUsername, this.interactor)
+      return getMergeRequest(mergeRequestId, apiUrl, apiKey, this.interactor)
     }
     
     const retrieveGitlabMRFunction: AssistantTool & RunnableToolFunction<{
@@ -56,7 +60,7 @@ export class GitLabTools extends AssistantToolFactory {
     }
     
     const retrieveIssue = ({issueId}: { issueId: string }) => {
-      return getIssue(issueId, gitlabBaseUrl, gitlabApiToken, gitlabUsername, this.interactor)
+      return getIssue(issueId, apiUrl, apiKey, this.interactor)
     }
     
     const retrieveGitlabIssueFunction: AssistantTool & RunnableToolFunction<{
@@ -77,11 +81,88 @@ export class GitLabTools extends AssistantToolFactory {
       }
     }
     
+    const retrieveIssues = ({criteria}: { criteria: string }) => {
+      return listIssues({criteria, integration: gitlab, interactor: this.interactor})
+    }
+    
+    const retrieveGitlabIssuesFunction: AssistantTool & RunnableToolFunction<{ criteria: string }> = {
+      type: "function",
+      function: {
+        name: "retrieveGitlabIssues",
+        description: `Retrieve GitLab issues by criteria.`,
+        parameters: {
+          type: "object",
+          properties: {
+            criteria: {
+              type: "string", description: `string representing the parameters that will be passed as per http params. Different conditions can be combined with "&". Examples:
+            labels=foo
+            labels=foo,bar
+            labels=foo,bar&state=opened
+            milestone=1.0.0
+            milestone=1.0.0&state=
+            search=issue+title+or+description
+            state=closed
+            state=opened
+            page=2`
+            }
+          }
+        },
+        parse: JSON.parse,
+        function: retrieveIssues
+      }
+    }
+    
+    const retrieveMergeRequests = ({criteria}: { criteria: string }) => {
+      return listMergeRequests({criteria, integration: gitlab, interactor: this.interactor})
+    }
+    
+    const retrieveGitlabMergeRequestsFunction: AssistantTool & RunnableToolFunction<{ criteria: string }> = {
+      type: "function",
+      function: {
+        name: "retrieveGitlabMergeRequests",
+        description: `Retrieve GitLab merge requests by criteria.`,
+        parameters: {
+          type: "object",
+          properties: {
+            criteria: {
+              type: "string", description: `string representing the parameters that will be passed as per http params. Different conditions can be combined with "&". Examples:
+            labels=foo
+            labels=foo,bar
+            labels=foo,bar&state=opened
+            milestone=release
+            labels=team_a,category_b
+            labels=none
+            target_branch=master
+            source_branch=hotfix
+            state=all
+            state=opened,closed,locked,merged
+            search=title+or+description
+            state=closed
+            approver_ids=Any
+            approver_ids=None
+            approved=yes
+            approved=no
+            page=2`
+            }
+          }
+        },
+        parse: JSON.parse,
+        function: retrieveMergeRequests
+      }
+    }
+    
+    
     const addGlobalCommentFunction = ({mergeRequestId, comment}: {
       mergeRequestId: string
       comment: string
     }) => {
-      return addGlobalComment({mergeRequestId, comment, gitlabBaseUrl, gitlabApiToken, interactor: this.interactor})
+      return addGlobalComment({
+        mergeRequestId,
+        comment,
+        gitlabBaseUrl: apiUrl,
+        gitlabApiToken: apiKey,
+        interactor: this.interactor
+      })
     }
     
     const addGlobalCommentTool: AssistantTool & RunnableToolFunction<{
@@ -134,8 +215,8 @@ export class GitLabTools extends AssistantToolFactory {
         comment,
         oldLineNumber,
         newLineNumber,
-        gitlabBaseUrl,
-        gitlabApiToken,
+        gitlabBaseUrl: apiUrl,
+        gitlabApiToken: apiKey,
         interactor: this.interactor
       })
     }
@@ -179,7 +260,9 @@ export class GitLabTools extends AssistantToolFactory {
     }
     
     result.push(retrieveGitlabMRFunction)
+    result.push(retrieveGitlabMergeRequestsFunction)
     result.push(retrieveGitlabIssueFunction)
+    result.push(retrieveGitlabIssuesFunction)
     result.push(addGlobalCommentTool)
     result.push(addMRThreadTool)
     
