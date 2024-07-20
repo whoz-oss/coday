@@ -1,5 +1,5 @@
-import {CommandContext} from "../model/command-context"
-import {IntegrationName} from "../model/integration-name"
+import {CommandContext} from "./command-context"
+import {IntegrationName} from "./integration-name"
 
 export type CommandHandlerConstructorInput = {
   commandWord: string

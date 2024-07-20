@@ -1,7 +1,8 @@
-import {runBash} from "../function/run-bash"
-import {Interactor} from "../model/interactor"
-import {CommandHandler} from "./command.handler"
-import {CommandContext} from "../model/command-context"
+import {CommandHandler} from "../../model/command.handler"
+import {Interactor} from "../../model/interactor"
+import {CommandContext} from "../../model/command-context"
+import {runBash} from "../../function/run-bash"
+
 
 export class GitStatusHandler extends CommandHandler {
   

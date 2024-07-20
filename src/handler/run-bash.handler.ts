@@ -1,7 +1,7 @@
-import {CommandHandler} from "./command.handler"
 import {runBash} from "../function/run-bash"
 import {Interactor} from "../model/interactor"
 import {CommandContext} from "../model/command-context"
+import {CommandHandler} from "../model/command.handler"
 
 export class RunBashHandler extends CommandHandler {
   

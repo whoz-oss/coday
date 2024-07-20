@@ -1,4 +1,3 @@
-import {CommandHandler} from "../command.handler"
 import {CommandContext} from "../../model/command-context"
 import {configService} from "../../service/config.service"
 import {integrationService} from "../../service/integration.service"
@@ -6,6 +5,7 @@ import {IntegrationName} from "../../model/integration-name"
 import {IntegrationConfig} from "../../model/integration-config"
 import {Interactor} from "../../model/interactor"
 import {keywords} from "../../keywords"
+import {CommandHandler} from "../../model/command.handler"
 
 export class EditIntegrationHandler extends CommandHandler {
   constructor(

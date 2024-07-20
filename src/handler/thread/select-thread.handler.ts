@@ -1,8 +1,8 @@
-import {CommandHandler} from "../command.handler"
 import {CommandContext} from "../../model/command-context"
 import {Interactor} from "../../model/interactor"
 import {OpenaiClient} from "../openai-client"
 import {selectThread} from "./select-thread.util"
+import {CommandHandler} from "../../model/command.handler"
 
 export class SelectThreadHandler extends CommandHandler {
   constructor(
