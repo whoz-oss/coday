@@ -1,11 +1,7 @@
 import axios from "axios"
-import {Interactor} from "../../model/interactor"
+import {Interactor} from "../../model"
 
-export async function getMergeRequest(mergeRequestId: string, gitlabBaseUrl: string, gitlabApiToken: string, gitlabUsername: string, interactor: Interactor): Promise<any> {
-  
-  if (!gitlabBaseUrl || !gitlabApiToken || !gitlabUsername) {
-    throw new Error("GitLab integration incorrectly set")
-  }
+export async function getMergeRequest(mergeRequestId: string, gitlabBaseUrl: string, gitlabApiToken: string, interactor: Interactor): Promise<any> {
   
   try {
     interactor.displayText(`Fetching GitLab merge request ${mergeRequestId}...`)

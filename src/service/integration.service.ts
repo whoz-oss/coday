@@ -1,7 +1,5 @@
-import {IntegrationName} from "../model/integration-name"
-import {ProjectConfig} from "../model/project-config"
-import {IntegrationConfig} from "../model/integration-config"
 import {configService, ConfigService} from "./config.service"
+import {IntegrationConfig, IntegrationName, ProjectConfig} from "../model"
 
 const API_KEY_SUFFIX = "_API_KEY"
 
@@ -18,6 +16,11 @@ export class IntegrationService {
   get integrations() {
     const project = this.service.getProject()
     return project!.integration!
+  }
+  
+  getIntegration(name: IntegrationName): IntegrationConfig | undefined {
+    this.service.initConfig()
+    return this.service.getProject()!.integration[name]
   }
   
   getApiKey(keyName: string): string | undefined {

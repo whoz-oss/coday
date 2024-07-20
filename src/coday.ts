@@ -1,10 +1,8 @@
 import os from "os"
-import {CommandContext} from "./model/command-context"
-import {Interactor} from "./model/interactor"
 import {HandlerLooper} from "./handler-looper"
 import {keywords} from "./keywords"
-import {OpenaiHandler} from "./handler/openai/openai.handler"
-import {ConfigHandler} from "./handler/config/config.handler"
+import {CommandContext, Interactor} from "./model"
+import {ConfigHandler, OpenaiHandler} from "./handler"
 
 const MAX_ITERATIONS = 100
 

@@ -84,12 +84,12 @@ mandatoryDocs:
   - ./src/model/command-context.ts
   - ./src/coday.ts
   - ./src/handler-looper.ts
-  - ./src/handler/command.handler.ts
+  - ./src/model/command.handler.ts
 
 optionalDocs:
   - path: ./doc/PROJECT_CONFIGURATION.md
     description: How the project configuration works
-  - path: ./src/handler/nested.handler.ts
+  - path: ./src/model/nested.handler.ts
     description: Handler for complex commands that host sub-commands, each to be taken care of by another handler
 
 # Scripts are AssistantTools declared to openai on each call (for now), so always available.
