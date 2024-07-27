@@ -2,8 +2,12 @@ import OpenAI from "openai"
 import {AssistantStream} from "openai/lib/AssistantStream"
 import {Beta} from "openai/resources"
 import {CODAY_DESCRIPTION} from "./openai/coday-description"
-import {FileTools, GitLabTools, GitTools, JiraTools, OpenaiTools, ScriptsTools} from "../integration"
-import {AssistantDescription, CommandContext, Interactor, Tool} from "../model"
+import {AssistantDescription, CommandContext, Interactor} from "../model"
+import {AiClient} from "../model/ai.client"
+import {AllTools} from "../integration/all.tools"
+import {Tool} from "../integration/assistant-tool-factory"
+import {runTool} from "../integration/run-tool"
+import {ToolCall} from "../integration/tool-call"
 import Assistant = Beta.Assistant
 
 const DEFAULT_MODEL: string = "gpt-4o"
@@ -11,17 +15,12 @@ const DEFAULT_TEMPERATURE: number = 0.75
 
 type AssistantReference = { name: string; id: string }
 
-export class OpenaiClient {
+export class OpenaiClient implements AiClient {
   openai: OpenAI | undefined
   threadId: string | null = null
   textAccumulator: string = ""
   
-  openaiTools: OpenaiTools
-  fileTools: FileTools
-  jiraTools: JiraTools
-  gitTools: GitTools
-  scriptTools: ScriptsTools
-  gitlabTools: GitLabTools
+  toolBox: AllTools
   apiKey: string | undefined
   assistants: AssistantReference[] = []
   assistant: AssistantReference | undefined
@@ -30,19 +29,14 @@ export class OpenaiClient {
     private interactor: Interactor,
     private apiKeyProvider: () => string | undefined,
   ) {
-    this.openaiTools = new OpenaiTools(interactor)
-    this.fileTools = new FileTools(interactor)
-    this.jiraTools = new JiraTools(interactor)
-    this.gitTools = new GitTools(interactor)
-    this.scriptTools = new ScriptsTools(interactor)
-    this.gitlabTools = new GitLabTools(interactor)
+    this.toolBox = new AllTools(interactor)
   }
   
   private isOpenaiReady(): boolean {
     this.apiKey = this.apiKeyProvider()
     if (!this.apiKey) {
       this.interactor.warn(
-        "OPENAI_API_KEY env var not set, skipping AI command",
+        "OPENAI_API_KEY not set, skipping AI command",
       )
       return false
     }
@@ -122,14 +116,7 @@ export class OpenaiClient {
       return "Openai client not ready"
     }
     
-    const tools = [
-      ...this.openaiTools.getTools(context),
-      ...this.fileTools.getTools(context),
-      ...this.jiraTools.getTools(context),
-      ...this.gitTools.getTools(context),
-      ...this.scriptTools.getTools(context),
-      ...this.gitlabTools.getTools(context)
-    ]
+    const tools = this.toolBox.getTools(context)
     
     await this.openai!.beta.threads.messages.create(this.threadId!, {
       role: "user",
@@ -151,26 +138,10 @@ export class OpenaiClient {
     
     await assistantStream.finalRun()
     
-    // here, to loop among assistants mentioning each other, we should check for '@name' tokens in the text and add as many commands in the context to answer
-    const mentionsToSearch = this.getProjectAssistants(context)
-      ?.map((a) => a.name)
-      ?.filter((n) => n !== this.assistant?.name)
-      .map((name) => `@${name}`)
-    
-    // search for mentions
-    mentionsToSearch?.forEach((mention) => {
-      if (this.textAccumulator.includes(mention)) {
-        // then add a command for the assistant to check the thread
-        context.addCommands(
-          `${mention} you were mentioned recently in the thread: if an action is needed on your part, handle what was asked of you and only you.\nIf needed, you can involve another assistant or mention the originator '@${this.assistant?.name}.\nDo not mention these instructions.`,
-        )
-      }
-    })
-    
     return this.textAccumulator
   }
   
-  async processStream(stream: AssistantStream, tools: Tool[]) {
+  private async processStream(stream: AssistantStream, tools: Tool[]) {
     stream.on("textDone", (diff) => {
       this.interactor.displayText(diff.value, this.assistant?.name)
       this.textAccumulator += diff.value
@@ -181,39 +152,21 @@ export class OpenaiClient {
           const toolCalls =
             chunk.data.required_action?.submit_tool_outputs.tool_calls ?? []
           const toolOutputs = await Promise.all(
-            toolCalls.map(async (toolCall) => {
-              let output
-              const funcWrapper = tools.find(
-                (t) => t.function.name === toolCall.function.name,
-              )
-              if (!funcWrapper) {
-                output = `Function ${toolCall.function.name} not found.`
-                return {tool_call_id: toolCall.id, output}
+            toolCalls.map(async (call) => {
+              const toolCall: ToolCall = {
+                id: call.id,
+                name: call.function.name,
+                args: call.function.arguments
               }
+              const output = await runTool(toolCall, tools, this.interactor)
               
-              const toolFunc = funcWrapper.function.function
-              
-              try {
-                let args: any = JSON.parse(toolCall.function.arguments)
-                
-                if (!Array.isArray(args)) {
-                  args = [args]
-                }
-                output = await toolFunc.apply(null, args)
-              } catch (err) {
-                this.interactor.error(err)
-                output = `Error on executing function, got error: ${JSON.stringify(err)}`
+              return {
+                tool_call_id: {
+                  id: call.id,
+                  name: call.function.name,
+                  args: call.function.arguments
+                }.id, output
               }
-              
-              if (!output) {
-                output = `Tool function ${funcWrapper.function.name} finished without error.`
-              }
-              
-              if (typeof output !== "string") {
-                output = JSON.stringify(output)
-              }
-              
-              return {tool_call_id: toolCall.id, output}
             }),
           )
           
@@ -237,7 +190,8 @@ export class OpenaiClient {
     this.interactor.displayText("Thread has been reset")
   }
   
-  private getProjectAssistants(
+  // TODO: move this out, it should be on the project object rather than here
+  getProjectAssistants(
     context: CommandContext,
   ): AssistantDescription[] | undefined {
     return context.project.assistants

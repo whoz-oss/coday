@@ -1,15 +1,12 @@
-import {Interactor} from "../../model/interactor"
-import {CommandContext} from "../../model/command-context"
-import {Beta} from "openai/resources"
-import {RunnableToolFunction} from "openai/lib/RunnableFunction"
 import {readFileByPath} from "./read-file-by-path"
 import {writeFileByPath} from "./write-file-by-path"
 import {writeFileChunk} from "./write-file-chunk"
 import {findFilesByName} from "../../function/find-files-by-name"
 import {listFilesAndDirectories} from "./list-files-and-directories"
 import {findFilesByText} from "./find-files-by-text"
-import {AssistantToolFactory, Tool} from "../../model/assistant-tool-factory"
-import AssistantTool = Beta.AssistantTool
+import {CommandContext, Interactor} from "../../model"
+import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
+import {FunctionTool} from "../types"
 
 export class FileTools extends AssistantToolFactory {
   
@@ -28,7 +25,7 @@ export class FileTools extends AssistantToolFactory {
       return readFileByPath({relPath: path, root: context.project.root, interactor: this.interactor})
     }
     
-    const readProjectFileFunction: AssistantTool & RunnableToolFunction<{ path: string }> = {
+    const readProjectFileFunction: FunctionTool<{ path: string }> = {
       type: "function",
       function: {
         name: "readProjectFile",
@@ -49,7 +46,7 @@ export class FileTools extends AssistantToolFactory {
       return writeFileByPath({relPath: path, root: context.project.root, interactor: this.interactor, content})
     }
     
-    const writeProjectFileFunction: AssistantTool & RunnableToolFunction<{ path: string, content: string }> = {
+    const writeProjectFileFunction: FunctionTool<{ path: string, content: string }> = {
       type: "function",
       function: {
         name: "writeProjectFile",
@@ -74,7 +71,7 @@ export class FileTools extends AssistantToolFactory {
       return writeFileChunk({relPath: path, root: context.project.root, interactor: this.interactor, replacements})
     }
     
-    const writeFileChunkTool: AssistantTool & RunnableToolFunction<{
+    const writeFileChunkTool: FunctionTool<{
       path: string,
       replacements: { oldPart: string, newPart: string }[]
     }> = {
@@ -112,7 +109,7 @@ export class FileTools extends AssistantToolFactory {
       return findFilesByName({text, path, root: context.project.root, interactor: this.interactor})
     }
     
-    const searchProjectFileFunction: AssistantTool & RunnableToolFunction<{ text: string, path?: string }> = {
+    const searchProjectFileFunction: FunctionTool<{ text: string, path?: string }> = {
       type: "function",
       function: {
         name: "searchProjectFile",
@@ -137,7 +134,7 @@ export class FileTools extends AssistantToolFactory {
       return listFilesAndDirectories({relPath, root: context.project.root, interactor: this.interactor})
     }
     
-    const listProjectFilesAndDirectoriesFunction: AssistantTool & RunnableToolFunction<{ relPath: string }> = {
+    const listProjectFilesAndDirectoriesFunction: FunctionTool<{ relPath: string }> = {
       type: "function",
       function: {
         name: "listFilesAndDirectories",
@@ -164,7 +161,7 @@ export class FileTools extends AssistantToolFactory {
       })
     }
     
-    const searchFilesByTextFunction: AssistantTool & RunnableToolFunction<{
+    const searchFilesByTextFunction: FunctionTool<{
       text: string,
       path?: string,
       fileTypes?: string[]
