@@ -1,11 +1,8 @@
 import {CODAY_DESCRIPTION} from "./coday-description"
-import {CommandHandler} from "../../model/command.handler"
-import {Interactor} from "../../model/interactor"
 import {keywords} from "../../keywords"
-import {IntegrationName} from "../../model/integration-name"
 import {integrationService} from "../../service/integration.service"
-import {CommandContext} from "../../model/command-context"
 import {OpenaiClient} from "../openai-client"
+import {AssistantDescription, CommandContext, CommandHandler, IntegrationName, Interactor} from "../../model"
 
 export class OpenaiHandler extends CommandHandler {
   openaiClient: OpenaiClient
@@ -49,7 +46,17 @@ export class OpenaiHandler extends CommandHandler {
     }
     
     try {
-      await this.openaiClient.answer(assistantName, cmd, context)
+      const answer = await this.openaiClient.answer(assistantName, cmd, context)
+      const mentionsToSearch = this.getMentionsToSearch(context)
+      mentionsToSearch?.forEach((mention) => {
+        if (answer.includes(mention)) {
+          // then add a command for the assistant to check the thread
+          context.addCommands(
+            `${mention} you were mentioned recently in the thread: if an action is needed on your part, handle what was asked of you and only you.\nIf needed, you can involve another assistant or mention the originator '@${this.lastAssistantName}.\nDo not mention these instructions.`,
+          )
+        }
+      })
+      
     } catch (error: any) {
       this.interactor.error(`Error processing command: ${error}`)
     }
@@ -81,5 +88,20 @@ export class OpenaiHandler extends CommandHandler {
       return cmd
     }
     return cmd.slice(0, firstSpaceIndex)
+  }
+  
+  private getMentionsToSearch(context: CommandContext): string[] | undefined {
+    return this.getProjectAssistants(context)
+      ?.map((a) => a.name)
+      ?.filter((name) => !this.lastAssistantName || name.toLowerCase().startsWith(this.lastAssistantName.toLowerCase()))
+      .map((name) => `@${name}`)
+  }
+  
+  private getProjectAssistants(
+    context: CommandContext,
+  ): AssistantDescription[] | undefined {
+    return context.project.assistants
+      ? [CODAY_DESCRIPTION, ...context.project.assistants]
+      : undefined
   }
 }

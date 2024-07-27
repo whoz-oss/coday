@@ -1,19 +1,15 @@
 import {runBash} from "../../function/run-bash"
-import {RunnableToolFunction} from "openai/lib/RunnableFunction"
-import {Interactor} from "../../model/interactor"
-import {Beta} from "openai/resources"
 import {gitAdd} from "./git-add"
 import {gitCommit} from "./git-commit"
 import {gitListBranches} from "./git-list-branches"
 import {gitCreateBranch} from "./git-create-branch"
 import {gitLog} from "./git-log"
 import {gitShow} from "./git-show"
-import {CommandContext} from "../../model/command-context"
-import {IntegrationName} from "../../model/integration-name"
 import {integrationService} from "../../service/integration.service"
 import {gitCheckoutBranch} from "./git-checkout-branch"
-import {AssistantToolFactory, Tool} from "../../model/assistant-tool-factory"
-import AssistantTool = Beta.AssistantTool
+import {CommandContext, IntegrationName, Interactor} from "../../model"
+import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
+import {FunctionTool} from "../types"
 
 export class GitTools extends AssistantToolFactory {
   constructor(interactor: Interactor) {
@@ -39,7 +35,7 @@ export class GitTools extends AssistantToolFactory {
       })
     }
     
-    const gitStatusTool: AssistantTool & RunnableToolFunction<{}> = {
+    const gitStatusTool: FunctionTool<{}> = {
       type: "function",
       function: {
         name: "gitStatusTool",
@@ -61,7 +57,7 @@ export class GitTools extends AssistantToolFactory {
       })
     }
     
-    const gitDiffTool: AssistantTool & RunnableToolFunction<{}> = {
+    const gitDiffTool: FunctionTool<{}> = {
       type: "function",
       function: {
         name: "gitDiffTool",
@@ -83,7 +79,7 @@ export class GitTools extends AssistantToolFactory {
       })
     }
     
-    const gitAddTool: AssistantTool & RunnableToolFunction<{ filePaths: string[] }> = {
+    const gitAddTool: FunctionTool<{ filePaths: string[] }> = {
       type: "function",
       function: {
         name: "gitAddTool",
@@ -113,7 +109,7 @@ export class GitTools extends AssistantToolFactory {
       })
     }
     
-    const gitCommitTool: AssistantTool & RunnableToolFunction<{ message: string }> = {
+    const gitCommitTool: FunctionTool<{ message: string }> = {
       type: "function",
       function: {
         name: "gitCommitTool",
@@ -139,7 +135,7 @@ export class GitTools extends AssistantToolFactory {
       })
     }
     
-    const gitListBranchesTool: AssistantTool & RunnableToolFunction<{}> = {
+    const gitListBranchesTool: FunctionTool<{}> = {
       type: "function",
       function: {
         name: "gitListBranchesTool",
@@ -162,7 +158,7 @@ export class GitTools extends AssistantToolFactory {
       })
     }
     
-    const gitCreateBranchTool: AssistantTool & RunnableToolFunction<{ branchName: string, baseBranch?: string }> = {
+    const gitCreateBranchTool: FunctionTool<{ branchName: string, baseBranch?: string }> = {
       type: "function",
       function: {
         name: "gitCreateBranchTool",
@@ -193,7 +189,7 @@ export class GitTools extends AssistantToolFactory {
       })
     }
     
-    const gitLogTool: AssistantTool & RunnableToolFunction<{ params: string }> = {
+    const gitLogTool: FunctionTool<{ params: string }> = {
       type: "function",
       function: {
         name: "gitLogTool",
@@ -220,7 +216,7 @@ export class GitTools extends AssistantToolFactory {
       })
     }
     
-    const gitShowTool: AssistantTool & RunnableToolFunction<{ params: string }> = {
+    const gitShowTool: FunctionTool<{ params: string }> = {
       type: "function",
       function: {
         name: "gitShowTool",
@@ -247,7 +243,7 @@ export class GitTools extends AssistantToolFactory {
       })
     }
     
-    const gitCheckoutBranchTool: AssistantTool & RunnableToolFunction<{ branchName: string }> = {
+    const gitCheckoutBranchTool: FunctionTool<{ branchName: string }> = {
       type: "function",
       function: {
         name: "gitCheckoutBranchTool",

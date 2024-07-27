@@ -1,11 +1,8 @@
-import {RunnableToolFunction} from "openai/lib/RunnableFunction"
-import {Interactor} from "../../model/interactor"
-import {Beta} from "openai/resources"
-import {CommandContext} from "../../model/command-context"
-import {AssistantToolFactory, Tool} from "../../model/assistant-tool-factory"
-import AssistantTool = Beta.AssistantTool
+import {CommandContext, Interactor} from "../../model"
+import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
+import {FunctionTool} from "../types"
 
-export class OpenaiTools extends AssistantToolFactory {
+export class AiTools extends AssistantToolFactory {
   constructor(interactor: Interactor) {
     super(interactor)
   }
@@ -26,7 +23,7 @@ export class OpenaiTools extends AssistantToolFactory {
         }
         return "sub-tasks could not be queued, no more sub-tasking allowed for now."
       }
-      const subTaskTool: AssistantTool & RunnableToolFunction<{ subTasks: { description: string }[] }> = {
+      const subTaskTool: FunctionTool<{ subTasks: { description: string }[] }> = {
         type: "function",
         function: {
           name: "subTask",
@@ -63,7 +60,7 @@ export class OpenaiTools extends AssistantToolFactory {
         return "Query successfully queued, user will maybe answer later."
       }
       
-      const queryUserTool: AssistantTool & RunnableToolFunction<{ message: string }> = {
+      const queryUserTool: FunctionTool<{ message: string }> = {
         type: "function",
         function: {
           name: "queryUser",

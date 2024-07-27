@@ -1,12 +1,8 @@
-import {RunnableToolFunction} from "openai/lib/RunnableFunction"
-import {Interactor} from "../../model/interactor"
-import {Beta} from "openai/resources"
-import {CommandContext} from "../../model/command-context"
 import {retrieveJiraTicket} from "./retrieve-jira-ticket"
-import {IntegrationName} from "../../model/integration-name"
 import {integrationService} from "../../service/integration.service"
-import {AssistantToolFactory, Tool} from "../../model/assistant-tool-factory"
-import AssistantTool = Beta.AssistantTool
+import {CommandContext, IntegrationName, Interactor} from "../../model"
+import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
+import {FunctionTool} from "../types"
 
 export class JiraTools extends AssistantToolFactory {
   
@@ -33,7 +29,7 @@ export class JiraTools extends AssistantToolFactory {
     const retrieveTicket = ({ticketId}: { ticketId: string }) => {
       return retrieveJiraTicket(ticketId, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor)
     }
-    const retrieveJiraTicketFunction: AssistantTool & RunnableToolFunction<{
+    const retrieveJiraTicketFunction: FunctionTool<{
       ticketId: string,
       jiraBaseUrl: string,
       jiraApiToken: string,
