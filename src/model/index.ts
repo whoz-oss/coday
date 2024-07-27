@@ -1,5 +1,4 @@
 export * from "./assistant-description"
-export * from "./assistant-tool-factory"
 export * from "./coday-config"
 export * from "./command-context"
 export * from "./command.handler"
