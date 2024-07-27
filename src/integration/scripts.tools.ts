@@ -1,11 +1,7 @@
 import {runBash} from "../function/run-bash"
-import {Interactor} from "../model/interactor"
-import {Beta} from "openai/resources"
-import {Scripts} from "../model/scripts"
-import {RunnableToolFunction} from "openai/lib/RunnableFunction"
-import {CommandContext} from "../model/command-context"
-import {AssistantToolFactory, Tool} from "../model/assistant-tool-factory"
-import AssistantTool = Beta.AssistantTool
+import {CommandContext, Interactor, Scripts} from "../model"
+import {AssistantToolFactory, Tool} from "./assistant-tool-factory"
+import {FunctionTool} from "./types"
 
 const PARAMETERS: string = "PARAMETERS"
 
@@ -39,7 +35,7 @@ export class ScriptsTools extends AssistantToolFactory {
             requireConfirmation: false
           })
         }
-        const scriptFunction: AssistantTool & RunnableToolFunction<{}> = {
+        const scriptFunction: FunctionTool<{}> = {
           type: "function",
           function: {
             name: entry[0],

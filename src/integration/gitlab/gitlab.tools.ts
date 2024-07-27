@@ -1,14 +1,13 @@
 import {getMergeRequest} from "./get-merge-request"
 import {addGlobalComment} from "./add-global-comment"
 import {addMRThread} from "./add-mr-thread"
-import {Beta} from "openai/resources"
-import {RunnableToolFunction} from "openai/lib/RunnableFunction"
 import {getIssue} from "./get-issue"
 import {integrationService} from "../../service/integration.service"
-import {AssistantToolFactory, CommandContext, IntegrationName, Interactor, Tool} from "../../model"
+import {CommandContext, IntegrationName, Interactor} from "../../model"
 import {listIssues} from "./list-issues"
 import {listMergeRequests} from "./list-merge-requests"
-import AssistantTool = Beta.AssistantTool
+import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
+import {FunctionTool} from "../types"
 
 export class GitLabTools extends AssistantToolFactory {
   constructor(interactor: Interactor) {
@@ -41,7 +40,7 @@ export class GitLabTools extends AssistantToolFactory {
       return getMergeRequest(mergeRequestId, apiUrl, apiKey, this.interactor)
     }
     
-    const retrieveGitlabMRFunction: AssistantTool & RunnableToolFunction<{
+    const retrieveGitlabMRFunction: FunctionTool<{
       mergeRequestId: string
     }> = {
       type: "function",
@@ -63,7 +62,7 @@ export class GitLabTools extends AssistantToolFactory {
       return getIssue(issueId, apiUrl, apiKey, this.interactor)
     }
     
-    const retrieveGitlabIssueFunction: AssistantTool & RunnableToolFunction<{
+    const retrieveGitlabIssueFunction: FunctionTool<{
       issueId: string
     }> = {
       type: "function",
@@ -85,7 +84,7 @@ export class GitLabTools extends AssistantToolFactory {
       return listIssues({criteria, integration: gitlab, interactor: this.interactor})
     }
     
-    const retrieveGitlabIssuesFunction: AssistantTool & RunnableToolFunction<{ criteria: string }> = {
+    const retrieveGitlabIssuesFunction: FunctionTool<{ criteria: string }> = {
       type: "function",
       function: {
         name: "retrieveGitlabIssues",
@@ -116,7 +115,7 @@ export class GitLabTools extends AssistantToolFactory {
       return listMergeRequests({criteria, integration: gitlab, interactor: this.interactor})
     }
     
-    const retrieveGitlabMergeRequestsFunction: AssistantTool & RunnableToolFunction<{ criteria: string }> = {
+    const retrieveGitlabMergeRequestsFunction: FunctionTool<{ criteria: string }> = {
       type: "function",
       function: {
         name: "retrieveGitlabMergeRequests",
@@ -165,7 +164,7 @@ export class GitLabTools extends AssistantToolFactory {
       })
     }
     
-    const addGlobalCommentTool: AssistantTool & RunnableToolFunction<{
+    const addGlobalCommentTool: FunctionTool<{
       projectId: string
       mergeRequestId: string
       comment: string
@@ -221,7 +220,7 @@ export class GitLabTools extends AssistantToolFactory {
       })
     }
     
-    const addMRThreadTool: AssistantTool & RunnableToolFunction<{
+    const addMRThreadTool: FunctionTool<{
       mergeRequestId: string
       base_sha: string, head_sha: string, start_sha: string,
       oldFilePath: string

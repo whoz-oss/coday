@@ -1,10 +1,7 @@
-import {RunnableToolFunction} from "openai/lib/RunnableFunction"
-import {Interactor} from "./interactor"
-import {Beta} from "openai/resources"
-import {CommandContext} from "./command-context"
-import AssistantTool = Beta.AssistantTool
+import {CommandContext, Interactor} from "../model"
+import {FunctionTool} from "./types"
 
-export type Tool = AssistantTool & RunnableToolFunction<any>
+export type Tool = FunctionTool<any>
 
 export abstract class AssistantToolFactory {
   tools: Tool[] = []
