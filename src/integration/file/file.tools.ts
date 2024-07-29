@@ -7,6 +7,7 @@ import {findFilesByText} from "./find-files-by-text"
 import {CommandContext, Interactor} from "../../model"
 import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
 import {FunctionTool} from "../types"
+import {unlinkFile} from "./unlink-file"
 
 export class FileTools extends AssistantToolFactory {
   
@@ -20,6 +21,26 @@ export class FileTools extends AssistantToolFactory {
   
   protected buildTools(context: CommandContext): Tool[] {
     const result: Tool[] = []
+    const removeFile = ({path}: { path: string }) => {
+      return unlinkFile(path, this.interactor)
+    }
+    
+    const removeFileFunction: FunctionTool<{ path: string }> = {
+      type: "function",
+      function: {
+        name: "removeFile",
+        description: "Remove the file at the given path in the project.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {type: "string", description: "file path relative to the project root"}
+          }
+        },
+        parse: JSON.parse,
+        function: removeFile
+      }
+    }
+    result.push(removeFileFunction)
     
     const readProjectFile = ({path}: { path: string }) => {
       return readFileByPath({relPath: path, root: context.project.root, interactor: this.interactor})
@@ -33,7 +54,7 @@ export class FileTools extends AssistantToolFactory {
         parameters: {
           type: "object",
           properties: {
-            path: {type: "string", description: "file path relative to the project root (not exposed)"}
+            path: {type: "string", description: "file path relative to the project root"}
           }
         },
         parse: JSON.parse,
@@ -54,7 +75,7 @@ export class FileTools extends AssistantToolFactory {
         parameters: {
           type: "object",
           properties: {
-            path: {type: "string", description: "file path relative to the project root (not exposed)"},
+            path: {type: "string", description: "file path relative to the project root"},
             content: {type: "string", description: "content of the file to write"}
           }
         },
