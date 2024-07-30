@@ -1,7 +1,4 @@
-import {CommandContext} from "../model/command-context"
-import {IntegrationName} from "../model/integration-name"
-import {CommandHandler} from "../model/command.handler"
-
+import {CommandContext, CommandHandler, IntegrationName} from "../model"
 
 export class GitlabReviewHandler extends CommandHandler {
   

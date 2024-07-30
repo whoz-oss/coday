@@ -1,7 +1,4 @@
-import {Interactor} from "../model/interactor"
-import {CommandContext} from "../model/command-context"
-import {PromptChain} from "../model/project-description"
-import {CommandHandler} from "../model/command.handler"
+import {CommandContext, CommandHandler, Interactor, PromptChain} from "../model"
 
 const PROMPT_KEYWORD = "PROMPT"
 

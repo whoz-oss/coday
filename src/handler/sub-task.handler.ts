@@ -1,7 +1,4 @@
-import {CommandContext} from "../model/command-context"
-import {Interactor} from "../model/interactor"
-import {IntegrationName} from "../model/integration-name"
-import {CommandHandler} from "../model/command.handler"
+import {CommandContext, CommandHandler, IntegrationName, Interactor} from "../model"
 
 export class SubTaskHandler extends CommandHandler {
   
