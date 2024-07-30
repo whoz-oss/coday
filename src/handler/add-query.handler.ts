@@ -1,7 +1,5 @@
-import {Interactor} from "../model/interactor"
-import {CommandContext} from "../model/command-context"
 import {keywords} from "../keywords"
-import {CommandHandler} from "../model/command.handler"
+import {CommandContext, CommandHandler, Interactor} from "../model"
 
 export class AddQueryHandler extends CommandHandler {
   
