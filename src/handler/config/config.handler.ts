@@ -33,7 +33,7 @@ export class ConfigHandler extends NestedHandler {
     initialProject: string | undefined,
   ): Promise<CommandContext | null> {
     if (initialProject) {
-      console.log(`selecting ${initialProject}...`)
+      this.interactor.displayText(`selecting ${initialProject}...`)
       return await selectProject(initialProject, this.interactor, this.username)
     }
     const projectNames = configService.projectNames

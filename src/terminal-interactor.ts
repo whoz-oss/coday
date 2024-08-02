@@ -1,48 +1,52 @@
-import {Interactor} from "./model/interactor"
 import {input, select} from "@inquirer/prompts"
 import chalk from "chalk"
+import {ChoiceEvent, ErrorEvent, Interactor, InviteEvent, TextEvent, WarnEvent} from "./model"
 
-export class TerminalInteractor implements Interactor {
-  async promptText(invite: string, defaultText?: string): Promise<string> {
-    this.addSeparator()
-    const text = await input({
-      message: `${chalk.black.bgWhite(invite)} : `,
-      default: defaultText,
+export class TerminalInteractor extends Interactor {
+  
+  constructor() {
+    super()
+    this.events.subscribe((event) => {
+      if (event instanceof TextEvent) {
+        const {speaker, text} = event
+        const formattedText = speaker
+          ? `\n${chalk.black.bgWhite(speaker)} : ${text}\n`
+          : text
+        console.log(formattedText)
+      }
+      if (event instanceof WarnEvent) {
+        console.warn(`${event.warning}\n`)
+      }
+      if (event instanceof ErrorEvent) {
+        console.error(`${event.error}\n`)
+      }
+      if (event instanceof InviteEvent) {
+        this.handleInviteEvent(event)
+      }
+      if (event instanceof ChoiceEvent) {
+        this.handleChoiceEvent(event)
+      }
     })
-    this.addSeparator()
-    return text
   }
   
-  async chooseOption(
-    options: string[],
-    question: string,
-    invite?: string,
-  ): Promise<string> {
-    return select({
+  handleInviteEvent(event: InviteEvent): void {
+    input({
+      message: `\n${chalk.black.bgWhite(event.invite)} : `
+    }).then((answer: string) => {
+      this.sendEvent(event.buildAnswer(answer))
+    })
+  }
+  
+  handleChoiceEvent(event: ChoiceEvent): void {
+    const {options, question, invite} = event
+    select({
       message: invite ? `${invite} :\n${question}` : question,
       choices: options.map((option) => ({
         name: option,
         value: option,
       })),
+    }).then((answer: string) => {
+      this.sendEvent(event.buildAnswer(answer))
     })
-  }
-  
-  displayText(text: string, speaker?: string): void {
-    const formattedText = speaker
-      ? `\n${chalk.black.bgWhite(speaker)} : ${text}\n`
-      : text
-    console.log(formattedText)
-  }
-  
-  warn(warning: string): void {
-    console.warn(warning)
-  }
-  
-  error(error: unknown): void {
-    console.error(error)
-  }
-  
-  addSeparator(): void {
-    console.log("")
   }
 }
