@@ -1,5 +1,9 @@
 # Building a Chat Application with Vanilla JavaScript
 
+## Reference
+
+- https://nmcode.hashnode.dev/using-typescript-in-vanilla-js-projects
+
 ## Overview
 
 This document outlines the core components and considerations for building a chat application using plain JavaScript,
