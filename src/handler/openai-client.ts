@@ -2,12 +2,12 @@ import OpenAI from "openai"
 import {AssistantStream} from "openai/lib/AssistantStream"
 import {Beta} from "openai/resources"
 import {CODAY_DESCRIPTION} from "./openai/coday-description"
-import {AssistantDescription, CommandContext, Interactor} from "../model"
+import {AssistantDescription, CommandContext, Interactor, ToolRequestEvent, ToolResponseEvent} from "../model"
 import {AiClient} from "../model/ai.client"
-import {AllTools} from "../integration/all.tools"
+import {Toolbox} from "../integration/toolbox"
 import {Tool} from "../integration/assistant-tool-factory"
-import {runTool} from "../integration/run-tool"
 import {ToolCall} from "../integration/tool-call"
+import {filter, firstValueFrom, map, take} from "rxjs"
 import Assistant = Beta.Assistant
 
 const DEFAULT_MODEL: string = "gpt-4o"
@@ -20,7 +20,7 @@ export class OpenaiClient implements AiClient {
   threadId: string | null = null
   textAccumulator: string = ""
   
-  toolBox: AllTools
+  toolBox: Toolbox
   apiKey: string | undefined
   assistants: AssistantReference[] = []
   assistant: AssistantReference | undefined
@@ -29,7 +29,7 @@ export class OpenaiClient implements AiClient {
     private interactor: Interactor,
     private apiKeyProvider: () => string | undefined,
   ) {
-    this.toolBox = new AllTools(interactor)
+    this.toolBox = new Toolbox(interactor)
   }
   
   private isOpenaiReady(): boolean {
@@ -158,15 +158,15 @@ export class OpenaiClient implements AiClient {
                 name: call.function.name,
                 args: call.function.arguments
               }
-              const output = await runTool(toolCall, tools, this.interactor)
-              
-              return {
-                tool_call_id: {
-                  id: call.id,
-                  name: call.function.name,
-                  args: call.function.arguments
-                }.id, output
-              }
+              const toolRequest = new ToolRequestEvent(toolCall)
+              const toolResponse = this.interactor.events.pipe(
+                filter(event => event instanceof ToolResponseEvent),
+                filter(response => response.toolRequestId === toolRequest.toolRequestId),
+                take(1),
+                map(response => ({tool_call_id: call.id, output: response.output}))
+              )
+              this.interactor.sendEvent(toolRequest)
+              return firstValueFrom(toolResponse)
             }),
           )
           
