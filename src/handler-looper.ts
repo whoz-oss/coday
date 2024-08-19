@@ -6,6 +6,7 @@ import {
   DebugHandler,
   GitHandler,
   GitlabReviewHandler,
+  MemoryHandler,
   OpenaiHandler,
   PromptChainHandler,
   RunBashHandler,
@@ -21,6 +22,7 @@ const MAX_ITERATIONS = 100
 
 export class HandlerLooper {
   private handlers: CommandHandler[] = []
+  
   private maxIterations: number = MAX_ITERATIONS
   
   constructor(
@@ -41,7 +43,8 @@ export class HandlerLooper {
         new SubTaskHandler(this.interactor),
         new AddQueryHandler(this.interactor),
         new GitlabReviewHandler(),
-        new ThreadHandler(this.interactor, this.openaiHandler.openaiClient)
+        new ThreadHandler(this.interactor, this.openaiHandler.openaiClient),
+        new MemoryHandler(this.interactor)
       ]
       
       if (projectDescription?.prompts) {
