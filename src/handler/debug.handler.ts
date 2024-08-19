@@ -1,5 +1,6 @@
-import {runBash} from "../function/run-bash"
 import {CommandContext, CommandHandler, Interactor} from "../model"
+import {memoryService} from "../service/memory-service"
+import {MemoryLevel} from "../model/memory"
 
 export class DebugHandler extends CommandHandler {
   
@@ -12,14 +13,10 @@ export class DebugHandler extends CommandHandler {
   }
   
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
-    const method = ({command, relPath}: { command: string, relPath: string }) => {
-      return runBash({command, root: context.project.root, interactor: this.interactor})
-    }
-    const args = {command: "ls", relPath: "/src/function"}
-    console.log("direct read")
-    const result = await method(args)
-    
-    console.log(result)
+    console.log("pre-memory")
+    console.log(memoryService.listMemories())
+    memoryService.addMemory({title: "toto", content: "is a test data", level: MemoryLevel.USER})
+    console.log(memoryService.listMemories())
     return context
   }
   

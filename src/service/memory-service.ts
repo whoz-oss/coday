@@ -1,4 +1,4 @@
-import {Memory} from "../model/memory"
+import {Memory, MemoryLevel} from "../model/memory"
 
 class MemoryService {
   private memories: Memory[] = []
@@ -34,8 +34,8 @@ class MemoryService {
     }
   }
   
-  listMemories(): Memory[] {
-    return this.memories
+  listMemories(level?: MemoryLevel): Memory[] {
+    return !level ? this.memories : this.memories.filter(m => m.level === level)
   }
 }
 

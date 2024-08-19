@@ -2,12 +2,22 @@ import OpenAI from "openai"
 import {AssistantStream} from "openai/lib/AssistantStream"
 import {Beta} from "openai/resources"
 import {CODAY_DESCRIPTION} from "./openai/coday-description"
-import {AssistantDescription, CommandContext, Interactor, ToolRequestEvent, ToolResponseEvent} from "../model"
+import {
+  AssistantDescription,
+  CommandContext,
+  IntegrationName,
+  Interactor,
+  ToolRequestEvent,
+  ToolResponseEvent
+} from "../model"
 import {AiClient} from "../model/ai.client"
 import {Toolbox} from "../integration/toolbox"
 import {Tool} from "../integration/assistant-tool-factory"
 import {ToolCall} from "../integration/tool-call"
 import {filter, firstValueFrom, map, take} from "rxjs"
+import {integrationService} from "../service/integration.service"
+import {memoryService} from "../service/memory-service"
+import {MemoryLevel} from "../model/memory"
 import Assistant = Beta.Assistant
 
 const DEFAULT_MODEL: string = "gpt-4o"
@@ -49,6 +59,32 @@ export class OpenaiClient implements AiClient {
     return true
   }
   
+  private buildInitialContext(context: CommandContext, projectAssistantReferences: string[] | undefined): string {
+    
+    const userDeclaration = `## User
+    
+    You are interacting with a human with username: ${context.username}`
+    const userMemories = integrationService.hasIntegration(IntegrationName.USER_MEMORY) ? memoryService.listMemories(MemoryLevel.USER).map(m => `  - ${m.title}\n    ${m.content}`) : []
+    const userMemoryText = userMemories?.length ? `## User memories
+    
+    Here are the information collected during previous chats with the user about him:\n
+    ${userMemories.join("\n")}` : ""
+    const projectMemories = integrationService.hasIntegration(IntegrationName.USER_MEMORY) ? memoryService.listMemories(MemoryLevel.PROJECT).map(m => `  - ${m.title}\n    ${m.content}`) : []
+    const projectMemoryText = projectMemories?.length ? `## Project memories
+    
+    Here are the information collected during previous chats with the user about the project:\n
+    ${projectMemories.join("\n")}` : ""
+    const assistantText = projectAssistantReferences && projectAssistantReferences.length ? `IMPORTANT!
+                    Here the assistants available on this project (by name : description) : \n- ${projectAssistantReferences.join("\n- ")}\n
+
+                    Rules:
+                    - **Active delegation**: Always delegate parts of complex requests to the relevant assistants given their domain of expertise.
+                    - **Coordinator**: ${CODAY_DESCRIPTION.name} coordinate the team and have a central role
+                    - **Calling**: To involve an assistant in the thread, mention it with an '@' prefix on their name and explain what is expected from him. The called assistant will be called after the current run. Example: '... and by the way, @otherAssistant, check this part of the request'.`
+      : ""
+    return `${context.project.description}\n\n${userDeclaration}\n\n${userMemoryText}\n\n${projectMemoryText}\n\n${assistantText}`
+  }
+  
   async isReady(
     assistantName: string,
     context: CommandContext,
@@ -64,30 +100,15 @@ export class OpenaiClient implements AiClient {
       this.threadId = thread.id
       this.interactor.displayText(`Thread created with ID: ${this.threadId}`)
       
-      await this.openai!.beta.threads.messages.create(this.threadId, {
-        role: "assistant",
-        content: `Specific project context: ${context.project.description}
-
-                You are interacting with a human with username:${context.username}
-                `,
-      })
-      
       const projectAssistants = this.getProjectAssistants(context)
       const projectAssistantReferences = projectAssistants?.map(
         (a) => `${a.name} : ${a.description}`,
       )
-      if (projectAssistantReferences?.length) {
-        await this.openai!.beta.threads.messages.create(this.threadId, {
-          role: "assistant",
-          content: `IMPORTANT!
-                    Here the assistants available on this project (by name : description) : \n- ${projectAssistantReferences.join("\n- ")}\n
-
-                    Rules:
-                    - **Active delegation**: Always delegate parts of complex requests to the relevant assistants given their domain of expertise.
-                    - **Coordinator**: ${CODAY_DESCRIPTION.name} coordinate the team and have a central role
-                    - **Calling**: To involve an assistant in the thread, mention it with an '@' prefix on their name and explain what is expected from him. The called assistant will be called after the current run. Example: '... and by the way, @otherAssistant, check this part of the request'.`,
-        })
-      }
+      const initialContext = this.buildInitialContext(context, projectAssistantReferences)
+      await this.openai!.beta.threads.messages.create(this.threadId, {
+        role: "assistant",
+        content: initialContext,
+      })
     }
     
     return true

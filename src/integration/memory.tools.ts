@@ -12,14 +12,19 @@ export class MemoryTools extends AssistantToolFactory {
   
   constructor(interactor: Interactor) {
     super(interactor)
+    this.buildAllowedLevels()
   }
   
   protected hasChanged(context: CommandContext): boolean {
     const changed = context.project.name !== this.lastToolInitContext?.project.name
     if (changed) {
-      this.allowedLevels = [...LEVEL_MAPPING.keys()].filter(key => integrationService.hasIntegration(LEVEL_MAPPING.get(key)!!))
+      this.buildAllowedLevels()
     }
     return changed
+  }
+  
+  private buildAllowedLevels(): void {
+    this.allowedLevels = [...LEVEL_MAPPING.keys()].filter(key => integrationService.hasIntegration(LEVEL_MAPPING.get(key)!!))
   }
   
   protected buildTools(context: CommandContext): Tool[] {
@@ -36,6 +41,7 @@ export class MemoryTools extends AssistantToolFactory {
         throw new Error(`Level ${parsedLevel} not allowed.`)
       }
       memoryService.addMemory({title, content, level: parsedLevel})
+      this.interactor.displayText(`Added ${parsedLevel} memory : ${title}`)
       return `Memory added with title: ${title}`
     }
     
@@ -64,7 +70,7 @@ export class MemoryTools extends AssistantToolFactory {
       }
     }
     result.push(addMemoryTool)
-    
+    console.log(result)
     return result
   }
   
