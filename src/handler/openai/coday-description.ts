@@ -1,4 +1,4 @@
-import {AssistantDescription} from "../../model/assistant-description"
+import {AssistantDescription} from "../../model"
 
 export const CODAY_DESCRIPTION: AssistantDescription = {
   name: "Coday",
