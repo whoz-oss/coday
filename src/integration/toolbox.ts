@@ -5,6 +5,7 @@ import {JiraTools} from "./jira/jira.tools"
 import {GitTools} from "./git/git.tools"
 import {ScriptsTools} from "./scripts.tools"
 import {GitLabTools} from "./gitlab/gitlab.tools"
+import {MemoryTools} from "./memory.tools"
 import {AssistantToolFactory, Tool} from "./assistant-tool-factory"
 import {filter} from "rxjs"
 
@@ -20,6 +21,7 @@ export class Toolbox {
       new GitTools(interactor),
       new ScriptsTools(interactor),
       new GitLabTools(interactor),
+      new MemoryTools(interactor),
     ]
     
     interactor.events.pipe(
