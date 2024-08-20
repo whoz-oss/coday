@@ -27,6 +27,7 @@ export async function selectProject(
   const projectConfig = await loadOrInitProjectDescription(
     projectPath,
     interactor,
+    username,
   )
   
   return new CommandContext(

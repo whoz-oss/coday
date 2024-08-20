@@ -1,8 +1,7 @@
-import {CODAY_DESCRIPTION} from "./coday-description"
 import {keywords} from "../../keywords"
 import {integrationService} from "../../service/integration.service"
 import {OpenaiClient} from "../openai-client"
-import {AssistantDescription, CommandContext, CommandHandler, IntegrationName, Interactor} from "../../model"
+import {CommandContext, CommandHandler, DEFAULT_DESCRIPTION, IntegrationName, Interactor} from "../../model"
 
 export class OpenaiHandler extends CommandHandler {
   openaiClient: OpenaiClient
@@ -78,7 +77,7 @@ export class OpenaiHandler extends CommandHandler {
     if (!cmd) {
       return undefined
     }
-    const defaultAssistant = this.lastAssistantName || CODAY_DESCRIPTION.name
+    const defaultAssistant = this.lastAssistantName || DEFAULT_DESCRIPTION.name
     if (cmd[0] === " ") {
       return defaultAssistant
     }
@@ -91,17 +90,11 @@ export class OpenaiHandler extends CommandHandler {
   }
   
   private getMentionsToSearch(context: CommandContext): string[] | undefined {
-    return this.getProjectAssistants(context)
+    return (context.project.assistants
+      ? [DEFAULT_DESCRIPTION, ...context.project.assistants]
+      : undefined)
       ?.map((a) => a.name)
       ?.filter((name) => !this.lastAssistantName || name.toLowerCase().startsWith(this.lastAssistantName.toLowerCase()))
       .map((name) => `@${name}`)
-  }
-  
-  private getProjectAssistants(
-    context: CommandContext,
-  ): AssistantDescription[] | undefined {
-    return context.project.assistants
-      ? [CODAY_DESCRIPTION, ...context.project.assistants]
-      : undefined
   }
 }
