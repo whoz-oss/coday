@@ -1,11 +1,10 @@
 import OpenAI from "openai"
 import {AssistantStream} from "openai/lib/AssistantStream"
 import {Beta} from "openai/resources"
-import {CODAY_DESCRIPTION} from "./openai/coday-description"
 import {
   AssistantDescription,
   CommandContext,
-  IntegrationName,
+  DEFAULT_DESCRIPTION,
   Interactor,
   ToolRequestEvent,
   ToolResponseEvent
@@ -15,9 +14,6 @@ import {Toolbox} from "../integration/toolbox"
 import {Tool} from "../integration/assistant-tool-factory"
 import {ToolCall} from "../integration/tool-call"
 import {filter, firstValueFrom, map, take} from "rxjs"
-import {integrationService} from "../service/integration.service"
-import {memoryService} from "../service/memory-service"
-import {MemoryLevel} from "../model/memory"
 import Assistant = Beta.Assistant
 
 const DEFAULT_MODEL: string = "gpt-4o"
@@ -59,32 +55,6 @@ export class OpenaiClient implements AiClient {
     return true
   }
   
-  private buildInitialContext(context: CommandContext, projectAssistantReferences: string[] | undefined): string {
-    
-    const userDeclaration = `## User
-    
-    You are interacting with a human with username: ${context.username}`
-    const userMemories = integrationService.hasIntegration(IntegrationName.USER_MEMORY) ? memoryService.listMemories(MemoryLevel.USER).map(m => `  - ${m.title}\n    ${m.content}`) : []
-    const userMemoryText = userMemories?.length ? `## User memories
-    
-    Here are the information collected during previous chats with the user about him:\n
-    ${userMemories.join("\n")}` : ""
-    const projectMemories = integrationService.hasIntegration(IntegrationName.USER_MEMORY) ? memoryService.listMemories(MemoryLevel.PROJECT).map(m => `  - ${m.title}\n    ${m.content}`) : []
-    const projectMemoryText = projectMemories?.length ? `## Project memories
-    
-    Here are the information collected during previous chats with the user about the project:\n
-    ${projectMemories.join("\n")}` : ""
-    const assistantText = projectAssistantReferences && projectAssistantReferences.length ? `IMPORTANT!
-                    Here the assistants available on this project (by name : description) : \n- ${projectAssistantReferences.join("\n- ")}\n
-
-                    Rules:
-                    - **Active delegation**: Always delegate parts of complex requests to the relevant assistants given their domain of expertise.
-                    - **Coordinator**: ${CODAY_DESCRIPTION.name} coordinate the team and have a central role
-                    - **Calling**: To involve an assistant in the thread, mention it with an '@' prefix on their name and explain what is expected from him. The called assistant will be called after the current run. Example: '... and by the way, @otherAssistant, check this part of the request'.`
-      : ""
-    return `${context.project.description}\n\n${userDeclaration}\n\n${userMemoryText}\n\n${projectMemoryText}\n\n${assistantText}`
-  }
-  
   async isReady(
     assistantName: string,
     context: CommandContext,
@@ -100,14 +70,9 @@ export class OpenaiClient implements AiClient {
       this.threadId = thread.id
       this.interactor.displayText(`Thread created with ID: ${this.threadId}`)
       
-      const projectAssistants = this.getProjectAssistants(context)
-      const projectAssistantReferences = projectAssistants?.map(
-        (a) => `${a.name} : ${a.description}`,
-      )
-      const initialContext = this.buildInitialContext(context, projectAssistantReferences)
       await this.openai!.beta.threads.messages.create(this.threadId, {
         role: "assistant",
-        content: initialContext,
+        content: context.project.description,
       })
     }
     
@@ -210,16 +175,8 @@ export class OpenaiClient implements AiClient {
     this.threadId = null
     this.interactor.displayText("Thread has been reset")
   }
-  
-  // TODO: move this out, it should be on the project object rather than here
-  getProjectAssistants(
-    context: CommandContext,
-  ): AssistantDescription[] | undefined {
-    return context.project.assistants
-      ? [CODAY_DESCRIPTION, ...context.project.assistants]
-      : undefined
-  }
-  
+
+// TODO: move this out, it should be on the project object rather than here
   private async initAssistantList(): Promise<void> {
     // init map name -> id
     if (!this.assistants.length) {
@@ -273,7 +230,9 @@ export class OpenaiClient implements AiClient {
     }
     
     // no existing assistant found, let's check the project ones that do have systemInstructions
-    const projectAssistants = this.getProjectAssistants(context)
+    const projectAssistants = context.project.assistants
+      ? [DEFAULT_DESCRIPTION, ...context.project.assistants]
+      : undefined
     const matchingProjectAssistants = projectAssistants?.filter(
       (a) => a.name.toLowerCase().startsWith(name) && !!a.systemInstructions,
     )

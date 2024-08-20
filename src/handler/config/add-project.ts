@@ -12,5 +12,6 @@ export async function addProject(
     "Project path, no trailing slash",
   )
   configService.addProject(projectName, projectPath)
+  // TODO: return the projectName and have caller selectProject instead
   return await selectProject(projectName, interactor, username)
 }
