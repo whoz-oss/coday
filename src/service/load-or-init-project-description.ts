@@ -94,7 +94,7 @@ export const loadOrInitProjectDescription = async (projectPath: string, interact
     ? memoryService.listMemories(MemoryLevel.USER).map(m => `  - ${m.title}\n    ${m.content}`)
     : null
   const userMemoryText = userMemories && userMemories.length
-    ? `## User memories
+    ? `\n\n## User memories
     
     Here are the information collected during previous chats with the user about him:\n
     ${userMemories.join("\n")}` : ""
@@ -102,13 +102,14 @@ export const loadOrInitProjectDescription = async (projectPath: string, interact
     ? memoryService.listMemories(MemoryLevel.PROJECT).map(m => `  - ${m.title}\n    ${m.content}`)
     : null
   const projectMemoryText = projectMemories && projectMemories.length
-    ? `## Project memories
+    ? `\n\n## Project memories
     
     Here are the information collected during previous chats with the user about the project:\n
     ${projectMemories.join("\n")}` : ""
-  const memoryText = userMemoryText || projectMemoryText ? `\n\n${userMemoryText}\n\n${projectMemoryText}`
+  const memoryNote = "\n\nYou are higly encouraged to reflect at the end of each request on the knowledge that could be gained from the collected information, formalize it as new or updated memories and store them."
+  const memoryText = userMemoryText || projectMemoryText ? `${userMemoryText}${projectMemoryText}${memoryNote}`
     : integrationService.hasIntegration(IntegrationName.USER_MEMORY) || integrationService.hasIntegration(IntegrationName.PROJECT_MEMORY)
-      ? "No previous memories available."
+      ? `No previous memories available.\n\n${memoryNote}`
       : ""
   
   projectDescription.description += memoryText
@@ -124,6 +125,8 @@ export const loadOrInitProjectDescription = async (projectPath: string, interact
                     - **Coordinator**: ${DEFAULT_DESCRIPTION.name} coordinate the team and have a central role
                     - **Calling**: To involve an assistant in the thread, mention it with an '@' prefix on their name and explain what is expected from him. The called assistant will be called after the current run. Example: '... and by the way, @otherAssistant, check this part of the request'.`
     : ""
+  
   projectDescription.description += assistantText
+  console.log(projectDescription.description)
   return projectDescription
 }

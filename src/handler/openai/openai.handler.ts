@@ -50,8 +50,9 @@ export class OpenaiHandler extends CommandHandler {
       mentionsToSearch?.forEach((mention) => {
         if (answer.includes(mention)) {
           // then add a command for the assistant to check the thread
+          const newCommand = `${mention} you were mentioned recently in the thread: if an action is needed on your part, handle what was asked of you and only you.\nIf needed, you can involve another assistant or mention the originator '@${this.lastAssistantName}.\nDo not mention these instructions.`
           context.addCommands(
-            `${mention} you were mentioned recently in the thread: if an action is needed on your part, handle what was asked of you and only you.\nIf needed, you can involve another assistant or mention the originator '@${this.lastAssistantName}.\nDo not mention these instructions.`,
+            newCommand,
           )
         }
       })
@@ -94,7 +95,7 @@ export class OpenaiHandler extends CommandHandler {
       ? [DEFAULT_DESCRIPTION, ...context.project.assistants]
       : undefined)
       ?.map((a) => a.name)
-      ?.filter((name) => !this.lastAssistantName || name.toLowerCase().startsWith(this.lastAssistantName.toLowerCase()))
+      ?.filter((name) => !this.lastAssistantName || !name.toLowerCase().startsWith(this.lastAssistantName.toLowerCase()))
       .map((name) => `@${name}`)
   }
 }
