@@ -15,7 +15,7 @@ export class DebugHandler extends CommandHandler {
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
     console.log("pre-memory")
     console.log(memoryService.listMemories())
-    memoryService.addMemory({title: "toto", content: "is a test data", level: MemoryLevel.USER})
+    memoryService.upsertMemory({title: "toto", content: "is a test data", level: MemoryLevel.USER})
     console.log(memoryService.listMemories())
     return context
   }

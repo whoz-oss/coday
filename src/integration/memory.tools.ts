@@ -40,7 +40,7 @@ export class MemoryTools extends AssistantToolFactory {
       if (!this.allowedLevels.includes(parsedLevel)) {
         throw new Error(`Level ${parsedLevel} not allowed.`)
       }
-      memoryService.addMemory({title, content, level: parsedLevel})
+      memoryService.upsertMemory({title, content, level: parsedLevel})
       this.interactor.displayText(`Added ${parsedLevel} memory : ${title}`)
       return `Memory added with title: ${title}`
     }
@@ -70,7 +70,7 @@ export class MemoryTools extends AssistantToolFactory {
       }
     }
     result.push(addMemoryTool)
-    console.log(result)
+    
     return result
   }
   
