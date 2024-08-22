@@ -7,7 +7,7 @@ export class ThreadService {
   }
   
   saveThread(threadId: string, name: string) {
-    const project = this.service.getProject()
+    const project = this.service.project
     if (!project) {
       throw new Error("No project selected")
     }
@@ -15,11 +15,11 @@ export class ThreadService {
       project.savedThreads = {}
     }
     project.savedThreads[threadId] = {name}
-    this.service.saveConfigFile()
+    this.service.saveProjectConfig()
   }
   
   listThreads(): Thread[] {
-    const project = this.service.getProject()
+    const project = this.service.project
     if (!project || !project.savedThreads) {
       return []
     }
@@ -33,10 +33,10 @@ export class ThreadService {
     if (!threadId) {
       return
     }
-    const project = this.service.getProject()
+    const project = this.service.project
     if (project?.savedThreads) {
       delete project.savedThreads[threadId]
-      this.service.saveConfigFile()
+      this.service.saveProjectConfig()
     }
   }
 }

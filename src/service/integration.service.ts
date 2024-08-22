@@ -5,22 +5,20 @@ const API_KEY_SUFFIX = "_API_KEY"
 
 export class IntegrationService {
   
-  constructor(private service: ConfigService) {
+  constructor(private configService: ConfigService) {
   }
   
   hasIntegration(name: IntegrationName): boolean {
-    this.service.initConfig()
-    return Object.keys(this.service.getProject()!.integration).includes(name)
+    return Object.keys(this.configService.project!.integration).includes(name)
   }
   
   get integrations() {
-    const project = this.service.getProject()
+    const project = this.configService.project
     return project!.integration!
   }
   
   getIntegration(name: IntegrationName): IntegrationConfig | undefined {
-    this.service.initConfig()
-    return this.service.getProject()!.integration[name]
+    return this.configService.project!.integration[name]
   }
   
   getApiKey(keyName: string): string | undefined {
@@ -34,7 +32,7 @@ export class IntegrationService {
       return envApiKey
     }
     
-    const project: ProjectConfig | undefined = this.service.getProject()
+    const project: ProjectConfig | undefined = this.configService.project
     if (!project) {
       return undefined
     }
@@ -46,16 +44,16 @@ export class IntegrationService {
   }
   
   setIntegration(selectedName: IntegrationName, integration: IntegrationConfig) {
-    const project = this.service.getProject()
+    const project = this.configService.project
     if (!project) {
       return
     }
     project.integration[selectedName] = integration
-    this.service.saveConfigFile()
+    this.configService.saveProjectConfig()
   }
   
   getApiUrl(apiName: IntegrationName): string | undefined {
-    const project: ProjectConfig | undefined = this.service.getProject()
+    const project: ProjectConfig | undefined = this.configService.project
     if (!project) {
       return undefined
     }
@@ -67,7 +65,7 @@ export class IntegrationService {
   }
   
   getUsername(apiName: IntegrationName): string | undefined {
-    const project: ProjectConfig | undefined = this.service.getProject()
+    const project: ProjectConfig | undefined = this.configService.project
     if (!project) {
       return undefined
     }

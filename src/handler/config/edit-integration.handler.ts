@@ -21,7 +21,7 @@ export class EditIntegrationHandler extends CommandHandler {
     command: string,
     context: CommandContext,
   ): Promise<CommandContext> {
-    if (!configService.lastProject) {
+    if (!configService.project) {
       this.interactor.displayText("No current project, select one first.")
       return context
     }

@@ -8,7 +8,7 @@ export async function selectProject(
   interactor: Interactor,
   username: string,
 ): Promise<CommandContext | null> {
-  if (!name && !configService.lastProject) {
+  if (!name && !configService.project) {
     interactor.error("No project selected nor known.")
     return null
   }
