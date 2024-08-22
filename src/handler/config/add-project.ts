@@ -1,6 +1,5 @@
-import {Interactor} from "../../model/interactor"
+import {CommandContext, Interactor} from "../../model"
 import {configService} from "../../service/config.service"
-import {CommandContext} from "../../model/command-context"
 import {selectProject} from "./select-project"
 
 export async function addProject(
@@ -12,6 +11,5 @@ export async function addProject(
     "Project path, no trailing slash",
   )
   configService.addProject(projectName, projectPath)
-  // TODO: return the projectName and have caller selectProject instead
   return await selectProject(projectName, interactor, username)
 }
