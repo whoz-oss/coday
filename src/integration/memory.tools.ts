@@ -8,36 +8,26 @@ import {MemoryLevel} from "../model/memory"
 const LEVEL_MAPPING: Map<MemoryLevel, IntegrationName> = new Map([[MemoryLevel.USER, IntegrationName.USER_MEMORY], [MemoryLevel.PROJECT, IntegrationName.PROJECT_MEMORY]])
 
 export class MemoryTools extends AssistantToolFactory {
-  private allowedLevels: MemoryLevel[] = []
   
   constructor(interactor: Interactor) {
     super(interactor)
-    this.buildAllowedLevels()
   }
   
   protected hasChanged(context: CommandContext): boolean {
-    const changed = context.project.name !== this.lastToolInitContext?.project.name
-    if (changed) {
-      this.buildAllowedLevels()
-    }
-    return changed
-  }
-  
-  private buildAllowedLevels(): void {
-    this.allowedLevels = [...LEVEL_MAPPING.keys()].filter(key => integrationService.hasIntegration(LEVEL_MAPPING.get(key)!!))
+    return context.project.name !== this.lastToolInitContext?.project.name
   }
   
   protected buildTools(context: CommandContext): Tool[] {
     const result: Tool[] = []
+    const allowedLevels = [...LEVEL_MAPPING.keys()].filter(key => integrationService.hasIntegration(LEVEL_MAPPING.get(key)!!))
     
-    
-    if (!this.allowedLevels.length) {
+    if (!allowedLevels.length) {
       return result
     }
     
     const addMemoryFunction = async ({title, content, level}: { title: string, content: string, level: string }) => {
       const parsedLevel: MemoryLevel = level === "USER" ? MemoryLevel.USER : MemoryLevel.PROJECT
-      if (!this.allowedLevels.includes(parsedLevel)) {
+      if (!allowedLevels.includes(parsedLevel)) {
         throw new Error(`Level ${parsedLevel} not allowed.`)
       }
       memoryService.upsertMemory({title, content, level: parsedLevel})
@@ -49,7 +39,7 @@ export class MemoryTools extends AssistantToolFactory {
       type: "function",
       function: {
         name: "addMemory",
-        description: `Add a new memory entry to remember on next runs, use freely whenever encountering some broad knowledge that is relevant to the allowed levels. Allowed levels: ${this.allowedLevels.join(", ")}. For example, do not record information about a very specific file or a very odd demand, but record patterns accross multiple files or behaviors, attitudes asked for that should be recurrent in time.`,
+        description: `Add a new memory entry to remember on next runs, use freely whenever encountering some broad knowledge that is relevant to the allowed levels. Allowed levels: ${allowedLevels.join(", ")}. For example, do not record information about a very specific file or a very odd demand, but record patterns accross multiple files or behaviors, attitudes asked for that should be recurrent in time.`,
         parameters: {
           type: "object",
           properties: {
@@ -61,7 +51,7 @@ export class MemoryTools extends AssistantToolFactory {
             level: {
               type: "string",
               description: "Level of the memory",
-              enum: this.allowedLevels
+              enum: allowedLevels
             }
           }
         },
