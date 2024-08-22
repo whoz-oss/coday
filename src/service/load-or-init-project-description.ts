@@ -127,6 +127,5 @@ export const loadOrInitProjectDescription = async (projectPath: string, interact
     : ""
   
   projectDescription.description += assistantText
-  console.log(projectDescription.description)
   return projectDescription
 }
