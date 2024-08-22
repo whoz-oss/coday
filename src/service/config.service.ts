@@ -3,6 +3,7 @@ import os from "os"
 import path from "path"
 import {mkdirSync} from "node:fs"
 import {CodayConfig, ProjectConfig} from "../model"
+import {memoryService} from "./memory-service"
 
 const DATA_PATH: string = "/.coday"
 const CONFIG_FILENAME = "config.json"
@@ -10,11 +11,12 @@ const CONFIG_FILENAME = "config.json"
 export class ConfigService {
   private config: CodayConfig | null = null
   private readonly configPath: string
+  private readonly codayConfigPath: string
   
   constructor() {
     const userInfo = os.userInfo()
-    const codayPath = path.join(userInfo.homedir, DATA_PATH)
-    this.configPath = `${codayPath}/${CONFIG_FILENAME}`
+    this.codayConfigPath = path.join(userInfo.homedir, DATA_PATH)
+    this.configPath = `${this.codayConfigPath}/${CONFIG_FILENAME}`
   }
   
   get lastProject() {
@@ -30,6 +32,10 @@ export class ConfigService {
   addProject(projectName: string, projectPath: string) {
     this.initConfig()
     this.config!.project[projectName] = {path: projectPath, integration: {}}
+    // create the ./coday/[project] folder
+    const projectConfigPath = path.join(this.codayConfigPath, projectName)
+    mkdirSync(projectConfigPath)
+    
     this.saveConfigFile()
   }
   
@@ -39,6 +45,11 @@ export class ConfigService {
     if (!projectPath) {
       throw new Error("Invalid selection")
     }
+    const projectConfigPath = path.join(this.codayConfigPath, name)
+    if (!existsSync(projectConfigPath)) {
+      mkdirSync(projectConfigPath)
+    }
+    memoryService.setPaths(this.codayConfigPath, projectConfigPath)
     this.config!.currentProject = name
     this.saveConfigFile()
     return projectPath

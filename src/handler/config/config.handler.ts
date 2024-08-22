@@ -68,8 +68,8 @@ export class ConfigHandler extends NestedHandler {
     }
     try {
       return await selectProject(selection, this.interactor, this.username)
-    } catch (_) {
-      this.interactor.error("Invalid project selection")
+    } catch (_: any) {
+      this.interactor.error(`Invalid project selection because: ${_.toString()}`)
       return null
     }
   }
