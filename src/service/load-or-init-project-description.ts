@@ -116,7 +116,7 @@ export const loadOrInitProjectDescription = async (projectPath: string, interact
   const projectAssistants = projectDescription.assistants ? [DEFAULT_DESCRIPTION, ...projectDescription.assistants] : undefined
   const projectAssistantReferences = projectAssistants?.map((a) => `${a.name} : ${a.description}`)
   
-  const assistantText = projectAssistantReferences && projectAssistantReferences.length ? `\n\nIMPORTANT!
+  const assistantText = projectAssistantReferences && projectAssistantReferences.length ? `\n\n## Assistants teamwork
                     Here the assistants available on this project (by name : description) : \n- ${projectAssistantReferences.join("\n- ")}\n
 
                     Rules:
@@ -124,5 +124,6 @@ export const loadOrInitProjectDescription = async (projectPath: string, interact
                     - **Coordinator**: ${DEFAULT_DESCRIPTION.name} coordinate the team and have a central role
                     - **Calling**: To involve an assistant in the thread, mention it with an '@' prefix on their name and explain what is expected from him. The called assistant will be called after the current run. Example: '... and by the way, @otherAssistant, check this part of the request'.`
     : ""
+  projectDescription.description += assistantText
   return projectDescription
 }

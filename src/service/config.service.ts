@@ -134,9 +134,10 @@ export class ConfigService {
     if (!this.selectedProject?.config || !this.selectedProject.configPath) {
       throw new Error("Could not save project config")
     }
+    this.updateSelectedProject({...this.selectedProject, config: {...this.selectedProject.config, ...update}})
     writeYamlFile(
       path.join(this.selectedProject.configPath, PROJECT_FILENAME),
-      {...this.selectedProject.config, ...update}
+      this.selectedProject.config
     )
   }
   
