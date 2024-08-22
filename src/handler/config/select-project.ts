@@ -1,5 +1,4 @@
-import {Interactor} from "../../model/interactor"
-import {CommandContext} from "../../model/command-context"
+import {CommandContext, Interactor} from "../../model"
 import {configService} from "../../service/config.service"
 import {loadOrInitProjectDescription} from "../../service/load-or-init-project-description"
 
