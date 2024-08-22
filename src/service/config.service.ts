@@ -104,7 +104,7 @@ export class ConfigService {
    * Should do the minimum regarding coday config: read the user config to come
    */
   initConfig() {
-    if (this.projects !== null) {
+    if (this.projects === null) {
       // check or create dir to local coday config
       const dir = path.dirname(this.codayConfigPath)
       if (!existsSync(dir)) {
@@ -133,26 +133,25 @@ export class ConfigService {
   
   /**
    * Temporary conversion from unique CodayConfig to many per-project ProjectConfig files
-   * @param config
    * @private
+   * @param legacyConfigPath
    */
   private convertToNewStructure(legacyConfigPath: string): void {
-    if (existsSync(legacyConfigPath)) {
-      // Backward compatibility: load from config.json
-      const legacyConfig = JSON.parse(readFileSync(legacyConfigPath, "utf-8")) as CodayConfig
-      
-      for (const [projectName, projectConfig] of Object.entries(legacyConfig.project)) {
-        const projectDir = path.join(this.codayConfigPath, projectName)
-        if (!existsSync(projectDir)) {
-          mkdirSync(projectDir)
-        }
-        writeYamlFile(
-          path.join(projectDir, PROJECT_FILENAME),
-          projectConfig
-        )
-      }
-      rmSync(legacyConfigPath)
+    if (!existsSync(legacyConfigPath)) {
+      return
     }
+    const legacyConfig = JSON.parse(readFileSync(legacyConfigPath, "utf-8")) as CodayConfig
+    for (const [projectName, projectConfig] of Object.entries(legacyConfig.project)) {
+      const projectDir = path.join(this.codayConfigPath, projectName)
+      if (!existsSync(projectDir)) {
+        mkdirSync(projectDir)
+      }
+      writeYamlFile(
+        path.join(projectDir, PROJECT_FILENAME),
+        projectConfig
+      )
+    }
+    rmSync(legacyConfigPath)
   }
 }
 
