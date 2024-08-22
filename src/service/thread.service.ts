@@ -1,31 +1,28 @@
 import {configService, ConfigService} from "./config.service"
-import {Thread} from "../model/thread"
+import {SavedThreads, Thread} from "../model"
 
 export class ThreadService {
+  private threads: SavedThreads
   
-  constructor(private service: ConfigService) {
+  constructor(private configService: ConfigService) {
+    configService.selectedProject$.subscribe(selectedProject => this.threads = selectedProject?.config?.savedThreads)
   }
   
   saveThread(threadId: string, name: string) {
-    const project = this.service.project
-    if (!project) {
-      throw new Error("No project selected")
+    if (!this.threads) {
+      this.threads = {}
     }
-    if (!project.savedThreads) {
-      project.savedThreads = {}
-    }
-    project.savedThreads[threadId] = {name}
-    this.service.saveProjectConfig()
+    this.threads[threadId] = {name}
+    this.saveThreads()
   }
   
   listThreads(): Thread[] {
-    const project = this.service.project
-    if (!project || !project.savedThreads) {
+    if (!this.threads) {
       return []
     }
-    return Object.keys(project.savedThreads).map(threadId => ({
+    return Object.keys(this.threads).map(threadId => ({
       threadId,
-      name: project.savedThreads![threadId].name
+      name: this.threads![threadId].name
     }))
   }
   
@@ -33,11 +30,14 @@ export class ThreadService {
     if (!threadId) {
       return
     }
-    const project = this.service.project
-    if (project?.savedThreads) {
-      delete project.savedThreads[threadId]
-      this.service.saveProjectConfig()
+    if (this.threads) {
+      delete this.threads[threadId]
+      this.saveThreads()
     }
+  }
+  
+  private saveThreads(): void {
+    this.configService.saveProjectConfig({savedThreads: this.threads})
   }
 }
 

@@ -1,11 +1,7 @@
-import {CommandContext} from "../../model/command-context"
+import {CommandContext, CommandHandler, IntegrationConfig, IntegrationName, Interactor} from "../../model"
 import {configService} from "../../service/config.service"
 import {integrationService} from "../../service/integration.service"
-import {IntegrationName} from "../../model/integration-name"
-import {IntegrationConfig} from "../../model/integration-config"
-import {Interactor} from "../../model/interactor"
 import {keywords} from "../../keywords"
-import {CommandHandler} from "../../model/command.handler"
 
 export class EditIntegrationHandler extends CommandHandler {
   constructor(
@@ -43,8 +39,8 @@ export class EditIntegrationHandler extends CommandHandler {
     if (!answer || answer === keywords.exit.toUpperCase()) {
       return context
     }
-    let apiIntegration: IntegrationConfig =
-      currentIntegrations[answer as IntegrationName] || {}
+    let apiIntegration: IntegrationConfig = currentIntegrations ?
+      currentIntegrations[answer as IntegrationName] || {} : {}
     let selectedName = answer as IntegrationName
     
     // take all fields with existing values if available
