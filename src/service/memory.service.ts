@@ -97,8 +97,8 @@ class MemoryService {
     this.checkInit()
     const userMemories = this.memories.filter(m => m.level === MemoryLevel.USER)
     const projectMemories = this.memories.filter(m => m.level === MemoryLevel.PROJECT)
-    writeYamlFile(this.userMemoriesPath!!, userMemories)
-    writeYamlFile(this.projectMemoriesPath!!, projectMemories)
+    writeYamlFile(this.userMemoriesPath!!, {memories: userMemories})
+    writeYamlFile(this.projectMemoriesPath!!, {memories: projectMemories})
   }
 }
 

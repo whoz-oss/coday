@@ -1,5 +1,5 @@
 import {CommandContext, CommandHandler, IntegrationName, Interactor} from "../model"
-import {memoryService} from "../service/memory-service"
+import {memoryService} from "../service/memory.service"
 
 
 class MemoryHandler extends CommandHandler {

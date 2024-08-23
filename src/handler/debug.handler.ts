@@ -1,5 +1,5 @@
 import {CommandContext, CommandHandler, Interactor} from "../model"
-import {memoryService} from "../service/memory-service"
+import {memoryService} from "../service/memory.service"
 import {MemoryLevel} from "../model/memory"
 
 export class DebugHandler extends CommandHandler {
