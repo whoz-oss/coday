@@ -1,5 +1,5 @@
-import {Interactor} from "../../model/interactor";
-import { exec } from "child_process"
+import {Interactor} from "../../model"
+import {exec} from "child_process"
 import {promisify} from "util"
 
 const execAsync = promisify(exec)
@@ -13,39 +13,39 @@ type FindFilesByTextInput = {
   timeout?: number;
 };
 
-const defaultTimeout = 10000;
-const defaultMaxBuffer = 10 * 1024 * 1024; // 10MB
+const defaultTimeout = 10000
+const defaultMaxBuffer = 10 * 1024 * 1024 // 10MB
 
 const escapeRegExp = (string: string) => {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
-};
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") // $& means the whole matched string
+}
 
 export const findFilesByText = async ({
-  text,
-  path,
-  root,
-  fileTypes = [],
-  interactor,
-  timeout = defaultTimeout,
-}: FindFilesByTextInput): Promise<string> => {
-  const escapedText = escapeRegExp(text);
-  const fileTypePattern = fileTypes.length > 0 ? fileTypes.map(type => `-g "*.${type}"`).join(' ') : '';
-  const searchPath = path ?? '.';
-  const searchCommand = `rg "${escapedText}" ${searchPath} ${fileTypePattern} --color never -l`;
-
-  interactor.displayText(`\nExecuting search command: ${searchCommand}`);
-
+                                        text,
+                                        path,
+                                        root,
+                                        fileTypes = [],
+                                        interactor,
+                                        timeout = defaultTimeout,
+                                      }: FindFilesByTextInput): Promise<string> => {
+  const escapedText = escapeRegExp(text)
+  const fileTypePattern = fileTypes.length > 0 ? fileTypes.map(type => `-g "*.${type}"`).join(" ") : ""
+  const searchPath = path ?? "."
+  const searchCommand = `rg "${escapedText}" ${searchPath} ${fileTypePattern} --color never -l`
+  
+  interactor.displayText(`\nExecuting search command: ${searchCommand}`)
+  
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(new Error(`Search timed out after ${timeout} milliseconds`));
-    }, timeout);
-
-    execAsync(searchCommand, { cwd: root, maxBuffer: defaultMaxBuffer })
-      .then(({ stdout }) => {
+      reject(new Error(`Search timed out after ${timeout} milliseconds`))
+    }, timeout)
+    
+    execAsync(searchCommand, {cwd: root, maxBuffer: defaultMaxBuffer})
+      .then(({stdout}) => {
         clearTimeout(timer)
         resolve(stdout)
       })
-      .catch(({ _, stderr }) => {
+      .catch(({_, stderr}) => {
         clearTimeout(timer)
         reject(`Error: ${stderr}`)
       })

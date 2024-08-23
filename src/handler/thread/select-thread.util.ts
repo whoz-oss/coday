@@ -1,5 +1,4 @@
-import {Thread} from "../../model/thread"
-import {Interactor} from "../../model/interactor"
+import {Interactor, Thread} from "../../model"
 import {threadService} from "../../service/thread.service"
 import {formatThread} from "./format-thread.util"
 

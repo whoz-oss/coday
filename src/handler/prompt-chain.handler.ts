@@ -7,11 +7,10 @@ export class PromptChainHandler extends CommandHandler {
     private interactor: Interactor,
     private promptChain: PromptChain,
     commandWord: string,
-    description: string
   ) {
     super({
       commandWord,
-      description,
+      description: promptChain.description,
       requiredIntegrations: promptChain.requiredIntegrations || []
     })
   }

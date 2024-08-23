@@ -1,6 +1,6 @@
-import {Interactor} from "../model/interactor"
-import { exec } from "child_process"
-import { promisify } from "util"
+import {Interactor} from "../model"
+import {exec} from "child_process"
+import {promisify} from "util"
 import * as path from "path"
 
 const execAsync = promisify(exec)
@@ -17,14 +17,14 @@ const limitOutputLines = (output: string, limit: number): string => {
 }
 
 export const runBash = async ({
-  command,
-  relPath,
-  root,
-  requireConfirmation,
-  interactor,
-  lineLimit = DEFAULT_LINE_LIMIT,
-  maxBuffer = DEFAULT_MAX_BUFFER,
-}: {
+                                command,
+                                relPath,
+                                root,
+                                requireConfirmation,
+                                interactor,
+                                lineLimit = DEFAULT_LINE_LIMIT,
+                                maxBuffer = DEFAULT_MAX_BUFFER,
+                              }: {
   command: string
   relPath?: string
   root: string
@@ -34,23 +34,23 @@ export const runBash = async ({
   maxBuffer?: number
 }): Promise<string> => {
   let resolvedPath = root
-
+  
   if (relPath) {
     resolvedPath = path.resolve(root, relPath)
   }
-
+  
   // Check if the resolved path is within the root folder to prevent leaving the designated folder
   if (!resolvedPath.startsWith(path.resolve(root))) {
     return "Attempt to navigate outside the root folder"
   }
-
+  
   try {
     // Resolve the absolute path from root and relPath
     const resolvedPath = relPath ? path.resolve(root, relPath) : root
-
+    
     // Log the command that will run
     interactor.displayText(`\nRunning command: ${command} in ${resolvedPath}`)
-
+    
     // If confirmation is required, ask for it
     if (requireConfirmation) {
       const rejectReason = await interactor.promptText(
@@ -61,13 +61,13 @@ export const runBash = async ({
         return `Command execution was cancelled by user with following reason: ${rejectReason}`
       }
     }
-
+    
     // Execute the command with a custom buffer size
-    const { stdout, stderr } = await execAsync(command, {
+    const {stdout, stderr} = await execAsync(command, {
       cwd: resolvedPath,
       maxBuffer,
     })
-
+    
     const limitedOutput = limitOutputLines(stdout, lineLimit)
     const limitedErr = limitOutputLines(stderr, lineLimit)
     return `Output:\n${limitedOutput}${limitedErr ? `\n\nError:\n${limitedErr}` : ""}`

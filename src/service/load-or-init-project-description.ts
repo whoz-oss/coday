@@ -4,7 +4,7 @@ import {DEFAULT_DESCRIPTION, IntegrationName, Interactor, ProjectDescription} fr
 import path, {join} from "path"
 import {findFilesByName} from "../function/find-files-by-name"
 import {integrationService} from "./integration.service"
-import {memoryService} from "./memory-service"
+import {memoryService} from "./memory.service"
 import {MemoryLevel} from "../model/memory"
 
 const CONFIG_FILENAME_YAML = "coday.yaml"
@@ -86,29 +86,41 @@ export const loadOrInitProjectDescription = async (projectPath: string, interact
   }
   projectDescription.description += optionalDocsDescription
   
-  projectDescription.description += `## User
+  projectDescription.description += `\n\n## User
     
     You are interacting with a human with username: ${username}`
   
-  const userMemories = integrationService.hasIntegration(IntegrationName.USER_MEMORY)
+  const userMemories = integrationService.hasIntegration(IntegrationName.LOCAL_MEMORY)
     ? memoryService.listMemories(MemoryLevel.USER).map(m => `  - ${m.title}\n    ${m.content}`)
     : null
-  const userMemoryText = userMemories && userMemories.length
-    ? `\n\n## User memories
+  let userMemoryText = ""
+  if (userMemories) {
+    interactor.displayText(`Loaded ${userMemories.length} user memories`)
+    if (userMemories.length) {
+      userMemoryText = `\n\n## User memories
     
     Here are the information collected during previous chats with the user about him:\n
-    ${userMemories.join("\n")}` : ""
-  const projectMemories = integrationService.hasIntegration(IntegrationName.PROJECT_MEMORY)
+    ${userMemories.join("\n")}`
+    }
+  }
+  
+  const projectMemories = integrationService.hasIntegration(IntegrationName.LOCAL_MEMORY)
     ? memoryService.listMemories(MemoryLevel.PROJECT).map(m => `  - ${m.title}\n    ${m.content}`)
     : null
-  const projectMemoryText = projectMemories && projectMemories.length
-    ? `\n\n## Project memories
+  let projectMemoryText = ""
+  if (projectMemories) {
+    interactor.displayText(`Loaded ${projectMemories.length} project memories`)
+    if (projectMemories.length) {
+      projectMemoryText = `\n\n## Project memories
     
     Here are the information collected during previous chats with the user about the project:\n
-    ${projectMemories.join("\n")}` : ""
+    ${projectMemories.join("\n")}`
+    }
+  }
+  
   const memoryNote = "\n\nYou are higly encouraged to reflect at the end of each request on the knowledge that could be gained from the collected information, formalize it as new or updated memories and store them."
   const memoryText = userMemoryText || projectMemoryText ? `${userMemoryText}${projectMemoryText}${memoryNote}`
-    : integrationService.hasIntegration(IntegrationName.USER_MEMORY) || integrationService.hasIntegration(IntegrationName.PROJECT_MEMORY)
+    : integrationService.hasIntegration(IntegrationName.LOCAL_MEMORY)
       ? `No previous memories available.\n\n${memoryNote}`
       : ""
   
@@ -127,5 +139,6 @@ export const loadOrInitProjectDescription = async (projectPath: string, interact
     : ""
   
   projectDescription.description += assistantText
+  
   return projectDescription
 }
