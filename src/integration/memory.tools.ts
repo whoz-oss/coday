@@ -28,7 +28,7 @@ export class MemoryTools extends AssistantToolFactory {
       const parsedLevel: MemoryLevel = level === "USER" ? MemoryLevel.USER : MemoryLevel.PROJECT
       
       memoryService.upsertMemory({title, content, level: parsedLevel})
-      this.interactor.displayText(`Added ${parsedLevel} memory : ${title}`)
+      this.interactor.displayText(`Added ${parsedLevel} memory : ${title}\n${content}`)
       return `Memory added with title: ${title}`
     }
     
