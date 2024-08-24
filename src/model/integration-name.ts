@@ -1,6 +1,8 @@
 export enum IntegrationName {
   GIT = "GIT",
+  GITLAB = "GITLAB",
   JIRA = "JIRA",
   OPENAI = "OPENAI",
-  GITLAB = "GITLAB",
+  PROJECT_MEMORY = "PROJECT_MEMORY",
+  USER_MEMORY = "USER_MEMORY",
 }
