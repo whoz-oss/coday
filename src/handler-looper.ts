@@ -1,16 +1,17 @@
 import {CommandContext, CommandHandler, Interactor, ProjectDescription, PromptChain} from "./model"
 import {
   AddQueryHandler,
+  CodayPromptChains,
   CodeFlowHandler,
   ConfigHandler,
   DebugHandler,
+  FileMapHandler,
   GitHandler,
   GitlabReviewHandler,
   MemoryHandler,
   OpenaiHandler,
   PromptChainHandler,
   RunBashHandler,
-  SmallTaskHandler,
   SubTaskHandler,
   ThreadHandler
 } from "./handler"
@@ -39,17 +40,32 @@ export class HandlerLooper {
         new RunBashHandler(this.interactor),
         new DebugHandler(this.interactor),
         new CodeFlowHandler(),
-        new SmallTaskHandler(),
         new SubTaskHandler(this.interactor),
         new AddQueryHandler(this.interactor),
         new GitlabReviewHandler(),
         new ThreadHandler(this.interactor, this.openaiHandler.openaiClient),
+        new FileMapHandler(this.interactor, this.openaiHandler.openaiClient),
         new MemoryHandler(this.interactor)
       ]
+      CodayPromptChains.forEach(
+        promptChain => this.handlers.push(
+          new PromptChainHandler(
+            this.interactor,
+            promptChain,
+            promptChain.name
+          )
+        )
+      )
       
       if (projectDescription?.prompts) {
         for (const [promptName, promptChain] of Object.entries(projectDescription.prompts)) {
-          this.handlers.push(new PromptChainHandler(this.interactor, promptChain as PromptChain, promptName, promptChain.description))
+          this.handlers.push(
+            new PromptChainHandler(
+              this.interactor,
+              promptChain as PromptChain,
+              promptName
+            )
+          )
         }
       }
       
@@ -58,7 +74,9 @@ export class HandlerLooper {
       
       // Apply filtering based on required integrations
       this.handlers = this.handlers.filter(handler =>
-        handler.requiredIntegrations.every(requiredIntegration => integrationService.hasIntegration(requiredIntegration))
+        handler.requiredIntegrations.every(
+          requiredIntegration => integrationService.hasIntegration(requiredIntegration)
+        )
       )
     } catch (error) {
       this.interactor.error(`Error initializing handlers: ${error}`)
@@ -79,7 +97,10 @@ export class HandlerLooper {
         const handlerHelpMessages = [
           this.formatHelp("help/h/[nothing]", "displays this help message"),
           ...this.handlers
-            .slice().filter(h => !h.isInternal).map(h => this.formatHelp(h.commandWord, h.description)).sort(),
+            .slice()
+            .filter(h => !h.isInternal)
+            .map(h => this.formatHelp(h.commandWord, h.description))
+            .sort(),
           this.formatHelp("[any other text]", "defaults to asking the AI with the current context."),
           this.formatHelp(keywords.reset, "resets Coday's context."),
           this.formatHelp(keywords.exit, "quits the program."),

@@ -1,5 +1,5 @@
 import {CommandContext, Interactor, ToolRequestEvent} from "../model"
-import {AiTools} from "./openai/ai-tools"
+import {AiTools} from "./openai/ai.tools"
 import {FileTools} from "./file/file.tools"
 import {JiraTools} from "./jira/jira.tools"
 import {GitTools} from "./git/git.tools"

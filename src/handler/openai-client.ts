@@ -38,23 +38,6 @@ export class OpenaiClient implements AiClient {
     this.toolBox = new Toolbox(interactor)
   }
   
-  private isOpenaiReady(): boolean {
-    this.apiKey = this.apiKeyProvider()
-    if (!this.apiKey) {
-      this.interactor.warn(
-        "OPENAI_API_KEY not set, skipping AI command",
-      )
-      return false
-    }
-    
-    if (!this.openai) {
-      this.openai = new OpenAI({
-        apiKey: this.apiKey,
-      })
-    }
-    return true
-  }
-  
   async isReady(
     assistantName: string,
     context: CommandContext,
@@ -65,26 +48,21 @@ export class OpenaiClient implements AiClient {
     
     this.assistant = await this.findAssistant(assistantName, context)
     
-    if (!this.threadId) {
-      const thread = await this.openai!.beta.threads.create()
-      this.threadId = thread.id
-      this.interactor.displayText(`Thread created with ID: ${this.threadId}`)
-      
-      await this.openai!.beta.threads.messages.create(this.threadId, {
-        role: "assistant",
-        content: context.project.description,
-      })
-    }
+    await this.createThread(context)
     
     return true
   }
   
-  async addMessage(message: string): Promise<void> {
-    if (!this.threadId || !this.openai) {
-      throw new Error("Cannot add message if no thread or openai defined yet")
+  async addMessage(
+    message: string,
+    context: CommandContext
+  ): Promise<void> {
+    if (!this.isOpenaiReady()) {
+      throw new Error("Cannot add message if openai not setup yet")
     }
+    await this.createThread(context)
     
-    await this.openai!.beta.threads.messages.create(this.threadId, {
+    await this.openai!.beta.threads.messages.create(this.threadId!, {
       role: "user",
       content: message,
     })
@@ -125,6 +103,41 @@ export class OpenaiClient implements AiClient {
     await assistantStream.finalRun()
     
     return this.textAccumulator
+  }
+  
+  reset(): void {
+    this.threadId = null
+    this.interactor.displayText("Thread has been reset")
+  }
+  
+  private isOpenaiReady(): boolean {
+    this.apiKey = this.apiKeyProvider()
+    if (!this.apiKey) {
+      this.interactor.warn(
+        "OPENAI_API_KEY not set, skipping AI command",
+      )
+      return false
+    }
+    
+    if (!this.openai) {
+      this.openai = new OpenAI({
+        apiKey: this.apiKey,
+      })
+    }
+    return true
+  }
+  
+  private async createThread(context: CommandContext): Promise<void> {
+    if (!this.threadId) {
+      const thread = await this.openai!.beta.threads.create()
+      this.threadId = thread.id
+      this.interactor.displayText(`Thread created with ID: ${this.threadId}`)
+      
+      await this.openai!.beta.threads.messages.create(this.threadId, {
+        role: "assistant",
+        content: context.project.description,
+      })
+    }
   }
   
   private async processStream(stream: AssistantStream, tools: Tool[]) {
@@ -169,11 +182,6 @@ export class OpenaiClient implements AiClient {
         }
       }
     }
-  }
-  
-  reset(): void {
-    this.threadId = null
-    this.interactor.displayText("Thread has been reset")
   }
 
 // TODO: move this out, it should be on the project object rather than here
