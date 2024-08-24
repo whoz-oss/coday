@@ -13,7 +13,9 @@ export async function selectProject(
   }
   let projectPath: string
   try {
-    projectPath = configService.selectProject(name)
+    const paths = configService.selectProjectAndGetProjectPath(name)
+    projectPath = paths.projectPath
+    interactor.displayText(`Project local configuration used: ${paths.projectConfigFolderPath}`)
   } catch (err: any) {
     interactor.error(err.message)
     return null
