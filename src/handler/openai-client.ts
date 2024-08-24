@@ -1,8 +1,14 @@
 import OpenAI from "openai"
 import {AssistantStream} from "openai/lib/AssistantStream"
 import {Beta} from "openai/resources"
-import {CODAY_DESCRIPTION} from "./openai/coday-description"
-import {AssistantDescription, CommandContext, Interactor, ToolRequestEvent, ToolResponseEvent} from "../model"
+import {
+  AssistantDescription,
+  CommandContext,
+  DEFAULT_DESCRIPTION,
+  Interactor,
+  ToolRequestEvent,
+  ToolResponseEvent
+} from "../model"
 import {AiClient} from "../model/ai.client"
 import {Toolbox} from "../integration/toolbox"
 import {Tool} from "../integration/assistant-tool-factory"
@@ -66,28 +72,8 @@ export class OpenaiClient implements AiClient {
       
       await this.openai!.beta.threads.messages.create(this.threadId, {
         role: "assistant",
-        content: `Specific project context: ${context.project.description}
-
-                You are interacting with a human with username:${context.username}
-                `,
+        content: context.project.description,
       })
-      
-      const projectAssistants = this.getProjectAssistants(context)
-      const projectAssistantReferences = projectAssistants?.map(
-        (a) => `${a.name} : ${a.description}`,
-      )
-      if (projectAssistantReferences?.length) {
-        await this.openai!.beta.threads.messages.create(this.threadId, {
-          role: "assistant",
-          content: `IMPORTANT!
-                    Here the assistants available on this project (by name : description) : \n- ${projectAssistantReferences.join("\n- ")}\n
-
-                    Rules:
-                    - **Active delegation**: Always delegate parts of complex requests to the relevant assistants given their domain of expertise.
-                    - **Coordinator**: ${CODAY_DESCRIPTION.name} coordinate the team and have a central role
-                    - **Calling**: To involve an assistant in the thread, mention it with an '@' prefix on their name and explain what is expected from him. The called assistant will be called after the current run. Example: '... and by the way, @otherAssistant, check this part of the request'.`,
-        })
-      }
     }
     
     return true
@@ -189,16 +175,8 @@ export class OpenaiClient implements AiClient {
     this.threadId = null
     this.interactor.displayText("Thread has been reset")
   }
-  
-  // TODO: move this out, it should be on the project object rather than here
-  getProjectAssistants(
-    context: CommandContext,
-  ): AssistantDescription[] | undefined {
-    return context.project.assistants
-      ? [CODAY_DESCRIPTION, ...context.project.assistants]
-      : undefined
-  }
-  
+
+// TODO: move this out, it should be on the project object rather than here
   private async initAssistantList(): Promise<void> {
     // init map name -> id
     if (!this.assistants.length) {
@@ -252,7 +230,9 @@ export class OpenaiClient implements AiClient {
     }
     
     // no existing assistant found, let's check the project ones that do have systemInstructions
-    const projectAssistants = this.getProjectAssistants(context)
+    const projectAssistants = context.project.assistants
+      ? [DEFAULT_DESCRIPTION, ...context.project.assistants]
+      : undefined
     const matchingProjectAssistants = projectAssistants?.filter(
       (a) => a.name.toLowerCase().startsWith(name) && !!a.systemInstructions,
     )

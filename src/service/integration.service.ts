@@ -1,26 +1,21 @@
 import {configService, ConfigService} from "./config.service"
-import {IntegrationConfig, IntegrationName, ProjectConfig} from "../model"
+import {IntegrationConfig, IntegrationLocalConfig, IntegrationName} from "../model"
 
 const API_KEY_SUFFIX = "_API_KEY"
 
 export class IntegrationService {
+  integrations: IntegrationLocalConfig | undefined
   
-  constructor(private service: ConfigService) {
+  constructor(private configService: ConfigService) {
+    configService.selectedProject$.subscribe(selectedProject => this.integrations = selectedProject?.config?.integration)
   }
   
   hasIntegration(name: IntegrationName): boolean {
-    this.service.initConfig()
-    return Object.keys(this.service.getProject()!.integration).includes(name)
-  }
-  
-  get integrations() {
-    const project = this.service.getProject()
-    return project!.integration!
+    return Object.keys(this.integrations!).includes(name)
   }
   
   getIntegration(name: IntegrationName): IntegrationConfig | undefined {
-    this.service.initConfig()
-    return this.service.getProject()!.integration[name]
+    return this.integrations![name]
   }
   
   getApiKey(keyName: string): string | undefined {
@@ -28,54 +23,37 @@ export class IntegrationService {
       return undefined
     }
     const apiName: IntegrationName = keyName as unknown as IntegrationName
-    const envApiKey: string | undefined = process.env[`${apiName}${API_KEY_SUFFIX}`]
+    if (!this.integrations) {
+      return
+    }
     // shortcut if an env var is set for this typedKey
+    const envApiKey: string | undefined = process.env[`${apiName}${API_KEY_SUFFIX}`]
     if (envApiKey) {
       return envApiKey
     }
-    
-    const project: ProjectConfig | undefined = this.service.getProject()
-    if (!project) {
-      return undefined
-    }
-    let integration: IntegrationConfig | undefined = project.integration[apiName]
-    if (!integration) {
-      return undefined
-    }
-    return integration.apiKey
+    return this.integrations[apiName]?.apiKey
   }
   
   setIntegration(selectedName: IntegrationName, integration: IntegrationConfig) {
-    const project = this.service.getProject()
-    if (!project) {
+    if (!this.integrations) {
       return
     }
-    project.integration[selectedName] = integration
-    this.service.saveConfigFile()
+    this.integrations[selectedName] = integration
+    this.configService.saveProjectConfig({integration: this.integrations})
   }
   
   getApiUrl(apiName: IntegrationName): string | undefined {
-    const project: ProjectConfig | undefined = this.service.getProject()
-    if (!project) {
+    if (!this.integrations) {
       return undefined
     }
-    let integration: IntegrationConfig | undefined = project.integration[apiName]
-    if (!integration) {
-      return undefined
-    }
-    return integration.apiUrl
+    return this.integrations[apiName]?.apiUrl
   }
   
   getUsername(apiName: IntegrationName): string | undefined {
-    const project: ProjectConfig | undefined = this.service.getProject()
-    if (!project) {
+    if (!this.integrations) {
       return undefined
     }
-    let integration: IntegrationConfig | undefined = project.integration[apiName]
-    if (!integration) {
-      return undefined
-    }
-    return integration.username
+    return this.integrations[apiName]?.username
   }
 }
 

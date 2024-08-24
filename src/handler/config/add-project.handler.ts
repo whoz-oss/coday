@@ -1,7 +1,5 @@
-import {CommandContext} from "../../model/command-context"
-import {Interactor} from "../../model/interactor"
+import {CommandContext, CommandHandler, Interactor} from "../../model"
 import {addProject} from "./add-project"
-import {CommandHandler} from "../../model/command.handler"
 
 export class AddProjectHandler extends CommandHandler {
   constructor(
