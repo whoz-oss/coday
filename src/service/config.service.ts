@@ -84,7 +84,7 @@ export class ConfigService {
     this.projects?.push(projectName)
   }
   
-  selectProject(name: string): string {
+  selectProjectAndGetProjectPath(name: string): { projectPath: string, projectConfigFolderPath: string } {
     this.initConfig()
     
     // check the project folder and config file exists
@@ -102,7 +102,7 @@ export class ConfigService {
       config: projectConfig,
       configPath: projectConfigFolderPath
     } : null)
-    return projectPath
+    return {projectPath, projectConfigFolderPath}
   }
   
   resetProjectSelection(): void {

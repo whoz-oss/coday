@@ -1,7 +1,10 @@
 import {CommandContext} from "../model"
 
 export interface AiClient {
-  addMessage(message: string): Promise<void>
+  addMessage(
+    message: string,
+    context: CommandContext,
+  ): Promise<void>
   
   answer(
     name: string,
