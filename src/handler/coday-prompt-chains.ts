@@ -37,7 +37,8 @@ DO NOT EXECUTE THE PLAN NOW !`,
       `small-task review the completed work given the assignment repeated here: PROMPT
       
       Check the work has been done or at least seriously attempted.
-      Summarize shortly what was done, what is missing if any and what could be the next steps.`
+      Summarize shortly what was done, what is missing if any and what could be the next steps.`,
+      `sub-task false`
     ],
     requiredIntegrations: [IntegrationName.OPENAI]
   }, {
