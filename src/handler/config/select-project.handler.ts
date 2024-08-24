@@ -39,8 +39,8 @@ export class SelectProjectHandler extends CommandHandler {
         return newContext
       }
       return context
-    } catch (_) {
-      this.interactor.error("Invalid project selection")
+    } catch (_: any) {
+      this.interactor.error(`Invalid project selection because: ${_.toString()}`)
       return context
     }
   }
