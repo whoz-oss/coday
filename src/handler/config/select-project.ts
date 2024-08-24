@@ -1,5 +1,4 @@
-import {Interactor} from "../../model/interactor"
-import {CommandContext} from "../../model/command-context"
+import {CommandContext, Interactor} from "../../model"
 import {configService} from "../../service/config.service"
 import {loadOrInitProjectDescription} from "../../service/load-or-init-project-description"
 
@@ -8,7 +7,7 @@ export async function selectProject(
   interactor: Interactor,
   username: string,
 ): Promise<CommandContext | null> {
-  if (!name && !configService.lastProject) {
+  if (!name && !configService.project) {
     interactor.error("No project selected nor known.")
     return null
   }
@@ -27,6 +26,7 @@ export async function selectProject(
   const projectConfig = await loadOrInitProjectDescription(
     projectPath,
     interactor,
+    username,
   )
   
   return new CommandContext(

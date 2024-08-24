@@ -1,6 +1,5 @@
-import {Interactor} from "../../model/interactor"
+import {CommandContext, Interactor} from "../../model"
 import {configService} from "../../service/config.service"
-import {CommandContext} from "../../model/command-context"
 import {selectProject} from "./select-project"
 
 export async function addProject(
