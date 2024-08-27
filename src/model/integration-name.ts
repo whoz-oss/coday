@@ -1,4 +1,5 @@
 export enum IntegrationName {
+  CONFLUENCE = "CONFLUENCE",
   GIT = "GIT",
   GITLAB = "GITLAB",
   JIRA = "JIRA",
