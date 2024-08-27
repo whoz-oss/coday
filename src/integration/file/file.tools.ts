@@ -1,4 +1,3 @@
-import {readFileByPath} from "./read-file-by-path"
 import {writeFileByPath} from "./write-file-by-path"
 import {writeFileChunk} from "./write-file-chunk"
 import {findFilesByName} from "../../function/find-files-by-name"
@@ -8,6 +7,7 @@ import {CommandContext, Interactor} from "../../model"
 import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
 import {FunctionTool} from "../types"
 import {unlinkFile} from "./unlink-file"
+import {readFileByPath} from "../../function/read-file-by-path"
 
 export class FileTools extends AssistantToolFactory {
   
@@ -152,7 +152,13 @@ export class FileTools extends AssistantToolFactory {
     result.push(searchProjectFileFunction)
     
     const listProjectFilesAndDirectories = ({relPath}: { relPath: string }) => {
-      return listFilesAndDirectories({relPath, root: context.project.root, interactor: this.interactor})
+      try {
+        return listFilesAndDirectories({relPath, root: context.project.root, interactor: this.interactor})
+      } catch (error: any) {
+        const errorMessage = `Could not list files and directories in '${relPath}', got error:\n${error}`
+        this.interactor.error(errorMessage)
+        return errorMessage
+      }
     }
     
     const listProjectFilesAndDirectoriesFunction: FunctionTool<{ relPath: string }> = {
