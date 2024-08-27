@@ -8,6 +8,7 @@ import {GitLabTools} from "./gitlab/gitlab.tools"
 import {MemoryTools} from "./memory.tools"
 import {AssistantToolFactory, Tool} from "./assistant-tool-factory"
 import {filter} from "rxjs"
+import {ConfluenceTools} from "./confluence/confluence.tools"
 
 export class Toolbox {
   private toolFactories: AssistantToolFactory[]
@@ -22,6 +23,7 @@ export class Toolbox {
       new ScriptsTools(interactor),
       new GitLabTools(interactor),
       new MemoryTools(interactor),
+      new ConfluenceTools(interactor)
     ]
     
     interactor.events.pipe(
