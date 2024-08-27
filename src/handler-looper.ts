@@ -17,6 +17,7 @@ import {
 } from "./handler"
 import {integrationService} from "./service/integration.service"
 import {keywords} from "./keywords"
+import {LoadFileHandler} from "./handler/load-file-handler"
 
 
 const MAX_ITERATIONS = 100
@@ -45,7 +46,8 @@ export class HandlerLooper {
         new GitlabReviewHandler(),
         new ThreadHandler(this.interactor, this.openaiHandler.openaiClient),
         new FileMapHandler(this.interactor, this.openaiHandler.openaiClient),
-        new MemoryHandler(this.interactor)
+        new MemoryHandler(this.interactor),
+        new LoadFileHandler(this.interactor, this.openaiHandler.openaiClient),
       ]
       CodayPromptChains.forEach(
         promptChain => this.handlers.push(
