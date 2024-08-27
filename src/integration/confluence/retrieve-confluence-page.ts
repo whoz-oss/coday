@@ -10,7 +10,7 @@ export async function retrieveConfluencePage(pageId: string, confluenceBaseUrl: 
   try {
     interactor.displayText(`Fetching Confluence page ${pageId}...`)
     const response = await axios.get(
-      `${confluenceBaseUrl}/api/v2/pages/${pageId}?body-format=view`,
+      `${confluenceBaseUrl}/wiki/api/v2/pages/${pageId}?body-format=view`,
       {
         auth: {
           username: confluenceUsername,

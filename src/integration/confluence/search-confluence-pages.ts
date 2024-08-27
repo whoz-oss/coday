@@ -11,7 +11,7 @@ export async function searchConfluencePages(query: string, confluenceBaseUrl: st
     interactor.displayText(`Searching Confluence for query: "${query}"...`)
     const words = query.split(" ")
     const queryText = [...words.map(w => `text ~ ${w}`), "type = page"].join(" AND ")
-    const url = `${confluenceBaseUrl}/rest/api/search?cql=${encodeURIComponent(queryText)}&limit=10&expand=body.editor2`
+    const url = `${confluenceBaseUrl}/wiki/rest/api/search?cql=${encodeURIComponent(queryText)}&limit=10&expand=body.editor2`
     const response = await axios.get(
       url,
       {

@@ -61,7 +61,6 @@ export class ConfluenceTools extends AssistantToolFactory {
         },
         parse: JSON.parse,
         function: (params: { query: string }) => {
-          console.log("toto")
           return searchConfluencePages(params.query, confluenceBaseUrl, confluenceApiToken, confluenceUsername, this.interactor)
         }
       }
