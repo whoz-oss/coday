@@ -112,6 +112,10 @@ scripts:
     description: opens the file(s) in the user IDE.
     command: idea
     parametersDescription: the local paths to the files to open, separated by a space.
+  yarn:
+    description: runs `yarn` command with the given arguments
+    command: yarn
+    parametersDescription: the arguments of `yarn` command
 
 
 # The prompts section allows you to define custom sequences of commands, known as prompt chains, 

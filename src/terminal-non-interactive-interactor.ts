@@ -1,5 +1,5 @@
-import {ChoiceEvent, InviteEvent} from "./model"
 import {TerminalInteractor} from "./terminal-interactor"
+import {ChoiceEvent, InviteEvent} from "./shared"
 
 export class TerminalNonInteractiveInteractor extends TerminalInteractor {
   

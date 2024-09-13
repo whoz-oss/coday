@@ -1,19 +1,13 @@
 import OpenAI from "openai"
 import {AssistantStream} from "openai/lib/AssistantStream"
 import {Beta} from "openai/resources"
-import {
-  AssistantDescription,
-  CommandContext,
-  DEFAULT_DESCRIPTION,
-  Interactor,
-  ToolRequestEvent,
-  ToolResponseEvent
-} from "../model"
+import {AssistantDescription, CommandContext, DEFAULT_DESCRIPTION, Interactor,} from "../model"
 import {AiClient} from "../model/ai.client"
 import {Toolbox} from "../integration/toolbox"
 import {Tool} from "../integration/assistant-tool-factory"
 import {ToolCall} from "../integration/tool-call"
 import {filter, firstValueFrom, map, take} from "rxjs"
+import {ToolRequestEvent, ToolResponseEvent} from "../shared"
 import Assistant = Beta.Assistant
 
 const DEFAULT_MODEL: string = "gpt-4o"
@@ -90,7 +84,7 @@ export class OpenaiClient implements AiClient {
       this.threadId!,
       {
         assistant_id: this.assistant!.id,
-        tools,
+        tools: [...tools, {type: "file_search"}],
         tool_choice: "auto",
         max_completion_tokens: 120000,
         max_prompt_tokens: 120000,

@@ -1,4 +1,4 @@
-import {AnswerEvent, ChoiceEvent, CodayEvent, ErrorEvent, InviteEvent, TextEvent, WarnEvent} from "./events"
+import {AnswerEvent, ChoiceEvent, CodayEvent, ErrorEvent, InviteEvent, TextEvent, WarnEvent} from "../shared"
 import {filter, firstValueFrom, map, Observable, Subject, take} from "rxjs"
 
 export abstract class Interactor {
@@ -26,7 +26,7 @@ export abstract class Interactor {
       filter(e => e.parentKey === choiceEvent.timestamp),
       filter(e => e instanceof AnswerEvent),
       take(1),
-      map(e => e.answer)
+      map(e => e.answer),
     )
     this.sendEvent(choiceEvent)
     return firstValueFrom(answer)
