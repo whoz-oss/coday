@@ -1,4 +1,4 @@
-import {CommandContext, Interactor, ToolRequestEvent} from "../model"
+import {CommandContext, Interactor} from "../model"
 import {AiTools} from "./openai/ai.tools"
 import {FileTools} from "./file/file.tools"
 import {JiraTools} from "./jira/jira.tools"
@@ -9,6 +9,7 @@ import {MemoryTools} from "./memory.tools"
 import {AssistantToolFactory, Tool} from "./assistant-tool-factory"
 import {filter} from "rxjs"
 import {ConfluenceTools} from "./confluence/confluence.tools"
+import {ToolRequestEvent} from "../shared"
 
 export class Toolbox {
   private toolFactories: AssistantToolFactory[]

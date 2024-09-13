@@ -1,10 +1,10 @@
 export abstract class CodayEvent {
-  timestamp: Date
-  parentKey: any
+  timestamp: string | undefined
+  parentKey: string | undefined
   static type: string
   
   protected constructor(readonly type: string, event: Partial<CodayEvent>) {
-    this.timestamp = event.timestamp ?? new Date()
+    this.timestamp = event.timestamp ?? new Date().toISOString()
     this.parentKey = event.parentKey
   }
 }
@@ -12,6 +12,14 @@ export abstract class CodayEvent {
 export abstract class QuestionEvent extends CodayEvent {
   buildAnswer(answer: string): AnswerEvent {
     return new AnswerEvent({answer, parentKey: this.timestamp})
+  }
+}
+
+export class HeartBeatEvent extends CodayEvent {
+  static type = "heartbeat"
+  
+  constructor(event: Partial<HeartBeatEvent>) {
+    super(HeartBeatEvent.type, event)
   }
 }
 
@@ -89,7 +97,7 @@ export class ToolRequestEvent extends CodayEvent {
   
   constructor(event: Partial<ToolRequestEvent>) {
     super(ToolRequestEvent.type, event)
-    this.toolRequestId = event.toolRequestId ?? this.timestamp.toISOString()
+    this.toolRequestId = event.toolRequestId ?? this.timestamp ?? new Date().toISOString()
     this.name = event.name!!
     this.args = event.args!!
   }
