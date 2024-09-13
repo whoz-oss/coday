@@ -3,14 +3,23 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "type": "commonjs",
   "scripts": {
     "start": "npx ts-node start-in-terminal.ts",
-    "oneshot": "npx ts-node start-oneshot.ts"
+    "oneshot": "npx ts-node start-oneshot.ts",
+    "server": "yarn run tsc && node dist/backend/server.js",
+    "frontend": "tsc --project src/frontend/tsconfig.json && yarn run move-assets",
+    "move-assets": "cp src/frontend/index.html static/ && cp src/frontend/styles.css static/",
+    "web": "yarn run tsc && yarn run frontend && yarn run open & node dist/backend/server.js",
+    "open": "node dist/open-frontend.js"
   },
   "author": "vincent.audibert@whoz.com",
   "license": "MIT",
   "devDependencies": {
+    "@types/express": "^4.17.21",
     "@types/node": "^20.11.17",
+    "nodemon": "^2.0.7",
+    "opn-cli": "^5.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.2"
   },
@@ -19,8 +28,9 @@
     "@types/yargs": "^17.0.32",
     "axios": "^1.7.2",
     "chalk": "^4.1.2",
+    "express": "^4.17.1",
     "glob": "^10.4.1",
-    "openai": "^4.51.0",
+    "openai": "^4.60.0",
     "rxjs": "^7.8.1",
     "yaml": "^2.4.5",
     "yargs": "^17.7.2"
