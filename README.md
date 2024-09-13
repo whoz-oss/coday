@@ -5,31 +5,35 @@ code-related project, and (semi-)autonomous task handling.
 
 ## Installation
 
-Basically: git clone, yarn install, start-in-terminal.sh.
+Basics steps:
+
+1. Clone the repository.
+2. Run `yarn install` to install dependencies.
+3. Execute `start-in-terminal.sh` to start.
 
 [More on installation here](doc/INSTALLATION.md)
 
 ## Usage
 
-Just run
+Run the application using:
 
 ```sh
 yarn start
 ```
 
-...and define your first project.
+...and define your first project following on-screen instructions.
 
 [More on usage here](doc/USAGE.md)
 
 ## Setting integrations
 
-Add/edit integrations with `config edit-integration`.
+Configure integrations via `config edit-integration`.
 
 [More on integrations](doc/INTEGRATIONS.md)
 
 ## Configuration
 
-- `~/.coday/config.json` should not be edited directly, [see usage](doc/USAGE.md) and `config` command.
-- `coday.yaml` must be edited directly at will !!!
+Directly edit `coday.yaml` for project-specific configurations.
 
-[More on project configuration here](doc/PROJECT_CONFIGURATION.md)
+[Detailed configuration documentation can be found here](doc/PROJECT_CONFIGURATION.md)
+

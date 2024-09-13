@@ -1,6 +1,7 @@
 import {input, select} from "@inquirer/prompts"
 import chalk from "chalk"
-import {ChoiceEvent, ErrorEvent, Interactor, InviteEvent, TextEvent, WarnEvent} from "./model"
+import {Interactor} from "./model"
+import {ChoiceEvent, ErrorEvent, InviteEvent, TextEvent, WarnEvent} from "./shared"
 
 export class TerminalInteractor extends Interactor {
   
