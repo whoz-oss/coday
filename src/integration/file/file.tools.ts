@@ -42,11 +42,11 @@ export class FileTools extends AssistantToolFactory {
     }
     result.push(removeFileFunction)
     
-    const readProjectFile = ({path}: { path: string }) => {
-      return readFileByPath({relPath: path, root: context.project.root, interactor: this.interactor})
+    const readProjectFile = (input: { filePath: string }) => {
+      return readFileByPath({relPath: input.filePath, root: context.project.root, interactor: this.interactor})
     }
     
-    const readProjectFileFunction: FunctionTool<{ path: string }> = {
+    const readProjectFileFunction: FunctionTool<{ filePath: string }> = {
       type: "function",
       function: {
         name: "readProjectFile",
@@ -54,7 +54,7 @@ export class FileTools extends AssistantToolFactory {
         parameters: {
           type: "object",
           properties: {
-            path: {type: "string", description: "file path relative to the project root"}
+            filePath: {type: "string", description: "file path relative to the project root"}
           }
         },
         parse: JSON.parse,

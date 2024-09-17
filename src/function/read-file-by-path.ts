@@ -9,7 +9,8 @@ type ReadFileByPathInput = {
   interactor?: Interactor
 }
 
-export const readFileByPath = ({relPath, root, interactor}: ReadFileByPathInput) => {
+export const readFileByPath = (input: ReadFileByPathInput) => {
+  const {relPath, root, interactor} = input
   // need to prevent double slashes
   const fullPath = relPath ? path.resolve(root, relPath) : root
   try {

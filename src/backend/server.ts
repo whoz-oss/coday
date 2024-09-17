@@ -15,7 +15,6 @@ app.use(express.static(path.join(__dirname, "../../static")))
 app.get("/", (req: express.Request, res: express.Response) => {
   res.send("Server is up and running!")
 })
-console.log("toto")
 
 // Middleware to parse JSON bodies
 app.use(express.json())
@@ -23,7 +22,6 @@ app.use(express.json())
 // POST endpoint for receiving AnswerEvent messages
 app.post("/api/message", (req: express.Request, res: express.Response) => {
   try {
-    console.log(req.body)
     const payload = req.body
     interactor.addAnswerEvent(
       payload.answer ?? "",
@@ -38,7 +36,6 @@ app.post("/api/message", (req: express.Request, res: express.Response) => {
 
 // Implement SSE for Heartbeat
 app.get("/events", (req: express.Request, res: express.Response) => {
-  console.log("tata")
   
   res.setHeader("Content-Type", "text/event-stream")
   res.setHeader("Cache-Control", "no-cache")
@@ -47,7 +44,6 @@ app.get("/events", (req: express.Request, res: express.Response) => {
   // send all events from Coday to the frontend
   interactor.events.subscribe(event => {
     const data = `data: ${JSON.stringify(event)}\n\n`
-    console.log("sending data:", data)
     return res.write(data)
   })
   
@@ -62,7 +58,6 @@ app.get("/events", (req: express.Request, res: express.Response) => {
       terminate()
     }
   }
-  console.log("titi")
   
   // Send initial heartbeat message
   sendHeartbeat()

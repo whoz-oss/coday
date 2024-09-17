@@ -4,22 +4,51 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Coday</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles/global.css">
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/button.css">
+    <link rel="stylesheet" href="styles/header.css">
+    <link rel="stylesheet" href="styles/utilities.css">
+    <link rel="stylesheet" href="styles/chat-history.css">
+    <link rel="stylesheet" href="styles/chat-textarea.css">
+    <link rel="stylesheet" href="styles/choice-select.css">
 </head>
 <body>
 <header>
     <h1>Coday Chat</h1>
 </header>
+
 <main>
     <div id="chat-history"></div>
 </main>
 <footer>
-    <form id="chat-form">
-        <label for="chat-input" class="visually-hidden">Chat Input</label>
-        <textarea id="chat-input" placeholder="Type your message here..."></textarea>
-        <button type="submit" id="send-button">Send</button>
+    <!-- Chat Input Block -->
+    <form id="chat-form" style="display: none;">
+        <div class="row">
+            <div class="column" style="flex-grow: 1">
+                <label id="chat-label" for="chat-input"></label>
+                <textarea id="chat-input" placeholder="Type your message here..."></textarea>
+            </div>
+            <div class="column">
+                <button type="button" id="expand-toggle">Expand</button>
+                <button type="submit">Send</button>
+            </div>
+        </div>
+    </form>
+
+    <!-- Choice Input Block -->
+    <form id="choice-form" style="display: none;">
+        <div class="row">
+            <div class="column" style="flex-grow: 1">
+                <label id="choices-label" for="choice-select"></label>
+                <select id="choice-select"></select>
+
+            </div>
+            <button type="submit" id="send-choice-button">Choose</button>
+        </div>
     </form>
 </footer>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script type="module" src="/frontend/app.js"></script>
 </body>
 </html>

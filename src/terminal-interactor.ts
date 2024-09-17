@@ -39,9 +39,9 @@ export class TerminalInteractor extends Interactor {
   }
   
   handleChoiceEvent(event: ChoiceEvent): void {
-    const {options, question, invite} = event
+    const {options, invite, optionalQuestion} = event
     select({
-      message: invite ? `${invite} :\n${question}` : question,
+      message: optionalQuestion ? `${optionalQuestion} :\n${invite}` : invite,
       choices: options.map((option) => ({
         name: option,
         value: option,
