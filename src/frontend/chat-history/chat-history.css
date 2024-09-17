@@ -2,7 +2,6 @@
     flex-grow: 1;
     overflow-y: auto;
     padding: 1em;
-    max-height: 80vh; /* Restrict the max height */
 }
 
 .message {
@@ -10,6 +9,11 @@
     flex-direction: column;
     border-radius: 0.5em;
     word-wrap: break-word;
+}
+
+.message pre {
+    white-space: pre-wrap; /* Makes text in <pre> wrap */
+    word-wrap: break-word; /* Ensures long words break and wrap to the next line */
 }
 
 .text {
