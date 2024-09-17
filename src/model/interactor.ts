@@ -21,7 +21,7 @@ export abstract class Interactor {
     question: string,
     invite?: string,
   ): Promise<string> {
-    const choiceEvent = new ChoiceEvent({options, question, invite})
+    const choiceEvent = new ChoiceEvent({options, invite: question, optionalQuestion: invite})
     const answer: Observable<string> = this.events.pipe(
       filter(e => e.parentKey === choiceEvent.timestamp),
       filter(e => e instanceof AnswerEvent),
