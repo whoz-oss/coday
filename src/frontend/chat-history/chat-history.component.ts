@@ -56,7 +56,9 @@ export class ChatHistoryComponent implements CodayEventHandler {
       speakerElement.textContent = speaker
       newEntry.appendChild(speakerElement)
       const parsed = marked.parse(content)
-      parsed instanceof Promise ? parsed.then(html => newEntry.appendChild(this.buildTextElement(html))) : newEntry.appendChild(this.buildTextElement(parsed))
+      parsed instanceof Promise
+        ? parsed.then(html => newEntry.appendChild(this.buildTextElement(html)))
+        : newEntry.appendChild(this.buildTextElement(parsed))
     } else {
       newEntry.innerHTML = content
     }
@@ -65,9 +67,9 @@ export class ChatHistoryComponent implements CodayEventHandler {
   
   private appendMessageElement(element: HTMLDivElement): void {
     this.chatHistory?.appendChild(element)
-    setTimeout(() => {
+    setTimeout(() => { // delay for scrolling once the next question has arrived
       this.chatHistory?.scrollTo(0, this.chatHistory.scrollHeight)
-    }, 0)
+    }, 300)
   }
   
   private buildTextElement(innerHTML: string): HTMLDivElement {

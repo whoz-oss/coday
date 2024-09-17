@@ -36,7 +36,6 @@ export class ChoiceSelectComponent implements CodayEventHandler {
     if (!(choiceEvent instanceof ChoiceEvent)) {
       return
     }
-    console.log("got choice", choiceEvent)
     this.choiceEvent = choiceEvent
     this.choiceLabel.innerHTML = `${this.choiceEvent?.optionalQuestion} ${this.choiceEvent?.invite}`
     this.choiceSelect.innerHTML = this.choiceEvent?.options.map(option => `<option value="${option}">${option}</option>`).join("")

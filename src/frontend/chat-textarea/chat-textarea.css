@@ -7,7 +7,7 @@ textarea {
     font-family: Arial, sans-serif;
     font-size: 1em;
     flex-grow: 1;
-    padding: 1em;
+    padding: 0.5em;
     border-radius: 0.5em;
     margin-right: 0.7em;
     border: 1px solid #cccccc;
@@ -17,4 +17,8 @@ textarea {
 
 .expanded-textarea {
     height: 70vh;
+}
+
+.submit {
+    flex-grow: 1;
 }
