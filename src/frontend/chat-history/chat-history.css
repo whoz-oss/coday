@@ -1,0 +1,38 @@
+#chat-history {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 1em;
+    max-height: 80vh; /* Restrict the max height */
+}
+
+.message {
+    display: flex;
+    flex-direction: column;
+    border-radius: 0.5em;
+    word-wrap: break-word;
+}
+
+.text {
+    align-self: flex-start;
+    background-color: #f6f6f6;
+    color: black;
+    margin-bottom: 1em;
+    margin-top: 1em;
+    padding: 1em 1em 0em 2em;
+    box-shadow: 3px 4px 4px rgba(0, 0, 0, 0.1);
+}
+
+.message:last-child {
+    background-color: #e5faff;
+}
+
+.technical {
+    align-self: center;
+    color: #acacac;
+    font-style: italic;
+}
+
+.message .speaker {
+    font-weight: bold;
+    margin-left: -1em;
+}
