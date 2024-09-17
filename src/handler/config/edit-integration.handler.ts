@@ -54,7 +54,6 @@ export class EditIntegrationHandler extends CommandHandler {
     )
     const apiKey = await this.interactor.promptText(
       "Api key (if applicable)",
-      apiIntegration.apiKey,
     ) // TODO see another way to update an api key ?
     
     integrationService.setIntegration(selectedName, {apiUrl, username, apiKey})

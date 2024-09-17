@@ -6,11 +6,12 @@
   "type": "commonjs",
   "scripts": {
     "start": "npx ts-node start-in-terminal.ts",
+    "build": "rm -rf ./dist && rm -rf ./static && yarn run tsc --project src/frontend/tsconfig.json && yarn run tsc && yarn run move-assets",
     "oneshot": "npx ts-node start-oneshot.ts",
     "server": "yarn run tsc && node dist/backend/server.js",
-    "frontend": "tsc --project src/frontend/tsconfig.json && yarn run move-assets",
-    "move-assets": "cp src/frontend/index.html static/ && cp src/frontend/styles.css static/",
-    "web": "yarn run tsc && yarn run frontend && yarn run open & node dist/backend/server.js",
+    "frontend": "yarn run tsc --project src/frontend/tsconfig.json && yarn run move-assets",
+    "move-assets": "cp src/frontend/index.html static/ && mkdir -p static/styles && find src/frontend -type f -name \"*.css\" -exec cp {} static/styles/ \\;",
+    "web": "yarn run build && node dist/backend/server.js",
     "open": "node dist/open-frontend.js"
   },
   "author": "vincent.audibert@whoz.com",

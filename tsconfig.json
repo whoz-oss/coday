@@ -26,6 +26,7 @@
     // "moduleDetection": "auto",                        /* Control what method is used to detect module-format JS files. */
 
     /* Modules */
+    "moduleResolution": "node",
     "module": "commonjs",
     /* Specify what module code is generated. */
     // "rootDir": "./",                                  /* Specify the root folder within your source files. */
