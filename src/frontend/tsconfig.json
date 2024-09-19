@@ -9,11 +9,9 @@
     "forceConsistentCasingInFileNames": true,
     "strict": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
-    // Set the base directory to the project root
+    "baseUrl": "./",
     "paths": {
-      "*": [
-        "*",
+      "shared/*": [
         "../shared/*"
       ]
     }

@@ -1,9 +1,9 @@
-import {ChatTextareaComponent} from "./chat-textarea/chat-textarea.component.js"
-import {ChoiceSelectComponent} from "./choice-select/choice-select.component.js"
-import {ChatHistoryComponent} from "./chat-history/chat-history.component.js"
-import {buildCodayEvent, CodayEvent, ErrorEvent} from "../shared/coday-events.js"
-import {CodayEventHandler} from "./utils/coday-event-handler.js"
-import {HeaderComponent} from "./header/header.component.js"
+import {ChatTextareaComponent} from "./chat-textarea/chat-textarea.component"
+import {ChoiceSelectComponent} from "./choice-select/choice-select.component"
+import {ChatHistoryComponent} from "./chat-history/chat-history.component"
+import {buildCodayEvent, CodayEvent, ErrorEvent} from "shared/coday-events"
+import {CodayEventHandler} from "./utils/coday-event-handler"
+import {HeaderComponent} from "./header/header.component"
 
 function generateClientId() {
   // Generate or retrieve a unique client ID
@@ -46,6 +46,3 @@ eventSource.onerror = () => {
     components.forEach(c => c.handle(new ErrorEvent({error: "Connection lost"})))
   }
 }
-
-
-

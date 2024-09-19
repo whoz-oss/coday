@@ -5,8 +5,10 @@
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
+    "build:frontend": "webpack --config src/frontend/webpack.config.js",
+    "watch:frontend": "webpack --config src/frontend/webpack.config.js --watch",
     "start": "npx ts-node start-in-terminal.ts",
-    "build": "rm -rf ./dist && rm -rf ./static && yarn run tsc --project src/frontend/tsconfig.json && yarn run tsc && yarn run move-assets",
+    "build": "rm -rf ./dist && rm -rf ./static && yarn run build:frontend && yarn run tsc && yarn run move-assets",
     "oneshot": "npx ts-node start-oneshot.ts",
     "server": "yarn run tsc && node dist/backend/server.js",
     "frontend": "yarn run tsc --project src/frontend/tsconfig.json && yarn run move-assets",
@@ -21,8 +23,11 @@
     "@types/node": "^20.11.17",
     "nodemon": "^2.0.7",
     "opn-cli": "^5.0.0",
+    "ts-loader": "^9.5.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.5.2"
+    "typescript": "^5.5.2",
+    "webpack": "^5.94.0",
+    "webpack-cli": "^5.1.4"
   },
   "dependencies": {
     "@inquirer/prompts": "^5.1.0",
