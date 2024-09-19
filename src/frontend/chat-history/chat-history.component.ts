@@ -1,5 +1,5 @@
-import {AnswerEvent, CodayEvent, QuestionEvent, TextEvent} from "../../shared/coday-events.js"
-import {CodayEventHandler} from "../utils/coday-event-handler.js"
+import {AnswerEvent, CodayEvent, QuestionEvent, TextEvent} from "shared/coday-events"
+import {CodayEventHandler} from "../utils/coday-event-handler"
 
 export class ChatHistoryComponent implements CodayEventHandler {
   private chatHistory: HTMLDivElement

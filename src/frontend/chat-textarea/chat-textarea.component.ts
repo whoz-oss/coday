@@ -1,5 +1,5 @@
-import {CodayEvent, InviteEvent} from "../../shared/coday-events.js"
-import {CodayEventHandler} from "../utils/coday-event-handler.js"
+import {CodayEvent, InviteEvent} from "shared/coday-events"
+import {CodayEventHandler} from "../utils/coday-event-handler"
 
 export class ChatTextareaComponent implements CodayEventHandler {
   private chatForm: HTMLFormElement

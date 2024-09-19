@@ -1,5 +1,5 @@
-import {ChoiceEvent, CodayEvent} from "../../shared/coday-events.js"
-import {CodayEventHandler} from "../utils/coday-event-handler.js"
+import {ChoiceEvent, CodayEvent} from "shared/coday-events"
+import {CodayEventHandler} from "../utils/coday-event-handler"
 
 export class ChoiceSelectComponent implements CodayEventHandler {
   private choiceForm: HTMLFormElement
