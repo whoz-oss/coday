@@ -22,6 +22,8 @@ export class Coday {
   maxIterations: number
   initialPrompts: string[] = []
   
+  private killed: boolean = false
+  
   constructor(
     private interactor: Interactor,
     private options: CodayOptions,
@@ -37,6 +39,9 @@ export class Coday {
     this.initialPrompts = this.options.prompts ? [...this.options.prompts] : []
     // Main loop to keep waiting for user input
     do {
+      if (this.killed) {
+        return
+      }
       await this.initContext()
       if (!this.context) {
         this.interactor.error("Could not initialize context 😭")
@@ -61,6 +66,10 @@ export class Coday {
       
       this.context = await this.handlerLooper.handle(this.context)
     } while (!(this.context?.oneshot))
+  }
+  
+  kill(): void {
+    this.handlerLooper.kill()
   }
   
   private async initContext(): Promise<void> {

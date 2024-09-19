@@ -1,5 +1,4 @@
 import {CodayEvent, InviteEvent} from "../../shared/coday-events.js"
-import {postEvent} from "../utils/post-message.js"
 import {CodayEventHandler} from "../utils/coday-event-handler.js"
 
 export class ChatTextareaComponent implements CodayEventHandler {
@@ -9,7 +8,7 @@ export class ChatTextareaComponent implements CodayEventHandler {
   private expandToggle: HTMLButtonElement
   private inviteEvent: InviteEvent | undefined
   
-  constructor() {
+  constructor(private postEvent: (event: CodayEvent) => Promise<Response>) {
     this.chatForm = document.getElementById("chat-form") as HTMLFormElement
     this.chatTextarea = document.getElementById("chat-input") as HTMLTextAreaElement
     this.chatLabel = document.getElementById("chat-label") as HTMLLabelElement
@@ -51,7 +50,7 @@ export class ChatTextareaComponent implements CodayEventHandler {
     }
     try {
       this.chatForm.style.display = "none"
-      const response = await postEvent(answer)
+      const response = await this.postEvent(answer)
       if (response.ok) {
         this.chatTextarea.value = ""
       } else {

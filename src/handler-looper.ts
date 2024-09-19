@@ -25,6 +25,7 @@ export class HandlerLooper {
   private handlers: CommandHandler[] = []
   
   private maxIterations: number = MAX_ITERATIONS
+  private killed: boolean = false
   
   constructor(
     private interactor: Interactor,
@@ -91,6 +92,9 @@ export class HandlerLooper {
     let count = 0
     let currentCommand: string | undefined
     do {
+      if (this.killed) {
+        return context
+      }
       currentCommand = context.getFirstCommand()
       count++
       if (this.isHelpAsked(currentCommand)) {
@@ -152,5 +156,10 @@ export class HandlerLooper {
   private formatHelp(commandWord: string, description: string): string {
     const displayCommandWord = commandWord.padEnd(15, " ")
     return `  - ${displayCommandWord} : ${description}`
+  }
+  
+  kill() {
+    this.killed = true
+    this.openaiHandler.kill()
   }
 }

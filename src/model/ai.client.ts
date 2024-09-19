@@ -4,11 +4,13 @@ export interface AiClient {
   addMessage(
     message: string,
     context: CommandContext,
-  ): Promise<void>
+  ): Promise<void>;
   
   answer(
     name: string,
     command: string,
     context: CommandContext,
-  ): Promise<string>
+  ): Promise<string>;
+  
+  kill(): void;
 }

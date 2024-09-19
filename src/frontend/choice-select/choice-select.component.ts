@@ -1,5 +1,4 @@
 import {ChoiceEvent, CodayEvent} from "../../shared/coday-events.js"
-import {postEvent} from "../utils/post-message.js"
 import {CodayEventHandler} from "../utils/coday-event-handler.js"
 
 export class ChoiceSelectComponent implements CodayEventHandler {
@@ -8,7 +7,7 @@ export class ChoiceSelectComponent implements CodayEventHandler {
   private choiceLabel: HTMLLabelElement
   private choiceEvent: ChoiceEvent | undefined
   
-  constructor() {
+  constructor(private postEvent: (event: CodayEvent) => Promise<Response>) {
     this.choiceForm = document.getElementById("choice-form") as HTMLFormElement
     this.choiceSelect = document.getElementById("choice-select") as HTMLSelectElement
     this.choiceLabel = document.getElementById("choices-label") as HTMLLabelElement
@@ -21,7 +20,7 @@ export class ChoiceSelectComponent implements CodayEventHandler {
       }
       try {
         this.choiceForm.style.display = "none"
-        const response = await postEvent(answer)
+        const response = await this.postEvent(answer)
         if (!response.ok) {
           this.choiceForm.style.display = "block"
           console.error("Failed to send message.")

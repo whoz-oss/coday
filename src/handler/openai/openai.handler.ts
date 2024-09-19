@@ -64,6 +64,10 @@ export class OpenaiHandler extends CommandHandler {
     return context
   }
   
+  kill(): void {
+    this.openaiClient.kill()
+  }
+  
   /**
    * cmd can be:
    *   - "" (empty) => this.lastAssistant or default
