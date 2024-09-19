@@ -1,27 +1,29 @@
 import {CommandContext, Interactor} from "../../model"
 import {configService} from "../../service/config.service"
 import {loadOrInitProjectDescription} from "../../service/load-or-init-project-description"
+import {ProjectSelectedEvent} from "../../shared"
 
 export async function selectProject(
-  name: string,
+  projectName: string,
   interactor: Interactor,
   username: string,
 ): Promise<CommandContext | null> {
-  if (!name && !configService.project) {
+  if (!projectName && !configService.project) {
     interactor.error("No project selected nor known.")
     return null
   }
   let projectPath: string
   try {
-    const paths = configService.selectProjectAndGetProjectPath(name)
+    const paths = configService.selectProjectAndGetProjectPath(projectName)
     projectPath = paths.projectPath
     interactor.displayText(`Project local configuration used: ${paths.projectConfigFolderPath}`)
+    interactor.sendEvent(new ProjectSelectedEvent({projectName: projectName}))
   } catch (err: any) {
     interactor.error(err.message)
     return null
   }
   if (!projectPath) {
-    interactor.error(`No path found to project ${name}`)
+    interactor.error(`No path found to project ${projectName}`)
     return null
   }
   
@@ -35,7 +37,7 @@ export async function selectProject(
     {
       ...projectConfig,
       root: projectPath,
-      name: name
+      name: projectName
     },
     username,
   )

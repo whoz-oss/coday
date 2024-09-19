@@ -3,33 +3,48 @@ import {ChoiceSelectComponent} from "./choice-select/choice-select.component.js"
 import {ChatHistoryComponent} from "./chat-history/chat-history.component.js"
 import {buildCodayEvent, CodayEvent, ErrorEvent} from "../shared/coday-events.js"
 import {CodayEventHandler} from "./utils/coday-event-handler.js"
+import {HeaderComponent} from "./header/header.component.js"
 
-const chatHistory = new ChatHistoryComponent()
-const chatInputComponent = new ChatTextareaComponent()
-const choiceInputComponent = new ChoiceSelectComponent()
-
-const components: CodayEventHandler[] = [chatInputComponent, choiceInputComponent, chatHistory]
-
-function handle(event: CodayEvent | undefined): void {
-  if (event) {
-    components.forEach(c => c.handle(event))
-  }
+function generateClientId() {
+  // Generate or retrieve a unique client ID
+  return Math.random().toString(36).substring(2, 15)
 }
 
-const eventSource = new EventSource("/events")
+const clientId = generateClientId()
+
+function postEvent(event: CodayEvent): Promise<Response> {
+  return fetch(`/api/message?clientId=${clientId}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(event),
+  })
+}
+
+const chatHistory = new ChatHistoryComponent()
+const chatInputComponent = new ChatTextareaComponent(postEvent)
+const choiceInputComponent = new ChoiceSelectComponent(postEvent)
+
+const components: CodayEventHandler[] = [chatInputComponent, choiceInputComponent, chatHistory, new HeaderComponent()]
+const eventSource = new EventSource(`/events?clientId=${clientId}`)
 
 eventSource.onmessage = (event) => {
   try {
     const data = JSON.parse(event.data)
     const codayEvent = buildCodayEvent(data)
-    handle(codayEvent)
+    if (codayEvent) {
+      components.forEach(c => c.handle(codayEvent))
+    }
   } catch (error: any) {
     console.error("Could not parse event", event)
   }
 }
 
 eventSource.onerror = () => {
-  handle(new ErrorEvent({error: "Connection lost"}))
+  if (new ErrorEvent({error: "Connection lost"})) {
+    components.forEach(c => c.handle(new ErrorEvent({error: "Connection lost"})))
+  }
 }
 
 

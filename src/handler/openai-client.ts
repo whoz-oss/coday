@@ -19,6 +19,7 @@ export class OpenaiClient implements AiClient {
   openai: OpenAI | undefined
   threadId: string | null = null
   textAccumulator: string = ""
+  private killed: boolean = false
   
   toolBox: Toolbox
   apiKey: string | undefined
@@ -135,11 +136,17 @@ export class OpenaiClient implements AiClient {
   }
   
   private async processStream(stream: AssistantStream, tools: Tool[]) {
+    if (this.killed) {
+      return
+    }
     stream.on("textDone", (diff) => {
       this.interactor.displayText(diff.value, this.assistant?.name)
       this.textAccumulator += diff.value
     })
     for await (const chunk of stream) {
+      if (this.killed) {
+        break
+      }
       if (chunk.event === "thread.run.requires_action") {
         try {
           const toolCalls =
@@ -205,6 +212,10 @@ export class OpenaiClient implements AiClient {
             : undefined
       } while (after)
     }
+  }
+  
+  kill(): void {
+    this.killed = true
   }
   
   private async findAssistant(

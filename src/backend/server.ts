@@ -6,7 +6,6 @@ import {HeartBeatEvent} from "../shared"
 
 const app = express()
 const PORT = process.env.PORT || 3000  // Default port as fallback
-const interactor = new ServerInteractor()
 
 // Serve static files from the 'static' directory
 app.use(express.static(path.join(__dirname, "../../static")))
@@ -19,11 +18,17 @@ app.get("/", (req: express.Request, res: express.Response) => {
 // Middleware to parse JSON bodies
 app.use(express.json())
 
+// Maintain a dictionary of connected clients
+const clients: Record<string, { res: express.Response, interval: NodeJS.Timeout, interactor: ServerInteractor }> = {}
+
+
 // POST endpoint for receiving AnswerEvent messages
 app.post("/api/message", (req: express.Request, res: express.Response) => {
   try {
     const payload = req.body
-    interactor.addAnswerEvent(
+    const clientId = req.query.clientId as string
+    
+    clients[clientId].interactor.addAnswerEvent(
       payload.answer ?? "",
       payload.parentKey
     )
@@ -36,10 +41,17 @@ app.post("/api/message", (req: express.Request, res: express.Response) => {
 
 // Implement SSE for Heartbeat
 app.get("/events", (req: express.Request, res: express.Response) => {
+  const clientId = req.query.clientId as string
+  if (!clientId) {
+    res.status(400).send("Client ID is required")
+    return
+  }
   
   res.setHeader("Content-Type", "text/event-stream")
   res.setHeader("Cache-Control", "no-cache")
   res.setHeader("Connection", "keep-alive")
+  
+  const interactor = new ServerInteractor()
   
   // send all events from Coday to the frontend
   interactor.events.subscribe(event => {
@@ -52,10 +64,8 @@ app.get("/events", (req: express.Request, res: express.Response) => {
       const heartBeatEvent = new HeartBeatEvent({})
       interactor.sendEvent(heartBeatEvent)
     } catch (error) {
-      clearInterval(heartbeatInterval)
       console.error("Error sending heartbeat:", error)
-      res.end()
-      terminate()
+      terminate(clientId)
     }
   }
   
@@ -64,17 +74,17 @@ app.get("/events", (req: express.Request, res: express.Response) => {
   
   // Send heartbeat messages at specified intervals
   const heartbeatInterval = setInterval(sendHeartbeat, 10000)
+  clients[clientId] = {res, interval: heartbeatInterval, interactor}
+  console.log(`Client ${clientId} connected`)
   
   // Handle client disconnect
+  let coday: Coday
   req.on("close", () => {
-    clearInterval(heartbeatInterval)
-    console.log("Client disconnected, stopping heartbeats.")
-    res.end()
-    console.log("Client disconnect, server close")
-    terminate()
+    coday?.kill()
+    terminate(clientId)
   })
-  const coday = new Coday(interactor, {oneshot: false})
-  coday.run()
+  coday = new Coday(interactor, {oneshot: false})
+  coday.run().finally(() => terminate(clientId))
 })
 
 // Error handling middleware
@@ -87,6 +97,12 @@ app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`)
 })
 
-function terminate(): void {
-  process.exit()
+function terminate(clientId: string): void {
+  const client = clients[clientId]
+  if (client) {
+    clearInterval(client.interval)
+    client.res.end()
+    delete clients[clientId]
+    console.log(`Client ${clientId} disconnected`)
+  }
 }

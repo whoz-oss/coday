@@ -124,6 +124,16 @@ export class ToolResponseEvent extends CodayEvent {
   }
 }
 
+export class ProjectSelectedEvent extends CodayEvent {
+  projectName: string
+  static type = "project_selected"
+  
+  constructor(event: Partial<ProjectSelectedEvent>) {
+    super(event, ProjectSelectedEvent.type)
+    this.projectName = event.projectName!
+  }
+}
+
 // Exposing a map of event types to their corresponding classes
 const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [HeartBeatEvent.type]: HeartBeatEvent,
@@ -135,6 +145,7 @@ const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [ChoiceEvent.type]: ChoiceEvent,
   [ToolRequestEvent.type]: ToolRequestEvent,
   [ToolResponseEvent.type]: ToolResponseEvent,
+  [ProjectSelectedEvent.type]: ProjectSelectedEvent
 }
 
 export function buildCodayEvent(data: any): CodayEvent | undefined {
