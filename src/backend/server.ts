@@ -75,7 +75,7 @@ app.get("/events", (req: express.Request, res: express.Response) => {
   // Send heartbeat messages at specified intervals
   const heartbeatInterval = setInterval(sendHeartbeat, 10000)
   clients[clientId] = {res, interval: heartbeatInterval, interactor}
-  console.log(`Client ${clientId} connected`)
+  console.log(`${new Date().toISOString()} Client ${clientId} connected`)
   
   // Handle client disconnect
   let coday: Coday
@@ -103,6 +103,6 @@ function terminate(clientId: string): void {
     clearInterval(client.interval)
     client.res.end()
     delete clients[clientId]
-    console.log(`Client ${clientId} disconnected`)
+    console.log(`${new Date().toISOString()} Client ${clientId} disconnected`)
   }
 }
