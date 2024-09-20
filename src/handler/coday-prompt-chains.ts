@@ -1,4 +1,4 @@
-import {IntegrationName, PromptChain} from "../model"
+import {PromptChain} from "../model"
 
 export const CodayPromptChains: (PromptChain & { name: string })[] = [
   {
@@ -17,7 +17,7 @@ DO NOT EXECUTE THE PLAN NOW !`,
             Make sure to adjust the execution to any hiccups and still try to complete the task.`,
       `learn-about`
     ],
-    requiredIntegrations: [IntegrationName.OPENAI]
+    requiredIntegrations: ["AI"]
   }, {
     name: "big-task",
     description: "Leverage small-task for deeper analysis and more granular execution.",
@@ -40,7 +40,7 @@ DO NOT EXECUTE THE PLAN NOW !`,
       Summarize shortly what was done, what is missing if any and what could be the next steps.`,
       `sub-task false`
     ],
-    requiredIntegrations: [IntegrationName.OPENAI]
+    requiredIntegrations: ["AI"]
   }, {
     name: "learn-about",
     description: "Pushes the AI to extract newly gained knowledge and memorize it.",
@@ -54,6 +54,6 @@ DO NOT EXECUTE THE PLAN NOW !`,
       Format it in markdown.
       Then memorize it, each subject at a time.`,
     ],
-    requiredIntegrations: [IntegrationName.OPENAI, IntegrationName.LOCAL_MEMORY]
+    requiredIntegrations: ["AI", "MEMORY"]
   }
 ]

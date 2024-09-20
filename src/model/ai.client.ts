@@ -12,5 +12,7 @@ export interface AiClient {
     context: CommandContext,
   ): Promise<string>;
   
-  kill(): void;
+  kill(): void
+  
+  reset(): void
 }

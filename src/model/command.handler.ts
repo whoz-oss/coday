@@ -1,17 +1,16 @@
 import {CommandContext} from "./command-context"
-import {IntegrationName} from "./integration-name"
 
 export type CommandHandlerConstructorInput = {
   commandWord: string
   description: string
-  requiredIntegrations?: IntegrationName[]
+  requiredIntegrations?: string[]
   isInternal?: boolean
 }
 
 export abstract class CommandHandler {
   commandWord: string
   description: string
-  requiredIntegrations: IntegrationName[] = []
+  requiredIntegrations: string[] = []
   isInternal: boolean = false
   
   constructor(input: CommandHandlerConstructorInput) {

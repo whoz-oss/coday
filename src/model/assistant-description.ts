@@ -1,5 +1,3 @@
-import {IntegrationName} from "./integration-name"
-
 export type AssistantDescription = {
   /**
    * Should be the name of the assistant as declared in the platform.
@@ -21,7 +19,7 @@ export type AssistantDescription = {
    * TODO: use fields, not yet connected
    * Declare what apis the assistant will have access to **in this project** (meaning if not set in the project, will not be used even if listed here).
    */
-  integrations?: IntegrationName[]
+  integrations?: string[]
   
   /**
    * Define the model to use. Clients must have a default

@@ -1,4 +1,4 @@
-import {CommandContext, CommandHandler, IntegrationName, Interactor} from "../model"
+import {CommandContext, CommandHandler, Interactor} from "../model"
 import {memoryService} from "../service/memory.service"
 
 
@@ -8,7 +8,7 @@ class MemoryHandler extends CommandHandler {
     super({
       commandWord: "memory",
       description: "list current memories",
-      requiredIntegrations: [IntegrationName.OPENAI],
+      requiredIntegrations: ["AI"],
       isInternal: true
     })
   }

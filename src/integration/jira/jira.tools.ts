@@ -1,6 +1,6 @@
 import {retrieveJiraTicket} from "./retrieve-jira-ticket"
 import {integrationService} from "../../service/integration.service"
-import {CommandContext, IntegrationName, Interactor} from "../../model"
+import {CommandContext, Interactor} from "../../model"
 import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
 import {FunctionTool} from "../types"
 
@@ -16,13 +16,13 @@ export class JiraTools extends AssistantToolFactory {
   
   protected buildTools(context: CommandContext): Tool[] {
     const result: Tool[] = []
-    if (!integrationService.hasIntegration(IntegrationName.JIRA)) {
+    if (!integrationService.hasIntegration("JIRA")) {
       return result
     }
     
-    const jiraBaseUrl = integrationService.getApiUrl(IntegrationName.JIRA)
-    const jiraUsername = integrationService.getUsername(IntegrationName.JIRA)
-    const jiraApiToken = integrationService.getApiKey(IntegrationName.JIRA)
+    const jiraBaseUrl = integrationService.getApiUrl("JIRA")
+    const jiraUsername = integrationService.getUsername("JIRA")
+    const jiraApiToken = integrationService.getApiKey("JIRA")
     if (!(jiraBaseUrl && jiraUsername && jiraApiToken)) {
       return result
     }

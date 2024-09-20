@@ -1,7 +1,7 @@
 import {retrieveConfluencePage} from "./retrieve-confluence-page"
 import {searchConfluencePages} from "./search-confluence-pages"
 import {integrationService} from "../../service/integration.service"
-import {CommandContext, IntegrationName, Interactor} from "../../model"
+import {CommandContext, Interactor} from "../../model"
 import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
 import {FunctionTool} from "../types"
 
@@ -17,13 +17,13 @@ export class ConfluenceTools extends AssistantToolFactory {
   
   protected buildTools(context: CommandContext): Tool[] {
     const result: Tool[] = []
-    if (!integrationService.hasIntegration(IntegrationName.CONFLUENCE)) {
+    if (!integrationService.hasIntegration("CONFLUENCE")) {
       return result
     }
     
-    const confluenceBaseUrl = integrationService.getApiUrl(IntegrationName.CONFLUENCE)
-    const confluenceUsername = integrationService.getUsername(IntegrationName.CONFLUENCE)
-    const confluenceApiToken = integrationService.getApiKey(IntegrationName.CONFLUENCE)
+    const confluenceBaseUrl = integrationService.getApiUrl("CONFLUENCE")
+    const confluenceUsername = integrationService.getUsername("CONFLUENCE")
+    const confluenceApiToken = integrationService.getApiKey("CONFLUENCE")
     if (!(confluenceBaseUrl && confluenceUsername && confluenceApiToken)) {
       return result
     }

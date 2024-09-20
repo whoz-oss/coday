@@ -3,7 +3,7 @@ import {addGlobalComment} from "./add-global-comment"
 import {addMRThread} from "./add-mr-thread"
 import {getIssue} from "./get-issue"
 import {integrationService} from "../../service/integration.service"
-import {CommandContext, IntegrationName, Interactor} from "../../model"
+import {CommandContext, Interactor} from "../../model"
 import {listIssues} from "./list-issues"
 import {listMergeRequests} from "./list-merge-requests"
 import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
@@ -20,7 +20,7 @@ export class GitLabTools extends AssistantToolFactory {
   
   protected buildTools(context: CommandContext): Tool[] {
     const result: Tool[] = []
-    const gitlab = integrationService.getIntegration(IntegrationName.GITLAB)
+    const gitlab = integrationService.getIntegration("GITLAB")
     if (!gitlab) {
       return result
     }

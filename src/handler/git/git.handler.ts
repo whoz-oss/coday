@@ -1,6 +1,6 @@
 import {GitDefaultHandler} from "./git-default.handler"
 import {GitStatusHandler} from "./git-status.handler"
-import {IntegrationName, Interactor, NestedHandler} from "../../model"
+import {Interactor, NestedHandler} from "../../model"
 
 export class GitHandler extends NestedHandler {
   
@@ -9,7 +9,7 @@ export class GitHandler extends NestedHandler {
     super({
       commandWord: "git",
       description: "handles git-related commands",
-      requiredIntegrations: [IntegrationName.GIT]
+      requiredIntegrations: ["GIT"]
     }, interactor)
     this.handlers = [
       new GitStatusHandler(interactor),

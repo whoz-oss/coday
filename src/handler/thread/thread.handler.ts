@@ -13,7 +13,8 @@ export class ThreadHandler extends NestedHandler {
   ) {
     super({
       commandWord: "thread",
-      description: "handles thread related commands"
+      description: "handles thread related commands",
+      requiredIntegrations: ["OPENAI"] // FIXME: should be temporary until threads are properly managed for all ai providers
     }, interactor)
     
     this.handlers = [

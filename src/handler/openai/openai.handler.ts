@@ -1,24 +1,19 @@
 import {keywords} from "../../keywords"
-import {integrationService} from "../../service/integration.service"
-import {OpenaiClient} from "../openai-client"
-import {CommandContext, CommandHandler, DEFAULT_DESCRIPTION, IntegrationName, Interactor} from "../../model"
+import {AiClient, CommandContext, CommandHandler, DEFAULT_DESCRIPTION, Interactor} from "../../model"
 
 export class OpenaiHandler extends CommandHandler {
-  openaiClient: OpenaiClient
   lastAssistantName?: string
   
-  constructor(private interactor: Interactor) {
+  constructor(private interactor: Interactor, private aiClient: AiClient | undefined) {
     super({
       commandWord: keywords.assistantPrefix,
       description: "calls the AI with the given command and current context. 'reset' for using a new thread. You can call whatever assistant in your openai account by its name, ex: joke_generator called by @jok (choice prompt if multiple matches).",
-      requiredIntegrations: [IntegrationName.OPENAI]
+      requiredIntegrations: ["AI"]
     })
-    const apiKeyProvider = () => integrationService.getApiKey("OPENAI")
-    this.openaiClient = new OpenaiClient(interactor, apiKeyProvider)
   }
   
   reset(): void {
-    this.openaiClient.reset()
+    this.aiClient?.reset()
     this.lastAssistantName = undefined
   }
   
@@ -45,7 +40,7 @@ export class OpenaiHandler extends CommandHandler {
     }
     
     try {
-      const answer = await this.openaiClient.answer(assistantName, cmd, context)
+      const answer = await this.aiClient!.answer(assistantName, cmd, context)
       const mentionsToSearch = this.getMentionsToSearch(context)
       mentionsToSearch?.forEach((mention) => {
         if (answer.includes(mention)) {
@@ -65,7 +60,7 @@ export class OpenaiHandler extends CommandHandler {
   }
   
   kill(): void {
-    this.openaiClient.kill()
+    this.aiClient?.kill()
   }
   
   /**
