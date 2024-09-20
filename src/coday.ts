@@ -1,8 +1,9 @@
 import os from "os"
 import {HandlerLooper} from "./handler-looper"
 import {keywords} from "./keywords"
-import {CommandContext, Interactor} from "./model"
+import {AiClient, CommandContext, Interactor} from "./model"
 import {ConfigHandler, OpenaiHandler} from "./handler"
+import {aiClientProvider} from "./integration/ai/ai-client-provider"
 
 const MAX_ITERATIONS = 100
 
@@ -17,8 +18,9 @@ export class Coday {
   context: CommandContext | null = null
   configHandler: ConfigHandler
   
-  handlerLooper: HandlerLooper
-  openaiHandler: OpenaiHandler
+  handlerLooper: HandlerLooper | undefined
+  openaiHandler: OpenaiHandler | undefined
+  aiClient: AiClient | undefined
   maxIterations: number
   initialPrompts: string[] = []
   
@@ -30,8 +32,6 @@ export class Coday {
   ) {
     this.userInfo = os.userInfo()
     this.configHandler = new ConfigHandler(interactor, this.userInfo.username)
-    this.openaiHandler = new OpenaiHandler(interactor)
-    this.handlerLooper = new HandlerLooper(interactor, this.openaiHandler)
     this.maxIterations = MAX_ITERATIONS
   }
   
@@ -56,7 +56,7 @@ export class Coday {
       
       if (userCommand === keywords.reset) {
         this.context = null
-        this.openaiHandler.reset()
+        this.openaiHandler?.reset()
         this.configHandler.resetProjectSelection()
         continue
       }
@@ -64,12 +64,12 @@ export class Coday {
       // add the user command to the queue and let handlers decompose it in many and resolve them ultimately
       this.context.addCommands(userCommand!)
       
-      this.context = await this.handlerLooper.handle(this.context)
+      this.context = await this.handlerLooper!.handle(this.context)
     } while (!(this.context?.oneshot))
   }
   
   kill(): void {
-    this.handlerLooper.kill()
+    this.handlerLooper?.kill()
   }
   
   private async initContext(): Promise<void> {
@@ -79,6 +79,9 @@ export class Coday {
       )
       if (this.context) {
         this.context.oneshot = this.options.oneshot
+        this.aiClient = aiClientProvider(this.interactor)
+        this.openaiHandler = new OpenaiHandler(this.interactor, this.aiClient)
+        this.handlerLooper = new HandlerLooper(this.interactor, this.openaiHandler, this.aiClient)
         this.handlerLooper.init(this.userInfo.username, this.context.project)
       }
     }

@@ -1,6 +1,5 @@
 import {Scripts} from "./scripts"
 import {AssistantDescription} from "./assistant-description"
-import {IntegrationName} from "./integration-name"
 
 export type ProjectDescription = {
   /**
@@ -63,7 +62,7 @@ export type PromptChain = {
   /**
    * Optional list of required integrations for this prompt chain
    */
-  requiredIntegrations?: IntegrationName[]
+  requiredIntegrations?: string[]
 }
 
 

@@ -1,6 +1,6 @@
 import {existsSync, readFileSync, writeFileSync} from "fs"
 import * as yaml from "yaml"
-import {DEFAULT_DESCRIPTION, IntegrationName, Interactor, ProjectDescription} from "../model"
+import {DEFAULT_DESCRIPTION, Interactor, ProjectDescription} from "../model"
 import path, {join} from "path"
 import {findFilesByName} from "../function/find-files-by-name"
 import {integrationService} from "./integration.service"
@@ -90,7 +90,7 @@ export const loadOrInitProjectDescription = async (projectPath: string, interact
     
     You are interacting with a human with username: ${username}`
   
-  const userMemories = integrationService.hasIntegration(IntegrationName.LOCAL_MEMORY)
+  const userMemories = integrationService.hasIntegration("MEMORY")
     ? memoryService.listMemories(MemoryLevel.USER).map(m => `  - ${m.title}\n    ${m.content}`)
     : null
   let userMemoryText = ""
@@ -104,7 +104,7 @@ export const loadOrInitProjectDescription = async (projectPath: string, interact
     }
   }
   
-  const projectMemories = integrationService.hasIntegration(IntegrationName.LOCAL_MEMORY)
+  const projectMemories = integrationService.hasIntegration("MEMORY")
     ? memoryService.listMemories(MemoryLevel.PROJECT).map(m => `  - ${m.title}\n    ${m.content}`)
     : null
   let projectMemoryText = ""
@@ -120,7 +120,7 @@ export const loadOrInitProjectDescription = async (projectPath: string, interact
   
   const memoryNote = "\n\nYou are higly encouraged to reflect at the end of each request on the knowledge that could be gained from the collected information, formalize it as new or updated memories and store them."
   const memoryText = userMemoryText || projectMemoryText ? `${userMemoryText}${projectMemoryText}${memoryNote}`
-    : integrationService.hasIntegration(IntegrationName.LOCAL_MEMORY)
+    : integrationService.hasIntegration("MEMORY")
       ? `No previous memories available.\n\n${memoryNote}`
       : ""
   

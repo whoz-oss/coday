@@ -1,4 +1,4 @@
-import {CommandContext, CommandHandler, IntegrationName} from "../model"
+import {CommandContext, CommandHandler,} from "../model"
 
 export class GitlabReviewHandler extends CommandHandler {
   
@@ -6,7 +6,7 @@ export class GitlabReviewHandler extends CommandHandler {
     super({
       commandWord: "gitlab-review",
       description: "takes the ID of the merge request to perform a comprehensive review.",
-      requiredIntegrations: [IntegrationName.OPENAI, IntegrationName.GITLAB]
+      requiredIntegrations: ["AI", "GITLAB"]
     })
   }
   

@@ -7,7 +7,7 @@ import {gitLog} from "./git-log"
 import {gitShow} from "./git-show"
 import {integrationService} from "../../service/integration.service"
 import {gitCheckoutBranch} from "./git-checkout-branch"
-import {CommandContext, IntegrationName, Interactor} from "../../model"
+import {CommandContext, Interactor} from "../../model"
 import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
 import {FunctionTool} from "../types"
 
@@ -23,7 +23,7 @@ export class GitTools extends AssistantToolFactory {
   protected buildTools(context: CommandContext): Tool[] {
     const result: Tool[] = []
     
-    if (!integrationService.hasIntegration(IntegrationName.GIT)) {
+    if (!integrationService.hasIntegration("GIT")) {
       return result
     }
     

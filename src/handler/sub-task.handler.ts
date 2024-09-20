@@ -1,4 +1,4 @@
-import {CommandContext, CommandHandler, IntegrationName, Interactor} from "../model"
+import {CommandContext, CommandHandler, Interactor} from "../model"
 
 export class SubTaskHandler extends CommandHandler {
   
@@ -11,7 +11,7 @@ export class SubTaskHandler extends CommandHandler {
     super({
       commandWord: "sub-task",
       description: "Set the sub-task behavior",
-      requiredIntegrations: [IntegrationName.OPENAI],
+      requiredIntegrations: ["AI"],
     })
   }
   

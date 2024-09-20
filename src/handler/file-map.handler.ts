@@ -1,14 +1,13 @@
-import {CommandContext, CommandHandler, IntegrationName, Interactor} from "../model"
+import {AiClient, CommandContext, CommandHandler, Interactor} from "../model"
 import {generateFileTree} from "../function/generate-file-tree"
-import {OpenaiClient} from "./openai-client"
 import path from "path"
 
 export class FileMapHandler extends CommandHandler {
-  constructor(private interactor: Interactor, private openaiClient: OpenaiClient) {
+  constructor(private interactor: Interactor, private aiClient: AiClient) {
     super({
       commandWord: "file-map",
       description: "Generates a file map starting from the given relative path.",
-      requiredIntegrations: [IntegrationName.OPENAI]
+      requiredIntegrations: ["AI"]
     })
   }
   
@@ -26,7 +25,7 @@ export class FileMapHandler extends CommandHandler {
     
     const chunkCount = fileTreeChunks.length
     for (let i = 0; i < chunkCount; i++) {
-      await this.openaiClient.addMessage(fileTreeChunks[i], context)
+      await this.aiClient.addMessage(fileTreeChunks[i], context)
       this.interactor.displayText(`Sent chunk ${i + 1} of ${chunkCount}`)
     }
     

@@ -1,4 +1,3 @@
-import {IntegrationName} from "./integration-name"
 import {IntegrationConfig} from "./integration-config"
 
 export interface ThreadInfo {
@@ -11,7 +10,7 @@ export type SavedThreads = {
 } | undefined
 
 export type IntegrationLocalConfig = {
-  [key in IntegrationName]?: IntegrationConfig
+  [key: string]: IntegrationConfig
 }
 
 export type ProjectLocalConfig = {

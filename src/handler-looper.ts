@@ -1,4 +1,4 @@
-import {CommandContext, CommandHandler, Interactor, ProjectDescription, PromptChain} from "./model"
+import {AiClient, CommandContext, CommandHandler, Interactor, ProjectDescription, PromptChain} from "./model"
 import {
   AddQueryHandler,
   CodayPromptChains,
@@ -18,6 +18,7 @@ import {
 } from "./handler"
 import {integrationService} from "./service/integration.service"
 import {keywords} from "./keywords"
+import {OpenaiClient} from "./handler/openai-client"
 
 const MAX_ITERATIONS = 100
 
@@ -30,6 +31,7 @@ export class HandlerLooper {
   constructor(
     private interactor: Interactor,
     private openaiHandler: OpenaiHandler,
+    private aiClient: AiClient | undefined
   ) {
   }
   
@@ -44,11 +46,21 @@ export class HandlerLooper {
         new SubTaskHandler(this.interactor),
         new AddQueryHandler(this.interactor),
         new GitlabReviewHandler(),
-        new ThreadHandler(this.interactor, this.openaiHandler.openaiClient),
-        new FileMapHandler(this.interactor, this.openaiHandler.openaiClient),
         new MemoryHandler(this.interactor),
-        new LoadHandler(this.interactor, this.openaiHandler.openaiClient),
       ]
+      if (this.aiClient) {
+        this.handlers.push(
+          new FileMapHandler(this.interactor, this.aiClient),
+          new LoadHandler(this.interactor, this.aiClient),
+        )
+      }
+      // FIXME: move thread management to AiClient
+      if (integrationService.hasIntegration("OPENAI") && this.aiClient instanceof OpenaiClient) {
+        this.handlers.push(
+          new ThreadHandler(this.interactor, this.aiClient),
+        )
+      }
+      
       CodayPromptChains.forEach(
         promptChain => this.handlers.push(
           new PromptChainHandler(

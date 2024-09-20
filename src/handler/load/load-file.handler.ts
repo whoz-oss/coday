@@ -1,16 +1,13 @@
-import {CommandContext, CommandHandler, Interactor} from "../../model"
-import {OpenaiClient} from "../openai-client"
+import {AiClient, CommandContext, CommandHandler, Interactor} from "../../model"
 import {readFileByPath} from "../../function/read-file-by-path"
 
 export class LoadFileHandler extends CommandHandler {
-  private openaiClient: OpenaiClient
   
-  constructor(private interactor: Interactor, openaiClient: OpenaiClient) {
+  constructor(private interactor: Interactor, private aiClient: AiClient) {
     super({
       commandWord: "file",
       description: "Loads a file by its path relative to project root, ex: `load-file ./folder/file.extension`",
     })
-    this.openaiClient = openaiClient
   }
   
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
@@ -31,7 +28,7 @@ export class LoadFileHandler extends CommandHandler {
       root: context.project.root,
       interactor: this.interactor
     })
-    await this.openaiClient.addMessage(`File with path: ${filePath}\n\n${content}`, context)
+    await this.aiClient.addMessage(`File with path: ${filePath}\n\n${content}`, context)
     
     return context
   }
