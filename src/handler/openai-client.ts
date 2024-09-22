@@ -215,6 +215,7 @@ export class OpenaiClient implements AiClient {
   }
   
   kill(): void {
+    console.log("openai-client killed")
     this.killed = true
   }
   
