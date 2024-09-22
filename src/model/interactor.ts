@@ -71,6 +71,7 @@ export abstract class Interactor {
   }
   
   kill() {
+    console.log("")
     this.subs.forEach(s => s.unsubscribe())
   }
 }

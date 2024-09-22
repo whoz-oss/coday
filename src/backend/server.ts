@@ -51,7 +51,7 @@ app.get("/events", (req: express.Request, res: express.Response) => {
   res.setHeader("Cache-Control", "no-cache")
   res.setHeader("Connection", "keep-alive")
   
-  const interactor = new ServerInteractor()
+  const interactor = new ServerInteractor(clientId)
   
   // send all events from Coday to the frontend
   interactor.events.subscribe(event => {
@@ -59,13 +59,14 @@ app.get("/events", (req: express.Request, res: express.Response) => {
     return res.write(data)
   })
   
+  let coday: Coday
   const sendHeartbeat = () => {
     try {
       const heartBeatEvent = new HeartBeatEvent({})
       interactor.sendEvent(heartBeatEvent)
     } catch (error) {
       console.error("Error sending heartbeat:", error)
-      terminate(clientId)
+      terminate(clientId, coday)
     }
   }
   
@@ -78,13 +79,11 @@ app.get("/events", (req: express.Request, res: express.Response) => {
   console.log(`${new Date().toISOString()} Client ${clientId} connected`)
   
   // Handle client disconnect
-  let coday: Coday
   req.on("close", () => {
-    coday?.kill()
-    terminate(clientId)
+    terminate(clientId, coday)
   })
   coday = new Coday(interactor, {oneshot: false})
-  coday.run().finally(() => terminate(clientId))
+  coday.run().finally(() => terminate(clientId, coday))
 })
 
 // Error handling middleware
@@ -97,8 +96,9 @@ app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`)
 })
 
-function terminate(clientId: string): void {
+function terminate(clientId: string, coday: Coday | undefined): void {
   const client = clients[clientId]
+  coday?.kill()
   if (client) {
     clearInterval(client.interval)
     client.res.end()

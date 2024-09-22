@@ -11,6 +11,7 @@ function generateClientId() {
 }
 
 const clientId = generateClientId()
+console.log(`Session started with clientId: ${clientId}`)
 
 function postEvent(event: CodayEvent): Promise<Response> {
   return fetch(`/api/message?clientId=${clientId}`, {
