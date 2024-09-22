@@ -50,7 +50,7 @@ export class FileTools extends AssistantToolFactory {
       type: "function",
       function: {
         name: "readProjectFile",
-        description: "read the content of the file at the given path in the project. DO re-read with line to edit file is average size or more",
+        description: "read the content of the file at the given path in the project.",
         parameters: {
           type: "object",
           properties: {
@@ -134,11 +134,11 @@ export class FileTools extends AssistantToolFactory {
       type: "function",
       function: {
         name: "searchProjectFile",
-        description: "search in the project for files named starting by the given text. The output is a list of paths relative to the project root.",
+        description: "search in the project for files entirely or partially named with the given text. The output is a list of paths relative to the project root. Prefer it over `searchFilesByText` when you are apparently dealing with a file name.",
         parameters: {
           type: "object",
           properties: {
-            text: {type: "string", description: "start of the name of files to search for"},
+            text: {type: "string", description: "Part of the name, or full name of files to search for."},
             path: {
               type: "string",
               description: "optional file path relative to the project root from which to start the search"
@@ -196,7 +196,7 @@ export class FileTools extends AssistantToolFactory {
       type: "function",
       function: {
         name: "searchFilesByText",
-        description: "search in the project for files containing the given text. The output is a list of paths relative to the project root. This function is slow, restrict scope by giving a path and fileTypes if possible, to avoid a timeout.",
+        description: "Search in the project for files containing the given text in the content. The output is a list of paths relative to the project root. This function is slow, restrict scope by giving a path and fileTypes if possible, to avoid a timeout. If searching for a filename, prefer `searchProjectFile`.",
         parameters: {
           type: "object",
           properties: {

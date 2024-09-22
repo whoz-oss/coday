@@ -143,6 +143,7 @@ export class OpenaiClient implements AiClient {
       this.textAccumulator += diff.value
     })
     for await (const chunk of stream) {
+      this.interactor.thinking()
       if (this.killed) {
         break
       }

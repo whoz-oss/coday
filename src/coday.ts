@@ -70,6 +70,7 @@ export class Coday {
   
   kill(): void {
     this.handlerLooper?.kill()
+    this.interactor.kill()
   }
   
   private async initContext(): Promise<void> {
