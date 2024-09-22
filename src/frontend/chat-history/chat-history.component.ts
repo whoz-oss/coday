@@ -1,12 +1,16 @@
-import {AnswerEvent, CodayEvent, QuestionEvent, TextEvent} from "shared/coday-events"
+import {AnswerEvent, CodayEvent, QuestionEvent, TextEvent, ThinkingEvent} from "shared/coday-events"
 import {CodayEventHandler} from "../utils/coday-event-handler"
 
 export class ChatHistoryComponent implements CodayEventHandler {
   private chatHistory: HTMLDivElement
+  private readonly thinkingDots: HTMLDivElement
   private history = new Map<string, CodayEvent>()
+  
+  private thinkingTimeout: any
   
   constructor() {
     this.chatHistory = document.getElementById("chat-history") as HTMLDivElement
+    this.thinkingDots = document.getElementById("thinking-dots") as HTMLDivElement
   }
   
   handle(event: CodayEvent): void {
@@ -27,23 +31,42 @@ export class ChatHistoryComponent implements CodayEventHandler {
     if (event instanceof ErrorEvent) {
       this.addError(event.error)
     }
+    if (event instanceof ThinkingEvent) {
+      this.setThinking(true)
+    }
+  }
+  
+  private setThinking(value: boolean): void {
+    if (!this.thinkingDots) {
+      return
+    }
+    clearTimeout(this.thinkingTimeout)
+    if (value) {
+      this.thinkingTimeout = setTimeout(() => {
+        this.thinkingDots.classList.toggle("visible", false)
+      }, ThinkingEvent.debounce * 2)
+    }
+    this.thinkingDots.classList.toggle("visible", value)
   }
   
   addTechnical(text: string): void {
     const newEntry = this.createMessageElement(text, undefined)
-    newEntry.classList.add("technical")
+    newEntry.classList.add("technical", "right")
     this.appendMessageElement(newEntry)
   }
   
   addText(text: string, speaker: string | undefined): void {
+    this.setThinking(false)
     const newEntry = this.createMessageElement(text, speaker)
-    newEntry.classList.add("text", "left-margin")
+    newEntry.classList.add("text", "right")
     this.appendMessageElement(newEntry)
+    
   }
   
   addAnswer(answer: string, speaker: string | undefined): void {
+    this.setThinking(false)
     const newEntry = this.createMessageElement(answer, speaker)
-    newEntry.classList.add("text", "right-margin")
+    newEntry.classList.add("text", "left")
     this.appendMessageElement(newEntry)
   }
   
@@ -80,6 +103,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
   
   
   addError(error: string): void {
+    this.setThinking(false)
     const errorEntry = document.createElement("div")
     errorEntry.textContent = error
     errorEntry.style.color = "red"

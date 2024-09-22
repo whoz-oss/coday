@@ -14,14 +14,6 @@
     display: none;
 }
 
-.left-margin {
-    margin-left: 5em;
-}
-
-.right-margin {
-    margin-right: 5em;
-}
-
 .visually-hidden {
     position: absolute;
     width: 1px;

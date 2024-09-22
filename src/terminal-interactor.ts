@@ -1,7 +1,7 @@
 import {input, select} from "@inquirer/prompts"
 import chalk from "chalk"
 import {Interactor} from "./model"
-import {ChoiceEvent, ErrorEvent, InviteEvent, TextEvent, WarnEvent} from "./shared"
+import {ChoiceEvent, ErrorEvent, InviteEvent, TextEvent, ThinkingEvent, WarnEvent} from "./shared"
 
 export class TerminalInteractor extends Interactor {
   
@@ -26,6 +26,9 @@ export class TerminalInteractor extends Interactor {
       }
       if (event instanceof ChoiceEvent) {
         this.handleChoiceEvent(event)
+      }
+      if (event instanceof ThinkingEvent) {
+        console.log(".")
       }
     })
   }

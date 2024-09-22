@@ -1,8 +1,26 @@
-import {AnswerEvent, ChoiceEvent, CodayEvent, ErrorEvent, InviteEvent, TextEvent, WarnEvent} from "../shared"
-import {filter, firstValueFrom, map, Observable, Subject, take} from "rxjs"
+import {
+  AnswerEvent,
+  ChoiceEvent,
+  CodayEvent,
+  ErrorEvent,
+  InviteEvent,
+  TextEvent,
+  ThinkingEvent,
+  WarnEvent
+} from "../shared"
+import {filter, firstValueFrom, map, Observable, Subject, Subscription, take, throttleTime} from "rxjs"
+
 
 export abstract class Interactor {
   events = new Subject<CodayEvent>()
+  private thinking$ = new Subject<null>()
+  private subs: Subscription[] = []
+  
+  constructor() {
+    this.subs.push(this.thinking$.pipe(
+      throttleTime(ThinkingEvent.debounce)
+    ).subscribe(() => this.sendEvent(new ThinkingEvent({}))))
+  }
   
   async promptText(invite: string, defaultText?: string): Promise<string> {
     const inviteEvent = new InviteEvent({invite})
@@ -44,7 +62,15 @@ export abstract class Interactor {
     this.sendEvent(new ErrorEvent({error}))
   }
   
+  thinking(): void {
+    this.thinking$.next(null)
+  }
+  
   sendEvent(event: CodayEvent): void {
     this.events.next(event)
+  }
+  
+  kill() {
+    this.subs.forEach(s => s.unsubscribe())
   }
 }
