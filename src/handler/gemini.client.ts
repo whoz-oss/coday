@@ -43,15 +43,11 @@ export class GeminiClient implements AiClient {
     }
     if (!this.chatSession) {
       this.tools = this.toolBox.getTools(context)
-      this.chatSession = this.genAI!.getGenerativeModel({model: "gemini-1.5-pro"}).startChat({
-        history: [
-          {
-            role: "user",
-            parts: [{text: `${DEFAULT_DESCRIPTION.description}\n\n${context.project.description}`}],
-          },
-        ],
-        tools: [{functionDeclarations: this.tools.map(t => t.function as unknown as FunctionDeclaration)}]
-      })
+      this.chatSession = this.genAI!.getGenerativeModel({
+        model: "gemini-1.5-pro",
+        tools: [{functionDeclarations: this.tools.map(t => t.function as unknown as FunctionDeclaration)}],
+        systemInstruction: `${DEFAULT_DESCRIPTION.description}\n\n${context.project.description}`
+      }).startChat({generationConfig: {maxOutputTokens: 100000, temperature: 0.8}})
       
       this.interactor.displayText(`Chat created with ID: ${this.threadId}`)
     }
