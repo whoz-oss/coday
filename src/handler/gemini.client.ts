@@ -12,6 +12,7 @@ import {filter, firstValueFrom, map, take} from "rxjs"
 import {CodayTool} from "../integration/assistant-tool-factory"
 
 export class GeminiClient implements AiClient {
+  multiAssistant = false
   private apiKey: string | undefined
   private genAI: GoogleGenerativeAI | undefined
   threadId: string | null = null

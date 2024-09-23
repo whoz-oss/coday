@@ -1,6 +1,7 @@
 import {AiClient, CommandContext, CommandHandler, Interactor, ProjectDescription, PromptChain} from "./model"
 import {
   AddQueryHandler,
+  AiHandler,
   CodayPromptChains,
   CodeFlowHandler,
   ConfigHandler,
@@ -10,7 +11,6 @@ import {
   GitlabReviewHandler,
   LoadHandler,
   MemoryHandler,
-  OpenaiHandler,
   PromptChainHandler,
   RunBashHandler,
   SubTaskHandler,
@@ -18,7 +18,7 @@ import {
 } from "./handler"
 import {integrationService} from "./service/integration.service"
 import {keywords} from "./keywords"
-import {OpenaiClient} from "./handler/openai-client"
+import {OpenaiClient} from "./handler/openai.client"
 
 const MAX_ITERATIONS = 100
 
@@ -30,7 +30,7 @@ export class HandlerLooper {
   
   constructor(
     private interactor: Interactor,
-    private openaiHandler: OpenaiHandler,
+    private openaiHandler: AiHandler,
     private aiClient: AiClient | undefined
   ) {
   }

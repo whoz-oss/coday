@@ -15,6 +15,7 @@ const DEFAULT_TEMPERATURE: number = 0.75
 type AssistantReference = { name: string; id: string }
 
 export class OpenaiClient implements AiClient {
+  multiAssistant = true
   openai: OpenAI | undefined
   threadId: string | null = null
   textAccumulator: string = ""

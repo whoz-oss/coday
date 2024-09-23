@@ -1,5 +1,5 @@
 import {integrationService} from "../../service/integration.service"
-import {OpenaiClient} from "../../handler/openai-client"
+import {OpenaiClient} from "../../handler/openai.client"
 import {AiClient, Interactor} from "../../model"
 import {GeminiClient} from "../../handler/gemini.client"
 
