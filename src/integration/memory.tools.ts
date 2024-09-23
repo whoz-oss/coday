@@ -1,6 +1,6 @@
 import {memoryService} from "../service/memory.service"
 import {CommandContext, Interactor} from "../model"
-import {AssistantToolFactory, Tool} from "./assistant-tool-factory"
+import {AssistantToolFactory, CodayTool} from "./assistant-tool-factory"
 import {FunctionTool} from "./types"
 import {integrationService} from "../service/integration.service"
 import {MemoryLevel} from "../model/memory"
@@ -17,8 +17,8 @@ export class MemoryTools extends AssistantToolFactory {
     return context.project.name !== this.lastToolInitContext?.project.name
   }
   
-  protected buildTools(context: CommandContext): Tool[] {
-    const result: Tool[] = []
+  protected buildTools(context: CommandContext): CodayTool[] {
+    const result: CodayTool[] = []
     
     if (!integrationService.hasIntegration("MEMORY")) {
       return result

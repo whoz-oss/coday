@@ -6,7 +6,7 @@ import {integrationService} from "../../service/integration.service"
 import {CommandContext, Interactor} from "../../model"
 import {listIssues} from "./list-issues"
 import {listMergeRequests} from "./list-merge-requests"
-import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
+import {AssistantToolFactory, CodayTool} from "../assistant-tool-factory"
 import {FunctionTool} from "../types"
 
 export class GitLabTools extends AssistantToolFactory {
@@ -18,8 +18,8 @@ export class GitLabTools extends AssistantToolFactory {
     return this.lastToolInitContext?.project.root !== context.project.root
   }
   
-  protected buildTools(context: CommandContext): Tool[] {
-    const result: Tool[] = []
+  protected buildTools(context: CommandContext): CodayTool[] {
+    const result: CodayTool[] = []
     const gitlab = integrationService.getIntegration("GITLAB")
     if (!gitlab) {
       return result

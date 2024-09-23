@@ -1,7 +1,7 @@
 import {retrieveJiraTicket} from "./retrieve-jira-ticket"
 import {integrationService} from "../../service/integration.service"
 import {CommandContext, Interactor} from "../../model"
-import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
+import {AssistantToolFactory, CodayTool} from "../assistant-tool-factory"
 import {FunctionTool} from "../types"
 
 export class JiraTools extends AssistantToolFactory {
@@ -14,8 +14,8 @@ export class JiraTools extends AssistantToolFactory {
     return this.lastToolInitContext?.project.root !== context.project.root
   }
   
-  protected buildTools(context: CommandContext): Tool[] {
-    const result: Tool[] = []
+  protected buildTools(context: CommandContext): CodayTool[] {
+    const result: CodayTool[] = []
     if (!integrationService.hasIntegration("JIRA")) {
       return result
     }

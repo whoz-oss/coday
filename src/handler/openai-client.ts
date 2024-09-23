@@ -3,7 +3,7 @@ import {AssistantStream} from "openai/lib/AssistantStream"
 import {Beta} from "openai/resources"
 import {AiClient, AssistantDescription, CommandContext, DEFAULT_DESCRIPTION, Interactor,} from "../model"
 import {Toolbox} from "../integration/toolbox"
-import {Tool} from "../integration/assistant-tool-factory"
+import {CodayTool} from "../integration/assistant-tool-factory"
 import {ToolCall} from "../integration/tool-call"
 import {filter, firstValueFrom, map, take} from "rxjs"
 import {ToolRequestEvent, ToolResponseEvent} from "../shared"
@@ -134,7 +134,7 @@ export class OpenaiClient implements AiClient {
     }
   }
   
-  private async processStream(stream: AssistantStream, tools: Tool[]) {
+  private async processStream(stream: AssistantStream, tools: CodayTool[]) {
     if (this.killed) {
       return
     }
