@@ -4,7 +4,7 @@ import {findFilesByName} from "../../function/find-files-by-name"
 import {listFilesAndDirectories} from "./list-files-and-directories"
 import {findFilesByText} from "./find-files-by-text"
 import {CommandContext, Interactor} from "../../model"
-import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
+import {AssistantToolFactory, CodayTool} from "../assistant-tool-factory"
 import {FunctionTool} from "../types"
 import {unlinkFile} from "./unlink-file"
 import {readFileByPath} from "../../function/read-file-by-path"
@@ -19,8 +19,8 @@ export class FileTools extends AssistantToolFactory {
     return true
   }
   
-  protected buildTools(context: CommandContext): Tool[] {
-    const result: Tool[] = []
+  protected buildTools(context: CommandContext): CodayTool[] {
+    const result: CodayTool[] = []
     const removeFile = ({path}: { path: string }) => {
       return unlinkFile(path, this.interactor)
     }

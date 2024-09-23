@@ -6,14 +6,14 @@ import {GitTools} from "./git/git.tools"
 import {ScriptsTools} from "./scripts.tools"
 import {GitLabTools} from "./gitlab/gitlab.tools"
 import {MemoryTools} from "./memory.tools"
-import {AssistantToolFactory, Tool} from "./assistant-tool-factory"
+import {AssistantToolFactory, CodayTool} from "./assistant-tool-factory"
 import {filter} from "rxjs"
 import {ConfluenceTools} from "./confluence/confluence.tools"
 import {ToolRequestEvent} from "../shared"
 
 export class Toolbox {
   private toolFactories: AssistantToolFactory[]
-  private tools: Tool[] = []
+  private tools: CodayTool[] = []
   
   constructor(interactor: Interactor) {
     this.toolFactories = [
@@ -32,7 +32,7 @@ export class Toolbox {
     ).subscribe(async (toolRequest) => this.runTool(toolRequest, interactor))
   }
   
-  getTools(context: CommandContext): Tool[] {
+  getTools(context: CommandContext): CodayTool[] {
     this.tools = this.toolFactories.flatMap((factory) => factory.getTools(context))
     return this.tools
   }

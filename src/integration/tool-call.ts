@@ -1,5 +1,5 @@
 export interface ToolCall {
-  id: string
+  id?: string
   name: string
   args: string
 }

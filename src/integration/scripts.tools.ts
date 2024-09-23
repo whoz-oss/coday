@@ -1,6 +1,6 @@
 import {runBash} from "../function/run-bash"
 import {CommandContext, Interactor, Scripts} from "../model"
-import {AssistantToolFactory, Tool} from "./assistant-tool-factory"
+import {AssistantToolFactory, CodayTool} from "./assistant-tool-factory"
 import {FunctionTool} from "./types"
 
 const PARAMETERS: string = "PARAMETERS"
@@ -15,8 +15,8 @@ export class ScriptsTools extends AssistantToolFactory {
     return this.lastToolInitContext?.project.scripts !== context.project.scripts
   }
   
-  protected buildTools(context: CommandContext): Tool[] {
-    const result: Tool[] = []
+  protected buildTools(context: CommandContext): CodayTool[] {
+    const result: CodayTool[] = []
     
     const scripts: Scripts | undefined = context.project.scripts
     const scriptFunctions = scripts ?
@@ -40,15 +40,15 @@ export class ScriptsTools extends AssistantToolFactory {
           function: {
             name: entry[0],
             description: entry[1].description,
-            parameters: {
+            parameters: entry[1].parametersDescription ? {
               type: "object",
-              properties: entry[1].parametersDescription ? {
+              properties: {
                 stringParameters: {
                   type: "string",
                   description: entry[1].parametersDescription
                 }
-              } : {}
-            },
+              }
+            } : undefined,
             parse: JSON.parse,
             function: script
           }

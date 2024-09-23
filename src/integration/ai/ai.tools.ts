@@ -1,5 +1,5 @@
 import {CommandContext, Interactor} from "../../model"
-import {AssistantToolFactory, Tool} from "../assistant-tool-factory"
+import {AssistantToolFactory, CodayTool} from "../assistant-tool-factory"
 import {FunctionTool} from "../types"
 
 export class AiTools extends AssistantToolFactory {
@@ -11,8 +11,8 @@ export class AiTools extends AssistantToolFactory {
     return true
   }
   
-  protected buildTools(context: CommandContext): Tool[] {
-    const result: Tool[] = []
+  protected buildTools(context: CommandContext): CodayTool[] {
+    const result: CodayTool[] = []
     context.canSubTask(() => {
       const subTask = ({subTasks}: { subTasks: { description: string }[] }) => {
         subTasks.forEach(
