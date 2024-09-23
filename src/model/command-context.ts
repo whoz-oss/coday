@@ -2,7 +2,7 @@ import {Project} from "./project"
 
 export class CommandContext {
   private commandQueue: string[] = []
-  private subTaskCount: number = 0
+  private subTaskCount: number = -1
   oneshot: boolean = false
   
   constructor(
