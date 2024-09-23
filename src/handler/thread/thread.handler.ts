@@ -3,7 +3,7 @@ import {SelectThreadHandler} from "./select-thread.handler"
 import {SaveThreadHandler} from "./save-thread.handler"
 import {DeleteThreadHandler} from "./delete-thread.handler"
 import {LoadThreadHandler} from "./load-thread.handler"
-import {OpenaiClient} from "../openai-client"
+import {OpenaiClient} from "../openai.client"
 import {Interactor, NestedHandler} from "../../model"
 
 export class ThreadHandler extends NestedHandler {

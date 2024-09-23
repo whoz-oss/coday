@@ -1,6 +1,6 @@
 import {CommandContext, CommandHandler, Interactor} from "../../model"
 import {threadService} from "../../service/thread.service"
-import {OpenaiClient} from "../openai-client"
+import {OpenaiClient} from "../openai.client"
 
 export class SaveThreadHandler extends CommandHandler {
   constructor(

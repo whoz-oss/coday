@@ -1,7 +1,7 @@
 import {keywords} from "../../keywords"
 import {AiClient, CommandContext, CommandHandler, DEFAULT_DESCRIPTION, Interactor} from "../../model"
 
-export class OpenaiHandler extends CommandHandler {
+export class AiHandler extends CommandHandler {
   lastAssistantName?: string
   
   constructor(private interactor: Interactor, private aiClient: AiClient | undefined) {
@@ -78,7 +78,7 @@ export class OpenaiHandler extends CommandHandler {
       return undefined
     }
     const defaultAssistant = this.lastAssistantName || DEFAULT_DESCRIPTION.name
-    if (cmd[0] === " ") {
+    if (cmd[0] === " " || !this.aiClient?.multiAssistant) {
       return defaultAssistant
     }
     
@@ -90,6 +90,9 @@ export class OpenaiHandler extends CommandHandler {
   }
   
   private getMentionsToSearch(context: CommandContext): string[] | undefined {
+    if (!this.aiClient?.multiAssistant) {
+      return
+    }
     return (context.project.assistants
       ? [DEFAULT_DESCRIPTION, ...context.project.assistants]
       : undefined)

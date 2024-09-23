@@ -1,6 +1,8 @@
 import {CommandContext} from "../model"
 
 export interface AiClient {
+  multiAssistant: boolean
+  
   addMessage(
     message: string,
     context: CommandContext,
