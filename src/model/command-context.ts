@@ -4,6 +4,13 @@ export class CommandContext {
   private commandQueue: string[] = []
   private subTaskCount: number = -1
   oneshot: boolean = false
+  stackDepth: number = 1
+  
+  /**
+   * Garbage object for each handling implementation to add specific data
+   * Preferably organized by handler/client/class
+   */
+  data: any = {}
   
   constructor(
     readonly project: Project,
@@ -40,5 +47,14 @@ export class CommandContext {
   
   setSubTask(value: number): void {
     this.subTaskCount = value
+  }
+  
+  getSubContext(...commands: string[]): CommandContext {
+    const subContext = new CommandContext(this.project, this.username)
+    subContext.setSubTask(this.subTaskCount)
+    subContext.oneshot = this.oneshot
+    subContext.addCommands(...commands)
+    subContext.stackDepth = this.stackDepth - 1
+    return subContext
   }
 }

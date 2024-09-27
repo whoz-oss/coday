@@ -17,8 +17,11 @@ export class SelectThreadHandler extends CommandHandler {
   
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
     this.interactor.displayText("List of saved threads:")
-    const selectedThread = await selectThread(this.interactor, this.openaiClient.threadId)
-    this.openaiClient.threadId = selectedThread?.threadId ?? null
+    const selectedThread = await selectThread(this.interactor, context.data.openaiData?.threadId)
+    if (!context.data.openaiData) {
+      context.data.openaiData = {}
+    }
+    context.data.openaiData.threadId = selectedThread?.threadId ?? null
     return context
   }
 }

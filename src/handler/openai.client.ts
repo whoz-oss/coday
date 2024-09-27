@@ -17,7 +17,6 @@ type AssistantReference = { name: string; id: string }
 export class OpenaiClient implements AiClient {
   multiAssistant = true
   openai: OpenAI | undefined
-  threadId: string | null = null
   textAccumulator: string = ""
   private killed: boolean = false
   
@@ -57,7 +56,9 @@ export class OpenaiClient implements AiClient {
     }
     await this.createThread(context)
     
-    await this.openai!.beta.threads.messages.create(this.threadId!, {
+    const threadId = context.data.openaiData.threadId
+    
+    await this.openai!.beta.threads.messages.create(threadId, {
       role: "user",
       content: message,
     })
@@ -76,13 +77,14 @@ export class OpenaiClient implements AiClient {
     }
     
     const tools = this.toolBox.getTools(context)
+    const threadId = context.data.openaiData.threadId
     
-    await this.openai!.beta.threads.messages.create(this.threadId!, {
+    await this.openai!.beta.threads.messages.create(threadId!, {
       role: "user",
       content: command,
     })
     const assistantStream = this.openai!.beta.threads.runs.stream(
-      this.threadId!,
+      threadId!,
       {
         assistant_id: this.assistant!.id,
         tools: [...tools, {type: "file_search"}],
@@ -93,7 +95,7 @@ export class OpenaiClient implements AiClient {
       },
     )
     
-    await this.processStream(assistantStream, tools)
+    await this.processStream(assistantStream, tools, threadId)
     
     await assistantStream.finalRun()
     
@@ -101,7 +103,6 @@ export class OpenaiClient implements AiClient {
   }
   
   reset(): void {
-    this.threadId = null
     this.interactor.displayText("Thread has been reset")
   }
   
@@ -123,19 +124,25 @@ export class OpenaiClient implements AiClient {
   }
   
   private async createThread(context: CommandContext): Promise<void> {
-    if (!this.threadId) {
+    const openaiData = context.data.openaiData
+    if (!openaiData) {
+      context.data.openaiData = {}
+    }
+    
+    const threadId = context.data.openaiData?.threadId
+    if (!threadId) {
       const thread = await this.openai!.beta.threads.create()
-      this.threadId = thread.id
-      this.interactor.displayText(`Thread created with ID: ${this.threadId}`)
+      context.data.openaiData.threadId = thread.id
+      this.interactor.displayText(`Thread created with ID: ${thread.id}`)
       
-      await this.openai!.beta.threads.messages.create(this.threadId, {
+      await this.openai!.beta.threads.messages.create(thread.id, {
         role: "assistant",
         content: context.project.description,
       })
     }
   }
   
-  private async processStream(stream: AssistantStream, tools: CodayTool[]) {
+  private async processStream(stream: AssistantStream, tools: CodayTool[], threadId: string) {
     if (this.killed) {
       return
     }
@@ -173,12 +180,12 @@ export class OpenaiClient implements AiClient {
           
           const newStream =
             this.openai!.beta.threads.runs.submitToolOutputsStream(
-              this.threadId!,
+              threadId!,
               chunk.data.id,
               {tool_outputs: toolOutputs},
             )
           
-          await this.processStream.call(this, newStream, tools)
+          await this.processStream.call(this, newStream, tools, threadId)
         } catch (error) {
           console.error(`Error processing tool call`, error)
         }
