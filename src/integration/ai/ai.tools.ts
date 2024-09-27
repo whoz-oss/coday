@@ -53,6 +53,38 @@ export class AiTools extends AssistantToolFactory {
       result.push(subTaskTool)
     })
     
+    if (context.stackDepth > 0) {
+      const delegate = ({task}: { task: string }) => {
+        context.addCommands(`delegate ${task}`)
+        return "Task delegated to another process."
+      }
+      
+      const delegateTool: FunctionTool<{ task: string }> = {
+        type: "function",
+        function: {
+          name: "delegate",
+          description: `Delegate the completion of a task to another async process. Result will`,
+          parameters: {
+            type: "object",
+            properties: {
+              task: {
+                type: "string",
+                description: `Description of the task, expected to have the following structure :
+                
+                - context: a quick explanation of the parent context of the task
+                - task: description of the task to complete, with rather clear expectations and boundaries, but no suggested solution
+                - data: mention of files, piece of data or other constraints related to the task
+                - tools: optional, recommended tools to use if **very** relevant to the task.`,
+              }
+            }
+          },
+          parse: JSON.parse,
+          function: delegate
+        }
+      }
+      result.push(delegateTool)
+    }
+    
     if (!context.oneshot) {
       const queryUser = ({message}: { message: string }) => {
         const command = `add-query ${message}`

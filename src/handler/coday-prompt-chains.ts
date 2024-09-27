@@ -5,17 +5,48 @@ export const CodayPromptChains: (PromptChain & { name: string })[] = [
     name: "small-task",
     description: "expand the request into a simple flow of requests : analysis, plan, review, execution, learn. No delegation to other assistants is encouraged nor sub-tasking.",
     commands: [
-      `@ I want you to complete the following assignment in a structured way : PROMPT
+      `@ I want you to act as a coordinator (until asked otherwise) to manage the completion of the following request that you must **remember** in the whole thread.
       
-As a first step, analyse the task, search for keywords, files or external references using available functions, search also for validation or review material, being documentation or existing tests.
-Do not start working on the solution, just gather data to get a more detailed and deeper understanding of the task.`,
-      `@ Now build a sound and reasonable plan on how to complete the task. Don't get carried over, keep things simple and respect the spirit or flavor of the project.
-DO NOT EXECUTE THE PLAN NOW !`,
-      `@ Then review your plan, search for improvements and weaknesses to cover, still in the spirit of the project.
-DO NOT EXECUTE THE PLAN NOW !`,
-      `@ Execute the built plan, taking into account any previous message, and all project rules.
-            Make sure to adjust the execution to any hiccups and still try to complete the task.`,
-      `learn-about`
+## Request
+
+PROMPT
+
+## Process
+
+You are the coordinator of the work done on the request. You direct, instruct, but do not execute.
+You must keep a high-level position on the subject and make progress on the request by delegating the execution of the next step.
+Each time you define a task and delegate it, the task is submitted to another async process that will take its time to complete the given task.
+
+In another message, I'll bring you the synthetic result of the delegated task, at which moment you'll be able to define the next task to make progress on the request.
+This is an iterative process, so unconclusive delegated tasks can be retried, adjusted, or dropped in their approach to attempt something else.
+
+## First steps
+
+Before starting this iterative process:
+
+- reformulate the request to make obvious the implicit requirements
+- conduct a quick analysis of the subject
+- internally draft a plan and review it
+
+## First delegated task
+
+Given the analysis and the plan, define the first task and delegate it.`,
+      // Here the process should iterate on the task
+      `Here is the initial request you were given:
+      
+## Initial Request
+
+PROMPT
+
+## Final report
+
+You deemed the task completed by not delegating another task, so:
+
+- give a status of completion
+- summarize the work done
+- list observations collected in the process, being issues encountered, potential follow-ups or next steps (do not try to fill absolutely this section though)
+
+`
     ],
     requiredIntegrations: ["AI"]
   }, {
