@@ -14,7 +14,7 @@ export class SaveThreadHandler extends CommandHandler {
   }
   
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
-    const threadId = this.openaiClient.threadId
+    const threadId = context.data.openaiData?.threadId
     if (!threadId) {
       this.interactor.warn("Currently no thread started, nothing to save.")
       return context
