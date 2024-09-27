@@ -19,7 +19,7 @@ export class ListThreadHandler extends CommandHandler {
     if (!threads?.length) {
       this.interactor.displayText("No thread saved.")
     } else {
-      const currentThreadId = this.openaiClient.threadId
+      const currentThreadId = context.data.openaiData?.threadId
       this.interactor.displayText(`Saved threads:`)
       threads
         .map(t => `  - ${formatThread(t.threadId, t.name, currentThreadId)}`)

@@ -18,8 +18,12 @@ export class DeleteThreadHandler extends CommandHandler {
   
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
     this.interactor.displayText("Select the thread to delete:")
-    const selectedThread = await selectThread(this.interactor, this.openaiClient.threadId)
-    this.openaiClient.threadId = null
+    const selectedThread = await selectThread(this.interactor, context.data.openaiData?.threadId)
+    if (!context.data.openaiData) {
+      context.data.openaiData = {}
+    } else {
+      context.data.openaiData.threadId = null
+    }
     threadService.deleteThread(selectedThread?.threadId)
     this.interactor.displayText(`Deleted thread: ${selectedThread?.threadId}`)
     return context

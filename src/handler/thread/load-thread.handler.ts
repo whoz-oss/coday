@@ -20,7 +20,10 @@ export class LoadThreadHandler extends CommandHandler {
       this.interactor.warn("No threadId provided. Usage: thread load [threadId]")
       return context
     }
-    this.openaiClient.threadId = threadId
+    if (!context.data.openaiData) {
+      context.data.openaiData = {}
+    }
+    context.data.openaiData.threadId = threadId
     return context
   }
 }

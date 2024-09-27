@@ -19,6 +19,7 @@ import {
 import {integrationService} from "./service/integration.service"
 import {keywords} from "./keywords"
 import {OpenaiClient} from "./handler/openai.client"
+import {DelegateHandler} from "./handler/delegate.handler"
 
 const MAX_ITERATIONS = 100
 
@@ -30,23 +31,29 @@ export class HandlerLooper {
   
   constructor(
     private interactor: Interactor,
-    private openaiHandler: AiHandler,
+    private aiHandler: AiHandler,
     private aiClient: AiClient | undefined
   ) {
   }
   
   init(username: string, projectDescription: ProjectDescription | null) {
     try {
+      const subTaskHandler = new SubTaskHandler(this.interactor)
+      const queryHandler = new AddQueryHandler(this.interactor)
+      const memoryHandler = new MemoryHandler(this.interactor)
       this.handlers = [
         new ConfigHandler(this.interactor, username),
         new GitHandler(this.interactor),
         new RunBashHandler(this.interactor),
         new DebugHandler(this.interactor),
         new CodeFlowHandler(),
-        new SubTaskHandler(this.interactor),
-        new AddQueryHandler(this.interactor),
+        subTaskHandler,
+        queryHandler,
         new GitlabReviewHandler(),
-        new MemoryHandler(this.interactor),
+        memoryHandler,
+        new DelegateHandler(this.interactor, this.aiHandler, this.aiClient, [
+          subTaskHandler, queryHandler, memoryHandler
+        ])
       ]
       if (this.aiClient) {
         this.handlers.push(
@@ -83,8 +90,8 @@ export class HandlerLooper {
         }
       }
       
-      // Add openaiHandler at the end
-      this.handlers.push(this.openaiHandler)
+      // Add aiHandler at the end
+      this.handlers.push(this.aiHandler)
       
       // Apply filtering based on required integrations
       this.handlers = this.handlers.filter(handler =>
@@ -138,10 +145,10 @@ export class HandlerLooper {
         if (handler) {
           context = await handler.handle(currentCommand, context)
         } else {
-          if (!currentCommand.startsWith(this.openaiHandler.commandWord)) {
+          if (!currentCommand.startsWith(this.aiHandler.commandWord)) {
             // default case: repackage the command as an open question for AI
             context.addCommands(
-              `${this.openaiHandler.commandWord} ${currentCommand}`,
+              `${this.aiHandler.commandWord} ${currentCommand}`,
             )
           } else {
             this.interactor.error(`Could not handle request ${currentCommand}, check your AI integration`)
@@ -172,6 +179,6 @@ export class HandlerLooper {
   
   kill() {
     this.killed = true
-    this.openaiHandler.kill()
+    this.aiHandler.kill()
   }
 }
