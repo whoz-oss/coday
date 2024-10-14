@@ -2,8 +2,21 @@ import {Project} from "./project"
 
 export class CommandContext {
   private commandQueue: string[] = []
-  private subTaskCount: number = -1
+  /**
+   * Counter of remaining subTask slots "available"
+   * Purpose is to limit the abuse and constrain the use for a start
+   * @private
+   */
+  private subTaskCount: number = 0
+  
+  /**
+   * Precise if the process is to end itself upon completion or ask the user for another
+   */
   oneshot: boolean = false
+  
+  /**
+   * Depth of the stack of threads for delegation
+   */
   stackDepth: number = 1
   
   /**

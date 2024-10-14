@@ -33,6 +33,7 @@ export class DelegateHandler extends CommandHandler {
     let currentCommand: string | undefined
     const task = this.getSubCommand(command)
     let context = parentContext.getSubContext(task)
+    console.log(`starting inner loop...`)
     do {
       if (this.killed) {
         // TODO: return something about being aborted ?
@@ -72,6 +73,7 @@ export class DelegateHandler extends CommandHandler {
     } while (
       !!currentCommand || count < this.maxIterations
       )
+    console.log("...loop ended, doing report...")
     let report = ""
     if (count >= this.maxIterations) {
       report = "Maximum iterations reached for a command, could not complete the task"
@@ -79,11 +81,12 @@ export class DelegateHandler extends CommandHandler {
     } else {
       // Do post-task actions
       report = await this.aiClient!.answer(DEFAULT_DESCRIPTION.name, reportPrompt(task), context)
+      console.log("...report done")
     }
     
-    context.addCommands(resumeWork(task, report))
+    parentContext.addCommands(resumeWork(task, report))
     
-    return context
+    return parentContext
   }
 }
 
