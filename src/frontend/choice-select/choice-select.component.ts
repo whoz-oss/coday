@@ -23,6 +23,7 @@ export class ChoiceSelectComponent implements CodayEventHandler {
         const response = await this.postEvent(answer)
         if (!response.ok) {
           this.choiceForm.style.display = "block"
+          this.choiceSelect.focus()
           console.error("Failed to send message.")
         }
       } catch (error) {
@@ -39,5 +40,6 @@ export class ChoiceSelectComponent implements CodayEventHandler {
     this.choiceLabel.innerHTML = `${this.choiceEvent?.optionalQuestion} ${this.choiceEvent?.invite}`
     this.choiceSelect.innerHTML = this.choiceEvent?.options.map(option => `<option value="${option}">${option}</option>`).join("")
     this.choiceForm.style.display = "block"
+    this.choiceSelect.focus()
   }
 }
