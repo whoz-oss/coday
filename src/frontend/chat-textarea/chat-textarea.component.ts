@@ -37,6 +37,7 @@ export class ChatTextareaComponent implements CodayEventHandler {
       this.inviteEvent = event
       this.chatLabel.innerHTML = this.inviteEvent.invite
       this.chatForm.style.display = "block"
+      this.chatTextarea.focus()
       if (this.inviteEvent.defaultValue) {
         this.chatTextarea.value = this.inviteEvent.defaultValue
       }
@@ -55,6 +56,7 @@ export class ChatTextareaComponent implements CodayEventHandler {
         this.chatTextarea.value = ""
       } else {
         this.chatForm.style.display = "block"
+        this.chatTextarea.focus()
         console.error("Failed to send message.")
       }
     } catch (error) {
