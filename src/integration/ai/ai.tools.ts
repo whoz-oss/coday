@@ -15,10 +15,11 @@ export class AiTools extends AssistantToolFactory {
     const result: CodayTool[] = []
     context.canSubTask(() => {
       const subTask = ({subTasks}: { subTasks: { description: string }[] }) => {
-        subTasks.forEach(
-          subTask => this.interactor.displayText(`Sub-task received: ${subTask.description}`)
+        const formatted = subTasks.map(subTask => `@ ${subTask.description}`)
+        formatted.forEach(
+          command => this.interactor.displayText(`Sub-task received: ${command}`)
         )
-        if (context.addSubTasks(...subTasks.map(subTask => subTask.description))) {
+        if (context.addSubTasks(...formatted)) {
           return "sub-tasks received and queued for execution, will be runned after this current run."
         }
         return "sub-tasks could not be queued, no more sub-tasking allowed for now."

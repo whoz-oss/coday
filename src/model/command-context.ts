@@ -7,7 +7,7 @@ export class CommandContext {
    * Purpose is to limit the abuse and constrain the use for a start
    * @private
    */
-  private subTaskCount: number = 0
+  private subTaskCount: number = -1
   
   /**
    * Precise if the process is to end itself upon completion or ask the user for another
@@ -17,7 +17,7 @@ export class CommandContext {
   /**
    * Depth of the stack of threads for delegation
    */
-  stackDepth: number = 1
+  stackDepth: number = 0
   
   /**
    * Garbage object for each handling implementation to add specific data
@@ -69,5 +69,14 @@ export class CommandContext {
     subContext.addCommands(...commands)
     subContext.stackDepth = this.stackDepth - 1
     return subContext
+  }
+  
+  cloneWithoutCommands(): CommandContext {
+    const clone = new CommandContext(this.project, this.username)
+    clone.setSubTask(this.subTaskCount)
+    clone.oneshot = this.oneshot
+    clone.stackDepth = this.stackDepth
+    clone.data = this.data
+    return clone
   }
 }

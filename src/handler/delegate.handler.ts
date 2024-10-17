@@ -3,6 +3,7 @@ import {AiHandler} from "./openai/ai.handler"
 
 export class DelegateHandler extends CommandHandler {
   private handlers: CommandHandler[] = []
+  // TODO: add kill method
   private killed: boolean = false
   
   constructor(

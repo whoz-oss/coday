@@ -20,6 +20,7 @@ import {integrationService} from "./service/integration.service"
 import {keywords} from "./keywords"
 import {OpenaiClient} from "./handler/openai.client"
 import {DelegateHandler} from "./handler/delegate.handler"
+import {IterateHandler} from "./handler/iterate.handler"
 
 const MAX_ITERATIONS = 100
 
@@ -52,6 +53,9 @@ export class HandlerLooper {
         new GitlabReviewHandler(),
         memoryHandler,
         new DelegateHandler(this.interactor, this.aiHandler, this.aiClient, [
+          subTaskHandler, queryHandler, memoryHandler
+        ]),
+        new IterateHandler(this.interactor, this.aiHandler, this.aiClient, [
           subTaskHandler, queryHandler, memoryHandler
         ])
       ]
