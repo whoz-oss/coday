@@ -2,7 +2,6 @@ import {memoryService} from "../service/memory.service"
 import {CommandContext, Interactor} from "../model"
 import {AssistantToolFactory, CodayTool} from "./assistant-tool-factory"
 import {FunctionTool} from "./types"
-import {integrationService} from "../service/integration.service"
 import {MemoryLevel} from "../model/memory"
 
 const MemoryLevels = [MemoryLevel.PROJECT, MemoryLevel.USER]
@@ -19,10 +18,6 @@ export class MemoryTools extends AssistantToolFactory {
   
   protected buildTools(context: CommandContext): CodayTool[] {
     const result: CodayTool[] = []
-    
-    if (!integrationService.hasIntegration("MEMORY")) {
-      return result
-    }
     
     const memorize = async ({title, content, level}: { title: string, content: string, level: string }) => {
       const parsedLevel: MemoryLevel = level === "USER" ? MemoryLevel.USER : MemoryLevel.PROJECT
