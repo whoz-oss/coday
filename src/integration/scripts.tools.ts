@@ -48,7 +48,10 @@ export class ScriptsTools extends AssistantToolFactory {
                   description: entry[1].parametersDescription
                 }
               }
-            } : undefined,
+            } : {
+              type: "object",
+              properties: {}
+            },
             parse: JSON.parse,
             function: script
           }

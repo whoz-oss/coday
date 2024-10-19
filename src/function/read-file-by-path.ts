@@ -1,5 +1,4 @@
 import {readFileSync} from "fs"
-import {existsSync} from "node:fs"
 import {Interactor} from "../model"
 import path from "path"
 
@@ -15,11 +14,7 @@ export const readFileByPath = (input: ReadFileByPathInput) => {
   const fullPath = relPath ? path.resolve(root, relPath) : root
   try {
     interactor?.displayText(`reading file ${fullPath}`)
-    if (existsSync(fullPath)) {
-      return readFileSync(fullPath).toString()
-    } else {
-      return "File does not exist or path incorrect"
-    }
+    return readFileSync(fullPath).toString()
     
   } catch (err) {
     interactor?.error(`Error reading file ${fullPath}`)

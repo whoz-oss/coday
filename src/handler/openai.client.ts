@@ -5,7 +5,7 @@ import {AiClient, AssistantDescription, CommandContext, DEFAULT_DESCRIPTION, Int
 import {Toolbox} from "../integration/toolbox"
 import {CodayTool} from "../integration/assistant-tool-factory"
 import {ToolCall} from "../integration/tool-call"
-import {filter, firstValueFrom, map, take} from "rxjs"
+import {filter, first, firstValueFrom, map} from "rxjs"
 import {ToolRequestEvent, ToolResponseEvent} from "../shared"
 import Assistant = Beta.Assistant
 
@@ -170,7 +170,7 @@ export class OpenaiClient implements AiClient {
               const toolResponse = this.interactor.events.pipe(
                 filter(event => event instanceof ToolResponseEvent),
                 filter(response => response.toolRequestId === toolRequest.toolRequestId),
-                take(1),
+                first(),
                 map(response => ({tool_call_id: call.id, output: response.output}))
               )
               this.interactor.sendEvent(toolRequest)
