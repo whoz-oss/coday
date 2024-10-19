@@ -2,6 +2,7 @@ import {integrationService} from "../../service/integration.service"
 import {OpenaiClient} from "../../handler/openai.client"
 import {AiClient, Interactor} from "../../model"
 import {GeminiClient} from "../../handler/gemini.client"
+import {ClaudeClient} from "../../handler/claude.client";
 
 export function aiClientProvider(interactor: Interactor): AiClient | undefined {
   if (integrationService.hasIntegration("OPENAI")) {
@@ -14,7 +15,7 @@ export function aiClientProvider(interactor: Interactor): AiClient | undefined {
   }
   if (integrationService.hasIntegration("ANTHROPIC_CLAUDE")) {
     const apiKeyProvider = () => integrationService.getApiKey("ANTHROPIC_CLAUDE")
-    throw Error("Claude not implemented yet")
+    return new ClaudeClient(interactor, apiKeyProvider)
   }
   return
 }

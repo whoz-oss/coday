@@ -28,7 +28,6 @@ export class IterateHandler extends CommandHandler {
     let count = 0
     const initialCommand = this.getSubCommand(command)
     const nextWorkPrompt = this.assessAndDefineNextTask(initialCommand)
-    console.log(`Starting iteration process...`, nextWorkPrompt)
     
     // TODO: context should have its command queue saved and temporarily replaced by an empty one, to let the exhaustion work properly.
     let loopContext = context.cloneWithoutCommands()
