@@ -90,9 +90,7 @@ export const loadOrInitProjectDescription = async (projectPath: string, interact
     
     You are interacting with a human with username: ${username}`
   
-  const userMemories = integrationService.hasIntegration("MEMORY")
-    ? memoryService.listMemories(MemoryLevel.USER).map(m => `  - ${m.title}\n    ${m.content}`)
-    : null
+  const userMemories = memoryService.listMemories(MemoryLevel.USER).map(m => `  - ${m.title}\n    ${m.content}`)
   let userMemoryText = ""
   if (userMemories) {
     interactor.displayText(`Loaded ${userMemories.length} user memories`)
@@ -104,9 +102,7 @@ export const loadOrInitProjectDescription = async (projectPath: string, interact
     }
   }
   
-  const projectMemories = integrationService.hasIntegration("MEMORY")
-    ? memoryService.listMemories(MemoryLevel.PROJECT).map(m => `  - ${m.title}\n    ${m.content}`)
-    : null
+  const projectMemories = memoryService.listMemories(MemoryLevel.PROJECT).map(m => `  - ${m.title}\n    ${m.content}`)
   let projectMemoryText = ""
   if (projectMemories) {
     interactor.displayText(`Loaded ${projectMemories.length} project memories`)
@@ -120,9 +116,7 @@ export const loadOrInitProjectDescription = async (projectPath: string, interact
   
   const memoryNote = "\n\nYou are higly encouraged to reflect at the end of each request on the knowledge that could be gained from the collected information, formalize it as new or updated memories and store them."
   const memoryText = userMemoryText || projectMemoryText ? `${userMemoryText}${projectMemoryText}${memoryNote}`
-    : integrationService.hasIntegration("MEMORY")
-      ? `No previous memories available.\n\n${memoryNote}`
-      : ""
+    : `No previous memories available.\n\n${memoryNote}`
   
   projectDescription.description += memoryText
   
