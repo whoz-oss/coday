@@ -85,6 +85,6 @@ You deemed the task completed by not delegating another task, so:
       Format it in markdown.
       Then memorize it, each subject at a time.`,
     ],
-    requiredIntegrations: ["AI", "MEMORY"]
+    requiredIntegrations: ["AI"]
   }
 ]
