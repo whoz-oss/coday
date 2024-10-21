@@ -9,8 +9,6 @@ export const Integrations: Record<string, string[]> = {
   GIT: [],
   GITLAB: [],
   JIRA: [],
-  LOCAL_MEMORY: [],
-  MEMORY: ["LOCAL_MEMORY"],
   OPENAI: [],
   GOOGLE_GEMINI: [],
 }
