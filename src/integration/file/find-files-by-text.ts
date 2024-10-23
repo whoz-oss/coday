@@ -45,9 +45,15 @@ export const findFilesByText = async ({
         clearTimeout(timer)
         resolve(stdout)
       })
-      .catch(({_, stderr}) => {
+      .catch(({code, stderr}) => {
         clearTimeout(timer)
-        reject(`Error: ${stderr}`)
+        if (code === 1) {
+          // Ripgrep returns code 1 when no matches found, treat as empty result
+          resolve("No match found")
+        } else {
+          console.error(stderr)
+          reject(`Error: ${stderr}`)
+        }
       })
   })
 }
