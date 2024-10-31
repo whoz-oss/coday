@@ -37,7 +37,7 @@ export const writeFileChunk = ({relPath, root, interactor, replacements}: WriteF
     let tooShortChunks: string[] = []
     
     // Perform replacements for each pair of old and new parts
-    replacements.forEach(({oldPart, newPart}) => {
+    replacements?.forEach(({oldPart, newPart}) => {
       if (oldPart.length < MINIMUM_CHUNK_LENGTH) {
         tooShortChunks.push(oldPart)
         return

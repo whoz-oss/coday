@@ -6,12 +6,13 @@ type FindFilesInput = {
   path?: string
   root: string
   interactor?: Interactor
-  timeout?: number
+  timeout?: number,
+  limit?: number
 }
 
 const defaultTimeout = 5000
 
-export const findFilesByName = async ({text, path, root, interactor, timeout}: FindFilesInput) => {
+export const findFilesByName = async ({text, path, root, interactor, timeout, limit}: FindFilesInput) => {
   // need to prevent double slashes
   const tweakedPath = path?.startsWith("/")
     ? path.substring(1)
@@ -30,5 +31,6 @@ export const findFilesByName = async ({text, path, root, interactor, timeout}: F
   })
   interactor?.displayText(`Found ${results.length} files.`)
   
-  return results
+  
+  return (!limit || results.length < limit) ? results : [`Search returned too many results (${results.length}), try again with a more restrictive search.`]
 }
