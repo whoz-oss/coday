@@ -127,7 +127,7 @@ export class FileTools extends AssistantToolFactory {
     result.push(writeFileChunkTool)
     
     const searchProjectFile = ({text, path}: { text: string, path?: string }) => {
-      return findFilesByName({text, path, root: context.project.root, interactor: this.interactor})
+      return findFilesByName({text, path, root: context.project.root, interactor: this.interactor, limit: 100})
     }
     
     const searchProjectFileFunction: FunctionTool<{ text: string, path?: string }> = {
