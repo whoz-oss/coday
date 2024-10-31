@@ -1,26 +1,27 @@
-import axios from 'axios';
-import {Interactor} from "../../model/interactor";
+import axios from "axios"
+import {Interactor} from "../../model/interactor"
 
-export async function addGlobalComment({ mergeRequestId, comment, gitlabBaseUrl, gitlabApiToken, interactor }: {
-    mergeRequestId: string,
-    comment: string,
-    gitlabBaseUrl: string,
-    gitlabApiToken: string,
-    interactor: Interactor
+export async function addGlobalComment({mergeRequestId, comment, gitlabBaseUrl, gitlabApiToken, interactor}: {
+  mergeRequestId: string,
+  comment: string,
+  gitlabBaseUrl: string,
+  gitlabApiToken: string,
+  interactor: Interactor
 }): Promise<string> {
-    const headers = { 'PRIVATE-TOKEN': gitlabApiToken }
-    const url = new URL(`/merge_requests/${mergeRequestId}/notes`, gitlabBaseUrl).toString()
-
-    try {
-        interactor.displayText("Add MR note")
-        const response = await axios.post(url, { body: comment }, { headers });
-        if (response.status >= 400) {
-            return `Error: ${response.status} with data: ${response.data}`;
-        }
-        return JSON.stringify(response.data);
-    } catch (error:any) {
-        console.error(error);
-        return `Error: ${error}`;
-    }
+  const headers = {"PRIVATE-TOKEN": gitlabApiToken}
+  // gitlabBaseUrl already contains the project path from integration setup
+  const url = `${gitlabBaseUrl}/merge_requests/${mergeRequestId}/notes`
+  
+  try {
+    interactor.displayText("Adding note to MR...")
+    const response = await axios.post(url, {body: comment}, {headers})
+    interactor.displayText("Note added successfully")
+    return JSON.stringify(response.data)
+  } catch (error: any) {
+    const errorMessage = error.response
+      ? `GitLab API error: ${error.response.status} - ${JSON.stringify(error.response.data)}`
+      : `Network error: ${error.message}`
+    interactor.error(errorMessage)
+    throw new Error(errorMessage)
+  }
 }
-
