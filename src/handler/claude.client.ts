@@ -5,8 +5,21 @@ import {Toolbox} from "../integration/toolbox"
 import {ToolCall} from "../integration/tool-call"
 import {ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
 import {filter, first, firstValueFrom, map, Observable} from "rxjs"
+import {AiProvider, ModelSize} from "../model/agent-definition"
+
+const ClaudeModels = {
+  [ModelSize.BIG]: {
+    model: "claude-3-5-sonnet-latest",
+    contextWindow: 200000
+  },
+  [ModelSize.SMALL]: {
+    model: "claude-3-haiku-20240307",
+    contextWindow: 200000
+  }
+}
 
 export class ClaudeClient implements AiClient {
+  aiProvider: AiProvider = "ANTHROPIC"
   multiAssistant = true
   private apiKey: string | undefined
   private textAccumulator: string = ""
@@ -16,8 +29,8 @@ export class ClaudeClient implements AiClient {
   toolBox: Toolbox
   
   constructor(
-    private interactor: Interactor,
-    private apiKeyProvider: () => string | undefined,
+    private readonly interactor: Interactor,
+    private readonly apiKeyProvider: () => string | undefined,
   ) {
     this.toolBox = new Toolbox(interactor)
   }
@@ -80,7 +93,12 @@ export class ClaudeClient implements AiClient {
     return this.textAccumulator
   }
   
-  async processMessages(messages: MessageParam[], assistant: AssistantDescription, tools: Tool[], context: CommandContext): Promise<void> {
+  async processMessages(
+    messages: MessageParam[],
+    assistant: AssistantDescription,
+    tools: Tool[],
+    context: CommandContext
+  ): Promise<void> {
     if (this.killed) {
       return
     }
@@ -92,8 +110,10 @@ ${context.project.description}
 </project-context>`
     
     try {
+      // TODO: trigger messages summarization if needed just before calling
+      
       const response = await this.client!.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: ClaudeModels[ModelSize.BIG].model,
         messages,
         system: system,
         tools,
@@ -102,13 +122,17 @@ ${context.project.description}
       
       const text = response?.content?.filter(block => block.type === "text").map(block => block.text).join("\n")
       this.textAccumulator += text
-      this.interactor.displayText(text, assistant.name) // TODO: adjust when taking into account the assistant name
+      this.interactor.displayText(text, assistant.name)
       
       // push a compacted version of the assistant text response
-      messages.push({role: "assistant", content: text})
+      if (text) {
+        messages.push({role: "assistant", content: text})
+      }
       
       const toolUseBlocks = response?.content.filter(block => block.type === "tool_use")
-      messages.push({role: "assistant", content: toolUseBlocks})
+      if (toolUseBlocks?.length) {
+        messages.push({role: "assistant", content: toolUseBlocks})
+      }
       const toolUses: ToolCall[] = toolUseBlocks.map(block => ({
         id: block.id,
         name: block.name,

@@ -10,8 +10,10 @@ import {ToolCall} from "../integration/tool-call"
 import {ToolRequestEvent, ToolResponseEvent} from "../shared" // TODO: fix ts config ???
 import {filter, firstValueFrom, map, take} from "rxjs"
 import {CodayTool} from "../integration/assistant-tool-factory"
+import {AiProvider} from "../model/agent-definition"
 
 export class GeminiClient implements AiClient {
+  aiProvider: AiProvider = "GOOGLE"
   multiAssistant = false
   private apiKey: string | undefined
   private genAI: GoogleGenerativeAI | undefined
@@ -48,7 +50,7 @@ export class GeminiClient implements AiClient {
         model: "gemini-1.5-pro",
         tools: [{functionDeclarations: this.tools.map(t => t.function as unknown as FunctionDeclaration)}],
         systemInstruction: `${DEFAULT_DESCRIPTION.description}\n\n${context.project.description}`
-      }).startChat({generationConfig: {maxOutputTokens: 100000, temperature: 0.8}})
+      }).startChat({generationConfig: {maxOutputTokens: 10000, temperature: 0.8}})
       
       this.interactor.displayText(`Chat created with ID: ${this.threadId}`)
     }
