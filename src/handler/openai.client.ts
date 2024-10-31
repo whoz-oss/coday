@@ -7,6 +7,7 @@ import {CodayTool} from "../integration/assistant-tool-factory"
 import {ToolCall} from "../integration/tool-call"
 import {filter, first, firstValueFrom, map} from "rxjs"
 import {ToolRequestEvent, ToolResponseEvent} from "../shared"
+import {AiProvider} from "../model/agent-definition"
 import Assistant = Beta.Assistant
 
 const DEFAULT_MODEL: string = "gpt-4o"
@@ -15,6 +16,7 @@ const DEFAULT_TEMPERATURE: number = 0.75
 type AssistantReference = { name: string; id: string }
 
 export class OpenaiClient implements AiClient {
+  aiProvider: AiProvider = "OPENAI"
   multiAssistant = true
   openai: OpenAI | undefined
   textAccumulator: string = ""
