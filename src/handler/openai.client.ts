@@ -3,11 +3,10 @@ import {AssistantStream} from "openai/lib/AssistantStream"
 import {Beta} from "openai/resources"
 import {AiClient, AssistantDescription, CommandContext, DEFAULT_DESCRIPTION, Interactor,} from "../model"
 import {Toolbox} from "../integration/toolbox"
-import {CodayTool} from "../integration/assistant-tool-factory"
 import {ToolCall} from "../integration/tool-call"
-import {filter, first, firstValueFrom, map} from "rxjs"
-import {ToolRequestEvent, ToolResponseEvent} from "../shared"
+import {ToolRequestEvent} from "../shared"
 import {AiProvider} from "../model/agent-definition"
+import {ToolSet} from "../integration/tool-set"
 import Assistant = Beta.Assistant
 
 const DEFAULT_MODEL: string = "gpt-4o"
@@ -79,6 +78,8 @@ export class OpenaiClient implements AiClient {
     }
     
     const tools = this.toolBox.getTools(context)
+    // Create new toolSet instance with current context tools
+    const toolSet = new ToolSet(tools)
     const threadId = context.data.openaiData.threadId
     
     await this.openai!.beta.threads.messages.create(threadId!, {
@@ -97,7 +98,7 @@ export class OpenaiClient implements AiClient {
       },
     )
     
-    await this.processStream(assistantStream, tools, threadId)
+    await this.processStream(assistantStream, toolSet, threadId)
     
     await assistantStream.finalRun()
     
@@ -144,7 +145,7 @@ export class OpenaiClient implements AiClient {
     }
   }
   
-  private async processStream(stream: AssistantStream, tools: CodayTool[], threadId: string) {
+  private async processStream(stream: AssistantStream, toolSet: ToolSet, threadId: string) {
     if (this.killed) {
       return
     }
@@ -169,14 +170,8 @@ export class OpenaiClient implements AiClient {
                 args: call.function.arguments
               }
               const toolRequest = new ToolRequestEvent(toolCall)
-              const toolResponse = this.interactor.events.pipe(
-                filter(event => event instanceof ToolResponseEvent),
-                filter(response => response.toolRequestId === toolRequest.toolRequestId),
-                first(),
-                map(response => ({tool_call_id: call.id, output: response.output}))
-              )
-              this.interactor.sendEvent(toolRequest)
-              return firstValueFrom(toolResponse)
+              const output = await toolSet.runTool(toolRequest)
+              return ({tool_call_id: call.id, output})
             }),
           )
           
@@ -187,7 +182,7 @@ export class OpenaiClient implements AiClient {
               {tool_outputs: toolOutputs},
             )
           
-          await this.processStream.call(this, newStream, tools, threadId)
+          await this.processStream.call(this, newStream, toolSet, threadId)
         } catch (error) {
           console.error(`Error processing tool call`, error)
         }
