@@ -53,6 +53,35 @@ export class MemoryTools extends AssistantToolFactory {
     }
     result.push(addMemoryTool)
     
+    const deleteMemoryFunction = async ({title}: { title: string }) => {
+      try {
+        memoryService.deleteMemory(title)
+        this.interactor.displayText(`Deleted memory: ${title}`)
+        return `Memory deleted: ${title}`
+      } catch (error) {
+        const errorMessage = `Failed to delete memory: ${error instanceof Error ? error.message : "Unknown error"}`
+        this.interactor.error(errorMessage)
+        return errorMessage
+      }
+    }
+    
+    const deleteMemoryTool: FunctionTool<{ title: string }> = {
+      type: "function",
+      function: {
+        name: "deleteMemory",
+        description: "Delete a memory entry by its title.",
+        parameters: {
+          type: "object",
+          properties: {
+            title: {type: "string", description: "Title of the memory to delete."}
+          }
+        },
+        parse: JSON.parse,
+        function: deleteMemoryFunction
+      }
+    }
+    result.push(deleteMemoryTool)
+    
     return result
   }
   
