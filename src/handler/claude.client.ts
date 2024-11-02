@@ -1,10 +1,10 @@
 import {AiClient, AssistantDescription, CommandContext, DEFAULT_DESCRIPTION, Interactor} from "../model"
 import Anthropic from "@anthropic-ai/sdk"
-import {MessageParam, Tool, ToolResultBlockParam} from "@anthropic-ai/sdk/resources"
+import {MessageParam} from "@anthropic-ai/sdk/resources"
 import {Toolbox} from "../integration/toolbox"
 import {ToolCall} from "../integration/tool-call"
-import {ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
-import {filter, first, firstValueFrom, map, Observable} from "rxjs"
+import {ToolSet} from "../integration/tool-set"
+import {ToolRequestEvent} from "../shared/coday-events"
 import {AiProvider, ModelSize} from "../model/agent-definition"
 
 const ClaudeModels = {
@@ -35,7 +35,7 @@ export class ClaudeClient implements AiClient {
     this.toolBox = new Toolbox(interactor)
   }
   
-  async isReady(assistantName: string, context: CommandContext): Promise<boolean> {
+  async isReady(): Promise<boolean> {
     this.apiKey = this.apiKeyProvider()
     if (this.apiKey) {
       this.client = new Anthropic({
@@ -51,12 +51,17 @@ export class ClaudeClient implements AiClient {
   
   async addMessage(message: string, context: CommandContext): Promise<void> {
     // Implement add message logic if applicable
-    this.interactor.error("NOT IMPLEMENTED YET !!!")
+    this.interactor.error("NOT IMPLEMENTED !!!")
+    
+    /*
+    addMessage should be done at AiThread level instead of inside the client.
+    Client should only process a command with a given thread, not manage data
+     */
   }
   
   async answer(name: string, command: string, context: CommandContext): Promise<string> {
     this.textAccumulator = ""
-    if (!(await this.isReady(name, context))) {
+    if (!(await this.isReady())) {
       return "Claude client not ready"
     }
     
@@ -71,37 +76,46 @@ export class ClaudeClient implements AiClient {
         messages
       }
     }
+    // Message accumulator equivalent to thread
     const messages: MessageParam[] = context.data.claudeData.messages
     
+    // Create new toolSet instance with current context tools
+    const toolSet = new ToolSet(this.toolBox.getTools(context))
     
     // add command to history
     messages.push({role: "user", content: command})
     
-    // map tool definitions to match Anthropic's API
-    const tools: Tool[] = this.toolBox.getTools(context).map(t => ({
+    await this.processMessages(messages, DEFAULT_DESCRIPTION, toolSet, context)
+    
+    return this.textAccumulator
+  }
+  
+  /**
+   * Map tool definitions to match Anthropic's API
+   *
+   * @param toolSet
+   * @private
+   */
+  private getClaudeTools(toolSet: ToolSet) {
+    return toolSet.getTools().map(t => ({
         name: t.function.name,
         description: t.function.description,
         input_schema: t.function.parameters
       })
     )
-    
-    // TODO: re-enable multi-assistant with a more stable conversation mechanism
-    // const lowerCaseName = name.toLowerCase()
-    // const assistant = context.project.assistants?.find(a => a.name.toLowerCase().startsWith(lowerCaseName)) ?? DEFAULT_DESCRIPTION
-    await this.processMessages(messages, DEFAULT_DESCRIPTION, tools, context)
-    
-    return this.textAccumulator
   }
   
   async processMessages(
-    messages: MessageParam[],
-    assistant: AssistantDescription,
-    tools: Tool[],
-    context: CommandContext
+    messages: MessageParam[], // TODO: replace later by AiThread
+    assistant: AssistantDescription, // TODO: replace by AgentDefinition
+    toolSet: ToolSet,
+    context: CommandContext // TODO: integrate relevant infos into AiThread ? Used just for project.description ?
   ): Promise<void> {
     if (this.killed) {
       return
     }
+    
+    const thinking = setInterval(() => this.interactor.thinking(), 3000)
     
     // define system instructions for the model (to be done each call)
     const system = `${assistant.systemInstructions}\n\n
@@ -116,9 +130,11 @@ ${context.project.description}
         model: ClaudeModels[ModelSize.BIG].model,
         messages,
         system: system,
-        tools,
+        tools: this.getClaudeTools(toolSet),
         max_tokens: 8192, // max powaaaa, let's ai-roast the planet !!!
       })
+      
+      clearInterval(thinking)
       
       const text = response?.content?.filter(block => block.type === "text").map(block => block.text).join("\n")
       this.textAccumulator += text
@@ -136,20 +152,18 @@ ${context.project.description}
       const toolUses: ToolCall[] = toolUseBlocks.map(block => ({
         id: block.id,
         name: block.name,
-        args: JSON.stringify(block.input)
+        args: JSON.stringify(block.input) // TODO: avoid stringification because just parsed after...
       }))
       
       const toolOutputs = await Promise.all(
-        toolUses.map(async (call) => {
+        toolUses.map(async (call: ToolCall) => {
           const toolRequest = new ToolRequestEvent(call)
-          const toolResponse: Observable<ToolResultBlockParam> = this.interactor.events.pipe(
-            filter(event => event instanceof ToolResponseEvent),
-            filter(response => response.toolRequestId === toolRequest.toolRequestId),
-            first(),
-            map(response => ({type: "tool_result", tool_use_id: call.id!, content: response.output})),
-          )
-          this.interactor.sendEvent(toolRequest)
-          return firstValueFrom(toolResponse)
+          const output = await toolSet.runTool(toolRequest)
+          return {
+            type: "tool_result" as const,
+            tool_use_id: call.id!,
+            content: output
+          }
         })
       )
       
@@ -161,7 +175,7 @@ ${context.project.description}
       messages.push(toolBlock)
       
       if (toolOutputs.length) {
-        await this.processMessages(messages, assistant, tools, context)
+        await this.processMessages(messages, assistant, toolSet, context)
       }
       
     } catch (error) {
@@ -170,11 +184,9 @@ ${context.project.description}
     }
   }
   
-  
   reset(): void {
     this.interactor.displayText("Conversation has been reset")
   }
-  
   
   kill(): void {
     this.killed = true
