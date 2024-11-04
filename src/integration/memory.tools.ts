@@ -31,18 +31,21 @@ export class MemoryTools extends AssistantToolFactory {
       type: "function",
       function: {
         name: "memorize",
-        description: `Upsert a memory entry to remember on next runs, use freely whenever encountering some knowledge that is relevant to the allowed levels. Allowed levels: ${MemoryLevels.join(", ")}.`,
+        description: `Upsert a memory entry to remember on next runs. Should be used selectively for significant, complete, and validated knowledge that: 1) represents core project/user patterns, 2) will be valuable in multiple future interactions, 3) is not redundant with existing memories. Do not memorize partial knowledge, single-use information, or minor implementation details. Allowed levels: ${MemoryLevels.join(", ")}.`,
         parameters: {
           type: "object",
           properties: {
-            title: {type: "string", description: "Title of the memory, should be at most a sentence."},
+            title: {
+              type: "string",
+              description: "Title of the memory: should be precise, unique, and reflect the full scope of the content. Avoid generic titles."
+            },
             content: {
               type: "string",
-              description: "Content of the memory, to expand with all details relevant to remember, length preferably between a paragraph and a 3 page long text."
+              description: "Content of the memory: must be complete, validated knowledge with clear structure (sections, examples when relevant). Should include enough context to be self-contained but avoid redundancy with other memories. Length: preferably between a paragraph (for focused topics) and 3 pages (for complex patterns)."
             },
             level: {
               type: "string",
-              description: "Level of the memory",
+              description: "Level of the memory: PROJECT for architectural decisions, core patterns, or significant design guidelines; USER for strong personal preferences or validated working patterns that impact multiple interactions.",
               enum: MemoryLevels
             }
           }
