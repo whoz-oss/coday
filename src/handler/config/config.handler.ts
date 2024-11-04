@@ -1,6 +1,7 @@
 import {AddProjectHandler} from "./add-project.handler"
 import {SelectProjectHandler} from "./select-project.handler"
 import {EditIntegrationHandler} from "./edit-integration.handler"
+import {EditAiHandler} from "./edit-ai.handler"
 import {configService} from "../../service/config.service"
 import {addProject} from "./add-project"
 import {selectProject} from "./select-project"
@@ -25,7 +26,8 @@ export class ConfigHandler extends NestedHandler {
     this.handlers = [
       new AddProjectHandler(this.interactor, this.username),
       new SelectProjectHandler(this.interactor, this.username),
-      new EditIntegrationHandler(this.interactor)
+      new EditIntegrationHandler(this.interactor),
+      new EditAiHandler(this.interactor)
     ]
   }
   
