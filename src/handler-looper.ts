@@ -66,7 +66,7 @@ export class HandlerLooper {
         )
       }
       // FIXME: move thread management to AiClient
-      if (integrationService.hasIntegration("OPENAI") && this.aiClient instanceof OpenaiClient) {
+      if (this.aiClient instanceof OpenaiClient) {
         this.handlers.push(
           new ThreadHandler(this.interactor, this.aiClient),
         )
