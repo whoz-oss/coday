@@ -14,7 +14,6 @@ export class IterateHandler extends CommandHandler {
     super({
       commandWord: "iterate",
       description: "Executes iterative tasks by prompting and managing defined task strategies",
-      requiredIntegrations: ["AI"],
     })
   }
   

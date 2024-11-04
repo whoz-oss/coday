@@ -11,7 +11,6 @@ export class SubTaskHandler extends CommandHandler {
     super({
       commandWord: "sub-task",
       description: "Set the sub-task behavior",
-      requiredIntegrations: ["AI"],
     })
   }
   

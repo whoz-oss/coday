@@ -48,7 +48,6 @@ You deemed the task completed by not delegating another task, so:
 
 `
     ],
-    requiredIntegrations: ["AI"]
   }, {
     name: "big-task",
     description: "Leverage small-task for deeper analysis and more granular execution.",
@@ -71,7 +70,6 @@ You deemed the task completed by not delegating another task, so:
       Summarize shortly what was done, what is missing if any and what could be the next steps.`,
       `sub-task false`
     ],
-    requiredIntegrations: ["AI"]
   }, {
     name: "learn-about",
     description: "Pushes the AI to extract newly gained knowledge and memorize it.",
@@ -85,6 +83,5 @@ You deemed the task completed by not delegating another task, so:
       Format it in markdown.
       Then memorize it, each subject at a time.`,
     ],
-    requiredIntegrations: ["AI"]
   }
 ]
