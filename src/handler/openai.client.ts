@@ -1,13 +1,12 @@
 import OpenAI from "openai"
 import {AssistantStream} from "openai/lib/AssistantStream"
-import {Beta} from "openai/resources"
 import {AiClient, AssistantDescription, CommandContext, DEFAULT_DESCRIPTION, Interactor,} from "../model"
 import {Toolbox} from "../integration/toolbox"
 import {ToolCall} from "../integration/tool-call"
 import {ToolRequestEvent} from "../shared"
 import {AiProvider} from "../model/agent-definition"
 import {ToolSet} from "../integration/tool-set"
-import Assistant = Beta.Assistant
+import {Assistant} from "openai/resources/beta"
 
 const DEFAULT_MODEL: string = "gpt-4o"
 const DEFAULT_TEMPERATURE: number = 0.75
