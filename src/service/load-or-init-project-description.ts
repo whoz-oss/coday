@@ -114,7 +114,7 @@ export const loadOrInitProjectDescription = async (projectPath: string, interact
     }
   }
   
-  const memoryNote = "\n\nYou are higly encouraged to reflect at the end of each request on the knowledge that could be gained from the collected information, formalize it as new or updated memories and store them."
+  const memoryNote = "\n\nAt the end of each request, carefully evaluate if there is significant and complete knowledge worth remembering:\n\n1) For PROJECT level:\n- Architectural decisions\n- Core implementation patterns\n- Significant design guidelines\n- Integration configurations\n- Must be fully validated and documented\n\n2) For USER level:\n- Strong personal preferences\n- Validated working patterns\n- Clear tool/environment configurations\n- Must impact multiple future interactions\n\nBefore memorizing, verify that:\n- The knowledge is complete and validated\n- It is not redundant with existing memories\n- It will be valuable in multiple future interactions\n- It is significant enough to warrant storage\n- It is properly structured and clear\n\nDo not memorize:\n- Partial or unconfirmed knowledge\n- Single-use information\n- Minor implementation details\n- Information already covered by existing memories\n- Temporary or context-specific knowledge"
   const memoryText = userMemoryText || projectMemoryText ? `${userMemoryText}${projectMemoryText}${memoryNote}`
     : `No previous memories available.\n\n${memoryNote}`
   
