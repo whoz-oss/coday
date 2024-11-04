@@ -6,13 +6,28 @@ import {DEFAULT_USER_CONFIG} from "../../model/user-config"
 const AI_PROVIDERS: readonly ["anthropic", "openai", "gemini"] = ["anthropic", "openai", "gemini"] as const
 type AiProvider = typeof AI_PROVIDERS[number]
 
+/**
+ * Handler for configuring AI provider API keys in user configuration.
+ *
+ * This handler allows users to:
+ * - View current AI provider configurations
+ * - Set or update API keys for any supported provider
+ * - Use direct commands like "edit-ai anthropic sk-xxx"
+ *
+ * API keys are stored in ~/.coday/user.yml and can be temporarily
+ * overridden by environment variables (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY).
+ */
 export class EditAiHandler extends CommandHandler {
   constructor(
     private interactor: Interactor,
   ) {
     super({
       commandWord: "edit-ai",
-      description: "Configure AI providers API keys"
+      description: "Configure AI providers API keys. Usage:\n" +
+        "  edit-ai                    : Interactive mode, shows current config\n" +
+        "  edit-ai anthropic          : Configure Anthropic (Claude)\n" +
+        "  edit-ai openai sk-xxx      : Direct key set for OpenAI\n" +
+        "  edit-ai gem xxx            : Direct key set for Gemini (partial name ok)"
     })
   }
   
@@ -27,7 +42,7 @@ export class EditAiHandler extends CommandHandler {
     
     let provider: AiProvider
     if (providerStart) {
-      // Try to find matching provider
+      // Try to find matching provider by start of name (case insensitive)
       const matchingProvider: AiProvider | undefined = AI_PROVIDERS.find(p =>
         p.toLowerCase().startsWith(providerStart.toLowerCase())
       )
@@ -37,7 +52,7 @@ export class EditAiHandler extends CommandHandler {
       }
       provider = matchingProvider
     } else {
-      // Show current configuration only when asking for selection
+      // Interactive mode: show current configuration and prompt for provider
       const currentConfig = userConfigService.currentConfig || DEFAULT_USER_CONFIG
       const status: string = [
         "Current AI providers configuration:",
@@ -59,6 +74,7 @@ export class EditAiHandler extends CommandHandler {
       provider = selectedProvider as AiProvider
     }
     
+    // Get API key: either from command or prompt user
     let apiKey: string
     if (apiKeyFromCommand) {
       apiKey = apiKeyFromCommand
@@ -72,6 +88,7 @@ export class EditAiHandler extends CommandHandler {
       }
     }
     
+    // Update configuration
     const currentConfig = userConfigService.currentConfig || DEFAULT_USER_CONFIG
     const newProviders = {...currentConfig.aiProviders}
     newProviders[provider] = {apiKey}
