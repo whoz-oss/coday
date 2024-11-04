@@ -73,7 +73,12 @@ export class ConfigService {
     if (!existsSync(projectConfigPath)) {
       mkdirSync(projectConfigPath)
       const projectConfigFile = path.join(projectConfigPath, PROJECT_FILENAME)
-      writeYamlFile(projectConfigFile, {path: projectPath, integration: {}})
+      writeYamlFile(projectConfigFile, {
+        path: projectPath,
+        integration: {},
+        savedThreads: undefined,
+        ai: {}
+      })
     }
     this.projects?.push(projectName)
   }
