@@ -1,5 +1,4 @@
 export * from "./assistant-description"
-export * from "./coday-config"
 export * from "./command-context"
 export * from "./command.handler"
 export * from "./integration-config"

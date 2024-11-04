@@ -1,8 +1,8 @@
-import {existsSync, lstatSync, readdirSync, readFileSync} from "fs"
+import {existsSync, lstatSync, readdirSync} from "fs"
 import os from "os"
 import path from "path"
-import {mkdirSync, rmSync} from "node:fs"
-import {CodayConfig, ProjectLocalConfig} from "../model"
+import {mkdirSync} from "node:fs"
+import {ProjectLocalConfig} from "../model"
 import {readYamlFile} from "./read-yaml-file"
 import {writeYamlFile} from "./write-yaml-file"
 import {BehaviorSubject, Observable} from "rxjs"
@@ -11,12 +11,6 @@ import {BehaviorSubject, Observable} from "rxjs"
  * Default location for the folder containing local configuration
  */
 const DATA_PATH: string = "/.coday"
-
-/**
- * Legacy name of the unique local configuration file
- * It is being deprecated
- */
-const LEGACY_CONFIG_FILENAME = "config.json"
 
 /**
  * Name of project configuration file in each project local config folder
@@ -121,9 +115,6 @@ export class ConfigService {
         mkdirSync(dir, {recursive: true})
       }
       
-      // read legacy config and convert it to new structure
-      this.migrateLegacyConfig(this.configPath)
-      
       // list projects from the config folder
       const dirs = readdirSync(this.configPath)
       this.projects = dirs.filter(dir => lstatSync(path.join(this.configPath, dir)).isDirectory())
@@ -146,32 +137,6 @@ export class ConfigService {
     this.selectedProjectBehaviorSubject.next(selectedProject)
   }
   
-  /**
-   * Temporary conversion from unique CodayConfig to many per-project ProjectConfig files
-   * @private
-   * @param configFolderPath path where is expected the 'config.json' to migrate
-   */
-  private migrateLegacyConfig(configFolderPath: string): void {
-    const legacyConfigPath = path.join(configFolderPath, LEGACY_CONFIG_FILENAME)
-    if (!existsSync(legacyConfigPath)) {
-      return
-    }
-    const legacyContent = readFileSync(legacyConfigPath, "utf-8")
-    const legacyConfig = JSON.parse(legacyContent) as CodayConfig
-    for (const [projectName, projectConfig] of Object.entries(legacyConfig.project)) {
-      const projectDir = path.join(this.configPath, projectName)
-      if (!existsSync(projectDir)) {
-        mkdirSync(projectDir)
-      }
-      writeYamlFile(
-        path.join(projectDir, PROJECT_FILENAME),
-        projectConfig
-      )
-    }
-    
-    // leap of faith, yolo
-    rmSync(legacyConfigPath)
-  }
 }
 
 export const configService = new ConfigService()
