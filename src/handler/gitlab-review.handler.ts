@@ -6,7 +6,7 @@ export class GitlabReviewHandler extends CommandHandler {
     super({
       commandWord: "gitlab-review",
       description: "takes the ID of the merge request to perform a comprehensive review.",
-      requiredIntegrations: ["AI", "GITLAB"]
+      requiredIntegrations: ["GITLAB"]
     })
   }
   

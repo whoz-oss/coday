@@ -7,7 +7,6 @@ export class FileMapHandler extends CommandHandler {
     super({
       commandWord: "file-map",
       description: "Generates a file map starting from the given relative path.",
-      requiredIntegrations: ["AI"]
     })
   }
   

@@ -8,7 +8,6 @@ class MemoryHandler extends CommandHandler {
     super({
       commandWord: "memory",
       description: "list current memories",
-      requiredIntegrations: ["AI"],
       isInternal: true
     })
   }

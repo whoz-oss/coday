@@ -16,7 +16,6 @@ export class DelegateHandler extends CommandHandler {
     super({
       commandWord: "delegate",
       description: "runs the given prompt in another AI thread and returns a summarized report of the result",
-      requiredIntegrations: ["AI"],
       isInternal: true
     })
   }
