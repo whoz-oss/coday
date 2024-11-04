@@ -3,7 +3,7 @@ import {HandlerLooper} from "./handler-looper"
 import {keywords} from "./keywords"
 import {AiClient, CommandContext, Interactor} from "./model"
 import {AiHandler, ConfigHandler} from "./handler"
-import {aiClientProvider} from "./integration/ai/ai-client-provider"
+import {AiClientProvider} from "./integration/ai/ai-client-provider"
 
 const MAX_ITERATIONS = 100
 
@@ -80,7 +80,7 @@ export class Coday {
       )
       if (this.context) {
         this.context.oneshot = this.options.oneshot
-        this.aiClient = aiClientProvider(this.interactor)
+        this.aiClient = new AiClientProvider(this.interactor).getClient()
         this.openaiHandler = new AiHandler(this.interactor, this.aiClient)
         this.handlerLooper = new HandlerLooper(this.interactor, this.openaiHandler, this.aiClient)
         this.handlerLooper.init(this.userInfo.username, this.context.project)

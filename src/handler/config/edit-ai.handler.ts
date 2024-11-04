@@ -1,6 +1,7 @@
-import {AiConfig, CommandContext, CommandHandler, Interactor} from "../../model"
-import {configService} from "../../service/config.service"
+import {CommandContext, CommandHandler, Interactor} from "../../model"
 import {keywords} from "../../keywords"
+import {userConfigService} from "../../service/user-config.service"
+import {DEFAULT_USER_CONFIG} from "../../model/user-config"
 
 const AI_PROVIDERS: readonly ["anthropic", "openai", "gemini"] = ["anthropic", "openai", "gemini"] as const
 type AiProvider = typeof AI_PROVIDERS[number]
@@ -19,13 +20,6 @@ export class EditAiHandler extends CommandHandler {
     command: string,
     context: CommandContext,
   ): Promise<CommandContext> {
-    if (!configService.project) {
-      this.interactor.displayText("No current project, select one first.")
-      return context
-    }
-    
-    const currentConfig: AiConfig = configService.project.ai || {}
-    
     // Parse command for provider name start and api key
     const subCommand: string = this.getSubCommand(command)
     const [providerStart, ...apiKeyParts]: string[] = subCommand.split(" ")
@@ -44,10 +38,11 @@ export class EditAiHandler extends CommandHandler {
       provider = matchingProvider
     } else {
       // Show current configuration only when asking for selection
+      const currentConfig = userConfigService.currentConfig || DEFAULT_USER_CONFIG
       const status: string = [
         "Current AI providers configuration:",
         ...AI_PROVIDERS.map(provider =>
-          `${currentConfig[provider] ? "✅" : "❌"} ${provider}`
+          `${currentConfig.aiProviders[provider] ? "✅" : "❌"} ${provider}`
         )
       ].join("\n")
       this.interactor.displayText(status)
@@ -77,10 +72,12 @@ export class EditAiHandler extends CommandHandler {
       }
     }
     
-    const newConfig: AiConfig = {...currentConfig}
-    newConfig[provider] = {apiKey}
+    const currentConfig = userConfigService.currentConfig || DEFAULT_USER_CONFIG
+    const newProviders = {...currentConfig.aiProviders}
+    newProviders[provider] = {apiKey}
+    
     this.interactor.displayText(`✅ ${provider} configured successfully`)
-    configService.saveProjectConfig({ai: newConfig})
+    userConfigService.updateConfig({aiProviders: newProviders})
     
     return context
   }

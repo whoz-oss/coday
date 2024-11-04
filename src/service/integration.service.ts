@@ -63,6 +63,10 @@ export class IntegrationService {
     }
     return this.integrations[integrationName]?.username
   }
+  
+  hasAiIntegration(aiProviderName: string) {
+    return false
+  }
 }
 
 export const integrationService = new IntegrationService(configService)
