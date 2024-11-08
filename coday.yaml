@@ -6,91 +6,20 @@
 description: |
   ## Project description
   
-  This project is a chat AI assistant running by calling an online LLM, for now only ChatGPT from OpenAI.
+  Coday is a lightweight framework to use AI agents on existing scoped projects, with as much autonomy as wanted through
+  contextual understanding and tool integration. It runs locally and interfaces with various APIs and tools to provide a
+  comprehensive assistance experience, or even full-autonomous work capability.
   
-  The interface is kept very simple, presently only through a terminal, but could later run as a local application with dedicated GUI or as a web page or an IDE extension.
-  The goal is to integrate the LLM with as much tools as needed to increase its efficiency and relevance in helping users or even handling tasks autonomously. 
-  
-  
-  ## Architecture
-  
-  At the core of Coday is a interactive loop that will take the user input and pass it to the handler loop, and come back waiting for user input when done. It also handle the `oneshot` non-interactive mode where the initially given user commands (same as prompts) are queued and handled until exhaustion and the program ends.
-  
-  The handler loop will exhaust the commands taken from the given context by finding the very first handler that can accept each command, let it handle and continue with the next command of the queue. As handlers can add commands to the queue (first in - first out), a single high-level user command can generate in the end a large number of low-level commands.
-  If no matching handler is found, the command is re-written to be re-directed to the AI.
-  
-  
-  ### Handlers
-  
-  Logic for each command the user can call is wrapped in command handlers that can be simple or nested for complex commands exposing sub-commands.
-  A command is a string that starts with a precise `commandWord` specific to the handler, and possibly some other text beyond.
-  Handlers are asked first if they accept the command, and they should not do anything else than checking.
-  Then, the found handler is given the command to handle, to de-construct it and do the expected work with it.
-  When the command is invalid, handlers are expected to use the given interactor to signal the invalidity to the user, and possibly display a help or usage text.
-  Handlers are in `./src/handler/` folder.
-  
-  
-  ### Context
-  
-  The command context keeps track of various data dictating the behavior of parts of the application : the project and nested configuration about its path, integrations scripts and assistants. This project config data structure is the merge of the user's project settings, and the project's shared configuration.
-  The command context also contains the command queue that can be enriched through handlers.
-  
-  
-  ### Configuration files
-  
-  The program uses a configuration file in user home directory under '~/.coday/config.json', that lists the projects and their non-sharable and user-related configuration (API key notably).
-  Projects should also contain a `coday.yaml` file that can be stored in version control system and shared on the repository.
-  A project is a directory whose files should be readable and editable and where a 'coday.yaml' configuration file reside (can be nested) to add some customizations. As such, the 'config.json' is entirely private to the user and 'coday.yaml' is exposed to all users of the project.
-  
-  
-  ### Integrations
-  
-  An integration designate the configuration of an access to an API (can be anything reachable from local tools to web-based http APIs), and by extension includes the depending parts of this project (handlers, tools & functions).
-  If an integration is not defined (even if no parameters are required as for GIT), the corresponding handlers should not be available to the user, and corresponding tools should not be available to the AI/LLM.
-  Integration are in `./src/integration/` folder.
-  
-  
-  ### Services
-  
-  The services in this project provide core functionalities that support the configuration, integration, and management of the project. They handle tasks such as managing user and project configurations, setting up and retrieving integration details, initializing or loading project descriptions, and saving or listing threads related to the project. These services ensure that the essential data and settings are properly maintained and accessible throughout the application's lifecycle.
-  Services are in `./src/service` folder. 
-  
-  
-  ## AI/LLM integration
-  
-  The `openai-handler.ts` that uses `openai-client.ts` wraps the complexity around the library openai and serves as a default handler for commands not picked by any other handler. 
-  This client leverages the ability to submit function declaration for LLM to call, hence the need on our part to run the function with the given arguments and return the answer.
-  These functions can be provided to the LLM depending on the user configuration and the project configuration.
-  
-  
-  ## Code conventions:
-  
-  - inject in constructors
-  - no ';' on line ends
-  - prefer 1 file for 1 class or function or type
-  
-  
-  ## Git process
-  
-  All developments should not happen on 'master' branch, but on a dedicated and named by type of dev (feat, bugfix, other...), user name, and a title .
-  Ex: `bugfix/johndoe/find-by-text-errors`
-  
-  Commit only after compilation success.
-  Every commit message should have a title summarizing the change (do not repeat the branch name), and then a description with more details with an empty line between title and description.
-  The title should be less than 50 characters long, and the description should be wrapped at 72 characters.
-
 mandatoryDocs:
+  - ./product/01-vision.md
+  - ./product/02-domain-model.md
+  - ./product/03-stakeholder-views.md
+  - ./product/04-guidelines.md
   - ./doc/INTEGRATIONS.md
-  - ./src/model/command-context.ts
-  - ./src/coday.ts
-  - ./src/handler-looper.ts
-  - ./src/model/command.handler.ts
 
 optionalDocs:
   - path: ./doc/PROJECT_CONFIGURATION.md
     description: How the project configuration works
-  - path: ./src/model/nested.handler.ts
-    description: Handler for complex commands that host sub-commands, each to be taken care of by another handler
 
 # Scripts are AssistantTools declared to openai on each call (for now), so always available.
 # Scripts that take parameters should have:
