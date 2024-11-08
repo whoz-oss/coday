@@ -3,3 +3,9 @@ export interface ToolCall {
   name: string
   args: string
 }
+
+export interface ToolResponse {
+  id?: string
+  name: string
+  response: string
+}

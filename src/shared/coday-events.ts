@@ -2,10 +2,12 @@ export abstract class CodayEvent {
   timestamp: string
   parentKey: string | undefined
   static type: string
+  length: number
   
   constructor(event: Partial<CodayEvent>, readonly type: string) {
     this.timestamp = event.timestamp ?? new Date().toISOString()
     this.parentKey = event.parentKey
+    this.length = 0
   }
 }
 
@@ -143,8 +145,23 @@ export class ThinkingEvent extends CodayEvent {
   }
 }
 
+export class MessageEvent extends CodayEvent {
+  role: "user" | "assistant"
+  name: string
+  content: string
+  static type = "message"
+  
+  constructor(event: Partial<MessageEvent>) {
+    super(event, MessageEvent.type)
+    this.role = event.role!
+    this.name = event.name!
+    this.content = event.content!
+  }
+}
+
 // Exposing a map of event types to their corresponding classes
 const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
+  [MessageEvent.type]: MessageEvent,
   [AnswerEvent.type]: AnswerEvent,
   [ChoiceEvent.type]: ChoiceEvent,
   [ErrorEvent.type]: ErrorEvent,
@@ -157,6 +174,7 @@ const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [ThinkingEvent.type]: ThinkingEvent,
   [WarnEvent.type]: WarnEvent,
 }
+
 
 export function buildCodayEvent(data: any): CodayEvent | undefined {
   const Clazz = eventTypeToClassMap[data.type]
