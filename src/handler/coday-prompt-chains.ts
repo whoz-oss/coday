@@ -2,6 +2,54 @@ import {PromptChain} from "../model"
 
 export const CodayPromptChains: (PromptChain & { name: string })[] = [
   {
+    name: "memory-curate",
+    description: "Curate the memory system by analyzing redundancies, outdated information, and ensuring consistency.",
+    commands: [
+      `@ First, analyze the current memories for potential redundancies:
+
+1. Check memories that:
+   - Cover similar topics
+   - Have overlapping information
+   - Could be consolidated for clarity
+
+2. For each group of redundant memories:
+   - Delete individual memories using deleteMemory
+   - Create new consolidated memory that:
+     - Maintains all critical details
+     - Provides clear structure
+     - Uses appropriate level (PROJECT/USER)
+
+Be proactive but careful in this consolidation, explaining your reasoning.`,
+      
+      `@ Now, analyze remaining memories for outdated or incorrect information:
+
+1. Compare each memory against:
+   - Other memories for inconsistencies
+   - Project context for outdated info
+   - Core documentation for misalignments
+
+2. For each problematic memory:
+   - List the title with short explanation of the issue
+   - Take appropriate action:
+     - Delete if outdated/incorrect
+     - Update if partial/incomplete
+     - Consolidate if better fits elsewhere
+
+Be thorough in your analysis and clear in your explanations.`,
+      
+      `@ Finally, verify the memory system's current state:
+
+1. Review the overall structure
+2. Check each memory for:
+   - Completeness and validity
+   - Proper categorization (PROJECT/USER)
+   - Clear structure and organization
+3. Document any remaining issues or recommendations
+
+This ensures the memory system stays efficient and valuable.`
+    ]
+  },
+  {
     name: "small-task",
     description: "expand the request into a simple flow of requests : analysis, plan, review, execution, learn. No delegation to other assistants is encouraged nor sub-tasking.",
     commands: [
