@@ -9,13 +9,14 @@ description: |
   Coday is a lightweight framework to use AI agents on existing scoped projects, with as much autonomy as wanted through
   contextual understanding and tool integration. It runs locally and interfaces with various APIs and tools to provide a
   comprehensive assistance experience, or even full-autonomous work capability.
-  
+
 mandatoryDocs:
   - ./product/01-vision.md
   - ./product/02-domain-model.md
   - ./product/03-stakeholder-views.md
   - ./product/04-guidelines.md
   - ./doc/INTEGRATIONS.md
+  - ./work-in-progress.md
 
 optionalDocs:
   - path: ./doc/PROJECT_CONFIGURATION.md
