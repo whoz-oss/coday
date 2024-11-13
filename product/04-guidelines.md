@@ -39,15 +39,62 @@
 
 ## Testing Guidelines
 
-1. Current Approach
-   - Focus on critical paths
-   - Test main user flows
-   - Basic error cases
+> 🚧 Testing is currently being established in the project. These guidelines represent the target state and will evolve
+> as we build up our testing infrastructure.
 
-2. Future Evolution
-   - Build test coverage progressively
-   - Identify key test areas
-   - Plan for integration tests
+1. Current Testing Setup
+   - Jest with TypeScript support recently added
+   - First test implementations serving as examples
+   - Files placed alongside their source (*.test.ts)
+   - Basic configuration in jest.config.js
+
+2. Test Structure (Current Pattern)
+   ```typescript
+   // Example from ai-thread.test.ts
+   describe('ComponentName', () => {
+     // Setup and helper functions
+     beforeEach(() => {})
+
+     describe('feature group', () => {
+       it('should behave in specific way', () => {
+         // Test implementation
+       })
+     })
+   })
+   ```
+
+3. Available Commands
+   ```bash
+   # Run tests
+   yarn test
+   
+   # Development mode
+   yarn test:watch
+   
+   # With coverage
+   yarn test:coverage
+   ```
+
+4. Current Focus
+   - Adding tests for new features
+   - Using test coverage to identify gaps
+   - Building testing patterns and examples
+   - Learning from early implementations
+
+5. Immediate Next Steps
+   - Expand test coverage gradually
+   - Refine testing patterns
+   - Document learnings from implementations
+   - Consider testing utilities needed
+
+6. Future Considerations
+   - Coverage targets to be defined
+   - Integration testing strategy
+   - Test data management
+   - CI/CD integration
+   - Mocking strategies
+
+As testing matures in the project, these guidelines will be updated to reflect established patterns and best practices.
 
 ## Documentation Guidelines
 

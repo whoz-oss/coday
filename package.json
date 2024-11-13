@@ -14,15 +14,21 @@
     "frontend": "yarn run tsc --project src/frontend/tsconfig.json && yarn run move-assets",
     "move-assets": "cp src/frontend/index.html static/ && mkdir -p static/styles && find src/frontend -type f -name \"*.css\" -exec cp {} static/styles/ \\;",
     "web": "yarn run build && node dist/backend/server.js",
-    "open": "node dist/open-frontend.js"
+    "open": "node dist/open-frontend.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "author": "vincent.audibert@whoz.com",
   "license": "MIT",
   "devDependencies": {
     "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.14",
     "@types/node": "^20.11.17",
+    "jest": "^29.7.0",
     "nodemon": "^2.0.7",
     "opn-cli": "^5.0.0",
+    "ts-jest": "^29.2.5",
     "ts-loader": "^9.5.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.2",
