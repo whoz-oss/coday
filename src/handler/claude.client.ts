@@ -2,10 +2,11 @@ import {AiClient, AssistantDescription, CommandContext, DEFAULT_DESCRIPTION, Int
 import Anthropic from "@anthropic-ai/sdk"
 import {MessageParam} from "@anthropic-ai/sdk/resources"
 import {Toolbox} from "../integration/toolbox"
-import {ToolCall} from "../integration/tool-call"
+import {ToolCall, ToolResponse} from "../integration/tool-call"
 import {ToolSet} from "../integration/tool-set"
-import {ToolRequestEvent} from "../shared/coday-events"
+import {MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
 import {AiProvider, ModelSize} from "../model/agent-definition"
+import {AiThread, ThreadMessage} from "./ai-thread"
 
 const ClaudeModels = {
   [ModelSize.BIG]: {
@@ -71,45 +72,29 @@ export class ClaudeClient implements AiClient {
     
     // init the thread data
     if (!context.data.claudeData) {
-      const messages: MessageParam[] = []
       context.data.claudeData = {
-        messages
+        thread: new AiThread({id: `thread_${new Date().toISOString()}`, messages: []})
       }
     }
     // Message accumulator equivalent to thread
-    const messages: MessageParam[] = context.data.claudeData.messages
+    const thread = context.data.claudeData.thread
     
     // Create new toolSet instance with current context tools
     const toolSet = new ToolSet(this.toolBox.getTools(context))
     
     // add command to history
-    messages.push({role: "user", content: command})
+    thread.addUserMessage("user", command)
     
-    await this.processMessages(messages, DEFAULT_DESCRIPTION, toolSet, context)
+    await this.processMessages(thread, DEFAULT_DESCRIPTION, toolSet, context)
     
     return this.textAccumulator
   }
   
-  /**
-   * Map tool definitions to match Anthropic's API
-   *
-   * @param toolSet
-   * @private
-   */
-  private getClaudeTools(toolSet: ToolSet) {
-    return toolSet.getTools().map(t => ({
-        name: t.function.name,
-        description: t.function.description,
-        input_schema: t.function.parameters
-      })
-    )
-  }
-  
   async processMessages(
-    messages: MessageParam[], // TODO: replace later by AiThread
+    aiThread: AiThread,
     assistant: AssistantDescription, // TODO: replace by AgentDefinition
     toolSet: ToolSet,
-    context: CommandContext // TODO: integrate relevant infos into AiThread ? Used just for project.description ?
+    context: CommandContext, // TODO: integrate relevant infos into AiThread ? Used just for project.description ?
   ): Promise<void> {
     if (this.killed) {
       return
@@ -124,8 +109,7 @@ ${context.project.description}
 </project-context>`
     
     try {
-      // TODO: trigger messages summarization if needed just before calling
-      
+      const messages = this.toClaudeMessage(aiThread.messages)
       const response = await this.client!.messages.create({
         model: ClaudeModels[ModelSize.BIG].model,
         messages,
@@ -142,40 +126,35 @@ ${context.project.description}
       
       // push a compacted version of the assistant text response
       if (text) {
-        messages.push({role: "assistant", content: text})
+        aiThread.addAgentMessage(assistant.name, text)
       }
       
       const toolUseBlocks = response?.content.filter(block => block.type === "tool_use")
-      if (toolUseBlocks?.length) {
-        messages.push({role: "assistant", content: toolUseBlocks})
-      }
       const toolUses: ToolCall[] = toolUseBlocks.map(block => ({
         id: block.id,
         name: block.name,
         args: JSON.stringify(block.input) // TODO: avoid stringification because just parsed after...
       }))
       
-      const toolOutputs = await Promise.all(
-        toolUses.map(async (call: ToolCall) => {
+      const toolResponses: ToolResponse[] = await Promise.all(
+        toolUses.map(async (call: ToolCall): Promise<ToolResponse> => {
           const toolRequest = new ToolRequestEvent(call)
-          const output = await toolSet.runTool(toolRequest)
+          const response = await toolSet.runTool(toolRequest)
           return {
-            type: "tool_result" as const,
-            tool_use_id: call.id!,
-            content: output
+            id: call.id!,
+            name: call.name,
+            response
           }
         })
       )
       
-      const toolBlock: MessageParam = {
-        role: "user",
-        content: toolOutputs
+      if (toolUses?.length && toolResponses.length === toolUses.length) {
+        aiThread.addToolCalls(assistant.name, toolUses)
+        aiThread.addToolResponses("user", toolResponses)
       }
       
-      messages.push(toolBlock)
-      
-      if (toolOutputs.length) {
-        await this.processMessages(messages, assistant, toolSet, context)
+      if (toolResponses.length) {
+        await this.processMessages(aiThread, assistant, toolSet, context)
       }
       
     } catch (error) {
@@ -190,5 +169,55 @@ ${context.project.description}
   
   kill(): void {
     this.killed = true
+  }
+  
+  /**
+   * Convert a ThreadMessage to Claude's MessageParam format
+   */
+  private toClaudeMessage(messages: ThreadMessage[]): MessageParam[] {
+    return messages.map(msg => {
+      let claudeMessage: MessageParam | undefined
+      if (msg instanceof MessageEvent) {
+        claudeMessage = {role: msg.role, content: msg.content}
+      }
+      if (msg instanceof ToolRequestEvent) {
+        claudeMessage = {
+          role: "assistant",
+          content: [{
+            type: "tool_use",
+            id: msg.toolRequestId,
+            name: msg.name,
+            input: JSON.parse(msg.args)
+          }]
+        }
+      }
+      if (msg instanceof ToolResponseEvent) {
+        claudeMessage = {
+          role: "user",
+          content: [{
+            type: "tool_result",
+            tool_use_id: msg.toolRequestId,
+            content: msg.output
+          }]
+        }
+      }
+      return claudeMessage
+    }).filter(m => !!m)
+  }
+  
+  
+  /**
+   * Map tool definitions to match Anthropic's API
+   *
+   * @param toolSet
+   * @private
+   */
+  private getClaudeTools(toolSet: ToolSet) {
+    return toolSet.getTools().map(t => ({
+        name: t.function.name,
+        description: t.function.description,
+        input_schema: t.function.parameters
+      })
+    )
   }
 }

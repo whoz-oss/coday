@@ -20,7 +20,7 @@ export class ToolSet {
    * @returns Promise of the tool execution result
    * @throws Error if tool not found or execution fails
    */
-  async runTool(toolRequest: ToolRequestEvent): Promise<any> {
+  async runTool(toolRequest: ToolRequestEvent): Promise<string> {
     const tool = this.tools.find(tool => tool.function.name === toolRequest.name)
     if (!tool) {
       throw new Error(`Tool '${toolRequest.name}' not found`)
