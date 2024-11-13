@@ -37,9 +37,7 @@ export interface AiClient {
    * Answer the command by querying the assistant by its name
    *
    * Should be deprecated in favor of a stateless signature like:
-   *   answer(assistant: AssistantDescription, prompt: string, thread: AiThread): Promise<string>
-   *
-   * Another method needed for JSON responses ?
+   *   answer(agent: Agent, thread: AiThread): Promise<void>
    *
    * @param name of the assistant called (openai-specific)
    * @param command prompt sent to the assistant
