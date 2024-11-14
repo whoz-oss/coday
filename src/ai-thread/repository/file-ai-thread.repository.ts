@@ -14,19 +14,21 @@ import {ThreadRepositoryError} from "../ai-thread.types"
  * Stores threads as individual YAML files in the project's .coday/threads directory
  */
 export class FileAiThreadRepository implements AiThreadRepository {
+  private initPromise: Promise<void>
   
   /**
-   * Creates a new FileAiThreadRepository
+   * Creates a new FileAiThreadRepository and starts initialization
    * @param threadsDir Directory path where thread files will be stored
    */
   constructor(private readonly threadsDir: string) {
+    // Start initialization but don't block
+    this.initPromise = this.doInitialize()
   }
   
-  
   /**
-   * Initialize the repository by ensuring the threads directory exists
+   * Internal initialization of the repository
    */
-  async initialize(): Promise<void> {
+  private async doInitialize(): Promise<void> {
     try {
       await fs.mkdir(this.threadsDir, {recursive: true})
     } catch (error) {
@@ -98,6 +100,7 @@ export class FileAiThreadRepository implements AiThreadRepository {
   }
   
   async getById(id: string): Promise<AiThread | null> {
+    await this.initPromise
     try {
       // First find the file with matching id
       const fileName = await this.findFileNameById(id)
@@ -115,6 +118,7 @@ export class FileAiThreadRepository implements AiThreadRepository {
   }
   
   async save(thread: AiThread): Promise<AiThread> {
+    await this.initPromise
     try {
       // Check for name collisions
       const sanitizedName = this.sanitizeFileName(thread.name)
@@ -153,6 +157,7 @@ export class FileAiThreadRepository implements AiThreadRepository {
     createdDate: string,
     modifiedDate: string
   }>> {
+    await this.initPromise
     try {
       const files = await fs.readdir(this.threadsDir)
       const threads = await Promise.all(
@@ -183,6 +188,7 @@ export class FileAiThreadRepository implements AiThreadRepository {
   }
   
   async delete(id: string): Promise<boolean> {
+    await this.initPromise
     try {
       // First find the file with matching id
       const fileName = await this.findFileNameById(id)

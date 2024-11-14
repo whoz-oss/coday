@@ -16,7 +16,6 @@ describe('FileAiThreadRepository', () => {
       path.join(os.tmpdir(), 'file-ai-thread-repository-test-')
     )
     repo = new FileAiThreadRepository(tmpDir)
-    await repo.initialize()
   })
 
   afterEach(async () => {
@@ -25,7 +24,7 @@ describe('FileAiThreadRepository', () => {
   })
 
   describe('initialization', () => {
-    it('should create threads directory on initialize', async () => {
+    it('should create threads directory on first operation', async () => {
       // Create a new temp dir without initialization
       const newTmpDir = await fs.mkdtemp(
         path.join(os.tmpdir(), 'file-ai-thread-new-test-')
@@ -33,13 +32,11 @@ describe('FileAiThreadRepository', () => {
       // Remove the directory created by mkdtemp
       await fs.rm(newTmpDir, { recursive: true, force: true })
       
+      // Just instantiate, don't wait for init
       const newRepo = new FileAiThreadRepository(newTmpDir)
       
-      // Directory should not exist yet
-      await expect(fs.stat(newTmpDir)).rejects.toBeTruthy()
-      
-      // Initialize should create it
-      await newRepo.initialize()
+      // List should trigger initialization
+      await newRepo.listThreads()
       
       // Directory should now exist
       const stats = await fs.stat(newTmpDir)
@@ -47,11 +44,6 @@ describe('FileAiThreadRepository', () => {
       
       // Clean up
       await fs.rm(newTmpDir, { recursive: true, force: true })
-    })
-
-    it('should handle existing directory without error', async () => {
-      // Second initialization should not throw
-      await expect(repo.initialize()).resolves.toBeUndefined()
     })
   })
 
@@ -225,7 +217,7 @@ describe('FileAiThreadRepository', () => {
       await fs.writeFile(newTmpDir, '', { mode: 0o444 }) // read-only file
 
       const errorRepo = new FileAiThreadRepository(newTmpDir)
-      await expect(errorRepo.initialize())
+      await expect(errorRepo.listThreads())
         .rejects
         .toThrow(ThreadRepositoryError)
 
