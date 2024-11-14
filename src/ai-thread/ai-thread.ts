@@ -6,14 +6,7 @@
 
 import {buildCodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
 import {ToolCall, ToolResponse} from "../integration/tool-call"
-
-/**
- * Union type representing all possible message types in a thread:
- * - MessageEvent: Direct messages between users and agents
- * - ToolRequestEvent: Tool execution requests from agents
- * - ToolResponseEvent: Results from tool executions
- */
-export type ThreadMessage = MessageEvent | ToolRequestEvent | ToolResponseEvent
+import {ThreadMessage, ThreadSerialized} from "./ai-thread.types"
 
 /**
  * Allowed message types for filtering when building thread history
@@ -29,6 +22,15 @@ export class AiThread {
   /** Unique identifier for the thread */
   id: string
   
+  /** Name or title or very short sentence about the content of the thread */
+  name: string
+  
+  /** Summary of the whole thread, to be used for cross-thread research */
+  summary: string
+  
+  createdDate: string
+  modifiedDate: string
+  
   /** Internal storage of thread messages in chronological order */
   private _messages: ThreadMessage[]
   
@@ -38,8 +40,13 @@ export class AiThread {
    * @param thread.id - Unique identifier for the thread
    * @param thread.messages - Optional array of raw message objects to initialize the thread
    */
-  constructor(thread: { id: string, messages?: any[] }) {
+  constructor(thread: ThreadSerialized) {
     this.id = thread.id!
+    this.name = thread.name ?? "untitled"
+    this.summary = thread.summary ?? ""
+    this.createdDate = thread.createdDate ?? new Date().toISOString()
+    this.modifiedDate = thread.modifiedDate ?? this.createdDate
+    
     // Filter on type first, then build events
     this._messages = (thread.messages ?? [])
       .filter(msg => THREAD_MESSAGE_TYPES.includes(msg.type))
