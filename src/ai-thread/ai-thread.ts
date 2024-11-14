@@ -17,6 +17,17 @@ const THREAD_MESSAGE_TYPES = [MessageEvent.type, ToolRequestEvent.type, ToolResp
  * AiThread manages the state and interactions of a conversation thread between users and AI agents.
  * It handles message sequencing, tool execution requests/responses, and maintains thread history
  * while providing deduplication of similar tool calls.
+ *
+ * Temporary notes:
+ * To narrate it, an aiThread start just after the user chose a project: the configuration being defined, we can then get the list of the existing threads, and select the last one being used (or create the first if none). At every point in time, the user can select another (or create a new) thread, name it (but later it would be better to generate the name), and delete it.
+ *
+ * The aiThread is then present for all the ai-related parts : ai.handler.ts, agents, aiClients to receive the events composing the history. When a thread is loaded, the said events are also re-played for the frontend to udpate the display.
+ *
+ * On some future occasions, the current aiThread can be forked or cloned to run a task without polluting the parent thread. Also, in the near future, the agents will be aware of the existence of these other threads and may request informations from them. This would happen through the name (and/or the summary) of aiThreads, and the request would produce an end text message that will be transfered to the parent thread (as a tool response most probably).
+ *
+ * When an aiThread is left by the user (disconnection, explicit save), it is saved and may trigger several actions like a new summarization, a memory extraction to benefit all threads and users.
+ *
+ * AiThreads are (for now) tied to a user by default, maybe later shareable or multi-user capable, so aiThread management is important, leading to some necessary work to do on the frontend and API, to select a thread without resorting to commands (although these should still work for terminal interfaces).
  */
 export class AiThread {
   /** Unique identifier for the thread */
