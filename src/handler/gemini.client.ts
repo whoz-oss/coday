@@ -8,7 +8,10 @@ import {
 import {AiProvider} from "../model/agent-definition"
 import {ToolSet} from "../integration/tool-set"
 import {Toolbox} from "../integration/toolbox"
-import {ToolRequestEvent} from "../shared/coday-events"
+import {CodayEvent, ToolRequestEvent} from "../shared/coday-events"
+import {AiThread} from "ai-thread/ai-thread"
+import {Agent} from "model/agent"
+import {Observable} from "rxjs"
 
 export class GeminiClient implements AiClient {
   aiProvider: AiProvider = "GOOGLE"
@@ -31,6 +34,10 @@ export class GeminiClient implements AiClient {
       this.genAI = new GoogleGenerativeAI(this.apiKey)
     }
     this.toolbox = new Toolbox(interactor)
+  }
+  
+  answer2(agent: Agent, thread: AiThread): Observable<CodayEvent> {
+    throw new Error("Method not implemented.")
   }
   
   async isReady(context: CommandContext, toolSet: ToolSet): Promise<boolean> {

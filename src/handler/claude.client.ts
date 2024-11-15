@@ -4,9 +4,12 @@ import {MessageParam} from "@anthropic-ai/sdk/resources"
 import {Toolbox} from "../integration/toolbox"
 import {ToolCall, ToolResponse} from "../integration/tool-call"
 import {ToolSet} from "../integration/tool-set"
-import {MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
+import {CodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
 import {AiProvider, ModelSize} from "../model/agent-definition"
-import {AiThread, ThreadMessage} from "./ai-thread"
+import {catchError, defer, firstValueFrom, Observable, of, shareReplay, Subscriber, switchMap, throwError} from "rxjs"
+import {Agent} from "../model/agent"
+import {AiThread} from "../ai-thread/ai-thread"
+import {ThreadMessage} from "../ai-thread/ai-thread.types"
 
 const ClaudeModels = {
   [ModelSize.BIG]: {
@@ -27,6 +30,107 @@ export class ClaudeClient implements AiClient {
   private killed: boolean = false
   private client: Anthropic | undefined
   
+  private readonly initClient$: Observable<Anthropic> = defer(() => {
+    if (this.client) {
+      return of(this.client)
+    }
+    
+    this.apiKey = this.apiKeyProvider()
+    if (!this.apiKey) {
+      return throwError(() => new Error("ANTHROPIC_CLAUDE_API_KEY not set"))
+    }
+    
+    this.client = new Anthropic({apiKey: this.apiKey})
+    return of(this.client)
+  }).pipe(
+    shareReplay(1)
+  )
+  
+  answer2(agent: Agent, thread: AiThread): Observable<CodayEvent> {
+    return this.isReady$().pipe(
+      switchMap((client) => {
+        if (this.killed) return of()
+        
+        return new Observable<CodayEvent>(subscriber => {
+          this.processResponse(client, agent, thread, subscriber)
+        })
+      })
+    )
+  }
+  
+  private async processResponse(
+    client: Anthropic,
+    agent: Agent,
+    thread: AiThread,
+    subscriber: Subscriber<CodayEvent>
+  ): Promise<void> {
+    const thinking = setInterval(() => this.interactor.thinking(), 3000)
+    try {
+      
+      const response = await client.messages.create({
+        model: ClaudeModels[agent.definition.modelSize ?? ModelSize.BIG].model,
+        messages: this.toClaudeMessage(thread.messages),
+        system: agent.systemInstructions,
+        tools: this.getClaudeTools(agent.tools),
+        max_tokens: 8192
+      })
+      
+      clearInterval(thinking)
+      
+      // Emit text content if any
+      const text = response.content
+        .filter(block => block.type === "text")
+        .map(block => block.text)
+        .join("\n")
+      
+      if (text) {
+        subscriber.next(new MessageEvent({
+          role: "assistant",
+          content: text,
+          name: agent.name
+        }))
+      }
+      
+      // Process and emit tool calls
+      const toolRequests = response.content
+        .filter(block => block.type === "tool_use")
+        .map(block => new ToolRequestEvent({
+          toolRequestId: block.id,
+          name: block.name,
+          args: JSON.stringify(block.input)
+        }))
+      
+      if (toolRequests.length > 0) {
+        // Emit requests and process responses in parallel
+        await Promise.all(toolRequests.map(async request => {
+          subscriber.next(request)
+          try {
+            const response = await agent.tools.runTool(request)
+            subscriber.next(new ToolResponseEvent({
+              toolRequestId: request.toolRequestId,
+              output: response
+            }))
+          } catch (error: any) {
+            console.error(`Error running tool ${request.name}:`, error)
+            subscriber.next(new ToolResponseEvent({
+              toolRequestId: request.toolRequestId,
+              output: `Error: ${error.message}`
+            }))
+          }
+        }))
+        
+        // Continue with tool responses
+        await this.processResponse(client, agent, thread, subscriber)
+      } else {
+        subscriber.complete()
+      }
+      
+    } catch (error) {
+      clearInterval(thinking)
+      subscriber.error(error)
+    }
+  }
+  
   toolBox: Toolbox
   
   constructor(
@@ -37,17 +141,22 @@ export class ClaudeClient implements AiClient {
   }
   
   async isReady(): Promise<boolean> {
-    this.apiKey = this.apiKeyProvider()
-    if (this.apiKey) {
-      this.client = new Anthropic({
-        apiKey: this.apiKey
-      })
-    }
-    if (!this.apiKey) {
+    try {
+      await firstValueFrom(this.initClient$)
+      return true
+    } catch {
       this.interactor.warn("ANTHROPIC_CLAUDE_API_KEY not set, skipping AI command")
       return false
     }
-    return true
+  }
+  
+  private isReady$(): Observable<Anthropic> {
+    return this.initClient$.pipe(
+      catchError(error => {
+        this.interactor.warn("ANTHROPIC_CLAUDE_API_KEY not set, skipping AI command")
+        return throwError(() => error)
+      })
+    )
   }
   
   async addMessage(message: string, context: CommandContext): Promise<void> {

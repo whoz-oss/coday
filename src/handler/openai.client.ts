@@ -3,10 +3,13 @@ import {AssistantStream} from "openai/lib/AssistantStream"
 import {AiClient, AssistantDescription, CommandContext, DEFAULT_DESCRIPTION, Interactor,} from "../model"
 import {Toolbox} from "../integration/toolbox"
 import {ToolCall} from "../integration/tool-call"
-import {ToolRequestEvent} from "../shared"
+import {CodayEvent, ToolRequestEvent} from "../shared"
 import {AiProvider} from "../model/agent-definition"
 import {ToolSet} from "../integration/tool-set"
 import {Assistant} from "openai/resources/beta"
+import {AiThread} from "ai-thread/ai-thread"
+import {Agent} from "model/agent"
+import {Observable} from "rxjs"
 
 const DEFAULT_MODEL: string = "gpt-4o"
 const DEFAULT_TEMPERATURE: number = 0.75
@@ -30,6 +33,10 @@ export class OpenaiClient implements AiClient {
     private apiKeyProvider: () => string | undefined,
   ) {
     this.toolBox = new Toolbox(interactor)
+  }
+  
+  answer2(agent: Agent, thread: AiThread): Observable<CodayEvent> {
+    throw new Error("Method not implemented.")
   }
   
   async isReady(
