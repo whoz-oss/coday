@@ -35,7 +35,7 @@ export interface AiClient {
   answer2(
     agent: Agent,
     thread: AiThread
-  ): Observable<CodayEvent>
+  ): Promise<Observable<CodayEvent>>
   
   /**
    * Adds a user-issued message to the Openai thread

@@ -158,6 +158,31 @@ export class AiThread {
     }))
   }
   
+  addToolRequests(agentName: string, toolRequests: ToolRequestEvent[]): void {
+    toolRequests.forEach(toolRequest => {
+      if (!toolRequest.toolRequestId || !toolRequest.name || !toolRequest.args) return
+      this.add(toolRequest)
+    })
+  }
+  
+  addToolResponseEvents(toolResponseEvents: ToolResponseEvent[]): void {
+    toolResponseEvents.forEach(response => {
+      if (!response.toolRequestId || !response.output) return
+      const request = this.findToolRequestById(response.toolRequestId)
+      if (!request) return
+      
+      // Find similar requests using the current request as reference
+      const similarRequests = this.findSimilarToolRequests(request)
+      const responsesToRemove = this.findToolResponsesToRequests(similarRequests)
+      
+      // Remove old requests and responses
+      this.removeMessages([...similarRequests, ...responsesToRemove])
+      
+      // Add the new response
+      this.add(response)
+    })
+  }
+  
   /**
    * Adds tool execution requests to the thread.
    * Validates each tool call for required fields before adding.

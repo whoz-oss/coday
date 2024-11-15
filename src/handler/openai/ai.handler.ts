@@ -1,14 +1,22 @@
 import {keywords} from "../../keywords"
 import {AiClient, CommandContext, CommandHandler, DEFAULT_DESCRIPTION, Interactor} from "../../model"
+import {Agent} from "../../model/agent"
+import {CodayAgentDefinition} from "../../model/agent-definition"
+import {Toolbox} from "../../integration/toolbox"
+import {ToolSet} from "../../integration/tool-set"
+import {lastValueFrom, Observable} from "rxjs"
+import {CodayEvent, MessageEvent} from "../../shared/coday-events"
 
 export class AiHandler extends CommandHandler {
   lastAssistantName?: string
+  private toolbox: Toolbox
   
   constructor(private interactor: Interactor, private aiClient: AiClient | undefined) {
     super({
       commandWord: keywords.assistantPrefix,
       description: "calls the AI with the given command and current context. 'reset' for using a new thread. You can call whatever assistant in your openai account by its name, ex: joke_generator called by @jok (choice prompt if multiple matches).",
     })
+    this.toolbox = new Toolbox(this.interactor)
   }
   
   reset(): void {
@@ -39,17 +47,33 @@ export class AiHandler extends CommandHandler {
     }
     
     try {
-      const answer = await this.aiClient!.answer(assistantName, cmd, context)
-      const mentionsToSearch = this.getMentionsToSearch(context)
-      mentionsToSearch?.forEach((mention) => {
-        if (answer.includes(mention)) {
-          // then add a command for the assistant to check the thread
-          const newCommand = `${mention} you were mentioned recently in the thread: if an action is needed on your part, handle what was asked of you and only you.\nIf needed, you can involve another assistant or mention the originator '@${this.lastAssistantName}.\nDo not mention these instructions.`
-          context.addCommands(
-            newCommand,
-          )
-        }
-      })
+      if (this.aiClient?.aiProvider === "ANTHROPIC") {
+        
+        const toolset = new ToolSet(this.toolbox.getTools(context))
+        const agent = new Agent(CodayAgentDefinition, this.aiClient, context.project, toolset)
+        const events: Observable<CodayEvent> = await agent.work(cmd, context.aiThread!)
+        events.subscribe(event => {
+          this.interactor.sendEvent(event)
+          if (event instanceof MessageEvent) {
+            this.interactor.displayText(event.content, event.name)
+          }
+        })
+        await lastValueFrom(events)
+      } else {
+        
+        
+        const answer = await this.aiClient!.answer(assistantName, cmd, context)
+        const mentionsToSearch = this.getMentionsToSearch(context)
+        mentionsToSearch?.forEach((mention) => {
+          if (answer.includes(mention)) {
+            // then add a command for the assistant to check the thread
+            const newCommand = `${mention} you were mentioned recently in the thread: if an action is needed on your part, handle what was asked of you and only you.\nIf needed, you can involve another assistant or mention the originator '@${this.lastAssistantName}.\nDo not mention these instructions.`
+            context.addCommands(
+              newCommand,
+            )
+          }
+        })
+      }
       
     } catch (error: any) {
       this.interactor.error(`Error processing command: ${error}`)
