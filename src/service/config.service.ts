@@ -2,7 +2,7 @@ import {existsSync, lstatSync, readdirSync} from "fs"
 import os from "os"
 import path from "path"
 import {mkdirSync} from "node:fs"
-import {ProjectLocalConfig} from "../model"
+import {ProjectLocalConfig, SelectedProject} from "../model"
 import {readYamlFile} from "./read-yaml-file"
 import {writeYamlFile} from "./write-yaml-file"
 import {BehaviorSubject, Observable} from "rxjs"
@@ -17,11 +17,6 @@ const DATA_PATH: string = "/.coday"
  */
 const PROJECT_FILENAME = "project.yaml"
 
-type SelectedProject = {
-  name: string
-  configPath: string
-  config: ProjectLocalConfig
-} | null
 
 /**
  * Gateway service for config files

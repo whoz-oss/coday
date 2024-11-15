@@ -3,7 +3,7 @@ import {Project} from "./project"
 import {Observable, of} from "rxjs"
 import {AiClient} from "./ai.client"
 import {AgentDefinition} from "./agent-definition"
-import {AiThread} from "../handler/ai-thread"
+import {AiThread} from "../ai-thread/ai-thread"
 
 interface Agentic {
   work(input: WorkInput): Observable<CodayEvent>

@@ -63,13 +63,13 @@ export class FileAiThreadRepository implements AiThreadRepository {
    * @param name Thread name
    * @returns Sanitized file name
    */
-  private sanitizeFileName(name: string): string {
+  private sanitizeFileName(name?: string): string {
     return name
-        .toLowerCase()
+        ?.toLowerCase()
         // Replace spaces and special chars with hyphens
-        .replace(/[^a-z0-9]+/g, "-")
+        ?.replace(/[^a-z0-9]+/g, "-")
         // Remove leading/trailing hyphens
-        .replace(/^-+|-+$/g, "")
+        ?.replace(/^-+|-+$/g, "")
       // Ensure we have something valid
       || "untitled"
   }
