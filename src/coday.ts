@@ -4,6 +4,9 @@ import {keywords} from "./keywords"
 import {AiClient, CommandContext, Interactor} from "./model"
 import {AiHandler, ConfigHandler} from "./handler"
 import {AiClientProvider} from "./integration/ai/ai-client-provider"
+import {AiThreadService} from "./ai-thread/ai-thread.service"
+import {AiThreadRepositoryFactory} from "./ai-thread/repository/ai-thread.repository.factory"
+import {configService} from "./service/config.service"
 
 const MAX_ITERATIONS = 100
 
@@ -19,12 +22,14 @@ export class Coday {
   configHandler: ConfigHandler
   
   handlerLooper: HandlerLooper | undefined
-  openaiHandler: AiHandler | undefined
+  aiHandler: AiHandler | undefined
   aiClient: AiClient | undefined
   maxIterations: number
   initialPrompts: string[] = []
   
   private killed: boolean = false
+  
+  private aiThreadService: AiThreadService
   
   constructor(
     private interactor: Interactor,
@@ -33,6 +38,12 @@ export class Coday {
     this.userInfo = os.userInfo()
     this.configHandler = new ConfigHandler(interactor, this.userInfo.username)
     this.maxIterations = MAX_ITERATIONS
+    this.aiThreadService = new AiThreadService(new AiThreadRepositoryFactory(configService))
+    this.aiThreadService.getActive().subscribe(aiThread => {
+      if (!this.context || !aiThread) return
+      console.log("setting another aiThread")
+      this.context.aiThread = aiThread
+    })
   }
   
   async run(): Promise<void> {
@@ -56,7 +67,7 @@ export class Coday {
       
       if (userCommand === keywords.reset) {
         this.context = null
-        this.openaiHandler?.reset()
+        this.aiHandler?.reset()
         this.configHandler.resetProjectSelection()
         continue
       }
@@ -79,10 +90,11 @@ export class Coday {
         this.options.project,
       )
       if (this.context) {
+        this.context.aiThread = await this.aiThreadService.select()
         this.context.oneshot = this.options.oneshot
         this.aiClient = new AiClientProvider(this.interactor).getClient()
-        this.openaiHandler = new AiHandler(this.interactor, this.aiClient)
-        this.handlerLooper = new HandlerLooper(this.interactor, this.openaiHandler, this.aiClient)
+        this.aiHandler = new AiHandler(this.interactor, this.aiClient)
+        this.handlerLooper = new HandlerLooper(this.interactor, this.aiHandler, this.aiClient)
         this.handlerLooper.init(this.userInfo.username, this.context.project)
       }
     }

@@ -43,7 +43,7 @@ export class AiThread {
   modifiedDate: string
   
   /** Internal storage of thread messages in chronological order */
-  private _messages: ThreadMessage[]
+  private messages: ThreadMessage[]
   
   /**
    * Creates a new AiThread instance.
@@ -59,7 +59,7 @@ export class AiThread {
     this.modifiedDate = thread.modifiedDate ?? this.createdDate
     
     // Filter on type first, then build events
-    this._messages = (thread.messages ?? [])
+    this.messages = (thread.messages ?? [])
       .filter(msg => THREAD_MESSAGE_TYPES.includes(msg.type))
       .map(msg => buildCodayEvent(msg))
       .filter((event): event is ThreadMessage => event !== undefined)
@@ -69,16 +69,17 @@ export class AiThread {
    * Returns a copy of all messages in the thread.
    * @returns Array of thread messages in chronological order
    */
-  get messages(): ThreadMessage[] {
-    return [...this._messages]
+  getMessages(): ThreadMessage[] {
+    return [...this.messages]
   }
+  
   
   /**
    * Adds a new message to the thread.
    * @param message - The message to add
    */
   private add(message: ThreadMessage): void {
-    this._messages.push(message)
+    this.messages.push(message)
   }
   
   /**
@@ -87,7 +88,7 @@ export class AiThread {
    * @returns The matching ToolRequestEvent or undefined if not found
    */
   private findToolRequestById(id: string): ToolRequestEvent | undefined {
-    return this._messages.find(msg =>
+    return this.messages.find(msg =>
       msg instanceof ToolRequestEvent &&
       msg.toolRequestId === id
     ) as ToolRequestEvent | undefined
@@ -101,7 +102,7 @@ export class AiThread {
    * @returns Array of similar tool requests (excluding the reference)
    */
   private findSimilarToolRequests(reference: ToolRequestEvent): ToolRequestEvent[] {
-    return this._messages.filter(msg =>
+    return this.messages.filter(msg =>
       msg !== reference && // Exclude the reference request
       msg instanceof ToolRequestEvent &&
       msg.name === reference.name &&
@@ -116,7 +117,7 @@ export class AiThread {
    * @returns Array of tool responses matching the given requests
    */
   private findToolResponsesToRequests(requests: ToolRequestEvent[]): ToolResponseEvent[] {
-    return this._messages.filter(msg =>
+    return this.messages.filter(msg =>
       msg instanceof ToolResponseEvent &&
       requests.some(r => r.toolRequestId === msg.toolRequestId)
     ) as ToolResponseEvent[]
@@ -128,7 +129,7 @@ export class AiThread {
    * @param messages - Array of messages to remove
    */
   private removeMessages(messages: ThreadMessage[]): void {
-    this._messages = this._messages.filter(msg => !messages.includes(msg))
+    this.messages = this.messages.filter(msg => !messages.includes(msg))
   }
   
   /**

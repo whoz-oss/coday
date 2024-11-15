@@ -69,7 +69,7 @@ export class ClaudeClient implements AiClient {
       
       const response = await client.messages.create({
         model: ClaudeModels[agent.definition.modelSize ?? ModelSize.BIG].model,
-        messages: this.toClaudeMessage(thread.messages),
+        messages: this.toClaudeMessage(thread.getMessages()),
         system: agent.systemInstructions,
         tools: this.getClaudeTools(agent.tools),
         max_tokens: 8192
@@ -218,7 +218,7 @@ ${context.project.description}
 </project-context>`
     
     try {
-      const messages = this.toClaudeMessage(aiThread.messages)
+      const messages = this.toClaudeMessage(aiThread.getMessages())
       const response = await this.client!.messages.create({
         model: ClaudeModels[ModelSize.BIG].model,
         messages,

@@ -4,10 +4,11 @@
  * while handling complex internal state and transitions.
  */
 
-import {BehaviorSubject, Observable} from "rxjs"
-import {map} from "rxjs/operators"
+import {BehaviorSubject, firstValueFrom, Observable} from "rxjs"
 import {AiThread} from "./ai-thread"
 import {AiThreadRepository} from "./ai-thread.repository"
+import {AiThreadRepositoryFactory} from "./repository/ai-thread.repository.factory"
+import {filter} from "rxjs/operators"
 
 export interface ThreadSummary {
   id: string
@@ -20,20 +21,41 @@ export interface ThreadSummary {
 export class AiThreadService {
   private readonly activeThread$ = new BehaviorSubject<AiThread | null>(null)
   
-  constructor(private readonly repository: AiThreadRepository) {}
+  constructor(private readonly repositoryFactory: AiThreadRepositoryFactory) {
+    // Reset active thread when repository changes
+    this.repositoryFactory.repository.subscribe(() => {
+      console.log("resetting active thread")
+      this.activeThread$.next(null)
+      setTimeout(() => this.select(), 0) // auto select last thread after a project change
+    })
+  }
   
+  /**
+   * Get current repository instance asynchronously.
+   * Waits for a valid repository to be available.
+   * Used internally to ensure we always work with the latest valid repository.
+   */
+  private async getRepository(): Promise<AiThreadRepository> {
+    // Use firstValueFrom to get the first valid repository
+    return await firstValueFrom(
+      this.repositoryFactory.repository.pipe(
+        filter((repo): repo is AiThreadRepository => repo !== null)
+      )
+    )
+  }
   
   /**
    * Select a thread for use, or create a default one if none exists.
    * This is the main entry point for thread management.
-   * 
+   *
    * @param threadId Optional ID of thread to select
    * @returns Selected or created thread
    */
   async select(threadId?: string): Promise<AiThread> {
-
+    const repository = await this.getRepository()
+    
     if (threadId) {
-      const thread = await this.repository.getById(threadId)
+      const thread = await repository.getById(threadId)
       if (!thread) {
         throw new Error(`Thread ${threadId} not found`)
       }
@@ -42,7 +64,7 @@ export class AiThreadService {
     }
     
     // No ID provided, get last used or create new
-    const threads = await this.repository.listThreads()
+    const threads = await repository.listThreads()
     if (threads.length === 0) {
       // No threads exist, create first one
       const thread = new AiThread({
@@ -52,7 +74,7 @@ export class AiThreadService {
         createdDate: new Date().toISOString(),
         modifiedDate: new Date().toISOString()
       })
-      await this.repository.save(thread)
+      await repository.save(thread)
       this.activeThread$.next(thread)
       return thread
     }
@@ -65,7 +87,7 @@ export class AiThreadService {
       return latest
     })
     
-    const thread = await this.repository.getById(mostRecent.id)
+    const thread = await repository.getById(mostRecent.id)
     if (!thread) {
       throw new Error("Failed to load most recent thread")
     }
@@ -84,8 +106,9 @@ export class AiThreadService {
       return
     }
     
+    const repository = await this.getRepository()
     // Save current state
-    await this.repository.save(thread)
+    await repository.save(thread)
     
     // TODO: Post-processing
     // - Summarization
@@ -97,7 +120,8 @@ export class AiThreadService {
    * Delete a thread permanently
    */
   async delete(threadId: string): Promise<void> {
-    const success = await this.repository.delete(threadId)
+    const repository = await this.getRepository()
+    const success = await repository.delete(threadId)
     if (!success) {
       throw new Error(`Failed to delete thread ${threadId}`)
     }
@@ -116,12 +140,15 @@ export class AiThreadService {
   }
   
   /**
-   * List all available threads
+   * List all available threads.
+   * Returns an Observable that will emit once with the list of threads
+   * or error if repository is not available.
    */
   list(): Observable<ThreadSummary[]> {
     // Convert Promise to Observable for consistency
     return new Observable<ThreadSummary[]>(subscriber => {
-      this.repository.listThreads()
+      this.getRepository()
+        .then(repository => repository.listThreads())
         .then(threads => {
           subscriber.next(threads)
           subscriber.complete()
