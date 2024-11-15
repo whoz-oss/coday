@@ -1,5 +1,9 @@
 import {CommandContext} from "../model"
 import {AiProvider} from "./agent-definition"
+import {Observable} from "rxjs"
+import {CodayEvent} from "../shared/coday-events"
+import {Agent} from "./agent"
+import {AiThread} from "../ai-thread/ai-thread"
 
 /**
  * Common interface abstraction over different AI provider APIs
@@ -18,6 +22,20 @@ export interface AiClient {
    * Should be removed in favor of full Assistant class relying on AiClient
    */
   multiAssistant: boolean
+  
+  /**
+   * Run the AI with the given configuration and thread context.
+   * This stateless method is the new standard for AI interactions, handling
+   * message processing and tool execution using only provided parameters.
+   *
+   * @param agent Complete agent configuration including model, system instructions, and tools
+   * @param thread Current thread containing conversation history and managing message state
+   * @returns Observable stream of events from the AI interaction (messages, tool calls, tool responses)
+   */
+  answer2(
+    agent: Agent,
+    thread: AiThread
+  ): Observable<CodayEvent>
   
   /**
    * Adds a user-issued message to the Openai thread
