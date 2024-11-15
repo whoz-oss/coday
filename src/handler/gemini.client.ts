@@ -36,7 +36,7 @@ export class GeminiClient implements AiClient {
     this.toolbox = new Toolbox(interactor)
   }
   
-  answer2(agent: Agent, thread: AiThread): Observable<CodayEvent> {
+  answer2(agent: Agent, thread: AiThread): Promise<Observable<CodayEvent>> {
     throw new Error("Method not implemented.")
   }
   

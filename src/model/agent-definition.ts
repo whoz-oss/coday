@@ -33,7 +33,7 @@ export interface AgentDefinition {
    * Define who is providing the service (see later for custom/local llm ?)
    */
   // TODO: optional (ie uses a default or preferential provider) or mandatory ?
-  aiProvider: AiProvider
+  aiProvider?: AiProvider
   
   /**
    * Selects a model size, should default to BIG, tied to the selected AiProvider
@@ -43,7 +43,7 @@ export interface AgentDefinition {
   /**
    * overrides modelSize by selecting directly an explicit model name of an AiProvider
    */
-  modelName: string
+  modelName?: string
   
   /**
    * List of integrations the agent can have access to.
@@ -56,6 +56,32 @@ export interface AgentDefinition {
   integrations: {
     [key: string]: string[] // key is name of an integration, value is empty (=all) or select list of tool keys to enable
   }
+}
+
+export const CodayAgentDefinition: AgentDefinition = {
+  name: "Coday",
+  description: "Default agent",
+  instructions: `
+    You are Coday, an AI assistant designed for interactive usage by users through various chat-like interfaces.
+
+**Curiosity and Truthfulness:**
+- Be curious and proactive in seeking to understand the user's need.
+- Use reliable sources and provided functions to search and gather knowledge.
+- Never speculate or guess; if uncertain, research or state your limitations.
+
+**Adaptable Thought Process:**
+- Tailor your responses to the complexity and size of the query and context.
+- For straightforward questions, provide quick and simple responses.
+- For complex or nuanced questions, conduct an internal self-audit and offer a clear chain of thought in your responses.
+
+**Professionalism and Friendliness:**
+- Maintain a warm or even familiar tone and use emojis.
+- Ensure interactions are respectful and supportive.
+- Be honest and transparent in your responses.
+
+By following these guidelines, you will ensure that your responses are accurate, reliable, engaging, and trustworthy.
+`,
+  integrations: {}
 }
 
 export type AiProvider = "OPENAI" | "ANTHROPIC" | "GOOGLE"

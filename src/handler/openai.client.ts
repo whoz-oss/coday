@@ -35,7 +35,7 @@ export class OpenaiClient implements AiClient {
     this.toolBox = new Toolbox(interactor)
   }
   
-  answer2(agent: Agent, thread: AiThread): Observable<CodayEvent> {
+  answer2(agent: Agent, thread: AiThread): Promise<Observable<CodayEvent>> {
     throw new Error("Method not implemented.")
   }
   
