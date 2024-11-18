@@ -208,9 +208,6 @@ describe("FileAiThreadRepository", () => {
       })
       await repo.save(thread1)
       
-      // Add some delay to ensure different timestamps
-      await new Promise(resolve => setTimeout(resolve, 10))
-      
       // Save second thread
       const thread2 = new AiThread({
         id: "id-2",
@@ -230,10 +227,11 @@ describe("FileAiThreadRepository", () => {
       expect(savedThread1?.id).toBe("id-1")
       expect(savedThread2?.id).toBe("id-2")
       
-      // Files should have unique names
+      // Files should follow the name-id pattern
       const files = await fs.readdir(tmpDir)
-      const sameNameFiles = files.filter(f => f.startsWith("same-name"))
-      expect(sameNameFiles).toHaveLength(2)
+      expect(files).toContain("same-name-id-1.yml")
+      expect(files).toContain("same-name-id-2.yml")
+      expect(files).toHaveLength(2)
     })
   })
   
