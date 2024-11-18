@@ -31,3 +31,13 @@ export enum RunStatus {
   STOPPED = "STOPPED",
   RUNNING = "RUNNING"
 }
+
+/**
+ * Custom error class for repository operations
+ */
+export class ThreadRepositoryError extends Error {
+  constructor(message: string, public cause?: Error) {
+    super(message)
+    this.name = "ThreadRepositoryError"
+  }
+}

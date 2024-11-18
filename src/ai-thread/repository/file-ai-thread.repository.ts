@@ -78,18 +78,16 @@ export class FileAiThreadRepository implements AiThreadRepository {
   }
   
   
+  /**
+   * Find a thread file by its ID using the filename pattern {name}-{id}.yml
+   * @param threadId ID of the thread to find
+   * @returns Filename if found, null otherwise
+   */
   private async findThreadFile(threadId: string): Promise<string | null> {
     try {
       const files = await fs.readdir(this.threadsDir)
-      for (const file of files) {
-        if (!file.endsWith(".yml")) continue
-        
-        const data = await readYamlFile(path.join(this.threadsDir, file))
-        if (data?.id === threadId) {
-          return file
-        }
-      }
-      return null
+      const threadFile = files.find(file => file.endsWith(`-${threadId}.yml`))
+      return threadFile || null
     } catch (error) {
       throw new ThreadRepositoryError(`Error finding thread ${threadId}`, error as Error)
     }
