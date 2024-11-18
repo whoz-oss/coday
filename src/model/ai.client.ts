@@ -4,35 +4,23 @@ import {Observable} from "rxjs"
 import {CodayEvent} from "../shared/coday-events"
 import {Agent} from "./agent"
 import {AiThread} from "../ai-thread/ai-thread"
+import {RunStatus} from "../ai-thread/ai-thread.types"
 
 /**
- * Common interface abstraction over different AI provider APIs
- *
- * Should be completely stateless
+ * Common abstraction over different AI provider APIs.
  */
-export interface AiClient {
-  /**
-   * Enum value indicating to users of the AiClient interface which provider is used
-   * Serves as a key/identifier
-   */
-  aiProvider: AiProvider
-  
-  /**
-   * Temporary marker for openai assistant feature
-   * Should be removed in favor of full Assistant class relying on AiClient
-   */
-  multiAssistant: boolean
+export abstract class AiClient {
+  abstract aiProvider: AiProvider
+  abstract multiAssistant: boolean
   
   /**
    * Run the AI with the given configuration and thread context.
-   * This stateless method is the new standard for AI interactions, handling
-   * message processing and tool execution using only provided parameters.
    *
    * @param agent Complete agent configuration including model, system instructions, and tools
    * @param thread Current thread containing conversation history and managing message state
    * @returns Observable stream of events from the AI interaction (messages, tool calls, tool responses)
    */
-  answer2(
+  abstract answer2(
     agent: Agent,
     thread: AiThread
   ): Promise<Observable<CodayEvent>>
@@ -46,10 +34,10 @@ export interface AiClient {
    * @param message the user message to add to the thread
    * @param context
    */
-  addMessage(
+  abstract addMessage(
     message: string,
     context: CommandContext,
-  ): Promise<void>;
+  ): Promise<void>
   
   /**
    * Answer the command by querying the assistant by its name
@@ -61,19 +49,39 @@ export interface AiClient {
    * @param command prompt sent to the assistant
    * @param context
    */
-  answer(
+  abstract answer(
     name: string,
     command: string,
     context: CommandContext,
-  ): Promise<string>;
+  ): Promise<string>
   
-  kill(): void
+  /**
+   * Protected utility to check if thread is stopped
+   *
+   * @param thread The thread being processed
+   * @returns true if processing should stop
+   */
+  protected shouldStop(thread: AiThread): boolean {
+    return thread.runStatus === RunStatus.STOPPED
+  }
+  
+  /**
+   * Start processing on a thread
+   */
+  protected start(thread: AiThread): void {
+    thread.runStatus = RunStatus.RUNNING
+  }
   
   /**
    * Forgets the thread data for a client reset
    *
-   * Used only for Openai and Gemini.
-   * Should be deprecated in favor of custom thread management
+   * Used only for Openai and Gemini, deprecating
    */
-  reset(): void
+  abstract reset(): void
+  
+  /**
+   * Kills the process, deprecating
+   * Will be replaced by aiThread.runStatus...
+   */
+  abstract kill(): void
 }

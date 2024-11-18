@@ -25,11 +25,9 @@ export type ThreadSerialized = {
 }
 
 /**
- * Custom error class for repository operations
+ * Simple status of thread execution.
  */
-export class ThreadRepositoryError extends Error {
-  constructor(message: string, public cause?: Error) {
-    super(message)
-    this.name = 'ThreadRepositoryError'
-  }
+export enum RunStatus {
+  STOPPED = "STOPPED",
+  RUNNING = "RUNNING"
 }

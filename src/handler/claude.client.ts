@@ -1,15 +1,22 @@
-import {AiClient, AssistantDescription, CommandContext, DEFAULT_DESCRIPTION, Interactor} from "../model"
+import {
+  Agent,
+  AiClient,
+  AiProvider,
+  AssistantDescription,
+  CommandContext,
+  DEFAULT_DESCRIPTION,
+  Interactor,
+  ModelSize
+} from "../model"
 import Anthropic from "@anthropic-ai/sdk"
 import {MessageParam} from "@anthropic-ai/sdk/resources"
 import {Toolbox} from "../integration/toolbox"
 import {ToolCall, ToolResponse} from "../integration/tool-call"
 import {ToolSet} from "../integration/tool-set"
 import {CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
-import {AiProvider, ModelSize} from "../model/agent-definition"
 import {Observable, of, Subject} from "rxjs"
-import {Agent} from "../model/agent"
 import {AiThread} from "../ai-thread/ai-thread"
-import {ThreadMessage} from "../ai-thread/ai-thread.types"
+import {RunStatus, ThreadMessage} from "../ai-thread/ai-thread.types"
 
 const ClaudeModels = {
   [ModelSize.BIG]: {
@@ -22,17 +29,18 @@ const ClaudeModels = {
   }
 }
 
-export class ClaudeClient implements AiClient {
+export class ClaudeClient extends AiClient {
   aiProvider: AiProvider = "ANTHROPIC"
   multiAssistant = true
   private apiKey: string | undefined
   private textAccumulator: string = ""
   private killed: boolean = false
+  
   private client: Anthropic | undefined
   
   
   async answer2(agent: Agent, thread: AiThread): Promise<Observable<CodayEvent>> {
-    if (!(await this.isReady()) || this.killed) return of()
+    if (!(await this.isReady())) return of()
     
     const outputSubject: Subject<CodayEvent> = new Subject()
     this.processResponse(this.client!, agent, thread, outputSubject).finally(() => outputSubject.complete())
@@ -97,11 +105,14 @@ export class ClaudeClient implements AiClient {
           thread.addToolResponseEvents([responseEvent])
         }))
         
+        // Check interruption before recursion
+        if (this.mustStop(thread)) return
+        
         // Continue with tool responses
         await this.processResponse(client, agent, thread, subscriber)
       }
       
-    } catch (error) {
+    } catch (error: any) {
       clearInterval(thinking)
       subscriber.next(new ErrorEvent({
         error
@@ -115,7 +126,16 @@ export class ClaudeClient implements AiClient {
     private readonly interactor: Interactor,
     private readonly apiKeyProvider: () => string | undefined,
   ) {
+    super()
     this.toolBox = new Toolbox(interactor)
+  }
+  
+  kill(): void {
+    this.killed = true
+  }
+  
+  private mustStop(thread: AiThread): boolean {
+    return thread.runStatus === RunStatus.STOPPED || this.killed
   }
   
   async isReady(): Promise<boolean> {
@@ -178,10 +198,6 @@ export class ClaudeClient implements AiClient {
     toolSet: ToolSet,
     context: CommandContext, // TODO: integrate relevant infos into AiThread ? Used just for project.description ?
   ): Promise<void> {
-    if (this.killed) {
-      return
-    }
-    
     const thinking = setInterval(() => this.interactor.thinking(), 3000)
     
     // define system instructions for the model (to be done each call)
@@ -235,13 +251,13 @@ ${context.project.description}
         aiThread.addToolResponses("user", toolResponses)
       }
       
-      if (toolResponses.length) {
+      if (toolResponses.length && aiThread.runStatus === RunStatus.RUNNING) {
         await this.processMessages(aiThread, assistant, toolSet, context)
       }
       
-    } catch (error) {
+    } catch (error: any) {
       console.error(error)
-      throw new Error(`Error calling Claude API: ${(error as Error).message}`)
+      throw new Error(`Error calling Claude API: ${error.message}`)
     }
   }
   
@@ -249,9 +265,6 @@ ${context.project.description}
     this.interactor.displayText("Conversation has been reset")
   }
   
-  kill(): void {
-    this.killed = true
-  }
   
   /**
    * Convert a ThreadMessage to Claude's MessageParam format

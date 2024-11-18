@@ -1,6 +1,6 @@
 import OpenAI from "openai"
 import {AssistantStream} from "openai/lib/AssistantStream"
-import {AiClient, AssistantDescription, CommandContext, DEFAULT_DESCRIPTION, Interactor,} from "../model"
+import {AiClient, AssistantDescription, CommandContext, DEFAULT_DESCRIPTION, Interactor} from "../model"
 import {Toolbox} from "../integration/toolbox"
 import {ToolCall} from "../integration/tool-call"
 import {CodayEvent, ToolRequestEvent} from "../shared"
@@ -16,12 +16,12 @@ const DEFAULT_TEMPERATURE: number = 0.75
 
 type AssistantReference = { name: string; id: string }
 
-export class OpenaiClient implements AiClient {
+export class OpenaiClient extends AiClient {
+  killed: boolean = false
   aiProvider: AiProvider = "OPENAI"
   multiAssistant = true
   openai: OpenAI | undefined
   textAccumulator: string = ""
-  private killed: boolean = false
   
   toolBox: Toolbox
   apiKey: string | undefined
@@ -32,6 +32,7 @@ export class OpenaiClient implements AiClient {
     private interactor: Interactor,
     private apiKeyProvider: () => string | undefined,
   ) {
+    super()
     this.toolBox = new Toolbox(interactor)
   }
   
@@ -115,6 +116,10 @@ export class OpenaiClient implements AiClient {
     this.interactor.displayText("Thread has been reset")
   }
   
+  kill(): void {
+    this.killed = true
+  }
+  
   private isOpenaiReady(): boolean {
     this.apiKey = this.apiKeyProvider()
     if (!this.apiKey) {
@@ -152,18 +157,13 @@ export class OpenaiClient implements AiClient {
   }
   
   private async processStream(stream: AssistantStream, toolSet: ToolSet, threadId: string) {
-    if (this.killed) {
-      return
-    }
+    // Check interruption before starting stream processing
     stream.on("textDone", (diff) => {
       this.interactor.displayText(diff.value, this.assistant?.name)
       this.textAccumulator += diff.value
     })
     for await (const chunk of stream) {
       this.interactor.thinking()
-      if (this.killed) {
-        break
-      }
       if (chunk.event === "thread.run.requires_action") {
         try {
           const toolCalls =
@@ -187,7 +187,7 @@ export class OpenaiClient implements AiClient {
               chunk.data.id,
               {tool_outputs: toolOutputs},
             )
-          
+          if (this.killed) return
           await this.processStream.call(this, newStream, toolSet, threadId)
         } catch (error) {
           console.error(`Error processing tool call`, error)
@@ -225,10 +225,6 @@ export class OpenaiClient implements AiClient {
     }
   }
   
-  kill(): void {
-    console.log("openai-client killed")
-    this.killed = true
-  }
   
   private async findAssistant(
     name: string,

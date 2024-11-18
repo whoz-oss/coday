@@ -7,6 +7,7 @@ import {AiClientProvider} from "./integration/ai/ai-client-provider"
 import {AiThreadService} from "./ai-thread/ai-thread.service"
 import {AiThreadRepositoryFactory} from "./ai-thread/repository/ai-thread.repository.factory"
 import {configService} from "./service/config.service"
+import {RunStatus} from "./ai-thread/ai-thread.types"
 
 const MAX_ITERATIONS = 100
 
@@ -39,9 +40,8 @@ export class Coday {
     this.configHandler = new ConfigHandler(interactor, this.userInfo.username)
     this.maxIterations = MAX_ITERATIONS
     this.aiThreadService = new AiThreadService(new AiThreadRepositoryFactory(configService))
-    this.aiThreadService.getActive().subscribe(aiThread => {
+    this.aiThreadService.activeThread.subscribe(aiThread => {
       if (!this.context || !aiThread) return
-      console.log("setting another aiThread")
       this.context.aiThread = aiThread
     })
   }
@@ -72,14 +72,43 @@ export class Coday {
         continue
       }
       
+      const thread = this.context.aiThread
+      if (thread) thread.runStatus = RunStatus.RUNNING
+      
       // add the user command to the queue and let handlers decompose it in many and resolve them ultimately
       this.context.addCommands(userCommand!)
       
-      this.context = await this.handlerLooper!.handle(this.context)
+      try {
+        this.context = await this.handlerLooper!.handle(this.context)
+      } finally {
+        this.stop()
+      }
     } while (!(this.context?.oneshot))
   }
   
+  /**
+   * Stops the current AI processing gracefully:
+   * - Preserves thread and context state
+   * - Allows clean completion of current operation
+   * - Prevents new processing steps
+   *
+   * @returns Promise that resolves when stop is complete
+   */
+  stop(): void {
+    const thread = this.context?.aiThread
+    if (thread) thread.runStatus = RunStatus.STOPPED
+    this.handlerLooper?.stop()
+  }
+  
+  /**
+   * Immediately terminates all processing.
+   * Unlike stop(), this method:
+   * - Does not preserve state
+   * - Immediately ends all processing
+   * - May leave cleanup needed
+   */
   kill(): void {
+    this.stop()
     this.handlerLooper?.kill()
     this.interactor.kill()
   }
@@ -94,7 +123,7 @@ export class Coday {
         this.context.oneshot = this.options.oneshot
         this.aiClient = new AiClientProvider(this.interactor).getClient()
         this.aiHandler = new AiHandler(this.interactor, this.aiClient)
-        this.handlerLooper = new HandlerLooper(this.interactor, this.aiHandler, this.aiClient)
+        this.handlerLooper = new HandlerLooper(this.interactor, this.aiHandler, this.aiClient, this.aiThreadService)
         this.handlerLooper.init(this.userInfo.username, this.context.project)
       }
     }
