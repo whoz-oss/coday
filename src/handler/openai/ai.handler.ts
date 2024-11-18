@@ -1,7 +1,13 @@
 import {keywords} from "../../keywords"
-import {AiClient, CommandContext, CommandHandler, DEFAULT_DESCRIPTION, Interactor} from "../../model"
-import {Agent} from "../../model/agent"
-import {CodayAgentDefinition} from "../../model/agent-definition"
+import {
+  Agent,
+  AiClient,
+  CodayAgentDefinition,
+  CommandContext,
+  CommandHandler,
+  DEFAULT_DESCRIPTION,
+  Interactor
+} from "../../model"
 import {Toolbox} from "../../integration/toolbox"
 import {ToolSet} from "../../integration/tool-set"
 import {lastValueFrom, Observable} from "rxjs"
@@ -48,14 +54,22 @@ export class AiHandler extends CommandHandler {
     
     try {
       if (this.aiClient?.aiProvider === "ANTHROPIC") {
-        
         const toolset = new ToolSet(this.toolbox.getTools(context))
         const agent = new Agent(CodayAgentDefinition, this.aiClient, context.project, toolset)
         const events: Observable<CodayEvent> = await agent.work(cmd, context.aiThread!)
-        events.subscribe(event => {
-          this.interactor.sendEvent(event)
-          if (event instanceof MessageEvent) {
-            this.interactor.displayText(event.content, event.name)
+        events.subscribe({
+          next: (event) => {
+            this.interactor.sendEvent(event)
+            if (event instanceof MessageEvent) {
+              this.interactor.displayText(event.content, event.name)
+            }
+          },
+          error: (error) => {
+            if (error.message === "Processing interrupted by user request") {
+              this.interactor.displayText("Processing stopped gracefully", agent.name)
+            } else {
+              this.interactor.error(`Error in AI processing: ${error.message}`)
+            }
           }
         })
         await lastValueFrom(events)

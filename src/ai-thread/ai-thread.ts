@@ -6,7 +6,7 @@
 
 import {buildCodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
 import {ToolCall, ToolResponse} from "../integration/tool-call"
-import {ThreadMessage, ThreadSerialized} from "./ai-thread.types"
+import {RunStatus, ThreadMessage, ThreadSerialized} from "./ai-thread.types"
 
 /**
  * Allowed message types for filtering when building thread history
@@ -41,6 +41,7 @@ export class AiThread {
   
   createdDate: string
   modifiedDate: string
+  runStatus: RunStatus = RunStatus.STOPPED
   
   /** Internal storage of thread messages in chronological order */
   private messages: ThreadMessage[]

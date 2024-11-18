@@ -13,9 +13,13 @@ import {AiThread} from "ai-thread/ai-thread"
 import {Agent} from "model/agent"
 import {Observable} from "rxjs"
 
-export class GeminiClient implements AiClient {
+/**
+ * Deprecated
+ * Will be replaced by OpenaiClient as API compatibility is expected
+ */
+export class GeminiClient extends AiClient {
+  multiAssistant: boolean = false
   aiProvider: AiProvider = "GOOGLE"
-  multiAssistant = false
   private apiKey: string | undefined
   private genAI: GoogleGenerativeAI | undefined
   threadId: string | null = null
@@ -29,6 +33,7 @@ export class GeminiClient implements AiClient {
     private interactor: Interactor,
     private apiKeyProvider: () => string | undefined,
   ) {
+    super()
     this.apiKey = this.apiKeyProvider()
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey)
