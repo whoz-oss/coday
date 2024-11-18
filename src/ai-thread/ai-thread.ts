@@ -53,7 +53,7 @@ export class AiThread {
    * @param thread.messages - Optional array of raw message objects to initialize the thread
    */
   constructor(thread: ThreadSerialized) {
-    this.id = thread.id!
+    this.id = thread.id
     this.name = thread.name ?? "untitled"
     this.summary = thread.summary ?? ""
     this.createdDate = thread.createdDate ?? new Date().toISOString()
