@@ -4,13 +4,21 @@ import {CodayEventHandler} from "../utils/coday-event-handler"
 export class ChatHistoryComponent implements CodayEventHandler {
   private chatHistory: HTMLDivElement
   private readonly thinkingDots: HTMLDivElement
+  private readonly stopButton: HTMLButtonElement
   private history = new Map<string, CodayEvent>()
-  
   private thinkingTimeout: any
+  private readonly onStopCallback: () => void
   
-  constructor() {
+  constructor(onStopCallback: () => void) {
     this.chatHistory = document.getElementById("chat-history") as HTMLDivElement
     this.thinkingDots = document.getElementById("thinking-dots") as HTMLDivElement
+    this.stopButton = this.thinkingDots.querySelector(".stop-button") as HTMLButtonElement
+    this.onStopCallback = onStopCallback
+    
+    // Bind stop button click event
+    if (this.stopButton) {
+      this.stopButton.addEventListener("click", () => this.onStopCallback())
+    }
   }
   
   handle(event: CodayEvent): void {
@@ -45,6 +53,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
       this.thinkingTimeout = setTimeout(() => {
         this.thinkingDots.classList.toggle("visible", false)
       }, ThinkingEvent.debounce * 2)
+      
     }
     this.thinkingDots.classList.toggle("visible", value)
   }
