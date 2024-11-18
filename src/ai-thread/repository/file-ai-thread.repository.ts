@@ -10,6 +10,20 @@ import {AiThreadRepository} from "../ai-thread.repository"
 import {ThreadRepositoryError} from "../ai-thread.types"
 
 /**
+ * Helper function to safely read YAML file content
+ * @param filePath Path to YAML file
+ * @returns Parsed YAML content or null if file can't be read/parsed
+ */
+const readYamlFile = async (filePath: string): Promise<any | null> => {
+  try {
+    const content = await fs.readFile(filePath, "utf-8")
+    return yaml.parse(content)
+  } catch {
+    return null
+  }
+}
+
+/**
  * File-based implementation of ThreadRepository
  * Stores threads as individual YAML files in the project's .coday/threads directory
  */
@@ -37,113 +51,81 @@ export class FileAiThreadRepository implements AiThreadRepository {
   }
   
   /**
-   * Get the file path for a thread using its name
-   * @param thread Thread instance containing name and id
-   * @returns Full path to the thread's YAML file
-   */
-  private getFilePath(thread: AiThread): string
-  /**
-   * Get the file path for a thread using its id (for retrieval)
-   * @param id Thread identifier
-   * @returns Full path to the thread's YAML file
-   */
-  private getFilePath(id: string): string
-  private getFilePath(threadOrId: AiThread | string): string {
-    // If given a thread, use its name, otherwise we're looking up by id
-    const isThread = threadOrId instanceof AiThread
-    const fileName = isThread
-      ? this.sanitizeFileName(threadOrId.name)
-      : this.findFileNameById(threadOrId)
-    
-    return path.join(this.threadsDir, `${fileName}.yml`)
-  }
-  
-  /**
    * Sanitize a thread name for use as a file name
    * @param name Thread name
    * @returns Sanitized file name
    */
   private sanitizeFileName(name?: string): string {
-    return name
-        ?.toLowerCase()
-        // Replace spaces and special chars with hyphens
-        ?.replace(/[^a-z0-9]+/g, "-")
-        // Remove leading/trailing hyphens
-        ?.replace(/^-+|-+$/g, "")
-      // Ensure we have something valid
-      || "untitled"
-  }
-  
-  /**
-   * Find a file name by thread id by scanning directory
-   * @param id Thread id to find
-   * @returns File name if found
-   * @throws ThreadRepositoryError if file not found
-   */
-  private async findFileNameById(id: string): Promise<string> {
-    try {
-      const files = await fs.readdir(this.threadsDir)
-      for (const file of files) {
-        if (!file.endsWith(".yml")) continue
-        
-        const content = await fs.readFile(path.join(this.threadsDir, file), "utf-8")
-        const data = yaml.parse(content)
-        if (data.id === id) {
-          return file.slice(0, -4) // Remove .yml extension
-        }
-      }
-      throw new ThreadRepositoryError(`Thread ${id} not found`)
-    } catch (error) {
-      if (error instanceof ThreadRepositoryError) throw error
-      throw new ThreadRepositoryError(`Error finding thread ${id}`, error as Error)
-    }
+    return (name || "untitled")
+      .toLowerCase()
+      // Replace spaces and special chars with hyphens
+      .replace(/[^a-z0-9]+/g, "-")
+      // Remove leading/trailing hyphens
+      .replace(/^-+|-+$/g, "")
   }
   
   async getById(id: string): Promise<AiThread | null> {
     await this.initPromise
     try {
-      // First find the file with matching id
-      const fileName = await this.findFileNameById(id)
-      const filePath = path.join(this.threadsDir, `${fileName}.yml`)
+      const file = await this.findThreadFile(id)
+      if (!file) return null
       
-      const content = await fs.readFile(filePath, "utf-8")
-      const data = yaml.parse(content)
-      return new AiThread(data)
+      const data = await readYamlFile(path.join(this.threadsDir, file))
+      return data ? new AiThread(data) : null
     } catch (error) {
-      if (error instanceof ThreadRepositoryError) {
-        return null
-      }
       throw new ThreadRepositoryError(`Failed to read thread ${id}`, error as Error)
     }
   }
   
+  
+  private async findThreadFile(threadId: string): Promise<string | null> {
+    try {
+      const files = await fs.readdir(this.threadsDir)
+      for (const file of files) {
+        if (!file.endsWith(".yml")) continue
+        
+        const data = await readYamlFile(path.join(this.threadsDir, file))
+        if (data?.id === threadId) {
+          return file
+        }
+      }
+      return null
+    } catch (error) {
+      throw new ThreadRepositoryError(`Error finding thread ${threadId}`, error as Error)
+    }
+  }
+  
+  
+  /**
+   * Generate a filename for a thread, combining sanitized name and id
+   * @param thread Thread to generate filename for
+   * @returns The filename with .yml extension
+   */
+  private getThreadFileName(thread: AiThread): string {
+    const sanitizedName = this.sanitizeFileName(thread.name || "untitled")
+    return `${sanitizedName}-${thread.id}.yml`
+  }
+  
+  /**
+   * Save a thread to a file.
+   * Uses thread name and id to create a unique filename.
+   * Creates a new file if name changed.
+   * @param thread Thread to save
+   * @returns The saved thread
+   */
   async save(thread: AiThread): Promise<AiThread> {
     await this.initPromise
     try {
-      // Check for name collisions
-      const sanitizedName = this.sanitizeFileName(thread.name)
-      const files = await fs.readdir(this.threadsDir)
-      const existingFile = files.find(file => {
-        const fileName = file.slice(0, -4) // Remove .yml
-        return fileName === sanitizedName
-      })
+      const fileName = this.getThreadFileName(thread)
+      const contentToSave = yaml.stringify(thread)
       
-      if (existingFile) {
-        // Read the existing file to check if it's the same thread (update case)
-        const content = await fs.readFile(path.join(this.threadsDir, existingFile), "utf-8")
-        const data = yaml.parse(content)
-        if (data.id !== thread.id) {
-          // Different thread with same sanitized name, append id
-          const uniqueName = `${sanitizedName}-${thread.id}`
-          const filePath = path.join(this.threadsDir, `${uniqueName}.yml`)
-          await fs.writeFile(filePath, yaml.stringify(thread), "utf-8")
-          return thread
-        }
-      }
+      // Write the file
+      await fs.writeFile(
+        path.join(this.threadsDir, fileName),
+        contentToSave,
+        "utf-8"
+      )
       
-      // Normal save case
-      const filePath = path.join(this.threadsDir, `${sanitizedName}.yml`)
-      await fs.writeFile(filePath, yaml.stringify(thread), "utf-8")
       return thread
     } catch (error) {
       throw new ThreadRepositoryError(`Failed to save thread ${thread.id}`, error as Error)
@@ -164,20 +146,14 @@ export class FileAiThreadRepository implements AiThreadRepository {
         files
           .filter(file => file.endsWith(".yml"))
           .map(async file => {
-            try {
-              const content = await fs.readFile(path.join(this.threadsDir, file), "utf-8")
-              const data = yaml.parse(content)
-              return {
-                id: data.id,
-                name: data.name || "untitled",
-                summary: data.summary || "",
-                createdDate: data.createdDate || "",
-                modifiedDate: data.modifiedDate || ""
-              }
-            } catch {
-              // Skip files that can't be read or parsed
-              return null
-            }
+            const data = await readYamlFile(path.join(this.threadsDir, file))
+            return data ? {
+              id: data.id,
+              name: data.name || "untitled",
+              summary: data.summary || "",
+              createdDate: data.createdDate || "",
+              modifiedDate: data.modifiedDate || ""
+            } : null
           })
       )
       // Filter out null entries from failed reads
@@ -190,16 +166,12 @@ export class FileAiThreadRepository implements AiThreadRepository {
   async delete(id: string): Promise<boolean> {
     await this.initPromise
     try {
-      // First find the file with matching id
-      const fileName = await this.findFileNameById(id)
-      const filePath = path.join(this.threadsDir, `${fileName}.yml`)
+      const file = await this.findThreadFile(id)
+      if (!file) return false
       
-      await fs.unlink(filePath)
+      await fs.unlink(path.join(this.threadsDir, file))
       return true
     } catch (error) {
-      if (error instanceof ThreadRepositoryError) {
-        return false
-      }
       throw new ThreadRepositoryError(`Failed to delete thread ${id}`, error as Error)
     }
   }
