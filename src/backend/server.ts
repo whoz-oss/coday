@@ -19,8 +19,37 @@ app.get("/", (req: express.Request, res: express.Response) => {
 app.use(express.json())
 
 // Maintain a dictionary of connected clients
-const clients: Record<string, { res: express.Response, interval: NodeJS.Timeout, interactor: ServerInteractor }> = {}
+const clients: Record<string, {
+  res: express.Response,
+  interval: NodeJS.Timeout,
+  interactor: ServerInteractor,
+  coday?: Coday
+}> = {}
 
+
+// POST endpoint for stopping the current run
+app.post("/api/stop", (req: express.Request, res: express.Response) => {
+  try {
+    const clientId = req.query.clientId as string
+    const client = clients[clientId]
+    
+    if (!client) {
+      res.status(404).send("Client not found")
+      return
+    }
+    
+    if (!client.coday) {
+      res.status(400).send("No active Coday instance")
+      return
+    }
+    
+    client.coday.stop()
+    res.status(200).send("Stop signal sent successfully!")
+  } catch (error) {
+    console.error("Error processing stop request:", error)
+    res.status(500).send("Error processing stop request")
+  }
+})
 
 // POST endpoint for receiving AnswerEvent messages
 app.post("/api/message", (req: express.Request, res: express.Response) => {
@@ -83,6 +112,7 @@ app.get("/events", (req: express.Request, res: express.Response) => {
     terminate(clientId, coday)
   })
   coday = new Coday(interactor, {oneshot: false})
+  clients[clientId].coday = coday
   coday.run().finally(() => terminate(clientId, coday))
 })
 
