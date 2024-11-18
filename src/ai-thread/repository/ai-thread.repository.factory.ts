@@ -15,13 +15,12 @@ import {SelectedProject} from "../../model"
  * Factory for creating and managing ThreadRepository instances based on configuration
  */
 export class AiThreadRepositoryFactory {
-  private readonly repository$: BehaviorSubject<AiThreadRepository>
-  repository: Observable<AiThreadRepository>
+  private readonly repository$: BehaviorSubject<AiThreadRepository | null>
+  repository: Observable<AiThreadRepository | null>
   
   constructor(private configService: ConfigService) {
     // Initialize with default file repository
-    const defaultRepo = new FileAiThreadRepository(process.cwd())
-    this.repository$ = new BehaviorSubject<AiThreadRepository>(defaultRepo)
+    this.repository$ = new BehaviorSubject<AiThreadRepository | null>(null)
     this.repository = this.repository$.asObservable()
     
     // Subscribe to config changes
@@ -29,7 +28,6 @@ export class AiThreadRepositoryFactory {
       filter(value => !!value),
       map(selectedProject => this.createRepository(selectedProject))
     ).subscribe(repo => {
-      console.log("emitting new repo")
       this.repository$.next(repo)
     })
   }
@@ -37,7 +35,7 @@ export class AiThreadRepositoryFactory {
   /**
    * Get the current thread repository instance
    */
-  getCurrentRepository(): AiThreadRepository {
+  getCurrentRepository(): AiThreadRepository | null {
     return this.repository$.getValue()
   }
   
@@ -45,8 +43,6 @@ export class AiThreadRepositoryFactory {
    * Create appropriate repository based on configuration
    */
   private createRepository(selectedProject: SelectedProject): AiThreadRepository {
-    console.log("createRepository")
-    
     const storage = selectedProject?.config?.storage
     switch (storage?.type) {
       case "mongo":

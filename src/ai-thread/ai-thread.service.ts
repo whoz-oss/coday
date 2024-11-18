@@ -21,10 +21,15 @@ export interface ThreadSummary {
 export class AiThreadService {
   private readonly activeThread$ = new BehaviorSubject<AiThread | null>(null)
   
+  /**
+   * Observable of the currently active thread.
+   * Emits whenever the active thread changes.
+   */
+  readonly activeThread: Observable<AiThread | null> = this.activeThread$.asObservable()
+  
   constructor(private readonly repositoryFactory: AiThreadRepositoryFactory) {
     // Reset active thread when repository changes
-    this.repositoryFactory.repository.subscribe(() => {
-      console.log("resetting active thread")
+    this.repositoryFactory.repository.pipe(filter(repository => !!repository)).subscribe(() => {
       this.activeThread$.next(null)
       setTimeout(() => this.select(), 0) // auto select last thread after a project change
     })
@@ -42,6 +47,17 @@ export class AiThreadService {
         filter((repo): repo is AiThreadRepository => repo !== null)
       )
     )
+  }
+  
+  async create(name?: string): Promise<AiThread> {
+    const respository = await this.getRepository()
+    const newThread = new AiThread({
+      id: "", // TODO falsy, will be overriden by repository, shitty pattern
+      name: name ? name : "Untitled",
+    })
+    const saved = await respository.save(newThread)
+    this.activeThread$.next(saved)
+    return saved
   }
   
   /**
@@ -99,16 +115,25 @@ export class AiThreadService {
   /**
    * Save current thread state and trigger post-processing
    * like summarization and memory extraction.
+   *
+   * @param newName Optional new name for the thread
    */
-  async save(): Promise<void> {
+  async save(newName?: string): Promise<void> {
     const thread = this.activeThread$.value
     if (!thread) {
       return
     }
     
     const repository = await this.getRepository()
-    // Save current state
+    
+    // If renaming, update the name and modified date
+    if (newName) {
+      // assign new id
+      thread.id = crypto.randomUUID()
+      thread.name = newName
+    }
     await repository.save(thread)
+    this.activeThread$.next(thread)
     
     // TODO: Post-processing
     // - Summarization
@@ -126,17 +151,18 @@ export class AiThreadService {
       throw new Error(`Failed to delete thread ${threadId}`)
     }
     
-    // If active thread was deleted, clear it
+    // If active thread was deleted, redo
     if (this.activeThread$.value?.id === threadId) {
-      this.activeThread$.next(null)
+      await this.select()
     }
   }
   
   /**
-   * Get currently active thread as an observable
+   * Get currently active thread synchronously.
+   * @returns The current thread or null if none is active
    */
-  getActive(): Observable<AiThread | null> {
-    return this.activeThread$.asObservable()
+  getCurrentThread(): AiThread | null {
+    return this.activeThread$.value
   }
   
   /**

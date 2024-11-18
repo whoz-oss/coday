@@ -120,6 +120,7 @@ export class Coday {
       )
       if (this.context) {
         this.context.aiThread = await this.aiThreadService.select()
+        this.interactor.displayText(`Selected thread '${this.context.aiThread.name}'`)
         this.context.oneshot = this.options.oneshot
         this.aiClient = new AiClientProvider(this.interactor).getClient()
         this.aiHandler = new AiHandler(this.interactor, this.aiClient)

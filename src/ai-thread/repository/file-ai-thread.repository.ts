@@ -114,6 +114,7 @@ export class FileAiThreadRepository implements AiThreadRepository {
   async save(thread: AiThread): Promise<AiThread> {
     await this.initPromise
     try {
+      if (!thread.id) thread.id = crypto.randomUUID()
       const fileName = this.getThreadFileName(thread)
       const contentToSave = yaml.stringify(thread)
       
