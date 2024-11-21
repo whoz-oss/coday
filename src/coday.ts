@@ -8,6 +8,7 @@ import {AiThreadService} from "./ai-thread/ai-thread.service"
 import {AiThreadRepositoryFactory} from "./ai-thread/repository/ai-thread.repository.factory"
 import {configService} from "./service/config.service"
 import {RunStatus} from "./ai-thread/ai-thread.types"
+import {AnswerEvent, MessageEvent, TextEvent} from "./shared/coday-events"
 
 const MAX_ITERATIONS = 100
 
@@ -43,6 +44,28 @@ export class Coday {
     this.aiThreadService.activeThread.subscribe(aiThread => {
       if (!this.context || !aiThread) return
       this.context.aiThread = aiThread
+      
+      // Re-emit thread history if it has messages
+      const messages = aiThread.getMessages()
+      if (messages && messages.length > 0) {
+        // Sort messages by timestamp to maintain chronological order
+        const sortedMessages = [...messages].sort((a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        )
+        
+        // Convert and emit each message
+        for (const message of sortedMessages) {
+          if (!(message instanceof MessageEvent)) continue
+          if (message.role === "assistant") {
+            this.interactor.sendEvent(new TextEvent({...message, speaker: message.name, text: message.content}))
+          } else {
+            this.interactor.sendEvent(new AnswerEvent({...message, answer: message.content, invite: message.name}))
+          }
+        }
+      }
+      
+      // Always emit the thread selection message last
+      this.interactor.displayText(`Selected thread '${aiThread.name}'`)
     })
   }
   
@@ -120,7 +143,6 @@ export class Coday {
       )
       if (this.context) {
         this.context.aiThread = await this.aiThreadService.select()
-        this.interactor.displayText(`Selected thread '${this.context.aiThread.name}'`)
         this.context.oneshot = this.options.oneshot
         this.aiClient = new AiClientProvider(this.interactor).getClient()
         this.aiHandler = new AiHandler(this.interactor, this.aiClient)

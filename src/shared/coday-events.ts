@@ -20,7 +20,7 @@ export abstract class QuestionEvent extends CodayEvent {
   }
   
   buildAnswer(answer: string): AnswerEvent {
-    return new AnswerEvent({answer, parentKey: this.timestamp})
+    return new AnswerEvent({answer, parentKey: this.timestamp, invite: this.invite})
   }
 }
 
@@ -44,11 +44,13 @@ export class InviteEvent extends QuestionEvent {
 
 export class AnswerEvent extends CodayEvent {
   answer: string
+  invite?: string
   static type = "answer"
   
   constructor(event: Partial<AnswerEvent>) {
     super(event, AnswerEvent.type)
-    this.answer = event.answer!!
+    this.answer = event.answer ?? "No answer"
+    this.invite = event.invite
   }
 }
 
