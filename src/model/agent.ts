@@ -37,7 +37,7 @@ export class Agent {
   async run(command: string, thread: AiThread): Promise<Observable<CodayEvent>> {
     thread.addUserMessage("user", command)
     
-    return this.aiClient.answer2(this, thread)
+    return this.aiClient.run(this, thread)
   }
   
   get systemInstructions(): string {
