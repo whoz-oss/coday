@@ -1,22 +1,22 @@
 import {input, select} from "@inquirer/prompts"
 import chalk from "chalk"
 import {Interactor} from "./model"
-import {ChoiceEvent, ErrorEvent, InviteEvent, TextEvent, ThinkingEvent, WarnEvent} from "./shared"
+import {AnswerEvent, ChoiceEvent, ErrorEvent, InviteEvent, TextEvent, ThinkingEvent, WarnEvent} from "./shared"
 
 export class TerminalInteractor extends Interactor {
+  private interactionInProgress = false
   
   constructor() {
     super()
     this.events.subscribe((event) => {
       if (event instanceof TextEvent) {
-        const {speaker, text} = event
-        const formattedText = speaker
-          ? `\n${chalk.black.bgWhite(speaker)} : ${text}\n`
-          : text
-        console.log(formattedText)
+        this.displayFormattedText(event.text, event.speaker)
       }
       if (event instanceof WarnEvent) {
         console.warn(`${event.warning}\n`)
+      }
+      if (event instanceof AnswerEvent && !this.interactionInProgress) {
+        this.displayFormattedText(event.answer, event.invite)
       }
       if (event instanceof ErrorEvent) {
         console.error(`${event.error}\n`)
@@ -33,16 +33,25 @@ export class TerminalInteractor extends Interactor {
     })
   }
   
+  private displayFormattedText(text: string, speaker?: string): void {
+    const formattedText = speaker
+      ? `\n${chalk.black.bgWhite(speaker)} : ${text}\n`
+      : text
+    console.log(formattedText)
+  }
+  
   handleInviteEvent(event: InviteEvent): void {
+    this.interactionInProgress = true
     input({
       message: `\n${chalk.black.bgWhite(event.invite)} : `
     }).then((answer: string) => {
       this.sendEvent(event.buildAnswer(answer))
-    })
+    }).finally(() => this.interactionInProgress = false)
   }
   
   handleChoiceEvent(event: ChoiceEvent): void {
     const {options, invite, optionalQuestion} = event
+    this.interactionInProgress = true
     select({
       message: optionalQuestion ? `${optionalQuestion} :\n${invite}` : invite,
       choices: options.map((option) => ({
@@ -51,6 +60,6 @@ export class TerminalInteractor extends Interactor {
       })),
     }).then((answer: string) => {
       this.sendEvent(event.buildAnswer(answer))
-    })
+    }).finally(() => this.interactionInProgress = false)
   }
 }

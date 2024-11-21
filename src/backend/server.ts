@@ -2,7 +2,7 @@ import express from "express"
 import path from "path"
 import {ServerInteractor} from "../model/server-interactor"
 import {Coday} from "../coday"
-import {HeartBeatEvent} from "../shared"
+import {AnswerEvent, HeartBeatEvent} from "../shared"
 
 const app = express()
 const PORT = process.env.PORT || 3000  // Default port as fallback
@@ -57,10 +57,8 @@ app.post("/api/message", (req: express.Request, res: express.Response) => {
     const payload = req.body
     const clientId = req.query.clientId as string
     
-    clients[clientId].interactor.addAnswerEvent(
-      payload.answer ?? "",
-      payload.parentKey
-    )
+    clients[clientId].interactor.sendEvent(new AnswerEvent(payload))
+    
     res.status(200).send("Message received successfully!")
   } catch (error) {
     console.error("Error processing AnswerEvent:", error)

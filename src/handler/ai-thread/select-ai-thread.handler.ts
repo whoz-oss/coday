@@ -23,8 +23,7 @@ export class SelectAiThreadHandler extends CommandHandler {
     try {
       const threadId = this.getSubCommand(command)
       if (threadId) {
-        const thread = await this.threadService.select(threadId)
-        this.interactor.displayText(`Selected thread: ${thread.id} - ${thread.name}`)
+        await this.threadService.select(threadId)
         return context
       }
       
@@ -51,8 +50,7 @@ export class SelectAiThreadHandler extends CommandHandler {
         return context
       }
       
-      const thread = await this.threadService.select(selectedId)
-      this.interactor.displayText(`Selected thread: ${thread.id} - ${thread.name}`)
+      await this.threadService.select(selectedId)
     } catch (error) {
       this.interactor.error(error)
     }

@@ -1,4 +1,4 @@
-import {AnswerEvent, CodayEvent, QuestionEvent, TextEvent, ThinkingEvent} from "shared/coday-events"
+import {AnswerEvent, CodayEvent, TextEvent, ThinkingEvent} from "shared/coday-events"
 import {CodayEventHandler} from "../utils/coday-event-handler"
 
 export class ChatHistoryComponent implements CodayEventHandler {
@@ -30,11 +30,8 @@ export class ChatHistoryComponent implements CodayEventHandler {
         this.addTechnical(event.text)
       }
     }
-    if (event instanceof AnswerEvent && event.parentKey) {
-      const question = this.history.get(event.parentKey)
-      if (question instanceof QuestionEvent) {
-        this.addAnswer(event.answer, question.invite)
-      }
+    if (event instanceof AnswerEvent) {
+      this.addAnswer(event.answer, event.invite)
     }
     if (event instanceof ErrorEvent) {
       this.addError(event.error)
