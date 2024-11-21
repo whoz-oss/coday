@@ -46,6 +46,11 @@ export interface AgentDefinition {
   modelName?: string
   
   /**
+   * Temperature of the model, 0 to 2: 0.2 is quite deterministic, 0.8 is "creative", 1.5+ is on LSD.
+   */
+  temperature?: number
+  
+  /**
    * List of integrations the agent can have access to.
    * Integrations need also to be configured in the project to be available.
    * Values are either:

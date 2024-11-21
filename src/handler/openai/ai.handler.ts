@@ -31,6 +31,11 @@ export class AiHandler extends CommandHandler {
   }
   
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
+    if (!this.aiClient) {
+      this.interactor.error("No AI provider configured, see 'config edit-ai' command.")
+      return context
+    }
+    
     const cmd = command.slice(this.commandWord.length)
     
     if (cmd.trim() === "reset") {
@@ -53,41 +58,43 @@ export class AiHandler extends CommandHandler {
     }
     
     try {
-      if (this.aiClient?.aiProvider === "ANTHROPIC") {
-        const toolset = new ToolSet(this.toolbox.getTools(context))
-        const agent = new Agent(CodayAgentDefinition, this.aiClient, context.project, toolset)
-        const events: Observable<CodayEvent> = await agent.work(cmd, context.aiThread!)
-        events.subscribe({
-          next: (event) => {
-            this.interactor.sendEvent(event)
-            if (event instanceof MessageEvent) {
-              this.interactor.displayText(event.content, event.name)
-            }
-          },
-          error: (error) => {
-            if (error.message === "Processing interrupted by user request") {
-              this.interactor.displayText("Processing stopped gracefully", agent.name)
-            } else {
-              this.interactor.error(`Error in AI processing: ${error.message}`)
-            }
+      // if (this.aiClient?.aiProvider === "ANTHROPIC") {
+      // This agent definition should be done beforehand, as "soon" as the project is selected
+      const toolset = new ToolSet(this.toolbox.getTools(context))
+      const agent = new Agent(CodayAgentDefinition, this.aiClient, context.project, toolset)
+      
+      const events: Observable<CodayEvent> = await agent.run(cmd, context.aiThread!)
+      events.subscribe({
+        next: (event) => {
+          this.interactor.sendEvent(event)
+          if (event instanceof MessageEvent) {
+            this.interactor.displayText(event.content, event.name)
           }
-        })
-        await lastValueFrom(events)
-      } else {
-        
-        
-        const answer = await this.aiClient!.answer(assistantName, cmd, context)
-        const mentionsToSearch = this.getMentionsToSearch(context)
-        mentionsToSearch?.forEach((mention) => {
-          if (answer.includes(mention)) {
-            // then add a command for the assistant to check the thread
-            const newCommand = `${mention} you were mentioned recently in the thread: if an action is needed on your part, handle what was asked of you and only you.\nIf needed, you can involve another assistant or mention the originator '@${this.lastAssistantName}.\nDo not mention these instructions.`
-            context.addCommands(
-              newCommand,
-            )
+        },
+        error: (error) => {
+          if (error.message === "Processing interrupted by user request") {
+            this.interactor.displayText("Processing stopped gracefully", agent.name)
+          } else {
+            this.interactor.error(`Error in AI processing: ${error.message}`)
           }
-        })
-      }
+        }
+      })
+      await lastValueFrom(events)
+      // } else {
+      //
+      //
+      //   const answer = await this.aiClient!.answer(assistantName, cmd, context)
+      //   const mentionsToSearch = this.getMentionsToSearch(context)
+      //   mentionsToSearch?.forEach((mention) => {
+      //     if (answer.includes(mention)) {
+      //       // then add a command for the assistant to check the thread
+      //       const newCommand = `${mention} you were mentioned recently in the thread: if an action is needed on your part, handle what was asked of you and only you.\nIf needed, you can involve another assistant or mention the originator '@${this.lastAssistantName}.\nDo not mention these instructions.`
+      //       context.addCommands(
+      //         newCommand,
+      //       )
+      //     }
+      //   })
+      // }
       
     } catch (error: any) {
       this.interactor.error(`Error processing command: ${error}`)
@@ -126,15 +133,15 @@ export class AiHandler extends CommandHandler {
     return cmd.slice(0, firstSpaceIndex)
   }
   
-  private getMentionsToSearch(context: CommandContext): string[] | undefined {
-    if (!this.aiClient?.multiAssistant) {
-      return
-    }
-    return (context.project.assistants
-      ? [DEFAULT_DESCRIPTION, ...context.project.assistants]
-      : undefined)
-      ?.map((a) => a.name)
-      ?.filter((name) => !this.lastAssistantName || !name.toLowerCase().startsWith(this.lastAssistantName.toLowerCase()))
-      .map((name) => `@${name}`)
-  }
+  // private getMentionsToSearch(context: CommandContext): string[] | undefined {
+  //   if (!this.aiClient?.multiAssistant) {
+  //     return
+  //   }
+  //   return (context.project.assistants
+  //     ? [DEFAULT_DESCRIPTION, ...context.project.assistants]
+  //     : undefined)
+  //     ?.map((a) => a.name)
+  //     ?.filter((name) => !this.lastAssistantName || !name.toLowerCase().startsWith(this.lastAssistantName.toLowerCase()))
+  //     .map((name) => `@${name}`)
+  // }
 }

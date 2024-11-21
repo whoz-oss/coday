@@ -34,7 +34,6 @@ export class ClaudeClient extends AiClient {
   multiAssistant = true
   private apiKey: string | undefined
   private textAccumulator: string = ""
-  private killed: boolean = false
   
   private client: Anthropic | undefined
   
@@ -60,6 +59,7 @@ export class ClaudeClient extends AiClient {
         messages: this.toClaudeMessage(thread.getMessages()),
         system: agent.systemInstructions,
         tools: this.getClaudeTools(agent.tools),
+        temperature: agent.definition.temperature ?? 0.8,
         max_tokens: 8192
       })
       
@@ -68,17 +68,10 @@ export class ClaudeClient extends AiClient {
       // Emit text content if any
       const text = response.content
         .filter(block => block.type === "text")
-        .map(block => block.text)
+        .map(block => block.text.trim())
+        .filter(t => !!t)
         .join("\n")
       
-      if (text) {
-        thread.addAgentMessage(agent.name, text)
-        subscriber.next(new MessageEvent({
-          role: "assistant",
-          content: text,
-          name: agent.name
-        }))
-      }
       
       // Process and emit tool calls
       const toolRequests = response.content
@@ -88,27 +81,9 @@ export class ClaudeClient extends AiClient {
           name: block.name,
           args: JSON.stringify(block.input)
         }))
-      if (toolRequests.length > 0) {
-        // Emit requests and process responses in parallel
-        await Promise.all(toolRequests.map(async request => {
-          let responseEvent: ToolResponseEvent
-          try {
-            responseEvent = await agent.tools.run(request)
-          } catch (error: any) {
-            console.error(`Error running tool ${request.name}:`, error)
-            responseEvent = new ToolResponseEvent({
-              toolRequestId: request.toolRequestId,
-              output: `Error: ${error.message}`
-            })
-          }
-          thread.addToolRequests(agent.name, [request])
-          thread.addToolResponseEvents([responseEvent])
-        }))
-        
-        // Check interruption before recursion
-        if (this.mustStop(thread)) return
-        
-        // Continue with tool responses
+      
+      
+      if (await this.shouldProcessAgainAfterResponse(text, toolRequests, agent, thread, subscriber)) {
         await this.processResponse(client, agent, thread, subscriber)
       }
       
@@ -132,10 +107,6 @@ export class ClaudeClient extends AiClient {
   
   kill(): void {
     this.killed = true
-  }
-  
-  private mustStop(thread: AiThread): boolean {
-    return thread.runStatus === RunStatus.STOPPED || this.killed
   }
   
   async isReady(): Promise<boolean> {

@@ -34,7 +34,7 @@ export class Agent {
    * @param command text written by the user
    * @param thread
    */
-  async work(command: string, thread: AiThread): Promise<Observable<CodayEvent>> {
+  async run(command: string, thread: AiThread): Promise<Observable<CodayEvent>> {
     thread.addUserMessage("user", command)
     
     return this.aiClient.answer2(this, thread)
