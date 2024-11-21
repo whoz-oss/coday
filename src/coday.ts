@@ -9,6 +9,7 @@ import {AiThreadRepositoryFactory} from "./ai-thread/repository/ai-thread.reposi
 import {configService} from "./service/config.service"
 import {RunStatus} from "./ai-thread/ai-thread.types"
 import {AnswerEvent, MessageEvent, TextEvent} from "./shared/coday-events"
+import {selectAiThread} from "./handler/ai-thread/select-ai-thread"
 
 const MAX_ITERATIONS = 100
 
@@ -77,6 +78,7 @@ export class Coday {
         return
       }
       await this.initContext()
+      await this.initThread()
       if (!this.context) {
         this.interactor.error("Could not initialize context 😭")
         break
@@ -142,13 +144,18 @@ export class Coday {
         this.options.project,
       )
       if (this.context) {
-        this.context.aiThread = await this.aiThreadService.select()
         this.context.oneshot = this.options.oneshot
         this.aiClient = new AiClientProvider(this.interactor).getClient()
         this.aiHandler = new AiHandler(this.interactor, this.aiClient)
         this.handlerLooper = new HandlerLooper(this.interactor, this.aiHandler, this.aiClient, this.aiThreadService)
         this.handlerLooper.init(this.userInfo.username, this.context.project)
       }
+    }
+  }
+  
+  private async initThread(): Promise<void> {
+    if (!this.context?.aiThread) {
+      await selectAiThread(this.interactor, this.aiThreadService)
     }
   }
   

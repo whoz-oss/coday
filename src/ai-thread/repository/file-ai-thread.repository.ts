@@ -7,7 +7,7 @@ import path from "path"
 import * as yaml from "yaml"
 import {AiThread} from "../ai-thread"
 import {AiThreadRepository} from "../ai-thread.repository"
-import {ThreadRepositoryError} from "../ai-thread.types"
+import {ThreadRepositoryError, ThreadSummary} from "../ai-thread.types"
 
 /**
  * Helper function to safely read YAML file content
@@ -131,17 +131,11 @@ export class FileAiThreadRepository implements AiThreadRepository {
     }
   }
   
-  async listThreads(): Promise<Array<{
-    id: string,
-    name: string,
-    summary: string,
-    createdDate: string,
-    modifiedDate: string
-  }>> {
+  async listThreads(): Promise<Array<ThreadSummary>> {
     await this.initPromise
     try {
       const files = await fs.readdir(this.threadsDir)
-      const threads = await Promise.all(
+      return (await Promise.all(
         files
           .filter(file => file.endsWith(".yml"))
           .map(async file => {
@@ -154,9 +148,10 @@ export class FileAiThreadRepository implements AiThreadRepository {
               modifiedDate: data.modifiedDate || ""
             } : null
           })
-      )
-      // Filter out null entries from failed reads
-      return threads.filter((t): t is NonNullable<typeof t> => t !== null)
+      ))
+        .filter(t => !!t)
+        // sort by decreasing last modified date
+        .sort((a: ThreadSummary, b: ThreadSummary) => a.modifiedDate > b.modifiedDate ? -1 : 1)
     } catch (error) {
       throw new ThreadRepositoryError("Failed to list threads", error as Error)
     }

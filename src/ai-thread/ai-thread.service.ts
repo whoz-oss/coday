@@ -9,14 +9,8 @@ import {AiThread} from "./ai-thread"
 import {AiThreadRepository} from "./ai-thread.repository"
 import {AiThreadRepositoryFactory} from "./repository/ai-thread.repository.factory"
 import {filter} from "rxjs/operators"
+import {ThreadSummary} from "./ai-thread.types"
 
-export interface ThreadSummary {
-  id: string
-  name: string
-  summary: string
-  createdDate: string
-  modifiedDate: string
-}
 
 export class AiThreadService {
   private readonly activeThread$ = new BehaviorSubject<AiThread | null>(null)
@@ -49,15 +43,13 @@ export class AiThreadService {
     )
   }
   
-  async create(name?: string): Promise<AiThread> {
-    const respository = await this.getRepository()
+  create(name?: string): AiThread {
     const newThread = new AiThread({
-      id: "", // TODO falsy, will be overriden by repository, shitty pattern
-      name: name ? name : "Untitled",
+      id: "", // TODO falsy, will be overriden by repository, shitty pattern FTW...
+      name: name ? name : "Temporary thread",
     })
-    const saved = await respository.save(newThread)
-    this.activeThread$.next(saved)
-    return saved
+    this.activeThread$.next(newThread)
+    return newThread
   }
   
   /**
@@ -82,17 +74,7 @@ export class AiThreadService {
     // No ID provided, get last used or create new
     const threads = await repository.listThreads()
     if (threads.length === 0) {
-      // No threads exist, create first one
-      const thread = new AiThread({
-        id: crypto.randomUUID(),
-        name: "New Thread",  // TODO: Generate meaningful name
-        summary: "",
-        createdDate: new Date().toISOString(),
-        modifiedDate: new Date().toISOString()
-      })
-      await repository.save(thread)
-      this.activeThread$.next(thread)
-      return thread
+      return this.create()
     }
     
     // Select most recent thread

@@ -1,8 +1,6 @@
-import {CommandHandler} from "../../model/command.handler"
-import {Interactor} from "../../model/interactor"
+import {CommandContext, CommandHandler, Interactor} from "../../model"
 import {AiThreadService} from "../../ai-thread/ai-thread.service"
-import {CommandContext} from "../../model/command-context"
-import {lastValueFrom} from "rxjs"
+import {selectAiThread} from "./select-ai-thread"
 
 /**
  * Handler for selecting an AI thread for use.
@@ -27,30 +25,9 @@ export class SelectAiThreadHandler extends CommandHandler {
         return context
       }
       
-      // Interactive selection
-      const threads = await lastValueFrom(this.threadService.list())
-      if (threads.length === 0) {
-        this.interactor.displayText("No threads available.")
-        return context
-      }
+      await selectAiThread(this.interactor, this.threadService)
       
-      const currentThread = this.threadService.getCurrentThread()
-      const threadsByText = new Map<string, string>()
-      
-      threads.forEach(thread => {
-        const text = `${thread.id}: ${currentThread?.id === thread.id ? "[CURRENT] " : ""}${thread.name}`
-        threadsByText.set(text, thread.id)
-      })
-      
-      const options = Array.from(threadsByText.keys())
-      const selected = await this.interactor.chooseOption(options, "Select a thread")
-      const selectedId = threadsByText.get(selected)
-      if (!selectedId) {
-        this.interactor.error("Failed to get selected thread ID")
-        return context
-      }
-      
-      await this.threadService.select(selectedId)
+      return context
     } catch (error) {
       this.interactor.error(error)
     }
