@@ -24,6 +24,14 @@ export type ThreadSerialized = {
   modifiedDate?: string
 }
 
+export interface ThreadSummary {
+  id: string
+  name: string
+  summary: string
+  createdDate: string
+  modifiedDate: string
+}
+
 /**
  * Simple status of thread execution.
  */
