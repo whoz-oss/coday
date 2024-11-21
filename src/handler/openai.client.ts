@@ -1,23 +1,42 @@
 import OpenAI from "openai"
 import {AssistantStream} from "openai/lib/AssistantStream"
-import {AiClient, AssistantDescription, CommandContext, DEFAULT_DESCRIPTION, Interactor} from "../model"
+import {
+  AiClient,
+  AiProvider,
+  AssistantDescription,
+  CommandContext,
+  DEFAULT_DESCRIPTION,
+  Interactor,
+  ModelSize
+} from "../model"
 import {Toolbox} from "../integration/toolbox"
 import {ToolCall} from "../integration/tool-call"
-import {CodayEvent, ToolRequestEvent} from "../shared"
-import {AiProvider} from "../model/agent-definition"
+import {CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared"
 import {ToolSet} from "../integration/tool-set"
 import {Assistant} from "openai/resources/beta"
 import {AiThread} from "ai-thread/ai-thread"
 import {Agent} from "model/agent"
-import {Observable} from "rxjs"
+import {Observable, of, Subject} from "rxjs"
+import {ThreadMessage} from "../ai-thread/ai-thread.types"
+import {ChatCompletionMessageParam, ChatCompletionSystemMessageParam} from "openai/resources/chat/completions"
 
 const DEFAULT_MODEL: string = "gpt-4o"
 const DEFAULT_TEMPERATURE: number = 0.75
 
+const OpenaiModels = {
+  [ModelSize.BIG]: {
+    model: "gpt-4o",
+    contextWindow: 128000
+  },
+  [ModelSize.SMALL]: {
+    model: "gpt-4o-mini",
+    contextWindow: 128000
+  },
+}
+
 type AssistantReference = { name: string; id: string }
 
 export class OpenaiClient extends AiClient {
-  killed: boolean = false
   aiProvider: AiProvider = "OPENAI"
   multiAssistant = true
   openai: OpenAI | undefined
@@ -31,13 +50,98 @@ export class OpenaiClient extends AiClient {
   constructor(
     private interactor: Interactor,
     private apiKeyProvider: () => string | undefined,
+    private apiUrl: string | undefined = undefined
   ) {
     super()
     this.toolBox = new Toolbox(interactor)
   }
   
-  answer2(agent: Agent, thread: AiThread): Promise<Observable<CodayEvent>> {
-    throw new Error("Method not implemented.")
+  async answer2(agent: Agent, thread: AiThread): Promise<Observable<CodayEvent>> {
+    if (!(this.isOpenaiReady())) return of()
+    
+    const outputSubject: Subject<CodayEvent> = new Subject()
+    this.processResponse(this.openai!, agent, thread, outputSubject).finally(() => outputSubject.complete())
+    return outputSubject
+  }
+  
+  private async processResponse(
+    client: OpenAI,
+    agent: Agent,
+    thread: AiThread,
+    subscriber: Subject<CodayEvent>
+  ): Promise<void> {
+    const thinking = setInterval(() => this.interactor.thinking(), 3000)
+    try {
+      const response = await client.chat.completions.create({
+        model: OpenaiModels[agent.definition.modelSize ?? ModelSize.BIG].model,
+        messages: this.toOpenAiMessage(agent, thread.getMessages()),
+        tools: agent.tools.getTools(),
+        max_completion_tokens: undefined,
+        temperature: agent.definition.temperature ?? 0.8
+      })
+      
+      clearInterval(thinking)
+      
+      const text = response.choices[0].message.content?.trim()
+      
+      const toolRequests = response.choices[0].message?.tool_calls
+        ?.map(toolCall => new ToolRequestEvent({
+          toolRequestId: toolCall.id,
+          name: toolCall.function.name,
+          args: toolCall.function.arguments
+        }))
+      
+      if (await this.shouldProcessAgainAfterResponse(text, toolRequests, agent, thread, subscriber)) {
+        await this.processResponse(client, agent, thread, subscriber)
+      }
+    } catch (error: any) {
+      clearInterval(thinking)
+      subscriber.next(new ErrorEvent({
+        error
+      }))
+    }
+  }
+  
+  private toOpenAiMessage(agent: Agent, messages: ThreadMessage[]): ChatCompletionMessageParam[] {
+    const systemInstructionMessage: ChatCompletionSystemMessageParam = {
+      content: agent.systemInstructions,
+      role: "system"
+    }
+    const openaiMessages = messages.map(msg => {
+      let openaiMessage: ChatCompletionMessageParam | undefined
+      if (msg instanceof MessageEvent) {
+        const role = msg.role === "assistant" ? "system" : "user"
+        openaiMessage = {
+          role,
+          content: msg.content,
+          name: msg.role === "user" ? msg.name : undefined
+        }
+      }
+      if (msg instanceof ToolRequestEvent) {
+        openaiMessage = {
+          role: "assistant",
+          name: agent.name,
+          tool_calls: [{
+            type: "function",
+            id: msg.toolRequestId,
+            function: {
+              name: msg.name,
+              arguments: msg.args
+            }
+          }]
+        }
+      }
+      if (msg instanceof ToolResponseEvent) {
+        openaiMessage = {
+          role: "tool",
+          content: msg.output,
+          tool_call_id: msg.toolRequestId
+        }
+      }
+      return openaiMessage
+    }).filter(m => !!m)
+    
+    return [systemInstructionMessage, ...openaiMessages]
   }
   
   async isReady(
@@ -116,10 +220,6 @@ export class OpenaiClient extends AiClient {
     this.interactor.displayText("Thread has been reset")
   }
   
-  kill(): void {
-    this.killed = true
-  }
-  
   private isOpenaiReady(): boolean {
     this.apiKey = this.apiKeyProvider()
     if (!this.apiKey) {
@@ -132,6 +232,7 @@ export class OpenaiClient extends AiClient {
     if (!this.openai) {
       this.openai = new OpenAI({
         apiKey: this.apiKey,
+        baseURL: this.apiUrl
       })
     }
     return true

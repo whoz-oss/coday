@@ -1,6 +1,5 @@
 import {AiClient, Interactor} from "../../model"
 import {OpenaiClient} from "../../handler/openai.client"
-import {GeminiClient} from "../../handler/gemini.client"
 import {ClaudeClient} from "../../handler/claude.client"
 import {userConfigService} from "../../service/user-config.service"
 
@@ -126,7 +125,8 @@ class AiClientProvider {
       case "openai":
         return new OpenaiClient(this.interactor, apiKeyProvider)
       case "gemini":
-        return new GeminiClient(this.interactor, apiKeyProvider)
+        // Leveraging Google Gemini enabling use of Openai SDK for beta
+        return new OpenaiClient(this.interactor, apiKeyProvider, "https://generativelanguage.googleapis.com/v1beta/openai/")
     }
   }
 }
