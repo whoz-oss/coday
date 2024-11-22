@@ -14,15 +14,11 @@ import {
   MemoryHandler,
   PromptChainHandler,
   RunBashHandler,
-  SubTaskHandler,
-  ThreadHandler
+  SubTaskHandler
 } from "./handler"
 import {integrationService} from "./service/integration.service"
 import {AiThreadService} from "./ai-thread/ai-thread.service"
 import {keywords} from "./keywords"
-import {OpenaiClient} from "./handler/openai.client"
-import {DelegateHandler} from "./handler/delegate.handler"
-import {IterateHandler} from "./handler/iterate.handler"
 
 const MAX_ITERATIONS = 100
 
@@ -57,25 +53,9 @@ export class HandlerLooper {
         queryHandler,
         new GitlabReviewHandler(),
         memoryHandler,
-        new DelegateHandler(this.interactor, this.aiHandler, this.aiClient, [
-          subTaskHandler, queryHandler, memoryHandler
-        ]),
-        new IterateHandler(this.interactor, this.aiHandler, this.aiClient, [
-          subTaskHandler, queryHandler, memoryHandler
-        ])
+        new FileMapHandler(this.interactor),
+        new LoadHandler(this.interactor),
       ]
-      if (this.aiClient) {
-        this.handlers.push(
-          new FileMapHandler(this.interactor, this.aiClient),
-          new LoadHandler(this.interactor, this.aiClient),
-        )
-      }
-      // FIXME: move thread management to AiClient
-      if (this.aiClient instanceof OpenaiClient) {
-        this.handlers.push(
-          new ThreadHandler(this.interactor, this.aiClient),
-        )
-      }
       
       CodayPromptChains.forEach(
         promptChain => this.handlers.push(
@@ -99,7 +79,7 @@ export class HandlerLooper {
         }
       }
       
-      // Add aiHandler at the end
+      // SUPER IMPORTANT: Add aiHandler at the end !!!!!!!!!!!!!
       this.handlers.push(this.aiHandler)
       
       // Apply filtering based on required integrations

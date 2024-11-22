@@ -25,11 +25,6 @@ export class AiHandler extends CommandHandler {
     this.toolbox = new Toolbox(this.interactor)
   }
   
-  reset(): void {
-    this.aiClient?.reset()
-    this.lastAssistantName = undefined
-  }
-  
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
     if (!this.aiClient) {
       this.interactor.error("No AI provider configured, see 'config edit-ai' command.")
@@ -37,11 +32,6 @@ export class AiHandler extends CommandHandler {
     }
     
     const cmd = command.slice(this.commandWord.length)
-    
-    if (cmd.trim() === "reset") {
-      this.reset()
-      return context
-    }
     
     const assistantName = this.getAssistantNameIfValid(cmd)
     

@@ -1,4 +1,4 @@
-import {Agent, AiClient, AiProvider, Interactor, ModelSize} from "../model"
+import {Agent, AiClient, Interactor, ModelSize} from "../model"
 import Anthropic from "@anthropic-ai/sdk"
 import {MessageParam} from "@anthropic-ai/sdk/resources"
 import {ToolSet} from "../integration/tool-set"
@@ -19,7 +19,6 @@ const ClaudeModels = {
 }
 
 export class ClaudeClient extends AiClient {
-  aiProvider: AiProvider = "ANTHROPIC"
   multiAssistant = true
   private apiKey: string | undefined
   
