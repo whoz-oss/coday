@@ -3,13 +3,16 @@ import {CodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../
 import {Agent} from "./agent"
 import {AiThread} from "../ai-thread/ai-thread"
 import {RunStatus} from "../ai-thread/ai-thread.types"
+import {Interactor} from "./interactor"
+import {ModelSize} from "./agent-definition"
 
 /**
  * Common abstraction over different AI provider APIs.
  */
 export abstract class AiClient {
-  abstract multiAssistant: boolean
+  protected abstract interactor: Interactor
   protected killed: boolean = false
+  protected defaultModelSize: ModelSize = ModelSize.BIG
   
   /**
    * Run the AI with the given configuration and thread context.
@@ -31,7 +34,12 @@ export abstract class AiClient {
     this.killed = true
   }
   
-  protected async shouldProcessAgainAfterResponse(text: string | undefined, toolRequests: ToolRequestEvent[] | undefined, agent: Agent, thread: AiThread, subscriber: Subject<CodayEvent>): Promise<boolean> {
+  protected handleText(
+    thread: AiThread,
+    text: string | undefined,
+    agent: Agent,
+    subscriber: Subject<CodayEvent>
+  ): void {
     if (text) {
       thread.addAgentMessage(agent.name, text)
       subscriber.next(new MessageEvent({
@@ -40,29 +48,37 @@ export abstract class AiClient {
         name: agent.name
       }))
     }
-    if (toolRequests?.length) {
-      // Emit requests and process responses in parallel
-      await Promise.all(toolRequests.map(async request => {
-        let responseEvent: ToolResponseEvent
-        try {
-          responseEvent = await agent.tools.run(request)
-        } catch (error: any) {
-          console.error(`Error running tool ${request.name}:`, error)
-          responseEvent = request.buildResponse(`Error: ${error.message}`)
-        }
-        thread.addToolRequests(agent.name, [request])
-        thread.addToolResponseEvents([responseEvent])
-      }))
-      
-      // Check interruption before recursion
-      if (this.mustStop(thread)) return false
-      
-      return true
-    }
-    return false
   }
   
-  private mustStop(thread: AiThread): boolean {
-    return thread.runStatus === RunStatus.STOPPED || this.killed
+  protected async shouldProcessAgainAfterResponse(
+    text: string | undefined,
+    toolRequests: ToolRequestEvent[] | undefined,
+    agent: Agent,
+    thread: AiThread,
+  ): Promise<boolean> {
+    if (!toolRequests?.length) return false
+    
+    await Promise.all(toolRequests.map(async request => {
+      let responseEvent: ToolResponseEvent
+      try {
+        responseEvent = await agent.tools.run(request)
+      } catch (error: any) {
+        console.error(`Error running tool ${request.name}:`, error)
+        responseEvent = request.buildResponse(`Error: ${error.message}`)
+      }
+      thread.addToolRequests(agent.name, [request])
+      thread.addToolResponseEvents([responseEvent])
+    }))
+    
+    return thread.runStatus === RunStatus.RUNNING && !this.killed
+  }
+  
+  protected showPrice(price: number): void {
+    if (price === 0) return
+    this.interactor.displayText(`$${price.toFixed(3)}`)
+  }
+  
+  protected getModelSize(agent: Agent): ModelSize {
+    return agent.definition.modelSize ?? this.defaultModelSize
   }
 }

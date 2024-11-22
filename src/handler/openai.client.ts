@@ -10,27 +10,39 @@ import {ChatCompletionMessageParam, ChatCompletionSystemMessageParam} from "open
 const OpenaiModels = {
   [ModelSize.BIG]: {
     model: "gpt-4o",
-    contextWindow: 128000
+    contextWindow: 128000,
+    price: {
+      inputMTokens: 2.5,
+      cacheRead: 1.25,
+      outputMTokens: 10
+    }
   },
   [ModelSize.SMALL]: {
     model: "gpt-4o-mini",
-    contextWindow: 128000
+    contextWindow: 128000,
+    price: {
+      inputMTokens: 0.15,
+      cacheRead: 0.075,
+      outputMTokens: 0.6
+    }
   },
 }
 
-type AssistantReference = { name: string; id: string }
-
 export class OpenaiClient extends AiClient {
-  multiAssistant = true
-  openai: OpenAI | undefined
-  
-  assistants: AssistantReference[] = []
-  assistant: AssistantReference | undefined
   
   constructor(
-    private interactor: Interactor,
+    readonly interactor: Interactor,
     private apiKeyProvider: () => string | undefined,
-    private apiUrl: string | undefined = undefined
+    /**
+     * Custom apiUrl for providers using Openai SDK
+     * @private
+     */
+    private apiUrl: string | undefined = undefined,
+    /**
+     * Custom model description for providers using Openai SDK
+     * @private
+     */
+    private models: any = OpenaiModels
   ) {
     super()
   }
@@ -39,12 +51,16 @@ export class OpenaiClient extends AiClient {
     const openai = this.isOpenaiReady()
     if (!openai) return of()
     
+    thread.data.openai = {
+      price: 0
+    }
+    
     const outputSubject: Subject<CodayEvent> = new Subject()
-    this.processResponse(openai!, agent, thread, outputSubject).finally(() => outputSubject.complete())
+    this.processThread(openai, agent, thread, outputSubject).finally(() => outputSubject.complete())
     return outputSubject
   }
   
-  private async processResponse(
+  private async processThread(
     client: OpenAI,
     agent: Agent,
     thread: AiThread,
@@ -53,7 +69,7 @@ export class OpenaiClient extends AiClient {
     const thinking = setInterval(() => this.interactor.thinking(), 3000)
     try {
       const response = await client.chat.completions.create({
-        model: OpenaiModels[agent.definition.modelSize ?? ModelSize.BIG].model,
+        model: this.models[agent.definition.modelSize ?? ModelSize.BIG].model,
         messages: this.toOpenAiMessage(agent, thread.getMessages()),
         tools: agent.tools.getTools(),
         max_completion_tokens: undefined,
@@ -62,7 +78,12 @@ export class OpenaiClient extends AiClient {
       
       clearInterval(thinking)
       
+      thread.data.openai.price += this.computePrice(response.usage, agent)
+      
+      if (response.choices[0].finish_reason === "length") throw new Error("Max tokens reached for Openai 😬")
+      
       const text = response.choices[0].message.content?.trim()
+      this.handleText(thread, text, agent, subscriber)
       
       const toolRequests = response.choices[0].message?.tool_calls
         ?.map(toolCall => new ToolRequestEvent({
@@ -71,15 +92,31 @@ export class OpenaiClient extends AiClient {
           args: toolCall.function.arguments
         }))
       
-      if (await this.shouldProcessAgainAfterResponse(text, toolRequests, agent, thread, subscriber)) {
-        await this.processResponse(client, agent, thread, subscriber)
+      if (await this.shouldProcessAgainAfterResponse(text, toolRequests, agent, thread)) {
+        // then tool responses to send
+        await this.processThread(client, agent, thread, subscriber)
+      } else {
+        // end of run, show the bill
+        this.showPrice(thread.data.openai.price)
       }
     } catch (error: any) {
       clearInterval(thinking)
+      this.showPrice(thread.data.openai.price)
       subscriber.next(new ErrorEvent({
         error
       }))
     }
+  }
+  
+  private computePrice(usage: any, agent: Agent): number {
+    const inputNoCacheTokens = usage?.prompt_tokens - usage?.prompt_tokens_details?.cached_tokens
+    const input = inputNoCacheTokens *
+      this.models[this.getModelSize(agent)].price.inputMTokens
+    const output = usage?.completion_tokens *
+      this.models[this.getModelSize(agent)].price.outputMTokens
+    const cacheRead = usage?.prompt_tokens_details?.cached_tokens *
+      this.models[this.getModelSize(agent)].price.cacheRead
+    return (input + output + cacheRead) / 1_000_000
   }
   
   private isOpenaiReady(): OpenAI | undefined {
@@ -93,6 +130,9 @@ export class OpenaiClient extends AiClient {
     
     return new OpenAI({
       apiKey,
+      /**
+       * Possible customization for third parties using Openai SDK (Google Gemini, xAi, ...)
+       */
       baseURL: this.apiUrl
     })
     
