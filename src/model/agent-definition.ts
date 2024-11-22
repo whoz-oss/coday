@@ -32,7 +32,6 @@ export interface AgentDefinition {
   /**
    * Define who is providing the service (see later for custom/local llm ?)
    */
-  // TODO: optional (ie uses a default or preferential provider) or mandatory ?
   aiProvider?: AiProvider
   
   /**
