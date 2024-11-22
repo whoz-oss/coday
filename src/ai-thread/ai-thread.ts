@@ -43,6 +43,9 @@ export class AiThread {
   modifiedDate: string
   runStatus: RunStatus = RunStatus.STOPPED
   
+  /** Garbage object for passing data or keeping track of counters or stuff...*/
+  data: any = {}
+  
   /** Internal storage of thread messages in chronological order */
   private messages: ThreadMessage[]
   

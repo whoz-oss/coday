@@ -1,20 +1,11 @@
 import {keywords} from "../../keywords"
-import {
-  Agent,
-  AiClient,
-  CodayAgentDefinition,
-  CommandContext,
-  CommandHandler,
-  DEFAULT_DESCRIPTION,
-  Interactor
-} from "../../model"
+import {Agent, AiClient, CodayAgentDefinition, CommandContext, CommandHandler, Interactor} from "../../model"
 import {Toolbox} from "../../integration/toolbox"
 import {ToolSet} from "../../integration/tool-set"
 import {lastValueFrom, Observable} from "rxjs"
 import {CodayEvent, MessageEvent} from "../../shared/coday-events"
 
 export class AiHandler extends CommandHandler {
-  lastAssistantName?: string
   private toolbox: Toolbox
   
   constructor(private interactor: Interactor, private aiClient: AiClient | undefined) {
@@ -33,19 +24,19 @@ export class AiHandler extends CommandHandler {
     
     const cmd = command.slice(this.commandWord.length)
     
-    const assistantName = this.getAssistantNameIfValid(cmd)
-    
-    if (!assistantName) {
-      this.interactor.warn("Command not understood, skipped.")
-      return context
-    }
-    
-    this.lastAssistantName = assistantName // Store the assistant name
-    
-    if (!cmd.includes(" ")) {
-      this.interactor.displayText(`Assistant ${assistantName} selected.`)
-      return context
-    }
+    // const assistantName = this.getAssistantNameIfValid(cmd)
+    //
+    // if (!assistantName) {
+    //   this.interactor.warn("Command not understood, skipped.")
+    //   return context
+    // }
+    //
+    // this.lastAssistantName = assistantName // Store the assistant name
+    //
+    // if (!cmd.includes(" ")) {
+    //   this.interactor.displayText(`Assistant ${assistantName} selected.`)
+    //   return context
+    // }
     
     try {
       // if (this.aiClient?.aiProvider === "ANTHROPIC") {
@@ -97,31 +88,31 @@ export class AiHandler extends CommandHandler {
     this.aiClient?.kill()
   }
   
-  /**
-   * cmd can be:
-   *   - "" (empty) => this.lastAssistant or default
-   *   - " " (one space) => same
-   *   - "[name]" (just name) => name
-   *   - "[name] [text]" (name then text) => name
-   *   - " [text]" (some text after space) => this.last or default
-   * @param cmd
-   * @private
-   */
-  private getAssistantNameIfValid(cmd: string): string | undefined {
-    if (!cmd) {
-      return undefined
-    }
-    const defaultAssistant = this.lastAssistantName || DEFAULT_DESCRIPTION.name
-    if (cmd[0] === " " || !this.aiClient?.multiAssistant) {
-      return defaultAssistant
-    }
-    
-    const firstSpaceIndex = cmd.indexOf(" ")
-    if (firstSpaceIndex < 0) {
-      return cmd
-    }
-    return cmd.slice(0, firstSpaceIndex)
-  }
+  // /**
+  //  * cmd can be:
+  //  *   - "" (empty) => this.lastAssistant or default
+  //  *   - " " (one space) => same
+  //  *   - "[name]" (just name) => name
+  //  *   - "[name] [text]" (name then text) => name
+  //  *   - " [text]" (some text after space) => this.last or default
+  //  * @param cmd
+  //  * @private
+  //  */
+  // private getAssistantNameIfValid(cmd: string): string | undefined {
+  //   if (!cmd) {
+  //     return undefined
+  //   }
+  //   const defaultAssistant = this.lastAssistantName || DEFAULT_DESCRIPTION.name
+  //   if (cmd[0] === " " || !this.aiClient?.multiAssistant) {
+  //     return defaultAssistant
+  //   }
+  //
+  //   const firstSpaceIndex = cmd.indexOf(" ")
+  //   if (firstSpaceIndex < 0) {
+  //     return cmd
+  //   }
+  //   return cmd.slice(0, firstSpaceIndex)
+  // }
   
   // private getMentionsToSearch(context: CommandContext): string[] | undefined {
   //   if (!this.aiClient?.multiAssistant) {
