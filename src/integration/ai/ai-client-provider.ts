@@ -1,7 +1,6 @@
 import {AiClient, Interactor} from "../../model"
 import {OpenaiClient} from "../../handler/openai.client"
-import {GeminiClient} from "../../handler/gemini.client"
-import {ClaudeClient} from "../../handler/claude.client"
+import {AnthropicClient} from "../../handler/anthropicClient"
 import {userConfigService} from "../../service/user-config.service"
 
 /** Supported AI providers */
@@ -122,11 +121,12 @@ class AiClientProvider {
   private createClient(provider: AiProvider, apiKeyProvider: () => string | undefined): AiClient | undefined {
     switch (provider) {
       case "anthropic":
-        return new ClaudeClient(this.interactor, apiKeyProvider)
+        return new AnthropicClient(this.interactor, apiKeyProvider)
       case "openai":
         return new OpenaiClient(this.interactor, apiKeyProvider)
       case "gemini":
-        return new GeminiClient(this.interactor, apiKeyProvider)
+        // Leveraging Google Gemini enabling use of Openai SDK for beta
+        return new OpenaiClient(this.interactor, apiKeyProvider, "https://generativelanguage.googleapis.com/v1beta/openai/")
     }
   }
 }

@@ -23,7 +23,13 @@ function postEvent(event: CodayEvent): Promise<Response> {
   })
 }
 
-const chatHistory = new ChatHistoryComponent()
+// Define stop callback
+const handleStop = () => {
+  fetch("/api/stop", {method: "POST"})
+    .catch(error => console.error("Error stopping execution:", error))
+}
+
+const chatHistory = new ChatHistoryComponent(handleStop)
 const chatInputComponent = new ChatTextareaComponent(postEvent)
 const choiceInputComponent = new ChoiceSelectComponent(postEvent)
 

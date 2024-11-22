@@ -1,6 +1,9 @@
-import {AiClient, CommandContext, CommandHandler, DEFAULT_DESCRIPTION, Interactor} from "../model"
+import {AiClient, CommandContext, CommandHandler, Interactor} from "../model"
 import {AiHandler} from "./openai/ai.handler"
 
+/**
+ * FIXME: Handler not applicable anymore as functionality should be embedded inside ai.handler
+ */
 export class DelegateHandler extends CommandHandler {
   private handlers: CommandHandler[] = []
   // TODO: add kill method
@@ -80,7 +83,8 @@ export class DelegateHandler extends CommandHandler {
       this.interactor.warn(report)
     } else {
       // Do post-task actions
-      report = await this.aiClient!.answer(DEFAULT_DESCRIPTION.name, reportPrompt(task), context)
+      // TODO: Not applicable anymore as a handler over ai.handler is not appropriate anymore.
+      // report = await this.aiClient!.answer(DEFAULT_DESCRIPTION.name, reportPrompt(task), context)
       console.log("...report done")
     }
     

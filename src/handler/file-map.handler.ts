@@ -1,9 +1,9 @@
-import {AiClient, CommandContext, CommandHandler, Interactor} from "../model"
+import {CommandContext, CommandHandler, Interactor} from "../model"
 import {generateFileTree} from "../function/generate-file-tree"
 import path from "path"
 
 export class FileMapHandler extends CommandHandler {
-  constructor(private interactor: Interactor, private aiClient: AiClient) {
+  constructor(private interactor: Interactor) {
     super({
       commandWord: "file-map",
       description: "Generates a file map starting from the given relative path.",
@@ -24,7 +24,7 @@ export class FileMapHandler extends CommandHandler {
     
     const chunkCount = fileTreeChunks.length
     for (let i = 0; i < chunkCount; i++) {
-      await this.aiClient.addMessage(fileTreeChunks[i], context)
+      context.aiThread?.addUserMessage(context.username, fileTreeChunks[i])
       this.interactor.displayText(`Sent chunk ${i + 1} of ${chunkCount}`)
     }
     

@@ -1,4 +1,5 @@
 import {AiClient, CommandContext, CommandHandler, Interactor, ProjectDescription, PromptChain} from "./model"
+import {AiThreadHandler} from "./handler/ai-thread/ai-thread.handler"
 import {
   AddQueryHandler,
   AiHandler,
@@ -13,14 +14,11 @@ import {
   MemoryHandler,
   PromptChainHandler,
   RunBashHandler,
-  SubTaskHandler,
-  ThreadHandler
+  SubTaskHandler
 } from "./handler"
 import {integrationService} from "./service/integration.service"
+import {AiThreadService} from "./ai-thread/ai-thread.service"
 import {keywords} from "./keywords"
-import {OpenaiClient} from "./handler/openai.client"
-import {DelegateHandler} from "./handler/delegate.handler"
-import {IterateHandler} from "./handler/iterate.handler"
 
 const MAX_ITERATIONS = 100
 
@@ -29,11 +27,13 @@ export class HandlerLooper {
   
   private maxIterations: number = MAX_ITERATIONS
   private killed: boolean = false
+  private processing: boolean = false
   
   constructor(
     private interactor: Interactor,
     private aiHandler: AiHandler,
-    private aiClient: AiClient | undefined
+    private aiClient: AiClient | undefined,
+    private aiThreadService: AiThreadService
   ) {
   }
   
@@ -47,30 +47,15 @@ export class HandlerLooper {
         new GitHandler(this.interactor),
         new RunBashHandler(this.interactor),
         new DebugHandler(this.interactor),
+        new AiThreadHandler(this.interactor, this.aiThreadService),
         new CodeFlowHandler(),
         subTaskHandler,
         queryHandler,
         new GitlabReviewHandler(),
         memoryHandler,
-        new DelegateHandler(this.interactor, this.aiHandler, this.aiClient, [
-          subTaskHandler, queryHandler, memoryHandler
-        ]),
-        new IterateHandler(this.interactor, this.aiHandler, this.aiClient, [
-          subTaskHandler, queryHandler, memoryHandler
-        ])
+        new FileMapHandler(this.interactor),
+        new LoadHandler(this.interactor),
       ]
-      if (this.aiClient) {
-        this.handlers.push(
-          new FileMapHandler(this.interactor, this.aiClient),
-          new LoadHandler(this.interactor, this.aiClient),
-        )
-      }
-      // FIXME: move thread management to AiClient
-      if (this.aiClient instanceof OpenaiClient) {
-        this.handlers.push(
-          new ThreadHandler(this.interactor, this.aiClient),
-        )
-      }
       
       CodayPromptChains.forEach(
         promptChain => this.handlers.push(
@@ -94,7 +79,7 @@ export class HandlerLooper {
         }
       }
       
-      // Add aiHandler at the end
+      // SUPER IMPORTANT: Add aiHandler at the end !!!!!!!!!!!!!
       this.handlers.push(this.aiHandler)
       
       // Apply filtering based on required integrations
@@ -114,58 +99,63 @@ export class HandlerLooper {
     }
     let count = 0
     let currentCommand: string | undefined
-    do {
-      if (this.killed) {
-        return context
-      }
-      currentCommand = context.getFirstCommand()
-      count++
-      if (this.isHelpAsked(currentCommand)) {
-        this.interactor.displayText("Available commands:")
-        const handlerHelpMessages = [
-          this.formatHelp("help/h/[nothing]", "displays this help message"),
-          ...this.handlers
-            .slice()
-            .filter(h => !h.isInternal)
-            .map(h => this.formatHelp(h.commandWord, h.description))
-            .sort(),
-          this.formatHelp("[any other text]", "defaults to asking the AI with the current context."),
-          this.formatHelp(keywords.reset, "resets Coday's context."),
-          this.formatHelp(keywords.exit, "quits the program."),
-        ]
-        handlerHelpMessages.forEach(msg => this.interactor.displayText(msg))
-        continue
-      }
-      if (!currentCommand) {
-        break
-      }
-      
-      // find first handler
-      const handler: CommandHandler | undefined = this.handlers.find((h) =>
-        h.accept(currentCommand!, context),
-      )
-      
-      try {
-        if (handler) {
-          context = await handler.handle(currentCommand, context)
-        } else {
-          if (!currentCommand.startsWith(this.aiHandler.commandWord)) {
-            // default case: repackage the command as an open question for AI
-            context.addCommands(
-              `${this.aiHandler.commandWord} ${currentCommand}`,
-            )
-          } else {
-            this.interactor.error(`Could not handle request ${currentCommand}, check your AI integration`)
-          }
+    this.processing = true
+    try {
+      do {
+        if (this.killed) {
+          return context
         }
-      } catch (error) {
-        this.interactor.error(
-          `An error occurred while trying to process your request: ${error}`,
+        currentCommand = context.getFirstCommand()
+        count++
+        if (this.isHelpAsked(currentCommand)) {
+          this.interactor.displayText("Available commands:")
+          const handlerHelpMessages = [
+            this.formatHelp("help/h/[nothing]", "displays this help message"),
+            ...this.handlers
+              .slice()
+              .filter(h => !h.isInternal)
+              .map(h => this.formatHelp(h.commandWord, h.description))
+              .sort(),
+            this.formatHelp("[any other text]", "defaults to asking the AI with the current context."),
+            this.formatHelp(keywords.reset, "resets Coday's context."),
+            this.formatHelp(keywords.exit, "quits the program."),
+          ]
+          handlerHelpMessages.forEach(msg => this.interactor.displayText(msg))
+          continue
+        }
+        if (!currentCommand) {
+          break
+        }
+        
+        // find first handler
+        const handler: CommandHandler | undefined = this.handlers.find((h) =>
+          h.accept(currentCommand!, context),
         )
-      }
-    } while (
-      !!currentCommand || count < this.maxIterations
-      )
+        
+        try {
+          if (handler) {
+            context = await handler.handle(currentCommand, context)
+          } else {
+            if (!currentCommand.startsWith(this.aiHandler.commandWord)) {
+              // default case: repackage the command as an open question for AI
+              context.addCommands(
+                `${this.aiHandler.commandWord} ${currentCommand}`,
+              )
+            } else {
+              this.interactor.error(`Could not handle request ${currentCommand}, check your AI integration`)
+            }
+          }
+        } catch (error) {
+          this.interactor.error(
+            `An error occurred while trying to process your request: ${error}`,
+          )
+        }
+      } while (
+        (!!currentCommand || count < this.maxIterations) && this.processing
+        )
+    } finally {
+      this.processing = false
+    }
     if (count >= this.maxIterations) {
       this.interactor.warn("Maximum iterations reached for a command")
     }
@@ -181,7 +171,27 @@ export class HandlerLooper {
     return `  - ${displayCommandWord} : ${description}`
   }
   
+  /**
+   * Requests a graceful stop of the current AI processing.
+   * - Preserves thread and context state
+   * - Allows clean completion of current operation
+   * - Prevents new processing steps
+   *
+   * @returns Promise that resolves when stop is complete
+   */
+  stop(): void {
+    this.processing = false
+  }
+  
+  /**
+   * Immediately terminates all processing.
+   * Unlike stop(), this method:
+   * - Does not preserve state
+   * - Immediately ends all processing
+   * - May leave cleanup needed
+   */
   kill() {
+    this.stop()
     this.killed = true
     this.aiHandler.kill()
   }

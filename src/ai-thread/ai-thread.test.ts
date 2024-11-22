@@ -1,6 +1,6 @@
-import {AiThread} from "./ai-thread"
 import {MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
 import {ToolCall, ToolResponse} from "../integration/tool-call"
+import {AiThread} from "./ai-thread"
 
 const createToolCall = (name: string, args: string, id?: string): ToolCall => ({
   name,
@@ -25,7 +25,7 @@ describe("AiThread", () => {
     it("should add and retrieve messages", () => {
       thread.addUserMessage("user1", "test message")
       
-      const messages = thread.messages
+      const messages = thread.getMessages()
       expect(messages).toHaveLength(1)
       expect(messages[0]).toBeInstanceOf(MessageEvent)
       expect(messages[0].type).toBe(MessageEvent.type)
@@ -34,8 +34,8 @@ describe("AiThread", () => {
     it("should return a copy of messages", () => {
       thread.addUserMessage("user1", "test message")
       
-      const messages1 = thread.messages
-      const messages2 = thread.messages
+      const messages1 = thread.getMessages()
+      const messages2 = thread.getMessages()
       
       expect(messages1).not.toBe(messages2) // Different array instances
       expect(messages1[0]).toBe(messages2[0]) // Same message objects
@@ -47,7 +47,7 @@ describe("AiThread", () => {
       const call = createToolCall("test-tool", "{\"arg\": \"value\"}")
       thread.addToolCalls("agent1", [call])
       
-      const messages = thread.messages
+      const messages = thread.getMessages()
       expect(messages).toHaveLength(1)
       expect(messages[0]).toBeInstanceOf(ToolRequestEvent)
       expect((messages[0] as ToolRequestEvent).name).toBe("test-tool")
@@ -57,7 +57,7 @@ describe("AiThread", () => {
       const invalidCall = {name: "test"} as ToolCall
       thread.addToolCalls("agent1", [invalidCall])
       
-      expect(thread.messages).toHaveLength(0)
+      expect(thread.getMessages()).toHaveLength(0)
     })
     
     it("should add tool response and keep only latest similar calls", () => {
@@ -72,7 +72,7 @@ describe("AiThread", () => {
       const response = createToolResponse("id2", "test-tool", "test response")
       thread.addToolResponses("user1", [response])
       
-      const messages = thread.messages
+      const messages = thread.getMessages()
       expect(messages).toHaveLength(2) // Only the latest request and its response remain
       
       const request = messages.find(m => m instanceof ToolRequestEvent) as ToolRequestEvent
@@ -95,7 +95,7 @@ describe("AiThread", () => {
       
       thread.addToolResponses("user1", [response1, response2])
       
-      const messages = thread.messages
+      const messages = thread.getMessages()
       expect(messages).toHaveLength(4) // Both requests and responses remain
       
       const requests = messages.filter(m => m instanceof ToolRequestEvent) as ToolRequestEvent[]
@@ -111,7 +111,7 @@ describe("AiThread", () => {
       const response = createToolResponse("non-existent", "test-tool", "test")
       thread.addToolResponses("user1", [response])
       
-      expect(thread.messages).toHaveLength(0)
+      expect(thread.getMessages()).toHaveLength(0)
     })
     
     it("should handle args comparison properly", () => {
@@ -127,7 +127,7 @@ describe("AiThread", () => {
       
       thread.addToolResponses("user1", [response1, response2])
       
-      const messages = thread.messages
+      const messages = thread.getMessages()
       expect(messages).toHaveLength(4) // Both sets remain as args are different
       
       const requests = messages.filter(m => m instanceof ToolRequestEvent) as ToolRequestEvent[]
@@ -152,7 +152,7 @@ describe("AiThread", () => {
       const response = createToolResponse("id2", "test-tool", "response")
       thread.addToolResponses("user1", [response])
       
-      const messages = thread.messages
+      const messages = thread.getMessages()
       expect(messages[0].type).toBe(MessageEvent.type) // First user message
       expect(messages[1].type).toBe(MessageEvent.type) // Second user message
       expect(messages[2].type).toBe(ToolRequestEvent.type) // Latest tool request

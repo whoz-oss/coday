@@ -1,9 +1,9 @@
-import {AiClient, CommandContext, CommandHandler, Interactor} from "../../model"
+import {CommandContext, CommandHandler, Interactor} from "../../model"
 import {readFileByPath} from "../../function/read-file-by-path"
 
 export class LoadFileHandler extends CommandHandler {
   
-  constructor(private interactor: Interactor, private aiClient: AiClient) {
+  constructor(private interactor: Interactor) {
     super({
       commandWord: "file",
       description: "Loads a file by its path relative to project root, ex: `load-file ./folder/file.extension`",
@@ -28,7 +28,9 @@ export class LoadFileHandler extends CommandHandler {
       root: context.project.root,
       interactor: this.interactor
     })
-    await this.aiClient.addMessage(`File with path: ${filePath}\n\n${content}`, context)
+    context.aiThread?.addUserMessage(context.username,
+      `File with path: ${filePath}\n\n${content}`
+    )
     
     return context
   }

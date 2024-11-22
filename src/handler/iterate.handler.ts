@@ -1,6 +1,9 @@
 import {AiClient, CommandContext, CommandHandler, Interactor} from "../model"
 import {AiHandler} from "./openai/ai.handler"
 
+/**
+ * FIXME: Handler not applicable anymore as functionality should be embedded inside ai.handler
+ */
 export class IterateHandler extends CommandHandler {
   private handlers: CommandHandler[] = []
   
@@ -34,7 +37,8 @@ export class IterateHandler extends CommandHandler {
     while (count < this.maxIterations) {
       // Step 1: Prompt for next task
       
-      await this.aiClient!.answer("coday", nextWorkPrompt, loopContext)
+      // FIXME: not applicable anymore at handler level
+      //await this.aiClient!.answer("coday", nextWorkPrompt, loopContext)
       
       let nextCommand = loopContext.getFirstCommand()
       if (!nextCommand) {

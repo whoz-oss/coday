@@ -1,16 +1,24 @@
-import {AnswerEvent, CodayEvent, QuestionEvent, TextEvent, ThinkingEvent} from "shared/coday-events"
+import {AnswerEvent, CodayEvent, TextEvent, ThinkingEvent} from "shared/coday-events"
 import {CodayEventHandler} from "../utils/coday-event-handler"
 
 export class ChatHistoryComponent implements CodayEventHandler {
   private chatHistory: HTMLDivElement
   private readonly thinkingDots: HTMLDivElement
+  private readonly stopButton: HTMLButtonElement
   private history = new Map<string, CodayEvent>()
-  
   private thinkingTimeout: any
+  private readonly onStopCallback: () => void
   
-  constructor() {
+  constructor(onStopCallback: () => void) {
     this.chatHistory = document.getElementById("chat-history") as HTMLDivElement
     this.thinkingDots = document.getElementById("thinking-dots") as HTMLDivElement
+    this.stopButton = this.thinkingDots.querySelector(".stop-button") as HTMLButtonElement
+    this.onStopCallback = onStopCallback
+    
+    // Bind stop button click event
+    if (this.stopButton) {
+      this.stopButton.addEventListener("click", () => this.onStopCallback())
+    }
   }
   
   handle(event: CodayEvent): void {
@@ -22,11 +30,8 @@ export class ChatHistoryComponent implements CodayEventHandler {
         this.addTechnical(event.text)
       }
     }
-    if (event instanceof AnswerEvent && event.parentKey) {
-      const question = this.history.get(event.parentKey)
-      if (question instanceof QuestionEvent) {
-        this.addAnswer(event.answer, question.invite)
-      }
+    if (event instanceof AnswerEvent) {
+      this.addAnswer(event.answer, event.invite)
     }
     if (event instanceof ErrorEvent) {
       this.addError(event.error)
@@ -45,6 +50,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
       this.thinkingTimeout = setTimeout(() => {
         this.thinkingDots.classList.toggle("visible", false)
       }, ThinkingEvent.debounce * 2)
+      
     }
     this.thinkingDots.classList.toggle("visible", value)
   }

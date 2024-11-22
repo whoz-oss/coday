@@ -6,14 +6,7 @@
 
 import {buildCodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
 import {ToolCall, ToolResponse} from "../integration/tool-call"
-
-/**
- * Union type representing all possible message types in a thread:
- * - MessageEvent: Direct messages between users and agents
- * - ToolRequestEvent: Tool execution requests from agents
- * - ToolResponseEvent: Results from tool executions
- */
-export type ThreadMessage = MessageEvent | ToolRequestEvent | ToolResponseEvent
+import {RunStatus, ThreadMessage, ThreadSerialized} from "./ai-thread.types"
 
 /**
  * Allowed message types for filtering when building thread history
@@ -24,13 +17,37 @@ const THREAD_MESSAGE_TYPES = [MessageEvent.type, ToolRequestEvent.type, ToolResp
  * AiThread manages the state and interactions of a conversation thread between users and AI agents.
  * It handles message sequencing, tool execution requests/responses, and maintains thread history
  * while providing deduplication of similar tool calls.
+ *
+ * Temporary notes:
+ * To narrate it, an aiThread start just after the user chose a project: the configuration being defined, we can then get the list of the existing threads, and select the last one being used (or create the first if none). At every point in time, the user can select another (or create a new) thread, name it (but later it would be better to generate the name), and delete it.
+ *
+ * The aiThread is then present for all the ai-related parts : ai.handler.ts, agents, aiClients to receive the events composing the history. When a thread is loaded, the said events are also re-played for the frontend to udpate the display.
+ *
+ * On some future occasions, the current aiThread can be forked or cloned to run a task without polluting the parent thread. Also, in the near future, the agents will be aware of the existence of these other threads and may request informations from them. This would happen through the name (and/or the summary) of aiThreads, and the request would produce an end text message that will be transfered to the parent thread (as a tool response most probably).
+ *
+ * When an aiThread is left by the user (disconnection, explicit save), it is saved and may trigger several actions like a new summarization, a memory extraction to benefit all threads and users.
+ *
+ * AiThreads are (for now) tied to a user by default, maybe later shareable or multi-user capable, so aiThread management is important, leading to some necessary work to do on the frontend and API, to select a thread without resorting to commands (although these should still work for terminal interfaces).
  */
 export class AiThread {
   /** Unique identifier for the thread */
   id: string
   
+  /** Name or title or very short sentence about the content of the thread */
+  name: string
+  
+  /** Summary of the whole thread, to be used for cross-thread research */
+  summary: string
+  
+  createdDate: string
+  modifiedDate: string
+  runStatus: RunStatus = RunStatus.STOPPED
+  
+  /** Garbage object for passing data or keeping track of counters or stuff...*/
+  data: any = {}
+  
   /** Internal storage of thread messages in chronological order */
-  private _messages: ThreadMessage[]
+  private messages: ThreadMessage[]
   
   /**
    * Creates a new AiThread instance.
@@ -38,10 +55,15 @@ export class AiThread {
    * @param thread.id - Unique identifier for the thread
    * @param thread.messages - Optional array of raw message objects to initialize the thread
    */
-  constructor(thread: { id: string, messages?: any[] }) {
-    this.id = thread.id!
+  constructor(thread: ThreadSerialized) {
+    this.id = thread.id
+    this.name = thread.name ?? "untitled"
+    this.summary = thread.summary ?? ""
+    this.createdDate = thread.createdDate ?? new Date().toISOString()
+    this.modifiedDate = thread.modifiedDate ?? this.createdDate
+    
     // Filter on type first, then build events
-    this._messages = (thread.messages ?? [])
+    this.messages = (thread.messages ?? [])
       .filter(msg => THREAD_MESSAGE_TYPES.includes(msg.type))
       .map(msg => buildCodayEvent(msg))
       .filter((event): event is ThreadMessage => event !== undefined)
@@ -51,16 +73,17 @@ export class AiThread {
    * Returns a copy of all messages in the thread.
    * @returns Array of thread messages in chronological order
    */
-  get messages(): ThreadMessage[] {
-    return [...this._messages]
+  getMessages(): ThreadMessage[] {
+    return [...this.messages]
   }
+  
   
   /**
    * Adds a new message to the thread.
    * @param message - The message to add
    */
   private add(message: ThreadMessage): void {
-    this._messages.push(message)
+    this.messages.push(message)
   }
   
   /**
@@ -69,7 +92,7 @@ export class AiThread {
    * @returns The matching ToolRequestEvent or undefined if not found
    */
   private findToolRequestById(id: string): ToolRequestEvent | undefined {
-    return this._messages.find(msg =>
+    return this.messages.find(msg =>
       msg instanceof ToolRequestEvent &&
       msg.toolRequestId === id
     ) as ToolRequestEvent | undefined
@@ -83,7 +106,7 @@ export class AiThread {
    * @returns Array of similar tool requests (excluding the reference)
    */
   private findSimilarToolRequests(reference: ToolRequestEvent): ToolRequestEvent[] {
-    return this._messages.filter(msg =>
+    return this.messages.filter(msg =>
       msg !== reference && // Exclude the reference request
       msg instanceof ToolRequestEvent &&
       msg.name === reference.name &&
@@ -98,7 +121,7 @@ export class AiThread {
    * @returns Array of tool responses matching the given requests
    */
   private findToolResponsesToRequests(requests: ToolRequestEvent[]): ToolResponseEvent[] {
-    return this._messages.filter(msg =>
+    return this.messages.filter(msg =>
       msg instanceof ToolResponseEvent &&
       requests.some(r => r.toolRequestId === msg.toolRequestId)
     ) as ToolResponseEvent[]
@@ -110,7 +133,7 @@ export class AiThread {
    * @param messages - Array of messages to remove
    */
   private removeMessages(messages: ThreadMessage[]): void {
-    this._messages = this._messages.filter(msg => !messages.includes(msg))
+    this.messages = this.messages.filter(msg => !messages.includes(msg))
   }
   
   /**
@@ -119,11 +142,23 @@ export class AiThread {
    * @param content - The content of the message
    */
   addUserMessage(username: string, content: string): void {
-    this.add(new MessageEvent({
-      role: "user",
-      content,
-      name: username
-    }))
+    const lastMessage = this.messages[this.messages.length - 1]
+    const shouldMergeIntoLastMessage =
+      lastMessage &&
+      lastMessage instanceof MessageEvent &&
+      lastMessage.role === "user" &&
+      lastMessage.name === username
+    
+    if (shouldMergeIntoLastMessage) {
+      lastMessage.content += `\n\n${content}`
+    } else {
+      this.add(new MessageEvent({
+        role: "user",
+        content,
+        name: username
+      }))
+      
+    }
   }
   
   /**
@@ -132,11 +167,47 @@ export class AiThread {
    * @param content - The content of the message
    */
   addAgentMessage(agentName: string, content: string): void {
-    this.add(new MessageEvent({
-      role: "assistant",
-      content,
-      name: agentName
-    }))
+    const lastMessage = this.messages[this.messages.length - 1]
+    const shouldMergeIntoLastMessage =
+      lastMessage &&
+      lastMessage instanceof MessageEvent &&
+      lastMessage.role === "assistant" &&
+      lastMessage.name === agentName
+    
+    if (shouldMergeIntoLastMessage) {
+      lastMessage.content += `\n\n${content}`
+    } else {
+      this.add(new MessageEvent({
+        role: "assistant",
+        content,
+        name: agentName
+      }))
+    }
+  }
+  
+  addToolRequests(agentName: string, toolRequests: ToolRequestEvent[]): void {
+    toolRequests.forEach(toolRequest => {
+      if (!toolRequest.toolRequestId || !toolRequest.name || !toolRequest.args) return
+      this.add(toolRequest)
+    })
+  }
+  
+  addToolResponseEvents(toolResponseEvents: ToolResponseEvent[]): void {
+    toolResponseEvents.forEach(response => {
+      if (!response.toolRequestId || !response.output) return
+      const request = this.findToolRequestById(response.toolRequestId)
+      if (!request) return
+      
+      // Find similar requests using the current request as reference
+      const similarRequests = this.findSimilarToolRequests(request)
+      const responsesToRemove = this.findToolResponsesToRequests(similarRequests)
+      
+      // Remove old requests and responses
+      this.removeMessages([...similarRequests, ...responsesToRemove])
+      
+      // Add the new response
+      this.add(response)
+    })
   }
   
   /**

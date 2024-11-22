@@ -1,61 +1,84 @@
-import {CommandContext} from "../model"
-import {AiProvider} from "./agent-definition"
+import {Observable, Subject} from "rxjs"
+import {CodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
+import {Agent} from "./agent"
+import {AiThread} from "../ai-thread/ai-thread"
+import {RunStatus} from "../ai-thread/ai-thread.types"
+import {Interactor} from "./interactor"
+import {ModelSize} from "./agent-definition"
 
 /**
- * Common interface abstraction over different AI provider APIs
- *
- * Should be completely stateless
+ * Common abstraction over different AI provider APIs.
  */
-export interface AiClient {
-  /**
-   * Enum value indicating to users of the AiClient interface which provider is used
-   * Serves as a key/identifier
-   */
-  aiProvider: AiProvider
+export abstract class AiClient {
+  protected abstract interactor: Interactor
+  protected killed: boolean = false
+  protected defaultModelSize: ModelSize = ModelSize.BIG
   
   /**
-   * Temporary marker for openai assistant feature
-   * Should be removed in favor of full Assistant class relying on AiClient
+   * Run the AI with the given configuration and thread context.
+   *
+   * @param agent Complete agent configuration including model, system instructions, and tools
+   * @param thread Current thread containing conversation history and managing message state
+   * @returns Observable stream of events from the AI interaction (messages, tool calls, tool responses)
    */
-  multiAssistant: boolean
+  abstract run(
+    agent: Agent,
+    thread: AiThread
+  ): Promise<Observable<CodayEvent>>
   
   /**
-   * Adds a user-issued message to the Openai thread
-   *
-   * Usable only with the Openai assistant API.
-   * Should be deprecated in favor of an in-house thread management
-   *
-   * @param message the user message to add to the thread
-   * @param context
+   * Kills the process, deprecating
+   * Will be replaced by aiThread.runStatus...
    */
-  addMessage(
-    message: string,
-    context: CommandContext,
-  ): Promise<void>;
+  kill(): void {
+    this.killed = true
+  }
   
-  /**
-   * Answer the command by querying the assistant by its name
-   *
-   * Should be deprecated in favor of a stateless signature like:
-   *   answer(agent: Agent, thread: AiThread): Promise<void>
-   *
-   * @param name of the assistant called (openai-specific)
-   * @param command prompt sent to the assistant
-   * @param context
-   */
-  answer(
-    name: string,
-    command: string,
-    context: CommandContext,
-  ): Promise<string>;
+  protected handleText(
+    thread: AiThread,
+    text: string | undefined,
+    agent: Agent,
+    subscriber: Subject<CodayEvent>
+  ): void {
+    if (text) {
+      thread.addAgentMessage(agent.name, text)
+      subscriber.next(new MessageEvent({
+        role: "assistant",
+        content: text,
+        name: agent.name
+      }))
+    }
+  }
   
-  kill(): void
+  protected async shouldProcessAgainAfterResponse(
+    text: string | undefined,
+    toolRequests: ToolRequestEvent[] | undefined,
+    agent: Agent,
+    thread: AiThread,
+  ): Promise<boolean> {
+    if (!toolRequests?.length) return false
+    
+    await Promise.all(toolRequests.map(async request => {
+      let responseEvent: ToolResponseEvent
+      try {
+        responseEvent = await agent.tools.run(request)
+      } catch (error: any) {
+        console.error(`Error running tool ${request.name}:`, error)
+        responseEvent = request.buildResponse(`Error: ${error.message}`)
+      }
+      thread.addToolRequests(agent.name, [request])
+      thread.addToolResponseEvents([responseEvent])
+    }))
+    
+    return thread.runStatus === RunStatus.RUNNING && !this.killed
+  }
   
-  /**
-   * Forgets the thread data for a client reset
-   *
-   * Used only for Openai and Gemini.
-   * Should be deprecated in favor of custom thread management
-   */
-  reset(): void
+  protected showPrice(price: number): void {
+    if (price === 0) return
+    this.interactor.displayText(`$${price.toFixed(3)}`)
+  }
+  
+  protected getModelSize(agent: Agent): ModelSize {
+    return agent.definition.modelSize ?? this.defaultModelSize
+  }
 }
