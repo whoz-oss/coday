@@ -139,11 +139,23 @@ export class AiThread {
    * @param content - The content of the message
    */
   addUserMessage(username: string, content: string): void {
-    this.add(new MessageEvent({
-      role: "user",
-      content,
-      name: username
-    }))
+    const lastMessage = this.messages[this.messages.length - 1]
+    const shouldMergeIntoLastMessage =
+      lastMessage &&
+      lastMessage instanceof MessageEvent &&
+      lastMessage.role === "user" &&
+      lastMessage.name === username
+    
+    if (shouldMergeIntoLastMessage) {
+      lastMessage.content += `\n\n${content}`
+    } else {
+      this.add(new MessageEvent({
+        role: "user",
+        content,
+        name: username
+      }))
+      
+    }
   }
   
   /**
@@ -152,11 +164,22 @@ export class AiThread {
    * @param content - The content of the message
    */
   addAgentMessage(agentName: string, content: string): void {
-    this.add(new MessageEvent({
-      role: "assistant",
-      content,
-      name: agentName
-    }))
+    const lastMessage = this.messages[this.messages.length - 1]
+    const shouldMergeIntoLastMessage =
+      lastMessage &&
+      lastMessage instanceof MessageEvent &&
+      lastMessage.role === "assistant" &&
+      lastMessage.name === agentName
+    
+    if (shouldMergeIntoLastMessage) {
+      lastMessage.content += `\n\n${content}`
+    } else {
+      this.add(new MessageEvent({
+        role: "assistant",
+        content,
+        name: agentName
+      }))
+    }
   }
   
   addToolRequests(agentName: string, toolRequests: ToolRequestEvent[]): void {

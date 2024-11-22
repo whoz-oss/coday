@@ -1,4 +1,3 @@
-import {AiProvider} from "./agent-definition"
 import {Observable, Subject} from "rxjs"
 import {CodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
 import {Agent} from "./agent"
@@ -9,7 +8,6 @@ import {RunStatus} from "../ai-thread/ai-thread.types"
  * Common abstraction over different AI provider APIs.
  */
 export abstract class AiClient {
-  abstract aiProvider: AiProvider
   abstract multiAssistant: boolean
   protected killed: boolean = false
   

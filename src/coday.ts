@@ -92,7 +92,6 @@ export class Coday {
       
       if (userCommand === keywords.reset) {
         this.context = null
-        this.aiHandler?.reset()
         this.configHandler.resetProjectSelection()
         continue
       }

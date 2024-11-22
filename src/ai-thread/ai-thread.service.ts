@@ -25,7 +25,6 @@ export class AiThreadService {
     // Reset active thread when repository changes
     this.repositoryFactory.repository.pipe(filter(repository => !!repository)).subscribe(() => {
       this.activeThread$.next(null)
-      setTimeout(() => this.select(), 0) // auto select last thread after a project change
     })
   }
   

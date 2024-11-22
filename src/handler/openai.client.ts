@@ -1,5 +1,5 @@
 import OpenAI from "openai"
-import {AiClient, AiProvider, Interactor, ModelSize} from "../model"
+import {AiClient, Interactor, ModelSize} from "../model"
 import {CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared"
 import {AiThread} from "ai-thread/ai-thread"
 import {Agent} from "model/agent"
@@ -21,7 +21,6 @@ const OpenaiModels = {
 type AssistantReference = { name: string; id: string }
 
 export class OpenaiClient extends AiClient {
-  aiProvider: AiProvider = "OPENAI"
   multiAssistant = true
   openai: OpenAI | undefined
   

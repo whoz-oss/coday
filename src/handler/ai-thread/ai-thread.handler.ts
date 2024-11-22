@@ -16,7 +16,7 @@ export class AiThreadHandler extends NestedHandler {
     threadService: AiThreadService
   ) {
     super({
-      commandWord: "ai-thread",
+      commandWord: "thread",
       description: "Handles AI thread related commands (list, select, save, delete)"
     }, interactor)
     

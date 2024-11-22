@@ -1,11 +1,10 @@
 import {LoadFileHandler} from "./load-file.handler"
 import {LoadFolderHandler} from "./load-folder.handler"
-import {AiClient, Interactor, NestedHandler} from "../../model"
+import {Interactor, NestedHandler} from "../../model"
 
 export class LoadHandler extends NestedHandler {
   constructor(
     interactor: Interactor,
-    aiClient: AiClient
   ) {
     super({
       commandWord: "load",
@@ -13,7 +12,7 @@ export class LoadHandler extends NestedHandler {
     }, interactor)
     
     this.handlers = [
-      new LoadFileHandler(interactor, aiClient),
+      new LoadFileHandler(interactor),
       new LoadFolderHandler(interactor)
     ]
   }
