@@ -4,6 +4,12 @@ import {keywords} from "./keywords"
 import {AiClient, CommandContext, Interactor} from "./model"
 import {AiHandler, ConfigHandler} from "./handler"
 import {AiClientProvider} from "./integration/ai/ai-client-provider"
+import {AiThreadService} from "./ai-thread/ai-thread.service"
+import {AiThreadRepositoryFactory} from "./ai-thread/repository/ai-thread.repository.factory"
+import {configService} from "./service/config.service"
+import {RunStatus} from "./ai-thread/ai-thread.types"
+import {AnswerEvent, MessageEvent, TextEvent} from "./shared/coday-events"
+import {selectAiThread} from "./handler/ai-thread/select-ai-thread"
 
 const MAX_ITERATIONS = 100
 
@@ -19,12 +25,14 @@ export class Coday {
   configHandler: ConfigHandler
   
   handlerLooper: HandlerLooper | undefined
-  openaiHandler: AiHandler | undefined
+  aiHandler: AiHandler | undefined
   aiClient: AiClient | undefined
   maxIterations: number
   initialPrompts: string[] = []
   
   private killed: boolean = false
+  
+  private aiThreadService: AiThreadService
   
   constructor(
     private interactor: Interactor,
@@ -33,6 +41,33 @@ export class Coday {
     this.userInfo = os.userInfo()
     this.configHandler = new ConfigHandler(interactor, this.userInfo.username)
     this.maxIterations = MAX_ITERATIONS
+    this.aiThreadService = new AiThreadService(new AiThreadRepositoryFactory(configService))
+    this.aiThreadService.activeThread.subscribe(aiThread => {
+      if (!this.context || !aiThread) return
+      this.context.aiThread = aiThread
+      
+      // Re-emit thread history if it has messages
+      const messages = aiThread.getMessages()
+      if (messages && messages.length > 0) {
+        // Sort messages by timestamp to maintain chronological order
+        const sortedMessages = [...messages].sort((a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        )
+        
+        // Convert and emit each message
+        for (const message of sortedMessages) {
+          if (!(message instanceof MessageEvent)) continue
+          if (message.role === "assistant") {
+            this.interactor.sendEvent(new TextEvent({...message, speaker: message.name, text: message.content}))
+          } else {
+            this.interactor.sendEvent(new AnswerEvent({...message, answer: message.content, invite: message.name}))
+          }
+        }
+      }
+      
+      // Always emit the thread selection message last
+      this.interactor.displayText(`Selected thread '${aiThread.name}'`)
+    })
   }
   
   async run(): Promise<void> {
@@ -43,6 +78,7 @@ export class Coday {
         return
       }
       await this.initContext()
+      await this.initThread()
       if (!this.context) {
         this.interactor.error("Could not initialize context 😭")
         break
@@ -56,19 +92,47 @@ export class Coday {
       
       if (userCommand === keywords.reset) {
         this.context = null
-        this.openaiHandler?.reset()
         this.configHandler.resetProjectSelection()
         continue
       }
       
+      const thread = this.context.aiThread
+      if (thread) thread.runStatus = RunStatus.RUNNING
+      
       // add the user command to the queue and let handlers decompose it in many and resolve them ultimately
       this.context.addCommands(userCommand!)
       
-      this.context = await this.handlerLooper!.handle(this.context)
+      try {
+        this.context = await this.handlerLooper!.handle(this.context)
+      } finally {
+        this.stop()
+      }
     } while (!(this.context?.oneshot))
   }
   
+  /**
+   * Stops the current AI processing gracefully:
+   * - Preserves thread and context state
+   * - Allows clean completion of current operation
+   * - Prevents new processing steps
+   *
+   * @returns Promise that resolves when stop is complete
+   */
+  stop(): void {
+    const thread = this.context?.aiThread
+    if (thread) thread.runStatus = RunStatus.STOPPED
+    this.handlerLooper?.stop()
+  }
+  
+  /**
+   * Immediately terminates all processing.
+   * Unlike stop(), this method:
+   * - Does not preserve state
+   * - Immediately ends all processing
+   * - May leave cleanup needed
+   */
   kill(): void {
+    this.stop()
     this.handlerLooper?.kill()
     this.interactor.kill()
   }
@@ -81,10 +145,16 @@ export class Coday {
       if (this.context) {
         this.context.oneshot = this.options.oneshot
         this.aiClient = new AiClientProvider(this.interactor).getClient()
-        this.openaiHandler = new AiHandler(this.interactor, this.aiClient)
-        this.handlerLooper = new HandlerLooper(this.interactor, this.openaiHandler, this.aiClient)
+        this.aiHandler = new AiHandler(this.interactor, this.aiClient)
+        this.handlerLooper = new HandlerLooper(this.interactor, this.aiHandler, this.aiClient, this.aiThreadService)
         this.handlerLooper.init(this.userInfo.username, this.context.project)
       }
+    }
+  }
+  
+  private async initThread(): Promise<void> {
+    if (!this.context?.aiThread) {
+      await selectAiThread(this.interactor, this.aiThreadService)
     }
   }
   

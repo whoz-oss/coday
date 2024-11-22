@@ -2,6 +2,9 @@ import {AiClient} from "./ai.client"
 import {AgentDefinition} from "./agent-definition"
 import {Project} from "./project"
 import {ToolSet} from "../integration/tool-set"
+import {AiThread} from "../ai-thread/ai-thread"
+import {Observable} from "rxjs"
+import {CodayEvent} from "shared/coday-events"
 
 
 /**
@@ -31,11 +34,11 @@ export class Agent {
    * @param command text written by the user
    * @param thread
    */
-  // work(command: string, thread: AiThread): Observable<CodayEvent> {
-  //   thread.addUserMessage("user", command)
-  //
-  //   return this.aiClient.run(this, thread)
-  // }
+  async run(command: string, thread: AiThread): Promise<Observable<CodayEvent>> {
+    thread.addUserMessage("user", command)
+    
+    return this.aiClient.run(this, thread)
+  }
   
   get systemInstructions(): string {
     return `${this.definition.instructions}\n\n

@@ -58,9 +58,30 @@
     order: 1;
     visibility: hidden;
     bottom: 0;
-    text-align: center;
     font-size: 2em;
     color: grey;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1em;
+}
+
+.stop-button {
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-size: 0.8em;
+    padding: 0.2em 0.4em;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.stop-button:hover {
+    background-color: rgba(0, 0, 0, 0.1);
 }
 
 #thinking-dots.visible {
@@ -68,8 +89,26 @@
     opacity: 1;
 }
 
+.dots {
+    display: flex;
+}
+
 #thinking-dots span {
     animation: blink 1.4s infinite both;
+}
+
+.stop-button {
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-size: 0.8em;
+    padding: 0.2em 0.4em;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.stop-button:hover {
+    background-color: rgba(0, 0, 0, 0.1);
 }
 
 #thinking-dots span:nth-child(2) {

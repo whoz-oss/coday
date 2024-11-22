@@ -1,4 +1,5 @@
 import {Project} from "./project"
+import {AiThread} from "../ai-thread/ai-thread"
 
 export class CommandContext {
   private commandQueue: string[] = []
@@ -24,6 +25,11 @@ export class CommandContext {
    * Preferably organized by handler/client/class
    */
   data: any = {}
+  
+  /**
+   * Instance of the AiThread currently selected
+   */
+  aiThread?: AiThread
   
   constructor(
     readonly project: Project,
