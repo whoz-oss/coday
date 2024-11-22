@@ -25,7 +25,7 @@ function postEvent(event: CodayEvent): Promise<Response> {
 
 // Define stop callback
 const handleStop = () => {
-  fetch("/api/stop", {method: "POST"})
+  fetch(`/api/stop?clientId=${clientId}`, {method: "POST"})
     .catch(error => console.error("Error stopping execution:", error))
 }
 

@@ -1,6 +1,6 @@
 import {AiClient, Interactor} from "../../model"
 import {OpenaiClient} from "../../handler/openai.client"
-import {AnthropicClient} from "../../handler/anthropicClient"
+import {AnthropicClient} from "../../handler/anthropic.client"
 import {userConfigService} from "../../service/user-config.service"
 
 /** Supported AI providers */
