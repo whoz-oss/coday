@@ -49,7 +49,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
     if (value) {
       this.thinkingTimeout = setTimeout(() => {
         this.thinkingDots.classList.toggle("visible", false)
-      }, ThinkingEvent.debounce * 2)
+      }, ThinkingEvent.debounce + 1000)
       
     }
     this.thinkingDots.classList.toggle("visible", value)
@@ -62,7 +62,6 @@ export class ChatHistoryComponent implements CodayEventHandler {
   }
   
   addText(text: string, speaker: string | undefined): void {
-    this.setThinking(false)
     const newEntry = this.createMessageElement(text, speaker)
     newEntry.classList.add("text", "right")
     this.appendMessageElement(newEntry)
@@ -70,7 +69,6 @@ export class ChatHistoryComponent implements CodayEventHandler {
   }
   
   addAnswer(answer: string, speaker: string | undefined): void {
-    this.setThinking(false)
     const newEntry = this.createMessageElement(answer, speaker)
     newEntry.classList.add("text", "left")
     this.appendMessageElement(newEntry)

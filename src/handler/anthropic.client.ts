@@ -48,7 +48,12 @@ export class AnthropicClient extends AiClient {
       price: 0
     }
     const outputSubject: Subject<CodayEvent> = new Subject()
-    this.processThread(anthropic, agent, thread, outputSubject).finally(() => outputSubject.complete())
+    const thinking = setInterval(() => this.interactor.thinking(), 3000)
+    this.processThread(anthropic, agent, thread, outputSubject).finally(() => {
+      this.showPrice(thread.data.anthropic.price)
+      clearInterval(thinking)
+      outputSubject.complete()
+    })
     return outputSubject
   }
   
@@ -58,7 +63,6 @@ export class AnthropicClient extends AiClient {
     thread: AiThread,
     subscriber: Subject<CodayEvent>
   ): Promise<void> {
-    const thinking = setInterval(() => this.interactor.thinking(), 3000)
     try {
       const response = await client.messages.create({
         model: AnthropicModels[this.getModelSize(agent)].model,
@@ -73,7 +77,6 @@ export class AnthropicClient extends AiClient {
         max_tokens: 8192
       })
       
-      clearInterval(thinking)
       
       thread.data.anthropic.price += this.computePrice(response?.usage, agent)
       
@@ -97,14 +100,9 @@ export class AnthropicClient extends AiClient {
       if (await this.shouldProcessAgainAfterResponse(text, toolRequests, agent, thread)) {
         // then tool responses to send
         await this.processThread(client, agent, thread, subscriber)
-      } else {
-        // end of run, show the bill
-        this.showPrice(thread.data.anthropic.price)
       }
       
     } catch (error: any) {
-      clearInterval(thinking)
-      this.showPrice(thread.data.anthropic.price)
       subscriber.next(new ErrorEvent({
         error
       }))

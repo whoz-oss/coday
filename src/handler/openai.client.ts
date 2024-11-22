@@ -56,7 +56,12 @@ export class OpenaiClient extends AiClient {
     }
     
     const outputSubject: Subject<CodayEvent> = new Subject()
-    this.processThread(openai, agent, thread, outputSubject).finally(() => outputSubject.complete())
+    const thinking = setInterval(() => this.interactor.thinking(), 3000)
+    this.processThread(openai, agent, thread, outputSubject).finally(() => {
+      clearInterval(thinking)
+      this.showPrice(thread.data.openai.price)
+      outputSubject.complete()
+    })
     return outputSubject
   }
   
@@ -66,7 +71,6 @@ export class OpenaiClient extends AiClient {
     thread: AiThread,
     subscriber: Subject<CodayEvent>
   ): Promise<void> {
-    const thinking = setInterval(() => this.interactor.thinking(), 3000)
     try {
       const response = await client.chat.completions.create({
         model: this.models[agent.definition.modelSize ?? ModelSize.BIG].model,
@@ -76,7 +80,6 @@ export class OpenaiClient extends AiClient {
         temperature: agent.definition.temperature ?? 0.8
       })
       
-      clearInterval(thinking)
       
       thread.data.openai.price += this.computePrice(response.usage, agent)
       
@@ -95,13 +98,8 @@ export class OpenaiClient extends AiClient {
       if (await this.shouldProcessAgainAfterResponse(text, toolRequests, agent, thread)) {
         // then tool responses to send
         await this.processThread(client, agent, thread, subscriber)
-      } else {
-        // end of run, show the bill
-        this.showPrice(thread.data.openai.price)
       }
     } catch (error: any) {
-      clearInterval(thinking)
-      this.showPrice(thread.data.openai.price)
       subscriber.next(new ErrorEvent({
         error
       }))
