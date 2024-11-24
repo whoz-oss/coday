@@ -11,7 +11,8 @@ aim is to target directly the endgoal of agents and not view them as tool extens
 users for light supervision.
 
 By focusing on connecting advanced AI models, existing tools and project knowledge, Coday can stay relevant at low cost
-in an ever accelerating software landscape.
+in an ever accelerating software landscape. Through its multi-agent architecture, it leverages both project-specific
+agents and internal technical agents to provide sophisticated capabilities while maintaining operational simplicity.
 
 ## Goals
 
@@ -19,6 +20,8 @@ in an ever accelerating software landscape.
     - Leverage state-of-the-art (SOTA) models to benefit naturally from their future capabilities
     - No strings attached to existing software
     - Simple everlasting interfaces: terminal chat, web chat
+   - Support for diverse agent types and team collaboration
+   - Integration with specialized platform capabilities
 
 2. Tool Enhancement
     - Extend AI capabilities through well-defined tools
@@ -29,10 +32,11 @@ in an ever accelerating software landscape.
     - Understanding of project structure
     - Memory of past interactions
     - Learning on the way through memorization
+   - Intelligent task routing through specialized agents
+   - Team-based problem-solving capabilities
 
 ## Non-Goals
 
 - Not a replacement for existing IDE features
 - Not a project management system
 - Not a deployment platform
-
