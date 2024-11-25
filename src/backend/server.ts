@@ -23,7 +23,9 @@ const clients: Record<string, {
   res: express.Response,
   interval: NodeJS.Timeout,
   interactor: ServerInteractor,
-  coday?: Coday
+  coday?: Coday,
+  terminationTimeout?: NodeJS.Timeout,
+  lastConnected: number
 }> = {}
 
 
@@ -56,8 +58,14 @@ app.post("/api/message", (req: express.Request, res: express.Response) => {
   try {
     const payload = req.body
     const clientId = req.query.clientId as string
+    const client = clients[clientId]
     
-    clients[clientId].interactor.sendEvent(new AnswerEvent(payload))
+    if (!client) {
+      res.status(404).send("Client not found")
+      return
+    }
+    
+    client.interactor.sendEvent(new AnswerEvent(payload))
     
     res.status(200).send("Message received successfully!")
   } catch (error) {
@@ -102,7 +110,28 @@ app.get("/events", (req: express.Request, res: express.Response) => {
   
   // Send heartbeat messages at specified intervals
   const heartbeatInterval = setInterval(sendHeartbeat, 10000)
-  clients[clientId] = {res, interval: heartbeatInterval, interactor}
+  
+  // If there's an existing client with a pending termination, clear it
+  if (clients[clientId]?.terminationTimeout) {
+    clearTimeout(clients[clientId].terminationTimeout)
+    console.log(`${new Date().toISOString()} Client ${clientId} reconnected, cleared termination`)
+    
+    // Update response and interval, keep existing interactor and coday
+    clients[clientId].res = res
+    clients[clientId].interval = heartbeatInterval
+    clients[clientId].lastConnected = Date.now()
+    delete clients[clientId].terminationTimeout
+    
+    // Resume existing Coday instance
+    return
+  }
+  
+  clients[clientId] = {
+    res,
+    interval: heartbeatInterval,
+    interactor,
+    lastConnected: Date.now()
+  }
   console.log(`${new Date().toISOString()} Client ${clientId} connected`)
   
   // Handle client disconnect
@@ -111,7 +140,7 @@ app.get("/events", (req: express.Request, res: express.Response) => {
   })
   coday = new Coday(interactor, {oneshot: false})
   clients[clientId].coday = coday
-  coday.run().finally(() => terminate(clientId, coday))
+  coday.run().finally(() => terminate(clientId, coday, true))
 })
 
 // Error handling middleware
@@ -124,13 +153,45 @@ app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`)
 })
 
-function terminate(clientId: string, coday: Coday | undefined): void {
+const SESSION_TIMEOUT = 60 * 60 * 1000 // 1 hour in milliseconds
+
+function terminate(clientId: string, coday: Coday | undefined, immediate: boolean = false): void {
   const client = clients[clientId]
-  coday?.kill()
-  if (client) {
-    clearInterval(client.interval)
-    client.res.end()
+  if (!client) return
+  
+  // Clear any existing heartbeat interval
+  clearInterval(client.interval)
+  client.res.end()
+  
+  if (immediate) {
+    // Immediate termination
+    coday?.kill()
     delete clients[clientId]
-    console.log(`${new Date().toISOString()} Client ${clientId} disconnected`)
+    console.log(`${new Date().toISOString()} Client ${clientId} terminated immediately`)
+    return
   }
+  
+  // Stop the Coday instance but keep it alive
+  coday?.stop()
+  
+  // Clear any existing termination timeout
+  if (client.terminationTimeout) {
+    clearTimeout(client.terminationTimeout)
+  }
+  
+  // Set new termination timeout
+  client.terminationTimeout = setTimeout(() => {
+    const client = clients[clientId]
+    if (client) {
+      // Check if the session has been idle for too long
+      const idleTime = Date.now() - client.lastConnected
+      if (idleTime >= SESSION_TIMEOUT) {
+        client.coday?.kill()
+        delete clients[clientId]
+        console.log(`${new Date().toISOString()} Client ${clientId} session expired after ${Math.round(idleTime / 1000)}s of inactivity`)
+      }
+    }
+  }, SESSION_TIMEOUT)
+  
+  console.log(`${new Date().toISOString()} Client ${clientId} disconnected, termination scheduled in ${SESSION_TIMEOUT / 1000}s`)
 }
