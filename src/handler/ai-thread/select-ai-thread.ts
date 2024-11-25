@@ -8,7 +8,8 @@ export async function selectAiThread(interactor: Interactor, threadService: AiTh
   // Interactive selection
   const threads: ThreadSummary[] = await lastValueFrom(threadService.list())
   if (threads.length === 0) {
-    interactor.displayText("No threads available.")
+    interactor.displayText("No threads available, creating one.")
+    threadService.create()
     return
   }
   
