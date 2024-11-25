@@ -37,23 +37,28 @@ Key aspects:
 - Configures integration points
 - Sets up development environment context
 
-### Thread
+### AiThread
 
-A Thread represents an ongoing interaction context between User and AI. It:
+An AiThread represents an ongoing interaction context between User and Agents. It:
 
 - Maintains its own event history
 - Manages token limits for AI context
 - Tracks file and tool states
 - Provides optimized views of its history
 - Ensures continuity of conversation
+- Maintains agent-specific state in thread scope
+- Supports multi-agent interaction patterns
 
 Key characteristics:
 
 - Self-contained interaction space
-- State management unit
+- Agent-agnostic state management
 - History optimization
 - Context window management
 - Tool state tracking
+
+AiThreads are to be forked, cloned, and re-worked for use by technical agents and project agents. Yet, only the main
+AiThread holds only project agents contributions.
 
 ### Events
 
@@ -68,7 +73,7 @@ Events are atomic units of interaction that flow through the system. Types inclu
 Key aspects:
 
 - Carry full context
-- Thread-scoped
+- AiThread-scoped
 - Immutable
 - Sequential
 - Traceable
@@ -86,7 +91,7 @@ Tools are defined capabilities that allow AI to interact with the environment:
 Characteristics:
 
 - Stateless implementation
-- Thread-managed state
+- AiThread-managed state
 - Clear input/output contract
 - Error handling patterns
 - Documentation requirements
@@ -126,20 +131,49 @@ Characteristics:
 
 ### Agent
 
-An Agent represents an AI model (LLM) with a specific configuration and purpose:
+An Agent represents an AI capability provider with specific configuration and purpose. Agents come in two categories:
 
-- Dedicated instructions shaping behavior and expertise
-- Assigned set of tools defining capabilities
-- Access to specific memories and knowledge
-- Defined role and responsibilities
+1. Project Agents:
+    - Explicitly configured in project settings
+    - User-addressable through @agent-name syntax
+    - Can belong to one or more teams
+    - May be local or platform-based (e.g., OpenAI Assistants)
+    - Domain-specific expertise and capabilities
+
+2. Technical Agents:
+    - Internal system agents not directly addressable
+    - Perform specialized operations:
+        * Memory curation
+        * Context summarization
+        * Team supervision
+        * Inter-agent mediation
+    - Support system patterns and operations
 
 Key aspects:
 
-- Specialized purpose and behavior
-- Configured tool access
-- Memory access levels
-- Response patterns
-- Interaction style
+- Clear capability boundaries
+- Defined tool access levels
+- Specific memory access patterns
+- Implementation-specific state management for OpenAI Assistants
+- Standard interface contract
+
+### Team
+
+A Team represents a group of Project Agents working together under Technical Agent supervision:
+
+- Identified by #team-name syntax
+- Static composition defined in project configuration
+- Supervised by dedicated technical agents
+- Collaborative problem-solving capabilities
+- Shared context management
+
+Key aspects:
+
+- Clear team boundaries
+- Supervised collaboration
+- Unified response synthesis
+- Context sharing patterns
+- Role-based task distribution
 
 ### Memory
 
@@ -154,7 +188,6 @@ Key aspects:
 - Hierarchical (Project/User)
 - Contextual relevance
 - Temporal validity
-- Access patterns
 - Update mechanisms
 
 ## Domain Relationships
@@ -166,21 +199,26 @@ graph TD
     Project --> PM["Project Memory"]
     Project --> Tools
     Project --> Agents["AI Agents"]
+    Agents --> TA["Technical Agents"]
+    Agents --> PA["Project Agents"]
+    PA --> Teams
     Project --> Handlers["Command Handlers"]
+    TA --> Teams
 
-    subgraph "Thread Context"
-        Thread --> Events
+    subgraph "AiThread Context"
+        AiThread --> Events
         Events --> Tools
         Tools --> TS["Tool State"]
     end
 
-    User --> Thread
-    Project --> Thread
-    UM --> Thread
-    PM --> Thread
+    User --> AiThread
+    Project --> AiThread
+    UM --> AiThread
+    PM --> AiThread
 %% Styling
     classDef memory fill: #f9f, stroke: #333, stroke-width: 2px
-    class UM, PM, TM memory
+   class UM memory
+   class PM memory
     classDef state fill: #bbf, stroke: #333, stroke-width: 2px
     class TS state
 ```
@@ -192,7 +230,7 @@ This graph shows how:
 3. Threads provide interaction context
 4. Memory exists at multiple levels
 5. Tools maintain state within Threads
-6. Events flow through Thread context
+6. Events flow through AiThread context
 
 The relationships emphasize:
 
