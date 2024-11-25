@@ -5,12 +5,29 @@ import {buildCodayEvent, CodayEvent, ErrorEvent} from "shared/coday-events"
 import {CodayEventHandler} from "./utils/coday-event-handler"
 import {HeaderComponent} from "./header/header.component"
 
-function generateClientId() {
-  // Generate or retrieve a unique client ID
-  return Math.random().toString(36).substring(2, 15)
+/**
+ * This is a nice temporary workaround for session re-connect
+ * Target behavior would be to have frontend routes /project/{projectId} and /project/{projectId}/thread/{threadId} to manage state properly, but backend is not ready yet.
+ */
+function getOrCreateClientId(): string {
+  // Check URL parameters first
+  const params = new URLSearchParams(window.location.search)
+  let clientId = params.get("clientId")
+  
+  if (!clientId) {
+    // Generate new if not found
+    clientId = Math.random().toString(36).substring(2, 15)
+    
+    // Update URL without page reload
+    const newUrl = new URL(window.location.href)
+    newUrl.searchParams.set("clientId", clientId)
+    window.history.pushState({}, "", newUrl)
+  }
+  
+  return clientId
 }
 
-const clientId = generateClientId()
+const clientId = getOrCreateClientId()
 console.log(`Session started with clientId: ${clientId}`)
 
 function postEvent(event: CodayEvent): Promise<Response> {

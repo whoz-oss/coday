@@ -42,6 +42,12 @@ export class ServerClient {
       delete this.terminationTimeout
       console.log(`${new Date().toISOString()} Client ${this.clientId} reconnected, cleared termination`)
     }
+
+    // Replay thread messages if we have an active Coday instance
+    if (this.coday) {
+      console.log(`${new Date().toISOString()} Replaying messages for client ${this.clientId}`)
+      this.coday.replay()
+    }
   }
   
   /**
