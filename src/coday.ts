@@ -2,6 +2,7 @@ import os from "os"
 import {HandlerLooper} from "./handler-looper"
 import {keywords} from "./keywords"
 import {AiClient, CommandContext, Interactor} from "./model"
+import {AiThread} from "./ai-thread/ai-thread"
 import {AiHandler, ConfigHandler} from "./handler"
 import {AiClientProvider} from "./integration/ai/ai-client-provider"
 import {AiThreadService} from "./ai-thread/ai-thread.service"
@@ -45,29 +46,52 @@ export class Coday {
     this.aiThreadService.activeThread.subscribe(aiThread => {
       if (!this.context || !aiThread) return
       this.context.aiThread = aiThread
-      
-      // Re-emit thread history if it has messages
-      const messages = aiThread.getMessages()
-      if (messages && messages.length > 0) {
-        // Sort messages by timestamp to maintain chronological order
-        const sortedMessages = [...messages].sort((a, b) =>
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        )
-        
-        // Convert and emit each message
-        for (const message of sortedMessages) {
-          if (!(message instanceof MessageEvent)) continue
-          if (message.role === "assistant") {
-            this.interactor.sendEvent(new TextEvent({...message, speaker: message.name, text: message.content}))
-          } else {
-            this.interactor.sendEvent(new AnswerEvent({...message, answer: message.content, invite: message.name}))
-          }
-        }
-      }
-      
-      // Always emit the thread selection message last
-      this.interactor.displayText(`Selected thread '${aiThread.name}'`)
+      this.replayThread(aiThread)
     })
+  }
+  
+  /**
+   * Replay messages from an AiThread through the interactor
+   */
+  private replayThread(aiThread: AiThread): void {
+    const messages = aiThread.getMessages()
+    if (!messages?.length) return
+    
+    // Sort messages by timestamp to maintain chronological order
+    const sortedMessages = [...messages].sort((a, b) =>
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    )
+    
+    // Convert and emit each message
+    for (const message of sortedMessages) {
+      if (!(message instanceof MessageEvent)) continue
+      if (message.role === "assistant") {
+        this.interactor.sendEvent(new TextEvent({...message, speaker: message.name, text: message.content}))
+      } else {
+        this.interactor.sendEvent(new AnswerEvent({...message, answer: message.content, invite: message.name}))
+      }
+    }
+    
+    // Always emit the thread selection message last
+    this.interactor.displayText(`Selected thread '${aiThread.name}'`)
+  }
+  
+  /**
+   * Replay the current thread's messages.
+   * Useful for reconnection scenarios.
+   */
+  replay(): void {
+    const thread = this.aiThreadService.getCurrentThread()
+    if (!thread) {
+      console.log("No active thread to replay")
+      return
+    }
+    this.replayThread(thread)
+    
+    // After replay, if not oneshot and thread is not running, re-emit last invite
+    if (!this.options.oneshot && thread.runStatus !== RunStatus.RUNNING) {
+      this.interactor.replayLastInvite()
+    }
   }
   
   async run(): Promise<void> {

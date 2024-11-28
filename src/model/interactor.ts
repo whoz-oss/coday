@@ -15,6 +15,7 @@ export abstract class Interactor {
   events = new Subject<CodayEvent>()
   private thinking$ = new Subject<null>()
   private subs: Subscription[] = []
+  private lastInviteEvent?: InviteEvent
   
   constructor() {
     this.subs.push(this.thinking$.pipe(
@@ -24,6 +25,7 @@ export abstract class Interactor {
   
   async promptText(invite: string, defaultText?: string): Promise<string> {
     const inviteEvent = new InviteEvent({invite})
+    this.lastInviteEvent = inviteEvent
     const answer: Observable<string> = this.events.pipe(
       filter(e => e.parentKey === inviteEvent.timestamp),
       filter(e => e instanceof AnswerEvent),
@@ -70,6 +72,16 @@ export abstract class Interactor {
     this.events.next(event)
   }
   
+  /**
+   * Re-emit the last invite event if any.
+   * Used during reconnection to restore the input state.
+   */
+  replayLastInvite(): void {
+    if (this.lastInviteEvent) {
+      this.sendEvent(this.lastInviteEvent)
+    }
+  }
+
   kill() {
     console.log("")
     this.subs.forEach(s => s.unsubscribe())

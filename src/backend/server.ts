@@ -1,8 +1,7 @@
 import express from "express"
 import path from "path"
-import {ServerInteractor} from "../model/server-interactor"
-import {Coday} from "../coday"
-import {AnswerEvent, HeartBeatEvent} from "../shared"
+import {AnswerEvent} from "../shared"
+import {ServerClientManager} from "./server-client"
 
 const app = express()
 const PORT = process.env.PORT || 3000  // Default port as fallback
@@ -18,32 +17,21 @@ app.get("/", (req: express.Request, res: express.Response) => {
 // Middleware to parse JSON bodies
 app.use(express.json())
 
-// Maintain a dictionary of connected clients
-const clients: Record<string, {
-  res: express.Response,
-  interval: NodeJS.Timeout,
-  interactor: ServerInteractor,
-  coday?: Coday
-}> = {}
-
+// Initialize the client manager
+const clientManager = new ServerClientManager()
 
 // POST endpoint for stopping the current run
 app.post("/api/stop", (req: express.Request, res: express.Response) => {
   try {
     const clientId = req.query.clientId as string
-    const client = clients[clientId]
+    const client = clientManager.get(clientId)
     
     if (!client) {
       res.status(404).send("Client not found")
       return
     }
     
-    if (!client.coday) {
-      res.status(400).send("No active Coday instance")
-      return
-    }
-    
-    client.coday.stop()
+    client.stop()
     res.status(200).send("Stop signal sent successfully!")
   } catch (error) {
     console.error("Error processing stop request:", error)
@@ -56,8 +44,14 @@ app.post("/api/message", (req: express.Request, res: express.Response) => {
   try {
     const payload = req.body
     const clientId = req.query.clientId as string
+    const client = clientManager.get(clientId)
     
-    clients[clientId].interactor.sendEvent(new AnswerEvent(payload))
+    if (!client) {
+      res.status(404).send("Client not found")
+      return
+    }
+    
+    client.getInteractor().sendEvent(new AnswerEvent(payload))
     
     res.status(200).send("Message received successfully!")
   } catch (error) {
@@ -78,40 +72,15 @@ app.get("/events", (req: express.Request, res: express.Response) => {
   res.setHeader("Cache-Control", "no-cache")
   res.setHeader("Connection", "keep-alive")
   
-  const interactor = new ServerInteractor(clientId)
-  
-  // send all events from Coday to the frontend
-  interactor.events.subscribe(event => {
-    const data = `data: ${JSON.stringify(event)}\n\n`
-    return res.write(data)
-  })
-  
-  let coday: Coday
-  const sendHeartbeat = () => {
-    try {
-      const heartBeatEvent = new HeartBeatEvent({})
-      interactor.sendEvent(heartBeatEvent)
-    } catch (error) {
-      console.error("Error sending heartbeat:", error)
-      terminate(clientId, coday)
-    }
-  }
-  
-  // Send initial heartbeat message
-  sendHeartbeat()
-  
-  // Send heartbeat messages at specified intervals
-  const heartbeatInterval = setInterval(sendHeartbeat, 10000)
-  clients[clientId] = {res, interval: heartbeatInterval, interactor}
-  console.log(`${new Date().toISOString()} Client ${clientId} connected`)
+  const client = clientManager.getOrCreate(clientId, res)
   
   // Handle client disconnect
-  req.on("close", () => {
-    terminate(clientId, coday)
-  })
-  coday = new Coday(interactor, {oneshot: false})
-  clients[clientId].coday = coday
-  coday.run().finally(() => terminate(clientId, coday))
+  req.on("close", () => client.terminate())
+  
+  // Start Coday if it's a new client
+  if (client.startCoday()) {
+    console.log(`${new Date().toISOString()} Client ${clientId} connected`)
+  }
 })
 
 // Error handling middleware
@@ -120,17 +89,9 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   res.status(500).send("Something went wrong!")
 })
 
+// Start cleanup interval for expired clients
+setInterval(() => clientManager.cleanupExpired(), 60000) // Check every minute
+
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`)
 })
-
-function terminate(clientId: string, coday: Coday | undefined): void {
-  const client = clients[clientId]
-  coday?.kill()
-  if (client) {
-    clearInterval(client.interval)
-    client.res.end()
-    delete clients[clientId]
-    console.log(`${new Date().toISOString()} Client ${clientId} disconnected`)
-  }
-}
