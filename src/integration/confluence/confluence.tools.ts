@@ -49,13 +49,13 @@ export class ConfluenceTools extends AssistantToolFactory {
       type: "function",
       function: {
         name: "searchConfluencePage",
-        description: "Search Confluence pages by text, returns list of page matches. If several pages seem relevant, you **should** read them.",
+        description: "Search Confluence pages by words, returns list of page matches. If several pages seem relevant, you **should** read them. Use several searches if many words to check.",
         parameters: {
           type: "object",
           properties: {
             query: {
               type: "string",
-              description: "Search words, can be in any order, the query will be split and joined by an AND condition for text search. Keep word count preferably low (1 to 4) to avoid too restrictive search."
+              description: "Search words, can be in any order, the query will be split and joined by an AND condition for text search. Keep word count preferably low (1 or 2) to avoid too restrictive search. "
             },
           }
         },
