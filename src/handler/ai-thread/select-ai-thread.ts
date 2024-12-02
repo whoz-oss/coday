@@ -23,7 +23,7 @@ export async function selectAiThread(interactor: Interactor, threadService: AiTh
   
   const options = Array.from(threadsByText.keys())
   const newThreadLabel = "New thread"
-  options.push(newThreadLabel)
+  options.unshift(newThreadLabel)
   const selected = await interactor.chooseOption(options, "Select a thread")
   if (selected === newThreadLabel) {
     threadService.create()
