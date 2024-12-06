@@ -1,0 +1,87 @@
+.setup:
+  configureWorkingDirectory:
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = "schedule" ] && [ "$CI_COMMIT_REF_PROTECTED" = "true" ] && [ "$FORCE_VALIDATE_JOBS" = "true" ]; then
+        export WORKING_DIRECTORY="/mnt/gitlab/data/branches/$SCHEDULED_VALIDATE_PREFIX$CI_COMMIT_REF_SLUG"
+      else
+        export WORKING_DIRECTORY="/mnt/gitlab/data/branches/$CI_COMMIT_REF_SLUG"
+      fi
+      mkdir -p $WORKING_DIRECTORY
+      cd $WORKING_DIRECTORY
+      echo "WORKING_DIRECTORY:" $WORKING_DIRECTORY
+
+include:
+  - 'ci/init/*.yml'
+  - 'ci/test/*.yml'
+
+stages:
+  - 1️⃣-init
+  - 🏬-technical
+  - 🔬-test
+  - 🩺-reporting
+  - 🏗-build-app
+  - 🐳-build-docker
+  - 🐶-datadog
+  - 🏷-tag
+  - 🚀-deploy
+  - 💗-e2e
+  - 🌉-report
+  - ⤵️-automerge
+  - 👷-maintenance
+
+
+variables:
+  BRANCHES_CACHE_FOLDER: /mnt/gitlab/data/branches
+  FRAMEWORKS_CACHE_FOLDER: /mnt/gitlab/data/cache
+  GIT_STRATEGY: none # we do the checkout process only once in init stage
+  INIT_REPOSITORY_PIPELINE_ID_ENV_FILE: tmp.init-repository-pipeline-id.env
+  MASTER_BRANCH: master
+  NX_MAX_WORKERS: 4
+  NX_SKIP_LOG_GROUPING: false
+  NX_TASKS_RUNNER_DYNAMIC_OUTPUT: false
+  NX_PLUGIN_NO_TIMEOUTS: ${CI_NX_PLUGIN_NO_TIMEOUTS}
+  NX_VERBOSE_LOGGING: ${CI_NX_VERBOSE_LOGGING}
+
+default:
+  image: $DOCKER_REGISTRY_URL/whoz-build:jdk17-docker-git-node22.5.1
+  interruptible: true
+  before_script:
+    - !reference [ .setup, configureWorkingDirectory ]
+    - |
+      function initializeSshAgent {
+        eval "$(ssh-agent -s)"
+        chmod 400 "$GITLAB_CI_SSH_KEY_FILE"
+        chmod 400 "$ANSIBLE_DEV_SSH_KEY"
+        ssh-add "$GITLAB_CI_SSH_KEY_FILE"
+        ssh-add "$ANSIBLE_DEV_SSH_KEY"
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        echo "${GITLAB_CI_KNOWN_HOST}" >> ~/.ssh/known_hosts
+      }
+
+      function configureGitSettings {
+        git config --global user.email "${GITLAB_CI_USER_EMAIL}"
+        git config --global user.name "${GITLAB_CI_USER_NAME}"
+        git config --global init.defaultBranch "${CI_COMMIT_REF_NAME}"
+        export GIT_DISCOVERY_ACROSS_FILESYSTEM=true
+      }
+
+      function configureGoogleCredentials {
+        base64 -d $GCP_SA_KEY > /tmp/account.json
+        export GOOGLE_APPLICATION_CREDENTIALS=/tmp/account.json
+      }
+
+      function configureDockerSettings {
+        # Check if Docker is installed before running docker commands
+        if command -v docker >/dev/null 2>&1; then
+          base64 -d $GCP_SA_KEY | docker login -u _json_key --password-stdin https://eu.gcr.io
+          base64 -d $GCP_SA_KEY | docker login -u _json_key --password-stdin https://europe-west1-docker.pkg.dev
+        else
+          echo "Docker is not installed, thus not running docker login tasks."
+        fi
+      }
+
+      initializeSshAgent
+      configureGitSettings
+      configureGoogleCredentials
+      configureDockerSettings
