@@ -12,6 +12,7 @@
 
 include:
   - 'ci/init/*.yml'
+  - 'ci/build/*.yml'
   - 'ci/test/*.yml'
 
 stages:
@@ -19,7 +20,7 @@ stages:
   - 🏬-technical
   - 🔬-test
   - 🩺-reporting
-  - 🏗-build-app
+  - 🏗-build
   - 🐳-build-docker
   - 🐶-datadog
   - 🏷-tag
