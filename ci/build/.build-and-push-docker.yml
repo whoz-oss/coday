@@ -24,16 +24,3 @@
     - if: $CI_MERGE_REQUEST_ID == null && $CI_COMMIT_REF_NAME == $MASTER_BRANCH
       changes:
         - ci/build/wrapper/Dockerfile
-
-
-
-🏗-build:
-  stage: 🏗-build
-  needs: [ 1️⃣-init-repository ]
-  script:
-    - |
-      yarn nx run-many --target="build" --parallel=$NX_MAX_WORKERS;
-  rules:
-    - if: $CI_COMMIT_REF_PROTECTED == "true" && $FORCE_PACKAGE_JOBS == "true"
-    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
-    - if: $CI_MERGE_REQUEST_ID == null && $CI_COMMIT_REF_NAME == $MASTER_BRANCH
