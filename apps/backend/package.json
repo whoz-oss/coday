@@ -1,5 +1,22 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@google/generative-ai": "^0.21.0",
+    "@inquirer/prompts": "^7.1.0",
+    "@types/yargs": "^17.0.32",
+    "axios": "^1.7.9",
+    "chalk": "^5.3.0",
+    "eslint-plugin-import": "^2.31.0",
+    "express": "~4.21.2",
+    "glob": "^11.0.0",
+    "openai": "4.76.0",
+    "os": "^0.1.2",
+    "rxjs": "^7.8.1",
+    "tslib": "^2.3.0",
+    "yaml": "^2.4.5",
+    "yargs": "^17.7.2"
+  }
 }

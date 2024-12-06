@@ -1,0 +1,13 @@
+# Docker platform for local test is not available yet
+# some IP mapping issue have to be fix on MAC OS system
+
+version: '3.7'
+services:
+  coday:
+    image: europe-west1-docker.pkg.dev/whoz-196313/docker/coday:master
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ~/Workspace/biznet.io/app/master:/root/repository
+      - /Users/vincent/.coday:/root/.coday

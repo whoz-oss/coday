@@ -1,0 +1,39 @@
+🐳-build-docker:
+  stage: 🐳-build-docker
+  needs: [ 1️⃣-init-repository, 🏗-build ]
+  script:
+    - |
+      cp $WORKING_DIRECTORY/ci/build/Dockerfile $WORKING_DIRECTORY/dist"
+    - docker build --no-cache --build-arg -t $DOCKER_REGISTRY_URL/coday:$MASTER_BRANCH $WORKING_DIRECTORY/dist
+    - docker push $DOCKER_REGISTRY_URL/coday:$MASTER_BRANCH
+  rules:
+    - if: $CI_COMMIT_REF_PROTECTED == "true" && $FORCE_PACKAGE_JOBS == "true"
+    - if: $CI_MERGE_REQUEST_ID == null && $CI_COMMIT_REF_NAME == $MASTER_BRANCH
+
+🐳-build-docker-wrapper:
+  stage: 🐳-build-docker
+  needs: [ 1️⃣-init-repository ]
+  script:
+    - |
+      cp $WORKING_DIRECTORY/ci/build/Dockerfile $WORKING_DIRECTORY/dist"
+    - docker buildx build --platform linux/amd64,linux/arm64 --pull --build-arg DOCKER_REGISTRY_URL=${DOCKER_REGISTRY_URL} --tag=${DOCKER_REGISTRY_URL}/coday:master-wrapper --push .
+  rules:
+    - if: $CI_COMMIT_REF_PROTECTED == "true" && $FORCE_PACKAGE_JOBS == "true"
+      changes:
+        - ci/build/wrapper/Dockerfile
+    - if: $CI_MERGE_REQUEST_ID == null && $CI_COMMIT_REF_NAME == $MASTER_BRANCH
+      changes:
+        - ci/build/wrapper/Dockerfile
+
+
+
+🏗-build:
+  stage: 🏗-build
+  needs: [ 1️⃣-init-repository ]
+  script:
+    - |
+      yarn nx run-many --target="build" --parallel=$NX_MAX_WORKERS;
+  rules:
+    - if: $CI_COMMIT_REF_PROTECTED == "true" && $FORCE_PACKAGE_JOBS == "true"
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_MERGE_REQUEST_ID == null && $CI_COMMIT_REF_NAME == $MASTER_BRANCH
