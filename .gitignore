@@ -37,7 +37,8 @@ Thumbs.db
 
 # Ignore built ts files
 dist/**/*
-
-# ignore yarn.lock
-yarn.lock
 /static/
+
+# Ignore Nx
+.nx/cache
+.nx/workspace-data
