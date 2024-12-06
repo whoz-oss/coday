@@ -1,0 +1,41 @@
+#chat-form {
+  padding: 1em;
+  background-color: #44475a;
+  border-top: 1px solid #6272a4;
+}
+
+textarea {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1em;
+  flex-grow: 1;
+  padding: 0.5em;
+  border-radius: 0.5em;
+  margin-right: 0.7em;
+  border: 1px solid #6272a4;
+  box-sizing: border-box;
+  resize: vertical;
+  background-color: #282a36;
+  color: #f8f8f2;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: #bd93f9;
+  box-shadow: 0 0 0 2px rgba(189, 147, 249, 0.2);
+}
+
+textarea::placeholder {
+  color: #6272a4;
+}
+
+.expanded-textarea {
+  height: 70vh;
+}
+
+.submit {
+  flex-grow: 1;
+}
+
+#expand-toggle {
+  margin-bottom: 0.5em;
+}

@@ -1,5 +1,5 @@
 #!/bin/bash
 
 ./update.sh
-yarn update
+yarn install --frozen-lockfile
 yarn run start

@@ -67,12 +67,12 @@ The proposed repository structure follows the yarn workspaces pattern:
 ├── packages/
 │   ├── core/             # @coday/core package
 │   │   ├── package.json
-│   │   ├── src/
+│   │   ├── libs/
 │   │   └── tsconfig.json
 │   │
 │   ├── web/             # @coday/web package
 │   │   ├── package.json  # with @coday/core as peer dependency
-│   │   ├── src/
+│   │   ├── libs/
 │   │   └── tsconfig.json
 │   │
 │   └── slack/           # future integrations
