@@ -1,6 +1,3 @@
-# Docker platform for local test is not available yet
-# some IP mapping issue have to be fix on MAC OS system
-
 version: '3.7'
 services:
   coday:
