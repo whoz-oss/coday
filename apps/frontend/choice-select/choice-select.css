@@ -1,0 +1,42 @@
+#choice-form {
+  padding: 1em;
+  background-color: #44475a;
+  border-top: 1px solid #6272a4;
+}
+
+#choice-select {
+  flex-grow: 1;
+  padding: 1em;
+  background-color: #282a36;
+  color: #f8f8f2;
+  border: 1px solid #6272a4;
+  border-radius: 0.5em;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+#choice-select:focus {
+  outline: none;
+  border-color: #bd93f9;
+  box-shadow: 0 0 0 2px rgba(189, 147, 249, 0.2);
+}
+
+#choice-select option {
+  background-color: #282a36;
+  color: #f8f8f2;
+  padding: 0.5em;
+}
+
+#choice-select option:hover,
+#choice-select option:focus {
+  background-color: #44475a;
+}
+
+#choices-label {
+  color: #f8f8f2;
+  margin-bottom: 0.5em;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+#send-choice-button {
+  margin-left: 0.7em;
+}

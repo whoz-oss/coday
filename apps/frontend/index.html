@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <link rel="stylesheet" href="styles/global.css" />
+    <link rel="stylesheet" href="styles/main.css" />
+    <link rel="stylesheet" href="styles/button.css" />
+    <link rel="stylesheet" href="styles/header.css" />
+    <link rel="stylesheet" href="styles/utilities.css" />
+    <link rel="stylesheet" href="chat-history/chat-history.css" />
+    <link rel="stylesheet" href="chat-textarea/chat-textarea.css" />
+    <link rel="stylesheet" href="choice-select/choice-select.css" />
+  </head>
+  <body>
+    <main>
+      <div id="chat-history">
+        <div id="thinking-dots" class="text right">
+          <div class="dots"><span>.</span><span>.</span><span>.</span></div>
+          <button type="button" class="stop-button" title="Stop current execution">⏹️</button>
+        </div>
+      </div>
+    </main>
+    <footer>
+      <!-- Chat Textarea Block -->
+      <form id="chat-form" style="display: none">
+        <div class="row">
+          <div class="column" style="flex-grow: 1">
+            <label id="chat-label" for="chat-input"></label>
+            <textarea id="chat-input" placeholder="Type your message here..."></textarea>
+          </div>
+          <div class="column">
+            <button type="button" id="expand-toggle">Expand</button>
+            <button type="submit" class="submit">SEND <br /><br />cmd/win + <br />enter</button>
+          </div>
+        </div>
+      </form>
+
+      <!-- Choice Select Block -->
+      <form id="choice-form" style="display: none">
+        <div class="row">
+          <div class="column" style="flex-grow: 1">
+            <label id="choices-label" for="choice-select"></label>
+            <select id="choice-select"></select>
+          </div>
+          <button type="submit" id="send-choice-button">Choose</button>
+        </div>
+      </form>
+    </footer>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

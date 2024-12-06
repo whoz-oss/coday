@@ -1,0 +1,32 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "affected": {
+    "defaultBase": "master"
+  },
+  "targetDefaults": {
+    "build": {
+      "cache": true
+    },
+    "@nx/esbuild:esbuild": {
+      "cache": true,
+      "dependsOn": ["^build"],
+      "inputs": ["default", "^default"]
+    }
+  },
+  "defaultBase": "master",
+  "useDaemonProcess": true,
+  "plugins": [
+    {
+      "plugin": "@nx/jest/plugin",
+      "options": {
+        "targetName": "jest:test"
+      },
+    },
+    {
+      "plugin": "@nx/eslint/plugin",
+      "options": {
+        "targetName": "lint"
+      }
+    }
+  ]
+}
