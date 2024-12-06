@@ -1,0 +1,55 @@
+.column {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.row {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+}
+
+.hidden {
+  display: none;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  border: 0;
+  padding: 0;
+  clip: rect(0, 0, 0, 0);
+  overflow: hidden;
+}
+
+/* Dracula theme utility classes */
+.dracula-selection {
+  background-color: #44475a;
+}
+
+.dracula-comment {
+  color: #6272a4;
+}
+
+.dracula-purple {
+  color: #bd93f9;
+}
+
+.dracula-green {
+  color: #50fa7b;
+}
+
+.dracula-orange {
+  color: #ffb86c;
+}
+
+.dracula-pink {
+  color: #ff79c6;
+}
+
+.dracula-yellow {
+  color: #f1fa8c;
+}

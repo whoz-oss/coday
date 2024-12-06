@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/out-tsc",
+    "types": ["node"]
+  },
+  "exclude": [
+    "jest.config.ts",
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "libs/**/*.test.tsx",
+    "libs/**/*.spec.tsx",
+    "libs/**/*.test.js",
+    "libs/**/*.spec.js",
+    "libs/**/*.test.jsx",
+    "libs/**/*.spec.jsx"
+  ],
+  "include": ["**/*.ts", "../shared/*.ts"]
+}
