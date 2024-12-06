@@ -1,87 +1,28 @@
-.setup:
-  configureWorkingDirectory:
-    - |
-      if [ "$CI_PIPELINE_SOURCE" = "schedule" ] && [ "$CI_COMMIT_REF_PROTECTED" = "true" ] && [ "$FORCE_VALIDATE_JOBS" = "true" ]; then
-        export WORKING_DIRECTORY="/mnt/gitlab/data/branches/$SCHEDULED_VALIDATE_PREFIX$CI_COMMIT_REF_SLUG"
-      else
-        export WORKING_DIRECTORY="/mnt/gitlab/data/branches/$CI_COMMIT_REF_SLUG"
-      fi
-      mkdir -p $WORKING_DIRECTORY
-      cd $WORKING_DIRECTORY
-      echo "WORKING_DIRECTORY:" $WORKING_DIRECTORY
+# This file is a template, and might need editing before it works on your project.
+# This is a sample GitLab CI/CD configuration file that should run without any modifications.
+# It demonstrates a basic 3 stage CI/CD pipeline. Instead of real tests or scripts,
+# it uses echo commands to simulate the pipeline execution.
+#
+# A pipeline is composed of independent jobs that run scripts, grouped into stages.
+# Stages run in sequential order, but jobs within stages run in parallel.
+#
+# For more information, see: https://docs.gitlab.com/ee/ci/yaml/index.html#stages
+#
+# You can copy and paste this template into a new `.gitlab-ci.yml` file.
+# You should not add this template to an existing `.gitlab-ci.yml` file by using the `include:` keyword.
+#
+# To contribute improvements to CI/CD templates, please follow the Development guide at:
+# https://docs.gitlab.com/ee/development/cicd/templates.html
+# This specific template is located at:
+# https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/templates/Getting-Started.gitlab-ci.yml
 
-include:
-  - 'ci/init/*.yml'
-  - 'ci/test/*.yml'
+stages:          # List of stages for jobs, and their order of execution
+  - test
 
-stages:
-  - 1️⃣-init
-  - 🏬-technical
-  - 🔬-test
-  - 🩺-reporting
-  - 🏗-build-app
-  - 🐳-build-docker
-  - 🐶-datadog
-  - 🏷-tag
-  - 🚀-deploy
-  - 💗-e2e
-  - 🌉-report
-  - ⤵️-automerge
-  - 👷-maintenance
+unit-test-job:   # This job runs in the test stage.
+  stage: test    # It only starts when the job in the build stage completes successfully.
+  script:
+    - echo "Running unit tests... This will take about 60 seconds."
+    - sleep 60
+    - echo "Code coverage is 90%"
 
-
-variables:
-  BRANCHES_CACHE_FOLDER: /mnt/gitlab/data/branches
-  FRAMEWORKS_CACHE_FOLDER: /mnt/gitlab/data/cache
-  GIT_STRATEGY: none # we do the checkout process only once in init stage
-  INIT_REPOSITORY_PIPELINE_ID_ENV_FILE: tmp.init-repository-pipeline-id.env
-  MASTER_BRANCH: master
-  NX_MAX_WORKERS: 4
-  NX_SKIP_LOG_GROUPING: false
-  NX_TASKS_RUNNER_DYNAMIC_OUTPUT: false
-  NX_PLUGIN_NO_TIMEOUTS: ${CI_NX_PLUGIN_NO_TIMEOUTS}
-  NX_VERBOSE_LOGGING: ${CI_NX_VERBOSE_LOGGING}
-
-default:
-  image: $DOCKER_REGISTRY_URL/whoz-build:jdk17-docker-git-node22.5.1
-  interruptible: true
-  before_script:
-    - !reference [ .setup, configureWorkingDirectory ]
-    - |
-      function initializeSshAgent {
-        eval "$(ssh-agent -s)"
-        chmod 400 "$GITLAB_CI_SSH_KEY_FILE"
-        chmod 400 "$ANSIBLE_DEV_SSH_KEY"
-        ssh-add "$GITLAB_CI_SSH_KEY_FILE"
-        ssh-add "$ANSIBLE_DEV_SSH_KEY"
-        mkdir -p ~/.ssh
-        chmod 700 ~/.ssh
-        echo "${GITLAB_CI_KNOWN_HOST}" >> ~/.ssh/known_hosts
-      }
-
-      function configureGitSettings {
-        git config --global user.email "${GITLAB_CI_USER_EMAIL}"
-        git config --global user.name "${GITLAB_CI_USER_NAME}"
-        git config --global init.defaultBranch "${CI_COMMIT_REF_NAME}"
-        export GIT_DISCOVERY_ACROSS_FILESYSTEM=true
-      }
-
-      function configureGoogleCredentials {
-        base64 -d $GCP_SA_KEY > /tmp/account.json
-        export GOOGLE_APPLICATION_CREDENTIALS=/tmp/account.json
-      }
-
-      function configureDockerSettings {
-        # Check if Docker is installed before running docker commands
-        if command -v docker >/dev/null 2>&1; then
-          base64 -d $GCP_SA_KEY | docker login -u _json_key --password-stdin https://eu.gcr.io
-          base64 -d $GCP_SA_KEY | docker login -u _json_key --password-stdin https://europe-west1-docker.pkg.dev
-        else
-          echo "Docker is not installed, thus not running docker login tasks."
-        fi
-      }
-
-      initializeSshAgent
-      configureGitSettings
-      configureGoogleCredentials
-      configureDockerSettings
