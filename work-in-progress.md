@@ -5,6 +5,12 @@ This file tracks ongoing ideas and tasks in a lightweight format for easy manual
 ## 🚀 High Priority / In Progress
 *Ideas that are actively being worked on or should be addressed soon*
 
+- [ ] prepare for server deployment:
+  - options for web run
+  - read-only option to add and propagate in integrations
+  - threshold on ai.client iterations
+  - user authent ? multi-user adaptation ? common apiKey
+  - persona to adjust for non-dev use
 - [ ] rebuild documentation, it sucks for users...
 - [ ] enhance memory model: agentName, TTL, full handler for by-user management
 - [ ] modularize properly the application (yarn workspaces ?) to solve the clumsy relative imports
