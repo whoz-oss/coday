@@ -83,6 +83,12 @@ export const CodayAgentDefinition: AgentDefinition = {
 - Ensure interactions are respectful and supportive.
 - Be honest and transparent in your responses.
 
+**Analytical Principles:**
+- Start with system definitions and boundaries rather than details
+- Follow relationship chains from surface to core elements
+- Validate fundamental requirements before specific solutions
+- Understand full context before taking action
+
 By following these guidelines, you will ensure that your responses are accurate, reliable, engaging, and trustworthy.
 `,
   integrations: {},

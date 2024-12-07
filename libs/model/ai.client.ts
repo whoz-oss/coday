@@ -1,10 +1,10 @@
-import { Observable, Subject } from 'rxjs'
-import { CodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '../shared/coday-events'
-import { Agent } from './agent'
-import { AiThread } from '../ai-thread/ai-thread'
-import { RunStatus } from '../ai-thread/ai-thread.types'
-import { Interactor } from './interactor'
-import { ModelSize } from './agent-definition'
+import {Observable, Subject} from "rxjs"
+import {CodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
+import {Agent} from "./agent"
+import {AiThread} from "../ai-thread/ai-thread"
+import {RunStatus} from "../ai-thread/ai-thread.types"
+import {Interactor} from "./interactor"
+import {ModelSize} from "./agent-definition"
 
 /**
  * Common abstraction over different AI provider APIs.
@@ -57,6 +57,47 @@ export abstract class AiClient {
   ): Promise<boolean> {
     if (!toolRequests?.length) return false
 
+    // Simple threshold check
+    const { usage } = thread
+    if ((usage.price > 0 && usage.price >= usage.priceThreshold) ||
+        (usage.price === 0 && usage.iterations >= usage.iterationsThreshold)) {
+        
+        const thresholdType = usage.price > 0 ? 'cost' : 'iteration'
+        const current = usage.price > 0 ? `${usage.price.toFixed(2)}` : usage.iterations
+        const limit = usage.price > 0 ? `${usage.priceThreshold.toFixed(2)}` : usage.iterationsThreshold
+
+        const explanation = `${thresholdType} threshold reached (${current} >= ${limit}).
+` +
+            'Proceeding will:\n' +
+            `- Double the ${thresholdType} limit\n` +
+            '- Continue processing with the current context\n\n' +
+            'Stopping will:\n' +
+            '- End the current run\n' +
+            '- Clear pending commands\n' +
+            '- Return to prompt'
+
+        const choice = await this.interactor.chooseOption(
+            ['proceed', 'stop'],
+            explanation,
+            'What do you want to do?'
+        )
+
+        if (choice === 'stop') {
+            thread.runStatus = RunStatus.STOPPED
+            return false
+        }
+
+        // Double relevant threshold
+        if (usage.price > 0) {
+            usage.priceThreshold *= 2
+            this.interactor.displayText(`Cost threshold increased to ${usage.priceThreshold.toFixed(2)}`)
+        } else {
+            usage.iterationsThreshold *= 2
+            this.interactor.displayText(`Iteration threshold increased to ${usage.iterationsThreshold}`)
+        }
+    }
+
+    // Normal tool processing
     await Promise.all(
       toolRequests.map(async (request) => {
         let responseEvent: ToolResponseEvent
@@ -74,9 +115,13 @@ export abstract class AiClient {
     return thread.runStatus === RunStatus.RUNNING && !this.killed
   }
 
-  protected showPrice(price: number): void {
-    if (price === 0) return
-    this.interactor.displayText(`$${price.toFixed(3)}`)
+  protected showUsage(thread: AiThread): void {
+    if (!thread.usage) return
+    const loop = `🔁${thread.usage.iterations} | `
+    const tokensIO = `Tokens ⬇️${thread.usage.input} ⬆️${thread.usage.output} | `
+    const cacheIO = `Cache ${thread.usage.cache_write ? `✍️${thread.usage.cache_write} ` : ''}📖${thread.usage.cache_read} | `
+    const price = `💸 🏃$${thread.usage.price.toFixed(3)} 🧵$${thread.price.toFixed(3)}`
+    this.interactor.displayText(loop + tokensIO + cacheIO + price)
   }
 
   protected getModelSize(agent: Agent): ModelSize {

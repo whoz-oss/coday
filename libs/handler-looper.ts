@@ -1,8 +1,8 @@
 import { CommandContext, CommandHandler, Interactor, ProjectDescription, PromptChain } from './model'
-import { AiThreadHandler } from './handler/ai-thread/ai-thread.handler'
 import {
   AddQueryHandler,
   AiHandler,
+  AiThreadHandler,
   CodayPromptChains,
   CodeFlowHandler,
   ConfigHandler,
@@ -19,6 +19,7 @@ import {
 import { integrationService } from './service/integration.service'
 import { AiThreadService } from './ai-thread/ai-thread.service'
 import { keywords } from './keywords'
+import { RunStatus } from './ai-thread/ai-thread.types'
 
 const MAX_ITERATIONS = 100
 
@@ -119,6 +120,12 @@ export class HandlerLooper {
         try {
           if (handler) {
             context = await handler.handle(currentCommand, context)
+            // Check if thread was stopped during handler execution
+            if (context.aiThread?.runStatus === RunStatus.STOPPED) {
+              context.clearCommands()
+              this.processing = false
+              return context
+            }
           } else {
             if (!currentCommand.startsWith(this.aiHandler.commandWord)) {
               // default case: repackage the command as an open question for AI
