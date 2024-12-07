@@ -1,5 +1,5 @@
 {
-  "name": "@coday",
+  "name": "coday",
   "$schema": "../node_modules/nx/schemas/project-schema.json",
   "projectType": "library",
   "targets": {
@@ -10,7 +10,7 @@
         "outputPath": "dist/start",
         "outputFileName": "start-in-terminal.js",
         "main": "libs/start-in-terminal.ts",
-        "tsConfig": "tsconfig.json",
+        "tsConfig": "tsconfig.base.json",
         "platform": "node",
         "format": ["esm"],
         "assets": []
@@ -18,7 +18,7 @@
     },
     "start-in-terminal": {
       "executor": "nx:run-commands",
-      "dependsOn": ["coday:start-in-terminal"],
+      "dependsOn": ["coday:build-terminal"],
       "options": {
         "commands": ["node dist/start/start-in-terminal.js"],
         "parallel": false
