@@ -4,9 +4,9 @@
  * and ensuring proper message sequencing.
  */
 
-import { buildCodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '../shared/coday-events'
-import { ToolCall, ToolResponse } from '../integration/tool-call'
-import { RunStatus, ThreadMessage, ThreadSerialized } from './ai-thread.types'
+import {buildCodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
+import {ToolCall, ToolResponse} from "../integration/tool-call"
+import {EmptyUsage, RunStatus, ThreadMessage, ThreadSerialized, Usage} from "./ai-thread.types"
 
 /**
  * Allowed message types for filtering when building thread history
@@ -46,6 +46,10 @@ export class AiThread {
   /** Garbage object for passing data or keeping track of counters or stuff...*/
   data: any = {}
 
+  usage: Usage = { ...EmptyUsage }
+
+  price: number = 0
+
   /** Internal storage of thread messages in chronological order */
   private messages: ThreadMessage[]
 
@@ -61,6 +65,7 @@ export class AiThread {
     this.summary = thread.summary ?? ''
     this.createdDate = thread.createdDate ?? new Date().toISOString()
     this.modifiedDate = thread.modifiedDate ?? this.createdDate
+    this.price = thread.price ?? 0
 
     // Filter on type first, then build events
     this.messages = (thread.messages ?? [])
@@ -75,6 +80,25 @@ export class AiThread {
    */
   getMessages(): ThreadMessage[] {
     return [...this.messages]
+  }
+
+  /**
+   * Resets the counters related to the run (all except price.thread)
+   */
+  resetUsageForRun(): void {
+    this.usage = { ...EmptyUsage }
+  }
+
+  addUsage(usage: Partial<Usage>): void {
+    this.price += usage.price ?? 0
+    this.usage.price += usage.price ?? 0
+    this.usage.iterations += 1
+
+    const tokens = this.usage
+    tokens.input += usage.input ?? 0
+    tokens.output += usage.output ?? 0
+    tokens.cache_read += usage.cache_read ?? 0
+    tokens.cache_write += usage.cache_write ?? 0
   }
 
   /**

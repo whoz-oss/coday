@@ -35,7 +35,13 @@ export class ChatTextareaComponent implements CodayEventHandler {
   handle(event: CodayEvent): void {
     if (event instanceof InviteEvent) {
       this.inviteEvent = event
-      this.chatLabel.innerHTML = this.inviteEvent.invite
+      // Parse markdown for the chat label
+      const parsed = marked.parse(this.inviteEvent.invite)
+      if (parsed instanceof Promise) {
+        parsed.then(html => this.chatLabel.innerHTML = html)
+      } else {
+        this.chatLabel.innerHTML = parsed
+      }
       this.chatForm.style.display = 'block'
       this.chatTextarea.focus()
       if (this.inviteEvent.defaultValue) {

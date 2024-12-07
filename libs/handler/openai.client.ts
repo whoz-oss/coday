@@ -53,12 +53,13 @@ export class OpenaiClient extends AiClient {
     thread.data.openai = {
       price: 0,
     }
+    thread.resetUsageForRun()
 
     const outputSubject: Subject<CodayEvent> = new Subject()
     const thinking = setInterval(() => this.interactor.thinking(), 3000)
     this.processThread(openai, agent, thread, outputSubject).finally(() => {
       clearInterval(thinking)
-      this.showPrice(thread.data.openai.price)
+      this.showUsage(thread)
       outputSubject.complete()
     })
     return outputSubject
@@ -79,7 +80,7 @@ export class OpenaiClient extends AiClient {
         temperature: agent.definition.temperature ?? 0.8,
       })
 
-      thread.data.openai.price += this.computePrice(response.usage, agent)
+      this.updateUsage(response.usage, agent, thread)
 
       if (response.choices[0].finish_reason === 'length') throw new Error('Max tokens reached for Openai 😬')
 
@@ -108,13 +109,22 @@ export class OpenaiClient extends AiClient {
     }
   }
 
-  private computePrice(usage: any, agent: Agent): number {
-    const inputNoCacheTokens = usage?.prompt_tokens - usage?.prompt_tokens_details?.cached_tokens
+  private updateUsage(usage: any, agent: Agent, thread: AiThread): void {
+    const cacheReadTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0
+    const inputNoCacheTokens = (usage?.prompt_tokens ?? 0) - cacheReadTokens // TODO: check again with doc...
     const input = inputNoCacheTokens * this.models[this.getModelSize(agent)].price.inputMTokens
-    const output = usage?.completion_tokens * this.models[this.getModelSize(agent)].price.outputMTokens
-    const cacheRead =
-      usage?.prompt_tokens_details?.cached_tokens * this.models[this.getModelSize(agent)].price.cacheRead
-    return (input + output + cacheRead) / 1_000_000
+    const outputTokens = usage?.completion_tokens ?? 0
+    const output = outputTokens * this.models[this.getModelSize(agent)].price.outputMTokens
+    const cacheRead = cacheReadTokens * this.models[this.getModelSize(agent)].price.cacheRead
+    const price = (input + output + cacheRead) / 1_000_000
+
+    thread.addUsage({
+      input: inputNoCacheTokens,
+      output: outputTokens,
+      cache_read: cacheReadTokens,
+      cache_write: 0, // cannot deduce it as not given and not priced in documentation
+      price,
+    })
   }
 
   private isOpenaiReady(): OpenAI | undefined {
