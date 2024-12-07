@@ -37,7 +37,7 @@ optionalDocs:
 scripts:
   compile:
     description: compile the typescript project to raise any issue on code correctness, it does not run the tests.
-    command: yarn run tsc
+    command: yarn run nx run-many --target=build --all
   open-file-in-ide-for-user:
     description: opens the file(s) in the user IDE.
     command: idea

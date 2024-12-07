@@ -43,6 +43,7 @@ export class AiThreadService {
     const newThread = new AiThread({
       id: '', // TODO falsy, will be overriden by repository, shitty pattern FTW...
       name: name ? name : 'Temporary thread',
+      price: 0,
     })
     this.activeThread$.next(newThread)
     return newThread

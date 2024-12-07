@@ -43,13 +43,11 @@ export class AnthropicClient extends AiClient {
     const anthropic: Anthropic | undefined = this.isAnthropicReady()
     if (!anthropic) return of()
 
-    thread.data.anthropic = {
-      price: 0,
-    }
+    thread.resetUsageForRun()
     const outputSubject: Subject<CodayEvent> = new Subject()
     const thinking = setInterval(() => this.interactor.thinking(), 3000)
     this.processThread(anthropic, agent, thread, outputSubject).finally(() => {
-      this.showPrice(thread.data.anthropic.price)
+      this.showUsage(thread)
       clearInterval(thinking)
       outputSubject.complete()
     })
@@ -78,7 +76,7 @@ export class AnthropicClient extends AiClient {
         max_tokens: 8192,
       })
 
-      thread.data.anthropic.price += this.computePrice(response?.usage, agent)
+      this.updateUsage(response?.usage, agent, thread)
 
       if (response.stop_reason === 'max_tokens') throw new Error('Max tokens reached for Anthropic 😬')
 
@@ -113,12 +111,20 @@ export class AnthropicClient extends AiClient {
     }
   }
 
-  private computePrice(usage: any, agent: Agent): number {
+  private updateUsage(usage: any, agent: Agent, thread: AiThread): void {
     const input = usage?.input_tokens * AnthropicModels[this.getModelSize(agent)].price.inputMTokens
     const output = usage?.output_tokens * AnthropicModels[this.getModelSize(agent)].price.outputMTokens
     const cacheWrite = usage?.cache_creation_input_tokens * AnthropicModels[this.getModelSize(agent)].price.cacheWrite
     const cacheRead = usage?.cache_read_input_tokens * AnthropicModels[this.getModelSize(agent)].price.cacheRead
-    return (input + output + cacheWrite + cacheRead) / 1_000_000
+    const price = (input + output + cacheWrite + cacheRead) / 1_000_000
+
+    thread.addUsage({
+      input: usage?.input_tokens ?? 0,
+      output: usage?.output_tokens ?? 0,
+      cache_read: usage?.cache_read_input_tokens ?? 0,
+      cache_write: usage?.cache_creation_input_tokens ?? 0,
+      price,
+    })
   }
 
   private isAnthropicReady(): Anthropic | undefined {
