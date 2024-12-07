@@ -2,12 +2,12 @@
  * @fileoverview File-based implementation of ThreadRepository using YAML files
  */
 
-import * as fs from 'fs/promises'
-import * as path from 'path'
-import * as yaml from 'yaml'
-import { AiThread } from '../ai-thread'
-import { AiThreadRepository } from '../ai-thread.repository'
-import { ThreadRepositoryError, ThreadSummary } from '../ai-thread.types'
+import * as fs from "fs/promises"
+import * as path from "path"
+import * as yaml from "yaml"
+import {AiThread} from "../ai-thread"
+import {AiThreadRepository} from "../ai-thread.repository"
+import {ThreadRepositoryError, ThreadSummary} from "../ai-thread.types"
 
 /**
  * Helper function to safely read YAML file content
@@ -127,7 +127,7 @@ export class FileAiThreadRepository implements AiThreadRepository {
     }
   }
 
-  async listThreads(): Promise<Array<ThreadSummary>> {
+  async listThreads(): Promise<ThreadSummary[]> {
     await this.initPromise
     try {
       const files = await fs.readdir(this.threadsDir)
@@ -145,6 +145,7 @@ export class FileAiThreadRepository implements AiThreadRepository {
                       summary: data.summary || '',
                       createdDate: data.createdDate || '',
                       modifiedDate: data.modifiedDate || '',
+                      price: data.price || 0,
                     }
                   : null
               })

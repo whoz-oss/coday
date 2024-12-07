@@ -11,6 +11,15 @@ export class CommandContext {
   private subTaskCount: number = -1
 
   /**
+   * Clears all pending commands from the queue.
+   * Should be called when processing is stopped to avoid
+   * executing commands with invalid context.
+   */
+  clearCommands(): void {
+    this.commandQueue = []
+  }
+
+  /**
    * Precise if the process is to end itself upon completion or ask the user for another
    */
   oneshot: boolean = false

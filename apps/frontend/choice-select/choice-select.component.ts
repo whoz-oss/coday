@@ -37,7 +37,14 @@ export class ChoiceSelectComponent implements CodayEventHandler {
       return
     }
     this.choiceEvent = choiceEvent
-    this.choiceLabel.innerHTML = `${this.choiceEvent?.optionalQuestion} ${this.choiceEvent?.invite}`
+    // Parse markdown for the choice label
+    const labelContent = `${this.choiceEvent?.optionalQuestion} ${this.choiceEvent?.invite}`
+    const parsed = marked.parse(labelContent)
+    if (parsed instanceof Promise) {
+      parsed.then(html => this.choiceLabel.innerHTML = html)
+    } else {
+      this.choiceLabel.innerHTML = parsed
+    }
     this.choiceSelect.innerHTML = this.choiceEvent?.options
       .map((option) => `<option value="${option}">${option}</option>`)
       .join('')
