@@ -3,6 +3,7 @@ import { ServerInteractor } from '@coday/model/server-interactor'
 import { Coday } from '@coday/core'
 import { HeartBeatEvent } from '@coday/shared/coday-events'
 import { Subscription } from 'rxjs'
+import { CodayOptions } from '@coday/options'
 
 export class ServerClient {
   private readonly heartbeatInterval: NodeJS.Timeout
@@ -16,7 +17,8 @@ export class ServerClient {
   constructor(
     private readonly clientId: string,
     private response: Response,
-    private readonly interactor: ServerInteractor
+    private readonly interactor: ServerInteractor,
+    private readonly options: CodayOptions
   ) {
     // Subscribe to interactor events
     this.subscription = this.interactor.events.subscribe((event) => {
@@ -59,7 +61,7 @@ export class ServerClient {
       return false // Already running
     }
 
-    this.coday = new Coday(this.interactor, { oneshot: false })
+    this.coday = new Coday(this.interactor, this.options)
     this.coday.run().finally(() => this.terminate(true))
     return true
   }
@@ -155,7 +157,7 @@ export class ServerClientManager {
   /**
    * Get or create a client for the given clientId
    */
-  getOrCreate(clientId: string, response: Response): ServerClient {
+  getOrCreate(clientId: string, response: Response, options: CodayOptions): ServerClient {
     const existingClient = this.clients.get(clientId)
     if (existingClient) {
       existingClient.reconnect(response)
@@ -163,7 +165,7 @@ export class ServerClientManager {
     }
 
     const interactor = new ServerInteractor(clientId)
-    const client = new ServerClient(clientId, response, interactor)
+    const client = new ServerClient(clientId, response, interactor, options)
     this.clients.set(clientId, client)
     return client
   }
