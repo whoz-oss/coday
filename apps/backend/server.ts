@@ -1,15 +1,18 @@
 import express from 'express'
 import path from 'path'
 import { fileURLToPath } from 'url'
-
 import { ServerClientManager } from './server-client'
 import { AnswerEvent } from '@coday/shared/coday-events'
+import { parseCodayOptions } from '@coday/options'
 
 const app = express()
 const PORT = process.env.PORT || 3000 // Default port as fallback
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+// Parse options once for all clients
+const codayOptions = parseCodayOptions()
+console.log('Coday options:', codayOptions)
 // Serve static files from the 'static' directory
 app.use(express.static(path.join(__dirname, '../frontend')))
 
@@ -76,7 +79,7 @@ app.get('/events', (req: express.Request, res: express.Response) => {
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
 
-  const client = clientManager.getOrCreate(clientId, res)
+  const client = clientManager.getOrCreate(clientId, res, codayOptions)
 
   // Handle client disconnect
   req.on('close', () => client.terminate())
@@ -88,7 +91,7 @@ app.get('/events', (req: express.Request, res: express.Response) => {
 })
 
 // Error handling middleware
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((err: any, _: express.Request, res: express.Response, __: express.NextFunction) => {
   console.error(err.stack)
   res.status(500).send('Something went wrong!')
 })
