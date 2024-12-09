@@ -78,8 +78,40 @@ export class AiThread {
    * Returns a copy of all messages in the thread.
    * @returns Array of thread messages in chronological order
    */
-  getMessages(): ThreadMessage[] {
-    return [...this.messages]
+  getMessages(maxChars?: number): ThreadMessage[] {
+    if (!maxChars) return [...this.messages]
+
+    const totalChars = this.messages.reduce((count, msg) => count + msg.length, 0)
+    if (totalChars < maxChars) return [...this.messages]
+
+    console.warn(`Truncating context, got ${totalChars} > ${maxChars} allowed chars.`)
+    // Then need to check if still under the limit
+    const firstUserMessageIndex = this.messages.findIndex((msg) => msg instanceof MessageEvent && msg.role === 'user')
+    const limit = maxChars - this.messages[firstUserMessageIndex].length
+
+    let index = this.messages.length - 1
+    let lastAssistantAnswerIndex = this.messages.length - 1
+    let count = 0
+    while (count < limit && index > firstUserMessageIndex) {
+      const msg = this.messages[index]
+      // update the count
+      count += msg.length
+
+      if (count < limit && msg instanceof MessageEvent && msg.role === 'assistant') {
+        // track the oldest assistant response that fits in the context window
+        lastAssistantAnswerIndex = index
+      }
+
+      index--
+    }
+
+    // truncate the messages to keep until firstUserMessage included, and from lastAssistantAnswerIndex up to the end
+    const truncated = [
+      ...this.messages.slice(0, firstUserMessageIndex + 1),
+      ...this.messages.slice(lastAssistantAnswerIndex),
+    ]
+
+    return truncated
   }
 
   /**

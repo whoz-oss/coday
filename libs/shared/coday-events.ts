@@ -112,6 +112,7 @@ export class ToolRequestEvent extends CodayEvent {
     this.toolRequestId = event.toolRequestId ?? this.timestamp ?? new Date().toISOString()
     this.name = event.name!!
     this.args = event.args!!
+    this.length = this.args.length + this.name.length + this.toolRequestId.length + 20
   }
 
   buildResponse(output: string): ToolResponseEvent {
@@ -128,6 +129,7 @@ export class ToolResponseEvent extends CodayEvent {
     super(event, ToolResponseEvent.type)
     this.toolRequestId = event.toolRequestId!!
     this.output = event.output!!
+    this.length = this.output.length + this.toolRequestId.length + 20
   }
 }
 
@@ -161,6 +163,7 @@ export class MessageEvent extends CodayEvent {
     this.role = event.role!
     this.name = event.name!
     this.content = event.content!
+    this.length = this.content.length + this.role.length + this.name.length + 20 // made up number for ", : and {}
   }
 }
 

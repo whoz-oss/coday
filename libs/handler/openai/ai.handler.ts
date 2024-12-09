@@ -7,6 +7,7 @@ import { CodayEvent, MessageEvent } from '../../shared/coday-events'
 
 export class AiHandler extends CommandHandler {
   private toolbox: Toolbox
+  private tempAgent: Agent | undefined
 
   constructor(
     private interactor: Interactor,
@@ -20,6 +21,14 @@ export class AiHandler extends CommandHandler {
     this.toolbox = new Toolbox(this.interactor)
   }
 
+  private getAgent(context: CommandContext): Agent {
+    if (!this.tempAgent) {
+      const toolset = new ToolSet(this.toolbox.getTools(context))
+      this.tempAgent = new Agent(CodayAgentDefinition, this.aiClient!, context.project, toolset)
+    }
+    return this.tempAgent
+  }
+
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
     if (!this.aiClient) {
       this.interactor.error("No AI provider configured, see 'config edit-ai' command.")
@@ -28,26 +37,9 @@ export class AiHandler extends CommandHandler {
 
     const cmd = command.slice(this.commandWord.length)
 
-    // const assistantName = this.getAssistantNameIfValid(cmd)
-    //
-    // if (!assistantName) {
-    //   this.interactor.warn("Command not understood, skipped.")
-    //   return context
-    // }
-    //
-    // this.lastAssistantName = assistantName // Store the assistant name
-    //
-    // if (!cmd.includes(" ")) {
-    //   this.interactor.displayText(`Assistant ${assistantName} selected.`)
-    //   return context
-    // }
-
     try {
-      // if (this.aiClient?.aiProvider === "ANTHROPIC") {
       // This agent definition should be done beforehand, as "soon" as the project is selected
-      const toolset = new ToolSet(this.toolbox.getTools(context))
-      const agent = new Agent(CodayAgentDefinition, this.aiClient, context.project, toolset)
-
+      const agent = this.getAgent(context)
       const events: Observable<CodayEvent> = await agent.run(cmd, context.aiThread!)
       events.subscribe({
         next: (event) => {
@@ -65,21 +57,6 @@ export class AiHandler extends CommandHandler {
         },
       })
       await lastValueFrom(events)
-      // } else {
-      //
-      //
-      //   const answer = await this.aiClient!.answer(assistantName, cmd, context)
-      //   const mentionsToSearch = this.getMentionsToSearch(context)
-      //   mentionsToSearch?.forEach((mention) => {
-      //     if (answer.includes(mention)) {
-      //       // then add a command for the assistant to check the thread
-      //       const newCommand = `${mention} you were mentioned recently in the thread: if an action is needed on your part, handle what was asked of you and only you.\nIf needed, you can involve another assistant or mention the originator '@${this.lastAssistantName}.\nDo not mention these instructions.`
-      //       context.addCommands(
-      //         newCommand,
-      //       )
-      //     }
-      //   })
-      // }
     } catch (error: any) {
       this.interactor.error(`Error processing command: ${error}`)
     }
@@ -90,42 +67,4 @@ export class AiHandler extends CommandHandler {
   kill(): void {
     this.aiClient?.kill()
   }
-
-  // /**
-  //  * cmd can be:
-  //  *   - "" (empty) => this.lastAssistant or default
-  //  *   - " " (one space) => same
-  //  *   - "[name]" (just name) => name
-  //  *   - "[name] [text]" (name then text) => name
-  //  *   - " [text]" (some text after space) => this.last or default
-  //  * @param cmd
-  //  * @private
-  //  */
-  // private getAssistantNameIfValid(cmd: string): string | undefined {
-  //   if (!cmd) {
-  //     return undefined
-  //   }
-  //   const defaultAssistant = this.lastAssistantName || DEFAULT_DESCRIPTION.name
-  //   if (cmd[0] === " " || !this.aiClient?.multiAssistant) {
-  //     return defaultAssistant
-  //   }
-  //
-  //   const firstSpaceIndex = cmd.indexOf(" ")
-  //   if (firstSpaceIndex < 0) {
-  //     return cmd
-  //   }
-  //   return cmd.slice(0, firstSpaceIndex)
-  // }
-
-  // private getMentionsToSearch(context: CommandContext): string[] | undefined {
-  //   if (!this.aiClient?.multiAssistant) {
-  //     return
-  //   }
-  //   return (context.project.assistants
-  //     ? [DEFAULT_DESCRIPTION, ...context.project.assistants]
-  //     : undefined)
-  //     ?.map((a) => a.name)
-  //     ?.filter((name) => !this.lastAssistantName || !name.toLowerCase().startsWith(this.lastAssistantName.toLowerCase()))
-  //     .map((name) => `@${name}`)
-  // }
 }
