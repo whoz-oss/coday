@@ -1,7 +1,7 @@
-import { AiClient, Interactor } from '../../model'
-import { OpenaiClient } from '../../handler/openai.client'
-import { AnthropicClient } from '../../handler/anthropic.client'
-import { userConfigService } from '../../service/user-config.service'
+import {AiClient, Interactor} from "../../model"
+import {OpenaiClient} from "../../handler/openai.client"
+import {AnthropicClient} from "../../handler/anthropic.client"
+import {userConfigService} from "../../service/user-config.service"
 
 /** Supported AI providers */
 type AiProvider = 'anthropic' | 'openai' | 'gemini'
@@ -126,7 +126,9 @@ class AiClientProvider {
         return new OpenaiClient(
           this.interactor,
           apiKeyProvider,
-          'https://generativelanguage.googleapis.com/v1beta/openai/'
+          'https://generativelanguage.googleapis.com/v1beta/openai/',
+          {}, //TODO: Gemini models !
+          'Gemini'
         )
     }
   }

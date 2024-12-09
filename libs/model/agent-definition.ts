@@ -1,3 +1,10 @@
+export type AiProvider = 'OPENAI' | 'ANTHROPIC' | 'GOOGLE'
+
+export enum ModelSize {
+  BIG = 'BIG',
+  SMALL = 'SMALL',
+}
+
 /**
  * Agent description as intended in yml, in the `agents/` folder at same location as `coday.yml`
  *
@@ -92,11 +99,5 @@ export const CodayAgentDefinition: AgentDefinition = {
 By following these guidelines, you will ensure that your responses are accurate, reliable, engaging, and trustworthy.
 `,
   integrations: {},
-}
-
-export type AiProvider = 'OPENAI' | 'ANTHROPIC' | 'GOOGLE'
-
-export enum ModelSize {
-  BIG = 'BIG',
-  SMALL = 'SMALL',
+  modelSize: ModelSize.SMALL,
 }

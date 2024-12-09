@@ -10,7 +10,7 @@ import { TextBlockParam } from '@anthropic-ai/sdk/resources/messages'
 
 const AnthropicModels = {
   [ModelSize.BIG]: {
-    model: 'claude-3-5-sonnet-latest',
+    name: 'claude-3-5-sonnet-latest',
     contextWindow: 200000,
     price: {
       inputMTokens: 3,
@@ -20,13 +20,13 @@ const AnthropicModels = {
     },
   },
   [ModelSize.SMALL]: {
-    model: 'claude-3-haiku-20240307',
+    name: 'claude-3-5-haiku-latest',
     contextWindow: 200000,
     price: {
-      inputMTokens: 1,
-      cacheWrite: 1.25,
-      cacheRead: 0.1,
-      outputMTokens: 5,
+      inputMTokens: 0.8,
+      cacheWrite: 1,
+      cacheRead: 0.08,
+      outputMTokens: 4,
     },
   },
 }
@@ -45,10 +45,11 @@ export class AnthropicClient extends AiClient {
 
     thread.resetUsageForRun()
     const outputSubject: Subject<CodayEvent> = new Subject()
-    const thinking = setInterval(() => this.interactor.thinking(), 3000)
+    const thinking = setInterval(() => this.interactor.thinking(), this.thinkingInterval)
     this.processThread(anthropic, agent, thread, outputSubject).finally(() => {
-      this.showUsage(thread)
       clearInterval(thinking)
+      this.showAgent(agent, 'Anthropic', AnthropicModels[this.getModelSize(agent)].name)
+      this.showUsage(thread)
       outputSubject.complete()
     })
     return outputSubject
@@ -61,9 +62,13 @@ export class AnthropicClient extends AiClient {
     subscriber: Subject<CodayEvent>
   ): Promise<void> {
     try {
+      const initialContextCharLength = agent.systemInstructions.length + agent.tools.charLength + 20
+      const model = AnthropicModels[this.getModelSize(agent)]
+      const charBudget = model.contextWindow * this.charsPerToken - initialContextCharLength
+
       const response = await client.messages.create({
-        model: AnthropicModels[this.getModelSize(agent)].model,
-        messages: this.toClaudeMessage(thread.getMessages()),
+        model: model.name,
+        messages: this.toClaudeMessage(thread.getMessages(charBudget)),
         system: [
           {
             text: agent.systemInstructions,
