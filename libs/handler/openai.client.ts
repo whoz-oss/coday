@@ -9,7 +9,7 @@ import { ChatCompletionMessageParam, ChatCompletionSystemMessageParam } from 'op
 
 const OpenaiModels = {
   [ModelSize.BIG]: {
-    model: 'gpt-4o',
+    name: 'gpt-4o',
     contextWindow: 128000,
     price: {
       inputMTokens: 2.5,
@@ -18,7 +18,7 @@ const OpenaiModels = {
     },
   },
   [ModelSize.SMALL]: {
-    model: 'gpt-4o-mini',
+    name: 'gpt-4o-mini',
     contextWindow: 128000,
     price: {
       inputMTokens: 0.15,
@@ -41,7 +41,12 @@ export class OpenaiClient extends AiClient {
      * Custom model description for providers using Openai SDK
      * @private
      */
-    private models: any = OpenaiModels
+    private models: any = OpenaiModels,
+    /**
+     * Custom provider name
+     * @private
+     */
+    private providerName: string = 'OpenAI'
   ) {
     super()
   }
@@ -56,9 +61,10 @@ export class OpenaiClient extends AiClient {
     thread.resetUsageForRun()
 
     const outputSubject: Subject<CodayEvent> = new Subject()
-    const thinking = setInterval(() => this.interactor.thinking(), 3000)
+    const thinking = setInterval(() => this.interactor.thinking(), this.thinkingInterval)
     this.processThread(openai, agent, thread, outputSubject).finally(() => {
       clearInterval(thinking)
+      this.showAgent(agent, this.providerName, this.models[this.getModelSize(agent)].name)
       this.showUsage(thread)
       outputSubject.complete()
     })
@@ -72,9 +78,13 @@ export class OpenaiClient extends AiClient {
     subscriber: Subject<CodayEvent>
   ): Promise<void> {
     try {
+      const model = this.models[this.getModelSize(agent)]
+      const initialContextCharLength = agent.systemInstructions.length + agent.tools.charLength + 20
+      const charBudget = model.contextWindow * this.charsPerToken - initialContextCharLength
+
       const response = await client.chat.completions.create({
-        model: this.models[agent.definition.modelSize ?? ModelSize.BIG].model,
-        messages: this.toOpenAiMessage(agent, thread.getMessages()),
+        model: model.name,
+        messages: this.toOpenAiMessage(agent, thread.getMessages(charBudget)),
         tools: agent.tools.getTools(),
         max_completion_tokens: undefined,
         temperature: agent.definition.temperature ?? 0.8,
