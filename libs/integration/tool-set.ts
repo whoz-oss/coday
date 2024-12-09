@@ -2,7 +2,11 @@ import { CodayTool } from './assistant-tool-factory'
 import { ToolRequestEvent, ToolResponseEvent } from '../shared'
 
 export class ToolSet {
-  constructor(private readonly tools: CodayTool[]) {}
+  readonly charLength: number = 0
+
+  constructor(private readonly tools: CodayTool[]) {
+    this.charLength = JSON.stringify(tools).length
+  }
 
   getTools(): CodayTool[] {
     return [...this.tools]

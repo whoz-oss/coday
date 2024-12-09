@@ -13,6 +13,8 @@ export abstract class AiClient {
   protected abstract interactor: Interactor
   protected killed: boolean = false
   protected defaultModelSize: ModelSize = ModelSize.BIG
+  protected thinkingInterval: number = 3000
+  protected charsPerToken: number = 3.5 // should be 4, some margin baked in to avoid overshoot on tool call
 
   /**
    * Run the AI with the given configuration and thread context.
@@ -59,42 +61,40 @@ export abstract class AiClient {
 
     // Simple threshold check
     const { usage } = thread
-    if ((usage.price > 0 && usage.price >= usage.priceThreshold) ||
-        (usage.price === 0 && usage.iterations >= usage.iterationsThreshold)) {
-        
-        const thresholdType = usage.price > 0 ? 'cost' : 'iteration'
-        const current = usage.price > 0 ? `${usage.price.toFixed(2)}` : usage.iterations
-        const limit = usage.price > 0 ? `${usage.priceThreshold.toFixed(2)}` : usage.iterationsThreshold
+    if (
+      (usage.price > 0 && usage.price >= usage.priceThreshold) ||
+      (usage.price === 0 && usage.iterations >= usage.iterationsThreshold)
+    ) {
+      const thresholdType = usage.price > 0 ? 'cost' : 'iteration'
+      const current = usage.price > 0 ? `${usage.price.toFixed(2)}` : usage.iterations
+      const limit = usage.price > 0 ? `${usage.priceThreshold.toFixed(2)}` : usage.iterationsThreshold
 
-        const explanation = `${thresholdType} threshold reached (${current} >= ${limit}).
+      const explanation =
+        `${thresholdType} threshold reached (${current} >= ${limit}).
 ` +
-            'Proceeding will:\n' +
-            `- Double the ${thresholdType} limit\n` +
-            '- Continue processing with the current context\n\n' +
-            'Stopping will:\n' +
-            '- End the current run\n' +
-            '- Clear pending commands\n' +
-            '- Return to prompt'
+        'Proceeding will:\n' +
+        `- Double the ${thresholdType} limit\n` +
+        '- Continue processing with the current context\n\n' +
+        'Stopping will:\n' +
+        '- End the current run\n' +
+        '- Clear pending commands\n' +
+        '- Return to prompt'
 
-        const choice = await this.interactor.chooseOption(
-            ['proceed', 'stop'],
-            explanation,
-            'What do you want to do?'
-        )
+      const choice = await this.interactor.chooseOption(['proceed', 'stop'], explanation, 'What do you want to do?')
 
-        if (choice === 'stop') {
-            thread.runStatus = RunStatus.STOPPED
-            return false
-        }
+      if (choice === 'stop') {
+        thread.runStatus = RunStatus.STOPPED
+        return false
+      }
 
-        // Double relevant threshold
-        if (usage.price > 0) {
-            usage.priceThreshold *= 2
-            this.interactor.displayText(`Cost threshold increased to ${usage.priceThreshold.toFixed(2)}`)
-        } else {
-            usage.iterationsThreshold *= 2
-            this.interactor.displayText(`Iteration threshold increased to ${usage.iterationsThreshold}`)
-        }
+      // Double relevant threshold
+      if (usage.price > 0) {
+        usage.priceThreshold *= 2
+        this.interactor.displayText(`Cost threshold increased to ${usage.priceThreshold.toFixed(2)}`)
+      } else {
+        usage.iterationsThreshold *= 2
+        this.interactor.displayText(`Iteration threshold increased to ${usage.iterationsThreshold}`)
+      }
     }
 
     // Normal tool processing
@@ -122,6 +122,10 @@ export abstract class AiClient {
     const cacheIO = `Cache ${thread.usage.cache_write ? `✍️${thread.usage.cache_write} ` : ''}📖${thread.usage.cache_read} | `
     const price = `💸 🏃$${thread.usage.price.toFixed(3)} 🧵$${thread.price.toFixed(3)}`
     this.interactor.displayText(loop + tokensIO + cacheIO + price)
+  }
+
+  protected showAgent(agent: Agent, aiProvider: string, model: string): void {
+    this.interactor.displayText(`🤖 ${agent.name} | ${aiProvider} - ${model}`)
   }
 
   protected getModelSize(agent: Agent): ModelSize {
