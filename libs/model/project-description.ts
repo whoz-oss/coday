@@ -1,5 +1,6 @@
 import { Scripts } from './scripts'
 import { AssistantDescription } from './assistant-description'
+import { AgentDefinition } from './agent-definition'
 
 export type ProjectDescription = {
   /**
@@ -36,6 +37,13 @@ export type ProjectDescription = {
    * Experimental section to expose several assistants, thus made available for "spontaneous" cross-assistant calls
    */
   assistants?: AssistantDescription[]
+
+  /**
+   * Agent definitions for the project.
+   * Can be a single agent or an array of agents.
+   * These are loaded first, before any agents defined in ~/.coday/[project]/agents/
+   */
+  agents?: AgentDefinition[]
 
   /**
    * Custom prompts exposed as tools to the LLM

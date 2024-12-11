@@ -1,11 +1,13 @@
-import { existsSync, lstatSync, readdirSync } from 'fs'
+import {existsSync, lstatSync, readdirSync} from 'fs'
+// @ts-ignore
 import os from 'os'
+// @ts-ignore
 import path from 'path'
-import { mkdirSync } from 'node:fs'
-import { ProjectLocalConfig, SelectedProject } from '../model'
-import { readYamlFile } from './read-yaml-file'
-import { writeYamlFile } from './write-yaml-file'
-import { BehaviorSubject, Observable } from 'rxjs'
+import {mkdirSync} from 'node:fs'
+import {ProjectLocalConfig, SelectedProject} from '../model'
+import {readYamlFile} from './read-yaml-file'
+import {writeYamlFile} from './write-yaml-file'
+import {BehaviorSubject, Observable} from 'rxjs'
 
 /**
  * Default location for the folder containing local configuration
@@ -27,7 +29,7 @@ const PROJECT_FILENAME = 'project.yaml'
  */
 export class ConfigService {
   readonly configPath: string
-  private selectedProject: SelectedProject = null
+  selectedProject: SelectedProject = null
   private selectedProjectBehaviorSubject = new BehaviorSubject<SelectedProject>(null)
   selectedProject$: Observable<SelectedProject> = this.selectedProjectBehaviorSubject.asObservable()
 
