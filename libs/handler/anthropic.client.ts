@@ -32,11 +32,14 @@ const AnthropicModels = {
 }
 
 export class AnthropicClient extends AiClient {
+  name: string
+
   constructor(
     readonly interactor: Interactor,
     private readonly apiKeyProvider: () => string | undefined
   ) {
     super()
+    this.name = 'Anthropic'
   }
 
   async run(agent: Agent, thread: AiThread): Promise<Observable<CodayEvent>> {
@@ -156,7 +159,7 @@ export class AnthropicClient extends AiClient {
       .map((msg) => {
         let claudeMessage: MessageParam | undefined
         if (msg instanceof MessageEvent) {
-          claudeMessage = { role: msg.role, content: msg.content }
+          claudeMessage = { role: msg.role, content: `${msg.name} : ${msg.content}` }
         }
         if (msg instanceof ToolRequestEvent) {
           claudeMessage = {

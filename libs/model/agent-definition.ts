@@ -1,4 +1,4 @@
-export type AiProvider = 'OPENAI' | 'ANTHROPIC' | 'GOOGLE'
+export type AiProvider = 'openai' | 'anthropic' | 'google'
 
 export enum ModelSize {
   BIG = 'BIG',
@@ -19,6 +19,11 @@ export interface AgentDefinition {
    * case does not matter as should be checked against lowercase
    */
   name: string
+
+  /**
+   * id of the assistant on openai's platform
+   */
+  openaiAssistantId?: string
 
   /**
    * description of the agent for the other agents and user
@@ -64,14 +69,14 @@ export interface AgentDefinition {
    *   - select list of tools available (useful to restrict to read-only)
    */
   // TODO: better type for integration keys, stay loose for tools ?
-  integrations: {
+  integrations?: {
     [key: string]: string[] // key is name of an integration, value is empty (=all) or select list of tool keys to enable
   }
 }
 
 export const CodayAgentDefinition: AgentDefinition = {
   name: 'Coday',
-  description: 'Default agent',
+  description: 'Default fallback agent with neutral character and access to all tools',
   instructions: `
     You are Coday, an AI assistant designed for interactive usage by users through various chat-like interfaces.
 

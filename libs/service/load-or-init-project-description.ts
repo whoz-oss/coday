@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import * as yaml from 'yaml'
 import { Interactor, ProjectDescription } from '../model'
+// @ts-ignore
 import path, { join } from 'path'
 import { findFilesByName } from '../function/find-files-by-name'
 import { memoryService } from './memory.service'

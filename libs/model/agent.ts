@@ -7,6 +7,14 @@ import {Observable} from "rxjs"
 import {CodayEvent} from "../shared/coday-events"
 
 /**
+ * Simplified view of an agent for listing and selection purposes
+ */
+export interface AgentSummary {
+  name: string
+  description: string
+}
+
+/**
  * Agent class represents an AI agent with specific capabilities and responsibilities.
  * It encapsulates the logic for processing requests through an AI client with
  * its specific configuration and tools.

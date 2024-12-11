@@ -1,3 +1,4 @@
+// @ts-ignore
 import os from 'os'
 
 import { AiThread } from './ai-thread/ai-thread'
@@ -12,6 +13,7 @@ import { keywords } from './keywords'
 import { AiClient, CommandContext, Interactor } from './model'
 import { configService } from './service/config.service'
 import { AnswerEvent, MessageEvent, TextEvent } from './shared/coday-events'
+import { AgentService } from './agent'
 
 const MAX_ITERATIONS = 100
 
@@ -74,7 +76,9 @@ export class Coday {
 
     // Always emit the thread selection message last
     this.interactor.displayText(`Selected thread '${aiThread.name}'`)
-  } /**
+  }
+
+  /**
    * Replay the current thread's messages.
    * Useful for reconnection scenarios.
    */
@@ -165,7 +169,8 @@ export class Coday {
       if (this.context) {
         this.context.oneshot = this.options.oneshot
         this.aiClient = new AiClientProvider(this.interactor).getClient()
-        this.aiHandler = new AiHandler(this.interactor, this.aiClient)
+        const agentService = new AgentService(configService, this.interactor)
+        this.aiHandler = new AiHandler(this.interactor, agentService)
         this.handlerLooper = new HandlerLooper(this.interactor, this.aiHandler, this.aiThreadService)
         this.handlerLooper.init(this.userInfo.username, this.context.project)
       }
