@@ -9,6 +9,35 @@ import { FunctionTool } from '../types'
 import { unlinkFile } from './unlink-file'
 import { readFileByPath } from '../../function/read-file-by-path'
 
+/**
+ * FileTools: A comprehensive file manipulation tool factory for Coday
+ * 
+ * This class extends AssistantToolFactory and provides a robust set of file-related tools
+ * that can be dynamically generated based on the current command context. It supports:
+ * 
+ * 1. Read Operations:
+ *    - Reading project files
+ *    - Searching files by name or content
+ *    - Listing files and directories
+ * 
+ * 2. Write Operations (when not in read-only mode):
+ *    - Writing entire files
+ *    - Performing partial file edits (chunk replacements)
+ *    - Removing files
+ * 
+ * Key Features:
+ * - Respects read-only mode by conditionally adding write/delete tools
+ * - Provides flexible file search capabilities
+ * - Integrates with project's root directory
+ * - Uses an interactor for logging and error handling
+ * 
+ * Design Principles:
+ * - Dynamic tool generation based on context
+ * - Clear, descriptive function tools with JSON parsing
+ * - Error handling for file operations
+ * 
+ * @extends AssistantToolFactory
+ */
 export class FileTools extends AssistantToolFactory {
   constructor(interactor: Interactor) {
     super(interactor)
@@ -20,26 +49,30 @@ export class FileTools extends AssistantToolFactory {
 
   protected buildTools(context: CommandContext): CodayTool[] {
     const result: CodayTool[] = []
-    const removeFile = ({ path }: { path: string }) => {
-      return unlinkFile(path, this.interactor)
-    }
 
-    const removeFileFunction: FunctionTool<{ path: string }> = {
-      type: 'function',
-      function: {
-        name: 'removeFile',
-        description: 'Remove the file at the given path in the project.',
-        parameters: {
-          type: 'object',
-          properties: {
-            path: { type: 'string', description: 'file path relative to the project root' },
+    // Only add write/delete tools if not in read-only mode
+    if (!context.fileReadOnly) {
+      const removeFile = ({ path }: { path: string }) => {
+        return unlinkFile(path, this.interactor)
+      }
+
+      const removeFileFunction: FunctionTool<{ path: string }> = {
+        type: 'function',
+        function: {
+          name: 'removeFile',
+          description: 'Remove the file at the given path in the project.',
+          parameters: {
+            type: 'object',
+            properties: {
+              path: { type: 'string', description: 'file path relative to the project root' },
+            },
           },
+          parse: JSON.parse,
+          function: removeFile,
         },
-        parse: JSON.parse,
-        function: removeFile,
-      },
+      }
+      result.push(removeFileFunction)
     }
-    result.push(removeFileFunction)
 
     const readProjectFile = (input: { filePath: string }) => {
       return readFileByPath({ relPath: input.filePath, root: context.project.root, interactor: this.interactor })
@@ -62,73 +95,77 @@ export class FileTools extends AssistantToolFactory {
     }
     result.push(readProjectFileFunction)
 
-    const writeProjectFile = ({ path, content }: { path: string; content: string }) => {
-      return writeFileByPath({ relPath: path, root: context.project.root, interactor: this.interactor, content })
-    }
+    // Only add write tools if not in read-only mode
+    if (!context.fileReadOnly) {
+      const writeProjectFile = ({ path, content }: { path: string; content: string }) => {
+        return writeFileByPath({ relPath: path, root: context.project.root, interactor: this.interactor, content })
+      }
 
-    const writeProjectFileFunction: FunctionTool<{ path: string; content: string }> = {
-      type: 'function',
-      function: {
-        name: 'writeProjectFile',
-        description:
-          'write the content of the file at the given path in the project. IMPORTANT: the whole file is written, do not write it partially. Prefer this tool for first writes or really full edits. For partial edits, use `writeFileChunk` tool.',
-        parameters: {
-          type: 'object',
-          properties: {
-            path: { type: 'string', description: 'file path relative to the project root' },
-            content: { type: 'string', description: 'content of the file to write' },
-          },
-        },
-        parse: JSON.parse,
-        function: writeProjectFile,
-      },
-    }
-    result.push(writeProjectFileFunction)
-
-    const writeFileChunkFunction = ({
-      path,
-      replacements,
-    }: {
-      path: string
-      replacements: { oldPart: string; newPart: string }[]
-    }) => {
-      return writeFileChunk({ relPath: path, root: context.project.root, interactor: this.interactor, replacements })
-    }
-
-    const writeFileChunkTool: FunctionTool<{
-      path: string
-      replacements: { oldPart: string; newPart: string }[]
-    }> = {
-      type: 'function',
-      function: {
-        name: 'writeFileChunk',
-        description:
-          'Replace specified parts of an existing file with new parts. The function reads the entire file content, performs the replacements, and writes the modified content back to the file. Useful for handling large files efficiently.',
-        parameters: {
-          type: 'object',
-          properties: {
-            path: { type: 'string', description: 'File path relative to the project root' },
-            replacements: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  oldPart: {
-                    type: 'string',
-                    description: 'The part of the file content to be replaced, it should be large enough to be unique.',
-                  },
-                  newPart: { type: 'string', description: 'The new content to replace all the old part.' },
-                },
-              },
-              description: 'Array of objects specifying the parts to replace and their respective replacements.',
+      const writeProjectFileFunction: FunctionTool<{ path: string; content: string }> = {
+        type: 'function',
+        function: {
+          name: 'writeProjectFile',
+          description:
+            'write the content of the file at the given path in the project. IMPORTANT: the whole file is written, do not write it partially. Prefer this tool for first writes or really full edits. For partial edits, use `writeFileChunk` tool.',
+          parameters: {
+            type: 'object',
+            properties: {
+              path: { type: 'string', description: 'file path relative to the project root' },
+              content: { type: 'string', description: 'content of the file to write' },
             },
           },
+          parse: JSON.parse,
+          function: writeProjectFile,
         },
-        parse: JSON.parse,
-        function: writeFileChunkFunction,
-      },
+      }
+      result.push(writeProjectFileFunction)
+
+      const writeFileChunkFunction = ({
+        path,
+        replacements,
+      }: {
+        path: string
+        replacements: { oldPart: string; newPart: string }[]
+      }) => {
+        return writeFileChunk({ relPath: path, root: context.project.root, interactor: this.interactor, replacements })
+      }
+
+      const writeFileChunkTool: FunctionTool<{
+        path: string
+        replacements: { oldPart: string; newPart: string }[]
+      }> = {
+        type: 'function',
+        function: {
+          name: 'writeFileChunk',
+          description:
+            'Replace specified parts of an existing file with new parts. The function reads the entire file content, performs the replacements, and writes the modified content back to the file. Useful for handling large files efficiently.',
+          parameters: {
+            type: 'object',
+            properties: {
+              path: { type: 'string', description: 'File path relative to the project root' },
+              replacements: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    oldPart: {
+                      type: 'string',
+                      description:
+                        'The part of the file content to be replaced, it should be large enough to be unique.',
+                    },
+                    newPart: { type: 'string', description: 'The new content to replace all the old part.' },
+                  },
+                },
+                description: 'Array of objects specifying the parts to replace and their respective replacements.',
+              },
+            },
+          },
+          parse: JSON.parse,
+          function: writeFileChunkFunction,
+        },
+      }
+      result.push(writeFileChunkTool)
     }
-    result.push(writeFileChunkTool)
 
     const searchProjectFile = ({ text, path }: { text: string; path?: string }) => {
       return findFilesByName({ text, path, root: context.project.root, interactor: this.interactor, limit: 100 })
