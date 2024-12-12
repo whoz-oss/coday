@@ -31,7 +31,7 @@ export interface UserConfig {
     /** OpenAI's GPT models */
     openai?: AiProviderConfig
     /** Google's Gemini */
-    gemini?: AiProviderConfig
+    google?: AiProviderConfig
   }
 }
 

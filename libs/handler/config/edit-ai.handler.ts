@@ -3,7 +3,7 @@ import { keywords } from '../../keywords'
 import { userConfigService } from '../../service/user-config.service'
 import { DEFAULT_USER_CONFIG } from '../../model/user-config'
 
-const AI_PROVIDERS: readonly ['anthropic', 'openai', 'gemini'] = ['anthropic', 'openai', 'gemini'] as const
+const AI_PROVIDERS: readonly ['anthropic', 'openai', 'google'] = ['anthropic', 'openai', 'google'] as const
 type AiProvider = (typeof AI_PROVIDERS)[number]
 
 /**

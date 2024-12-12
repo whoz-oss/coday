@@ -2,7 +2,7 @@
  * @fileoverview Type definitions for thread-related structures
  */
 
-import { MessageEvent, ToolRequestEvent, ToolResponseEvent } from '../shared/coday-events'
+import {MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
 
 /**
  * Union type representing all possible message types in a thread:
@@ -22,6 +22,7 @@ export type ThreadSerialized = {
   summary?: string
   createdDate?: string
   modifiedDate?: string
+  price?: number // Total accumulated price for the thread
 }
 
 export interface ThreadSummary {
@@ -30,6 +31,7 @@ export interface ThreadSummary {
   summary: string
   createdDate: string
   modifiedDate: string
+  price: number
 }
 
 /**
@@ -51,4 +53,26 @@ export class ThreadRepositoryError extends Error {
     super(message)
     this.name = 'ThreadRepositoryError'
   }
+}
+
+export type Usage = {
+  input: number
+  output: number
+  cache_read: number
+  cache_write: number
+  price: number
+  iterations: number
+  priceThreshold: number
+  iterationsThreshold: number
+}
+
+export const EmptyUsage: Usage = {
+  input: 0,
+  output: 0,
+  cache_read: 0,
+  cache_write: 0,
+  price: 0,
+  iterations: 0,
+  priceThreshold: 2.0, // Default $2 threshold
+  iterationsThreshold: 100, // Default 100 iterations threshold
 }

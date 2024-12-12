@@ -6,10 +6,13 @@ import { Agent } from '../model/agent'
 import { Observable, of, Subject } from 'rxjs'
 import { ThreadMessage } from '../ai-thread/ai-thread.types'
 import { ChatCompletionMessageParam, ChatCompletionSystemMessageParam } from 'openai/resources/chat/completions'
+import { MessageCreateParams } from 'openai/src/resources/beta/threads/messages'
+import { AssistantStream } from 'openai/lib/AssistantStream'
+import { RunSubmitToolOutputsParams } from 'openai/resources/beta/threads/runs/runs'
 
 const OpenaiModels = {
   [ModelSize.BIG]: {
-    model: 'gpt-4o',
+    name: 'gpt-4o',
     contextWindow: 128000,
     price: {
       inputMTokens: 2.5,
@@ -18,7 +21,7 @@ const OpenaiModels = {
     },
   },
   [ModelSize.SMALL]: {
-    model: 'gpt-4o-mini',
+    name: 'gpt-4o-mini',
     contextWindow: 128000,
     price: {
       inputMTokens: 0.15,
@@ -28,8 +31,14 @@ const OpenaiModels = {
   },
 }
 
+type AssistantThreadData = {
+  threadId?: string
+  lastTimestamp?: string
+}
+
 export class OpenaiClient extends AiClient {
   constructor(
+    readonly name: string,
     readonly interactor: Interactor,
     private apiKeyProvider: () => string | undefined,
     /**
@@ -41,24 +50,36 @@ export class OpenaiClient extends AiClient {
      * Custom model description for providers using Openai SDK
      * @private
      */
-    private models: any = OpenaiModels
+    private models: any = OpenaiModels,
+    /**
+     * Custom provider name
+     * @private
+     */
+    private providerName: string = 'OpenAI'
   ) {
     super()
   }
 
   async run(agent: Agent, thread: AiThread): Promise<Observable<CodayEvent>> {
+    if (agent.definition.openaiAssistantId) {
+      // then use the stateful assistant API
+      return this.runAssistant(agent, thread)
+    }
+
     const openai = this.isOpenaiReady()
     if (!openai) return of()
 
     thread.data.openai = {
       price: 0,
     }
+    thread.resetUsageForRun()
 
     const outputSubject: Subject<CodayEvent> = new Subject()
-    const thinking = setInterval(() => this.interactor.thinking(), 3000)
+    const thinking = setInterval(() => this.interactor.thinking(), this.thinkingInterval)
     this.processThread(openai, agent, thread, outputSubject).finally(() => {
       clearInterval(thinking)
-      this.showPrice(thread.data.openai.price)
+      this.showAgent(agent, this.providerName, this.models[this.getModelSize(agent)].name)
+      this.showUsage(thread)
       outputSubject.complete()
     })
     return outputSubject
@@ -71,15 +92,19 @@ export class OpenaiClient extends AiClient {
     subscriber: Subject<CodayEvent>
   ): Promise<void> {
     try {
+      const model = this.models[this.getModelSize(agent)]
+      const initialContextCharLength = agent.systemInstructions.length + agent.tools.charLength + 20
+      const charBudget = model.contextWindow * this.charsPerToken - initialContextCharLength
+
       const response = await client.chat.completions.create({
-        model: this.models[agent.definition.modelSize ?? ModelSize.BIG].model,
-        messages: this.toOpenAiMessage(agent, thread.getMessages()),
+        model: model.name,
+        messages: this.toOpenAiMessage(agent, thread.getMessages(charBudget)),
         tools: agent.tools.getTools(),
         max_completion_tokens: undefined,
         temperature: agent.definition.temperature ?? 0.8,
       })
 
-      thread.data.openai.price += this.computePrice(response.usage, agent)
+      this.updateUsage(response.usage, agent, thread)
 
       if (response.choices[0].finish_reason === 'length') throw new Error('Max tokens reached for Openai 😬')
 
@@ -108,13 +133,22 @@ export class OpenaiClient extends AiClient {
     }
   }
 
-  private computePrice(usage: any, agent: Agent): number {
-    const inputNoCacheTokens = usage?.prompt_tokens - usage?.prompt_tokens_details?.cached_tokens
+  private updateUsage(usage: any, agent: Agent, thread: AiThread): void {
+    const cacheReadTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0
+    const inputNoCacheTokens = (usage?.prompt_tokens ?? 0) - cacheReadTokens // TODO: check again with doc...
     const input = inputNoCacheTokens * this.models[this.getModelSize(agent)].price.inputMTokens
-    const output = usage?.completion_tokens * this.models[this.getModelSize(agent)].price.outputMTokens
-    const cacheRead =
-      usage?.prompt_tokens_details?.cached_tokens * this.models[this.getModelSize(agent)].price.cacheRead
-    return (input + output + cacheRead) / 1_000_000
+    const outputTokens = usage?.completion_tokens ?? 0
+    const output = outputTokens * this.models[this.getModelSize(agent)].price.outputMTokens
+    const cacheRead = cacheReadTokens * this.models[this.getModelSize(agent)].price.cacheRead
+    const price = (input + output + cacheRead) / 1_000_000
+
+    thread.addUsage({
+      input: inputNoCacheTokens,
+      output: outputTokens,
+      cache_read: cacheReadTokens,
+      cache_write: 0, // cannot deduce it as not given and not priced in documentation
+      price,
+    })
   }
 
   private isOpenaiReady(): OpenAI | undefined {
@@ -179,225 +213,155 @@ export class OpenaiClient extends AiClient {
     return [systemInstructionMessage, ...openaiMessages]
   }
 
-  // Agreed, one should not comment code...
-  // ...but suffered so much on it, will keep it until there is a viable solution for calling openai's assistants
+  async runAssistant(agent: Agent, thread: AiThread): Promise<Observable<CodayEvent>> {
+    const openai = this.isOpenaiReady()
+    if (!openai) return of()
 
-  // async isReady(
-  //   assistantName: string,
-  //   context: CommandContext,
-  // ): Promise<boolean> {
-  //   if (!this.isOpenaiReady()) {
-  //     return false
-  //   }
-  //
-  //   this.assistant = await this.findAssistant(assistantName, context)
-  //
-  //   await this.createThread(context)
-  //
-  //   return true
-  // }
+    const outputSubject: Subject<CodayEvent> = new Subject()
 
-  // async answer(
-  //   name: string,
-  //   command: string,
-  //   context: CommandContext,
-  // ): Promise<string> {
-  //   const assistantName = name.toLowerCase()
-  //
-  //   this.textAccumulator = ""
-  //   if (!(await this.isReady(assistantName, context))) {
-  //     return "Openai client not ready"
-  //   }
-  //
-  //   const tools = this.toolBox.getTools(context)
-  //   // Create new toolSet instance with current context tools
-  //   const toolSet = new ToolSet(tools)
-  //   const threadId = context.data.openaiData.threadId
-  //
-  //   await this.openai!.beta.threads.messages.create(threadId!, {
-  //     role: "user",
-  //     content: command,
-  //   })
-  //   const assistantStream = this.openai!.beta.threads.runs.stream(
-  //     threadId!,
-  //     {
-  //       assistant_id: this.assistant!.id,
-  //       tools: [...tools, {type: "file_search"}],
-  //       tool_choice: "auto",
-  //       max_completion_tokens: 120000,
-  //       max_prompt_tokens: 120000,
-  //       parallel_tool_calls: false,
-  //     },
-  //   )
-  //
-  //   await this.processStream(assistantStream, toolSet, threadId)
-  //
-  //   await assistantStream.finalRun()
-  //
-  //   return this.textAccumulator
-  // }
+    // init or reset
+    thread.data.openai = {
+      price: thread.data?.openai?.price ?? 0,
+      runPrice: 0,
+      assistantThreadData: thread.data?.openai?.assistantThreadData ?? {},
+    }
 
-  // private async processStream(stream: AssistantStream, toolSet: ToolSet, threadId: string) {
-  //   // Check interruption before starting stream processing
-  //   stream.on("textDone", (diff) => {
-  //     this.interactor.displayText(diff.value, this.assistant?.name)
-  //     this.textAccumulator += diff.value
-  //   })
-  //   for await (const chunk of stream) {
-  //     this.interactor.thinking()
-  //     if (chunk.event === "thread.run.requires_action") {
-  //       try {
-  //         const toolCalls =
-  //           chunk.data.required_action?.submit_tool_outputs.tool_calls ?? []
-  //         const toolOutputs = await Promise.all(
-  //           toolCalls.map(async (call) => {
-  //             const toolCall: ToolCall = {
-  //               id: call.id,
-  //               name: call.function.name,
-  //               args: call.function.arguments
-  //             }
-  //             const toolRequest = new ToolRequestEvent(toolCall)
-  //             const output = await toolSet.runTool(toolRequest)
-  //             return ({tool_call_id: call.id, output})
-  //           }),
-  //         )
-  //
-  //         const newStream =
-  //           this.openai!.beta.threads.runs.submitToolOutputsStream(
-  //             threadId!,
-  //             chunk.data.id,
-  //             {tool_outputs: toolOutputs},
-  //           )
-  //         if (this.killed) return
-  //         await this.processStream.call(this, newStream, toolSet, threadId)
-  //       } catch (error) {
-  //         console.error(`Error processing tool call`, error)
-  //       }
-  //     }
-  //   }
-  // }
+    const threadData: AssistantThreadData = thread.data.openai.assistantThreadData
+    const thinking = setInterval(() => this.interactor.thinking(), 3000)
 
-  // private async createThread(context: CommandContext): Promise<void> {
-  //   const openaiData = context.data.openaiData
-  //   if (!openaiData) {
-  //     context.data.openaiData = {}
-  //   }
-  //
-  //   const threadId = context.data.openaiData?.threadId
-  //   if (!threadId) {
-  //     const thread = await this.openai!.beta.threads.create()
-  //     context.data.openaiData.threadId = thread.id
-  //     this.interactor.displayText(`Thread created with ID: ${thread.id}`)
-  //
-  //     await this.openai!.beta.threads.messages.create(thread.id, {
-  //       role: "assistant",
-  //       content: context.project.description,
-  //     })
-  //   }
-  // }
+    // Create assistant thread if not existing
+    if (!threadData.threadId) {
+      const assistantThread = await openai.beta.threads.create()
+      this.interactor.displayText('Assistant thread created')
+      threadData.threadId = assistantThread.id
+    }
 
-  // TODO: move this out, it should be on the project object rather than here
-  //   private async initAssistantList(): Promise<void> {
-  //     // init map name -> id
-  //     if (!this.assistants.length) {
-  //       let after: string | undefined = undefined
-  //       do {
-  //         const fetchedAssistants: Assistant[] = (
-  //           await this.openai!.beta.assistants.list({
-  //             order: "asc",
-  //             after,
-  //             limit: 100,
-  //           }).withResponse()
-  //         ).data.getPaginatedItems()
-  //         this.assistants.push(
-  //           ...fetchedAssistants
-  //             .filter((a) => !!a.name)
-  //             .map((a) => ({
-  //               name: a.name as string,
-  //               id: a.id,
-  //             })),
-  //         )
-  //         after =
-  //           fetchedAssistants.length > 0
-  //             ? fetchedAssistants[fetchedAssistants.length - 1].id
-  //             : undefined
-  //       } while (after)
-  //     }
-  //   }
+    const messages = thread.getMessages()
+    const lastMessageIndex = threadData.lastTimestamp
+      ? messages.findIndex((m) => m.timestamp === threadData.lastTimestamp)
+      : -1
+    const messagesToUpload = messages.slice(lastMessageIndex + 1)
 
-  // private async findAssistant(
-  //   name: string,
-  //   context: CommandContext,
-  // ): Promise<AssistantReference> {
-  //   await this.initAssistantList()
-  //
-  //   // then find all names that could match the given one
-  //   const matchingAssistants = this.assistants.filter((a) =>
-  //     a.name.toLowerCase().startsWith(name),
-  //   )
-  //
-  //   if (matchingAssistants.length === 1) {
-  //     return matchingAssistants[0]
-  //   }
-  //
-  //   if (matchingAssistants.length > 1) {
-  //     const selection = await this.interactor.chooseOption(
-  //       matchingAssistants.map((m) => m.name),
-  //       "Choose an assistant",
-  //       `Found ${matchingAssistants.length} assistants that start with ${name}/`,
-  //     )
-  //     return matchingAssistants.find((m) => m.name === selection)!
-  //   }
-  //
-  //   // no existing assistant found, let's check the project ones that do have systemInstructions
-  //   const projectAssistants = context.project.assistants
-  //     ? [DEFAULT_DESCRIPTION, ...context.project.assistants]
-  //     : undefined
-  //   const matchingProjectAssistants = projectAssistants?.filter(
-  //     (a) => a.name.toLowerCase().startsWith(name) && !!a.systemInstructions,
-  //   )
-  //
-  //   if (!matchingProjectAssistants?.length) {
-  //     throw new Error("No matching assistant")
-  //   }
-  //
-  //   let assistantToCreate: AssistantDescription | undefined
-  //   if (matchingProjectAssistants?.length === 1) {
-  //     assistantToCreate = matchingProjectAssistants[0]
-  //   }
-  //   if (matchingProjectAssistants?.length > 1) {
-  //     const selection = await this.interactor.chooseOption(
-  //       matchingAssistants.map((m) => m.name),
-  //       "Choose an assistant",
-  //       `Found ${matchingProjectAssistants?.length} project assistants that start with ${name}/`,
-  //     )
-  //     assistantToCreate = matchingProjectAssistants.find(
-  //       (m) => m.name === selection,
-  //     )
-  //   }
-  //
-  //   if (!assistantToCreate) {
-  //     throw new Error("No matching assistant")
-  //   }
-  //
-  //   this.interactor.displayText(
-  //     `No existing assistant found for ${name}, will try to create it`,
-  //   )
-  //
-  //
-  //   const createdAssistant = await this.openai!.beta.assistants.create({
-  //     name: assistantToCreate?.name,
-  //     model: assistantToCreate.model ?? DEFAULT_MODEL,
-  //     instructions: assistantToCreate?.systemInstructions,
-  //     temperature: assistantToCreate.temperature ?? DEFAULT_TEMPERATURE,
-  //   })
-  //   this.interactor.displayText(`Created assistant ${createdAssistant.id}`)
-  //   const createdReference: AssistantReference = {
-  //     name: assistantToCreate.name,
-  //     id: createdAssistant.id,
-  //   }
-  //   this.assistants.push(createdReference)
-  //
-  //   return createdReference
-  // }
+    this.updateAssistantThread(openai, thread, messagesToUpload)
+      .then(async () => await this.processAssistantThread(openai, agent, thread, outputSubject))
+      .finally(() => {
+        clearInterval(thinking)
+        this.showUsage(thread)
+        outputSubject.complete()
+      })
+    return outputSubject
+  }
+
+  private async updateAssistantThread(
+    client: OpenAI,
+    thread: AiThread,
+    messagesToUpload: ThreadMessage[]
+  ): Promise<void> {
+    // WARNING: this part sucks, OpenAI API not allowing multiple messages at once T_T, so forced iterations
+    this.interactor.displayText(`${messagesToUpload.length} messages to upload to assistant thread...`)
+    for (const messagesToUploadElement of messagesToUpload) {
+      if (!this.shouldProceed(thread)) {
+        throw new Error('Assistant thread update interrupted')
+      }
+      const assistantMessage = this.toAssistantMessage(messagesToUploadElement)
+      await client.beta.threads.messages.create(thread.data.openai.assistantThreadData.threadId, assistantMessage)
+      // update the marker in case of interruption to resume at last stop
+      thread.data.openai.assistantThreadData.lastTimestamp = messagesToUploadElement.timestamp
+    }
+    this.interactor.displayText(`Messages uploaded.`)
+  }
+
+  private toAssistantMessage(m: ThreadMessage): MessageCreateParams {
+    if (m instanceof MessageEvent) {
+      return {
+        role: m.role,
+        content: `${m.name}: ${m.content}`,
+      }
+    }
+    if (m instanceof ToolResponseEvent) {
+      return {
+        role: 'user',
+        content: `Here is the result of : \n<toolRequestId>${m.toolRequestId}</toolRequestId>\n<output>${m.output}</output>`,
+      }
+    }
+    return {
+      role: 'assistant',
+      content: `${m.name}: Can you provide me the result of this :\n<toolRequestId>${m.toolRequestId}</toolRequestId>\n<function>${m.name}</function>\n<args>${m.args}</args>`,
+    }
+  }
+
+  protected async processAssistantThread(
+    client: OpenAI,
+    agent: Agent,
+    thread: AiThread,
+    subscriber: Subject<CodayEvent>
+  ): Promise<void> {
+    const assistantStream = client.beta.threads.runs.stream(thread.data.openai.assistantThreadData.threadId, {
+      assistant_id: agent.definition.openaiAssistantId!,
+      tools: [...agent.tools.getTools(), { type: 'file_search' }],
+      tool_choice: 'auto',
+      max_completion_tokens: 120000,
+      max_prompt_tokens: 120000,
+      parallel_tool_calls: false,
+    })
+
+    await this.processAssistantStream(assistantStream, agent, client, thread, subscriber)
+  }
+
+  private async processAssistantStream(
+    stream: AssistantStream,
+    agent: Agent,
+    client: OpenAI,
+    thread: AiThread,
+    subscriber: Subject<CodayEvent>
+  ): Promise<void> {
+    // Check interruption before starting stream processing
+    stream.on('textDone', (diff) => {
+      thread.data.openai.assistantThreadData.lastTimestamp = this.handleText(thread, diff.value, agent, subscriber)
+    })
+    for await (const chunk of stream) {
+      this.interactor.thinking()
+      if (chunk.event === 'thread.run.requires_action') {
+        try {
+          const toolRequests =
+            chunk.data.required_action?.submit_tool_outputs.tool_calls?.map(
+              (toolCall) =>
+                new ToolRequestEvent({
+                  toolRequestId: toolCall.id,
+                  name: toolCall.function.name,
+                  args: toolCall.function.arguments,
+                })
+            ) ?? []
+          const toolOutputs: RunSubmitToolOutputsParams.ToolOutput[] = []
+          await Promise.all(
+            toolRequests.map(async (request) => {
+              let responseEvent: ToolResponseEvent
+              try {
+                responseEvent = await agent.tools.run(request)
+              } catch (error: any) {
+                console.error(`Error running tool ${request.name}:`, error)
+                responseEvent = request.buildResponse(`Error: ${error.message}`)
+              }
+              thread.addToolRequests(agent.name, [request])
+              thread.addToolResponseEvents([responseEvent])
+              toolOutputs.push({
+                tool_call_id: request.toolRequestId,
+                output: responseEvent.output,
+              })
+            })
+          )
+
+          const newStream = client!.beta.threads.runs.submitToolOutputsStream(
+            thread.data.openai.assistantThreadData.threadId!,
+            chunk.data.id,
+            { tool_outputs: toolOutputs }
+          )
+          if (!this.shouldProceed(thread)) return
+          await this.processAssistantStream.call(this, newStream, agent, client, thread, subscriber)
+        } catch (error) {
+          console.error(`Error processing tool call`, error)
+        }
+      }
+    }
+  }
 }

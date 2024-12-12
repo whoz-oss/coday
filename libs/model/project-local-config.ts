@@ -1,15 +1,10 @@
 import { IntegrationConfig } from './integration-config'
+import { AgentDefinition } from './agent-definition'
 
 export interface ThreadInfo {
   name: string
   // Add other relevant data if needed
 }
-
-export type SavedThreads =
-  | {
-      [threadId: string]: ThreadInfo
-    }
-  | undefined
 
 export type IntegrationLocalConfig = {
   [key: string]: IntegrationConfig
@@ -18,8 +13,8 @@ export type IntegrationLocalConfig = {
 export type ProjectLocalConfig = {
   path: string
   integration: IntegrationLocalConfig
-  savedThreads: SavedThreads
   storage?: StorageConfig
+  agents?: AgentDefinition | AgentDefinition[]
 }
 
 export type StorageConfig =

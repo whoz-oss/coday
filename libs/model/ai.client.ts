@@ -1,18 +1,21 @@
-import { Observable, Subject } from 'rxjs'
-import { CodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '../shared/coday-events'
-import { Agent } from './agent'
-import { AiThread } from '../ai-thread/ai-thread'
-import { RunStatus } from '../ai-thread/ai-thread.types'
-import { Interactor } from './interactor'
-import { ModelSize } from './agent-definition'
+import {Observable, Subject} from 'rxjs'
+import {CodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from '../shared/coday-events'
+import {Agent} from './agent'
+import {AiThread} from '../ai-thread/ai-thread'
+import {RunStatus} from '../ai-thread/ai-thread.types'
+import {Interactor} from './interactor'
+import {ModelSize} from './agent-definition'
 
 /**
  * Common abstraction over different AI provider APIs.
  */
 export abstract class AiClient {
+  abstract name: string
   protected abstract interactor: Interactor
   protected killed: boolean = false
   protected defaultModelSize: ModelSize = ModelSize.BIG
+  protected thinkingInterval: number = 3000
+  protected charsPerToken: number = 3.5 // should be 4, some margin baked in to avoid overshoot on tool call
 
   /**
    * Run the AI with the given configuration and thread context.
@@ -31,22 +34,31 @@ export abstract class AiClient {
     this.killed = true
   }
 
+  /**
+   * Builds the message event, add it to the thread, emit it and return its timestamp
+   * @param thread
+   * @param text
+   * @param agent
+   * @param subscriber
+   * @protected
+   */
   protected handleText(
     thread: AiThread,
     text: string | undefined,
     agent: Agent,
     subscriber: Subject<CodayEvent>
-  ): void {
+  ): string | undefined {
     if (text) {
+      const messageEvent = new MessageEvent({
+        role: 'assistant',
+        content: text,
+        name: agent.name,
+      })
       thread.addAgentMessage(agent.name, text)
-      subscriber.next(
-        new MessageEvent({
-          role: 'assistant',
-          content: text,
-          name: agent.name,
-        })
-      )
+      subscriber.next(messageEvent)
+      return messageEvent.timestamp
     }
+    return
   }
 
   protected async shouldProcessAgainAfterResponse(
@@ -57,6 +69,45 @@ export abstract class AiClient {
   ): Promise<boolean> {
     if (!toolRequests?.length) return false
 
+    // Simple threshold check
+    const { usage } = thread
+    if (
+      (usage.price > 0 && usage.price >= usage.priceThreshold) ||
+      (usage.price === 0 && usage.iterations >= usage.iterationsThreshold)
+    ) {
+      const thresholdType = usage.price > 0 ? 'cost' : 'iteration'
+      const current = usage.price > 0 ? `${usage.price.toFixed(2)}` : usage.iterations
+      const limit = usage.price > 0 ? `${usage.priceThreshold.toFixed(2)}` : usage.iterationsThreshold
+
+      const explanation =
+        `${thresholdType} threshold reached (${current} >= ${limit}).
+` +
+        'Proceeding will:\n' +
+        `- Double the ${thresholdType} limit\n` +
+        '- Continue processing with the current context\n\n' +
+        'Stopping will:\n' +
+        '- End the current run\n' +
+        '- Clear pending commands\n' +
+        '- Return to prompt'
+
+      const choice = await this.interactor.chooseOption(['proceed', 'stop'], explanation, 'What do you want to do?')
+
+      if (choice === 'stop') {
+        thread.runStatus = RunStatus.STOPPED
+        return false
+      }
+
+      // Double relevant threshold
+      if (usage.price > 0) {
+        usage.priceThreshold *= 2
+        this.interactor.displayText(`Cost threshold increased to ${usage.priceThreshold.toFixed(2)}`)
+      } else {
+        usage.iterationsThreshold *= 2
+        this.interactor.displayText(`Iteration threshold increased to ${usage.iterationsThreshold}`)
+      }
+    }
+
+    // Normal tool processing
     await Promise.all(
       toolRequests.map(async (request) => {
         let responseEvent: ToolResponseEvent
@@ -70,13 +121,24 @@ export abstract class AiClient {
         thread.addToolResponseEvents([responseEvent])
       })
     )
+    return this.shouldProceed(thread)
+  }
 
+  protected shouldProceed(thread: AiThread): boolean {
     return thread.runStatus === RunStatus.RUNNING && !this.killed
   }
 
-  protected showPrice(price: number): void {
-    if (price === 0) return
-    this.interactor.displayText(`$${price.toFixed(3)}`)
+  protected showUsage(thread: AiThread): void {
+    if (!thread.usage) return
+    const loop = `🔁${thread.usage.iterations} | `
+    const tokensIO = `Tokens ⬇️${thread.usage.input} ⬆️${thread.usage.output} | `
+    const cacheIO = `Cache ${thread.usage.cache_write ? `✍️${thread.usage.cache_write} ` : ''}📖${thread.usage.cache_read} | `
+    const price = `💸 🏃$${thread.usage.price.toFixed(3)} 🧵$${thread.price.toFixed(3)}`
+    this.interactor.displayText(loop + tokensIO + cacheIO + price)
+  }
+
+  protected showAgent(agent: Agent, aiProvider: string, model: string): void {
+    this.interactor.displayText(`🤖 ${agent.name} | ${aiProvider} - ${model}`)
   }
 
   protected getModelSize(agent: Agent): ModelSize {

@@ -1,10 +1,18 @@
-import { AiClient } from './ai.client'
-import { AgentDefinition } from './agent-definition'
-import { Project } from './project'
-import { ToolSet } from '../integration/tool-set'
-import { AiThread } from '../ai-thread/ai-thread'
-import { Observable } from 'rxjs'
-import { CodayEvent } from '../shared/coday-events'
+import {AiClient} from "./ai.client"
+import {AgentDefinition, ModelSize} from "./agent-definition"
+import {Project} from "./project"
+import {ToolSet} from "../integration/tool-set"
+import {AiThread} from "../ai-thread/ai-thread"
+import {Observable} from "rxjs"
+import {CodayEvent} from "../shared/coday-events"
+
+/**
+ * Simplified view of an agent for listing and selection purposes
+ */
+export interface AgentSummary {
+  name: string
+  description: string
+}
 
 /**
  * Agent class represents an AI agent with specific capabilities and responsibilities.
@@ -14,16 +22,25 @@ import { CodayEvent } from '../shared/coday-events'
 export class Agent {
   readonly name: string
   readonly description: string
+  definition: AgentDefinition
 
   constructor(
-    readonly definition: AgentDefinition,
+    initialDefinition: AgentDefinition,
     private readonly aiClient: AiClient,
     private readonly project: Project,
     readonly tools: ToolSet,
     readonly internal: boolean = false
   ) {
-    this.name = definition.name
-    this.description = definition.description
+    this.name = initialDefinition.name
+    this.description = initialDefinition.description
+    this.definition = { ...initialDefinition }
+  }
+
+  get systemInstructions(): string {
+    return `${this.definition.instructions}\n\n
+                <project-context>
+${this.project.description}
+</project-context>`
   }
 
   /**
@@ -34,15 +51,29 @@ export class Agent {
    * @param thread
    */
   async run(command: string, thread: AiThread): Promise<Observable<CodayEvent>> {
-    thread.addUserMessage('user', command)
+    // Trim the command
+    const trimmedCommand = command.trim()
 
-    return this.aiClient.run(this, thread)
-  }
+    // Handle model size change
+    const currentModelSize = this.definition.modelSize || ModelSize.SMALL
+    let processedCommand = trimmedCommand
+    let newModelSize = currentModelSize
 
-  get systemInstructions(): string {
-    return `${this.definition.instructions}\n\n
-                <project-context>
-${this.project.description}
-</project-context>`
+    if (trimmedCommand.startsWith('+') && currentModelSize === ModelSize.SMALL) {
+      newModelSize = ModelSize.BIG
+      processedCommand = trimmedCommand.slice(1).trim()
+    } else if (trimmedCommand.startsWith('-') && currentModelSize === ModelSize.BIG) {
+      newModelSize = ModelSize.SMALL
+      processedCommand = trimmedCommand.slice(1).trim()
+    }
+
+    // Update model size
+    this.definition.modelSize = newModelSize
+
+    // Add processed command to thread
+    thread.addUserMessage('user', processedCommand)
+
+    // Run with updated configuration
+    return await this.aiClient.run(this, thread)
   }
 }

@@ -1,3 +1,10 @@
+export type AiProvider = 'openai' | 'anthropic' | 'google'
+
+export enum ModelSize {
+  BIG = 'BIG',
+  SMALL = 'SMALL',
+}
+
 /**
  * Agent description as intended in yml, in the `agents/` folder at same location as `coday.yml`
  *
@@ -12,6 +19,11 @@ export interface AgentDefinition {
    * case does not matter as should be checked against lowercase
    */
   name: string
+
+  /**
+   * id of the assistant on openai's platform
+   */
+  openaiAssistantId?: string
 
   /**
    * description of the agent for the other agents and user
@@ -57,14 +69,14 @@ export interface AgentDefinition {
    *   - select list of tools available (useful to restrict to read-only)
    */
   // TODO: better type for integration keys, stay loose for tools ?
-  integrations: {
+  integrations?: {
     [key: string]: string[] // key is name of an integration, value is empty (=all) or select list of tool keys to enable
   }
 }
 
 export const CodayAgentDefinition: AgentDefinition = {
   name: 'Coday',
-  description: 'Default agent',
+  description: 'Default fallback agent with neutral character and access to all tools',
   instructions: `
     You are Coday, an AI assistant designed for interactive usage by users through various chat-like interfaces.
 
@@ -83,14 +95,14 @@ export const CodayAgentDefinition: AgentDefinition = {
 - Ensure interactions are respectful and supportive.
 - Be honest and transparent in your responses.
 
+**Analytical Principles:**
+- Start with system definitions and boundaries rather than details
+- Follow relationship chains from surface to core elements
+- Validate fundamental requirements before specific solutions
+- Understand full context before taking action
+
 By following these guidelines, you will ensure that your responses are accurate, reliable, engaging, and trustworthy.
 `,
   integrations: {},
-}
-
-export type AiProvider = 'OPENAI' | 'ANTHROPIC' | 'GOOGLE'
-
-export enum ModelSize {
-  BIG = 'BIG',
-  SMALL = 'SMALL',
+  modelSize: ModelSize.SMALL,
 }
