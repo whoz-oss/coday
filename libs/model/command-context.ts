@@ -25,6 +25,11 @@ export class CommandContext {
   oneshot: boolean = false
 
   /**
+   * When true, prevent any file write or delete operations
+   */
+  fileReadOnly: boolean = false
+
+  /**
    * Depth of the stack of threads for delegation
    */
   stackDepth: number = 0
@@ -80,6 +85,7 @@ export class CommandContext {
     const subContext = new CommandContext(this.project, this.username)
     subContext.setSubTask(this.subTaskCount)
     subContext.oneshot = this.oneshot
+    subContext.fileReadOnly = this.fileReadOnly
     subContext.addCommands(...commands)
     subContext.stackDepth = this.stackDepth - 1
     return subContext
@@ -89,6 +95,7 @@ export class CommandContext {
     const clone = new CommandContext(this.project, this.username)
     clone.setSubTask(this.subTaskCount)
     clone.oneshot = this.oneshot
+    clone.fileReadOnly = this.fileReadOnly
     clone.stackDepth = this.stackDepth
     clone.data = this.data
     return clone
