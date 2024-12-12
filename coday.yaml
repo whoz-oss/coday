@@ -37,7 +37,7 @@ optionalDocs:
 scripts:
   compile:
     description: compile the typescript project to raise any issue on code correctness, it does not run the tests.
-    command: yarn run tsc
+    command: yarn run nx run-many --target=build --all
   open-file-in-ide-for-user:
     description: opens the file(s) in the user IDE.
     command: idea
@@ -116,3 +116,9 @@ assistants:
       
       Your endgoal is integrating an AI agent into a human software development project, through the existing tools (task management, slack, continuous integration platform, ...), as a local program or a remote instance.
     temperature: 0.9
+
+agents_disabled:
+  - name: Coday
+  - name: KB43D
+    openaiAssistantId: asst_TWqhoVtAhChjNcjS1dZJu54w
+    description: Knowledge Base assistant, holds and uses data in OpenAI platform

@@ -10,7 +10,7 @@ import { TextBlockParam } from '@anthropic-ai/sdk/resources/messages'
 
 const AnthropicModels = {
   [ModelSize.BIG]: {
-    model: 'claude-3-5-sonnet-latest',
+    name: 'claude-3-5-sonnet-latest',
     contextWindow: 200000,
     price: {
       inputMTokens: 3,
@@ -20,37 +20,39 @@ const AnthropicModels = {
     },
   },
   [ModelSize.SMALL]: {
-    model: 'claude-3-haiku-20240307',
+    name: 'claude-3-5-haiku-latest',
     contextWindow: 200000,
     price: {
-      inputMTokens: 1,
-      cacheWrite: 1.25,
-      cacheRead: 0.1,
-      outputMTokens: 5,
+      inputMTokens: 0.8,
+      cacheWrite: 1,
+      cacheRead: 0.08,
+      outputMTokens: 4,
     },
   },
 }
 
 export class AnthropicClient extends AiClient {
+  name: string
+
   constructor(
     readonly interactor: Interactor,
     private readonly apiKeyProvider: () => string | undefined
   ) {
     super()
+    this.name = 'Anthropic'
   }
 
   async run(agent: Agent, thread: AiThread): Promise<Observable<CodayEvent>> {
     const anthropic: Anthropic | undefined = this.isAnthropicReady()
     if (!anthropic) return of()
 
-    thread.data.anthropic = {
-      price: 0,
-    }
+    thread.resetUsageForRun()
     const outputSubject: Subject<CodayEvent> = new Subject()
-    const thinking = setInterval(() => this.interactor.thinking(), 3000)
+    const thinking = setInterval(() => this.interactor.thinking(), this.thinkingInterval)
     this.processThread(anthropic, agent, thread, outputSubject).finally(() => {
-      this.showPrice(thread.data.anthropic.price)
       clearInterval(thinking)
+      this.showAgent(agent, 'Anthropic', AnthropicModels[this.getModelSize(agent)].name)
+      this.showUsage(thread)
       outputSubject.complete()
     })
     return outputSubject
@@ -63,9 +65,13 @@ export class AnthropicClient extends AiClient {
     subscriber: Subject<CodayEvent>
   ): Promise<void> {
     try {
+      const initialContextCharLength = agent.systemInstructions.length + agent.tools.charLength + 20
+      const model = AnthropicModels[this.getModelSize(agent)]
+      const charBudget = model.contextWindow * this.charsPerToken - initialContextCharLength
+
       const response = await client.messages.create({
-        model: AnthropicModels[this.getModelSize(agent)].model,
-        messages: this.toClaudeMessage(thread.getMessages()),
+        model: model.name,
+        messages: this.toClaudeMessage(thread.getMessages(charBudget)),
         system: [
           {
             text: agent.systemInstructions,
@@ -78,7 +84,7 @@ export class AnthropicClient extends AiClient {
         max_tokens: 8192,
       })
 
-      thread.data.anthropic.price += this.computePrice(response?.usage, agent)
+      this.updateUsage(response?.usage, agent, thread)
 
       if (response.stop_reason === 'max_tokens') throw new Error('Max tokens reached for Anthropic 😬')
 
@@ -113,12 +119,20 @@ export class AnthropicClient extends AiClient {
     }
   }
 
-  private computePrice(usage: any, agent: Agent): number {
+  private updateUsage(usage: any, agent: Agent, thread: AiThread): void {
     const input = usage?.input_tokens * AnthropicModels[this.getModelSize(agent)].price.inputMTokens
     const output = usage?.output_tokens * AnthropicModels[this.getModelSize(agent)].price.outputMTokens
     const cacheWrite = usage?.cache_creation_input_tokens * AnthropicModels[this.getModelSize(agent)].price.cacheWrite
     const cacheRead = usage?.cache_read_input_tokens * AnthropicModels[this.getModelSize(agent)].price.cacheRead
-    return (input + output + cacheWrite + cacheRead) / 1_000_000
+    const price = (input + output + cacheWrite + cacheRead) / 1_000_000
+
+    thread.addUsage({
+      input: usage?.input_tokens ?? 0,
+      output: usage?.output_tokens ?? 0,
+      cache_read: usage?.cache_read_input_tokens ?? 0,
+      cache_write: usage?.cache_creation_input_tokens ?? 0,
+      price,
+    })
   }
 
   private isAnthropicReady(): Anthropic | undefined {
@@ -145,7 +159,7 @@ export class AnthropicClient extends AiClient {
       .map((msg) => {
         let claudeMessage: MessageParam | undefined
         if (msg instanceof MessageEvent) {
-          claudeMessage = { role: msg.role, content: msg.content }
+          claudeMessage = { role: msg.role, content: `${msg.name} : ${msg.content}` }
         }
         if (msg instanceof ToolRequestEvent) {
           claudeMessage = {

@@ -7,23 +7,42 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "importHelpers": true,
-    "lib": ["ESNext", "dom"],
+    "lib": [
+      "ESNext",
+      "dom"
+    ],
     "module": "esnext",
     "moduleResolution": "node",
     "noUnusedLocals": true,
     "outDir": "./dist/out-tsc",
     "paths": {
-      "@coday/ai-thread/*": ["libs/ai-thread/*"],
-      "@coday/core": ["libs/coday.ts"],
-      "@coday/model/*": ["libs/model/*"],
-      "@coday/shared/*": ["libs/shared/*"]
+      "@coday/ai-thread/*": [
+        "libs/ai-thread/*"
+      ],
+      "@coday/core": [
+        "libs/coday.ts"
+      ],
+      "@coday/options": [
+        "libs/options.ts"
+      ],
+      "@coday/model/*": [
+        "libs/model/*"
+      ],
+      "@coday/shared/*": [
+        "libs/shared/*"
+      ]
     },
     "skipDefaultLibCheck": true,
     "skipLibCheck": true,
     "sourceMap": true,
     "strict": true,
     "target": "ESNext",
-    "typeRoots": ["node_modules/@types"]
+    "typeRoots": [
+      "node_modules/@types"
+    ]
   },
-  "exclude": ["node_modules", "tmp"]
+  "exclude": [
+    "node_modules",
+    "tmp"
+  ]
 }

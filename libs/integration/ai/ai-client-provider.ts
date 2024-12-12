@@ -1,10 +1,7 @@
-import { AiClient, Interactor } from '../../model'
-import { OpenaiClient } from '../../handler/openai.client'
-import { AnthropicClient } from '../../handler/anthropic.client'
-import { userConfigService } from '../../service/user-config.service'
-
-/** Supported AI providers */
-type AiProvider = 'anthropic' | 'openai' | 'gemini'
+import {AiClient, AiProvider, Interactor} from "../../model"
+import {OpenaiClient} from "../../handler/openai.client"
+import {AnthropicClient} from "../../handler/anthropic.client"
+import {userConfigService} from "../../service/user-config.service"
 
 /**
  * Environment variable names for each provider.
@@ -13,7 +10,7 @@ type AiProvider = 'anthropic' | 'openai' | 'gemini'
 const ENV_VARS: Record<AiProvider, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',
-  gemini: 'GEMINI_API_KEY',
+  google: 'GEMINI_API_KEY',
 }
 
 /**
@@ -37,7 +34,7 @@ class AiClientProvider {
    * Order of preference for selecting default provider.
    * Used when no specific provider is requested.
    */
-  private readonly providerOrder: AiProvider[] = ['anthropic', 'openai', 'gemini']
+  private readonly providerOrder: AiProvider[] = ['anthropic', 'openai', 'google']
 
   constructor(private readonly interactor: Interactor) {}
 
@@ -120,14 +117,24 @@ class AiClientProvider {
       case 'anthropic':
         return new AnthropicClient(this.interactor, apiKeyProvider)
       case 'openai':
-        return new OpenaiClient(this.interactor, apiKeyProvider)
-      case 'gemini':
+        return new OpenaiClient('OpenAI', this.interactor, apiKeyProvider)
+      case 'google':
         // Leveraging Google Gemini enabling use of Openai SDK for beta
         return new OpenaiClient(
+          'Google Gemini',
           this.interactor,
           apiKeyProvider,
-          'https://generativelanguage.googleapis.com/v1beta/openai/'
+          'https://generativelanguage.googleapis.com/v1beta/openai/',
+          {}, //TODO: Gemini models !
+          'Gemini'
         )
+    }
+  }
+
+  kill() {
+    const clients: AiClient[] = Array.from(this.clientCache.values())
+    for (const client of clients) {
+      client.kill()
     }
   }
 }

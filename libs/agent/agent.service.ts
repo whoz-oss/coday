@@ -1,0 +1,172 @@
+import * as fs from 'fs/promises'
+import * as path from 'path'
+import * as yaml from 'yaml'
+import { AiClientProvider } from '../integration/ai/ai-client-provider'
+import { Toolbox } from '../integration/toolbox'
+import { ConfigService } from '../service/config.service'
+import { Agent, AgentDefinition, CodayAgentDefinition, CommandContext, Interactor } from '../model'
+import { ToolSet } from '../integration/tool-set'
+
+export class AgentService {
+  private agents: Map<string, Agent> = new Map()
+  private aiClientProvider: AiClientProvider
+  private toolbox: Toolbox
+
+  constructor(
+    private configService: ConfigService,
+    private interactor: Interactor
+  ) {
+    // Subscribe to project changes to reset agents
+    this.configService.selectedProject$.subscribe(() => {
+      this.agents.clear()
+    })
+    this.aiClientProvider = new AiClientProvider(interactor)
+    this.toolbox = new Toolbox(this.interactor)
+  }
+
+  /**
+   * Initialize agent definitions from all sources if not already initialized:
+   * - coday.yml agents section
+   * - ~/.coday/[project]/agents/ folder
+   */
+  async initialize(context: CommandContext): Promise<void> {
+    // Already initialized if we have any agents
+    if (this.agents.size > 0) return
+
+    try {
+      // Load from coday.yml agents section first
+      if (context.project.agents?.length) {
+        for (const def of context.project.agents) {
+          this.tryAddAgent(def, context)
+        }
+      }
+
+      // Then load from files
+      await this.loadFromFiles(context)
+
+      // If no agents were loaded, use Coday as backup
+      if (this.agents.size === 0) {
+        console.log('No agents configured, using Coday as backup agent')
+        this.tryAddAgent(CodayAgentDefinition, context)
+      }
+
+      const agentNames = Array.from(this.agents.values()).map((a) => `  - ${a.name}`)
+      if (agentNames.length > 1) {
+        this.interactor.displayText(`Loaded agents (callable with '@[agent name]'):\n${agentNames.join('\n')}`)
+      }
+    } catch (error) {
+      console.error('Failed to initialize agents:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Load agent definitions from ~/.coday/[project]/agents/ folder
+   * Each file should contain a single agent definition
+   */
+  private async loadFromFiles(context: CommandContext): Promise<void> {
+    const selectedProject = this.configService.selectedProject
+    if (!selectedProject) return
+
+    const agentsPath = path.join(selectedProject.configPath, 'agents')
+
+    try {
+      const files = await fs.readdir(agentsPath)
+      for (const file of files) {
+        if (!file.endsWith('.yml') && !file.endsWith('.yaml')) continue
+
+        try {
+          const content = await fs.readFile(path.join(agentsPath, file), 'utf-8')
+          const data = yaml.parse(content)
+
+          // const validation = validateAgentDefinition(data)
+          // if (validation.valid) {
+          this.tryAddAgent(data, context)
+          // } else {
+          //   console.warn(`Invalid agent definition in ${file}:\n${formatValidationErrors(validation.errors)}\nDefinition:`, data)
+          // }
+        } catch (error) {
+          console.error(`Error processing agent file ${file}:`, error)
+          // Continue to next file
+        }
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error
+      }
+      // Directory doesn't exist yet, which is fine
+    }
+  }
+
+  /**
+   * Find an agent by exact name match (case insensitive)
+   */
+  async findByName(name: string, context: CommandContext): Promise<Agent | undefined> {
+    await this.initialize(context)
+    return this.agents.get(name.toLowerCase())
+  }
+
+  /**
+   * Find agents by the start of their name (case insensitive)
+   * For example, "fid" will match "Fido_the_dog"
+   * Returns all matching agents or empty array if none found
+   */
+  async findAgentByNameStart(nameStart: string, context: CommandContext): Promise<Agent[]> {
+    await this.initialize(context)
+
+    const lowerNameStart = nameStart.toLowerCase()
+    const matches: Agent[] = []
+
+    for (const name of Array.from(this.agents.keys())) {
+      if (name.startsWith(lowerNameStart)) {
+        matches.push(this.agents.get(name)!)
+      }
+    }
+
+    return matches
+  }
+
+  /**
+   * Try to create and add an agent to the map
+   * Logs error if dependencies are missing
+   */
+  private tryAddAgent(partialDef: AgentDefinition, context: CommandContext): void {
+    const def = { ...CodayAgentDefinition, ...partialDef }
+
+    // force aiProvider for OpenAI assistants
+    if (def.openaiAssistantId) def.aiProvider = 'openai'
+
+    if (!this.aiClientProvider || !this.toolbox) {
+      console.error(`Cannot create agent ${def.name}: dependencies not set. Call setDependencies first.`)
+      return
+    }
+
+    const aiClient = this.aiClientProvider.getClient(def.aiProvider)
+    if (!aiClient) {
+      console.error(`Cannot create agent ${def.name}: AI client creation failed`)
+      return
+    }
+
+    const toolset = new ToolSet(this.toolbox.getTools(context))
+    const agent = new Agent(def, aiClient, context.project, toolset)
+    this.agents.set(agent.name.toLowerCase(), agent)
+    console.log(`Created agent ${def.name} with ${aiClient.name}`)
+  }
+
+  /**
+   * Get all available agents as summaries, optionally excluding some by name
+   */
+  async getAllAgents(context: CommandContext, excludeNames?: string[]): Promise<Agent[]> {
+    await this.initialize(context)
+
+    const excludeSet = excludeNames ? new Set(excludeNames.map((name) => name.toLowerCase())) : new Set<string>()
+
+    return Array.from(this.agents.entries())
+      .filter(([name]) => !excludeSet.has(name))
+      .map(([_, agent]) => agent)
+  }
+
+  kill(): void {
+    this.aiClientProvider.kill()
+  }
+}
