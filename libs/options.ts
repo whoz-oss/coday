@@ -6,6 +6,7 @@ export interface Argv {
   coday_project?: string
   prompt?: string[]
   oneshot?: boolean
+  fileReadOnly?: boolean
   _: (string | number)[]
   $0: string
 }
@@ -15,6 +16,7 @@ export interface CodayOptions {
   oneshot: boolean
   project?: string
   prompts: string[]
+  fileReadOnly: boolean
 }
 
 /**
@@ -38,15 +40,21 @@ export function parseCodayOptions(): CodayOptions {
       type: 'boolean',
       description: 'Run in one-shot mode (non-interactive)',
     })
+    .option('fileReadOnly', {
+      type: 'boolean',
+      description: 'Run in read-only mode for files (no write/delete operations)',
+    })
     .help().argv as Argv
 
   const projectName = argv.coday_project || (argv._[0] as string)
   const prompts = (argv.prompt || argv._.slice(1)) as string[]
   const oneshot = !!argv.oneshot
+  const fileReadOnly = !!argv.fileReadOnly
 
   return {
     oneshot,
     project: projectName,
     prompts,
+    fileReadOnly,
   }
 }

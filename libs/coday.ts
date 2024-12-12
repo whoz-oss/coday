@@ -14,14 +14,9 @@ import { AiClient, CommandContext, Interactor } from './model'
 import { configService } from './service/config.service'
 import { AnswerEvent, MessageEvent, TextEvent } from './shared/coday-events'
 import { AgentService } from './agent'
+import { CodayOptions } from './options'
 
 const MAX_ITERATIONS = 100
-
-interface CodayOptions {
-  oneshot: boolean
-  project?: string
-  prompts?: string[]
-}
 
 export class Coday {
   userInfo: os.UserInfo<string>
@@ -168,6 +163,7 @@ export class Coday {
       this.context = await this.configHandler.initContext(this.options.project)
       if (this.context) {
         this.context.oneshot = this.options.oneshot
+        this.context.fileReadOnly = this.options.fileReadOnly
         this.aiClient = new AiClientProvider(this.interactor).getClient()
         const agentService = new AgentService(configService, this.interactor)
         this.aiHandler = new AiHandler(this.interactor, agentService)

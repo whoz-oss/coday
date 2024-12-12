@@ -61,6 +61,7 @@ export class OpenaiClient extends AiClient {
   }
 
   async run(agent: Agent, thread: AiThread): Promise<Observable<CodayEvent>> {
+    thread.resetUsageForRun()
     if (agent.definition.openaiAssistantId) {
       // then use the stateful assistant API
       return this.runAssistant(agent, thread)
@@ -68,11 +69,6 @@ export class OpenaiClient extends AiClient {
 
     const openai = this.isOpenaiReady()
     if (!openai) return of()
-
-    thread.data.openai = {
-      price: 0,
-    }
-    thread.resetUsageForRun()
 
     const outputSubject: Subject<CodayEvent> = new Subject()
     const thinking = setInterval(() => this.interactor.thinking(), this.thinkingInterval)
@@ -141,6 +137,8 @@ export class OpenaiClient extends AiClient {
     const output = outputTokens * this.models[this.getModelSize(agent)].price.outputMTokens
     const cacheRead = cacheReadTokens * this.models[this.getModelSize(agent)].price.cacheRead
     const price = (input + output + cacheRead) / 1_000_000
+    console.log('thread usage', thread.price, thread.usage)
+    console.log('usage', usage)
 
     thread.addUsage({
       input: inputNoCacheTokens,
@@ -149,6 +147,7 @@ export class OpenaiClient extends AiClient {
       cache_write: 0, // cannot deduce it as not given and not priced in documentation
       price,
     })
+    console.log('thread usage', thread.price, thread.usage)
   }
 
   private isOpenaiReady(): OpenAI | undefined {
@@ -238,7 +237,7 @@ export class OpenaiClient extends AiClient {
 
     const messages = thread.getMessages()
     const lastMessageIndex = threadData.lastTimestamp
-      ? messages.findIndex((m) => m.timestamp === threadData.lastTimestamp)
+      ? messages.findIndex((m) => m.timestamp >= threadData.lastTimestamp!)
       : -1
     const messagesToUpload = messages.slice(lastMessageIndex + 1)
 
@@ -246,6 +245,7 @@ export class OpenaiClient extends AiClient {
       .then(async () => await this.processAssistantThread(openai, agent, thread, outputSubject))
       .finally(() => {
         clearInterval(thinking)
+        this.showAgent(agent, this.providerName, this.models[this.getModelSize(agent)].name)
         this.showUsage(thread)
         outputSubject.complete()
       })
@@ -275,7 +275,7 @@ export class OpenaiClient extends AiClient {
     if (m instanceof MessageEvent) {
       return {
         role: m.role,
-        content: `${m.name}: ${m.content}`,
+        content: m.content,
       }
     }
     if (m instanceof ToolResponseEvent) {
@@ -321,6 +321,11 @@ export class OpenaiClient extends AiClient {
     })
     for await (const chunk of stream) {
       this.interactor.thinking()
+      if (chunk.event === 'thread.run.completed') {
+        const data = chunk.data as unknown as any
+        this.updateUsage(data?.usage, agent, thread)
+      }
+
       if (chunk.event === 'thread.run.requires_action') {
         try {
           const toolRequests =
