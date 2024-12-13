@@ -5,6 +5,11 @@ import { HeartBeatEvent } from '@coday/shared/coday-events'
 import { Subscription } from 'rxjs'
 import { CodayOptions } from '@coday/options'
 
+// Debug logging function
+function debugLog(context: string, ...args: any[]) {
+  console.log(`[DEBUG ${context}] ${new Date().toISOString()}`, ...args)
+}
+
 export class ServerClient {
   private readonly heartbeatInterval: NodeJS.Timeout
   private terminationTimeout?: NodeJS.Timeout
@@ -36,19 +41,22 @@ export class ServerClient {
   private subscription?: Subscription
 
   reconnect(response: Response): void {
+    debugLog('CLIENT', `Client ${this.clientId} reconnecting`)
     this.response = response
     this.lastConnected = Date.now()
 
     if (this.terminationTimeout) {
+      debugLog('CLIENT', `Clearing termination timeout for client ${this.clientId}`)
       clearTimeout(this.terminationTimeout)
       delete this.terminationTimeout
-      console.log(`${new Date().toISOString()} Client ${this.clientId} reconnected, cleared termination`)
     }
 
     // Replay thread messages if we have an active Coday instance
     if (this.coday) {
-      console.log(`${new Date().toISOString()} Replaying messages for client ${this.clientId}`)
+      debugLog('CLIENT', `Replaying messages for client ${this.clientId}`)
       this.coday.replay()
+    } else {
+      debugLog('CLIENT', `No Coday instance to replay for client ${this.clientId}`)
     }
   }
 
@@ -57,12 +65,18 @@ export class ServerClient {
    * Returns true if new instance was created, false if existing instance was used.
    */
   startCoday(): boolean {
+    debugLog('CODAY', `Attempting to start Coday for client ${this.clientId}`)
     if (this.coday) {
-      return false // Already running
+      debugLog('CODAY', `Coday already running for client ${this.clientId}`)
+      return false
     }
 
+    debugLog('CODAY', `Creating new Coday instance for client ${this.clientId}`)
     this.coday = new Coday(this.interactor, this.options)
-    this.coday.run().finally(() => this.terminate(true))
+    this.coday.run().finally(() => {
+      debugLog('CODAY', `Coday run finished for client ${this.clientId}`)
+      this.terminate(true)
+    })
     return true
   }
 
@@ -72,38 +86,41 @@ export class ServerClient {
    * Otherwise schedule cleanup after SESSION_TIMEOUT.
    */
   terminate(immediate: boolean = false): void {
+    debugLog('CLIENT', `Terminating client ${this.clientId} (immediate: ${immediate})`)
+    
     // Clear heartbeat interval
     clearInterval(this.heartbeatInterval)
     this.response.end()
 
     if (immediate) {
+      debugLog('CLIENT', `Immediate cleanup for client ${this.clientId}`)
       this.cleanup()
-      console.log(`${new Date().toISOString()} Client ${this.clientId} terminated immediately`)
       return
     }
 
     // Stop Coday but keep it alive
-    this.coday?.stop()
+    if (this.coday) {
+      debugLog('CODAY', `Stopping Coday for client ${this.clientId}`)
+      this.coday.stop()
+    }
 
     // Clear any existing termination timeout
     if (this.terminationTimeout) {
+      debugLog('CLIENT', `Clearing existing termination timeout for client ${this.clientId}`)
       clearTimeout(this.terminationTimeout)
     }
 
     // Set new termination timeout
+    debugLog('CLIENT', `Setting termination timeout for client ${this.clientId}`)
     this.terminationTimeout = setTimeout(() => {
       const idleTime = Date.now() - this.lastConnected
       if (idleTime >= ServerClient.SESSION_TIMEOUT) {
+        debugLog('CLIENT', `Session expired for client ${this.clientId} after ${Math.round(idleTime / 1000)}s of inactivity`)
         this.cleanup()
-        console.log(
-          `${new Date().toISOString()} Client ${this.clientId} session expired after ${Math.round(idleTime / 1000)}s of inactivity`
-        )
+      } else {
+        debugLog('CLIENT', `Client ${this.clientId} still active, skipping cleanup`)
       }
     }, ServerClient.SESSION_TIMEOUT)
-
-    console.log(
-      `${new Date().toISOString()} Client ${this.clientId} disconnected, termination scheduled in ${ServerClient.SESSION_TIMEOUT / 1000}s`
-    )
   }
 
   /**
@@ -122,10 +139,11 @@ export class ServerClient {
 
   private sendHeartbeat(): void {
     try {
+      debugLog('HEARTBEAT', `Sending heartbeat to client ${this.clientId}`)
       const heartBeatEvent = new HeartBeatEvent({})
       this.interactor.sendEvent(heartBeatEvent)
     } catch (error) {
-      console.error('Error sending heartbeat:', error)
+      debugLog('HEARTBEAT', `Error sending heartbeat to client ${this.clientId}:`, error)
       this.terminate()
     }
   }
@@ -138,13 +156,19 @@ export class ServerClient {
   }
 
   private cleanup(): void {
+    debugLog('CLIENT', `Starting cleanup for client ${this.clientId}`)
     this.subscription?.unsubscribe()
-    this.coday?.kill()
-    delete this.coday
+    if (this.coday) {
+      debugLog('CODAY', `Killing Coday instance for client ${this.clientId}`)
+      this.coday.kill()
+      delete this.coday
+    }
     if (this.terminationTimeout) {
+      debugLog('CLIENT', `Clearing termination timeout during cleanup for client ${this.clientId}`)
       clearTimeout(this.terminationTimeout)
       delete this.terminationTimeout
     }
+    debugLog('CLIENT', `Cleanup completed for client ${this.clientId}`)
   }
 }
 
