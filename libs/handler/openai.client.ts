@@ -137,8 +137,6 @@ export class OpenaiClient extends AiClient {
     const output = outputTokens * this.models[this.getModelSize(agent)].price.outputMTokens
     const cacheRead = cacheReadTokens * this.models[this.getModelSize(agent)].price.cacheRead
     const price = (input + output + cacheRead) / 1_000_000
-    console.log('thread usage', thread.price, thread.usage)
-    console.log('usage', usage)
 
     thread.addUsage({
       input: inputNoCacheTokens,
@@ -147,7 +145,6 @@ export class OpenaiClient extends AiClient {
       cache_write: 0, // cannot deduce it as not given and not priced in documentation
       price,
     })
-    console.log('thread usage', thread.price, thread.usage)
   }
 
   private isOpenaiReady(): OpenAI | undefined {
