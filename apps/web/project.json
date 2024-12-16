@@ -59,7 +59,6 @@
       "options": {
         "commands": [
           "mv dist/web/server/package.json dist/web",
-          "mv dist/web/server/yarn.lock dist/web",
           "rm dist/web/client/package.json"
         ]
       }
