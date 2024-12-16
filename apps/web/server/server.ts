@@ -1,14 +1,11 @@
 import express from 'express'
 import path from 'path'
-import { fileURLToPath } from 'url'
 import { ServerClientManager } from './server-client'
 import { AnswerEvent } from '@coday/shared/coday-events'
 import { parseCodayOptions } from '@coday/options'
 
 const app = express()
 const PORT = process.env.PORT || 3000 // Default port as fallback
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
 
 // Debug logging function
 function debugLog(context: string, ...args: any[]) {
@@ -19,7 +16,7 @@ function debugLog(context: string, ...args: any[]) {
 const codayOptions = parseCodayOptions()
 debugLog('INIT', 'Coday options:', codayOptions)
 // Serve static files from the 'static' directory
-app.use(express.static(path.join(__dirname, '../frontend')))
+app.use(express.static(path.join(__dirname, '../client')))
 
 // Basic route to test server setup
 app.get('/', (req: express.Request, res: express.Response) => {
@@ -87,7 +84,7 @@ app.get('/events', (req: express.Request, res: express.Response) => {
   res.setHeader('Connection', 'keep-alive')
 
   const client = clientManager.getOrCreate(clientId, res, codayOptions)
-  
+
   // Handle client disconnect
   req.on('close', () => {
     debugLog('SSE', `Client ${clientId} disconnected`)

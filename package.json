@@ -2,10 +2,10 @@
   "name": "project",
   "version": "1.0.0",
   "description": "",
-  "type": "module",
+  "type": "commonjs",
   "scripts": {
-    "start": "nx run coday:start-in-terminal",
-    "web": "nx run backend:serve",
+    "start": "nx run terminal:serve",
+    "web": "nx run web:serve",
     "test": "nx jest:test",
     "test:watch": "nx jest:test --watch",
     "test:coverage": "nx jest:test --coverage"

@@ -1,7 +1,7 @@
-import { Coday } from './coday'
-import { TerminalInteractor } from './terminal-interactor'
+import { Coday } from '@coday/core'
+import { parseCodayOptions } from '@coday/options'
 import { TerminalNonInteractiveInteractor } from './terminal-non-interactive-interactor'
-import { parseCodayOptions } from './options'
+import { TerminalInteractor } from './terminal-interactor'
 
 const options = parseCodayOptions()
 

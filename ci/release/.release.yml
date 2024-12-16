@@ -1,0 +1,9 @@
+🚀-release:
+  stage: 🚀-release
+  needs: [ 1️⃣-init-repository, 🏗-build ]
+  script:
+    - |
+      yarn nx release
+  rules:
+    - if: $CI_COMMIT_REF_PROTECTED == "true" && $FORCE_PACKAGE_JOBS == "true"
+    - if: $CI_MERGE_REQUEST_ID == null && $CI_COMMIT_REF_NAME == $MASTER_BRANCH

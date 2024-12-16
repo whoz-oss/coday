@@ -28,5 +28,15 @@
         "targetName": "lint"
       }
     }
-  ]
+  ],
+  "release": {
+    "projects": ["apps/*"],
+    "releaseTagPattern": "release/{version}",
+    "git": {
+      "commitMessage": "chore(release): {version}"
+    },
+    "version": {
+      "preVersionCommand": "npx nx run-many -t build"
+    }
+  }
 }
