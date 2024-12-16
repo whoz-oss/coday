@@ -12,6 +12,14 @@
       "dependsOn": ["^build"],
       "inputs": ["default", "^default"]
     },
+    "nx-release-publish": {
+      "dependsOn": [
+        "web:build"
+      ],
+      "options": {
+        "packageRoot": "dist/web"
+      }
+    },
     "lint": {
       "cache": true
     },
@@ -39,13 +47,13 @@
     }
   ],
   "release": {
-    "projects": ["apps/*"],
+    "projects": ["web"],
     "releaseTagPattern": "release/{version}",
     "git": {
       "commitMessage": "chore(release): {version}"
     },
     "version": {
-      "preVersionCommand": "npx nx run-many -t build"
+      "preVersionCommand": "npx nx run web:build"
     }
   }
 }
