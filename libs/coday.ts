@@ -143,6 +143,7 @@ export class Coday {
     const thread = this.context?.aiThread
     if (thread) thread.runStatus = RunStatus.STOPPED
     this.handlerLooper?.stop()
+    this.aiThreadService.autoSave()
   }
 
   /**

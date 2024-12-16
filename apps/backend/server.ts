@@ -10,9 +10,14 @@ const PORT = process.env.PORT || 3000 // Default port as fallback
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+// Debug logging function
+function debugLog(context: string, ...args: any[]) {
+  console.log(`[DEBUG ${context}] ${new Date().toISOString()}`, ...args)
+}
+
 // Parse options once for all clients
 const codayOptions = parseCodayOptions()
-console.log('Coday options:', codayOptions)
+debugLog('INIT', 'Coday options:', codayOptions)
 // Serve static files from the 'static' directory
 app.use(express.static(path.join(__dirname, '../frontend')))
 
@@ -70,7 +75,9 @@ app.post('/api/message', (req: express.Request, res: express.Response) => {
 // Implement SSE for Heartbeat
 app.get('/events', (req: express.Request, res: express.Response) => {
   const clientId = req.query.clientId as string
+  debugLog('SSE', `New connection request for client ${clientId}`)
   if (!clientId) {
+    debugLog('SSE', 'Rejected: No client ID provided')
     res.status(400).send('Client ID is required')
     return
   }
@@ -80,13 +87,18 @@ app.get('/events', (req: express.Request, res: express.Response) => {
   res.setHeader('Connection', 'keep-alive')
 
   const client = clientManager.getOrCreate(clientId, res, codayOptions)
-
+  
   // Handle client disconnect
-  req.on('close', () => client.terminate())
+  req.on('close', () => {
+    debugLog('SSE', `Client ${clientId} disconnected`)
+    client.terminate()
+  })
 
   // Start Coday if it's a new client
   if (client.startCoday()) {
-    console.log(`${new Date().toISOString()} Client ${clientId} connected`)
+    debugLog('SSE', `New Coday instance started for client ${clientId}`)
+  } else {
+    debugLog('SSE', `Existing Coday instance reused for client ${clientId}`)
   }
 })
 
