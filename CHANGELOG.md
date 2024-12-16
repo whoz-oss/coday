@@ -1,3 +1,15 @@
+## 0.0.1-0 (2024-12-16)
+
+### 🚀 Features
+
+- **coday.yaml:** add raw agents for testing
+- **log:** log in frontend and backend to better diagnose the spurious disconnection and loss of context
+- **thread:** add autosave
+
+### ❤️ Thank You
+
+- vincent.audibert
+
 # 1.2.0 (2024-12-12)
 
 This was a version bump only, there were no code changes.
