@@ -1,22 +1,17 @@
-import {FlatCompat} from "@eslint/eslintrc";
+const FlatCompat = require('@eslint/eslintrc').FlatCompat
+const nxEslintPlugin = require('@nx/eslint-plugin')
 
-import nxEslintPlugin from "@nx/eslint-plugin";
+const eslintPluginPrettier = require('eslint-plugin-prettier')
 
-import eslintPluginPrettier from "eslint-plugin-prettier";
-
-import js from "@eslint/js";
-import {fileURLToPath} from "url";
-import path from "path";
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const js = require('@eslint/js')
 const compat = new FlatCompat({
   baseDirectory: __dirname,
   recommendedConfig: js.configs.recommended,
 })
 
-export default [
+module.exports = [
   ...compat.extends('prettier'),
-  ...compat.config({parser: 'jsonc-eslint-parser'}).map((config) => ({
+  ...compat.config({ parser: 'jsonc-eslint-parser' }).map((config) => ({
     ...config,
     files: ['**/*.json'],
     rules: {
@@ -47,12 +42,12 @@ export default [
             {
               onlyDependOnLibsWithTags: ['*'],
               sourceTag: '*',
-            }
+            },
           ],
           enforceBuildableLibDependency: false,
         },
       ],
-    }
+    },
   },
   ...compat
     .config({
@@ -65,7 +60,7 @@ export default [
       rules: {
         ...config.rules,
         '@typescript-eslint/adjacent-overload-signatures': 'off',
-        '@typescript-eslint/ban-ts-comment': ['warn', {'ts-ignore': 'allow-with-description'}],
+        '@typescript-eslint/ban-ts-comment': ['warn', { 'ts-ignore': 'allow-with-description' }],
         '@typescript-eslint/consistent-type-definitions': 'off',
         '@typescript-eslint/dot-notation': 'off',
         '@typescript-eslint/member-ordering': 'off',
@@ -204,11 +199,11 @@ export default [
         quotes: 'off',
       },
     })),
-  ...compat.config({env: {jest: true}}).map((config) => ({
+  ...compat.config({ env: { jest: true } }).map((config) => ({
     ...config,
     files: ['**/*.spec.ts', '**/*.spec.tsx', '**/*.spec.js', '**/*.spec.jsx'],
     rules: {
       ...config.rules,
     },
   })),
-];
+]
