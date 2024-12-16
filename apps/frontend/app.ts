@@ -5,6 +5,18 @@ import { buildCodayEvent, CodayEvent, ErrorEvent } from '@coday/shared/coday-eve
 import { CodayEventHandler } from './utils/coday-event-handler'
 import { HeaderComponent } from './header/header.component'
 
+// Debug logging function
+function debugLog(context: string, ...args: any[]) {
+  console.log(`[DEBUG ${context}]`, ...args)
+}
+
+// Add global test function
+declare global {
+  interface Window {
+    triggerTestDisconnect: () => void
+  }
+}
+
 /**
  * This is a nice temporary workaround for session re-connect
  * Target behavior would be to have frontend routes /project/{projectId} and /project/{projectId}/thread/{threadId} to manage state properly, but backend is not ready yet.
@@ -28,9 +40,10 @@ function getOrCreateClientId(): string {
 }
 
 const clientId = getOrCreateClientId()
-console.log(`Session started with clientId: ${clientId}`)
+debugLog('INIT', `Session started with clientId: ${clientId}`)
 
 function postEvent(event: CodayEvent): Promise<Response> {
+  debugLog('API', 'Posting event:', event)
   return fetch(`/api/message?clientId=${clientId}`, {
     method: 'POST',
     headers: {
@@ -42,6 +55,7 @@ function postEvent(event: CodayEvent): Promise<Response> {
 
 // Define stop callback
 const handleStop = () => {
+  debugLog('API', 'Stopping execution')
   fetch(`/api/stop?clientId=${clientId}`, { method: 'POST' }).catch((error) =>
     console.error('Error stopping execution:', error)
   )
@@ -58,18 +72,22 @@ const MAX_RECONNECT_ATTEMPTS = 3
 const RECONNECT_DELAY = 2000 // 2 seconds
 
 function setupEventSource() {
+  debugLog('SSE', 'Setting up new EventSource')
   if (eventSource) {
+    debugLog('SSE', 'Closing existing EventSource')
     eventSource.close()
   }
 
   eventSource = new EventSource(`/events?clientId=${clientId}`)
 
   eventSource.onmessage = (event) => {
+    debugLog('SSE', 'Received message:', event.data)
     reconnectAttempts = 0 // Reset on successful message
     try {
       const data = JSON.parse(event.data)
       const codayEvent = buildCodayEvent(data)
       if (codayEvent) {
+        debugLog('EVENT', 'Processing event:', codayEvent)
         components.forEach((c) => c.handle(codayEvent))
       }
     } catch (error: any) {
@@ -78,16 +96,17 @@ function setupEventSource() {
   }
 
   eventSource.onopen = () => {
-    console.log('Connection established')
+    debugLog('SSE', 'Connection established')
     reconnectAttempts = 0 // Reset on successful connection
   }
 
   eventSource.onerror = (error) => {
-    console.error('EventSource error:', error)
+    debugLog('SSE', 'EventSource error:', error)
 
     if (eventSource?.readyState === EventSource.CLOSED) {
+      debugLog('SSE', 'Connection closed')
       if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-        console.log(`Connection lost. Attempting to reconnect (${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`)
+        debugLog('SSE', `Attempting reconnect ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS}`)
         components.forEach((c) =>
           c.handle(
             new ErrorEvent({
@@ -101,7 +120,7 @@ function setupEventSource() {
           setupEventSource()
         }, RECONNECT_DELAY)
       } else {
-        console.error('Max reconnection attempts reached')
+        debugLog('SSE', 'Max reconnection attempts reached')
         components.forEach((c) =>
           c.handle(new ErrorEvent({ error: 'Connection lost permanently. Please refresh the page.' }))
         )
@@ -109,6 +128,15 @@ function setupEventSource() {
     }
   }
 }
+
+// Wrap component handlers with debug logs
+components.forEach((c) => {
+  const originalHandle = c.handle.bind(c)
+  c.handle = (event: CodayEvent) => {
+    debugLog('COMPONENT', `${c.constructor.name} handling event:`, event)
+    originalHandle(event)
+  }
+})
 
 // Initial setup
 setupEventSource()

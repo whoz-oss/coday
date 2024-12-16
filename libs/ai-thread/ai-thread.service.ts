@@ -112,12 +112,21 @@ export class AiThreadService {
       thread.name = newName
     }
     await repository.save(thread)
-    this.activeThread$.next(thread)
 
     // TODO: Post-processing
     // - Summarization
     // - Memory extraction
     // - Knowledge sharing
+  }
+
+  async autoSave(): Promise<void> {
+    const thread = this.activeThread$.value
+    if (!thread?.id) {
+      return
+    }
+    const repository = await this.getRepository()
+    console.log('autosaving')
+    await repository.save(thread)
   }
 
   /**
