@@ -5,10 +5,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "nx run terminal:serve",
-    "web": "nx run web:serve",
-    "test": "nx jest:test",
-    "test:watch": "nx jest:test --watch",
-    "test:coverage": "nx jest:test --coverage"
+    "web": "nx run web:serve"
   },
   "author": "vincent.audibert@whoz.com",
   "license": "MIT",
@@ -50,6 +47,7 @@
     "eslint-plugin-prettier": "^5.2.1",
     "husky": "^9.1.7",
     "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
     "jest-environment-node": "^29.7.0",
     "jsdom": "~25.0.1",
     "lint-staged": "^15.2.10",

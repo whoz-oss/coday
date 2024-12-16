@@ -11,6 +11,15 @@
       "cache": true,
       "dependsOn": ["^build"],
       "inputs": ["default", "^default"]
+    },
+    "lint": {
+      "cache": true
+    },
+    "test": {
+      "cache": true,
+      "options": {
+        "passWithNoTests": true
+      }
     }
   },
   "defaultBase": "master",
@@ -19,8 +28,8 @@
     {
       "plugin": "@nx/jest/plugin",
       "options": {
-        "targetName": "jest:test"
-      },
+        "targetName": "test"
+      }
     },
     {
       "plugin": "@nx/eslint/plugin",

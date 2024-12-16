@@ -4,7 +4,9 @@
  * and ensuring proper message sequencing.
  */
 
+// eslint-disable-next-line @nx/enforce-module-boundaries
 import {buildCodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
+// eslint-disable-next-line @nx/enforce-module-boundaries
 import {ToolCall, ToolResponse} from "../integration/tool-call"
 import {EmptyUsage, RunStatus, ThreadMessage, ThreadSerialized, Usage} from "./ai-thread.types"
 

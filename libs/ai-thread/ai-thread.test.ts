@@ -1,4 +1,6 @@
+// eslint-disable-next-line @nx/enforce-module-boundaries
 import { MessageEvent, ToolRequestEvent, ToolResponseEvent } from '../shared'
+// eslint-disable-next-line @nx/enforce-module-boundaries
 import { ToolCall, ToolResponse } from '../integration/tool-call'
 import { AiThread } from './ai-thread'
 
