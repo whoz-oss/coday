@@ -1,5 +1,5 @@
 /** @type {import('ts-jest').JestConfigWithTsJest} */
-module.exports = {
+export default {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>'],
@@ -14,4 +14,4 @@ module.exports = {
   coveragePathIgnorePatterns: ['/node_modules/', '/__tests__/', '/dist/'],
   // Useful for debugging
   verbose: true,
-}
+};
