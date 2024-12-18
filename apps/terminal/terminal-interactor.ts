@@ -1,7 +1,15 @@
 import { input, select } from '@inquirer/prompts'
 import chalk from 'chalk'
-import { Interactor } from './model'
-import { AnswerEvent, ChoiceEvent, ErrorEvent, InviteEvent, TextEvent, ThinkingEvent, WarnEvent } from './shared'
+import { Interactor } from '@coday/model/interactor'
+import {
+  AnswerEvent,
+  ChoiceEvent,
+  ErrorEvent,
+  InviteEvent,
+  TextEvent,
+  ThinkingEvent,
+  WarnEvent,
+} from '@coday/shared/coday-events'
 
 export class TerminalInteractor extends Interactor {
   private interactionInProgress = false

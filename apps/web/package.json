@@ -1,0 +1,7 @@
+{
+  "name": "@biznet.io/coday-web",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "0.0.1-4"
+}
