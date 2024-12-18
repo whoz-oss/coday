@@ -10,6 +10,7 @@ import { AiThreadRepository } from './ai-thread.repository'
 import { AiThreadRepositoryFactory } from './repository/ai-thread.repository.factory'
 import { filter } from 'rxjs/operators'
 import { ThreadSummary } from './ai-thread.types'
+// eslint-disable-next-line @nx/enforce-module-boundaries
 import { UserService } from '../service/user.service'
 
 export class AiThreadService {
