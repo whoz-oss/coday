@@ -4,11 +4,11 @@ import { Coday } from '@coday/core'
 import { HeartBeatEvent } from '@coday/shared/coday-events'
 import { Subscription } from 'rxjs'
 import { CodayOptions } from '@coday/options'
-
-// Debug logging function
-function debugLog(context: string, ...args: any[]) {
-  console.log(`[DEBUG ${context}] ${new Date().toISOString()}`, ...args)
-}
+import { UserService } from '@coday/service/user.service'
+import { ProjectService } from '@coday/service/project.service'
+import { IntegrationService } from '@coday/service/integration.service'
+import { MemoryService } from '@coday/service/memory.service'
+import { debugLog } from './log'
 
 export class ServerClient {
   private readonly heartbeatInterval: NodeJS.Timeout
@@ -23,7 +23,8 @@ export class ServerClient {
     private readonly clientId: string,
     private response: Response,
     private readonly interactor: ServerInteractor,
-    private readonly options: CodayOptions
+    private readonly options: CodayOptions,
+    private readonly username: string
   ) {
     // Subscribe to interactor events
     this.subscription = this.interactor.events.subscribe((event) => {
@@ -70,9 +71,18 @@ export class ServerClient {
       debugLog('CODAY', `Coday already running for client ${this.clientId}`)
       return false
     }
+    const user = new UserService(this.options.configDir, this.username)
+    const project = new ProjectService(this.interactor, this.options.configDir)
+    const integration = new IntegrationService(project, user)
+    const memory = new MemoryService(project, user)
 
     debugLog('CODAY', `Creating new Coday instance for client ${this.clientId}`)
-    this.coday = new Coday(this.interactor, this.options)
+    this.coday = new Coday(this.interactor, this.options, {
+      user,
+      project,
+      integration,
+      memory,
+    })
     this.coday.run().finally(() => {
       debugLog('CODAY', `Coday run finished for client ${this.clientId}`)
       this.terminate(true)
@@ -87,7 +97,7 @@ export class ServerClient {
    */
   terminate(immediate: boolean = false): void {
     debugLog('CLIENT', `Terminating client ${this.clientId} (immediate: ${immediate})`)
-    
+
     // Clear heartbeat interval
     clearInterval(this.heartbeatInterval)
     this.response.end()
@@ -115,7 +125,10 @@ export class ServerClient {
     this.terminationTimeout = setTimeout(() => {
       const idleTime = Date.now() - this.lastConnected
       if (idleTime >= ServerClient.SESSION_TIMEOUT) {
-        debugLog('CLIENT', `Session expired for client ${this.clientId} after ${Math.round(idleTime / 1000)}s of inactivity`)
+        debugLog(
+          'CLIENT',
+          `Session expired for client ${this.clientId} after ${Math.round(idleTime / 1000)}s of inactivity`
+        )
         this.cleanup()
       } else {
         debugLog('CLIENT', `Client ${this.clientId} still active, skipping cleanup`)
@@ -172,7 +185,7 @@ export class ServerClient {
   }
 }
 
-/**
+/*2*
  * Manages all active server clients
  */
 export class ServerClientManager {
@@ -181,7 +194,7 @@ export class ServerClientManager {
   /**
    * Get or create a client for the given clientId
    */
-  getOrCreate(clientId: string, response: Response, options: CodayOptions): ServerClient {
+  getOrCreate(clientId: string, response: Response, options: CodayOptions, username: string): ServerClient {
     const existingClient = this.clients.get(clientId)
     if (existingClient) {
       existingClient.reconnect(response)
@@ -189,7 +202,7 @@ export class ServerClientManager {
     }
 
     const interactor = new ServerInteractor(clientId)
-    const client = new ServerClient(clientId, response, interactor, options)
+    const client = new ServerClient(clientId, response, interactor, options, username)
     this.clients.set(clientId, client)
     return client
   }

@@ -1,18 +1,18 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import * as yaml from 'yaml'
 import { Interactor, ProjectDescription } from '../model'
-// @ts-ignore
-import path, { join } from 'path'
+import * as path from 'node:path'
 import { findFilesByName } from '../function/find-files-by-name'
-import { memoryService } from './memory.service'
 import { MemoryLevel } from '../model/memory'
+import { CodayServices } from '../coday-services'
 
 const CONFIG_FILENAME_YAML = 'coday.yaml'
 
 export const loadOrInitProjectDescription = async (
   projectPath: string,
   interactor: Interactor,
-  username: string
+  username: string,
+  services: CodayServices
 ): Promise<ProjectDescription> => {
   let absoluteProjectDescriptionPath: string | null = null
   let projectDescription: ProjectDescription
@@ -25,7 +25,7 @@ export const loadOrInitProjectDescription = async (
     )
   }
   if (foundFiles.length === 1) {
-    absoluteProjectDescriptionPath = join(projectPath, foundFiles[0])
+    absoluteProjectDescriptionPath = path.join(projectPath, foundFiles[0])
   }
 
   if (!absoluteProjectDescriptionPath || !existsSync(absoluteProjectDescriptionPath)) {
@@ -44,7 +44,7 @@ export const loadOrInitProjectDescription = async (
       },
     }
     const yamlConfig = yaml.stringify(projectDescription)
-    const projectConfigPath = join(projectPath, CONFIG_FILENAME_YAML)
+    const projectConfigPath = path.join(projectPath, CONFIG_FILENAME_YAML)
     writeFileSync(projectConfigPath, yamlConfig)
     interactor.displayText(`Project configuration created at: ${projectConfigPath}`)
   } else {
@@ -97,7 +97,7 @@ export const loadOrInitProjectDescription = async (
     
     You are interacting with a human with username: ${username}`
 
-  const userMemories = memoryService.listMemories(MemoryLevel.USER).map((m) => `  - ${m.title}\n    ${m.content}`)
+  const userMemories = services.memory.listMemories(MemoryLevel.USER).map((m) => `  - ${m.title}\n    ${m.content}`)
   let userMemoryText = ''
   if (userMemories) {
     interactor.displayText(`Loaded ${userMemories.length} user memories`)
@@ -109,7 +109,9 @@ export const loadOrInitProjectDescription = async (
     }
   }
 
-  const projectMemories = memoryService.listMemories(MemoryLevel.PROJECT).map((m) => `  - ${m.title}\n    ${m.content}`)
+  const projectMemories = services.memory
+    .listMemories(MemoryLevel.PROJECT)
+    .map((m) => `  - ${m.title}\n    ${m.content}`)
   let projectMemoryText = ''
   if (projectMemories) {
     interactor.displayText(`Loaded ${projectMemories.length} project memories`)
