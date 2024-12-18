@@ -3,10 +3,10 @@ import { parseCodayOptions } from '@coday/options'
 import { TerminalNonInteractiveInteractor } from './terminal-non-interactive-interactor'
 import { TerminalInteractor } from './terminal-interactor'
 import * as os from 'node:os'
-import { UserService } from './service/user.service'
-import { ProjectService } from './service/project.service'
-import { IntegrationService } from './service/integration.service'
-import { MemoryService } from './service/memory.service'
+import { UserService } from '@coday/service/user.service'
+import { ProjectService } from '@coday/service/project.service'
+import { IntegrationService } from '@coday/service/integration.service'
+import { MemoryService } from '@coday/service/memory.service'
 
 const options = parseCodayOptions()
 

@@ -8,16 +8,12 @@
       "outputs": ["{options.outputPath}"],
       "options": {
         "assets": [],
-        "esbuildOptions": {
-          "outExtension": {
-            ".js": ".js"
-          }
-        },
         "format": ["cjs"],
         "main": "apps/terminal/terminal.ts",
-        "outputFileName": "terminal.js",
+        "outputFileName": "terminal.cjs",
         "outputPath": "dist/terminal",
         "platform": "node",
+        "thirdParty": true,
         "tsConfig": "tsconfig.base.json"
       }
     },
@@ -25,7 +21,7 @@
       "executor": "nx:run-commands",
       "dependsOn": ["terminal:build"],
       "options": {
-        "commands": ["node dist/terminal/terminal.js"],
+        "commands": ["node dist/terminal/terminal.cjs"],
         "parallel": false
       }
     }
