@@ -2,7 +2,7 @@ import { getMergeRequest } from './get-merge-request'
 import { addGlobalComment } from './add-global-comment'
 import { addMRThread } from './add-mr-thread'
 import { getIssue } from './get-issue'
-import { integrationService } from '../../service/integration.service'
+import { IntegrationService } from '../../service/integration.service'
 import { CommandContext, Interactor } from '../../model'
 import { listIssues } from './list-issues'
 import { listMergeRequests } from './list-merge-requests'
@@ -10,7 +10,10 @@ import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 
 export class GitLabTools extends AssistantToolFactory {
-  constructor(interactor: Interactor) {
+  constructor(
+    interactor: Interactor,
+    private integrationService: IntegrationService
+  ) {
     super(interactor)
   }
 
@@ -20,7 +23,7 @@ export class GitLabTools extends AssistantToolFactory {
 
   protected buildTools(context: CommandContext): CodayTool[] {
     const result: CodayTool[] = []
-    const gitlab = integrationService.getIntegration('GITLAB')
+    const gitlab = this.integrationService.getIntegration('GITLAB')
     if (!gitlab) {
       return result
     }

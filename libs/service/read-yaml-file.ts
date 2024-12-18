@@ -6,6 +6,11 @@ export function readYamlFile<T>(filePath: string): T | undefined {
     if (!existsSync(filePath)) {
       return undefined
     }
+
+    /* consider :
+        import * as fs from "fs/promises"
+        await fs.readFile(filePath, 'utf-8')
+     */
     const content = readFileSync(filePath, 'utf-8')
     return yaml.parse(content) as T
   } catch (error) {

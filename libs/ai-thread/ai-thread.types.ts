@@ -2,7 +2,7 @@
  * @fileoverview Type definitions for thread-related structures
  */
 
-import {MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
+import {MessageEvent, ToolRequestEvent, ToolResponseEvent} from '../shared/coday-events'
 
 /**
  * Union type representing all possible message types in a thread:
@@ -17,6 +17,7 @@ export type ThreadMessage = MessageEvent | ToolRequestEvent | ToolResponseEvent
  */
 export type ThreadSerialized = {
   id: string
+  username: string
   messages?: any[]
   name?: string
   summary?: string
@@ -27,6 +28,7 @@ export type ThreadSerialized = {
 
 export interface ThreadSummary {
   id: string
+  username: string
   name: string
   summary: string
   createdDate: string

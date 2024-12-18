@@ -1,12 +1,15 @@
 import { retrieveConfluencePage } from './retrieve-confluence-page'
 import { searchConfluencePages } from './search-confluence-pages'
-import { integrationService } from '../../service/integration.service'
+import { IntegrationService } from '../../service/integration.service'
 import { CommandContext, Interactor } from '../../model'
 import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 
 export class ConfluenceTools extends AssistantToolFactory {
-  constructor(interactor: Interactor) {
+  constructor(
+    interactor: Interactor,
+    private integrationService: IntegrationService
+  ) {
     super(interactor)
   }
 
@@ -16,13 +19,13 @@ export class ConfluenceTools extends AssistantToolFactory {
 
   protected buildTools(context: CommandContext): CodayTool[] {
     const result: CodayTool[] = []
-    if (!integrationService.hasIntegration('CONFLUENCE')) {
+    if (!this.integrationService.hasIntegration('CONFLUENCE')) {
       return result
     }
 
-    const confluenceBaseUrl = integrationService.getApiUrl('CONFLUENCE')
-    const confluenceUsername = integrationService.getUsername('CONFLUENCE')
-    const confluenceApiToken = integrationService.getApiKey('CONFLUENCE')
+    const confluenceBaseUrl = this.integrationService.getApiUrl('CONFLUENCE')
+    const confluenceUsername = this.integrationService.getUsername('CONFLUENCE')
+    const confluenceApiToken = this.integrationService.getApiKey('CONFLUENCE')
     if (!(confluenceBaseUrl && confluenceUsername && confluenceApiToken)) {
       return result
     }

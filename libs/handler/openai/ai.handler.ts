@@ -69,7 +69,6 @@ export class AiHandler extends CommandHandler {
     let name = nameStart
     if (!nameStart.trim()) {
       if (this.lastAgentName) {
-        console.log('Selecting last agent')
         name = this.lastAgentName
       } else {
         this.interactor.displayText('Selecting Coday')
