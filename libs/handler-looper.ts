@@ -16,10 +16,10 @@ import {
   RunBashHandler,
   SubTaskHandler,
 } from './handler'
-import { integrationService } from './service/integration.service'
 import { AiThreadService } from './ai-thread/ai-thread.service'
 import { keywords } from './keywords'
 import { RunStatus } from './ai-thread/ai-thread.types'
+import { CodayServices } from './coday-services'
 
 const MAX_ITERATIONS = 100
 
@@ -33,16 +33,18 @@ export class HandlerLooper {
   constructor(
     private interactor: Interactor,
     private aiHandler: AiHandler,
-    private aiThreadService: AiThreadService
+    private aiThreadService: AiThreadService,
+    private configHandler: ConfigHandler,
+    private services: CodayServices // unused temporarily...
   ) {}
 
-  init(username: string, projectDescription: ProjectDescription | null) {
+  init(projectDescription: ProjectDescription | null) {
     try {
       const subTaskHandler = new SubTaskHandler(this.interactor)
       const queryHandler = new AddQueryHandler(this.interactor)
-      const memoryHandler = new MemoryHandler(this.interactor)
+      const memoryHandler = new MemoryHandler(this.interactor, this.services.memory)
       this.handlers = [
-        new ConfigHandler(this.interactor, username),
+        this.configHandler,
         new GitHandler(this.interactor),
         new RunBashHandler(this.interactor),
         new DebugHandler(),
@@ -72,7 +74,7 @@ export class HandlerLooper {
       // Apply filtering based on required integrations
       this.handlers = this.handlers.filter((handler) =>
         handler.requiredIntegrations.every((requiredIntegration) =>
-          integrationService.hasIntegration(requiredIntegration)
+          this.services.integration.hasIntegration(requiredIntegration)
         )
       )
     } catch (error) {

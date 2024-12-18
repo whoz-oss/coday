@@ -23,7 +23,7 @@ export abstract class Interactor {
   }
 
   async promptText(invite: string, defaultText?: string): Promise<string> {
-    const inviteEvent = new InviteEvent({ invite })
+    const inviteEvent = new InviteEvent({ invite, defaultValue: defaultText })
     this.lastInviteEvent = inviteEvent
     const answer: Observable<string> = this.events.pipe(
       filter((e) => e.parentKey === inviteEvent.timestamp),
@@ -78,7 +78,6 @@ export abstract class Interactor {
   }
 
   kill() {
-    console.log('')
     this.subs.forEach((s) => s.unsubscribe())
   }
 }

@@ -4,16 +4,14 @@ import { fileURLToPath } from 'url'
 import { ServerClientManager } from './server-client'
 import { AnswerEvent } from '@coday/shared/coday-events'
 import { parseCodayOptions } from '@coday/options'
+import * as os from 'node:os'
+import { debugLog } from './log'
 
 const app = express()
 const PORT = process.env.PORT || 3000 // Default port as fallback
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-
-// Debug logging function
-function debugLog(context: string, ...args: any[]) {
-  console.log(`[DEBUG ${context}] ${new Date().toISOString()}`, ...args)
-}
+const EMAIL_HEADER = 'X-Forwarded-Email'
 
 // Parse options once for all clients
 const codayOptions = parseCodayOptions()
@@ -36,6 +34,7 @@ const clientManager = new ServerClientManager()
 app.post('/api/stop', (req: express.Request, res: express.Response) => {
   try {
     const clientId = req.query.clientId as string
+    debugLog('STOP', `clientId: ${clientId}`)
     const client = clientManager.get(clientId)
 
     if (!client) {
@@ -56,6 +55,7 @@ app.post('/api/message', (req: express.Request, res: express.Response) => {
   try {
     const payload = req.body
     const clientId = req.query.clientId as string
+    debugLog('MESSAGE', `clientId: ${clientId}, received message`)
     const client = clientManager.get(clientId)
 
     if (!client) {
@@ -76,6 +76,18 @@ app.post('/api/message', (req: express.Request, res: express.Response) => {
 app.get('/events', (req: express.Request, res: express.Response) => {
   const clientId = req.query.clientId as string
   debugLog('SSE', `New connection request for client ${clientId}`)
+
+  // handle username header coming from auth (or local frontend) or local in noAuth
+  const usernameHeaderValue = codayOptions.noAuth ? os.userInfo().username : req.headers[EMAIL_HEADER]
+  debugLog('SSE', `Connection started, clientId: ${clientId}, username: ${usernameHeaderValue}`)
+  if (!usernameHeaderValue || !(typeof usernameHeaderValue === 'string')) {
+    debugLog('SSE', 'Rejected: No username provided')
+    res.status(400).send(`Invalid or missing request headers '${EMAIL_HEADER}'.`)
+    return
+  }
+  const username = usernameHeaderValue as string
+
+  // handle clientId, identifying the browser session
   if (!clientId) {
     debugLog('SSE', 'Rejected: No client ID provided')
     res.status(400).send('Client ID is required')
@@ -86,8 +98,8 @@ app.get('/events', (req: express.Request, res: express.Response) => {
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
 
-  const client = clientManager.getOrCreate(clientId, res, codayOptions)
-  
+  const client = clientManager.getOrCreate(clientId, res, codayOptions, username)
+
   // Handle client disconnect
   req.on('close', () => {
     debugLog('SSE', `Client ${clientId} disconnected`)

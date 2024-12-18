@@ -30,6 +30,9 @@
       ],
       "@coday/shared/*": [
         "libs/shared/*"
+      ],
+      "@coday/service/*": [
+        "libs/service/*"
       ]
     },
     "skipDefaultLibCheck": true,

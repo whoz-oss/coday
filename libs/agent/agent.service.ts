@@ -3,25 +3,24 @@ import * as path from 'path'
 import * as yaml from 'yaml'
 import { AiClientProvider } from '../integration/ai/ai-client-provider'
 import { Toolbox } from '../integration/toolbox'
-import { ConfigService } from '../service/config.service'
 import { Agent, AgentDefinition, CodayAgentDefinition, CommandContext, Interactor } from '../model'
 import { ToolSet } from '../integration/tool-set'
+import { CodayServices } from '../coday-services'
 
 export class AgentService {
   private agents: Map<string, Agent> = new Map()
-  private aiClientProvider: AiClientProvider
   private toolbox: Toolbox
 
   constructor(
-    private configService: ConfigService,
-    private interactor: Interactor
+    private interactor: Interactor,
+    private aiClientProvider: AiClientProvider,
+    private services: CodayServices
   ) {
     // Subscribe to project changes to reset agents
-    this.configService.selectedProject$.subscribe(() => {
+    this.services.project.selectedProject$.subscribe(() => {
       this.agents.clear()
     })
-    this.aiClientProvider = new AiClientProvider(interactor)
-    this.toolbox = new Toolbox(this.interactor)
+    this.toolbox = new Toolbox(this.interactor, services)
   }
 
   /**
@@ -61,11 +60,56 @@ export class AgentService {
   }
 
   /**
+   * Find an agent by exact name match (case insensitive)
+   */
+  async findByName(name: string, context: CommandContext): Promise<Agent | undefined> {
+    await this.initialize(context)
+    return this.agents.get(name.toLowerCase())
+  }
+
+  /**
+   * Find agents by the start of their name (case insensitive)
+   * For example, "fid" will match "Fido_the_dog"
+   * Returns all matching agents or empty array if none found
+   */
+  async findAgentByNameStart(nameStart: string, context: CommandContext): Promise<Agent[]> {
+    await this.initialize(context)
+
+    const lowerNameStart = nameStart.toLowerCase()
+    const matches: Agent[] = []
+
+    for (const name of Array.from(this.agents.keys())) {
+      if (name.startsWith(lowerNameStart)) {
+        matches.push(this.agents.get(name)!)
+      }
+    }
+
+    return matches
+  }
+
+  /**
+   * Get all available agents as summaries, optionally excluding some by name
+   */
+  async getAllAgents(context: CommandContext, excludeNames?: string[]): Promise<Agent[]> {
+    await this.initialize(context)
+
+    const excludeSet = excludeNames ? new Set(excludeNames.map((name) => name.toLowerCase())) : new Set<string>()
+
+    return Array.from(this.agents.entries())
+      .filter(([name]) => !excludeSet.has(name))
+      .map(([_, agent]) => agent)
+  }
+
+  kill(): void {
+    this.aiClientProvider.kill()
+  }
+
+  /**
    * Load agent definitions from ~/.coday/[project]/agents/ folder
    * Each file should contain a single agent definition
    */
   private async loadFromFiles(context: CommandContext): Promise<void> {
-    const selectedProject = this.configService.selectedProject
+    const selectedProject = this.services.project.selectedProject
     if (!selectedProject) return
 
     const agentsPath = path.join(selectedProject.configPath, 'agents')
@@ -99,34 +143,6 @@ export class AgentService {
   }
 
   /**
-   * Find an agent by exact name match (case insensitive)
-   */
-  async findByName(name: string, context: CommandContext): Promise<Agent | undefined> {
-    await this.initialize(context)
-    return this.agents.get(name.toLowerCase())
-  }
-
-  /**
-   * Find agents by the start of their name (case insensitive)
-   * For example, "fid" will match "Fido_the_dog"
-   * Returns all matching agents or empty array if none found
-   */
-  async findAgentByNameStart(nameStart: string, context: CommandContext): Promise<Agent[]> {
-    await this.initialize(context)
-
-    const lowerNameStart = nameStart.toLowerCase()
-    const matches: Agent[] = []
-
-    for (const name of Array.from(this.agents.keys())) {
-      if (name.startsWith(lowerNameStart)) {
-        matches.push(this.agents.get(name)!)
-      }
-    }
-
-    return matches
-  }
-
-  /**
    * Try to create and add an agent to the map
    * Logs error if dependencies are missing
    */
@@ -150,23 +166,5 @@ export class AgentService {
     const toolset = new ToolSet(this.toolbox.getTools(context))
     const agent = new Agent(def, aiClient, context.project, toolset)
     this.agents.set(agent.name.toLowerCase(), agent)
-    console.log(`Created agent ${def.name} with ${aiClient.name}`)
-  }
-
-  /**
-   * Get all available agents as summaries, optionally excluding some by name
-   */
-  async getAllAgents(context: CommandContext, excludeNames?: string[]): Promise<Agent[]> {
-    await this.initialize(context)
-
-    const excludeSet = excludeNames ? new Set(excludeNames.map((name) => name.toLowerCase())) : new Set<string>()
-
-    return Array.from(this.agents.entries())
-      .filter(([name]) => !excludeSet.has(name))
-      .map(([_, agent]) => agent)
-  }
-
-  kill(): void {
-    this.aiClientProvider.kill()
   }
 }
