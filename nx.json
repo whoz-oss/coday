@@ -11,6 +11,23 @@
       "cache": true,
       "dependsOn": ["^build"],
       "inputs": ["default", "^default"]
+    },
+    "nx-release-publish": {
+      "dependsOn": [
+        "web:build"
+      ],
+      "options": {
+        "packageRoot": "dist/web"
+      }
+    },
+    "lint": {
+      "cache": true
+    },
+    "test": {
+      "cache": true,
+      "options": {
+        "passWithNoTests": true
+      }
     }
   },
   "defaultBase": "master",
@@ -19,8 +36,8 @@
     {
       "plugin": "@nx/jest/plugin",
       "options": {
-        "targetName": "jest:test"
-      },
+        "targetName": "test"
+      }
     },
     {
       "plugin": "@nx/eslint/plugin",
@@ -28,5 +45,16 @@
         "targetName": "lint"
       }
     }
-  ]
+  ],
+  "release": {
+    "projects": ["web"],
+    "releaseTagPattern": "release/{version}",
+    "git": {
+      "commitMessage": "chore(release): {version}"
+    },
+    "version": {
+      "conventionalCommits": true,
+      "preVersionCommand": "npx nx run web:build"
+    }
+  }
 }

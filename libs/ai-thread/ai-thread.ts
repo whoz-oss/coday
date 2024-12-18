@@ -4,9 +4,11 @@
  * and ensuring proper message sequencing.
  */
 
-import {buildCodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from '../shared/coday-events'
-import {ToolCall, ToolResponse} from '../integration/tool-call'
-import {EmptyUsage, RunStatus, ThreadMessage, ThreadSerialized, Usage} from './ai-thread.types'
+// eslint-disable-next-line @nx/enforce-module-boundaries
+import {buildCodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
+// eslint-disable-next-line @nx/enforce-module-boundaries
+import {ToolCall, ToolResponse} from "../integration/tool-call"
+import {EmptyUsage, RunStatus, ThreadMessage, ThreadSerialized, Usage} from "./ai-thread.types"
 
 /**
  * Allowed message types for filtering when building thread history
