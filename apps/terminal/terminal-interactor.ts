@@ -50,6 +50,7 @@ export class TerminalInteractor extends Interactor {
     this.interactionInProgress = true
     input({
       message: `\n${chalk.black.bgWhite(event.invite)} : `,
+      default: event.defaultValue
     })
       .then((answer: string) => {
         this.sendEvent(event.buildAnswer(answer))

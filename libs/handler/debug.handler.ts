@@ -1,6 +1,4 @@
 import { CommandContext, CommandHandler } from '../model'
-import { MemoryLevel } from '../model/memory'
-import { memoryService } from '../service/memory.service'
 
 export class DebugHandler extends CommandHandler {
   constructor() {
@@ -12,10 +10,7 @@ export class DebugHandler extends CommandHandler {
   }
 
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
-    console.log('pre-memory')
-    console.log(memoryService.listMemories())
-    memoryService.upsertMemory({ title: 'toto', content: 'is a test data', level: MemoryLevel.USER })
-    console.log(memoryService.listMemories())
+    console.log('not doing much right now...')
     return context
   }
 }

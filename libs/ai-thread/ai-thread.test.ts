@@ -16,11 +16,13 @@ const createToolResponse = (id: string, name: string, response: string): ToolRes
   response,
 })
 
+const username = 'john_doe'
+
 describe('AiThread', () => {
   let thread: AiThread
 
   beforeEach(() => {
-    thread = new AiThread({ id: 'test-thread' })
+    thread = new AiThread({ id: 'test-thread', username })
   })
 
   describe('messages management', () => {

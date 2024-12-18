@@ -1,24 +1,31 @@
-import { Memory, MemoryLevel } from '../model/memory'
-import path from 'path'
-import { existsSync, writeFileSync } from 'node:fs'
+import {Memory, MemoryLevel} from '../model/memory'
+import * as path from 'node:path'
+import {existsSync, writeFileSync} from 'node:fs'
 import * as yaml from 'yaml'
-import { configService, ConfigService } from './config.service'
-import { readYamlFile } from './read-yaml-file'
-import { writeYamlFile } from './write-yaml-file'
+import {readYamlFile} from './read-yaml-file'
+import {writeYamlFile} from './write-yaml-file'
+import {UserService} from './user.service'
+import {ProjectService} from './project.service'
+import {distinctUntilChanged} from 'rxjs'
 
 /**
  * Name of the memories file, could be in different folders depending on the level
  */
 const MEMORY_FILE_NAME: string = 'memories.yaml'
 
-class MemoryService {
+export class MemoryService {
   private memories: Memory[] = []
   private userMemoriesPath: string | undefined
   private projectMemoriesPath: string | undefined
 
-  constructor(configService: ConfigService) {
-    this.userMemoriesPath = path.join(configService.configPath, MEMORY_FILE_NAME)
-    configService.selectedProject$.subscribe((selectedProject) => this.loadMemoriesFrom(selectedProject))
+  constructor(projectService: ProjectService, userService: UserService) {
+    this.userMemoriesPath = path.join(userService.userConfigPath, MEMORY_FILE_NAME)
+    projectService.selectedProject$.pipe(distinctUntilChanged()).subscribe((selectedProject) => {
+      this.projectMemoriesPath = selectedProject?.configPath
+        ? path.join(selectedProject.configPath, MEMORY_FILE_NAME)
+        : undefined
+      if (selectedProject) this.loadMemoriesFrom(selectedProject)
+    })
   }
 
   upsertMemory(memory: Partial<Memory>): void {
@@ -103,5 +110,3 @@ class MemoryService {
     writeYamlFile(this.projectMemoriesPath!!, { memories: projectMemories })
   }
 }
-
-export const memoryService = new MemoryService(configService)

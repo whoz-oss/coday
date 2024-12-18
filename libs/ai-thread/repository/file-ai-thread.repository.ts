@@ -2,12 +2,12 @@
  * @fileoverview File-based implementation of ThreadRepository using YAML files
  */
 
-import * as fs from "fs/promises"
-import * as path from "path"
-import * as yaml from "yaml"
-import {AiThread} from "../ai-thread"
-import {AiThreadRepository} from "../ai-thread.repository"
-import {ThreadRepositoryError, ThreadSummary} from "../ai-thread.types"
+import * as fs from 'fs/promises'
+import * as path from 'path'
+import * as yaml from 'yaml'
+import {AiThread} from '../ai-thread'
+import {AiThreadRepository} from '../ai-thread.repository'
+import {ThreadRepositoryError, ThreadSummary} from '../ai-thread.types'
 
 /**
  * Helper function to safely read YAML file content
@@ -127,7 +127,7 @@ export class FileAiThreadRepository implements AiThreadRepository {
     }
   }
 
-  async listThreads(): Promise<ThreadSummary[]> {
+  async listThreadsByUsername(username: string): Promise<ThreadSummary[]> {
     await this.initPromise
     try {
       const files = await fs.readdir(this.threadsDir)
@@ -141,6 +141,7 @@ export class FileAiThreadRepository implements AiThreadRepository {
                 return data
                   ? {
                       id: data.id,
+                      username: data.username,
                       name: data.name || 'untitled',
                       summary: data.summary || '',
                       createdDate: data.createdDate || '',
@@ -152,6 +153,7 @@ export class FileAiThreadRepository implements AiThreadRepository {
           )
         )
           .filter((t) => !!t)
+          .filter((t) => t.username === username)
           // sort by decreasing last modified date
           .sort((a: ThreadSummary, b: ThreadSummary) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
       )

@@ -1,6 +1,3 @@
-// @ts-ignore
-import os from 'os'
-
 import { AiThread } from './ai-thread/ai-thread'
 import { AiThreadService } from './ai-thread/ai-thread.service'
 import { RunStatus } from './ai-thread/ai-thread.types'
@@ -10,42 +7,42 @@ import { HandlerLooper } from './handler-looper'
 import { selectAiThread } from './handler/ai-thread/select-ai-thread'
 import { AiClientProvider } from './integration/ai/ai-client-provider'
 import { keywords } from './keywords'
-import { AiClient, CommandContext, Interactor } from './model'
-import { configService } from './service/config.service'
+import { CommandContext, Interactor } from './model'
 import { AnswerEvent, MessageEvent, TextEvent } from './shared/coday-events'
 import { AgentService } from './agent'
 import { CodayOptions } from './options'
+import { CodayServices } from './coday-services'
 
 const MAX_ITERATIONS = 100
 
 export class Coday {
-  userInfo: os.UserInfo<string>
   context: CommandContext | null = null
   configHandler: ConfigHandler
 
   handlerLooper: HandlerLooper | undefined
   aiHandler: AiHandler | undefined
-  aiClient: AiClient | undefined
   maxIterations: number
   initialPrompts: string[] = []
 
   private killed: boolean = false
 
   private aiThreadService: AiThreadService
+  private aiClientProvider: AiClientProvider
 
   constructor(
     private interactor: Interactor,
-    private options: CodayOptions
+    private options: CodayOptions,
+    private services: CodayServices
   ) {
-    this.userInfo = os.userInfo()
-    this.configHandler = new ConfigHandler(interactor, this.userInfo.username)
+    this.configHandler = new ConfigHandler(interactor, this.services)
     this.maxIterations = MAX_ITERATIONS
-    this.aiThreadService = new AiThreadService(new AiThreadRepositoryFactory(configService))
+    this.aiThreadService = new AiThreadService(new AiThreadRepositoryFactory(this.services.project), services.user)
     this.aiThreadService.activeThread.subscribe((aiThread) => {
       if (!this.context || !aiThread) return
       this.context.aiThread = aiThread
       this.replayThread(aiThread)
     })
+    this.aiClientProvider = new AiClientProvider(this.interactor, this.services.user, this.services.project)
   }
 
   /**
@@ -113,7 +110,7 @@ export class Coday {
 
       if (userCommand === keywords.reset) {
         this.context = null
-        this.configHandler.resetProjectSelection()
+        this.services.project.resetProjectSelection()
         continue
       }
 
@@ -160,17 +157,25 @@ export class Coday {
   }
 
   private async initContext(): Promise<void> {
-    if (!this.context) {
-      this.context = await this.configHandler.initContext(this.options.project)
-      if (this.context) {
-        this.context.oneshot = this.options.oneshot
-        this.context.fileReadOnly = this.options.fileReadOnly
-        this.aiClient = new AiClientProvider(this.interactor).getClient()
-        const agentService = new AgentService(configService, this.interactor)
-        this.aiHandler = new AiHandler(this.interactor, agentService)
-        this.handlerLooper = new HandlerLooper(this.interactor, this.aiHandler, this.aiThreadService)
-        this.handlerLooper.init(this.userInfo.username, this.context.project)
-      }
+    if (this.context) {
+      return
+    }
+
+    this.context = await this.configHandler.selectProjectHandler.selectProject(this.options.project)
+
+    if (this.context) {
+      this.context.oneshot = this.options.oneshot
+      this.context.fileReadOnly = this.options.fileReadOnly
+      const agentService = new AgentService(this.interactor, this.aiClientProvider, this.services)
+      this.aiHandler = new AiHandler(this.interactor, agentService)
+      this.handlerLooper = new HandlerLooper(
+        this.interactor,
+        this.aiHandler,
+        this.aiThreadService,
+        this.configHandler,
+        this.services
+      )
+      this.handlerLooper.init(this.context.project)
     }
   }
 
@@ -192,7 +197,7 @@ export class Coday {
     } else if (!this.options.oneshot) {
       // allow user input
       const projectName = this.context?.project.name
-      userCommand = await this.interactor.promptText(`${this.userInfo.username} (${projectName})`)
+      userCommand = await this.interactor.promptText(`${this.services.user.username} (${projectName})`)
     }
     return userCommand
   }

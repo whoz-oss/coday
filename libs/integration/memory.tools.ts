@@ -1,4 +1,4 @@
-import { memoryService } from '../service/memory.service'
+import { MemoryService } from '../service/memory.service'
 import { CommandContext, Interactor } from '../model'
 import { AssistantToolFactory, CodayTool } from './assistant-tool-factory'
 import { FunctionTool } from './types'
@@ -7,7 +7,10 @@ import { MemoryLevel } from '../model/memory'
 const MemoryLevels = [MemoryLevel.PROJECT, MemoryLevel.USER]
 
 export class MemoryTools extends AssistantToolFactory {
-  constructor(interactor: Interactor) {
+  constructor(
+    interactor: Interactor,
+    private memoryService: MemoryService
+  ) {
     super(interactor)
   }
 
@@ -21,7 +24,7 @@ export class MemoryTools extends AssistantToolFactory {
     const memorize = async ({ title, content, level }: { title: string; content: string; level: string }) => {
       const parsedLevel: MemoryLevel = level === 'USER' ? MemoryLevel.USER : MemoryLevel.PROJECT
 
-      memoryService.upsertMemory({ title, content, level: parsedLevel })
+      this.memoryService.upsertMemory({ title, content, level: parsedLevel })
       this.interactor.displayText(`Added ${parsedLevel} memory : ${title}\n${content}`)
       return `Memory added with title: ${title}`
     }
@@ -60,7 +63,7 @@ export class MemoryTools extends AssistantToolFactory {
 
     const deleteMemoryFunction = async ({ title }: { title: string }) => {
       try {
-        memoryService.deleteMemory(title)
+        this.memoryService.deleteMemory(title)
         this.interactor.displayText(`Deleted memory: ${title}`)
         return `Memory deleted: ${title}`
       } catch (error) {

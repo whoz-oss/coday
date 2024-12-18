@@ -1,10 +1,17 @@
-/**
- * Configuration for an AI provider's authentication.
- * Stored in user configuration, not in project config
- * to avoid multiple configurations of the same provider.
- */
+import { IntegrationLocalConfig } from './project-local-config'
+import { AiProviderLocalConfig } from './ai-providers'
+
 export type AiProviderConfig = {
-  apiKey: string
+  apiKey?: string
+}
+
+/**
+ * Configuration scoped to the user, for a given project name
+ *
+ * Integrations defined here override the project ones
+ */
+export type UserProjectConfig = {
+  integration: IntegrationLocalConfig
 }
 
 /**
@@ -19,19 +26,12 @@ export type AiProviderConfig = {
  * - (future) Default settings
  */
 export interface UserConfig {
+  aiProviders: AiProviderLocalConfig
   /**
-   * AI provider configurations.
-   * Each provider is optional but must be configured here
-   * to be available (environment variables can only override
-   * existing configurations, not enable new providers).
+   * Table of user-scoped project configuration
    */
-  aiProviders: {
-    /** Anthropic's Claude (recommended) */
-    anthropic?: AiProviderConfig
-    /** OpenAI's GPT models */
-    openai?: AiProviderConfig
-    /** Google's Gemini */
-    google?: AiProviderConfig
+  projects?: {
+    [key: string]: UserProjectConfig
   }
 }
 
