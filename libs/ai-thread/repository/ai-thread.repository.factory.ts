@@ -7,7 +7,9 @@ import {FileAiThreadRepository} from './file-ai-thread.repository'
 import * as path from 'node:path'
 import {BehaviorSubject, filter, Observable} from 'rxjs'
 import {map} from 'rxjs/operators'
+// eslint-disable-next-line @nx/enforce-module-boundaries
 import {SelectedProject} from '../../model'
+// eslint-disable-next-line @nx/enforce-module-boundaries
 import {ProjectService} from '../../service/project.service'
 
 /**

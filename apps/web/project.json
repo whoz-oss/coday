@@ -1,0 +1,74 @@
+{
+  "name": "web",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/server",
+  "tags": [],
+  "targets": {
+    "build:client": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "assets": [
+          {
+            "input": "apps/web/client",
+            "glob": "index.html",
+            "output": "."
+          },
+          {
+            "input": "apps/web/client",
+            "glob": "**/*.css",
+            "output": "."
+          }
+        ],
+        "esbuildOptions": {
+          "outExtension": {
+            ".js": ".js"
+          }
+        },
+        "format": ["cjs"],
+        "main": "apps/web/client/app.ts",
+        "outputFileName": "app.js",
+        "outputPath": "dist/web/client",
+        "platform": "browser",
+        "tsConfig": "apps/web/client/tsconfig.app.json"
+      }
+    },
+    "build:server": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "assets": [],
+        "esbuildOptions": {
+          "outExtension": {
+            ".js": ".js"
+          }
+        },
+        "format": ["cjs"],
+        "main": "apps/web/server/server.ts",
+        "outputFileName": "server.js",
+        "outputPath": "dist/web/server",
+        "platform": "node",
+        "thirdParty": true,
+        "tsConfig": "apps/web/server/tsconfig.app.json"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["web:build:client", "web:build:server"],
+      "options": {
+        "commands": [
+          "mv dist/web/server/package.json dist/web",
+          "rm dist/web/client/package.json"
+        ]
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["web:build:client", "web:build:server"],
+      "options": {
+        "commands": ["node dist/web/server/server.js --no_auth"]
+      }
+    }
+  }
+}
