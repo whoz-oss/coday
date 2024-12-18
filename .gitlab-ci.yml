@@ -12,23 +12,15 @@
 
 include:
   - 'ci/init/*.yml'
+  - 'ci/build/*.yml'
+  - 'ci/release/*.yml'
   - 'ci/test/*.yml'
 
 stages:
   - 1️⃣-init
-  - 🏬-technical
   - 🔬-test
-  - 🩺-reporting
-  - 🏗-build-app
-  - 🐳-build-docker
-  - 🐶-datadog
-  - 🏷-tag
-  - 🚀-deploy
-  - 💗-e2e
-  - 🌉-report
-  - ⤵️-automerge
-  - 👷-maintenance
-
+  - 🏗-build
+  - 🚀-release
 
 variables:
   BRANCHES_CACHE_FOLDER: /mnt/gitlab/data/coday/branches

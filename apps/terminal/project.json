@@ -1,0 +1,29 @@
+{
+  "name": "terminal",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "assets": [],
+        "format": ["cjs"],
+        "main": "apps/terminal/terminal.ts",
+        "outputFileName": "terminal.cjs",
+        "outputPath": "dist/terminal",
+        "platform": "node",
+        "thirdParty": true,
+        "tsConfig": "tsconfig.base.json"
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["terminal:build"],
+      "options": {
+        "commands": ["node dist/terminal/terminal.cjs"],
+        "parallel": false
+      }
+    }
+  }
+}
