@@ -1,10 +1,12 @@
 {
-  "name": "project",
+  "name": "coday",
   "version": "1.0.0",
   "description": "",
-  "type": "commonjs",
+  "type": "module",
   "scripts": {
+    "lint": "nx run-many --target=lint",
     "start": "nx run terminal:serve",
+    "test": "nx run-many --target=test",
     "web": "nx run web:serve"
   },
   "author": "vincent.audibert@whoz.com",
@@ -78,6 +80,5 @@
     "tslib": "^2.3.0",
     "yaml": "^2.4.5",
     "yargs": "^17.7.2"
-  },
-  "nx": {}
+  }
 }

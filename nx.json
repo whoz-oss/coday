@@ -53,6 +53,7 @@
       "commitMessage": "chore(release): {version}"
     },
     "version": {
+      "conventionalCommits": true,
       "preVersionCommand": "npx nx run web:build"
     }
   }

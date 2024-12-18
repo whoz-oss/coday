@@ -5,6 +5,7 @@
     "baseUrl": ".",
     "declaration": false,
     "emitDecoratorMetadata": true,
+    "esModuleInterop": true,
     "experimentalDecorators": true,
     "importHelpers": true,
     "lib": ["ESNext", "dom"],
@@ -17,10 +18,8 @@
       "@coday/core": ["libs/coday.ts"],
       "@coday/model/*": ["libs/model/*"],
       "@coday/options": ["libs/options.ts"],
-      "@coday/shared/*": ["libs/shared/*"],
-      "@coday/service/*": [
-        "libs/service/*"
-      ]
+      "@coday/service/*": ["libs/service/*"],
+      "@coday/shared/*": ["libs/shared/*"]
     },
     "skipDefaultLibCheck": true,
     "skipLibCheck": true,
