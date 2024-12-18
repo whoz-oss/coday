@@ -1,7 +1,8 @@
-import {AiClient, AiProvider, Interactor} from "../../model"
-import {OpenaiClient} from "../../handler/openai.client"
-import {AnthropicClient} from "../../handler/anthropic.client"
-import {userConfigService} from "../../service/user-config.service"
+import {AiClient, AiProvider, Interactor} from '../../model'
+import {OpenaiClient} from '../../handler/openai.client'
+import {AnthropicClient} from '../../handler/anthropic.client'
+import {UserService} from '../../service/user.service'
+import {ProjectService} from '../../service/project.service'
 
 /**
  * Environment variable names for each provider.
@@ -36,7 +37,11 @@ class AiClientProvider {
    */
   private readonly providerOrder: AiProvider[] = ['anthropic', 'openai', 'google']
 
-  constructor(private readonly interactor: Interactor) {}
+  constructor(
+    private readonly interactor: Interactor,
+    private userService: UserService,
+    private projectService: ProjectService
+  ) {}
 
   /**
    * Get an AI client instance, either for a specific provider
@@ -94,7 +99,10 @@ class AiClientProvider {
   private createApiKeyProvider(provider: AiProvider): () => string | undefined {
     return () => {
       // First check if provider is configured (required)
-      const configuredKey = userConfigService.currentConfig?.aiProviders[provider]?.apiKey
+      let configuredKey: string | undefined = this.userService.config.aiProviders[provider]?.apiKey
+      if (!configuredKey) {
+        configuredKey = this.projectService.selectedProject?.config?.aiProviders[provider]?.apiKey
+      }
       if (!configuredKey) {
         return undefined
       }

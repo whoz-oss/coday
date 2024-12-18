@@ -2,8 +2,8 @@
  * @fileoverview Thread repository interface definition
  */
 
-import {AiThread} from "./ai-thread"
-import {ThreadSummary} from "./ai-thread.types"
+import {AiThread} from './ai-thread'
+import {ThreadSummary} from './ai-thread.types'
 
 /**
  * Core interface for thread persistence operations
@@ -30,7 +30,7 @@ export interface AiThreadRepository {
    * @returns Array of thread information without full message history
    * @throws ThreadRepositoryError for system-level errors
    */
-  listThreads(): Promise<ThreadSummary[]>
+  listThreadsByUsername(username: string): Promise<ThreadSummary[]>
 
   /**
    * Delete a thread by its identifier

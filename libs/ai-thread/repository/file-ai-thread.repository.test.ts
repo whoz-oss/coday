@@ -9,6 +9,7 @@ import { ThreadRepositoryError } from '../ai-thread.types'
 describe('FileAiThreadRepository', () => {
   let repo: FileAiThreadRepository
   let tmpDir: string
+  const username = 'john_doe'
 
   beforeEach(async () => {
     // Create temp directory
@@ -32,7 +33,7 @@ describe('FileAiThreadRepository', () => {
       const newRepo = new FileAiThreadRepository(newTmpDir)
 
       // List should trigger initialization
-      await newRepo.listThreads()
+      await newRepo.listThreadsByUsername(username)
 
       // Directory should now exist
       const stats = await fs.stat(newTmpDir)
@@ -47,6 +48,7 @@ describe('FileAiThreadRepository', () => {
     it('should save and retrieve a thread', async () => {
       const threadInput = {
         id: 'test-id',
+        username,
         name: 'Test Thread',
         summary: 'Test Summary',
         createdDate: '2024-01-01',
@@ -54,6 +56,7 @@ describe('FileAiThreadRepository', () => {
       }
       const thread = new AiThread({
         id: 'test-id',
+        username,
         name: 'Test Thread',
         summary: 'Test Summary',
         createdDate: '2024-01-01',
@@ -88,6 +91,7 @@ describe('FileAiThreadRepository', () => {
       // Create and save initial thread
       const thread = new AiThread({
         id: 'test-id',
+        username,
         name: 'Original Name',
         summary: 'Test Summary',
         createdDate: '2024-01-01',
@@ -125,6 +129,7 @@ describe('FileAiThreadRepository', () => {
       const threads = [
         new AiThread({
           id: 'test-1',
+          username,
           name: 'Test 1',
           summary: 'Summary 1',
           createdDate: '2024-01-01',
@@ -132,6 +137,7 @@ describe('FileAiThreadRepository', () => {
         }),
         new AiThread({
           id: 'test-2',
+          username,
           name: 'Test 2',
           summary: 'Summary 2',
           createdDate: '2024-01-01',
@@ -143,7 +149,7 @@ describe('FileAiThreadRepository', () => {
       await Promise.all(threads.map((thread) => repo.save(thread)))
 
       // List threads
-      const listed = await repo.listThreads()
+      const listed = await repo.listThreadsByUsername(username)
       expect(listed).toHaveLength(2)
       expect(listed.map((t) => t.id)).toEqual(expect.arrayContaining(['test-1', 'test-2']))
     })
@@ -151,6 +157,7 @@ describe('FileAiThreadRepository', () => {
     it('should delete an existing thread', async () => {
       const thread = new AiThread({
         id: 'test-delete',
+        username,
         name: 'Test Delete',
         summary: 'To be deleted',
         createdDate: '2024-01-01',
@@ -174,6 +181,7 @@ describe('FileAiThreadRepository', () => {
     it('should sanitize thread names for file paths', async () => {
       const thread = new AiThread({
         id: 'test-id',
+        username,
         name: 'Test & Special @ Characters!',
         summary: 'Test Summary',
         createdDate: '2024-01-01',
@@ -192,6 +200,7 @@ describe('FileAiThreadRepository', () => {
       // Create and save first thread
       const thread1 = new AiThread({
         id: 'id-1',
+        username,
         name: 'Same Name',
         summary: 'First thread',
         createdDate: '2024-01-01',
@@ -202,6 +211,7 @@ describe('FileAiThreadRepository', () => {
       // Save second thread
       const thread2 = new AiThread({
         id: 'id-2',
+        username,
         name: 'Same Name',
         summary: 'Second thread',
         createdDate: '2024-01-01',
@@ -232,7 +242,7 @@ describe('FileAiThreadRepository', () => {
       await fs.writeFile(path.join(tmpDir, 'corrupted.yml'), 'invalid: yaml: content:', 'utf-8')
 
       // Should list empty array
-      const listed = await repo.listThreads()
+      const listed = await repo.listThreadsByUsername(username)
       expect(listed).toHaveLength(0)
     })
 
@@ -244,7 +254,7 @@ describe('FileAiThreadRepository', () => {
       await fs.writeFile(newTmpDir, '', { mode: 0o444 }) // read-only file
 
       const errorRepo = new FileAiThreadRepository(newTmpDir)
-      await expect(errorRepo.listThreads()).rejects.toThrow(ThreadRepositoryError)
+      await expect(errorRepo.listThreadsByUsername(username)).rejects.toThrow(ThreadRepositoryError)
 
       // Clean up
       await fs.rm(newTmpDir, { force: true })

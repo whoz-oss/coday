@@ -1,8 +1,11 @@
 import { CommandContext, CommandHandler, Interactor } from '../model'
-import { memoryService } from '../service/memory.service'
+import { MemoryService } from '../service/memory.service'
 
 class MemoryHandler extends CommandHandler {
-  constructor(private interactor: Interactor) {
+  constructor(
+    private interactor: Interactor,
+    private memoryService: MemoryService
+  ) {
     super({
       commandWord: 'memory',
       description: 'list current memories',
@@ -11,7 +14,7 @@ class MemoryHandler extends CommandHandler {
   }
 
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
-    const memories: string = memoryService
+    const memories: string = this.memoryService
       .listMemories()
       .map((m) => `${m.title}\n    ${m.content}`)
       .join('\n')
