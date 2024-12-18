@@ -10,6 +10,7 @@ import { AiThreadRepository } from './ai-thread.repository'
 import { AiThreadRepositoryFactory } from './repository/ai-thread.repository.factory'
 import { filter } from 'rxjs/operators'
 import { ThreadSummary } from './ai-thread.types'
+import { UserService } from '../service/user.service'
 
 export class AiThreadService {
   private readonly activeThread$ = new BehaviorSubject<AiThread | null>(null)
@@ -20,11 +21,17 @@ export class AiThreadService {
    */
   readonly activeThread: Observable<AiThread | null> = this.activeThread$.asObservable()
 
-  constructor(private readonly repositoryFactory: AiThreadRepositoryFactory) {
+  readonly username: string
+
+  constructor(
+    private readonly repositoryFactory: AiThreadRepositoryFactory,
+    userService: UserService
+  ) {
     // Reset active thread when repository changes
     this.repositoryFactory.repository.pipe(filter((repository) => !!repository)).subscribe(() => {
       this.activeThread$.next(null)
     })
+    this.username = userService.username
   }
 
   /**
@@ -42,6 +49,7 @@ export class AiThreadService {
   create(name?: string): AiThread {
     const newThread = new AiThread({
       id: '', // TODO falsy, will be overriden by repository, shitty pattern FTW...
+      username: this.username,
       name: name ? name : 'Temporary thread',
       price: 0,
     })
@@ -69,7 +77,7 @@ export class AiThreadService {
     }
 
     // No ID provided, get last used or create new
-    const threads = await repository.listThreads()
+    const threads = await repository.listThreadsByUsername(this.username)
     if (threads.length === 0) {
       return this.create()
     }
@@ -125,7 +133,6 @@ export class AiThreadService {
       return
     }
     const repository = await this.getRepository()
-    console.log('autosaving')
     await repository.save(thread)
   }
 
@@ -162,7 +169,7 @@ export class AiThreadService {
     // Convert Promise to Observable for consistency
     return new Observable<ThreadSummary[]>((subscriber) => {
       this.getRepository()
-        .then((repository) => repository.listThreads())
+        .then((repository) => repository.listThreadsByUsername(this.username))
         .then((threads) => {
           subscriber.next(threads)
           subscriber.complete()

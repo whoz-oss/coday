@@ -1,10 +1,6 @@
 import { IntegrationConfig } from './integration-config'
 import { AgentDefinition } from './agent-definition'
-
-export interface ThreadInfo {
-  name: string
-  // Add other relevant data if needed
-}
+import { AiProviderLocalConfig } from './ai-providers'
 
 export type IntegrationLocalConfig = {
   [key: string]: IntegrationConfig
@@ -12,6 +8,7 @@ export type IntegrationLocalConfig = {
 
 export type ProjectLocalConfig = {
   path: string
+  aiProviders: AiProviderLocalConfig
   integration: IntegrationLocalConfig
   storage?: StorageConfig
   agents?: AgentDefinition | AgentDefinition[]

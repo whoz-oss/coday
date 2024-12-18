@@ -5,14 +5,17 @@ import { gitListBranches } from './git-list-branches'
 import { gitCreateBranch } from './git-create-branch'
 import { gitLog } from './git-log'
 import { gitShow } from './git-show'
-import { integrationService } from '../../service/integration.service'
+import { IntegrationService } from '../../service/integration.service'
 import { gitCheckoutBranch } from './git-checkout-branch'
 import { CommandContext, Interactor } from '../../model'
 import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 
 export class GitTools extends AssistantToolFactory {
-  constructor(interactor: Interactor) {
+  constructor(
+    interactor: Interactor,
+    private integrationService: IntegrationService
+  ) {
     super(interactor)
   }
 
@@ -23,7 +26,7 @@ export class GitTools extends AssistantToolFactory {
   protected buildTools(context: CommandContext): CodayTool[] {
     const result: CodayTool[] = []
 
-    if (!integrationService.hasIntegration('GIT')) {
+    if (!this.integrationService.hasIntegration('GIT')) {
       return result
     }
 

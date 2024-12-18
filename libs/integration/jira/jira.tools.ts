@@ -1,11 +1,14 @@
 import { retrieveJiraTicket } from './retrieve-jira-ticket'
-import { integrationService } from '../../service/integration.service'
+import { IntegrationService } from '../../service/integration.service'
 import { CommandContext, Interactor } from '../../model'
 import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 
 export class JiraTools extends AssistantToolFactory {
-  constructor(interactor: Interactor) {
+  constructor(
+    interactor: Interactor,
+    private integrationService: IntegrationService
+  ) {
     super(interactor)
   }
 
@@ -15,13 +18,13 @@ export class JiraTools extends AssistantToolFactory {
 
   protected buildTools(context: CommandContext): CodayTool[] {
     const result: CodayTool[] = []
-    if (!integrationService.hasIntegration('JIRA')) {
+    if (!this.integrationService.hasIntegration('JIRA')) {
       return result
     }
 
-    const jiraBaseUrl = integrationService.getApiUrl('JIRA')
-    const jiraUsername = integrationService.getUsername('JIRA')
-    const jiraApiToken = integrationService.getApiKey('JIRA')
+    const jiraBaseUrl = this.integrationService.getApiUrl('JIRA')
+    const jiraUsername = this.integrationService.getUsername('JIRA')
+    const jiraApiToken = this.integrationService.getApiKey('JIRA')
     if (!(jiraBaseUrl && jiraUsername && jiraApiToken)) {
       return result
     }

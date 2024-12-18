@@ -4,9 +4,9 @@
  * and ensuring proper message sequencing.
  */
 
-import {buildCodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
-import {ToolCall, ToolResponse} from "../integration/tool-call"
-import {EmptyUsage, RunStatus, ThreadMessage, ThreadSerialized, Usage} from "./ai-thread.types"
+import {buildCodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from '../shared/coday-events'
+import {ToolCall, ToolResponse} from '../integration/tool-call'
+import {EmptyUsage, RunStatus, ThreadMessage, ThreadSerialized, Usage} from './ai-thread.types'
 
 /**
  * Allowed message types for filtering when building thread history
@@ -32,6 +32,8 @@ const THREAD_MESSAGE_TYPES = [MessageEvent.type, ToolRequestEvent.type, ToolResp
 export class AiThread {
   /** Unique identifier for the thread */
   id: string
+
+  username: string
 
   /** Name or title or very short sentence about the content of the thread */
   name: string
@@ -61,6 +63,7 @@ export class AiThread {
    */
   constructor(thread: ThreadSerialized) {
     this.id = thread.id
+    this.username = thread.username
     this.name = thread.name ?? 'untitled'
     this.summary = thread.summary ?? ''
     this.createdDate = thread.createdDate ?? new Date().toISOString()
