@@ -7,7 +7,9 @@
   "targets": {
     "build:client": {
       "executor": "@nx/esbuild:esbuild",
-      "outputs": ["{options.outputPath}"],
+      "outputs": [
+        "{options.outputPath}"
+      ],
       "options": {
         "assets": [
           {
@@ -26,7 +28,9 @@
             ".js": ".js"
           }
         },
-        "format": ["cjs"],
+        "format": [
+          "cjs"
+        ],
         "main": "apps/web/client/app.ts",
         "outputFileName": "app.js",
         "outputPath": "dist/web/client",
@@ -36,7 +40,9 @@
     },
     "build:server": {
       "executor": "@nx/esbuild:esbuild",
-      "outputs": ["{options.outputPath}"],
+      "outputs": [
+        "{options.outputPath}"
+      ],
       "options": {
         "assets": [],
         "esbuildOptions": {
@@ -44,7 +50,9 @@
             ".js": ".js"
           }
         },
-        "format": ["cjs"],
+        "format": [
+          "cjs"
+        ],
         "main": "apps/web/server/server.ts",
         "outputFileName": "server.js",
         "outputPath": "dist/web/server",
@@ -55,7 +63,10 @@
     },
     "build": {
       "executor": "nx:run-commands",
-      "dependsOn": ["web:build:client", "web:build:server"],
+      "dependsOn": [
+        "web:build:client",
+        "web:build:server"
+      ],
       "options": {
         "commands": [
           "mv dist/web/server/package.json dist/web",
@@ -65,9 +76,14 @@
     },
     "serve": {
       "executor": "nx:run-commands",
-      "dependsOn": ["web:build:client", "web:build:server"],
+      "dependsOn": [
+        "web:build:client",
+        "web:build:server"
+      ],
       "options": {
-        "commands": ["node dist/web/server/server.js --no_auth"]
+        "commands": [
+          "node dist/web/server/server.js"
+        ]
       }
     }
   }
