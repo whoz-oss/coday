@@ -37,7 +37,7 @@ export class AgentService {
       // Load from coday.yml agents section first
       if (context.project.agents?.length) {
         for (const def of context.project.agents) {
-          this.tryAddAgent(def, context)
+         await this.tryAddAgent(def, context)
         }
       }
 
@@ -55,7 +55,7 @@ export class AgentService {
       // If no agents were loaded, use Coday as backup
       if (this.agents.size === 0) {
         console.log('No agents configured, using Coday as backup agent')
-        this.tryAddAgent(CodayAgentDefinition, context)
+        await this.tryAddAgent(CodayAgentDefinition, context)
       }
 
       const agentNames = Array.from(this.agents.values()).map((a) => `  - ${a.name}`)
@@ -155,7 +155,7 @@ export class AgentService {
    * Try to create and add an agent to the map
    * Logs error if dependencies are missing
    */
-  private tryAddAgent(partialDef: AgentDefinition, context: CommandContext): void {
+  private async tryAddAgent(partialDef: AgentDefinition, context: CommandContext): Promise<void> {
     const def = { ...CodayAgentDefinition, ...partialDef }
 
     // force aiProvider for OpenAI assistants
@@ -180,7 +180,9 @@ export class AgentService {
       return
     }
 
-    const toolset = new ToolSet(this.toolbox.getTools(context))
+    const syncTools = this.toolbox.getTools(context)
+    const asyncTools = await this.toolbox.getAsyncTools(context)
+    const toolset = new ToolSet([...syncTools, ...asyncTools])
     const agent = new Agent(def, aiClient, context.project, toolset)
     this.agents.set(agent.name.toLowerCase(), agent)
   }
