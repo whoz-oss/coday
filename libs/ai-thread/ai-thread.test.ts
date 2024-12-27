@@ -164,4 +164,121 @@ describe('AiThread', () => {
       expect(messages).toHaveLength(4)
     })
   })
+
+  describe('thread forking', () => {
+    it('should fork a thread without an agent name', () => {
+      // Add some initial messages
+      thread.addUserMessage('user1', 'Initial message')
+      thread.addAgentMessage('agent1', 'Agent response')
+
+      // Fork the thread
+      const forkedThread = thread.fork()
+
+      // Check forked thread properties
+      expect(forkedThread).not.toBe(thread)
+      expect(forkedThread.id).toBe(thread.id)
+      expect(forkedThread.username).toBe(thread.username)
+      expect(forkedThread.name).toContain('Forked')
+      expect(forkedThread.delegationDepth).toBe(1)
+
+      // Check messages were copied
+      const forkedMessages = forkedThread.getMessages()
+      expect(forkedMessages).toHaveLength(2)
+      expect(forkedMessages[0].type).toBe(MessageEvent.type)
+      expect(forkedMessages[1].type).toBe(MessageEvent.type)
+    })
+
+    it('should fork a thread with an agent name', () => {
+      // Add some initial messages
+      thread.addUserMessage('user1', 'Initial message')
+      thread.addAgentMessage('agent1', 'Agent response')
+
+      // Fork the thread for a specific agent
+      const forkedThread = thread.fork('agent2')
+
+      // Check forked thread properties
+      expect(forkedThread.id).toBe(thread.id)
+      expect(forkedThread.username).toBe(thread.username)
+      expect(forkedThread.name).toContain('Delegated to agent2')
+      expect(forkedThread.delegationDepth).toBe(1)
+    })
+
+    it('should return existing forked thread for an agent', () => {
+      // Fork a thread for an agent
+      const forkedThread1 = thread.fork('agent2')
+      const forkedThread2 = thread.fork('agent2')
+
+      // Check they are the same instance
+      expect(forkedThread1).toBe(forkedThread2)
+    })
+
+    it('should support multiple forked threads for different agents', () => {
+      const forkedThread1 = thread.fork('agent1')
+      const forkedThread2 = thread.fork('agent2')
+
+      // Check they are different threads
+      expect(forkedThread1).not.toBe(forkedThread2)
+      expect(forkedThread1.id).toBe(thread.id)
+      expect(forkedThread2.id).toBe(thread.id)
+    })
+
+    it('should copy thread price when forking', () => {
+      // Set a price on the original thread
+      thread.price = 1.5
+
+      // Fork the thread
+      const forkedThread = thread.fork('agent2')
+      forkedThread.addUsage({ price: 0.5 })
+
+      // Check price is copied
+      expect(forkedThread.price).toBe(0.5)
+      expect(forkedThread.totalPrice).toBe(2)
+    })
+
+    it('should create a new messages array when forking', () => {
+      // Add messages to original thread
+      thread.addUserMessage('user1', 'Initial message')
+
+      // Fork the thread
+      const forkedThread = thread.fork('agent2')
+
+      // Modify messages in forked thread
+      forkedThread.addAgentMessage('agent2', 'Forked response')
+
+      // Check original thread is unchanged
+      const originalMessages = thread.getMessages()
+      expect(originalMessages).toHaveLength(1)
+    })
+  })
+
+  describe('thread merging', () => {
+    it('should merge a forked thread back to parent', () => {
+      // Add some initial price
+      thread.price = 1.5
+
+      // Fork and add price to forked thread
+      const forkedThread = thread.fork('agent2')
+      forkedThread.addUsage({ price: 0.5 })
+
+      // Merge the forked thread
+      thread.merge(forkedThread)
+
+      // Check total price is updated
+      expect(thread.totalPrice).toBe(2)
+
+      // Check forked thread is still in the registry
+      expect(thread['forkedThreads'].get('agent2')).toBe(forkedThread)
+    })
+
+    it('should handle merging threads with zero price', () => {
+      const initialPrice = thread.price
+
+      // Create and merge a forked thread with zero price
+      const forkedThread = thread.fork('agent2')
+      thread.merge(forkedThread)
+
+      // Price should remain unchanged
+      expect(thread.price).toBe(initialPrice)
+    })
+  })
 })

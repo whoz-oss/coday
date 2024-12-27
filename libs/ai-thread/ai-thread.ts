@@ -5,10 +5,10 @@
  */
 
 // eslint-disable-next-line @nx/enforce-module-boundaries
-import {buildCodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from "../shared/coday-events"
+import {buildCodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from '../shared/coday-events'
 // eslint-disable-next-line @nx/enforce-module-boundaries
-import {ToolCall, ToolResponse} from "../integration/tool-call"
-import {EmptyUsage, RunStatus, ThreadMessage, ThreadSerialized, Usage} from "./ai-thread.types"
+import {ToolCall, ToolResponse} from '../integration/tool-call'
+import {EmptyUsage, RunStatus, ThreadMessage, ThreadSerialized, Usage} from './ai-thread.types'
 
 /**
  * Allowed message types for filtering when building thread history
@@ -59,6 +59,8 @@ export class AiThread {
 
   /** Store forked threads for specific agents */
   private forkedThreads: Map<string | null, AiThread> = new Map()
+
+  private parentThread: AiThread | undefined
 
   /** Internal storage of thread messages in chronological order */
   private messages: ThreadMessage[]
@@ -269,25 +271,40 @@ export class AiThread {
 
     // Create a new forked thread with destructured properties
     const forkedThread = new AiThread({
-      id: this.id,  // Reuse parent thread ID as we don't save this
+      id: this.id, // Reuse parent thread ID as we don't save this
       username: this.username,
-      name: agentName 
-        ? `${this.name} - Delegated to ${agentName}` 
-        : `${this.name} - Forked`,
+      name: agentName ? `${this.name} - Delegated to ${agentName}` : `${this.name} - Forked`,
       summary: this.summary,
       createdDate: this.createdDate,
       modifiedDate: new Date().toISOString(),
-      price: this.price,  // Copy price from parent
-      messages: [...this.messages]  // Create a new array reference
+      price: 0,
+      messages: [...this.messages], // Create a new array reference
     })
 
     // Increment delegation depth (non-serializable)
     forkedThread.delegationDepth = this.delegationDepth + 1
+    forkedThread.parentThread = this
 
     // Store the forked thread
     this.forkedThreads.set(agentName ?? null, forkedThread)
 
     return forkedThread
+  }
+
+  /**
+   * Merge a specific forked thread back into this thread
+   * @param forkedThread The thread to merge back
+   */
+  merge(forkedThread: AiThread): void {
+    // Add the forked thread's price to this thread's price
+    this.price += forkedThread.price
+
+    // Reset the price of the forked as moved into the parent
+    forkedThread.price = 0
+  }
+
+  get totalPrice(): number {
+    return this.price + (this.parentThread?.totalPrice ?? 0)
   }
 
   addToolRequests(agentName: string, toolRequests: ToolRequestEvent[]): void {
