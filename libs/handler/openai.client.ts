@@ -40,7 +40,7 @@ export class OpenaiClient extends AiClient {
   constructor(
     readonly name: string,
     readonly interactor: Interactor,
-    private apiKeyProvider: () => string | undefined,
+    private apiKey: string | undefined,
     /**
      * Custom apiUrl for providers using Openai SDK
      * @private
@@ -79,6 +79,64 @@ export class OpenaiClient extends AiClient {
       outputSubject.complete()
     })
     return outputSubject
+  }
+
+  async runAssistant(agent: Agent, thread: AiThread): Promise<Observable<CodayEvent>> {
+    const openai = this.isOpenaiReady()
+    if (!openai) return of()
+
+    const outputSubject: Subject<CodayEvent> = new Subject()
+
+    // init or reset
+    thread.data.openai = {
+      price: thread.data?.openai?.price ?? 0,
+      runPrice: 0,
+      assistantThreadData: thread.data?.openai?.assistantThreadData ?? {},
+    }
+
+    const threadData: AssistantThreadData = thread.data.openai.assistantThreadData
+    const thinking = setInterval(() => this.interactor.thinking(), 3000)
+
+    // Create assistant thread if not existing
+    if (!threadData.threadId) {
+      const assistantThread = await openai.beta.threads.create()
+      this.interactor.displayText('Assistant thread created')
+      threadData.threadId = assistantThread.id
+    }
+
+    const messages = thread.getMessages()
+    const lastMessageIndex = threadData.lastTimestamp
+      ? messages.findIndex((m) => m.timestamp >= threadData.lastTimestamp!)
+      : -1
+    const messagesToUpload = messages.slice(lastMessageIndex + 1)
+
+    this.updateAssistantThread(openai, thread, messagesToUpload)
+      .then(async () => await this.processAssistantThread(openai, agent, thread, outputSubject))
+      .finally(() => {
+        clearInterval(thinking)
+        this.showAgent(agent, this.providerName, this.models[this.getModelSize(agent)].name)
+        this.showUsage(thread)
+        outputSubject.complete()
+      })
+    return outputSubject
+  }
+
+  protected async processAssistantThread(
+    client: OpenAI,
+    agent: Agent,
+    thread: AiThread,
+    subscriber: Subject<CodayEvent>
+  ): Promise<void> {
+    const assistantStream = client.beta.threads.runs.stream(thread.data.openai.assistantThreadData.threadId, {
+      assistant_id: agent.definition.openaiAssistantId!,
+      tools: [...agent.tools.getTools(), { type: 'file_search' }],
+      tool_choice: 'auto',
+      max_completion_tokens: 120000,
+      max_prompt_tokens: 120000,
+      parallel_tool_calls: false,
+    })
+
+    await this.processAssistantStream(assistantStream, agent, client, thread, subscriber)
   }
 
   private async processThread(
@@ -148,14 +206,13 @@ export class OpenaiClient extends AiClient {
   }
 
   private isOpenaiReady(): OpenAI | undefined {
-    const apiKey = this.apiKeyProvider()
-    if (!apiKey) {
+    if (!this.apiKey) {
       this.interactor.warn('OPENAI_API_KEY not set, skipping AI command')
       return
     }
 
     return new OpenAI({
-      apiKey,
+      apiKey: this.apiKey,
       /**
        * Possible customization for third parties using Openai SDK (Google Gemini, xAi, ...)
        */
@@ -209,46 +266,6 @@ export class OpenaiClient extends AiClient {
     return [systemInstructionMessage, ...openaiMessages]
   }
 
-  async runAssistant(agent: Agent, thread: AiThread): Promise<Observable<CodayEvent>> {
-    const openai = this.isOpenaiReady()
-    if (!openai) return of()
-
-    const outputSubject: Subject<CodayEvent> = new Subject()
-
-    // init or reset
-    thread.data.openai = {
-      price: thread.data?.openai?.price ?? 0,
-      runPrice: 0,
-      assistantThreadData: thread.data?.openai?.assistantThreadData ?? {},
-    }
-
-    const threadData: AssistantThreadData = thread.data.openai.assistantThreadData
-    const thinking = setInterval(() => this.interactor.thinking(), 3000)
-
-    // Create assistant thread if not existing
-    if (!threadData.threadId) {
-      const assistantThread = await openai.beta.threads.create()
-      this.interactor.displayText('Assistant thread created')
-      threadData.threadId = assistantThread.id
-    }
-
-    const messages = thread.getMessages()
-    const lastMessageIndex = threadData.lastTimestamp
-      ? messages.findIndex((m) => m.timestamp >= threadData.lastTimestamp!)
-      : -1
-    const messagesToUpload = messages.slice(lastMessageIndex + 1)
-
-    this.updateAssistantThread(openai, thread, messagesToUpload)
-      .then(async () => await this.processAssistantThread(openai, agent, thread, outputSubject))
-      .finally(() => {
-        clearInterval(thinking)
-        this.showAgent(agent, this.providerName, this.models[this.getModelSize(agent)].name)
-        this.showUsage(thread)
-        outputSubject.complete()
-      })
-    return outputSubject
-  }
-
   private async updateAssistantThread(
     client: OpenAI,
     thread: AiThread,
@@ -285,24 +302,6 @@ export class OpenaiClient extends AiClient {
       role: 'assistant',
       content: `${m.name}: Can you provide me the result of this :\n<toolRequestId>${m.toolRequestId}</toolRequestId>\n<function>${m.name}</function>\n<args>${m.args}</args>`,
     }
-  }
-
-  protected async processAssistantThread(
-    client: OpenAI,
-    agent: Agent,
-    thread: AiThread,
-    subscriber: Subject<CodayEvent>
-  ): Promise<void> {
-    const assistantStream = client.beta.threads.runs.stream(thread.data.openai.assistantThreadData.threadId, {
-      assistant_id: agent.definition.openaiAssistantId!,
-      tools: [...agent.tools.getTools(), { type: 'file_search' }],
-      tool_choice: 'auto',
-      max_completion_tokens: 120000,
-      max_prompt_tokens: 120000,
-      parallel_tool_calls: false,
-    })
-
-    await this.processAssistantStream(assistantStream, agent, client, thread, subscriber)
   }
 
   private async processAssistantStream(
