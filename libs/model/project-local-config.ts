@@ -11,7 +11,7 @@ export type ProjectLocalConfig = {
   aiProviders: AiProviderLocalConfig
   integration: IntegrationLocalConfig
   storage?: StorageConfig
-  agents?: AgentDefinition | AgentDefinition[]
+  agents?: AgentDefinition[]
 }
 
 export type StorageConfig =

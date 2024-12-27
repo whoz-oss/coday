@@ -26,6 +26,7 @@ export class AgentService {
   /**
    * Initialize agent definitions from all sources if not already initialized:
    * - coday.yml agents section
+   * - project local configuration agents
    * - ~/.coday/[project]/agents/ folder
    */
   async initialize(context: CommandContext): Promise<void> {
@@ -36,6 +37,14 @@ export class AgentService {
       // Load from coday.yml agents section first
       if (context.project.agents?.length) {
         for (const def of context.project.agents) {
+          this.tryAddAgent(def, context)
+        }
+      }
+
+      // Load from project local configuration
+      const selectedProject = this.services.project.selectedProject
+      if (selectedProject?.config.agents?.length) {
+        for (const def of selectedProject.config.agents) {
           this.tryAddAgent(def, context)
         }
       }
@@ -159,7 +168,15 @@ export class AgentService {
 
     const aiClient = this.aiClientProvider.getClient(def.aiProvider)
     if (!aiClient) {
-      console.error(`Cannot create agent ${def.name}: AI client creation failed`)
+      // Provide more specific error for localLlm
+      if (def.aiProvider === 'localLlm') {
+        this.interactor.warn(
+          `Cannot create agent ${def.name}: Local LLM configuration is missing or incomplete. ` +
+            `Please configure 'url' in your aiProviders section in ~/.coday/users/${this.services.user.sanitizedUsername}/user.yml or through 'config ai user'`
+        )
+      } else {
+        console.error(`Cannot create agent ${def.name}: AI client creation failed`)
+      }
       return
     }
 
