@@ -1,4 +1,4 @@
-export type AiProvider = 'openai' | 'anthropic' | 'google'
+export type AiProvider = 'openai' | 'anthropic' | 'google' | 'localLlm'
 
 export enum ModelSize {
   BIG = 'BIG',
