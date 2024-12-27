@@ -12,6 +12,7 @@ const ENV_VARS: Record<AiProvider, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',
   google: 'GEMINI_API_KEY',
+  localLlm: 'LOCAL_LLM_API_KEY', // Usually not needed but kept for consistency
 }
 
 /**
@@ -27,7 +28,7 @@ const ENV_VARS: Record<AiProvider, string> = {
  * - Environment variables can only override existing configurations
  * - Client instances are cached per provider within this instance
  */
-class AiClientProvider {
+export class AiClientProvider {
   /** Cache of instantiated clients to avoid recreation */
   private readonly clientCache: Map<AiProvider, AiClient> = new Map()
 
@@ -35,7 +36,7 @@ class AiClientProvider {
    * Order of preference for selecting default provider.
    * Used when no specific provider is requested.
    */
-  private readonly providerOrder: AiProvider[] = ['anthropic', 'openai', 'google']
+  private readonly providerOrder: AiProvider[] = ['anthropic', 'openai', 'google', 'localLlm']
 
   constructor(
     private readonly interactor: Interactor,
@@ -68,15 +69,8 @@ class AiClientProvider {
       return client
     }
 
-    // Check if provider has a config or env var
-    const apiKeyProvider = this.createApiKeyProvider(provider)
-    const apiKey = apiKeyProvider()
-    if (!apiKey) {
-      return undefined
-    }
-
     // Create new client with the api key provider
-    client = this.createClient(provider, apiKeyProvider)
+    client = this.createClient(provider)
     if (client) {
       this.clientCache.set(provider, client)
     }
@@ -84,67 +78,82 @@ class AiClientProvider {
     return client
   }
 
-  /**
-   * Creates a function that provides the API key for a given provider.
-   * The key is sourced from:
-   * 1. Environment variable (if provider is configured)
-   * 2. User configuration
-   *
-   * Note: Provider must be configured in user config to be available,
-   * environment variables can only override existing configurations.
-   *
-   * @param provider The AI provider to get key for
-   * @returns Function that returns current API key or undefined
-   */
-  private createApiKeyProvider(provider: AiProvider): () => string | undefined {
-    return () => {
-      // First check if provider is configured (required)
-      let configuredKey: string | undefined = this.userService.config.aiProviders[provider]?.apiKey
-      if (!configuredKey) {
-        configuredKey = this.projectService.selectedProject?.config?.aiProviders[provider]?.apiKey
-      }
-      if (!configuredKey) {
-        return undefined
-      }
-
-      // If configured, environment variable can override
-      const envKey = process.env[ENV_VARS[provider]]
-      return envKey || configuredKey
+  public kill(): void {
+    const clients: AiClient[] = Array.from(this.clientCache.values())
+    for (const client of clients) {
+      client.kill()
     }
+  }
+
+  private getApiKey(provider: AiProvider): string | undefined {
+    const userKey: string | undefined = this.userService.config.aiProviders[provider]?.apiKey
+    const projectKey = this.projectService.selectedProject?.config?.aiProviders[provider]?.apiKey
+    const envKey = process.env[ENV_VARS[provider]]
+    return envKey || userKey || projectKey
   }
 
   /**
    * Creates a new client instance for the specified provider.
    *
    * @param provider The AI provider to create client for
-   * @param apiKeyProvider Function that provides the API key
    * @returns New client instance or undefined if provider not supported
    */
-  private createClient(provider: AiProvider, apiKeyProvider: () => string | undefined): AiClient | undefined {
+  private createClient(provider: AiProvider): AiClient | undefined {
+    console.log(`create client with ${provider}`)
+    const apiKey = this.getApiKey(provider)
     switch (provider) {
       case 'anthropic':
-        return new AnthropicClient(this.interactor, apiKeyProvider)
+        if (!apiKey) return undefined
+        return new AnthropicClient(this.interactor, apiKey)
       case 'openai':
-        return new OpenaiClient('OpenAI', this.interactor, apiKeyProvider)
+        if (!apiKey) return undefined
+        return new OpenaiClient('OpenAI', this.interactor, apiKey)
       case 'google':
+        if (!apiKey) return undefined
         // Leveraging Google Gemini enabling use of Openai SDK for beta
         return new OpenaiClient(
           'Google Gemini',
           this.interactor,
-          apiKeyProvider,
+          apiKey,
           'https://generativelanguage.googleapis.com/v1beta/openai/',
           {}, //TODO: Gemini models !
           'Gemini'
         )
-    }
-  }
+      case 'localLlm':
+        const config = this.userService.config.aiProviders.localLlm
+        console.log('localLlm config', config)
+        if (!config) return undefined
 
-  kill() {
-    const clients: AiClient[] = Array.from(this.clientCache.values())
-    for (const client of clients) {
-      client.kill()
+        // Create custom model configuration
+        const localModels = {
+          BIG: {
+            name: config.model || 'local-model',
+            contextWindow: config.contextWindow || 8192,
+            price: {
+              inputMTokens: 0,
+              cacheRead: 0,
+              outputMTokens: 0,
+            },
+          },
+          SMALL: {
+            name: config.model || 'local-model',
+            contextWindow: config.contextWindow || 8192,
+            price: {
+              inputMTokens: 0,
+              cacheRead: 0,
+              outputMTokens: 0,
+            },
+          },
+        }
+
+        return new OpenaiClient(
+          'Local LLM',
+          this.interactor,
+          apiKey ?? 'no_api_key_for_local_llm',
+          config.url,
+          localModels,
+          'Local'
+        )
     }
   }
 }
-
-export { AiClientProvider }
