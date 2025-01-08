@@ -32,7 +32,7 @@ export class CommandContext {
   /**
    * Depth of the stack of threads for delegation
    */
-  stackDepth: number = 0
+  stackDepth: number = 1
 
   /**
    * Garbage object for each handling implementation to add specific data
@@ -56,25 +56,6 @@ export class CommandContext {
 
   getFirstCommand(): string | undefined {
     return this.commandQueue.shift()
-  }
-
-  canSubTask(callback: () => void): boolean {
-    const subTaskAvailable = this.subTaskCount !== 0
-    if (subTaskAvailable) {
-      callback()
-    }
-    return subTaskAvailable
-  }
-
-  addSubTasks(...commands: string[]): boolean {
-    if (this.subTaskCount !== 0) {
-      if (this.subTaskCount > 0) {
-        this.subTaskCount--
-      }
-      this.addCommands(...commands)
-      return true
-    }
-    return false
   }
 
   setSubTask(value: number): void {

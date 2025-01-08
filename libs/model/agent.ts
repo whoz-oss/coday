@@ -1,10 +1,10 @@
-import {AiClient} from "./ai.client"
-import {AgentDefinition, ModelSize} from "./agent-definition"
-import {Project} from "./project"
-import {ToolSet} from "../integration/tool-set"
-import {AiThread} from "../ai-thread/ai-thread"
-import {Observable} from "rxjs"
-import {CodayEvent} from "../shared/coday-events"
+import {AiClient} from './ai.client'
+import {AgentDefinition, ModelSize} from './agent-definition'
+import {Project} from './project'
+import {ToolSet} from '../integration/tool-set'
+import {AiThread} from '../ai-thread/ai-thread'
+import {Observable} from 'rxjs'
+import {CodayEvent} from '../shared/coday-events'
 
 /**
  * Simplified view of an agent for listing and selection purposes
@@ -41,6 +41,13 @@ export class Agent {
                 <project-context>
 ${this.project.description}
 </project-context>`
+  }
+
+  toSummary(): AgentSummary {
+    return {
+      name: this.name,
+      description: this.description,
+    }
   }
 
   /**

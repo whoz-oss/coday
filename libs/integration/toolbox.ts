@@ -9,14 +9,15 @@ import { MemoryTools } from './memory.tools'
 import { AssistantToolFactory, CodayTool } from './assistant-tool-factory'
 import { ConfluenceTools } from './confluence/confluence.tools'
 import { CodayServices } from '../coday-services'
+import { AgentService } from '../agent'
 
 export class Toolbox {
   private toolFactories: AssistantToolFactory[]
   private tools: CodayTool[] = []
 
-  constructor(interactor: Interactor, services: CodayServices) {
+  constructor(interactor: Interactor, services: CodayServices, agentService: AgentService) {
     this.toolFactories = [
-      new AiTools(interactor),
+      new AiTools(interactor, agentService),
       new FileTools(interactor),
       new JiraTools(interactor, services.integration),
       new GitTools(interactor, services.integration),
