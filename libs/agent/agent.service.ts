@@ -3,12 +3,13 @@ import * as path from 'path'
 import * as yaml from 'yaml'
 import { AiClientProvider } from '../integration/ai/ai-client-provider'
 import { Toolbox } from '../integration/toolbox'
-import { Agent, AgentDefinition, CodayAgentDefinition, CommandContext, Interactor } from '../model'
+import { Agent, AgentDefinition, AgentSummary, CodayAgentDefinition, CommandContext, Interactor } from '../model'
 import { ToolSet } from '../integration/tool-set'
 import { CodayServices } from '../coday-services'
 
 export class AgentService {
   private agents: Map<string, Agent> = new Map()
+  private agentDefinitions: AgentDefinition[] = []
   private toolbox: Toolbox
 
   constructor(
@@ -20,7 +21,11 @@ export class AgentService {
     this.services.project.selectedProject$.subscribe(() => {
       this.agents.clear()
     })
-    this.toolbox = new Toolbox(this.interactor, services)
+    this.toolbox = new Toolbox(this.interactor, services, this)
+  }
+
+  listAgentSummaries(): AgentSummary[] {
+    return this.agentDefinitions.map((a) => ({ name: a.name, description: a.description }))
   }
 
   /**
@@ -37,7 +42,7 @@ export class AgentService {
       // Load from coday.yml agents section first
       if (context.project.agents?.length) {
         for (const def of context.project.agents) {
-          this.tryAddAgent(def, context)
+          this.addDefinition(def)
         }
       }
 
@@ -45,7 +50,7 @@ export class AgentService {
       const selectedProject = this.services.project.selectedProject
       if (selectedProject?.config.agents?.length) {
         for (const def of selectedProject.config.agents) {
-          this.tryAddAgent(def, context)
+          this.addDefinition(def)
         }
       }
 
@@ -55,16 +60,17 @@ export class AgentService {
       // If no agents were loaded, use Coday as backup
       if (this.agents.size === 0) {
         console.log('No agents configured, using Coday as backup agent')
-        this.tryAddAgent(CodayAgentDefinition, context)
-      }
-
-      const agentNames = Array.from(this.agents.values()).map((a) => `  - ${a.name}`)
-      if (agentNames.length > 1) {
-        this.interactor.displayText(`Loaded agents (callable with '@[agent name]'):\n${agentNames.join('\n')}`)
+        this.addDefinition(CodayAgentDefinition)
       }
     } catch (error) {
       console.error('Failed to initialize agents:', error)
       throw error
+    }
+
+    this.agentDefinitions.forEach((def) => this.tryAddAgent(def, context))
+    const agentNames = this.listAgentSummaries().map((a) => `  - ${a.name} : ${a.description}`)
+    if (agentNames.length > 1) {
+      this.interactor.displayText(`Loaded agents (callable with '@[agent name]'):\n${agentNames.join('\n')}`)
     }
   }
 
@@ -96,21 +102,12 @@ export class AgentService {
     return matches
   }
 
-  /**
-   * Get all available agents as summaries, optionally excluding some by name
-   */
-  async getAllAgents(context: CommandContext, excludeNames?: string[]): Promise<Agent[]> {
-    await this.initialize(context)
-
-    const excludeSet = excludeNames ? new Set(excludeNames.map((name) => name.toLowerCase())) : new Set<string>()
-
-    return Array.from(this.agents.entries())
-      .filter(([name]) => !excludeSet.has(name))
-      .map(([_, agent]) => agent)
-  }
-
   kill(): void {
     this.aiClientProvider.kill()
+  }
+
+  private addDefinition(def: AgentDefinition): void {
+    this.agentDefinitions.push({ ...CodayAgentDefinition, ...def })
   }
 
   /**
