@@ -74,8 +74,7 @@ export class OpenaiClient extends AiClient {
     const thinking = setInterval(() => this.interactor.thinking(), this.thinkingInterval)
     this.processThread(openai, agent, thread, outputSubject).finally(() => {
       clearInterval(thinking)
-      this.showAgent(agent, this.providerName, this.models[this.getModelSize(agent)].name)
-      this.showUsage(thread)
+      this.showAgentAndUsage(agent, this.providerName, this.models[this.getModelSize(agent)].name, thread)
       outputSubject.complete()
     })
     return outputSubject
@@ -114,8 +113,7 @@ export class OpenaiClient extends AiClient {
       .then(async () => await this.processAssistantThread(openai, agent, thread, outputSubject))
       .finally(() => {
         clearInterval(thinking)
-        this.showAgent(agent, this.providerName, this.models[this.getModelSize(agent)].name)
-        this.showUsage(thread)
+        this.showAgentAndUsage(agent, this.providerName, this.models[this.getModelSize(agent)].name, thread)
         outputSubject.complete()
       })
     return outputSubject

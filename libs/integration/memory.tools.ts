@@ -33,14 +33,19 @@ export class MemoryTools extends AssistantToolFactory {
       type: 'function',
       function: {
         name: 'memorize',
-        description: `Upsert a memory entry to remember on next runs. Should be used selectively for significant, complete, and validated knowledge that: 1) represents core project/user patterns, 2) will be valuable in multiple future interactions, 3) is not redundant with existing memories. Do not memorize partial knowledge, single-use information, or minor implementation details. Allowed levels: ${MemoryLevels.join(', ')}.`,
+        description: `Upsert a memory entry to remember on next runs. Should be used selectively for significant and knowledge that:
+1) represents core project/user patterns
+2) will be valuable in multiple future interactions
+3) is not redundant with existing memories.
+
+Do not memorize partial knowledge, single-use information, or minor implementation details. Allowed levels: ${MemoryLevels.join(', ')}.`,
         parameters: {
           type: 'object',
           properties: {
             title: {
               type: 'string',
               description:
-                'Title of the memory: should be precise, unique, and reflect the full scope of the content. Avoid generic titles.',
+                'Title of the memory: should be precise, unique, and reflect the full scope of the content. Avoid generic titles unless the content is really generic.',
             },
             content: {
               type: 'string',
