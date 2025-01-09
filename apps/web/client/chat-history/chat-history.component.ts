@@ -49,9 +49,16 @@ export class ChatHistoryComponent implements CodayEventHandler {
     if (value) {
       this.thinkingTimeout = setTimeout(() => {
         this.thinkingDots.classList.toggle('visible', false)
+        this.scrollToBottom()
       }, ThinkingEvent.debounce + 1000)
     }
     this.thinkingDots.classList.toggle('visible', value)
+  }
+
+  private scrollToBottom(): void {
+    if (this.chatHistory) {
+      this.chatHistory.scrollTo(0, this.chatHistory.scrollHeight)
+    }
   }
 
   addTechnical(text: string): void {
@@ -85,17 +92,14 @@ export class ChatHistoryComponent implements CodayEventHandler {
         ? parsed.then((html) => newEntry.appendChild(this.buildTextElement(html)))
         : newEntry.appendChild(this.buildTextElement(parsed))
     } else {
-      newEntry.innerHTML = content
+      const parsed = marked.parse(content)
+      parsed instanceof Promise ? parsed.then((html) => (newEntry.innerHTML = html)) : (newEntry.innerHTML = parsed)
     }
     return newEntry
   }
 
   private appendMessageElement(element: HTMLDivElement): void {
     this.chatHistory?.appendChild(element)
-    setTimeout(() => {
-      // delay for scrolling once the next question has arrived
-      this.chatHistory?.scrollTo(0, this.chatHistory.scrollHeight)
-    }, 300)
   }
 
   private buildTextElement(innerHTML: string): HTMLDivElement {
