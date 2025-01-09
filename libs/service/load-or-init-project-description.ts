@@ -123,8 +123,40 @@ export const loadOrInitProjectDescription = async (
     }
   }
 
-  const memoryNote =
-    '\n\nAt the end of each request, carefully evaluate if there is significant and complete knowledge worth remembering:\n\n1) For PROJECT level:\n- Architectural decisions\n- Core implementation patterns\n- Significant design guidelines\n- Integration configurations\n- Must be fully validated and documented\n\n2) For USER level:\n- Strong personal preferences\n- Validated working patterns\n- Clear tool/environment configurations\n- Must impact multiple future interactions\n\nBefore memorizing, verify that:\n- The knowledge is complete and validated\n- It is not redundant with existing memories\n- It will be valuable in multiple future interactions\n- It is significant enough to warrant storage\n- It is properly structured and clear\n\nDo not memorize:\n- Partial or unconfirmed knowledge\n- Single-use information\n- Minor implementation details\n- Information already covered by existing memories\n- Temporary or context-specific knowledge'
+  const memoryNote = `
+    
+At the end of each request, carefully evaluate if there is significant and complete knowledge worth remembering:
+
+1) For PROJECT level:
+
+  - Architectural decisions
+  - Core implementation patterns
+  - Significant design guidelines
+  - Integration configurations
+  - Must be fully validated and documented
+  
+2) For USER level:
+
+  - Strong personal preferences
+  - Validated working patterns
+  - Clear tool/environment configurations
+  - Must impact multiple future interactions
+  
+Before memorizing, verify that:
+
+  - The knowledge is complete and validated
+  - It is not redundant with existing memories
+  - It will be valuable in multiple future interactions
+  - It is significant enough to warrant storage
+  - It is properly structured and clear
+  
+Do not memorize:
+
+  - Partial or unconfirmed knowledge
+  - Single-use information
+  - Minor implementation details
+  - Information already covered by existing memories (in that case, update the memory)
+`
   const memoryText =
     userMemoryText || projectMemoryText
       ? `${userMemoryText}${projectMemoryText}${memoryNote}`
