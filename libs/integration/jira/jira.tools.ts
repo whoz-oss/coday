@@ -39,7 +39,7 @@ export class JiraTools extends AsyncAssistantToolFactory {
             jiraApiToken,
             jiraUsername,
             this.interactor,
-            500  // Increased from default to get more comprehensive mapping
+            50
         )
 
         const retrieveTicket = ({ticketId}: { ticketId: string }) => {
