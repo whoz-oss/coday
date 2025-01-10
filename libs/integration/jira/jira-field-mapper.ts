@@ -100,7 +100,7 @@ export async function generateFieldMapping(
     jiraApiToken: string,
     jiraUsername: string,
     interactor: Interactor,
-    maxTickets: number = 500
+    maxTickets: number = 100
 ): Promise<{
     mappings: ActiveFieldMapping[],
     description: string
