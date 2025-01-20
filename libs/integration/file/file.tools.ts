@@ -1,44 +1,46 @@
-import { writeFileByPath } from './write-file-by-path'
-import { writeFileChunk } from './write-file-chunk'
-import { findFilesByName } from '../../function/find-files-by-name'
-import { listFilesAndDirectories } from './list-files-and-directories'
-import { findFilesByText } from './find-files-by-text'
-import { CommandContext, Interactor } from '../../model'
-import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
-import { FunctionTool } from '../types'
-import { unlinkFile } from './unlink-file'
-import { readFileByPath } from '../../function/read-file-by-path'
+import {writeFileByPath} from './write-file-by-path'
+import {writeFileChunk} from './write-file-chunk'
+import {findFilesByName} from '../../function/find-files-by-name'
+import {listFilesAndDirectories} from './list-files-and-directories'
+import {findFilesByText} from './find-files-by-text'
+import {CommandContext, Interactor} from '../../model'
+import {AssistantToolFactory, CodayTool} from '../assistant-tool-factory'
+import {FunctionTool} from '../types'
+import {unlinkFile} from './unlink-file'
+import {readFileByPath} from '../../function/read-file-by-path'
 
 /**
  * FileTools: A comprehensive file manipulation tool factory for Coday
- * 
+ *
  * This class extends AssistantToolFactory and provides a robust set of file-related tools
  * that can be dynamically generated based on the current command context. It supports:
- * 
+ *
  * 1. Read Operations:
  *    - Reading project files
  *    - Searching files by name or content
  *    - Listing files and directories
- * 
+ *
  * 2. Write Operations (when not in read-only mode):
  *    - Writing entire files
  *    - Performing partial file edits (chunk replacements)
  *    - Removing files
- * 
+ *
  * Key Features:
  * - Respects read-only mode by conditionally adding write/delete tools
  * - Provides flexible file search capabilities
  * - Integrates with project's root directory
  * - Uses an interactor for logging and error handling
- * 
+ *
  * Design Principles:
  * - Dynamic tool generation based on context
  * - Clear, descriptive function tools with JSON parsing
  * - Error handling for file operations
- * 
+ *
  * @extends AssistantToolFactory
  */
 export class FileTools extends AssistantToolFactory {
+  name = 'FILES'
+
   constructor(interactor: Interactor) {
     super(interactor)
   }

@@ -7,6 +7,8 @@ import { MemoryLevel } from '../model/memory'
 const MemoryLevels = [MemoryLevel.PROJECT, MemoryLevel.USER]
 
 export class MemoryTools extends AssistantToolFactory {
+  name = 'MEMORY'
+
   constructor(
     interactor: Interactor,
     private memoryService: MemoryService
