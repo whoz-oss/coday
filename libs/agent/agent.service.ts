@@ -37,7 +37,7 @@ export class AgentService {
       // Load from coday.yml agents section first
       if (context.project.agents?.length) {
         for (const def of context.project.agents) {
-         await this.tryAddAgent(def, context)
+          await this.tryAddAgent(def, context)
         }
       }
 
@@ -156,7 +156,7 @@ export class AgentService {
    * Logs error if dependencies are missing
    */
   private async tryAddAgent(partialDef: AgentDefinition, context: CommandContext): Promise<void> {
-    const def = { ...CodayAgentDefinition, ...partialDef }
+    const def: AgentDefinition = { ...CodayAgentDefinition, ...partialDef }
 
     // force aiProvider for OpenAI assistants
     if (def.openaiAssistantId) def.aiProvider = 'openai'
@@ -179,8 +179,13 @@ export class AgentService {
       }
       return
     }
+    const integrations = new Map<string, string[]>()
+    Object.entries(def.integrations ?? {}).forEach(([integration, names]) => {
+      const toolNames = !names || !names.length ? [] : names
+      integrations.set(integration, toolNames)
+    })
 
-    const syncTools = this.toolbox.getTools(context)
+    const syncTools = this.toolbox.getTools(context, integrations)
     const asyncTools = await this.toolbox.getAsyncTools(context)
     const toolset = new ToolSet([...syncTools, ...asyncTools])
     const agent = new Agent(def, aiClient, context.project, toolset)

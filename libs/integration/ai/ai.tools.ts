@@ -3,6 +3,8 @@ import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 
 export class AiTools extends AssistantToolFactory {
+  name = 'AI'
+
   constructor(interactor: Interactor) {
     super(interactor)
   }

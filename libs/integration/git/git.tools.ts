@@ -12,6 +12,8 @@ import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 
 export class GitTools extends AssistantToolFactory {
+  name = 'GIT'
+
   constructor(
     interactor: Interactor,
     private integrationService: IntegrationService
