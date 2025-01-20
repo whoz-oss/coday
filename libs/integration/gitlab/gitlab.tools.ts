@@ -10,6 +10,8 @@ import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 
 export class GitLabTools extends AssistantToolFactory {
+  name = 'GITLAB'
+
   constructor(
     interactor: Interactor,
     private integrationService: IntegrationService
