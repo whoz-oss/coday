@@ -179,11 +179,14 @@ export class AgentService {
       }
       return
     }
-    const integrations = new Map<string, string[]>()
-    Object.entries(def.integrations ?? {}).forEach(([integration, names]) => {
-      const toolNames = !names || !names.length ? [] : names
-      integrations.set(integration, toolNames)
-    })
+    const integrations = def.integrations
+      ? new Map<string, string[]>(
+          Object.entries(def.integrations).map(([integration, names]: [string, string[]]): [string, string[]] => {
+            const toolNames: string[] = !names || !names.length ? [] : names
+            return [integration, toolNames]
+          })
+        )
+      : undefined
 
     const syncTools = this.toolbox.getTools(context, integrations)
     const asyncTools = await this.toolbox.getAsyncTools(context)
