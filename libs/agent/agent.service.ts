@@ -152,8 +152,8 @@ export class AgentService {
    * Try to create and add an agent to the map
    * Logs error if dependencies are missing
    */
-  private tryAddAgent(partialDef: AgentDefinition, context: CommandContext): void {
-    const def = { ...CodayAgentDefinition, ...partialDef }
+  private async tryAddAgent(partialDef: AgentDefinition, context: CommandContext): Promise<void> {
+    const def: AgentDefinition = { ...CodayAgentDefinition, ...partialDef }
 
     // force aiProvider for OpenAI assistants
     if (def.openaiAssistantId) def.aiProvider = 'openai'
@@ -176,8 +176,18 @@ export class AgentService {
       }
       return
     }
+    const integrations = def.integrations
+      ? new Map<string, string[]>(
+          Object.entries(def.integrations).map(([integration, names]: [string, string[]]): [string, string[]] => {
+            const toolNames: string[] = !names || !names.length ? [] : names
+            return [integration, toolNames]
+          })
+        )
+      : undefined
 
-    const toolset = new ToolSet(this.toolbox.getTools(context))
+    const syncTools = this.toolbox.getTools(context, integrations)
+    const asyncTools = await this.toolbox.getAsyncTools(context)
+    const toolset = new ToolSet([...syncTools, ...asyncTools])
     const agent = new Agent(def, aiClient, context.project, toolset)
     this.agents.set(agent.name.toLowerCase(), agent)
   }

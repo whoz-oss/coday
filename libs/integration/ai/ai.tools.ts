@@ -7,6 +7,8 @@ import { CodayEvent, MessageEvent } from '../../shared'
 import { AiThread } from '../../ai-thread/ai-thread'
 
 export class AiTools extends AssistantToolFactory {
+  name = 'AI'
+
   constructor(
     interactor: Interactor,
     private agentService: AgentService

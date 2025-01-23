@@ -6,6 +6,8 @@ import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 
 export class ConfluenceTools extends AssistantToolFactory {
+  name = 'CONFLUENCE'
+
   constructor(
     interactor: Interactor,
     private integrationService: IntegrationService

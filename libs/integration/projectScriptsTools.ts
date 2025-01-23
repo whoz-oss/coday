@@ -5,7 +5,9 @@ import { FunctionTool } from './types'
 
 const PARAMETERS: string = 'PARAMETERS'
 
-export class ScriptsTools extends AssistantToolFactory {
+export class ProjectScriptsTools extends AssistantToolFactory {
+  name = 'PROJECT_SCRIPTS'
+
   constructor(interactor: Interactor) {
     super(interactor)
   }
