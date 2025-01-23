@@ -51,8 +51,7 @@ export class AnthropicClient extends AiClient {
     const thinking = setInterval(() => this.interactor.thinking(), this.thinkingInterval)
     this.processThread(anthropic, agent, thread, outputSubject).finally(() => {
       clearInterval(thinking)
-      this.showAgent(agent, 'Anthropic', AnthropicModels[this.getModelSize(agent)].name)
-      this.showUsage(thread)
+      this.showAgentAndUsage(agent, 'Anthropic', AnthropicModels[this.getModelSize(agent)].name, thread)
       outputSubject.complete()
     })
     return outputSubject

@@ -97,8 +97,8 @@ export class HandlerLooper {
         currentCommand = context.getFirstCommand()
         count++
         if (this.isHelpAsked(currentCommand)) {
-          this.interactor.displayText('Available commands:')
           const handlerHelpMessages = [
+            'Available commands:',
             this.formatHelp('help/h/[nothing]', 'displays this help message'),
             ...this.handlers
               .slice()
@@ -109,7 +109,7 @@ export class HandlerLooper {
             this.formatHelp(keywords.reset, "resets Coday's context."),
             this.formatHelp(keywords.exit, 'quits the program.'),
           ]
-          handlerHelpMessages.forEach((msg) => this.interactor.displayText(msg))
+          this.interactor.displayText(handlerHelpMessages.join('\n'))
           continue
         }
         if (!currentCommand) {

@@ -128,17 +128,14 @@ export abstract class AiClient {
     return thread.runStatus === RunStatus.RUNNING && !this.killed
   }
 
-  protected showUsage(thread: AiThread): void {
+  protected showAgentAndUsage(agent: Agent, aiProvider: string, model: string, thread: AiThread): void {
+    const agentPart = `🤖 ${agent.name} | ${aiProvider} - ${model}  \n`
     if (!thread.usage) return
     const loop = `🔁${thread.usage.iterations} | `
     const tokensIO = `Tokens ⬇️${thread.usage.input} ⬆️${thread.usage.output} | `
     const cacheIO = `Cache ${thread.usage.cache_write ? `✍️${thread.usage.cache_write} ` : ''}📖${thread.usage.cache_read} | `
     const price = `💸 🏃$${thread.usage.price.toFixed(3)} 🧵$${thread.price.toFixed(3)}`
-    this.interactor.displayText(loop + tokensIO + cacheIO + price)
-  }
-
-  protected showAgent(agent: Agent, aiProvider: string, model: string): void {
-    this.interactor.displayText(`🤖 ${agent.name} | ${aiProvider} - ${model}`)
+    this.interactor.displayText(agentPart + loop + tokensIO + cacheIO + price)
   }
 
   protected getModelSize(agent: Agent): ModelSize {
