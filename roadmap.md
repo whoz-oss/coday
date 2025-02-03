@@ -5,13 +5,40 @@ Transform our company into an agent-augmented workplace where every employee eff
 
 ```mermaid
 graph LR
-    V[2025 Vision] --> S1[Core Stream]
+    V[2025 Vision: Agent-Augmented Enterprise] --> S1[Core Stream]
     V --> S2[Product Stream]
     V --> S3[Enterprise Stream]
     V --> S4[External Stream]
 
+    S1 --> C1[Agent Engine Enhancement];
+    S1 --> C2[Testing & Reliability];
+    S1 --> C3[Core Architecture];
+    S1 --> C4[Developer Platform];
+
+    S2 --> P1[Web Application Foundation];
+    S2 --> P2[Data Management];
+    S2 --> P3[Application Support];
+    S2 --> P4[Deployment & Operations];
+
+    S3 --> E1[Enterprise Integration Layer];
+    S3 --> E2[Training & Adoption Program];
+    S3 --> E3[Business Process Enhancement];
+
+    S4 --> X1[External Communication];
+    S4 --> X2[Community Management];
+    S4 --> X3[Feedback Framework];
+
     style V fill:#f9f,stroke:#333,stroke-width:4px
+    style S1 fill:#f5f5ff
+    style S2 fill:#f5fff5
+    style S3 fill:#fff5f5
+    style S4 fill:#f5f5f5
+
+    classDef achievement fill:#e1e1e1,stroke:#666
+    class C1,C2,C3,C4,P1,P2,P3,P4,E1,E2,E3,X1,X2,X3 achievement
 ```
+
+Each stream's branches represent their Key Implementations as defined in the roadmap.
 
 ## Streams
 
