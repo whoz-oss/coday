@@ -10,7 +10,14 @@ env:
   MASTER_BRANCH: master
 
 jobs:
+  init:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/init-repo
+
   build:
+    needs: [init]
     if: startsWith(github.ref, 'refs/tags/release')
     uses: ./.github/workflows/build.yml
 
@@ -18,4 +25,5 @@ jobs:
     needs: [build]
     runs-on: self-hosted
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/release
