@@ -14,7 +14,7 @@ function getSlug {
 }
 
 function getTargetBranchCacheFolderName {
-  local targetBranchNameSlug=$(getSlug "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME")
+  local targetBranchNameSlug=$(getSlug "$GITHUB_BASE_REF")
   if [ -d "$BRANCHES_CACHE_FOLDER/$SCHEDULED_VALIDATE_PREFIX$targetBranchNameSlug" ]; then
     echo "$BRANCHES_CACHE_FOLDER/$SCHEDULED_VALIDATE_PREFIX$targetBranchNameSlug"
   else
@@ -61,14 +61,10 @@ function initializeFrameworkCache {
   local folderWithWorkingDirectory=$WORKING_DIRECTORY/$1
   local framework=$2
   if [ ! -d "$folderWithWorkingDirectory/$framework" ]; then
-    if [ $CI_MERGE_REQUEST_TARGET_BRANCH_NAME ]; then
+    if [ $GITHUB_BASE_REF ]; then
       local targetBranchCacheFolder=$(getTargetBranchCacheFolderName)
-      # echo "folderWithWorkingDirectory:" $folderWithWorkingDirectory
-      # echo "targetBranchCacheFolder:" $targetBranchCacheFolder
       if [ -d "$targetBranchCacheFolder/$folder/$framework" ]; then
-        # echo "initializeFrameworkCache for folder $folder and framework $framework"
-        # If the $framework cache folder exists, copy its contents to $framework
-        echo "$framework cache for target branch $CI_MERGE_REQUEST_TARGET_BRANCH_NAME in folder $folder exists, copying it..."
+        echo "$framework cache for target branch $GITHUB_BASE_REF in folder $folder exists, copying it..."
         cp -dpR "$targetBranchCacheFolder/$folder/$framework" "$folderWithWorkingDirectory/"
       fi
     else
