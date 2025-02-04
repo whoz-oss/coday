@@ -119,6 +119,7 @@ jobs:
 
   tests:
     runs-on: self-hosted
+    needs: [init]
     steps:
       - uses: ./.github/actions/tests
         with:
