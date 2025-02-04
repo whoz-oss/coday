@@ -13,12 +13,6 @@ jobs:
   init:
     runs-on: self-hosted
     steps:
-      - name: Generate Commit Ref Slug
-        run: |
-          REF_NAME="${{ github.ref_name }}"
-          SLUG=$(echo "$REF_NAME" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed 's/^-*\|-*$//g')
-          echo "WORKING_DIRECTORY=$SLUG" >> $GITHUB_ENV
-
       - name: Init
         run: |
           # Create unique, secure socket
@@ -59,14 +53,14 @@ jobs:
             echo 'repository cache is empty, initializing it...'
 
             # Clone repository using SSH
-            SSH_AUTH_SOCK="$SSH_SOCK" GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=yes" git clone git@github.com:${GITHUB_REPOSITORY}.git -b "${GITHUB_REF_NAME}" .
+            SSH_AUTH_SOCK="$SSH_SOCK" GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=yes" git clone git@github.com:${GITHUB_REPOSITORY}.git -b "${GITHUB_REF}" .
 
             git config merge.directoryRenames false
             git fetch --tags --force
           else
             echo 'repository cache is already present, updating sources...'
             SSH_AUTH_SOCK="$SSH_SOCK" GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=yes" git fetch --tags --force
-            SSH_AUTH_SOCK="$SSH_SOCK" GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=yes" git reset --hard origin/$GITHUB_REF_NAME
+            SSH_AUTH_SOCK="$SSH_SOCK" GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=yes" git reset --hard origin/$GITHUB_REF
           fi
 
           echo "INIT_REPOSITORY_PIPELINE_ID=$GITHUB_RUN_ID" > $WORKING_DIRECTORY/$INIT_REPOSITORY_PIPELINE_ID_ENV_FILE
