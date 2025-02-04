@@ -21,16 +21,12 @@ jobs:
 
       - name: Initialize SSH Agent
         run: |
-          eval "$(ssh-agent -s)"
-          #echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          #chmod 400 ~/.ssh/id_rsa
-          #echo "${{ secrets.ANSIBLE_DEV_SSH_PRIVATE_KEY }}" > ~/.ssh/ansible_id_rsa
-          #chmod 400 ~/.ssh/ansible_id_rsa
-          ssh-add "${{ secrets.SSH_PRIVATE_KEY }}"
-          ssh-add "${{ secrets.ANSIBLE_DEV_SSH_PRIVATE_KEY }}"
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          echo "${{ secrets.ACTIONS_KNOWN_HOST }}" > ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)"
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' | ssh-add -
+          echo "${{ secrets.ANSIBLE_DEV_SSH_PRIVATE_KEY }}" | tr -d '\r' | ssh-add -
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
 
       - name: Init
         run: |
