@@ -129,10 +129,9 @@ jobs:
     runs-on: self-hosted
     needs:
       - init
-      - set-var
     steps:
       - uses: ./.github/actions/tests
         with:
-          WORKING_DIRECTORY: needs.set-var.outputs.WORKING_DIRECTORY
+          WORKING_DIRECTORY: needs.init.outputs.WORKING_DIRECTORY
           is_merge_request: false
           base_ref: $GITHUB_HEAD_REF
