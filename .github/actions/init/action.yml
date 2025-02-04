@@ -2,10 +2,6 @@ name: 'Repository Initialization'
 description: 'Initialize repository by checking out code and installing dependencies'
 
 inputs:
-  node-version:
-    description: 'Node.js version to use'
-    required: false
-    default: '18'
   fetch-depth:
     description: 'Number of commits to fetch'
     required: false
