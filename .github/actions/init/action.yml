@@ -2,6 +2,9 @@ name: 'Repository Initialization'
 description: 'Initialize repository by checking out code and installing dependencies'
 
 inputs:
+  WORKING_DIRECTORY:
+    description: 'Working directory'
+    required: true
   fetch-depth:
     description: 'Number of commits to fetch'
     required: false

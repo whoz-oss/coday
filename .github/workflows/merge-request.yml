@@ -10,31 +10,25 @@ env:
   MASTER_BRANCH: master
 
 jobs:
-  generate-slug:
-    runs-on: ubuntu-latest
-    outputs:
-      slug: ${{ steps.slugify.outputs.slug }}
-    steps:
-      - name: Generate Commit Ref Slug
-        id: slugify
-        run: |
-          REF_NAME="${{ github.ref_name }}"
-          SLUG=$(echo "$REF_NAME" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed 's/^-*\|-*$//g')
-          echo "slug=$SLUG" >> $GITHUB_OUTPUT
-
   init:
     runs-on: self-hosted
     steps:
+      - name: Generate Commit Ref Slug
+        id: slug
+        run: |
+          REF_NAME="${{ github.ref_name }}"
+          SLUG=$(echo "$REF_NAME" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed 's/^-*\|-*$//g')
+          echo "WORKING_DIRECTORY=$SLUG" >> $GITHUB_ENV
+
       - uses: actions/checkout@v4
         with:
-          path: ${{ needs.generate-slug.outputs.slug }}
+          path: ${{ env.WORKING_DIRECTORY }}
           sparse-checkout: |
             .github
       - uses: ./.github/actions/init
         with:
-          WORKING_DIRECTORY: ${{ needs.generate-slug.outputs.slug }}
+          WORKING_DIRECTORY: ${{ env.WORKING_DIRECTORY }}
       - uses: ./.github/actions/tests
         with:
-          WORKING_DIRECTORY: ${{ needs.generate-slug.outputs.slug }}
           is_merge_request: true
           base_ref: ${{ inputs.base_ref }}
