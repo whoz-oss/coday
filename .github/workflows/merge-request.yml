@@ -132,7 +132,7 @@ jobs:
     steps:
       - name: Tests
         run: |
-          cd ${{env.WORKING_DIRECTORY}}
+          cd ${{needs.init.outputs.WORKING_DIRECTORY}}
           if [ "${{ inputs.is_merge_request }}" = "true" ]; then
             yarn nx affected --base=origin/${{ inputs.base_ref }} --head=HEAD --target="lint,test" --parallel=$NX_MAX_WORKERS
           else
