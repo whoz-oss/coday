@@ -15,6 +15,10 @@ jobs:
     steps:
       - name: Init
         run: |
+          # Set WORKING_DIRECTORY
+          WORKING_DIRECTORY="${GITHUB_WORKSPACE}"
+          INIT_REPOSITORY_PIPELINE_ID_ENV_FILE=".init-repository-pipeline-id"
+
           # Create unique, secure socket
           SSH_SOCK=$(mktemp -u)
 
@@ -71,7 +75,7 @@ jobs:
             echo "Merge $GITHUB_BASE_REF into $WORKING_DIRECTORY to allow a merge result pipeline"
 
             # attempt to merge
-            git merge --no-commit --no-ff origin/$GITHUB_BASE_REF
+            SSH_AUTH_SOCK="$SSH_SOCK" GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=yes" git merge --no-commit --no-ff origin/$GITHUB_BASE_REF
 
             # if merge conflict detected
             if [ $? -ne 0 ]; then
