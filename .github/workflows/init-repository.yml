@@ -22,11 +22,9 @@ jobs:
       - name: Initialize SSH Agent
         run: |
           mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          echo "${{ secrets.ACTIONS_KNOWN_HOST }}" > ~/.ssh/known_hosts
-          eval "$(ssh-agent -s)"
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" | ssh-add -
-          ssh -T git@github.com || true  # Prevent failure on first-time connection
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keygen -F github.com || ssh-keyscan github.com >> ~/.ssh/known_hosts
 
       - name: Init
         run: |
