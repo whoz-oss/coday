@@ -19,15 +19,24 @@ jobs:
           SLUG=$(echo "$REF_NAME" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed 's/^-*\|-*$//g')
           echo "WORKING_DIRECTORY=$SLUG" >> $GITHUB_ENV
 
-      - name: Initialize SSH Agent
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keygen -F github.com || ssh-keyscan github.com >> ~/.ssh/known_hosts
-
       - name: Init
         run: |
+          # Create unique, secure socket
+          SSH_SOCK=$(mktemp -u)
+
+          # Start SSH agent with unique socket
+          ssh-agent -a "$SSH_SOCK" > /dev/null
+
+          # Configure strict SSH settings
+          mkdir -p ~/.ssh
+          ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+
+          # Add SSH key with strict permissions
+          SSH_AUTH_SOCK="$SSH_SOCK" ssh-add - <<< "${{ secrets.SSH_PRIVATE_KEY }}"
+
+          # Clone repository using SSH
+          SSH_AUTH_SOCK="$SSH_SOCK" GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=yes" git clone git@github.com:username/repo.git
+
           echo "Init repo"
           git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
           git config --global user.name "${GITHUB_ACTOR}"
@@ -72,3 +81,6 @@ jobs:
           if [ "$GITHUB_REF_TYPE" != "tag" ]; then
             sh $WORKING_DIRECTORY/.github/actions/init/init-cache.sh
           fi
+
+          # Immediately delete all identities
+          SSH_AUTH_SOCK="$SSH_SOCK" ssh-add -D
