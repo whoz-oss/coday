@@ -17,6 +17,7 @@ jobs:
         with:
           sparse-checkout: |
             .github
+            package.json
       - uses: ./.github/actions/init
       - uses: ./.github/actions/tests
         with:
