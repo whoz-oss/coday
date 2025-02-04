@@ -26,7 +26,7 @@ function getSlug {
 }
 
 function getTargetBranchCacheFolderName {
-  local targetBranchNameSlug=$(getSlug "$GITHUB_BASE_REF")
+  local targetBranchNameSlug=$(getSlug "$GITHUB_HEAD_REF")
   if [ -d "$BRANCHES_CACHE_FOLDER/$SCHEDULED_VALIDATE_PREFIX$targetBranchNameSlug" ]; then
     echo "$BRANCHES_CACHE_FOLDER/$SCHEDULED_VALIDATE_PREFIX$targetBranchNameSlug"
   else
@@ -73,10 +73,10 @@ function initializeFrameworkCache {
   local folderWithWorkingDirectory=$WORKING_DIRECTORY/$1
   local framework=$2
   if [ ! -d "$folderWithWorkingDirectory/$framework" ]; then
-    if [ $GITHUB_BASE_REF ]; then
+    if [ $GITHUB_HEAD_REF ]; then
       local targetBranchCacheFolder=$(getTargetBranchCacheFolderName)
       if [ -d "$targetBranchCacheFolder/$folder/$framework" ]; then
-        echo "$framework cache for target branch $GITHUB_BASE_REF in folder $folder exists, copying it..."
+        echo "$framework cache for target branch $GITHUB_HEAD_REF in folder $folder exists, copying it..."
         cp -dpR "$targetBranchCacheFolder/$folder/$framework" "$folderWithWorkingDirectory/"
       fi
     else
