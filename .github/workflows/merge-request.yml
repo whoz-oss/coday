@@ -22,6 +22,10 @@ jobs:
         shell: bash
         run: |
           WORKING_DIRECTORY=${{ env.WORKING_DIRECTORY }}
+          mkdir -p $WORKING_DIRECTORY
+          cd $WORKING_DIRECTORY
+          echo "WORKING_DIRECTORY:" $WORKING_DIRECTORY
+
           # Create unique, secure socket
           SSH_SOCK=$(mktemp -u)
 
