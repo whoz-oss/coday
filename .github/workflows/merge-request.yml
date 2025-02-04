@@ -120,4 +120,4 @@ jobs:
       - uses: ./.github/actions/tests
         with:
           is_merge_request: true
-          base_ref: ${{ inputs.base_ref }}
+          base_ref: $GITHUB_HEAD_REF
