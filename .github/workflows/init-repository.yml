@@ -18,7 +18,7 @@ jobs:
         run: |
           # Set WORKING_DIRECTORY
           WORKING_DIRECTORY="${GITHUB_WORKSPACE}"
-          INIT_REPOSITORY_PIPELINE_ID_ENV_FILE=".init-repository-pipeline-id"
+          INIT_REPOSITORY_PIPELINE_ID_ENV_FILE="tmp.init-repository-pipeline-id"
 
           # Create unique, secure socket
           SSH_SOCK=$(mktemp -u)
@@ -111,7 +111,7 @@ jobs:
 
           ### Never init cache for tag pipelines that are only triggered to promote a rc tag to a release tag
           if [ "$GITHUB_REF_TYPE" != "tag" ]; then
-            sh $WORKING_DIRECTORY/.github/actions/init/init-cache.sh
+            $WORKING_DIRECTORY/.github/actions/init/init-cache.sh
           fi
 
           # Immediately delete all identities
