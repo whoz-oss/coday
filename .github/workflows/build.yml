@@ -1,0 +1,25 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - master
+      - 'release/**'
+
+env:
+  NX_MAX_WORKERS: 4
+
+jobs:
+  init:
+    uses: ./.github/workflows/init-repo.yml@${{ github.ref }}
+
+  test:
+    needs: [init]
+    uses: ./.github/workflows/test.yml@${{ github.ref }}
+
+  build:
+    needs: [init, test]
+    runs-on: self-hosted
+    steps:
+      - name: Build
+        run: yarn nx run-many --target="build" --parallel=${{ env.NX_MAX_WORKERS }}

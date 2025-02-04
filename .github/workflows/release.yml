@@ -1,0 +1,22 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'release'
+
+env:
+  NX_MAX_WORKERS: 4
+  MASTER_BRANCH: master
+
+jobs:
+  build:
+    if: startsWith(github.ref, 'refs/tags/release')
+    uses: ./.github/workflows/build.yml@${{ github.ref }}
+
+  release:
+    needs: [build]
+    runs-on: self-hosted
+    steps:
+      - name: Release
+        run: yarn nx release publish

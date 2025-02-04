@@ -1,0 +1,20 @@
+name: Merge Request
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    branches: [ master ]
+
+env:
+  NX_MAX_WORKERS: 4
+  MASTER_BRANCH: master
+
+jobs:
+  init:
+    uses: ./.github/workflows/init-repo.yml@${{ github.ref }}
+
+  test:
+    uses: ./.github/workflows/test.yml@${{ github.ref }}
+    with:
+      is_merge_request: true
+      base_ref: ${{ github.base_ref }}

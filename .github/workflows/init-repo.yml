@@ -1,0 +1,19 @@
+name: Repository Initialization
+
+on:
+  workflow_call:  # This allows other workflows to call this one
+
+env:
+  NX_MAX_WORKERS: 4
+  MASTER_BRANCH: master
+
+jobs:
+  init:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for nx affected commands
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
