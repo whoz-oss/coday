@@ -13,6 +13,8 @@ env:
 jobs:
   init:
     runs-on: self-hosted
+    outputs:
+      WORKING_DIRECTORY: ${{ env.WORKING_DIRECTORY }}
     steps:
       - name: Set workflow-wide variable
         run: |
@@ -125,10 +127,12 @@ jobs:
 
   tests:
     runs-on: self-hosted
-    needs: [init]
+    needs:
+      - init
+      - set-var
     steps:
       - uses: ./.github/actions/tests
         with:
-          WORKING_DIRECTORY: $WORKING_DIRECTORY
+          WORKING_DIRECTORY: needs.set-var.outputs.WORKING_DIRECTORY
           is_merge_request: false
           base_ref: $GITHUB_HEAD_REF
