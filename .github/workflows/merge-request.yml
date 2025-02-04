@@ -13,6 +13,10 @@ jobs:
   init:
     runs-on: self-hosted
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github
       - uses: ./.github/actions/init
       - uses: ./.github/actions/tests
         with:
