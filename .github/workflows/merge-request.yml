@@ -1,22 +1,20 @@
-#name: Merge Request
-#
-#on:
-#  pull_request:
-#    types: [opened, synchronize]
-#    branches: [ master ]
-#
-#env:
-#  NX_MAX_WORKERS: 4
-#  MASTER_BRANCH: master
-#
-#jobs:
-#  init:
-#    runs-on: self-hosted
-#    steps:
-#      - uses: ./.github/workflows/init-repository.yml
-#
-#      - uses: ./.github/actions/tests
-#        with:
-#          WORKING_DIRECTORY: ${{ env.WORKING_DIRECTORY }}
-#          is_merge_request: true
-#          base_ref: ${{ inputs.base_ref }}
+name: Merge Request
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    branches: [ master ]
+
+env:
+  NX_MAX_WORKERS: 4
+  MASTER_BRANCH: master
+
+jobs:
+  init:
+    runs-on: self-hosted
+    steps:
+      - uses: ./.github/actions/init
+      - uses: ./.github/actions/tests
+        with:
+          is_merge_request: true
+          base_ref: ${{ inputs.base_ref }}

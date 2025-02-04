@@ -20,6 +20,7 @@ runs:
     - name: Run tests
       shell: bash
       run: |
+        WORKING_DIRECTORY="${GITHUB_WORKSPACE}"
         cd $WORKING_DIRECTORY
         if [ "${{ inputs.is_merge_request }}" = "true" ]; then
           yarn nx affected --base=origin/${{ inputs.base_ref }} --head=HEAD --target="lint,test" --parallel=$NX_MAX_WORKERS
