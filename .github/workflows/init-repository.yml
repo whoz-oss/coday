@@ -34,9 +34,6 @@ jobs:
           # Add SSH key with strict permissions
           SSH_AUTH_SOCK="$SSH_SOCK" ssh-add - <<< "${{ secrets.SSH_PRIVATE_KEY }}"
 
-          # Clone repository using SSH
-          SSH_AUTH_SOCK="$SSH_SOCK" GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=yes" git clone git@github.com:username/repo.git
-
           echo "Init repo"
           git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
           git config --global user.name "${GITHUB_ACTOR}"
@@ -60,13 +57,16 @@ jobs:
 
           if [ "$(git remote | grep origin)" != "origin" ]; then
             echo 'repository cache is empty, initializing it...'
-            git clone "https://github.com/${GITHUB_REPOSITORY}.git" -b "${GITHUB_REF_NAME}" .
+
+            # Clone repository using SSH
+            SSH_AUTH_SOCK="$SSH_SOCK" GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=yes" git clone git@github.com:${GITHUB_REPOSITORY}.git -b "${GITHUB_REF_NAME}" .
+
             git config merge.directoryRenames false
             git fetch --tags --force
           else
             echo 'repository cache is already present, updating sources...'
-            git fetch --tags --force
-            git reset --hard origin/$GITHUB_REF_NAME
+            SSH_AUTH_SOCK="$SSH_SOCK" GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=yes" git fetch --tags --force
+            SSH_AUTH_SOCK="$SSH_SOCK" GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=yes" git reset --hard origin/$GITHUB_REF_NAME
           fi
 
           echo "INIT_REPOSITORY_PIPELINE_ID=$GITHUB_RUN_ID" > $WORKING_DIRECTORY/$INIT_REPOSITORY_PIPELINE_ID_ENV_FILE
