@@ -42,3 +42,6 @@ dist/**/*
 # Ignore Nx
 .nx/cache
 .nx/workspace-data
+
+# Electron build output
+dist/electron
