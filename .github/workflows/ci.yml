@@ -20,12 +20,6 @@ jobs:
         with:
           fetch-depth: 0  # Required for nx affected commands
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'yarn'
-
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
@@ -34,12 +28,6 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'yarn'
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
@@ -54,12 +42,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Required for nx affected commands
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'yarn'
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
@@ -85,12 +67,6 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/release')
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'yarn'
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
