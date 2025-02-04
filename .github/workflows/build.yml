@@ -11,11 +11,11 @@ env:
 
 jobs:
   init:
-    uses: ./.github/workflows/init-repo.yml@${{ github.ref }}
+    uses: ./.github/workflows/init-repo.yml
 
   test:
     needs: [init]
-    uses: ./.github/workflows/test.yml@${{ github.ref }}
+    uses: ./.github/workflows/test.yml
 
   build:
     needs: [init, test]

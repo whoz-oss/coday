@@ -11,10 +11,10 @@ env:
 
 jobs:
   init:
-    uses: ./.github/workflows/init-repo.yml@${{ github.ref }}
+    uses: ./.github/workflows/init-repo.yml
 
   test:
-    uses: ./.github/workflows/test.yml@${{ github.ref }}
+    uses: ./.github/workflows/test.yml
     with:
       is_merge_request: true
       base_ref: ${{ github.base_ref }}
