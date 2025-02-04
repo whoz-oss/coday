@@ -119,5 +119,5 @@ jobs:
 
       - uses: ./.github/actions/tests
         with:
-          is_merge_request: true
+          is_merge_request: false
           base_ref: $GITHUB_HEAD_REF
