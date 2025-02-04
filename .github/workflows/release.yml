@@ -18,5 +18,4 @@ jobs:
     needs: [build]
     runs-on: self-hosted
     steps:
-      - name: Release
-        run: yarn nx release publish
+      - uses: ./.github/actions/release

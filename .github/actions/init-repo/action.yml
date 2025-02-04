@@ -1,0 +1,25 @@
+name: 'Repository Initialization'
+description: 'Initialize repository by checking out code and installing dependencies'
+
+inputs:
+  node-version:
+    description: 'Node.js version to use'
+    required: false
+    default: '18'
+  fetch-depth:
+    description: 'Number of commits to fetch'
+    required: false
+    default: '0'
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: ${{ inputs.fetch-depth }}
+
+    - name: Install dependencies
+      shell: bash
+      run: yarn install --frozen-lockfile
+      env:
+        NX_MAX_WORKERS: 4

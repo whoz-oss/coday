@@ -1,0 +1,9 @@
+name: 'Release'
+description: 'Release the package'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Release package
+      shell: bash
+      run: yarn nx release publish

@@ -4,22 +4,27 @@ on:
   push:
     branches:
       - master
-      - 'release/**'
 
 env:
   NX_MAX_WORKERS: 4
 
 jobs:
   init:
-    uses: ./.github/workflows/init-repo.yml
+    runs-on: self-hosted
+    steps:
+      - uses: ./.github/actions/init-repo
 
   test:
     needs: [init]
-    uses: ./.github/workflows/test.yml
+    runs-on: self-hosted
+    steps:
+      - uses: ./.github/actions/tests
+        with:
+          is_merge_request: false
+          base_ref: ${{ inputs.base_ref }}
 
   build:
     needs: [init, test]
     runs-on: self-hosted
     steps:
-      - name: Build
-        run: yarn nx run-many --target="build" --parallel=${{ env.NX_MAX_WORKERS }}
+      - uses: ./.github/actions/build
