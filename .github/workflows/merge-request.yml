@@ -130,8 +130,8 @@ jobs:
     needs:
       - init
     steps:
-      - uses: ./.github/actions/tests
+      - uses: ${{needs.init.outputs.WORKING_DIRECTORY}}/.github/actions/tests
         with:
-          WORKING_DIRECTORY: needs.init.outputs.WORKING_DIRECTORY
+          WORKING_DIRECTORY: ${{needs.init.outputs.WORKING_DIRECTORY}}
           is_merge_request: false
           base_ref: $GITHUB_HEAD_REF
