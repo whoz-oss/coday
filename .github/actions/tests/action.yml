@@ -21,6 +21,7 @@ runs:
           yarn nx affected --base=origin/${{ inputs.base_ref }} --head=HEAD --target="lint,test" --parallel=$NX_MAX_WORKERS
         else
           yarn nx run-many --target="lint,test" --parallel=$NX_MAX_WORKERS
+        fi
       env:
         NX_MAX_WORKERS: 4
         MASTER_BRANCH: master
