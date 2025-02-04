@@ -14,12 +14,8 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: ${{ inputs.fetch-depth }}
-
-    - name: Install dependencies
+    - name: Init Repository
       shell: bash
-      run: yarn install --frozen-lockfile
+      run: ./.github/actions/init/init.sh
       env:
         NX_MAX_WORKERS: 4
