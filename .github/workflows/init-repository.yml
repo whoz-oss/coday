@@ -25,7 +25,6 @@ jobs:
           chmod 700 ~/.ssh
           eval "$(ssh-agent -s)"
           echo "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' | ssh-add -
-          #echo "${{ secrets.ANSIBLE_DEV_SSH_PRIVATE_KEY }}" | tr -d '\r' | ssh-add -
           ssh-keyscan github.com >> ~/.ssh/known_hosts
 
       - name: Init
