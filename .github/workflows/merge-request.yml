@@ -16,7 +16,7 @@ jobs:
     steps:
       - name: Set workflow-wide variable
         run: |
-          echo "WORKING_DIRECTORY=${GITHUB_WORKSPACE}/${GITHUB_REF_NAME}" >> $GITHUB_ENV
+          echo "WORKING_DIRECTORY=${GITHUB_WORKSPACE}/${GITHUB_HEAD_REF}" >> $GITHUB_ENV
 
       - name: Init Repository
         shell: bash
@@ -42,7 +42,7 @@ jobs:
           echo "Init repo"
           git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
           git config --global user.name "${GITHUB_ACTOR}"
-          git config --global init.defaultBranch "${GITHUB_REF_NAME}"
+          git config --global init.defaultBranch "${GITHUB_HEAD_REF}"
           export GIT_DISCOVERY_ACROSS_FILESYSTEM=true
 
           if [ -f "$WORKING_DIRECTORY/$INIT_REPOSITORY_PIPELINE_ID_ENV_FILE" ]; then
