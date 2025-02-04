@@ -1,5 +1,17 @@
 #!/bin/bash
 
+WORKING_DIRECTORY="${GITHUB_WORKSPACE}"
+BRANCHES_CACHE_FOLDER=/mnt/github/actions-runner/_work/data/branches
+FRAMEWORKS_CACHE_FOLDER=/mnt/github/actions-runner/_work/data/cache
+GIT_STRATEGY=none # we do the checkout process only once in init stage
+INIT_REPOSITORY_PIPELINE_ID_ENV_FILE=tmp.init-repository-pipeline-id.env
+MASTER_BRANCH=master
+NX_MAX_WORKERS=4
+NX_SKIP_LOG_GROUPING=false
+NX_TASKS_RUNNER_DYNAMIC_OUTPUT=false
+NX_PLUGIN_NO_TIMEOUTS=${CI_NX_PLUGIN_NO_TIMEOUTS}
+NX_VERBOSE_LOGGING=${CI_NX_VERBOSE_LOGGING}
+
 function getSlug {
   local name=$1
   # Step 1: Convert to lowercase
