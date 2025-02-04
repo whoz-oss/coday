@@ -8,18 +8,20 @@ on:
 env:
   NX_MAX_WORKERS: 4
   MASTER_BRANCH: master
+  INIT_REPOSITORY_PIPELINE_ID_ENV_FILE: "tmp.init-repository-pipeline-id"
 
 jobs:
   init:
     runs-on: self-hosted
     steps:
+      - name: Set workflow-wide variable
+        run: |
+          echo "WORKING_DIRECTORY=${GITHUB_WORKSPACE}/${GITHUB_REF_NAME}" >> $GITHUB_ENV
+
       - name: Init Repository
         shell: bash
         run: |
-          # Set WORKING_DIRECTORY
-          WORKING_DIRECTORY="${GITHUB_WORKSPACE}"
-          INIT_REPOSITORY_PIPELINE_ID_ENV_FILE="tmp.init-repository-pipeline-id"
-
+          WORKING_DIRECTORY=${{ env.WORKING_DIRECTORY }}
           # Create unique, secure socket
           SSH_SOCK=$(mktemp -u)
 
@@ -123,5 +125,6 @@ jobs:
     steps:
       - uses: ./.github/actions/tests
         with:
+          WORKING_DIRECTORY: ${{ env.WORKING_DIRECTORY }}
           is_merge_request: false
           base_ref: $GITHUB_HEAD_REF
