@@ -25,7 +25,8 @@ jobs:
           chmod 700 ~/.ssh
           eval "$(ssh-agent -s)"
           echo "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' | ssh-add -
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          echo "${{ secrets.ACTIONS_KNOWN_HOST }}" > ~/.ssh/known_hosts
+          ssh -T git@github.com || true  # Prevent failure on first-time connection
 
       - name: Init
         run: |
