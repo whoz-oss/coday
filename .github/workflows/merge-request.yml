@@ -13,14 +13,7 @@ jobs:
   init:
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
       - uses: ./.github/actions/init-repo
-
-  test:
-    needs: [init]
-    runs-on: self-hosted
-    steps:
-      - uses: actions/checkout@v4
       - uses: ./.github/actions/tests
         with:
           is_merge_request: true
