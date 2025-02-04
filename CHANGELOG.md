@@ -1,3 +1,27 @@
+## 0.0.1-5 (2025-02-04)
+
+### 🚀 Features
+
+- add capability to use a localLlm
+- enable async tools to provide fetched data when we build the tool, implement a search-jira-ticket function to enable global research on jira
+- reduce the number of tickets fetched
+- select tools per agent depending on their declared integrations setting
+- **jira:** enable add comment on ticket
+
+### 🩹 Fixes
+
+- handle default integrations on agent definitions
+- better display of help
+- **nx:** remove no_auth from web serve target
+- **terminal:** make it work with cjs
+
+### ❤️ Thank You
+
+- Charles Monot
+- Vincent Audibert
+- Vincent Palita
+- vincent.audibert
+
 ## 0.0.1-4 (2024-12-18)
 
 ### 🚀 Features
