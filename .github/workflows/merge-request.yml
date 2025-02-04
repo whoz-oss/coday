@@ -13,6 +13,7 @@ jobs:
   init:
     runs-on: self-hosted
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/init
       - uses: ./.github/actions/tests
         with:
