@@ -1,4 +1,4 @@
-export type AiProvider = 'openai' | 'anthropic' | 'google'
+export type AiProvider = 'openai' | 'anthropic' | 'google' | 'localLlm'
 
 export enum ModelSize {
   BIG = 'BIG',
@@ -103,6 +103,5 @@ export const CodayAgentDefinition: AgentDefinition = {
 
 By following these guidelines, you will ensure that your responses are accurate, reliable, engaging, and trustworthy.
 `,
-  integrations: {},
   modelSize: ModelSize.SMALL,
 }

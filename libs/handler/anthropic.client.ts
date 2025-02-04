@@ -36,7 +36,7 @@ export class AnthropicClient extends AiClient {
 
   constructor(
     readonly interactor: Interactor,
-    private readonly apiKeyProvider: () => string | undefined
+    private readonly apiKey: string | undefined
   ) {
     super()
     this.name = 'Anthropic'
@@ -51,8 +51,7 @@ export class AnthropicClient extends AiClient {
     const thinking = setInterval(() => this.interactor.thinking(), this.thinkingInterval)
     this.processThread(anthropic, agent, thread, outputSubject).finally(() => {
       clearInterval(thinking)
-      this.showAgent(agent, 'Anthropic', AnthropicModels[this.getModelSize(agent)].name)
-      this.showUsage(thread)
+      this.showAgentAndUsage(agent, 'Anthropic', AnthropicModels[this.getModelSize(agent)].name, thread)
       outputSubject.complete()
     })
     return outputSubject
@@ -136,14 +135,13 @@ export class AnthropicClient extends AiClient {
   }
 
   private isAnthropicReady(): Anthropic | undefined {
-    const apiKey: string | undefined = this.apiKeyProvider()
-    if (!apiKey) {
+    if (!this.apiKey) {
       this.interactor.warn('ANTHROPIC_API_KEY not set, skipping AI command')
       return
     }
 
     return new Anthropic({
-      apiKey,
+      apiKey: this.apiKey,
       /**
        * Special beta header to enable prompt caching
        */
@@ -159,7 +157,7 @@ export class AnthropicClient extends AiClient {
       .map((msg) => {
         let claudeMessage: MessageParam | undefined
         if (msg instanceof MessageEvent) {
-          claudeMessage = { role: msg.role, content: `${msg.name} : ${msg.content}` }
+          claudeMessage = { role: msg.role, content: msg.content }
         }
         if (msg instanceof ToolRequestEvent) {
           claudeMessage = {

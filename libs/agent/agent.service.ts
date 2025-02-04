@@ -26,6 +26,7 @@ export class AgentService {
   /**
    * Initialize agent definitions from all sources if not already initialized:
    * - coday.yml agents section
+   * - project local configuration agents
    * - ~/.coday/[project]/agents/ folder
    */
   async initialize(context: CommandContext): Promise<void> {
@@ -36,6 +37,14 @@ export class AgentService {
       // Load from coday.yml agents section first
       if (context.project.agents?.length) {
         for (const def of context.project.agents) {
+          await this.tryAddAgent(def, context)
+        }
+      }
+
+      // Load from project local configuration
+      const selectedProject = this.services.project.selectedProject
+      if (selectedProject?.config.agents?.length) {
+        for (const def of selectedProject.config.agents) {
           this.tryAddAgent(def, context)
         }
       }
@@ -46,7 +55,7 @@ export class AgentService {
       // If no agents were loaded, use Coday as backup
       if (this.agents.size === 0) {
         console.log('No agents configured, using Coday as backup agent')
-        this.tryAddAgent(CodayAgentDefinition, context)
+        await this.tryAddAgent(CodayAgentDefinition, context)
       }
 
       const agentNames = Array.from(this.agents.values()).map((a) => `  - ${a.name}`)
@@ -146,8 +155,8 @@ export class AgentService {
    * Try to create and add an agent to the map
    * Logs error if dependencies are missing
    */
-  private tryAddAgent(partialDef: AgentDefinition, context: CommandContext): void {
-    const def = { ...CodayAgentDefinition, ...partialDef }
+  private async tryAddAgent(partialDef: AgentDefinition, context: CommandContext): Promise<void> {
+    const def: AgentDefinition = { ...CodayAgentDefinition, ...partialDef }
 
     // force aiProvider for OpenAI assistants
     if (def.openaiAssistantId) def.aiProvider = 'openai'
@@ -159,11 +168,29 @@ export class AgentService {
 
     const aiClient = this.aiClientProvider.getClient(def.aiProvider)
     if (!aiClient) {
-      console.error(`Cannot create agent ${def.name}: AI client creation failed`)
+      // Provide more specific error for localLlm
+      if (def.aiProvider === 'localLlm') {
+        this.interactor.warn(
+          `Cannot create agent ${def.name}: Local LLM configuration is missing or incomplete. ` +
+            `Please configure 'url' in your aiProviders section in ~/.coday/users/${this.services.user.sanitizedUsername}/user.yml or through 'config ai user'`
+        )
+      } else {
+        console.error(`Cannot create agent ${def.name}: AI client creation failed`)
+      }
       return
     }
+    const integrations = def.integrations
+      ? new Map<string, string[]>(
+          Object.entries(def.integrations).map(([integration, names]: [string, string[]]): [string, string[]] => {
+            const toolNames: string[] = !names || !names.length ? [] : names
+            return [integration, toolNames]
+          })
+        )
+      : undefined
 
-    const toolset = new ToolSet(this.toolbox.getTools(context))
+    const syncTools = this.toolbox.getTools(context, integrations)
+    const asyncTools = await this.toolbox.getAsyncTools(context)
+    const toolset = new ToolSet([...syncTools, ...asyncTools])
     const agent = new Agent(def, aiClient, context.project, toolset)
     this.agents.set(agent.name.toLowerCase(), agent)
   }
