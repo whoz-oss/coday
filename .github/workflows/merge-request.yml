@@ -14,6 +14,7 @@ jobs:
     uses: ./.github/workflows/init-repo.yml
 
   test:
+    needs: [init]
     uses: ./.github/workflows/test.yml
     with:
       is_merge_request: true
