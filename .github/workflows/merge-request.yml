@@ -117,6 +117,9 @@ jobs:
           # Immediately delete all identities
           SSH_AUTH_SOCK="$SSH_SOCK" ssh-add -D
 
+  tests:
+    runs-on: self-hosted
+    steps:
       - uses: ./.github/actions/tests
         with:
           is_merge_request: false
