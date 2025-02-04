@@ -129,6 +129,6 @@ jobs:
     steps:
       - uses: ./.github/actions/tests
         with:
-          WORKING_DIRECTORY: ${{ env.WORKING_DIRECTORY }}
+          WORKING_DIRECTORY: $WORKING_DIRECTORY
           is_merge_request: false
           base_ref: $GITHUB_HEAD_REF
