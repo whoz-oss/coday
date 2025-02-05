@@ -31,4 +31,4 @@ jobs:
       - init
     steps:
       - uses: biznet-io/github-actions/setup-working-directory@v1
-      - uses: .github/tests/action.yml
+      - uses: ./.github/tests/action.yml
