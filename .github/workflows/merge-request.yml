@@ -11,12 +11,10 @@ env:
   MASTER_BRANCH: master
   NX_MAX_WORKERS: 4
   SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-  WORKING_DIRECTORY:
 
 defaults:
   run:
     shell: bash
-    working-directory: ${{ env.WORKING_DIRECTORY }}
 
 jobs:
   init:
@@ -29,10 +27,10 @@ jobs:
 
   tests:
     runs-on: self-hosted
-    needs:
-      - init
+    needs: [init]
     steps:
       - uses: biznet-io/github-actions/setup-working-directory@v1
       - name: Run tests
         run: |
+          cd ${{ env.WORKING_DIRECTORY }}
           yarn nx affected --base=origin/${GITHUB_HEAD_REF} --head=HEAD --target="lint,test" --parallel=$NX_MAX_WORKERS

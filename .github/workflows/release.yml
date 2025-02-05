@@ -3,8 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'release'
-
+      - 'release/*'
 
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -21,33 +20,14 @@ jobs:
   init:
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/init-repo
-
-  build:
-    needs: [init]
-    if: startsWith(github.ref, 'refs/tags/release')
-    uses: ./.github/workflows/build.yml
-
-  release:
-    needs: [build]
-    runs-on: self-hosted
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/release
-
-jobs:
-  init:
-    runs-on: self-hosted
-    steps:
       - uses: biznet-io/github-actions/init@v1
 
-  tests:
+  release:
     runs-on: self-hosted
-    needs:
-      - init
+    needs: [build]
     steps:
-      - uses: biznet-io/github-actions/tests@v1
-        with:
-          base_ref: $GITHUB_HEAD_REF
-          is_merge_request: true
+      - uses: biznet-io/github-actions/setup-working-directory@v1
+      - name: Publish release
+        run: |
+          cd ${{ env.WORKING_DIRECTORY }}
+          yarn nx release publish
