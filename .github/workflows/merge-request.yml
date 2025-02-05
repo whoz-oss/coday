@@ -33,4 +33,5 @@ jobs:
       - uses: biznet-io/github-actions/setup-working-directory@v1
       - name: Run tests
         run: |
+          cd ${{ env.WORKING_DIRECTORY }}
           yarn nx affected --base=origin/${GITHUB_HEAD_REF} --head=HEAD --target="lint,test" --parallel=$NX_MAX_WORKERS
