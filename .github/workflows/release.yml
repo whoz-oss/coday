@@ -35,8 +35,11 @@ jobs:
       - name: Publish release
         run: |
           cd ${{ env.WORKING_DIRECTORY }}
-          npm config set registry $NPM_REGISTRY --global
-          npm config set //registry.npmjs.org/:_authToken $NODE_AUTH_TOKEN --global
+
+          # Add config
+          npm config set registry $NPM_REGISTRY
+          npm config set //registry.npmjs.org/:_authToken $NODE_AUTH_TOKEN
+
           npx nx release publish
 
           # Clear config
