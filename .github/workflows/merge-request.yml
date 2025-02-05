@@ -120,14 +120,19 @@ jobs:
             fi
           fi
 
-          ### Never init cache for tag pipelines that are only triggered to promote a rc tag to a release tag
-          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
-            $WORKING_DIRECTORY/.github/actions/init/init-cache.sh
-          fi
-
           # Immediately delete all identities
           SSH_AUTH_SOCK="$SSH_SOCK" ssh-add -D
 
+  init-cache:
+    runs-on: self-hosted
+    needs:
+      - init
+    steps:
+      - uses: biznet-io/github-actions/init@v1
+        with:
+          WORKING_DIRECTORY: ${{needs.init.outputs.WORKING_DIRECTORY}}
+          is_merge_request: true
+          base_ref: $GITHUB_HEAD_REF
 
   tests:
     runs-on: self-hosted
@@ -137,5 +142,5 @@ jobs:
       - uses: biznet-io/github-actions/tests@v1
         with:
           WORKING_DIRECTORY: ${{needs.init.outputs.WORKING_DIRECTORY}}
-          is_merge_request: false
+          is_merge_request: true
           base_ref: $GITHUB_HEAD_REF
