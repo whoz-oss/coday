@@ -13,7 +13,6 @@ env:
 defaults:
   run:
     shell: bash
-    working-directory: ./scripts
 
 jobs:
   init:
