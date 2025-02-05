@@ -130,11 +130,11 @@ jobs:
     needs:
       - init
     steps:
-      - name: Tests
-        run: |
-          cd ${{needs.init.outputs.WORKING_DIRECTORY}}
-          if [ "${{ inputs.is_merge_request }}" = "true" ]; then
-            yarn nx affected --base=origin/${{ inputs.base_ref }} --head=HEAD --target="lint,test" --parallel=$NX_MAX_WORKERS
-          else
-            yarn nx run-many --target="lint,test" --parallel=$NX_MAX_WORKERS
-          fi
+      - name: Open Working Directory
+        shell: bash
+        run: cd ${{needs.init.outputs.WORKING_DIRECTORY}}
+      - uses: ./.github/actions/tests
+        with:
+          WORKING_DIRECTORY: ${{needs.init.outputs.WORKING_DIRECTORY}}
+          is_merge_request: false
+          base_ref: $GITHUB_HEAD_REF
