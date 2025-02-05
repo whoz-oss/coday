@@ -21,12 +21,18 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: biznet-io/github-actions/init@v1
+        with:
+          auto: false
+          path: 'release'
 
   release:
     runs-on: self-hosted
     needs: [init]
     steps:
       - uses: biznet-io/github-actions/setup-working-directory@v1
+        with:
+          auto: false
+          path: 'release'
       - name: Publish release
         run: |
           cd ${{ env.WORKING_DIRECTORY }}
