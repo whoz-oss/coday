@@ -67,7 +67,6 @@
         "web:build:client",
         "web:build:server"
       ],
-      "dependsOn": ["web:build:client", "web:build:server"],
       "options": {
         "commands": [
           "mv dist/web/server/package.json dist/web",

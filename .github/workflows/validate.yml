@@ -1,4 +1,4 @@
-name: Merge Request
+name: Validate Coday on pull requests
 
 on:
   pull_request:

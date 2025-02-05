@@ -1,4 +1,4 @@
-name: Build
+name: Build Coday on push to master
 
 on:
   push:
@@ -6,28 +6,31 @@ on:
       - master
 
 env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  INIT_REPOSITORY_PIPELINE_ID_ENV_FILE: "tmp.init-repository-pipeline-id"
+  MASTER_BRANCH: master
   NX_MAX_WORKERS: 4
+  SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   init:
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/init-repo
-
-  test:
-    needs: [init]
-    runs-on: self-hosted
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/tests
+      - uses: biznet-io/github-actions/setup-working-directory@v1
+      - uses: biznet-io/github-actions/init@v1
         with:
-          is_merge_request: false
-          base_ref: ${{ inputs.base_ref }}
+          WORKING_DIRECTORY: ${{ env.WORKING_DIRECTORY }}
 
   build:
-    needs: [test]
     runs-on: self-hosted
+    needs: [init]
     steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/build
+      - uses: biznet-io/github-actions/setup-working-directory@v1
+      - name: Run tests
+        run: |
+          cd ${{ env.WORKING_DIRECTORY }}
+          yarn nx run web:build --parallel=$NX_MAX_WORKERS
