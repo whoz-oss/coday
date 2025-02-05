@@ -12,6 +12,7 @@ env:
   NX_MAX_WORKERS: 4
   SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
   NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
+  NPM_CONFIG_PROVENANCE: true
 
 defaults:
   run:
@@ -29,9 +30,12 @@ jobs:
   release:
     runs-on: self-hosted
     needs: [init]
+    permissions:
+      contents: read
+      id-token: write # needed for provenance data generation
     steps:
       - uses: biznet-io/github-actions/setup-working-directory@v1
       - name: Publish release
         run: |
           cd ${{ env.WORKING_DIRECTORY }}
-          nx release publish
+          npx nx release publish
