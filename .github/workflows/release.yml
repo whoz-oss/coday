@@ -35,4 +35,4 @@ jobs:
       - name: Publish release
         run: |
           cd ${{ env.WORKING_DIRECTORY }}
-          yarn nx release publish
+          nx release publish
