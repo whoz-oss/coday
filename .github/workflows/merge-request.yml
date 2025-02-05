@@ -19,26 +19,28 @@ defaults:
 jobs:
   init:
     runs-on: self-hosted
-    outputs:
-      WORKING_DIRECTORY: ${{ env.WORKING_DIRECTORY }}
     steps:
-      - name: Set workflow-wide variable
-        run: |
-          echo "WORKING_DIRECTORY=${GITHUB_WORKSPACE}/${GITHUB_HEAD_REF}" >> $GITHUB_ENV
+      - uses: biznet-io/github-actions/setup-working-directory@v1
+        with:
+          base_ref: $GITHUB_HEAD_REF
+          is_merge_request: true
 
       - uses: biznet-io/github-actions/init@v1
         with:
-          WORKING_DIRECTORY: ${{env.WORKING_DIRECTORY}}
-          is_merge_request: true
           base_ref: $GITHUB_HEAD_REF
+          is_merge_request: true
 
   tests:
     runs-on: self-hosted
     needs:
       - init
     steps:
+      - uses: biznet-io/github-actions/setup-working-directory@v1
+        with:
+          base_ref: $GITHUB_HEAD_REF
+          is_merge_request: true
+
       - uses: biznet-io/github-actions/tests@v1
         with:
-          WORKING_DIRECTORY: ${{needs.init.outputs.WORKING_DIRECTORY}}
-          is_merge_request: true
           base_ref: $GITHUB_HEAD_REF
+          is_merge_request: true
