@@ -1,0 +1,31 @@
+name: 'Run Tests'
+description: 'Run linting and testing for the project'
+
+inputs:
+  WORKING_DIRECTORY:
+    description: 'Working directory'
+    required: true
+  is_merge_request:
+    description: 'Whether this is a merge request'
+    required: false
+    default: 'false'
+  base_ref:
+    description: 'Base reference branch for affected command'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run tests
+      shell: bash
+      run: |
+        cd $WORKING_DIRECTORY
+        if [ "${{ inputs.is_merge_request }}" = "true" ]; then
+          yarn nx affected --base=origin/${{ inputs.base_ref }} --head=HEAD --target="lint,test" --parallel=$NX_MAX_WORKERS
+        else
+          yarn nx run-many --target="lint,test" --parallel=$NX_MAX_WORKERS
+        fi
+      env:
+        NX_MAX_WORKERS: 4
+        MASTER_BRANCH: master
