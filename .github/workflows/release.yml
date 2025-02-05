@@ -12,6 +12,7 @@ env:
   NX_MAX_WORKERS: 4
   SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
   NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
+  NPM_REGISTRY: "https://registry.npmjs.org"
 
 defaults:
   run:
@@ -34,4 +35,10 @@ jobs:
       - name: Publish release
         run: |
           cd ${{ env.WORKING_DIRECTORY }}
+          npm config set registry $NPM_REGISTRY --global
+          npm config set //registry.npmjs.org/:_authToken $NODE_AUTH_TOKEN --global
           npx nx release publish
+
+          # Clear config
+          npm config delete registry
+          npm config delete //registry.npmjs.org/:_authToken
