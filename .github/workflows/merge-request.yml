@@ -20,10 +20,10 @@ jobs:
   init:
     runs-on: self-hosted
     steps:
+      - uses: biznet-io/github-actions/setup-working-directory@v1
       - uses: biznet-io/github-actions/init@v1
         with:
-          base_ref: $GITHUB_HEAD_REF
-          is_merge_request: true
+          WORKING_DIRECTORY: ${{ env.WORKING_DIRECTORY }}
 
   tests:
     runs-on: self-hosted
