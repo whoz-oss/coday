@@ -33,4 +33,4 @@ jobs:
       - name: Run tests
         run: |
           cd ${{ env.WORKING_DIRECTORY }}
-          yarn nx run web:build --parallel=$NX_MAX_WORKERS
+          npx nx run web:build --parallel=$NX_MAX_WORKERS
