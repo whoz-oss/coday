@@ -30,7 +30,5 @@ jobs:
     needs:
       - init
     steps:
-      - uses: biznet-io/github-actions/tests@v1
-        with:
-          base_ref: $GITHUB_HEAD_REF
-          is_merge_request: true
+      - uses: biznet-io/github-actions/setup-working-directory@v1
+      - uses: .github/tests/action.yml
