@@ -10,6 +10,11 @@ env:
   MASTER_BRANCH: master
   INIT_REPOSITORY_PIPELINE_ID_ENV_FILE: "tmp.init-repository-pipeline-id"
 
+defaults:
+  run:
+    shell: bash
+    working-directory: ./scripts
+
 jobs:
   init:
     runs-on: self-hosted
@@ -21,7 +26,6 @@ jobs:
           echo "WORKING_DIRECTORY=${GITHUB_WORKSPACE}/${GITHUB_HEAD_REF}" >> $GITHUB_ENV
 
       - name: Init Repository
-        shell: bash
         run: |
           WORKING_DIRECTORY=${{ env.WORKING_DIRECTORY }}
           mkdir -p $WORKING_DIRECTORY
@@ -130,10 +134,7 @@ jobs:
     needs:
       - init
     steps:
-      - name: Open Working Directory
-        shell: bash
-        run: cd ${{needs.init.outputs.WORKING_DIRECTORY}}
-      - uses: ./.github/actions/tests
+      - uses: github-actions/tests
         with:
           WORKING_DIRECTORY: ${{needs.init.outputs.WORKING_DIRECTORY}}
           is_merge_request: false
