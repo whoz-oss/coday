@@ -134,7 +134,7 @@ jobs:
     needs:
       - init
     steps:
-      - uses: github-actions/tests
+      - uses: biznet-io/github-actions/tests
         with:
           WORKING_DIRECTORY: ${{needs.init.outputs.WORKING_DIRECTORY}}
           is_merge_request: false
