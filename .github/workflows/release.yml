@@ -12,6 +12,7 @@ env:
   NX_MAX_WORKERS: 4
   SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
   NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
+  NPM_CONFIG_PROVENANCE: true
 
 defaults:
   run:
