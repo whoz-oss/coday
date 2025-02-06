@@ -8,7 +8,7 @@ import { debugLog } from './log'
 
 const app = express()
 const PORT = process.env.PORT || 3000 // Default port as fallback
-const EMAIL_HEADER = 'X-Forwarded-Email'
+const EMAIL_HEADER = 'x-forwarded-email'
 
 // Parse options once for all clients
 const codayOptions = parseCodayOptions()
@@ -72,6 +72,7 @@ app.post('/api/message', (req: express.Request, res: express.Response) => {
 // Implement SSE for Heartbeat
 app.get('/events', (req: express.Request, res: express.Response) => {
   const clientId = req.query.clientId as string
+
   debugLog('SSE', `New connection request for client ${clientId}`)
 
   // handle username header coming from auth (or local frontend) or local in noAuth
