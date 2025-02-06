@@ -22,6 +22,8 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: biznet-io/github-actions/setup-working-directory@v1
+        with:
+          path: 'toto'
       - uses: biznet-io/github-actions/init@v1
         with:
           WORKING_DIRECTORY: ${{ env.WORKING_DIRECTORY }}
@@ -31,6 +33,8 @@ jobs:
     needs: [init]
     steps:
       - uses: biznet-io/github-actions/setup-working-directory@v1
+        with:
+          path: 'toto'
       - name: Run tests
         run: |
           cd ${{ env.WORKING_DIRECTORY }}
