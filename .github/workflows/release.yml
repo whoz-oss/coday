@@ -9,10 +9,10 @@ env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   INIT_REPOSITORY_PIPELINE_ID_ENV_FILE: "tmp.init-repository-pipeline-id"
   MASTER_BRANCH: master
-  NX_MAX_WORKERS: 4
-  SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
   NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
   NPM_REGISTRY: "https://registry.npmjs.org"
+  NX_MAX_WORKERS: 4
+  SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
 
 defaults:
   run:
@@ -36,12 +36,4 @@ jobs:
         run: |
           cd ${{ env.WORKING_DIRECTORY }}
 
-          # Add config
-          npm config set registry $NPM_REGISTRY
-          npm config set //registry.npmjs.org/:_authToken $NODE_AUTH_TOKEN
-
-          npx nx release publish
-
-          # Clear config
-          npm config delete registry
-          npm config delete //registry.npmjs.org/:_authToken
+          npx nx release publish --registry=${{ env.NPM_REGISTRY }} --//${{ env.NPM_REGISTRY }}/:_authToken=${{ env.NODE_AUTH_TOKEN }}
