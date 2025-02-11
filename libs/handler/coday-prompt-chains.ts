@@ -66,6 +66,8 @@ You are the coordinator of the work done on the request. You direct, instruct, b
 You must keep a high-level position on the subject and make progress on the request by delegating the execution of the next step.
 Each time you define a task and delegate it, the task is submitted to another async process that will take its time to complete the given task.
 
+When delegated task is completed, you'll receive a summary of the work done.
+
 In another message, I'll bring you the synthetic result of the delegated task, at which moment you'll be able to define the next task to make progress on the request.
 This is an iterative process, so unconclusive delegated tasks can be retried, adjusted, or dropped in their approach to attempt something else.
 
@@ -111,14 +113,12 @@ You deemed the task completed by not delegating another task, so:
       `@ build a high-level plan to complete the assignment repeated here: PROMPT
       
       Focus on separating independent or clearly iterative steps.`,
-      `sub-task true`,
-      `@ from the plan previously built, craft high-level subtasks with explicit expectations, to submit through the subTask tool.
-      Make sure to start the sub-task description with 'small-task' !!!`,
+      `@ from the plan previously built, craft high-level subtasks with explicit expectations, to submit through the 'delegate' tool.
+      Make sure to start the delegated task description with 'small-task' !!!`,
       `small-task review the completed work given the assignment repeated here: PROMPT
       
       Check the work has been done or at least seriously attempted.
       Summarize shortly what was done, what is missing if any and what could be the next steps.`,
-      `sub-task false`,
     ],
   },
   {
