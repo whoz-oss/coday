@@ -3,12 +3,6 @@ import { AiThread } from '../ai-thread/ai-thread'
 
 export class CommandContext {
   private commandQueue: string[] = []
-  /**
-   * Counter of remaining subTask slots "available"
-   * Purpose is to limit the abuse and constrain the use for a start
-   * @private
-   */
-  private subTaskCount: number = -1
 
   /**
    * Clears all pending commands from the queue.
@@ -58,13 +52,8 @@ export class CommandContext {
     return this.commandQueue.shift()
   }
 
-  setSubTask(value: number): void {
-    this.subTaskCount = value
-  }
-
   getSubContext(...commands: string[]): CommandContext {
     const subContext = new CommandContext(this.project, this.username)
-    subContext.setSubTask(this.subTaskCount)
     subContext.oneshot = this.oneshot
     subContext.fileReadOnly = this.fileReadOnly
     subContext.addCommands(...commands)
@@ -74,7 +63,6 @@ export class CommandContext {
 
   cloneWithoutCommands(): CommandContext {
     const clone = new CommandContext(this.project, this.username)
-    clone.setSubTask(this.subTaskCount)
     clone.oneshot = this.oneshot
     clone.fileReadOnly = this.fileReadOnly
     clone.stackDepth = this.stackDepth

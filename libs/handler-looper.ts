@@ -14,7 +14,6 @@ import {
   MemoryHandler,
   PromptChainHandler,
   RunBashHandler,
-  SubTaskHandler,
 } from './handler'
 import { AiThreadService } from './ai-thread/ai-thread.service'
 import { keywords } from './keywords'
@@ -40,7 +39,6 @@ export class HandlerLooper {
 
   init(projectDescription: ProjectDescription | null) {
     try {
-      const subTaskHandler = new SubTaskHandler(this.interactor)
       const queryHandler = new AddQueryHandler(this.interactor)
       const memoryHandler = new MemoryHandler(this.interactor, this.services.memory)
       this.handlers = [
@@ -50,7 +48,6 @@ export class HandlerLooper {
         new DebugHandler(),
         new AiThreadHandler(this.interactor, this.aiThreadService),
         new CodeFlowHandler(),
-        subTaskHandler,
         queryHandler,
         new GitlabReviewHandler(),
         memoryHandler,

@@ -59,7 +59,6 @@ export class AgentService {
 
       // If no agents were loaded, use Coday as backup
       if (this.agents.size === 0) {
-        console.log('No agents configured, using Coday as backup agent')
         this.addDefinition(CodayAgentDefinition)
       }
     } catch (error) {
@@ -67,7 +66,7 @@ export class AgentService {
       throw error
     }
 
-    this.agentDefinitions.forEach((def) => this.tryAddAgent(def, context))
+    await Promise.all(this.agentDefinitions.map((def) => this.tryAddAgent(def, context)))
     const agentNames = this.listAgentSummaries().map((a) => `  - ${a.name} : ${a.description}`)
     if (agentNames.length > 1) {
       this.interactor.displayText(`Loaded agents (callable with '@[agent name]'):\n${agentNames.join('\n')}`)
@@ -107,7 +106,9 @@ export class AgentService {
   }
 
   private addDefinition(def: AgentDefinition): void {
-    this.agentDefinitions.push({ ...CodayAgentDefinition, ...def })
+    if (!this.agentDefinitions.find((a) => a.name === def.name)) {
+      this.agentDefinitions.push({ ...CodayAgentDefinition, ...def })
+    }
   }
 
   /**
