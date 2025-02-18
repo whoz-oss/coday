@@ -1,3 +1,5 @@
+import { CommandContext } from '../model'
+
 export interface FunctionDefinition<T> {
   name: string
   description: string
@@ -9,4 +11,12 @@ export interface FunctionDefinition<T> {
 export interface FunctionTool<T> {
   type: 'function'
   function: FunctionDefinition<T>
+}
+
+export type IntegrationsSelection = Map<string, string[]>
+
+export type GetToolsInput = {
+  context: CommandContext
+  integrations?: IntegrationsSelection
+  agentName: string
 }

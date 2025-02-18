@@ -1,5 +1,6 @@
 import { CommandContext, CommandHandler, Interactor } from '../model'
 import { MemoryService } from '../service/memory.service'
+import { MemoryLevel } from '../model/memory'
 
 class MemoryHandler extends CommandHandler {
   constructor(
@@ -15,7 +16,7 @@ class MemoryHandler extends CommandHandler {
 
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
     const memories: string = this.memoryService
-      .listMemories()
+      .listMemories(MemoryLevel.PROJECT)
       .map((m) => `${m.title}\n    ${m.content}`)
       .join('\n')
     this.interactor.displayText(`Memories:\n${memories ? memories : 'no current memories'}`)

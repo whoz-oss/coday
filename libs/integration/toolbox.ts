@@ -11,6 +11,7 @@ import { ConfluenceTools } from './confluence/confluence.tools'
 import { AsyncAssistantToolFactory } from './async-assistant-tool-factory'
 import { CodayServices } from '../coday-services'
 import { AgentService } from '../agent'
+import { GetToolsInput } from './types'
 
 export class Toolbox {
   private toolFactories: AssistantToolFactory[]
@@ -30,10 +31,11 @@ export class Toolbox {
     this.asyncToolFactories = [new JiraTools(interactor, services.integration)]
   }
 
-  getTools(context: CommandContext, integrations?: Map<string, string[]>): CodayTool[] {
+  getTools(input: GetToolsInput): CodayTool[] {
+    const { context, integrations, agentName } = input
     this.tools = this.toolFactories
       .filter((factory) => !integrations || integrations.has(factory.name))
-      .flatMap((factory) => factory.getTools(context, integrations?.get(factory.name) ?? []))
+      .flatMap((factory) => factory.getTools(context, integrations?.get(factory.name) ?? [], agentName))
     return this.tools
   }
 

@@ -12,12 +12,12 @@ export abstract class AssistantToolFactory {
 
   protected abstract hasChanged(context: CommandContext): boolean
 
-  protected abstract buildTools(context: CommandContext): CodayTool[]
+  protected abstract buildTools(context: CommandContext, agentName: string): CodayTool[]
 
-  getTools(context: CommandContext, toolNames?: string[]): CodayTool[] {
+  getTools(context: CommandContext, toolNames: string[], agentName: string): CodayTool[] {
     if (!this.lastToolInitContext || this.hasChanged(context)) {
       this.lastToolInitContext = context
-      this.tools = this.buildTools(context)
+      this.tools = this.buildTools(context, agentName)
     }
     return this.tools.filter((tool) => !toolNames || !toolNames.length || toolNames.includes(tool.function.name))
   }
