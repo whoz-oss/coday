@@ -5,6 +5,7 @@ import * as path from 'node:path'
 import { findFilesByName } from '../function/find-files-by-name'
 import { MemoryLevel } from '../model/memory'
 import { CodayServices } from '../coday-services'
+import { getFormattedDocs } from '../function/get-formatted-docs'
 
 const CONFIG_FILENAME_YAML = 'coday.yaml'
 
@@ -54,44 +55,7 @@ export const loadOrInitProjectDescription = async (
     interactor.displayText(`Project configuration used: ${absoluteProjectDescriptionPath}`)
   }
 
-  // Read the mandatory docs and add them to the description, separated by their title
-  let mandatoryDocText = ''
-  if (projectDescription.mandatoryDocs?.length) {
-    mandatoryDocText += `\n\n## Mandatory documents
-    
-    Each of the following files are included entirely as deemed important, path given as title`
-    projectDescription.mandatoryDocs.forEach((docPath) => {
-      const fullPath = path.resolve(projectPath, docPath)
-      if (existsSync(fullPath)) {
-        const docContent = readFileSync(fullPath, 'utf-8')
-        mandatoryDocText += `\n\n### ${docPath}\n\n${docContent}`
-      } else {
-        interactor.warn(`Mandatory document not found: ${docPath}`)
-      }
-    })
-  }
-  projectDescription.description += mandatoryDocText
-
-  // Check all optional docs, log a warning if they are missing
-  let optionalDocsDescription = `\n\n## Optional documents to refer for more details:\n`
-  if (projectDescription.optionalDocs?.length) {
-    let hasSomeValidDocs = false
-
-    projectDescription.optionalDocs.forEach((doc) => {
-      const fullPath = path.resolve(projectPath, doc.path)
-      if (existsSync(fullPath)) {
-        optionalDocsDescription += `\n\n### ${doc.path}\n\n${doc.description}`
-        hasSomeValidDocs = true
-      } else {
-        interactor.warn(`Optional document described as "${doc.description}" not found at path: ${doc.path}`)
-      }
-    })
-
-    if (!hasSomeValidDocs) {
-      optionalDocsDescription = ''
-    }
-  }
-  projectDescription.description += optionalDocsDescription
+  projectDescription.description += getFormattedDocs(projectDescription, interactor, projectPath)
 
   projectDescription.description += `\n\n## User
     
@@ -108,6 +72,8 @@ export const loadOrInitProjectDescription = async (
     ${userMemories.join('\n')}`
     }
   }
+
+  // Part to move into agent-specific area
 
   const projectMemories = services.memory
     .listMemories(MemoryLevel.PROJECT)

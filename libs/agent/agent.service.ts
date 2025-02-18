@@ -4,8 +4,9 @@ import * as yaml from 'yaml'
 import { AiClientProvider } from '../integration/ai/ai-client-provider'
 import { Toolbox } from '../integration/toolbox'
 import { Agent, AgentDefinition, AgentSummary, CodayAgentDefinition, CommandContext, Interactor } from '../model'
-import { ToolSet } from '../integration/tool-set'
 import { CodayServices } from '../coday-services'
+import { MemoryLevel } from '../model/memory'
+import { ToolSet } from '../integration/tool-set'
 
 export class AgentService {
   private agents: Map<string, Agent> = new Map()
@@ -132,7 +133,7 @@ export class AgentService {
 
           // const validation = validateAgentDefinition(data)
           // if (validation.valid) {
-          this.tryAddAgent(data, context)
+          await this.tryAddAgent(data, context)
           // } else {
           //   console.warn(`Invalid agent definition in ${file}:\n${formatValidationErrors(validation.errors)}\nDefinition:`, data)
           // }
@@ -177,6 +178,20 @@ export class AgentService {
       }
       return
     }
+
+    const instructions = `${def.instructions}\n\n
+## Project description
+${context.project.description}
+
+${this.services.memory.getFormattedMemories(MemoryLevel.USER, def.name)}
+
+${this.services.memory.getFormattedMemories(MemoryLevel.PROJECT, def.name)}
+
+`
+    // overwrite agent instructions with the added project and user context
+    def.instructions = instructions
+    console.log()
+
     const integrations = def.integrations
       ? new Map<string, string[]>(
           Object.entries(def.integrations).map(([integration, names]: [string, string[]]): [string, string[]] => {
@@ -186,10 +201,10 @@ export class AgentService {
         )
       : undefined
 
-    const syncTools = this.toolbox.getTools(context, integrations)
+    const syncTools = this.toolbox.getTools({ context, integrations, agentName: def.name })
     const asyncTools = await this.toolbox.getAsyncTools(context)
     const toolset = new ToolSet([...syncTools, ...asyncTools])
-    const agent = new Agent(def, aiClient, context.project, toolset)
+    const agent = new Agent(def, aiClient, toolset)
     this.agents.set(agent.name.toLowerCase(), agent)
   }
 }
