@@ -5,8 +5,9 @@ import { AiClientProvider } from '../integration/ai/ai-client-provider'
 import { Toolbox } from '../integration/toolbox'
 import { Agent, AgentDefinition, AgentSummary, CodayAgentDefinition, CommandContext, Interactor } from '../model'
 import { CodayServices } from '../coday-services'
-import { MemoryLevel } from '../model/memory'
 import { ToolSet } from '../integration/tool-set'
+import { getFormattedDocs } from '../function/get-formatted-docs'
+import { MemoryLevel } from '../model/memory'
 
 export class AgentService {
   private agents: Map<string, Agent> = new Map()
@@ -16,7 +17,8 @@ export class AgentService {
   constructor(
     private interactor: Interactor,
     private aiClientProvider: AiClientProvider,
-    private services: CodayServices
+    private services: CodayServices,
+    private projectPath: string
   ) {
     // Subscribe to project changes to reset agents
     this.services.project.selectedProject$.subscribe(() => {
@@ -179,6 +181,8 @@ export class AgentService {
       return
     }
 
+    const agentDocs = getFormattedDocs(def, this.interactor, this.projectPath)
+
     const instructions = `${def.instructions}\n\n
 ## Project description
 ${context.project.description}
@@ -187,10 +191,11 @@ ${this.services.memory.getFormattedMemories(MemoryLevel.USER, def.name)}
 
 ${this.services.memory.getFormattedMemories(MemoryLevel.PROJECT, def.name)}
 
+${agentDocs}
+
 `
     // overwrite agent instructions with the added project and user context
     def.instructions = instructions
-    console.log()
 
     const integrations = def.integrations
       ? new Map<string, string[]>(
