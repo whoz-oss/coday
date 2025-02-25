@@ -21,6 +21,35 @@ export class AiTools extends AssistantToolFactory {
   protected buildTools(context: CommandContext): CodayTool[] {
     const result: CodayTool[] = []
 
+    if (!context.oneshot) {
+      const queryUser = ({ message }: { message: string }) => {
+        const command = `add-query ${message}`
+        context.addCommands(command)
+        return 'Query successfully queued, user will maybe answer later.'
+      }
+
+      const queryUserTool: FunctionTool<{ message: string }> = {
+        type: 'function',
+        function: {
+          name: 'queryUser',
+          description:
+            'Queues asynchronously a query (question or request) for the user who may answer later, after this current run. IMPORTANT: Use this tool only when necessary, as it interrupts the flow of execution to seek user input.',
+          parameters: {
+            type: 'object',
+            properties: {
+              message: {
+                type: 'string',
+                description: 'The query to be added to the queue for user answer.',
+              },
+            },
+          },
+          parse: JSON.parse,
+          function: queryUser,
+        },
+      }
+      result.push(queryUserTool)
+    }
+
     const delegate = delegateFunction({ context, interactor: this.interactor, agentService: this.agentService })
 
     const agentSummaries = this.agentService
@@ -51,7 +80,7 @@ These agents are LLM-based, so you should assess in return if the task was corre
             task: {
               type: 'string',
               description: `Description of the task to delegate, should contain:
-                
+              
   - intent
   - constraints
   - definition of done
@@ -66,35 +95,6 @@ These agents are LLM-based, so you should assess in return if the task was corre
       },
     }
     result.push(delegateTool)
-
-    if (!context.oneshot) {
-      const queryUser = ({ message }: { message: string }) => {
-        const command = `add-query ${message}`
-        context.addCommands(command)
-        return 'Query successfully queued, user will maybe answer later.'
-      }
-
-      const queryUserTool: FunctionTool<{ message: string }> = {
-        type: 'function',
-        function: {
-          name: 'queryUser',
-          description:
-            'Queues asynchronously a query (question or request) for the user who may answer later, after this current run. IMPORTANT: Use this tool only when necessary, as it interrupts the flow of execution to seek user input.',
-          parameters: {
-            type: 'object',
-            properties: {
-              message: {
-                type: 'string',
-                description: 'The query to be added to the queue for user answer.',
-              },
-            },
-          },
-          parse: JSON.parse,
-          function: queryUser,
-        },
-      }
-      result.push(queryUserTool)
-    }
 
     return result
   }
