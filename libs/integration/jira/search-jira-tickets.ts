@@ -1,50 +1,37 @@
 import axios from 'axios'
-import {Jira, JiraFields, JiraIssue, JiraSearchParams} from './jira'
+import { Jira, JiraIssue, JiraSearchParams, SearchResponse } from './jira'
+import { getLightWeightTickets } from './jira.helpers'
 
 // Search Jira Tickets
 export async function searchJiraTickets({
-  jql,
+  request,
   jiraBaseUrl,
   jiraApiToken,
   jiraUsername,
   interactor,
-}: JiraSearchParams & { jql: string }): Promise<any[]> {
+}: JiraSearchParams & {
+  request: { jql: string; maxResults?: number; fields?: string[] }
+}): Promise<JiraIssue[]> {
   if (!jiraBaseUrl || !jiraApiToken || !jiraUsername) {
     throw new Error('Jira integration incorrectly configured')
   }
 
   try {
-    interactor.displayText(`Searching JIRA tickets with query: ${jql}...`)
+    interactor.displayText(`Searching JIRA tickets with query: ${request.jql}...`)
 
-    const response: { data: Jira } = await axios.get(`${jiraBaseUrl}/rest/api/2/search`, {
-      params: {
-        jql,
-        maxResults: 50,
-      },
+    const response: { data: Jira } = await axios.get(`${jiraBaseUrl}/rest/api/3/search`, {
+      params: request,
       auth: {
         username: jiraUsername,
         password: jiraApiToken,
       },
     })
 
-    interactor.displayText(`... found ${response.data.total} tickets.`)
+    const tickets = response.data.issues
+    interactor.displayText(`... found ${JSON.stringify(tickets.length)} tickets.`)
 
     // Robust ticket mapping
-    return response.data.issues.map((issue: JiraIssue) => ({
-      key: issue.key,
-      summary: issue.fields.summary,
-      status: issue.fields.status?.name || 'Unknown',
-      priority: issue.fields.priority?.name || 'Undefined',
-      additionalFields: Object.keys(issue.fields)
-        .filter((key): key is keyof JiraFields => key.startsWith('customfield_'))
-        .reduce((acc: Record<string, any>, key: keyof JiraFields) => {
-          const value = issue.fields[key as keyof JiraFields]
-          if (value !== undefined && value !== null) {
-            acc[key] = value
-          }
-          return acc
-        }, {}),
-    }))
+    return tickets
   } catch (error: any) {
     // Comprehensive error handling
     const errorMessage = error instanceof Error ? error.message : String(error)
@@ -62,11 +49,20 @@ export async function searchJiraTicketsWithAI({
   jiraApiToken,
   jiraUsername,
   interactor,
-}: JiraSearchParams & { jql: string }): Promise<any[]> {
-
+}: JiraSearchParams & { jql: string }): Promise<SearchResponse> {
   try {
-    // Use the existing searchJiraTickets tool to perform the actual search
-    return await searchJiraTickets({jql: jql, jiraBaseUrl, jiraApiToken, jiraUsername, interactor})
+    const tickets: JiraIssue[] = await searchJiraTickets({
+      request: {
+        jql,
+        maxResults: 1000
+      },
+      jiraBaseUrl,
+      jiraApiToken,
+      jiraUsername,
+      interactor,
+    })
+
+    return getLightWeightTickets(tickets)
   } catch (error) {
     console.error('Jira Search Error:', error)
     throw error

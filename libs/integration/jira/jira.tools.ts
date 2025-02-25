@@ -3,7 +3,7 @@ import { IntegrationService } from '../../service/integration.service'
 import { CommandContext, Interactor } from '../../model'
 import { CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
-import { generateFieldMapping } from './jira-field-mapper'
+import { createJiraFieldMapping } from './jira-field-mapper'
 import { AsyncAssistantToolFactory } from '../async-assistant-tool-factory'
 import { searchJiraTicketsWithAI } from './search-jira-tickets'
 import { addJiraComment } from './add-jira-comment'
@@ -34,14 +34,13 @@ export class JiraTools extends AsyncAssistantToolFactory {
     }
 
     // Generate custom field mapping during initialization
-    // Increased to 500 tickets for more comprehensive mapping
-    const { description: customFieldMappingDescription } = await generateFieldMapping(
-      jiraBaseUrl,
-      jiraApiToken,
-      jiraUsername,
-      this.interactor,
-      50
-    )
+    const { description: customFieldMappingDescription } = await createJiraFieldMapping(
+        jiraBaseUrl,
+        jiraApiToken,
+        jiraUsername,
+        this.interactor,
+        50  // Increase to 100 for more comprehensive mapping
+    );
 
     const retrieveTicket = ({ ticketId }: { ticketId: string }) => {
       return retrieveJiraTicket(ticketId, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor)
@@ -71,8 +70,8 @@ export class JiraTools extends AsyncAssistantToolFactory {
       function: {
         name: 'searchJiraTickets',
         description: `Perform a flexible search across Jira tickets using a jql query based on natural language
-
-                ${customFieldMappingDescription}`,
+        the following mapping provide you all the keys you can use to perform the jql request. Do not invent key, all is provided here
+                ${customFieldMappingDescription.jqlResearchDescription}`,
         parameters: {
           type: 'object',
           properties: {

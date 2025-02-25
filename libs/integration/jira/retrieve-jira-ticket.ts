@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { Interactor } from '../../model/interactor'
+import { Interactor } from '../../model'
 
 export async function retrieveJiraTicket(
   ticketId: string,
