@@ -13,7 +13,8 @@ type DelegateInput = {
 export function delegateFunction(input: DelegateInput) {
   const { context, interactor, agentService } = input
   const delegate = async ({ task, agentName }: { task: string; agentName: string | undefined }) => {
-    if (context.stackDepth <= 0) return 'Delegation not allowed, either permanently, or existing capacity already used.'
+    try {
+      if (context.stackDepth <= 0) return 'Delegation not allowed, either permanently, or existing capacity already used.'
 
     interactor.displayText(`DELEGATING to agent ${agentName} the task:\n${task}`)
     let agent: Agent | undefined
@@ -64,10 +65,39 @@ This task is part of a broader conversation given for context, but your current 
         interactor.sendEvent(event)
       })
     )
-    const lastEvent = await lastValueFrom(delegatedEvents.pipe(filter((e) => e instanceof MessageEvent)))
-    context.stackDepth++
-    context.aiThread!.merge(forkedThread)
-    return lastEvent.content
+    // Create a promise that will resolve with the final content
+    let finalContent = '';
+    const completionPromise = new Promise<string>((resolve) => {
+      // Set up subscription to collect content from MessageEvents
+      const subscription = delegatedEvents.subscribe({
+        next: (e) => {
+          if (e instanceof MessageEvent) {
+            finalContent = e.content; // Keep updating with latest content
+          }
+        },
+        complete: () => {
+          resolve(finalContent); // Resolve with the final content when stream completes
+          subscription.unsubscribe();
+        },
+        error: (err) => {
+          console.error('Error in delegated task:', err);
+          resolve(`Error occurred during delegation: ${err.message}`); // Resolve with error message
+          subscription.unsubscribe();
+        }
+      });
+    });
+    
+    // Wait for the completion of the delegated task
+    const result = await completionPromise;
+    
+    context.stackDepth++;
+    context.aiThread!.merge(forkedThread);
+    return result;
+    } catch (error) {
+      console.error('Error in delegate function:', error);
+      interactor.displayText(`Error during delegation: ${error.message}`);
+      return `Error during delegation: ${error.message}`;
+    }
   }
   return delegate
 }
