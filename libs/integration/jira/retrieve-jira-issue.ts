@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { Interactor } from '../../model'
 
-export async function retrieveJiraTicket(
+export async function retrieveJiraIssue(
   ticketId: string,
   jiraBaseUrl: string,
   jiraApiToken: string,

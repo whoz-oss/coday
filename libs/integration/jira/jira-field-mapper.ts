@@ -1,6 +1,6 @@
 import { Interactor } from '../../model'
 import { retrieveAutocompleteData } from './retrieve-autocomplete-data'
-import { searchJiraTickets } from './search-jira-tickets'
+import { searchJiraIssues } from './search-jira-issues'
 import { createFieldMapping } from './jira.helpers'
 import { AutocompleteDataResponse } from './jira'
 
@@ -36,11 +36,11 @@ export class JiraFieldMapper {
   }> {
     try {
       // Fetch all required data with diverse ticket types
-      const [autocompleteData, tickets] = await Promise.all([
+      const [autocompleteData, searchResponse] = await Promise.all([
         retrieveAutocompleteData(this.baseUrl, this.apiToken, this.username, this.interactor),
-        searchJiraTickets({
+        searchJiraIssues({
           request: {
-            jql: "project = 'WZ' AND created >= -30d ORDER BY created DESC",
+            jql: "project = 'WZ' AND labels = coday_template",
             maxResults,
             fields: ['*all'],
           },
@@ -52,7 +52,7 @@ export class JiraFieldMapper {
       ])
 
       // Create field mapping
-      const mappings = createFieldMapping(autocompleteData.visibleFieldNames, tickets)
+      const mappings = createFieldMapping(autocompleteData.visibleFieldNames, searchResponse.issues)
 
       const description = this.generateMappingDescription(mappings)
       return {
@@ -103,7 +103,7 @@ export class JiraFieldMapper {
 ${creationFields}
 
 Notes:
-- Only use these keys when creating tickets via API
+- Only use these keys when creating issues via API
 - Custom fields might require specific values`,
 
       jqlResearchDescription: `# Jira JQL Search Fields (${mappings.length} fields)
@@ -111,7 +111,7 @@ Notes:
 ${jqlFields}
 
 Notes:
-- Only use these keys in JQL queries
+- Only use these keys to translate a user request into jql request
 - Include operators where specified
 - Custom fields may have restricted values`,
     }
@@ -123,7 +123,7 @@ export async function createJiraFieldMapping(
   jiraApiToken: string,
   jiraUsername: string,
   interactor: Interactor,
-  maxTickets: number = 100
+  maxissues: number = 100
 ): Promise<{
   mappings: ActiveFieldMapping[]
   autocompleteData: AutocompleteDataResponse
@@ -134,5 +134,5 @@ export async function createJiraFieldMapping(
 }> {
   const mapper = new JiraFieldMapper(jiraBaseUrl, jiraApiToken, jiraUsername, interactor)
 
-  return mapper.generateFieldMapping(maxTickets)
+  return mapper.generateFieldMapping(maxissues)
 }

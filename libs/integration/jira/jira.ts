@@ -1,4 +1,4 @@
-import { Interactor } from "../../model"
+import { Interactor } from '../../model'
 
 export interface Jira {
   expand: string
@@ -6,6 +6,12 @@ export interface Jira {
   maxResults: number
   total: number
   issues: JiraIssue[]
+  nextPageToken?: string
+}
+
+export interface JiraSearchResponse {
+  issues: JiraIssue[]
+  nextPageToken?: string | null
 }
 
 interface ParentFields {
@@ -35,50 +41,50 @@ type CustomFields = {
 }
 
 export interface StandardFields {
-  summary: string
-  status: JiraStatus
+  summary?: string
+  status?: JiraStatus
   priority?: JiraPriority
   assignee?: JiraUser
   reporter?: JiraUser
-  created: string
-  updated: string
+  created?: string
+  updated?: string
   description?: string | null
-  issuetype: JiraIssueType
-  project: JiraProject
+  issuetype?: JiraIssueType
+  project?: JiraProject
   labels?: string[]
   components?: JiraComponent[]
   fixVersions?: JiraVersion[]
-  resolution: object | null
-  lastViewed: string | null
-  timeestimate: any
-  aggregatetimeoriginalestimate: any
-  aggregatetimeestimate: any
-  creator: object
-  subtasks: []
-  aggregateprogress: { progress: number; total: number }
-  progress: { progress: number; total: number }
-  votes: object
-  versions: []
-  issuelinks: []
-  statuscategorychangedate: string
+  resolution?: object | null
+  lastViewed?: string | null
+  timeestimate?: any
+  aggregatetimeoriginalestimate?: any
+  aggregatetimeestimate?: any
+  creator?: object
+  subtasks?: []
+  aggregateprogress?: { progress: number; total: number }
+  progress?: { progress: number; total: number }
+  votes?: object
+  versions?: []
+  issuelinks?: []
+  statuscategorychangedate?: string
   // Adding missing fields
-  worklog: { startAt: number; maxResults: number; total: number; worklogs: [] }
-  timespent: null | number
-  aggregatetimespent: null | number
-  resolutiondate: string | null
-  workratio: number
-  issuerestriction: { issuerestrictions: object; shouldDisplay: boolean }
-  watches: {
+  worklog?: { startAt: number; maxResults: number; total: number; worklogs: [] }
+  timespent?: null | number
+  aggregatetimespent?: null | number
+  resolutiondate?: string | null
+  workratio?: number
+  issuerestriction?: { issuerestrictions: object; shouldDisplay: boolean }
+  watches?: {
     self: string
     watchCount: number
     isWatching: boolean
   }
-  timeoriginalestimate: null | number
-  timetracking: object
-  security: null | object
-  attachment: any
-  duedate: string | null
-  comment: {
+  timeoriginalestimate?: null | number
+  timetracking?: object
+  security?: null | object
+  attachment?: any
+  duedate?: string | null
+  comment?: {
     comments: any
     self: string
     maxResults: number
@@ -214,4 +220,6 @@ export interface AutocompleteDataResponse {
   jqlReservedWords?: any
 }
 
-export type SearchResponse = Record<JiraField["key"], Record<keyof JiraFields, any>>
+export type LightWeightIssues = Record<JiraField['key'], Record<keyof JiraFields, any>>
+
+export type LightWeightSearchResponse = { issues: LightWeightIssues; nextPageToken?: string | null | undefined }
