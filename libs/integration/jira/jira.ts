@@ -220,6 +220,11 @@ export interface AutocompleteDataResponse {
   jqlReservedWords?: any
 }
 
+export interface FieldMappingDescription {
+  customFields: string
+  jqlResearchDescription: string
+}
+
 export type LightWeightIssues = Record<JiraField['key'], Record<keyof JiraFields, any>>
 
 export type LightWeightSearchResponse = { issues: LightWeightIssues; nextPageToken?: string | null | undefined }

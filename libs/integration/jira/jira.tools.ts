@@ -73,28 +73,40 @@ export class JiraTools extends AsyncAssistantToolFactory {
       function: {
         name: 'searchJiraIssues',
         description: `Perform a flexible search across Jira issues using a jql query based on natural language.
-        Pagination handling:
-        1. When the response includes a nextPageToken:  
-        - Display current page results
-        - Ask user if they want to see more results   
-        - Only if confirmed, use the nextPageToken to fetch next page
-        2. Example flow:   
-        a. First search: call without nextPageToken   
-        b. If more results exist:      
-        - Use queryUser tool to ask for confirmation      
-        - If user confirms, make another call with the nextPageToken
-        The following mapping provides all the keys you can use to perform the jql request. Do not invent key, all is provided here:
-        ${customFieldMappingDescription.jqlResearchDescription}`,
+          PAGINATION:
+          - First call: omit nextPageToken
+          - If more results available:
+            * Current page results are displayed
+            * User is prompted for next page
+            * If confirmed, call again with provided nextPageToken
+          
+          QUERY FORMATS:
+          1. JQL Queries (filtering):
+             - Custom fields use cf[] format
+             - Example: cf[10582] = "Data Intelligence"
+             - Case sensitive
+             - Multiple conditions: use AND, OR
+             - Example: cf[10582] = "Data Intelligence" AND status = "Open"
+          2. Fields Selection (retrieving):
+            - Custom fields use customfield_ format
+            - Example: ["basic", "customfield_10582"]
+
+          ERROR HANDLING:
+            - Invalid JQL returns error message
+            - Invalid token returns new search
+            - Exceeded max results warns user,
+        `,
         parameters: {
           type: 'object',
           properties: {
             jql: {
               type: 'string',
-              description: 'The jql query based on natural language, enable complex research on JIRA',
+              description: `JQL query for searching issues. Available fields:
+              ${customFieldMappingDescription.jqlResearchDescription}`,
             },
             nextPageToken: {
               type: 'string',
-              description: 'Optional token to fetch the next page of results',
+              description: 'Token to fetch next page. Omit for first page. Case sensitive. Returns error if invalid.',
             },
             maxResults: {
               type: 'number',
@@ -104,20 +116,23 @@ export class JiraTools extends AsyncAssistantToolFactory {
             fields: {
               type: 'array',
               items: { type: 'string' },
-              description:
-                'Optional: Specify which fields to return.\n\n' +
-                'Presets available:\n' +
-                '- ["minimal"]: key, summary\n' +
-                '- ["basic"]: key, summary, status\n' +
-                '- ["detailed"]: key, summary, status, description, priority\n' +
-                '- ["dates"]: created, updated, duedate\n' +
-                '- ["navigation"]: key, parent, subtasks, issuelinks\n' +
-                '- ["tracking"]: assignee, reporter, created, updated, status\n\n' +
-                'Usage options:\n' +
-                '- Use presets: e.g., ["basic", "dates"] combines both presets\n' +
-                '- Individual fields: e.g., ["key", "summary", "status"]\n' +
-                '- Special values: ["*all"] for all fields, ["*navigable"] for navigable fields\n\n' +
-                'Default: ["basic"] preset',
+              description: `Optional: Specify which fields to return.
+                Presets available:
+                - ["minimal"]: key, summary
+                - ["basic"]: key, summary, status
+                - ["detailed"]: key, summary, status, description, priority
+                - ["dates"]: created, updated, duedate
+                - ["navigation"]: key, parent, subtasks, issuelinks
+                - ["tracking"]: assignee, reporter, created, updated, status
+                Usage options:
+                - Use presets: e.g., ["basic", "dates"] combines both presets
+                - Individual fields: e.g., ["key", "summary", "status"]
+                - Special values: ["*all"] for all fields, ["*navigable"] for navigable fields
+                - Custom field values: here is a mapping of all customfield available with a description ${customFieldMappingDescription.customFields}.
+                  Example flow:
+                    1. The user request mention squad or client
+                    2. The fields must include customfield_10595 and customfield_10564
+                Default: ["basic"] preset`,
             },
           },
         },
