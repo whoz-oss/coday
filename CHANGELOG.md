@@ -1,3 +1,13 @@
+## 0.0.1-6 (2025-02-28)
+
+### 🚀 Features
+
+- bump dependencies & upgrade claude-sonnet to 3.7 ([72dd074](https://github.com/biznet-io/coday/commit/72dd074))
+
+### ❤️ Thank You
+
+- Vincent Palita
+
 ## 0.0.1-5 (2025-02-04)
 
 ### 🚀 Features
