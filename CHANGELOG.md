@@ -1,3 +1,13 @@
+## 0.0.1-7 (2025-02-28)
+
+### 🚀 Features
+
+- bump repository to 0.0.7 ([60a21e1](https://github.com/biznet-io/coday/commit/60a21e1))
+
+### ❤️ Thank You
+
+- Vincent Palita
+
 ## 0.0.1-6 (2025-02-28)
 
 ### 🚀 Features
