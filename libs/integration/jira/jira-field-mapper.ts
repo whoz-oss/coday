@@ -2,7 +2,7 @@ import { Interactor } from '../../model'
 import { retrieveAutocompleteData } from './retrieve-autocomplete-data'
 import { searchJiraIssues } from './search-jira-issues'
 import { createFieldMapping } from './jira.helpers'
-import { AutocompleteDataResponse } from './jira'
+import {AutocompleteDataResponse, FieldMappingDescription} from './jira'
 
 export interface ActiveFieldMapping {
   name: string
@@ -32,7 +32,7 @@ export class JiraFieldMapper {
   async generateFieldMapping(maxResults: number = 100): Promise<{
     mappings: ActiveFieldMapping[]
     autocompleteData: AutocompleteDataResponse
-    description: { creationDescription: string; jqlResearchDescription: string }
+    description: FieldMappingDescription
   }> {
     try {
       // Fetch all required data with diverse ticket types
@@ -66,18 +66,15 @@ export class JiraFieldMapper {
         mappings: [],
         autocompleteData: { visibleFieldNames: [] },
         description: {
-          creationDescription: 'Failed to generate the jira ticket creation description',
+          customFields: 'Failed to generate the jira ticket creation description',
           jqlResearchDescription: 'Failed to generate the jira jql research description',
         },
       }
     }
   }
 
-  private generateMappingDescription(mappings: ActiveFieldMapping[]): {
-    creationDescription: string
-    jqlResearchDescription: string
-  } {
-    const creationFields = mappings
+  private generateMappingDescription(mappings: ActiveFieldMapping[]): FieldMappingDescription {
+    const customFields = mappings
       .map(
         (field) => `    ${field.name} - ${field.custom ? 'Custom' : 'Standard'}
     Name: ${field.name}    
@@ -98,9 +95,9 @@ export class JiraFieldMapper {
       .join('\n\n')
 
     return {
-      creationDescription: `# Jira Ticket Creation Fields (${mappings.length} fields)
+      customFields: `# Jira Ticket Creation Fields (${mappings.length} fields)
 
-${creationFields}
+${customFields}
 
 Notes:
 - Only use these keys when creating issues via API
@@ -127,10 +124,7 @@ export async function createJiraFieldMapping(
 ): Promise<{
   mappings: ActiveFieldMapping[]
   autocompleteData: AutocompleteDataResponse
-  description: {
-    creationDescription: string
-    jqlResearchDescription: string
-  }
+  description: FieldMappingDescription
 }> {
   const mapper = new JiraFieldMapper(jiraBaseUrl, jiraApiToken, jiraUsername, interactor)
 
