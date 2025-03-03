@@ -1,3 +1,16 @@
+## 0.1.0 (2025-03-03)
+
+### 🚀 Features
+
+- bump dependencies & upgrade claude-sonnet to 3.7 ([72dd074](https://github.com/biznet-io/coday/commit/72dd074))
+- bump repository to 0.0.7 ([60a21e1](https://github.com/biznet-io/coday/commit/60a21e1))
+- enable jira global research ([#2](https://github.com/biznet-io/coday/pull/2))
+
+### ❤️ Thank You
+
+- c-monot-whoz
+- Vincent Palita
+
 ## 0.0.1-7 (2025-02-28)
 
 ### 🚀 Features
