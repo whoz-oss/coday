@@ -84,12 +84,40 @@ export class AgentService {
     return this.agents.get(name.toLowerCase())
   }
 
+  async findAgentByNameStart(nameStart: string | undefined, context: CommandContext): Promise<Agent | undefined> {
+    const defaultAgentName = 'coday'
+    const matchingAgents = await this.findAgentsByNameStart(nameStart ?? defaultAgentName, context)
+
+    if (matchingAgents.length === 0) {
+      return this.agents.get(defaultAgentName.toLowerCase())
+    }
+
+    if (matchingAgents.length === 1) {
+      return matchingAgents[0]
+    }
+
+    if (!context.oneshot) {
+      const options = matchingAgents.map((agent) => agent.name)
+      try {
+        const selection = await this.interactor.chooseOption(
+          options,
+          `Multiple agents match '${nameStart}', please select one:`
+        )
+        const selectedAgent = matchingAgents.find((agent) => agent.name === selection)
+        return selectedAgent
+      } catch (error) {
+        this.interactor.error('Selection cancelled')
+        return undefined
+      }
+    }
+  }
+
   /**
    * Find agents by the start of their name (case insensitive)
    * For example, "fid" will match "Fido_the_dog"
    * Returns all matching agents or empty array if none found
    */
-  async findAgentByNameStart(nameStart: string, context: CommandContext): Promise<Agent[]> {
+  async findAgentsByNameStart(nameStart: string, context: CommandContext): Promise<Agent[]> {
     await this.initialize(context)
 
     const lowerNameStart = nameStart.toLowerCase()
