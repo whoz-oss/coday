@@ -1,11 +1,16 @@
 import { CommandContext, Interactor } from '../../model'
 import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
+import { AgentService } from '../../agent'
+import { delegateFunction } from './delegate.function'
 
 export class AiTools extends AssistantToolFactory {
   name = 'AI'
 
-  constructor(interactor: Interactor) {
+  constructor(
+    interactor: Interactor,
+    private agentService: AgentService
+  ) {
     super(interactor)
   }
 
@@ -15,78 +20,6 @@ export class AiTools extends AssistantToolFactory {
 
   protected buildTools(context: CommandContext): CodayTool[] {
     const result: CodayTool[] = []
-    context.canSubTask(() => {
-      const subTask = ({ subTasks }: { subTasks: { description: string }[] }) => {
-        const formatted = subTasks.map((subTask) => `@ ${subTask.description}`)
-        formatted.forEach((command) => this.interactor.displayText(`Sub-task received: ${command}`))
-        if (context.addSubTasks(...formatted)) {
-          return 'sub-tasks received and queued for execution, will be runned after this current run.'
-        }
-        return 'sub-tasks could not be queued, no more sub-tasking allowed for now.'
-      }
-      const subTaskTool: FunctionTool<{ subTasks: { description: string }[] }> = {
-        type: 'function',
-        function: {
-          name: 'subTask',
-          description:
-            'Queue tasks that will be runned sequentially after the current run. DO NOT TRY TO COMPLETE THESE TASKS, JUST DEFINE THEM HERE.',
-          parameters: {
-            type: 'object',
-            properties: {
-              subTasks: {
-                type: 'array',
-                description: 'Ordered list of sub-tasks',
-                items: {
-                  type: 'object',
-                  properties: {
-                    description: {
-                      type: 'string',
-                      description:
-                        'Description of the sub-task, add details on what is specific to this task and what are the expectations on its completion.',
-                    },
-                  },
-                },
-              },
-            },
-          },
-          parse: JSON.parse,
-          function: subTask,
-        },
-      }
-      result.push(subTaskTool)
-    })
-
-    if (context.stackDepth > 0) {
-      const delegate = ({ task }: { task: string }) => {
-        context.addCommands(`delegate ${task}`)
-        return 'Task delegated to another process.'
-      }
-
-      const delegateTool: FunctionTool<{ task: string }> = {
-        type: 'function',
-        function: {
-          name: 'delegate',
-          description: `Delegate the completion of a task to another async process. Result will`,
-          parameters: {
-            type: 'object',
-            properties: {
-              task: {
-                type: 'string',
-                description: `Description of the task, expected to have the following structure :
-                
-                - context: a quick explanation of the parent context of the task
-                - task: description of the task to complete, with rather clear expectations and boundaries, but no suggested solution
-                - data: mention of files, piece of data or other constraints related to the task
-                - tools: optional, recommended tools to use if **very** relevant to the task.`,
-              },
-            },
-          },
-          parse: JSON.parse,
-          function: delegate,
-        },
-      }
-      result.push(delegateTool)
-    }
 
     if (!context.oneshot) {
       const queryUser = ({ message }: { message: string }) => {
@@ -116,6 +49,57 @@ export class AiTools extends AssistantToolFactory {
       }
       result.push(queryUserTool)
     }
+
+    const delegate = delegateFunction({ context, interactor: this.interactor, agentService: this.agentService })
+
+    const agentSummaries = this.agentService
+      .listAgentSummaries()
+      .map((a) => `  - ${a.name} : ${a.description}`)
+      .join('\n')
+    const delegateTool: FunctionTool<{ task: string; agentName: string | undefined }> = {
+      type: 'function',
+      function: {
+        name: 'delegate',
+        description: `Delegate the completion of a task to another available agent among:
+${agentSummaries}
+
+IMPORTANT: This is a full delegation - the selected agent will have access to its own set of tools and capabilities to complete the entire task. Do not split the task between yourself and the delegated agent. The agent should perform ALL actions required, including using any tools it has access to (git operations, file management, etc.).
+
+THREAD ISOLATION: The delegated agent works in an isolated thread with limited context. It will only see previous interactions with itself, not recent messages between you and the user. This means you must include ALL necessary context in your task description - don't assume the agent can see what you and the user just discussed.
+
+These agents are LLM-based, so you should assess in return if the task was correctly executed, and call again the agent if not sufficient or need to adapt. Agents can be called again without losing their context if more information is needed.
+`,
+        parameters: {
+          type: 'object',
+          properties: {
+            agentName: {
+              type: 'string',
+              description:
+                'Optional: name of the agent to target. Selects default agent if missing, fails if name is not matching. Recommended to select one fit for the task for relevant results.',
+            },
+            // withoutContext: {
+            //   type: 'boolean',
+            //   description: 'If present and true, delegates without the current conversation context. To use only for constrained agents that explicitly mention a limited context.'
+            // },
+            task: {
+              type: 'string',
+              description: `Description of the task to delegate, should contain:
+              
+  - intent
+  - constraints
+  - definition of done
+  - any necessary actions/operations to perform (the agent will execute these directly)
+  
+  Take care to rephrase it as if you are the originator of the task. Include ALL required actions in the task description - do not expect to perform any actions yourself after delegation.
+                `,
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: delegate,
+      },
+    }
+    result.push(delegateTool)
 
     return result
   }

@@ -7,12 +7,7 @@ export async function buildFirstCommandContext(
   services: CodayServices
 ): Promise<CommandContext> {
   const project = services.project.selectedProject!
-  const projectConfig = await loadOrInitProjectDescription(
-    project.config.path,
-    interactor,
-    services.user.username,
-    services
-  )
+  const projectConfig = await loadOrInitProjectDescription(project.config.path, interactor, services.user.username)
 
   return new CommandContext(
     {

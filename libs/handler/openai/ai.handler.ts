@@ -67,7 +67,7 @@ export class AiHandler extends CommandHandler {
    */
   private async selectAgent(nameStart: string, context: CommandContext): Promise<Agent | undefined> {
     let name = nameStart
-    if (!nameStart.trim()) {
+    if (!nameStart?.trim()) {
       if (this.lastAgentName) {
         name = this.lastAgentName
       } else {
@@ -75,50 +75,12 @@ export class AiHandler extends CommandHandler {
         name = 'coday'
       }
     }
-
-    // Find matching agents
-    const matchingAgents = await this.agentService.findAgentByNameStart(name, context)
-
-    if (matchingAgents.length === 0) {
-      // No match, use default agent
-      const agent = await this.agentService.findByName('coday', context)
-      if (!agent) {
-        this.interactor.error(
-          `Failed to initialize default agent 'Coday', at least add an agent named "Coday" in coday.yaml, section agents.`
-        )
-        return undefined
-      }
-      return agent
+    const agent = await this.agentService.findAgentByNameStart(name, context)
+    if (agent) {
+      this.lastAgentName = agent?.name
     }
 
-    if (matchingAgents.length === 1) {
-      this.lastAgentName = matchingAgents[0].name
-      return matchingAgents[0]
-    }
-
-    // Multiple matches
-    if (context.oneshot) {
-      // Non-interactive mode: show error
-      this.interactor.error(
-        `Multiple agents match '${name}'. Please be more specific: ` + matchingAgents.map((a) => a.name).join(', ')
-      )
-      return undefined
-    }
-
-    // Interactive mode: let user choose
-    const options = matchingAgents.map((agent) => agent.name)
-    try {
-      const selection = await this.interactor.chooseOption(
-        options,
-        `Multiple agents match '${name}', please select one:`
-      )
-      const selectedAgent = matchingAgents.find((agent) => agent.name === selection)
-      this.lastAgentName = selectedAgent?.name
-      return selectedAgent
-    } catch (error) {
-      this.interactor.error('Selection cancelled')
-      return undefined
-    }
+    return agent
   }
 
   /**
