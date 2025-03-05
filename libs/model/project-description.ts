@@ -1,8 +1,9 @@
 import { Scripts } from './scripts'
 import { AssistantDescription } from './assistant-description'
 import { AgentDefinition } from './agent-definition'
+import { WithDocs } from './with-docs'
 
-export type ProjectDescription = {
+export interface ProjectDescription extends WithDocs {
   /**
    * Description of the current project, it should contain the same high-level information and rules about the project anyone of the team should know.
    *
@@ -13,20 +14,6 @@ export type ProjectDescription = {
    * Recommendations: write it in markdown as you would write human-intended documentation
    */
   description: string
-
-  /**
-   * List of project paths to documents that will be loaded as part of the initial system instruction when creating a thread.
-   *
-   * Be cautious to not expose very large documents that would waste tokens on every new thread, focus on the common core of the project.
-   */
-  mandatoryDocs?: string[]
-
-  /**
-   * List of document file that will not be loaded initially but are mentioned in the initial thread system instruction.
-   *
-   * Should a file be relevant on a topic, the LLM is expected to read it when needed.
-   */
-  optionalDocs?: DocumentationFile[]
 
   /**
    * Custom scripts exposed as tools to the LLM
@@ -71,17 +58,4 @@ export type PromptChain = {
    * Optional list of required integrations for this prompt chain
    */
   requiredIntegrations?: string[]
-}
-
-type DocumentationFile = {
-  /**
-   * Project path to the document
-   */
-  path: string
-
-  /**
-   * Description of the content and added value of the file.
-   * Can be a synthetic summary (to generate with AI first)...
-   */
-  description: string
 }

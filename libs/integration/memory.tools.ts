@@ -20,13 +20,13 @@ export class MemoryTools extends AssistantToolFactory {
     return context.project.name !== this.lastToolInitContext?.project.name
   }
 
-  protected buildTools(context: CommandContext): CodayTool[] {
+  protected buildTools(context: CommandContext, agentName: string): CodayTool[] {
     const result: CodayTool[] = []
 
     const memorize = async ({ title, content, level }: { title: string; content: string; level: string }) => {
       const parsedLevel: MemoryLevel = level === 'USER' ? MemoryLevel.USER : MemoryLevel.PROJECT
 
-      this.memoryService.upsertMemory({ title, content, level: parsedLevel })
+      this.memoryService.upsertMemory({ title, content, level: parsedLevel, agentName })
       this.interactor.displayText(`Added ${parsedLevel} memory : ${title}\n${content}`)
       return `Memory added with title: ${title}`
     }
@@ -35,10 +35,11 @@ export class MemoryTools extends AssistantToolFactory {
       type: 'function',
       function: {
         name: 'memorize',
-        description: `Upsert a memory entry to remember on next runs. Should be used selectively for significant and knowledge that:
-1) represents core project/user patterns
+        description: `Upsert a memory entry to remember on next runs. Should be used selectively for significant knowledge that:
+
+1) represents core project or user patterns
 2) will be valuable in multiple future interactions
-3) is not redundant with existing memories.
+3) is not redundant with existing memories (in that case, update the existing one).
 
 Do not memorize partial knowledge, single-use information, or minor implementation details. Allowed levels: ${MemoryLevels.join(', ')}.`,
         parameters: {
@@ -56,8 +57,10 @@ Do not memorize partial knowledge, single-use information, or minor implementati
             },
             level: {
               type: 'string',
-              description:
-                'Level of the memory: PROJECT for architectural decisions, core patterns, or significant design guidelines; USER for strong personal preferences or validated working patterns that impact multiple interactions.',
+              description: `Level of the memory:
+
+- PROJECT for architectural decisions, core patterns, or significant design guidelines
+- USER for strong personal preferences or validated working patterns that impact multiple interactions.`,
               enum: MemoryLevels,
             },
           },
