@@ -266,6 +266,7 @@ export class AiThread {
     // Check if a forked thread for this agent already exists
     const existingForkedThread = this.forkedThreads.get(agentName ?? null)
     if (existingForkedThread) {
+      existingForkedThread.runStatus = RunStatus.RUNNING
       return existingForkedThread
     }
 
@@ -284,6 +285,7 @@ export class AiThread {
     // Increment delegation depth (non-serializable)
     forkedThread.delegationDepth = this.delegationDepth + 1
     forkedThread.parentThread = this
+    forkedThread.runStatus = RunStatus.RUNNING
 
     // Store the forked thread
     this.forkedThreads.set(agentName ?? null, forkedThread)
