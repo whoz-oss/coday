@@ -8,6 +8,7 @@ import { CodayServices } from '../coday-services'
 import { ToolSet } from '../integration/tool-set'
 import { getFormattedDocs } from '../function/get-formatted-docs'
 import { MemoryLevel } from '../model/memory'
+import { findFilesByName } from '../function/find-files-by-name'
 
 export class AgentService {
   private agents: Map<string, Agent> = new Map()
@@ -147,37 +148,44 @@ export class AgentService {
    * Each file should contain a single agent definition
    */
   private async loadFromFiles(context: CommandContext): Promise<void> {
+    const agentsPaths: string[] = []
+    const agentFiles: string[] = []
     const selectedProject = this.services.project.selectedProject
-    if (!selectedProject) return
-
-    const agentsPath = path.join(selectedProject.configPath, 'agents')
-
-    try {
-      const files = await fs.readdir(agentsPath)
-      for (const file of files) {
-        if (!file.endsWith('.yml') && !file.endsWith('.yaml')) continue
-
-        try {
-          const content = await fs.readFile(path.join(agentsPath, file), 'utf-8')
-          const data = yaml.parse(content)
-
-          // const validation = validateAgentDefinition(data)
-          // if (validation.valid) {
-          await this.tryAddAgent(data, context)
-          // } else {
-          //   console.warn(`Invalid agent definition in ${file}:\n${formatValidationErrors(validation.errors)}\nDefinition:`, data)
-          // }
-        } catch (error) {
-          console.error(`Error processing agent file ${file}:`, error)
-          // Continue to next file
-        }
-      }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        throw error
-      }
-      // Directory doesn't exist yet, which is fine
+    if (selectedProject) {
+      agentsPaths.push(path.join(selectedProject.configPath, 'agents'))
     }
+    const projectPath = this.services.project.selectedProject?.config.path
+    if (projectPath) {
+      const codayFolder = path.dirname((await findFilesByName({ text: 'coday.yaml', root: projectPath }))[0])
+
+      agentsPaths.push(path.join(projectPath, codayFolder, 'agents'))
+    }
+
+    await Promise.all(
+      agentsPaths.map(async (agentsPath) => {
+        try {
+          const files = await fs.readdir(agentsPath)
+          for (const file of files) {
+            if (!file.endsWith('.yml') && !file.endsWith('.yaml')) continue
+            agentFiles.push(path.join(agentsPath, file))
+          }
+        } catch (e) {
+          console.error(e)
+        }
+      })
+    )
+
+    await Promise.all(
+      agentFiles.map(async (agentFilePath) => {
+        try {
+          const content = await fs.readFile(agentFilePath, 'utf-8')
+          const data = yaml.parse(content)
+          this.addDefinition(data)
+        } catch (e) {
+          console.error(e)
+        }
+      })
+    )
   }
 
   /**
