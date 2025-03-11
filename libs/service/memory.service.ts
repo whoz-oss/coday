@@ -37,6 +37,7 @@ export class MemoryService {
       this.memories.push(new Memory(memory))
     } else {
       // update
+      // TODO: do not merge if different agentName ?
       this.memories[index] = new Memory({ ...this.memories[index], ...memory })
     }
     this.saveMemories()
@@ -53,9 +54,19 @@ export class MemoryService {
     }
   }
 
-  listMemories(level?: MemoryLevel): Memory[] {
+  listMemories(level: MemoryLevel, agentName?: string): Memory[] {
     this.checkInit()
-    return !level ? this.memories : this.memories.filter((m) => m.level === level)
+    return this.memories.filter((m) => m.level === level && (!m.agentName || m.agentName === agentName))
+  }
+
+  getFormattedMemories(level: MemoryLevel, agentName?: string): string {
+    const levelMemories = this.listMemories(level, agentName).map((m: Memory) => `  - ${m.title}\n    ${m.content}`)
+    if (!levelMemories.length) return ''
+
+    levelMemories.unshift(`## ${level} memories
+    
+    Here are the information collected during previous chats:\n`)
+    return levelMemories.join('\n')
   }
 
   private loadMemoriesFrom(selectedProject: { configPath: string } | null): void {

@@ -1,10 +1,9 @@
-import {AiClient} from "./ai.client"
-import {AgentDefinition, ModelSize} from "./agent-definition"
-import {Project} from "./project"
-import {ToolSet} from "../integration/tool-set"
-import {AiThread} from "../ai-thread/ai-thread"
-import {Observable} from "rxjs"
-import {CodayEvent} from "../shared/coday-events"
+import {AiClient} from './ai.client'
+import {AgentDefinition, ModelSize} from './agent-definition'
+import {ToolSet} from '../integration/tool-set'
+import {AiThread} from '../ai-thread/ai-thread'
+import {Observable} from 'rxjs'
+import {CodayEvent} from '../shared/coday-events'
 
 /**
  * Simplified view of an agent for listing and selection purposes
@@ -27,7 +26,6 @@ export class Agent {
   constructor(
     initialDefinition: AgentDefinition,
     private readonly aiClient: AiClient,
-    private readonly project: Project,
     readonly tools: ToolSet,
     readonly internal: boolean = false
   ) {
@@ -37,10 +35,7 @@ export class Agent {
   }
 
   get systemInstructions(): string {
-    return `${this.definition.instructions}\n\n
-                <project-context>
-${this.project.description}
-</project-context>`
+    return this.definition.instructions!
   }
 
   /**

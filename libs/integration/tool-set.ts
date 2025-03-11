@@ -53,39 +53,4 @@ export class ToolSet {
       output,
     })
   }
-
-  // /**
-  //  * Observable version of runTool (experimental)
-  //  * This could be used for long-running tasks where we want to:
-  //  * - Emit immediate acknowledgment
-  //  * - Stream progress updates
-  //  * - Complete with final result
-  //  *
-  //  * @param toolRequest The tool request containing name and arguments
-  //  */
-  // runToolAsObservable(toolRequest: ToolRequestEvent): Observable<any> {
-  //   return defer(() => {
-  //     // For now, just wrap the Promise in an Observable
-  //     return from(this.runTool(toolRequest))
-  //
-  //     // Future enhancement could look like:
-  //     /*
-  //     return new Observable(subscriber => {
-  //       subscriber.next({ status: 'started', message: `Tool ${toolRequest.name} execution started` })
-  //
-  //       this.runTool(toolRequest)
-  //         .then(result => {
-  //           subscriber.next({ status: 'completed', result })
-  //           subscriber.complete()
-  //         })
-  //         .catch(error => subscriber.error(error))
-  //
-  //       // Return cleanup function if needed
-  //       return () => {
-  //         // Cancel operation if possible
-  //       }
-  //     })
-  //     */
-  //   })
-  // }
 }

@@ -44,7 +44,7 @@ export class CodeFlowHandler extends CommandHandler {
              - include the expectations and ways or functions to use to validate its execution depending on the project rules
              - be commited or saved once completed and validated, by following the project rules
              
-             DO NOT COMPLETE THESE TASKS NOW, but send them to the subTask function (for later sequential execution).`,
+             DO NOT COMPLETE THESE TASKS NOW, but send them to the delegate function (for later sequential execution).`,
 
       // ...sub-tasks are run and burn a hole in the token quota of the month...
       `sub-task false`, // removal to prevent any later over-complexity

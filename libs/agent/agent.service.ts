@@ -3,24 +3,33 @@ import * as path from 'path'
 import * as yaml from 'yaml'
 import { AiClientProvider } from '../integration/ai/ai-client-provider'
 import { Toolbox } from '../integration/toolbox'
-import { Agent, AgentDefinition, CodayAgentDefinition, CommandContext, Interactor } from '../model'
-import { ToolSet } from '../integration/tool-set'
+import { Agent, AgentDefinition, AgentSummary, CodayAgentDefinition, CommandContext, Interactor } from '../model'
 import { CodayServices } from '../coday-services'
+import { ToolSet } from '../integration/tool-set'
+import { getFormattedDocs } from '../function/get-formatted-docs'
+import { MemoryLevel } from '../model/memory'
+import { findFilesByName } from '../function/find-files-by-name'
 
 export class AgentService {
   private agents: Map<string, Agent> = new Map()
+  private agentDefinitions: AgentDefinition[] = []
   private toolbox: Toolbox
 
   constructor(
     private interactor: Interactor,
     private aiClientProvider: AiClientProvider,
-    private services: CodayServices
+    private services: CodayServices,
+    private projectPath: string
   ) {
     // Subscribe to project changes to reset agents
     this.services.project.selectedProject$.subscribe(() => {
       this.agents.clear()
     })
-    this.toolbox = new Toolbox(this.interactor, services)
+    this.toolbox = new Toolbox(this.interactor, services, this)
+  }
+
+  listAgentSummaries(): AgentSummary[] {
+    return this.agentDefinitions.map((a) => ({ name: a.name, description: a.description }))
   }
 
   /**
@@ -37,7 +46,7 @@ export class AgentService {
       // Load from coday.yml agents section first
       if (context.project.agents?.length) {
         for (const def of context.project.agents) {
-          await this.tryAddAgent(def, context)
+          this.addDefinition(def)
         }
       }
 
@@ -45,7 +54,7 @@ export class AgentService {
       const selectedProject = this.services.project.selectedProject
       if (selectedProject?.config.agents?.length) {
         for (const def of selectedProject.config.agents) {
-          this.tryAddAgent(def, context)
+          this.addDefinition(def)
         }
       }
 
@@ -54,17 +63,17 @@ export class AgentService {
 
       // If no agents were loaded, use Coday as backup
       if (this.agents.size === 0) {
-        console.log('No agents configured, using Coday as backup agent')
-        await this.tryAddAgent(CodayAgentDefinition, context)
-      }
-
-      const agentNames = Array.from(this.agents.values()).map((a) => `  - ${a.name}`)
-      if (agentNames.length > 1) {
-        this.interactor.displayText(`Loaded agents (callable with '@[agent name]'):\n${agentNames.join('\n')}`)
+        this.addDefinition(CodayAgentDefinition)
       }
     } catch (error) {
       console.error('Failed to initialize agents:', error)
       throw error
+    }
+
+    await Promise.all(this.agentDefinitions.map((def) => this.tryAddAgent(def, context)))
+    const agentNames = this.listAgentSummaries().map((a) => `  - ${a.name} : ${a.description}`)
+    if (agentNames.length > 1) {
+      this.interactor.displayText(`Loaded agents (callable with '@[agent name]'):\n${agentNames.join('\n')}`)
     }
   }
 
@@ -76,12 +85,40 @@ export class AgentService {
     return this.agents.get(name.toLowerCase())
   }
 
+  async findAgentByNameStart(nameStart: string | undefined, context: CommandContext): Promise<Agent | undefined> {
+    const defaultAgentName = 'coday'
+    const matchingAgents = await this.findAgentsByNameStart(nameStart ?? defaultAgentName, context)
+
+    if (matchingAgents.length === 0) {
+      return this.agents.get(defaultAgentName.toLowerCase())
+    }
+
+    if (matchingAgents.length === 1) {
+      return matchingAgents[0]
+    }
+
+    if (!context.oneshot) {
+      const options = matchingAgents.map((agent) => agent.name)
+      try {
+        const selection = await this.interactor.chooseOption(
+          options,
+          `Multiple agents match '${nameStart}', please select one:`
+        )
+        const selectedAgent = matchingAgents.find((agent) => agent.name === selection)
+        return selectedAgent
+      } catch (error) {
+        this.interactor.error('Selection cancelled')
+        return undefined
+      }
+    }
+  }
+
   /**
    * Find agents by the start of their name (case insensitive)
    * For example, "fid" will match "Fido_the_dog"
    * Returns all matching agents or empty array if none found
    */
-  async findAgentByNameStart(nameStart: string, context: CommandContext): Promise<Agent[]> {
+  async findAgentsByNameStart(nameStart: string, context: CommandContext): Promise<Agent[]> {
     await this.initialize(context)
 
     const lowerNameStart = nameStart.toLowerCase()
@@ -96,21 +133,14 @@ export class AgentService {
     return matches
   }
 
-  /**
-   * Get all available agents as summaries, optionally excluding some by name
-   */
-  async getAllAgents(context: CommandContext, excludeNames?: string[]): Promise<Agent[]> {
-    await this.initialize(context)
-
-    const excludeSet = excludeNames ? new Set(excludeNames.map((name) => name.toLowerCase())) : new Set<string>()
-
-    return Array.from(this.agents.entries())
-      .filter(([name]) => !excludeSet.has(name))
-      .map(([_, agent]) => agent)
-  }
-
   kill(): void {
     this.aiClientProvider.kill()
+  }
+
+  private addDefinition(def: AgentDefinition): void {
+    if (!this.agentDefinitions.find((a) => a.name === def.name)) {
+      this.agentDefinitions.push({ ...CodayAgentDefinition, ...def })
+    }
   }
 
   /**
@@ -118,37 +148,44 @@ export class AgentService {
    * Each file should contain a single agent definition
    */
   private async loadFromFiles(context: CommandContext): Promise<void> {
+    const agentsPaths: string[] = []
+    const agentFiles: string[] = []
     const selectedProject = this.services.project.selectedProject
-    if (!selectedProject) return
-
-    const agentsPath = path.join(selectedProject.configPath, 'agents')
-
-    try {
-      const files = await fs.readdir(agentsPath)
-      for (const file of files) {
-        if (!file.endsWith('.yml') && !file.endsWith('.yaml')) continue
-
-        try {
-          const content = await fs.readFile(path.join(agentsPath, file), 'utf-8')
-          const data = yaml.parse(content)
-
-          // const validation = validateAgentDefinition(data)
-          // if (validation.valid) {
-          this.tryAddAgent(data, context)
-          // } else {
-          //   console.warn(`Invalid agent definition in ${file}:\n${formatValidationErrors(validation.errors)}\nDefinition:`, data)
-          // }
-        } catch (error) {
-          console.error(`Error processing agent file ${file}:`, error)
-          // Continue to next file
-        }
-      }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        throw error
-      }
-      // Directory doesn't exist yet, which is fine
+    if (selectedProject) {
+      agentsPaths.push(path.join(selectedProject.configPath, 'agents'))
     }
+    const projectPath = this.services.project.selectedProject?.config.path
+    if (projectPath) {
+      const codayFolder = path.dirname((await findFilesByName({ text: 'coday.yaml', root: projectPath }))[0])
+
+      agentsPaths.push(path.join(projectPath, codayFolder, 'agents'))
+    }
+
+    await Promise.all(
+      agentsPaths.map(async (agentsPath) => {
+        try {
+          const files = await fs.readdir(agentsPath)
+          for (const file of files) {
+            if (!file.endsWith('.yml') && !file.endsWith('.yaml')) continue
+            agentFiles.push(path.join(agentsPath, file))
+          }
+        } catch (e) {
+          console.error(e)
+        }
+      })
+    )
+
+    await Promise.all(
+      agentFiles.map(async (agentFilePath) => {
+        try {
+          const content = await fs.readFile(agentFilePath, 'utf-8')
+          const data = yaml.parse(content)
+          this.addDefinition(data)
+        } catch (e) {
+          console.error(e)
+        }
+      })
+    )
   }
 
   /**
@@ -179,6 +216,23 @@ export class AgentService {
       }
       return
     }
+
+    const agentDocs = getFormattedDocs(def, this.interactor, this.projectPath)
+
+    const instructions = `${def.instructions}\n\n
+## Project description
+${context.project.description}
+
+${this.services.memory.getFormattedMemories(MemoryLevel.USER, def.name)}
+
+${this.services.memory.getFormattedMemories(MemoryLevel.PROJECT, def.name)}
+
+${agentDocs}
+
+`
+    // overwrite agent instructions with the added project and user context
+    def.instructions = instructions
+
     const integrations = def.integrations
       ? new Map<string, string[]>(
           Object.entries(def.integrations).map(([integration, names]: [string, string[]]): [string, string[]] => {
@@ -188,10 +242,10 @@ export class AgentService {
         )
       : undefined
 
-    const syncTools = this.toolbox.getTools(context, integrations)
+    const syncTools = this.toolbox.getTools({ context, integrations, agentName: def.name })
     const asyncTools = await this.toolbox.getAsyncTools(context)
     const toolset = new ToolSet([...syncTools, ...asyncTools])
-    const agent = new Agent(def, aiClient, context.project, toolset)
+    const agent = new Agent(def, aiClient, toolset)
     this.agents.set(agent.name.toLowerCase(), agent)
   }
 }

@@ -23,7 +23,7 @@ export class GitLabTools extends AssistantToolFactory {
     return this.lastToolInitContext?.project.root !== context.project.root
   }
 
-  protected buildTools(context: CommandContext): CodayTool[] {
+  protected buildTools(): CodayTool[] {
     const result: CodayTool[] = []
     const gitlab = this.integrationService.getIntegration('GITLAB')
     if (!gitlab) {

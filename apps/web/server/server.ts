@@ -7,7 +7,43 @@ import * as os from 'node:os'
 import { debugLog } from './log'
 
 const app = express()
-const PORT = process.env.PORT || 3000 // Default port as fallback
+const DEFAULT_PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000
+
+// Function to find the next available port
+async function findAvailablePort(startPort: number, maxAttempts = 10): Promise<number> {
+  const net = await import('node:net')
+
+  return new Promise((resolve, reject) => {
+    function checkPort(port: number, attempts: number) {
+      const server = net.createServer()
+
+      server.listen(port, () => {
+        server.close(() => {
+          debugLog('PORT', `Port ${port} is available`)
+          resolve(port)
+        })
+      })
+
+      server.on('error', (err: NodeJS.ErrnoException) => {
+        if (err.code === 'EADDRINUSE') {
+          if (attempts > 0) {
+            debugLog('PORT', `Port ${port} is in use, trying next`)
+            checkPort(port + 1, attempts - 1)
+          } else {
+            reject(new Error(`Could not find an available port starting from ${startPort}`))
+          }
+        } else {
+          reject(err)
+        }
+      })
+    }
+
+    checkPort(startPort, maxAttempts)
+  })
+}
+
+// Dynamically find an available port
+const PORT_PROMISE = findAvailablePort(DEFAULT_PORT)
 const EMAIL_HEADER = 'x-forwarded-email'
 
 // Parse options once for all clients
@@ -120,6 +156,12 @@ app.use((err: any, _: express.Request, res: express.Response, __: express.NextFu
 // Start cleanup interval for expired clients
 setInterval(() => clientManager.cleanupExpired(), 60000) // Check every minute
 
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`)
+// Use PORT_PROMISE to listen on the available port
+PORT_PROMISE.then(PORT => {
+  app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`)
+  })
+}).catch(error => {
+  console.error('Failed to start server:', error)
+  process.exit(1)
 })

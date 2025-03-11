@@ -37,14 +37,19 @@ export class ChoiceSelectComponent implements CodayEventHandler {
       return
     }
     this.choiceEvent = choiceEvent
-    // Parse markdown for the choice label
-    const labelContent = `${this.choiceEvent?.optionalQuestion} ${this.choiceEvent?.invite}`
-    const parsed = marked.parse(labelContent)
-    if (parsed instanceof Promise) {
-      parsed.then(html => this.choiceLabel.innerHTML = html)
-    } else {
-      this.choiceLabel.innerHTML = parsed
+    // Parse markdown for both optional question and invite separately
+    const questionText = this.choiceEvent?.optionalQuestion ? marked.parse(this.choiceEvent.optionalQuestion) : ''
+    const inviteText = marked.parse(this.choiceEvent?.invite || '')
+
+    // Handle both potential promises
+    const updateLabel = async () => {
+      const [questionHtml, inviteHtml] = await Promise.all([
+        questionText instanceof Promise ? questionText : Promise.resolve(questionText),
+        inviteText instanceof Promise ? inviteText : Promise.resolve(inviteText)
+      ])
+      this.choiceLabel.innerHTML = questionHtml + ' ' + inviteHtml
     }
+    updateLabel().catch(console.error)
     this.choiceSelect.innerHTML = this.choiceEvent?.options
       .map((option) => `<option value="${option}">${option}</option>`)
       .join('')

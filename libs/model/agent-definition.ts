@@ -1,3 +1,5 @@
+import { WithDocs } from './with-docs'
+
 export type AiProvider = 'openai' | 'anthropic' | 'google' | 'localLlm'
 
 export enum ModelSize {
@@ -13,7 +15,7 @@ export enum ModelSize {
  *   - summarizing part of an AiThread
  *   - wrapping a full complex integration (JIRA ?)
  */
-export interface AgentDefinition {
+export interface AgentDefinition extends WithDocs {
   /**
    * name of the agent
    * case does not matter as should be checked against lowercase
@@ -68,7 +70,6 @@ export interface AgentDefinition {
    *   - empty arrays = all tools of this integration allowed
    *   - select list of tools available (useful to restrict to read-only)
    */
-  // TODO: better type for integration keys, stay loose for tools ?
   integrations?: {
     [key: string]: string[] // key is name of an integration, value is empty (=all) or select list of tool keys to enable
   }
