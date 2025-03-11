@@ -1,3 +1,32 @@
+## 0.2.0 (2025-03-11)
+
+### 🚀 Features
+
+- Add AiThread forking mechanism with agent delegation support ([2d072d3](https://github.com/biznet-io/coday/commit/2d072d3))
+- allow AiThreads to be forked and price-merged. ([e37c1f2](https://github.com/biznet-io/coday/commit/e37c1f2))
+- open delegate tool ([5223bbb](https://github.com/biznet-io/coday/commit/5223bbb))
+- add Project Manager agent ([8698ae5](https://github.com/biznet-io/coday/commit/8698ae5))
+- add agent docs ([3778984](https://github.com/biznet-io/coday/commit/3778984))
+- move to sonnet 3.7, not thinking yet ([56c72de](https://github.com/biznet-io/coday/commit/56c72de))
+- init context simplification ([7a02fb1](https://github.com/biznet-io/coday/commit/7a02fb1))
+- move delegate tool declaration ([6b6f310](https://github.com/biznet-io/coday/commit/6b6f310))
+- fix delegation attempt, to test... ([c1f7774](https://github.com/biznet-io/coday/commit/c1f7774))
+- formatting... ([8b8bfa6](https://github.com/biznet-io/coday/commit/8b8bfa6))
+- multi-agent foundations ([10afdf0](https://github.com/biznet-io/coday/commit/10afdf0))
+- add `--local` option to take the repo clone folder name as the project name ([87a6c1d](https://github.com/biznet-io/coday/commit/87a6c1d))
+- add `--local` option to auto-select the project ([1471658](https://github.com/biznet-io/coday/commit/1471658))
+- allow agents to be defined outside of `coday.yaml` ([0f3d494](https://github.com/biznet-io/coday/commit/0f3d494))
+- allow agents to be defined outside of `coday.yaml` ([1e82fe7](https://github.com/biznet-io/coday/commit/1e82fe7))
+
+### 🩹 Fixes
+
+- manage aithread runStatus for delegation ([db67157](https://github.com/biznet-io/coday/commit/db67157))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+- vincent.audibert
+
 ## 0.1.0 (2025-03-03)
 
 ### 🚀 Features
