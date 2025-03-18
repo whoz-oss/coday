@@ -25,32 +25,6 @@ yarn start
 
 [More on usage here](doc/USAGE.md)
 
-## Electron Application
-
-### Running the Electron App
-To run the Electron app in development mode:
-
-```bash
-# First, build the web application
-yarn web
-
-# Then, run the Electron app
-yarn electron:dev
-```
-
-### Building Electron Packages
-To create distributable packages for different platforms:
-
-```bash
-# Build the web application first
-yarn web
-
-# Build Electron packages
-yarn electron:build
-```
-
-The packaged applications will be available in `dist/electron` directory.
-
 ## Setting integrations
 
 Configure integrations via `config edit-integration`.
