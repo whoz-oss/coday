@@ -26,7 +26,8 @@
         "esbuildOptions": {
           "outExtension": {
             ".js": ".js"
-          }
+          },
+          "sourcemap": true
         },
         "format": [
           "cjs"
@@ -36,6 +37,11 @@
         "outputPath": "dist/web/client",
         "platform": "browser",
         "tsConfig": "apps/web/client/tsconfig.app.json"
+      },
+      "configurations": {
+        "watch": {
+          "watch": true
+        }
       }
     },
     "build:server": {
@@ -48,7 +54,8 @@
         "esbuildOptions": {
           "outExtension": {
             ".js": ".js"
-          }
+          },
+          "sourcemap": true
         },
         "format": [
           "cjs"
@@ -59,6 +66,11 @@
         "platform": "node",
         "thirdParty": true,
         "tsConfig": "apps/web/server/tsconfig.app.json"
+      },
+      "configurations": {
+        "watch": {
+          "watch": true
+        }
       }
     },
     "build": {
@@ -69,6 +81,7 @@
       ],
       "options": {
         "commands": [
+          "rm dist/web/package.json",
           "mv dist/web/server/package.json dist/web",
           "rm dist/web/client/package.json"
         ]
@@ -76,13 +89,18 @@
     },
     "serve": {
       "executor": "nx:run-commands",
-      "dependsOn": [
-        "web:build:client",
-        "web:build:server"
-      ],
+      "dependsOn": ["web:build:client", "web:build:server"],
+      "options": {
+        "commands": ["node dist/web/server/server.js --no_auth"]
+      }
+    },
+    "serve:watch": {
+      "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "node dist/web/server/server.js"
+          "nx run web:build:client:watch",
+          "nx run web:build:server:watch",
+          "nodemon --watch 'dist/web/**/*.*' --verbose --inspect-brk=9229 dist/web/server/server.js --no_auth"
         ]
       }
     }

@@ -28,7 +28,8 @@ node_modules
 bower_components
 
 # Editors
-.idea
+.idea/*
+!.idea/runConfigurations
 *.iml
 
 # OS metadata
@@ -42,3 +43,6 @@ dist/**/*
 # Ignore Nx
 .nx/cache
 .nx/workspace-data
+
+# Electron build output
+dist/electron

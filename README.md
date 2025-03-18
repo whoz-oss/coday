@@ -36,4 +36,3 @@ Configure integrations via `config edit-integration`.
 Directly edit `coday.yaml` for project-specific configurations.
 
 [Detailed configuration documentation can be found here](doc/PROJECT_CONFIGURATION.md)
-

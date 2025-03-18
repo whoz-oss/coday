@@ -1,3 +1,99 @@
+## 0.3.0 (2025-03-18)
+
+### 🚀 Features
+
+- add debug capabilities ([dbc5b53](https://github.com/biznet-io/coday/commit/dbc5b53))
+
+### ❤️ Thank You
+
+- Vincent Palita
+
+## 0.2.0 (2025-03-11)
+
+### 🚀 Features
+
+- Add AiThread forking mechanism with agent delegation support ([2d072d3](https://github.com/biznet-io/coday/commit/2d072d3))
+- allow AiThreads to be forked and price-merged. ([e37c1f2](https://github.com/biznet-io/coday/commit/e37c1f2))
+- open delegate tool ([5223bbb](https://github.com/biznet-io/coday/commit/5223bbb))
+- add Project Manager agent ([8698ae5](https://github.com/biznet-io/coday/commit/8698ae5))
+- add agent docs ([3778984](https://github.com/biznet-io/coday/commit/3778984))
+- move to sonnet 3.7, not thinking yet ([56c72de](https://github.com/biznet-io/coday/commit/56c72de))
+- init context simplification ([7a02fb1](https://github.com/biznet-io/coday/commit/7a02fb1))
+- move delegate tool declaration ([6b6f310](https://github.com/biznet-io/coday/commit/6b6f310))
+- fix delegation attempt, to test... ([c1f7774](https://github.com/biznet-io/coday/commit/c1f7774))
+- formatting... ([8b8bfa6](https://github.com/biznet-io/coday/commit/8b8bfa6))
+- multi-agent foundations ([10afdf0](https://github.com/biznet-io/coday/commit/10afdf0))
+- add `--local` option to take the repo clone folder name as the project name ([87a6c1d](https://github.com/biznet-io/coday/commit/87a6c1d))
+- add `--local` option to auto-select the project ([1471658](https://github.com/biznet-io/coday/commit/1471658))
+- allow agents to be defined outside of `coday.yaml` ([0f3d494](https://github.com/biznet-io/coday/commit/0f3d494))
+- allow agents to be defined outside of `coday.yaml` ([1e82fe7](https://github.com/biznet-io/coday/commit/1e82fe7))
+
+### 🩹 Fixes
+
+- manage aithread runStatus for delegation ([db67157](https://github.com/biznet-io/coday/commit/db67157))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+- vincent.audibert
+
+## 0.1.0 (2025-03-03)
+
+### 🚀 Features
+
+- bump dependencies & upgrade claude-sonnet to 3.7 ([72dd074](https://github.com/biznet-io/coday/commit/72dd074))
+- bump repository to 0.0.7 ([60a21e1](https://github.com/biznet-io/coday/commit/60a21e1))
+- enable jira global research ([#2](https://github.com/biznet-io/coday/pull/2))
+
+### ❤️ Thank You
+
+- c-monot-whoz
+- Vincent Palita
+
+## 0.0.1-7 (2025-02-28)
+
+### 🚀 Features
+
+- bump repository to 0.0.7 ([60a21e1](https://github.com/biznet-io/coday/commit/60a21e1))
+
+### ❤️ Thank You
+
+- Vincent Palita
+
+## 0.0.1-6 (2025-02-28)
+
+### 🚀 Features
+
+- bump dependencies & upgrade claude-sonnet to 3.7 ([72dd074](https://github.com/biznet-io/coday/commit/72dd074))
+
+### ❤️ Thank You
+
+- Vincent Palita
+
+## 0.0.1-5 (2025-02-04)
+
+### 🚀 Features
+
+- add capability to use a localLlm
+- enable async tools to provide fetched data when we build the tool, implement a search-jira-ticket function to enable global research on jira
+- reduce the number of tickets fetched
+- select tools per agent depending on their declared integrations setting
+- **jira:** enable add comment on ticket
+
+### 🩹 Fixes
+
+- handle default integrations on agent definitions
+- better display of help
+- **nx:** remove no_auth from web serve target
+- **terminal:** make it work with cjs
+
+### ❤️ Thank You
+
+- Charles Monot
+- Vincent Audibert
+- Vincent Palita
+- vincent.audibert
+
 ## 0.0.1-4 (2024-12-18)
 
 ### 🚀 Features

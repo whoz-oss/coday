@@ -6,7 +6,7 @@ import { Agent } from '../model/agent'
 import { Observable, of, Subject } from 'rxjs'
 import { ThreadMessage } from '../ai-thread/ai-thread.types'
 import { ChatCompletionMessageParam, ChatCompletionSystemMessageParam } from 'openai/resources/chat/completions'
-import { MessageCreateParams } from 'openai/src/resources/beta/threads/messages'
+import { MessageCreateParams } from 'openai/resources/beta/threads/messages'
 import { AssistantStream } from 'openai/lib/AssistantStream'
 import { RunSubmitToolOutputsParams } from 'openai/resources/beta/threads/runs/runs'
 
