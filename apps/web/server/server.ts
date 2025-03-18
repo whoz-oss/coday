@@ -12,18 +12,18 @@ const DEFAULT_PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000
 // Function to find the next available port
 async function findAvailablePort(startPort: number, maxAttempts = 10): Promise<number> {
   const net = await import('node:net')
-  
+
   return new Promise((resolve, reject) => {
     function checkPort(port: number, attempts: number) {
       const server = net.createServer()
-      
+
       server.listen(port, () => {
         server.close(() => {
           debugLog('PORT', `Port ${port} is available`)
           resolve(port)
         })
       })
-      
+
       server.on('error', (err: NodeJS.ErrnoException) => {
         if (err.code === 'EADDRINUSE') {
           if (attempts > 0) {
@@ -37,14 +37,14 @@ async function findAvailablePort(startPort: number, maxAttempts = 10): Promise<n
         }
       })
     }
-    
+
     checkPort(startPort, maxAttempts)
   })
 }
 
 // Dynamically find an available port
 const PORT_PROMISE = findAvailablePort(DEFAULT_PORT)
-const EMAIL_HEADER = 'X-Forwarded-Email'
+const EMAIL_HEADER = 'x-forwarded-email'
 
 // Parse options once for all clients
 const codayOptions = parseCodayOptions()
@@ -108,6 +108,7 @@ app.post('/api/message', (req: express.Request, res: express.Response) => {
 // Implement SSE for Heartbeat
 app.get('/events', (req: express.Request, res: express.Response) => {
   const clientId = req.query.clientId as string
+
   debugLog('SSE', `New connection request for client ${clientId}`)
 
   // handle username header coming from auth (or local frontend) or local in noAuth

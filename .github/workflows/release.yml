@@ -1,0 +1,40 @@
+name: Release Coday on NPM
+
+on:
+  push:
+    tags:
+      - 'release/*'
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  INIT_REPOSITORY_PIPELINE_ID_ENV_FILE: "tmp.init-repository-pipeline-id"
+  MASTER_BRANCH: master
+  NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
+  NPM_REGISTRY: ${{ secrets.NPM_REGISTRY }}
+  NX_MAX_WORKERS: 4
+  SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+  WORKING_DIRECTORY_PREFIX: ${{ secrets.WORKING_DIRECTORY_PREFIX }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  init:
+    runs-on: self-hosted
+    steps:
+      - uses: biznet-io/github-actions/setup-working-directory@v1.1
+      - uses: biznet-io/github-actions/init@v1
+        with:
+          WORKING_DIRECTORY: ${{ env.WORKING_DIRECTORY }}
+
+  release:
+    runs-on: self-hosted
+    needs: [init]
+    steps:
+      - uses: biznet-io/github-actions/setup-working-directory@v1.1
+      - name: Publish release
+        run: |
+          cd ${{ env.WORKING_DIRECTORY }}
+
+          npx nx release publish --registry=https://${{ env.NPM_REGISTRY }} --//${{ env.NPM_REGISTRY }}/:_authToken=${{ env.NODE_AUTH_TOKEN }}
