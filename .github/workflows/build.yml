@@ -11,6 +11,7 @@ env:
   MASTER_BRANCH: master
   NX_MAX_WORKERS: 4
   SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+  WORKING_DIRECTORY_PREFIX: ${{ secrets.WORKING_DIRECTORY_PREFIX }}
 
 defaults:
   run:

@@ -10,10 +10,10 @@ env:
   INIT_REPOSITORY_PIPELINE_ID_ENV_FILE: "tmp.init-repository-pipeline-id"
   MASTER_BRANCH: master
   NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
-  NPM_REGISTRY: "registry.npmjs.org"
+  NPM_REGISTRY: ${{ secrets.NPM_REGISTRY }}
   NX_MAX_WORKERS: 4
   SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-  WORKING_DIRECTORY_PREFIX: /mnt/data/container/github
+  WORKING_DIRECTORY_PREFIX: ${{ secrets.WORKING_DIRECTORY_PREFIX }}
 
 defaults:
   run:
