@@ -2,7 +2,7 @@ import { Agent, AiClient, Interactor, ModelSize } from '../model'
 import Anthropic from '@anthropic-ai/sdk'
 import { MessageParam } from '@anthropic-ai/sdk/resources'
 import { ToolSet } from '../integration/tool-set'
-import { CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '../shared/coday-events'
+import { CodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '../shared/coday-events'
 import { Observable, of, Subject } from 'rxjs'
 import { AiThread } from '../ai-thread/ai-thread'
 import { ThreadMessage } from '../ai-thread/ai-thread.types'
@@ -110,11 +110,7 @@ export class AnthropicClient extends AiClient {
         await this.processThread(client, agent, thread, subscriber)
       }
     } catch (error: any) {
-      subscriber.next(
-        new ErrorEvent({
-          error,
-        })
-      )
+      this.handleError(error, subscriber, this.name);
     }
   }
 
@@ -136,17 +132,24 @@ export class AnthropicClient extends AiClient {
 
   private isAnthropicReady(): Anthropic | undefined {
     if (!this.apiKey) {
-      this.interactor.warn('ANTHROPIC_API_KEY not set, skipping AI command')
+      this.interactor.warn('ANTHROPIC_API_KEY not set, skipping AI command. Please configure your API key.')
       return
     }
 
-    return new Anthropic({
-      apiKey: this.apiKey,
-      /**
-       * Special beta header to enable prompt caching
-       */
-      defaultHeaders: { ['anthropic-beta']: 'prompt-caching-2024-07-31' },
-    })
+    try {
+      return new Anthropic({
+        apiKey: this.apiKey,
+        /**
+         * Special beta header to enable prompt caching
+         */
+        defaultHeaders: { ['anthropic-beta']: 'prompt-caching-2024-07-31' },
+      })
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.interactor.warn(`Failed to initialize Anthropic client: ${errorMessage}`)
+      console.error('Anthropic client initialization error:', error)
+      return
+    }
   }
 
   /**
