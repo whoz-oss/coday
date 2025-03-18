@@ -81,7 +81,7 @@
       ],
       "options": {
         "commands": [
-          "rm dist/web/package.json",
+          "rm -f dist/web/package.json",
           "mv dist/web/server/package.json dist/web",
           "rm dist/web/client/package.json"
         ]
