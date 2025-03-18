@@ -7,8 +7,11 @@ import { AsyncAssistantToolFactory } from '../async-assistant-tool-factory'
 import { searchJiraIssuesWithAI } from './search-jira-issues'
 import { addJiraComment } from './add-jira-comment'
 import { retrieveJiraIssue } from './retrieve-jira-issue'
+import { countJiraIssues } from './count-jira-issues'
 
 export class JiraTools extends AsyncAssistantToolFactory {
+  private jiraFieldMappingDescription: any = null;
+
   constructor(
     interactor: Interactor,
     private integrationService: IntegrationService
@@ -32,15 +35,47 @@ export class JiraTools extends AsyncAssistantToolFactory {
     if (!(jiraBaseUrl && jiraUsername && jiraApiToken)) {
       return result
     }
+    
+    // Instead of generating field mapping at initialization, create a function to do it on demand
 
-    // Generate custom field mapping during initialization
-    const { description: customFieldMappingDescription } = await createJiraFieldMapping(
-      jiraBaseUrl,
-      jiraApiToken,
-      jiraUsername,
-      this.interactor,
-      50
-    )
+        // Add a function to initialize Jira field mapping only when needed
+    const initializeJiraFieldMappingFunction: FunctionTool<{
+      maxResults?: number
+    }> = {
+      type: 'function',
+      function: {
+        name: 'initializeJiraFieldMapping',
+        description: 'Initialize Jira field mapping. This must be called before using searchJiraIssues or countJiraIssues functions.',
+        parameters: {
+          type: 'object',
+          properties: {
+            maxResults: { 
+              type: 'number', 
+              description: 'Optional: Maximum number of issues to use for mapping (default: 50)' 
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: async ({ maxResults = 50 }) => {
+          try {
+            const { description } = await createJiraFieldMapping(
+              jiraBaseUrl,
+              jiraApiToken,
+              jiraUsername,
+              this.interactor,
+              maxResults
+            )
+            this.jiraFieldMappingDescription = description;
+            return { success: true, message: 'Jira field mapping initialized successfully' };
+          } catch (error) {
+            return { 
+              success: false, 
+              message: `Failed to initialize Jira field mapping: ${error}. Please try again or contact support.` 
+            };
+          }
+        },
+      },
+    };
 
     const retrieveIssue = ({ ticketId }: { ticketId: string }) => {
       return retrieveJiraIssue(ticketId, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor)
@@ -73,6 +108,10 @@ export class JiraTools extends AsyncAssistantToolFactory {
       function: {
         name: 'searchJiraIssues',
         description: `Perform a flexible search across Jira issues using a jql query based on natural language.
+          IMPORTANT: 
+          - You MUST call initializeJiraFieldMapping first before using this function
+          - Always expose the details of your research to the user to avoid misunderstanding (the fields you fetch, the jql request, if there is a next page token...)
+          - Always explicitly calling out the JQL URL 
           PAGINATION:
           - First call: omit nextPageToken
           - If more results available:
@@ -102,7 +141,7 @@ export class JiraTools extends AsyncAssistantToolFactory {
             jql: {
               type: 'string',
               description: `JQL query for searching issues. Available fields:
-              ${customFieldMappingDescription.jqlResearchDescription}`,
+              ${this.jiraFieldMappingDescription?.jqlResearchDescription || 'Call initializeJiraFieldMapping first to get field descriptions'}`,
             },
             nextPageToken: {
               type: 'string',
@@ -128,7 +167,7 @@ export class JiraTools extends AsyncAssistantToolFactory {
                 - Use presets: e.g., ["basic", "dates"] combines both presets
                 - Individual fields: e.g., ["key", "summary", "status"]
                 - Special values: ["*all"] for all fields, ["*navigable"] for navigable fields
-                - Custom field values: here is a mapping of all customfield available with a description ${customFieldMappingDescription.customFields}.
+                - Custom field values: here is a mapping of all customfield available with a description ${this.jiraFieldMappingDescription?.customFields || 'Call initializeJiraFieldMapping first to get field descriptions'}.
                   Example flow:
                     1. The user request mention squad or client
                     2. The fields must include customfield_10595 and customfield_10564
@@ -137,8 +176,15 @@ export class JiraTools extends AsyncAssistantToolFactory {
           },
         },
         parse: JSON.parse,
-        function: ({ jql, nextPageToken, maxResults, fields }) =>
-          searchJiraIssuesWithAI({
+        function: ({ jql, nextPageToken, maxResults, fields }) => {
+          if (!this.jiraFieldMappingDescription) {
+            return Promise.resolve({
+              error: true,
+              message: 'Jira field mapping not initialized. Please call initializeJiraFieldMapping first.'
+            });
+          }
+          
+          return searchJiraIssuesWithAI({
             jql,
             nextPageToken,
             maxResults,
@@ -147,7 +193,8 @@ export class JiraTools extends AsyncAssistantToolFactory {
             jiraApiToken,
             jiraUsername,
             interactor: this.interactor,
-          }),
+          });
+        },
       },
     }
 
@@ -173,9 +220,46 @@ export class JiraTools extends AsyncAssistantToolFactory {
       },
     }
 
+    const countJiraIssuesFunction: FunctionTool<{
+      jql: string
+    }> = {
+      type: 'function',
+      function: {
+        name: 'countJiraIssues',
+        description: `Count the number of jira issues matching the jql. Always expose the jql to the user
+          IMPORTANT: 
+          - You MUST call initializeJiraFieldMapping first before using this function
+          - Always explicitly calling out the JQL URL
+        `,
+        parameters: {
+          type: 'object',
+          properties: {
+            jql: {
+              type: 'string',
+              description: `JQL query for counting issues. Available fields:
+              ${this.jiraFieldMappingDescription?.jqlResearchDescription || 'Call initializeJiraFieldMapping first to get field descriptions'}`,
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: ({ jql }) => {
+          if (!this.jiraFieldMappingDescription) {
+            return Promise.resolve({
+              error: true,
+              message: 'Jira field mapping not initialized. Please call initializeJiraFieldMapping first.'
+            });
+          }
+          
+          return countJiraIssues(jql, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor);
+        },
+      },
+    }
+
+    result.push(initializeJiraFieldMappingFunction)
     result.push(retrieveJiraTicketFunction)
     result.push(searchJiraIssuesFunction)
     result.push(addCommentFunction)
+    result.push(countJiraIssuesFunction)
 
     return result
   }

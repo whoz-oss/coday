@@ -130,3 +130,16 @@ export function getLightWeightIssues(
     return acc
   }, {} as LightWeightIssues)
 }
+
+/**
+ * Generates a JIRA JQL search URL for the given base URL and JQL query
+ * @param baseUrl The base JIRA instance URL
+ * @param jql The JQL query to search
+ * @returns A fully constructed JIRA issue search URL
+ */
+export function generateJiraJQLUrl(baseUrl: string, jql: string): string {
+  // Encode the JQL to make it URL-safe
+  const encodedJql = encodeURIComponent(jql);
+  // Construct the JIRA issue search URL
+  return `${baseUrl}/issues/?jql=${encodedJql}`;
+}

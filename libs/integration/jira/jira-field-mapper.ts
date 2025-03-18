@@ -120,7 +120,7 @@ export async function createJiraFieldMapping(
   jiraApiToken: string,
   jiraUsername: string,
   interactor: Interactor,
-  maxissues: number = 100
+  maxResults: number = 100
 ): Promise<{
   mappings: ActiveFieldMapping[]
   autocompleteData: AutocompleteDataResponse
@@ -128,5 +128,5 @@ export async function createJiraFieldMapping(
 }> {
   const mapper = new JiraFieldMapper(jiraBaseUrl, jiraApiToken, jiraUsername, interactor)
 
-  return mapper.generateFieldMapping(maxissues)
+  return mapper.generateFieldMapping(maxResults)
 }
