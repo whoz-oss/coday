@@ -1,3 +1,13 @@
+## 0.3.0 (2025-03-18)
+
+### 🚀 Features
+
+- add debug capabilities ([dbc5b53](https://github.com/biznet-io/coday/commit/dbc5b53))
+
+### ❤️ Thank You
+
+- Vincent Palita
+
 ## 0.2.0 (2025-03-11)
 
 ### 🚀 Features
