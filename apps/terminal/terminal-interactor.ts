@@ -27,7 +27,8 @@ export class TerminalInteractor extends Interactor {
         this.displayFormattedText(event.answer, event.invite)
       }
       if (event instanceof ErrorEvent) {
-        console.error(`${event.error}\n`)
+        const errorMessage = event.error instanceof Error ? event.error.message : String(event.error);
+        console.error(chalk.red(`\n❌ Error: ${errorMessage}\n`));
       }
       if (event instanceof InviteEvent) {
         this.handleInviteEvent(event)

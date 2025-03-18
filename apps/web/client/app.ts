@@ -110,7 +110,7 @@ function setupEventSource() {
         components.forEach((c) =>
           c.handle(
             new ErrorEvent({
-              error: `Connection lost. Attempting to reconnect (${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`,
+              error: new Error(`Connection lost. Attempting to reconnect (${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`),
             })
           )
         )
@@ -122,7 +122,7 @@ function setupEventSource() {
       } else {
         debugLog('SSE', 'Max reconnection attempts reached')
         components.forEach((c) =>
-          c.handle(new ErrorEvent({ error: 'Connection lost permanently. Please refresh the page.' }))
+          c.handle(new ErrorEvent({ error: new Error('Connection lost permanently. Please refresh the page.') }))
         )
       }
     }

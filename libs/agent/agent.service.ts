@@ -87,10 +87,10 @@ export class AgentService {
 
   async findAgentByNameStart(nameStart: string | undefined, context: CommandContext): Promise<Agent | undefined> {
     const defaultAgentName = 'coday'
-    
+
     // Initialize agents if not already done
     await this.initialize(context)
-    
+
     const matchingAgents = await this.findAgentsByNameStart(nameStart ?? defaultAgentName, context)
 
     if (matchingAgents.length === 0) {
@@ -136,7 +136,7 @@ export class AgentService {
 
     return matches
   }
-  
+
   /**
    * Get the user's preferred agent for the current project
    * @returns The name of the preferred agent or undefined if not set
@@ -144,7 +144,7 @@ export class AgentService {
   getPreferredAgent(): string | undefined {
     const projectName = this.services.project.selectedProject?.name
     if (!projectName) return undefined
-    
+
     const userConfig = this.services.user.config
     return userConfig.projects?.[projectName]?.defaultAgent
   }
@@ -186,7 +186,7 @@ export class AgentService {
             agentFiles.push(path.join(agentsPath, file))
           }
         } catch (e) {
-          console.error(e)
+          // do nothing, it is ok if folders do not exist
         }
       })
     )

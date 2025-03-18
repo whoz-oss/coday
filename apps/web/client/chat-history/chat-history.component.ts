@@ -34,7 +34,8 @@ export class ChatHistoryComponent implements CodayEventHandler {
       this.addAnswer(event.answer, event.invite)
     }
     if (event instanceof ErrorEvent) {
-      this.addError(event.error)
+      const errorMessage = event.error instanceof Error ? event.error.message : String(event.error);
+      this.addError(errorMessage);
     }
     if (event instanceof ThinkingEvent) {
       this.setThinking(true)
@@ -111,8 +112,28 @@ export class ChatHistoryComponent implements CodayEventHandler {
   addError(error: string): void {
     this.setThinking(false)
     const errorEntry = document.createElement('div')
-    errorEntry.textContent = error
-    errorEntry.style.color = 'red'
+    errorEntry.classList.add('error-message')
+    
+    // Create an error icon
+    const errorIcon = document.createElement('span')
+    errorIcon.textContent = '\u274c ' // Red X symbol
+    errorIcon.classList.add('error-icon')
+    errorEntry.appendChild(errorIcon)
+    
+    // Create the error text
+    const errorText = document.createElement('span')
+    errorText.textContent = `Error: ${error}`
+    errorEntry.appendChild(errorText)
+    
+    // Add styling
+    errorEntry.style.color = '#e74c3c' // Red color
+    errorEntry.style.background = '#ffeeee' // Light red background
+    errorEntry.style.padding = '10px'
+    errorEntry.style.margin = '10px 0'
+    errorEntry.style.borderRadius = '4px'
+    errorEntry.style.border = '1px solid #e74c3c'
+    
     this.chatHistory?.appendChild(errorEntry)
+    this.scrollToBottom()
   }
 }
