@@ -28,7 +28,8 @@ node_modules
 bower_components
 
 # Editors
-.idea
+.idea/*
+!.idea/runConfigurations
 *.iml
 
 # OS metadata

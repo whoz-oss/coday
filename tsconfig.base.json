@@ -12,7 +12,6 @@
     "module": "esnext",
     "moduleResolution": "node",
     "noUnusedLocals": true,
-    "outDir": "./dist/out-tsc",
     "paths": {
       "@coday/ai-thread/*": ["libs/ai-thread/*"],
       "@coday/core": ["libs/coday.ts"],
