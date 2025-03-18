@@ -12,6 +12,10 @@ export type AiProviderConfig = {
  */
 export type UserProjectConfig = {
   integration: IntegrationLocalConfig
+  /**
+   * The preferred agent to use by default for this project
+   */
+  defaultAgent?: string
 }
 
 /**

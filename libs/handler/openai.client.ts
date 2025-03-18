@@ -177,11 +177,7 @@ export class OpenaiClient extends AiClient {
         await this.processThread(client, agent, thread, subscriber)
       }
     } catch (error: any) {
-      subscriber.next(
-        new ErrorEvent({
-          error,
-        })
-      )
+      this.handleError(error, subscriber, this.providerName);
     }
   }
 
@@ -205,17 +201,24 @@ export class OpenaiClient extends AiClient {
 
   private isOpenaiReady(): OpenAI | undefined {
     if (!this.apiKey) {
-      this.interactor.warn('OPENAI_API_KEY not set, skipping AI command')
+      this.interactor.warn(`${this.providerName}_API_KEY not set, skipping AI command. Please configure your API key.`)
       return
     }
 
-    return new OpenAI({
-      apiKey: this.apiKey,
-      /**
-       * Possible customization for third parties using Openai SDK (Google Gemini, xAi, ...)
-       */
-      baseURL: this.apiUrl,
-    })
+    try {
+      return new OpenAI({
+        apiKey: this.apiKey,
+        /**
+         * Possible customization for third parties using Openai SDK (Google Gemini, xAi, ...)
+         */
+        baseURL: this.apiUrl,
+      })
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.interactor.warn(`Failed to initialize ${this.providerName} client: ${errorMessage}`)
+      console.error(`${this.providerName} client initialization error:`, error)
+      return
+    }
   }
 
   private toOpenAiMessage(agent: Agent, messages: ThreadMessage[]): ChatCompletionMessageParam[] {
@@ -269,6 +272,7 @@ export class OpenaiClient extends AiClient {
     thread: AiThread,
     messagesToUpload: ThreadMessage[]
   ): Promise<void> {
+    try {
     // WARNING: this part sucks, OpenAI API not allowing multiple messages at once T_T, so forced iterations
     this.interactor.displayText(`${messagesToUpload.length} messages to upload to assistant thread...`)
     for (const messagesToUploadElement of messagesToUpload) {
@@ -281,6 +285,12 @@ export class OpenaiClient extends AiClient {
       thread.data.openai.assistantThreadData.lastTimestamp = messagesToUploadElement.timestamp
     }
     this.interactor.displayText(`Messages uploaded.`)
+    } catch (error) {
+      console.error('Error updating assistant thread:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.interactor.displayText(`\u26a0\ufe0f Error updating assistant thread: ${errorMessage}`)
+      throw error // Re-throw to be caught by the calling function
+    }
   }
 
   private toAssistantMessage(m: ThreadMessage): MessageCreateParams {
@@ -309,6 +319,7 @@ export class OpenaiClient extends AiClient {
     thread: AiThread,
     subscriber: Subject<CodayEvent>
   ): Promise<void> {
+    try {
     // Check interruption before starting stream processing
     stream.on('textDone', (diff) => {
       thread.data.openai.assistantThreadData.lastTimestamp = this.handleText(thread, diff.value, agent, subscriber)
@@ -359,8 +370,18 @@ export class OpenaiClient extends AiClient {
           await this.processAssistantStream.call(this, newStream, agent, client, thread, subscriber)
         } catch (error) {
           console.error(`Error processing tool call`, error)
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          this.interactor.displayText(`\u26a0\ufe0f Error processing tool call: ${errorMessage}`)
+          subscriber.next(
+            new ErrorEvent({
+              error: new Error(`Error processing OpenAI assistant tool call: ${errorMessage}`)
+            })
+          )
         }
       }
+    }
+    } catch (error) {
+      this.handleError(error, subscriber, this.providerName);
     }
   }
 }
