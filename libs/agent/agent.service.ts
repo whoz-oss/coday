@@ -91,25 +91,6 @@ export class AgentService {
     // Initialize agents if not already done
     await this.initialize(context)
     
-    // If no nameStart is provided, check for user's preferred agent
-    if (!nameStart) {
-      const projectName = this.services.project.selectedProject?.name
-      if (projectName) {
-        const userConfig = this.services.user.config
-        const preferredAgent = userConfig.projects?.[projectName]?.defaultAgent
-        
-        if (preferredAgent) {
-          // Try to find the preferred agent
-          const agent = this.agents.get(preferredAgent.toLowerCase())
-          if (agent) {
-            return agent
-          }
-          // If preferred agent not found, log a warning and continue with default
-          this.interactor.warn(`Preferred agent '${preferredAgent}' not found, using default.`)
-        }
-      }
-    }
-    
     const matchingAgents = await this.findAgentsByNameStart(nameStart ?? defaultAgentName, context)
 
     if (matchingAgents.length === 0) {
@@ -154,6 +135,18 @@ export class AgentService {
     }
 
     return matches
+  }
+  
+  /**
+   * Get the user's preferred agent for the current project
+   * @returns The name of the preferred agent or undefined if not set
+   */
+  getPreferredAgent(): string | undefined {
+    const projectName = this.services.project.selectedProject?.name
+    if (!projectName) return undefined
+    
+    const userConfig = this.services.user.config
+    return userConfig.projects?.[projectName]?.defaultAgent
   }
 
   kill(): void {
