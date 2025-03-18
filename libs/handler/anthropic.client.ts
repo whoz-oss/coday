@@ -104,13 +104,12 @@ export class AnthropicClient extends AiClient {
               args: JSON.stringify(block.input),
             })
         )
-
       if (await this.shouldProcessAgainAfterResponse(text, toolRequests, agent, thread)) {
         // then tool responses to send
         await this.processThread(client, agent, thread, subscriber)
       }
     } catch (error: any) {
-      this.handleError(error, subscriber, this.name);
+      this.handleError(error, subscriber, this.name)
     }
   }
 
@@ -145,7 +144,7 @@ export class AnthropicClient extends AiClient {
         defaultHeaders: { ['anthropic-beta']: 'prompt-caching-2024-07-31' },
       })
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       this.interactor.warn(`Failed to initialize Anthropic client: ${errorMessage}`)
       console.error('Anthropic client initialization error:', error)
       return
