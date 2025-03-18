@@ -87,6 +87,29 @@ export class AgentService {
 
   async findAgentByNameStart(nameStart: string | undefined, context: CommandContext): Promise<Agent | undefined> {
     const defaultAgentName = 'coday'
+    
+    // Initialize agents if not already done
+    await this.initialize(context)
+    
+    // If no nameStart is provided, check for user's preferred agent
+    if (!nameStart) {
+      const projectName = this.services.project.selectedProject?.name
+      if (projectName) {
+        const userConfig = this.services.user.config
+        const preferredAgent = userConfig.projects?.[projectName]?.defaultAgent
+        
+        if (preferredAgent) {
+          // Try to find the preferred agent
+          const agent = this.agents.get(preferredAgent.toLowerCase())
+          if (agent) {
+            return agent
+          }
+          // If preferred agent not found, log a warning and continue with default
+          this.interactor.warn(`Preferred agent '${preferredAgent}' not found, using default.`)
+        }
+      }
+    }
+    
     const matchingAgents = await this.findAgentsByNameStart(nameStart ?? defaultAgentName, context)
 
     if (matchingAgents.length === 0) {
