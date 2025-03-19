@@ -1,31 +1,22 @@
-## 👟 START
+## 👟 START OPTIONS
 
 The `package.json` defines the standard start script that will run in terminal:
-```sh
-yarn start
-```
+  ```sh
+  yarn start
+  ```
+or for web local interface through the browser
+  ```sh
+  yarn web --no_auth
+  ```
 
 This command can accept several parameters (by default without = start interactive in terminal):
 
 - `--project=[project name]` to directly select a project instead of relying on the last visited one.
+- `--local` selects as Coday project name the current folder name. Useful when having various projects configured in Coday and need to start an instance from one IDE.
+- `--no_auth` specifically for local use. If ommitted, will expect a specific header to be applied by an auth proxy.
 - `--oneshot=[true|false]`: in oneshot, Coday will answer the prompt(s) and not tolerate any interaction in request completion. Use with `--project` argument or risk working on the wrong project.
 - `--prompt="[your request or command here]"` starts Coday with this request instead of the interactive input. Arguments can be chained: `--prompt="do foo" --prompt="then bar" --prompt="finally baz"` and will be completed sequentially.
 
-
-## 🐣 FIRST RUN
-
-On first run, Coday will create its `.coday/config.json` file in the user home directory, to store in it the projects path and specific configuration tied to the user.
-
-Then it will ask to define a project by its name and its absolute path. This is the equivalent of running command `config add-project` and will select the newly created project.
-
-
-## 🛟 HELP ? 🛑 EXIT ?
-
-To get the list of available commands, type nothing or `h` or `help`. Usually, complex commands repeat the pattern, ex: `config` shows the help text for the config command.
-
-To exit, type ... `exit`. Or `Ctrl + C`.
-
-`:q` does not work 😝.
 
 ## 💼 ON A PROJECT
 
@@ -35,8 +26,8 @@ When Coday runs on a project (and it always does), it will:
 - create `coday.yaml` at project root if not found
 - load it, leading to:
   - path restrictions: only files under the project root are visible, searchable and editable
-  - only the integrations declared on the project are available (defined by and per user in `.coday/config.json`)
-  - only the assistants declared on the project can "see" each other. Other assistants can be called directly but are not known to Coday and the assistant "team".
+  - only the integrations declared on the project are available 
+  - only the assistants declared on the project can "see" each other.
   - scripts of the project exposed to the assistants
 
 ## 🔀 CHANGE PROJECT
