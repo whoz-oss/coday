@@ -1,3 +1,23 @@
+## 0.3.1 (2025-03-19)
+
+### 🚀 Features
+
+- add default agent per user and project ([546ab6e](https://github.com/biznet-io/coday/commit/546ab6e))
+
+### 🩹 Fixes
+
+- remove un-necessary error log on optional `/agents` folders ([ae95c6e](https://github.com/biznet-io/coday/commit/ae95c6e))
+- add logs in ai.client.ts and implementations. ([9df6783](https://github.com/biznet-io/coday/commit/9df6783))
+- better error logs ([b829418](https://github.com/biznet-io/coday/commit/b829418))
+- improve logs ([820484f](https://github.com/biznet-io/coday/commit/820484f))
+- add "-f" option in project.json to allow removal of not found package.json file ([0260f91](https://github.com/biznet-io/coday/commit/0260f91))
+
+### ❤️ Thank You
+
+- Vincent Palita
+- vincent-audibert-whoz
+- vincent.audibert
+
 ## 0.3.0 (2025-03-18)
 
 ### 🚀 Features
