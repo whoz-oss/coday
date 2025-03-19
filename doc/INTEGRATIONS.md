@@ -5,7 +5,7 @@ and setup process.
 
 ## 🤖 AI Providers
 
-AI capabilities are configured at the user level in `~/.coday/user.yml`. Supported providers:
+AI capabilities are configured at the user or project level. Supported providers:
 
 ### Available Providers
 
@@ -21,22 +21,7 @@ Two ways to configure API keys:
 
 1. **User Configuration** (recommended)
 
-Use the integrated command `config edit-ai` and provide optionally:
-
-- the provider name (or start): `ANT` => Anthropic, `gemini` => Google Gemini. If not provided, you'll be asked to
-  choose.
-- the api key to register. If not provided, you'll be asked to write it.
-
-   ```bash
-   # Or manually edit ~/.coday/user.yml
-   aiProviders:
-     anthropic:
-       apiKey: "sk-xxx"
-     openai:
-       apiKey: "sk-xxx"
-     gemini:
-       apiKey: "xxx"
-   ```
+Use the integrated command `config ai user` at user level or `config ai project` to set it at project-level (⚠️ will be used by all users on the project). Then follow the instructions.
 
 2. **Environment Variables** (temporary override)
    ```bash
@@ -46,12 +31,11 @@ Use the integrated command `config edit-ai` and provide optionally:
    export GEMINI_API_KEY="xxx"
    ```
 
-> 📝 **Note**: Environment variables only override existing configurations. A provider must be configured in user.yml to
-> be available.
+> 📝 **Note**: Environment variables only override existing configurations. A provider must be configured to be available.
 
 ## 🛠️ Project Integrations
 
-These integrations are configured per project through `config edit-integration` command.
+These integrations are configured per project through `config integration user` at user level or `config integration project` to set it at project-level (⚠️ will be used by all users on the project). Then follow the instructions.
 
 ### Git
 
