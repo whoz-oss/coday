@@ -16,7 +16,7 @@ export class ProjectScriptsTools extends AssistantToolFactory {
     return this.lastToolInitContext?.project.scripts !== context.project.scripts
   }
 
-  protected buildTools(context: CommandContext): CodayTool[] {
+  protected async buildTools(context: CommandContext): Promise<CodayTool[]> {
     const result: CodayTool[] = []
 
     const scripts: Scripts | undefined = context.project.scripts

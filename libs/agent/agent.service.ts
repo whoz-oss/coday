@@ -257,10 +257,8 @@ ${agentDocs}
           })
         )
       : undefined
-
-    const syncTools = this.toolbox.getTools({ context, integrations, agentName: def.name })
-    const asyncTools = await this.toolbox.getAsyncTools(context)
-    const toolset = new ToolSet([...syncTools, ...asyncTools])
+    const syncTools = await this.toolbox.getTools({ context, integrations, agentName: def.name })
+    const toolset = new ToolSet([...syncTools])
     const agent = new Agent(def, aiClient, toolset)
     this.agents.set(agent.name.toLowerCase(), agent)
   }
