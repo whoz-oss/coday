@@ -1,14 +1,15 @@
 import { IntegrationService } from '../../service/integration.service'
 import { CommandContext, Interactor } from '../../model'
-import { CodayTool } from '../assistant-tool-factory'
+import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 import { createJiraFieldMapping } from './jira-field-mapper'
-import { AsyncAssistantToolFactory } from '../async-assistant-tool-factory'
 import { searchJiraIssuesWithAI } from './search-jira-issues'
 import { addJiraComment } from './add-jira-comment'
 import { retrieveJiraIssue } from './retrieve-jira-issue'
 
-export class JiraTools extends AsyncAssistantToolFactory {
+export class JiraTools extends AssistantToolFactory {
+  name = 'JIRA'
+
   constructor(
     interactor: Interactor,
     private integrationService: IntegrationService
@@ -20,7 +21,7 @@ export class JiraTools extends AsyncAssistantToolFactory {
     return this.lastToolInitContext?.project.root !== context.project.root
   }
 
-  protected async buildAsyncTools(context: CommandContext): Promise<CodayTool[]> {
+  protected async buildTools(context: CommandContext): Promise<CodayTool[]> {
     const result: CodayTool[] = []
     if (!this.integrationService.hasIntegration('JIRA')) {
       return result

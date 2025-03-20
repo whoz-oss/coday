@@ -19,7 +19,7 @@ export class ConfluenceTools extends AssistantToolFactory {
     return this.lastToolInitContext?.project.root !== context.project.root
   }
 
-  protected buildTools(): CodayTool[] {
+  protected async buildTools(): Promise<CodayTool[]> {
     const result: CodayTool[] = []
     if (!this.integrationService.hasIntegration('CONFLUENCE')) {
       return result

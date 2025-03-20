@@ -49,7 +49,7 @@ export class FileTools extends AssistantToolFactory {
     return true
   }
 
-  protected buildTools(context: CommandContext): CodayTool[] {
+  protected async buildTools(context: CommandContext): Promise<CodayTool[]> {
     const result: CodayTool[] = []
 
     // Only add write/delete tools if not in read-only mode

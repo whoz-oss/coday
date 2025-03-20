@@ -20,7 +20,7 @@ export class MemoryTools extends AssistantToolFactory {
     return context.project.name !== this.lastToolInitContext?.project.name
   }
 
-  protected buildTools(context: CommandContext, agentName: string): CodayTool[] {
+  protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {
     const result: CodayTool[] = []
 
     const memorize = async ({ title, content, level }: { title: string; content: string; level: string }) => {
