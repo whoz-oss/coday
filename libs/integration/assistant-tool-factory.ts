@@ -12,13 +12,10 @@ export abstract class AssistantToolFactory {
 
   protected abstract hasChanged(context: CommandContext): boolean
 
-  protected abstract buildTools(context: CommandContext, agentName: string): CodayTool[]
+  protected abstract buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]>
 
-  getTools(context: CommandContext, toolNames: string[], agentName: string): CodayTool[] {
-    if (!this.lastToolInitContext || this.hasChanged(context)) {
-      this.lastToolInitContext = context
-      this.tools = this.buildTools(context, agentName)
-    }
+  async getTools(context: CommandContext, toolNames: string[], agentName: string): Promise<CodayTool[]> {
+    this.tools = await this.buildTools(context, agentName)
     return this.tools.filter((tool) => !toolNames || !toolNames.length || toolNames.includes(tool.function.name))
   }
 }
