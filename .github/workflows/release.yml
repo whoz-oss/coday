@@ -9,7 +9,9 @@ env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   INIT_REPOSITORY_PIPELINE_ID_ENV_FILE: "tmp.init-repository-pipeline-id"
   MASTER_BRANCH: master
-  NPM_REGISTRY: ${{ secrets.NPM_REGISTRY }}
+  NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
+  NPM_CONFIG_PROVENANCE: true
+  NPM_REGISTRY: ${{ var.NPM_REGISTRY }}
   NX_MAX_WORKERS: 4
   SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
   WORKING_DIRECTORY_PREFIX: ${{ secrets.WORKING_DIRECTORY_PREFIX }}
@@ -38,7 +40,4 @@ jobs:
       - name: Publish release
         run: |
           cd ${{ env.WORKING_DIRECTORY }}
-          npx nx release publish
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
-      NPM_CONFIG_PROVENANCE: true
+          npx nx release publish --registry=https://${{ env.NPM_REGISTRY }} --//${{ env.NPM_REGISTRY }}/:_authToken=${{ env.NODE_AUTH_TOKEN }}
