@@ -75,6 +75,7 @@ app.post('/api/stop', (req: express.Request, res: express.Response) => {
       return
     }
 
+    client.updateLastConnection()
     client.stop()
     res.status(200).send('Stop signal sent successfully!')
   } catch (error) {
@@ -97,6 +98,7 @@ app.post('/api/message', (req: express.Request, res: express.Response) => {
     }
 
     client.getInteractor().sendEvent(new AnswerEvent(payload))
+    client.updateLastConnection()
 
     res.status(200).send('Message received successfully!')
   } catch (error) {
@@ -157,11 +159,11 @@ app.use((err: any, _: express.Request, res: express.Response, __: express.NextFu
 setInterval(() => clientManager.cleanupExpired(), 60000) // Check every minute
 
 // Use PORT_PROMISE to listen on the available port
-PORT_PROMISE.then(PORT => {
+PORT_PROMISE.then((PORT) => {
   app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`)
   })
-}).catch(error => {
+}).catch((error) => {
   console.error('Failed to start server:', error)
   process.exit(1)
 })
