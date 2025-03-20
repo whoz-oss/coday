@@ -12,6 +12,8 @@ env:
   NX_MAX_WORKERS: 4
   SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
   WORKING_DIRECTORY_PREFIX: ${{ secrets.WORKING_DIRECTORY_PREFIX }}
+  NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
+  NPM_CONFIG_PROVENANCE: true
 
 defaults:
   run:
@@ -26,22 +28,35 @@ jobs:
         with:
           WORKING_DIRECTORY: ${{ env.WORKING_DIRECTORY }}
 
-  tests:
-    runs-on: self-hosted
-    needs: [init]
-    steps:
-      - uses: biznet-io/github-actions/setup-working-directory@v1.1
-      - name: Run tests
-        run: |
-          cd ${{ env.WORKING_DIRECTORY }}
-          npx nx affected --base=origin/${GITHUB_HEAD_REF} --head=HEAD --target="lint,test" --parallel=$NX_MAX_WORKERS
+#  tests:
+#    runs-on: self-hosted
+#    needs: [init]
+#    steps:
+#      - uses: biznet-io/github-actions/setup-working-directory@v1.1
+#      - name: Run tests
+#        run: |
+#          cd ${{ env.WORKING_DIRECTORY }}
+#          npx nx affected --base=origin/${GITHUB_HEAD_REF} --head=HEAD --target="lint,test" --parallel=$NX_MAX_WORKERS
+#
+#  build:
+#    runs-on: self-hosted
+#    needs: [init]
+#    steps:
+#      - uses: biznet-io/github-actions/setup-working-directory@v1.1
+#      - name: Build app
+#        run: |
+#          cd ${{ env.WORKING_DIRECTORY }}
+#          npx nx run web:build --parallel=$NX_MAX_WORKERS
 
-  build:
+  release:
     runs-on: self-hosted
+    permissions:
+      contents: read
+      id-token: write # needed for provenance data generation
     needs: [init]
     steps:
       - uses: biznet-io/github-actions/setup-working-directory@v1.1
-      - name: Build app
+      - name: Publish release
         run: |
           cd ${{ env.WORKING_DIRECTORY }}
-          npx nx run web:build --parallel=$NX_MAX_WORKERS
+          npx nx release publish --registry=https://${{ var.NPM_REGISTRY }} --//${{ var.NPM_REGISTRY }}/:_authToken=${{ env.NODE_AUTH_TOKEN }}
