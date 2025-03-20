@@ -1,3 +1,17 @@
+## 0.3.2 (2025-03-20)
+
+### 🩹 Fixes
+
+- update the last connected date on user message + 8h inactivity allowed ([83aafb1](https://github.com/biznet-io/coday/commit/83aafb1))
+- update the last connected date ([#19](https://github.com/biznet-io/coday/pull/19))
+- JIRA tools selectables as other tools ([8707143](https://github.com/biznet-io/coday/commit/8707143))
+- JIRA tools selectables as other tools ([#20](https://github.com/biznet-io/coday/pull/20))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+- vincent.audibert
+
 ## 0.3.1 (2025-03-19)
 
 ### 🚀 Features
