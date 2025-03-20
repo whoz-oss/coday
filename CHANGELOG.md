@@ -1,3 +1,13 @@
+## 0.3.3 (2025-03-20)
+
+### 🩹 Fixes
+
+- Release app in GitHub Actions workflow ([ddeb62b](https://github.com/biznet-io/coday/commit/ddeb62b))
+
+### ❤️ Thank You
+
+- Vincent Palita
+
 ## 0.3.2 (2025-03-20)
 
 ### 🩹 Fixes
