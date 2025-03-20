@@ -1,3 +1,17 @@
+## 0.3.4 (2025-03-20)
+
+### 🩹 Fixes
+
+- JIRA tools init is cached
+- JIRA tools init is cached
+- Fix release
+
+### ❤️ Thank You
+
+- Vincent Palita
+- vincent-audibert-whoz
+- vincent.audibert
+
 ## 0.3.3 (2025-03-20)
 
 ### 🩹 Fixes
