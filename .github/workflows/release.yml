@@ -39,4 +39,4 @@ jobs:
       - name: Publish release
         run: |
           cd ${{ env.WORKING_DIRECTORY }}
-          npx nx release publish --registry=https://<${{ vars.NPM_REGISTRY }} --//${{ vars.NPM_REGISTRY }}/:_authToken=${{ env.NODE_AUTH_TOKEN }}
+          npx nx release publish --registry=https://${{ vars.NPM_REGISTRY }} --//${{ vars.NPM_REGISTRY }}/:_authToken=${{ env.NODE_AUTH_TOKEN }}
