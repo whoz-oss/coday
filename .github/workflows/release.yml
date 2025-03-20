@@ -11,7 +11,6 @@ env:
   MASTER_BRANCH: master
   NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
   NPM_CONFIG_PROVENANCE: true
-  NPM_REGISTRY: ${{ var.NPM_REGISTRY }}
   NX_MAX_WORKERS: 4
   SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
   WORKING_DIRECTORY_PREFIX: ${{ secrets.WORKING_DIRECTORY_PREFIX }}
@@ -40,4 +39,4 @@ jobs:
       - name: Publish release
         run: |
           cd ${{ env.WORKING_DIRECTORY }}
-          npx nx release publish --registry=https://${{ env.NPM_REGISTRY }} --//${{ env.NPM_REGISTRY }}/:_authToken=${{ env.NODE_AUTH_TOKEN }}
+          npx nx release publish --registry=https://${{ var.NPM_REGISTRY }} --//${{ var.NPM_REGISTRY }}/:_authToken=${{ env.NODE_AUTH_TOKEN }}
