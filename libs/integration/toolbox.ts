@@ -8,6 +8,7 @@ import { GitLabTools } from './gitlab/gitlab.tools'
 import { MemoryTools } from './memory.tools'
 import { AssistantToolFactory, CodayTool } from './assistant-tool-factory'
 import { ConfluenceTools } from './confluence/confluence.tools'
+import { McpToolsFactory } from './mcp/mcp-tools-factory'
 import { CodayServices } from '../coday-services'
 import { AgentService } from '../agent'
 import { GetToolsInput } from './types'
@@ -26,6 +27,7 @@ export class Toolbox {
       new MemoryTools(interactor, services.memory),
       new ConfluenceTools(interactor, services.integration),
       new JiraTools(interactor, services.integration),
+      new McpToolsFactory(interactor, services.user, services.project),
     ]
   }
 

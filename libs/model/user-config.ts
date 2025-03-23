@@ -26,6 +26,7 @@ export type UserProjectConfig = {
  *
  * Currently handles:
  * - AI provider configurations with API keys
+ * - MCP server configurations
  * - (future) User preferences
  * - (future) Default settings
  */
@@ -37,6 +38,33 @@ export interface UserConfig {
   projects?: {
     [key: string]: UserProjectConfig
   }
+  /**
+   * MCP (Model Context Protocol) server configurations
+   */
+  mcp?: {
+    servers?: McpServerConfig[]
+  }
+}
+
+/**
+ * Configuration for an MCP server connection
+ */
+export interface McpServerConfig {
+  /** Unique identifier for this MCP server */
+  id: string
+  /** Human readable name for this MCP server */
+  name: string
+  /** MCP server URL for HTTP transport (use either url or command, not both) */
+  url?: string
+  /** Command to execute for stdio transport (use either url or command, not both) */
+  command?: string
+  /** Optional arguments for the command when using stdio transport */
+  args?: string[]
+  /** Optional authentication token */
+  authToken?: string
+  /** Whether the server connection is enabled */
+  enabled: boolean
+  // Note: OAuth authentication support might be added in the future
 }
 
 /**

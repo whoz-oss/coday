@@ -69,6 +69,7 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "@google/generative-ai": "^0.24.0",
     "@inquirer/prompts": "^7.4.0",
+    "@modelcontextprotocol/sdk": "1.7.0",
     "@types/yargs": "^17.0.32",
     "axios": "^1.8.3",
     "chalk": "^5.4.1",
