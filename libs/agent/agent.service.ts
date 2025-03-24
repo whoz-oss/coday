@@ -211,31 +211,32 @@ export class AgentService {
   private async tryAddAgent(partialDef: AgentDefinition, context: CommandContext): Promise<void> {
     const def: AgentDefinition = { ...CodayAgentDefinition, ...partialDef }
 
-    // force aiProvider for OpenAI assistants
-    if (def.openaiAssistantId) def.aiProvider = 'openai'
+    try {
+      // force aiProvider for OpenAI assistants
+      if (def.openaiAssistantId) def.aiProvider = 'openai'
 
-    if (!this.aiClientProvider || !this.toolbox) {
-      console.error(`Cannot create agent ${def.name}: dependencies not set. Call setDependencies first.`)
-      return
-    }
-
-    const aiClient = this.aiClientProvider.getClient(def.aiProvider)
-    if (!aiClient) {
-      // Provide more specific error for localLlm
-      if (def.aiProvider === 'localLlm') {
-        this.interactor.warn(
-          `Cannot create agent ${def.name}: Local LLM configuration is missing or incomplete. ` +
-            `Please configure 'url' in your aiProviders section in ~/.coday/users/${this.services.user.sanitizedUsername}/user.yml or through 'config ai user'`
-        )
-      } else {
-        console.error(`Cannot create agent ${def.name}: AI client creation failed`)
+      if (!this.aiClientProvider || !this.toolbox) {
+        console.error(`Cannot create agent ${def.name}: dependencies not set. Call setDependencies first.`)
+        return
       }
-      return
-    }
 
-    const agentDocs = getFormattedDocs(def, this.interactor, this.projectPath)
+      const aiClient = this.aiClientProvider.getClient(def.aiProvider)
+      if (!aiClient) {
+        // Provide more specific error for localLlm
+        if (def.aiProvider === 'localLlm') {
+          this.interactor.warn(
+            `Cannot create agent ${def.name}: Local LLM configuration is missing or incomplete. ` +
+              `Please configure 'url' in your aiProviders section in ~/.coday/users/${this.services.user.sanitizedUsername}/user.yml or through 'config ai user'`
+          )
+        } else {
+          console.error(`Cannot create agent ${def.name}: AI client creation failed`)
+        }
+        return
+      }
 
-    const instructions = `${def.instructions}\n\n
+      const agentDocs = getFormattedDocs(def, this.interactor, this.projectPath)
+
+      const instructions = `${def.instructions}\n\n
 ## Project description
 ${context.project.description}
 
@@ -246,20 +247,24 @@ ${this.services.memory.getFormattedMemories(MemoryLevel.PROJECT, def.name)}
 ${agentDocs}
 
 `
-    // overwrite agent instructions with the added project and user context
-    def.instructions = instructions
+      // overwrite agent instructions with the added project and user context
+      def.instructions = instructions
 
-    const integrations = def.integrations
-      ? new Map<string, string[]>(
-          Object.entries(def.integrations).map(([integration, names]: [string, string[]]): [string, string[]] => {
-            const toolNames: string[] = !names || !names.length ? [] : names
-            return [integration, toolNames]
-          })
-        )
-      : undefined
-    const syncTools = await this.toolbox.getTools({ context, integrations, agentName: def.name })
-    const toolset = new ToolSet([...syncTools])
-    const agent = new Agent(def, aiClient, toolset)
-    this.agents.set(agent.name.toLowerCase(), agent)
+      const integrations = def.integrations
+        ? new Map<string, string[]>(
+            Object.entries(def.integrations).map(([integration, names]: [string, string[]]): [string, string[]] => {
+              const toolNames: string[] = !names || !names.length ? [] : names
+              return [integration, toolNames]
+            })
+          )
+        : undefined
+      const syncTools = await this.toolbox.getTools({ context, integrations, agentName: def.name })
+
+      const toolset = new ToolSet([...syncTools])
+      const agent = new Agent(def, aiClient, toolset)
+      this.agents.set(agent.name.toLowerCase(), agent)
+    } catch (error) {
+      console.error(`Failed to create agent ${def.name}:`, error)
+    }
   }
 }
