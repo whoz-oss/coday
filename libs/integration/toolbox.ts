@@ -16,7 +16,11 @@ export class Toolbox {
   private toolFactories: AssistantToolFactory[]
   private tools: CodayTool[] = []
 
-  constructor(interactor: Interactor, services: CodayServices, agentService: AgentService) {
+  constructor(
+    private interactor: Interactor,
+    services: CodayServices,
+    agentService: AgentService
+  ) {
     this.toolFactories = [
       new AiTools(interactor, agentService),
       new FileTools(interactor),
@@ -32,11 +36,28 @@ export class Toolbox {
   async getTools(input: GetToolsInput): Promise<CodayTool[]> {
     const { context, integrations, agentName } = input
     const filteredFactories = this.toolFactories.filter((factory) => !integrations || integrations.has(factory.name))
-    this.tools = (
-      await Promise.all(
-        filteredFactories.map((factory) => factory.getTools(context, integrations?.get(factory.name) ?? [], agentName))
+
+    try {
+      // Process each tool factory separately to isolate failures
+      const toolResults = await Promise.all(
+        filteredFactories.map(async (factory) => {
+          try {
+            const tools = await factory.getTools(context, integrations?.get(factory.name) ?? [], agentName ?? 'default')
+            return tools
+          } catch (error) {
+            this.interactor.error(`Error building tools from ${factory.name} for agent ${agentName}: ${error}`)
+            // Return empty array if a specific factory fails
+            return []
+          }
+        })
       )
-    ).flat()
-    return this.tools
+
+      this.tools = toolResults.flat()
+      return this.tools
+    } catch (error) {
+      this.interactor.error(`Unexpected error building tools for agent ${agentName}: ${error}`)
+      // Return empty array in case of critical failure
+      return []
+    }
   }
 }

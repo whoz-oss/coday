@@ -2,7 +2,7 @@ import { Interactor } from '../../model'
 import { retrieveAutocompleteData } from './retrieve-autocomplete-data'
 import { searchJiraIssues } from './search-jira-issues'
 import { createFieldMapping } from './jira.helpers'
-import {AutocompleteDataResponse, FieldMappingDescription} from './jira'
+import { AutocompleteDataResponse, FieldMappingDescription } from './jira'
 
 export interface ActiveFieldMapping {
   name: string
@@ -114,4 +114,5 @@ Notes:
     }
   }
 }
+
 // Note: The standalone createJiraFieldMapping function has been replaced by the jiraFieldMappingCache service
