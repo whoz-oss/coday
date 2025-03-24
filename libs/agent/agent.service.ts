@@ -19,7 +19,8 @@ export class AgentService {
     private interactor: Interactor,
     private aiClientProvider: AiClientProvider,
     private services: CodayServices,
-    private projectPath: string
+    private projectPath: string,
+    private commandLineAgentFolders: string[] = []
   ) {
     // Subscribe to project changes to reset agents
     this.services.project.selectedProject$.subscribe(() => {
@@ -160,33 +161,55 @@ export class AgentService {
   }
 
   /**
-   * Load agent definitions from ~/.coday/[project]/agents/ folder
+   * Load agent definitions from all configured agent folders:
+   * - ~/.coday/[project]/agents/ folder
+   * - folder next to coday.yaml
+   * - folders specified in coday.yaml agentFolders
+   * - folders specified via command line options
    * Each file should contain a single agent definition
    */
   private async loadFromFiles(context: CommandContext): Promise<void> {
     const agentsPaths: string[] = []
     const agentFiles: string[] = []
+
+    // Add path from user config
     const selectedProject = this.services.project.selectedProject
     if (selectedProject) {
       agentsPaths.push(path.join(selectedProject.configPath, 'agents'))
     }
+
+    // Add path from project (next to coday.yaml)
     const projectPath = this.services.project.selectedProject?.config.path
     if (projectPath) {
-      const codayFolder = path.dirname((await findFilesByName({ text: 'coday.yaml', root: projectPath }))[0])
-
-      agentsPaths.push(path.join(projectPath, codayFolder, 'agents'))
+      const codayFiles = await findFilesByName({ text: 'coday.yaml', root: projectPath })
+      if (codayFiles.length > 0) {
+        const codayFolder = path.dirname(codayFiles[0])
+        agentsPaths.push(path.join(projectPath, codayFolder, 'agents'))
+      }
+      if (context.project.agentFolders?.length) {
+        agentsPaths.push(...context.project.agentFolders)
+      }
     }
+
+    agentsPaths.push(...this.commandLineAgentFolders)
 
     await Promise.all(
       agentsPaths.map(async (agentsPath) => {
         try {
-          const files = await fs.readdir(agentsPath)
-          for (const file of files) {
-            if (!file.endsWith('.yml') && !file.endsWith('.yaml')) continue
-            agentFiles.push(path.join(agentsPath, file))
+          agentFiles.push(
+            ...(await fs.readdir(agentsPath))
+              .filter((file) => file.endsWith('.yml') || file.endsWith('.yaml'))
+              .map((file) => path.join(agentsPath, file))
+          )
+        } catch (e: any) {
+          if (e.code === 'EPERM') {
+            console.error(
+              `Permission denied to access ${agentsPath}. This is common for protected directories.\nConsider moving your agent files to a less restricted location.`
+            )
+          } else {
+            // For other errors, just log a simple message
+            console.error(`Could not read directory ${agentsPath}: ${e.code}`)
           }
-        } catch (e) {
-          // do nothing, it is ok if folders do not exist
         }
       })
     )

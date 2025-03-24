@@ -33,6 +33,13 @@ export interface ProjectDescription extends WithDocs {
   agents?: AgentDefinition[]
 
   /**
+   * Additional folders where agent definitions can be found.
+   * Paths must be relative to the project root.
+   * For agent definitions outside of the project, use the --agentFolders="/absolute/path" command line option
+   */
+  agentFolders?: string[]
+
+  /**
    * Custom prompts exposed as tools to the LLM
    */
   prompts?: {
