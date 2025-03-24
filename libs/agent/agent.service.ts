@@ -219,6 +219,16 @@ export class AgentService {
         try {
           const content = await fs.readFile(agentFilePath, 'utf-8')
           const data = yaml.parse(content)
+          
+          // Determine the base path for document resolution
+          const agentDirPath = path.dirname(agentFilePath)
+          const isInProject = agentDirPath.startsWith(this.projectPath)
+          
+          // Set the temporary basePath property
+          data._tmp = {
+            basePath: isInProject ? this.projectPath : agentDirPath
+          }
+          
           this.addDefinition(data)
         } catch (e) {
           console.error(e)
@@ -257,7 +267,8 @@ export class AgentService {
         return
       }
 
-      const agentDocs = getFormattedDocs(def, this.interactor, this.projectPath)
+      const basePath = def._tmp?.basePath || this.projectPath
+      const agentDocs = getFormattedDocs(def, this.interactor, basePath)
 
       const instructions = `${def.instructions}\n\n
 ## Project description
