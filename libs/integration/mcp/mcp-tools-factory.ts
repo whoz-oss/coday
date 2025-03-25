@@ -145,10 +145,24 @@ export class McpToolsFactory extends AssistantToolFactory {
       throw new Error(`Remote HTTP/HTTPS MCP servers are not supported yet. Use local command-based servers instead.`)
     } else if (serverConfig.command) {
       // Stdio transport - launch the command as a child process
-      transport = new StdioClientTransport({
+      const transportOptions: any = {
         command: serverConfig.command,
         args: serverConfig.args || [],
-      })
+      }
+      
+      // Add environment variables if specified
+      if (serverConfig.env && Object.keys(serverConfig.env).length > 0) {
+        transportOptions.env = serverConfig.env
+        this.interactor.displayText(`Using custom environment variables for MCP server ${serverConfig.name}`)
+      }
+      
+      // Add working directory if specified
+      if (serverConfig.cwd) {
+        transportOptions.cwd = serverConfig.cwd
+        this.interactor.displayText(`Using working directory: ${serverConfig.cwd}`)
+      }
+      
+      transport = new StdioClientTransport(transportOptions)
       this.interactor.displayText(`Starting MCP server ${serverConfig.name} with command: ${serverConfig.command}`)
     } else {
       throw new Error(`MCP server ${serverConfig.name} has no command configured. Only local command-based servers are supported.`)

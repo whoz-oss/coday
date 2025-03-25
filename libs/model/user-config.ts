@@ -60,6 +60,10 @@ export interface McpServerConfig {
   command?: string
   /** Optional arguments for the command when using stdio transport */
   args?: string[]
+  /** Optional environment variables for the command when using stdio transport */
+  env?: Record<string, string>
+  /** Optional working directory for the command when using stdio transport */
+  cwd?: string  
   /** Optional authentication token */
   authToken?: string
   /** Whether the server connection is enabled */

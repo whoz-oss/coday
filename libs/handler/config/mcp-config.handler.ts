@@ -75,7 +75,7 @@ export class McpConfigHandler extends NestedHandler {
     this.interactor.displayText('MCP Configuration Commands:')
     this.interactor.displayText('  config mcp list                   - List configured MCP servers')
     this.interactor.displayText(
-      '  config mcp add --id ID --name NAME --command CMD [--args ARG1 ARG2...] [--enabled true|false]'
+      '  config mcp add --id ID --name NAME --command CMD [--args ARG1 ARG2...] [--env KEY=VALUE...] [--cwd DIR] [--enabled true|false]'
     )
     this.interactor.displayText('                                    - Add or update an MCP server')
     this.interactor.displayText('  config mcp remove|rm ID           - Remove an MCP server')
@@ -87,13 +87,13 @@ export class McpConfigHandler extends NestedHandler {
     this.interactor.displayText('Remote HTTP/HTTPS servers will be supported in a future update.')
     this.interactor.displayText('')
     this.interactor.displayText('Examples:')
-    this.interactor.displayText('  ## Add a local command-based MCP server')
-    this.interactor.displayText(
-      '  config mcp add --id local-fetch --name "Local Fetch MCP Server" --command fetch-mcp-server --args --port 3001'
-    )
+    this.interactor.displayText('  ## Add a local python fetch MCP server')
+    this.interactor.displayText('config mcp add --id fetch --name "Fetch" --command uvx --args fetch-mcp-server')
     this.interactor.displayText('')
-    this.interactor.displayText('  ## Add a local fetch MCP server')
-    this.interactor.displayText('  config mcp add --id fetch --name "Fetch MCP Server" --command mcp-fetch-server')
+    this.interactor.displayText('  ## Add a local node filesystem MCP server with environment variables')
+    this.interactor.displayText(
+      'config mcp add --id file --name "File" --command npx --args -y "@modelcontextprotocol/server-filesystem" /Users/david/Desktop --env API_KEY=abc123'
+    )
   }
 
   /**
@@ -101,6 +101,8 @@ export class McpConfigHandler extends NestedHandler {
    */
   private parseAddArgs(args: string[]): Partial<McpServerConfig> {
     const config: Partial<McpServerConfig> = {}
+    const env: Record<string, string> = {}
+    let hasEnv = false
 
     for (let i = 0; i < args.length; i++) {
       const arg = args[i]
@@ -113,6 +115,8 @@ export class McpConfigHandler extends NestedHandler {
         config.url = args[++i]
       } else if (arg === '--command' && i + 1 < args.length) {
         config.command = args[++i]
+      } else if (arg === '--cwd' && i + 1 < args.length) {
+        config.cwd = args[++i]
       } else if (arg === '--args') {
         // Collect all remaining args until the next flag
         const commandArgs: string[] = []
@@ -122,11 +126,29 @@ export class McpConfigHandler extends NestedHandler {
         if (commandArgs.length > 0) {
           config.args = commandArgs
         }
+      } else if (arg === '--env' && i + 1 < args.length) {
+        // Parse environment variable in KEY=VALUE format
+        const envVar = args[++i]
+        const equalIndex = envVar.indexOf('=')
+
+        if (equalIndex > 0) {
+          const key = envVar.substring(0, equalIndex)
+          const value = envVar.substring(equalIndex + 1)
+          env[key] = value
+          hasEnv = true
+        } else {
+          this.interactor.warn(`Invalid environment variable format: ${envVar}. Expected KEY=VALUE format.`)
+        }
       } else if (arg === '--auth' && i + 1 < args.length) {
         config.authToken = args[++i]
       } else if (arg === '--enabled' && i + 1 < args.length) {
         config.enabled = args[++i].toLowerCase() === 'true'
       }
+    }
+
+    // Add environment variables if any were provided
+    if (hasEnv) {
+      config.env = env
     }
 
     return config
@@ -161,6 +183,15 @@ export class McpConfigHandler extends NestedHandler {
         this.interactor.displayText(`  Command: ${server.command}`)
         if (server.args && server.args.length > 0) {
           this.interactor.displayText(`  Args: ${server.args.join(' ')}`)
+        }
+        if (server.env && Object.keys(server.env).length > 0) {
+          this.interactor.displayText(`  Environment Variables:`)
+          for (const [key, value] of Object.entries(server.env)) {
+            this.interactor.displayText(`    ${key}=${value}`)
+          }
+        }
+        if (server.cwd) {
+          this.interactor.displayText(`  Working Directory: ${server.cwd}`)
         }
       } else {
         this.interactor.displayText(`  Type: Unknown (missing configuration)`)
@@ -208,6 +239,8 @@ export class McpConfigHandler extends NestedHandler {
       url: config.url,
       command: config.command,
       args: config.args,
+      env: config.env,
+      cwd: config.cwd,
       authToken: config.authToken,
       enabled: config.enabled ?? true,
     }
