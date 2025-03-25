@@ -22,4 +22,6 @@ It can be located anywhere under the project's root directory (but not outside t
 
 If you fill it well, it should basically serve as documentation for newcomers to the project as containing a detailed description and rules, useful project-specific commands, workflows and intervening roles. 
 
+For details on defining and configuring agents, see [AGENT_DEFINITIONS.md](./AGENT_DEFINITIONS.md).
+
 
