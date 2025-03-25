@@ -17,19 +17,6 @@ export enum ModelSize {
  */
 export interface AgentDefinition extends WithDocs {
   /**
-   * Temporary properties used internally by the AgentService.
-   * These properties are not part of the agent definition schema and should not be included in YAML files.
-   */
-  _tmp?: {
-    /**
-     * Base path for resolving documents.
-     * For agents inside the project: this is the project root
-     * For agents outside the project: this is the directory containing the agent definition file
-     */
-    basePath?: string;
-  };
-
-  /**
    * name of the agent
    * case does not matter as should be checked against lowercase
    */

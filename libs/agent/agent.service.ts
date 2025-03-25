@@ -12,7 +12,7 @@ import { findFilesByName } from '../function/find-files-by-name'
 
 export class AgentService {
   private agents: Map<string, Agent> = new Map()
-  private agentDefinitions: AgentDefinition[] = []
+  private agentDefinitions: {definition: AgentDefinition, basePath: string}[] = []
   private toolbox: Toolbox
 
   constructor(
@@ -30,7 +30,10 @@ export class AgentService {
   }
 
   listAgentSummaries(): AgentSummary[] {
-    return this.agentDefinitions.map((a) => ({ name: a.name, description: a.description }))
+    return this.agentDefinitions.map((entry) => ({ 
+      name: entry.definition.name, 
+      description: entry.definition.description 
+    }))
   }
 
   /**
@@ -47,7 +50,7 @@ export class AgentService {
       // Load from coday.yml agents section first
       if (context.project.agents?.length) {
         for (const def of context.project.agents) {
-          this.addDefinition(def)
+          this.addDefinition(def, this.projectPath)
         }
       }
 
@@ -55,7 +58,7 @@ export class AgentService {
       const selectedProject = this.services.project.selectedProject
       if (selectedProject?.config.agents?.length) {
         for (const def of selectedProject.config.agents) {
-          this.addDefinition(def)
+          this.addDefinition(def, this.projectPath)
         }
       }
 
@@ -64,14 +67,14 @@ export class AgentService {
 
       // If no agents were loaded, use Coday as backup
       if (this.agents.size === 0) {
-        this.addDefinition(CodayAgentDefinition)
+        this.addDefinition(CodayAgentDefinition, this.projectPath)
       }
     } catch (error) {
       console.error('Failed to initialize agents:', error)
       throw error
     }
 
-    await Promise.all(this.agentDefinitions.map((def) => this.tryAddAgent(def, context)))
+    await Promise.all(this.agentDefinitions.map((entry) => this.tryAddAgent(entry, context)))
     const agentNames = this.listAgentSummaries().map((a) => `  - ${a.name} : ${a.description}`)
     if (agentNames.length > 1) {
       this.interactor.displayText(`Loaded agents (callable with '@[agent name]'):\n${agentNames.join('\n')}`)
@@ -154,9 +157,12 @@ export class AgentService {
     this.aiClientProvider.kill()
   }
 
-  private addDefinition(def: AgentDefinition): void {
-    if (!this.agentDefinitions.find((a) => a.name === def.name)) {
-      this.agentDefinitions.push({ ...CodayAgentDefinition, ...def })
+  private addDefinition(def: AgentDefinition, basePath: string = this.projectPath): void {
+    if (!this.agentDefinitions.find((entry) => entry.definition.name === def.name)) {
+      this.agentDefinitions.push({
+        definition: { ...CodayAgentDefinition, ...def },
+        basePath
+      })
     }
   }
 
@@ -224,12 +230,9 @@ export class AgentService {
           const agentDirPath = path.dirname(agentFilePath)
           const isInProject = agentDirPath.startsWith(this.projectPath)
           
-          // Set the temporary basePath property
-          data._tmp = {
-            basePath: isInProject ? this.projectPath : agentDirPath
-          }
-          
-          this.addDefinition(data)
+          // Add definition with the appropriate base path
+          const basePath = isInProject ? this.projectPath : agentDirPath
+          this.addDefinition(data, basePath)
         } catch (e) {
           console.error(e)
         }
@@ -241,8 +244,8 @@ export class AgentService {
    * Try to create and add an agent to the map
    * Logs error if dependencies are missing
    */
-  private async tryAddAgent(partialDef: AgentDefinition, context: CommandContext): Promise<void> {
-    const def: AgentDefinition = { ...CodayAgentDefinition, ...partialDef }
+  private async tryAddAgent(entry: {definition: AgentDefinition, basePath: string}, context: CommandContext): Promise<void> {
+    const def: AgentDefinition = { ...CodayAgentDefinition, ...entry.definition }
 
     try {
       // force aiProvider for OpenAI assistants
@@ -267,7 +270,7 @@ export class AgentService {
         return
       }
 
-      const basePath = def._tmp?.basePath || this.projectPath
+      const basePath = entry.basePath
       const agentDocs = getFormattedDocs(def, this.interactor, basePath)
 
       const instructions = `${def.instructions}\n\n
