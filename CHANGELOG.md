@@ -1,3 +1,22 @@
+## 0.4.0 (2025-03-25)
+
+### 🚀 Features
+
+- 27 allow to inject agent definitions from outside the project
+
+### 🩹 Fixes
+
+- JIRA tools init is cached
+- JIRA tools init is cached
+- Fix release
+- improve tool creation with error logs
+
+### ❤️ Thank You
+
+- Vincent Palita
+- vincent-audibert-whoz
+- vincent.audibert
+
 ## 0.3.4 (2025-03-20)
 
 ### 🩹 Fixes
