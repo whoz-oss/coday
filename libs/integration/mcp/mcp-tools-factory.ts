@@ -8,8 +8,81 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 
 /**
+ * Integration factory for a specific MCP server.
+ * Each MCP server is represented as its own integration with the name MCP_<serverId>.
+ *
+ * This factory allows agents to specify tools using their original names without the
+ * namespaced prefix. For example, an agent can use:
+ *   integrations: { MCP_filesystem: ["readFile"] }
+ * instead of:
+ *   integrations: { MCP_filesystem: ["mcp__filesystem__readFile"] }
+ *
+ * The factory handles converting the simple names to fully namespaced versions internally.
+ */
+class McpServerIntegrationFactory extends AssistantToolFactory {
+  public tools: CodayTool[] = []
+  public name: string
+
+  constructor(
+    private serverConfig: McpServerConfig,
+    interactor: Interactor
+  ) {
+    super(interactor)
+    this.name = `MCP_${serverConfig.id}`
+  }
+
+  setTools(tools: CodayTool[]): void {
+    this.tools = tools
+  }
+
+  protected hasChanged(): boolean {
+    // The parent McpToolsFactory handles changes and updates this factory's tools
+    return false
+  }
+
+  protected async buildTools(): Promise<CodayTool[]> {
+    // Tools are provided by the parent McpToolsFactory
+    return this.tools
+  }
+
+  /**
+   * Override getTools to handle the tool name prefixing
+   * This preserves the original buildTools signature while adding our prefixing logic
+   */
+  async getTools(context: CommandContext, toolNames: string[], agentName: string): Promise<CodayTool[]> {
+    // Get all available tools without filtering
+    this.tools = await this.buildTools()
+
+    // If no specific tools requested, return all tools
+    if (!toolNames || toolNames.length === 0) {
+      return this.tools
+    }
+
+    // The namespace prefix for this server's tools
+    const prefix = `mcp__${this.serverConfig.id}__`
+
+    // Convert requested tool names to their namespaced versions
+    const prefixedNames = toolNames.map((name) => {
+      // If the name already has the prefix, leave it as is
+      if (name.startsWith(prefix)) {
+        return name
+      }
+      // Otherwise, add the prefix
+      return `${prefix}${name}`
+    })
+
+    // Filter the tools based on the prefixed names
+    return this.tools.filter((tool) => prefixedNames.includes(tool.function.name))
+  }
+}
+
+/**
  * Factory for MCP server tools that dynamically discovers and exposes tools
  * from configured MCP servers.
+ *
+ * This factory creates server-specific integration factories for each MCP server
+ * with the naming convention MCP_<serverId> to allow agents to select specific
+ * MCP servers in their integration configuration.
  */
 // Define interfaces based on MCP SDK types
 interface ToolInfo {
@@ -30,6 +103,8 @@ interface ResourceTemplate {
 
 export class McpToolsFactory extends AssistantToolFactory {
   name = 'MCP'
+  // Map to store server-specific integration factories
+  private serverIntegrationFactories: Map<string, McpServerIntegrationFactory> = new Map()
   private toolsCache: Map<string, CodayTool[]> = new Map()
   private clientInstances: Map<string, Client> = new Map()
 
@@ -149,23 +224,25 @@ export class McpToolsFactory extends AssistantToolFactory {
         command: serverConfig.command,
         args: serverConfig.args || [],
       }
-      
+
       // Add environment variables if specified
       if (serverConfig.env && Object.keys(serverConfig.env).length > 0) {
         transportOptions.env = serverConfig.env
         this.interactor.displayText(`Using custom environment variables for MCP server ${serverConfig.name}`)
       }
-      
+
       // Add working directory if specified
       if (serverConfig.cwd) {
         transportOptions.cwd = serverConfig.cwd
         this.interactor.displayText(`Using working directory: ${serverConfig.cwd}`)
       }
-      
+
       transport = new StdioClientTransport(transportOptions)
       this.interactor.displayText(`Starting MCP server ${serverConfig.name} with command: ${serverConfig.command}`)
     } else {
-      throw new Error(`MCP server ${serverConfig.name} has no command configured. Only local command-based servers are supported.`)
+      throw new Error(
+        `MCP server ${serverConfig.name} has no command configured. Only local command-based servers are supported.`
+      )
     }
 
     // Connect to the server
@@ -350,7 +427,7 @@ export class McpToolsFactory extends AssistantToolFactory {
         description: tool.description || `Function from MCP server ${serverConfig.name}`,
         parameters: {
           type: 'object',
-          properties: tool.inputSchema?.properties || {}
+          properties: tool.inputSchema?.properties || {},
         },
         parse: JSON.parse,
         function: callFunction,
@@ -359,10 +436,21 @@ export class McpToolsFactory extends AssistantToolFactory {
   }
 
   /**
+   * Gets a list of all server-specific integration factories.
+   * This allows the toolbox to discover and use individual server factories.
+   *
+   * @returns Array of server-specific integration factories
+   */
+  getServerIntegrationFactories(): AssistantToolFactory[] {
+    return Array.from(this.serverIntegrationFactories.values())
+  }
+
+  /**
    * Build tools for all configured MCP servers
    *
    * This method connects to each MCP server and builds proxies for all available
-   * tools on those servers. It handles connection errors and authentication.
+   * tools on those servers. It also creates server-specific integration factories
+   * for each MCP server to allow agents to selectively access specific MCP servers.
    *
    * @param context Current command context
    * @param agentName Name of the agent requesting tools
@@ -370,33 +458,56 @@ export class McpToolsFactory extends AssistantToolFactory {
   protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {
     const serverConfigs = this.getServerConfigs(context)
     if (!serverConfigs || serverConfigs.length === 0) {
+      // Clear any existing server integration factories if no servers are configured
+      this.serverIntegrationFactories.clear()
       return []
     }
 
     const allTools: CodayTool[] = []
+    const currentServerIds = new Set<string>()
 
     // Process each server configuration
     for (const serverConfig of serverConfigs) {
-      const cacheKey = this.getCacheKey(serverConfig.id)
+      const serverId = serverConfig.id
+      currentServerIds.add(serverId)
+      const cacheKey = this.getCacheKey(serverId)
+      let serverTools: CodayTool[] = []
 
       // Check if we have cached tools for this server
       if (this.toolsCache.has(cacheKey)) {
-        const cachedTools = this.toolsCache.get(cacheKey) || []
-        allTools.push(...cachedTools)
-        continue
+        serverTools = this.toolsCache.get(cacheKey) || []
+      } else {
+        try {
+          // Connect to the server and retrieve tools
+          serverTools = await this.connectAndRetrieveTools(serverConfig, context, agentName)
+
+          // Cache the tools for future use
+          this.toolsCache.set(cacheKey, serverTools)
+        } catch (error) {
+          this.interactor.error(`Error retrieving tools from MCP server ${serverConfig.name}: ${error}`)
+          serverTools = [] // Empty array in case of error
+        }
       }
 
-      try {
-        // Connect to the server and retrieve tools
-        const tools = await this.connectAndRetrieveTools(serverConfig, context, agentName)
+      // Get or create server-specific integration factory
+      let serverFactory = this.serverIntegrationFactories.get(serverId)
+      if (!serverFactory) {
+        serverFactory = new McpServerIntegrationFactory(serverConfig, this.interactor)
+        this.serverIntegrationFactories.set(serverId, serverFactory)
+      }
 
-        // Cache the tools for future use
-        this.toolsCache.set(cacheKey, tools)
+      // Update the server factory with current tools
+      serverFactory.setTools(serverTools)
 
-        // Add tools to the result
-        allTools.push(...tools)
-      } catch (error) {
-        this.interactor.error(`Error retrieving tools from MCP server ${serverConfig.name}: ${error}`)
+      // We no longer add tools to the main MCP factory
+      // Tools are only available through server-specific factories
+      // This prevents duplicate tool names
+    }
+
+    // Remove any server factories that no longer exist
+    for (const [serverId, _] of this.serverIntegrationFactories) {
+      if (!currentServerIds.has(serverId)) {
+        this.serverIntegrationFactories.delete(serverId)
       }
     }
 

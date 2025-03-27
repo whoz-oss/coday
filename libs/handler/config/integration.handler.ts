@@ -4,10 +4,7 @@ import { UserIntegrationHandler } from './user-integration.handler'
 import { ProjectIntegrationHandler } from './project-integration.handler'
 
 export class IntegrationHandler extends NestedHandler {
-  constructor(
-    interactor: Interactor,
-    services: CodayServices
-  ) {
+  constructor(interactor: Interactor, services: CodayServices) {
     super(
       {
         commandWord: 'integration',
@@ -18,7 +15,7 @@ export class IntegrationHandler extends NestedHandler {
 
     this.handlers = [
       new UserIntegrationHandler(interactor, services),
-      new ProjectIntegrationHandler(interactor, services)
+      new ProjectIntegrationHandler(interactor, services),
     ]
   }
 }

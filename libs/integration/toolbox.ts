@@ -37,14 +37,44 @@ export class Toolbox {
 
   async getTools(input: GetToolsInput): Promise<CodayTool[]> {
     const { context, integrations, agentName } = input
-    const filteredFactories = this.toolFactories.filter((factory) => !integrations || integrations.has(factory.name))
-
+    
     try {
-      // Process each tool factory separately to isolate failures
+      // First, process the base factories (including McpToolsFactory)
+      // to ensure server-specific factories are created
+      await Promise.all(
+        this.toolFactories.map(async (factory) => {
+          try {
+            // We process all factories regardless of integrations to ensure MCP factories are created
+            await factory.getTools(context, [], agentName ?? 'default')
+          } catch (error) {
+            this.interactor.error(`Error initializing tool factory ${factory.name}: ${error}`)
+          }
+        })
+      )
+      
+      // Get MCP server-specific factories
+      const mcpFactory = this.toolFactories.find(f => f.name === 'MCP') as McpToolsFactory
+      const serverFactories: AssistantToolFactory[] = mcpFactory 
+        ? mcpFactory.getServerIntegrationFactories() 
+        : []
+      
+      // Combine base factories with MCP server factories
+      const allFactories = [...this.toolFactories, ...serverFactories]
+      
+      // Filter factories based on integrations
+      const filteredFactories = allFactories.filter(factory => 
+        !integrations || integrations.has(factory.name)
+      )
+
+      // Process each filtered factory to get their tools
       const toolResults = await Promise.all(
         filteredFactories.map(async (factory) => {
           try {
-            const tools = await factory.getTools(context, integrations?.get(factory.name) ?? [], agentName ?? 'default')
+            const tools = await factory.getTools(
+              context, 
+              integrations?.get(factory.name) ?? [], 
+              agentName ?? 'default'
+            )
             return tools
           } catch (error) {
             this.interactor.error(`Error building tools from ${factory.name} for agent ${agentName}: ${error}`)
