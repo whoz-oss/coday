@@ -1,6 +1,7 @@
 import { Interactor, NestedHandler, CommandContext } from '../../model'
 import { McpServerConfig } from '../../model/user-config'
 import { UserService } from '../../service/user.service'
+import { keywords } from '../../keywords'
 
 /**
  * Handler for MCP server configuration commands
@@ -26,39 +27,54 @@ export class McpConfigHandler extends NestedHandler {
     }
 
     const parts = command.split(' ')
-    const subCommand = parts[1]
+    const subCommand = parts[0] === 'mcp' && parts.length > 1 ? parts[1] : parts[0]
 
     switch (subCommand) {
       case 'list':
         await this.list()
         break
       case 'add':
-        await this.add(this.parseAddArgs(parts.slice(1)))
+        if (parts.length > 2) {
+          // Command-line arguments provided
+          await this.add(this.parseAddArgs(parts.slice(1)))
+        } else {
+          // Interactive mode
+          await this.add()
+        }
         break
       case 'remove':
       case 'rm':
-        if (parts.length < 2) {
-          this.interactor.error('Server ID is required')
-          this.displayHelp()
-          return context
+        if (parts.length < 2 || (parts[0] === 'mcp' && parts.length < 3)) {
+          const serverId = await this.promptForServerId('remove')
+          if (serverId) {
+            await this.remove(serverId)
+          }
+        } else {
+          const serverIdIndex = parts[0] === 'mcp' ? 2 : 1
+          await this.remove(parts[serverIdIndex])
         }
-        await this.remove(parts[1])
         break
       case 'enable':
-        if (parts.length < 2) {
-          this.interactor.error('Server ID is required')
-          this.displayHelp()
-          return context
+        if (parts.length < 2 || (parts[0] === 'mcp' && parts.length < 3)) {
+          const serverId = await this.promptForServerId('enable')
+          if (serverId) {
+            await this.setEnabled(serverId, true)
+          }
+        } else {
+          const serverIdIndex = parts[0] === 'mcp' ? 2 : 1
+          await this.setEnabled(parts[serverIdIndex], true)
         }
-        await this.setEnabled(parts[1], true)
         break
       case 'disable':
-        if (parts.length < 2) {
-          this.interactor.error('Server ID is required')
-          this.displayHelp()
-          return context
+        if (parts.length < 2 || (parts[0] === 'mcp' && parts.length < 3)) {
+          const serverId = await this.promptForServerId('disable')
+          if (serverId) {
+            await this.setEnabled(serverId, false)
+          }
+        } else {
+          const serverIdIndex = parts[0] === 'mcp' ? 2 : 1
+          await this.setEnabled(parts[serverIdIndex], false)
         }
-        await this.setEnabled(parts[1], false)
         break
       case 'help':
         this.displayHelp()
@@ -74,20 +90,24 @@ export class McpConfigHandler extends NestedHandler {
   public displayHelp(): void {
     this.interactor.displayText('MCP Configuration Commands:')
     this.interactor.displayText('  config mcp list                   - List configured MCP servers')
+    this.interactor.displayText('  config mcp add                    - Interactively add or update an MCP server')
     this.interactor.displayText(
       '  config mcp add --id ID --name NAME --command CMD [--args ARG1 ARG2...] [--env KEY=VALUE...] [--cwd DIR] [--enabled true|false]'
     )
-    this.interactor.displayText('                                    - Add or update an MCP server')
-    this.interactor.displayText('  config mcp remove|rm ID           - Remove an MCP server')
-    this.interactor.displayText('  config mcp enable ID              - Enable an MCP server')
-    this.interactor.displayText('  config mcp disable ID             - Disable an MCP server')
+    this.interactor.displayText('                                    - Add or update an MCP server with command-line arguments')
+    this.interactor.displayText('  config mcp remove|rm [ID]         - Remove an MCP server (interactive if ID not provided)')
+    this.interactor.displayText('  config mcp enable [ID]            - Enable an MCP server (interactive if ID not provided)')
+    this.interactor.displayText('  config mcp disable [ID]           - Disable an MCP server (interactive if ID not provided)')
     this.interactor.displayText('  config mcp help                   - Display this help message')
     this.interactor.displayText('')
     this.interactor.displayText('Note: Currently only local command-based MCP servers are supported.')
     this.interactor.displayText('Remote HTTP/HTTPS servers will be supported in a future update.')
     this.interactor.displayText('')
     this.interactor.displayText('Examples:')
-    this.interactor.displayText('  ## Add a local python fetch MCP server')
+    this.interactor.displayText('  ## Interactively configure an MCP server')
+    this.interactor.displayText('config mcp add')
+    this.interactor.displayText('')
+    this.interactor.displayText('  ## Add a local python fetch MCP server with command-line arguments')
     this.interactor.displayText('config mcp add --id fetch --name "Fetch" --command uvx --args fetch-mcp-server')
     this.interactor.displayText('')
     this.interactor.displayText('  ## Add a local node filesystem MCP server with environment variables')
@@ -203,32 +223,236 @@ export class McpConfigHandler extends NestedHandler {
   /**
    * Add a new MCP server configuration
    */
-  async add(config: Partial<McpServerConfig>): Promise<void> {
-    if (!config.id) {
-      this.interactor.error('Server ID is required')
-      this.displayHelp()
-      return
-    }
+  async add(config: Partial<McpServerConfig> = {}): Promise<void> {
+    const existingServers = this.userService.config.mcp?.servers || []
+    const isUpdate = config.id && existingServers.some(s => s.id === config.id)
+    const existingConfig = config.id ? existingServers.find(s => s.id === config.id) : undefined
 
-    if (!config.name) {
-      this.interactor.error('Server name is required')
-      this.displayHelp()
-      return
-    }
+    // Check if this is a non-interactive call with command line parameters
+    const isNonInteractive = config.id && config.name && (config.command || config.url);
+    
+    if (!isNonInteractive) {
+      // Interactive mode - prompt for server ID if not provided
+      if (!config.id) {
+        config.id = await this.interactor.promptText('Server ID (required)', existingConfig?.id)
+        
+        if (!config.id) {
+          this.interactor.error('Server ID is required')
+          return
+        }
+      }
 
-    // Validate that command is specified (only local servers are supported for now)
-    if (!config.command) {
-      this.interactor.error('Command is required. Only local command-based MCP servers are currently supported.')
-      this.displayHelp()
-      return
+      // Check for existing server with this ID
+      const existingIndex = existingServers.findIndex((s) => s.id === config.id)
+      if (existingIndex >= 0 && !isUpdate) {
+        const overwriteAnswer = await this.interactor.promptText(
+          `Server ID "${config.id}" already exists. Do you want to update it? (y/n)`,
+          'y'
+        )
+        
+        if (overwriteAnswer.toLowerCase() !== 'y') {
+          this.interactor.displayText('Operation canceled.')
+          return
+        }
+      }
+
+      // Prompt for server name if not provided
+      if (!config.name) {
+        config.name = await this.interactor.promptText(
+          'Server name (required)', 
+          existingConfig?.name
+        )
+        
+        if (!config.name) {
+          this.interactor.error('Server name is required')
+          return
+        }
+      }
+
+      // Determine server type based on existing configuration or prompt user
+      let serverType: string
+      
+      if (config.url) {
+        serverType = 'url'
+      } else if (config.command) {
+        serverType = 'local'
+      } else {
+        serverType = await this.interactor.chooseOption(
+          ['local', 'url', 'cancel'],
+          'Server type',
+          'Select server type (only local command-based servers are currently supported):'
+        )
+      }
+
+      if (serverType === 'cancel') {
+        this.interactor.displayText('Operation canceled.')
+        return
+      }
+
+      if (serverType === 'url') {
+        this.interactor.warn('Remote HTTP/HTTPS MCP servers are not currently supported. Please use local command-based servers instead.')
+        const proceedAnswer = await this.interactor.promptText(
+          'Do you want to proceed with configuring a URL-based server anyway? (y/n)',
+          'n'
+        )
+        
+        if (proceedAnswer.toLowerCase() !== 'y') {
+          this.interactor.displayText('Operation canceled.')
+          return
+        }
+
+        // Prompt for URL
+        config.url = await this.interactor.promptText(
+          'Server URL',
+          config.url || existingConfig?.url
+        )
+        config.command = undefined
+        config.args = undefined
+        config.env = undefined
+        config.cwd = undefined
+      } else {
+        // Prompt for command
+        config.command = await this.interactor.promptText(
+          'Command (required)',
+          config.command || existingConfig?.command
+        )
+        
+        if (!config.command) {
+          this.interactor.error('Command is required for local servers')
+          return
+        }
+
+        // Prompt for args if not already provided
+        if (!config.args) {
+          const argsString = await this.interactor.promptText(
+            'Command arguments (space-separated)',
+            existingConfig?.args?.join(' ')
+          )
+          
+          if (argsString) {
+            config.args = argsString.split(' ').filter(arg => arg.trim() !== '')
+          }
+        }
+
+        // Prompt for working directory if not already provided
+        if (!config.cwd) {
+          config.cwd = await this.interactor.promptText(
+            'Working directory (optional)',
+            existingConfig?.cwd
+          )
+        }
+
+        // Prompt for environment variables if not already provided
+        if (!config.env) {
+          const addEnvVars = await this.interactor.promptText(
+            'Would you like to add environment variables? (y/n)',
+            existingConfig?.env && Object.keys(existingConfig.env).length > 0 ? 'y' : 'n'
+          )
+          
+          if (addEnvVars.toLowerCase() === 'y') {
+            const env: Record<string, string> = {}
+            let addingEnvVars = true
+            
+            // Show existing env vars if updating
+            if (existingConfig?.env && Object.keys(existingConfig.env).length > 0) {
+              this.interactor.displayText('Current environment variables:')
+              for (const [key, value] of Object.entries(existingConfig.env)) {
+                this.interactor.displayText(`  ${key}=${value}`)
+              }
+            }
+            
+            while (addingEnvVars) {
+              const envKey = await this.interactor.promptText(
+                'Environment variable key (or leave empty to finish)'
+              )
+              
+              if (!envKey) {
+                addingEnvVars = false
+                continue
+              }
+              
+              const envValue = await this.interactor.promptText(
+                `Value for ${envKey}`
+              )
+              
+              if (envValue) {
+                env[envKey] = envValue
+              }
+            }
+            
+            if (Object.keys(env).length > 0) {
+              config.env = env
+            }
+          }
+        }
+
+        config.url = undefined
+      }
+
+      // Prompt for auth token if not already provided
+      if (config.authToken === undefined) {
+        const useAuth = await this.interactor.promptText(
+          'Does this server require authentication? (y/n)',
+          existingConfig?.authToken ? 'y' : 'n'
+        )
+        
+        if (useAuth.toLowerCase() === 'y') {
+          const MASKED_VALUE = '********'
+          const authPrompt = existingConfig?.authToken
+            ? `Authentication token (Current value is masked)`
+            : 'Authentication token'
+          
+          const authInput = await this.interactor.promptText(
+            authPrompt,
+            existingConfig?.authToken ? MASKED_VALUE : undefined
+          )
+          
+          if (authInput && authInput !== MASKED_VALUE) {
+            config.authToken = authInput
+          } else if (authInput === MASKED_VALUE) {
+            config.authToken = existingConfig?.authToken
+          }
+        } else {
+          config.authToken = undefined
+        }
+      }
+
+      // Prompt for enabled status if not already provided
+      if (config.enabled === undefined) {
+        const enabledAnswer = await this.interactor.promptText(
+          'Enable this server? (y/n)',
+          existingConfig?.enabled === false ? 'n' : 'y'
+        )
+        
+        config.enabled = enabledAnswer.toLowerCase() === 'y'
+      }
+    } else {
+      // Non-interactive mode - Validate required fields
+      if (!config.id) {
+        this.interactor.error('Server ID is required')
+        this.displayHelp()
+        return
+      }
+
+      if (!config.name) {
+        this.interactor.error('Server name is required')
+        this.displayHelp()
+        return
+      }
+
+      // For now, validate that either URL or command is provided (command is preferred)
+      if (!config.command && !config.url) {
+        this.interactor.error('Either command or URL is required.')
+        this.displayHelp()
+        return
+      }
     }
 
     // Validate transport configuration (can't have both URL and command)
     if (config.url && config.command) {
       this.interactor.error(
-        'Cannot specify both URL and command. Currently only local command-based servers are supported.'
+        'Cannot specify both URL and command. Please configure either a URL-based or command-based server.'
       )
-      this.displayHelp()
       return
     }
 
@@ -259,9 +483,9 @@ export class McpConfigHandler extends NestedHandler {
     const servers = this.userService.config.mcp.servers
 
     // Check if server with this ID already exists
-    const existingIndex = servers.findIndex((s) => s.id === serverConfig.id)
-    if (existingIndex >= 0) {
-      servers[existingIndex] = serverConfig
+    const existingServerIndex = servers.findIndex((s) => s.id === serverConfig.id)
+    if (existingServerIndex >= 0) {
+      servers[existingServerIndex] = serverConfig
       this.interactor.displayText(`Updated MCP server: ${serverConfig.name}`)
     } else {
       servers.push(serverConfig)
@@ -287,6 +511,17 @@ export class McpConfigHandler extends NestedHandler {
     }
 
     const serverName = servers[existingIndex].name
+
+    // Confirm removal
+    const confirmAnswer = await this.interactor.promptText(
+      `Are you sure you want to remove MCP server "${serverName}" (${serverId})? (y/n)`,
+      'y'
+    )
+    
+    if (confirmAnswer.toLowerCase() !== 'y') {
+      this.interactor.displayText('Operation canceled.')
+      return
+    }
 
     // Remove server
     servers.splice(existingIndex, 1)
@@ -314,6 +549,15 @@ export class McpConfigHandler extends NestedHandler {
       return
     }
 
+    const serverName = servers[existingIndex].name
+    const action = enabled ? 'enable' : 'disable'
+    
+    // Confirm action if server is already in the desired state
+    if (servers[existingIndex].enabled === enabled) {
+      this.interactor.displayText(`MCP server "${serverName}" is already ${enabled ? 'enabled' : 'disabled'}.`)
+      return
+    }
+
     // Update enabled status
     servers[existingIndex].enabled = enabled
 
@@ -324,6 +568,47 @@ export class McpConfigHandler extends NestedHandler {
     this.userService.save()
 
     const status = enabled ? 'enabled' : 'disabled'
-    this.interactor.displayText(`MCP server ${servers[existingIndex].name} is now ${status}`)
+    this.interactor.displayText(`MCP server "${serverName}" is now ${status}`)
+  }
+  
+  /**
+   * Helper method to prompt for server ID from available servers
+   */
+  private async promptForServerId(action: string): Promise<string | undefined> {
+    const servers = this.userService.config.mcp?.servers || []
+    
+    if (servers.length === 0) {
+      this.interactor.displayText('No MCP servers configured.')
+      return undefined
+    }
+    
+    // Create options for selection with descriptive labels
+    const options = servers.map(server => {
+      const status = server.enabled ? 'enabled' : 'disabled'
+      return { 
+        id: server.id, 
+        label: `${server.name} (${server.id}) - ${status}` 
+      }
+    })
+    
+    // Add cancel option
+    options.push({ id: keywords.exit, label: 'Cancel' })
+    
+    // Prompt user to select a server
+    const answer = await this.interactor.chooseOption(
+      options.map(o => o.label),
+      `Select MCP server to ${action}`,
+      `Choose the MCP server you want to ${action}:`
+    )
+    
+    // Find selected option
+    const selectedOption = options.find(o => o.label === answer)
+    
+    if (!selectedOption || selectedOption.id === keywords.exit) {
+      this.interactor.displayText('Operation canceled.')
+      return undefined
+    }
+    
+    return selectedOption.id
   }
 }
