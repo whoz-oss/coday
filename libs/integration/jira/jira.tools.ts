@@ -2,10 +2,10 @@ import { IntegrationService } from '../../service/integration.service'
 import { CommandContext, Interactor } from '../../model'
 import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
-import { createJiraFieldMapping } from './jira-field-mapper'
 import { searchJiraIssuesWithAI } from './search-jira-issues'
 import { addJiraComment } from './add-jira-comment'
 import { retrieveJiraIssue } from './retrieve-jira-issue'
+import { jiraFieldMappingCache } from './jira-field-mapping-cache'
 
 export class JiraTools extends AssistantToolFactory {
   name = 'JIRA'
@@ -21,7 +21,7 @@ export class JiraTools extends AssistantToolFactory {
     return this.lastToolInitContext?.project.root !== context.project.root
   }
 
-  protected async buildTools(context: CommandContext): Promise<CodayTool[]> {
+  protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {
     const result: CodayTool[] = []
     if (!this.integrationService.hasIntegration('JIRA')) {
       return result
@@ -34,8 +34,8 @@ export class JiraTools extends AssistantToolFactory {
       return result
     }
 
-    // Generate custom field mapping during initialization
-    const { description: customFieldMappingDescription } = await createJiraFieldMapping(
+    // Get field mapping from cache service with 8-hour TTL
+    const { description: customFieldMappingDescription } = await jiraFieldMappingCache.getMappingForInstance(
       jiraBaseUrl,
       jiraApiToken,
       jiraUsername,

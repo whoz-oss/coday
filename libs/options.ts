@@ -11,6 +11,7 @@ export interface Argv {
   oneshot?: boolean
   fileReadOnly?: boolean
   local?: boolean
+  agentFolders?: string[]
   _: (string | number)[]
   $0: string
 }
@@ -23,6 +24,7 @@ export interface CodayOptions {
   fileReadOnly: boolean
   configDir?: string
   noAuth: boolean
+  agentFolders: string[]
 }
 
 /**
@@ -62,6 +64,11 @@ export function parseCodayOptions(): CodayOptions {
       type: 'string',
       description: 'Path to the local .coday config dir',
     })
+    .option('agentFolders', {
+      type: 'array',
+      description: 'Additional folders where agent definitions can be found',
+      alias: 'af',
+    })
     .help().argv as Argv
 
   let projectName: string | undefined = argv.coday_project || (argv._[0] as string)
@@ -84,5 +91,6 @@ export function parseCodayOptions(): CodayOptions {
     fileReadOnly,
     configDir,
     noAuth,
+    agentFolders: (argv.agentFolders || []) as string[],
   }
 }

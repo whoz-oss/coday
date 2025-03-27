@@ -18,7 +18,7 @@ export class AiTools extends AssistantToolFactory {
     return true
   }
 
-  protected async buildTools(context: CommandContext): Promise<CodayTool[]> {
+  protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {
     const result: CodayTool[] = []
 
     if (!context.oneshot) {

@@ -2,7 +2,7 @@ import { Interactor } from '../../model'
 import { retrieveAutocompleteData } from './retrieve-autocomplete-data'
 import { searchJiraIssues } from './search-jira-issues'
 import { createFieldMapping } from './jira.helpers'
-import {AutocompleteDataResponse, FieldMappingDescription} from './jira'
+import { AutocompleteDataResponse, FieldMappingDescription } from './jira'
 
 export interface ActiveFieldMapping {
   name: string
@@ -114,19 +114,5 @@ Notes:
     }
   }
 }
-// Utility function for easy access
-export async function createJiraFieldMapping(
-  jiraBaseUrl: string,
-  jiraApiToken: string,
-  jiraUsername: string,
-  interactor: Interactor,
-  maxissues: number = 100
-): Promise<{
-  mappings: ActiveFieldMapping[]
-  autocompleteData: AutocompleteDataResponse
-  description: FieldMappingDescription
-}> {
-  const mapper = new JiraFieldMapper(jiraBaseUrl, jiraApiToken, jiraUsername, interactor)
 
-  return mapper.generateFieldMapping(maxissues)
-}
+// Note: The standalone createJiraFieldMapping function has been replaced by the jiraFieldMappingCache service

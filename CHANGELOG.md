@@ -1,3 +1,60 @@
+## 0.4.0 (2025-03-25)
+
+### 🚀 Features
+
+- 27 allow to inject agent definitions from outside the project
+
+### 🩹 Fixes
+
+- JIRA tools init is cached
+- JIRA tools init is cached
+- Fix release
+- improve tool creation with error logs
+
+### ❤️ Thank You
+
+- Vincent Palita
+- vincent-audibert-whoz
+- vincent.audibert
+
+## 0.3.4 (2025-03-20)
+
+### 🩹 Fixes
+
+- JIRA tools init is cached
+- JIRA tools init is cached
+- Fix release
+
+### ❤️ Thank You
+
+- Vincent Palita
+- vincent-audibert-whoz
+- vincent.audibert
+
+## 0.3.3 (2025-03-20)
+
+### 🩹 Fixes
+
+- Release app in GitHub Actions workflow ([ddeb62b](https://github.com/biznet-io/coday/commit/ddeb62b))
+
+### ❤️ Thank You
+
+- Vincent Palita
+
+## 0.3.2 (2025-03-20)
+
+### 🩹 Fixes
+
+- update the last connected date on user message + 8h inactivity allowed ([83aafb1](https://github.com/biznet-io/coday/commit/83aafb1))
+- update the last connected date ([#19](https://github.com/biznet-io/coday/pull/19))
+- JIRA tools selectables as other tools ([8707143](https://github.com/biznet-io/coday/commit/8707143))
+- JIRA tools selectables as other tools ([#20](https://github.com/biznet-io/coday/pull/20))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+- vincent.audibert
+
 ## 0.3.1 (2025-03-19)
 
 ### 🚀 Features
