@@ -5,7 +5,7 @@ main {
   justify-content: flex-start;
   overflow-y: auto;
   margin: 0;
-  padding: 30px 0 0 0; /* Added top padding to prevent content from being hidden under the header */
+  padding: 20px 0 0 0; /* Reduced top padding to match smaller header */
   background-color: #282a36;
   color: #f8f8f2;
 }

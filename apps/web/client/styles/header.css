@@ -3,3 +3,43 @@ header {
   padding: 0.5em;
   border-bottom: 1px solid #6272a4;
 }
+
+/* Transparent overlay header */
+.overlay-header {
+  padding: 4px 8px; /* Reduced padding to minimize height */
+  text-align: right;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background-color: transparent;
+}
+
+/* Options button */
+#options-button {
+  background-color: rgba(68, 71, 90, 0.7);
+  padding: 5px 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(98, 114, 164, 0.5);
+  color: #f8f8f2;
+  cursor: pointer;
+}
+
+#options-button:hover {
+  background-color: rgba(68, 71, 90, 0.9);
+}
+
+/* Options panel */
+#options-panel {
+  display: none;
+  padding: 10px;
+  background-color: #282a36;
+  position: absolute;
+  right: 8px;
+  top: 35px; /* Adjusted to match reduced header height */
+  border: 1px solid #6272a4;
+  z-index: 1000;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+}
