@@ -44,7 +44,7 @@ export class ChatTextareaComponent implements CodayEventHandler {
     this.chatForm = document.getElementById('chat-form') as HTMLFormElement
     this.chatTextarea = document.getElementById('chat-input') as HTMLTextAreaElement
     this.chatLabel = document.getElementById('chat-label') as HTMLLabelElement
-    this.submitButton = document.querySelector('.submit') as HTMLButtonElement
+    this.submitButton = document.getElementById('send-button') as HTMLButtonElement
 
     this.chatForm.onsubmit = async (event) => {
       event.preventDefault()
