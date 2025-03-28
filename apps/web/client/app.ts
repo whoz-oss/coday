@@ -149,6 +149,30 @@ const themeLight = document.getElementById('theme-light') as HTMLInputElement
 const themeDark = document.getElementById('theme-dark') as HTMLInputElement
 const themeSystem = document.getElementById('theme-system') as HTMLInputElement
 
+// Detect operating system for keyboard shortcuts
+function detectOS(): 'mac' | 'non-mac' {
+  return navigator.platform.toLowerCase().includes('mac') ? 'mac' : 'non-mac';
+}
+
+// Update the send button label based on preferences and OS
+function updateSendButtonLabel() {
+  const useEnterToSend = getPreference<boolean>('useEnterToSend', false);
+  const os = detectOS();
+  const submitButton = document.querySelector('.submit') as HTMLButtonElement;
+  
+  if (!submitButton) return;
+  
+  if (useEnterToSend) {
+    submitButton.innerHTML = 'SEND <br/><br/>enter';
+  } else {
+    if (os === 'mac') {
+      submitButton.innerHTML = 'SEND <br/><br/>⌘ + enter';
+    } else {
+      submitButton.innerHTML = 'SEND <br/><br/>Ctrl + enter';
+    }
+  }
+}
+
 // Set initial toggle state based on stored preference
 const useEnterToSend = getPreference('useEnterToSend', false)
 enterToSendToggle.checked = useEnterToSend !== undefined ? useEnterToSend : false
@@ -209,7 +233,8 @@ document.addEventListener('click', (event) => {
 
 // Save preference when toggle changes
 enterToSendToggle.addEventListener('change', () => {
-  setPreference('useEnterToSend', enterToSendToggle.checked)
+  setPreference('useEnterToSend', enterToSendToggle.checked);
+  updateSendButtonLabel();
 })
 
 // Handle theme selection
@@ -222,6 +247,9 @@ document.querySelectorAll('input[name="theme"]').forEach((input) => {
     }
   })
 })
+
+// Update send button label based on preferences and OS
+updateSendButtonLabel();
 
 // Initial setup
 setupEventSource()
