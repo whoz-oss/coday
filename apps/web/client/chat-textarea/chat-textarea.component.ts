@@ -7,12 +7,41 @@ export class ChatTextareaComponent implements CodayEventHandler {
   private chatTextarea: HTMLTextAreaElement
   private chatLabel: HTMLLabelElement
   private expandToggle: HTMLButtonElement
+  private submitButton: HTMLButtonElement
   private inviteEvent: InviteEvent | undefined
+
+  /**
+   * Detect operating system for keyboard shortcuts
+   */
+  private detectOS(): 'mac' | 'non-mac' {
+    return navigator.platform.toLowerCase().includes('mac') ? 'mac' : 'non-mac'
+  }
+
+  /**
+   * Update the send button label based on preferences and OS
+   */
+  private updateSendButtonLabel(): void {
+    const useEnterToSend = getPreference<boolean>('useEnterToSend', false)
+    const os = this.detectOS()
+    
+    if (!this.submitButton) return
+    
+    if (useEnterToSend) {
+      this.submitButton.innerHTML = 'SEND <br/><br/>enter'
+    } else {
+      if (os === 'mac') {
+        this.submitButton.innerHTML = 'SEND <br/><br/>⌘ + enter'
+      } else {
+        this.submitButton.innerHTML = 'SEND <br/><br/>Ctrl + enter'
+      }
+    }
+  }
 
   constructor(private postEvent: (event: CodayEvent) => Promise<Response>) {
     this.chatForm = document.getElementById('chat-form') as HTMLFormElement
     this.chatTextarea = document.getElementById('chat-input') as HTMLTextAreaElement
     this.chatLabel = document.getElementById('chat-label') as HTMLLabelElement
+    this.submitButton = document.querySelector('.submit') as HTMLButtonElement
 
     this.chatForm.onsubmit = async (event) => {
       event.preventDefault()
@@ -26,12 +55,23 @@ export class ChatTextareaComponent implements CodayEventHandler {
     }
 
     this.chatTextarea.addEventListener('keydown', async (e) => {
-      const useEnterToSend = getPreference('useEnterToSend', false);
+      const useEnterToSend = getPreference<boolean>('useEnterToSend', false)
+      const os = this.detectOS()
       
       if ((useEnterToSend && e.key === 'Enter' && !e.shiftKey) || 
-          (!useEnterToSend && e.metaKey && e.key === 'Enter')) {
-        e.preventDefault();
-        await this.submit();
+          (!useEnterToSend && ((os === 'mac' && e.metaKey) || (os === 'non-mac' && e.ctrlKey)) && e.key === 'Enter')) {
+        e.preventDefault()
+        await this.submit()
+      }
+    })
+    
+    // Update the button label initially
+    this.updateSendButtonLabel()
+    
+    // Listen for preference changes
+    window.addEventListener('storage', (event) => {
+      if (event.key === 'coday-preferences') {
+        this.updateSendButtonLabel()
       }
     })
   }
