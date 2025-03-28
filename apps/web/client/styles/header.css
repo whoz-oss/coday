@@ -1,46 +1,46 @@
 header {
-  background-color: var(--color-bg-secondary);
-  padding: 0.5em;
-  border-bottom: 1px solid var(--color-border);
-  transition: background-color 0.3s ease, border-color 0.3s ease;
+    background-color: var(--color-bg-secondary);
+    padding: 0.5em;
+    border-bottom: 1px solid var(--color-border);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 /* Transparent overlay header */
 .overlay-header {
-  padding: 4px 8px; /* Reduced padding to minimize height */
-  text-align: right;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1000;
-  background-color: transparent;
+    padding: 4px 8px; /* Reduced padding to minimize height */
+    text-align: right;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    background-color: transparent;
 }
 
 /* Options button */
 #options-button {
-  background-color: var(--color-current-line-70);
-  padding: 5px 10px;
-  border-radius: 4px;
-  border: 1px solid var(--color-comment-50);
-  color: var(--color-foreground);
-  cursor: pointer;
+    background-color: var(--color-bg);
+    padding: 5px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--color-border);
+    color: var(--color-bg);
+    cursor: pointer;
 }
 
 #options-button:hover {
-  background-color: var(--color-current-line-90);
+    background-color: var(--color-bg-secondary);
 }
 
 /* Options panel */
 #options-panel {
-  display: none;
-  padding: 10px;
-  background-color: var(--color-background);
-  position: absolute;
-  right: 8px;
-  top: 35px; /* Adjusted to match reduced header height */
-  border: 1px solid var(--color-border);
-  z-index: 1000;
-  box-shadow: 0 4px 8px var(--color-shadow);
-  border-radius: 4px;
+    display: none;
+    padding: 10px;
+    background-color: var(--color-bg-secondary);
+    position: absolute;
+    right: 8px;
+    top: 35px; /* Adjusted to match reduced header height */
+    border: 1px solid var(--color-border);
+    z-index: 1000;
+    box-shadow: 0 4px 8px var(--color-shadow);
+    border-radius: 4px;
 }

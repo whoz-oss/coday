@@ -6,58 +6,58 @@
  */
 
 :root {
-  /* Light Theme (Default) */
-  
-  /* Base Colors */
-  --color-bg: #f8f8f2;
-  --color-bg-secondary: #f1f1eb;
-  --color-text: #282a36;
-  --color-text-secondary: #6272a4;
-  
-  /* Interactive Elements */
-  --color-primary: #bd93f9;
-  --color-primary-hover: #ff79c6;
-  --color-border: #d8d8d8;
-  --color-input-bg: #ffffff;
-  
-  /* Status Colors */
-  --color-success: #50fa7b;
-  --color-error: #ff5555;
-  --color-warning: #ffb86c;
-  --color-info: #8be9fd;
-  
-  /* Application-Specific */
-  --color-message-user: #e4e4f1;
-  --color-message-ai: #f1f1eb;
-  --color-code-bg: #f1f1eb;
-  
-  /* Utility Colors */
-  --color-shadow: rgba(0, 0, 0, 0.1);
-  --color-overlay: rgba(0, 0, 0, 0.3);
+    /* Light Theme (Default) */
+
+    /* Base Colors */
+    --color-bg: #f8f8f2;
+    --color-bg-secondary: #f1f1eb;
+    --color-text: #282a36;
+    --color-text-secondary: #6272a4;
+
+    /* Interactive Elements */
+    --color-primary: #7064fb;
+    --color-primary-hover: #ff79c6;
+    --color-border: #aeaeae;
+    --color-input-bg: #ffffff;
+
+    /* Status Colors */
+    --color-success: #50fa7b;
+    --color-error: #ff5555;
+    --color-warning: #ffb86c;
+    --color-info: #8be9fd;
+
+    /* Application-Specific */
+    --color-message-user: #e0e0e0;
+    --color-message-ai: #f6f2e8;
+    --color-code-bg: #f1f1eb;
+
+    /* Utility Colors */
+    --color-shadow: rgba(0, 0, 0, 0.1);
+    --color-overlay: rgba(0, 0, 0, 0.3);
 }
 
 /* Dark Theme */
 [data-theme="dark"] {
-  /* Base Colors */
-  --color-bg: #282a36;
-  --color-bg-secondary: #44475a;
-  --color-text: #f8f8f2;
-  --color-text-secondary: #6272a4;
-  
-  /* Interactive Elements */
-  --color-primary: #bd93f9;
-  --color-primary-hover: #ff79c6;
-  --color-border: #6272a4;
-  --color-input-bg: #282a36;
-  
-  /* Status Colors remain the same for consistency */
-  
-  /* Application-Specific */
-  --color-message-user: #6272a4;
-  --color-message-ai: #44475a;
-  --color-code-bg: #44475a;
-  
-  /* Utility Colors */
-  --color-shadow: rgba(0, 0, 0, 0.3);
-  --color-overlay: rgba(0, 0, 0, 0.7);
+    /* Base Colors */
+    --color-bg: #282a36;
+    --color-bg-secondary: #44475a;
+    --color-text: #f8f8f2;
+    --color-text-secondary: #6272a4;
+
+    /* Interactive Elements */
+    --color-primary: #bd93f9;
+    --color-primary-hover: #ff79c6;
+    --color-border: #6272a4;
+    --color-input-bg: #282a36;
+
+    /* Status Colors remain the same for consistency */
+
+    /* Application-Specific */
+    --color-message-user: #6272a4;
+    --color-message-ai: #44475a;
+    --color-code-bg: #44475a;
+
+    /* Utility Colors */
+    --color-shadow: rgba(0, 0, 0, 0.3);
+    --color-overlay: rgba(0, 0, 0, 0.7);
 }
