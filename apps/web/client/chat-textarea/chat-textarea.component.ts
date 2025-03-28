@@ -1,5 +1,6 @@
 import { CodayEvent, InviteEvent } from '@coday/shared/coday-events'
 import { CodayEventHandler } from '../utils/coday-event-handler'
+import { getPreference } from '../utils/preferences'
 
 export class ChatTextareaComponent implements CodayEventHandler {
   private chatForm: HTMLFormElement
@@ -25,9 +26,12 @@ export class ChatTextareaComponent implements CodayEventHandler {
     }
 
     this.chatTextarea.addEventListener('keydown', async (e) => {
-      if (e.metaKey && e.key === 'Enter') {
-        e.preventDefault()
-        await this.submit()
+      const useEnterToSend = getPreference('useEnterToSend', false);
+      
+      if ((useEnterToSend && e.key === 'Enter' && !e.shiftKey) || 
+          (!useEnterToSend && e.metaKey && e.key === 'Enter')) {
+        e.preventDefault();
+        await this.submit();
       }
     })
   }

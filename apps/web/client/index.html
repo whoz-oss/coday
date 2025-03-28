@@ -14,6 +14,18 @@
     <link rel="stylesheet" href="choice-select/choice-select.css" />
   </head>
   <body>
+    <!-- Super simple options button -->
+    <div style="padding: 8px; background-color: #44475a; text-align: right;">
+      <button id="options-button">⚙️ Options</button>
+      <div id="options-panel" style="display: none; padding: 10px; background-color: #282a36; position: absolute; right: 8px; border: 1px solid #6272a4; z-index: 100;">
+        <div>
+          <label>
+            <input type="checkbox" id="enter-to-send-toggle">
+            Use Enter to send (Shift+Enter for new line)
+          </label>
+        </div>
+      </div>
+    </div>
     <main>
       <div id="chat-history">
         <div id="thinking-dots" class="text right">

@@ -4,6 +4,7 @@ import { ChatHistoryComponent } from './chat-history/chat-history.component'
 import { buildCodayEvent, CodayEvent, ErrorEvent } from '@coday/shared/coday-events'
 import { CodayEventHandler } from './utils/coday-event-handler'
 import { HeaderComponent } from './header/header.component'
+import { getPreference, setPreference } from './utils/preferences'
 
 // Debug logging function
 function debugLog(context: string, ...args: any[]) {
@@ -137,6 +138,37 @@ components.forEach((c) => {
     originalHandle(event)
   }
 })
+
+
+
+// Simple options panel setup
+const optionsButton = document.getElementById('options-button') as HTMLButtonElement;
+const optionsPanel = document.getElementById('options-panel') as HTMLDivElement;
+const enterToSendToggle = document.getElementById('enter-to-send-toggle') as HTMLInputElement;
+
+// Set initial toggle state based on stored preference
+const useEnterToSend = getPreference('useEnterToSend', false);
+enterToSendToggle.checked = useEnterToSend !== undefined ? useEnterToSend : false;
+
+// Toggle panel visibility when options button is clicked
+optionsButton.addEventListener('click', (event) => {
+  event.stopPropagation();
+  const isVisible = optionsPanel.style.display === 'block';
+  optionsPanel.style.display = isVisible ? 'none' : 'block';
+});
+
+// Close panel when clicking elsewhere
+document.addEventListener('click', (event) => {
+  if (!optionsPanel.contains(event.target as Node) && 
+      event.target !== optionsButton) {
+    optionsPanel.style.display = 'none';
+  }
+});
+
+// Save preference when toggle changes
+enterToSendToggle.addEventListener('change', () => {
+  setPreference('useEnterToSend', enterToSendToggle.checked);
+});
 
 // Initial setup
 setupEventSource()
