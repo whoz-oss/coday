@@ -15,3 +15,9 @@ h1 {
   margin: 0;
   color: var(--color-primary-hover);
 }
+
+/* Text selection styling */
+::selection {
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse, #ffffff);
+}

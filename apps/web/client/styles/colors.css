@@ -13,6 +13,7 @@
     --color-bg-secondary: #f1f1eb;
     --color-text: #282a36;
     --color-text-secondary: #6272a4;
+    --color-text-inverse: #ffffff;
 
     /* Interactive Elements */
     --color-primary: #7064fb;
@@ -43,6 +44,7 @@
     --color-bg-secondary: #44475a;
     --color-text: #f8f8f2;
     --color-text-secondary: #6272a4;
+    --color-text-inverse: #ffffff;
 
     /* Interactive Elements */
     --color-primary: #bd93f9;
