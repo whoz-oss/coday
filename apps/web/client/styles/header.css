@@ -8,7 +8,7 @@ header {
 /* Transparent overlay header */
 .overlay-header {
     padding: 4px 8px; /* Reduced padding to minimize height */
-    text-align: right;
+    text-align: end;
     position: fixed;
     top: 0;
     left: 0;
@@ -34,6 +34,7 @@ header {
 /* Options panel */
 #options-panel {
     display: none;
+    text-align: start;
     padding: 10px;
     background-color: var(--color-bg-secondary);
     position: absolute;
@@ -43,4 +44,6 @@ header {
     z-index: 1000;
     box-shadow: 0 4px 8px var(--color-shadow);
     border-radius: 4px;
+    flex-direction: column;
+    align-items: flex-start;
 }

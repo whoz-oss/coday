@@ -21,7 +21,7 @@
 
 #choice-select option {
     background-color: var(--color-bg);
-    color: var(--color-text-secondary);
+    color: var(--color-text);
     padding: 0.5em;
 }
 
@@ -31,7 +31,7 @@
 }
 
 #choices-label {
-    color: var(--color-text-secondary);
+    color: var(--color-text);
     margin-bottom: 0.5em;
     font-family: 'JetBrains Mono', monospace;
 }

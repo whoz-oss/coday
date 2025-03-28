@@ -111,7 +111,9 @@ function setupEventSource() {
         components.forEach((c) =>
           c.handle(
             new ErrorEvent({
-              error: new Error(`Connection lost. Attempting to reconnect (${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`),
+              error: new Error(
+                `Connection lost. Attempting to reconnect (${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`
+              ),
             })
           )
         )
@@ -139,90 +141,87 @@ components.forEach((c) => {
   }
 })
 
-
-
 // Simple options panel setup
-const optionsButton = document.getElementById('options-button') as HTMLButtonElement;
-const optionsPanel = document.getElementById('options-panel') as HTMLDivElement;
-const enterToSendToggle = document.getElementById('enter-to-send-toggle') as HTMLInputElement;
-const themeLight = document.getElementById('theme-light') as HTMLInputElement;
-const themeDark = document.getElementById('theme-dark') as HTMLInputElement;
-const themeSystem = document.getElementById('theme-system') as HTMLInputElement;
+const optionsButton = document.getElementById('options-button') as HTMLButtonElement
+const optionsPanel = document.getElementById('options-panel') as HTMLDivElement
+const enterToSendToggle = document.getElementById('enter-to-send-toggle') as HTMLInputElement
+const themeLight = document.getElementById('theme-light') as HTMLInputElement
+const themeDark = document.getElementById('theme-dark') as HTMLInputElement
+const themeSystem = document.getElementById('theme-system') as HTMLInputElement
 
 // Set initial toggle state based on stored preference
-const useEnterToSend = getPreference('useEnterToSend', false);
-enterToSendToggle.checked = useEnterToSend !== undefined ? useEnterToSend : false;
+const useEnterToSend = getPreference('useEnterToSend', false)
+enterToSendToggle.checked = useEnterToSend !== undefined ? useEnterToSend : false
 
 // Apply theme based on preference or system setting
 function applyTheme() {
-  const savedTheme = getPreference<string>('theme', 'light');
-  
+  const savedTheme = getPreference<string>('theme', 'light')
+
   // Update radio buttons to match saved preference
-  themeLight.checked = savedTheme === 'light';
-  themeDark.checked = savedTheme === 'dark';
-  themeSystem.checked = savedTheme === 'system';
-  
+  themeLight.checked = savedTheme === 'light'
+  themeDark.checked = savedTheme === 'dark'
+  themeSystem.checked = savedTheme === 'system'
+
   if (savedTheme === 'system') {
     // Check system preference
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
     if (prefersDark) {
-      document.documentElement.setAttribute('data-theme', 'dark');
+      document.documentElement.setAttribute('data-theme', 'dark')
     } else {
-      document.documentElement.removeAttribute('data-theme');
+      document.documentElement.removeAttribute('data-theme')
     }
   } else if (savedTheme === 'dark') {
-    document.documentElement.setAttribute('data-theme', 'dark');
+    document.documentElement.setAttribute('data-theme', 'dark')
   } else {
     // Light theme is default
-    document.documentElement.removeAttribute('data-theme');
+    document.documentElement.removeAttribute('data-theme')
   }
 }
 
 // Apply theme on page load
-applyTheme();
+applyTheme()
 
 // Listen for system theme changes
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-  const savedTheme = getPreference<string>('theme', 'light');
+  const savedTheme = getPreference<string>('theme', 'light')
   if (savedTheme === 'system') {
     if (e.matches) {
-      document.documentElement.setAttribute('data-theme', 'dark');
+      document.documentElement.setAttribute('data-theme', 'dark')
     } else {
-      document.documentElement.removeAttribute('data-theme');
+      document.documentElement.removeAttribute('data-theme')
     }
   }
-});
+})
 
 // Toggle panel visibility when options button is clicked
 optionsButton.addEventListener('click', (event) => {
-  event.stopPropagation();
-  const isVisible = optionsPanel.style.display === 'block';
-  optionsPanel.style.display = isVisible ? 'none' : 'block';
-});
+  event.stopPropagation()
+  const isVisible = optionsPanel.style.display === 'block'
+  optionsPanel.style.display = isVisible ? 'none' : 'flex'
+})
 
 // Close panel when clicking elsewhere
 document.addEventListener('click', (event) => {
-  if (!optionsPanel.contains(event.target as Node) && 
-      event.target !== optionsButton) {
-    optionsPanel.style.display = 'none';
+  if (!optionsPanel.contains(event.target as Node) && event.target !== optionsButton) {
+    optionsPanel.style.display = 'none'
   }
-});
+})
 
 // Save preference when toggle changes
 enterToSendToggle.addEventListener('change', () => {
-  setPreference('useEnterToSend', enterToSendToggle.checked);
-});
+  setPreference('useEnterToSend', enterToSendToggle.checked)
+})
 
 // Handle theme selection
 document.querySelectorAll('input[name="theme"]').forEach((input) => {
   input.addEventListener('change', (e) => {
-    const target = e.target as HTMLInputElement;
+    const target = e.target as HTMLInputElement
     if (target.checked) {
-      setPreference('theme', target.value);
-      applyTheme();
+      setPreference('theme', target.value)
+      applyTheme()
     }
-  });
-});
+  })
+})
 
 // Initial setup
 setupEventSource()
