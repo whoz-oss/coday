@@ -9,6 +9,7 @@ export class ChatTextareaComponent implements CodayEventHandler {
   private expandToggle: HTMLButtonElement
   private submitButton: HTMLButtonElement
   private inviteEvent: InviteEvent | undefined
+  private readonly os: 'mac' | 'non-mac'
 
   /**
    * Detect operating system for keyboard shortcuts
@@ -22,14 +23,13 @@ export class ChatTextareaComponent implements CodayEventHandler {
    */
   private updateSendButtonLabel(): void {
     const useEnterToSend = getPreference<boolean>('useEnterToSend', false)
-    const os = this.detectOS()
     
     if (!this.submitButton) return
     
     if (useEnterToSend) {
       this.submitButton.innerHTML = 'SEND <br/><br/>enter'
     } else {
-      if (os === 'mac') {
+      if (this.os === 'mac') {
         this.submitButton.innerHTML = 'SEND <br/><br/>⌘ + enter'
       } else {
         this.submitButton.innerHTML = 'SEND <br/><br/>Ctrl + enter'
@@ -38,6 +38,9 @@ export class ChatTextareaComponent implements CodayEventHandler {
   }
 
   constructor(private postEvent: (event: CodayEvent) => Promise<Response>) {
+    // Detect OS once during initialization
+    this.os = this.detectOS()
+    
     this.chatForm = document.getElementById('chat-form') as HTMLFormElement
     this.chatTextarea = document.getElementById('chat-input') as HTMLTextAreaElement
     this.chatLabel = document.getElementById('chat-label') as HTMLLabelElement
@@ -56,10 +59,9 @@ export class ChatTextareaComponent implements CodayEventHandler {
 
     this.chatTextarea.addEventListener('keydown', async (e) => {
       const useEnterToSend = getPreference<boolean>('useEnterToSend', false)
-      const os = this.detectOS()
       
       if ((useEnterToSend && e.key === 'Enter' && !e.shiftKey) || 
-          (!useEnterToSend && ((os === 'mac' && e.metaKey) || (os === 'non-mac' && e.ctrlKey)) && e.key === 'Enter')) {
+          (!useEnterToSend && ((this.os === 'mac' && e.metaKey) || (this.os === 'non-mac' && e.ctrlKey)) && e.key === 'Enter')) {
         e.preventDefault()
         await this.submit()
       }
