@@ -60,10 +60,18 @@ export class ChatTextareaComponent implements CodayEventHandler {
     this.chatTextarea.addEventListener('keydown', async (e) => {
       const useEnterToSend = getPreference<boolean>('useEnterToSend', false)
       
-      if ((useEnterToSend && e.key === 'Enter' && !e.shiftKey) || 
-          (!useEnterToSend && ((this.os === 'mac' && e.metaKey) || (this.os === 'non-mac' && e.ctrlKey)) && e.key === 'Enter')) {
-        e.preventDefault()
-        await this.submit()
+      if (useEnterToSend) {
+        // When Enter to Send is enabled, only handle plain Enter (without Shift)
+        if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+          e.preventDefault()
+          await this.submit()
+        }
+      } else {
+        // When Enter to Send is disabled, use OS-specific shortcuts
+        if (e.key === 'Enter' && ((this.os === 'mac' && e.metaKey) || (this.os === 'non-mac' && e.ctrlKey))) {
+          e.preventDefault()
+          await this.submit()
+        }
       }
     })
     
