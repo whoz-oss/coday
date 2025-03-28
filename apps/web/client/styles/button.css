@@ -1,8 +1,8 @@
 button {
   padding: 0.5em;
   margin: 0.2em;
-  background-color: #bd93f9;
-  color: #f8f8f2;
+  background-color: var(--color-button-bg);
+  color: var(--color-foreground);
   border: none;
   border-radius: 0.5em;
   cursor: pointer;
@@ -12,5 +12,5 @@ button {
 }
 
 button:hover {
-  background-color: #ff79c6;
+  background-color: var(--color-button-hover);
 }
