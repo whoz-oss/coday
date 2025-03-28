@@ -19,11 +19,32 @@
 <div class="overlay-header">
     <button id="options-button">⚙️</button>
     <div id="options-panel">
-        <div>
+        <div style="margin-bottom: 10px;">
             <label>
                 <input type="checkbox" id="enter-to-send-toggle">
                 Use Enter to send (Shift+Enter for new line)
             </label>
+        </div>
+        <div>
+            <p style="margin: 5px 0;">Theme:</p>
+            <div>
+                <label>
+                    <input type="radio" name="theme" value="light" id="theme-light">
+                    Light
+                </label>
+            </div>
+            <div>
+                <label>
+                    <input type="radio" name="theme" value="dark" id="theme-dark">
+                    Dark
+                </label>
+            </div>
+            <div>
+                <label>
+                    <input type="radio" name="theme" value="system" id="theme-system">
+                    System
+                </label>
+            </div>
         </div>
     </div>
 </div>

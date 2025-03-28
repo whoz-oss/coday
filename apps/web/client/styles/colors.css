@@ -1,62 +1,63 @@
 /**
- * Coday Color Variables (Dracula Theme)
+ * Coday Color Variables
  * 
- * This file defines all color variables used throughout the application.
- * Use these variables instead of hardcoded color values to maintain consistency
- * and make theme changes easier.
+ * A simplified theme system with essential color variables.
+ * Default theme is light, with dark theme available via data-theme="dark".
  */
 
 :root {
+  /* Light Theme (Default) */
+  
   /* Base Colors */
-  --color-background: #282a36;         /* Main background color */
-  --color-current-line: #44475a;       /* Secondary background, highlights, panels */
-  --color-foreground: #f8f8f2;         /* Primary text color */
-  --color-comment: #6272a4;            /* Secondary text, comments, less important elements */
+  --color-bg: #f8f8f2;
+  --color-bg-secondary: #f1f1eb;
+  --color-text: #282a36;
+  --color-text-secondary: #6272a4;
   
-  /* Accent Colors */
-  --color-cyan: #8be9fd;               /* Cyan accent */
-  --color-green: #50fa7b;              /* Green accent */
-  --color-orange: #ffb86c;             /* Orange accent */
-  --color-pink: #ff79c6;               /* Pink accent */
-  --color-purple: #bd93f9;             /* Purple accent */
-  --color-red: #ff5555;                /* Red accent */
-  --color-yellow: #f1fa8c;             /* Yellow accent */
+  /* Interactive Elements */
+  --color-primary: #bd93f9;
+  --color-primary-hover: #ff79c6;
+  --color-border: #d8d8d8;
+  --color-input-bg: #ffffff;
   
-  /* Semantic Colors (based on usage) */
-  --color-primary: var(--color-purple);       /* Primary interactive elements */
-  --color-primary-hover: var(--color-pink);   /* Hover state for primary elements */
-  --color-secondary: var(--color-comment);    /* Secondary elements */
-  --color-border: var(--color-comment);       /* Borders */
-  --color-shadow: rgba(0, 0, 0, 0.3);         /* Shadows */
-  --color-error: var(--color-red);            /* Error states */
-  --color-success: var(--color-green);        /* Success states */
-  --color-warning: var(--color-orange);       /* Warning states */
-  --color-info: var(--color-cyan);            /* Info states */
+  /* Status Colors */
+  --color-success: #50fa7b;
+  --color-error: #ff5555;
+  --color-warning: #ffb86c;
+  --color-info: #8be9fd;
   
-  /* Component-specific Colors */
-  --color-header-bg: var(--color-current-line);
-  --color-footer-bg: var(--color-current-line);
-  --color-input-bg: var(--color-background);
-  --color-button-bg: var(--color-purple);
-  --color-button-hover: var(--color-pink);
-  --color-message-user-bg: var(--color-comment);
-  --color-message-ai-bg: var(--color-current-line);
-  --color-code-bg: var(--color-current-line);
-  --color-highlight: var(--color-purple);
+  /* Application-Specific */
+  --color-message-user: #e4e4f1;
+  --color-message-ai: #f1f1eb;
+  --color-code-bg: #f1f1eb;
   
-  /* Transparent Variants */
-  --color-current-line-70: rgba(68, 71, 90, 0.7);
-  --color-current-line-90: rgba(68, 71, 90, 0.9);
-  --color-purple-20: rgba(189, 147, 249, 0.2);
-  --color-comment-50: rgba(98, 114, 164, 0.5);
+  /* Utility Colors */
+  --color-shadow: rgba(0, 0, 0, 0.1);
+  --color-overlay: rgba(0, 0, 0, 0.3);
 }
 
-/* Dark theme is default, but we can add a light theme or other themes */
-[data-theme="light"] {
-  /* Light theme variables would go here */
-  /* Example:
-  --color-background: #f8f8f2;
-  --color-foreground: #282a36;
-  etc.
-  */
+/* Dark Theme */
+[data-theme="dark"] {
+  /* Base Colors */
+  --color-bg: #282a36;
+  --color-bg-secondary: #44475a;
+  --color-text: #f8f8f2;
+  --color-text-secondary: #6272a4;
+  
+  /* Interactive Elements */
+  --color-primary: #bd93f9;
+  --color-primary-hover: #ff79c6;
+  --color-border: #6272a4;
+  --color-input-bg: #282a36;
+  
+  /* Status Colors remain the same for consistency */
+  
+  /* Application-Specific */
+  --color-message-user: #6272a4;
+  --color-message-ai: #44475a;
+  --color-code-bg: #44475a;
+  
+  /* Utility Colors */
+  --color-shadow: rgba(0, 0, 0, 0.3);
+  --color-overlay: rgba(0, 0, 0, 0.7);
 }
