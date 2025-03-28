@@ -64,7 +64,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
 
   addTechnical(text: string): void {
     const newEntry = this.createMessageElement(text, undefined)
-    newEntry.classList.add('technical', 'left')
+    newEntry.classList.add('technical')
     this.appendMessageElement(newEntry)
   }
 

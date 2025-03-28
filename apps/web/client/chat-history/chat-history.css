@@ -48,7 +48,7 @@
 }
 
 .technical {
-    align-self: flex-end;
+    align-self: flex-start;
     color: var(--color-text-secondary);
     font-style: italic;
 }
