@@ -2,7 +2,7 @@ import { CommandContext, Interactor } from '../../model'
 import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { UserService } from '../../service/user.service'
 import { ProjectService } from '../../service/project.service'
-import { McpServerConfig } from '../../model/user-config'
+import { McpServerConfig } from '../../model/mcp-server-config'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
@@ -158,22 +158,42 @@ export class McpToolsFactory extends AssistantToolFactory {
       // Get MCP servers from user config
       const userMcpServers = this.userService.config.mcp?.servers || []
 
-      // Get MCP servers from project data
+      // Get MCP servers from project config
       const projectMcpServers: McpServerConfig[] = []
-      if (context.data.mcp?.servers) {
-        projectMcpServers.push(...context.data.mcp.servers)
+      const selectedProject = this.projectService.selectedProject
+      if (selectedProject?.config.mcp?.servers) {
+        projectMcpServers.push(...selectedProject.config.mcp.servers)
       }
 
-      // Combine configurations, with project configs taking precedence
-      const allServers = [...userMcpServers]
+      // Get MCP servers from context data (temporary runtime configuration)
+      const contextMcpServers: McpServerConfig[] = []
+      if (context.data.mcp?.servers) {
+        contextMcpServers.push(...context.data.mcp.servers)
+      }
 
-      // Add or override with project servers
-      for (const projectServer of projectMcpServers) {
-        const existingIndex = allServers.findIndex((s) => s.id === projectServer.id)
+      // Combine configurations, with this precedence order:
+      // 1. Context data (highest priority - temporary runtime configuration)
+      // 2. User config (overrides project defaults)
+      // 3. Project config (lowest priority - project defaults)
+      const allServers = [...projectMcpServers]
+
+      // Add or override with user servers
+      for (const userServer of userMcpServers) {
+        const existingIndex = allServers.findIndex((s) => s.id === userServer.id)
         if (existingIndex >= 0) {
-          allServers[existingIndex] = projectServer
+          allServers[existingIndex] = userServer
         } else {
-          allServers.push(projectServer)
+          allServers.push(userServer)
+        }
+      }
+
+      // Add or override with context servers (highest priority)
+      for (const contextServer of contextMcpServers) {
+        const existingIndex = allServers.findIndex((s) => s.id === contextServer.id)
+        if (existingIndex >= 0) {
+          allServers[existingIndex] = contextServer
+        } else {
+          allServers.push(contextServer)
         }
       }
 

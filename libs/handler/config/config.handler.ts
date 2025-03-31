@@ -27,7 +27,7 @@ export class ConfigHandler extends NestedHandler {
       new IntegrationHandler(this.interactor, this.services),
       new AiConfigHandler(this.interactor, this.services),
       new DefaultAgentHandler(this.interactor, this.services),
-      new McpConfigHandler(this.interactor, this.services.user),
+      new McpConfigHandler(this.interactor, this.services),
     ]
   }
 }

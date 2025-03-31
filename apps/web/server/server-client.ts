@@ -8,6 +8,7 @@ import { UserService } from '@coday/service/user.service'
 import { ProjectService } from '@coday/service/project.service'
 import { IntegrationService } from '@coday/service/integration.service'
 import { MemoryService } from '@coday/service/memory.service'
+import { McpConfigService } from '@coday/service/mcp-config.service'
 import { debugLog } from './log'
 
 export class ServerClient {
@@ -78,6 +79,7 @@ export class ServerClient {
     const project = new ProjectService(this.interactor, this.options.configDir)
     const integration = new IntegrationService(project, user)
     const memory = new MemoryService(project, user)
+    const mcp = new McpConfigService(user, project, this.interactor)
 
     debugLog('CODAY', `Creating new Coday instance for client ${this.clientId}`)
     this.coday = new Coday(this.interactor, this.options, {
@@ -85,6 +87,7 @@ export class ServerClient {
       project,
       integration,
       memory,
+      mcp,
     })
     this.coday.run().finally(() => {
       debugLog('CODAY', `Coday run finished for client ${this.clientId}`)

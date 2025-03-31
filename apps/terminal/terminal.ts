@@ -7,6 +7,7 @@ import { UserService } from '@coday/service/user.service'
 import { ProjectService } from '@coday/service/project.service'
 import { IntegrationService } from '@coday/service/integration.service'
 import { MemoryService } from '@coday/service/memory.service'
+import { McpConfigService } from '@coday/service/mcp-config.service'
 
 const options = parseCodayOptions()
 
@@ -18,10 +19,12 @@ const user = new UserService(options.configDir, username)
 const project = new ProjectService(interactor, options.configDir)
 const integration = new IntegrationService(project, user)
 const memory = new MemoryService(project, user)
+const mcp = new McpConfigService(user, project, interactor)
 
 new Coday(interactor, options, {
   user,
   project,
   integration,
   memory,
+  mcp,
 }).run()
