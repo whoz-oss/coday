@@ -1,7 +1,7 @@
-import { Interactor } from '../model/interactor'
-import { UserService } from './user.service'
-import { ProjectService } from './project.service'
-import { McpServerConfig } from '../model/mcp-server-config'
+import {Interactor} from '../model/interactor'
+import {UserService} from './user.service'
+import {ProjectService} from './project.service'
+import {McpServerConfig} from '../model/mcp-server-config'
 
 /**
  * Service for managing MCP (Model Context Protocol) server configurations
@@ -21,19 +21,17 @@ export class McpConfigService {
   async listServers(isProjectLevel: boolean = false): Promise<void> {
     const servers = this.getServers(isProjectLevel)
     const levelName = isProjectLevel ? 'project' : 'user'
-    
+
     if (isProjectLevel && !this.projectService.selectedProject) {
       this.interactor.error('No project selected. Please select a project first.')
       return
     }
-    
+
     const projectName = isProjectLevel ? this.projectService.selectedProject?.name : undefined
-    const headerText = projectName 
-      ? `Project-level MCP servers for project: ${projectName}`
-      : 'User-level MCP servers:'
-    
+    const headerText = projectName ? `Project-level MCP servers for project: ${projectName}` : 'User-level MCP servers:'
+
     this.interactor.displayText(headerText)
-    
+
     if (servers.length === 0) {
       this.interactor.displayText(`No ${levelName}-level MCP servers configured.`)
       this.interactor.displayText(`\nTo add a ${levelName}-level MCP server, use:`)
@@ -72,7 +70,7 @@ export class McpConfigService {
         this.interactor.displayText(`  Note: Only local command-based MCP servers are currently supported.`)
       }
     }
-    
+
     // If showing user-level servers, mention project-level ones if they exist
     if (!isProjectLevel && this.hasProjectServers()) {
       this.interactor.displayText('\nNote: Project-level MCP servers are also configured for this project.')
@@ -90,13 +88,13 @@ export class McpConfigService {
       this.interactor.error('No project selected. Please select a project first.')
       return
     }
-    
+
     // Get existing servers for the specified level
     const existingServers = this.getServers(isProjectLevel)
-    
+
     // Determine if this is an update or a new server
-    const isUpdate = config.id && existingServers.some(s => s.id === config.id)
-    
+    const isUpdate = config.id && existingServers.some((s) => s.id === config.id)
+
     // Validate required fields
     if (!config.id) {
       this.interactor.error('Server ID is required')
@@ -115,16 +113,18 @@ export class McpConfigService {
       )
       return
     }
-    
+
     // For now, validate that either URL or command is provided
     if (!config.command && !config.url) {
       this.interactor.error('Either command or URL is required.')
       return
     }
-    
+
     // Warn about URL-based servers not being supported
     if (config.url) {
-      this.interactor.warn('Remote HTTP/HTTPS MCP servers are not currently supported. Using local command-based servers is recommended.')
+      this.interactor.warn(
+        'Remote HTTP/HTTPS MCP servers are not currently supported. Using local command-based servers is recommended.'
+      )
     }
 
     // Ensure config has all required fields by merging with existing or defaults
@@ -138,12 +138,12 @@ export class McpConfigService {
       cwd: config.cwd,
       authToken: config.authToken,
       enabled: config.enabled ?? true,
-      allowedTools: config.allowedTools
+      allowedTools: config.allowedTools,
     }
 
     // Save the configuration at the appropriate level
     await this.saveServer(serverConfig, isProjectLevel)
-    
+
     const levelName = isProjectLevel ? 'project-level' : 'user-level'
     const actionName = isUpdate ? 'Updated' : 'Added'
     this.interactor.displayText(`${actionName} ${levelName} MCP server: ${serverConfig.name}`)
@@ -159,9 +159,9 @@ export class McpConfigService {
       this.interactor.error('No project selected. Please select a project first.')
       return
     }
-    
+
     const servers = this.getServers(isProjectLevel)
-    
+
     // Find server with this ID
     const existingIndex = servers.findIndex((s) => s.id === serverId)
     if (existingIndex < 0) {
@@ -177,7 +177,7 @@ export class McpConfigService {
       `Are you sure you want to remove ${levelName} MCP server "${serverName}" (${serverId})? (y/n)`,
       'y'
     )
-    
+
     if (confirmAnswer.toLowerCase() !== 'y') {
       this.interactor.displayText('Operation canceled.')
       return
@@ -202,9 +202,9 @@ export class McpConfigService {
       this.interactor.error('No project selected. Please select a project first.')
       return
     }
-    
+
     const servers = this.getServers(isProjectLevel)
-    
+
     // Find server with this ID
     const existingIndex = servers.findIndex((s) => s.id === serverId)
     if (existingIndex < 0) {
@@ -214,7 +214,7 @@ export class McpConfigService {
 
     const serverName = servers[existingIndex].name
     const levelName = isProjectLevel ? 'Project-level' : 'User-level'
-    
+
     // Check if server is already in the desired state
     if (servers[existingIndex].enabled === enabled) {
       this.interactor.displayText(`MCP server "${serverName}" is already ${enabled ? 'enabled' : 'disabled'}.`)
@@ -226,29 +226,25 @@ export class McpConfigService {
 
     // Save updated configuration
     await this.saveServers(servers, isProjectLevel)
-    
+
     const status = enabled ? 'enabled' : 'disabled'
     this.interactor.displayText(`${levelName} MCP server "${serverName}" is now ${status}`)
   }
-  
+
   /**
    * Set the allowed tools for an MCP server
    * @param serverId ID of the server
    * @param tools Array of tool names to allow (empty array means all tools)
    * @param isProjectLevel Whether to modify project config instead of user config
    */
-  async setServerAllowedTools(
-    serverId: string, 
-    tools: string[], 
-    isProjectLevel: boolean = false
-  ): Promise<void> {
+  async setServerAllowedTools(serverId: string, tools: string[], isProjectLevel: boolean = false): Promise<void> {
     if (isProjectLevel && !this.projectService.selectedProject) {
       this.interactor.error('No project selected. Please select a project first.')
       return
     }
-    
+
     const servers = this.getServers(isProjectLevel)
-    
+
     // Find server with this ID
     const existingIndex = servers.findIndex((s) => s.id === serverId)
     if (existingIndex < 0) {
@@ -258,24 +254,20 @@ export class McpConfigService {
 
     const serverName = servers[existingIndex].name
     const levelName = isProjectLevel ? 'Project-level' : 'User-level'
-    
+
     // Update allowed tools
     servers[existingIndex].allowedTools = tools.length > 0 ? tools : undefined
-    
+
     // Save updated configuration
     await this.saveServers(servers, isProjectLevel)
-    
+
     if (tools.length > 0) {
-      this.interactor.displayText(
-        `${levelName} MCP server "${serverName}" now allows these tools: ${tools.join(', ')}`
-      )
+      this.interactor.displayText(`${levelName} MCP server "${serverName}" now allows these tools: ${tools.join(', ')}`)
     } else {
-      this.interactor.displayText(
-        `${levelName} MCP server "${serverName}" now allows all tools`
-      )
+      this.interactor.displayText(`${levelName} MCP server "${serverName}" now allows all tools`)
     }
   }
-  
+
   /**
    * Get servers from the selected level (user or project)
    */
@@ -290,25 +282,21 @@ export class McpConfigService {
       return this.userService.config.mcp?.servers || []
     }
   }
-  
+
   /**
    * Check if the current project has any MCP servers configured
    */
   hasProjectServers(): boolean {
     const project = this.projectService.selectedProject
-    return !!(
-      project && 
-      project.config.mcp?.servers && 
-      project.config.mcp.servers.length > 0
-    )
+    return !!(project && project.config.mcp?.servers && project.config.mcp.servers.length > 0)
   }
-  
+
   /**
    * Save an individual server (add or update)
    */
-  private async saveServer(serverConfig: McpServerConfig, isProjectLevel: boolean): Promise<void> {
+  public async saveServer(serverConfig: McpServerConfig, isProjectLevel: boolean): Promise<void> {
     const servers = this.getServers(isProjectLevel)
-    
+
     // Check if server with this ID already exists
     const existingIndex = servers.findIndex((s) => s.id === serverConfig.id)
     if (existingIndex >= 0) {
@@ -316,10 +304,10 @@ export class McpConfigService {
     } else {
       servers.push(serverConfig)
     }
-    
+
     await this.saveServers(servers, isProjectLevel)
   }
-  
+
   /**
    * Save the full list of servers
    */
@@ -329,33 +317,33 @@ export class McpConfigService {
       if (!project) {
         return
       }
-      
+
       this.projectService.save({
         mcp: {
-          servers
-        }
+          servers,
+        },
       })
     } else {
       if (!this.userService.config.mcp) {
         this.userService.config.mcp = { servers: [] }
       }
-      
+
       this.userService.config.mcp.servers = servers
       this.userService.save()
     }
   }
-  
+
   /**
    * Get a list of server IDs for selection
    * @param isProjectLevel Whether to get project-level servers instead of user-level
    * @returns Array of server ID and name pairs
    */
-  getServerSelectionOptions(isProjectLevel: boolean = false): Array<{id: string, name: string, enabled: boolean}> {
+  getServerSelectionOptions(isProjectLevel: boolean = false): Array<{ id: string; name: string; enabled: boolean }> {
     const servers = this.getServers(isProjectLevel)
-    return servers.map(server => ({
+    return servers.map((server) => ({
       id: server.id,
       name: server.name,
-      enabled: server.enabled
+      enabled: server.enabled,
     }))
   }
 }
