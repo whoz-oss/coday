@@ -1,11 +1,12 @@
-import { CommandContext, Interactor } from '../../model'
-import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
-import { UserService } from '../../service/user.service'
-import { ProjectService } from '../../service/project.service'
-import { McpServerConfig } from '../../model/mcp-server-config'
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
-import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import {CommandContext, Interactor} from '../../model'
+import {AssistantToolFactory, CodayTool} from '../assistant-tool-factory'
+import {UserService} from '../../service/user.service'
+import {ProjectService} from '../../service/project.service'
+import {McpServerConfig} from '../../model/mcp-server-config'
+import {Client} from '@modelcontextprotocol/sdk/client/index.js'
+import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js'
+import {Transport} from '@modelcontextprotocol/sdk/shared/transport.js'
+import {ResourceTemplate, ToolInfo} from './types'
 
 /**
  * Integration factory for a specific MCP server.
@@ -74,31 +75,6 @@ class McpServerIntegrationFactory extends AssistantToolFactory {
     // Filter the tools based on the prefixed names
     return this.tools.filter((tool) => prefixedNames.includes(tool.function.name))
   }
-}
-
-/**
- * Factory for MCP server tools that dynamically discovers and exposes tools
- * from configured MCP servers.
- *
- * This factory creates server-specific integration factories for each MCP server
- * with the naming convention MCP_<serverId> to allow agents to select specific
- * MCP servers in their integration configuration.
- */
-// Define interfaces based on MCP SDK types
-interface ToolInfo {
-  name: string
-  description?: string
-  inputSchema: {
-    type: 'object'
-    properties?: Record<string, any>
-  }
-}
-
-interface ResourceTemplate {
-  name: string
-  description?: string
-  uriTemplate: string
-  contentType?: string
 }
 
 export class McpToolsFactory extends AssistantToolFactory {
