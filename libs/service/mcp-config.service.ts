@@ -272,14 +272,14 @@ export class McpConfigService {
    * Get servers from the selected level (user or project)
    */
   getServers(isProjectLevel: boolean = false): McpServerConfig[] {
+    const project = this.projectService.selectedProject
     if (isProjectLevel) {
-      const project = this.projectService.selectedProject
       if (!project) {
         return []
       }
       return project.config.mcp?.servers || []
     } else {
-      return this.userService.config.mcp?.servers || []
+      return this.userService.config.projects[project.name]?.mcp.servers || []
     }
   }
 
@@ -312,8 +312,8 @@ export class McpConfigService {
    * Save the full list of servers
    */
   private async saveServers(servers: McpServerConfig[], isProjectLevel: boolean): Promise<void> {
+    const project = this.projectService.selectedProject
     if (isProjectLevel) {
-      const project = this.projectService.selectedProject
       if (!project) {
         return
       }
@@ -324,11 +324,14 @@ export class McpConfigService {
         },
       })
     } else {
-      if (!this.userService.config.mcp) {
-        this.userService.config.mcp = { servers: [] }
+      let userProjectConfig = this.userService.config.projects[project.name]
+      if (!userProjectConfig) {
+        this.userService.config.projects = {}
+        this.userService.config.projects[project.name] = { integration: {} }
+        userProjectConfig = this.userService.config.projects[project.name]
       }
 
-      this.userService.config.mcp.servers = servers
+      userProjectConfig.mcp = { servers }
       this.userService.save()
     }
   }

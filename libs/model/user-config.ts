@@ -17,6 +17,10 @@ export type UserProjectConfig = {
    * The preferred agent to use by default for this project
    */
   defaultAgent?: string
+  /**
+   * MCP (Model Context Protocol) server configurations overrides, for this user on this project
+   */
+  mcp?: McpConfig
 }
 
 /**
@@ -39,13 +43,7 @@ export interface UserConfig {
   projects?: {
     [key: string]: UserProjectConfig
   }
-  /**
-   * MCP (Model Context Protocol) server configurations
-   */
-  mcp?: McpConfig
 }
-
-// McpServerConfig has been moved to libs/model/mcp-server-config.ts
 
 /**
  * Initial configuration structure.
