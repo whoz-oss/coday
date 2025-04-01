@@ -14,8 +14,19 @@ export class McpListHandler extends CommandHandler {
   }
 
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
-    const servers = this.service.getServers(false)
-    servers.map((server) => formatMcpConfig(sanitizeMcpServerConfig(server))).join(`\n\n`)
+    this.interactor.displayText(
+      `MCP configs at project level:
+${this.service
+  .getServers(true)
+  .map((server) => formatMcpConfig(sanitizeMcpServerConfig(server)))
+  .join(`\n\n`)}
+
+MCP configs at user level:
+${this.service
+  .getServers(false)
+  .map((server) => formatMcpConfig(sanitizeMcpServerConfig(server)))
+  .join(`\n\n`)}`
+    )
     return context
   }
 }
