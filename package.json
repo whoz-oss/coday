@@ -8,7 +8,8 @@
     "start": "nx run terminal:serve",
     "test": "nx run-many --target=test",
     "web": "nx run web:serve",
-    "web:debug": "nx run web:serve:debug"
+    "web:debug": "nx run web:serve:debug",
+    "coday": "node ./node_modules/@biznet.io/coday-web/server/server.js --no_auth"
   },
   "author": "vincent.audibert@whoz.com",
   "license": "MIT",
@@ -23,6 +24,7 @@
     "*.ts": "prettier --write"
   },
   "devDependencies": {
+    "@biznet.io/coday-web": "latest",
     "@eslint/js": "^9.22.0",
     "@nx/devkit": "20.6.2",
     "@nx/esbuild": "20.6.2",
