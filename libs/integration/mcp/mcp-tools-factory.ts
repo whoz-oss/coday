@@ -16,10 +16,71 @@ export class McpToolsFactory extends AssistantToolFactory {
     super(interactor)
     this.name = serverConfig.name
   }
+  
+  /**
+   * Helper method to log tool calls in a standardized, readable format
+   * 
+   * @param integration Name of the integration/server
+   * @param toolName Name of the tool being called
+   * @param args Arguments passed to the tool
+   */
+  private logToolCall(integration: string, toolName: string, args: Record<string, any>): void {
+    // Format the arguments for display
+    const formattedArgs = this.formatToolArgs(args);
+    
+    this.interactor.displayText(`MCP Tool Call: [${integration}] ${toolName} | Args: ${formattedArgs}`);
+  }
+  
+  /**
+   * Format tool arguments for logging in a concise way
+   * 
+   * @param args Arguments object to format
+   * @returns Formatted string representation of arguments
+   */
+  private formatToolArgs(args: Record<string, any>): string {
+    if (!args || Object.keys(args).length === 0) {
+      return 'none';
+    }
+    
+    // Convert args to string representation
+    return Object.entries(args).map(([key, value]) => {
+      // Format the value based on its type and length
+      let formattedValue: string;
+      
+      if (typeof value === 'string') {
+        // For strings, truncate if too long
+        const MAX_STRING_LENGTH = 100;
+        if (value.length > MAX_STRING_LENGTH) {
+          formattedValue = `"${value.substring(0, MAX_STRING_LENGTH)}..." (${value.length} chars)`;
+        } else {
+          formattedValue = `"${value}"`;
+        }
+      } else if (Array.isArray(value)) {
+        // For arrays, show length and first few items
+        const MAX_ARRAY_ITEMS = 3;
+        formattedValue = value.length > MAX_ARRAY_ITEMS 
+          ? `[${value.slice(0, MAX_ARRAY_ITEMS).join(', ')}...] (${value.length} items)` 
+          : `[${value.join(', ')}]`;
+      } else if (value === null) {
+        formattedValue = 'null';
+      } else if (typeof value === 'object') {
+        // For objects, show a summary
+        const keys = Object.keys(value);
+        formattedValue = `{${keys.slice(0, 3).join(', ')}${keys.length > 3 ? '...' : ''}} (${keys.length} props)`;
+      } else {
+        // For other types (number, boolean, etc.)
+        formattedValue = String(value);
+      }
+      
+      return `${key}: ${formattedValue}`;
+    }).join(', ');
+  }
 
   async kill(): Promise<void> {
     this.tools = []
+    console.log(`Closing mcp client ${this.serverConfig.name}`)
     await this.client?.close()
+    console.log(`Closed mcp client ${this.serverConfig.name}`)
   }
 
   protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {
@@ -89,7 +150,14 @@ export class McpToolsFactory extends AssistantToolFactory {
         }
       }
     } catch (err) {
-      this.interactor.warn(`Error listing resource templates from MCP server ${this.serverConfig.name}: ${err}`)
+      // Method not found errors (-32601) are expected for MCP servers that don't implement resource templates
+      // Only warn if it's not a method not found error
+      if (err instanceof Error && !err.message.includes('-32601: Method not found')) {
+        this.interactor.warn(`Error listing resource templates from MCP server ${this.serverConfig.name}: ${err}`)
+      } else {
+        // Use displayText instead of debug (which doesn't exist on Interactor)
+        this.interactor.displayText(`MCP server ${this.serverConfig.name} doesn't support resource templates, continuing with tools only.`)
+      }
     }
 
     // Get all tools from the server
@@ -117,6 +185,9 @@ export class McpToolsFactory extends AssistantToolFactory {
     const resourceName = `mcp__${serverConfig.id}__${resource.name}`
 
     const getResource = async (args: Record<string, any>) => {
+      // Log the resource call with smart formatting
+      this.logToolCall(serverConfig.name, resource.name, args);
+      
       try {
         // Build the resource URI with parameters
         const uri = resource.uriTemplate.replace(/\{([^}]+)\}/g, (match: string, param: string) => {
@@ -190,6 +261,9 @@ export class McpToolsFactory extends AssistantToolFactory {
     const toolName = `mcp__${serverConfig.id}__${tool.name}`
 
     const callFunction = async (args: Record<string, any>) => {
+      // Log the function call with smart formatting
+      this.logToolCall(serverConfig.name, tool.name, args);
+      
       try {
         // Call the tool function
         const result = await client.callTool({

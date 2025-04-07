@@ -37,7 +37,9 @@ export class Toolbox implements Killable {
   }
 
   async kill(): Promise<void> {
+    console.log(`Closing all toolFactories`)
     await Promise.all(this.toolFactories.map((f) => f.kill()))
+    console.log(`Closed all toolFactories`)
   }
 
   async getTools(input: GetToolsInput): Promise<CodayTool[]> {

@@ -69,7 +69,8 @@ prompts:
 
 agents:
   - name: Coday
-
+    integrations:
+      FILE:
   # Example of an agent with partial integrations
   #  As soon as a value is given in `integrations`, only these tools will be accessible to this agent
   #  Options for integration/tool declarations:
@@ -81,14 +82,6 @@ agents:
   #            - retrieveGitlabMR
   #            - retrieveGitlabIssue
   #          ```
-  - name: Gitlabay
-    description: Dedicated Gitlab agent
-    instructions: |
-      You are Gitlabay, the specialized AI agent to use gitlab on the project.
-      If asked something related to gitlab, use the available tools to answer the best you can.
-      Do not ever make up facts and state clearly when you can't find the needed information.
-    integrations:
-      GITLAB:
   - name: PM
     description: Product Manager agent, in charge of vision, roadmap, feature evaluation and priorisation
     instructions: |
