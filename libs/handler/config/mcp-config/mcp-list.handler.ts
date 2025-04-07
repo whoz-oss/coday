@@ -13,20 +13,37 @@ export class McpListHandler extends CommandHandler {
     })
   }
 
+  /**
+   * Format the MCP server configs for a specific level (project or user)
+   * @param isProjectLevel Whether this is for project level configs
+   * @param servers The list of server configurations
+   * @returns Formatted text for display
+   */
+  private formatServerConfigs(isProjectLevel: boolean, servers: any[]): string {
+    const level = isProjectLevel ? 'project' : 'user'
+    const addCommand = isProjectLevel ? 'config mcp add --project' : 'config mcp add'
+    
+    let outputText = `MCP configs at ${level} level:`
+    
+    if (servers.length === 0) {
+      outputText += `\n  No MCP configs found at ${level} level.\n  To add a ${level}-level MCP server, use: ${addCommand}`
+    } else {
+      outputText += '\n' + servers
+        .map((server) => formatMcpConfig(sanitizeMcpServerConfig(server)))
+        .join('\n\n')
+    }
+    
+    return outputText
+  }
+  
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
-    this.interactor.displayText(
-      `MCP configs at project level:
-${this.service
-  .getServers(true)
-  .map((server) => formatMcpConfig(sanitizeMcpServerConfig(server)))
-  .join(`\n\n`)}
-
-MCP configs at user level:
-${this.service
-  .getServers(false)
-  .map((server) => formatMcpConfig(sanitizeMcpServerConfig(server)))
-  .join(`\n\n`)}`
-    )
+    const projectServers = this.service.getServers(true)
+    const userServers = this.service.getServers(false)
+    
+    const projectOutput = this.formatServerConfigs(true, projectServers)
+    const userOutput = this.formatServerConfigs(false, userServers)
+    
+    this.interactor.displayText(`${projectOutput}\n\n${userOutput}`)
     return context
   }
 }
