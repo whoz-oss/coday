@@ -1,5 +1,6 @@
 import { IntegrationLocalConfig } from './project-local-config'
 import { AiProviderLocalConfig } from './ai-providers'
+import { McpConfig } from './mcp-server-config'
 
 export type AiProviderConfig = {
   apiKey?: string
@@ -16,6 +17,10 @@ export type UserProjectConfig = {
    * The preferred agent to use by default for this project
    */
   defaultAgent?: string
+  /**
+   * MCP (Model Context Protocol) server configurations overrides, for this user on this project
+   */
+  mcp?: McpConfig
 }
 
 /**
@@ -38,37 +43,6 @@ export interface UserConfig {
   projects?: {
     [key: string]: UserProjectConfig
   }
-  /**
-   * MCP (Model Context Protocol) server configurations
-   */
-  mcp?: {
-    servers?: McpServerConfig[]
-  }
-}
-
-/**
- * Configuration for an MCP server connection
- */
-export interface McpServerConfig {
-  /** Unique identifier for this MCP server */
-  id: string
-  /** Human readable name for this MCP server */
-  name: string
-  /** MCP server URL for HTTP transport (use either url or command, not both) */
-  url?: string
-  /** Command to execute for stdio transport (use either url or command, not both) */
-  command?: string
-  /** Optional arguments for the command when using stdio transport */
-  args?: string[]
-  /** Optional environment variables for the command when using stdio transport */
-  env?: Record<string, string>
-  /** Optional working directory for the command when using stdio transport */
-  cwd?: string  
-  /** Optional authentication token */
-  authToken?: string
-  /** Whether the server connection is enabled */
-  enabled: boolean
-  // Note: OAuth authentication support might be added in the future
 }
 
 /**

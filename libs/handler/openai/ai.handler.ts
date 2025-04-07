@@ -1,10 +1,10 @@
 import { keywords } from '../../keywords'
-import { Agent, CommandContext, CommandHandler, Interactor } from '../../model'
+import { Agent, CommandContext, CommandHandler, Interactor, Killable } from '../../model'
 import { lastValueFrom, Observable } from 'rxjs'
 import { CodayEvent, MessageEvent } from '../../shared/coday-events'
 import { AgentService } from '../../agent'
 
-export class AiHandler extends CommandHandler {
+export class AiHandler extends CommandHandler implements Killable {
   private lastAgentName: string | undefined
 
   constructor(
@@ -75,12 +75,12 @@ export class AiHandler extends CommandHandler {
       }
       return undefined
     }
-    
+
     // No specific agent requested, follow preference chain:
     // 1. Last used agent in this session (lastAgentName)
     // 2. User's default agent for this project (from user config)
     // 3. Fall back to 'coday'
-    
+
     // Check for last used agent in this session
     if (this.lastAgentName) {
       const agent = await this.agentService.findByName(this.lastAgentName, context)
@@ -136,7 +136,7 @@ export class AiHandler extends CommandHandler {
     return context
   }
 
-  kill(): void {
-    this.agentService.kill()
+  async kill(): Promise<void> {
+    await this.agentService.kill()
   }
 }

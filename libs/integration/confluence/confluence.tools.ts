@@ -1,7 +1,7 @@
 import { retrieveConfluencePage } from './retrieve-confluence-page'
 import { searchConfluencePages } from './search-confluence-pages'
 import { IntegrationService } from '../../service/integration.service'
-import { CommandContext, Interactor } from '../../model'
+import { Interactor } from '../../model'
 import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 
@@ -13,10 +13,6 @@ export class ConfluenceTools extends AssistantToolFactory {
     private integrationService: IntegrationService
   ) {
     super(interactor)
-  }
-
-  protected hasChanged(context: CommandContext): boolean {
-    return this.lastToolInitContext?.project.root !== context.project.root
   }
 
   protected async buildTools(): Promise<CodayTool[]> {

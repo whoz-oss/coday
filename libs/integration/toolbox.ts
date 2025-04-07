@@ -8,12 +8,13 @@ import { GitLabTools } from './gitlab/gitlab.tools'
 import { MemoryTools } from './memory.tools'
 import { AssistantToolFactory, CodayTool } from './assistant-tool-factory'
 import { ConfluenceTools } from './confluence/confluence.tools'
-import { McpToolsFactory } from './mcp/mcp-tools-factory'
 import { CodayServices } from '../coday-services'
 import { AgentService } from '../agent'
 import { GetToolsInput } from './types'
+import { McpToolsFactory } from './mcp/mcp-tools-factory'
+import { Killable } from '../model/killable'
 
-export class Toolbox {
+export class Toolbox implements Killable {
   private toolFactories: AssistantToolFactory[]
   private tools: CodayTool[] = []
 
@@ -31,50 +32,28 @@ export class Toolbox {
       new MemoryTools(interactor, services.memory),
       new ConfluenceTools(interactor, services.integration),
       new JiraTools(interactor, services.integration),
-      new McpToolsFactory(interactor, services.user, services.project),
+      ...services.mcp.getAllServers().map((serverConfig) => new McpToolsFactory(interactor, serverConfig)),
     ]
+  }
+
+  async kill(): Promise<void> {
+    console.log(`Closing all toolFactories`)
+    await Promise.all(this.toolFactories.map((f) => f.kill()))
+    console.log(`Closed all toolFactories`)
   }
 
   async getTools(input: GetToolsInput): Promise<CodayTool[]> {
     const { context, integrations, agentName } = input
-    
-    try {
-      // First, process the base factories (including McpToolsFactory)
-      // to ensure server-specific factories are created
-      await Promise.all(
-        this.toolFactories.map(async (factory) => {
-          try {
-            // We process all factories regardless of integrations to ensure MCP factories are created
-            await factory.getTools(context, [], agentName ?? 'default')
-          } catch (error) {
-            this.interactor.error(`Error initializing tool factory ${factory.name}: ${error}`)
-          }
-        })
-      )
-      
-      // Get MCP server-specific factories
-      const mcpFactory = this.toolFactories.find(f => f.name === 'MCP') as McpToolsFactory
-      const serverFactories: AssistantToolFactory[] = mcpFactory 
-        ? mcpFactory.getServerIntegrationFactories() 
-        : []
-      
-      // Combine base factories with MCP server factories
-      const allFactories = [...this.toolFactories, ...serverFactories]
-      
-      // Filter factories based on integrations
-      const filteredFactories = allFactories.filter(factory => 
-        !integrations || integrations.has(factory.name)
-      )
 
+    // Filter factories based on integrations
+    const filteredFactories = this.toolFactories.filter((factory) => !integrations || integrations.has(factory.name))
+
+    try {
       // Process each filtered factory to get their tools
       const toolResults = await Promise.all(
         filteredFactories.map(async (factory) => {
           try {
-            const tools = await factory.getTools(
-              context, 
-              integrations?.get(factory.name) ?? [], 
-              agentName ?? 'default'
-            )
+            const tools = await factory.getTools(context, integrations?.get(factory.name) ?? [], agentName ?? 'default')
             return tools
           } catch (error) {
             this.interactor.error(`Error building tools from ${factory.name} for agent ${agentName}: ${error}`)
