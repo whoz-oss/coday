@@ -3,11 +3,6 @@ import { McpConfigService } from '../../../service/mcp-config.service'
 import { McpServerConfig } from '../../../model/mcp-server-config'
 import { cleanServerConfig, formatMcpConfig, mcpServerConfigToArgs, sanitizeMcpServerConfig } from './helpers'
 
-// Using a simple function to generate IDs instead of the uuid package
-function generateId(): string {
-  return Math.random().toString(36).substring(2, 10)
-}
-
 export class McpAddHandler extends CommandHandler {
   constructor(
     private interactor: Interactor,
@@ -83,7 +78,7 @@ export class McpAddHandler extends CommandHandler {
         envInput.split(' ').forEach((pair) => {
           const [key, value] = pair.split('=')
           if (key && value) {
-            serverConfig.env[key] = value
+            serverConfig.env![key] = value
           }
         })
       }

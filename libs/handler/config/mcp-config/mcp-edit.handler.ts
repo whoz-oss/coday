@@ -109,7 +109,7 @@ ${mcpServerConfigToArgs(sanitized)}`)
       newEnvString.split(' ').forEach((pair) => {
         const [key, value] = pair.split('=')
         if (key && value) {
-          serverConfig.env[key] = value
+          serverConfig.env![key] = value
         }
       })
     }

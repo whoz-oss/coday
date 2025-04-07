@@ -279,8 +279,23 @@ export class McpConfigService {
       }
       return project.config.mcp?.servers || []
     } else {
-      return this.userService.config.projects[project.name]?.mcp.servers || []
+      const projects = this.userService.config.projects || {}
+      return projects[project!.name]?.mcp?.servers || []
     }
+  }
+
+  getAllServers(): McpServerConfig[] {
+    const projectConfigs = [...this.getServers(true)]
+    const userOverrides = this.getServers(false)
+    userOverrides.forEach((userOverride) => {
+      const index = projectConfigs.findIndex((p) => p.name === userOverride.name && p.id === userOverride.id)
+      if (index < 0) {
+        projectConfigs.push(userOverride)
+      } else {
+        projectConfigs[index] = { ...projectConfigs[index], ...userOverride }
+      }
+    })
+    return projectConfigs
   }
 
   /**
@@ -324,11 +339,12 @@ export class McpConfigService {
         },
       })
     } else {
-      let userProjectConfig = this.userService.config.projects[project.name]
+      const projects = this.userService.config.projects || {}
+      let userProjectConfig = projects[project!.name]
       if (!userProjectConfig) {
         this.userService.config.projects = {}
-        this.userService.config.projects[project.name] = { integration: {} }
-        userProjectConfig = this.userService.config.projects[project.name]
+        this.userService.config.projects[project!.name] = { integration: {} }
+        userProjectConfig = this.userService.config?.projects[project!.name]
       }
 
       userProjectConfig.mcp = { servers }
