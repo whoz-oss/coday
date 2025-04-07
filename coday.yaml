@@ -69,8 +69,6 @@ prompts:
 
 agents:
   - name: Coday
-    integrations:
-      FILE:
   # Example of an agent with partial integrations
   #  As soon as a value is given in `integrations`, only these tools will be accessible to this agent
   #  Options for integration/tool declarations:

@@ -6,7 +6,17 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { ResourceTemplate, ToolInfo } from './types'
 
 export class McpToolsFactory extends AssistantToolFactory {
-  private client: Client | undefined
+  /**
+   * Client promise, ensuring all calls to buildTools use the same instance of client
+   * @private
+   */
+  private clientPromise: Promise<Client> | undefined
+
+  /**
+   * Tools promise, ensuring all calls to buildTools
+   * @private
+   */
+  private toolsPromise: Promise<CodayTool[]> | undefined
   name: string = 'Not defined yet'
 
   constructor(
@@ -16,79 +26,38 @@ export class McpToolsFactory extends AssistantToolFactory {
     super(interactor)
     this.name = serverConfig.name
   }
-  
-  /**
-   * Helper method to log tool calls in a standardized, readable format
-   * 
-   * @param integration Name of the integration/server
-   * @param toolName Name of the tool being called
-   * @param args Arguments passed to the tool
-   */
-  private logToolCall(integration: string, toolName: string, args: Record<string, any>): void {
-    // Format the arguments for display
-    const formattedArgs = this.formatToolArgs(args);
-    
-    this.interactor.displayText(`MCP Tool Call: [${integration}] ${toolName} | Args: ${formattedArgs}`);
-  }
-  
-  /**
-   * Format tool arguments for logging in a concise way
-   * 
-   * @param args Arguments object to format
-   * @returns Formatted string representation of arguments
-   */
-  private formatToolArgs(args: Record<string, any>): string {
-    if (!args || Object.keys(args).length === 0) {
-      return 'none';
-    }
-    
-    // Convert args to string representation
-    return Object.entries(args).map(([key, value]) => {
-      // Format the value based on its type and length
-      let formattedValue: string;
-      
-      if (typeof value === 'string') {
-        // For strings, truncate if too long
-        const MAX_STRING_LENGTH = 100;
-        if (value.length > MAX_STRING_LENGTH) {
-          formattedValue = `"${value.substring(0, MAX_STRING_LENGTH)}..." (${value.length} chars)`;
-        } else {
-          formattedValue = `"${value}"`;
-        }
-      } else if (Array.isArray(value)) {
-        // For arrays, show length and first few items
-        const MAX_ARRAY_ITEMS = 3;
-        formattedValue = value.length > MAX_ARRAY_ITEMS 
-          ? `[${value.slice(0, MAX_ARRAY_ITEMS).join(', ')}...] (${value.length} items)` 
-          : `[${value.join(', ')}]`;
-      } else if (value === null) {
-        formattedValue = 'null';
-      } else if (typeof value === 'object') {
-        // For objects, show a summary
-        const keys = Object.keys(value);
-        formattedValue = `{${keys.slice(0, 3).join(', ')}${keys.length > 3 ? '...' : ''}} (${keys.length} props)`;
-      } else {
-        // For other types (number, boolean, etc.)
-        formattedValue = String(value);
-      }
-      
-      return `${key}: ${formattedValue}`;
-    }).join(', ');
-  }
 
   async kill(): Promise<void> {
     this.tools = []
     console.log(`Closing mcp client ${this.serverConfig.name}`)
-    await this.client?.close()
+    await (await this.clientPromise)?.close()
     console.log(`Closed mcp client ${this.serverConfig.name}`)
   }
 
   protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {
+    // if tools are already created, return them
     if (this.tools.length) return this.tools
+
+    // if server is not enabled, no tools to return
     if (!this.serverConfig.enabled) return []
 
+    // check if the client has already started being instanciated
+    if (!this.clientPromise) {
+      this.clientPromise = this.buildClient()
+    }
+
+    const client: Client = await this.clientPromise
+
+    if (!this.toolsPromise) {
+      this.toolsPromise = this.buildInternalTools(client)
+    }
+
+    return this.toolsPromise
+  }
+
+  private async buildClient(): Promise<Client> {
     // now time to create the client
-    this.client = new Client(
+    const instance = new Client(
       {
         name: 'Coday MCP Client',
         version: '1.0.0',
@@ -119,19 +88,17 @@ export class McpToolsFactory extends AssistantToolFactory {
       // Add environment variables if specified
       if (this.serverConfig.env && Object.keys(this.serverConfig.env).length > 0) {
         transportOptions.env = this.serverConfig.env
-        this.interactor.displayText(`Using custom environment variables for MCP server ${this.serverConfig.name}`)
+        console.log(`Using custom environment variables for MCP server ${this.serverConfig.name}`)
       }
 
       // Add working directory if specified
       if (this.serverConfig.cwd) {
         transportOptions.cwd = this.serverConfig.cwd
-        this.interactor.displayText(`Using working directory: ${this.serverConfig.cwd}`)
+        console.log(`Using working directory: ${this.serverConfig.cwd}`)
       }
 
       transport = new StdioClientTransport(transportOptions)
-      this.interactor.displayText(
-        `Starting MCP server ${this.serverConfig.name} with command: ${this.serverConfig.command}`
-      )
+      console.log(`Starting MCP server ${this.serverConfig.name} with command: ${this.serverConfig.command}`)
     } else {
       throw new Error(
         `MCP server ${this.serverConfig.name} has no command configured. Only local command-based servers are supported.`
@@ -139,14 +106,20 @@ export class McpToolsFactory extends AssistantToolFactory {
     }
 
     // Connect to the server
-    await this.client.connect(transport)
+    await instance.connect(transport)
+
+    return instance
+  }
+
+  private async buildInternalTools(client: Client): Promise<CodayTool[]> {
+    const results: CodayTool[] = []
 
     // Get all resource templates from the server
     try {
-      const result = await this.client.listResourceTemplates()
+      const result = await client.listResourceTemplates()
       if (result && result.templates && Array.isArray(result.templates)) {
         for (const template of result.templates) {
-          this.tools.push(this.createResourceTool(this.serverConfig, this.client, template))
+          results.push(this.createResourceTool(this.serverConfig, client, template))
         }
       }
     } catch (err) {
@@ -156,22 +129,25 @@ export class McpToolsFactory extends AssistantToolFactory {
         this.interactor.warn(`Error listing resource templates from MCP server ${this.serverConfig.name}: ${err}`)
       } else {
         // Use displayText instead of debug (which doesn't exist on Interactor)
-        this.interactor.displayText(`MCP server ${this.serverConfig.name} doesn't support resource templates, continuing with tools only.`)
+        this.interactor.displayText(
+          `MCP server ${this.serverConfig.name} doesn't support resource templates, continuing with tools only.`
+        )
       }
     }
 
     // Get all tools from the server
     try {
-      const result = await this.client.listTools()
+      const result = await client.listTools()
       if (result && result.tools && Array.isArray(result.tools)) {
         for (const tool of result.tools) {
-          this.tools.push(this.createFunctionTool(this.serverConfig, this.client, tool as ToolInfo))
+          results.push(this.createFunctionTool(this.serverConfig, client, tool as ToolInfo))
         }
       }
     } catch (err) {
       this.interactor.warn(`Error listing tools from MCP server ${this.serverConfig.name}: ${err}`)
     }
-    return this.tools
+
+    return results
   }
 
   /**
@@ -186,8 +162,8 @@ export class McpToolsFactory extends AssistantToolFactory {
 
     const getResource = async (args: Record<string, any>) => {
       // Log the resource call with smart formatting
-      this.logToolCall(serverConfig.name, resource.name, args);
-      
+      this.logToolCall(serverConfig.name, resource.name, args)
+
       try {
         // Build the resource URI with parameters
         const uri = resource.uriTemplate.replace(/\{([^}]+)\}/g, (match: string, param: string) => {
@@ -262,8 +238,8 @@ export class McpToolsFactory extends AssistantToolFactory {
 
     const callFunction = async (args: Record<string, any>) => {
       // Log the function call with smart formatting
-      this.logToolCall(serverConfig.name, tool.name, args);
-      
+      this.logToolCall(serverConfig.name, tool.name, args)
+
       try {
         // Call the tool function
         const result = await client.callTool({
@@ -307,5 +283,67 @@ export class McpToolsFactory extends AssistantToolFactory {
         function: callFunction,
       },
     }
+  }
+
+  /**
+   * Helper method to log tool calls in a standardized, readable format
+   *
+   * @param integration Name of the integration/server
+   * @param toolName Name of the tool being called
+   * @param args Arguments passed to the tool
+   */
+  private logToolCall(integration: string, toolName: string, args: Record<string, any>): void {
+    // Format the arguments for display
+    const formattedArgs = this.formatToolArgs(args)
+
+    this.interactor.displayText(`MCP Tool Call: [${integration}] ${toolName} | Args: ${formattedArgs}`)
+  }
+
+  /**
+   * Format tool arguments for logging in a concise way
+   *
+   * @param args Arguments object to format
+   * @returns Formatted string representation of arguments
+   */
+  private formatToolArgs(args: Record<string, any>): string {
+    if (!args || Object.keys(args).length === 0) {
+      return 'none'
+    }
+
+    // Convert args to string representation
+    return Object.entries(args)
+      .map(([key, value]) => {
+        // Format the value based on its type and length
+        let formattedValue: string
+
+        if (typeof value === 'string') {
+          // For strings, truncate if too long
+          const MAX_STRING_LENGTH = 100
+          if (value.length > MAX_STRING_LENGTH) {
+            formattedValue = `"${value.substring(0, MAX_STRING_LENGTH)}..." (${value.length} chars)`
+          } else {
+            formattedValue = `"${value}"`
+          }
+        } else if (Array.isArray(value)) {
+          // For arrays, show length and first few items
+          const MAX_ARRAY_ITEMS = 3
+          formattedValue =
+            value.length > MAX_ARRAY_ITEMS
+              ? `[${value.slice(0, MAX_ARRAY_ITEMS).join(', ')}...] (${value.length} items)`
+              : `[${value.join(', ')}]`
+        } else if (value === null) {
+          formattedValue = 'null'
+        } else if (typeof value === 'object') {
+          // For objects, show a summary
+          const keys = Object.keys(value)
+          formattedValue = `{${keys.slice(0, 3).join(', ')}${keys.length > 3 ? '...' : ''}} (${keys.length} props)`
+        } else {
+          // For other types (number, boolean, etc.)
+          formattedValue = String(value)
+        }
+
+        return `${key}: ${formattedValue}`
+      })
+      .join(', ')
   }
 }
