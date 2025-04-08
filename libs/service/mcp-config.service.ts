@@ -353,7 +353,12 @@ export class McpConfigService {
         userProjectConfig = this.userService.config?.projects[project!.name]
       }
 
-      userProjectConfig.mcp = { servers }
+      // Update the MCP configuration while preserving other MCP settings
+      userProjectConfig.mcp = {
+        ...userProjectConfig.mcp,  // Preserve other MCP settings if they exist
+        servers
+      }
+      
       this.userService.save()
     }
   }
