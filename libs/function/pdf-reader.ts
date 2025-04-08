@@ -1,20 +1,21 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import pdfParse from 'pdf-parse';
 import { Interactor } from '../model'
 
-export async function readPdfFile({ 
-  relPath, 
-  root, 
-  interactor 
-}: { 
-  relPath: string; 
-  root: string; 
-  interactor: Interactor 
+const pdfParse = require('pdf-parse')
+
+export async function readPdfFile({
+  relPath,
+  root,
+  interactor,
+}: {
+  relPath: string
+  root: string
+  interactor: Interactor
 }): Promise<string> {
   try {
     const fullPath = path.join(root, relPath)
-    
+
     if (!fs.existsSync(fullPath)) {
       const errorMessage = `PDF file not found at path: ${relPath}`
       interactor.error(errorMessage)
