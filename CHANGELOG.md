@@ -1,3 +1,19 @@
+## 0.5.0 (2025-04-08)
+
+### 🚀 Features
+
+- add web UI options ([#31](https://github.com/biznet-io/coday/pull/31))
+- add MCP first integration ([#29](https://github.com/biznet-io/coday/pull/29))
+
+### 🩹 Fixes
+
+- tweak the pdf-parse import as lib not ESM ([#37](https://github.com/biznet-io/coday/pull/37))
+
+### ❤️ Thank You
+
+- dpalita-whoz @dpalita-whoz
+- vincent-audibert-whoz
+
 ## 0.4.0 (2025-03-25)
 
 ### 🚀 Features
