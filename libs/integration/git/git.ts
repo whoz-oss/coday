@@ -1,7 +1,7 @@
 import { Interactor } from '../../model'
 import { runBash } from '../../function/run-bash'
 
-const dangerKeywords = ['push', 'push -f', 'push --force', 'reset', '&&']
+const dangerKeywords = ['push', 'push -f', 'push --force', 'push --tags', 'reset', '&&']
 
 export const git = async ({
   params,
