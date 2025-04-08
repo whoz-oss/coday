@@ -64,7 +64,7 @@ The `integrations` property grants access to specific tools that align with the 
 
 ```yaml
 integrations:
-  file: ["readProjectFile", "searchFilesByText"]  # Read-only file access
+  file: ["readProjectFile", "searchFilesByText", "readPdfFile"]  # Read-only file access
   git: ["gitStatusTool", "gitDiffTool"]          # Read-only git access
   # Custom database tools would be configured at the project level
   database: []                                  # Full access to database tools

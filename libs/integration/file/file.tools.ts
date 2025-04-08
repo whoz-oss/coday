@@ -8,6 +8,7 @@ import {AssistantToolFactory, CodayTool} from '../assistant-tool-factory'
 import {FunctionTool} from '../types'
 import {unlinkFile} from './unlink-file'
 import {readFileByPath} from '../../function/read-file-by-path'
+import { readPdfFile } from '../../function/pdf-reader';
 
 /**
  * FileTools: A comprehensive file manipulation tool factory for Coday
@@ -261,6 +262,34 @@ export class FileTools extends AssistantToolFactory {
     }
     result.push(searchFilesByTextFunction)
 
+    const readPdf = ({ filePath }: { filePath: string }) => {
+      return readPdfFile({ 
+        relPath: filePath, 
+        root: context.project.root, 
+        interactor: this.interactor 
+      })
+    }
+
+    const readPdfFunction: FunctionTool<{ filePath: string }> = {
+      type: 'function',
+      function: {
+        name: 'readPdfFile',
+        description: 'Read PDF text content from PDF file in the project.',
+        parameters: {
+          type: 'object',
+          properties: {
+            filePath: { 
+              type: 'string', 
+              description: 'File path of the PDF relative to the project root' 
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: readPdf,
+      },
+    }
+    
+    result.push(readPdfFunction)
     return result
   }
 }
