@@ -5,12 +5,19 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background-color: #282a36;
-  color: #f8f8f2;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 h1 {
   font-size: 1.5em;
   margin: 0;
-  color: #ff79c6;
+  color: var(--color-primary-hover);
+}
+
+/* Text selection styling */
+::selection {
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse, #ffffff);
 }
