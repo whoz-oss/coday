@@ -5,7 +5,8 @@ main {
   justify-content: flex-start;
   overflow-y: auto;
   margin: 0;
-  padding: 0;
-  background-color: #282a36;
-  color: #f8f8f2;
+  padding: 20px 0 0 0; /* Reduced top padding to match smaller header */
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
