@@ -12,10 +12,6 @@ export class ProjectScriptsTools extends AssistantToolFactory {
     super(interactor)
   }
 
-  protected hasChanged(context: CommandContext): boolean {
-    return this.lastToolInitContext?.project.scripts !== context.project.scripts
-  }
-
   protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {
     const result: CodayTool[] = []
 

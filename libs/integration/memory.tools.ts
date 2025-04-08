@@ -16,10 +16,6 @@ export class MemoryTools extends AssistantToolFactory {
     super(interactor)
   }
 
-  protected hasChanged(context: CommandContext): boolean {
-    return context.project.name !== this.lastToolInitContext?.project.name
-  }
-
   protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {
     const result: CodayTool[] = []
 

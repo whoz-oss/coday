@@ -21,10 +21,6 @@ export class GitTools extends AssistantToolFactory {
     super(interactor)
   }
 
-  protected hasChanged(context: CommandContext): boolean {
-    return this.lastToolInitContext?.project.root !== context.project.root
-  }
-
   protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {
     const result: CodayTool[] = []
 

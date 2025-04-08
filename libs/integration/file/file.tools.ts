@@ -45,10 +45,6 @@ export class FileTools extends AssistantToolFactory {
     super(interactor)
   }
 
-  protected hasChanged(context: CommandContext): boolean {
-    return true
-  }
-
   protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {
     const result: CodayTool[] = []
 

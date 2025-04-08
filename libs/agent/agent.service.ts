@@ -3,16 +3,24 @@ import * as path from 'path'
 import * as yaml from 'yaml'
 import { AiClientProvider } from '../integration/ai/ai-client-provider'
 import { Toolbox } from '../integration/toolbox'
-import { Agent, AgentDefinition, AgentSummary, CodayAgentDefinition, CommandContext, Interactor } from '../model'
+import {
+  Agent,
+  AgentDefinition,
+  AgentSummary,
+  CodayAgentDefinition,
+  CommandContext,
+  Interactor,
+  Killable,
+} from '../model'
 import { CodayServices } from '../coday-services'
 import { ToolSet } from '../integration/tool-set'
 import { getFormattedDocs } from '../function/get-formatted-docs'
 import { MemoryLevel } from '../model/memory'
 import { findFilesByName } from '../function/find-files-by-name'
 
-export class AgentService {
+export class AgentService implements Killable {
   private agents: Map<string, Agent> = new Map()
-  private agentDefinitions: {definition: AgentDefinition, basePath: string}[] = []
+  private agentDefinitions: { definition: AgentDefinition; basePath: string }[] = []
   private toolbox: Toolbox
 
   constructor(
@@ -30,9 +38,9 @@ export class AgentService {
   }
 
   listAgentSummaries(): AgentSummary[] {
-    return this.agentDefinitions.map((entry) => ({ 
-      name: entry.definition.name, 
-      description: entry.definition.description 
+    return this.agentDefinitions.map((entry) => ({
+      name: entry.definition.name,
+      description: entry.definition.description,
     }))
   }
 
@@ -153,15 +161,16 @@ export class AgentService {
     return userConfig.projects?.[projectName]?.defaultAgent
   }
 
-  kill(): void {
+  async kill(): Promise<void> {
     this.aiClientProvider.kill()
+    await this.toolbox.kill()
   }
 
   private addDefinition(def: AgentDefinition, basePath: string = this.projectPath): void {
     if (!this.agentDefinitions.find((entry) => entry.definition.name === def.name)) {
       this.agentDefinitions.push({
         definition: { ...CodayAgentDefinition, ...def },
-        basePath
+        basePath,
       })
     }
   }
@@ -225,11 +234,11 @@ export class AgentService {
         try {
           const content = await fs.readFile(agentFilePath, 'utf-8')
           const data = yaml.parse(content)
-          
+
           // Determine the base path for document resolution
           const agentDirPath = path.dirname(agentFilePath)
           const isInProject = agentDirPath.startsWith(this.projectPath)
-          
+
           // Add definition with the appropriate base path
           const basePath = isInProject ? this.projectPath : agentDirPath
           this.addDefinition(data, basePath)
@@ -244,7 +253,13 @@ export class AgentService {
    * Try to create and add an agent to the map
    * Logs error if dependencies are missing
    */
-  private async tryAddAgent(entry: {definition: AgentDefinition, basePath: string}, context: CommandContext): Promise<void> {
+  private async tryAddAgent(
+    entry: {
+      definition: AgentDefinition
+      basePath: string
+    },
+    context: CommandContext
+  ): Promise<void> {
     const def: AgentDefinition = { ...CodayAgentDefinition, ...entry.definition }
 
     try {

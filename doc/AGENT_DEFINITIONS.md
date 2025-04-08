@@ -119,6 +119,8 @@ Coday supports several built-in integrations:
 - `jira`: Jira issue tracking integration
 - `confluence`: Confluence documentation integration
 - `memory`: Tools for storing and retrieving information across sessions
+- `mcp`: MCP coordination (doesn't provide actual tools)
+- `mcp_<serverId>`: Access to a specific MCP server (where `<serverId>` is the ID of a configured MCP server)
 
 For each integration, you can specify:
 
@@ -132,7 +134,15 @@ integrations:
   file: []                       # Access to all file tools
   git: ["gitStatusTool", "gitDiffTool"] # Only read-only Git tools
   jira: ["jiraSearchIssues"]     # Only search capability for Jira
+  # MCP server-specific integrations:
+  mcp_fetch: []                  # Access to all tools from the "fetch" MCP server
+  mcp_file: ["mcp__file__readFile"] # Access only to the readFile tool from the "file" MCP server
 ```
+
+Note for MCP integrations:
+- Always use the server-specific integrations (`mcp_<serverId>`) to access MCP tools
+- The `mcp` integration itself doesn't provide tools - it only coordinates server discovery
+- MCP servers must be configured and enabled in user or project configuration
 
 Important notes:
 - Integrations must also be configured at the project level to be available to agents

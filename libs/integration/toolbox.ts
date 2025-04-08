@@ -11,8 +11,10 @@ import { ConfluenceTools } from './confluence/confluence.tools'
 import { CodayServices } from '../coday-services'
 import { AgentService } from '../agent'
 import { GetToolsInput } from './types'
+import { McpToolsFactory } from './mcp/mcp-tools-factory'
+import { Killable } from '../model/killable'
 
-export class Toolbox {
+export class Toolbox implements Killable {
   private toolFactories: AssistantToolFactory[]
   private tools: CodayTool[] = []
 
@@ -30,15 +32,24 @@ export class Toolbox {
       new MemoryTools(interactor, services.memory),
       new ConfluenceTools(interactor, services.integration),
       new JiraTools(interactor, services.integration),
+      ...services.mcp.getAllServers().map((serverConfig) => new McpToolsFactory(interactor, serverConfig)),
     ]
+  }
+
+  async kill(): Promise<void> {
+    console.log(`Closing all toolFactories`)
+    await Promise.all(this.toolFactories.map((f) => f.kill()))
+    console.log(`Closed all toolFactories`)
   }
 
   async getTools(input: GetToolsInput): Promise<CodayTool[]> {
     const { context, integrations, agentName } = input
+
+    // Filter factories based on integrations
     const filteredFactories = this.toolFactories.filter((factory) => !integrations || integrations.has(factory.name))
 
     try {
-      // Process each tool factory separately to isolate failures
+      // Process each filtered factory to get their tools
       const toolResults = await Promise.all(
         filteredFactories.map(async (factory) => {
           try {
