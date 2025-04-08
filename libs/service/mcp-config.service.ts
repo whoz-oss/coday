@@ -333,11 +333,17 @@ export class McpConfigService {
         return
       }
 
-      this.projectService.save({
-        mcp: {
-          servers,
-        },
-      })
+      // Create a shallow copy of the current config
+      const updatedConfig = { ...project.config };
+      
+      // Update just the mcp.servers property
+      updatedConfig.mcp = {
+        ...updatedConfig.mcp,  // Preserve other mcp settings if they exist
+        servers
+      };
+      
+      // Save the whole config
+      this.projectService.save(updatedConfig);
     } else {
       const projects = this.userService.config.projects || {}
       let userProjectConfig = projects[project!.name]
