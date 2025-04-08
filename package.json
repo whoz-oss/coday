@@ -8,7 +8,8 @@
     "start": "nx run terminal:serve",
     "test": "nx run-many --target=test",
     "web": "nx run web:serve",
-    "web:debug": "nx run web:serve:debug"
+    "web:debug": "nx run web:serve:debug",
+    "coday": "node ./node_modules/@biznet.io/coday-web/server/server.js --no_auth"
   },
   "author": "vincent.audibert@whoz.com",
   "license": "MIT",
@@ -23,6 +24,7 @@
     "*.ts": "prettier --write"
   },
   "devDependencies": {
+    "@biznet.io/coday-web": "latest",
     "@eslint/js": "^9.22.0",
     "@nx/devkit": "20.6.2",
     "@nx/esbuild": "20.6.2",
@@ -69,6 +71,7 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "@google/generative-ai": "^0.24.0",
     "@inquirer/prompts": "^7.4.0",
+    "@modelcontextprotocol/sdk": "1.7.0",
     "@types/yargs": "^17.0.32",
     "axios": "^1.8.4",
     "chalk": "^5.4.1",

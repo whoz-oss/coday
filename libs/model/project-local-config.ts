@@ -1,6 +1,7 @@
 import { IntegrationConfig } from './integration-config'
 import { AgentDefinition } from './agent-definition'
 import { AiProviderLocalConfig } from './ai-providers'
+import { McpConfig } from './mcp-server-config'
 
 export type IntegrationLocalConfig = {
   [key: string]: IntegrationConfig
@@ -12,6 +13,11 @@ export type ProjectLocalConfig = {
   integration: IntegrationLocalConfig
   storage?: StorageConfig
   agents?: AgentDefinition[]
+  /**
+   * MCP (Model Context Protocol) server configurations
+   * These can be overridden by user-level configurations
+   */
+  mcp?: McpConfig
 }
 
 export type StorageConfig =
