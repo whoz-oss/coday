@@ -1,3 +1,13 @@
+## 0.5.1 (2025-04-08)
+
+### 🩹 Fixes
+
+- integration config lost when editing MCP config ([#39](https://github.com/biznet-io/coday/pull/39))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.5.0 (2025-04-08)
 
 ### 🚀 Features
