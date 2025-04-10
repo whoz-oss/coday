@@ -91,16 +91,28 @@ export class TerminalInteractor extends Interactor {
           crlfDelay: Infinity,
           tabSize: 4,
         }) as ReadlineInterfaceWithInternals
+
+        const originalTtyWrite = (this.rl as any)._ttyWrite
+
+        if (originalTtyWrite) {
+          ;(this.rl as any)._ttyWrite = function (s: string, key: any) {
+            // allow for handling "enter" in the keypress handler (otherwise it forcefully submits)
+            if (key && key.name === 'return') {
+              return
+            }
+
+            // Otherwise call the original method for all other keys
+            return originalTtyWrite.call(this, s, key)
+          }
+        }
       } catch (error) {
         return reject(error)
       }
-
       let currentHistoryIndex = -1
       let originalInput = ''
       let isSubmitting = false
 
       const cleanupAndResolve = (answer: string) => {
-        // ... (rest of function remains the same) ...
         if (isSubmitting) return
         isSubmitting = true
 
@@ -110,23 +122,23 @@ export class TerminalInteractor extends Interactor {
         if (trimmedAnswer) {
           if (this.promptHistory.length === 0 || this.promptHistory[this.promptHistory.length - 1] !== trimmedAnswer) {
             this.promptHistory.push(trimmedAnswer)
-            // Optional: Limit history size
-            // if (this.promptHistory.length > 50) {
-            //   this.promptHistory.shift();
-            // }
           }
         }
         resolve(answer)
       }
 
       this.keypressListener = (str: string, key: Key) => {
-        if (!this.rl || isSubmitting) return
-
+        if (!this.rl) return
         const currentLine = this.rl.line // Read is fine
         const cursor = this.rl.cursor // Read is fine
 
-        // --- Alt+Enter (Meta+Return) for Newline ---
         if (key && key.meta && key.name === 'return') {
+          // Let the 'line' event handle submission
+          this.rl.emit('line', currentLine)
+          return
+        }
+
+        if (key && key.name === 'return' && !key.meta && !key.ctrl && !key.shift) {
           const beforeCursor = currentLine.slice(0, cursor)
           const afterCursor = currentLine.slice(cursor)
           // NOTE: Direct assignment bypasses TS read-only restriction
@@ -134,12 +146,6 @@ export class TerminalInteractor extends Interactor {
           this.rl.cursor = cursor + 1
           this.rl._refreshLine() // Use internal refresh
           return // Prevent default handling
-        }
-
-        // --- Standard Enter ---
-        if (key && key.name === 'return' && !key.meta && !key.ctrl && !key.shift) {
-          // Let the 'line' event handle submission
-          return
         }
 
         // --- Up Arrow ---
