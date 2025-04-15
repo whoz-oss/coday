@@ -110,14 +110,37 @@ export class AiClientProvider {
         return new OpenaiClient('OpenAI', this.interactor, apiKey)
       case 'google':
         if (!apiKey) return undefined
+
+        // Define Gemini models
+        const geminiModels = {
+          BIG: {
+            name: 'gemini-2.5-pro-exp-03-25',
+            contextWindow: 1000000,
+            price: {
+              inputMTokens: 0.175,
+              cacheRead: 0.0875,
+              outputMTokens: 0.525,
+            },
+          },
+          SMALL: {
+            name: 'gemini-2.0-flash',
+            contextWindow: 1000000,
+            price: {
+              inputMTokens: 0.1,
+              cacheRead: 0.025,
+              outputMTokens: 0.4,
+            },
+          },
+        }
+
         // Leveraging Google Gemini enabling use of Openai SDK for beta
         return new OpenaiClient(
           'Google Gemini',
           this.interactor,
           apiKey,
           'https://generativelanguage.googleapis.com/v1beta/openai/',
-          {}, //TODO: Gemini models !
-          'Gemini'
+          geminiModels,
+          'Google'
         )
       case 'localLlm':
         const config = this.userService.config.aiProviders.localLlm
