@@ -2,8 +2,15 @@ import { Scripts } from './scripts'
 import { AssistantDescription } from './assistant-description'
 import { AgentDefinition } from './agent-definition'
 import { WithDocs } from './with-docs'
+import { AiProviderLocalConfig } from './ai-providers'
 
 export interface ProjectDescription extends WithDocs {
+  /**
+   * AI provider configurations for the project.
+   * These serve as base defaults that can be overridden by project-level and user-level configurations.
+   */
+  aiProviders?: AiProviderLocalConfig
+
   /**
    * Description of the current project, it should contain the same high-level information and rules about the project anyone of the team should know.
    *
