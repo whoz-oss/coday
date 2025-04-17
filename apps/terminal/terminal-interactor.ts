@@ -56,6 +56,8 @@ export class TerminalInteractor extends Interactor {
       }
     })
 
+    this.displayText('Enter: new line, Alt+Enter: submit')
+
     process.on('SIGINT', () => this.cleanupAndExit())
     process.on('SIGTERM', () => this.cleanupAndExit())
   }
@@ -132,7 +134,8 @@ export class TerminalInteractor extends Interactor {
         const currentLine = this.rl.line // Read is fine
         const cursor = this.rl.cursor // Read is fine
 
-        if (key && key.meta && key.name === 'return') {
+        // Submit on ANY modifier + Enter (Alt, Ctrl, or Shift), for broad terminal compatibility
+        if (key && key.name === 'return' && (key.meta || key.ctrl || key.shift)) {
           // Let the 'line' event handle submission
           this.rl.emit('line', currentLine)
           return
