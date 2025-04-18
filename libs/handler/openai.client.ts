@@ -13,7 +13,7 @@ import { RunSubmitToolOutputsParams } from 'openai/resources/beta/threads/runs/r
 const OpenaiModels = {
   [ModelSize.BIG]: {
     name: 'gpt-4.1-2025-04-14',
-    contextWindow: 128000,
+    contextWindow: 1000000,
     price: {
       inputMTokens: 2,
       cacheRead: 0.5,
