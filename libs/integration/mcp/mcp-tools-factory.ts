@@ -80,9 +80,22 @@ export class McpToolsFactory extends AssistantToolFactory {
       throw new Error(`Remote HTTP/HTTPS MCP servers are not supported yet. Use local command-based servers instead.`)
     } else if (this.serverConfig.command) {
       // Stdio transport - launch the command as a child process
-      const transportOptions: any = {
-        command: this.serverConfig.command,
-        args: this.serverConfig.args || [],
+      const transportOptions: any = {}
+
+      // If debug flag is set, wrap command with npx inspector
+      if (this.serverConfig.debug) {
+        const originalCommand = this.serverConfig.command
+        const originalArgs = this.serverConfig.args || []
+        transportOptions.command = 'npx'
+        transportOptions.args = [
+          '@modelcontextprotocol/inspector',
+          originalCommand,
+          ...originalArgs,
+        ]
+        console.log(`MCP Inspector debug mode enabled for ${this.serverConfig.name}`)
+      } else {
+        transportOptions.command = this.serverConfig.command
+        transportOptions.args = this.serverConfig.args || []
       }
 
       // Add environment variables if specified
@@ -98,7 +111,7 @@ export class McpToolsFactory extends AssistantToolFactory {
       }
 
       transport = new StdioClientTransport(transportOptions)
-      console.log(`Starting MCP server ${this.serverConfig.name} with command: ${this.serverConfig.command}`)
+      console.log(`Starting MCP server ${this.serverConfig.name} with command: ${transportOptions.command}`)
     } else {
       throw new Error(
         `MCP server ${this.serverConfig.name} has no command configured. Only local command-based servers are supported.`

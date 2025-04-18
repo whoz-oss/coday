@@ -108,6 +108,14 @@ export class McpAddHandler extends CommandHandler {
     )
     serverConfig.allowedTools = allowedToolsStr ? allowedToolsStr.split(',').map((tool) => tool.trim()) : undefined
 
+    // Debug flag
+    const debugChoice = await this.interactor.chooseOption(
+      ['true', 'false'],
+      'Enable MCP Inspector debugging for this server?',
+      'false' // Default is not debugging
+    )
+    serverConfig.debug = debugChoice === 'true'
+
     // Clean the serverConfig by removing empty values
     cleanServerConfig(serverConfig)
 
