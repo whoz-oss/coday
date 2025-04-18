@@ -150,7 +150,7 @@ ${mcpServerConfigToArgs(sanitized)}`)
 
     // Debug flag
     const debugChoice = await this.interactor.chooseOption(
-      ['true', 'false'],
+      ['false', 'true'],
       'Enable MCP Inspector debugging for this server?',
       serverConfig.debug ? 'true' : 'false'
     )

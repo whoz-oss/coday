@@ -110,7 +110,7 @@ export class McpAddHandler extends CommandHandler {
 
     // Debug flag
     const debugChoice = await this.interactor.chooseOption(
-      ['true', 'false'],
+      ['false', 'true'],
       'Enable MCP Inspector debugging for this server?',
       'false' // Default is not debugging
     )
