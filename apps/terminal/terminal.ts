@@ -21,6 +21,20 @@ const integration = new IntegrationService(project, user)
 const memory = new MemoryService(project, user)
 const mcp = new McpConfigService(user, project, interactor)
 
+// Setup cleanup for terminal interactor when process exits
+if (interactor instanceof TerminalInteractor) {
+  // Clean up readline interface on exit
+  process.on('exit', () => {
+    interactor.cleanup()
+  })
+  
+  // Let Node.js handle Ctrl+C normally
+  process.on('SIGINT', () => {
+    console.log('\nExiting...')
+    process.exit(0)
+  })
+}
+
 new Coday(interactor, options, {
   user,
   project,

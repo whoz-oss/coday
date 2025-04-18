@@ -12,12 +12,12 @@ import { RunSubmitToolOutputsParams } from 'openai/resources/beta/threads/runs/r
 
 const OpenaiModels = {
   [ModelSize.BIG]: {
-    name: 'gpt-4o',
-    contextWindow: 128000,
+    name: 'gpt-4.1-2025-04-14',
+    contextWindow: 1000000,
     price: {
-      inputMTokens: 2.5,
-      cacheRead: 1.25,
-      outputMTokens: 10,
+      inputMTokens: 2,
+      cacheRead: 0.5,
+      outputMTokens: 8,
     },
   },
   [ModelSize.SMALL]: {
@@ -177,7 +177,7 @@ export class OpenaiClient extends AiClient {
         await this.processThread(client, agent, thread, subscriber)
       }
     } catch (error: any) {
-      this.handleError(error, subscriber, this.providerName);
+      this.handleError(error, subscriber, this.providerName)
     }
   }
 
@@ -214,7 +214,7 @@ export class OpenaiClient extends AiClient {
         baseURL: this.apiUrl,
       })
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       this.interactor.warn(`Failed to initialize ${this.providerName} client: ${errorMessage}`)
       console.error(`${this.providerName} client initialization error:`, error)
       return
@@ -273,21 +273,21 @@ export class OpenaiClient extends AiClient {
     messagesToUpload: ThreadMessage[]
   ): Promise<void> {
     try {
-    // WARNING: this part sucks, OpenAI API not allowing multiple messages at once T_T, so forced iterations
-    this.interactor.displayText(`${messagesToUpload.length} messages to upload to assistant thread...`)
-    for (const messagesToUploadElement of messagesToUpload) {
-      if (!this.shouldProceed(thread)) {
-        throw new Error('Assistant thread update interrupted')
+      // WARNING: this part sucks, OpenAI API not allowing multiple messages at once T_T, so forced iterations
+      this.interactor.displayText(`${messagesToUpload.length} messages to upload to assistant thread...`)
+      for (const messagesToUploadElement of messagesToUpload) {
+        if (!this.shouldProceed(thread)) {
+          throw new Error('Assistant thread update interrupted')
+        }
+        const assistantMessage = this.toAssistantMessage(messagesToUploadElement)
+        await client.beta.threads.messages.create(thread.data.openai.assistantThreadData.threadId, assistantMessage)
+        // update the marker in case of interruption to resume at last stop
+        thread.data.openai.assistantThreadData.lastTimestamp = messagesToUploadElement.timestamp
       }
-      const assistantMessage = this.toAssistantMessage(messagesToUploadElement)
-      await client.beta.threads.messages.create(thread.data.openai.assistantThreadData.threadId, assistantMessage)
-      // update the marker in case of interruption to resume at last stop
-      thread.data.openai.assistantThreadData.lastTimestamp = messagesToUploadElement.timestamp
-    }
-    this.interactor.displayText(`Messages uploaded.`)
+      this.interactor.displayText(`Messages uploaded.`)
     } catch (error) {
       console.error('Error updating assistant thread:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       this.interactor.displayText(`\u26a0\ufe0f Error updating assistant thread: ${errorMessage}`)
       throw error // Re-throw to be caught by the calling function
     }
@@ -320,68 +320,68 @@ export class OpenaiClient extends AiClient {
     subscriber: Subject<CodayEvent>
   ): Promise<void> {
     try {
-    // Check interruption before starting stream processing
-    stream.on('textDone', (diff) => {
-      thread.data.openai.assistantThreadData.lastTimestamp = this.handleText(thread, diff.value, agent, subscriber)
-    })
-    for await (const chunk of stream) {
-      this.interactor.thinking()
-      if (chunk.event === 'thread.run.completed') {
-        const data = chunk.data as unknown as any
-        this.updateUsage(data?.usage, agent, thread)
-      }
+      // Check interruption before starting stream processing
+      stream.on('textDone', (diff) => {
+        thread.data.openai.assistantThreadData.lastTimestamp = this.handleText(thread, diff.value, agent, subscriber)
+      })
+      for await (const chunk of stream) {
+        this.interactor.thinking()
+        if (chunk.event === 'thread.run.completed') {
+          const data = chunk.data as unknown as any
+          this.updateUsage(data?.usage, agent, thread)
+        }
 
-      if (chunk.event === 'thread.run.requires_action') {
-        try {
-          const toolRequests =
-            chunk.data.required_action?.submit_tool_outputs.tool_calls?.map(
-              (toolCall) =>
-                new ToolRequestEvent({
-                  toolRequestId: toolCall.id,
-                  name: toolCall.function.name,
-                  args: toolCall.function.arguments,
+        if (chunk.event === 'thread.run.requires_action') {
+          try {
+            const toolRequests =
+              chunk.data.required_action?.submit_tool_outputs.tool_calls?.map(
+                (toolCall) =>
+                  new ToolRequestEvent({
+                    toolRequestId: toolCall.id,
+                    name: toolCall.function.name,
+                    args: toolCall.function.arguments,
+                  })
+              ) ?? []
+            const toolOutputs: RunSubmitToolOutputsParams.ToolOutput[] = []
+            await Promise.all(
+              toolRequests.map(async (request) => {
+                let responseEvent: ToolResponseEvent
+                try {
+                  responseEvent = await agent.tools.run(request)
+                } catch (error: any) {
+                  console.error(`Error running tool ${request.name}:`, error)
+                  responseEvent = request.buildResponse(`Error: ${error.message}`)
+                }
+                thread.addToolRequests(agent.name, [request])
+                thread.addToolResponseEvents([responseEvent])
+                toolOutputs.push({
+                  tool_call_id: request.toolRequestId,
+                  output: responseEvent.output,
                 })
-            ) ?? []
-          const toolOutputs: RunSubmitToolOutputsParams.ToolOutput[] = []
-          await Promise.all(
-            toolRequests.map(async (request) => {
-              let responseEvent: ToolResponseEvent
-              try {
-                responseEvent = await agent.tools.run(request)
-              } catch (error: any) {
-                console.error(`Error running tool ${request.name}:`, error)
-                responseEvent = request.buildResponse(`Error: ${error.message}`)
-              }
-              thread.addToolRequests(agent.name, [request])
-              thread.addToolResponseEvents([responseEvent])
-              toolOutputs.push({
-                tool_call_id: request.toolRequestId,
-                output: responseEvent.output,
               })
-            })
-          )
+            )
 
-          const newStream = client!.beta.threads.runs.submitToolOutputsStream(
-            thread.data.openai.assistantThreadData.threadId!,
-            chunk.data.id,
-            { tool_outputs: toolOutputs }
-          )
-          if (!this.shouldProceed(thread)) return
-          await this.processAssistantStream.call(this, newStream, agent, client, thread, subscriber)
-        } catch (error) {
-          console.error(`Error processing tool call`, error)
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          this.interactor.displayText(`\u26a0\ufe0f Error processing tool call: ${errorMessage}`)
-          subscriber.next(
-            new ErrorEvent({
-              error: new Error(`Error processing OpenAI assistant tool call: ${errorMessage}`)
-            })
-          )
+            const newStream = client!.beta.threads.runs.submitToolOutputsStream(
+              thread.data.openai.assistantThreadData.threadId!,
+              chunk.data.id,
+              { tool_outputs: toolOutputs }
+            )
+            if (!this.shouldProceed(thread)) return
+            await this.processAssistantStream.call(this, newStream, agent, client, thread, subscriber)
+          } catch (error) {
+            console.error(`Error processing tool call`, error)
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+            this.interactor.displayText(`\u26a0\ufe0f Error processing tool call: ${errorMessage}`)
+            subscriber.next(
+              new ErrorEvent({
+                error: new Error(`Error processing OpenAI assistant tool call: ${errorMessage}`),
+              })
+            )
+          }
         }
       }
-    }
     } catch (error) {
-      this.handleError(error, subscriber, this.providerName);
+      this.handleError(error, subscriber, this.providerName)
     }
   }
 }
