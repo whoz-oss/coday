@@ -158,7 +158,6 @@ export class ServerClient {
 
   private sendHeartbeat(): void {
     try {
-      debugLog('HEARTBEAT', `Sending heartbeat to client ${this.clientId}`)
       const heartBeatEvent = new HeartBeatEvent({})
       this.interactor.sendEvent(heartBeatEvent)
     } catch (error) {
