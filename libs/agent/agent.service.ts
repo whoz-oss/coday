@@ -38,10 +38,12 @@ export class AgentService implements Killable {
   }
 
   listAgentSummaries(): AgentSummary[] {
-    return this.agentDefinitions.map((entry) => ({
-      name: entry.definition.name,
-      description: entry.definition.description,
-    }))
+    return this.agentDefinitions
+      .map((entry) => ({
+        name: entry.definition.name,
+        description: entry.definition.description,
+      }))
+      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
   }
 
   /**
