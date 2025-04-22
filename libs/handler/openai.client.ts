@@ -1,5 +1,5 @@
 import OpenAI from 'openai'
-import { AiClient, Interactor, ModelSize } from '../model'
+import { AiClient, Interactor } from '../model'
 import { CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 import { AiThread } from '../ai-thread/ai-thread'
 import { Agent } from '../model/agent'
@@ -9,27 +9,7 @@ import { ChatCompletionMessageParam, ChatCompletionSystemMessageParam } from 'op
 import { MessageCreateParams } from 'openai/resources/beta/threads/messages'
 import { AssistantStream } from 'openai/lib/AssistantStream'
 import { RunSubmitToolOutputsParams } from 'openai/resources/beta/threads/runs/runs'
-
-const OpenaiModels = {
-  [ModelSize.BIG]: {
-    name: 'gpt-4.1-2025-04-14',
-    contextWindow: 1000000,
-    price: {
-      inputMTokens: 2,
-      cacheRead: 0.5,
-      outputMTokens: 8,
-    },
-  },
-  [ModelSize.SMALL]: {
-    name: 'gpt-4o-mini',
-    contextWindow: 128000,
-    price: {
-      inputMTokens: 0.15,
-      cacheRead: 0.075,
-      outputMTokens: 0.6,
-    },
-  },
-}
+import { AiModel, AiProviderConfig } from '../model/ai-providers'
 
 type AssistantThreadData = {
   threadId?: string
@@ -37,27 +17,39 @@ type AssistantThreadData = {
 }
 
 export class OpenaiClient extends AiClient {
+  name: string
+  models: AiModel[] = [
+    {
+      name: 'gpt-4.1-2025-04-14',
+      contextWindow: 1000000,
+      alias: 'BIG',
+      price: {
+        inputMTokens: 2,
+        cacheRead: 0.5,
+        outputMTokens: 8,
+      },
+    },
+    {
+      name: 'gpt-4o-mini',
+      alias: 'SMALL',
+      contextWindow: 128000,
+      price: {
+        inputMTokens: 0.15,
+        cacheRead: 0.075,
+        outputMTokens: 0.6,
+      },
+    },
+  ]
+
   constructor(
-    readonly name: string,
     readonly interactor: Interactor,
-    private apiKey: string | undefined,
-    /**
-     * Custom apiUrl for providers using Openai SDK
-     * @private
-     */
-    private apiUrl: string | undefined = undefined,
-    /**
-     * Custom model description for providers using Openai SDK
-     * @private
-     */
-    private models: any = OpenaiModels,
-    /**
-     * Custom provider name
-     * @private
-     */
-    private providerName: string = 'OpenAI'
+    private aiProviderConfig: AiProviderConfig
   ) {
-    super()
+    super(aiProviderConfig)
+    if (aiProviderConfig.name !== 'openai') {
+      this.models = aiProviderConfig.models
+    }
+    this.name = aiProviderConfig.name
   }
 
   async run(agent: Agent, thread: AiThread): Promise<Observable<CodayEvent>> {
@@ -74,7 +66,7 @@ export class OpenaiClient extends AiClient {
     const thinking = setInterval(() => this.interactor.thinking(), this.thinkingInterval)
     this.processThread(openai, agent, thread, outputSubject).finally(() => {
       clearInterval(thinking)
-      this.showAgentAndUsage(agent, this.providerName, this.models[this.getModelSize(agent)].name, thread)
+      this.showAgentAndUsage(agent, this.aiProviderConfig.name, this.getModel(agent).name, thread)
       // Log usage after the complete response cycle
       const model = this.models[this.getModelSize(agent)]
       const cost = thread.usage?.price || 0
@@ -117,7 +109,7 @@ export class OpenaiClient extends AiClient {
       .then(async () => await this.processAssistantThread(openai, agent, thread, outputSubject))
       .finally(() => {
         clearInterval(thinking)
-        this.showAgentAndUsage(agent, this.providerName, this.models[this.getModelSize(agent)].name, thread)
+        this.showAgentAndUsage(agent, this.aiProviderConfig.name, this.getModel(agent).name, thread)
         // Log usage after the complete response cycle
         const model = this.models[this.getModelSize(agent)]
         const cost = thread.usage?.price || 0
@@ -152,7 +144,7 @@ export class OpenaiClient extends AiClient {
     subscriber: Subject<CodayEvent>
   ): Promise<void> {
     try {
-      const model = this.models[this.getModelSize(agent)]
+      const model = this.getModel(agent)
       const initialContextCharLength = agent.systemInstructions.length + agent.tools.charLength + 20
       const charBudget = model.contextWindow * this.charsPerToken - initialContextCharLength
 
@@ -185,17 +177,17 @@ export class OpenaiClient extends AiClient {
         await this.processThread(client, agent, thread, subscriber)
       }
     } catch (error: any) {
-      this.handleError(error, subscriber, this.providerName)
+      this.handleError(error, subscriber, this.aiProviderConfig.name)
     }
   }
 
   private updateUsage(usage: any, agent: Agent, thread: AiThread): void {
     const cacheReadTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0
     const inputNoCacheTokens = (usage?.prompt_tokens ?? 0) - cacheReadTokens // TODO: check again with doc...
-    const input = inputNoCacheTokens * this.models[this.getModelSize(agent)].price.inputMTokens
+    const input = inputNoCacheTokens * this.getModel(agent).price.inputMTokens
     const outputTokens = usage?.completion_tokens ?? 0
-    const output = outputTokens * this.models[this.getModelSize(agent)].price.outputMTokens
-    const cacheRead = cacheReadTokens * this.models[this.getModelSize(agent)].price.cacheRead
+    const output = outputTokens * this.getModel(agent).price.outputMTokens
+    const cacheRead = cacheReadTokens * this.getModel(agent).price.cacheRead
     const price = (input + output + cacheRead) / 1_000_000
 
     thread.addUsage({
@@ -208,23 +200,25 @@ export class OpenaiClient extends AiClient {
   }
 
   private isOpenaiReady(): OpenAI | undefined {
-    if (!this.apiKey) {
-      this.interactor.warn(`${this.providerName}_API_KEY not set, skipping AI command. Please configure your API key.`)
+    if (!this.aiProviderConfig.apiKey) {
+      this.interactor.warn(
+        `${this.aiProviderConfig.name}_API_KEY not set, skipping AI command. Please configure your API key.`
+      )
       return
     }
 
     try {
       return new OpenAI({
-        apiKey: this.apiKey,
+        apiKey: this.aiProviderConfig.apiKey,
         /**
          * Possible customization for third parties using Openai SDK (Google Gemini, xAi, ...)
          */
-        baseURL: this.apiUrl,
+        baseURL: this.aiProviderConfig.url,
       })
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      this.interactor.warn(`Failed to initialize ${this.providerName} client: ${errorMessage}`)
-      console.error(`${this.providerName} client initialization error:`, error)
+      this.interactor.warn(`Failed to initialize ${this.aiProviderConfig.name} client: ${errorMessage}`)
+      console.error(`${this.aiProviderConfig.name} client initialization error:`, error)
       return
     }
   }
@@ -394,7 +388,7 @@ export class OpenaiClient extends AiClient {
         }
       }
     } catch (error) {
-      this.handleError(error, subscriber, this.providerName)
+      this.handleError(error, subscriber, this.aiProviderConfig.name)
     }
   }
 }
