@@ -1,8 +1,9 @@
 import { IntegrationLocalConfig } from './project-local-config'
-import { AiProviderLocalConfig } from './ai-providers'
 import { McpConfig } from './mcp-server-config'
+import { AiProviderLocalConfig } from './ai-providers'
+import { AiProviderConfig } from './ai-provider-config'
 
-export type AiProviderConfig = {
+export type AiProviderConfigOld = {
   apiKey?: string
 }
 
@@ -24,7 +25,7 @@ export type UserProjectConfig = {
   /**
    * Project-specific bio (optional)
    */
-  bio?: string // Add project-specific bio
+  bio?: string
 }
 
 /**
@@ -40,7 +41,13 @@ export type UserProjectConfig = {
  * - (future) Default settings
  */
 export interface UserConfig {
-  aiProviders: AiProviderLocalConfig
+  version: number
+
+  /**
+   * DEPRECATED AiProvider config
+   */
+  aiProviders?: AiProviderLocalConfig
+  ai?: AiProviderConfig[]
   /**
    * User bio (optional)
    */
@@ -59,6 +66,6 @@ export interface UserConfig {
  * or when handling null configurations.
  */
 export const DEFAULT_USER_CONFIG: UserConfig = {
-  aiProviders: {},
+  version: 1,
   // bio is undefined by default
 }
