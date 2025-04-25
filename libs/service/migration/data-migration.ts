@@ -30,7 +30,7 @@ export interface Migration {
  * @param migrations Array of migration steps in order
  * @returns migrated data as new reference if it was changed
  */
-export function migrateConfig(data: any, migrations: Migration[]): any {
+export function migrateData(data: any, migrations: Migration[]): any {
   // If no version, assume version 1
   let currentConfig = data.version ? data : { ...data, version: 1 }
 

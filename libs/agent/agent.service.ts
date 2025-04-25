@@ -271,17 +271,9 @@ export class AgentService implements Killable {
         return
       }
 
-      const aiClient = this.aiClientProvider.getClient(def.aiProvider)
+      const aiClient = this.aiClientProvider.getClient(def.aiProvider, def.modelName)
       if (!aiClient) {
-        // Provide more specific error for localLlm
-        if (def.aiProvider === 'localLlm') {
-          this.interactor.warn(
-            `Cannot create agent ${def.name}: Local LLM configuration is missing or incomplete. ` +
-              `Please configure 'url' in your aiProviders section in ~/.coday/users/${this.services.user.sanitizedUsername}/user.yml or through 'config ai user'`
-          )
-        } else {
-          console.error(`Cannot create agent ${def.name}: AI client creation failed`)
-        }
+        this.interactor.error(`Cannot create agent ${def.name}: AI client creation failed`)
         return
       }
 

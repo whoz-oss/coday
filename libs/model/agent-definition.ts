@@ -1,7 +1,5 @@
 import { WithDocs } from './with-docs'
 
-export type AiProvider = 'openai' | 'anthropic' | 'google' | 'localLlm'
-
 export enum ModelSize {
   BIG = 'BIG',
   SMALL = 'SMALL',
@@ -33,11 +31,6 @@ export interface AgentDefinition extends WithDocs {
   description: string
 
   /**
-   * Team names the agent belongs to, implicit creation
-   */
-  teams?: string[]
-
-  /**
    * System instructions of the agent.
    * Could be optional for Openai assistants having already tools and files ?
    */
@@ -46,15 +39,16 @@ export interface AgentDefinition extends WithDocs {
   /**
    * Define who is providing the service (see later for custom/local llm ?)
    */
-  aiProvider?: AiProvider
+  aiProvider?: string
 
   /**
    * Selects a model size, should default to BIG, tied to the selected AiProvider
+   * TO DEPRECATE
    */
   modelSize?: ModelSize
 
   /**
-   * overrides modelSize by selecting directly an explicit model name of an AiProvider
+   * overrides modelSize by selecting directly an explicit model name or alias of an AiProvider
    */
   modelName?: string
 

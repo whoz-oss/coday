@@ -4,8 +4,10 @@ import { readYamlFile } from './read-yaml-file'
 import { writeYamlFile } from './write-yaml-file'
 import { DEFAULT_USER_CONFIG, UserConfig } from '../model/user-config'
 import { UserData } from '../model/user-data'
-import { IntegrationLocalConfig } from '../model'
+import { IntegrationLocalConfig, Interactor } from '../model'
 import * as os from 'node:os'
+import { migrateData } from './migration/data-migration'
+import { userConfigMigrations } from './migration/user-config-migrations'
 
 const usersFolder = 'users'
 const USER_FILENAME = 'user.yaml'
@@ -17,7 +19,8 @@ export class UserService {
 
   constructor(
     codayConfigPath: string | undefined,
-    public readonly username: string
+    public readonly username: string,
+    private interactor?: Interactor
   ) {
     // Format username correctly
     this.sanitizedUsername = this.sanitizeUsername(username)
@@ -33,15 +36,25 @@ export class UserService {
     // Load user configuration
     const filePath = path.join(this.userConfigPath, USER_FILENAME)
     if (!existsSync(filePath)) {
-      writeYamlFile(filePath, DEFAULT_USER_CONFIG)
+      // Add version to default config
+      const defaultConfig = { ...DEFAULT_USER_CONFIG, version: 1 }
+      writeYamlFile(filePath, defaultConfig)
     }
 
-    const userConfig: UserConfig | undefined = readYamlFile<UserConfig>(filePath)
+    const rawUserConfig = readYamlFile(filePath)
 
-    if (!userConfig) {
+    if (!rawUserConfig) {
       throw Error(`Could not read user config for username ${this.sanitizedUsername}`)
     }
-    this.config = userConfig
+
+    // Apply migrations
+    this.config = migrateData(rawUserConfig, userConfigMigrations)
+
+    // Save the migrated config if reference changed, meaning some migration happened
+    if (this.config !== rawUserConfig) {
+      writeYamlFile(filePath, this.config)
+      this.interactor.displayText(`User configuration migrated to version ${this.config.version}`)
+    }
   }
 
   public save() {

@@ -1,4 +1,4 @@
-import { migrateConfig } from './data-migration'
+import { migrateData } from './data-migration'
 import { aiPropertyToAi } from './ai-providers-to-ai.migration'
 import { ProjectLocalConfig } from '../../model/project-local-config'
 import { UserConfig } from '../../model/user-config'
@@ -21,7 +21,7 @@ describe('aiProviders to ai migration', () => {
       }
 
       // Apply migration
-      const result = migrateConfig(config, [aiPropertyToAi])
+      const result = migrateData(config, [aiPropertyToAi])
 
       // Check version is incremented
       expect(result.version).toBe(2)
@@ -29,17 +29,17 @@ describe('aiProviders to ai migration', () => {
       // Check ai array is created with correct values
       expect(result.ai).toBeDefined()
       expect(result.ai).toHaveLength(2)
-      
+
       // Check anthropic provider
       const anthropicProvider = result.ai.find((p) => p.name === 'anthropic')
       expect(anthropicProvider).toBeDefined()
       expect(anthropicProvider.apiKey).toBe('test-anthropic-key')
-      
+
       // Check openai provider
       const openaiProvider = result.ai.find((p) => p.name === 'openai')
       expect(openaiProvider).toBeDefined()
       expect(openaiProvider.apiKey).toBe('test-openai-key')
-      
+
       // Original aiProviders should still be present
       expect(result.aiProviders).toBeDefined()
     })
@@ -52,7 +52,7 @@ describe('aiProviders to ai migration', () => {
       }
 
       // Apply migration
-      const result = migrateConfig(config, [aiPropertyToAi])
+      const result = migrateData(config, [aiPropertyToAi])
 
       // Check version is incremented
       expect(result.version).toBe(2)
@@ -60,7 +60,7 @@ describe('aiProviders to ai migration', () => {
       // Check ai array is created but empty
       expect(result.ai).toBeDefined()
       expect(result.ai).toHaveLength(0)
-      
+
       // Original aiProviders should be undefined
       expect(result.aiProviders).toBeUndefined()
     })
@@ -81,7 +81,7 @@ describe('aiProviders to ai migration', () => {
       }
 
       // Apply migration
-      const result = migrateConfig(config, [aiPropertyToAi])
+      const result = migrateData(config, [aiPropertyToAi])
 
       // Check version is incremented
       expect(result.version).toBe(2)
@@ -89,7 +89,7 @@ describe('aiProviders to ai migration', () => {
       // Check ai array is created with correct values
       expect(result.ai).toBeDefined()
       expect(result.ai).toHaveLength(1)
-      
+
       // Check custom provider
       const localProvider = result.ai.find((p) => p.name === 'localLlm')
       expect(localProvider).toBeDefined()
@@ -128,7 +128,7 @@ describe('aiProviders to ai migration', () => {
       }
 
       // Apply migration
-      const result = migrateConfig(config, [aiPropertyToAi])
+      const result = migrateData(config, [aiPropertyToAi])
 
       // Check version is incremented
       expect(result.version).toBe(2)
@@ -136,17 +136,17 @@ describe('aiProviders to ai migration', () => {
       // Check ai array is created with correct values
       expect(result.ai).toBeDefined()
       expect(result.ai).toHaveLength(3)
-      
+
       // Check anthropic provider
       const anthropicProvider = result.ai.find((p) => p.name === 'anthropic')
       expect(anthropicProvider).toBeDefined()
       expect(anthropicProvider.apiKey).toBe('user-anthropic-key')
-      
+
       // Check google provider
       const googleProvider = result.ai.find((p) => p.name === 'google')
       expect(googleProvider).toBeDefined()
       expect(googleProvider.apiKey).toBe('user-google-key')
-      
+
       // Check custom provider
       const localProvider = result.ai.find((p) => p.name === 'localLlm')
       expect(localProvider).toBeDefined()
@@ -156,15 +156,15 @@ describe('aiProviders to ai migration', () => {
       expect(localProvider.models).toHaveLength(1)
       expect(localProvider.models[0].name).toBe('mixtral')
       expect(localProvider.models[0].contextWindow).toBe(64000) // Default value
-      
+
       // Original aiProviders should still be present
       expect(result.aiProviders).toBeDefined()
-      
+
       // Projects should be preserved
       expect(result.projects).toBeDefined()
       expect(result.projects['test-project']).toBeDefined()
     })
-    
+
     it('should handle UserConfig with empty aiProviders', () => {
       // Create a sample UserConfig with empty aiProviders
       const config: Partial<UserConfig> = {
@@ -178,7 +178,7 @@ describe('aiProviders to ai migration', () => {
       }
 
       // Apply migration
-      const result = migrateConfig(config, [aiPropertyToAi])
+      const result = migrateData(config, [aiPropertyToAi])
 
       // Check version is incremented
       expect(result.version).toBe(2)
@@ -186,10 +186,10 @@ describe('aiProviders to ai migration', () => {
       // Check ai array is created but empty
       expect(result.ai).toBeDefined()
       expect(result.ai).toHaveLength(0)
-      
+
       // Original aiProviders should still be present
       expect(result.aiProviders).toBeDefined()
-      
+
       // Projects should be preserved
       expect(result.projects).toBeDefined()
     })
@@ -212,27 +212,27 @@ describe('aiProviders to ai migration', () => {
       }
 
       // Apply migration
-      const result = migrateConfig(config, [aiPropertyToAi])
+      const result = migrateData(config, [aiPropertyToAi])
 
       // Check ai array is created with correct values
       expect(result.ai).toBeDefined()
       expect(result.ai).toHaveLength(3)
-      
+
       // Check all providers are included
-      const providerNames = result.ai.map(p => p.name)
+      const providerNames = result.ai.map((p) => p.name)
       expect(providerNames).toContain('anthropic')
       expect(providerNames).toContain('openai')
       expect(providerNames).toContain('google')
-      
+
       // Default providers should not have type or models
       const anthropicProvider = result.ai.find((p) => p.name === 'anthropic')
       expect(anthropicProvider.type).toBeUndefined()
       expect(anthropicProvider.models).toBeUndefined()
-      
+
       const openaiProvider = result.ai.find((p) => p.name === 'openai')
       expect(openaiProvider.type).toBeUndefined()
       expect(openaiProvider.models).toBeUndefined()
-      
+
       const googleProvider = result.ai.find((p) => p.name === 'google')
       expect(googleProvider.type).toBeUndefined()
       expect(googleProvider.models).toBeUndefined()
