@@ -1,4 +1,4 @@
-import { Agent, AiClient, Interactor } from '../model'
+import { Agent, AiClient, AiModel, AiProviderConfig, Interactor } from '../model'
 import Anthropic from '@anthropic-ai/sdk'
 import { MessageParam } from '@anthropic-ai/sdk/resources'
 import { ToolSet } from '../integration/tool-set'
@@ -7,7 +7,6 @@ import { Observable, of, Subject } from 'rxjs'
 import { AiThread } from '../ai-thread/ai-thread'
 import { ThreadMessage } from '../ai-thread/ai-thread.types'
 import { TextBlockParam } from '@anthropic-ai/sdk/resources/messages'
-import { AiModel, AiProviderConfig } from '../model/ai-providers'
 
 export class AnthropicClient extends AiClient {
   name: string

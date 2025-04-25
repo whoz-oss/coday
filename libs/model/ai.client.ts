@@ -5,7 +5,8 @@ import { AiThread } from '../ai-thread/ai-thread'
 import { RunStatus } from '../ai-thread/ai-thread.types'
 import { Interactor } from './interactor'
 import { AgentDefinition, ModelSize } from './agent-definition'
-import { AiModel, AiProviderConfig } from './ai-providers'
+import { AiModel } from './ai-model'
+import { AiProviderConfig } from './ai-provider-config'
 import { CodayLogger } from '../service/coday-logger'
 
 /**

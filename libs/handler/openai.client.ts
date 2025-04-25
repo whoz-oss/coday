@@ -1,15 +1,13 @@
 import OpenAI from 'openai'
-import { AiClient, Interactor } from '../model'
+import { Agent, AiClient, AiModel, AiProviderConfig, Interactor } from '../model'
 import { CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 import { AiThread } from '../ai-thread/ai-thread'
-import { Agent } from '../model/agent'
 import { Observable, of, Subject } from 'rxjs'
 import { ThreadMessage } from '../ai-thread/ai-thread.types'
 import { ChatCompletionMessageParam, ChatCompletionSystemMessageParam } from 'openai/resources/chat/completions'
 import { MessageCreateParams } from 'openai/resources/beta/threads/messages'
 import { AssistantStream } from 'openai/lib/AssistantStream'
 import { RunSubmitToolOutputsParams } from 'openai/resources/beta/threads/runs/runs'
-import { AiModel, AiProviderConfig } from '../model/ai-providers'
 
 type AssistantThreadData = {
   threadId?: string
@@ -155,7 +153,7 @@ export class OpenaiClient extends AiClient {
         max_completion_tokens: undefined,
         temperature: agent.definition.temperature ?? 0.8,
       })
-
+      2
       this.updateUsage(response.usage, agent, thread)
 
       if (response.choices[0].finish_reason === 'length') throw new Error('Max tokens reached for Openai 😬')
