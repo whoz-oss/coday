@@ -38,8 +38,7 @@ export class AnthropicClient extends AiClient {
 
   constructor(
     readonly interactor: Interactor,
-    aiProviderConfig: AiProviderConfig,
-    private readonly apiKey: string | undefined
+    aiProviderConfig: AiProviderConfig
   ) {
     super(aiProviderConfig)
     this.name = 'Anthropic'

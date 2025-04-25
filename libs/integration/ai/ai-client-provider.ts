@@ -1,19 +1,19 @@
-import { AiClient, AiProvider, Interactor } from '../../model'
+import { AiClient, AiProviderConfig, CommandContext, Interactor } from '../../model'
 import { OpenaiClient } from '../../handler/openai.client'
 import { AnthropicClient } from '../../handler/anthropic.client'
 import { UserService } from '../../service/user.service'
 import { ProjectService } from '../../service/project.service'
+import { GoogleClient } from '../../handler/google.client'
 import { CodayLogger } from '../../service/coday-logger'
 
 /**
  * Environment variable names for each provider.
  * These can override (but not enable) configured providers.
  */
-const ENV_VARS: Record<AiProvider, string> = {
+const ENV_VARS: Record<string, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',
   google: 'GEMINI_API_KEY',
-  localLlm: 'LOCAL_LLM_API_KEY', // Usually not needed but kept for consistency
 }
 
 /**
@@ -31,13 +31,8 @@ const ENV_VARS: Record<AiProvider, string> = {
  */
 export class AiClientProvider {
   /** Cache of instantiated clients to avoid recreation */
-  private readonly clientCache: Map<AiProvider, AiClient> = new Map()
-
-  /**
-   * Order of preference for selecting default provider.
-   * Used when no specific provider is requested.
-   */
-  private readonly providerOrder: AiProvider[] = ['anthropic', 'openai', 'google', 'localLlm']
+  private clientCache: Map<string, AiClient> = new Map()
+  private aiProviderConfigs: AiProviderConfig[] | undefined
 
   constructor(
     private readonly interactor: Interactor,
@@ -46,147 +41,102 @@ export class AiClientProvider {
     private logger: CodayLogger
   ) {}
 
+  init(context: CommandContext): void {
+    if (this.aiProviderConfigs) return
+    // get the ai def and models from coday.yaml
+    const aiCodayYaml = context.project.ai || []
+    const projectYaml = this.projectService.selectedProject.config.ai || []
+    const userYaml = this.userService.config.ai || []
+    this.aiProviderConfigs = []
+
+    // merge all ai definitions one over the others, order is important !
+    for (const aiDef of [...aiCodayYaml, ...projectYaml, ...userYaml]) {
+      const i = this.aiProviderConfigs.findIndex((a) => a.name === aiDef.name)
+      if (i === -1) {
+        // definition of a new provider, add it
+        this.aiProviderConfigs.push(aiDef)
+      } else {
+        // existing provider, merge new def in it
+        const currentConfig = this.aiProviderConfigs[i]
+        const currentModels = [...currentConfig.models]
+        aiDef.models.forEach((model) => {
+          const j = currentModels.findIndex((m) => m.alias === model.alias || m.name === model.name)
+          if (j === -1) {
+            // adding a new model def
+            currentModels.push(model)
+          } else {
+            // merging the new model def over the current one
+            const current = currentModels[j]
+            currentModels[j] = { ...current, ...model, price: { ...current.price, ...model.price } }
+          }
+        })
+        this.aiProviderConfigs[i] = { ...currentConfig, ...aiDef, models: currentModels }
+      }
+    }
+  }
+
   /**
    * Get an AI client instance, either for a specific provider
    * or the first available one according to priority order.
    *
    * @param provider Optional provider name, if not provided returns first available
+   * @param name Name or alias of the model
    * @returns AiClient instance or undefined if no client available
    */
-  getClient(provider?: AiProvider): AiClient | undefined {
-    // If no provider specified, find first available in order
-    if (!provider) {
-      for (const p of this.providerOrder) {
-        const client = this.getClient(p)
-        if (client) {
-          return client
-        }
+  getClient(provider: string | undefined, name?: string | undefined): AiClient | undefined {
+    // filter providers by name and provider
+    const providers = this.aiProviderConfigs.filter(
+      (aiProviderConfig) =>
+        (!name || aiProviderConfig.models.some((model) => model.alias === name || model.name === name)) &&
+        (!aiProviderConfig || aiProviderConfig.name === provider)
+    )
+
+    // from the matching providers, take the first (in the cache, or try to create)
+    let client: AiClient
+    for (const aiProviderConfig of providers) {
+      client = this.clientCache.get(aiProviderConfig.name)
+      if (client) {
+        return client
       }
-      return undefined
-    }
 
-    // Check cache first
-    let client = this.clientCache.get(provider)
-    if (client) {
-      return client
+      client = this.createClient(aiProviderConfig)
+      if (client) {
+        this.clientCache.set(aiProviderConfig.name, client)
+      }
     }
-
-    // Create new client with the api key provider
-    client = this.createClient(provider)
-    if (client) {
-      this.clientCache.set(provider, client)
-    }
-
     return client
   }
 
   public kill(): void {
-    const clients: AiClient[] = Array.from(this.clientCache.values())
-    for (const client of clients) {
-      client.kill()
-    }
+    this.clientCache.forEach((client, key, map) => client.kill())
+    this.aiProviderConfigs = undefined
   }
 
-  private getApiKey(provider: AiProvider): string | undefined {
-    const userKey: string | undefined = this.userService.config.aiProviders[provider]?.apiKey
-    const projectKey = this.projectService.selectedProject?.config?.aiProviders[provider]?.apiKey
-    const envKey = process.env[ENV_VARS[provider]]
-    return envKey || userKey || projectKey
+  private getApiKey(aiProviderConfig: AiProviderConfig): string | undefined {
+    const envKey =
+      process.env[ENV_VARS[aiProviderConfig.name]] || process.env[`${aiProviderConfig.name.toUpperCase()}_API_KEY`]
+    return envKey || aiProviderConfig.apiKey
   }
 
   /**
    * Creates a new client instance for the specified provider.
    *
-   * @param provider The AI provider to create client for
+   * @param aiProviderConfig The AI provider to create client for
    * @returns New client instance or undefined if provider not supported
    */
-  private createClient(provider: AiProvider): AiClient | undefined {
-    console.log(`create client with ${provider}`)
-    const apiKey = this.getApiKey(provider)
-    switch (provider) {
+  private createClient(aiProviderConfig: AiProviderConfig): AiClient | undefined {
+    const apiKey = this.getApiKey(aiProviderConfig)
+    // Could be controversial, but always expect an apiKey, even for local providers
+    if (!apiKey) return undefined
+    console.log(`create client with ${aiProviderConfig.name}`)
+    const config = { ...aiProviderConfig, apiKey }
+    switch (aiProviderConfig.name) {
       case 'anthropic':
-        if (!apiKey) return undefined
-        const anthropicClient = new AnthropicClient(this.interactor, apiKey)
-        anthropicClient.setLogger(this.logger, this.userService.username)
-        return anthropicClient
-      case 'openai':
-        if (!apiKey) return undefined
-        const openaiClient = new OpenaiClient('OpenAI', this.interactor, apiKey)
-        openaiClient.setLogger(this.logger, this.userService.username)
-        return openaiClient
+        return new AnthropicClient(this.interactor, aiProviderConfig)
       case 'google':
-        if (!apiKey) return undefined
-
-        // Define Gemini models
-        const geminiModels = {
-          BIG: {
-            name: 'gemini-2.5-pro-preview-05-06',
-            contextWindow: 1000000,
-            price: {
-              inputMTokens: 1.25,
-              cacheRead: 0.31,
-              outputMTokens: 10,
-            },
-          },
-          SMALL: {
-            name: 'gemini-2.5-flash-preview-05-20',
-            contextWindow: 1000000,
-            price: {
-              inputMTokens: 0.15,
-              cacheRead: 0.0375,
-              outputMTokens: 3.5,
-            },
-          },
-        }
-
-        // Leveraging Google Gemini enabling use of Openai SDK for beta
-        const geminiClient = new OpenaiClient(
-          'Google Gemini',
-          this.interactor,
-          apiKey,
-          'https://generativelanguage.googleapis.com/v1beta/openai/',
-          geminiModels,
-          'Google'
-        )
-        geminiClient.setLogger(this.logger, this.userService.username)
-        return geminiClient
-      case 'localLlm':
-        const config = this.userService.config.aiProviders.localLlm
-        console.log('localLlm config', config)
-        if (!config) return undefined
-
-        // Create custom model configuration
-        const localModels = {
-          BIG: {
-            name: config.model || 'local-model',
-            contextWindow: config.contextWindow || 8192,
-            price: {
-              inputMTokens: 0,
-              cacheRead: 0,
-              outputMTokens: 0,
-            },
-          },
-          SMALL: {
-            name: config.model || 'local-model',
-            contextWindow: config.contextWindow || 8192,
-            price: {
-              inputMTokens: 0,
-              cacheRead: 0,
-              outputMTokens: 0,
-            },
-          },
-        }
-
-        const localClient = new OpenaiClient(
-          'Local LLM',
-          this.interactor,
-          apiKey ?? 'no_api_key_for_local_llm',
-          config.url,
-          localModels,
-          'Local'
-        )
-        localClient.setLogger(this.logger, this.userService.username)
-        return localClient
+        return new GoogleClient(this.interactor, aiProviderConfig)
+      default:
+        return new OpenaiClient(this.interactor, config)
     }
   }
 }
