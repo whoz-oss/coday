@@ -9,7 +9,7 @@ export class ChatTextareaComponent implements CodayEventHandler {
   private submitButton: HTMLButtonElement
   private inviteEvent: InviteEvent | undefined
   private readonly os: 'mac' | 'non-mac'
-  
+
   // Command history for arrow key navigation
   private promptHistory: string[] = []
   private historyIndex: number = -1
@@ -56,6 +56,9 @@ export class ChatTextareaComponent implements CodayEventHandler {
     }
 
     this.chatTextarea.addEventListener('keydown', async (e) => {
+      // Disable history navigation if a default value is set
+      if (this.inviteEvent?.defaultValue) return
+
       const useEnterToSend = getPreference<boolean>('useEnterToSend', false)
 
       // Handle Enter key for submission
@@ -72,7 +75,7 @@ export class ChatTextareaComponent implements CodayEventHandler {
           await this.submit()
         }
       }
-      
+
       // Handle Up/Down arrow keys for history navigation
       if (e.key === 'ArrowUp') {
         // Only navigate history if cursor is at the first line
@@ -113,6 +116,7 @@ export class ChatTextareaComponent implements CodayEventHandler {
       this.chatForm.style.display = 'block'
       this.chatTextarea.focus()
       if (this.inviteEvent.defaultValue) {
+        console.log(`handling defaultValue: ${this.inviteEvent.defaultValue}`)
         this.chatTextarea.value = this.inviteEvent.defaultValue
       }
     }
@@ -122,30 +126,30 @@ export class ChatTextareaComponent implements CodayEventHandler {
    * Check if cursor is at the first line of text
    */
   private isCursorAtFirstLine(): boolean {
-    const text = this.chatTextarea.value;
-    const cursorPos = this.chatTextarea.selectionStart;
-    
+    const text = this.chatTextarea.value
+    const cursorPos = this.chatTextarea.selectionStart
+
     // If cursor is at position 0, it's definitely at the first line
-    if (cursorPos === 0) return true;
-    
+    if (cursorPos === 0) return true
+
     // Otherwise, check if there are any newline characters before the cursor
-    const textBeforeCursor = text.substring(0, cursorPos);
-    return textBeforeCursor.indexOf('\n') === -1;
+    const textBeforeCursor = text.substring(0, cursorPos)
+    return textBeforeCursor.indexOf('\n') === -1
   }
-  
+
   /**
    * Check if cursor is at the last line of text
    */
   private isCursorAtLastLine(): boolean {
-    const text = this.chatTextarea.value;
-    const cursorPos = this.chatTextarea.selectionStart;
-    
+    const text = this.chatTextarea.value
+    const cursorPos = this.chatTextarea.selectionStart
+
     // If cursor is at the end, it's definitely at the last line
-    if (cursorPos === text.length) return true;
-    
+    if (cursorPos === text.length) return true
+
     // Otherwise, check if there are any newline characters after the cursor
-    const textAfterCursor = text.substring(cursorPos);
-    return textAfterCursor.indexOf('\n') === -1;
+    const textAfterCursor = text.substring(cursorPos)
+    return textAfterCursor.indexOf('\n') === -1
   }
 
   /**
@@ -153,61 +157,64 @@ export class ChatTextareaComponent implements CodayEventHandler {
    */
   private navigateHistory(direction: 'up' | 'down'): void {
     // If history is empty, do nothing
-    if (this.promptHistory.length === 0) return;
-    
+    if (this.promptHistory.length === 0) return
+
     // On first up arrow press, save current input
     if (direction === 'up' && this.historyIndex === -1) {
-      this.tempInput = this.chatTextarea.value;
+      this.tempInput = this.chatTextarea.value
     }
-    
+
     if (direction === 'up' && this.historyIndex < this.promptHistory.length - 1) {
       // Move up in history
-      this.historyIndex++;
-      this.chatTextarea.value = this.promptHistory[this.promptHistory.length - 1 - this.historyIndex];
-      this.moveCursorToEnd();
+      this.historyIndex++
+      this.chatTextarea.value = this.promptHistory[this.promptHistory.length - 1 - this.historyIndex]
+      this.moveCursorToEnd()
     } else if (direction === 'down' && this.historyIndex > -1) {
       // Move down in history
-      this.historyIndex--;
-      
+      this.historyIndex--
+
       if (this.historyIndex === -1) {
         // We've reached the end of history, restore the temporary input
-        this.chatTextarea.value = this.tempInput;
+        this.chatTextarea.value = this.tempInput
       } else {
-        this.chatTextarea.value = this.promptHistory[this.promptHistory.length - 1 - this.historyIndex];
+        this.chatTextarea.value = this.promptHistory[this.promptHistory.length - 1 - this.historyIndex]
       }
-      this.moveCursorToEnd();
+      this.moveCursorToEnd()
     }
   }
-  
+
   /**
    * Move cursor to the end of the textarea
    */
   private moveCursorToEnd(): void {
-    const length = this.chatTextarea.value.length;
-    this.chatTextarea.setSelectionRange(length, length);
+    const length = this.chatTextarea.value.length
+    this.chatTextarea.setSelectionRange(length, length)
   }
 
   private async submit(): Promise<void> {
-    const inputValue = this.chatTextarea.value.trim();
+    const inputValue = this.chatTextarea.value.trim()
     const answer = this.inviteEvent?.buildAnswer(inputValue)
-    
+    this.chatTextarea.value = ''
+
     if (!answer) {
       return
     }
-    
+
     try {
       this.chatForm.style.display = 'none'
       const response = await this.postEvent(answer)
-      
+
       if (response.ok) {
         // Add to history if not empty and not a duplicate of the last entry
-        if (inputValue && (this.promptHistory.length === 0 || this.promptHistory[this.promptHistory.length - 1] !== inputValue)) {
-          this.promptHistory.push(inputValue);
+        if (
+          inputValue &&
+          (this.promptHistory.length === 0 || this.promptHistory[this.promptHistory.length - 1] !== inputValue)
+        ) {
+          this.promptHistory.push(inputValue)
         }
-        
-        this.chatTextarea.value = '';
-        this.historyIndex = -1; // Reset history index
-        this.tempInput = '';
+
+        this.historyIndex = -1 // Reset history index
+        this.tempInput = ''
       } else {
         this.chatForm.style.display = 'block'
         this.chatTextarea.focus()
