@@ -5,7 +5,7 @@ import { AgentService } from '../../agent'
 import { delegateFunction } from './delegate.function'
 
 export class DelegateTools extends AssistantToolFactory {
-  name = 'Delegate'
+  name = 'DELEGATE'
 
   constructor(
     interactor: Interactor,

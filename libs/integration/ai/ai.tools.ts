@@ -80,10 +80,10 @@ The redirected agent will run after this conversation completes and will have ac
               },
               query: {
                 type: 'string',
-                description: 'The query to redirect to the selected agent. This should capture the user\'s intent and any necessary context.',
+                description:
+                  "The query to redirect to the selected agent. This should capture the user's intent and any necessary context.",
               },
             },
-            required: ['agentName', 'query']
           },
           parse: JSON.parse,
           function: redirect,
