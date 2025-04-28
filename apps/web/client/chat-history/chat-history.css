@@ -37,6 +37,7 @@
     align-self: flex-end;
     margin-left: 5em;
     background-color: var(--color-message-user);
+    position: relative;
 }
 
 .text.left {
@@ -118,4 +119,39 @@
     40% {
         opacity: 1;
     }
+}
+
+/* Copy button styles */
+.copy-button-container {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+}
+
+.text:hover .copy-button-container {
+    opacity: 1;
+}
+
+.copy-button {
+    background: var(--color-bg);
+    border: 1px solid var(--color-text-secondary);
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 14px;
+    color: var(--color-text);
+}
+
+.copy-button:hover {
+    background: var(--color-primary);
+    color: var(--color-bg);
+}
+
+.copy-button.active {
+    background: var(--color-success, #28a745);
+    color: white;
+    border-color: var(--color-success, #28a745);
 }
