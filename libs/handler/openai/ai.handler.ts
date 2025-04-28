@@ -19,38 +19,51 @@ export class AiHandler extends CommandHandler implements Killable {
   }
 
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
-    /* The command can contain a space after the commandWord that is important to detect if it is an agent name or not.
-     * The getSubCommand of CommandHandler does trim it, misplacing first word as agent name.
-     * ex:
-     *   - "@ foo bar" => no agent name, user prompt is "foo bar"
-     *   - "@foo bar" => agent name is "foo", user prompt is "bar"
+    /* The command should start with @ followed by an agent name, optionally followed by the actual command
+     * Examples:
+     *   - "@" => invalid, no agent name, use default agent
+     *   - "@ " => invalid, no agent name, use default agent
+     *   - "@AgentName" => valid, use AgentName agent with no further command
+     *   - "@AgentName rest of command" => valid, use AgentName with "rest of command"
+     *   - "@AgentName\nrest of command" => valid, use AgentName with "rest of command"
      */
-    const cmd = command.slice(this.commandWord.length)
 
-    // Check for agent name at start of command
-    const firstSpaceIndex = cmd.indexOf(' ')
-    const potentialAgentName = firstSpaceIndex < 0 ? cmd : cmd.slice(0, firstSpaceIndex)
-    const restOfCommand = firstSpaceIndex < 0 ? '' : cmd.slice(firstSpaceIndex + 1)
+    // Extract the agent name using regex
+    // Format: @ followed by zero or more non-whitespace characters, optionally followed by whitespace and the rest
+    const match = command.match(/^@(\S*)(?:\s+(.*))?$/)
 
-    // Empty command, use default agent, corner case
-    if (!cmd.trim()) {
+    if (!match) {
+      // This case should rarely happen as the regex now matches almost any string starting with @
+      // But keeping it as a safety check
       const agent = await this.agentService.findByName('coday', context)
       if (!agent) {
         this.interactor.error('Failed to initialize default agent')
         return context
       }
-      return this.runAgent(agent, '', context)
+      return this.runAgent(agent, command.slice(1).trim(), context) // Remove @ and pass the rest as command
     }
 
-    // Try to select an agent
-    const selectedAgent = await this.selectAgent(potentialAgentName, context)
+    const agentName = match[1] // First group: the agent name (could be empty)
+    const restOfCommand = match[2] || '' // Second group: the rest of the command (or empty string if not present)
+
+    // Try to select the specified agent
+    // If agentName is empty, selectAgent will handle the fallback logic
+    const selectedAgent = await this.selectAgent(agentName, context)
     if (!selectedAgent) {
-      console.log('No selected agent for command, skipping.')
-      return context
+      // Agent name was provided but not found, show warning and use default
+      if (agentName) {
+        this.interactor.warn(`Agent '${agentName}' not found. Using default agent.`)
+      }
+      const defaultAgent = await this.agentService.findByName('coday', context)
+      if (!defaultAgent) {
+        this.interactor.error('Failed to initialize default agent')
+        return context
+      }
+      return this.runAgent(defaultAgent, restOfCommand, context)
     }
 
     // If no further command, just confirm selection
-    if (!restOfCommand) {
+    if (!restOfCommand.trim()) {
       this.interactor.displayText(`Agent ${selectedAgent.name} selected.`)
       return context
     }
