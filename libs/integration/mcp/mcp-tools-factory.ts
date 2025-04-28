@@ -181,6 +181,11 @@ export class McpToolsFactory extends AssistantToolFactory {
       this.interactor.warn(`Error listing tools from MCP server ${this.serverConfig.name}: ${err}`)
     }
 
+    if (this.serverConfig.debug) {
+      const toolNames = results.map((t) => `- ${t.function.name}\n`).join()
+      this.interactor.displayText(`DEBUG MCP ${this.serverConfig.name}:\n${toolNames}`)
+    }
+
     return results
   }
 
@@ -268,18 +273,31 @@ export class McpToolsFactory extends AssistantToolFactory {
    * @param tool The MCP tool definition
    */
   private createFunctionTool(serverConfig: McpServerConfig, client: Client, tool: ToolInfo): CodayTool {
-    const toolName = `mcp__${serverConfig.id}__${tool.name}`
+    const toolName = `${serverConfig.name}__${tool.name}`
 
     const callFunction = async (args: Record<string, any>) => {
       // Log the function call with smart formatting
       this.logToolCall(serverConfig.name, tool.name, args)
 
+      if (this.serverConfig.debug) {
+        this.interactor.displayText(
+          `DEBUG ${toolName} input:
+
+` +
+            '```json\n' +
+            JSON.stringify(args) +
+            '\n```'
+        )
+      }
       try {
         // Call the tool function
         const result = await client.callTool({
           name: tool.name,
           arguments: args,
         })
+        if (this.serverConfig.debug) {
+          this.interactor.displayText('DEBUG MCP tool output:\n\n```json\n' + JSON.stringify(result) + '\n```')
+        }
 
         // MCP can return either a content array or a toolResult
         if (result && 'content' in result && Array.isArray(result.content)) {

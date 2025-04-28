@@ -47,7 +47,7 @@ build: #XXXX short description     # For build system changes
 
 1. Create branch using the naming convention
 2. Consider architectural impact before implementation
-3. Follow SOLID principles and existing patterns
+3. Follow SOLID principles and existing patterns. KISS: Keep It Stupid Simple
 4. Implement the feature
 5. Verify:
    ```bash
