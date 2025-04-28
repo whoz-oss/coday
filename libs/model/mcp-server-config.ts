@@ -32,6 +32,9 @@ export interface McpServerConfig {
   /** Optional list of allowed tools (if not specified, all tools are allowed) */
   allowedTools?: string[]
 
+  /** Enable MCP Inspector debug mode for this server */
+  debug?: boolean
+
   // Note: OAuth authentication support might be added in the future
 }
 
@@ -46,6 +49,7 @@ export const McpServerConfigArgs = [
   'authToken',
   'enabled',
   'allowedTools',
+  'debug',
 ]
 
 /**

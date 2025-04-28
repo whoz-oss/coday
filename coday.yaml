@@ -9,6 +9,10 @@ description: |
   Coday is a lightweight framework to use AI agents on existing scoped projects, with as much autonomy as wanted through
   contextual understanding and tool integration. It runs locally and interfaces with various APIs and tools to provide a
   comprehensive assistance experience, or even full-autonomous work capability.
+  
+  ## Repository
+  
+  The repo is hosted at https://github.com/biznet-io/coday (owned by `biznet-io`).
 
 mandatoryDocs:
 
