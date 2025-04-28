@@ -22,6 +22,39 @@ export function createFieldMapping(visibleFields: VisibleField[], issues: JiraIs
   })
 }
 
+export function validateJqlOperators(jql: string, fieldMapping: ActiveFieldMapping[]) {
+  // More complex regex to capture different JQL condition formats
+  const conditionRegex = /(\w+|\([\w\s]+\))\s*([=!<>~]+)\s*("?[^"]*"?)/g;
+
+  let match;
+  while ((match = conditionRegex.exec(jql)) !== null) {
+    const [, field, operator] = match;
+
+    // Handle potential nested conditions in parentheses
+    const cleanField = field.replace(/[()]/g, '').trim();
+
+    // Find the field in the mapping
+    const mappedField = fieldMapping.find(
+        mapping =>
+            mapping.name === cleanField ||
+            mapping.jqlQueryKey === cleanField ||
+            mapping.ticketCreationKey === cleanField ||
+            (mapping.cfid && `cf[${mapping.cfid.replace('customfield_', '')}]` === cleanField)
+    );
+
+    if (!mappedField) {
+      throw new Error(`Field ${cleanField} not found in mapping`);
+    }
+
+    const allowedOperators = mappedField.operators || [];
+    if (!allowedOperators.includes(operator)) {
+      throw new Error(`Invalid operator '${operator}' for field '${cleanField}'. Allowed operators are: ${allowedOperators.join(', ')}`);
+    }
+  }
+
+}
+
+
 // Helper method to find autocomplete info
 function findAutocompleteInfo(visibleFields: VisibleField[], fieldKey: string): VisibleField | undefined {
   const parts = fieldKey.split('_')

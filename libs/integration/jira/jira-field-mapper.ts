@@ -2,7 +2,7 @@ import { Interactor } from '../../model'
 import { retrieveAutocompleteData } from './retrieve-autocomplete-data'
 import { searchJiraIssues } from './search-jira-issues'
 import { createFieldMapping } from './jira.helpers'
-import {AutocompleteDataResponse, FieldMappingDescription} from './jira'
+import { AutocompleteDataResponse, FieldMappingDescription } from './jira'
 
 export interface ActiveFieldMapping {
   name: string
@@ -96,21 +96,17 @@ export class JiraFieldMapper {
 
     return {
       customFields: `# Jira Ticket Creation Fields (${mappings.length} fields)
-
+IMPORTANT: 
+  - use this Key syntax for JIRA ticket creation, example: customfield_10564
+  - NEVER use for jql research
 ${customFields}
-
-Notes:
-- Only use these keys when creating issues via API
-- Custom fields might require specific values`,
-
+`,
       jqlResearchDescription: `# Jira JQL Search Fields (${mappings.length} fields)
-
+IMPORTANT: 
+  - use the Query Key syntax to perform jql research, example: cf[10564] 
+  - NEVER use for jira ticket creation
 ${jqlFields}
-
-Notes:
-- Only use these keys to translate a user request into jql request
-- Include operators where specified
-- Custom fields may have restricted values`,
+`,
     }
   }
 }
