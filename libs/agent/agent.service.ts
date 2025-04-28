@@ -262,11 +262,6 @@ export class AgentService implements Killable {
   ): Promise<void> {
     const def: AgentDefinition = { ...CodayAgentDefinition, ...entry.definition }
 
-    // merge instructions in the case of coday
-    if (def.name.toLowerCase() === 'coday' && entry.definition.instructions) {
-      def.instructions = `${CodayAgentDefinition.instructions}\n\n${entry.definition.instructions}`
-    }
-
     try {
       // force aiProvider for OpenAI assistants
       if (def.openaiAssistantId) def.aiProvider = 'openai'
