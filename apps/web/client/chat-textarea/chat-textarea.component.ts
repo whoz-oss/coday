@@ -56,6 +56,9 @@ export class ChatTextareaComponent implements CodayEventHandler {
     }
 
     this.chatTextarea.addEventListener('keydown', async (e) => {
+      // Disable history navigation if a default value is set
+      if (this.inviteEvent?.defaultValue) return
+
       const useEnterToSend = getPreference<boolean>('useEnterToSend', false)
 
       // Handle Enter key for submission
@@ -72,9 +75,6 @@ export class ChatTextareaComponent implements CodayEventHandler {
           await this.submit()
         }
       }
-
-      // Disable history navigation if a default value is set
-      if (this.inviteEvent?.defaultValue) return
 
       // Handle Up/Down arrow keys for history navigation
       if (e.key === 'ArrowUp') {
