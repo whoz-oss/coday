@@ -290,7 +290,11 @@ export class AgentService implements Killable {
       const basePath = entry.basePath
       const agentDocs = getFormattedDocs(def, this.interactor, basePath)
 
-      const instructions = `${def.instructions}\n\n
+      // For Coday agent, add the custom instructions to the default ones
+      // For other agents, replace the instructions entirely
+      if (def.name.toLowerCase() === 'coday') {
+        const baseInstructions = def.instructions || ''
+        const additionalContext = `\n\n
 ## Project description
 ${context.project.description}
 
@@ -301,8 +305,22 @@ ${this.services.memory.getFormattedMemories(MemoryLevel.PROJECT, def.name)}
 ${agentDocs}
 
 `
-      // overwrite agent instructions with the added project and user context
-      def.instructions = instructions
+        def.instructions = `${baseInstructions}${additionalContext}`
+      } else {
+        const instructions = `${def.instructions}\n\n
+## Project description
+${context.project.description}
+
+${this.services.memory.getFormattedMemories(MemoryLevel.USER, def.name)}
+
+${this.services.memory.getFormattedMemories(MemoryLevel.PROJECT, def.name)}
+
+${agentDocs}
+
+`
+        // overwrite agent instructions with the added project and user context
+        def.instructions = instructions
+      }
 
       const integrations = def.integrations
         ? new Map<string, string[]>(
