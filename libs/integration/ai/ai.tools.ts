@@ -46,48 +46,51 @@ export class AiTools extends AssistantToolFactory {
       result.push(queryUserTool)
     }
 
-    // Add redirect tool
-    const redirect = redirectFunction({ context, interactor: this.interactor, agentService: this.agentService })
+    if (!context.oneshot) {
+      // Add redirect tool
+      const redirect = redirectFunction({ context, interactor: this.interactor, agentService: this.agentService })
 
-    const agentSummaries = this.agentService
-      .listAgentSummaries()
-      .map((a) => `  - ${a.name} : ${a.description}`)
-      .join('\n')
-    const redirectTool: FunctionTool<{ query: string; agentName: string }> = {
-      type: 'function',
-      function: {
-        name: 'redirect',
-        description: `Redirect the current query to another available agent among:
+      const agentSummaries = this.agentService
+        .listAgentSummaries()
+        .map((a) => `  - ${a.name} : ${a.description}`)
+        .join('\n')
+      const redirectTool: FunctionTool<{ query: string; agentName: string }> = {
+        type: 'function',
+        function: {
+          name: 'redirect',
+          description: `Redirect the current query to another available agent among:
 ${agentSummaries}
 
-This tool allows you to select a different agent to handle the user's request when you believe another agent is better suited for the task. Unlike delegation, redirection passes the full conversation context to the target agent.
+This tool allows you to select a different agent to handle the user's request when you believe another agent is better suited for the task. Unlike delegation, redirection queues a command to run the target agent with the full conversation context.
 
 Use this when:
 - The request clearly falls under another agent's specialty
 - You recognize a query pattern that another agent handles better
 - The user's intent would be better served by a different agent's capabilities
 
-The redirected agent will see the entire conversation history and will respond directly to the user's request.
+The redirected agent will run after this conversation completes and will have access to the full conversation history.
 `,
-        parameters: {
-          type: 'object',
-          properties: {
-            agentName: {
-              type: 'string',
-              description:
-                'Name of the agent to redirect to. Required. Should be selected based on which agent is most appropriate for the query.',
+          parameters: {
+            type: 'object',
+            properties: {
+              agentName: {
+                type: 'string',
+                description:
+                  'Name of the agent to redirect to. Required. Should be selected based on which agent is most appropriate for the query.',
+              },
+              query: {
+                type: 'string',
+                description: 'The query to redirect to the selected agent. This should capture the user\'s intent and any necessary context.',
+              },
             },
-            query: {
-              type: 'string',
-              description: 'The query to redirect to the selected agent. This should capture the user\'s intent and any necessary context.',
-            },
+            required: ['agentName', 'query']
           },
+          parse: JSON.parse,
+          function: redirect,
         },
-        parse: JSON.parse,
-        function: redirect,
-      },
+      }
+      result.push(redirectTool)
     }
-    result.push(redirectTool)
 
     return result
   }
