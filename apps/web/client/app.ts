@@ -132,15 +132,6 @@ function setupEventSource() {
   }
 }
 
-// Wrap component handlers with debug logs
-components.forEach((c) => {
-  const originalHandle = c.handle.bind(c)
-  c.handle = (event: CodayEvent) => {
-    debugLog('COMPONENT', `${c.constructor.name} handling event:`, event)
-    originalHandle(event)
-  }
-})
-
 // Simple options panel setup
 const optionsButton = document.getElementById('options-button') as HTMLButtonElement
 const optionsPanel = document.getElementById('options-panel') as HTMLDivElement
@@ -209,7 +200,7 @@ document.addEventListener('click', (event) => {
 
 // Save preference when toggle changes
 enterToSendToggle.addEventListener('change', () => {
-  setPreference('useEnterToSend', enterToSendToggle.checked);
+  setPreference('useEnterToSend', enterToSendToggle.checked)
 })
 
 // Handle theme selection
