@@ -2,7 +2,7 @@ import { CommandContext, Interactor } from '../../model'
 import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 import { AgentService } from '../../agent'
-import { delegateFunction } from './delegate.function'
+import { redirectFunction } from './redirect.function'
 
 export class AiTools extends AssistantToolFactory {
   name = 'AI'
@@ -46,24 +46,28 @@ export class AiTools extends AssistantToolFactory {
       result.push(queryUserTool)
     }
 
-    const delegate = delegateFunction({ context, interactor: this.interactor, agentService: this.agentService })
+    // Add redirect tool
+    const redirect = redirectFunction({ context, interactor: this.interactor, agentService: this.agentService })
 
     const agentSummaries = this.agentService
       .listAgentSummaries()
       .map((a) => `  - ${a.name} : ${a.description}`)
       .join('\n')
-    const delegateTool: FunctionTool<{ task: string; agentName: string | undefined }> = {
+    const redirectTool: FunctionTool<{ query: string; agentName: string }> = {
       type: 'function',
       function: {
-        name: 'delegate',
-        description: `Delegate the completion of a task to another available agent among:
+        name: 'redirect',
+        description: `Redirect the current query to another available agent among:
 ${agentSummaries}
 
-IMPORTANT: This is a full delegation - the selected agent will have access to its own set of tools and capabilities to complete the entire task. Do not split the task between yourself and the delegated agent. The agent should perform ALL actions required, including using any tools it has access to (git operations, file management, etc.).
+This tool allows you to select a different agent to handle the user's request when you believe another agent is better suited for the task. Unlike delegation, redirection passes the full conversation context to the target agent.
 
-THREAD ISOLATION: The delegated agent works in an isolated thread with limited context. It will only see previous interactions with itself, not recent messages between you and the user. This means you must include ALL necessary context in your task description - don't assume the agent can see what you and the user just discussed.
+Use this when:
+- The request clearly falls under another agent's specialty
+- You recognize a query pattern that another agent handles better
+- The user's intent would be better served by a different agent's capabilities
 
-These agents are LLM-based, so you should assess in return if the task was correctly executed, and call again the agent if not sufficient or need to adapt. Agents can be called again without losing their context if more information is needed.
+The redirected agent will see the entire conversation history and will respond directly to the user's request.
 `,
         parameters: {
           type: 'object',
@@ -71,31 +75,19 @@ These agents are LLM-based, so you should assess in return if the task was corre
             agentName: {
               type: 'string',
               description:
-                'Optional: name of the agent to target. Selects default agent if missing, fails if name is not matching. Recommended to select one fit for the task for relevant results.',
+                'Name of the agent to redirect to. Required. Should be selected based on which agent is most appropriate for the query.',
             },
-            // withoutContext: {
-            //   type: 'boolean',
-            //   description: 'If present and true, delegates without the current conversation context. To use only for constrained agents that explicitly mention a limited context.'
-            // },
-            task: {
+            query: {
               type: 'string',
-              description: `Description of the task to delegate, should contain:
-              
-  - intent
-  - constraints
-  - definition of done
-  - any necessary actions/operations to perform (the agent will execute these directly)
-  
-  Take care to rephrase it as if you are the originator of the task. Include ALL required actions in the task description - do not expect to perform any actions yourself after delegation.
-                `,
+              description: 'The query to redirect to the selected agent. This should capture the user\'s intent and any necessary context.',
             },
           },
         },
         parse: JSON.parse,
-        function: delegate,
+        function: redirect,
       },
     }
-    result.push(delegateTool)
+    result.push(redirectTool)
 
     return result
   }
