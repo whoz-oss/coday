@@ -264,6 +264,11 @@ export class AgentService implements Killable {
   ): Promise<void> {
     const def: AgentDefinition = { ...CodayAgentDefinition, ...entry.definition }
 
+    // merge instructions in the case of coday
+    if (def.name.toLowerCase() === 'coday' && entry.definition.instructions) {
+      def.instructions = `${CodayAgentDefinition.instructions}\n\n${entry.definition.instructions}`
+    }
+
     try {
       // force aiProvider for OpenAI assistants
       if (def.openaiAssistantId) def.aiProvider = 'openai'
@@ -290,11 +295,8 @@ export class AgentService implements Killable {
       const basePath = entry.basePath
       const agentDocs = getFormattedDocs(def, this.interactor, basePath)
 
-      // For Coday agent, add the custom instructions to the default ones
-      // For other agents, replace the instructions entirely
-      if (def.name.toLowerCase() === 'coday') {
-        const baseInstructions = def.instructions || ''
-        const additionalContext = `\n\n
+      // overwrite agent instructions with the added project and user context
+      def.instructions = `${def.instructions}\n\n
 ## Project description
 ${context.project.description}
 
@@ -305,22 +307,6 @@ ${this.services.memory.getFormattedMemories(MemoryLevel.PROJECT, def.name)}
 ${agentDocs}
 
 `
-        def.instructions = `${baseInstructions}${additionalContext}`
-      } else {
-        const instructions = `${def.instructions}\n\n
-## Project description
-${context.project.description}
-
-${this.services.memory.getFormattedMemories(MemoryLevel.USER, def.name)}
-
-${this.services.memory.getFormattedMemories(MemoryLevel.PROJECT, def.name)}
-
-${agentDocs}
-
-`
-        // overwrite agent instructions with the added project and user context
-        def.instructions = instructions
-      }
 
       const integrations = def.integrations
         ? new Map<string, string[]>(
