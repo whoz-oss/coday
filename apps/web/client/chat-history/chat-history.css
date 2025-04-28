@@ -37,12 +37,12 @@
     align-self: flex-end;
     margin-left: 5em;
     background-color: var(--color-message-user);
-    position: relative;
 }
 
 .text.left {
     align-self: flex-start;
     margin-right: 5em;
+    position: relative;
 }
 
 .text:last-child {

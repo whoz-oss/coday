@@ -71,12 +71,6 @@ export class ChatHistoryComponent implements CodayEventHandler {
   addText(text: string, speaker: string | undefined): void {
     const newEntry = this.createMessageElement(text, speaker)
     newEntry.classList.add('text', 'left')
-    this.appendMessageElement(newEntry)
-  }
-
-  addAnswer(answer: string, speaker: string | undefined): void {
-    const newEntry = this.createMessageElement(answer, speaker)
-    newEntry.classList.add('text', 'right')
     
     // Add copy button for agent responses
     const copyButtonContainer = document.createElement('div')
@@ -88,7 +82,8 @@ export class ChatHistoryComponent implements CodayEventHandler {
     copyButton.textContent = '📋' // Clipboard icon
     copyButton.addEventListener('click', (event) => {
       event.stopPropagation() // Prevent event bubbling
-      this.copyToClipboard(answer)
+      this.copyToClipboard(text)
+      
       // Update this specific button
       const clickedButton = event.currentTarget as HTMLButtonElement
       if (clickedButton) {
@@ -114,10 +109,15 @@ export class ChatHistoryComponent implements CodayEventHandler {
     
     this.appendMessageElement(newEntry)
   }
-  
+
+  addAnswer(answer: string, speaker: string | undefined): void {
+    const newEntry = this.createMessageElement(answer, speaker)
+    newEntry.classList.add('text', 'right')
+    this.appendMessageElement(newEntry)
+  }
+
   private copyToClipboard(text: string): void {
-    navigator.clipboard.writeText(text)
-      .catch(err => console.error('Failed to copy text: ', err))
+    navigator.clipboard.writeText(text).catch((err) => console.error('Failed to copy text: ', err))
   }
 
   private createMessageElement(content: string, speaker: string | undefined): HTMLDivElement {
