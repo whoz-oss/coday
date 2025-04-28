@@ -1,3 +1,18 @@
+## 0.6.0 (2025-04-28)
+
+### 🚀 Features
+
+- add copy button for agent responses in web UI ([#60](https://github.com/biznet-io/coday/pull/60), [#62](https://github.com/biznet-io/coday/pull/62))
+- #49 Support MCP Inspector debug mode as separate process (not as tool server) ([#55](https://github.com/biznet-io/coday/pull/55), [#49](https://github.com/biznet-io/coday/issues/49))
+
+### 🩹 Fixes
+
+- textarea component default value not lost to history functionality ([#56](https://github.com/biznet-io/coday/pull/56))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.5.1 (2025-04-08)
 
 ### 🩹 Fixes
