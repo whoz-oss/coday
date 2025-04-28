@@ -8,15 +8,16 @@ import { UserService } from '@coday/service/user.service'
 import { ProjectService } from '@coday/service/project.service'
 import { IntegrationService } from '@coday/service/integration.service'
 import { MemoryService } from '@coday/service/memory.service'
+import { McpConfigService } from '@coday/service/mcp-config.service'
 import { debugLog } from './log'
 
 export class ServerClient {
   private readonly heartbeatInterval: NodeJS.Timeout
   private terminationTimeout?: NodeJS.Timeout
-  private lastConnected: number
+  private lastConnected: number = Date.now()
   private coday?: Coday
 
-  static readonly SESSION_TIMEOUT = 60 * 60 * 1000 // 1 hour in milliseconds
+  static readonly SESSION_TIMEOUT = 8 * 60 * 60 * 1000 // 8 hours in milliseconds
   static readonly HEARTBEAT_INTERVAL = 10_000 // 10 seconds
 
   constructor(
@@ -31,7 +32,6 @@ export class ServerClient {
       const data = `data: ${JSON.stringify(event)}\n\n`
       this.response.write(data)
     })
-    this.lastConnected = Date.now()
     this.heartbeatInterval = setInterval(() => this.sendHeartbeat(), ServerClient.HEARTBEAT_INTERVAL)
   }
 
@@ -41,10 +41,14 @@ export class ServerClient {
    */
   private subscription?: Subscription
 
+  updateLastConnection(): void {
+    this.lastConnected = Date.now()
+  }
+
   reconnect(response: Response): void {
     debugLog('CLIENT', `Client ${this.clientId} reconnecting`)
     this.response = response
-    this.lastConnected = Date.now()
+    this.updateLastConnection()
 
     if (this.terminationTimeout) {
       debugLog('CLIENT', `Clearing termination timeout for client ${this.clientId}`)
@@ -75,6 +79,7 @@ export class ServerClient {
     const project = new ProjectService(this.interactor, this.options.configDir)
     const integration = new IntegrationService(project, user)
     const memory = new MemoryService(project, user)
+    const mcp = new McpConfigService(user, project, this.interactor)
 
     debugLog('CODAY', `Creating new Coday instance for client ${this.clientId}`)
     this.coday = new Coday(this.interactor, this.options, {
@@ -82,6 +87,7 @@ export class ServerClient {
       project,
       integration,
       memory,
+      mcp,
     })
     this.coday.run().finally(() => {
       debugLog('CODAY', `Coday run finished for client ${this.clientId}`)

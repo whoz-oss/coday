@@ -1,16 +1,16 @@
 button {
-  padding: 0.5em;
-  margin: 0.2em;
-  background-color: #bd93f9;
-  color: #f8f8f2;
-  border: none;
-  border-radius: 0.5em;
-  cursor: pointer;
-  flex-shrink: 0;
-  box-sizing: border-box;
-  font-family: 'JetBrains Mono', monospace;
+    padding: 0.5em;
+    margin: 0.2em;
+    background-color: var(--color-bg-secondary);
+    color: var(--color-text);
+    border-color: var(--color-border);
+    border-radius: 0.5em;
+    cursor: pointer;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    font-family: 'JetBrains Mono', monospace;
 }
 
 button:hover {
-  background-color: #ff79c6;
+    background-color: var(--color-primary-hover);
 }

@@ -1,5 +1,6 @@
 import { IntegrationLocalConfig } from './project-local-config'
 import { AiProviderLocalConfig } from './ai-providers'
+import { McpConfig } from './mcp-server-config'
 
 export type AiProviderConfig = {
   apiKey?: string
@@ -12,6 +13,14 @@ export type AiProviderConfig = {
  */
 export type UserProjectConfig = {
   integration: IntegrationLocalConfig
+  /**
+   * The preferred agent to use by default for this project
+   */
+  defaultAgent?: string
+  /**
+   * MCP (Model Context Protocol) server configurations overrides, for this user on this project
+   */
+  mcp?: McpConfig
 }
 
 /**
@@ -22,6 +31,7 @@ export type UserProjectConfig = {
  *
  * Currently handles:
  * - AI provider configurations with API keys
+ * - MCP server configurations
  * - (future) User preferences
  * - (future) Default settings
  */

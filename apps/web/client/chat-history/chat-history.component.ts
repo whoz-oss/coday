@@ -34,7 +34,8 @@ export class ChatHistoryComponent implements CodayEventHandler {
       this.addAnswer(event.answer, event.invite)
     }
     if (event instanceof ErrorEvent) {
-      this.addError(event.error)
+      const errorMessage = event.error instanceof Error ? event.error.message : String(event.error)
+      this.addError(errorMessage)
     }
     if (event instanceof ThinkingEvent) {
       this.setThinking(true)
@@ -63,19 +64,19 @@ export class ChatHistoryComponent implements CodayEventHandler {
 
   addTechnical(text: string): void {
     const newEntry = this.createMessageElement(text, undefined)
-    newEntry.classList.add('technical', 'right')
+    newEntry.classList.add('technical')
     this.appendMessageElement(newEntry)
   }
 
   addText(text: string, speaker: string | undefined): void {
     const newEntry = this.createMessageElement(text, speaker)
-    newEntry.classList.add('text', 'right')
+    newEntry.classList.add('text', 'left')
     this.appendMessageElement(newEntry)
   }
 
   addAnswer(answer: string, speaker: string | undefined): void {
     const newEntry = this.createMessageElement(answer, speaker)
-    newEntry.classList.add('text', 'left')
+    newEntry.classList.add('text', 'right')
     this.appendMessageElement(newEntry)
   }
 
@@ -111,8 +112,28 @@ export class ChatHistoryComponent implements CodayEventHandler {
   addError(error: string): void {
     this.setThinking(false)
     const errorEntry = document.createElement('div')
-    errorEntry.textContent = error
-    errorEntry.style.color = 'red'
+    errorEntry.classList.add('error-message')
+
+    // Create an error icon
+    const errorIcon = document.createElement('span')
+    errorIcon.textContent = '\u274c ' // Red X symbol
+    errorIcon.classList.add('error-icon')
+    errorEntry.appendChild(errorIcon)
+
+    // Create the error text
+    const errorText = document.createElement('span')
+    errorText.textContent = `Error: ${error}`
+    errorEntry.appendChild(errorText)
+
+    // Add styling
+    errorEntry.style.color = '#e74c3c' // Red color
+    errorEntry.style.background = '#ffeeee' // Light red background
+    errorEntry.style.padding = '10px'
+    errorEntry.style.margin = '10px 0'
+    errorEntry.style.borderRadius = '4px'
+    errorEntry.style.border = '1px solid #e74c3c'
+
     this.chatHistory?.appendChild(errorEntry)
+    this.scrollToBottom()
   }
 }

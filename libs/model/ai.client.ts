@@ -1,5 +1,5 @@
 import {Observable, Subject} from 'rxjs'
-import {CodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from '../shared/coday-events'
+import {CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from '../shared/coday-events'
 import {Agent} from './agent'
 import {AiThread} from '../ai-thread/ai-thread'
 import {RunStatus} from '../ai-thread/ai-thread.types'
@@ -122,6 +122,47 @@ export abstract class AiClient {
       })
     )
     return this.shouldProceed(thread)
+  }
+
+  /**
+   * Standardized error handling for AI clients
+   * @param error The error object
+   * @param subscriber The event subscriber
+   * @param providerName Name of the AI provider for better error context
+   * @protected
+   */
+  protected handleError(error: unknown, subscriber: Subject<CodayEvent>, providerName: string): void {
+    // Create a user-friendly error message based on error type
+    let userMessage = `${providerName} error occurred`
+
+    if (error instanceof Error) {
+      userMessage = `${providerName} error: ${error.message}`
+
+      // Handle common API errors with more specific messages
+      const err = error as any // Using any for specific error properties
+      if (err.status === 401 || err.statusCode === 401) {
+        userMessage = `${providerName} authentication failed. Please check your API key.`
+      } else if (err.status === 429 || err.statusCode === 429) {
+        userMessage = `${providerName} rate limit exceeded. Please try again later.`
+      } else if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
+        userMessage = `Network error connecting to ${providerName}. Please check your internet connection.`
+      } else if (error.message?.includes('Max tokens')) {
+        userMessage = `${providerName} response exceeded token limit. Try simplifying your request or splitting it into smaller parts.`
+      }
+    }
+
+    // Log the full error for debugging
+    console.error(`${providerName} client error:`, error)
+
+    // Send the error event to the UI
+    subscriber.next(
+      new ErrorEvent({
+        error: error instanceof Error ? error : new Error(userMessage),
+      })
+    )
+
+    // Also display the error directly to the user
+    this.interactor.displayText(`\u26a0\ufe0f ${userMessage}`)
   }
 
   protected shouldProceed(thread: AiThread): boolean {

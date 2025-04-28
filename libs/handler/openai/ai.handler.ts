@@ -1,10 +1,10 @@
 import { keywords } from '../../keywords'
-import { Agent, CommandContext, CommandHandler, Interactor } from '../../model'
+import { Agent, CommandContext, CommandHandler, Interactor, Killable } from '../../model'
 import { lastValueFrom, Observable } from 'rxjs'
 import { CodayEvent, MessageEvent } from '../../shared/coday-events'
 import { AgentService } from '../../agent'
 
-export class AiHandler extends CommandHandler {
+export class AiHandler extends CommandHandler implements Killable {
   private lastAgentName: string | undefined
 
   constructor(
@@ -66,20 +66,49 @@ export class AiHandler extends CommandHandler {
    * Returns undefined if selection fails or is cancelled
    */
   private async selectAgent(nameStart: string, context: CommandContext): Promise<Agent | undefined> {
-    let name = nameStart
-    if (!nameStart?.trim()) {
-      if (this.lastAgentName) {
-        name = this.lastAgentName
-      } else {
-        this.interactor.displayText('Selecting Coday')
-        name = 'coday'
+    // If a specific agent name start is provided, use that
+    if (nameStart?.trim()) {
+      const agent = await this.agentService.findAgentByNameStart(nameStart, context)
+      if (agent) {
+        this.lastAgentName = agent.name
+        return agent
       }
-    }
-    const agent = await this.agentService.findAgentByNameStart(name, context)
-    if (agent) {
-      this.lastAgentName = agent?.name
+      return undefined
     }
 
+    // No specific agent requested, follow preference chain:
+    // 1. Last used agent in this session (lastAgentName)
+    // 2. User's default agent for this project (from user config)
+    // 3. Fall back to 'coday'
+
+    // Check for last used agent in this session
+    if (this.lastAgentName) {
+      const agent = await this.agentService.findByName(this.lastAgentName, context)
+      if (agent) {
+        return agent
+      }
+      // If last agent no longer available, clear it
+      this.lastAgentName = undefined
+    }
+
+    // No last agent or not found, check for user's preferred agent
+    const preferredAgent = this.agentService.getPreferredAgent()
+    if (preferredAgent) {
+      const agent = await this.agentService.findByName(preferredAgent, context)
+      if (agent) {
+        this.lastAgentName = agent.name
+        return agent
+      }
+      // Preferred agent not found
+      this.interactor.warn(`Preferred agent '${preferredAgent}' not found, using default.`)
+    }
+
+    // Fall back to default 'coday' agent
+    this.interactor.displayText('Selecting Coday')
+    const agent = await this.agentService.findByName('coday', context)
+    if (agent) {
+      this.lastAgentName = agent.name
+    }
     return agent
   }
 
@@ -107,7 +136,7 @@ export class AiHandler extends CommandHandler {
     return context
   }
 
-  kill(): void {
-    this.agentService.kill()
+  async kill(): Promise<void> {
+    await this.agentService.kill()
   }
 }

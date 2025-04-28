@@ -166,13 +166,15 @@ export class Coday {
     if (this.context) {
       this.context.oneshot = this.options.oneshot
       this.context.fileReadOnly = this.options.fileReadOnly
-      const agentService = new AgentService(
+      // Create and store the agent service
+      this.services.agent = new AgentService(
         this.interactor,
         this.aiClientProvider,
         this.services,
-        this.context.project.root
+        this.context.project.root,
+        this.options.agentFolders
       )
-      this.aiHandler = new AiHandler(this.interactor, agentService)
+      this.aiHandler = new AiHandler(this.interactor, this.services.agent)
       this.handlerLooper = new HandlerLooper(
         this.interactor,
         this.aiHandler,

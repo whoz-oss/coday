@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+    tags:
+      - 'release*'
+  pull_request:
+    branches: [ master ]
+
+env:
+  NX_MAX_WORKERS: 4
+  MASTER_BRANCH: master
+
+jobs:
+  init:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for nx affected commands
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+  build:
+    needs: init
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build
+        run: yarn nx run-many --target="build" --parallel=${{ env.NX_MAX_WORKERS }}
+
+  test:
+    needs: init
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for nx affected commands
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Run tests
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            export NX_BASE=${{ github.base_ref }}
+          else
+            export NX_BASE=${{ github.ref_name }}
+          fi
+          echo "NX_BASE: $NX_BASE"
+
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            yarn nx affected --base=origin/$NX_BASE --head=HEAD --target="lint,test" --parallel=${{ env.NX_MAX_WORKERS }}
+          else
+            yarn nx run-many --all --target="lint,test" --parallel=${{ env.NX_MAX_WORKERS }}
+          fi
+
+  release:
+    needs: [build, test]
+    runs-on: self-hosted
+    if: startsWith(github.ref, 'refs/tags/release')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Release
+        run: yarn nx release publish

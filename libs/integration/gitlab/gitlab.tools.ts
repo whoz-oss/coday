@@ -3,7 +3,7 @@ import { addGlobalComment } from './add-global-comment'
 import { addMRThread } from './add-mr-thread'
 import { getIssue } from './get-issue'
 import { IntegrationService } from '../../service/integration.service'
-import { CommandContext, Interactor } from '../../model'
+import { Interactor } from '../../model'
 import { listIssues } from './list-issues'
 import { listMergeRequests } from './list-merge-requests'
 import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
@@ -19,11 +19,7 @@ export class GitLabTools extends AssistantToolFactory {
     super(interactor)
   }
 
-  protected hasChanged(context: CommandContext): boolean {
-    return this.lastToolInitContext?.project.root !== context.project.root
-  }
-
-  protected buildTools(): CodayTool[] {
+  protected async buildTools(): Promise<CodayTool[]> {
     const result: CodayTool[] = []
     const gitlab = this.integrationService.getIntegration('GITLAB')
     if (!gitlab) {

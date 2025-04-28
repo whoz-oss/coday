@@ -1,8 +1,7 @@
 import { IntegrationService } from '../../service/integration.service'
 import { CommandContext, Interactor } from '../../model'
-import { CodayTool } from '../assistant-tool-factory'
+import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
-import { AsyncAssistantToolFactory } from '../async-assistant-tool-factory'
 import { searchJiraIssuesWithAI } from './search-jira-issues'
 import { addJiraComment } from './add-jira-comment'
 import { retrieveJiraIssue } from './retrieve-jira-issue'
@@ -10,9 +9,9 @@ import { countJiraIssues } from './count-jira-issues'
 import { JiraService } from './jira.service'
 import { validateJqlOperators } from './jira.helpers'
 
-export class JiraTools extends AsyncAssistantToolFactory {
+export class JiraTools extends AssistantToolFactory {
+  name = 'JIRA'
   private jiraService: JiraService
-
   constructor(
     interactor: Interactor,
     private integrationService: IntegrationService
@@ -21,11 +20,7 @@ export class JiraTools extends AsyncAssistantToolFactory {
     this.jiraService = new JiraService(interactor, integrationService)
   }
 
-  protected hasChanged(context: CommandContext): boolean {
-    return this.lastToolInitContext?.project.root !== context.project.root
-  }
-
-  protected async buildAsyncTools(context: CommandContext): Promise<CodayTool[]> {
+  protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {
     const result: CodayTool[] = []
     if (!this.integrationService.hasIntegration('JIRA')) {
       return result
@@ -129,7 +124,7 @@ export class JiraTools extends AsyncAssistantToolFactory {
           }
 
           // Validate JQL operators before proceeding
-          if(initResult.fieldMapping){
+          if (initResult.fieldMapping) {
             validateJqlOperators(jql, initResult.fieldMapping)
           }
 
@@ -205,10 +200,9 @@ export class JiraTools extends AsyncAssistantToolFactory {
           }
 
           // Validate JQL operators before proceeding
-          if(initResult.fieldMapping){
-          validateJqlOperators(jql, initResult.fieldMapping)
+          if (initResult.fieldMapping) {
+            validateJqlOperators(jql, initResult.fieldMapping)
           }
-
 
           // Otherwise, proceed with the actual count operation
           return countJiraIssues(jql, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor)
