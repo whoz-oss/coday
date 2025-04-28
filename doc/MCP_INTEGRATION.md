@@ -145,6 +145,24 @@ You can configure environment variables for MCP servers, which is useful for:
 - Configuring server behavior
 - Setting proxy configurations
 
+## 🐞 Debugging MCP Servers
+
+Coday supports advanced debugging for MCP servers using the [MCP Inspector](https://github.com/modelcontextprotocol/inspector). To enable debugging on any MCP server, set the `debug` option to `true` using the `config mcp add` or `config mcp edit` command. 
+
+When enabled, the server will be started via the MCP Inspector, exposing a web-based UI for detailed introspection and troubleshooting (by default at [http://localhost:6274](http://localhost:6274)).
+
+**To enable debugging:**
+
+- During `config mcp add` or `config mcp edit`, answer `true` when prompted for "Enable MCP Inspector debugging for this server?".
+
+**Effects:**
+- The MCP server will run via `npx @modelcontextprotocol/inspector ...`
+- You can access the Inspector UI in your browser while the server is running.
+
+See [Inspector documentation](https://modelcontextprotocol.io/docs/tools/inspector) for more usage details.
+
+---
+
 ## 🛠️ Troubleshooting
 
 Common issues and their solutions:
