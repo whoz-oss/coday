@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { JiraSearchParams, JiraSearchResponse, LightWeightSearchResponse } from './jira'
-import { getLightWeightIssues } from './jira.helpers'
+import {generateJiraJQLUrl, getLightWeightIssues} from './jira.helpers'
 import { resolveJiraFields } from './jira.helpers';
 // Search Jira Issues
 export async function searchJiraIssues({
@@ -15,6 +15,8 @@ export async function searchJiraIssues({
   if (!jiraBaseUrl || !jiraApiToken || !jiraUsername) {
     throw new Error('Jira integration incorrectly configured')
   }
+
+  const jqlUrl = generateJiraJQLUrl(jiraBaseUrl, request.jql)
 
   try {
     interactor.displayText(`Searching JIRA issues with query: ${request.jql}...`)
@@ -37,16 +39,16 @@ export async function searchJiraIssues({
 
     const issues = response.data.issues
     const nextPageToken = response.data?.nextPageToken
-    interactor.displayText(`... found ${JSON.stringify(issues.length)} issues. The JIRA API limit is 100 results per page`)
+    interactor.displayText(`... found ${JSON.stringify(issues.length)} matching jql: ${jqlUrl}. The max results is set to ${request.maxResults}`)
 
-    return { issues: issues, nextPageToken }
+    return { issues: issues, nextPageToken, jqlUrl }
   } catch (error: any) {
     // Comprehensive error handling
     const errorMessage = error instanceof Error ? error.message : String(error)
-    interactor.warn(`Ticket Search Error: ${errorMessage}`)
+    interactor.warn(`Ticket Search Error: ${errorMessage} for the jql: ${jqlUrl}`)
 
     // Return empty array instead of throwing an error
-    return { issues: [], nextPageToken: null }
+    return { issues: [], nextPageToken: null, jqlUrl }
   }
 }
 
@@ -96,6 +98,7 @@ export async function searchJiraIssuesWithAI({
     return {
       issues: lightWeightIssues,
       nextPageToken: searchResults.nextPageToken,
+      jqlUrl: searchResults.jqlUrl
     }
   } catch (error) {
     console.error('Jira Search Error:', error)

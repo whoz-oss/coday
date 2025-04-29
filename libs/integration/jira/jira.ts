@@ -9,9 +9,15 @@ export interface Jira {
   nextPageToken?: string
 }
 
+export interface JiraCount {
+  count: number
+  jqlUrl?: string
+}
+
 export interface JiraSearchResponse {
   issues: JiraIssue[]
   nextPageToken?: string | null
+  jqlUrl?: string
 }
 
 interface ParentFields {
@@ -227,4 +233,8 @@ export interface FieldMappingDescription {
 
 export type LightWeightIssues = Record<JiraField['key'], Record<keyof JiraFields, any>>
 
-export type LightWeightSearchResponse = { issues: LightWeightIssues; nextPageToken?: string | null | undefined }
+export type LightWeightSearchResponse = {
+  issues: LightWeightIssues
+  nextPageToken?: string | null | undefined
+  jqlUrl?: string
+}

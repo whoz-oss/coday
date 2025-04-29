@@ -5,20 +5,25 @@ import { FunctionTool } from '../types'
 import { searchJiraIssuesWithAI } from './search-jira-issues'
 import { addJiraComment } from './add-jira-comment'
 import { retrieveJiraIssue } from './retrieve-jira-issue'
-import { jiraFieldMappingCache } from './jira-field-mapping-cache'
+import { countJiraIssues } from './count-jira-issues'
+import { JiraService } from './jira.service'
+import { validateJqlOperators } from './jira.helpers'
 
 export class JiraTools extends AssistantToolFactory {
   name = 'JIRA'
-
+  private jiraService: JiraService
   constructor(
     interactor: Interactor,
     private integrationService: IntegrationService
   ) {
     super(interactor)
+    this.jiraService = new JiraService(interactor, integrationService)
+    console.log('constructor')
   }
 
   protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {
     const result: CodayTool[] = []
+    console.log('buildTools')
     if (!this.integrationService.hasIntegration('JIRA')) {
       return result
     }
@@ -29,15 +34,6 @@ export class JiraTools extends AssistantToolFactory {
     if (!(jiraBaseUrl && jiraUsername && jiraApiToken)) {
       return result
     }
-
-    // Get field mapping from cache service with 8-hour TTL
-    const { description: customFieldMappingDescription } = await jiraFieldMappingCache.getMappingForInstance(
-      jiraBaseUrl,
-      jiraApiToken,
-      jiraUsername,
-      this.interactor,
-      50
-    )
 
     const retrieveIssue = ({ ticketId }: { ticketId: string }) => {
       return retrieveJiraIssue(ticketId, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor)
@@ -70,36 +66,19 @@ export class JiraTools extends AssistantToolFactory {
       function: {
         name: 'searchJiraIssues',
         description: `Perform a flexible search across Jira issues using a jql query based on natural language.
-          PAGINATION:
-          - First call: omit nextPageToken
-          - If more results available:
-            * Current page results are displayed
-            * User is prompted for next page
-            * If confirmed, call again with provided nextPageToken
-          
-          QUERY FORMATS:
-          1. JQL Queries (filtering):
-             - Custom fields use cf[] format
-             - Example: cf[10582] = "Data Intelligence"
-             - Case sensitive
-             - Multiple conditions: use AND, OR
-             - Example: cf[10582] = "Data Intelligence" AND status = "Open"
-          2. Fields Selection (retrieving):
-            - Custom fields use customfield_ format
-            - Example: ["basic", "customfield_10582"]
-
-          ERROR HANDLING:
-            - Invalid JQL returns error message
-            - Invalid token returns new search
-            - Exceeded max results warns user,
+        WORKFLOW:
+           a) From the fieldMappingInfo get the relevant query keys.
+           b) For each query key get the allowed operators.
+           b) Use the query key and only the allowed operators to create the jql.
+           d) Explicitly calling out the JQL URL
+           e) If more results available, current page results are displayed, user is prompted for next page, if confirmed, call again with provided nextPageToken
         `,
         parameters: {
           type: 'object',
           properties: {
             jql: {
               type: 'string',
-              description: `JQL query for searching issues. Available fields:
-              ${customFieldMappingDescription.jqlResearchDescription}`,
+              description: `JQL query for searching issues`,
             },
             nextPageToken: {
               type: 'string',
@@ -125,7 +104,7 @@ export class JiraTools extends AssistantToolFactory {
                 - Use presets: e.g., ["basic", "dates"] combines both presets
                 - Individual fields: e.g., ["key", "summary", "status"]
                 - Special values: ["*all"] for all fields, ["*navigable"] for navigable fields
-                - Custom field values: here is a mapping of all customfield available with a description ${customFieldMappingDescription.customFields}.
+                - Custom field values: here is a mapping of all customfield available with a description (first call to this function will return field mapping information).
                   Example flow:
                     1. The user request mention squad or client
                     2. The fields must include customfield_10595 and customfield_10564
@@ -134,8 +113,25 @@ export class JiraTools extends AssistantToolFactory {
           },
         },
         parse: JSON.parse,
-        function: ({ jql, nextPageToken, maxResults, fields }) =>
-          searchJiraIssuesWithAI({
+        function: async ({ jql, nextPageToken, maxResults, fields }) => {
+          // Lazy initialization happens here
+          const initResult = await this.jiraService.ensureInitialized()
+
+          // If we just initialized the service, return the field mapping info to the user
+          if (initResult.isNewlyInitialized) {
+            return {
+              fieldMappingInfo: initResult.fieldMappingInfo,
+              message: initResult.message,
+            }
+          }
+
+          // Validate JQL operators before proceeding
+          if (initResult.fieldMapping) {
+            validateJqlOperators(jql, initResult.fieldMapping)
+          }
+
+          // Otherwise, proceed with the actual Jira search
+          return searchJiraIssuesWithAI({
             jql,
             nextPageToken,
             maxResults,
@@ -144,7 +140,8 @@ export class JiraTools extends AssistantToolFactory {
             jiraApiToken,
             jiraUsername,
             interactor: this.interactor,
-          }),
+          })
+        },
       },
     }
 
@@ -162,7 +159,6 @@ export class JiraTools extends AssistantToolFactory {
             ticketId: { type: 'string', description: 'Jira ticket ID' },
             comment: { type: 'string', description: 'Comment text to add to the ticket' },
           },
-          // required: ['ticketId', 'comment']
         },
         parse: JSON.parse,
         function: ({ ticketId, comment }) =>
@@ -170,9 +166,56 @@ export class JiraTools extends AssistantToolFactory {
       },
     }
 
+    const countJiraIssuesFunction: FunctionTool<{
+      jql: string
+    }> = {
+      type: 'function',
+      function: {
+        name: 'countJiraIssues',
+        description: `Count the number of jira issues matching the jql. 
+        WORKFLOW:
+           a) From the fieldMappingInfo get the relevant query keys.
+           b) For each query key get the allowed operators.
+           b) Use the query key and only the allowed operators to create the jql.
+           d) Explicitly calling out the JQL URL
+        `,
+        parameters: {
+          type: 'object',
+          properties: {
+            jql: {
+              type: 'string',
+              description: `JQL query for counting issues`,
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: async ({ jql }) => {
+          // Lazy initialization happens here
+          const initResult = await this.jiraService.ensureInitialized()
+
+          // If we just initialized the service, return the field mapping info to the user
+          if (initResult.isNewlyInitialized) {
+            return {
+              fieldMappingInfo: initResult.fieldMappingInfo,
+              message: initResult.message,
+            }
+          }
+
+          // Validate JQL operators before proceeding
+          if (initResult.fieldMapping) {
+            validateJqlOperators(jql, initResult.fieldMapping)
+          }
+
+          // Otherwise, proceed with the actual count operation
+          return countJiraIssues(jql, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor)
+        },
+      },
+    }
+
     result.push(retrieveJiraTicketFunction)
     result.push(searchJiraIssuesFunction)
     result.push(addCommentFunction)
+    result.push(countJiraIssuesFunction)
 
     return result
   }
