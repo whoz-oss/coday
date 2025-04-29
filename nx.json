@@ -53,8 +53,18 @@
       "commitMessage": "chore(release): {version}"
     },
     "version": {
-      "conventionalCommits": true,
+      "generatorOptions": {
+        "packageRoot": "dist/{projectName}",
+        "currentVersionResolver": "git-tag"
+      },
       "preVersionCommand": "npx nx run web:build"
+    },
+    "targetDefaults": {
+      "nx-release-publish": {
+        "options": {
+          "packageRoot": "dist/{projectName}"
+        }
+      }
     }
   }
 }
