@@ -6,8 +6,10 @@ import { searchJiraIssuesWithAI } from './search-jira-issues'
 import { addJiraComment } from './add-jira-comment'
 import { retrieveJiraIssue } from './retrieve-jira-issue'
 import { countJiraIssues } from './count-jira-issues'
+import { createJiraIssue } from './create-jira-issue'
 import { JiraService } from './jira.service'
 import { validateJqlOperators } from './jira.helpers'
+import { CreateJiraIssueRequest } from './jira'
 
 export class JiraTools extends AssistantToolFactory {
   name = 'JIRA'
@@ -172,7 +174,7 @@ export class JiraTools extends AssistantToolFactory {
       type: 'function',
       function: {
         name: 'countJiraIssues',
-        description: `Count the number of jira issues matching the jql. 
+        description: `Count the number of jira issues matching the jql.
         WORKFLOW:
            a) From the fieldMappingInfo get the relevant query keys.
            b) For each query key get the allowed operators.
@@ -212,10 +214,48 @@ export class JiraTools extends AssistantToolFactory {
       },
     }
 
+    const createIssueFunction: FunctionTool<{
+      request: CreateJiraIssueRequest
+    }> = {
+      type: 'function',
+      function: {
+        name: 'createJiraIssue',
+        description: 'Create a new Jira issue with a request object containing all necessary fields.',
+        parameters: {
+          type: 'object',
+          properties: {
+            request: {
+              type: 'object',
+              description: 'Request object containing all issue fields',
+              properties: {
+                projectKey: { type: 'string', description: 'Project key where the issue will be created' },
+                summary: { type: 'string', description: 'Summary/title of the issue' },
+                squad: { type: 'string', description: 'Squad' },
+                description: { type: 'string', description: 'Detailed description of the issue' },
+                issuetype: { type: 'string', description: 'Type of issue (e.g., "Task", "Bug", "Story")' },
+                assignee: { type: 'string', description: 'User ID of the assignee' },
+                reporter: { type: 'string', description: 'User ID of the reporter' },
+                priority: { type: 'string', description: 'Priority of the issue (e.g., "High", "Medium", "Low")' },
+                labels: { type: 'array', items: { type: 'string' }, description: 'Labels to attach to the issue' },
+                components: { type: 'array', items: { type: 'string' }, description: 'Components to associate with the issue' },
+                fixVersions: { type: 'array', items: { type: 'string' }, description: 'Fix versions to associate with the issue' },
+                duedate: { type: 'string', description: 'Due date in YYYY-MM-DD format' }
+              },
+              required: ['projectKey', 'summary']
+            }
+          },
+        },
+        parse: JSON.parse,
+        function: ({ request }) =>
+          createJiraIssue(request, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor),
+      },
+    }
+
     result.push(retrieveJiraTicketFunction)
     result.push(searchJiraIssuesFunction)
     result.push(addCommentFunction)
     result.push(countJiraIssuesFunction)
+    result.push(createIssueFunction)
 
     return result
   }

@@ -238,3 +238,25 @@ export type LightWeightSearchResponse = {
   nextPageToken?: string | null | undefined
   jqlUrl?: string
 }
+
+/**
+ * Interface for the Jira issue creation request
+ */
+export interface CreateJiraIssueRequest {
+  projectKey: string;
+  summary: string;
+  squad?: string;
+  squadId?: string;
+  squadSearch?: string; // Search term to find the squad
+  description?: string;
+  issuetype?: string;
+  assignee?: string;
+  reporter?: string;
+  priority?: string;
+  labels?: string[];
+  components?: string[];
+  fixVersions?: string[];
+  duedate?: string;
+  // Custom fields
+  [key: `customfield_${number}`]: any;
+}
