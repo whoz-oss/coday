@@ -22,6 +22,49 @@ export function createFieldMapping(visibleFields: VisibleField[], issues: JiraIs
   })
 }
 
+export function validateJqlOperators(jql: string, fieldMapping: ActiveFieldMapping[]) {
+  console.log(jql, 'jql')
+
+  // Split the JQL by AND/OR operators first to isolate each condition
+  const conditions = jql.split(/\s+AND\s+|\s+OR\s+/i)
+  console.log('Split conditions:', conditions)
+
+  for (const condition of conditions) {
+    // For each condition, extract field, operator, and value
+    // This regex handles various operator formats and value types
+    const conditionMatch = condition.match(
+      /([\w\[\]\d]+)\s*([=!<>~]+|\s+in\s+|\s+not\s+in\s+|\s+is\s+|\s+is\s+not\s+)\s*("[^"]*"|-?\d+d?|'[^']*'|\([^)]*\)|\w+)/
+    )
+
+    if (!conditionMatch) {
+      console.log(`Could not parse condition: ${condition}, ask user for jql query validation`)
+      continue // Skip malformed conditions
+    }
+
+    const [, field, operator] = conditionMatch
+    // Find the field in the mapping
+    const mappedField = fieldMapping.find(
+      (mapping) => mapping.name === field || mapping.jqlQueryKey === field || mapping.ticketCreationKey === field
+    )
+
+    console.log('Mapped field for', field, ':', mappedField)
+
+    if (!mappedField) {
+      throw new Error(`Field ${field} not found in mapping`)
+    }
+
+    // Clean up the operator (remove extra whitespace)
+    const cleanOperator = operator.trim()
+
+    const allowedOperators = mappedField.operators || []
+    if (!allowedOperators.includes(cleanOperator)) {
+      throw new Error(
+        `Invalid operator '${cleanOperator}' for field '${field}'. Repeat by use an operator from this allowed list: ${allowedOperators.join(', ')}`
+      )
+    }
+  }
+}
+
 // Helper method to find autocomplete info
 function findAutocompleteInfo(visibleFields: VisibleField[], fieldKey: string): VisibleField | undefined {
   const parts = fieldKey.split('_')
@@ -87,7 +130,7 @@ export const JIRA_FIELD_PRESETS = {
   dates: ['created', 'updated', 'duedate'],
   navigation: ['key', 'parent', 'subtasks', 'issuelinks'],
   tracking: ['assignee', 'reporter', 'created', 'updated', 'status'],
-} as const;
+} as const
 
 /**
  * Resolves field selections including presets into a final list of fields
@@ -97,17 +140,17 @@ export const JIRA_FIELD_PRESETS = {
 export function resolveJiraFields(fields: string[] = ['basic']): string[] {
   // Handle special cases
   if (fields.includes('*all') || fields.includes('*navigable')) {
-    return fields;
+    return fields
   }
 
   // Process each field, expanding presets
-  const resolvedFields = fields.flatMap(field => {
-    const preset = JIRA_FIELD_PRESETS[field.toLowerCase() as keyof typeof JIRA_FIELD_PRESETS];
-    return preset || field;
-  });
+  const resolvedFields = fields.flatMap((field) => {
+    const preset = JIRA_FIELD_PRESETS[field.toLowerCase() as keyof typeof JIRA_FIELD_PRESETS]
+    return preset || field
+  })
 
   // Remove duplicates while preserving order
-  return Array.from(new Set(resolvedFields));
+  return Array.from(new Set(resolvedFields))
 }
 
 export function getLightWeightIssues(
@@ -129,4 +172,17 @@ export function getLightWeightIssues(
 
     return acc
   }, {} as LightWeightIssues)
+}
+
+/**
+ * Generates a JIRA JQL search URL for the given base URL and JQL query
+ * @param baseUrl The base JIRA instance URL
+ * @param jql The JQL query to search
+ * @returns A fully constructed JIRA issue search URL
+ */
+export function generateJiraJQLUrl(baseUrl: string, jql: string): string {
+  // Encode the JQL to make it URL-safe
+  const encodedJql = encodeURIComponent(jql)
+  // Construct the JIRA issue search URL
+  return `${baseUrl}/issues/?jql=${encodedJql}`
 }

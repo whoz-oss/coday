@@ -96,23 +96,33 @@ export class JiraFieldMapper {
 
     return {
       customFields: `# Jira Ticket Creation Fields (${mappings.length} fields)
-
+IMPORTANT: 
+  - use this Key syntax for JIRA ticket creation, example: customfield_10564
+  - NEVER use for jql research
 ${customFields}
-
-Notes:
-- Only use these keys when creating issues via API
-- Custom fields might require specific values`,
-
+`,
       jqlResearchDescription: `# Jira JQL Search Fields (${mappings.length} fields)
-
+IMPORTANT: 
+  - use the Query Key syntax to perform jql research, example: cf[10564] 
+  - NEVER use for jira ticket creation
 ${jqlFields}
-
-Notes:
-- Only use these keys to translate a user request into jql request
-- Include operators where specified
-- Custom fields may have restricted values`,
+`,
     }
   }
 }
+// Utility function for easy access
+export async function createJiraFieldMapping(
+  jiraBaseUrl: string,
+  jiraApiToken: string,
+  jiraUsername: string,
+  interactor: Interactor,
+  maxResults: number = 100
+): Promise<{
+  mappings: ActiveFieldMapping[]
+  autocompleteData: AutocompleteDataResponse
+  description: FieldMappingDescription
+}> {
+  const mapper = new JiraFieldMapper(jiraBaseUrl, jiraApiToken, jiraUsername, interactor)
 
-// Note: The standalone createJiraFieldMapping function has been replaced by the jiraFieldMappingCache service
+  return mapper.generateFieldMapping(maxResults)
+}
