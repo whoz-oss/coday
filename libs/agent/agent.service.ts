@@ -239,10 +239,15 @@ export class AgentService implements Killable {
 
           // Determine the base path for document resolution
           const agentDirPath = path.dirname(agentFilePath)
-          const isInProject = agentDirPath.startsWith(this.projectPath)
+          const projectSegments = this.projectPath.split('/')
+          const agentPathSegments = agentDirPath.split('/')
+
+          const isNotInProject =
+            agentPathSegments.length < projectSegments.length ||
+            projectSegments.some((value, index) => value !== agentPathSegments[index])
 
           // Add definition with the appropriate base path
-          const basePath = isInProject ? this.projectPath : agentDirPath
+          const basePath = isNotInProject ? agentDirPath : this.projectPath
           this.addDefinition(data, basePath)
         } catch (e) {
           console.error(e)

@@ -47,7 +47,7 @@ export function getFormattedDocs(withDocs: WithDocs, interactor: Interactor, pro
 
     return formattedDocs
   } catch (e: any) {
-    console.error(`Could not format docs`)
+    console.error(`Could not format docs for ${withDocs}`, e)
     return ''
   }
 }
