@@ -64,11 +64,13 @@ export class UserAiConfigHandler extends CommandHandler {
       // Interactive mode: show current configuration and prompt for provider
       const currentConfig = this.services.user.config
       const projectConfig = project.config
+      const currentAiProviders = currentConfig.ai
+      const projectAiProviders = projectConfig.ai
       const status: string = [
         'Current user-level AI providers configuration:',
         ...AI_PROVIDERS.map((provider) => {
-          const userSet = currentConfig.aiProviders[provider]
-          const projectSet = projectConfig.aiProviders[provider]
+          const userSet = currentAiProviders[provider]
+          const projectSet = projectAiProviders[provider]
           let details = ''
           if (provider === 'localLlm' && userSet) {
             const localConfig = userSet as LocalLlmConfig
@@ -191,7 +193,7 @@ export class UserAiConfigHandler extends CommandHandler {
       url,
       ...(model && { model }),
       ...(contextWindow && { contextWindow }),
-      ...(apiKey && { apiKey })
+      ...(apiKey && { apiKey }),
     }
 
     this.interactor.displayText('✅ Local LLM configured successfully')

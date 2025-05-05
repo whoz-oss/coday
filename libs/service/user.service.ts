@@ -20,7 +20,7 @@ export class UserService {
   constructor(
     codayConfigPath: string | undefined,
     public readonly username: string,
-    private interactor?: Interactor
+    private interactor: Interactor
   ) {
     // Format username correctly
     this.sanitizedUsername = this.sanitizeUsername(username)
@@ -53,7 +53,7 @@ export class UserService {
     // Save the migrated config if reference changed, meaning some migration happened
     if (this.config !== rawUserConfig) {
       writeYamlFile(filePath, this.config)
-      this.interactor.displayText(`User configuration migrated to version ${this.config.version}`)
+      this.interactor.displayText(`User configuration migrated to version ${this.config?.version}`)
     }
   }
 

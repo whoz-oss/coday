@@ -45,7 +45,7 @@ export class OpenaiClient extends AiClient {
   ) {
     super(aiProviderConfig)
     if (aiProviderConfig.name !== 'openai') {
-      this.models = aiProviderConfig.models
+      this.models = aiProviderConfig.models ?? []
     }
     this.name = aiProviderConfig.name
   }
@@ -64,7 +64,7 @@ export class OpenaiClient extends AiClient {
     const thinking = setInterval(() => this.interactor.thinking(), this.thinkingInterval)
     this.processThread(openai, agent, thread, outputSubject).finally(() => {
       clearInterval(thinking)
-      this.showAgentAndUsage(agent, this.aiProviderConfig.name, this.getModel(agent).name, thread)
+      this.showAgentAndUsage(agent, this.aiProviderConfig.name, this.getModel(agent)!.name, thread)
       // Log usage after the complete response cycle
       const model = this.models[this.getModelSize(agent)]
       const cost = thread.usage?.price || 0
@@ -107,7 +107,7 @@ export class OpenaiClient extends AiClient {
       .then(async () => await this.processAssistantThread(openai, agent, thread, outputSubject))
       .finally(() => {
         clearInterval(thinking)
-        this.showAgentAndUsage(agent, this.aiProviderConfig.name, this.getModel(agent).name, thread)
+        this.showAgentAndUsage(agent, this.aiProviderConfig.name, this.getModel(agent)!.name, thread)
         // Log usage after the complete response cycle
         const model = this.models[this.getModelSize(agent)]
         const cost = thread.usage?.price || 0
@@ -142,7 +142,7 @@ export class OpenaiClient extends AiClient {
     subscriber: Subject<CodayEvent>
   ): Promise<void> {
     try {
-      const model = this.getModel(agent)
+      const model = this.getModel(agent)!
       const initialContextCharLength = agent.systemInstructions.length + agent.tools.charLength + 20
       const charBudget = model.contextWindow * this.charsPerToken - initialContextCharLength
 
@@ -180,12 +180,13 @@ export class OpenaiClient extends AiClient {
   }
 
   private updateUsage(usage: any, agent: Agent, thread: AiThread): void {
+    const model = this.getModel(agent)!
     const cacheReadTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0
     const inputNoCacheTokens = (usage?.prompt_tokens ?? 0) - cacheReadTokens // TODO: check again with doc...
-    const input = inputNoCacheTokens * this.getModel(agent).price.inputMTokens
+    const input = inputNoCacheTokens * (model?.price?.inputMTokens ?? 0)
     const outputTokens = usage?.completion_tokens ?? 0
-    const output = outputTokens * this.getModel(agent).price.outputMTokens
-    const cacheRead = cacheReadTokens * this.getModel(agent).price.cacheRead
+    const output = outputTokens * (model?.price?.outputMTokens ?? 0)
+    const cacheRead = cacheReadTokens * (model?.price?.cacheRead ?? 0)
     const price = (input + output + cacheRead) / 1_000_000
 
     thread.addUsage({

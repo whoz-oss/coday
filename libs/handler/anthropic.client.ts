@@ -53,7 +53,7 @@ export class AnthropicClient extends AiClient {
     const thinking = setInterval(() => this.interactor.thinking(), this.thinkingInterval)
     this.processThread(anthropic, agent, thread, outputSubject).finally(() => {
       clearInterval(thinking)
-      this.showAgentAndUsage(agent, 'Anthropic', this.getModel(agent).name, thread)
+      this.showAgentAndUsage(agent, 'Anthropic', this.getModel(agent)?.name, thread)
       // Log usage after the complete response cycle
       const model = AnthropicModels[this.getModelSize(agent)]
       const cost = thread.usage?.price || 0
@@ -71,7 +71,7 @@ export class AnthropicClient extends AiClient {
   ): Promise<void> {
     try {
       const initialContextCharLength = agent.systemInstructions.length + agent.tools.charLength + 20
-      const model = this.getModel(agent)
+      const model = this.getModel(agent)!
       const charBudget = model.contextWindow * this.charsPerToken - initialContextCharLength
 
       const response = await client.messages.create({
@@ -121,10 +121,10 @@ export class AnthropicClient extends AiClient {
 
   private updateUsage(usage: any, agent: Agent, thread: AiThread): void {
     const model = this.getModel(agent)
-    const input = usage?.input_tokens * model.price.inputMTokens
-    const output = usage?.output_tokens * model.price.outputMTokens
-    const cacheWrite = usage?.cache_creation_input_tokens * model.price.cacheWrite
-    const cacheRead = usage?.cache_read_input_tokens * model.price.cacheRead
+    const input = usage?.input_tokens * model?.price?.inputMTokens
+    const output = usage?.output_tokens * model?.price?.outputMTokens
+    const cacheWrite = usage?.cache_creation_input_tokens * model?.price?.cacheWrite
+    const cacheRead = usage?.cache_read_input_tokens * model?.price?.cacheRead
     const price = (input + output + cacheWrite + cacheRead) / 1_000_000
 
     thread.addUsage({

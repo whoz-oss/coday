@@ -45,7 +45,7 @@ export class AiClientProvider {
     if (this.aiProviderConfigs) return
     // get the ai def and models from coday.yaml
     const aiCodayYaml = context.project.ai || []
-    const projectYaml = this.projectService.selectedProject.config.ai || []
+    const projectYaml = this.projectService.selectedProject?.config?.ai || []
     const userYaml = this.userService.config.ai || []
     this.aiProviderConfigs = []
 
@@ -58,8 +58,9 @@ export class AiClientProvider {
       } else {
         // existing provider, merge new def in it
         const currentConfig = this.aiProviderConfigs[i]
-        const currentModels = [...currentConfig.models]
-        aiDef.models.forEach((model) => {
+        const currentModels = currentConfig.models ? [...currentConfig.models] : []
+        const aiDefModels = aiDef.models ?? []
+        aiDefModels.forEach((model) => {
           const j = currentModels.findIndex((m) => m.alias === model.alias || m.name === model.name)
           if (j === -1) {
             // adding a new model def
@@ -85,14 +86,16 @@ export class AiClientProvider {
    */
   getClient(provider: string | undefined, name?: string | undefined): AiClient | undefined {
     // filter providers by name and provider
-    const providers = this.aiProviderConfigs.filter(
-      (aiProviderConfig) =>
-        (!name || aiProviderConfig.models.some((model) => model.alias === name || model.name === name)) &&
-        (!aiProviderConfig || aiProviderConfig.name === provider)
-    )
+    const aiProviderConfigs = this.aiProviderConfigs ?? []
+    const providers = aiProviderConfigs?.filter((aiProviderConfig) => {
+      const models = aiProviderConfig.models ?? []
+      const noNameOrMatchByModelName = !name || models.some((model) => model.alias === name || model.name === name)
+      const matchByProviderName = !aiProviderConfig || aiProviderConfig.name === provider
+      return noNameOrMatchByModelName && matchByProviderName
+    })
 
     // from the matching providers, take the first (in the cache, or try to create)
-    let client: AiClient
+    let client: AiClient | undefined
     for (const aiProviderConfig of providers) {
       client = this.clientCache.get(aiProviderConfig.name)
       if (client) {

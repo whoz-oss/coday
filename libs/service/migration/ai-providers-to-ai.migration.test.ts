@@ -31,12 +31,12 @@ describe('aiProviders to ai migration', () => {
       expect(result.ai).toHaveLength(2)
 
       // Check anthropic provider
-      const anthropicProvider = result.ai.find((p) => p.name === 'anthropic')
+      const anthropicProvider = result.ai.find((p: any) => p.name === 'anthropic')
       expect(anthropicProvider).toBeDefined()
       expect(anthropicProvider.apiKey).toBe('test-anthropic-key')
 
       // Check openai provider
-      const openaiProvider = result.ai.find((p) => p.name === 'openai')
+      const openaiProvider = result.ai.find((p: any) => p.name === 'openai')
       expect(openaiProvider).toBeDefined()
       expect(openaiProvider.apiKey).toBe('test-openai-key')
 
@@ -91,7 +91,7 @@ describe('aiProviders to ai migration', () => {
       expect(result.ai).toHaveLength(1)
 
       // Check custom provider
-      const localProvider = result.ai.find((p) => p.name === 'localLlm')
+      const localProvider = result.ai.find((p: any) => p.name === 'localLlm')
       expect(localProvider).toBeDefined()
       expect(localProvider.apiKey).toBe('test-local-key')
       expect(localProvider.type).toBe('openai')
@@ -138,17 +138,17 @@ describe('aiProviders to ai migration', () => {
       expect(result.ai).toHaveLength(3)
 
       // Check anthropic provider
-      const anthropicProvider = result.ai.find((p) => p.name === 'anthropic')
+      const anthropicProvider = result.ai.find((p: any) => p.name === 'anthropic')
       expect(anthropicProvider).toBeDefined()
       expect(anthropicProvider.apiKey).toBe('user-anthropic-key')
 
       // Check google provider
-      const googleProvider = result.ai.find((p) => p.name === 'google')
+      const googleProvider = result.ai.find((p: any) => p.name === 'google')
       expect(googleProvider).toBeDefined()
       expect(googleProvider.apiKey).toBe('user-google-key')
 
       // Check custom provider
-      const localProvider = result.ai.find((p) => p.name === 'localLlm')
+      const localProvider = result.ai.find((p: any) => p.name === 'localLlm')
       expect(localProvider).toBeDefined()
       expect(localProvider.apiKey).toBe('user-local-key')
       expect(localProvider.type).toBe('openai')
@@ -219,21 +219,21 @@ describe('aiProviders to ai migration', () => {
       expect(result.ai).toHaveLength(3)
 
       // Check all providers are included
-      const providerNames = result.ai.map((p) => p.name)
+      const providerNames = result.ai.map((p: any) => p.name)
       expect(providerNames).toContain('anthropic')
       expect(providerNames).toContain('openai')
       expect(providerNames).toContain('google')
 
       // Default providers should not have type or models
-      const anthropicProvider = result.ai.find((p) => p.name === 'anthropic')
+      const anthropicProvider = result.ai.find((p: any) => p.name === 'anthropic')
       expect(anthropicProvider.type).toBeUndefined()
       expect(anthropicProvider.models).toBeUndefined()
 
-      const openaiProvider = result.ai.find((p) => p.name === 'openai')
+      const openaiProvider = result.ai.find((p: any) => p.name === 'openai')
       expect(openaiProvider.type).toBeUndefined()
       expect(openaiProvider.models).toBeUndefined()
 
-      const googleProvider = result.ai.find((p) => p.name === 'google')
+      const googleProvider = result.ai.find((p: any) => p.name === 'google')
       expect(googleProvider.type).toBeUndefined()
       expect(googleProvider.models).toBeUndefined()
     })

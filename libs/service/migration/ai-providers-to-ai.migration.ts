@@ -8,28 +8,28 @@ export const aiPropertyToAi: Migration = {
     const { aiProviders, ...rest } = config
 
     // Initialize ai array if it doesn't exist
-    const ai = []
+    const ai: any[] = []
 
     // Handle case where aiProviders is undefined
     if (aiProviders) {
       Object.keys(aiProviders).forEach((key) => {
-      const conf: any = {
-        name: key,
-        apiKey: aiProviders[key]?.apiKey,
-      }
-      if (!defaultProviders.includes(key)) {
-        conf.type = 'openai'
-        conf.url = aiProviders[key]?.url
-        if (aiProviders[key]?.model) {
-          const model: any = {
-            name: aiProviders[key].model,
-            contextWindow: aiProviders[key]?.contextWindow ?? 64000,
-          }
-          conf.models = [model]
+        const conf: any = {
+          name: key,
+          apiKey: aiProviders[key]?.apiKey,
         }
-      }
-      ai.push(conf)
-    })
+        if (!defaultProviders.includes(key)) {
+          conf.type = 'openai'
+          conf.url = aiProviders[key]?.url
+          if (aiProviders[key]?.model) {
+            const model: any = {
+              name: aiProviders[key].model,
+              contextWindow: aiProviders[key]?.contextWindow ?? 64000,
+            }
+            conf.models = [model]
+          }
+        }
+        ai.push(conf)
+      })
     }
 
     return {
