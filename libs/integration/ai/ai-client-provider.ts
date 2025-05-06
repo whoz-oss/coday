@@ -30,8 +30,7 @@ const ENV_VARS: Record<string, string> = {
  * - Client instances are cached per provider within this instance
  */
 export class AiClientProvider {
-  /** Cache of instantiated clients to avoid recreation */
-  private clientCache: Map<string, AiClient> = new Map()
+  private aiClients: AiClient[] = []
   private aiProviderConfigs: AiProviderConfig[] | undefined
 
   constructor(
@@ -74,6 +73,19 @@ export class AiClientProvider {
         this.aiProviderConfigs[i] = { ...currentConfig, ...aiDef, models: currentModels }
       }
     }
+
+    // then try to instantiate all clients
+    this.aiClients = this.aiProviderConfigs.map((config) => this.createClient(config))
+
+    // ... and log the result
+    const clientSucess = this.aiClients.map((client) => client.name)
+    const clientStatus = this.aiProviderConfigs.map(
+      (config) => `${clientSucess.includes(config.name) ? '✅' : '❌'} ${config.name}`
+    )
+    const clientLog = `AI providers:
+${clientStatus.map((status) => ` - ${status}`).join('\n')}
+`
+    this.interactor.displayText(clientLog)
   }
 
   /**
@@ -86,32 +98,17 @@ export class AiClientProvider {
    */
   getClient(provider: string | undefined, name?: string | undefined): AiClient | undefined {
     // filter providers by name and provider
-    const aiProviderConfigs = this.aiProviderConfigs ?? []
-    const providers = aiProviderConfigs?.filter((aiProviderConfig) => {
-      const models = aiProviderConfig.models ?? []
-      const noNameOrMatchByModelName = !name || models.some((model) => model.alias === name || model.name === name)
-      const matchByProviderName = !aiProviderConfig || aiProviderConfig.name === provider
-      return noNameOrMatchByModelName && matchByProviderName
-    })
+    console.log(`ai client provider: get ${provider}, ${name}`)
+    const clients = this.aiClients.filter(
+      (client) =>
+        (!provider || client.name.toLowerCase() === provider.toLowerCase()) && (!name || client.supportsModel(name))
+    )
 
-    // from the matching providers, take the first (in the cache, or try to create)
-    let client: AiClient | undefined
-    for (const aiProviderConfig of providers) {
-      client = this.clientCache.get(aiProviderConfig.name)
-      if (client) {
-        return client
-      }
-
-      client = this.createClient(aiProviderConfig)
-      if (client) {
-        this.clientCache.set(aiProviderConfig.name, client)
-      }
-    }
-    return client
+    return clients.length ? clients[0] : undefined
   }
 
   public kill(): void {
-    this.clientCache.forEach((client, key, map) => client.kill())
+    this.aiClients.forEach((client, key, map) => client.kill())
     this.aiProviderConfigs = undefined
   }
 
@@ -131,7 +128,6 @@ export class AiClientProvider {
     const apiKey = this.getApiKey(aiProviderConfig)
     // Could be controversial, but always expect an apiKey, even for local providers
     if (!apiKey) return undefined
-    console.log(`create client with ${aiProviderConfig.name}`)
     const config = { ...aiProviderConfig, apiKey }
     switch (aiProviderConfig.name) {
       case 'anthropic':

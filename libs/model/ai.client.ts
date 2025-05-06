@@ -231,6 +231,10 @@ export abstract class AiClient {
     return this.models.find((m) => m.name === aliasOrName)
   }
 
+  supportsModel(name: string): boolean {
+    return this.models.some((model) => model.name === name || model.alias === name)
+  }
+
   /**
    * Set the usage logger for this AI client
    */
