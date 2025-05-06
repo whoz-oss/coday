@@ -78,6 +78,7 @@ export class AiHandler extends CommandHandler implements Killable {
     if (preferredAgent) {
       const agent = await this.agentService.findByName(preferredAgent, context)
       if (agent) {
+        this.interactor.displayText(`Selecting user default agent ${preferredAgent}`)
         this.interactor.debug(`Selected default agent: ${preferredAgent}`)
         return agent
       }

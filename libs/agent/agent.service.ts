@@ -138,15 +138,9 @@ export class AgentService implements Killable {
     await this.initialize(context)
 
     const lowerNameStart = nameStart.toLowerCase()
-    const matches: Agent[] = []
-
-    for (const name of Array.from(this.agents.keys())) {
-      if (name.toLowerCase().startsWith(lowerNameStart)) {
-        matches.push(this.agents.get(name)!)
-      }
-    }
-
-    return matches
+    return Array.from(this.agents.keys())
+      .filter((agentName) => agentName.toLowerCase().startsWith(lowerNameStart))
+      .map((agentName) => this.agents.get(agentName))
   }
 
   /**
