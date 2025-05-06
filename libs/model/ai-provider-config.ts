@@ -15,6 +15,11 @@ export interface AiProviderConfig {
   apiKey?: string
 
   /**
+   * Indicates if the provider is on secured infra, non-cloud, no data exposed
+   */
+  secure?: boolean
+
+  /**
    * Collection of model definitions to add to the defaults (if any depending on the name)
    */
   models?: AiModel[]

@@ -269,7 +269,7 @@ export class AgentService implements Killable {
         console.error(`Cannot create agent ${def.name}: dependencies not set. Call setDependencies first.`)
         return
       }
-
+      console.log(`getting client for agent ${def.name}, ${def.aiProvider}, ${def.modelName}`)
       const aiClient = this.aiClientProvider.getClient(def.aiProvider, def.modelName)
       if (!aiClient) {
         this.interactor.error(`Cannot create agent ${def.name}: AI client creation failed`)

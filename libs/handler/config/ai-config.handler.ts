@@ -1,13 +1,9 @@
 import { Interactor, NestedHandler } from '../../model'
 import { CodayServices } from '../../coday-services'
-import { UserAiConfigHandler } from './user-ai-config.handler'
 import { ProjectAiConfigHandler } from './project-ai-config.handler'
 
 export class AiConfigHandler extends NestedHandler {
-  constructor(
-    interactor: Interactor,
-    services: CodayServices
-  ) {
+  constructor(interactor: Interactor, services: CodayServices) {
     super(
       {
         commandWord: 'ai',
@@ -16,9 +12,6 @@ export class AiConfigHandler extends NestedHandler {
       interactor
     )
 
-    this.handlers = [
-      new UserAiConfigHandler(interactor, services),
-      new ProjectAiConfigHandler(interactor, services)
-    ]
+    this.handlers = [new ProjectAiConfigHandler(interactor, services)]
   }
 }

@@ -75,12 +75,12 @@ export class AiClientProvider {
     }
 
     // then try to instantiate all clients
-    this.aiClients = this.aiProviderConfigs.map((config) => this.createClient(config))
+    this.aiClients = this.aiProviderConfigs.map((config) => this.createClient(config)).filter((client) => !!client)
 
     // ... and log the result
-    const clientSucess = this.aiClients.map((client) => client.name)
+    const clientSuccess = this.aiClients.map((client) => client.name.toLowerCase())
     const clientStatus = this.aiProviderConfigs.map(
-      (config) => `${clientSucess.includes(config.name) ? '✅' : '❌'} ${config.name}`
+      (config) => `${clientSuccess.includes(config.name.toLowerCase()) ? '✅' : '❌'} ${config.name}`
     )
     const clientLog = `AI providers:
 ${clientStatus.map((status) => ` - ${status}`).join('\n')}
@@ -98,11 +98,11 @@ ${clientStatus.map((status) => ` - ${status}`).join('\n')}
    */
   getClient(provider: string | undefined, name?: string | undefined): AiClient | undefined {
     // filter providers by name and provider
-    console.log(`ai client provider: get ${provider}, ${name}`)
-    const clients = this.aiClients.filter(
-      (client) =>
-        (!provider || client.name.toLowerCase() === provider.toLowerCase()) && (!name || client.supportsModel(name))
-    )
+    const clients = this.aiClients.filter((client) => {
+      const matchesProviderName = !provider || client.name.toLowerCase() === provider.toLowerCase()
+      const supportsModel = !name || client.supportsModel(name.toLowerCase())
+      return matchesProviderName && supportsModel
+    })
 
     return clients.length ? clients[0] : undefined
   }
@@ -127,9 +127,13 @@ ${clientStatus.map((status) => ` - ${status}`).join('\n')}
   private createClient(aiProviderConfig: AiProviderConfig): AiClient | undefined {
     const apiKey = this.getApiKey(aiProviderConfig)
     // Could be controversial, but always expect an apiKey, even for local providers
-    if (!apiKey) return undefined
+    if (!apiKey) {
+      this.interactor.displayText(`ℹ️ no api key for AI provider '${aiProviderConfig.name}'`)
+      return undefined
+    }
+    // override the existing apiKey
     const config = { ...aiProviderConfig, apiKey }
-    switch (aiProviderConfig.name) {
+    switch (aiProviderConfig.name.toLowerCase()) {
       case 'anthropic':
         return new AnthropicClient(this.interactor, aiProviderConfig)
       case 'google':

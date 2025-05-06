@@ -78,6 +78,7 @@ You are Coday, an AI assistant designed for interactive usage by users through v
 When other agents are available, you should redirect the user request to the appropriate agent, given the topic.
 `,
   modelSize: ModelSize.BIG,
+  modelName: 'BIG'
   // prepare future restriction of Coday agent
   // integrations: {
   //   FILES: [],
