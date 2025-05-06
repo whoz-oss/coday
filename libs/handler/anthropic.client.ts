@@ -46,14 +46,17 @@ export class AnthropicClient extends AiClient {
 
   async run(agent: Agent, thread: AiThread): Promise<Observable<CodayEvent>> {
     const anthropic: Anthropic | undefined = this.isAnthropicReady()
-    if (!anthropic) return of()
+    const model = this.getModel(agent)
+    if (!anthropic || !model) {
+      return of()
+    }
 
     thread.resetUsageForRun()
     const outputSubject: Subject<CodayEvent> = new Subject()
     const thinking = setInterval(() => this.interactor.thinking(), this.thinkingInterval)
-    this.processThread(anthropic, agent, thread, outputSubject).finally(() => {
+    this.processThread(anthropic, agent, model, thread, outputSubject).finally(() => {
       clearInterval(thinking)
-      this.showAgentAndUsage(agent, 'Anthropic', this.getModel(agent)?.name, thread)
+      this.showAgentAndUsage(agent, 'Anthropic', model.name, thread)
       // Log usage after the complete response cycle
       const model = AnthropicModels[this.getModelSize(agent)]
       const cost = thread.usage?.price || 0
@@ -66,12 +69,12 @@ export class AnthropicClient extends AiClient {
   private async processThread(
     client: Anthropic,
     agent: Agent,
+    model: AiModel,
     thread: AiThread,
     subscriber: Subject<CodayEvent>
   ): Promise<void> {
     try {
       const initialContextCharLength = agent.systemInstructions.length + agent.tools.charLength + 20
-      const model = this.getModel(agent)!
       const charBudget = model.contextWindow * this.charsPerToken - initialContextCharLength
 
       const response = await client.messages.create({
@@ -112,7 +115,7 @@ export class AnthropicClient extends AiClient {
         )
       if (await this.shouldProcessAgainAfterResponse(text, toolRequests, agent, thread)) {
         // then tool responses to send
-        await this.processThread(client, agent, thread, subscriber)
+        await this.processThread(client, agent, model, thread, subscriber)
       }
     } catch (error: any) {
       this.handleError(error, subscriber, this.name)
@@ -121,10 +124,10 @@ export class AnthropicClient extends AiClient {
 
   private updateUsage(usage: any, agent: Agent, thread: AiThread): void {
     const model = this.getModel(agent)
-    const input = usage?.input_tokens * model?.price?.inputMTokens
-    const output = usage?.output_tokens * model?.price?.outputMTokens
-    const cacheWrite = usage?.cache_creation_input_tokens * model?.price?.cacheWrite
-    const cacheRead = usage?.cache_read_input_tokens * model?.price?.cacheRead
+    const input = (usage?.input_tokens || 0) * (model?.price?.inputMTokens || 0)
+    const output = (usage?.output_tokens || 0) * (model?.price?.outputMTokens || 0)
+    const cacheWrite = (usage?.cache_creation_input_tokens || 0) * (model?.price?.cacheWrite || 0)
+    const cacheRead = (usage?.cache_read_input_tokens || 0) * (model?.price?.cacheRead || 0)
     const price = (input + output + cacheWrite + cacheRead) / 1_000_000
 
     thread.addUsage({

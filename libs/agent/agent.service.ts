@@ -101,6 +101,10 @@ export class AgentService implements Killable {
   }
 
   async findAgentByNameStart(nameStart: string | undefined, context: CommandContext): Promise<Agent | undefined> {
+    if (!nameStart) {
+      return
+    }
+
     // Initialize agents if not already done
     await this.initialize(context)
 
@@ -141,6 +145,7 @@ export class AgentService implements Killable {
     return Array.from(this.agents.keys())
       .filter((agentName) => agentName.toLowerCase().startsWith(lowerNameStart))
       .map((agentName) => this.agents.get(agentName))
+      .filter((agent) => !!agent)
   }
 
   /**
