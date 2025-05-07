@@ -78,13 +78,30 @@ export class AiClientProvider {
     this.aiClients = this.aiProviderConfigs.map((config) => this.createClient(config)).filter((client) => !!client)
 
     // ... and log the result
-    const clientSuccess = this.aiClients.map((client) => client.name.toLowerCase())
-    const clientStatus = this.aiProviderConfigs.map(
-      (config) => `${clientSuccess.includes(config.name.toLowerCase()) ? '✅' : '❌'} ${config.name}`
-    )
-    const clientLog = `AI providers:
-${clientStatus.map((status) => ` - ${status}`).join('\n')}
-`
+    const clientLog =
+      `AI providers (models listed as: name (alias)):` +
+      '\n' +
+      this.aiProviderConfigs
+        .map((config) => {
+          const client = this.aiClients.find((c) => c.name.toLowerCase() === config.name.toLowerCase())
+          const isSuccess = !!client
+          const prefix = isSuccess ? '✅' : '❌'
+          let line = ` - ${prefix} ${config.name}`
+          if (isSuccess && Array.isArray(client.models) && client.models.length > 0) {
+            // Build one-line model list: name (alias) if alias, otherwise just name
+            const modelsStr = client.models
+              .map((model) => {
+                if (model.alias && model.alias !== model.name) {
+                  return `${model.name} (${model.alias})`
+                }
+                return model.name
+              })
+              .join(', ')
+            line += `, models: ${modelsStr}`
+          }
+          return line
+        })
+        .join('\n')
     this.interactor.displayText(clientLog)
   }
 
