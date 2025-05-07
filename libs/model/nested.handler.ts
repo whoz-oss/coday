@@ -67,7 +67,7 @@ export abstract class NestedHandler extends CommandHandler {
     }
 
     // pass on the request to the child handler
-    return this.handle(selectedCommandWord, context)
+    return this.handle(`${this.commandWord} ${selectedCommandWord}`, context)
   }
 
   /**
