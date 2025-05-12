@@ -3,9 +3,6 @@ import { UserService } from './user.service'
 import { ProjectService } from './project.service'
 import { ConfigLevel, ConfigLevelValidator } from '../model/config-level'
 
-// Internal CODAY level identifier (not exposed in the ConfigLevel enum)
-const CODAY_LEVEL = 'coday'
-
 /**
  * Represents the combined AI configuration from all levels
  */
@@ -29,7 +26,7 @@ export interface AiConfiguration {
  * - User level (user-specific settings)
  */
 export class AiConfigService {
-  private providerCache: Map<string, AiProviderConfig[]> = new Map()
+  private providerCache: Map<ConfigLevel, AiProviderConfig[]> = new Map()
   private mergedConfig: AiConfiguration | null = null
 
   constructor(
@@ -45,7 +42,7 @@ export class AiConfigService {
     this.mergedConfig = null
 
     // Cache configurations at each level for faster access
-    this.providerCache.set(CODAY_LEVEL, context.project.ai || [])
+    this.providerCache.set(ConfigLevel.CODAY, context.project.ai || [])
     this.providerCache.set(ConfigLevel.PROJECT, this.projectService.selectedProject?.config?.ai || [])
     this.providerCache.set(ConfigLevel.USER, this.userService.config.ai || [])
   }
@@ -166,7 +163,7 @@ export class AiConfigService {
     const modelAliasMap = new Map<string, { provider: string; model: string }>()
 
     // Process in order of precedence: coday -> project -> user
-    for (const level of [CODAY_LEVEL, ConfigLevel.PROJECT, ConfigLevel.USER]) {
+    for (const level of [ConfigLevel.CODAY, ConfigLevel.PROJECT, ConfigLevel.USER]) {
       const providers = this.providerCache.get(level) || []
 
       for (const provider of providers) {

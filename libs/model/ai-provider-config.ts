@@ -1,5 +1,7 @@
 import { AiModel } from './ai-model'
 
+export type AiProviderType = 'openai' | 'anthropic'
+
 export interface AiProviderConfig {
   /**
    * Name to use in agent declaration.
@@ -10,7 +12,7 @@ export interface AiProviderConfig {
   /**
    * Mandatory when not one of the default names
    */
-  type?: 'openai' | 'anthropic'
+  type?: AiProviderType
   url?: string
   apiKey?: string
 

@@ -1,6 +1,7 @@
 import { CommandHandler, CommandContext } from '../../model'
 import { Interactor } from '../../model/interactor'
 import { CodayServices } from '../../coday-services'
+import { ConfigLevel } from '../../model/config-level'
 
 /**
  * Handler for deleting an AI provider configuration and all its models.
@@ -17,8 +18,46 @@ export class AiConfigDeleteHandler extends CommandHandler {
   }
 
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
-    // TODO: Prompt for provider to delete, confirm, then delete from config
-    this.interactor.displayText('[TODO] Delete AI config (with all models)')
+    if (!this.services.aiConfig) {
+      this.interactor.displayText('AI config service unavailable.')
+      return context
+    }
+
+    // Determine config level (user/project)
+    const lowerCmd = command.toLowerCase()
+    const isProject = lowerCmd.includes(' --project') || lowerCmd.includes(' -p')
+    const level = isProject ? ConfigLevel.PROJECT : ConfigLevel.USER
+
+    // Get providers at this level
+    const providers = this.services.aiConfig.getProviders(level)
+    if (!providers.length) {
+      this.interactor.displayText(
+        `No AI providers found at ${level} level. Nothing to delete.`
+      )
+      return context
+    }
+
+    // Present provider list
+    const providerNames = providers.map((p) => p.name)
+    const chosenName = await this.interactor.chooseOption(
+      providerNames,
+      `Select AI provider to delete from ${level} config:`
+    )
+    if (!chosenName) return context
+
+    // Confirm deletion (using chooseOption yes/no)
+    const confirmChoice = await this.interactor.chooseOption(
+      ["yes", "no"],
+      `Are you sure you want to delete provider '${chosenName}' and all its models from ${level} config? This cannot be undone.`
+    )
+    if (confirmChoice !== "yes") {
+      this.interactor.displayText('Delete operation cancelled.')
+      return context
+    }
+
+    // Delete provider
+    await this.services.aiConfig.deleteProvider(chosenName, level)
+    this.interactor.displayText(`✅ Provider '${chosenName}' deleted from ${level} config.`)
     return context
   }
 }

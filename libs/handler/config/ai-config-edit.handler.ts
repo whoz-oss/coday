@@ -1,10 +1,13 @@
-import { CommandHandler, CommandContext } from '../../model'
-import { Interactor } from '../../model/interactor'
-import { CodayServices } from '../../coday-services'
+import {AiProviderType, CommandContext, CommandHandler} from '../../model'
+import {Interactor} from '../../model/interactor'
+import {CodayServices} from '../../coday-services'
+import {ConfigLevel} from '../../model/config-level'
+import {AiProviderConfig} from '../../model/ai-provider-config'
 
 /**
- * Handler for editing an existing AI provider configuration.
- * Interactive, property-by-property editing (excluding models).
+ * Handler for editing an existing AI provider configuration (not models).
+ * Prompts the user property by property. Supports --project/-p for level selection.
+ * If the provider only exists at a lower level, creates an override at the current level for editing.
  */
 export class AiConfigEditHandler extends CommandHandler {
   constructor(
@@ -18,8 +21,94 @@ export class AiConfigEditHandler extends CommandHandler {
   }
 
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
-    // TODO: Prompt for provider to edit, then field-by-field edit excluding models
-    this.interactor.displayText('[TODO] Edit AI config (no models)')
+    if (!this.services.aiConfig) {
+      this.interactor.displayText('AI config service unavailable.')
+      return context
+    }
+
+    // Determine config level (user/project)
+    const lowerCmd = command.toLowerCase()
+    const isProject = lowerCmd.includes(' --project') || lowerCmd.includes(' -p')
+    const level = isProject ? ConfigLevel.PROJECT : ConfigLevel.USER
+
+    // Build selection list from merged config: always allow editing
+    const mergedConfig = this.services.aiConfig.getMergedConfiguration()
+    if (!mergedConfig.providers.length) {
+      this.interactor.displayText('No AI providers found at any level.')
+      return context
+    }
+
+    // Present merged provider name list
+    const providerNames = mergedConfig.providers.map((p) => p.name)
+    const chosenName = await this.interactor.chooseOption(
+      providerNames,
+      `Select provider to edit (will create an override at ${level} level if not present):`
+    )
+    if (!chosenName) return context
+
+    // Get config at desired level
+    let editConfig: AiProviderConfig | undefined = this.services.aiConfig.getProvider(chosenName, level)
+    if (!editConfig) {
+      // Not present at this level: copy from merged (deep clone, excluding models)
+      const merged = mergedConfig.providers.find((p) => p.name === chosenName)
+      if (!merged) {
+        this.interactor.displayText('Internal error: Provider not found in merged config.')
+        return context
+      }
+      editConfig = { ...merged }
+      // Remove models, as they aren't edited here
+      delete editConfig.models
+    } else {
+      // Clone to avoid mutating underlying config directly (until save)
+      editConfig = { ...editConfig }
+    }
+
+    // Prompt for each field except models, with explanations
+    // Name
+    editConfig.name = await this.interactor.promptText(
+      'Provider name (unique, e.g. openai, anthropic, or a custom string):',
+      editConfig.name
+    )
+
+    // Type
+    editConfig.type = ((await this.interactor.chooseOption(
+      ['openai', 'anthropic'],
+      'Provider type (openai, anthropic, or leave blank for custom):\nUsed for default parameters and special handling for well-known providers.'
+    )) || 'openai') as AiProviderType
+
+    // URL
+    editConfig.url =
+      (await this.interactor.promptText(
+        'Endpoint URL for this provider (optional, only for custom/self-hosted):',
+        editConfig.url || ''
+      )) || undefined
+
+    // API Key (masked, blank = remove, mask = keep)
+    let apiKeyInput = await this.interactor.promptText(
+      'API key for this provider (leave blank to remove, or keep masked value to retain current):',
+      editConfig.apiKey ? '********' : ''
+    )
+    if (apiKeyInput === '********') {
+      // Keep current
+    } else if (!apiKeyInput) {
+      editConfig.apiKey = undefined
+    } else {
+      editConfig.apiKey = apiKeyInput
+    }
+
+    // Secure flag
+    const secureOptions = ['yes', 'no']
+    const securePrompt = 'Is this provider secure (local, non-cloud, no data leaves infra)? yes/no:'
+    const secureChoice = await this.interactor.chooseOption(
+      secureOptions,
+      securePrompt,
+      editConfig.secure ? 'yes' : 'no'
+    )
+    editConfig.secure = secureChoice === 'yes'
+
+    // Save (excluding models!) at this level
+    await this.services.aiConfig.saveProvider(editConfig, level)
+    this.interactor.displayText(`✅ Provider '${editConfig.name}' updated at ${level} level.`)
     return context
   }
 }

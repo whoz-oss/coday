@@ -15,8 +15,13 @@ export enum ConfigLevel {
    */
   USER = 'user',
 
-  // Note: Intentionally omitting CODAY as a public option
-  // CODAY remains an internal implementation detail for merging
+  /**
+   * Global (coday.yaml) configuration.
+   * Read-only, never editable from CLI, only merged for display or precedence.
+   */
+  CODAY = 'coday',
+  // Note: CODAY is used for merging/display only; not editable from CLI.
+
 }
 
 const ALLOWED_LEVELS = [ConfigLevel.PROJECT, ConfigLevel.USER]

@@ -1,6 +1,6 @@
-import { CommandHandler, CommandContext } from '../../model'
-import { Interactor } from '../../model/interactor'
+import { CommandContext, CommandHandler, Interactor } from '../../model'
 import { CodayServices } from '../../coday-services'
+import { ConfigLevel } from '../../model/config-level'
 
 /**
  * Handler for listing all AI provider configurations.
@@ -18,8 +18,43 @@ export class AiConfigListHandler extends CommandHandler {
   }
 
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
-    // TODO: Implement merged config listing using AiConfigService
-    this.interactor.displayText('[TODO] List all AI configs (merged/global/project/user)')
+    // Get merged and per-level configs
+    const mergedConfig = this.services.aiConfig?.getMergedConfiguration()
+    const codayProviders = this.services.aiConfig?.getProviders(ConfigLevel.CODAY) || []
+    const projectProviders = this.services.aiConfig?.getProviders(ConfigLevel.PROJECT) || []
+    const userProviders = this.services.aiConfig?.getProviders(ConfigLevel.USER) || []
+
+    let output = 'AI Provider Configurations (all levels):\n\n'
+
+    output += '--- coday.yaml (base/global) ---\n'
+    if (codayProviders.length === 0) output += '(none)\n'
+    else codayProviders.forEach((p) => (output += this.formatProvider(p) + '\n'))
+
+    output += '\n--- Project-level (.coday.yml) ---\n'
+    if (projectProviders.length === 0) output += '(none)\n'
+    else projectProviders.forEach((p) => (output += this.formatProvider(p) + '\n'))
+
+    output += '\n--- User-level (user.yml) ---\n'
+    if (userProviders.length === 0) output += '(none)\n'
+    else userProviders.forEach((p) => (output += this.formatProvider(p) + '\n'))
+
+    output += '\n--- Merged client view (final precedence) ---\n'
+    if (mergedConfig.providers.length === 0) output += '(none)\n'
+    else mergedConfig.providers.forEach((p) => (output += this.formatProvider(p) + '\n'))
+
+    this.interactor.displayText(output)
     return context
+  }
+
+  private formatProvider(p: any): string {
+    // Name + type (if present) + url (if present) + model count
+    return (
+      `- ${p.name}` +
+      (p.type ? ` [${p.type}]` : '') +
+      (p.url ? ` url=${p.url}` : '') +
+      (p.apiKey ? ' (apiKey set)' : '') +
+      (p.secure ? ' [secure]' : '') +
+      (p.models?.length ? `, models: ${p.models.length}` : '')
+    )
   }
 }
