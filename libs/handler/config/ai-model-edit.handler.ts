@@ -26,8 +26,8 @@ export class AiModelEditHandler extends CommandHandler {
       return context
     }
 
-    // Parse arguments after commandWord ("edit")
-    const args = command.trim().replace(/^edit\b/i, '').trim()
+    // Parse arguments after commandWord ("edit") using getSubCommand()
+    const args = this.getSubCommand(command)
     let parsedArgs
     try {
       parsedArgs = parseAiModelHandlerArgs(args)
