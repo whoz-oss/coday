@@ -77,6 +77,10 @@ prompts:
     requiredIntegrations:
       - "GIT"
 
+ai:
+  - name: anthropic
+  - name: openai
+
 agents:
   - name: Coday
   - name: PM
