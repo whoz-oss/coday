@@ -39,8 +39,8 @@ export class AiConfigListHandler extends CommandHandler {
     else userProviders.forEach((p) => (output += this.formatProvider(p) + '\n'))
 
     output += '\n--- Merged client view (final precedence) ---\n'
-    if (mergedConfig.providers.length === 0) output += '(none)\n'
-    else mergedConfig.providers.forEach((p) => (output += this.formatProvider(p) + '\n'))
+    if (mergedConfig?.providers?.length === 0) output += '(none)\n'
+    else mergedConfig?.providers?.forEach((p) => (output += this.formatProvider(p) + '\n'))
 
     this.interactor.displayText(output)
     return context

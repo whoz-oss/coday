@@ -51,7 +51,6 @@ export class AiConfigService {
    * Get all AI provider configurations at a specific level
    */
   getProviders(level: ConfigLevel): AiProviderConfig[] {
-    ConfigLevelValidator.validate(level)
     return this.providerCache.get(level) || []
   }
 
