@@ -1,6 +1,7 @@
-import { CommandHandler, CommandContext } from '../../model'
+import { CommandContext, CommandHandler } from '../../model'
 import { Interactor } from '../../model/interactor'
 import { CodayServices } from '../../coday-services'
+import { ConfigLevel } from '../../model/config-level'
 
 /**
  * Handler for deleting a model from a provider config.
@@ -42,19 +43,21 @@ export class AiModelDeleteHandler extends CommandHandler {
       this.interactor.displayText(`No AI providers found at ${level} level.`)
       return context
     }
-    const providerNames = providers.map(p => p.name)
+    const providerNames = providers.map((p) => p.name)
     let providerNameInput = parsedArgs.aiProviderNameStart
     let provider = providerNameInput
-      ? providers.find(p => p.name.toLowerCase().startsWith(providerNameInput.toLowerCase()))
+      ? providers.find((p) => p.name.toLowerCase().startsWith(providerNameInput.toLowerCase()))
       : undefined
     if (!provider) {
       // Prompt if not matched
       const providerName = await this.interactor.chooseOption(
         providerNames,
-        `Select provider to delete a model from at ${level} level:`
+        `Select provider to
+         delete a model
+         from at ${level} level :`
       )
       if (!providerName) return context
-      provider = providers.find(p => p.name === providerName)
+      provider = providers.find((p) => p.name === providerName)
     }
     if (!provider) {
       this.interactor.error('Selected provider not found at this level.')
@@ -67,19 +70,21 @@ export class AiModelDeleteHandler extends CommandHandler {
       this.interactor.displayText(`Provider '${provider.name}' has no models to delete.`)
       return context
     }
-    const modelNames = models.map(m => m.name)
+    const modelNames = models.map((m) => m.name)
     let modelNameInput = parsedArgs.aiModelName
     let model = modelNameInput
-      ? models.find(m => m.name.toLowerCase().startsWith(modelNameInput.toLowerCase()))
+      ? models.find((m) => m.name.toLowerCase().startsWith(modelNameInput.toLowerCase()))
       : undefined
     if (!model) {
       // Prompt if not matched
       const modelName = await this.interactor.chooseOption(
         modelNames,
-        `Select model to delete from provider '${provider.name}':`
+        `Select model to
+         delete
+         from provider '${provider.name}':`
       )
       if (!modelName) return context
-      model = models.find(m => m.name === modelName)
+      model = models.find((m) => m.name === modelName)
     }
     if (!model) {
       this.interactor.error('Selected model not found.')
@@ -87,21 +92,21 @@ export class AiModelDeleteHandler extends CommandHandler {
     }
 
     // Step 3: Confirm deletion
-    const confirm = await this.interactor.confirm(
-      `Are you sure you want to delete model '${model.name}' from provider '${provider.name}' at ${level} level? This action cannot be undone.`,
-      false
+    const confirmChoice = await this.interactor.chooseOption(
+      ['yes', 'no'],
+      `Are you sure you want to delete model '${model.name}' from provider '${provider.name}' at ${level} level? This action cannot be undone.`
     )
-    if (!confirm) {
+    if (confirmChoice !== 'yes') {
       this.interactor.displayText('Model deletion cancelled.')
       return context
     }
 
     // Step 4: Delete the model and save
-    const updatedModels = models.filter(m => m.name !== model.name)
+    const updatedModels = models.filter((m) => m.name !== model.name)
     await this.services.aiConfig.saveProvider(
       {
         ...provider,
-        models: updatedModels
+        models: updatedModels,
       },
       level
     )
@@ -110,4 +115,3 @@ export class AiModelDeleteHandler extends CommandHandler {
     return context
   }
 }
-
