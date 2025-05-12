@@ -3,6 +3,7 @@ import { Interactor } from '../../model/interactor'
 import { CodayServices } from '../../coday-services'
 import { ConfigLevel } from '../../model/config-level'
 import { AiModel } from '../../model/ai-model'
+import { parseAiModelHandlerArgs } from './parse-ai-model-handler-args'
 
 /**
  * Handler for editing a single model of a provider config at a precise level (default user).
@@ -25,41 +26,54 @@ export class AiModelEditHandler extends CommandHandler {
       return context
     }
 
-    // Determine config level (user/project)
-    const lowerCmd = command.toLowerCase()
-    const isProject = lowerCmd.includes(' --project') || lowerCmd.includes(' -p')
+    // Parse arguments after commandWord ("edit")
+    const args = command.trim().replace(/^edit\b/i, '').trim()
+    let parsedArgs
+    try {
+      parsedArgs = parseAiModelHandlerArgs(args)
+    } catch (err: any) {
+      this.interactor.error(err.message)
+      return context
+    }
+    const isProject = parsedArgs.isProject
     const level = isProject ? ConfigLevel.PROJECT : ConfigLevel.USER
 
-    // Step 1: Choose provider
+    // Step 1: Choose provider, use arg if present
     const providers = this.services.aiConfig.getProviders(level)
     if (!providers.length) {
       this.interactor.displayText(`No AI providers found at ${level} level.`)
       return context
     }
     const providerNames = providers.map((p) => p.name)
-    const providerName = await this.interactor.chooseOption(
-      providerNames,
-      `Select provider to edit its model at ${level} level:`
-    )
-    if (!providerName) return context
+    let providerName = parsedArgs.aiProviderNameStart
+    if (!providerName || !providerNames.includes(providerName)) {
+      providerName = await this.interactor.chooseOption(
+        providerNames,
+        `Select provider to edit its model at ${level} level:`
+      )
+      if (!providerName) return context
+    }
     const provider = providers.find((p) => p.name === providerName)
     if (!provider) {
       this.interactor.error('Selected provider not found at this level.')
       return context
     }
 
-    // Step 2: Choose model
+    // Step 2: Choose model, use arg if present
     const models = provider.models || []
     if (!models.length) {
       this.interactor.displayText(`Provider '${providerName}' has no models to edit.`)
       return context
     }
     const modelNames = models.map((m) => m.name)
-    const modelName = await this.interactor.chooseOption(
-      modelNames,
-      `Select model to edit for provider '${providerName}':`
-    )
-    if (!modelName) return context
+    let modelName = parsedArgs.aiModelName
+    if (!modelName || !modelNames.includes(modelName)) {
+      modelName = await this.interactor.chooseOption(
+        modelNames,
+        `Select model to edit for provider '${providerName}':`
+      )
+      if (!modelName) return context
+    }
     const model = models.find((m) => m.name === modelName)
     if (!model) {
       this.interactor.error('Selected model not found.')
