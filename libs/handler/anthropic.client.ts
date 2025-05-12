@@ -43,7 +43,6 @@ export class AnthropicClient extends AiClient {
     super(aiProviderConfig)
     this.name = 'Anthropic'
     this.mergeModels(ANTHROPIC_DEFAULT_MODELS)
-    console.log('🐼')
   }
 
   async run(agent: Agent, thread: AiThread): Promise<Observable<CodayEvent>> {
