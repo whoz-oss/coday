@@ -45,36 +45,47 @@ export class AiModelEditHandler extends CommandHandler {
       return context
     }
     const providerNames = providers.map((p) => p.name)
-    let providerName = parsedArgs.aiProviderNameStart
-    if (!providerName || !providerNames.includes(providerName)) {
-      providerName = await this.interactor.chooseOption(
+    // Normalize for case-insensitive match
+    let providerNameInput = parsedArgs.aiProviderNameStart
+    let provider: typeof providers[0] | undefined
+    if (providerNameInput) {
+      provider = providers.find((p) => p.name.toLowerCase() === providerNameInput.toLowerCase())
+    }
+    if (!provider) {
+      // If not matched, prompt interactively
+      const providerName = await this.interactor.chooseOption(
         providerNames,
         `Select provider to edit its model at ${level} level:`
       )
       if (!providerName) return context
+      provider = providers.find((p) => p.name === providerName)
     }
-    const provider = providers.find((p) => p.name === providerName)
     if (!provider) {
       this.interactor.error('Selected provider not found at this level.')
       return context
     }
 
-    // Step 2: Choose model, use arg if present
+    // Step 2: Choose model, use arg if present (case-insensitive)
     const models = provider.models || []
     if (!models.length) {
-      this.interactor.displayText(`Provider '${providerName}' has no models to edit.`)
+      this.interactor.displayText(`Provider '${provider.name}' has no models to edit.`)
       return context
     }
     const modelNames = models.map((m) => m.name)
-    let modelName = parsedArgs.aiModelName
-    if (!modelName || !modelNames.includes(modelName)) {
-      modelName = await this.interactor.chooseOption(
+    let modelNameInput = parsedArgs.aiModelName
+    let model: typeof models[0] | undefined
+    if (modelNameInput) {
+      model = models.find((m) => m.name.toLowerCase() === modelNameInput.toLowerCase())
+    }
+    if (!model) {
+      // Prompt if not found or not provided
+      const modelName = await this.interactor.chooseOption(
         modelNames,
-        `Select model to edit for provider '${providerName}':`
+        `Select model to edit for provider '${provider.name}':`
       )
       if (!modelName) return context
+      model = models.find((m) => m.name === modelName)
     }
-    const model = models.find((m) => m.name === modelName)
     if (!model) {
       this.interactor.error('Selected model not found.')
       return context

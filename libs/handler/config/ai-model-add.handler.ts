@@ -48,22 +48,29 @@ export class AiModelAddHandler extends CommandHandler {
       return context
     }
     const providerNames = providers.map((p) => p.name)
-    let providerName = parsedArgs.aiProviderNameStart
-    if (!providerName || !providerNames.includes(providerName)) {
-      providerName = await this.interactor.chooseOption(
+    // Case-insensitive provider selection
+    let providerNameInput = parsedArgs.aiProviderNameStart
+    let provider: typeof providers[0] | undefined
+    if (providerNameInput) {
+      provider = providers.find((p) => p.name.toLowerCase() === providerNameInput.toLowerCase())
+    }
+    if (!provider) {
+      // If not matched, prompt interactively
+      const providerName = await this.interactor.chooseOption(
         providerNames,
         `Select provider to add a model at ${level} level:`
       )
       if (!providerName) return context
+      provider = providers.find((p) => p.name === providerName)
     }
-    const provider = providers.find((p) => p.name === providerName)
     if (!provider) {
       this.interactor.error('Selected provider not found at this level.')
       return context
     }
 
     // Step 2: Get model name (use arg if present)
-    let modelName = parsedArgs.aiModelName
+    let modelNameInput = parsedArgs.aiModelName
+    let modelName = modelNameInput
     if (!modelName) {
       modelName = await this.interactor.promptText('Enter a unique model name (as per API):')
       if (!modelName || !modelName.trim()) {
@@ -89,10 +96,10 @@ export class AiModelAddHandler extends CommandHandler {
     }
 
     // Step 4: Save new model
-    await this.services.aiConfig.saveModel(providerName, defaultModel, level)
+    await this.services.aiConfig.saveModel(provider.name, defaultModel, level)
 
-    // Step 5: Redirect to edit handler for full configuration; pass all arguments to preselect
-    let editCmd = `edit ${providerName} ${modelName}`
+    // Step 5: Redirect to edit handler for full configuration; pass canonical names (case-preserved)
+    let editCmd = `edit ${provider.name} ${modelName}`
     if (isProject) editCmd += ' --project'
     return this.editHandler.handle(editCmd.trim(), context)
   }
