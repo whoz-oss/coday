@@ -34,7 +34,7 @@ export class AiModelDeleteHandler extends CommandHandler {
       return context
     }
     const isProject = parsedArgs.isProject
-    const level = isProject ? 'PROJECT' : 'USER'
+    const level = isProject ? ConfigLevel.PROJECT : ConfigLevel.USER
 
     // Step 1: Get providers at level
     const providers = this.services.aiConfig.getProviders(level)
