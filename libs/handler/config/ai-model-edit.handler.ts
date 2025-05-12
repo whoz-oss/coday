@@ -49,7 +49,9 @@ export class AiModelEditHandler extends CommandHandler {
     let providerNameInput = parsedArgs.aiProviderNameStart
     let provider: typeof providers[0] | undefined
     if (providerNameInput) {
-      provider = providers.find((p) => p.name.toLowerCase() === providerNameInput.toLowerCase())
+      provider = providers.find((p) => 
+        p.name.toLowerCase().startsWith(providerNameInput.toLowerCase())
+      )
     }
     if (!provider) {
       // If not matched, prompt interactively
@@ -75,7 +77,9 @@ export class AiModelEditHandler extends CommandHandler {
     let modelNameInput = parsedArgs.aiModelName
     let model: typeof models[0] | undefined
     if (modelNameInput) {
-      model = models.find((m) => m.name.toLowerCase() === modelNameInput.toLowerCase())
+      model = models.find((m) => 
+        m.name.toLowerCase().startsWith(modelNameInput.toLowerCase())
+      )
     }
     if (!model) {
       // Prompt if not found or not provided

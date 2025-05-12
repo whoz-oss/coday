@@ -50,9 +50,11 @@ export class AiModelAddHandler extends CommandHandler {
     const providerNames = providers.map((p) => p.name)
     // Case-insensitive provider selection
     let providerNameInput = parsedArgs.aiProviderNameStart
-    let provider: typeof providers[0] | undefined
+    let provider: (typeof providers)[0] | undefined
     if (providerNameInput) {
-      provider = providers.find((p) => p.name.toLowerCase() === providerNameInput.toLowerCase())
+      provider = providers.find((p) => 
+        p.name.toLowerCase().startsWith(providerNameInput.toLowerCase())
+      )
     }
     if (!provider) {
       // If not matched, prompt interactively
@@ -69,8 +71,7 @@ export class AiModelAddHandler extends CommandHandler {
     }
 
     // Step 2: Get model name (use arg if present)
-    let modelNameInput = parsedArgs.aiModelName
-    let modelName = modelNameInput
+    let modelName = parsedArgs.aiModelName
     if (!modelName) {
       modelName = await this.interactor.promptText('Enter a unique model name (as per API):')
       if (!modelName || !modelName.trim()) {
@@ -81,8 +82,8 @@ export class AiModelAddHandler extends CommandHandler {
     const models = provider.models || []
     const duplicate = models.find(
       (m) =>
-        m.name.toLowerCase() === modelName.toLowerCase() ||
-        (m.alias && m.alias.toLowerCase() === modelName.toLowerCase())
+        m.name.toLowerCase().startsWith(modelName.toLowerCase()) ||
+        (m.alias && m.alias.toLowerCase().startsWith(modelName.toLowerCase()))
     )
     if (duplicate) {
       this.interactor.warn(`A model with the name or alias '${modelName}' already exists for this provider.`)
@@ -99,9 +100,8 @@ export class AiModelAddHandler extends CommandHandler {
     await this.services.aiConfig.saveModel(provider.name, defaultModel, level)
 
     // Step 5: Redirect to edit handler for full configuration; pass canonical names (case-preserved)
-    let editCmd = `edit ${provider.name} ${modelName}`
+    let editCmd = `${this.editHandler.commandWord} ${provider.name} ${modelName}`
     if (isProject) editCmd += ' --project'
     return this.editHandler.handle(editCmd.trim(), context)
   }
 }
-
