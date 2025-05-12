@@ -1,4 +1,4 @@
-import { CommandHandler, CommandContext } from '../../model'
+import { CommandContext, CommandHandler } from '../../model'
 import { Interactor } from '../../model/interactor'
 import { CodayServices } from '../../coday-services'
 import { ConfigLevel } from '../../model/config-level'
@@ -47,11 +47,9 @@ export class AiModelEditHandler extends CommandHandler {
     const providerNames = providers.map((p) => p.name)
     // Normalize for case-insensitive match
     let providerNameInput = parsedArgs.aiProviderNameStart
-    let provider: typeof providers[0] | undefined
+    let provider: (typeof providers)[0] | undefined
     if (providerNameInput) {
-      provider = providers.find((p) => 
-        p.name.toLowerCase().startsWith(providerNameInput.toLowerCase())
-      )
+      provider = providers.find((p) => p.name.toLowerCase().startsWith(providerNameInput.toLowerCase()))
     }
     if (!provider) {
       // If not matched, prompt interactively
@@ -75,11 +73,9 @@ export class AiModelEditHandler extends CommandHandler {
     }
     const modelNames = models.map((m) => m.name)
     let modelNameInput = parsedArgs.aiModelName
-    let model: typeof models[0] | undefined
+    let model: (typeof models)[0] | undefined
     if (modelNameInput) {
-      model = models.find((m) => 
-        m.name.toLowerCase().startsWith(modelNameInput.toLowerCase())
-      )
+      model = models.find((m) => m.name.toLowerCase().startsWith(modelNameInput.toLowerCase()))
     }
     if (!model) {
       // Prompt if not found or not provided
@@ -101,7 +97,10 @@ export class AiModelEditHandler extends CommandHandler {
     // Alias
     const newAlias = await this.interactor.promptText('Alias (project-friendly name, optional):', model.alias || '')
     // contextWindow
-    let newContextWindowRaw = await this.interactor.promptText('Context window (number of tokens):', String(model.contextWindow))
+    let newContextWindowRaw = await this.interactor.promptText(
+      'Context window (number of tokens):',
+      String(model.contextWindow)
+    )
     let newContextWindow = parseInt(newContextWindowRaw, 10)
     if (isNaN(newContextWindow) || newContextWindow <= 0) {
       this.interactor.warn('Invalid value for context window. Keeping previous value.')
@@ -122,7 +121,9 @@ export class AiModelEditHandler extends CommandHandler {
         delete price[priceKey]
       }
     }
-    if (Object.keys(price).length === 0) price = undefined
+    if (Object.keys(price).length === 0) {
+      price = {}
+    }
 
     // Construct updated model
     const updatedModel: AiModel = {
@@ -134,8 +135,8 @@ export class AiModelEditHandler extends CommandHandler {
     }
 
     // Save
-    await this.services.aiConfig.saveModel(providerName, updatedModel, level)
-    this.interactor.displayText(`✅ Model '${updatedModel.name}' updated for provider '${providerName}' at ${level} level.`)
+    await this.services.aiConfig.saveModel(provider.name, updatedModel, level)
+    this.interactor.displayText(`✅ Model '${updatedModel.name}' updated for provider '${provider}' at ${level} level.`)
     return context
   }
 }
