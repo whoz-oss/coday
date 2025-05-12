@@ -1,8 +1,8 @@
-import {AiProviderType, CommandContext, CommandHandler} from '../../model'
-import {Interactor} from '../../model/interactor'
-import {CodayServices} from '../../coday-services'
-import {ConfigLevel} from '../../model/config-level'
-import {AiProviderConfig} from '../../model/ai-provider-config'
+import { AiProviderType, CommandContext, CommandHandler } from '../../model'
+import { Interactor } from '../../model/interactor'
+import { CodayServices } from '../../coday-services'
+import { ConfigLevel } from '../../model/config-level'
+import { AiProviderConfig } from '../../model/ai-provider-config'
 
 /**
  * Handler for editing an existing AI provider configuration (not models).
@@ -71,10 +71,13 @@ export class AiConfigEditHandler extends CommandHandler {
     )
 
     // Type
-    editConfig.type = ((await this.interactor.chooseOption(
-      ['openai', 'anthropic'],
+    const choosenType = await this.interactor.chooseOption(
+      ['inherit', 'openai', 'anthropic'],
       'Provider type (openai, anthropic, or leave blank for custom):\nUsed for default parameters and special handling for well-known providers.'
-    )) || 'openai') as AiProviderType
+    )
+    if (choosenType !== 'inherit') {
+      editConfig.type = choosenType as AiProviderType
+    }
 
     // URL
     editConfig.url =
@@ -83,21 +86,14 @@ export class AiConfigEditHandler extends CommandHandler {
         editConfig.url || ''
       )) || undefined
 
-    // API Key (masked, blank = remove, mask = keep)
-    let apiKeyInput = await this.interactor.promptText(
+    // API Key (masked input)
+    editConfig.apiKey = await this.interactor.promptSecretText(
       'API key for this provider (leave blank to remove, or keep masked value to retain current):',
-      editConfig.apiKey ? '********' : ''
+      editConfig.apiKey
     )
-    if (apiKeyInput === '********') {
-      // Keep current
-    } else if (!apiKeyInput) {
-      editConfig.apiKey = undefined
-    } else {
-      editConfig.apiKey = apiKeyInput
-    }
 
     // Secure flag
-    const secureOptions = ['yes', 'no']
+    const secureOptions = ['no', 'yes']
     const securePrompt = 'Is this provider secure (local, non-cloud, no data leaves infra)? yes/no:'
     const secureChoice = await this.interactor.chooseOption(
       secureOptions,

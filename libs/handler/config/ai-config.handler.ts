@@ -5,6 +5,7 @@ import { AiConfigAddHandler } from './ai-config-add.handler'
 import { AiConfigEditHandler } from './ai-config-edit.handler'
 import { AiConfigDeleteHandler } from './ai-config-delete.handler'
 import { AiModelHandler } from './ai-model.handler'
+import { AiConfigApikeyHandler } from './ai-config-apikey.handler'
 
 /**
  * Root handler for all AI config commands: list, add, edit, delete, and nested model commands.
@@ -26,6 +27,7 @@ export class AiConfigHandler extends NestedHandler {
       new AiConfigListHandler(interactor, services),
       new AiConfigAddHandler(interactor, services, aiConfigEditHandler),
       aiConfigEditHandler,
+      new AiConfigApikeyHandler(interactor, services),
       new AiConfigDeleteHandler(interactor, services),
       new AiModelHandler(interactor, services),
     ]

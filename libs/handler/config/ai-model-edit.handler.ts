@@ -109,16 +109,17 @@ export class AiModelEditHandler extends CommandHandler {
     // price (optional, object)
     let price = model.price ? { ...model.price } : {}
     for (const priceKey of ['inputMTokens', 'outputMTokens', 'cacheWrite', 'cacheRead']) {
+      const key = priceKey as keyof typeof price
       let pricePrompt = await this.interactor.promptText(
-        `Price ${priceKey} (per million tokens, optional):`,
-        price[priceKey] !== undefined ? String(price[priceKey]) : ''
+        `Price ${key} (per million tokens, optional):`,
+        price[key] !== undefined ? String(price[key]) : ''
       )
       if (pricePrompt && pricePrompt.trim()) {
         const parsed = parseFloat(pricePrompt)
-        if (!isNaN(parsed)) price[priceKey] = parsed
-        else this.interactor.warn(`Invalid number for price ${priceKey}, keeping previous.`)
+        if (!isNaN(parsed)) price[key] = parsed
+        else this.interactor.warn(`Invalid number for price ${key}, keeping previous.`)
       } else {
-        delete price[priceKey]
+        delete price[key]
       }
     }
     if (Object.keys(price).length === 0) {
