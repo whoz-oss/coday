@@ -79,7 +79,11 @@ export class AiHandler extends CommandHandler implements Killable {
   private async selectAgent(nameStart: string, context: CommandContext): Promise<Agent | undefined> {
     // If a specific agent name start is provided, use that
     if (nameStart?.trim()) {
-      return await this.agentService.findAgentByNameStart(nameStart, context)
+      const agent = await this.agentService.findAgentByNameStart(nameStart, context)
+      if (agent) {
+        this.interactor.displayText(`Selected agent: ${agent.name}`)
+      }
+      return agent
     }
 
     // No specific agent requested, follow preference chain:
@@ -88,23 +92,20 @@ export class AiHandler extends CommandHandler implements Killable {
     // 3. Fall back to 'coday'
 
     // Check for last used agent in this thread
-    const thread = context.aiThread
-    if (thread && typeof thread.getLastAgentName === 'function') {
-      const lastAgent = thread.getLastAgentName()
-      if (lastAgent) {
-        const agent = await this.agentService.findByName(lastAgent, context)
-        if (agent) {
-          return agent
-        }
+    const lastAgent = context?.aiThread?.getLastAgentName()
+    if (lastAgent) {
+      const agent = await this.agentService.findByName(lastAgent, context)
+      if (agent) {
+        return agent
       }
     }
-    // If last agent no longer available, or no previous agent, clear local state
 
     // No last agent or not found, check for user's preferred agent
     const preferredAgent = this.agentService.getPreferredAgent()
     if (preferredAgent) {
       const agent = await this.agentService.findByName(preferredAgent, context)
       if (agent) {
+        this.interactor.displayText(`Selected default agent: ${preferredAgent}`)
         return agent
       }
       // Preferred agent not found
@@ -112,8 +113,11 @@ export class AiHandler extends CommandHandler implements Killable {
     }
 
     // Fall back to default 'coday' agent
-    this.interactor.displayText('Selecting Coday')
-    return await this.agentService.findByName('coday', context)
+    const defaultAgent = await this.agentService.findByName('coday', context)
+    if (!defaultAgent) {
+      this.interactor.error('Critical failure: Cannot initialize default Coday agent!')
+    }
+    return defaultAgent
   }
 
   /**
