@@ -183,6 +183,7 @@ export class Coday {
         this.services
       )
       this.handlerLooper.init(this.context.project)
+      await this.services.agent.initialize(this.context)
     }
   }
 
