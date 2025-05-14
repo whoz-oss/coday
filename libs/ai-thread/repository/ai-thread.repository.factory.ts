@@ -2,15 +2,15 @@
  * @fileoverview Factory for creating ThreadRepository instances based on configuration
  */
 
-import {AiThreadRepository} from '../ai-thread.repository'
-import {FileAiThreadRepository} from './file-ai-thread.repository'
+import { AiThreadRepository } from '../ai-thread.repository'
+import { FileAiThreadRepository } from './file-ai-thread.repository'
 import * as path from 'node:path'
-import {BehaviorSubject, filter, Observable} from 'rxjs'
-import {map} from 'rxjs/operators'
+import { BehaviorSubject, filter, Observable } from 'rxjs'
+import { map } from 'rxjs/operators'
 // eslint-disable-next-line @nx/enforce-module-boundaries
-import {SelectedProject} from '../../model'
+import { SelectedProject } from '../../model'
 // eslint-disable-next-line @nx/enforce-module-boundaries
-import {ProjectService} from '../../service/project.service'
+import { ProjectService } from '../../service/project.service'
 
 /**
  * Factory for creating and managing ThreadRepository instances based on configuration
@@ -58,7 +58,9 @@ export class AiThreadRepositoryFactory {
           throw new Error('No selected project with configPath')
         }
         const dir = path.join(selectedProject.configPath, 'threads')
-        return new FileAiThreadRepository(dir)
+        const repo = new FileAiThreadRepository(dir)
+        console.log(`Thread repository created from '${dir}'`)
+        return repo
       // throw new Error(`Unknown storage type: ${(selectedProject as any).type}`)
     }
   }
