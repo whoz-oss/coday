@@ -13,16 +13,6 @@
 - c-monot-whoz
 - vincent-audibert-whoz
 
-## 0.7.0 (2025-04-29)
-
-### 🚀 Features
-
-- jira count tool and lazy laod the jiraFieldMappingDescription ([#9](https://github.com/biznet-io/coday/pull/9))
-
-### ❤️ Thank You
-
-- c-monot-whoz
-
 ## 0.6.0 (2025-04-28)
 
 ### 🚀 Features
