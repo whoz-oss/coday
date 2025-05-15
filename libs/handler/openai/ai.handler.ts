@@ -5,8 +5,6 @@ import { CodayEvent, MessageEvent } from '../../shared/coday-events'
 import { AgentService } from '../../agent'
 
 export class AiHandler extends CommandHandler implements Killable {
-  private lastAgentName: string | undefined
-
   constructor(
     private interactor: Interactor,
     private agentService: AgentService
@@ -83,25 +81,23 @@ export class AiHandler extends CommandHandler implements Killable {
     if (nameStart?.trim()) {
       const agent = await this.agentService.findAgentByNameStart(nameStart, context)
       if (agent) {
-        this.lastAgentName = agent.name
-        return agent
+        this.interactor.displayText(`Selected agent: ${agent.name}`)
       }
-      return undefined
+      return agent
     }
 
     // No specific agent requested, follow preference chain:
-    // 1. Last used agent in this session (lastAgentName)
+    // 1. Last used agent in thread history
     // 2. User's default agent for this project (from user config)
     // 3. Fall back to 'coday'
 
-    // Check for last used agent in this session
-    if (this.lastAgentName) {
-      const agent = await this.agentService.findByName(this.lastAgentName, context)
+    // Check for last used agent in this thread
+    const lastAgent = context?.aiThread?.getLastAgentName()
+    if (lastAgent) {
+      const agent = await this.agentService.findByName(lastAgent, context)
       if (agent) {
         return agent
       }
-      // If last agent no longer available, clear it
-      this.lastAgentName = undefined
     }
 
     // No last agent or not found, check for user's preferred agent
@@ -109,7 +105,7 @@ export class AiHandler extends CommandHandler implements Killable {
     if (preferredAgent) {
       const agent = await this.agentService.findByName(preferredAgent, context)
       if (agent) {
-        this.lastAgentName = agent.name
+        this.interactor.displayText(`Selected default agent: ${preferredAgent}`)
         return agent
       }
       // Preferred agent not found
@@ -117,12 +113,11 @@ export class AiHandler extends CommandHandler implements Killable {
     }
 
     // Fall back to default 'coday' agent
-    this.interactor.displayText('Selecting Coday')
-    const agent = await this.agentService.findByName('coday', context)
-    if (agent) {
-      this.lastAgentName = agent.name
+    const defaultAgent = await this.agentService.findByName('coday', context)
+    if (!defaultAgent) {
+      this.interactor.error('Critical failure: Cannot initialize default Coday agent!')
     }
-    return agent
+    return defaultAgent
   }
 
   /**
