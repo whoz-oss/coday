@@ -109,6 +109,7 @@ export class AiThreadService {
   async save(newName?: string): Promise<void> {
     const thread = this.activeThread$.value
     if (!thread) {
+      console.error(`No thread existing when save attempt with name '${newName}'`)
       return
     }
 
