@@ -5,9 +5,9 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'yaml'
-import {AiThread} from '../ai-thread'
-import {AiThreadRepository} from '../ai-thread.repository'
-import {ThreadRepositoryError, ThreadSummary} from '../ai-thread.types'
+import { AiThread } from '../ai-thread'
+import { AiThreadRepository } from '../ai-thread.repository'
+import { ThreadRepositoryError, ThreadSummary } from '../ai-thread.types'
 
 /**
  * Helper function to safely read YAML file content
@@ -114,12 +114,15 @@ export class FileAiThreadRepository implements AiThreadRepository {
   async save(thread: AiThread): Promise<AiThread> {
     await this.initPromise
     try {
-      if (!thread.id) thread.id = crypto.randomUUID()
+      if (!thread.id) {
+        thread.id = crypto.randomUUID()
+      }
       const fileName = this.getThreadFileName(thread)
       const contentToSave = yaml.stringify(thread)
 
       // Write the file
-      await fs.writeFile(path.join(this.threadsDir, fileName), contentToSave, 'utf-8')
+      const threadPath = path.join(this.threadsDir, fileName)
+      await fs.writeFile(threadPath, contentToSave, 'utf-8')
 
       return thread
     } catch (error) {
