@@ -100,15 +100,13 @@ export class AgentService implements Killable {
   }
 
   async findAgentByNameStart(nameStart: string | undefined, context: CommandContext): Promise<Agent | undefined> {
-    const defaultAgentName = 'coday'
-
     // Initialize agents if not already done
     await this.initialize(context)
 
-    const matchingAgents = await this.findAgentsByNameStart(nameStart ?? defaultAgentName, context)
+    const matchingAgents = await this.findAgentsByNameStart(nameStart || '', context)
 
     if (matchingAgents.length === 0) {
-      return this.agents.get(defaultAgentName.toLowerCase())
+      return undefined
     }
 
     if (matchingAgents.length === 1) {
