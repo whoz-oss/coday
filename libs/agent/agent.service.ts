@@ -80,11 +80,12 @@ export class AgentService implements Killable {
         this.addDefinition(CodayAgentDefinition, this.projectPath)
       }
     } catch (error) {
-      console.error('Failed to initialize agents:', error)
+      this.interactor.error(`Failed to initialize agents: ${error.toString()}`)
       throw error
     }
 
-    await Promise.all(this.agentDefinitions.map((entry) => this.tryAddAgent(entry, context)))
+    const allAgents = await Promise.all(this.agentDefinitions.map((entry) => this.tryAddAgent(entry, context)))
+    allAgents.filter((agent) => !!agent).forEach((agent) => this.agents.set(agent.name.toLowerCase(), agent))
     const agentNames = this.listAgentSummaries().map((a) => `  - ${a.name} : ${a.description}`)
     if (agentNames.length > 1) {
       this.interactor.displayText(`Loaded agents (callable with '@[agent name]'):\n${agentNames.join('\n')}`)
@@ -103,7 +104,7 @@ export class AgentService implements Killable {
     // Initialize agents if not already done
     await this.initialize(context)
 
-    const matchingAgents = await this.findAgentsByNameStart(nameStart || '', context)
+    const matchingAgents = await this.findAgentsByNameStart(nameStart?.toLowerCase() || '', context)
 
     if (matchingAgents.length === 0) {
       return undefined
@@ -259,7 +260,7 @@ export class AgentService implements Killable {
       basePath: string
     },
     context: CommandContext
-  ): Promise<void> {
+  ): Promise<Agent | undefined> {
     const def: AgentDefinition = { ...CodayAgentDefinition, ...entry.definition }
 
     try {
@@ -313,10 +314,11 @@ ${agentDocs}
       const syncTools = await this.toolbox.getTools({ context, integrations, agentName: def.name })
 
       const toolset = new ToolSet([...syncTools])
-      const agent = new Agent(def, aiClient, toolset)
-      this.agents.set(agent.name.toLowerCase(), agent)
+      return new Agent(def, aiClient, toolset)
     } catch (error) {
-      console.error(`Failed to create agent ${def.name}:`, error)
+      const errorMessage = `Failed to create agent ${def.name}`
+      console.error(`${errorMessage}:`, error)
+      this.interactor.error(errorMessage)
     }
   }
 }
