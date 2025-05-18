@@ -41,7 +41,7 @@ export class HandlerLooper {
       this.handlers = [
         this.configHandler,
         new RunBashHandler(this.interactor),
-        new DebugHandler(),
+        new DebugHandler(this.interactor),
         new AiThreadHandler(this.interactor, this.aiThreadService),
         queryHandler,
         memoryHandler,

@@ -16,6 +16,8 @@ export abstract class Interactor {
   private subs: Subscription[] = []
   private lastInviteEvent?: InviteEvent
 
+  debugLevelEnabled: boolean = false
+
   constructor() {
     this.subs.push(
       this.thinking$.pipe(throttleTime(ThinkingEvent.debounce)).subscribe(() => this.sendEvent(new ThinkingEvent({})))
@@ -49,6 +51,14 @@ export abstract class Interactor {
 
   displayText(text: string, speaker?: string): void {
     this.sendEvent(new TextEvent({ text, speaker }))
+  }
+
+  debug(log: any): void {
+    if (!this.debugLevelEnabled) {
+      return
+    }
+    const text = `DEBUG: ${log.toString()}`
+    this.sendEvent(new TextEvent({ text }))
   }
 
   warn(warning: string): void {
