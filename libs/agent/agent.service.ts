@@ -79,8 +79,8 @@ export class AgentService implements Killable {
       if (this.agents.size === 0) {
         this.addDefinition(CodayAgentDefinition, this.projectPath)
       }
-    } catch (error) {
-      this.interactor.error(`Failed to initialize agents: ${error.toString()}`)
+    } catch (error: unknown) {
+      this.interactor.error(`Failed to initialize agents: ${error}`)
       throw error
     }
 
