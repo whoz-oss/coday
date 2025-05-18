@@ -29,7 +29,7 @@ build: #XXXX short description     # For build system changes
 
 ## Bug Fix Workflow
 
-1. Create branch using the naming convention
+1. Create branch using the naming convention, from the remote `master` branch
 2. Implement the fix
 3. Test the fix:
    ```bash
@@ -45,7 +45,7 @@ build: #XXXX short description     # For build system changes
 
 ## Feature Development Workflow
 
-1. Create branch using the naming convention
+1. Create branch using the naming convention, from the remote `master` branch
 2. Consider architectural impact before implementation
 3. Follow SOLID principles and existing patterns. KISS: Keep It Stupid Simple
 4. Implement the feature
