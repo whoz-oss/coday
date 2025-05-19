@@ -1,10 +1,10 @@
-import {Observable, Subject} from 'rxjs'
-import {CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from '../shared/coday-events'
-import {Agent} from './agent'
-import {AiThread} from '../ai-thread/ai-thread'
-import {RunStatus} from '../ai-thread/ai-thread.types'
-import {Interactor} from './interactor'
-import {ModelSize} from './agent-definition'
+import { Observable, Subject } from 'rxjs'
+import { CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '../shared/coday-events'
+import { Agent } from './agent'
+import { AiThread } from '../ai-thread/ai-thread'
+import { RunStatus } from '../ai-thread/ai-thread.types'
+import { Interactor } from './interactor'
+import { ModelSize } from './agent-definition'
 
 /**
  * Common abstraction over different AI provider APIs.
@@ -112,7 +112,9 @@ export abstract class AiClient {
       toolRequests.map(async (request) => {
         let responseEvent: ToolResponseEvent
         try {
+          this.interactor.sendEvent(request)
           responseEvent = await agent.tools.run(request)
+          this.interactor.sendEvent(responseEvent)
         } catch (error: any) {
           console.error(`Error running tool ${request.name}:`, error)
           responseEvent = request.buildResponse(`Error: ${error.message}`)

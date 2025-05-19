@@ -1,4 +1,12 @@
-import { AnswerEvent, CodayEvent, ErrorEvent, TextEvent, ThinkingEvent } from '@coday/shared/coday-events'
+import {
+  AnswerEvent,
+  CodayEvent,
+  ErrorEvent,
+  TextEvent,
+  ThinkingEvent,
+  ToolRequestEvent,
+  ToolResponseEvent,
+} from '@coday/shared/coday-events'
 import { CodayEventHandler } from '../utils/coday-event-handler'
 
 export class ChatHistoryComponent implements CodayEventHandler {
@@ -40,6 +48,12 @@ export class ChatHistoryComponent implements CodayEventHandler {
     if (event instanceof ThinkingEvent) {
       this.setThinking(true)
     }
+    if (event instanceof ToolRequestEvent) {
+      this.addToolRequest(event)
+    }
+    if (event instanceof ToolResponseEvent) {
+      this.addToolResponse(event)
+    }
   }
 
   private setThinking(value: boolean): void {
@@ -71,11 +85,11 @@ export class ChatHistoryComponent implements CodayEventHandler {
   addText(text: string, speaker: string | undefined): void {
     const newEntry = this.createMessageElement(text, speaker)
     newEntry.classList.add('text', 'left')
-    
+
     // Add copy button for agent responses
     const copyButtonContainer = document.createElement('div')
     copyButtonContainer.classList.add('copy-button-container')
-    
+
     const copyButton = document.createElement('button')
     copyButton.classList.add('copy-button')
     copyButton.title = 'Copy raw response'
@@ -83,19 +97,19 @@ export class ChatHistoryComponent implements CodayEventHandler {
     copyButton.addEventListener('click', (event) => {
       event.stopPropagation() // Prevent event bubbling
       this.copyToClipboard(text)
-      
+
       // Update this specific button
       const clickedButton = event.currentTarget as HTMLButtonElement
       if (clickedButton) {
         // Clear any existing active buttons
-        document.querySelectorAll('.copy-button.active').forEach(btn => {
+        document.querySelectorAll('.copy-button.active').forEach((btn) => {
           btn.classList.remove('active')
           btn.textContent = '📋'
         })
-        
+
         clickedButton.classList.add('active')
         clickedButton.textContent = '✓' // Checkmark to indicate success
-        
+
         // Reset button after 2 seconds
         setTimeout(() => {
           clickedButton.classList.remove('active')
@@ -103,10 +117,10 @@ export class ChatHistoryComponent implements CodayEventHandler {
         }, 2000)
       }
     })
-    
+
     copyButtonContainer.appendChild(copyButton)
     newEntry.appendChild(copyButtonContainer)
-    
+
     this.appendMessageElement(newEntry)
   }
 
@@ -175,5 +189,17 @@ export class ChatHistoryComponent implements CodayEventHandler {
 
     this.chatHistory?.appendChild(errorEntry)
     this.scrollToBottom()
+  }
+
+
+
+  addToolRequest(event: ToolRequestEvent): void {
+    // Use the event's built-in formatting method
+    this.addTechnical(event.toSingleLineString())
+  }
+
+  addToolResponse(event: ToolResponseEvent): void {
+    // Use the event's built-in formatting method
+    this.addTechnical(event.toSingleLineString())
   }
 }
