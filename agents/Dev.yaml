@@ -1,10 +1,11 @@
 name: Dev
-description: Specialized Programming and Implementation agent
+description: Specialized Programming and Implementation agent, fit for scoped tasks with established expectations and guidance.
 aiProvider: openai
 modelSize: BIG
 modelName: BIG
 integrations:
   FILES:
+  AI:
   MEMORY:
   PROJECT_SCRIPTS:
   GIT:

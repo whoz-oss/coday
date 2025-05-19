@@ -1,10 +1,11 @@
 name: Sway
-description: Dedicated Software Engineering agent
+description: Dedicated Software Engineering agent, with wide-ranging capabilities but focused on software and coding.
 aiProvider: openai
 modelSize: BIG
 modelName: BIG
 integrations:
   FILES:
+  AI:
   MEMORY:
   GITHUB:
   GIT:

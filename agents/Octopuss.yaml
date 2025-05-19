@@ -5,6 +5,7 @@ modelSize: BIG
 modelName: BIG
 integrations:
   FILES:
+  AI:
   MEMORY:
   GITHUB:
 instructions: |
