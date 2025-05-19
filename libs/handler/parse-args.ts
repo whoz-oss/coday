@@ -35,7 +35,7 @@ export function parseArgs(command: string, inputs: KeyInput[]): Record<string, s
     splited.splice(index, 1)
 
     // get the value-text of the argument
-    const prefixLength = matchesKey(match) ? input.key.length + 2 : input.alias?.length + 1
+    const prefixLength = matchesKey(match) ? input.key.length + 2 : (input.alias ? input.alias.length + 1 : 0)
     const valueText = match.slice(prefixLength)
 
     // if there is a value-text, remove the first char and take it (like in --key=foo or -k:bar)
