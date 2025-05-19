@@ -172,6 +172,19 @@ export class ServerClient {
   getInteractor(): ServerInteractor {
     return this.interactor
   }
+  
+  /**
+   * Get an event by its ID from the current thread
+   * @param eventId The ID (timestamp) of the event to retrieve
+   * @returns The event if found, undefined otherwise
+   */
+  getEventById(eventId: string): any {
+    if (!this.coday?.context?.aiThread) {
+      return undefined
+    }
+    
+    return this.coday.context.aiThread.getEventById(eventId)
+  }
 
   private cleanup(): void {
     debugLog('CLIENT', `Starting cleanup for client ${this.clientId}`)

@@ -36,7 +36,13 @@ export abstract class CodayEvent {
     event: Partial<CodayEvent>,
     readonly type: string
   ) {
-    this.timestamp = event.timestamp ?? new Date().toISOString()
+    // If timestamp is not provided, generate one with a random suffix to avoid collisions
+    if (!event.timestamp) {
+      const randomSuffix = Math.random().toString(36).substring(2, 7); // 5 random chars
+      this.timestamp = `${new Date().toISOString()}-${randomSuffix}`;
+    } else {
+      this.timestamp = event.timestamp;
+    }
     this.parentKey = event.parentKey
     this.length = 0
   }
@@ -137,7 +143,8 @@ export class ToolRequestEvent extends CodayEvent {
 
   constructor(event: Partial<ToolRequestEvent>) {
     super(event, ToolRequestEvent.type)
-    this.toolRequestId = event.toolRequestId ?? this.timestamp ?? new Date().toISOString()
+    // Use the timestamp (which now has a random suffix) as the toolRequestId if not provided
+    this.toolRequestId = event.toolRequestId ?? this.timestamp
     this.name = event.name!!
     this.args = event.args!!
     this.length = this.args.length + this.name.length + this.toolRequestId.length + 20
@@ -155,6 +162,15 @@ export class ToolRequestEvent extends CodayEvent {
   toSingleLineString(maxLength: number = 50): string {
     const truncatedArgs = truncateText(this.args, maxLength)
     return `🔧 ${this.name}(${truncatedArgs})`
+  }
+
+  /**
+   * Generates a URL to view the full event details
+   * @param clientId The client ID for API routing
+   * @returns A URL to view the full event
+   */
+  getDetailsUrl(clientId: string): string {
+    return `/api/event/${this.timestamp}?clientId=${clientId}`
   }
 }
 
@@ -178,6 +194,15 @@ export class ToolResponseEvent extends CodayEvent {
   toSingleLineString(maxLength: number = 50): string {
     const truncatedOutput = truncateText(this.output, maxLength)
     return `📄 Result: ${truncatedOutput}`
+  }
+
+  /**
+   * Generates a URL to view the full event details
+   * @param clientId The client ID for API routing
+   * @returns A URL to view the full event
+   */
+  getDetailsUrl(clientId: string): string {
+    return `/api/event/${this.timestamp}?clientId=${clientId}`
   }
 }
 

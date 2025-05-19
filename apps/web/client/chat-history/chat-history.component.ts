@@ -193,13 +193,63 @@ export class ChatHistoryComponent implements CodayEventHandler {
 
 
 
+  private getClientId(): string {
+    // Extract clientId from URL
+    const params = new URLSearchParams(window.location.search)
+    return params.get('clientId') || ''
+  }
+
   addToolRequest(event: ToolRequestEvent): void {
-    // Use the event's built-in formatting method
-    this.addTechnical(event.toSingleLineString())
+    // Create a message element with the tool request
+    const messageText = event.toSingleLineString()
+    const element = document.createElement('div')
+    element.classList.add('message', 'technical')
+    
+    // Create the message span
+    const messageSpan = document.createElement('span')
+    messageSpan.textContent = messageText
+    element.appendChild(messageSpan)
+    
+    // Create a link to view full details
+    const clientId = this.getClientId()
+    if (clientId) {
+      const link = document.createElement('a')
+      link.href = event.getDetailsUrl(clientId)
+      link.textContent = ' [View Full]'
+      link.target = '_blank'
+      link.style.marginLeft = '5px'
+      link.style.fontSize = '0.9em'
+      link.style.color = 'var(--color-link)'
+      element.appendChild(link)
+    }
+    
+    this.appendMessageElement(element)
   }
 
   addToolResponse(event: ToolResponseEvent): void {
-    // Use the event's built-in formatting method
-    this.addTechnical(event.toSingleLineString())
+    // Create a message element with the tool response
+    const messageText = event.toSingleLineString()
+    const element = document.createElement('div')
+    element.classList.add('message', 'technical')
+    
+    // Create the message span
+    const messageSpan = document.createElement('span')
+    messageSpan.textContent = messageText
+    element.appendChild(messageSpan)
+    
+    // Create a link to view full details
+    const clientId = this.getClientId()
+    if (clientId) {
+      const link = document.createElement('a')
+      link.href = event.getDetailsUrl(clientId)
+      link.textContent = ' [View Full]'
+      link.target = '_blank'
+      link.style.marginLeft = '5px'
+      link.style.fontSize = '0.9em'
+      link.style.color = 'var(--color-link)'
+      element.appendChild(link)
+    }
+    
+    this.appendMessageElement(element)
   }
 }
