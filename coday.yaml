@@ -135,7 +135,7 @@ agents:
       - ./product/04-guidelines.md
       - ./doc/INTEGRATIONS.md
     integrations:
-      GITHUB:
+      GIT-PLATFORM:
       FETCH:
       FILE:
       AI:

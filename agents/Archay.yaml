@@ -7,7 +7,7 @@ integrations:
   FILES:
   AI:
   MEMORY:
-  GITHUB:
+  GIT-PLATFORM:
   GIT:
   PROJECT_SCRIPTS:
   DELEGATE:
