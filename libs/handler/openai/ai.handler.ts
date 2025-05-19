@@ -31,6 +31,7 @@ export class AiHandler extends CommandHandler implements Killable {
     const match = command.match(/^@(\S*)(?:\s+(.*))?$/)
 
     if (!match) {
+      this.interactor.debug('No agent name match in request')
       // This case should rarely happen as the regex now matches almost any string starting with @
       // But keeping it as a safety check
       const agent = await this.agentService.findByName('coday', context)
@@ -62,7 +63,7 @@ export class AiHandler extends CommandHandler implements Killable {
 
     // If no further command, just confirm selection
     if (!restOfCommand.trim()) {
-      this.interactor.displayText(`Agent ${selectedAgent.name} selected.`)
+      this.interactor.debug(`Agent ${selectedAgent.name} selected.`)
       return context
     }
 
@@ -81,7 +82,7 @@ export class AiHandler extends CommandHandler implements Killable {
     if (nameStart?.trim()) {
       const agent = await this.agentService.findAgentByNameStart(nameStart, context)
       if (agent) {
-        this.interactor.displayText(`Selected agent: ${agent.name}`)
+        this.interactor.debug(`Selected agent: ${agent.name}`)
       }
       return agent
     }
@@ -96,7 +97,10 @@ export class AiHandler extends CommandHandler implements Killable {
     if (lastAgent) {
       const agent = await this.agentService.findByName(lastAgent, context)
       if (agent) {
+        this.interactor.debug(`Select last used agent: ${agent.name}`)
         return agent
+      } else {
+        this.interactor.warn('Previously selected agent not available anymore')
       }
     }
 
@@ -105,7 +109,7 @@ export class AiHandler extends CommandHandler implements Killable {
     if (preferredAgent) {
       const agent = await this.agentService.findByName(preferredAgent, context)
       if (agent) {
-        this.interactor.displayText(`Selected default agent: ${preferredAgent}`)
+        this.interactor.debug(`Selected default agent: ${preferredAgent}`)
         return agent
       }
       // Preferred agent not found
