@@ -38,10 +38,10 @@ export abstract class CodayEvent {
   ) {
     // If timestamp is not provided, generate one with a random suffix to avoid collisions
     if (!event.timestamp) {
-      const randomSuffix = Math.random().toString(36).substring(2, 7); // 5 random chars
-      this.timestamp = `${new Date().toISOString()}-${randomSuffix}`;
+      const randomSuffix = Math.random().toString(36).substring(2, 7) // 5 random chars
+      this.timestamp = `${new Date().toISOString()}-${randomSuffix}`
     } else {
-      this.timestamp = event.timestamp;
+      this.timestamp = event.timestamp
     }
     this.parentKey = event.parentKey
     this.length = 0
@@ -163,15 +163,6 @@ export class ToolRequestEvent extends CodayEvent {
     const truncatedArgs = truncateText(this.args, maxLength)
     return `🔧 ${this.name}(${truncatedArgs})`
   }
-
-  /**
-   * Generates a URL to view the full event details
-   * @param clientId The client ID for API routing
-   * @returns A URL to view the full event
-   */
-  getDetailsUrl(clientId: string): string {
-    return `/api/event/${this.timestamp}?clientId=${clientId}`
-  }
 }
 
 export class ToolResponseEvent extends CodayEvent {
@@ -193,16 +184,7 @@ export class ToolResponseEvent extends CodayEvent {
    */
   toSingleLineString(maxLength: number = 50): string {
     const truncatedOutput = truncateText(this.output, maxLength)
-    return `📄 Result: ${truncatedOutput}`
-  }
-
-  /**
-   * Generates a URL to view the full event details
-   * @param clientId The client ID for API routing
-   * @returns A URL to view the full event
-   */
-  getDetailsUrl(clientId: string): string {
-    return `/api/event/${this.timestamp}?clientId=${clientId}`
+    return `⮑ ${truncatedOutput}`
   }
 }
 

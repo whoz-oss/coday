@@ -191,65 +191,68 @@ export class ChatHistoryComponent implements CodayEventHandler {
     this.scrollToBottom()
   }
 
-
-
   private getClientId(): string {
     // Extract clientId from URL
     const params = new URLSearchParams(window.location.search)
     return params.get('clientId') || ''
   }
 
+  private createViewFullLink(eventId: string): HTMLAnchorElement | null {
+    const clientId = this.getClientId()
+    if (!clientId) return null
+
+    const link = document.createElement('a')
+    link.href = `/api/event/${eventId}?clientId=${clientId}`
+    link.textContent = 'view'
+    link.target = '_blank'
+    link.style.marginLeft = '5px'
+    link.style.fontSize = '0.9em'
+    link.style.color = 'var(--color-link)'
+
+    return link
+  }
+
   addToolRequest(event: ToolRequestEvent): void {
     // Create a message element with the tool request
-    const messageText = event.toSingleLineString()
     const element = document.createElement('div')
     element.classList.add('message', 'technical')
-    
-    // Create the message span
-    const messageSpan = document.createElement('span')
-    messageSpan.textContent = messageText
-    element.appendChild(messageSpan)
-    
-    // Create a link to view full details
-    const clientId = this.getClientId()
-    if (clientId) {
-      const link = document.createElement('a')
-      link.href = event.getDetailsUrl(clientId)
-      link.textContent = ' [View Full]'
-      link.target = '_blank'
-      link.style.marginLeft = '5px'
-      link.style.fontSize = '0.9em'
-      link.style.color = 'var(--color-link)'
-      element.appendChild(link)
+
+    // Create the container span
+    const container = document.createElement('span')
+
+    // Add the message text as a text node
+    const messageText = event.toSingleLineString()
+    container.appendChild(document.createTextNode(messageText))
+
+    // Add link at the end of the message
+    const link = this.createViewFullLink(event.timestamp)
+    if (link) {
+      container.appendChild(link)
     }
-    
+
+    element.appendChild(container)
     this.appendMessageElement(element)
   }
 
   addToolResponse(event: ToolResponseEvent): void {
     // Create a message element with the tool response
-    const messageText = event.toSingleLineString()
     const element = document.createElement('div')
     element.classList.add('message', 'technical')
-    
-    // Create the message span
-    const messageSpan = document.createElement('span')
-    messageSpan.textContent = messageText
-    element.appendChild(messageSpan)
-    
-    // Create a link to view full details
-    const clientId = this.getClientId()
-    if (clientId) {
-      const link = document.createElement('a')
-      link.href = event.getDetailsUrl(clientId)
-      link.textContent = ' [View Full]'
-      link.target = '_blank'
-      link.style.marginLeft = '5px'
-      link.style.fontSize = '0.9em'
-      link.style.color = 'var(--color-link)'
-      element.appendChild(link)
+
+    // Create the container span
+    const container = document.createElement('span')
+
+    // Add the message text as a text node
+    const messageText = event.toSingleLineString()
+    container.appendChild(document.createTextNode(messageText))
+
+    // Add link at the end of the message
+    const link = this.createViewFullLink(event.timestamp)
+    if (link) {
+      container.appendChild(link)
     }
-    
+
+    element.appendChild(container)
     this.appendMessageElement(element)
   }
 }
