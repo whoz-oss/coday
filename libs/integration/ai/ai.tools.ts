@@ -18,10 +18,11 @@ export class AiTools extends AssistantToolFactory {
     const result: CodayTool[] = []
 
     if (!context.oneshot) {
-      const queryUser = ({ message }: { message: string }) => {
-        const command = `add-query ${message}`
-        context.addCommands(command)
-        return 'Query successfully queued, user will maybe answer later.'
+      const queryUser = async ({ message, options }: { message: string; options?: string[] }) => {
+        const userAnswer = options?.length
+          ? await this.interactor.chooseOption(options, message)
+          : await this.interactor.promptText(message)
+        return `User answered: ${userAnswer}`
       }
 
       const queryUserTool: FunctionTool<{ message: string }> = {
@@ -29,13 +30,21 @@ export class AiTools extends AssistantToolFactory {
         function: {
           name: 'queryUser',
           description:
-            'Queues asynchronously a query (question or request) for the user who may answer later, after this current run. IMPORTANT: Use this tool only when necessary, as it interrupts the flow of execution to seek user input.',
+            'Allows to ask the user a question. If no options are provided, the user can answer with free text. If options are provided, the user will have to choose a single option. IMPORTANT: Use this tool only when necessary, as it interrupts the flow of execution to seek user input.',
           parameters: {
             type: 'object',
             properties: {
               message: {
                 type: 'string',
                 description: 'The query to be added to the queue for user answer.',
+              },
+              options: {
+                type: 'array',
+                items: {
+                  type: 'string',
+                  description:
+                    'Optional: list of values for the user to choose one, the list is closed so include specific options if needed (exit, free text, ...).',
+                },
               },
             },
           },
@@ -61,7 +70,7 @@ export class AiTools extends AssistantToolFactory {
           description: `Redirect the current query to another available agent among:
 ${agentSummaries}
 
-This tool allows you to select a different agent to handle the user's request when you believe another agent is better suited for the task. Unlike delegation, redirection queues a command to run the target agent with the full conversation context.
+This tool allows you to select a different agent to handle the user's request when another agent is better suited for the task.
 
 Use this when:
 - The request clearly falls under another agent's specialty
