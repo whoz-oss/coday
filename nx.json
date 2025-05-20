@@ -13,11 +13,9 @@
       "inputs": ["default", "^default"]
     },
     "nx-release-publish": {
-      "dependsOn": [
-        "web:build"
-      ],
+      "dependsOn": ["{projectName}:build"],
       "options": {
-        "packageRoot": "dist/web"
+        "packageRoot": "dist/{projectName}"
       }
     },
     "lint": {
@@ -53,18 +51,10 @@
       "commitMessage": "chore(release): {version}"
     },
     "version": {
-      "generatorOptions": {
-        "packageRoot": "dist/{projectName}",
-        "currentVersionResolver": "git-tag"
-      },
-      "preVersionCommand": "npx nx run web:build"
-    },
-    "targetDefaults": {
-      "nx-release-publish": {
-        "options": {
-          "packageRoot": "dist/{projectName}"
-        }
-      }
+      "preVersionCommand": "npx nx run web:build",
+      "currentVersionResolver": "registry",
+      "preserveLocalDependencyProtocols": false,
+      "manifestRootsToUpdate": ["dist/{projectName}"]
     }
   }
 }
