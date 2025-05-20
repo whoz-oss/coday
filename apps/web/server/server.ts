@@ -107,6 +107,55 @@ app.post('/api/message', (req: express.Request, res: express.Response) => {
   }
 })
 
+// GET endpoint for retrieving full event details
+app.get('/api/event/:eventId', (req: express.Request, res: express.Response) => {
+  try {
+    const { eventId } = req.params
+    const clientId = req.query.clientId as string
+    debugLog('EVENT', `clientId: ${clientId}, requesting event ${eventId}`)
+    const client = clientManager.get(clientId)
+
+    if (!client) {
+      res.status(404).send('Client not found')
+      return
+    }
+
+    client.updateLastConnection()
+    const event = client.getEventById(eventId)
+    
+    if (!event) {
+      res.status(404).send('Event not found')
+      return
+    }
+
+    // Set content type to plain text for easy viewing
+    res.setHeader('Content-Type', 'text/plain')
+    
+    // Format and return the event details
+    let output = ''
+    
+    if (event.type === 'tool_request') {
+      output = `Tool Request: ${(event as any).name}\n\nArguments:\n${JSON.stringify(JSON.parse((event as any).args), null, 2)}`
+    } else if (event.type === 'tool_response') {
+      try {
+        // Try to parse as JSON for pretty printing
+        const parsedOutput = JSON.parse((event as any).output)
+        output = `Tool Response:\n\n${JSON.stringify(parsedOutput, null, 2)}`
+      } catch (e) {
+        // If not valid JSON, return as is
+        output = `Tool Response:\n\n${(event as any).output}`
+      }
+    } else {
+      output = JSON.stringify(event, null, 2)
+    }
+    
+    res.status(200).send(output)
+  } catch (error) {
+    console.error('Error retrieving event:', error)
+    res.status(500).send('Error retrieving event')
+  }
+})
+
 // Implement SSE for Heartbeat
 app.get('/events', (req: express.Request, res: express.Response) => {
   const clientId = req.query.clientId as string

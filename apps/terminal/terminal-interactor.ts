@@ -8,6 +8,8 @@ import {
   InviteEvent,
   TextEvent,
   ThinkingEvent,
+  ToolRequestEvent,
+  ToolResponseEvent,
   WarnEvent,
 } from '@coday/shared/coday-events'
 import * as readline from 'node:readline'
@@ -53,6 +55,12 @@ export class TerminalInteractor extends Interactor {
       }
       if (event instanceof ThinkingEvent) {
         process.stdout.write(chalk.blue('.'))
+      }
+      if (event instanceof ToolRequestEvent) {
+        console.log(chalk.cyan(event.toSingleLineString()))
+      }
+      if (event instanceof ToolResponseEvent) {
+        console.log(chalk.cyan(event.toSingleLineString()))
       }
     })
 

@@ -321,6 +321,15 @@ export class AiThread {
     }
     return undefined;
   }
+  
+  /**
+   * Gets an event by its timestamp ID
+   * @param eventId The timestamp ID of the event to retrieve
+   * @returns The event if found, undefined otherwise
+   */
+  getEventById(eventId: string): ThreadMessage | undefined {
+    return this.messages.find(msg => msg.timestamp === eventId);
+  }
 
   addToolRequests(agentName: string, toolRequests: ToolRequestEvent[]): void {
     toolRequests.forEach((toolRequest) => {

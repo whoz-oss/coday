@@ -18,6 +18,7 @@
     /* Interactive Elements */
     --color-primary: #7064fb;
     --color-primary-hover: #ff79c6;
+    --color-link: #3498db;
     --color-border: #aeaeae;
     --color-input-bg: #ffffff;
 
@@ -49,6 +50,7 @@
     /* Interactive Elements */
     --color-primary: #e4d1ff;
     --color-primary-hover: #ff79c6;
+    --color-link: #61afef;
     --color-border: #6272a4;
     --color-input-bg: #282a36;
 

@@ -8,7 +8,7 @@ import { selectAiThread } from './handler/ai-thread/select-ai-thread'
 import { AiClientProvider } from './integration/ai/ai-client-provider'
 import { keywords } from './keywords'
 import { CommandContext, Interactor } from './model'
-import { AnswerEvent, MessageEvent, TextEvent } from './shared/coday-events'
+import { AnswerEvent, MessageEvent, TextEvent, ToolRequestEvent, ToolResponseEvent } from './shared/coday-events'
 import { AgentService } from './agent'
 import { CodayOptions } from './options'
 import { CodayServices } from './coday-services'
@@ -58,11 +58,14 @@ export class Coday {
 
     // Convert and emit each message
     for (const message of sortedMessages) {
-      if (!(message instanceof MessageEvent)) continue
-      if (message.role === 'assistant') {
-        this.interactor.sendEvent(new TextEvent({ ...message, speaker: message.name, text: message.content }))
-      } else {
-        this.interactor.sendEvent(new AnswerEvent({ ...message, answer: message.content, invite: message.name }))
+      if (message instanceof MessageEvent) {
+        if (message.role === 'assistant') {
+          this.interactor.sendEvent(new TextEvent({ ...message, speaker: message.name, text: message.content }))
+        } else {
+          this.interactor.sendEvent(new AnswerEvent({ ...message, answer: message.content, invite: message.name }))
+        }
+      } else if (message instanceof ToolRequestEvent || message instanceof ToolResponseEvent) {
+        this.interactor.sendEvent(message)
       }
     }
 
