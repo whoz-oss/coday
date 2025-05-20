@@ -14,6 +14,7 @@ import { CreateJiraIssueRequest } from './jira'
 export class JiraTools extends AssistantToolFactory {
   name = 'JIRA'
   private jiraService: JiraService
+
   constructor(
     interactor: Interactor,
     private integrationService: IntegrationService
@@ -25,7 +26,6 @@ export class JiraTools extends AssistantToolFactory {
 
   protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {
     const result: CodayTool[] = []
-    console.log('buildTools')
     if (!this.integrationService.hasIntegration('JIRA')) {
       return result
     }

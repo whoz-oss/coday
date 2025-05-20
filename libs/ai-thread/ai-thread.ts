@@ -309,6 +309,28 @@ export class AiThread {
     return this.price + (this.parentThread?.totalPrice ?? 0)
   }
 
+  /**
+   * Returns the name of the last agent (assistant) that responded in this thread, or undefined if none.
+   */
+  getLastAgentName(): string | undefined {
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      const msg = this.messages[i];
+      if (msg instanceof MessageEvent && msg.role === 'assistant' && msg.name) {
+        return msg.name;
+      }
+    }
+    return undefined;
+  }
+  
+  /**
+   * Gets an event by its timestamp ID
+   * @param eventId The timestamp ID of the event to retrieve
+   * @returns The event if found, undefined otherwise
+   */
+  getEventById(eventId: string): ThreadMessage | undefined {
+    return this.messages.find(msg => msg.timestamp === eventId);
+  }
+
   addToolRequests(agentName: string, toolRequests: ToolRequestEvent[]): void {
     toolRequests.forEach((toolRequest) => {
       if (!toolRequest.toolRequestId || !toolRequest.name || !toolRequest.args) return

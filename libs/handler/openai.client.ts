@@ -347,7 +347,9 @@ export class OpenaiClient extends AiClient {
               toolRequests.map(async (request) => {
                 let responseEvent: ToolResponseEvent
                 try {
+                  this.interactor.sendEvent(request)
                   responseEvent = await agent.tools.run(request)
+                  this.interactor.sendEvent(responseEvent)
                 } catch (error: any) {
                   console.error(`Error running tool ${request.name}:`, error)
                   responseEvent = request.buildResponse(`Error: ${error.message}`)

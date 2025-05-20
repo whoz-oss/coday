@@ -79,12 +79,13 @@ export class AgentService implements Killable {
       if (this.agents.size === 0) {
         this.addDefinition(CodayAgentDefinition, this.projectPath)
       }
-    } catch (error) {
-      console.error('Failed to initialize agents:', error)
+    } catch (error: unknown) {
+      this.interactor.error(`Failed to initialize agents: ${error}`)
       throw error
     }
 
-    await Promise.all(this.agentDefinitions.map((entry) => this.tryAddAgent(entry, context)))
+    const allAgents = await Promise.all(this.agentDefinitions.map((entry) => this.tryAddAgent(entry, context)))
+    allAgents.filter((agent) => !!agent).forEach((agent) => this.agents.set(agent.name.toLowerCase(), agent))
     const agentNames = this.listAgentSummaries().map((a) => `  - ${a.name} : ${a.description}`)
     if (agentNames.length > 1) {
       this.interactor.displayText(`Loaded agents (callable with '@[agent name]'):\n${agentNames.join('\n')}`)
@@ -100,15 +101,13 @@ export class AgentService implements Killable {
   }
 
   async findAgentByNameStart(nameStart: string | undefined, context: CommandContext): Promise<Agent | undefined> {
-    const defaultAgentName = 'coday'
-
     // Initialize agents if not already done
     await this.initialize(context)
 
-    const matchingAgents = await this.findAgentsByNameStart(nameStart ?? defaultAgentName, context)
+    const matchingAgents = await this.findAgentsByNameStart(nameStart?.toLowerCase() || '', context)
 
     if (matchingAgents.length === 0) {
-      return this.agents.get(defaultAgentName.toLowerCase())
+      return undefined
     }
 
     if (matchingAgents.length === 1) {
@@ -261,7 +260,7 @@ export class AgentService implements Killable {
       basePath: string
     },
     context: CommandContext
-  ): Promise<void> {
+  ): Promise<Agent | undefined> {
     const def: AgentDefinition = { ...CodayAgentDefinition, ...entry.definition }
 
     try {
@@ -290,7 +289,8 @@ export class AgentService implements Killable {
       const basePath = entry.basePath
       const agentDocs = getFormattedDocs(def, this.interactor, basePath)
 
-      const instructions = `${def.instructions}\n\n
+      // overwrite agent instructions with the added project and user context
+      def.instructions = `${def.instructions}\n\n
 ## Project description
 ${context.project.description}
 
@@ -301,8 +301,6 @@ ${this.services.memory.getFormattedMemories(MemoryLevel.PROJECT, def.name)}
 ${agentDocs}
 
 `
-      // overwrite agent instructions with the added project and user context
-      def.instructions = instructions
 
       const integrations = def.integrations
         ? new Map<string, string[]>(
@@ -315,10 +313,11 @@ ${agentDocs}
       const syncTools = await this.toolbox.getTools({ context, integrations, agentName: def.name })
 
       const toolset = new ToolSet([...syncTools])
-      const agent = new Agent(def, aiClient, toolset)
-      this.agents.set(agent.name.toLowerCase(), agent)
+      return new Agent(def, aiClient, toolset)
     } catch (error) {
-      console.error(`Failed to create agent ${def.name}:`, error)
+      const errorMessage = `Failed to create agent ${def.name}`
+      console.error(`${errorMessage}:`, error)
+      this.interactor.error(errorMessage)
     }
   }
 }
