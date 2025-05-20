@@ -13,9 +13,9 @@
       "inputs": ["default", "^default"]
     },
     "nx-release-publish": {
-      "dependsOn": ["{projectName}:build"],
+      "dependsOn": ["web:build"],
       "options": {
-        "packageRoot": "dist/{projectName}"
+        "packageRoot": "dist/web"
       }
     },
     "lint": {
@@ -54,7 +54,7 @@
       "preVersionCommand": "npx nx run web:build",
       "currentVersionResolver": "registry",
       "preserveLocalDependencyProtocols": false,
-      "manifestRootsToUpdate": ["dist/{projectName}"]
+      "manifestRootsToUpdate": ["apps/{projectName}"]
     }
   }
 }
