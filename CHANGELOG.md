@@ -4,19 +4,6 @@
 
 - update dependencies
 
-### 🩹 Fixes
-
-- do not write silently the default coday.yaml file ([#73](https://github.com/biznet-io/coday/pull/73))
-- agent selection from thread ([#78](https://github.com/biznet-io/coday/pull/78))
-- remove too early default case in agent selection ([#81](https://github.com/biznet-io/coday/pull/81))
-- issue 80, agent selection again ([#82](https://github.com/biznet-io/coday/pull/82))
-
-### ❤️ Thank You
-
-- c-monot-whoz
-- Vincent Palita @vincentpalita-whoz
-- vincent-audibert-whoz
-
 ## 0.7.0 (2025-05-20)
 
 ### 🚀 Features
