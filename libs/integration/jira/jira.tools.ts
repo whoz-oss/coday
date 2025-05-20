@@ -40,7 +40,7 @@ export class JiraTools extends AssistantToolFactory {
     }
 
     const retrieveIssue = ({ ticketId }: { ticketId: string }) => {
-      return retrieveJiraIssue(ticketId, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor)
+      return retrieveJiraIssue(ticketId, jiraBaseUrl, jiraApiToken, jiraUsername)
     }
     const retrieveJiraTicketFunction: FunctionTool<{
       ticketId: string

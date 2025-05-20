@@ -15,19 +15,14 @@ export function delegateFunction(input: DelegateInput) {
   const delegate = async ({ task, agentName }: { task: string; agentName: string | undefined }) => {
     try {
       if (context.stackDepth <= 0) {
-        interactor.displayText('Delegation denied further.')
         return 'Delegation not allowed, either permanently, or existing capacity already used.'
       }
 
-      interactor.displayText(`DELEGATING to agent ${agentName} the task:\n${task}`)
       const agent: Agent | undefined = await agentService.findAgentByNameStart(agentName, context)
 
       if (!agent) {
-        const output = `Agent ${agentName} not found.`
-        interactor.displayText(output)
-        return output
+        return `Agent ${agentName} not found.`
       }
-      console.log(`Agent identified: ${agent?.name}`)
 
       const forkedThread: AiThread = context.aiThread!.fork(agentName ? agent.name : undefined)
       const formattedTask: string = `You were delegated a task to try to complete the best you can.
@@ -61,7 +56,7 @@ The parent conversation (all previous messages) is there for context, but your c
       return result.content
     } catch (error: any) {
       console.error('Error in delegate function:', error)
-      interactor.displayText(`Error during delegation: ${error.message}`)
+      interactor.error(`Error during delegation: ${error.message}`)
       return `Error during delegation: ${error.message}`
     }
   }

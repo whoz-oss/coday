@@ -23,7 +23,6 @@ export class MemoryTools extends AssistantToolFactory {
       const parsedLevel: MemoryLevel = level === 'USER' ? MemoryLevel.USER : MemoryLevel.PROJECT
 
       this.memoryService.upsertMemory({ title, content, level: parsedLevel, agentName })
-      this.interactor.displayText(`Added ${parsedLevel} memory : ${title}\n${content}`)
       return `Memory added with title: ${title}`
     }
 
@@ -70,7 +69,6 @@ Do not memorize partial knowledge, single-use information, or minor implementati
     const deleteMemoryFunction = async ({ title }: { title: string }) => {
       try {
         this.memoryService.deleteMemory(title)
-        this.interactor.displayText(`Deleted memory: ${title}`)
         return `Memory deleted: ${title}`
       } catch (error) {
         const errorMessage = `Failed to delete memory: ${error instanceof Error ? error.message : 'Unknown error'}`

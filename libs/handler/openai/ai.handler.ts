@@ -106,7 +106,7 @@ export class AiHandler extends CommandHandler implements Killable {
       },
       error: (error) => {
         if (error.message === 'Processing interrupted by user request') {
-          this.interactor.displayText('Processing stopped gracefully', agent.name)
+          this.interactor.debug('Processing stopped gracefully')
         } else {
           this.interactor.error(`Error in AI processing: ${error.message}`)
         }
