@@ -10,6 +10,7 @@ import { createJiraIssue } from './create-jira-issue'
 import { JiraService } from './jira.service'
 import { validateJqlOperators } from './jira.helpers'
 import { CreateJiraIssueRequest } from './jira'
+// JiraCustomFieldHelper is used in createJiraIssue.ts
 
 export class JiraTools extends AssistantToolFactory {
   name = 'JIRA'
@@ -107,9 +108,6 @@ export class JiraTools extends AssistantToolFactory {
                 - Individual fields: e.g., ["key", "summary", "status"]
                 - Special values: ["*all"] for all fields, ["*navigable"] for navigable fields
                 - Custom field values: here is a mapping of all customfield available with a description (first call to this function will return field mapping information).
-                  Example flow:
-                    1. The user request mention squad or client
-                    2. The fields must include customfield_10595 and customfield_10564
                 Default: ["basic"] preset`,
             },
           },
@@ -178,7 +176,7 @@ export class JiraTools extends AssistantToolFactory {
         WORKFLOW:
            a) From the fieldMappingInfo get the relevant query keys.
            b) For each query key get the allowed operators.
-           b) Use the query key and only the allowed operators to create the jql.
+           c) Use the query key and only the allowed operators to create the jql.
            d) Explicitly calling out the JQL URL
         `,
         parameters: {
@@ -215,12 +213,12 @@ export class JiraTools extends AssistantToolFactory {
     }
 
     const createIssueFunction: FunctionTool<{
-      request: CreateJiraIssueRequest
+      request: Partial<CreateJiraIssueRequest>
     }> = {
       type: 'function',
       function: {
         name: 'createJiraIssue',
-        description: 'Create a new Jira issue with a request object containing all necessary fields.',
+        description: 'Create a new Jira issue/ticket without asking for more information from the user, directly call the function to create the ticket',
         parameters: {
           type: 'object',
           properties: {
@@ -230,9 +228,8 @@ export class JiraTools extends AssistantToolFactory {
               properties: {
                 projectKey: { type: 'string', description: 'Project key where the issue will be created' },
                 summary: { type: 'string', description: 'Summary/title of the issue' },
-                squad: { type: 'string', description: 'Squad' },
                 description: { type: 'string', description: 'Detailed description of the issue' },
-                issuetype: { type: 'string', description: 'Type of issue (e.g., "Task", "Bug", "Story")' },
+                issuetype: { type: 'string', description: 'Type of issue' },
                 assignee: { type: 'string', description: 'User ID of the assignee' },
                 reporter: { type: 'string', description: 'User ID of the reporter' },
                 priority: { type: 'string', description: 'Priority of the issue (e.g., "High", "Medium", "Low")' },
@@ -240,14 +237,32 @@ export class JiraTools extends AssistantToolFactory {
                 components: { type: 'array', items: { type: 'string' }, description: 'Components to associate with the issue' },
                 fixVersions: { type: 'array', items: { type: 'string' }, description: 'Fix versions to associate with the issue' },
                 duedate: { type: 'string', description: 'Due date in YYYY-MM-DD format' }
-              },
-              required: ['projectKey', 'summary']
+              }
             }
           },
         },
         parse: JSON.parse,
-        function: ({ request }) =>
-          createJiraIssue(request, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor),
+        function: async ({ request }) => {
+          try {
+            // Check if this is a retry with a previous partial request
+            if (request.error && request.partialRequest) {
+              // Extract the partial request and error message
+              const partialRequest = request.partialRequest;
+              const previousError = request.error || 'Previous attempt failed';
+
+              this.interactor.displayText(`Retrying Jira issue creation with saved information. Previous error: ${previousError}`);
+
+              // Use the partial request for the retry
+              return await createJiraIssue(partialRequest, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor);
+            }
+
+            // Normal flow - create the issue with the provided request
+            return await createJiraIssue(request, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor);
+          } catch (error) {
+            this.interactor.error(`Error in createJiraIssue function: ${error}`);
+            throw error;
+          }
+        },
       },
     }
 

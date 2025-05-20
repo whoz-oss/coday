@@ -243,20 +243,21 @@ export type LightWeightSearchResponse = {
  * Interface for the Jira issue creation request
  */
 export interface CreateJiraIssueRequest {
-  projectKey: string;
-  summary: string;
-  squad?: string;
-  squadId?: string;
-  squadSearch?: string; // Search term to find the squad
-  description?: string;
-  issuetype?: string;
-  assignee?: string;
-  reporter?: string;
-  priority?: string;
-  labels?: string[];
-  components?: string[];
-  fixVersions?: string[];
-  duedate?: string;
+  projectKey?: string
+  project?: { key: string }
+  summary: string
+  description?: string
+  issuetype?: string
+  assignee?: string
+  reporter?: { id?: string, name?: string }
+  priority?: string
+  labels?: string[]
+  components?: string[]
+  fixVersions?: string[]
+  duedate?: string
+  // For retry mechanism
+  error?: string
+  partialRequest?: Partial<CreateJiraIssueRequest>
   // Custom fields
-  [key: `customfield_${number}`]: any;
+  [key: `customfield_${number}`]: any
 }
