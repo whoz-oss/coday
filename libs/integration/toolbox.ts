@@ -1,5 +1,6 @@
 import { Interactor } from '../model'
 import { AiTools } from './ai/ai.tools'
+import { DelegateTools } from './ai/delegate.tools'
 import { FileTools } from './file/file.tools'
 import { JiraTools } from './jira/jira.tools'
 import { GitTools } from './git/git.tools'
@@ -25,6 +26,7 @@ export class Toolbox implements Killable {
   ) {
     this.toolFactories = [
       new AiTools(interactor, agentService),
+      new DelegateTools(interactor, agentService),
       new FileTools(interactor),
       new GitTools(interactor, services.integration),
       new ProjectScriptsTools(interactor),

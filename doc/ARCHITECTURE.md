@@ -2,7 +2,11 @@
 
 ## Request Flow
 
-The following diagram shows how a user request flows through Coday's components:
+The user request flows through Coday's components:
+
+1. The User Interface components is connecting to an `Interactor` that exposes downstream the interactions with the user.
+2. The `HandlerLooper` is charged to identify the correct handler to take the user request among several ones. The last one being the `AiHandler` that directs the request to an agent. Once handled, the 
+3. The selected `Agent` has through its supporting `AiClient` a loop of its own so the agent can come to a final answer after possibly many intermediate messages and tool calls (that can be nested agent calls).
 
 ```mermaid
 graph LR
@@ -12,33 +16,36 @@ graph LR
         WebServer[Web Server]
     end
 
-    subgraph "Coday Runtime"
-        HandlerLoop[Handler Loop]
-        AiHandler[AI Handler]
+    subgraph "Coday Runtime (coday.ts)"
+        Interactor
+        HandlerLooper
+        AiHandler
         CustomHandlers[Custom Handlers]
         OtherHandlers[Other Handlers]
     end
 
     subgraph "Agents"
-        Claude[Agent A]
-        GPT[Agent B]
+        AgentA[Agent A]
+        AgentB[Agent B]
     end
 
     ProjectConfig[Project coday.yml]
-    Terminal --> HandlerLoop
+    Terminal --> Interactor
     Browser --> WebServer
-    WebServer --> HandlerLoop
-    HandlerLoop --> AiHandler
-    HandlerLoop --> OtherHandlers
-    HandlerLoop --> CustomHandlers
+    WebServer --> Interactor
+    Interactor --> HandlerLooper
+    HandlerLooper --> AiHandler
+    HandlerLooper --> OtherHandlers
+    HandlerLooper --> CustomHandlers
    ProjectConfig -->|defines prompt chains| CustomHandlers
     CustomHandlers -.-> AiHandler
-    AiHandler -->|selects| Claude
+    AiHandler -->|selects| AgentA
+
 ```
 
 ## Agent Operation
 
-This diagram illustrates how an AI agent processes a request using various data sources and tools:
+An AI agent processes a request using various data sources and tools:
 
 ```mermaid
 graph RL
@@ -78,14 +85,6 @@ graph RL
     AiClient -->|AgentMessage| History
 ```
 
-The request flow shows how user input from different interfaces is processed through the system:
-
-1. Users can interact through Terminal or Browser interfaces
-2. The Handler Loop processes all requests, routing them appropriately
-3. Custom handlers, defined in the project configuration, can extend functionality
-4. The AI Handler manages agent selection and interaction
-5. Multiple agents are available for different processing needs
-
 The agent operation demonstrates how requests are processed within an agent:
 
 1. Context Building:
@@ -105,11 +104,3 @@ The agent operation demonstrates how requests are processed within an agent:
    - Each tool execution is recorded in history
    - AI provider can make multiple tool calls
    - Results influence further agent responses
-
-This architecture enables:
-
-- Multiple interface options while maintaining consistent processing
-- Extensible functionality through custom handlers
-- Context-aware AI processing with memory
-- Local tool execution with history tracking
-- Multiple AI provider support on a same conversation
