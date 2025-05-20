@@ -2,10 +2,7 @@
 
 ### 🚀 Features
 
-- jira count tool and lazy laod the jiraFieldMappingDescription ([#9](https://github.com/biznet-io/coday/pull/9))
-- issue 65 ai tools splitting 2 ([#83](https://github.com/biznet-io/coday/pull/83))
-- #87 update nx to 21.0.3 ([#88](https://github.com/biznet-io/coday/pull/88), [#87](https://github.com/biznet-io/coday/issues/87))
-- Display tool request and response events in UI ([#85](https://github.com/biznet-io/coday/pull/85))
+- update dependencies
 
 ### 🩹 Fixes
 
