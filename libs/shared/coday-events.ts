@@ -1,3 +1,31 @@
+/**
+ * Helper function to truncate text for display
+ * @param text Text to truncate
+ * @param maxLength Maximum length before truncation
+ * @returns Truncated text with ellipsis if needed
+ */
+export function truncateText(text: string, maxLength: number = 80): string {
+  // If it's already a short string, return as is
+  if (text.length <= maxLength) return text
+
+  // Try to parse as JSON to handle objects and arrays better
+  try {
+    // If it starts with { or [, assume it's JSON
+    if (text.trim().startsWith('{') || text.trim().startsWith('[')) {
+      const obj = JSON.parse(text)
+      // For simple display, just stringify with minimal formatting
+      const simplified = JSON.stringify(obj)
+      if (simplified.length <= maxLength) return simplified
+      return simplified.substring(0, maxLength) + `...(${simplified.length} chars)`
+    }
+  } catch (e) {
+    // Not valid JSON or other error, fall back to simple truncation
+  }
+
+  // Default: simple truncation
+  return text.substring(0, maxLength) + '...'
+}
+
 export abstract class CodayEvent {
   timestamp: string
   parentKey: string | undefined
@@ -8,7 +36,13 @@ export abstract class CodayEvent {
     event: Partial<CodayEvent>,
     readonly type: string
   ) {
-    this.timestamp = event.timestamp ?? new Date().toISOString()
+    // If timestamp is not provided, generate one with a random suffix to avoid collisions
+    if (!event.timestamp) {
+      const randomSuffix = Math.random().toString(36).substring(2, 7) // 5 random chars
+      this.timestamp = `${new Date().toISOString()}-${randomSuffix}`
+    } else {
+      this.timestamp = event.timestamp
+    }
     this.parentKey = event.parentKey
     this.length = 0
   }
@@ -109,7 +143,8 @@ export class ToolRequestEvent extends CodayEvent {
 
   constructor(event: Partial<ToolRequestEvent>) {
     super(event, ToolRequestEvent.type)
-    this.toolRequestId = event.toolRequestId ?? this.timestamp ?? new Date().toISOString()
+    // Use the timestamp (which now has a random suffix) as the toolRequestId if not provided
+    this.toolRequestId = event.toolRequestId ?? this.timestamp
     this.name = event.name!!
     this.args = event.args!!
     this.length = this.args.length + this.name.length + this.toolRequestId.length + 20
@@ -117,6 +152,16 @@ export class ToolRequestEvent extends CodayEvent {
 
   buildResponse(output: string): ToolResponseEvent {
     return new ToolResponseEvent({ output, toolRequestId: this.toolRequestId })
+  }
+
+  /**
+   * Renders the tool request as a single line string with truncation
+   * @param maxLength Maximum length for the arguments before truncation
+   * @returns A formatted string representation
+   */
+  toSingleLineString(maxLength: number = 50): string {
+    const truncatedArgs = truncateText(this.args, maxLength)
+    return `🔧 ${this.name}(${truncatedArgs})`
   }
 }
 
@@ -130,6 +175,16 @@ export class ToolResponseEvent extends CodayEvent {
     this.toolRequestId = event.toolRequestId!!
     this.output = event.output!!
     this.length = this.output.length + this.toolRequestId.length + 20
+  }
+
+  /**
+   * Renders the tool response as a single line string with truncation
+   * @param maxLength Maximum length for the output before truncation
+   * @returns A formatted string representation
+   */
+  toSingleLineString(maxLength: number = 50): string {
+    const truncatedOutput = truncateText(this.output, maxLength)
+    return `⮑ ${truncatedOutput}`
   }
 }
 
