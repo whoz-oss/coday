@@ -121,8 +121,7 @@ export class AgentService implements Killable {
           options,
           `Multiple agents match '${nameStart}', please select one:`
         )
-        const selectedAgent = matchingAgents.find((agent) => agent.name === selection)
-        return selectedAgent
+        return matchingAgents.find((agent) => agent.name === selection)
       } catch (error) {
         this.interactor.error('Selection cancelled')
         return undefined
