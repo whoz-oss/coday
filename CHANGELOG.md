@@ -1,3 +1,13 @@
+## 0.7.2 (2025-05-21)
+
+### 🩹 Fixes
+
+- clean agent selection, get rid of dubious and untested logic ([#93](https://github.com/biznet-io/coday/pull/93))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.7.1 (2025-05-20)
 
 ### 🚀 Features
