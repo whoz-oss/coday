@@ -1,3 +1,9 @@
+## 0.7.1 (2025-05-20)
+
+### 🚀 Features
+
+- update dependencies
+
 ## 0.7.0 (2025-05-20)
 
 ### 🚀 Features
