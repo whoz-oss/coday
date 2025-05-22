@@ -1,4 +1,4 @@
-import { CodayEvent, ProjectSelectedEvent } from '@coday/shared/coday-events'
+import { CodayEvent, ProjectSelectedEvent } from '@coday/coday-events'
 import { CodayEventHandler } from '../utils/coday-event-handler'
 
 export class HeaderComponent implements CodayEventHandler {

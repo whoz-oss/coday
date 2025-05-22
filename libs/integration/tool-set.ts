@@ -1,5 +1,5 @@
 import { CodayTool } from './assistant-tool-factory'
-import { ToolRequestEvent, ToolResponseEvent } from '../shared'
+import { ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 
 export class ToolSet {
   readonly charLength: number = 0

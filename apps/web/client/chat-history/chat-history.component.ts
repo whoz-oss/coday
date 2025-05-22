@@ -6,7 +6,7 @@ import {
   ThinkingEvent,
   ToolRequestEvent,
   ToolResponseEvent,
-} from '@coday/shared/coday-events'
+} from '@coday/coday-events'
 import { CodayEventHandler } from '../utils/coday-event-handler'
 
 export class ChatHistoryComponent implements CodayEventHandler {

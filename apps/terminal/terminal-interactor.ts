@@ -11,7 +11,7 @@ import {
   ToolRequestEvent,
   ToolResponseEvent,
   WarnEvent,
-} from '@coday/shared/coday-events'
+} from '@coday/coday-events'
 import * as readline from 'node:readline'
 import { Key } from 'node:readline' // Import Key type for clarity
 

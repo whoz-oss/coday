@@ -1,7 +1,7 @@
 import { keywords } from '../../keywords'
 import { Agent, CommandContext, CommandHandler, Interactor, Killable } from '../../model'
 import { lastValueFrom, Observable } from 'rxjs'
-import { CodayEvent, MessageEvent } from '../../shared/coday-events'
+import { CodayEvent, MessageEvent } from '@coday/coday-events'
 import { AgentService } from '../../agent'
 import { parseAgentCommand } from './parseAgentCommand'
 

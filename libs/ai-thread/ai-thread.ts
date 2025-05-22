@@ -4,11 +4,10 @@
  * and ensuring proper message sequencing.
  */
 
+import { buildCodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 // eslint-disable-next-line @nx/enforce-module-boundaries
-import {buildCodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from '../shared/coday-events'
-// eslint-disable-next-line @nx/enforce-module-boundaries
-import {ToolCall, ToolResponse} from '../integration/tool-call'
-import {EmptyUsage, RunStatus, ThreadMessage, ThreadSerialized, Usage} from './ai-thread.types'
+import { ToolCall, ToolResponse } from '../integration/tool-call'
+import { EmptyUsage, RunStatus, ThreadMessage, ThreadSerialized, Usage } from './ai-thread.types'
 
 /**
  * Allowed message types for filtering when building thread history
@@ -314,21 +313,21 @@ export class AiThread {
    */
   getLastAgentName(): string | undefined {
     for (let i = this.messages.length - 1; i >= 0; i--) {
-      const msg = this.messages[i];
+      const msg = this.messages[i]
       if (msg instanceof MessageEvent && msg.role === 'assistant' && msg.name) {
-        return msg.name;
+        return msg.name
       }
     }
-    return undefined;
+    return undefined
   }
-  
+
   /**
    * Gets an event by its timestamp ID
    * @param eventId The timestamp ID of the event to retrieve
    * @returns The event if found, undefined otherwise
    */
   getEventById(eventId: string): ThreadMessage | undefined {
-    return this.messages.find(msg => msg.timestamp === eventId);
+    return this.messages.find((msg) => msg.timestamp === eventId)
   }
 
   addToolRequests(agentName: string, toolRequests: ToolRequestEvent[]): void {

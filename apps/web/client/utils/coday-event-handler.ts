@@ -1,4 +1,4 @@
-import { CodayEvent } from '@coday/shared/coday-events'
+import { CodayEvent } from '@coday/coday-events'
 
 export interface CodayEventHandler {
   handle(event: CodayEvent): void

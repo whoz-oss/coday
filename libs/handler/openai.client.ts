@@ -1,6 +1,6 @@
 import OpenAI from 'openai'
 import { AiClient, Interactor, ModelSize } from '../model'
-import { CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '../shared'
+import { CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 import { AiThread } from '../ai-thread/ai-thread'
 import { Agent } from '../model/agent'
 import { Observable, of, Subject } from 'rxjs'

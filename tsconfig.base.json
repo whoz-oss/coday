@@ -14,6 +14,7 @@
     "noUnusedLocals": true,
     "paths": {
       "@coday/ai-thread/*": ["libs/ai-thread/*"],
+      "@coday/coday-events": ["libs/coday-events/src/index.ts"],
       "@coday/core": ["libs/coday.ts"],
       "@coday/model/*": ["libs/model/*"],
       "@coday/options": ["libs/options.ts"],

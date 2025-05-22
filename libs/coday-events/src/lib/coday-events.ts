@@ -62,7 +62,7 @@ export abstract class QuestionEvent extends CodayEvent {
 }
 
 export class HeartBeatEvent extends CodayEvent {
-  static type = 'heartbeat'
+  static override type = 'heartbeat'
 
   constructor(event: Partial<HeartBeatEvent>) {
     super(event, HeartBeatEvent.type)
@@ -71,7 +71,7 @@ export class HeartBeatEvent extends CodayEvent {
 
 export class InviteEvent extends QuestionEvent {
   defaultValue: string | undefined
-  static type = 'invite'
+  static override type = 'invite'
 
   constructor(event: Partial<InviteEvent>) {
     super(event, InviteEvent.type)
@@ -82,7 +82,7 @@ export class InviteEvent extends QuestionEvent {
 export class AnswerEvent extends CodayEvent {
   answer: string
   invite?: string
-  static type = 'answer'
+  static override type = 'answer'
 
   constructor(event: Partial<AnswerEvent>) {
     super(event, AnswerEvent.type)
@@ -94,7 +94,7 @@ export class AnswerEvent extends CodayEvent {
 export class TextEvent extends CodayEvent {
   speaker: string | undefined
   text: string
-  static type = 'text'
+  static override type = 'text'
 
   constructor(event: Partial<TextEvent>) {
     super(event, TextEvent.type)
@@ -105,7 +105,7 @@ export class TextEvent extends CodayEvent {
 
 export class WarnEvent extends CodayEvent {
   warning: string
-  static type = 'warn'
+  static override type = 'warn'
 
   constructor(event: Partial<WarnEvent>) {
     super(event, WarnEvent.type)
@@ -115,7 +115,7 @@ export class WarnEvent extends CodayEvent {
 
 export class ErrorEvent extends CodayEvent {
   error: unknown
-  static type = 'error'
+  static override type = 'error'
 
   constructor(event: Partial<ErrorEvent>) {
     super(event, ErrorEvent.type)
@@ -126,7 +126,7 @@ export class ErrorEvent extends CodayEvent {
 export class ChoiceEvent extends QuestionEvent {
   options: string[]
   optionalQuestion: string | undefined
-  static type = 'choice'
+  static override type = 'choice'
 
   constructor(event: Partial<ChoiceEvent>) {
     super(event, ChoiceEvent.type)
@@ -139,7 +139,7 @@ export class ToolRequestEvent extends CodayEvent {
   toolRequestId: string
   name: string
   args: string
-  static type = 'tool_request'
+  static override type = 'tool_request'
 
   constructor(event: Partial<ToolRequestEvent>) {
     super(event, ToolRequestEvent.type)
@@ -168,7 +168,7 @@ export class ToolRequestEvent extends CodayEvent {
 export class ToolResponseEvent extends CodayEvent {
   toolRequestId: string
   output: string
-  static type = 'tool_response'
+  static override type = 'tool_response'
 
   constructor(event: Partial<ToolResponseEvent>) {
     super(event, ToolResponseEvent.type)
@@ -191,7 +191,7 @@ export class ToolResponseEvent extends CodayEvent {
 
 export class ProjectSelectedEvent extends CodayEvent {
   projectName: string
-  static type = 'project_selected'
+  static override type = 'project_selected'
 
   constructor(event: Partial<ProjectSelectedEvent>) {
     super(event, ProjectSelectedEvent.type)
@@ -200,7 +200,7 @@ export class ProjectSelectedEvent extends CodayEvent {
 }
 
 export class ThinkingEvent extends CodayEvent {
-  static type = 'thinking'
+  static override type = 'thinking'
   static debounce = 5000
 
   constructor(event: Partial<ThinkingEvent>) {
@@ -212,7 +212,7 @@ export class MessageEvent extends CodayEvent {
   role: 'user' | 'assistant'
   name: string
   content: string
-  static type = 'message'
+  static override type = 'message'
 
   constructor(event: Partial<MessageEvent>) {
     super(event, MessageEvent.type)

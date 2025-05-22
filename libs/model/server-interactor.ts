@@ -1,4 +1,4 @@
-import { AnswerEvent } from '../shared'
+import { AnswerEvent } from '@coday/coday-events'
 import { Interactor } from './interactor'
 
 export class ServerInteractor extends Interactor {

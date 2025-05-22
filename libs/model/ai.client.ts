@@ -1,5 +1,5 @@
 import { Observable, Subject } from 'rxjs'
-import { CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '../shared/coday-events'
+import { CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 import { Agent } from './agent'
 import { AiThread } from '../ai-thread/ai-thread'
 import { RunStatus } from '../ai-thread/ai-thread.types'
