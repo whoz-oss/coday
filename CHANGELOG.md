@@ -1,3 +1,13 @@
+## 0.8.0 (2025-05-22)
+
+### 🚀 Features
+
+- #43 create jira ticket ([#70](https://github.com/biznet-io/coday/pull/70), [#43](https://github.com/biznet-io/coday/issues/43))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincentpalita-whoz
+
 ## 0.7.2 (2025-05-21)
 
 ### 🩹 Fixes
