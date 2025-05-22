@@ -9,17 +9,24 @@
     },
     "@nx/esbuild:esbuild": {
       "cache": true,
-      "dependsOn": ["^build"],
-      "inputs": ["default", "^default"]
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "default",
+        "^default"
+      ]
     },
     "nx-release-publish": {
-      "dependsOn": ["web:build"],
+      "dependsOn": [
+        "web:build"
+      ],
       "options": {
         "packageRoot": "dist/web"
       }
     },
     "lint": {
-      "cache": true
+      "cache": false
     },
     "test": {
       "cache": true,
@@ -29,8 +36,13 @@
     },
     "@nx/js:tsc": {
       "cache": true,
-      "dependsOn": ["^build"],
-      "inputs": ["default", "^default"]
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "default",
+        "^default"
+      ]
     }
   },
   "defaultBase": "master",
@@ -50,7 +62,9 @@
     }
   ],
   "release": {
-    "projects": ["web"],
+    "projects": [
+      "web"
+    ],
     "releaseTagPattern": "release/{version}",
     "git": {
       "commitMessage": "chore(release): {version}"
@@ -59,7 +73,9 @@
       "preVersionCommand": "npx nx run web:build",
       "currentVersionResolver": "registry",
       "preserveLocalDependencyProtocols": false,
-      "manifestRootsToUpdate": ["apps/{projectName}"]
+      "manifestRootsToUpdate": [
+        "apps/{projectName}"
+      ]
     }
   },
   "tui": {
