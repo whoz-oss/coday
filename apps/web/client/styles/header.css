@@ -8,13 +8,36 @@ header {
 /* Transparent overlay header */
 .overlay-header {
     padding: 4px 8px; /* Reduced padding to minimize height */
-    text-align: end;
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     z-index: 1000;
     background-color: transparent;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.logo-container {
+    display: flex;
+    align-items: center;
+}
+
+.header-logo {
+    width: 48px;
+    height: 48px;
+    border-radius: 4px;
+}
+
+.logo-text {
+    margin-left: 8px;
+    font-weight: bold;
+    color: var(--color-text);
+    font-size: 18px;
 }
 
 /* Options button */

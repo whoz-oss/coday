@@ -20,6 +20,11 @@
             "input": "apps/web/client",
             "glob": "**/*.css",
             "output": "."
+          },
+          {
+            "input": "apps/web/client/static",
+            "glob": "**/*",
+            "output": "static"
           }
         ],
         "esbuildOptions": {

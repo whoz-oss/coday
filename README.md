@@ -1,3 +1,9 @@
+<div align="center">
+
+<img src="apps/web/client/static/CODAY-Logo.png" alt="Coday Logo" width="100"/>
+
+</div>
+
 # Coday
 
 This project is an agentic framework leveraging existing LLMs to let you define your agents on your projects.
