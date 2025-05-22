@@ -1,6 +1,7 @@
 import { Response } from 'express'
 import { ServerInteractor } from '@coday/model/server-interactor'
 import { Coday } from '@coday/core'
+/* eslint-disable @nx/enforce-module-boundaries */
 import { HeartBeatEvent } from '@coday/coday-events'
 import { Subscription } from 'rxjs'
 import { CodayOptions } from '@coday/options'

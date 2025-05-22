@@ -1,3 +1,4 @@
+/* eslint-disable @nx/enforce-module-boundaries */
 import { CodayEvent, ProjectSelectedEvent } from '@coday/coday-events'
 import { CodayEventHandler } from '../utils/coday-event-handler'
 
