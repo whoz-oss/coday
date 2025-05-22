@@ -7,6 +7,7 @@ import { addJiraComment } from './add-jira-comment'
 import { retrieveJiraIssue } from './retrieve-jira-issue'
 import { countJiraIssues } from './count-jira-issues'
 import { createJiraIssue } from './create-jira-issue'
+import { linkJiraIssues } from './link-jira-issues'
 import { JiraService } from './jira.service'
 import { validateJqlOperators } from './jira.helpers'
 import { CreateJiraIssueRequest } from './jira'
@@ -236,7 +237,26 @@ export class JiraTools extends AssistantToolFactory {
                 labels: { type: 'array', items: { type: 'string' }, description: 'Labels to attach to the issue' },
                 components: { type: 'array', items: { type: 'string' }, description: 'Components to associate with the issue' },
                 fixVersions: { type: 'array', items: { type: 'string' }, description: 'Fix versions to associate with the issue' },
-                duedate: { type: 'string', description: 'Due date in YYYY-MM-DD format' }
+                duedate: { type: 'string', description: 'Due date in YYYY-MM-DD format' },
+                parent: { 
+                  type: 'object', 
+                  properties: {
+                    key: { type: 'string', description: 'The issue key of the parent' }
+                  },
+                  description: 'Parent issue for this issue (directly establishes parent-child relationship)'
+                },
+                linkedIssues: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      key: { type: 'string', description: 'The key of the issue to link' },
+                      linkType: { type: 'string', description: 'The type of link to create (default: "is part of" for epics, "relates to" for other issue types)' },
+                      isEpicLink: { type: 'boolean', description: 'Whether to use Epic Link field if available (default: true for epics)' }
+                    }
+                  },
+                  description: 'Issues to link to this issue after creation (especially useful for epics)'
+                }
               }
             }
           },
@@ -266,11 +286,45 @@ export class JiraTools extends AssistantToolFactory {
       },
     }
 
+    const linkIssuesFunction: FunctionTool<{
+      inwardIssueKey: string,
+      outwardIssueKey: string,
+      linkType: string,
+      comment?: string,
+      isEpicLink?: boolean
+    }> = {
+      type: 'function',
+      function: {
+        name: 'linkJiraIssues',
+        description: 'Link two Jira issues with a specified relationship type',
+        parameters: {
+          type: 'object',
+          properties: {
+            inwardIssueKey: { type: 'string', description: 'The issue key that is the source of the link (inward issue)' },
+            outwardIssueKey: { type: 'string', description: 'The issue key that is the target of the link (outward issue)' },
+            linkType: { type: 'string', description: 'The type of link to create between issues (e.g., "relates to", "blocks", "is blocked by")' },
+            comment: { type: 'string', description: 'Optional comment to add when creating the link' },
+            isEpicLink: { type: 'boolean', description: 'Set to true to create an Epic-Issue relationship. This will attempt to use the Epic Link field if available, falling back to standard issue linking if not.' }
+          }
+        },
+        parse: JSON.parse,
+        function: ({ inwardIssueKey, outwardIssueKey, linkType, comment, isEpicLink }) =>
+          linkJiraIssues(
+            { inwardIssueKey, outwardIssueKey, linkType, comment, isEpicLink },
+            jiraBaseUrl,
+            jiraApiToken,
+            jiraUsername,
+            this.interactor
+          )
+      }
+    }
+
     result.push(retrieveJiraTicketFunction)
     result.push(searchJiraIssuesFunction)
     result.push(addCommentFunction)
     result.push(countJiraIssuesFunction)
     result.push(createIssueFunction)
+    result.push(linkIssuesFunction)
 
     return result
   }

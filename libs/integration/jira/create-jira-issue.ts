@@ -1,7 +1,6 @@
 import { Interactor } from '../../model'
 import { CreateJiraIssueRequest } from './jira'
 import axios from 'axios'
-import { JiraCustomFieldHelper } from './jira-custom-field-helper'
 
 /**
  * Log levels for controlling verbosity of interactor.displayText()
@@ -219,45 +218,6 @@ function formatDescription(description: string): any {
         ],
       },
     ],
-  }
-}
-
-/**
- * Function to retrieve field options for a custom field by ID
- */
-async function getFieldOptions(
-  fieldId: string,
-  jiraBaseUrl: string,
-  jiraApiToken: string,
-  jiraUsername: string,
-  interactor: Interactor,
-  logLevel: LogLevel = LogLevel.INFO
-): Promise<Array<{ id: string; name: string }>> {
-  try {
-    log(`Retrieving valid options for field ${fieldId}...`, LogLevel.INFO, logLevel, interactor)
-    const options = await JiraCustomFieldHelper.getFieldOptionsById(
-      fieldId,
-      jiraBaseUrl,
-      jiraApiToken,
-      jiraUsername,
-      interactor
-    )
-
-    if (options.length > 0) {
-      log(`Found ${options.length} valid options for field ${fieldId}`, LogLevel.INFO, logLevel, interactor)
-      return options
-    } else {
-      log(
-        `No options found for field ${fieldId}. This might cause issues when creating tickets.`,
-        LogLevel.WARN,
-        logLevel,
-        interactor
-      )
-      return []
-    }
-  } catch (error: any) {
-    log(`Error retrieving field options: ${error.message}`, LogLevel.ERROR, logLevel, interactor)
-    return []
   }
 }
 
@@ -546,11 +506,6 @@ export async function createJiraIssue(
       for (const field of requiredFields) {
         let value: any
         if (field.schema.type === 'array') {
-          // Show default value in prompt if available
-          const defaultPrompt =
-            field.hasDefaultValue && field.defaultValue
-              ? `Enter values for ${field.name} (${field.key}), separated by commas:`
-              : `Enter values for ${field.name} (${field.key}), separated by commas:`
 
           value = await promptWithRetry(
             async () => {
@@ -697,6 +652,34 @@ export async function createJiraIssue(
       fields.issuetype = { id: issueTypeId }
       if (finalRequest.summary) fields.summary = finalRequest.summary
       if (finalRequest.description) fields.description = formatDescription(finalRequest.description)
+      
+      // Handle parent relationship directly if specified
+      if (finalRequest.parent && finalRequest.parent.key) {
+        log(`Setting parent relationship: Issue will be a child of ${finalRequest.parent.key}`, LogLevel.INFO, logLevel, interactor)
+        try {
+          // Validate that the parent issue exists
+          const parentCheckUrl = `${jiraBaseUrl}/rest/api/3/issue/${finalRequest.parent.key}?fields=issuetype`
+          const parentCheckResponse = await fetch(parentCheckUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Basic ${auth}`,
+              'Accept': 'application/json',
+            },
+          })
+          
+          if (parentCheckResponse.ok) {
+            // Parent exists, add it to fields
+            fields.parent = { key: finalRequest.parent.key }
+            log(`Parent issue ${finalRequest.parent.key} verified and will be set during creation`, LogLevel.INFO, logLevel, interactor)
+          } else {
+            log(`Warning: Parent issue ${finalRequest.parent.key} not found or not accessible. Parent relationship will not be set.`, 
+                LogLevel.WARN, logLevel, interactor)
+          }
+        } catch (parentError) {
+          log(`Error checking parent issue ${finalRequest.parent.key}: ${parentError}`, LogLevel.ERROR, logLevel, interactor)
+          log(`Will continue without setting parent relationship`, LogLevel.WARN, logLevel, interactor)
+        }
+      }
 
       for (const [key, value] of Object.entries(finalRequest)) {
         if (['projectKey', 'issuetype', 'summary', 'description'].includes(key)) continue
@@ -831,6 +814,51 @@ export async function createJiraIssue(
         const issueUrl = `${jiraBaseUrl}/browse/${issueKey}`
         log(`Successfully created Jira issue ${issueKey}`, LogLevel.INFO, logLevel, interactor)
         log(`Issue can be accessed at: ${issueUrl}`, LogLevel.INFO, logLevel, interactor)
+
+        // Process linked issues if any
+        if (finalRequest.linkedIssues && finalRequest.linkedIssues.length > 0) {
+          log(`Processing ${finalRequest.linkedIssues.length} linked issues for ${issueKey}...`, LogLevel.INFO, logLevel, interactor)
+
+          // Import the linkJiraIssues function dynamically to avoid circular dependency
+          const { linkJiraIssues } = await import('./link-jira-issues')
+
+          // Determine if this is an epic based on issue type
+          const isEpic = issueTypeName?.toLowerCase() === 'epic'
+
+          // Process each linked issue
+          for (const linkedIssue of finalRequest.linkedIssues) {
+            try {
+              // Default link type for epics is "is part of"
+              const linkType = linkedIssue.linkType || (isEpic ? 'is part of' : 'relates to')
+
+              // For epics, set isEpicLink to true by default unless explicitly set to false
+              const isEpicLink = linkedIssue.isEpicLink !== undefined ? linkedIssue.isEpicLink : isEpic
+
+              // Link the issues
+              const linkResult = await linkJiraIssues(
+                {
+                  inwardIssueKey: issueKey,
+                  outwardIssueKey: linkedIssue.key,
+                  linkType,
+                  isEpicLink
+                },
+                jiraBaseUrl,
+                jiraApiToken,
+                jiraUsername,
+                interactor
+              )
+
+              if (linkResult.success) {
+                log(`Successfully linked issue ${linkedIssue.key} to ${issueKey}: ${linkResult.message}`, LogLevel.INFO, logLevel, interactor)
+              } else {
+                log(`Failed to link issue ${linkedIssue.key} to ${issueKey}: ${linkResult.message}`, LogLevel.WARN, logLevel, interactor)
+              }
+            } catch (linkError) {
+              log(`Error linking issue ${linkedIssue.key} to ${issueKey}: ${linkError}`, LogLevel.ERROR, logLevel, interactor)
+            }
+          }
+        }
+
         return { issueKey, issueUrl }
       } catch (error: any) {
         context = {

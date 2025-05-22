@@ -255,6 +255,16 @@ export interface CreateJiraIssueRequest {
   components?: string[]
   fixVersions?: string[]
   duedate?: string
+  // Direct parent relationship - can be set during issue creation
+  parent?: {
+    key: string; // The issue key of the parent
+  }
+  // Issues to link to this issue (especially useful for epics)
+  linkedIssues?: {
+    key: string;
+    linkType?: string; // Default is "is part of" for epics
+    isEpicLink?: boolean; // Set to true to create Epic-Issue relationship
+  }[]
   // For retry mechanism
   error?: string
   partialRequest?: Partial<CreateJiraIssueRequest>
