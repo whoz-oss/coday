@@ -6,8 +6,12 @@ import { searchJiraIssuesWithAI } from './search-jira-issues'
 import { addJiraComment } from './add-jira-comment'
 import { retrieveJiraIssue } from './retrieve-jira-issue'
 import { countJiraIssues } from './count-jira-issues'
+import { createJiraIssue } from './create-jira-issue'
+import { linkJiraIssues } from './link-jira-issues'
 import { JiraService } from './jira.service'
 import { validateJqlOperators } from './jira.helpers'
+import { CreateJiraIssueRequest } from './jira'
+// JiraCustomFieldHelper is used in createJiraIssue.ts
 
 export class JiraTools extends AssistantToolFactory {
   name = 'JIRA'
@@ -105,9 +109,6 @@ export class JiraTools extends AssistantToolFactory {
                 - Individual fields: e.g., ["key", "summary", "status"]
                 - Special values: ["*all"] for all fields, ["*navigable"] for navigable fields
                 - Custom field values: here is a mapping of all customfield available with a description (first call to this function will return field mapping information).
-                  Example flow:
-                    1. The user request mention squad or client
-                    2. The fields must include customfield_10595 and customfield_10564
                 Default: ["basic"] preset`,
             },
           },
@@ -172,11 +173,11 @@ export class JiraTools extends AssistantToolFactory {
       type: 'function',
       function: {
         name: 'countJiraIssues',
-        description: `Count the number of jira issues matching the jql. 
+        description: `Count the number of jira issues matching the jql.
         WORKFLOW:
            a) From the fieldMappingInfo get the relevant query keys.
            b) For each query key get the allowed operators.
-           b) Use the query key and only the allowed operators to create the jql.
+           c) Use the query key and only the allowed operators to create the jql.
            d) Explicitly calling out the JQL URL
         `,
         parameters: {
@@ -212,10 +213,118 @@ export class JiraTools extends AssistantToolFactory {
       },
     }
 
+    const createIssueFunction: FunctionTool<{
+      request: Partial<CreateJiraIssueRequest>
+    }> = {
+      type: 'function',
+      function: {
+        name: 'createJiraIssue',
+        description: 'Create a new Jira issue/ticket without asking for more information from the user, directly call the function to create the ticket',
+        parameters: {
+          type: 'object',
+          properties: {
+            request: {
+              type: 'object',
+              description: 'Request object containing all issue fields',
+              properties: {
+                projectKey: { type: 'string', description: 'Project key where the issue will be created' },
+                summary: { type: 'string', description: 'Summary/title of the issue' },
+                description: { type: 'string', description: 'Detailed description of the issue' },
+                issuetype: { type: 'string', description: 'Type of issue' },
+                assignee: { type: 'string', description: 'User ID of the assignee' },
+                reporter: { type: 'string', description: 'User ID of the reporter' },
+                priority: { type: 'string', description: 'Priority of the issue (e.g., "High", "Medium", "Low")' },
+                labels: { type: 'array', items: { type: 'string' }, description: 'Labels to attach to the issue' },
+                components: { type: 'array', items: { type: 'string' }, description: 'Components to associate with the issue' },
+                fixVersions: { type: 'array', items: { type: 'string' }, description: 'Fix versions to associate with the issue' },
+                duedate: { type: 'string', description: 'Due date in YYYY-MM-DD format' },
+                parent: { 
+                  type: 'object', 
+                  properties: {
+                    key: { type: 'string', description: 'The issue key of the parent' }
+                  },
+                  description: 'Parent issue for this issue (directly establishes parent-child relationship)'
+                },
+                linkedIssues: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      key: { type: 'string', description: 'The key of the issue to link' },
+                      linkType: { type: 'string', description: 'The type of link to create (default: "is part of" for epics, "relates to" for other issue types)' },
+                      isEpicLink: { type: 'boolean', description: 'Whether to use Epic Link field if available (default: true for epics)' }
+                    }
+                  },
+                  description: 'Issues to link to this issue after creation (especially useful for epics)'
+                }
+              }
+            }
+          },
+        },
+        parse: JSON.parse,
+        function: async ({ request }) => {
+          try {
+            // Check if this is a retry with a previous partial request
+            if (request.error && request.partialRequest) {
+              // Extract the partial request and error message
+              const partialRequest = request.partialRequest;
+              const previousError = request.error || 'Previous attempt failed';
+
+              this.interactor.displayText(`Retrying Jira issue creation with saved information. Previous error: ${previousError}`);
+
+              // Use the partial request for the retry
+              return await createJiraIssue(partialRequest, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor);
+            }
+
+            // Normal flow - create the issue with the provided request
+            return await createJiraIssue(request, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor);
+          } catch (error) {
+            this.interactor.error(`Error in createJiraIssue function: ${error}`);
+            throw error;
+          }
+        },
+      },
+    }
+
+    const linkIssuesFunction: FunctionTool<{
+      inwardIssueKey: string,
+      outwardIssueKey: string,
+      linkType: string,
+      comment?: string,
+      isEpicLink?: boolean
+    }> = {
+      type: 'function',
+      function: {
+        name: 'linkJiraIssues',
+        description: 'Link two Jira issues with a specified relationship type',
+        parameters: {
+          type: 'object',
+          properties: {
+            inwardIssueKey: { type: 'string', description: 'The issue key that is the source of the link (inward issue)' },
+            outwardIssueKey: { type: 'string', description: 'The issue key that is the target of the link (outward issue)' },
+            linkType: { type: 'string', description: 'The type of link to create between issues (e.g., "relates to", "blocks", "is blocked by")' },
+            comment: { type: 'string', description: 'Optional comment to add when creating the link' },
+            isEpicLink: { type: 'boolean', description: 'Set to true to create an Epic-Issue relationship. This will attempt to use the Epic Link field if available, falling back to standard issue linking if not.' }
+          }
+        },
+        parse: JSON.parse,
+        function: ({ inwardIssueKey, outwardIssueKey, linkType, comment, isEpicLink }) =>
+          linkJiraIssues(
+            { inwardIssueKey, outwardIssueKey, linkType, comment, isEpicLink },
+            jiraBaseUrl,
+            jiraApiToken,
+            jiraUsername,
+            this.interactor
+          )
+      }
+    }
+
     result.push(retrieveJiraTicketFunction)
     result.push(searchJiraIssuesFunction)
     result.push(addCommentFunction)
     result.push(countJiraIssuesFunction)
+    result.push(createIssueFunction)
+    result.push(linkIssuesFunction)
 
     return result
   }
