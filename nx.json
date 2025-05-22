@@ -5,10 +5,10 @@
   },
   "targetDefaults": {
     "build": {
-      "cache": true
+      "cache": false
     },
     "@nx/esbuild:esbuild": {
-      "cache": true,
+      "cache": false,
       "dependsOn": [
         "^build"
       ],
@@ -26,7 +26,7 @@
       }
     },
     "lint": {
-      "cache": true
+      "cache": false
     },
     "test": {
       "cache": true,
@@ -35,7 +35,7 @@
       }
     },
     "@nx/js:tsc": {
-      "cache": true,
+      "cache": false,
       "dependsOn": [
         "^build"
       ],
