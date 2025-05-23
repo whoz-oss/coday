@@ -10,7 +10,7 @@ import { TextBlockParam } from '@anthropic-ai/sdk/resources/messages'
 
 const AnthropicModels = {
   [ModelSize.BIG]: {
-    name: 'claude-3-7-sonnet-latest',
+    name: 'claude-sonnet-4-20250514',
     contextWindow: 200000,
     price: {
       inputMTokens: 3,
