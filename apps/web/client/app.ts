@@ -1,7 +1,7 @@
 import { ChatTextareaComponent } from './chat-textarea/chat-textarea.component'
 import { ChoiceSelectComponent } from './choice-select/choice-select.component'
 import { ChatHistoryComponent } from './chat-history/chat-history.component'
-/* eslint-disable @nx/enforce-module-boundaries */
+
 import { buildCodayEvent, CodayEvent, ErrorEvent } from '@coday/coday-events'
 import { CodayEventHandler } from './utils/coday-event-handler'
 import { HeaderComponent } from './header/header.component'
