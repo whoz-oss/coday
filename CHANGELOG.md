@@ -1,3 +1,28 @@
+## 0.9.0 (2025-05-23)
+
+### 🚀 Features
+
+- jira count tool and lazy laod the jiraFieldMappingDescription ([#9](https://github.com/biznet-io/coday/pull/9))
+- issue 65 ai tools splitting 2 ([#83](https://github.com/biznet-io/coday/pull/83))
+- #87 update nx to 21.0.3 ([#88](https://github.com/biznet-io/coday/pull/88), [#87](https://github.com/biznet-io/coday/issues/87))
+- Display tool request and response events in UI ([#85](https://github.com/biznet-io/coday/pull/85))
+- #43 create jira ticket ([#70](https://github.com/biznet-io/coday/pull/70), [#43](https://github.com/biznet-io/coday/issues/43))
+- various ux,copy user message, less scroll, logo ([#96](https://github.com/biznet-io/coday/pull/96))
+
+### 🩹 Fixes
+
+- do not write silently the default coday.yaml file ([#73](https://github.com/biznet-io/coday/pull/73))
+- agent selection from thread ([#78](https://github.com/biznet-io/coday/pull/78))
+- remove too early default case in agent selection ([#81](https://github.com/biznet-io/coday/pull/81))
+- issue 80, agent selection again ([#82](https://github.com/biznet-io/coday/pull/82))
+- clean agent selection, get rid of dubious and untested logic ([#93](https://github.com/biznet-io/coday/pull/93))
+
+### ❤️ Thank You
+
+- c-monot-whoz
+- Vincent Palita @vincentpalita-whoz
+- vincent-audibert-whoz
+
 ## 0.8.0 (2025-05-22)
 
 ### 🚀 Features
