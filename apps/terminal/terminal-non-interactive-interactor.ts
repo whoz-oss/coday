@@ -1,5 +1,5 @@
 import { TerminalInteractor } from './terminal-interactor'
-import { ChoiceEvent, InviteEvent } from '@coday/shared/coday-events'
+import { ChoiceEvent, InviteEvent } from '@coday/coday-events'
 
 export class TerminalNonInteractiveInteractor extends TerminalInteractor {
   override handleChoiceEvent(event: ChoiceEvent) {

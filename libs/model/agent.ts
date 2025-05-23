@@ -1,9 +1,9 @@
-import {AiClient} from './ai.client'
-import {AgentDefinition, ModelSize} from './agent-definition'
-import {ToolSet} from '../integration/tool-set'
-import {AiThread} from '../ai-thread/ai-thread'
-import {Observable} from 'rxjs'
-import {CodayEvent} from '../shared/coday-events'
+import { AiClient } from './ai.client'
+import { AgentDefinition, ModelSize } from './agent-definition'
+import { ToolSet } from '../integration/tool-set'
+import { AiThread } from '../ai-thread/ai-thread'
+import { Observable } from 'rxjs'
+import { CodayEvent } from '@coday/coday-events'
 
 /**
  * Simplified view of an agent for listing and selection purposes

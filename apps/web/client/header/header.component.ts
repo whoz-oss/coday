@@ -1,4 +1,5 @@
-import { CodayEvent, ProjectSelectedEvent } from '@coday/shared/coday-events'
+/* eslint-disable @nx/enforce-module-boundaries */
+import { CodayEvent, ProjectSelectedEvent } from '@coday/coday-events'
 import { CodayEventHandler } from '../utils/coday-event-handler'
 
 export class HeaderComponent implements CodayEventHandler {

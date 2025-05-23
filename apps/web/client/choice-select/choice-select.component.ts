@@ -1,4 +1,5 @@
-import { ChoiceEvent, CodayEvent } from '@coday/shared/coday-events'
+/* eslint-disable @nx/enforce-module-boundaries */
+import { ChoiceEvent, CodayEvent } from '@coday/coday-events'
 import { CodayEventHandler } from '../utils/coday-event-handler'
 
 export class ChoiceSelectComponent implements CodayEventHandler {
@@ -45,7 +46,7 @@ export class ChoiceSelectComponent implements CodayEventHandler {
     const updateLabel = async () => {
       const [questionHtml, inviteHtml] = await Promise.all([
         questionText instanceof Promise ? questionText : Promise.resolve(questionText),
-        inviteText instanceof Promise ? inviteText : Promise.resolve(inviteText)
+        inviteText instanceof Promise ? inviteText : Promise.resolve(inviteText),
       ])
       this.choiceLabel.innerHTML = questionHtml + ' ' + inviteHtml
     }
