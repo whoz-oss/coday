@@ -172,7 +172,8 @@ export class ToolResponseEvent extends CodayEvent {
 
   constructor(event: Partial<ToolResponseEvent>) {
     super(event, ToolResponseEvent.type)
-    this.toolRequestId = event.toolRequestId!!
+    this.toolRequestId = event.toolRequestId || this.timestamp || new Date().toISOString()
+
     this.output = event.output!!
     this.length = this.output.length + this.toolRequestId.length + 20
   }
