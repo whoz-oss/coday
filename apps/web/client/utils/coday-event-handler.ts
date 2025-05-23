@@ -1,4 +1,4 @@
-/* eslint-disable @nx/enforce-module-boundaries */
+
 import { CodayEvent } from '@coday/coday-events'
 
 export interface CodayEventHandler {
