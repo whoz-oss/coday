@@ -1,4 +1,4 @@
-/* eslint-disable @nx/enforce-module-boundaries */
+
 import { CodayEvent, InviteEvent } from '@coday/coday-events'
 import { CodayEventHandler } from '../utils/coday-event-handler'
 import { getPreference } from '../utils/preferences'

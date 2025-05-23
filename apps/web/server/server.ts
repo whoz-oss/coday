@@ -1,7 +1,7 @@
 import express from 'express'
 import path from 'path'
 import { ServerClientManager } from './server-client'
-/* eslint-disable @nx/enforce-module-boundaries */
+
 import { AnswerEvent } from '@coday/coday-events'
 import { parseCodayOptions } from '@coday/options'
 import * as os from 'node:os'
