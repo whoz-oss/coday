@@ -1,8 +1,8 @@
-import {AiClient, AiProvider, Interactor} from '../../model'
-import {OpenaiClient} from '../../handler/openai.client'
-import {AnthropicClient} from '../../handler/anthropic.client'
-import {UserService} from '../../service/user.service'
-import {ProjectService} from '../../service/project.service'
+import { AiClient, AiProvider, Interactor } from '../../model'
+import { OpenaiClient } from '../../handler/openai.client'
+import { AnthropicClient } from '../../handler/anthropic.client'
+import { UserService } from '../../service/user.service'
+import { ProjectService } from '../../service/project.service'
 
 /**
  * Environment variable names for each provider.
@@ -114,21 +114,21 @@ export class AiClientProvider {
         // Define Gemini models
         const geminiModels = {
           BIG: {
-            name: 'gemini-2.5-pro-exp-03-25',
+            name: 'gemini-2.5-pro-preview-05-06',
             contextWindow: 1000000,
             price: {
-              inputMTokens: 0.175,
-              cacheRead: 0.0875,
-              outputMTokens: 0.525,
+              inputMTokens: 1.25,
+              cacheRead: 0.31,
+              outputMTokens: 10,
             },
           },
           SMALL: {
-            name: 'gemini-2.0-flash',
+            name: 'gemini-2.5-flash-preview-05-20',
             contextWindow: 1000000,
             price: {
-              inputMTokens: 0.1,
-              cacheRead: 0.025,
-              outputMTokens: 0.4,
+              inputMTokens: 0.15,
+              cacheRead: 0.0375,
+              outputMTokens: 3.5,
             },
           },
         }
