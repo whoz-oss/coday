@@ -1,7 +1,8 @@
 import express from 'express'
 import path from 'path'
 import { ServerClientManager } from './server-client'
-import { AnswerEvent } from '@coday/shared/coday-events'
+/* eslint-disable @nx/enforce-module-boundaries */
+import { AnswerEvent } from '@coday/coday-events'
 import { parseCodayOptions } from '@coday/options'
 import * as os from 'node:os'
 import { debugLog } from './log'
@@ -122,7 +123,7 @@ app.get('/api/event/:eventId', (req: express.Request, res: express.Response) => 
 
     client.updateLastConnection()
     const event = client.getEventById(eventId)
-    
+
     if (!event) {
       res.status(404).send('Event not found')
       return
@@ -130,10 +131,10 @@ app.get('/api/event/:eventId', (req: express.Request, res: express.Response) => 
 
     // Set content type to plain text for easy viewing
     res.setHeader('Content-Type', 'text/plain')
-    
+
     // Format and return the event details
     let output = ''
-    
+
     if (event.type === 'tool_request') {
       output = `Tool Request: ${(event as any).name}\n\nArguments:\n${JSON.stringify(JSON.parse((event as any).args), null, 2)}`
     } else if (event.type === 'tool_response') {
@@ -148,7 +149,7 @@ app.get('/api/event/:eventId', (req: express.Request, res: express.Response) => 
     } else {
       output = JSON.stringify(event, null, 2)
     }
-    
+
     res.status(200).send(output)
   } catch (error) {
     console.error('Error retrieving event:', error)

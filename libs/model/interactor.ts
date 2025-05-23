@@ -7,7 +7,7 @@ import {
   TextEvent,
   ThinkingEvent,
   WarnEvent,
-} from '../shared'
+} from '@coday/coday-events'
 import { filter, firstValueFrom, map, Observable, Subject, Subscription, take, throttleTime } from 'rxjs'
 
 export abstract class Interactor {

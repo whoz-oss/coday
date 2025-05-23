@@ -3,7 +3,7 @@
  */
 
 // eslint-disable-next-line @nx/enforce-module-boundaries
-import {MessageEvent, ToolRequestEvent, ToolResponseEvent} from '../shared/coday-events'
+import { MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 
 /**
  * Union type representing all possible message types in a thread:

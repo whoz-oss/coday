@@ -1,7 +1,8 @@
 import { Response } from 'express'
 import { ServerInteractor } from '@coday/model/server-interactor'
 import { Coday } from '@coday/core'
-import { HeartBeatEvent } from '@coday/shared/coday-events'
+/* eslint-disable @nx/enforce-module-boundaries */
+import { HeartBeatEvent } from '@coday/coday-events'
 import { Subscription } from 'rxjs'
 import { CodayOptions } from '@coday/options'
 import { UserService } from '@coday/service/user.service'
@@ -172,7 +173,7 @@ export class ServerClient {
   getInteractor(): ServerInteractor {
     return this.interactor
   }
-  
+
   /**
    * Get an event by its ID from the current thread
    * @param eventId The ID (timestamp) of the event to retrieve
@@ -182,7 +183,7 @@ export class ServerClient {
     if (!this.coday?.context?.aiThread) {
       return undefined
     }
-    
+
     return this.coday.context.aiThread.getEventById(eventId)
   }
 

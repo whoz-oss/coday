@@ -5,7 +5,7 @@ import { BehaviorSubject, Observable } from 'rxjs'
 import { Interactor, ProjectLocalConfig, SelectedProject } from '../model'
 import { writeYamlFile } from './write-yaml-file'
 import { readYamlFile } from './read-yaml-file'
-import { ProjectSelectedEvent } from '../shared'
+import { ProjectSelectedEvent } from '@coday/coday-events'
 
 const PROJECTS = 'projects'
 const PROJECT_FILENAME = 'project.yaml'

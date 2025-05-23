@@ -23,7 +23,7 @@
     "*.ts": "prettier --write"
   },
   "devDependencies": {
-    "@biznet.io/coday-web": "0.7.0",
+    "@biznet.io/coday-web": "0.7.2",
     "@eslint/js": "^9.27.0",
     "@nx/devkit": "21.0.3",
     "@nx/esbuild": "21.0.3",
@@ -54,6 +54,7 @@
     "jest-environment-jsdom": "^29.7.0",
     "jest-environment-node": "^29.7.0",
     "jsdom": "~26.1.0",
+    "jsonc-eslint-parser": "^2.1.0",
     "lint-staged": "^16.0.0",
     "nodemon": "^3.1.10",
     "nx": "21.0.3",

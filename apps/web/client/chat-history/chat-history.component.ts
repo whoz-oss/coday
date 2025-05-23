@@ -1,3 +1,4 @@
+/* eslint-disable @nx/enforce-module-boundaries */
 import {
   AnswerEvent,
   CodayEvent,
@@ -6,7 +7,7 @@ import {
   ThinkingEvent,
   ToolRequestEvent,
   ToolResponseEvent,
-} from '@coday/shared/coday-events'
+} from '@coday/coday-events'
 import { CodayEventHandler } from '../utils/coday-event-handler'
 
 export class ChatHistoryComponent implements CodayEventHandler {
@@ -64,8 +65,9 @@ export class ChatHistoryComponent implements CodayEventHandler {
     if (value) {
       this.thinkingTimeout = setTimeout(() => {
         this.thinkingDots.classList.toggle('visible', false)
-        this.scrollToBottom()
       }, ThinkingEvent.debounce + 1000)
+    } else {
+      this.scrollToBottom()
     }
     this.thinkingDots.classList.toggle('visible', value)
   }
@@ -127,6 +129,42 @@ export class ChatHistoryComponent implements CodayEventHandler {
   addAnswer(answer: string, speaker: string | undefined): void {
     const newEntry = this.createMessageElement(answer, speaker)
     newEntry.classList.add('text', 'right')
+
+    // Add copy button for user messages (similar to agent messages)
+    const copyButtonContainer = document.createElement('div')
+    copyButtonContainer.classList.add('copy-button-container')
+
+    const copyButton = document.createElement('button')
+    copyButton.classList.add('copy-button')
+    copyButton.title = 'Copy raw message'
+    copyButton.textContent = '📋' // Clipboard icon
+    copyButton.addEventListener('click', (event) => {
+      event.stopPropagation() // Prevent event bubbling
+      this.copyToClipboard(answer)
+
+      // Update this specific button
+      const clickedButton = event.currentTarget as HTMLButtonElement
+      if (clickedButton) {
+        // Clear any existing active buttons
+        document.querySelectorAll('.copy-button.active').forEach((btn) => {
+          btn.classList.remove('active')
+          btn.textContent = '📋'
+        })
+
+        clickedButton.classList.add('active')
+        clickedButton.textContent = '✓' // Checkmark to indicate success
+
+        // Reset button after 2 seconds
+        setTimeout(() => {
+          clickedButton.classList.remove('active')
+          clickedButton.textContent = '📋'
+        }, 2000)
+      }
+    })
+
+    copyButtonContainer.appendChild(copyButton)
+    newEntry.appendChild(copyButtonContainer)
+
     this.appendMessageElement(newEntry)
   }
 

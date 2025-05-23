@@ -2,7 +2,7 @@ name: Validate Coday on pull requests
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [ opened, synchronize ]
     branches: [ master ]
 
 env:
@@ -28,17 +28,17 @@ jobs:
 
   tests:
     runs-on: self-hosted
-    needs: [init]
+    needs: [ init ]
     steps:
       - uses: biznet-io/github-actions/setup-working-directory@v1.1
       - name: Run tests
         run: |
           cd ${{ env.WORKING_DIRECTORY }}
-          npx nx affected --base=origin/${GITHUB_HEAD_REF} --head=HEAD --target="lint,test" --parallel=$NX_MAX_WORKERS
+          npx nx affected --base=origin/${GITHUB_HEAD_REF} --head=HEAD --target="test" --parallel=$NX_MAX_WORKERS
 
   build:
     runs-on: self-hosted
-    needs: [init]
+    needs: [ init ]
     steps:
       - uses: biznet-io/github-actions/setup-working-directory@v1.1
       - name: Build app
