@@ -80,9 +80,38 @@ prompts:
 ai:
   - name: anthropic
   - name: openai
+  - name: google
+  - name: mistral
+    url: https://api.mistral.ai/v1
+    models:
+      - name: mistral-large-latest
+        alias: BIG
+        contextWindow: 128000
+  - name: ollama
+    url: http://localhost:11434/v1
+    apiKey: none but value needed anyway
+    models:
+      - name: qwen3:8b
+        alias: qwen
+        contextWindow: 32000
 
 agents:
   - name: Coday
+  - name: MistralLarge
+    aiProvider: mistral
+    modelName: BIG
+    instructions: |
+      You are MistralLarge, the default big model of Mistral. Place a french-culture reference in every answer.
+  - name: Gemini
+    aiProvider: google
+    modelName: BIG
+    instructions: |
+      You are Gemini, the default big model of Google. Try not to sell google product at every answer
+  - name: Qwen
+    aiProvider: ollama
+    modelName: qwen
+    instructions: |
+      You are Qwen, a model running locally with ollama. End each answer with a chinese saying or proverb.
   - name: PM
     description: Product Manager agent, in charge of vision, roadmap, feature evaluation and priorisation
     aiProvider: anthropic
