@@ -10,7 +10,7 @@ import { TextBlockParam } from '@anthropic-ai/sdk/resources/messages'
 
 const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
   {
-    name: 'claude-4-20250514',
+    name: 'claude-sonnet-4-20250514',
     alias: 'BIG',
     contextWindow: 200000,
     price: {
