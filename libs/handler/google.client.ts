@@ -4,7 +4,7 @@ import { AiProviderConfig, Interactor } from '../model'
 export class GoogleClient extends OpenaiClient {
   models = [
     {
-      name: 'gemini-2.5-pro-exp-03-25',
+      name: 'gemini-2.5-pro-preview-05-06',
       contextWindow: 1000000,
       alias: 'BIG',
       price: {
