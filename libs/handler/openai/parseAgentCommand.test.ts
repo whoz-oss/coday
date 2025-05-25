@@ -2,15 +2,15 @@ import { parseAgentCommand } from './parseAgentCommand'
 
 describe('parseAgentCommand', () => {
   it('parses simple agent command with command string', () => {
-    expect(parseAgentCommand('@AgentName rest of command')).toEqual(['AgentName', 'rest of command'])
+    expect(parseAgentCommand('@AgentName rest of command')).toEqual(['agentname', 'rest of command'])
   })
 
   it('parses agent command with newline', () => {
-    expect(parseAgentCommand('@AgentName\nrest of command')).toEqual(['AgentName', 'rest of command'])
+    expect(parseAgentCommand('@AgentName\nrest of command')).toEqual(['agentname', 'rest of command'])
   })
 
   it('parses agent name only', () => {
-    expect(parseAgentCommand('@AgentName')).toEqual(['AgentName', ''])
+    expect(parseAgentCommand('@AgentName')).toEqual(['agentname', ''])
   })
 
   it('parses only @', () => {
@@ -30,7 +30,7 @@ describe('parseAgentCommand', () => {
   })
 
   it('parses @name with multiple spaces before rest', () => {
-    expect(parseAgentCommand('@AgentName   lots of spaces')).toEqual(['AgentName', 'lots of spaces'])
+    expect(parseAgentCommand('@AgentName   lots of spaces')).toEqual(['agentname', 'lots of spaces'])
   })
 
   it('handles empty string', () => {
