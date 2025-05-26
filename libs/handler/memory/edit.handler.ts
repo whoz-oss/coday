@@ -1,6 +1,7 @@
-import { CommandHandler, CommandContext, Interactor } from '../../model'
+import { CommandContext, CommandHandler, Interactor } from '../../model'
 import { MemoryService } from '../../service/memory.service'
-import { MemoryLevel, Memory } from '../../model/memory'
+import { Memory, MemoryLevel } from '../../model/memory'
+import { parseArgs } from '../parse-args'
 
 export class MemoryEditHandler extends CommandHandler {
   constructor(
@@ -9,21 +10,23 @@ export class MemoryEditHandler extends CommandHandler {
   ) {
     super({
       commandWord: 'edit',
-      description: 'Edit an existing memory. Optional filters: [PROJECT|USER] and agent:AgentName (e.g., "memory edit USER agent:Bob")'
+      description: `Edit an existing memory.
+    Use \`--project\` or \`--user\` to specify level (defaults to PROJECT), \`--agent=NAME\` to specify agent.
+    Example: \`memory edit --user --agent=Sway\`.
+    Shorthand syntax: \`memory edit -u -a=Sway\`.`,
     })
   }
 
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
     const subCommand = this.getSubCommand(command)
+    const args = parseArgs(subCommand, [
+      { key: 'project', alias: 'p' },
+      { key: 'user', alias: 'u' },
+      { key: 'agent', alias: 'a' },
+    ])
 
-    let level: MemoryLevel | undefined = MemoryLevel.PROJECT
-    let agent: string | undefined
-
-    const levelMatch = Object.values(MemoryLevel).find(l => subCommand.includes(l))
-    if (levelMatch) level = levelMatch as MemoryLevel
-
-    const agentMatch = subCommand.match(/agent:(\w+)/)
-    if (agentMatch) agent = agentMatch[1]
+    let level: MemoryLevel | undefined = args.project ? MemoryLevel.PROJECT : MemoryLevel.USER
+    let agent: string | undefined = typeof args.agent === 'string' ? args.agent : undefined
 
     let memories: Memory[]
     try {
@@ -42,8 +45,9 @@ export class MemoryEditHandler extends CommandHandler {
     if (memories.length === 1) {
       selectedMemory = memories[0]
     } else {
-      const memoryChoices = memories.map((memory, index) =>
-        `${index + 1}. [${memory.level}${memory.agentName ? ` - ${memory.agentName}` : ''}] ${memory.title}`
+      const memoryChoices = memories.map(
+        (memory, index) =>
+          `${index + 1}. [${memory.level}${memory.agentName ? ` - ${memory.agentName}` : ''}] ${memory.title}`
       )
       const options = [...memoryChoices, 'Cancel']
       let chosen: string
@@ -85,7 +89,7 @@ export class MemoryEditHandler extends CommandHandler {
     try {
       this.memoryService.upsertMemory({
         ...selectedMemory,
-        content: newContent
+        content: newContent,
       })
       this.interactor.displayText('Memory updated successfully.')
     } catch (error: any) {
