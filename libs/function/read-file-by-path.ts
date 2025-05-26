@@ -25,8 +25,6 @@ export const readFileByPath = async (input: ReadFileByPathInput): Promise<FileCo
     }
   } catch (err) {
     const errorMessage = `Error reading file ${fullPath}: ${err}`
-    interactor?.error(errorMessage)
-    console.error(err)
 
     return {
       type: 'error',

@@ -2,8 +2,8 @@ import { WithDocs } from '../model/with-docs'
 import * as path from 'node:path'
 import { Interactor } from '../model'
 import { existsSync } from 'node:fs'
-import { readFileByPath } from './read-file-by-path'
 import { FileContent } from '../model/file-content'
+import { readFileUnified } from './read-file-unified'
 
 export async function getFormattedDocs(
   withDocs: WithDocs,
@@ -15,51 +15,50 @@ export async function getFormattedDocs(
   let mandatoryDocText = ''
   let warnings = ''
   try {
-    if (withDocs.mandatoryDocs?.length) {
-      mandatoryDocText += `\n\n## Mandatory documents
-    
-    Each of the following files are included entirely as deemed important.\n\n`
-      const fileContents = await Promise.allSettled(
-        withDocs.mandatoryDocs.map((docPath): Promise<FileContent> => {
-          const fullPath = path.resolve(projectPath, docPath)
-          if (!existsSync(fullPath)) {
-            return Promise.resolve({
-              type: 'error',
-              content: `Mandatory document not found: ${docPath}`,
-            })
-          } else {
-            return readFileByPath({
-              relPath: docPath,
-              root: '',
-              interactor,
-            })
-          }
-        })
+    const fileContents = await Promise.allSettled(
+      (withDocs.mandatoryDocs ?? []).map(
+        (docPath): Promise<FileContent> =>
+          readFileUnified({
+            relPath: docPath,
+            root: projectPath,
+            interactor,
+          })
       )
-      mandatoryDocText += fileContents
-        .map((settled, index) => {
-          const filePath = withDocs.mandatoryDocs ? withDocs.mandatoryDocs[index] : 'no file path'
-          if (settled.status === 'fulfilled' && settled.value.type === 'text') {
-            return `File: ${filePath}\n\n${settled.value.content}`
+    )
+    mandatoryDocText += fileContents
+      .map((settled, index) => {
+        const filePath = withDocs.mandatoryDocs ? withDocs.mandatoryDocs[index] : 'no file path'
+        if (settled.status === 'fulfilled') {
+          const value = settled.value as FileContent
+          if (value.type === 'text') {
+            return `File: ${filePath}\n\n${value.content}`
           }
-          return null
-        })
-        .join('\n\n')
+        }
+        return null
+      })
+      .join('\n\n')
 
-      warnings += fileContents
-        .map((settled, index) => {
-          if (settled.status === 'rejected') {
-            return `  - ${settled.reason?.toString()}`
+    warnings += fileContents
+      .map((settled, index) => {
+        if (settled.status === 'rejected') {
+          return `  - ${settled.reason?.toString()}`
+        }
+        if (settled.status === 'fulfilled') {
+          const value = settled.value as FileContent
+          if (value.type === 'error') {
+            return `  - ${value.content.toString()}`
           }
-          if (settled.status === 'fulfilled' && settled.value.type === 'error') {
-            return `  - ${settled.value.content}`
-          }
-          return null
-        })
-        .filter((text) => !!text)
-        .join('\n')
+        }
+        return null
+      })
+      .filter((text) => !!text)
+      .join('\n')
+
+    if (mandatoryDocText) {
+      formattedDocs += `\n\nMandatory documents
+    
+    Each of the following files are included entirely as deemed important.\n\n${mandatoryDocText}`
     }
-    formattedDocs += mandatoryDocText
 
     // Check all optional docs, log a warning if they are missing
     let optionalDocsDescription = withDocs.optionalDocs
