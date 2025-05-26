@@ -39,7 +39,12 @@ export const loadOrInitProjectDescription = async (
       interactor.warn?.(message)
       projectDescription = { ...DEFAULT_CODAY_YAML }
     }
-    projectDescription.description += getFormattedDocs(projectDescription, interactor, projectPath)
+    projectDescription.description += await getFormattedDocs(
+      projectDescription,
+      interactor,
+      projectPath,
+      CONFIG_FILENAME_YAML
+    )
     projectDescription.description += `\n\n## User\n\n    You are interacting with a human with username: ${username}`
   }
 

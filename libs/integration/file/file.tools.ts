@@ -1,14 +1,13 @@
-import {writeFileByPath} from './write-file-by-path'
-import {writeFileChunk} from './write-file-chunk'
-import {findFilesByName} from '../../function/find-files-by-name'
-import {listFilesAndDirectories} from './list-files-and-directories'
-import {findFilesByText} from './find-files-by-text'
-import {CommandContext, Interactor} from '../../model'
-import {AssistantToolFactory, CodayTool} from '../assistant-tool-factory'
-import {FunctionTool} from '../types'
-import {unlinkFile} from './unlink-file'
-import {readFileByPath} from '../../function/read-file-by-path'
-import { readPdfFile } from '../../function/pdf-reader';
+import { writeFileByPath } from './write-file-by-path'
+import { writeFileChunk } from './write-file-chunk'
+import { findFilesByName } from '../../function/find-files-by-name'
+import { listFilesAndDirectories } from './list-files-and-directories'
+import { findFilesByText } from './find-files-by-text'
+import { CommandContext, Interactor } from '../../model'
+import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
+import { FunctionTool } from '../types'
+import { unlinkFile } from './unlink-file'
+import { readFileUnifiedAsString } from '../../function/read-file-unified'
 
 /**
  * FileTools: A comprehensive file manipulation tool factory for Coday
@@ -17,7 +16,7 @@ import { readPdfFile } from '../../function/pdf-reader';
  * that can be dynamically generated based on the current command context. It supports:
  *
  * 1. Read Operations:
- *    - Reading project files
+ *    - Unified file reading with automatic format detection
  *    - Searching files by name or content
  *    - Listing files and directories
  *
@@ -31,11 +30,13 @@ import { readPdfFile } from '../../function/pdf-reader';
  * - Provides flexible file search capabilities
  * - Integrates with project's root directory
  * - Uses an interactor for logging and error handling
+ * - Unified file reading with automatic format detection
  *
  * Design Principles:
  * - Dynamic tool generation based on context
  * - Clear, descriptive function tools with JSON parsing
  * - Error handling for file operations
+ * - Single responsibility per tool
  *
  * @extends AssistantToolFactory
  */
@@ -72,27 +73,6 @@ export class FileTools extends AssistantToolFactory {
       }
       result.push(removeFileFunction)
     }
-
-    const readProjectFile = (input: { filePath: string }) => {
-      return readFileByPath({ relPath: input.filePath, root: context.project.root, interactor: this.interactor })
-    }
-
-    const readProjectFileFunction: FunctionTool<{ filePath: string }> = {
-      type: 'function',
-      function: {
-        name: 'readProjectFile',
-        description: 'read the content of the file at the given path in the project.',
-        parameters: {
-          type: 'object',
-          properties: {
-            filePath: { type: 'string', description: 'file path relative to the project root' },
-          },
-        },
-        parse: JSON.parse,
-        function: readProjectFile,
-      },
-    }
-    result.push(readProjectFileFunction)
 
     // Only add write tools if not in read-only mode
     if (!context.fileReadOnly) {
@@ -262,34 +242,33 @@ export class FileTools extends AssistantToolFactory {
     }
     result.push(searchFilesByTextFunction)
 
-    const readPdf = ({ filePath }: { filePath: string }) => {
-      return readPdfFile({ 
-        relPath: filePath, 
-        root: context.project.root, 
-        interactor: this.interactor 
+    // Unified file reader tool - handles all file types automatically
+    const readFileUnified = async ({ filePath }: { filePath: string }) => {
+      return readFileUnifiedAsString({
+        relPath: filePath,
+        root: context.project.root,
+        interactor: this.interactor,
       })
     }
 
-    const readPdfFunction: FunctionTool<{ filePath: string }> = {
+    const readFileFunction: FunctionTool<{ filePath: string }> = {
       type: 'function',
       function: {
-        name: 'readPdfFile',
-        description: 'Read PDF text content from PDF file in the project.',
+        name: 'readFile',
+        description:
+          'Read content from any file type. Supports text files, PDFs, and other formats. Automatically detects file type and uses appropriate reader.',
         parameters: {
           type: 'object',
           properties: {
-            filePath: { 
-              type: 'string', 
-              description: 'File path of the PDF relative to the project root' 
-            },
+            filePath: { type: 'string', description: 'File path relative to the project root' },
           },
         },
         parse: JSON.parse,
-        function: readPdf,
+        function: readFileUnified,
       },
     }
-    
-    result.push(readPdfFunction)
+    result.push(readFileFunction)
+
     return result
   }
 }
