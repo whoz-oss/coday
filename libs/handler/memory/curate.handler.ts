@@ -7,9 +7,9 @@ export class MemoryCurateHandler extends CommandHandler {
     super({
       commandWord: 'curate',
       description: `Curate memories with a free-form prompt on a topic.
-Use --project or --user to specify level (defaults to interactive selection), --agent=NAME to specify agent (defaults to Coday).
-Example: "memory curate --project --agent=Sway coding patterns".
-Shorthand syntax: "memory curate -p -a=Sway coding patterns".`,
+    Use \`--project\` or \`--user\` to specify level (defaults to interactive selection), \`--agent=NAME\` to specify agent (defaults to Coday).
+    Example: \`memory curate --project --agent=Sway coding patterns\`.
+    Shorthand syntax: \`memory curate -p -a=Sway coding patterns\`.`,
     })
   }
 
