@@ -1,27 +1,30 @@
-import { CommandContext, CommandHandler, Interactor } from '../model'
-import { MemoryService } from '../service/memory.service'
-import { MemoryLevel } from '../model/memory'
+import { NestedHandler } from '../model/nested.handler'
+import { Interactor } from '../model'
+import { CodayServices } from '../coday-services'
+import { MemoryListHandler } from './memory/list.handler'
+import { MemoryDeleteHandler } from './memory/delete.handler'
+import { MemoryEditHandler } from './memory/edit.handler'
+import { MemoryCurateHandler } from './memory/curate.handler'
 
-class MemoryHandler extends CommandHandler {
+export class MemoryHandler extends NestedHandler {
   constructor(
-    private interactor: Interactor,
-    private memoryService: MemoryService
+    interactor: Interactor,
+    services: CodayServices
   ) {
-    super({
-      commandWord: 'memory',
-      description: 'list current memories',
-      isInternal: true,
-    })
-  }
+    super(
+      {
+        commandWord: 'memory',
+        description: 'memory management commands',
+        isInternal: true,
+      },
+      interactor
+    )
 
-  async handle(command: string, context: CommandContext): Promise<CommandContext> {
-    const memories: string = this.memoryService
-      .listMemories(MemoryLevel.PROJECT)
-      .map((m) => `${m.title}\n    ${m.content}`)
-      .join('\n')
-    this.interactor.displayText(`Memories:\n${memories ? memories : 'no current memories'}`)
-    return context
+    this.handlers = [
+      new MemoryListHandler(interactor, services.memory),
+      new MemoryEditHandler(interactor, services.memory),
+      new MemoryDeleteHandler(interactor, services.memory),
+      new MemoryCurateHandler(interactor)
+    ]
   }
 }
-
-export { MemoryHandler }
