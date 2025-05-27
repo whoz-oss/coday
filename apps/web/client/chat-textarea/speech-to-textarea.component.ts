@@ -28,22 +28,21 @@ export class SpeechToTextareaComponent {
 
     // Create recognition instance
     this.recognition = new SpeechRecognition()
-    this.recognition.continuous = true // Permet des phrases longues sans coupure
+    this.recognition.continuous = true // Allows long un-interrupted sentences
     this.recognition.interimResults = true
     this.recognition.maxAlternatives = 1
-    this.recognition.lang = this.getSelectedLanguage() // Utilise la langue sélectionnée
+    this.recognition.lang = this.getSelectedLanguage()
 
-    // Paramètres avancés pour améliorer la capture de phrases longues
-    // Ces paramètres ne sont pas standards mais supportés par certains navigateurs
+    // Advanced parameters for long sentences capture
+    // Not standard but supported by some browsers
     try {
-      // Augmente le délai avant que la reconnaissance s'arrête automatiquement
       if ('grammars' in this.recognition) {
-        // Certains navigateurs supportent des paramètres étendus
-        this.recognition.serviceURI = undefined // Force l'utilisation du service par défaut
+        // Some browsers support advanced parameters
+        this.recognition.serviceURI = undefined // Force using default service
       }
     } catch (e) {
-      // Les paramètres avancés ne sont pas supportés, on continue avec la config de base
-      console.log('Paramètres avancés de reconnaissance vocale non supportés')
+      // Advanced parameters not supported, go on with basic config
+      console.log('Advanced speech recognition parameters not supported')
     }
 
     // Handle results
@@ -58,7 +57,7 @@ export class SpeechToTextareaComponent {
       }
 
       if (finalTranscript) {
-        // Post-traitement pour améliorer la ponctuation
+        // Post-treatment for punctuation
         const processedTranscript = this.improveTranscriptPunctuation(finalTranscript.trim())
         this.sessionHadTranscript = true
         console.log('onresult ending, appending to textarea', this.isRecording)
@@ -84,7 +83,7 @@ export class SpeechToTextareaComponent {
       this.updateVoiceButtonState()
     }
 
-    // Événement pour déboguer les démarrages/arrêts
+    // Debug events
     this.recognition.onstart = () => {
       console.log('Recognition started successfully')
     }
@@ -109,7 +108,7 @@ export class SpeechToTextareaComponent {
     this.voiceButton = document.createElement('button')
     this.voiceButton.type = 'button'
     this.voiceButton.className = 'voice-button'
-    this.voiceButton.tabIndex = 0 // Permet le focus au clavier
+    this.voiceButton.tabIndex = 0 // allows keyboard focus
     this.voiceButton.innerHTML = '🎤'
     this.voiceButton.title = 'Maintenir clic souris, touch, ou barre espace pour parler'
     this.voiceButton.style.marginRight = '8px'
@@ -146,7 +145,7 @@ export class SpeechToTextareaComponent {
     this.voiceButton.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.code === 'Space' || e.key === ' ' || e.keyCode === 32) {
         e.preventDefault()
-        // Démarre l'enregistrement seulement si ce n'est pas déjà en cours
+        // Start recording only if not already started
         if (!this.isRecording) {
           this.startRecording()
         }
@@ -186,7 +185,7 @@ export class SpeechToTextareaComponent {
     try {
       console.log('stopRecording recognition stop')
       this.recognition.stop()
-      
+
       // Schedule line breaks after a short delay to allow for pending transcripts
       this.schedulePendingLineBreaks()
     } catch (error) {
@@ -209,7 +208,7 @@ export class SpeechToTextareaComponent {
   }
 
   /**
-   * Récupère la langue sélectionnée depuis les préférences globales
+   * Get language from global preferences
    */
   private getSelectedLanguage(): string {
     // Default to 'en-US' to match UI default
@@ -217,7 +216,7 @@ export class SpeechToTextareaComponent {
   }
 
   /**
-   * Met à jour la langue de reconnaissance vocale
+   * Update speech recognition language
    */
   private updateRecognitionLanguage(): void {
     if (this.recognition) {
@@ -228,20 +227,20 @@ export class SpeechToTextareaComponent {
   }
 
   /**
-   * Améliore la ponctuation du texte transcrit
+   * Improve punctuation from the rather raw transcript
    */
   private improveTranscriptPunctuation(text: string): string {
     let improved = text
 
-    // Ajoute un point à la fin si pas de ponctuation
+    // Finish sentences
     if (!/[.!?]$/.test(improved.trim())) {
       improved = improved.trim() + '.'
     }
 
-    // Capitalise la première lettre
+    // Capitalize first letter
     improved = improved.charAt(0).toUpperCase() + improved.slice(1)
 
-    // Nettoie les espaces multiples
+    // Remove multiple spaces
     improved = improved.replace(/\s+/g, ' ')
 
     // Add a space at the end for natural separation
@@ -266,7 +265,7 @@ export class SpeechToTextareaComponent {
    */
   private schedulePendingLineBreaks(): void {
     this.clearPendingLineBreaks() // Clear any existing timeout
-    
+
     // Wait 500ms for any pending transcripts to arrive
     this.pendingLineBreaksTimeout = window.setTimeout(() => {
       if (this.sessionHadTranscript) {
