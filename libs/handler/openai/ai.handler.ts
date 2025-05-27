@@ -19,10 +19,11 @@ export class AiHandler extends CommandHandler implements Killable {
 
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
     const [agentName, restOfCommand] = parseAgentCommand(command)
+    this.interactor.debug(`Agent name extracted from command: ${agentName}`)
 
     // Try to select the specified agent
     // If agentName is empty, selectAgent will handle the fallback logic
-    const selectedAgent = await this.selectAgent(agentName.toLowerCase(), context)
+    const selectedAgent = await this.selectAgent(agentName, context)
 
     if (!selectedAgent) {
       this.interactor.error('Failed to find any agent')
@@ -47,7 +48,7 @@ export class AiHandler extends CommandHandler implements Killable {
    */
   private async selectAgent(nameStart: string, context: CommandContext): Promise<Agent | undefined> {
     // If a specific agent name start is provided, use that
-    if (nameStart?.trim()) {
+    if (nameStart) {
       const agent = await this.agentService.findAgentByNameStart(nameStart, context)
       if (agent) {
         this.interactor.debug(`Selected agent: ${agent.name}`)
@@ -106,7 +107,7 @@ export class AiHandler extends CommandHandler implements Killable {
       },
       error: (error) => {
         if (error.message === 'Processing interrupted by user request') {
-          this.interactor.displayText('Processing stopped gracefully', agent.name)
+          this.interactor.debug('Processing stopped gracefully')
         } else {
           this.interactor.error(`Error in AI processing: ${error.message}`)
         }

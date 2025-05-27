@@ -21,8 +21,6 @@ export const writeFileChunk = ({ relPath, root, interactor, replacements }: Writ
   const fullPath = relPath ? path.resolve(root, relPath) : root
 
   try {
-    // Notify the beginning of the write operation
-    interactor.displayText(`Partial write on file ${fullPath}`)
     // Check if the file exists
     if (!existsSync(fullPath)) {
       const errorMessage = `No file found at ${fullPath}`
@@ -71,8 +69,6 @@ export const writeFileChunk = ({ relPath, root, interactor, replacements }: Writ
     } else {
       message = `File edited with the following results:\n${message}`
     }
-
-    interactor.displayText(message)
 
     // Return the final outcome message
     return message
