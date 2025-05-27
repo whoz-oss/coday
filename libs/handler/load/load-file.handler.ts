@@ -1,5 +1,5 @@
 import { CommandContext, CommandHandler, Interactor } from '../../model'
-import { readFileByPath } from '../../function/read-file-by-path'
+import { readFileUnifiedAsString } from '../../function/read-file-unified'
 
 export class LoadFileHandler extends CommandHandler {
   constructor(private interactor: Interactor) {
@@ -22,7 +22,7 @@ export class LoadFileHandler extends CommandHandler {
       filePath = `.${filePath}`
     }
 
-    const content = readFileByPath({
+    const content = await readFileUnifiedAsString({
       relPath: filePath,
       root: context.project.root,
       interactor: this.interactor,

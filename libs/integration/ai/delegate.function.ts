@@ -14,6 +14,7 @@ export function delegateFunction(input: DelegateInput) {
   const { context, interactor, agentService } = input
   const delegate = async ({ task, agentName }: { task: string; agentName: string | undefined }) => {
     try {
+      interactor.debug(`Delegating with stackDepth: ${context.stackDepth}`)
       if (context.stackDepth <= 0) {
         interactor.displayText('Delegation denied further.')
         return 'Delegation not allowed, either permanently, or existing capacity already used.'

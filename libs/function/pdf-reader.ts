@@ -1,35 +1,47 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { Interactor } from '../model';
-import PDFParser from 'pdf2json';
+import * as fs from 'fs'
+import * as path from 'path'
+import { Interactor } from '../model'
+import { FileContent } from '../model/file-content'
+import PDFParser from 'pdf2json'
 
 export async function readPdfFile({
   relPath,
   root,
   interactor,
 }: {
-  relPath: string;
-  root: string;
-  interactor: Interactor;
-}): Promise<string> {
+  relPath: string
+  root: string
+  interactor: Interactor
+}): Promise<FileContent> {
   try {
-    const fullPath = path.join(root, relPath);
+    const fullPath = path.join(root, relPath)
 
     if (!fs.existsSync(fullPath)) {
-      const errorMessage = `PDF file not found at path: ${relPath}`;
-      interactor.error(errorMessage);
-      return errorMessage;
+      const errorMessage = `PDF file not found at path: ${relPath}`
+      interactor.error(errorMessage)
+      return {
+        type: 'error',
+        content: errorMessage,
+      }
     }
 
     // Read the PDF file
-    const pdfData = await getPdfData(fullPath);
-    
+    const pdfData = await getPdfData(fullPath)
+
     // Extract text from the PDF data
-    return extractTextFromPdfData(pdfData);
+    const textContent = extractTextFromPdfData(pdfData)
+
+    return {
+      type: 'text',
+      content: textContent,
+    }
   } catch (error: any) {
-    const errorMessage = `Error reading PDF file '${relPath}': ${error.message}`;
-    interactor.error(errorMessage);
-    return errorMessage;
+    const errorMessage = `Error reading PDF file '${relPath}': ${error.message}`
+    interactor.error(errorMessage)
+    return {
+      type: 'error',
+      content: errorMessage,
+    }
   }
 }
 
@@ -41,18 +53,18 @@ export async function readPdfFile({
 function getPdfData(filePath: string): Promise<any> {
   return new Promise((resolve, reject) => {
     try {
-      const pdfParser = new PDFParser();
-      
+      const pdfParser = new PDFParser()
+
       // Set up promise resolution
-      pdfParser.on('pdfParser_dataReady', resolve);
-      pdfParser.on('pdfParser_dataError', reject);
-      
+      pdfParser.on('pdfParser_dataReady', resolve)
+      pdfParser.on('pdfParser_dataError', reject)
+
       // Load the PDF file
-      pdfParser.loadPDF(filePath);
+      pdfParser.loadPDF(filePath)
     } catch (err) {
-      reject(err);
+      reject(err)
     }
-  });
+  })
 }
 
 /**
@@ -61,32 +73,32 @@ function getPdfData(filePath: string): Promise<any> {
  * @returns Extracted text
  */
 function extractTextFromPdfData(pdfData: any): string {
-  let text = '';
-  
+  let text = ''
+
   // Extract text from all pages
   if (pdfData && pdfData.Pages) {
     for (let i = 0; i < pdfData.Pages.length; i++) {
-      const page = pdfData.Pages[i];
-      let pageText = '';
-      
+      const page = pdfData.Pages[i]
+      let pageText = ''
+
       // Process each text element on the page
       if (page.Texts) {
         for (const textElement of page.Texts) {
           if (textElement.R) {
             for (const r of textElement.R) {
               // pdf2json encodes text in URI format, so we need to decode it
-              const decodedText = decodeURIComponent(r.T);
-              pageText += decodedText + ' ';
+              const decodedText = decodeURIComponent(r.T)
+              pageText += decodedText + ' '
             }
           }
         }
       }
-      
+
       if (pageText) {
-        text += pageText.trim() + '\n\n';
+        text += pageText.trim() + '\n\n'
       }
     }
   }
-  
-  return text.trim();
+
+  return text.trim()
 }

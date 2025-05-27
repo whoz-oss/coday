@@ -1,6 +1,7 @@
-import { readFileSync } from 'fs'
 import { Interactor } from '../model'
-import path from 'path'
+import { FileContent } from '../model/file-content'
+import * as path from 'path'
+import { readFile } from 'node:fs/promises'
 
 type ReadFileByPathInput = {
   relPath: string
@@ -8,16 +9,26 @@ type ReadFileByPathInput = {
   interactor?: Interactor
 }
 
-export const readFileByPath = (input: ReadFileByPathInput) => {
+export const readFileByPath = async (input: ReadFileByPathInput): Promise<FileContent> => {
   const { relPath, root, interactor } = input
   // need to prevent double slashes
   const fullPath = relPath ? path.resolve(root, relPath) : root
+
   try {
-    interactor?.displayText(`reading file ${fullPath}`)
-    return readFileSync(fullPath).toString()
+    interactor?.debug(`reading file ${fullPath}`)
+
+    const content = (await readFile(fullPath)).toString()
+
+    return {
+      type: 'text',
+      content: content,
+    }
   } catch (err) {
-    interactor?.error(`Error reading file ${fullPath}`)
-    console.error(err)
-    return 'Error reading file'
+    const errorMessage = `Error reading file ${fullPath}: ${err}`
+
+    return {
+      type: 'error',
+      content: errorMessage,
+    }
   }
 }

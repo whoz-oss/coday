@@ -9,6 +9,7 @@ export interface Argv {
   no_auth?: boolean
   prompt?: string[]
   oneshot?: boolean
+  debug?: boolean
   fileReadOnly?: boolean
   local?: boolean
   agentFolders?: string[]
@@ -19,6 +20,7 @@ export interface Argv {
 // Define the options type
 export interface CodayOptions {
   oneshot: boolean
+  debug: boolean
   project?: string
   prompts: string[]
   fileReadOnly: boolean
@@ -69,6 +71,10 @@ export function parseCodayOptions(): CodayOptions {
       description: 'Additional folders where agent definitions can be found',
       alias: 'af',
     })
+    .option('debug', {
+      type: 'boolean',
+      description: 'Sets debug right at startup',
+    })
     .help().argv as Argv
 
   let projectName: string | undefined = argv.coday_project || (argv._[0] as string)
@@ -77,6 +83,7 @@ export function parseCodayOptions(): CodayOptions {
   const fileReadOnly: boolean = !!argv.fileReadOnly
   const configDir: string | undefined = argv.coday_config_dir
   const noAuth: boolean = !!argv.no_auth
+  const debug: boolean = !!argv.debug
 
   // If --local is set, use current directory name as project
   if (argv.local) {
@@ -86,6 +93,7 @@ export function parseCodayOptions(): CodayOptions {
 
   return {
     oneshot,
+    debug,
     project: projectName,
     prompts,
     fileReadOnly,
