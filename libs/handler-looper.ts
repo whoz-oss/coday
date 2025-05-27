@@ -37,7 +37,7 @@ export class HandlerLooper {
   init(projectDescription: ProjectDescription | null) {
     try {
       const queryHandler = new AddQueryHandler(this.interactor)
-      const memoryHandler = new MemoryHandler(this.interactor, this.services.memory)
+      const memoryHandler = new MemoryHandler(this.interactor, this.services)
       this.handlers = [
         this.configHandler,
         new RunBashHandler(this.interactor),
