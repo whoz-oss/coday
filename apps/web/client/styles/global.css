@@ -21,3 +21,6 @@ h1 {
   background-color: var(--color-primary);
   color: var(--color-text-inverse, #ffffff);
 }
+
+/* Import voice controls styles */
+@import '../chat-textarea/voice-controls.css';
