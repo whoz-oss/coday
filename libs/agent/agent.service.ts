@@ -286,7 +286,7 @@ export class AgentService implements Killable {
       }
 
       const basePath = entry.basePath
-      const agentDocs = getFormattedDocs(def, this.interactor, basePath)
+      const agentDocs = await getFormattedDocs(def, this.interactor, basePath, def.name)
 
       // overwrite agent instructions with the added project and user context
       def.instructions = `${def.instructions}\n\n

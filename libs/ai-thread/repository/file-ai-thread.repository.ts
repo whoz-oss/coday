@@ -130,6 +130,7 @@ export class FileAiThreadRepository implements AiThreadRepository {
     }
   }
 
+  // TODO: kill this monstruosity someday, reading all threads is not sustainable
   async listThreadsByUsername(username: string): Promise<ThreadSummary[]> {
     await this.initPromise
     try {
