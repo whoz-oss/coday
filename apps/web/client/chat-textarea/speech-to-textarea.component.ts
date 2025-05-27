@@ -5,7 +5,8 @@ export class SpeechToTextareaComponent {
   private recognition: any = null
   private voiceButton: HTMLButtonElement | null = null
   private isRecording: boolean = false
-  private didTranscript: boolean = false
+  private sessionHadTranscript: boolean = false
+  private pendingLineBreaksTimeout: number | null = null
 
   constructor(
     private readonly chatTextarea: HTMLTextAreaElement,
@@ -59,15 +60,15 @@ export class SpeechToTextareaComponent {
       if (finalTranscript) {
         // Post-traitement pour améliorer la ponctuation
         const processedTranscript = this.improveTranscriptPunctuation(finalTranscript.trim())
-        this.didTranscript = true
-        console.log('onresult ending, appending to textarea', this.isRecording, this.didTranscript)
+        this.sessionHadTranscript = true
+        console.log('onresult ending, appending to textarea', this.isRecording)
         this.appendToTextarea(processedTranscript)
       }
     }
 
     this.recognition.onend = () => {
       this.isRecording = false
-      console.log('Recognition ended. Was recording:', this.isRecording, this.didTranscript)
+      console.log('Recognition ended. Was recording:', this.isRecording)
       this.updateVoiceButtonState()
     }
 
@@ -79,6 +80,7 @@ export class SpeechToTextareaComponent {
         timeStamp: event.timeStamp,
       })
       this.isRecording = false
+      this.clearPendingLineBreaks() // Clear any pending timeouts
       this.updateVoiceButtonState()
     }
 
@@ -164,6 +166,8 @@ export class SpeechToTextareaComponent {
 
     try {
       this.isRecording = true
+      this.sessionHadTranscript = false // Reset at start of new session
+      this.clearPendingLineBreaks() // Clear any pending timeouts from previous session
       this.updateVoiceButtonState()
       this.recognition.start()
     } catch (error) {
@@ -182,6 +186,9 @@ export class SpeechToTextareaComponent {
     try {
       console.log('stopRecording recognition stop')
       this.recognition.stop()
+      
+      // Schedule line breaks after a short delay to allow for pending transcripts
+      this.schedulePendingLineBreaks()
     } catch (error) {
       console.error('Failed to stop recording:', error)
     }
@@ -237,17 +244,47 @@ export class SpeechToTextareaComponent {
     // Nettoie les espaces multiples
     improved = improved.replace(/\s+/g, ' ')
 
+    // Add a space at the end for natural separation
+    improved = improved + ' '
+
     return improved
   }
 
   private appendToTextarea(text: string): void {
     const currentValue = this.chatTextarea.value
-    const newValue = currentValue ? `${currentValue} ${text}` : text
+    const newValue = currentValue ? `${currentValue}${text}` : text
     this.chatTextarea.value = newValue
     this.chatTextarea.focus()
 
     // Move cursor to end
     const length = this.chatTextarea.value.length
     this.chatTextarea.setSelectionRange(length, length)
+  }
+
+  /**
+   * Schedule line breaks to be added after a delay, allowing time for pending transcripts
+   */
+  private schedulePendingLineBreaks(): void {
+    this.clearPendingLineBreaks() // Clear any existing timeout
+    
+    // Wait 500ms for any pending transcripts to arrive
+    this.pendingLineBreaksTimeout = window.setTimeout(() => {
+      if (this.sessionHadTranscript) {
+        console.log('Adding line breaks after transcript session')
+        this.appendToTextarea('\n\n')
+        this.sessionHadTranscript = false // Reset for next session
+      }
+      this.pendingLineBreaksTimeout = null
+    }, 500)
+  }
+
+  /**
+   * Clear any pending line break timeouts
+   */
+  private clearPendingLineBreaks(): void {
+    if (this.pendingLineBreaksTimeout) {
+      clearTimeout(this.pendingLineBreaksTimeout)
+      this.pendingLineBreaksTimeout = null
+    }
   }
 }
