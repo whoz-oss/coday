@@ -147,7 +147,7 @@ const useEnterToSend = getPreference('useEnterToSend', false)
 enterToSendToggle.checked = useEnterToSend !== undefined ? useEnterToSend : false
 
 // Set initial voice language based on stored preference
-const savedVoiceLanguage = getPreference<string>('voiceLanguage', 'fr-FR') || 'fr-FR'
+const savedVoiceLanguage = getPreference<string>('voiceLanguage', 'en-US') || 'en-US'
 voiceLanguageSelect.value = savedVoiceLanguage
 
 // Apply theme based on preference or system setting
