@@ -100,6 +100,7 @@ export class HandlerLooper {
             this.formatHelp(keywords.reset, "resets Coday's context."),
             this.formatHelp(keywords.exit, 'quits the program.'),
           ]
+          // Keep this as displayText since help output is explicitly for the user
           this.interactor.displayText(handlerHelpMessages.join('\n'))
           continue
         }

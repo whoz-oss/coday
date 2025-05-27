@@ -33,7 +33,7 @@ export const findFilesByText = async ({
   const searchPath = path ?? '.'
   const searchCommand = `rg "${escapedText}" ${searchPath} ${fileTypePattern} --color never -l`
 
-  interactor.displayText(`\nExecuting search command: ${searchCommand}`)
+  interactor.debug(`Executing search command: ${searchCommand}`)
 
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {

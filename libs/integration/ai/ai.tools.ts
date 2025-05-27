@@ -57,7 +57,7 @@ export class AiTools extends AssistantToolFactory {
 
     if (!context.oneshot) {
       // Add redirect tool
-      const redirect = redirectFunction({ context, interactor: this.interactor, agentService: this.agentService })
+      const redirect = redirectFunction({ context, agentService: this.agentService })
 
       const agentSummaries = this.agentService
         .listAgentSummaries()

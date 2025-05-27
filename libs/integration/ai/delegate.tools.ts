@@ -52,10 +52,12 @@ export class DelegateTools extends AssistantToolFactory {
       agentService: this.agentService,
     })
     const delegateWithAllowList = async ({ task, agentName }: { task: string; agentName: string | undefined }) => {
-      if (allowList && (!agentName || !allowList.includes(agentName))) {
+      if (allowList && (!agentName || !allowList.includes(agentName.toLowerCase()))) {
+        this.interactor.debug(`allowList: ${allowList.join(', ')}`)
         const msg = agentName
           ? `Delegation denied: agent '${agentName}' is not allowed for delegation.`
           : `Delegation denied: no agent selected and delegation is restricted.`
+        // Keep as displayText as this is an important user-facing error message
         this.interactor.displayText(msg)
         return msg
       }
