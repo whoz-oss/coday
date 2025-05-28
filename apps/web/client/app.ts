@@ -140,10 +140,15 @@ const enterToSendToggle = document.getElementById('enter-to-send-toggle') as HTM
 const themeLight = document.getElementById('theme-light') as HTMLInputElement
 const themeDark = document.getElementById('theme-dark') as HTMLInputElement
 const themeSystem = document.getElementById('theme-system') as HTMLInputElement
+const voiceLanguageSelect = document.getElementById('voice-language-select') as HTMLSelectElement
 
 // Set initial toggle state based on stored preference
 const useEnterToSend = getPreference('useEnterToSend', false)
 enterToSendToggle.checked = useEnterToSend !== undefined ? useEnterToSend : false
+
+// Set initial voice language based on stored preference
+const savedVoiceLanguage = getPreference<string>('voiceLanguage', 'en-US') || 'en-US'
+voiceLanguageSelect.value = savedVoiceLanguage
 
 // Apply theme based on preference or system setting
 function applyTheme() {
@@ -202,6 +207,13 @@ document.addEventListener('click', (event) => {
 // Save preference when toggle changes
 enterToSendToggle.addEventListener('change', () => {
   setPreference('useEnterToSend', enterToSendToggle.checked)
+})
+
+// Save voice language preference when changed
+voiceLanguageSelect.addEventListener('change', () => {
+  setPreference('voiceLanguage', voiceLanguageSelect.value)
+  // Trigger custom event to notify chat component of language change
+  window.dispatchEvent(new CustomEvent('voiceLanguageChanged', { detail: voiceLanguageSelect.value }))
 })
 
 // Handle theme selection

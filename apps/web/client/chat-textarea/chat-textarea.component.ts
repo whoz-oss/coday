@@ -1,7 +1,7 @@
-
 import { CodayEvent, InviteEvent } from '@coday/coday-events'
 import { CodayEventHandler } from '../utils/coday-event-handler'
 import { getPreference } from '../utils/preferences'
+import { SpeechToTextareaComponent } from './speech-to-textarea.component'
 
 export class ChatTextareaComponent implements CodayEventHandler {
   private chatForm: HTMLFormElement
@@ -50,6 +50,8 @@ export class ChatTextareaComponent implements CodayEventHandler {
     this.chatTextarea = document.getElementById('chat-input') as HTMLTextAreaElement
     this.chatLabel = document.getElementById('chat-label') as HTMLLabelElement
     this.submitButton = document.getElementById('send-button') as HTMLButtonElement
+
+    new SpeechToTextareaComponent(this.chatTextarea, this.submitButton)
 
     this.chatForm.onsubmit = async (event) => {
       event.preventDefault()
