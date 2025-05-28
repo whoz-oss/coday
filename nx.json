@@ -67,7 +67,14 @@
     ],
     "releaseTagPattern": "release/{version}",
     "git": {
-      "commitMessage": "chore(release): {version}"
+      "commitMessage": "chore(release): {version}",
+      "tag": true
+    },
+    "changelog": {
+      "workspaceChangelog": {
+        "file": "CHANGELOG.md",
+        "entryWhenNoChanges": false
+      }
     },
     "version": {
       "preVersionCommand": "npx nx run web:build",
