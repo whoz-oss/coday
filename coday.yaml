@@ -36,10 +36,12 @@ scripts:
   compile:
     description: compile the typescript project to raise any issue on code correctness, it does not run the tests.
     command: yarn run nx run-many --target=build --all
-  yarn:
-    description: runs `yarn` command with the given arguments
-    command: yarn
-    parametersDescription: the arguments of `yarn` command
+#  yarn:
+#    description: |
+#      Runs `yarn` command with the given arguments.
+#      Note: do not start interactive nor open-ended processes like `yarn start` or `yarn web`
+#    command: yarn
+#    parametersDescription: the arguments of `yarn` command
 
 
 # The prompts section allows you to define custom sequences of commands, known as prompt chains, 
