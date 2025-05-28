@@ -1,3 +1,23 @@
+## 0.10.0 (2025-05-23)
+
+### 🚀 Features
+
+- speech-to-text integration for web interface ([#102](https://github.com/biznet-io/coday/pull/102))
+- clean tool logs ([#100](https://github.com/biznet-io/coday/pull/100))
+- expand memory handlers ([#86](https://github.com/biznet-io/coday/pull/86))
+- #58 more generic read file tool ([#101](https://github.com/biznet-io/coday/pull/101))
+- various ux,copy user message, less scroll, logo ([#96](https://github.com/biznet-io/coday/pull/96))
+- bump gemini & sonnet versions ([#97](https://github.com/biznet-io/coday/pull/97))
+
+### 🩹 Fixes
+
+- put lint back ([#98](https://github.com/biznet-io/coday/pull/98))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincentpalita-whoz
+- vincent-audibert-whoz
+
 ## 0.8.0 (2025-05-22)
 
 ### 🚀 Features
@@ -28,54 +48,44 @@
 
 ### 🚀 Features
 
-- jira count tool and lazy laod the jiraFieldMappingDescription ([#9](https://github.com/biznet-io/coday/pull/9))
-- issue 65 ai tools splitting 2 ([#83](https://github.com/biznet-io/coday/pull/83))
-- #87 update nx to 21.0.3 ([#88](https://github.com/biznet-io/coday/pull/88), [#87](https://github.com/biznet-io/coday/issues/87))
 - Display tool request and response events in UI ([#85](https://github.com/biznet-io/coday/pull/85))
 
 ### 🩹 Fixes
 
-- do not write silently the default coday.yaml file ([#73](https://github.com/biznet-io/coday/pull/73))
-- agent selection from thread ([#78](https://github.com/biznet-io/coday/pull/78))
-- remove too early default case in agent selection ([#81](https://github.com/biznet-io/coday/pull/81))
 - issue 80, agent selection again ([#82](https://github.com/biznet-io/coday/pull/82))
 
 ### ❤️ Thank You
 
-- c-monot-whoz
 - Vincent Palita @vincentpalita-whoz
-- vincent-audibert-whoz
 
 ## 0.6.1 (2025-05-20)
 
 ### 🚀 Features
 
-- jira count tool and lazy laod the jiraFieldMappingDescription ([#9](https://github.com/biznet-io/coday/pull/9))
 - issue 65 ai tools splitting 2 ([#83](https://github.com/biznet-io/coday/pull/83))
 - #87 update nx to 21.0.3 ([#88](https://github.com/biznet-io/coday/pull/88), [#87](https://github.com/biznet-io/coday/issues/87))
 
 ### 🩹 Fixes
 
-- do not write silently the default coday.yaml file ([#73](https://github.com/biznet-io/coday/pull/73))
-- agent selection from thread ([#78](https://github.com/biznet-io/coday/pull/78))
 - remove too early default case in agent selection ([#81](https://github.com/biznet-io/coday/pull/81))
-- issue 80, agent selection again ([#82](https://github.com/biznet-io/coday/pull/82))
+- agent selection from thread ([#78](https://github.com/biznet-io/coday/pull/78))
 
 ### ❤️ Thank You
 
 - c-monot-whoz
-- Vincent Palita @vincentpalita-whoz
 - vincent-audibert-whoz
 
 ## 0.6.0 (2025-04-28)
 
 ### 🚀 Features
 
+- jira count tool and lazy laod the jiraFieldMappingDescription ([#9](https://github.com/biznet-io/coday/pull/9))
 - add copy button for agent responses in web UI ([#60](https://github.com/biznet-io/coday/pull/60), [#62](https://github.com/biznet-io/coday/pull/62))
 - #49 Support MCP Inspector debug mode as separate process (not as tool server) ([#55](https://github.com/biznet-io/coday/pull/55), [#49](https://github.com/biznet-io/coday/issues/49))
 
 ### 🩹 Fixes
 
+- do not write silently the default coday.yaml file ([#73](https://github.com/biznet-io/coday/pull/73))
 - textarea component default value not lost to history functionality ([#56](https://github.com/biznet-io/coday/pull/56))
 
 ### ❤️ Thank You
@@ -117,7 +127,6 @@
 ### 🩹 Fixes
 
 - JIRA tools init is cached
-- JIRA tools init is cached
 - Fix release
 - improve tool creation with error logs
 
@@ -131,7 +140,6 @@
 
 ### 🩹 Fixes
 
-- JIRA tools init is cached
 - JIRA tools init is cached
 - Fix release
 
