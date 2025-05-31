@@ -10,7 +10,7 @@ export class UserBioHandler extends CommandHandler {
   ) {
     super({
       commandWord: 'bio',
-      description: `Edit user bio information for agent context.\n    Use \`--project\` to edit PROJECT-level bio, \`--user\` to edit USER-level bio.\n    If neither is specified, defaults to PROJECT level (most common use case).\n    Example: \`config bio --user\`, \`config bio --project\`.\n    Shorthand syntax: \`config bio -u\`, \`config bio -p\`.`
+      description: `Edit user bio information for agent context.\n    --user: Set your bio across ALL projects\n    --project: Set your bio for THIS project only (personal, not shared)\n    Default: --project (most common use case)\n    Example: \`config bio --user\`, \`config bio --project\`.\n    Shorthand syntax: \`config bio -u\`, \`config bio -p\`.`
     })
   }
 
@@ -47,12 +47,12 @@ export class UserBioHandler extends CommandHandler {
     // Build prompt message
     let promptMessage: string
     if (isUserLevel) {
-      promptMessage = 'Enter your USER-level bio (used across all projects):'
+      promptMessage = 'Enter your bio for ALL projects (personal, applies everywhere):'
     } else {
-      promptMessage = `Enter your PROJECT-level bio for "${projectName}":`
+      promptMessage = `Enter your bio for project "${projectName}" only (personal, not shared with other users):`
       const userBio = this.services.user.getBio()
       if (userBio) {
-        promptMessage += `\n\nNote: Your USER-level bio will also be included:\n"${userBio}"`
+        promptMessage += `\n\nNote: Your global bio will also be included:\n"${userBio}"`
       }
     }
     
