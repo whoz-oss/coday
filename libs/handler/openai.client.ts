@@ -227,13 +227,16 @@ export class OpenaiClient extends AiClient {
       role: 'system',
     }
     const openaiMessages = messages
-      .map((msg) => {
+      .map((msg, index) => {
         let openaiMessage: ChatCompletionMessageParam | undefined
         if (msg instanceof MessageEvent) {
           const role = msg.role === 'assistant' ? 'system' : 'user'
+          const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
+          const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
+          
           openaiMessage = {
             role,
-            content: msg.content,
+            content,
             name: msg.role === 'user' ? msg.name : undefined,
           }
         }
