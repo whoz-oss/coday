@@ -36,9 +36,6 @@ scripts:
   compile:
     description: compile the typescript project to raise any issue on code correctness, it does not run the tests.
     command: yarn run nx run-many --target=build --all
-  test:
-    description: run all tests in the project using Jest
-    command: yarn test
   test-specific:
     description: run tests for a specific file or pattern
     command: yarn test PARAMETERS
