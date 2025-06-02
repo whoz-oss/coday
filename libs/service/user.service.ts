@@ -3,6 +3,7 @@ import { existsSync, mkdirSync } from 'fs'
 import { readYamlFile } from './read-yaml-file'
 import { writeYamlFile } from './write-yaml-file'
 import { DEFAULT_USER_CONFIG, UserConfig } from '../model/user-config'
+import { UserData } from '../model/user-data'
 import { IntegrationLocalConfig } from '../model'
 import * as os from 'node:os'
 
@@ -83,4 +84,48 @@ export class UserService {
     // Replaces non-alphanumeric characters with underscores
     return username.replace(/[^a-zA-Z0-9]/g, '_')
   }
+
+  public setBio(bio: string): void {
+    this.config.bio = bio?.trim() || undefined
+    this.save()
+  }
+
+  public getBio(): string | undefined {
+    return this.config.bio
+  }
+
+  // Project-level bio methods
+  public setProjectBio(projectName: string, bio: string): void {
+    if (!this.config.projects) {
+      this.config.projects = {}
+    }
+    if (!this.config.projects[projectName]) {
+      this.config.projects[projectName] = { integration: {} }
+    }
+    this.config.projects[projectName].bio = bio?.trim() || undefined
+    this.save()
+  }
+
+  public getProjectBio(projectName: string): string | undefined {
+    return this.config.projects?.[projectName]?.bio
+  }
+
+  // Combined bio (USER + PROJECT)
+  public getCombinedBio(projectName?: string): string | undefined {
+    const userBio = this.getBio()
+    const projectBio = projectName ? this.getProjectBio(projectName) : undefined
+    if (userBio && projectBio) {
+      return `${userBio}\n\n    Project context: ${projectBio}`
+    }
+    return projectBio || userBio
+  }
+
+  public getUserData(projectName?: string): UserData {
+    return {
+      username: this.username,
+      bio: this.getCombinedBio(projectName)
+    }
+  }
 }
+
+

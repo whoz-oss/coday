@@ -5,6 +5,7 @@ import { DefaultAgentHandler } from './default-agent.handler'
 import { McpConfigHandler } from './mcp-config/mcp-config.handler'
 import { Interactor, NestedHandler } from '../../model'
 import { CodayServices } from '../../coday-services'
+import { UserBioHandler } from './user-bio.handler'
 
 export class ConfigHandler extends NestedHandler {
   selectProjectHandler: SelectProjectHandler
@@ -28,6 +29,7 @@ export class ConfigHandler extends NestedHandler {
       new AiConfigHandler(this.interactor, this.services),
       new DefaultAgentHandler(this.interactor, this.services),
       new McpConfigHandler(this.interactor, this.services),
+      new UserBioHandler(this.interactor, this.services),
     ]
   }
 }

@@ -5,13 +5,14 @@ import * as path from 'node:path'
 import { findFilesByName } from '../function/find-files-by-name'
 import { getFormattedDocs } from '../function/get-formatted-docs'
 import { DEFAULT_CODAY_YAML } from './default-coday-yaml'
+import { UserData } from '../model/user-data'
 
 const CONFIG_FILENAME_YAML = 'coday.yaml'
 
 export const loadOrInitProjectDescription = async (
   projectPath: string,
   interactor: Interactor,
-  username: string
+  userData: UserData
 ): Promise<ProjectDescription> => {
   const foundFiles = await findFilesByName({ text: CONFIG_FILENAME_YAML, root: projectPath })
   let absoluteProjectDescriptionPath: string | null = null
@@ -45,7 +46,13 @@ export const loadOrInitProjectDescription = async (
       projectPath,
       CONFIG_FILENAME_YAML
     )
-    projectDescription.description += `\n\n## User\n\n    You are interacting with a human with username: ${username}`
+    // Enhanced user context building
+    let userContext = `\n\n## User\n\n    You are interacting with a human with username: ${userData.username}`
+
+    if (userData.bio) {
+      userContext += `\n\n    User bio: ${userData.bio}`
+    }
+    projectDescription.description += userContext
   }
 
   return projectDescription

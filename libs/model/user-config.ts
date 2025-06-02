@@ -21,6 +21,10 @@ export type UserProjectConfig = {
    * MCP (Model Context Protocol) server configurations overrides, for this user on this project
    */
   mcp?: McpConfig
+  /**
+   * Project-specific bio (optional)
+   */
+  bio?: string // Add project-specific bio
 }
 
 /**
@@ -38,6 +42,10 @@ export type UserProjectConfig = {
 export interface UserConfig {
   aiProviders: AiProviderLocalConfig
   /**
+   * User bio (optional)
+   */
+  bio?: string // Add this field
+  /**
    * Table of user-scoped project configuration
    */
   projects?: {
@@ -52,4 +60,5 @@ export interface UserConfig {
  */
 export const DEFAULT_USER_CONFIG: UserConfig = {
   aiProviders: {},
+  // bio is undefined by default
 }
