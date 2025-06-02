@@ -11,7 +11,7 @@
  */
 export function parseAgentCommand(command: string): [string, string] {
   // Format: @ followed by zero or more non-whitespace characters, optionally followed by whitespace and the rest
-  const match = command.match(/^@(\S*)(?:\s+(.*))?$/s)
+  const match = command.match(/^@(\S*)(?:\s+([\s\S]*))?$/)
   if (!match) return ['', command]
   const agentName = match[1]
   const restOfCommand = match[2] || ''
