@@ -171,6 +171,28 @@ export abstract class AiClient {
     return thread.runStatus === RunStatus.RUNNING && !this.killed
   }
 
+  /**
+   * Enhances the last user message with current date/time information.
+   * This provides transient temporal context that is always current,
+   * avoiding persistence issues and pattern copying problems.
+   * 
+   * @param content The original message content
+   * @param isLastUserMessage Whether this is the last user message in the thread
+   * @returns Enhanced content with date/time if applicable, otherwise original content
+   */
+  protected enhanceWithCurrentDateTime(content: string, isLastUserMessage: boolean): string {
+    if (!isLastUserMessage) return content
+    
+    const now = new Date()
+    const currentDate = now.toISOString().split('T')[0]
+    const currentTime = now.toLocaleTimeString('en-US', { 
+      hour12: false, 
+      timeZone: 'UTC' 
+    })
+    
+    return `${content}\n\n[Current date: ${currentDate}, time: ${currentTime} UTC]`
+  }
+
   protected showAgentAndUsage(agent: Agent, aiProvider: string, model: string, thread: AiThread): void {
     const agentPart = `🤖 ${agent.name} | ${aiProvider} - ${model}  \n`
     if (!thread.usage) return

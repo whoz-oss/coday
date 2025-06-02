@@ -156,10 +156,13 @@ export class AnthropicClient extends AiClient {
    */
   private toClaudeMessage(messages: ThreadMessage[]): MessageParam[] {
     return messages
-      .map((msg) => {
+      .map((msg, index) => {
         let claudeMessage: MessageParam | undefined
         if (msg instanceof MessageEvent) {
-          claudeMessage = { role: msg.role, content: msg.content }
+          const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
+          const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
+          
+          claudeMessage = { role: msg.role, content }
         }
         if (msg instanceof ToolRequestEvent) {
           claudeMessage = {
