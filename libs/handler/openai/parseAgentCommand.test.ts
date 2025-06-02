@@ -24,20 +24,10 @@ Du JSON: {"key": "value", "array": [1, 2, 3]}
 Du markdown: **bold** *italic* [link](url)
 Et encore plus de texte pour vraiment tester la robustesse du parsing.
 Ceci est la fin du très long texte de test.`
-    
+
     const input = `@AgentName ${longText}`
     const result = parseAgentCommand(input)
-    
-    // Debug info si le test échoue
-    if (result[1] !== longText) {
-      console.log('❌ MISMATCH in long text test:')
-      console.log('Expected length:', longText.length)
-      console.log('Actual length:', result[1].length)
-      console.log('Input length:', input.length)
-      console.log('First 50 chars expected:', JSON.stringify(longText.substring(0, 50)))
-      console.log('First 50 chars actual:', JSON.stringify(result[1].substring(0, 50)))
-    }
-    
+
     expect(result).toEqual(['agentname', longText])
   })
 
