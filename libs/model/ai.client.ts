@@ -5,6 +5,7 @@ import { AiThread } from '../ai-thread/ai-thread'
 import { RunStatus } from '../ai-thread/ai-thread.types'
 import { Interactor } from './interactor'
 import { ModelSize } from './agent-definition'
+import { CodayLogger } from '../service/coday-logger'
 
 /**
  * Common abstraction over different AI provider APIs.
@@ -16,6 +17,8 @@ export abstract class AiClient {
   protected defaultModelSize: ModelSize = ModelSize.BIG
   protected thinkingInterval: number = 3000
   protected charsPerToken: number = 3.5 // should be 4, some margin baked in to avoid overshoot on tool call
+  protected logger?: CodayLogger
+  protected username?: string
 
   /**
    * Run the AI with the given configuration and thread context.
@@ -175,21 +178,21 @@ export abstract class AiClient {
    * Enhances the last user message with current date/time information.
    * This provides transient temporal context that is always current,
    * avoiding persistence issues and pattern copying problems.
-   * 
+   *
    * @param content The original message content
    * @param isLastUserMessage Whether this is the last user message in the thread
    * @returns Enhanced content with date/time if applicable, otherwise original content
    */
   protected enhanceWithCurrentDateTime(content: string, isLastUserMessage: boolean): string {
     if (!isLastUserMessage) return content
-    
+
     const now = new Date()
     const currentDate = now.toISOString().split('T')[0]
-    const currentTime = now.toLocaleTimeString('en-US', { 
-      hour12: false, 
-      timeZone: 'UTC' 
+    const currentTime = now.toLocaleTimeString('en-US', {
+      hour12: false,
+      timeZone: 'UTC',
     })
-    
+
     return `${content}\n\n[Current date: ${currentDate}, time: ${currentTime} UTC]`
   }
 
@@ -205,5 +208,27 @@ export abstract class AiClient {
 
   protected getModelSize(agent: Agent): ModelSize {
     return agent.definition.modelSize ?? this.defaultModelSize
+  }
+
+  /**
+   * Set the usage logger for this AI client
+   */
+  setLogger(logger: CodayLogger, username: string): void {
+    this.logger = logger
+    this.username = username
+  }
+
+  /**
+   * Log agent usage after a complete response cycle
+   */
+  protected async logAgentUsage(agent: Agent, model: string, cost: number): Promise<void> {
+    if (!this.logger || !this.username) return
+
+    try {
+      await this.logger.logAgentUsage(this.username, agent.name, model, cost)
+    } catch (error) {
+      // Silent failure - logging should never disrupt the main flow
+      console.warn('Failed to log agent usage:', error)
+    }
   }
 }

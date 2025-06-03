@@ -52,6 +52,10 @@ export class AnthropicClient extends AiClient {
     this.processThread(anthropic, agent, thread, outputSubject).finally(() => {
       clearInterval(thinking)
       this.showAgentAndUsage(agent, 'Anthropic', AnthropicModels[this.getModelSize(agent)].name, thread)
+      // Log usage after the complete response cycle
+      const model = AnthropicModels[this.getModelSize(agent)]
+      const cost = thread.usage?.price || 0
+      this.logAgentUsage(agent, model.name, cost)
       outputSubject.complete()
     })
     return outputSubject

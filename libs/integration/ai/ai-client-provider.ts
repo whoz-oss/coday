@@ -3,6 +3,7 @@ import { OpenaiClient } from '../../handler/openai.client'
 import { AnthropicClient } from '../../handler/anthropic.client'
 import { UserService } from '../../service/user.service'
 import { ProjectService } from '../../service/project.service'
+import { CodayLogger } from '../../service/coday-logger'
 
 /**
  * Environment variable names for each provider.
@@ -41,7 +42,8 @@ export class AiClientProvider {
   constructor(
     private readonly interactor: Interactor,
     private userService: UserService,
-    private projectService: ProjectService
+    private projectService: ProjectService,
+    private logger: CodayLogger
   ) {}
 
   /**
@@ -104,10 +106,14 @@ export class AiClientProvider {
     switch (provider) {
       case 'anthropic':
         if (!apiKey) return undefined
-        return new AnthropicClient(this.interactor, apiKey)
+        const anthropicClient = new AnthropicClient(this.interactor, apiKey)
+        anthropicClient.setLogger(this.logger, this.userService.username)
+        return anthropicClient
       case 'openai':
         if (!apiKey) return undefined
-        return new OpenaiClient('OpenAI', this.interactor, apiKey)
+        const openaiClient = new OpenaiClient('OpenAI', this.interactor, apiKey)
+        openaiClient.setLogger(this.logger, this.userService.username)
+        return openaiClient
       case 'google':
         if (!apiKey) return undefined
 
@@ -134,7 +140,7 @@ export class AiClientProvider {
         }
 
         // Leveraging Google Gemini enabling use of Openai SDK for beta
-        return new OpenaiClient(
+        const geminiClient = new OpenaiClient(
           'Google Gemini',
           this.interactor,
           apiKey,
@@ -142,6 +148,8 @@ export class AiClientProvider {
           geminiModels,
           'Google'
         )
+        geminiClient.setLogger(this.logger, this.userService.username)
+        return geminiClient
       case 'localLlm':
         const config = this.userService.config.aiProviders.localLlm
         console.log('localLlm config', config)
@@ -169,7 +177,7 @@ export class AiClientProvider {
           },
         }
 
-        return new OpenaiClient(
+        const localClient = new OpenaiClient(
           'Local LLM',
           this.interactor,
           apiKey ?? 'no_api_key_for_local_llm',
@@ -177,6 +185,8 @@ export class AiClientProvider {
           localModels,
           'Local'
         )
+        localClient.setLogger(this.logger, this.userService.username)
+        return localClient
     }
   }
 }
