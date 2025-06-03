@@ -1,3 +1,19 @@
+## 0.11.0 (2025-06-03)
+
+### 🚀 Features
+
+- add user bio feature with user/project levels for personalized agent context ([#104](https://github.com/biznet-io/coday/pull/104))
+- add transient date/time injection for agent context ([#105](https://github.com/biznet-io/coday/pull/105))
+- #106 add usage logging with daily file granularity ([#108](https://github.com/biznet-io/coday/pull/108), [#106](https://github.com/biznet-io/coday/issues/106))
+
+### 🩹 Fixes
+
+- agent selection with multiline input ([#107](https://github.com/biznet-io/coday/pull/107))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.10.0 (2025-05-23)
 
 ### 🚀 Features
