@@ -52,7 +52,7 @@ describe('UsageLogger', () => {
   })
 
   describe('when logging is enabled', () => {
-    it('should create monthly log files with correct format', async () => {
+    it('should create daily log files with correct format', async () => {
       const logger = new UsageLogger(true, testLogDir, 100) // Very short flush interval for testing
       
       await logger.logAgentUsage('test-user', 'Dev', 'gpt-4o', 0.05)
@@ -66,8 +66,12 @@ describe('UsageLogger', () => {
       const jsonlFiles = files.filter(f => f.endsWith('.jsonl'))
       expect(jsonlFiles).toHaveLength(1)
       
-      // Check file name format (YYYY-MM.jsonl)
-      const expectedFileName = new Date().toISOString().slice(0, 7) + '.jsonl'
+      // Check file name format (YYYY-MM-DD.jsonl)
+      const now = new Date()
+      const year = now.getFullYear()
+      const month = String(now.getMonth() + 1).padStart(2, '0')
+      const day = String(now.getDate()).padStart(2, '0')
+      const expectedFileName = `${year}-${month}-${day}.jsonl`
       expect(jsonlFiles[0]).toBe(expectedFileName)
       
       // Check file content

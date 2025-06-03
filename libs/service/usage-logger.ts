@@ -4,7 +4,7 @@ import * as os from 'os'
 
 /**
  * Simple usage logger for AI agent interactions
- * Logs to monthly JSONL files when logging is enabled
+ * Logs to daily JSONL files when logging is enabled
  * Uses buffering to avoid concurrent file access issues
  */
 export class UsageLogger {
@@ -48,13 +48,14 @@ export class UsageLogger {
   }
 
   /**
-   * Get the current month's log file path
+   * Get the current day's log file path
    */
   private getLogFilePath(): string {
     const now = new Date()
     const year = now.getFullYear()
     const month = String(now.getMonth() + 1).padStart(2, '0')
-    const filename = `${year}-${month}.jsonl`
+    const day = String(now.getDate()).padStart(2, '0')
+    const filename = `${year}-${month}-${day}.jsonl`
     return path.join(this.logFolder, filename)
   }
 
