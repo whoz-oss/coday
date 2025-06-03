@@ -3,7 +3,7 @@ import { OpenaiClient } from '../../handler/openai.client'
 import { AnthropicClient } from '../../handler/anthropic.client'
 import { UserService } from '../../service/user.service'
 import { ProjectService } from '../../service/project.service'
-import { UsageLogger } from '../../service/usage-logger'
+import { CodayLogger } from '../../service/coday-logger'
 
 /**
  * Environment variable names for each provider.
@@ -43,7 +43,7 @@ export class AiClientProvider {
     private readonly interactor: Interactor,
     private userService: UserService,
     private projectService: ProjectService,
-    private usageLogger: UsageLogger
+    private logger: CodayLogger
   ) {}
 
   /**
@@ -107,12 +107,12 @@ export class AiClientProvider {
       case 'anthropic':
         if (!apiKey) return undefined
         const anthropicClient = new AnthropicClient(this.interactor, apiKey)
-        anthropicClient.setUsageLogger(this.usageLogger, this.userService.username)
+        anthropicClient.setLogger(this.logger, this.userService.username)
         return anthropicClient
       case 'openai':
         if (!apiKey) return undefined
         const openaiClient = new OpenaiClient('OpenAI', this.interactor, apiKey)
-        openaiClient.setUsageLogger(this.usageLogger, this.userService.username)
+        openaiClient.setLogger(this.logger, this.userService.username)
         return openaiClient
       case 'google':
         if (!apiKey) return undefined
@@ -148,7 +148,7 @@ export class AiClientProvider {
           geminiModels,
           'Google'
         )
-        geminiClient.setUsageLogger(this.usageLogger, this.userService.username)
+        geminiClient.setLogger(this.logger, this.userService.username)
         return geminiClient
       case 'localLlm':
         const config = this.userService.config.aiProviders.localLlm
@@ -185,7 +185,7 @@ export class AiClientProvider {
           localModels,
           'Local'
         )
-        localClient.setUsageLogger(this.usageLogger, this.userService.username)
+        localClient.setLogger(this.logger, this.userService.username)
         return localClient
     }
   }

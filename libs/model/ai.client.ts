@@ -5,7 +5,7 @@ import { AiThread } from '../ai-thread/ai-thread'
 import { RunStatus } from '../ai-thread/ai-thread.types'
 import { Interactor } from './interactor'
 import { ModelSize } from './agent-definition'
-import { UsageLogger } from '../service/usage-logger'
+import { CodayLogger } from '../service/coday-logger'
 
 /**
  * Common abstraction over different AI provider APIs.
@@ -17,7 +17,7 @@ export abstract class AiClient {
   protected defaultModelSize: ModelSize = ModelSize.BIG
   protected thinkingInterval: number = 3000
   protected charsPerToken: number = 3.5 // should be 4, some margin baked in to avoid overshoot on tool call
-  protected usageLogger?: UsageLogger
+  protected logger?: CodayLogger
   protected username?: string
 
   /**
@@ -213,8 +213,8 @@ export abstract class AiClient {
   /**
    * Set the usage logger for this AI client
    */
-  setUsageLogger(usageLogger: UsageLogger, username: string): void {
-    this.usageLogger = usageLogger
+  setLogger(logger: CodayLogger, username: string): void {
+    this.logger = logger
     this.username = username
   }
 
@@ -222,10 +222,10 @@ export abstract class AiClient {
    * Log agent usage after a complete response cycle
    */
   protected async logAgentUsage(agent: Agent, model: string, cost: number): Promise<void> {
-    if (!this.usageLogger || !this.username) return
+    if (!this.logger || !this.username) return
 
     try {
-      await this.usageLogger.logAgentUsage(this.username, agent.name, model, cost)
+      await this.logger.logAgentUsage(this.username, agent.name, model, cost)
     } catch (error) {
       // Silent failure - logging should never disrupt the main flow
       console.warn('Failed to log agent usage:', error)

@@ -6,7 +6,7 @@ import { AnswerEvent } from '@coday/coday-events'
 import { parseCodayOptions } from '@coday/options'
 import * as os from 'node:os'
 import { debugLog } from './log'
-import { UsageLogger } from '@coday/service/usage-logger'
+import { CodayLogger } from '@coday/service/coday-logger'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000
@@ -55,7 +55,7 @@ debugLog('INIT', 'Coday options:', codayOptions)
 // Create single usage logger instance for all clients
 // Logging is enabled when --log flag is used and not in no-auth mode
 const loggingEnabled = codayOptions.log || !codayOptions.noAuth
-const usageLogger = new UsageLogger(loggingEnabled, codayOptions.logFolder)
+const logger = new CodayLogger(loggingEnabled, codayOptions.logFolder)
 debugLog(
   'INIT',
   `Usage logging ${loggingEnabled ? 'enabled' : 'disabled'} ${codayOptions.logFolder ? `(custom folder: ${codayOptions.logFolder})` : ''}`
@@ -72,7 +72,7 @@ app.get('/', (req: express.Request, res: express.Response) => {
 app.use(express.json())
 
 // Initialize the client manager with usage logger
-const clientManager = new ServerClientManager(usageLogger)
+const clientManager = new ServerClientManager(logger)
 
 // POST endpoint for stopping the current run
 app.post('/api/stop', (req: express.Request, res: express.Response) => {

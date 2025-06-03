@@ -7,7 +7,7 @@ import * as os from 'os'
  * Logs to daily JSONL files when logging is enabled
  * Uses buffering to avoid concurrent file access issues
  */
-export class UsageLogger {
+export class CodayLogger {
   private enabled: boolean
   private logFolder: string
   private buffer: any[] = []
@@ -74,7 +74,7 @@ export class UsageLogger {
       await fs.appendFile(filePath, lines, 'utf8')
     } catch (error) {
       // Silent failure - logging errors should never disrupt service
-      console.warn('UsageLogger: Failed to flush log entries:', error)
+      console.warn('Logger: Failed to flush log entries:', error)
     }
   }
 

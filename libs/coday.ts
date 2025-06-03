@@ -44,7 +44,12 @@ export class Coday {
       this.context.aiThread = aiThread
       this.replayThread(aiThread)
     })
-    this.aiClientProvider = new AiClientProvider(this.interactor, this.services.user, this.services.project, this.services.usageLogger)
+    this.aiClientProvider = new AiClientProvider(
+      this.interactor,
+      this.services.user,
+      this.services.project,
+      this.services.logger
+    )
   }
 
   /**
