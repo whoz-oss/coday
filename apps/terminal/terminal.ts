@@ -8,6 +8,7 @@ import { ProjectService } from '@coday/service/project.service'
 import { IntegrationService } from '@coday/service/integration.service'
 import { MemoryService } from '@coday/service/memory.service'
 import { McpConfigService } from '@coday/service/mcp-config.service'
+import { UsageLogger } from '@coday/service/usage-logger'
 
 const options = parseCodayOptions()
 
@@ -20,6 +21,9 @@ const project = new ProjectService(interactor, options.configDir)
 const integration = new IntegrationService(project, user)
 const memory = new MemoryService(project, user)
 const mcp = new McpConfigService(user, project, interactor)
+// Logging is enabled when --log flag is used and not in no-auth mode
+const loggingEnabled = options.log && !options.noAuth
+const usageLogger = new UsageLogger(loggingEnabled, options.logFolder)
 
 // Setup cleanup for terminal interactor when process exits
 if (interactor instanceof TerminalInteractor) {
@@ -41,4 +45,5 @@ new Coday(interactor, options, {
   integration,
   memory,
   mcp,
+  usageLogger,
 }).run()

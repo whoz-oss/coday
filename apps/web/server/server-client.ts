@@ -10,6 +10,7 @@ import { ProjectService } from '@coday/service/project.service'
 import { IntegrationService } from '@coday/service/integration.service'
 import { MemoryService } from '@coday/service/memory.service'
 import { McpConfigService } from '@coday/service/mcp-config.service'
+import { UsageLogger } from '@coday/service/usage-logger'
 import { debugLog } from './log'
 
 export class ServerClient {
@@ -26,7 +27,8 @@ export class ServerClient {
     private response: Response,
     private readonly interactor: ServerInteractor,
     private readonly options: CodayOptions,
-    private readonly username: string
+    private readonly username: string,
+    private readonly usageLogger: UsageLogger
   ) {
     // Subscribe to interactor events
     this.subscription = this.interactor.events.subscribe((event) => {
@@ -89,6 +91,7 @@ export class ServerClient {
       integration,
       memory,
       mcp,
+      usageLogger: this.usageLogger,
     })
     this.coday.run().finally(() => {
       debugLog('CODAY', `Coday run finished for client ${this.clientId}`)
@@ -204,11 +207,13 @@ export class ServerClient {
   }
 }
 
-/*2*
+/**
  * Manages all active server clients
  */
 export class ServerClientManager {
   private readonly clients: Map<string, ServerClient> = new Map()
+
+  constructor(private readonly usageLogger: UsageLogger) {}
 
   /**
    * Get or create a client for the given clientId
@@ -221,7 +226,7 @@ export class ServerClientManager {
     }
 
     const interactor = new ServerInteractor(clientId)
-    const client = new ServerClient(clientId, response, interactor, options, username)
+    const client = new ServerClient(clientId, response, interactor, options, username, this.usageLogger)
     this.clients.set(clientId, client)
     return client
   }
