@@ -7,6 +7,7 @@ import { Interactor } from './interactor'
 import { AiModel } from './ai-model'
 import { AiProviderConfig } from './ai-provider-config'
 import { CodayLogger } from '../service/coday-logger'
+import { MessageContent } from '../coday-events'
 
 export interface CompletionOptions {
   model?: string
@@ -302,7 +303,10 @@ It can be summarized as:
    * @param isLastUserMessage Whether this is the last user message in the thread
    * @returns Enhanced content with date/time if applicable, otherwise original content
    */
-  protected enhanceWithCurrentDateTime(content: string, isLastUserMessage: boolean): string {
+  protected enhanceWithCurrentDateTime(
+    content: string | MessageContent[],
+    isLastUserMessage: boolean
+  ): string | MessageContent[] {
     if (!isLastUserMessage) return content
 
     const now = new Date()
@@ -312,8 +316,24 @@ It can be summarized as:
       timeZone: 'UTC',
     })
     const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'long' })
-
-    return `${content}\n\n[Current date: ${currentDate} (${dayOfWeek}), time: ${currentTime} UTC]`
+    const dateInfo = `\n\n[Current date: ${currentDate} (${dayOfWeek}, time: ${currentTime} UTC)]`
+    if (typeof content === 'string') {
+      return `${content}${dateInfo}`
+    } else {
+      const contentArray = [...content]
+      // need to find the last text content, if any, to clone and add the date info
+      let found = false
+      let i = contentArray.length - 1
+      while (!found && i >= 0) {
+        if (contentArray[i].type === 'text') {
+          const textContent = contentArray[i] as any
+          contentArray[i] = { type: 'text', text: `${textContent.text}${dateInfo}` }
+          found = true
+        }
+        i--
+      }
+      return contentArray
+    }
   }
 
   protected showAgentAndUsage(agent: Agent, aiProvider: string, model: string, thread: AiThread): void {

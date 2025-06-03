@@ -67,9 +67,9 @@ export class Coday {
     for (const message of sortedMessages) {
       if (message instanceof MessageEvent) {
         if (message.role === 'assistant') {
-          this.interactor.sendEvent(new TextEvent({ ...message, speaker: message.name, text: message.content }))
+          this.interactor.sendEvent(new TextEvent({ ...message, speaker: message.name, text: message.getTextContent() }))
         } else {
-          this.interactor.sendEvent(new AnswerEvent({ ...message, answer: message.content, invite: message.name }))
+          this.interactor.sendEvent(new AnswerEvent({ ...message, answer: message.getTextContent(), invite: message.name }))
         }
       } else if (message instanceof ToolRequestEvent || message instanceof ToolResponseEvent) {
         this.interactor.sendEvent(message)

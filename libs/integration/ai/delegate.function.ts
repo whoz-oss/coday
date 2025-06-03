@@ -41,7 +41,7 @@ The parent conversation (all previous messages) is there for context, but your c
           if (e instanceof MessageEvent) {
             event = new MessageEvent({ ...e, name: `-> ${e.name}` })
             // if (!e.name.startsWith("->")) {
-            interactor.displayText(e.content, (event as MessageEvent).name)
+            interactor.displayText(e.getTextContent(), (event as MessageEvent).name)
             // }
           }
           interactor.sendEvent(event)

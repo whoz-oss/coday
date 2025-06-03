@@ -224,8 +224,33 @@ export class AnthropicClient extends AiClient {
 
         if (msg instanceof MessageEvent) {
           const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
-          const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
-
+          const message = msg as MessageEvent
+          const content = this.enhanceWithCurrentDateTime(message.content, isLastUserMessage)
+          const claudeContent: string | Anthropic.ContentBlockParam[] =
+            typeof content === 'string'
+              ? content
+              : content
+                  .map((c) => {
+                    if (c.type === 'text') {
+                      // Coday TextContent already matches the Claude type, how convenient...
+                      return c
+                    }
+                    if (c.type === 'image') {
+                      // Convert Coday ImageContent to Claude ImageBlockParam
+                      const imageBlock: Anthropic.ContentBlockParam = {
+                        type: 'image',
+                        source: {
+                          type: 'base64',
+                          media_type: c.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+                          data: c.data,
+                        },
+                      }
+                      return imageBlock
+                    }
+                    // Fallback for unknown content types
+                    throw new Error(`Unknown content type: ${(c as any).type}`)
+                  })
+                  .filter(Boolean)
           // Structure message with content blocks for cache_control support
           claudeMessage = {
             role: msg.role,

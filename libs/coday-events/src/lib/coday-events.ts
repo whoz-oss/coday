@@ -211,7 +211,7 @@ export class ThinkingEvent extends CodayEvent {
 export class MessageEvent extends CodayEvent {
   role: 'user' | 'assistant'
   name: string
-  content: string
+  content: string | MessageContent[]
   static override type = 'message'
 
   constructor(event: Partial<MessageEvent>) {
@@ -219,8 +219,69 @@ export class MessageEvent extends CodayEvent {
     this.role = event.role!
     this.name = event.name!
     this.content = event.content!
-    this.length = this.content.length + this.role.length + this.name.length + 20 // made up number for ", : and {}
+    if (typeof this.content === 'string') {
+      this.length = this.content.length + this.role.length + this.name.length + 20 // made up number for ", : and {}
+    } else {
+      this.length = this.content
+        .map((content) => {
+          if (content.type === 'text') {
+            return content.text.length
+          }
+          if (content.type === 'image') {
+            const tokens = ((content.width || 0) * (content.height || 0)) / 750
+            return tokens ? tokens * 3.5 : content.data.length
+          }
+          return 0
+        })
+        .reduce((sum, length) => sum + length, 0)
+    }
   }
+
+  /**
+   * Get the text content as a string, combining all text parts if it's rich content
+   */
+  getTextContent(): string {
+    if (typeof this.content === 'string') {
+      return this.content
+    }
+    return this.content
+      .filter((c) => c.type === 'text')
+      .map((c) => (c as TextContent).text)
+      .join(' ')
+  }
+
+  /**
+   * Get all image content from the message
+   */
+  getImageContent(): ImageContent[] {
+    if (typeof this.content === 'string') {
+      return []
+    }
+    return this.content.filter((c) => c.type === 'image') as ImageContent[]
+  }
+
+  /**
+   * Check if the message contains images
+   */
+  hasImages(): boolean {
+    return this.getImageContent().length > 0
+  }
+}
+
+export type MessageContent = TextContent | ImageContent
+
+export type TextContent = {
+  type: 'text'
+  text: string
+}
+
+export type ImageContent = {
+  type: 'image'
+  data: string
+  mimeType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+  source?: string
+  width?: number
+  height?: number
 }
 
 // Exposing a map of event types to their corresponding classes

@@ -112,7 +112,7 @@ export class AiHandler extends CommandHandler implements Killable {
       next: (event) => {
         this.interactor.sendEvent(event)
         if (event instanceof MessageEvent) {
-          this.interactor.displayText(event.content, event.name)
+          this.interactor.displayText(event.getTextContent(), event.name)
         }
       },
       error: (error) => {

@@ -247,14 +247,44 @@ export class OpenaiClient extends AiClient {
       .map((msg, index) => {
         let openaiMessage: ChatCompletionMessageParam | undefined
         if (msg instanceof MessageEvent) {
-          const role = msg.role === 'assistant' ? 'system' : 'user'
           const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
           const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
 
-          openaiMessage = {
-            role,
-            content,
-            name: msg.role === 'user' ? msg.name : undefined,
+          // Convert rich content to OpenAI format
+          const openaiContent: string | OpenAI.ChatCompletionContentPart[] =
+            typeof content === 'string'
+              ? content
+              : content.map((c) => {
+                  if (c.type === 'text') {
+                    return { type: 'text' as const, text: c.text }
+                  }
+                  if (c.type === 'image') {
+                    return {
+                      type: 'image_url' as const,
+                      image_url: {
+                        url: `data:${c.mimeType};base64,${c.data}`,
+                        detail: 'auto' as const, // Let OpenAI choose the appropriate detail level
+                      },
+                    }
+                  }
+                  throw new Error(`Unknown content type: ${(c as any).type}`)
+                })
+
+          if (msg.role === 'assistant') {
+            openaiMessage = {
+              role: 'assistant' as const,
+              content:
+                typeof openaiContent === 'string'
+                  ? openaiContent
+                  : openaiContent.map((c) => (c.type === 'text' ? c.text : '[Image]')).join(' '),
+              name: agent.name,
+            }
+          } else {
+            openaiMessage = {
+              role: 'user' as const,
+              content: openaiContent,
+              name: msg.name,
+            }
           }
         }
         if (msg instanceof ToolRequestEvent) {
@@ -315,9 +345,15 @@ export class OpenaiClient extends AiClient {
 
   private toAssistantMessage(m: ThreadMessage): MessageCreateParams {
     if (m instanceof MessageEvent) {
+      // For assistant API, convert rich content to text representation
+      const content =
+        typeof m.content === 'string'
+          ? m.content
+          : m.getTextContent() + (m.hasImages() ? ` [${m.getImageContent().length} image(s) attached]` : '')
+
       return {
         role: m.role,
-        content: m.content,
+        content,
       }
     }
     if (m instanceof ToolResponseEvent) {
