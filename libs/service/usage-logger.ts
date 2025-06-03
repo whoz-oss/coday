@@ -15,7 +15,7 @@ export class UsageLogger {
 
   constructor(enabled: boolean = false, customLogFolder?: string, flushIntervalMs = 5000) {
     this.enabled = enabled
-    this.logFolder = customLogFolder || path.join(os.homedir(), '.coday', 'logs', 'usage')
+    this.logFolder = customLogFolder || path.join(os.homedir(), '.coday', 'logs')
 
     // Only start flushing if logging is enabled
     if (enabled) {
