@@ -13,6 +13,8 @@ export interface Argv {
   fileReadOnly?: boolean
   local?: boolean
   agentFolders?: string[]
+  log?: boolean
+  log_folder?: string
   _: (string | number)[]
   $0: string
 }
@@ -27,6 +29,8 @@ export interface CodayOptions {
   configDir?: string
   noAuth: boolean
   agentFolders: string[]
+  log: boolean
+  logFolder?: string
 }
 
 /**
@@ -71,6 +75,14 @@ export function parseCodayOptions(): CodayOptions {
       description: 'Additional folders where agent definitions can be found',
       alias: 'af',
     })
+    .option('log', {
+      type: 'boolean',
+      description: 'Enable usage logging',
+    })
+    .option('log-folder', {
+      type: 'string',
+      description: 'Custom folder for log files (defaults to ~/.coday/logs)',
+    })
     .option('debug', {
       type: 'boolean',
       description: 'Sets debug right at startup',
@@ -84,6 +96,8 @@ export function parseCodayOptions(): CodayOptions {
   const configDir: string | undefined = argv.coday_config_dir
   const noAuth: boolean = !!argv.no_auth
   const debug: boolean = !!argv.debug
+  const log: boolean = !!argv.log
+  const logFolder: string | undefined = argv.log_folder
 
   // If --local is set, use current directory name as project
   if (argv.local) {
@@ -100,5 +114,7 @@ export function parseCodayOptions(): CodayOptions {
     configDir,
     noAuth,
     agentFolders: (argv.agentFolders || []) as string[],
+    log,
+    logFolder,
   }
 }

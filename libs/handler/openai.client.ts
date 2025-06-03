@@ -75,6 +75,10 @@ export class OpenaiClient extends AiClient {
     this.processThread(openai, agent, thread, outputSubject).finally(() => {
       clearInterval(thinking)
       this.showAgentAndUsage(agent, this.providerName, this.models[this.getModelSize(agent)].name, thread)
+      // Log usage after the complete response cycle
+      const model = this.models[this.getModelSize(agent)]
+      const cost = thread.usage?.price || 0
+      this.logAgentUsage(agent, model.name, cost)
       outputSubject.complete()
     })
     return outputSubject
@@ -114,6 +118,10 @@ export class OpenaiClient extends AiClient {
       .finally(() => {
         clearInterval(thinking)
         this.showAgentAndUsage(agent, this.providerName, this.models[this.getModelSize(agent)].name, thread)
+        // Log usage after the complete response cycle
+        const model = this.models[this.getModelSize(agent)]
+        const cost = thread.usage?.price || 0
+        this.logAgentUsage(agent, model.name, cost)
         outputSubject.complete()
       })
     return outputSubject
