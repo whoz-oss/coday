@@ -31,6 +31,7 @@ jobs:
       - uses: biznet-io/github-actions/setup-working-directory@v1.2
       - name: Run tests
         run: |
+          cd ${{ env.WORKING_DIRECTORY }}
           npx nx affected --base=origin/${GITHUB_HEAD_REF} --head=HEAD --target="lint,test" --parallel=$NX_MAX_WORKERS
 
   build:
@@ -40,4 +41,5 @@ jobs:
       - uses: biznet-io/github-actions/setup-working-directory@v1.2
       - name: Build app
         run: |
+          cd ${{ env.WORKING_DIRECTORY }}
           npx nx run web:build --parallel=$NX_MAX_WORKERS

@@ -31,4 +31,5 @@ jobs:
       - uses: biznet-io/github-actions/setup-working-directory@v1.2
       - name: Build app
         run: |
+          cd ${{ env.WORKING_DIRECTORY }}
           npx nx run web:build --parallel=$NX_MAX_WORKERS

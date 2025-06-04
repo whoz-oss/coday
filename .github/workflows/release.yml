@@ -35,6 +35,7 @@ jobs:
       - uses: biznet-io/github-actions/setup-working-directory@v1.2
       - name: Publish release
         run: |
+          cd ${{ env.WORKING_DIRECTORY }}
           npm config set //${{ vars.NPM_REGISTRY }}/:_authToken=${{ secrets.NPM_ACCESS_TOKEN }}
           npx nx release publish --registry=https://${{ vars.NPM_REGISTRY }}
           npm config delete //${{ vars.NPM_REGISTRY }}/:_authToken
