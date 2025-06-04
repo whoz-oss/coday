@@ -8,6 +8,7 @@ import { ChatCompletionMessageParam, ChatCompletionSystemMessageParam } from 'op
 import { MessageCreateParams } from 'openai/resources/beta/threads/messages'
 import { AssistantStream } from 'openai/lib/AssistantStream'
 import { RunSubmitToolOutputsParams } from 'openai/resources/beta/threads/runs/runs'
+import { CodayLogger } from '../service/coday-logger'
 
 type AssistantThreadData = {
   threadId?: string
@@ -42,9 +43,10 @@ export class OpenaiClient extends AiClient {
 
   constructor(
     readonly interactor: Interactor,
-    aiProviderConfig: AiProviderConfig
+    aiProviderConfig: AiProviderConfig,
+    logger: CodayLogger
   ) {
-    super(aiProviderConfig)
+    super(aiProviderConfig, logger)
     this.mergeModels(OPENAI_DEFAULT_MODELS)
     if (aiProviderConfig.name.toLowerCase() !== 'openai') {
       this.models = aiProviderConfig.models ?? []
@@ -71,7 +73,6 @@ export class OpenaiClient extends AiClient {
       clearInterval(thinking)
       this.showAgentAndUsage(agent, this.aiProviderConfig.name, model.name, thread)
       // Log usage after the complete response cycle
-      const model = this.models[this.getModelSize(agent)]
       const cost = thread.usage?.price || 0
       this.logAgentUsage(agent, model.name, cost)
       outputSubject.complete()
@@ -114,7 +115,6 @@ export class OpenaiClient extends AiClient {
         clearInterval(thinking)
         this.showAgentAndUsage(agent, this.aiProviderConfig.name, model.name, thread)
         // Log usage after the complete response cycle
-        const model = this.models[this.getModelSize(agent)]
         const cost = thread.usage?.price || 0
         this.logAgentUsage(agent, model.name, cost)
         outputSubject.complete()
@@ -239,7 +239,7 @@ export class OpenaiClient extends AiClient {
           const role = msg.role === 'assistant' ? 'system' : 'user'
           const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
           const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
-          
+
           openaiMessage = {
             role,
             content,

@@ -19,10 +19,12 @@ export abstract class AiClient {
   protected killed: boolean = false
   protected thinkingInterval: number = 3000
   protected charsPerToken: number = 3.5 // should be 4, some margin baked in to avoid overshoot on tool call
-  protected logger?: CodayLogger
   protected username?: string
 
-  protected constructor(protected aiProviderConfig: AiProviderConfig) {
+  protected constructor(
+    protected aiProviderConfig: AiProviderConfig,
+    protected logger?: CodayLogger
+  ) {
     // merge the models in, ovewrite the models by aliases
     this.apiKey = aiProviderConfig.apiKey
   }

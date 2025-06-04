@@ -152,11 +152,11 @@ export class AiClientProvider {
     const config = { ...aiProviderConfig, apiKey }
     switch (aiProviderConfig.name.toLowerCase()) {
       case 'anthropic':
-        return new AnthropicClient(this.interactor, aiProviderConfig)
+        return new AnthropicClient(this.interactor, aiProviderConfig, this.logger)
       case 'google':
-        return new GoogleClient(this.interactor, aiProviderConfig)
+        return new GoogleClient(this.interactor, aiProviderConfig, this.logger)
       default:
-        return new OpenaiClient(this.interactor, config)
+        return new OpenaiClient(this.interactor, config, this.logger)
     }
   }
 }

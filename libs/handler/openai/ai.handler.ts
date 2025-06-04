@@ -78,7 +78,6 @@ export class AiHandler extends CommandHandler implements Killable {
     if (preferredAgent) {
       const agent = await this.agentService.findByName(preferredAgent, context)
       if (agent) {
-        this.interactor.displayText(`Selecting user default agent ${preferredAgent}`)
         this.interactor.debug(`Selected default agent: ${preferredAgent}`)
         return agent
       }
@@ -90,6 +89,8 @@ export class AiHandler extends CommandHandler implements Killable {
     const defaultAgent = await this.agentService.findByName('coday', context)
     if (!defaultAgent) {
       this.interactor.error('Critical failure: Cannot initialize default Coday agent!')
+    } else {
+      this.interactor.debug(`Selected default 'Coday' agent`)
     }
     return defaultAgent
   }

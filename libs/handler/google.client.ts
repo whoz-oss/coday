@@ -1,5 +1,6 @@
 import { OpenaiClient } from './openai.client'
 import { AiProviderConfig, Interactor } from '../model'
+import { CodayLogger } from '../service/coday-logger'
 
 export class GoogleClient extends OpenaiClient {
   models = [
@@ -25,11 +26,11 @@ export class GoogleClient extends OpenaiClient {
     },
   ]
 
-  constructor(interactor: Interactor, aiProviderConfig: AiProviderConfig) {
+  constructor(interactor: Interactor, aiProviderConfig: AiProviderConfig, logger: CodayLogger) {
     const config = {
       ...aiProviderConfig,
       url: aiProviderConfig.url || 'https://generativelanguage.googleapis.com/v1beta/openai/',
     }
-    super(interactor, config)
+    super(interactor, config, logger)
   }
 }

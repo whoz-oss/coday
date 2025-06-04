@@ -7,6 +7,7 @@ import { Observable, of, Subject } from 'rxjs'
 import { AiThread } from '../ai-thread/ai-thread'
 import { ThreadMessage } from '../ai-thread/ai-thread.types'
 import { TextBlockParam } from '@anthropic-ai/sdk/resources/messages'
+import { CodayLogger } from '../service/coday-logger'
 
 const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
   {
@@ -38,9 +39,10 @@ export class AnthropicClient extends AiClient {
 
   constructor(
     readonly interactor: Interactor,
-    aiProviderConfig: AiProviderConfig
+    aiProviderConfig: AiProviderConfig,
+    logger: CodayLogger
   ) {
-    super(aiProviderConfig)
+    super(aiProviderConfig, logger)
     this.name = 'Anthropic'
     this.mergeModels(ANTHROPIC_DEFAULT_MODELS)
   }
@@ -59,7 +61,6 @@ export class AnthropicClient extends AiClient {
       clearInterval(thinking)
       this.showAgentAndUsage(agent, 'Anthropic', model.name, thread)
       // Log usage after the complete response cycle
-      const model = AnthropicModels[this.getModelSize(agent)]
       const cost = thread.usage?.price || 0
       this.logAgentUsage(agent, model.name, cost)
       outputSubject.complete()
@@ -172,7 +173,7 @@ export class AnthropicClient extends AiClient {
         if (msg instanceof MessageEvent) {
           const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
           const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
-          
+
           claudeMessage = { role: msg.role, content }
         }
         if (msg instanceof ToolRequestEvent) {
