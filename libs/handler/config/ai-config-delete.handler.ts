@@ -1,4 +1,5 @@
 import { CommandHandler, CommandContext } from '../../model'
+import { parseArgs } from '../parse-args'
 import { Interactor } from '../../model/interactor'
 import { CodayServices } from '../../coday-services'
 import { ConfigLevel } from '../../model/config-level'
@@ -13,7 +14,7 @@ export class AiConfigDeleteHandler extends CommandHandler {
   ) {
     super({
       commandWord: 'delete',
-      description: 'Delete an AI provider configuration and all its models.',
+      description: 'Delete an AI provider configuration and all its models. User level is default, use --project/-p for project level.',
     })
   }
 
@@ -24,8 +25,8 @@ export class AiConfigDeleteHandler extends CommandHandler {
     }
 
     // Determine config level (user/project)
-    const lowerCmd = command.toLowerCase()
-    const isProject = lowerCmd.includes(' --project') || lowerCmd.includes(' -p')
+    const args = parseArgs(command, [{ key: 'project', alias: 'p' }])
+    const isProject = !!args.project
     const level = isProject ? ConfigLevel.PROJECT : ConfigLevel.USER
 
     // Get providers at this level
