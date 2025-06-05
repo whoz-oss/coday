@@ -3,7 +3,7 @@ import { Interactor } from '../../model/interactor'
 import { CodayServices } from '../../coday-services'
 import { ConfigLevel } from '../../model/config-level'
 import { AiModel } from '../../model/ai-model'
-import { parseAiModelHandlerArgs } from './parse-ai-model-handler-args'
+import { parseArgs } from '../parse-args'
 
 /**
  * Handler for editing a single model of a provider config at a precise level (default user).
@@ -16,7 +16,7 @@ export class AiModelEditHandler extends CommandHandler {
   ) {
     super({
       commandWord: 'edit',
-      description: 'Edit a model of an AI provider configuration (default user level).',
+      description: 'Edit a model of an AI provider configuration. Use --provider=name, --model=name, --project/-p for project level.',
     })
   }
 
@@ -26,65 +26,60 @@ export class AiModelEditHandler extends CommandHandler {
       return context
     }
 
-    // Parse arguments after commandWord ("edit") using getSubCommand()
-    const args = this.getSubCommand(command)
-    let parsedArgs
-    try {
-      parsedArgs = parseAiModelHandlerArgs(args)
-    } catch (err: any) {
-      this.interactor.error(err.message)
-      return context
-    }
-    const isProject = parsedArgs.isProject
+    // Parse arguments using parseArgs
+    const subCommand = this.getSubCommand(command)
+    const args = parseArgs(subCommand, [
+      { key: 'provider' },
+      { key: 'model', alias: 'm' },
+      { key: 'project', alias: 'p' }
+    ])
+    const isProject = !!args.project
     const level = isProject ? ConfigLevel.PROJECT : ConfigLevel.USER
+    const providerName = typeof args.provider === 'string' ? args.provider : undefined
+    const modelName = typeof args.model === 'string' ? args.model : undefined
 
-    // Step 1: Choose provider, use arg if present
+    // Step 1: Choose provider (exact match)
     const providers = this.services.aiConfig.getProviders(level)
     if (!providers.length) {
       this.interactor.displayText(`No AI providers found at ${level} level.`)
       return context
     }
     const providerNames = providers.map((p) => p.name)
-    // Normalize for case-insensitive match
-    let providerNameInput = parsedArgs.aiProviderNameStart
-    let provider: (typeof providers)[0] | undefined
-    if (providerNameInput) {
-      provider = providers.find((p) => p.name.toLowerCase().startsWith(providerNameInput.toLowerCase()))
-    }
+    let provider = providerName
+      ? providers.find((p) => p.name === providerName)
+      : undefined
     if (!provider) {
       // If not matched, prompt interactively
-      const providerName = await this.interactor.chooseOption(
+      const chosen = await this.interactor.chooseOption(
         providerNames,
         `Select provider to edit its model at ${level} level:`
       )
-      if (!providerName) return context
-      provider = providers.find((p) => p.name === providerName)
+      if (!chosen) return context
+      provider = providers.find((p) => p.name === chosen)
     }
     if (!provider) {
       this.interactor.error('Selected provider not found at this level.')
       return context
     }
 
-    // Step 2: Choose model, use arg if present (case-insensitive)
+    // Step 2: Choose model (exact match)
     const models = provider.models || []
     if (!models.length) {
       this.interactor.displayText(`Provider '${provider.name}' has no models to edit.`)
       return context
     }
     const modelNames = models.map((m) => m.name)
-    let modelNameInput = parsedArgs.aiModelName
-    let model: (typeof models)[0] | undefined
-    if (modelNameInput) {
-      model = models.find((m) => m.name.toLowerCase().startsWith(modelNameInput.toLowerCase()))
-    }
+    let model = modelName
+      ? models.find((m) => m.name === modelName)
+      : undefined
     if (!model) {
       // Prompt if not found or not provided
-      const modelName = await this.interactor.chooseOption(
+      const chosen = await this.interactor.chooseOption(
         modelNames,
         `Select model to edit for provider '${provider.name}':`
       )
-      if (!modelName) return context
-      model = models.find((m) => m.name === modelName)
+      if (!chosen) return context
+      model = models.find((m) => m.name === chosen)
     }
     if (!model) {
       this.interactor.error('Selected model not found.')

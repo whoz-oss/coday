@@ -4,7 +4,7 @@ import { CodayServices } from '../../coday-services'
 import { AiModelEditHandler } from './ai-model-edit.handler'
 import { ConfigLevel } from '../../model/config-level'
 import { AiModel } from '../../model/ai-model'
-import { parseAiModelHandlerArgs } from './parse-ai-model-handler-args'
+import { parseArgs } from '../parse-args'
 
 /**
  * Handler for adding a new model to an AI provider config.
@@ -19,7 +19,7 @@ export class AiModelAddHandler extends CommandHandler {
   ) {
     super({
       commandWord: 'add',
-      description: 'Add a new model to an AI provider configuration and edit it.',
+      description: 'Add a new model to an AI provider configuration. Use --provider=name, --model=name (optional), --project/-p for project level.',
     })
   }
 
@@ -29,78 +29,69 @@ export class AiModelAddHandler extends CommandHandler {
       return context
     }
 
-    // Parse arguments using getSubCommand and parseAiModelHandlerArgs
-    const args = this.getSubCommand(command)
-    let parsedArgs
-    try {
-      parsedArgs = parseAiModelHandlerArgs(args)
-    } catch (err: any) {
-      this.interactor.error(err.message)
-      return context
-    }
-    const isProject = parsedArgs.isProject
+    // Parse arguments using parseArgs
+    const subCommand = this.getSubCommand(command)
+    const args = parseArgs(subCommand, [
+      { key: 'provider' },
+      { key: 'model', alias: 'm' },
+      { key: 'project', alias: 'p' }
+    ])
+    const isProject = !!args.project
     const level = isProject ? ConfigLevel.PROJECT : ConfigLevel.USER
+    const providerName = typeof args.provider === 'string' ? args.provider : undefined
+    const modelName = typeof args.model === 'string' ? args.model : undefined
 
-    // Step 1: Choose provider (use arg if present)
+    // Step 1: Choose provider (exact match)
     const providers = this.services.aiConfig.getProviders(level)
     if (!providers.length) {
       this.interactor.displayText(`No AI providers found at ${level} level.`)
       return context
     }
     const providerNames = providers.map((p) => p.name)
-    // Case-insensitive provider selection
-    let providerNameInput = parsedArgs.aiProviderNameStart
-    let provider: (typeof providers)[0] | undefined
-    if (providerNameInput) {
-      provider = providers.find((p) => 
-        p.name.toLowerCase().startsWith(providerNameInput.toLowerCase())
-      )
-    }
+    let provider = providerName
+      ? providers.find((p) => p.name === providerName)
+      : undefined
     if (!provider) {
       // If not matched, prompt interactively
-      const providerName = await this.interactor.chooseOption(
+      const chosen = await this.interactor.chooseOption(
         providerNames,
         `Select provider to add a model at ${level} level:`
       )
-      if (!providerName) return context
-      provider = providers.find((p) => p.name === providerName)
+      if (!chosen) return context
+      provider = providers.find((p) => p.name === chosen)
     }
     if (!provider) {
       this.interactor.error('Selected provider not found at this level.')
       return context
     }
 
-    // Step 2: Get model name (use arg if present)
-    let modelName = parsedArgs.aiModelName
-    if (!modelName) {
-      modelName = await this.interactor.promptText('Enter a unique model name (as per API):')
-      if (!modelName || !modelName.trim()) {
+    // Step 2: Get model name (exact match)
+    let _modelName = modelName
+    if (!_modelName) {
+      _modelName = await this.interactor.promptText('Enter a unique model name (as per API):')
+      if (!_modelName || !_modelName.trim()) {
         this.interactor.warn('Model name cannot be empty.')
         return context
       }
     }
     const models = provider.models || []
-    const duplicate = models.find(
-      (m) =>
-        m.name.toLowerCase().startsWith(modelName.toLowerCase()) ||
-        (m.alias && m.alias.toLowerCase().startsWith(modelName.toLowerCase()))
-    )
+    const duplicate = models.find((m) => m.name === _modelName || m.alias === _modelName)
     if (duplicate) {
-      this.interactor.warn(`A model with the name or alias '${modelName}' already exists for this provider.`)
+      this.interactor.warn(`A model with the name or alias '${_modelName}' already exists for this provider.`)
       return context
     }
 
     // Step 3: Create default model
     const defaultModel: AiModel = {
-      name: modelName,
+      name: _modelName,
       contextWindow: 32000,
     }
 
     // Step 4: Save new model
     await this.services.aiConfig.saveModel(provider.name, defaultModel, level)
 
-    // Step 5: Redirect to edit handler for full configuration; pass canonical names (case-preserved)
-    let editCmd = `${this.editHandler.commandWord} ${provider.name} ${modelName}`
+    // Step 5: Redirect to edit handler for full configuration
+    let editCmd = `${this.editHandler.commandWord} --provider=${provider.name} --model=${_modelName}`
     if (isProject) editCmd += ' --project'
     return this.editHandler.handle(editCmd.trim(), context)
   }

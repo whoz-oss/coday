@@ -2,6 +2,7 @@ import { CommandContext, CommandHandler } from '../../model'
 import { Interactor } from '../../model/interactor'
 import { CodayServices } from '../../coday-services'
 import { ConfigLevel } from '../../model/config-level'
+import { parseArgs } from '../parse-args'
 
 /**
  * Handler for deleting a model from a provider config.
@@ -13,7 +14,7 @@ export class AiModelDeleteHandler extends CommandHandler {
   ) {
     super({
       commandWord: 'delete',
-      description: 'Delete a model from an AI provider configuration.',
+      description: 'Delete a model from an AI provider configuration. Use --provider=name, --model=name, --project/-p for project level.',
     })
   }
 
@@ -23,68 +24,60 @@ export class AiModelDeleteHandler extends CommandHandler {
       return context
     }
 
-    // Parse arguments
-    const args = this.getSubCommand(command)
-    let parsedArgs
-    try {
-      // Use the same utility as the other handlers
-      const { parseAiModelHandlerArgs } = await import('./parse-ai-model-handler-args')
-      parsedArgs = parseAiModelHandlerArgs(args)
-    } catch (err: any) {
-      this.interactor.error(err.message)
-      return context
-    }
-    const isProject = parsedArgs.isProject
+    // Parse arguments using parseArgs
+    const subCommand = this.getSubCommand(command)
+    const args = parseArgs(subCommand, [
+      { key: 'provider' },
+      { key: 'model', alias: 'm' },
+      { key: 'project', alias: 'p' }
+    ])
+    const isProject = !!args.project
     const level = isProject ? ConfigLevel.PROJECT : ConfigLevel.USER
+    const providerName = typeof args.provider === 'string' ? args.provider : undefined
+    const modelName = typeof args.model === 'string' ? args.model : undefined
 
-    // Step 1: Get providers at level
+    // Step 1: Get providers at level (exact match)
     const providers = this.services.aiConfig.getProviders(level)
     if (!providers.length) {
       this.interactor.displayText(`No AI providers found at ${level} level.`)
       return context
     }
     const providerNames = providers.map((p) => p.name)
-    let providerNameInput = parsedArgs.aiProviderNameStart
-    let provider = providerNameInput
-      ? providers.find((p) => p.name.toLowerCase().startsWith(providerNameInput.toLowerCase()))
+    let provider = providerName
+      ? providers.find((p) => p.name === providerName)
       : undefined
     if (!provider) {
       // Prompt if not matched
-      const providerName = await this.interactor.chooseOption(
+      const chosen = await this.interactor.chooseOption(
         providerNames,
-        `Select provider to
-         delete a model
-         from at ${level} level :`
+        `Select provider to delete a model from at ${level} level:`
       )
-      if (!providerName) return context
-      provider = providers.find((p) => p.name === providerName)
+      if (!chosen) return context
+      provider = providers.find((p) => p.name === chosen)
     }
     if (!provider) {
       this.interactor.error('Selected provider not found at this level.')
       return context
     }
 
-    // Step 2: Get model from provider
+    // Step 2: Get model from provider (exact match)
     const models = provider.models || []
     if (!models.length) {
       this.interactor.displayText(`Provider '${provider.name}' has no models to delete.`)
       return context
     }
     const modelNames = models.map((m) => m.name)
-    let modelNameInput = parsedArgs.aiModelName
-    let model = modelNameInput
-      ? models.find((m) => m.name.toLowerCase().startsWith(modelNameInput.toLowerCase()))
+    let model = modelName
+      ? models.find((m) => m.name === modelName)
       : undefined
     if (!model) {
       // Prompt if not matched
-      const modelName = await this.interactor.chooseOption(
+      const chosen = await this.interactor.chooseOption(
         modelNames,
-        `Select model to
-         delete
-         from provider '${provider.name}':`
+        `Select model to delete from provider '${provider.name}':`
       )
-      if (!modelName) return context
-      model = models.find((m) => m.name === modelName)
+      if (!chosen) return context
+      model = models.find((m) => m.name === chosen)
     }
     if (!model) {
       this.interactor.error('Selected model not found.')
