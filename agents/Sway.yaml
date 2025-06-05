@@ -95,3 +95,4 @@ instructions: |
 mandatoryDocs:
   - ./doc/ARCHITECTURE.md
   - ./doc/DEV_WORKFLOW.md
+  - ./doc/HANDLER_DESING.md

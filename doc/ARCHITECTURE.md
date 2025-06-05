@@ -8,6 +8,8 @@ The user request flows through Coday's components:
 2. The `HandlerLooper` is charged to identify the correct handler to take the user request among several ones. The last one being the `AiHandler` that directs the request to an agent. Once handled, the 
 3. The selected `Agent` has through its supporting `AiClient` a loop of its own so the agent can come to a final answer after possibly many intermediate messages and tool calls (that can be nested agent calls).
 
+For detailed information about handler design patterns and implementation guidelines, see [Handler Design](HANDLER_DESIGN.md).
+
 ```mermaid
 graph LR
     subgraph "User Interfaces"
