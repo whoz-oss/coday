@@ -30,4 +30,4 @@ instructions: |
 mandatoryDocs:
   - ./doc/ARCHITECTURE.md
   - ./doc/DEV_WORKFLOW.md
-  - ./doc/HANDLER_DESING.md
+  - ./doc/HANDLER_DESIGN.md

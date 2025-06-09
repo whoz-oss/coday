@@ -79,6 +79,16 @@ prompts:
 
 ai:
   - name: anthropic
+    models:
+      - name: claude-opus-4-20250514
+        alias: BIGGER
+        contextWindow: 200000
+        price:
+          inputMTokens: 15
+          cacheWrite: 18.75
+          cacheRead: 1.5
+          outputMTokens: 75
+
   - name: openai
   - name: google
   - name: mistral
