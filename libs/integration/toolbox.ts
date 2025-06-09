@@ -24,7 +24,7 @@ export class Toolbox implements Killable {
     services: CodayServices,
     agentService: AgentService
   ) {
-    const mcps = services.mcp.getMergedConfiguration().mcpServers
+    const mcps = services.mcp.getMergedConfiguration().servers
     this.toolFactories = [
       new AiTools(interactor, agentService),
       new DelegateTools(interactor, agentService),

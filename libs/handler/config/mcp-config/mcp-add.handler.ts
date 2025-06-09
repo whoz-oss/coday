@@ -1,149 +1,85 @@
 import { CommandContext, CommandHandler, Interactor } from '../../../model'
 import { McpConfigService } from '../../../service/mcp-config.service'
 import { McpServerConfig } from '../../../model/mcp-server-config'
-import { cleanServerConfig, formatMcpConfig, mcpServerConfigToArgs, sanitizeMcpServerConfig } from './helpers'
+import { ConfigLevel } from '../../../model/config-level'
+import { parseArgs } from '../../parse-args'
+import { McpEditHandler } from './mcp-edit.handler'
 
+/**
+ * Handler for adding a new MCP server configuration.
+ * Creates a default config and delegates to the edit handler for completion.
+ * Follows the add-edit delegation pattern to avoid code duplication.
+ */
 export class McpAddHandler extends CommandHandler {
   constructor(
     private interactor: Interactor,
-    private service: McpConfigService
+    private service: McpConfigService,
+    private editHandler: McpEditHandler
   ) {
     super({
       commandWord: 'add',
-      description: 'Add a new MCP server configuration.',
+      description: 'Add a new MCP server configuration. User level is default, use --project/-p for project level.',
     })
   }
 
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
-    const subCommands = this.getSubCommand(command).split(' ')
+    // Parse arguments using parseArgs
+    const args = parseArgs(this.getSubCommand(command), [{ key: 'project', alias: 'p' }])
 
-    // Check if project level or user level
-    const isProjectLevel = subCommands.filter((c) => c === '--project' || c === '-p').length > 0
+    const isProject = !!args.project
+    const level = isProject ? ConfigLevel.PROJECT : ConfigLevel.USER
 
-    // Create a new server config with defaults
-    const serverConfig: McpServerConfig = {
-      id: '',
-      name: '',
-      enabled: true, // Enabled by default
-      args: [],
-      env: {},
+    // Get merged configuration to check for duplicates
+    const mergedConfig = this.service.getMergedConfiguration()
+
+    // Prompt for server ID and name
+    const serverId = await this.interactor.promptText('Enter a unique ID for the new MCP server:')
+
+    if (!serverId.trim()) {
+      this.interactor.error('Server ID is required')
+      return context
     }
 
-    // Display header information
-    const levelName = isProjectLevel ? 'project' : 'user'
-    this.interactor.displayText(`Adding a new ${levelName}-level MCP server configuration:`)
-    this.interactor.displayText('Note: Either URL or command must be provided, but not both.')
+    // Check for duplicate IDs across all levels
+    const isDuplicate = mergedConfig.servers.some((s) => s.id === serverId)
+    if (isDuplicate) {
+      this.interactor.warn(`Server ID '${serverId}' already exists. Cannot add duplicate.`)
+      return context
+    }
 
-    // Prompt for basic information
-    serverConfig.id = await this.interactor.promptText('ID of the MCP server', serverConfig.id)
-    serverConfig.name = await this.interactor.promptText('Name of the MCP server', '')
+    const serverName = await this.interactor.promptText('Enter a name for the new MCP server:')
 
-    // Validate name is provided
-    if (!serverConfig.name) {
+    if (!serverName.trim()) {
       this.interactor.error('Server name is required')
       return context
     }
 
-    // Transport type
-    const transportType = await this.interactor.chooseOption(
-      ['command', 'url'],
-      'Select transport type',
-      'command' // Default to command as it's currently the only supported option
-    )
-
-    if (transportType === 'url') {
-      serverConfig.url = await this.interactor.promptText('URL of the MCP server', '')
-      this.interactor.warn(
-        'Remote HTTP/HTTPS MCP servers are not currently supported. Using local command-based servers is recommended.'
-      )
-    } else {
-      serverConfig.command = await this.interactor.promptText('Command to execute the MCP server', '')
-
-      // Validate command is provided
-      if (!serverConfig.command) {
-        this.interactor.error('Command is required for command-based servers')
-        return context
-      }
-
-      // Arguments
-      const argsInput = await this.interactor.promptText('Arguments for the command (space-separated)', '')
-      serverConfig.args = argsInput ? argsInput.split(' ') : []
-
-      // Environment variables
-      const envInput = await this.interactor.promptText('Environment variables (format: KEY1=VALUE1 KEY2=VALUE2)', '')
-
-      // Parse environment variables
-      serverConfig.env = {}
-      if (envInput.trim()) {
-        envInput.split(' ').forEach((pair) => {
-          const [key, value] = pair.split('=')
-          if (key && value) {
-            serverConfig.env![key] = value
-          }
-        })
-      }
-
-      // Working directory
-      serverConfig.cwd = await this.interactor.promptText('Working directory (leave empty for default)', '')
+    // Create minimal default config
+    const defaultConfig: McpServerConfig = {
+      id: serverId,
+      name: serverName,
+      enabled: true,
+      command: '', // Will be filled in edit handler
+      args: [],
     }
 
-    // Authentication token
-    const authToken = await this.interactor.promptText('Authentication token (leave empty if not needed)', '')
-    if (authToken) {
-      serverConfig.authToken = authToken
-    }
+    // Save the default config at the specified level
+    await this.service.saveMcpServer(defaultConfig, level)
 
-    // Enabled status
-    const enabledChoice = await this.interactor.chooseOption(
-      ['true', 'false'],
-      'Enable this server?',
-      'true' // Default to enabled
-    )
-    serverConfig.enabled = enabledChoice === 'true'
+    const successMessage = `
+# ✅ MCP Server Created
 
-    // Allowed tools
-    const allowedToolsStr = await this.interactor.promptText(
-      'Allowed tools (comma-separated list, empty for all tools)',
-      ''
-    )
-    serverConfig.allowedTools = allowedToolsStr ? allowedToolsStr.split(',').map((tool) => tool.trim()) : undefined
+**Server:** ${serverName}  
+**ID:** \`${serverId}\`  
+**Level:** ${level.toLowerCase()}  
+**Status:** Default configuration created
 
-    // Debug flag
-    const debugChoice = await this.interactor.chooseOption(
-      ['false', 'true'],
-      'Enable MCP Inspector debugging for this server?',
-      'false' // Default is not debugging
-    )
-    serverConfig.debug = debugChoice === 'true'
+Now completing the configuration...
+`
+    this.interactor.displayText(successMessage)
 
-    // Clean the serverConfig by removing empty values
-    cleanServerConfig(serverConfig)
-
-    // Check if a server with the same ID already exists
-    const existingServers = this.service.getServers(isProjectLevel)
-    const existingServer = existingServers.find((s) => s.id === serverConfig.id)
-
-    if (existingServer) {
-      const confirmOverwrite = await this.interactor.promptText(
-        `A server with ID "${serverConfig.id}" already exists. Overwrite? (y/n)`,
-        'n'
-      )
-
-      if (confirmOverwrite.toLowerCase() !== 'y') {
-        this.interactor.displayText('Operation canceled.')
-        return context
-      }
-    }
-
-    // Save the new server configuration
-    await this.service.saveServer(serverConfig, isProjectLevel)
-
-    // Display the created config
-    const sanitized = sanitizeMcpServerConfig(serverConfig)
-    this.interactor.displayText(
-      `\nNew MCP server configuration added:\n${formatMcpConfig(sanitized)}\n\nMatching arguments:\n${mcpServerConfigToArgs(sanitized)}`
-    )
-
-    return context
+    // Delegate to edit handler to complete configuration
+    const editCommand = `edit ${serverId} ${isProject ? '--project' : ''}`
+    return this.editHandler.handle(editCommand, context)
   }
 }

@@ -1,13 +1,9 @@
 import { CommandContext, CommandHandler, Interactor } from '../../../model'
 import { McpConfigService } from '../../../service/mcp-config.service'
 import { McpServerConfig } from '../../../model/mcp-server-config'
-import {
-  cleanServerConfig,
-  formatMcpConfig,
-  getMcpConfigNameAndId,
-  mcpServerConfigToArgs,
-  sanitizeMcpServerConfig,
-} from './helpers'
+import { ConfigLevel } from '../../../model/config-level'
+import { parseArgs } from '../../parse-args'
+import { cleanServerConfig, formatMcpConfig, getMcpConfigNameAndId, sanitizeMcpServerConfig } from './helpers'
 
 export class McpEditHandler extends CommandHandler {
   constructor(
@@ -16,158 +12,443 @@ export class McpEditHandler extends CommandHandler {
   ) {
     super({
       commandWord: 'edit',
-      description: 'Edit a single mcp config to select.',
+      description: 'Edit an MCP server configuration. Use --project/-p for project level.',
     })
   }
 
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
-    const subCommands = this.getSubCommand(command).split(' ')
+    // Parse arguments using parseArgs
+    const args = parseArgs(this.getSubCommand(command), [{ key: 'project', alias: 'p' }])
 
-    // check if project level or user level
-    const isProjectLevel = subCommands.filter((c) => c === '--project' || c === '-p').length > 0
+    const isProjectLevel = !!args.project
+    const targetLevel = isProjectLevel ? ConfigLevel.PROJECT : ConfigLevel.USER
 
-    // detect the name of the server or option
-    const names = subCommands.filter((c) => !c.startsWith('-'))
-    const name = names.length ? names[0].toLowerCase() : undefined
+    // Extract server name/id from remaining arguments
+    const searchTerm = args.rest.trim().toLowerCase()
 
-    const matching = this.service
-      .getServers(isProjectLevel)
-      .filter((s) => name && s.name.toLowerCase().startsWith(name))
-    let serverConfig: McpServerConfig | undefined
+    // Get available configurations for selection
+    const availableConfigs = this.getAvailableConfigs(targetLevel, searchTerm)
 
-    // if multiple, choose the one
-    if (matching.length > 1) {
-      const matchingPerNameAndId = new Map<string, McpServerConfig>(
-        matching.map((server) => [getMcpConfigNameAndId(server), server])
-      )
-      const choice = await this.interactor.chooseOption(
-        Array.from(matchingPerNameAndId.keys()).sort(),
-        'Select the MCP config to edit'
-      )
-      serverConfig = matchingPerNameAndId.get(choice)
-    }
-
-    // if single server, selection is done
-    if (matching.length === 1) {
-      serverConfig = matching[0]
-    }
-
-    if (!serverConfig) {
-      this.interactor.displayText('Could not select the MCP config to edit.')
+    if (availableConfigs.length === 0) {
+      this.interactor.displayText('No MCP configurations found to edit.')
       return context
     }
 
-    let serverAtProjectLevel: McpServerConfig | undefined
-    // if at user level, present the project level part and the user part, sanitized
-    if (!isProjectLevel) {
-      // then retrieve the server at project level and show it for context
-      serverAtProjectLevel = this.service
-        .getServers(true)
-        .find((s) => s.name === serverConfig.name && s.id === serverConfig.id)
-      if (serverAtProjectLevel) {
-        const sanitized = sanitizeMcpServerConfig(serverAtProjectLevel)
-        this.interactor.displayText(`Current MCP config at project level:
-${formatMcpConfig(sanitized)}
-
-Matching arguments:
-${mcpServerConfigToArgs(sanitized)}
-
-`)
-      }
+    // Select configuration to edit
+    const selectedConfig = await this.selectConfigToEdit(availableConfigs)
+    if (!selectedConfig) {
+      this.interactor.displayText('No configuration selected.')
+      return context
     }
-    // once server to edit is selected, present the sanitized version
-    const sanitized = sanitizeMcpServerConfig(serverConfig)
-    this.interactor.displayText(`Current MCP config being edited:
-${formatMcpConfig(sanitized)}
 
-Matching arguments:
-${mcpServerConfigToArgs(sanitized)}`)
+    // Determine if we need to clone or direct edit
+    const configToEdit = await this.prepareConfigForEditing(selectedConfig, targetLevel)
 
-    // then go through all properties of the McpServerConfig and edit them from their current value
-    serverConfig.id = await this.interactor.promptText(`id of the mcp server`, serverConfig.id)
-    serverConfig.name = await this.interactor.promptText(`name of the mcp server`, serverConfig.name)
-    serverConfig.url = await this.interactor.promptText(`url of the mcp server`, serverConfig.url)
-    serverConfig.command = await this.interactor.promptText(`command of the mcp server`, serverConfig.command)
-    serverConfig.args = (
-      await this.interactor.promptText(`args of the mcp server`, serverConfig.args?.join(' ') || '')
-    ).split(' ')
+    // Edit the configuration with merged context
+    const editedConfig = await this.editConfigWithContext(configToEdit, targetLevel)
 
-    // Continue with other properties
-    const envString = serverConfig.env
-      ? Object.entries(serverConfig.env)
+    // Save the configuration
+    await this.service.saveMcpServer(editedConfig, targetLevel)
+
+    // Display the updated config
+    const updatedSanitized = sanitizeMcpServerConfig(editedConfig)
+    const successMessage = `
+# ✅ Updated MCP Configuration
+
+${formatMcpConfig(updatedSanitized)}
+`
+    this.interactor.displayText(successMessage)
+
+    return context
+  }
+
+  /**
+   * Get available configurations for editing based on hierarchy rules
+   */
+  private getAvailableConfigs(
+    targetLevel: ConfigLevel,
+    searchTerm: string
+  ): Array<{
+    config: McpServerConfig
+    sourceLevel: ConfigLevel
+  }> {
+    const available: Array<{ config: McpServerConfig; sourceLevel: ConfigLevel }> = []
+
+    // Current level configs (direct edit)
+    const currentLevelConfigs = this.service.getMcpServers(targetLevel)
+    currentLevelConfigs
+      .filter(
+        (config) =>
+          !searchTerm || config.name.toLowerCase().includes(searchTerm) || config.id.toLowerCase().includes(searchTerm)
+      )
+      .forEach((config) => available.push({ config, sourceLevel: targetLevel }))
+
+    // Lower level configs (cloning allowed)
+    const lowerLevels =
+      targetLevel === ConfigLevel.USER ? [ConfigLevel.PROJECT, ConfigLevel.CODAY] : [ConfigLevel.CODAY]
+
+    for (const level of lowerLevels) {
+      const levelConfigs = this.service.getMcpServers(level)
+      levelConfigs
+        .filter((config) => {
+          // Only include if not already overridden at target level
+          const alreadyOverridden = currentLevelConfigs.some((c) => c.id === config.id)
+          const matchesSearch =
+            !searchTerm ||
+            config.name.toLowerCase().includes(searchTerm) ||
+            config.id.toLowerCase().includes(searchTerm)
+          return !alreadyOverridden && matchesSearch
+        })
+        .forEach((config) => available.push({ config, sourceLevel: level }))
+    }
+
+    return available
+  }
+
+  /**
+   * Let user select which configuration to edit
+   */
+  private async selectConfigToEdit(
+    availableConfigs: Array<{
+      config: McpServerConfig
+      sourceLevel: ConfigLevel
+    }>
+  ): Promise<{ config: McpServerConfig; sourceLevel: ConfigLevel } | undefined> {
+    if (availableConfigs.length === 1) {
+      return availableConfigs[0]
+    }
+
+    // Create display options with level indicators
+    const options = availableConfigs.map(
+      ({ config, sourceLevel }) => `${getMcpConfigNameAndId(config)} (${sourceLevel.toLowerCase()} level)`
+    )
+
+    const selectedOption = await this.interactor.chooseOption(options, 'Select MCP configuration to edit:')
+
+    const selectedIndex = options.indexOf(selectedOption)
+    return selectedIndex >= 0 ? availableConfigs[selectedIndex] : undefined
+  }
+
+  /**
+   * Prepare configuration for editing (clone if needed)
+   */
+  private async prepareConfigForEditing(
+    selected: { config: McpServerConfig; sourceLevel: ConfigLevel },
+    targetLevel: ConfigLevel
+  ): Promise<McpServerConfig> {
+    if (selected.sourceLevel === targetLevel) {
+      // Direct edit
+      const message = `
+# Editing Configuration
+
+**Server:** ${selected.config.name} (${selected.config.id})  
+**Level:** ${targetLevel.toLowerCase()}  
+**Action:** Direct edit
+`
+      this.interactor.displayText(message)
+      return selected.config
+    } else {
+      // Clone from lower level
+      const message = `
+# Cloning Configuration
+
+**Server:** "${selected.config.name}"  
+**From:** ${selected.sourceLevel.toLowerCase()} level  
+**To:** ${targetLevel.toLowerCase()} level  
+**Action:** Creating ${targetLevel.toLowerCase()}-level override
+`
+      this.interactor.displayText(message)
+
+      // Create minimal clone (ID and name only)
+      const clonedConfig: McpServerConfig = {
+        id: selected.config.id,
+        name: selected.config.name,
+        enabled: true,
+        args: [],
+      }
+
+      return clonedConfig
+    }
+  }
+
+  /**
+   * Edit configuration with merged context display
+   */
+  private async editConfigWithContext(config: McpServerConfig, targetLevel: ConfigLevel): Promise<McpServerConfig> {
+    // Get merged view for context
+    const mergedConfig = this.getMergedConfigById(config.id)
+
+    // Edit each property with context
+    config.id = await this.editPropertyWithContext('ID', 'id', config.id, mergedConfig, targetLevel)
+    config.name = await this.editPropertyWithContext('Name', 'name', config.name, mergedConfig, targetLevel)
+
+    // Transport type selection
+    const hasUrl = config.url || mergedConfig?.url
+    const hasCommand = config.command || mergedConfig?.command
+
+    if (!hasUrl && !hasCommand) {
+      const transportType = await this.interactor.chooseOption(['command', 'url'], 'Select transport type:', 'command')
+
+      if (transportType === 'url') {
+        config.url = await this.editPropertyWithContext('URL', 'url', config.url, mergedConfig, targetLevel)
+      } else {
+        config.command = await this.editPropertyWithContext(
+          'Command',
+          'command',
+          config.command,
+          mergedConfig,
+          targetLevel
+        )
+      }
+    } else {
+      config.url = await this.editPropertyWithContext('URL', 'url', config.url, mergedConfig, targetLevel)
+      config.command = await this.editPropertyWithContext(
+        'Command',
+        'command',
+        config.command,
+        mergedConfig,
+        targetLevel
+      )
+    }
+
+    // Args (special handling for array)
+    config.args = await this.editArgsWithContext(config.args, mergedConfig, targetLevel)
+
+    // Environment variables (special handling for object)
+    config.env = await this.editEnvWithContext(config.env, mergedConfig, targetLevel)
+
+    config.cwd = await this.editPropertyWithContext('Working Directory', 'cwd', config.cwd, mergedConfig, targetLevel)
+
+    // Auth token (special handling for sensitive data)
+    config.authToken = await this.editAuthTokenWithContext(config.authToken, mergedConfig, targetLevel)
+
+    // Boolean properties
+    config.enabled = await this.editBooleanWithContext('Enabled', 'enabled', config.enabled, mergedConfig, targetLevel)
+    config.debug = await this.editBooleanWithContext('Debug', 'debug', config.debug, mergedConfig, targetLevel)
+
+    // Allowed tools (special handling for array)
+    config.allowedTools = await this.editAllowedToolsWithContext(config.allowedTools, mergedConfig, targetLevel)
+
+    // Clean the config
+    cleanServerConfig(config)
+
+    return config
+  }
+
+  /**
+   * Edit a simple property with level context
+   */
+  private async editPropertyWithContext(
+    displayName: string,
+    property: keyof McpServerConfig,
+    currentValue: any,
+    mergedConfig: McpServerConfig | null,
+    targetLevel: ConfigLevel
+  ): Promise<any> {
+    const contextDisplay = this.buildPropertyContext(property, mergedConfig, targetLevel)
+    const prompt = `## ${displayName}
+
+${contextDisplay}
+
+Enter ${displayName.toLowerCase()}:`
+    return await this.interactor.promptText(prompt, currentValue || '')
+  }
+
+  /**
+   * Edit args with context
+   */
+  private async editArgsWithContext(
+    currentArgs: string[] | undefined,
+    mergedConfig: McpServerConfig | null,
+    targetLevel: ConfigLevel
+  ): Promise<string[]> {
+    const contextDisplay = this.buildPropertyContext('args', mergedConfig, targetLevel)
+    const prompt = `## Arguments
+
+${contextDisplay}
+
+Enter arguments (space-separated):`
+
+    const argsString = await this.interactor.promptText(prompt, (currentArgs || []).join(' '))
+
+    return argsString.trim() ? argsString.trim().split(' ') : []
+  }
+
+  /**
+   * Edit environment variables with context
+   */
+  private async editEnvWithContext(
+    currentEnv: Record<string, string> | undefined,
+    mergedConfig: McpServerConfig | null,
+    targetLevel: ConfigLevel
+  ): Promise<Record<string, string> | undefined> {
+    const contextDisplay = this.buildPropertyContext('env', mergedConfig, targetLevel)
+    const envString = currentEnv
+      ? Object.entries(currentEnv)
           .map(([key, value]) => `${key}=${value}`)
           .join(' ')
       : ''
-    const newEnvString = await this.interactor.promptText(
-      `env variables of the mcp server (format: KEY1=VALUE1 KEY2=VALUE2)`,
-      envString
-    )
 
-    // Parse environment variables back into an object
-    serverConfig.env = {}
-    if (newEnvString.trim()) {
-      newEnvString.split(' ').forEach((pair) => {
-        const [key, value] = pair.split('=')
-        if (key && value) {
-          serverConfig.env![key] = value
-        }
-      })
+    const prompt = `## Environment Variables
+
+${contextDisplay}
+
+Enter environment variables (format: KEY1=VALUE1 KEY2=VALUE2):`
+
+    const newEnvString = await this.interactor.promptText(prompt, envString)
+
+    if (!newEnvString.trim()) {
+      return undefined
     }
 
-    serverConfig.cwd = await this.interactor.promptText(`working directory of the mcp server`, serverConfig.cwd || '')
+    const env: Record<string, string> = {}
+    newEnvString.split(' ').forEach((pair) => {
+      const [key, value] = pair.split('=')
+      if (key && value) {
+        env[key] = value
+      }
+    })
 
-    // Special handling for authToken - mask it if present
-    const currentAuthToken = serverConfig.authToken
-    const authTokenPrompt = currentAuthToken
-      ? `authentication token of the mcp server (current value is masked)`
-      : `authentication token of the mcp server`
+    return Object.keys(env).length > 0 ? env : undefined
+  }
 
-    const authTokenInput = await this.interactor.promptText(authTokenPrompt, currentAuthToken ? '*****' : '')
+  /**
+   * Edit auth token with context (sensitive data handling)
+   */
+  private async editAuthTokenWithContext(
+    currentToken: string | undefined,
+    mergedConfig: McpServerConfig | null,
+    targetLevel: ConfigLevel
+  ): Promise<string | undefined> {
+    const contextDisplay = this.buildPropertyContext('authToken', mergedConfig, targetLevel, true)
 
-    // Only update if not masked value
-    if (authTokenInput === '*****') {
-      // Keep existing authToken
-    } else if (authTokenInput === '') {
-      // Explicitly remove authToken
-      serverConfig.authToken = undefined
+    const promptText = currentToken
+      ? 'Enter authentication token (current value is masked):'
+      : 'Enter authentication token (leave empty if not needed):'
+
+    const prompt = `## Authentication Token
+
+${contextDisplay}
+
+${promptText}`
+
+    const tokenInput = await this.interactor.promptText(prompt, currentToken ? '*****' : '')
+
+    if (tokenInput === '*****') {
+      return currentToken // Keep existing
+    } else if (tokenInput === '') {
+      return undefined // Remove
     } else {
-      // New authToken provided
-      serverConfig.authToken = authTokenInput
+      return tokenInput // New value
+    }
+  }
+
+  /**
+   * Edit boolean property with context
+   */
+  private async editBooleanWithContext(
+    displayName: string,
+    property: keyof McpServerConfig,
+    currentValue: boolean | undefined,
+    mergedConfig: McpServerConfig | null,
+    targetLevel: ConfigLevel
+  ): Promise<boolean> {
+    const contextDisplay = this.buildPropertyContext(property, mergedConfig, targetLevel)
+    const prompt = `## ${displayName}
+
+${contextDisplay}
+
+Set ${displayName.toLowerCase()}:`
+
+    const choice = await this.interactor.chooseOption(
+      ['true', 'false'],
+      prompt,
+      currentValue !== undefined ? currentValue.toString() : 'true'
+    )
+
+    return choice === 'true'
+  }
+
+  /**
+   * Edit allowed tools with context
+   */
+  private async editAllowedToolsWithContext(
+    currentTools: string[] | undefined,
+    mergedConfig: McpServerConfig | null,
+    targetLevel: ConfigLevel
+  ): Promise<string[] | undefined> {
+    const contextDisplay = this.buildPropertyContext('allowedTools', mergedConfig, targetLevel)
+    const prompt = `## Allowed Tools
+
+${contextDisplay}
+
+Enter allowed tools (comma-separated, empty for all tools):`
+
+    const toolsString = await this.interactor.promptText(prompt, (currentTools || []).join(', '))
+
+    return toolsString.trim() ? toolsString.split(',').map((tool) => tool.trim()) : undefined
+  }
+
+  /**
+   * Build property context display from all levels
+   */
+  private buildPropertyContext(
+    property: keyof McpServerConfig,
+    mergedConfig: McpServerConfig | null,
+    targetLevel: ConfigLevel,
+    isSensitive: boolean = false
+  ): string {
+    const levels = [ConfigLevel.CODAY, ConfigLevel.PROJECT, ConfigLevel.USER]
+    const contextLines: string[] = []
+
+    for (const level of levels) {
+      const configs = this.service.getMcpServers(level)
+      const config = configs.find((c) => c.id === mergedConfig?.id)
+      const value = config?.[property]
+
+      let displayValue: string
+      if (value === undefined) {
+        displayValue = '*[not set]*'
+      } else if (isSensitive && value) {
+        displayValue = '`*****`'
+      } else if (Array.isArray(value)) {
+        displayValue = `\`[${value.join(', ')}]\``
+      } else if (typeof value === 'object' && value !== null) {
+        displayValue = `\`{${Object.keys(value).join(', ')}}\``
+      } else {
+        displayValue = `\`${value.toString()}\``
+      }
+
+      const marker = level === targetLevel ? ' **← editing this level**' : ''
+      contextLines.push(`- **${level}:** ${displayValue}${marker}`)
     }
 
-    const enabledChoice = await this.interactor.chooseOption(
-      ['true', 'false'],
-      `Is the server connection enabled?`,
-      serverConfig.enabled ? 'true' : 'false'
-    )
-    serverConfig.enabled = enabledChoice === 'true'
+    if (mergedConfig) {
+      const mergedValue = mergedConfig[property]
+      let displayMerged: string
+      if (mergedValue === undefined) {
+        displayMerged = '*[not set]*'
+      } else if (isSensitive && mergedValue) {
+        displayMerged = '`*****`'
+      } else if (Array.isArray(mergedValue)) {
+        displayMerged = `\`[${mergedValue.join(', ')}]\``
+      } else if (typeof mergedValue === 'object' && mergedValue !== null) {
+        displayMerged = `\`{${Object.keys(mergedValue).join(', ')}}\``
+      } else {
+        displayMerged = `\`${mergedValue.toString()}\``
+      }
 
-    const allowedToolsStr = await this.interactor.promptText(
-      `allowed tools (comma-separated list, empty for all tools)`,
-      serverConfig.allowedTools?.join(',') || ''
-    )
-    serverConfig.allowedTools = allowedToolsStr ? allowedToolsStr.split(',').map((tool) => tool.trim()) : undefined
+      contextLines.push(`- **MERGED:** ${displayMerged}`)
+    }
 
-    // Debug flag
-    const debugChoice = await this.interactor.chooseOption(
-      ['false', 'true'],
-      'Enable MCP Inspector debugging for this server?',
-      serverConfig.debug ? 'true' : 'false'
-    )
-    serverConfig.debug = debugChoice === 'true'
+    return contextLines.join('\n')
+  }
 
-    // Clean the serverConfig by removing empty values
-    cleanServerConfig(serverConfig)
-
-    // Save the edited serverConfig
-    await this.service.saveServer(serverConfig, isProjectLevel)
-
-    // Display the updated config
-    const updatedSanitized = sanitizeMcpServerConfig(serverConfig)
-    this.interactor.displayText(
-      `\nUpdated MCP config:\n${formatMcpConfig(updatedSanitized)}\n\nMatching arguments:\n${mcpServerConfigToArgs(updatedSanitized)}`
-    )
-
-    return context
+  /**
+   * Get merged configuration for a specific server ID
+   */
+  private getMergedConfigById(id: string): McpServerConfig | null {
+    const merged = this.service.getMergedConfiguration()
+    return merged.servers.find((s) => s.id === id) || null
   }
 }
