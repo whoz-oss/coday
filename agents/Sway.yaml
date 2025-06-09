@@ -5,6 +5,7 @@ modelSize: BIG
 modelName: BIG
 integrations:
   FILES:
+  FETCH:
   AI:
   MEMORY:
   GIT-PLATFORM:
