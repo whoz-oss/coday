@@ -182,6 +182,9 @@ export class Coday {
       this.services.aiConfig = new AiConfigService(this.services.user, this.services.project)
       this.services.aiConfig.initialize(this.context)
 
+      // Initialize the MCP service with context
+      this.services.mcp.initialize(this.context)
+
       // Create and store the agent service
       this.services.agent = new AgentService(
         this.interactor,

@@ -27,7 +27,7 @@ export interface McpServerConfig {
   authToken?: string
 
   /** Whether the server connection is enabled */
-  enabled: boolean
+  enabled?: boolean
 
   /** Optional list of allowed tools (if not specified, all tools are allowed) */
   allowedTools?: string[]

@@ -4,6 +4,7 @@ import { WithDocs } from './with-docs'
 import { AiProviderLocalConfig } from './ai-providers'
 import { AiProviderConfig } from './ai-provider-config'
 import { PromptChain } from './prompt-chain'
+import { McpConfig } from './mcp-server-config'
 
 export interface ProjectDescription extends WithDocs {
   /**
@@ -12,6 +13,12 @@ export interface ProjectDescription extends WithDocs {
   aiProviders?: AiProviderLocalConfig
 
   ai?: AiProviderConfig[]
+
+  /**
+   * MCP (Model Context Protocol) server configurations
+   * These serve as global defaults and can be overridden by project and user level configurations
+   */
+  mcp?: McpConfig
 
   /**
    * Description of the current project, it should contain the same high-level information and rules about the project anyone of the team should know.
