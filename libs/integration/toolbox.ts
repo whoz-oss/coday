@@ -24,6 +24,7 @@ export class Toolbox implements Killable {
     services: CodayServices,
     agentService: AgentService
   ) {
+    const mcps = services.mcp.getMergedConfiguration().servers
     this.toolFactories = [
       new AiTools(interactor, agentService),
       new DelegateTools(interactor, agentService),
@@ -34,7 +35,7 @@ export class Toolbox implements Killable {
       new MemoryTools(interactor, services.memory),
       new ConfluenceTools(interactor, services.integration),
       new JiraTools(interactor, services.integration),
-      ...services.mcp.getAllServers().map((serverConfig) => new McpToolsFactory(interactor, serverConfig)),
+      ...mcps.map((mcpConfig) => new McpToolsFactory(interactor, mcpConfig)),
     ]
   }
 

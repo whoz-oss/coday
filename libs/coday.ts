@@ -12,6 +12,7 @@ import { AnswerEvent, MessageEvent, TextEvent, ToolRequestEvent, ToolResponseEve
 import { AgentService } from './agent'
 import { CodayOptions } from './options'
 import { CodayServices } from './coday-services'
+import { AiConfigService } from './service/ai-config.service'
 
 const MAX_ITERATIONS = 100
 
@@ -176,6 +177,14 @@ export class Coday {
     if (this.context) {
       this.context.oneshot = this.options.oneshot
       this.context.fileReadOnly = this.options.fileReadOnly
+
+      // Create and store the aiConfig service (late init)
+      this.services.aiConfig = new AiConfigService(this.services.user, this.services.project)
+      this.services.aiConfig.initialize(this.context)
+
+      // Initialize the MCP service with context
+      this.services.mcp.initialize(this.context)
+
       // Create and store the agent service
       this.services.agent = new AgentService(
         this.interactor,
@@ -192,6 +201,7 @@ export class Coday {
         this.configHandler,
         this.services
       )
+      this.aiClientProvider.init(this.context)
       this.handlerLooper.init(this.context.project)
       await this.services.agent.initialize(this.context)
     }

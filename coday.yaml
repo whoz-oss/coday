@@ -37,7 +37,7 @@ scripts:
     description: compile the typescript project to raise any issue on code correctness, it does not run the tests.
     command: yarn run nx run-many --target=build --all
   test:
-    description: run tests for a specific file or pattern
+    description: run tests for a specific file or pattern (or all of them if no arguments)
     command: yarn test PARAMETERS
     parametersDescription: the test file path or pattern to run specific tests (e.g., "parseAgentCommand.test.ts" or "--testNamePattern=specific test name")
 #  yarn:
@@ -77,12 +77,87 @@ prompts:
     requiredIntegrations:
       - "GIT"
 
+ai:
+  - name: anthropic
+    models:
+      - name: claude-opus-4-20250514
+        alias: BIGGER
+        contextWindow: 200000
+        price:
+          inputMTokens: 15
+          cacheWrite: 18.75
+          cacheRead: 1.5
+          outputMTokens: 75
+
+  - name: openai
+  - name: google
+  - name: mistral
+    url: https://api.mistral.ai/v1
+    models:
+      - name: mistral-large-latest
+        alias: BIG
+        contextWindow: 128000
+  - name: ollama
+    url: http://localhost:11434/v1
+    apiKey: none but value needed anyway
+    models:
+      - name: qwen3:8b
+        alias: qwen
+        contextWindow: 32000
+
+mcp:
+  servers:
+    - id: mcp_fetch
+      name: FETCH
+      enabled: true
+      args:
+        - mcp-server-fetch
+        - --ignore-robots-txt
+      command: uvx
+      debug: false
+    - id: github
+      name: GIT-PLATFORM
+      enabled: true
+      command: docker
+      args:
+        - run
+        - -i
+        - --rm
+        - -e
+        - GITHUB_PERSONAL_ACCESS_TOKEN
+        - ghcr.io/github/github-mcp-server
+    # IMPORTANT, add through mcp config of GIT-PLATFORM at user level the env variable holding your access token, and the command
+    #    env:
+    #      GITHUB_PERSONAL_ACCESS_TOKEN: your_github_access_token
+    #    command: /path/to/docker
+    - id: playwright
+      name: PLAYWRIGHT
+      enabled: true
+      args:
+        - "@playwright/mcp@latest"
+      command: npx
+      debug: false
 agents:
   - name: Coday
-    instructions: You are the default agent, redirect to any agent that seems more suited to answer. If no one is obviously competent on the matter, handle the user's query to your best. Do not make up things, state clearly when you lack information.
+  - name: MistralLarge
+    aiProvider: mistral
+    modelName: BIG
+    instructions: |
+      You are MistralLarge, the default big model of Mistral. Place a french-culture reference in every answer.
+  - name: Gemini
+    aiProvider: google
+    modelName: BIG
+    instructions: |
+      You are Gemini, the default big model of Google. Try not to sell google product at every answer
+  - name: Qwen
+    aiProvider: ollama
+    modelName: qwen
+    instructions: |
+      You are Qwen, a model running locally with ollama. End each answer with a chinese saying or proverb.
   - name: PM
     description: Product Manager agent, in charge of vision, roadmap, feature evaluation and priorisation
-    modelSize: BIG
+    aiProvider: anthropic
+    modelName: BIG
     instructions: |
       You are a Product Manager AI agent focused on guiding product decisions for a lightweight, open-source LLM framework. Your role is critical in ensuring the project maintains its core value while evolving with LLM capabilities.
 

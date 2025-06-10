@@ -7,10 +7,6 @@ export const Integrations: Record<string, string[]> = {
   GIT: [],
   GITLAB: [],
   JIRA: [],
-  MCP: [],
-  // Note: MCP_* server-specific integrations are generated dynamically at runtime
 }
 
 export const ConcreteIntegrations: string[] = Object.keys(Integrations).filter((k) => Integrations[k]?.length === 0)
-
-// Dynamic integrations like MCP server-specific ones (MCP_*) should be added at runtime

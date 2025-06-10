@@ -6,6 +6,8 @@ import { Interactor, ProjectLocalConfig, SelectedProject } from '../model'
 import { writeYamlFile } from './write-yaml-file'
 import { readYamlFile } from './read-yaml-file'
 import { ProjectSelectedEvent } from '@coday/coday-events'
+import { migrateData } from './migration/data-migration'
+import { projectConfigMigrations } from './migration/project-config-migrations'
 
 const PROJECTS = 'projects'
 const PROJECT_FILENAME = 'project.yaml'
@@ -44,6 +46,7 @@ export class ProjectService {
     mkdirSync(projectConfigPath)
     const projectConfigFile = path.join(projectConfigPath, PROJECT_FILENAME)
     const defaultProjectConfig: ProjectLocalConfig = {
+      version: 1,
       path: projectPath,
       integration: {},
       aiProviders: {},
@@ -62,10 +65,23 @@ export class ProjectService {
       this.interactor.error(`Could not select project '${name}', config file not found 🤷.`)
       return
     }
-    const projectConfig = readYamlFile<ProjectLocalConfig>(projectConfigFile)
-    if (!projectConfig) {
+    let rawProjectConfig = readYamlFile(projectConfigFile)
+    if (!rawProjectConfig) {
       this.interactor.error(`Nothing in project configuration 🤨.`)
+      return
     }
+
+    // Apply migrations
+    const migrationResult = migrateData(rawProjectConfig, projectConfigMigrations)
+
+    // Save the migrated config if needed
+    if (migrationResult !== rawProjectConfig) {
+      writeYamlFile(projectConfigFile, migrationResult)
+      this.interactor.displayText(`Project configuration migrated to version ${migrationResult.version}`)
+    }
+
+    const projectConfig = migrationResult
+
     const projectPath: string | undefined = projectConfig?.path
     if (!projectPath) {
       this.interactor.error('Invalid selection, project path needed 😢.')

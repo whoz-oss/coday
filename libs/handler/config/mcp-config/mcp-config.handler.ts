@@ -18,10 +18,13 @@ export class McpConfigHandler extends NestedHandler {
       interactor
     )
 
+    // Create edit handler first so it can be referenced by add handler
+    const editHandler = new McpEditHandler(interactor, services.mcp)
+
     this.handlers = [
       new McpListHandler(interactor, services.mcp),
-      new McpEditHandler(interactor, services.mcp),
-      new McpAddHandler(interactor, services.mcp),
+      editHandler,
+      new McpAddHandler(interactor, services.mcp, editHandler),
       new McpDeleteHandler(interactor, services.mcp),
     ]
   }

@@ -1,10 +1,11 @@
-import { Observable, Subject } from 'rxjs'
+import { Observable, of, Subject } from 'rxjs'
 import { CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 import { Agent } from './agent'
 import { AiThread } from '../ai-thread/ai-thread'
 import { RunStatus } from '../ai-thread/ai-thread.types'
 import { Interactor } from './interactor'
-import { ModelSize } from './agent-definition'
+import { AiModel } from './ai-model'
+import { AiProviderConfig } from './ai-provider-config'
 import { CodayLogger } from '../service/coday-logger'
 
 /**
@@ -12,13 +13,27 @@ import { CodayLogger } from '../service/coday-logger'
  */
 export abstract class AiClient {
   abstract name: string
+  public models: AiModel[] = []
+  protected apiKey: string | undefined
   protected abstract interactor: Interactor
   protected killed: boolean = false
-  protected defaultModelSize: ModelSize = ModelSize.BIG
   protected thinkingInterval: number = 3000
   protected charsPerToken: number = 3.5 // should be 4, some margin baked in to avoid overshoot on tool call
-  protected logger?: CodayLogger
   protected username?: string
+
+  protected constructor(
+    protected aiProviderConfig: AiProviderConfig,
+    protected logger?: CodayLogger
+  ) {
+    // merge the models in, ovewrite the models by aliases
+    this.apiKey = aiProviderConfig.apiKey
+  }
+
+  protected mergeModels(models: AiModel[]): void {
+    const modelsByAliasOrName = new Map<string, AiModel>(models.map((m) => [m.alias || m.name, m]))
+    this.aiProviderConfig.models?.forEach((m) => modelsByAliasOrName.set(m.alias ?? m.name, m))
+    this.models = Array.from(modelsByAliasOrName.values())
+  }
 
   /**
    * Run the AI with the given configuration and thread context.
@@ -206,8 +221,21 @@ export abstract class AiClient {
     this.interactor.displayText(agentPart + loop + tokensIO + cacheIO + price)
   }
 
-  protected getModelSize(agent: Agent): ModelSize {
-    return agent.definition.modelSize ?? this.defaultModelSize
+  protected getModel(agent: Agent): AiModel | undefined {
+    const aliasOrName = agent.definition.modelName?.toLowerCase()
+    const byAlias = this.models.find((m) => m.alias?.toLowerCase() === aliasOrName)
+    if (byAlias) return byAlias
+
+    // default case, return the model that might correspond per model name, or undefined
+    return this.models.find((m) => m.name.toLowerCase() === aliasOrName)
+  }
+
+  supportsModel(name: string): boolean {
+    return this.models.some((model) => model.name.toLowerCase() === name || model?.alias?.toLowerCase() === name)
+  }
+
+  returnError(error: string): Observable<CodayEvent> {
+    return of(new ErrorEvent({ error }))
   }
 
   /**

@@ -3,7 +3,7 @@
  * Stored in user configuration, not in project config
  * to avoid multiple configurations of the same provider.
  */
-export interface AiProviderConfig {
+export interface AiProviderConfigOld {
   apiKey?: string
 }
 
@@ -11,7 +11,7 @@ export interface AiProviderConfig {
  * Configuration for OpenAI-compatible local LLM providers
  * like LMStudio, llama.cpp server, etc.
  */
-export interface LocalLlmConfig extends AiProviderConfig {
+export interface LocalLlmConfig extends AiProviderConfigOld {
   /** Base URL for the local LLM server */
   url: string
   /** Model identifier (optional, depends on implementation) */
@@ -30,11 +30,11 @@ export interface LocalLlmConfig extends AiProviderConfig {
  */
 export interface AiProviderLocalConfig {
   /** Anthropic's Claude (recommended) */
-  anthropic?: AiProviderConfig
+  anthropic?: AiProviderConfigOld
   /** OpenAI's GPT models */
-  openai?: AiProviderConfig
+  openai?: AiProviderConfigOld
   /** Google's Gemini */
-  google?: AiProviderConfig
+  google?: AiProviderConfigOld
   /** Local LLM with OpenAI-compatible API */
   localLlm?: LocalLlmConfig
 }

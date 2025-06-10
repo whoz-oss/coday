@@ -23,14 +23,14 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: biznet-io/github-actions/setup-working-directory@v1.2
-      - uses: biznet-io/github-actions/init@v1.2
+      - uses: biznet-io/github-actions/init@v1.3
 
   release:
     runs-on: self-hosted
     permissions:
       contents: read
       id-token: write # needed for provenance data generation
-    needs: [init]
+    needs: [ init ]
     steps:
       - uses: biznet-io/github-actions/setup-working-directory@v1.2
       - name: Publish release

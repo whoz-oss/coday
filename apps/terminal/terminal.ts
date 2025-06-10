@@ -16,7 +16,7 @@ const interactor = options.oneshot ? new TerminalNonInteractiveInteractor() : ne
 
 // Get the username and build the userConfigService from it
 const username = os.userInfo().username
-const user = new UserService(options.configDir, username)
+const user = new UserService(options.configDir, username, interactor)
 const project = new ProjectService(interactor, options.configDir)
 const integration = new IntegrationService(project, user)
 const memory = new MemoryService(project, user)

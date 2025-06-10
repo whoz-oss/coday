@@ -101,6 +101,10 @@ export class AgentService implements Killable {
   }
 
   async findAgentByNameStart(nameStart: string | undefined, context: CommandContext): Promise<Agent | undefined> {
+    if (!nameStart) {
+      return
+    }
+
     // Initialize agents if not already done
     await this.initialize(context)
 
@@ -138,15 +142,10 @@ export class AgentService implements Killable {
     await this.initialize(context)
 
     const lowerNameStart = nameStart.toLowerCase()
-    const matches: Agent[] = []
-
-    for (const name of Array.from(this.agents.keys())) {
-      if (name.startsWith(lowerNameStart)) {
-        matches.push(this.agents.get(name)!)
-      }
-    }
-
-    return matches
+    return Array.from(this.agents.keys())
+      .filter((agentName) => agentName.toLowerCase().startsWith(lowerNameStart))
+      .map((agentName) => this.agents.get(agentName))
+      .filter((agent) => !!agent)
   }
 
   /**
@@ -270,18 +269,10 @@ export class AgentService implements Killable {
         console.error(`Cannot create agent ${def.name}: dependencies not set. Call setDependencies first.`)
         return
       }
-
-      const aiClient = this.aiClientProvider.getClient(def.aiProvider)
+      console.log(`getting client for agent ${def.name}, ${def.aiProvider}, ${def.modelName}`)
+      const aiClient = this.aiClientProvider.getClient(def.aiProvider, def.modelName)
       if (!aiClient) {
-        // Provide more specific error for localLlm
-        if (def.aiProvider === 'localLlm') {
-          this.interactor.warn(
-            `Cannot create agent ${def.name}: Local LLM configuration is missing or incomplete. ` +
-              `Please configure 'url' in your aiProviders section in ~/.coday/users/${this.services.user.sanitizedUsername}/user.yml or through 'config ai user'`
-          )
-        } else {
-          console.error(`Cannot create agent ${def.name}: AI client creation failed`)
-        }
+        this.interactor.error(`Cannot create agent ${def.name}: AI client creation failed`)
         return
       }
 
