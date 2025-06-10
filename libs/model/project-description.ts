@@ -1,9 +1,25 @@
 import { Scripts } from './scripts'
-import { AssistantDescription } from './assistant-description'
 import { AgentDefinition } from './agent-definition'
 import { WithDocs } from './with-docs'
+import { AiProviderLocalConfig } from './ai-providers'
+import { AiProviderConfig } from './ai-provider-config'
+import { PromptChain } from './prompt-chain'
+import { McpConfig } from './mcp-server-config'
 
 export interface ProjectDescription extends WithDocs {
+  /**
+   * DEPRECATED AiProvider config
+   */
+  aiProviders?: AiProviderLocalConfig
+
+  ai?: AiProviderConfig[]
+
+  /**
+   * MCP (Model Context Protocol) server configurations
+   * These serve as global defaults and can be overridden by project and user level configurations
+   */
+  mcp?: McpConfig
+
   /**
    * Description of the current project, it should contain the same high-level information and rules about the project anyone of the team should know.
    *
@@ -19,11 +35,6 @@ export interface ProjectDescription extends WithDocs {
    * Custom scripts exposed as tools to the LLM
    */
   scripts?: Scripts
-
-  /**
-   * Experimental section to expose several assistants, thus made available for "spontaneous" cross-assistant calls
-   */
-  assistants?: AssistantDescription[]
 
   /**
    * Agent definitions for the project.
@@ -45,24 +56,4 @@ export interface ProjectDescription extends WithDocs {
   prompts?: {
     [key: string]: PromptChain
   }
-}
-
-/**
- * A chain of prompts to be used sequentially.
- */
-export type PromptChain = {
-  /**
-   * Description of the prompt chain
-   */
-  description: string
-
-  /**
-   * List of commands in the prompt chain
-   */
-  commands: string[]
-
-  /**
-   * Optional list of required integrations for this prompt chain
-   */
-  requiredIntegrations?: string[]
 }

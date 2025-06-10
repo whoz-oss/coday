@@ -37,6 +37,29 @@ export abstract class Interactor {
     return firstValueFrom(answer)
   }
 
+  /**
+   * Prompts the user for a secret value (e.g. API key), masking the current value.
+   * - If input matches the mask (default: '********'), returns currentValue.
+   * - If input is blank/empty/undefined/null, returns undefined.
+   * - Otherwise, returns input.
+   */
+  async promptSecretText(invite: string, currentValue?: string, mask: string = '********'): Promise<string | undefined> {
+    // Show mask only if there's a current value
+    const defaultText = currentValue ? mask : '';
+    const input = await this.promptText(invite, defaultText);
+
+    if (input === mask && currentValue) {
+      // User wants to keep the existing value
+      return currentValue;
+    }
+    if (!input) {
+      // User wants to clear the field
+      return undefined;
+    }
+    // User provided a new value
+    return input;
+  }
+
   async chooseOption(options: string[], question: string, invite?: string): Promise<string> {
     const choiceEvent = new ChoiceEvent({ options, invite: question, optionalQuestion: invite })
     const answer: Observable<string> = this.events.pipe(

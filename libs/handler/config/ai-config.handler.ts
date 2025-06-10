@@ -1,13 +1,17 @@
 import { Interactor, NestedHandler } from '../../model'
 import { CodayServices } from '../../coday-services'
-import { UserAiConfigHandler } from './user-ai-config.handler'
-import { ProjectAiConfigHandler } from './project-ai-config.handler'
+import { AiConfigListHandler } from './ai-config-list.handler'
+import { AiConfigAddHandler } from './ai-config-add.handler'
+import { AiConfigEditHandler } from './ai-config-edit.handler'
+import { AiConfigDeleteHandler } from './ai-config-delete.handler'
+import { AiModelHandler } from './ai-model.handler'
+import { AiConfigApikeyHandler } from './ai-config-apikey.handler'
 
+/**
+ * Root handler for all AI config commands: list, add, edit, delete, and nested model commands.
+ */
 export class AiConfigHandler extends NestedHandler {
-  constructor(
-    interactor: Interactor,
-    services: CodayServices
-  ) {
+  constructor(interactor: Interactor, services: CodayServices) {
     super(
       {
         commandWord: 'ai',
@@ -16,9 +20,16 @@ export class AiConfigHandler extends NestedHandler {
       interactor
     )
 
+    // Create edit handlers for passing to add handlers (to avoid duplication)
+    const aiConfigEditHandler = new AiConfigEditHandler(interactor, services)
+
     this.handlers = [
-      new UserAiConfigHandler(interactor, services),
-      new ProjectAiConfigHandler(interactor, services)
+      new AiConfigListHandler(interactor, services),
+      new AiConfigAddHandler(interactor, services, aiConfigEditHandler),
+      aiConfigEditHandler,
+      new AiConfigApikeyHandler(interactor, services),
+      new AiConfigDeleteHandler(interactor, services),
+      new AiModelHandler(interactor, services),
     ]
   }
 }

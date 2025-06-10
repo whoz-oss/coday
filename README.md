@@ -88,10 +88,12 @@ When starting for the first time, you will be asked to define the first project 
 
 Then you have to define the first AI provider:
 
-   - `config ai user`: allows you to edit AI settings at user level
-   - select your provider (among Anthropic or OpenAI)
-   - enter your API key
+   - `config ai`: shows available AI configuration commands
+   - `config ai list`: list the current AI providers and configs
+   - `config ai add`: add a new AI provider (user level by default)
    - `reset` to reload cleanly the Coday config
+
+[More on AI configuration](doc/AI_CONFIGURATION.md)
 
 From there, you can select the project and ask `Hello` to get an answer.
 

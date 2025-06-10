@@ -23,7 +23,6 @@ export class JiraTools extends AssistantToolFactory {
   ) {
     super(interactor)
     this.jiraService = new JiraService(interactor, integrationService)
-    console.log('constructor')
   }
 
   protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {

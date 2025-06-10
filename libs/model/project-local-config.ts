@@ -2,14 +2,17 @@ import { IntegrationConfig } from './integration-config'
 import { AgentDefinition } from './agent-definition'
 import { AiProviderLocalConfig } from './ai-providers'
 import { McpConfig } from './mcp-server-config'
+import { AiProviderConfig } from './ai-provider-config'
 
 export type IntegrationLocalConfig = {
   [key: string]: IntegrationConfig
 }
 
 export type ProjectLocalConfig = {
+  version: number
   path: string
   aiProviders: AiProviderLocalConfig
+  ai?: AiProviderConfig[]
   integration: IntegrationLocalConfig
   storage?: StorageConfig
   agents?: AgentDefinition[]

@@ -1,4 +1,3 @@
-
 import {
   AnswerEvent,
   CodayEvent,
@@ -43,7 +42,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
       this.addAnswer(event.answer, event.invite)
     }
     if (event instanceof ErrorEvent) {
-      const errorMessage = event.error instanceof Error ? event.error.message : String(event.error)
+      const errorMessage = JSON.stringify(event.error)
       this.addError(errorMessage)
     }
     if (event instanceof ThinkingEvent) {

@@ -78,7 +78,7 @@ export class ServerClient {
       debugLog('CODAY', `Coday already running for client ${this.clientId}`)
       return false
     }
-    const user = new UserService(this.options.configDir, this.username)
+    const user = new UserService(this.options.configDir, this.username, this.interactor)
     const project = new ProjectService(this.interactor, this.options.configDir)
     const integration = new IntegrationService(project, user)
     const memory = new MemoryService(project, user)

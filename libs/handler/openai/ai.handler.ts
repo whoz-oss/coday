@@ -32,11 +32,11 @@ export class AiHandler extends CommandHandler implements Killable {
 
     // If no further command, just confirm selection
     if (!restOfCommand.trim()) {
-      this.interactor.debug(`Agent ${selectedAgent.name} selected.`)
+      this.interactor.debug(`Agent ${selectedAgent!.name} selected.`)
       return context
     }
 
-    return this.runAgent(selectedAgent, restOfCommand, context)
+    return this.runAgent(selectedAgent!, restOfCommand, context)
   }
 
   /**
@@ -89,6 +89,8 @@ export class AiHandler extends CommandHandler implements Killable {
     const defaultAgent = await this.agentService.findByName('coday', context)
     if (!defaultAgent) {
       this.interactor.error('Critical failure: Cannot initialize default Coday agent!')
+    } else {
+      this.interactor.debug(`Selected default 'Coday' agent`)
     }
     return defaultAgent
   }
