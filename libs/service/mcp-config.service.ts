@@ -44,11 +44,6 @@ export class McpConfigService {
     const projectServers = this.projectService.selectedProject?.config?.mcp?.servers || []
     const userServers = this.getUserMcpServers()
 
-    this.interactor.debug(`MCP Config Service initialized:`)
-    this.interactor.debug(`  CODAY level: ${codayServers.length} servers`)
-    this.interactor.debug(`  PROJECT level: ${projectServers.length} servers`)
-    this.interactor.debug(`  USER level: ${userServers.length} servers`)
-
     this.mcpCache.set(ConfigLevel.CODAY, codayServers)
     this.mcpCache.set(ConfigLevel.PROJECT, projectServers)
     this.mcpCache.set(ConfigLevel.USER, userServers)
@@ -137,26 +132,11 @@ export class McpConfigService {
       return
     }
 
-    const mcpName = mcpServers[existingIndex].name
-    const levelName = isProjectLevel ? 'project-level' : 'user-level'
-
-    // Confirm removal
-    const confirmAnswer = await this.interactor.promptText(
-      `Are you sure you want to remove ${levelName} MCP server "${mcpName}" (${mcpId})? (y/n)`,
-      'y'
-    )
-
-    if (confirmAnswer.toLowerCase() !== 'y') {
-      this.interactor.displayText('Operation canceled.')
-      return
-    }
-
     // Remove MCP server
     mcpServers.splice(existingIndex, 1)
 
     // Save updated configuration
     await this.saveMcpServers(mcpServers, level)
-    this.interactor.displayText(`Removed ${levelName} MCP server: ${mcpName} (${mcpId})`)
   }
 
   /**

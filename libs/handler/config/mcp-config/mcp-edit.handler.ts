@@ -178,9 +178,27 @@ ${formatMcpConfig(updatedSanitized)}
     // Get merged view for context
     const mergedConfig = this.getMergedConfigById(config.id)
 
-    // Edit each property with context
-    config.id = await this.editPropertyWithContext('ID', 'id', config.id, mergedConfig, targetLevel)
-    config.name = await this.editPropertyWithContext('Name', 'name', config.name, mergedConfig, targetLevel)
+    // Check if this is a newly created config (from add handler delegation)
+    // If the config has minimal content (empty command and empty args), it's likely newly created
+    const isNewlyCreated = !config.command && (!config.args || config.args.length === 0) && 
+                          (!config.url) && (!config.cwd) && (!config.env)
+
+    if (isNewlyCreated) {
+      // For newly created configs, ID and name are fixed - show them but don't edit
+      const fixedMessage = `
+## Fixed Configuration
+
+**ID:** \`${config.id}\` (fixed)  
+**Name:** \`${config.name}\` (fixed)  
+
+These values are fixed for new configurations. Continuing with other settings...
+`
+      this.interactor.displayText(fixedMessage)
+    } else {
+      // For existing configs, allow editing ID and name
+      config.id = await this.editPropertyWithContext('ID', 'id', config.id, mergedConfig, targetLevel)
+      config.name = await this.editPropertyWithContext('Name', 'name', config.name, mergedConfig, targetLevel)
+    }
 
     // Transport type selection
     const hasUrl = config.url || mergedConfig?.url
