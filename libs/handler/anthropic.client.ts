@@ -299,7 +299,7 @@ export class AnthropicClient extends AiClient {
 
   /**
    * Update rate limit information from headers
-   * Simple approach: if headers exist, use them. If not, no throttling.
+   * Only create rateLimitInfo if we have actual numeric rate limit headers.
    */
   private updateRateLimitsFromHeaders(headers: Headers | Record<string, string> | undefined): void {
     if (!headers) {
@@ -315,18 +315,24 @@ export class AnthropicClient extends AiClient {
     const outputTokensLimit = this.getHeader(headers, 'anthropic-ratelimit-output-tokens-limit')
     const requestsLimit = this.getHeader(headers, 'anthropic-ratelimit-requests-limit')
 
-    // If we have rate limit headers, use them
-    if (inputTokensRemaining || outputTokensRemaining || requestsRemaining) {
+    // Only create rateLimitInfo if we have at least one valid numeric header
+    // Check that we have actual numeric values, not just null/undefined
+    const hasValidRemainingHeaders = 
+      (inputTokensRemaining && !isNaN(parseInt(inputTokensRemaining))) ||
+      (outputTokensRemaining && !isNaN(parseInt(outputTokensRemaining))) ||
+      (requestsRemaining && !isNaN(parseInt(requestsRemaining)))
+
+    if (hasValidRemainingHeaders) {
       this.rateLimitInfo = {
-        inputTokensRemaining: parseInt(inputTokensRemaining || '0'),
-        outputTokensRemaining: parseInt(outputTokensRemaining || '0'),
-        requestsRemaining: parseInt(requestsRemaining || '0'),
-        inputTokensLimit: parseInt(inputTokensLimit || '200000'),
-        outputTokensLimit: parseInt(outputTokensLimit || '80000'),
-        requestsLimit: parseInt(requestsLimit || '4000'),
+        inputTokensRemaining: inputTokensRemaining ? parseInt(inputTokensRemaining) : 999999,
+        outputTokensRemaining: outputTokensRemaining ? parseInt(outputTokensRemaining) : 999999,
+        requestsRemaining: requestsRemaining ? parseInt(requestsRemaining) : 999999,
+        inputTokensLimit: inputTokensLimit ? parseInt(inputTokensLimit) : 200000,
+        outputTokensLimit: outputTokensLimit ? parseInt(outputTokensLimit) : 80000,
+        requestsLimit: requestsLimit ? parseInt(requestsLimit) : 4000,
       }
     } else {
-      // No rate limit headers = no throttling
+      // No valid rate limit headers = no throttling
       this.rateLimitInfo = null
     }
   }
@@ -347,12 +353,22 @@ export class AnthropicClient extends AiClient {
       this.rateLimitInfo.outputTokensRemaining / Math.max(this.rateLimitInfo.outputTokensLimit, 1)
     const requestsRatio = this.rateLimitInfo.requestsRemaining / Math.max(this.rateLimitInfo.requestsLimit, 1)
 
+    // Debug logging
+    console.log('DEBUG: Rate limit ratios:', {
+      inputTokensRatio,
+      outputTokensRatio,
+      requestsRatio,
+      rateLimitInfo: this.rateLimitInfo
+    })
+
     // Find the most restrictive limit
     const minRatio = Math.min(inputTokensRatio, outputTokensRatio, requestsRatio)
 
     // Throttle if any limit is below 20%
     if (minRatio < 0.2) {
       const delaySeconds = Math.max(1, Math.round((0.2 - minRatio) * 20))
+      console.log('DEBUG: Throttling calculation:', { minRatio, delaySeconds, formula: `(0.2 - ${minRatio}) * 20 = ${(0.2 - minRatio) * 20}` })
+      
       this.interactor.displayText(
         `⏳ Rate limit approaching (${Math.round(minRatio * 100)}% remaining), waiting ${delaySeconds} seconds...`
       )
@@ -373,7 +389,7 @@ export class AnthropicClient extends AiClient {
     else if (outputRemaining === 0) limitType = 'output tokens'
     else if (requestsRemaining === 0) limitType = 'requests'
 
-    this.interactor.displayText(`🚨 Rate limit exceeded: ${limitType} limit reached`)
+    this.interactor.debug(`🚨 Rate limit exceeded: ${limitType} limit reached`)
   }
 
   /**
