@@ -16,8 +16,6 @@ interface RateLimitInfo {
   inputTokensLimit: number
   outputTokensLimit: number
   requestsLimit: number
-  lastUpdated: Date
-  hasValidHeaders: boolean // Indicates if we received actual rate limit headers
 }
 
 const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
@@ -288,86 +286,62 @@ export class AnthropicClient extends AiClient {
       .withResponse()
   }
 
+  private getHeader = (headers: Headers | Record<string, string> | undefined, key: string): string | null => {
+    if (!headers) {
+      return null
+    }
+    if (headers instanceof Headers) {
+      return headers.get(key)
+    } else {
+      return headers[key] || null
+    }
+  }
+
   /**
    * Update rate limit information from headers
-   * Handles both Response.headers and plain header objects
+   * Simple approach: if headers exist, use them. If not, no throttling.
    */
   private updateRateLimitsFromHeaders(headers: Headers | Record<string, string> | undefined): void {
-    // Return early if no headers provided
     if (!headers) {
+      this.rateLimitInfo = null
       return
     }
 
-    try {
-      // Helper function to get header value regardless of header type
-      const getHeader = (key: string): string | null => {
-        if (headers instanceof Headers) {
-          return headers.get(key)
-        } else {
-          return headers[key] || null
-        }
+    // Try to get rate limit headers
+    const inputTokensRemaining = this.getHeader(headers, 'anthropic-ratelimit-input-tokens-remaining')
+    const outputTokensRemaining = this.getHeader(headers, 'anthropic-ratelimit-output-tokens-remaining')
+    const requestsRemaining = this.getHeader(headers, 'anthropic-ratelimit-requests-remaining')
+    const inputTokensLimit = this.getHeader(headers, 'anthropic-ratelimit-input-tokens-limit')
+    const outputTokensLimit = this.getHeader(headers, 'anthropic-ratelimit-output-tokens-limit')
+    const requestsLimit = this.getHeader(headers, 'anthropic-ratelimit-requests-limit')
+
+    // If we have rate limit headers, use them
+    if (inputTokensRemaining || outputTokensRemaining || requestsRemaining) {
+      this.rateLimitInfo = {
+        inputTokensRemaining: parseInt(inputTokensRemaining || '0'),
+        outputTokensRemaining: parseInt(outputTokensRemaining || '0'),
+        requestsRemaining: parseInt(requestsRemaining || '0'),
+        inputTokensLimit: parseInt(inputTokensLimit || '200000'),
+        outputTokensLimit: parseInt(outputTokensLimit || '80000'),
+        requestsLimit: parseInt(requestsLimit || '4000'),
       }
-
-      // Check if we have any rate limit headers at all
-      const hasRateLimitHeaders =
-        getHeader('anthropic-ratelimit-input-tokens-remaining') ||
-        getHeader('anthropic-ratelimit-output-tokens-remaining') ||
-        getHeader('anthropic-ratelimit-requests-remaining')
-
-      if (hasRateLimitHeaders) {
-        // Parse limits first, with sensible defaults
-        const inputTokensLimit = parseInt(getHeader('anthropic-ratelimit-input-tokens-limit') || '200000')
-        const outputTokensLimit = parseInt(getHeader('anthropic-ratelimit-output-tokens-limit') || '80000')
-        const requestsLimit = parseInt(getHeader('anthropic-ratelimit-requests-limit') || '4000')
-
-        // Parse remaining values, defaulting to the limit (full capacity) if missing
-        const inputTokensRemaining = getHeader('anthropic-ratelimit-input-tokens-remaining')
-          ? parseInt(getHeader('anthropic-ratelimit-input-tokens-remaining')!)
-          : inputTokensLimit
-        const outputTokensRemaining = getHeader('anthropic-ratelimit-output-tokens-remaining')
-          ? parseInt(getHeader('anthropic-ratelimit-output-tokens-remaining')!)
-          : outputTokensLimit
-        const requestsRemaining = getHeader('anthropic-ratelimit-requests-remaining')
-          ? parseInt(getHeader('anthropic-ratelimit-requests-remaining')!)
-          : requestsLimit
-
-        this.rateLimitInfo = {
-          inputTokensRemaining,
-          outputTokensRemaining,
-          requestsRemaining,
-          inputTokensLimit,
-          outputTokensLimit,
-          requestsLimit,
-          lastUpdated: new Date(),
-          hasValidHeaders: true,
-        }
-      } else {
-        // No rate limit headers found - don't apply throttling
-        this.rateLimitInfo = null
-      }
-    } catch (error) {
-      // If parsing fails, keep existing rate limit info
-      console.warn('Failed to parse rate limit headers:', error)
+    } else {
+      // No rate limit headers = no throttling
+      this.rateLimitInfo = null
     }
   }
 
   /**
    * Apply throttling delay based on current rate limits
+   * Simple approach: if we have rate limit info and limits are low, throttle. Otherwise, no throttling.
    */
   private async applyThrottlingDelay(): Promise<void> {
-    // Don't throttle if we have no rate limit info or no valid headers
-    if (!this.rateLimitInfo || !this.rateLimitInfo.hasValidHeaders) return
-
-    const now = new Date()
-    const timeSinceUpdate = now.getTime() - this.rateLimitInfo.lastUpdated.getTime()
-
-    // Don't throttle if rate limit info is older than 2 minutes
-    if (timeSinceUpdate > 2 * 60 * 1000) {
-      this.rateLimitInfo = null
+    // No rate limit info = no throttling
+    if (!this.rateLimitInfo) {
       return
     }
 
-    // Calculate throttling delay based on remaining capacity
+    // Calculate remaining ratios
     const inputTokensRatio = this.rateLimitInfo.inputTokensRemaining / Math.max(this.rateLimitInfo.inputTokensLimit, 1)
     const outputTokensRatio =
       this.rateLimitInfo.outputTokensRemaining / Math.max(this.rateLimitInfo.outputTokensLimit, 1)
@@ -376,15 +350,9 @@ export class AnthropicClient extends AiClient {
     // Find the most restrictive limit
     const minRatio = Math.min(inputTokensRatio, outputTokensRatio, requestsRatio)
 
-    // Start throttling when any limit is below 20%
+    // Throttle if any limit is below 20%
     if (minRatio < 0.2) {
-      // Progressive delay: more aggressive as we get closer to 0
-      // But reduce delay over time to avoid permanent throttling
-      const ageMinutes = timeSinceUpdate / (60 * 1000)
-      const ageFactor = Math.max(0.5, 1 - ageMinutes / 5) // Reduce delay as info gets older
-      const baseDelay = Math.max(1, Math.round((0.2 - minRatio) * 20))
-      const delaySeconds = Math.round(baseDelay * ageFactor)
-
+      const delaySeconds = Math.max(1, Math.round((0.2 - minRatio) * 20))
       this.interactor.displayText(
         `⏳ Rate limit approaching (${Math.round(minRatio * 100)}% remaining), waiting ${delaySeconds} seconds...`
       )
