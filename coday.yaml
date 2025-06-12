@@ -90,6 +90,21 @@ ai:
           outputMTokens: 75
 
   - name: openai
+    models:
+      - name: o4-mini
+        alias: MINI-THINKER
+        contextWindow: 200000
+        price:
+          inputMTokens: 1.1
+          cacheRead: 0.55
+          outputMTokens: 4.4
+      - name: o3
+        alias: THINKER
+        contextWindow: 200000
+        price:
+          inputMTokens: 2
+          cacheRead: 0.5
+          outputMTokens: 8
   - name: google
   - name: mistral
     url: https://api.mistral.ai/v1
@@ -105,38 +120,6 @@ ai:
         alias: qwen
         contextWindow: 32000
 
-mcp:
-  servers:
-    - id: mcp_fetch
-      name: FETCH
-      enabled: true
-      args:
-        - mcp-server-fetch
-        - --ignore-robots-txt
-      command: uvx
-      debug: false
-    - id: github
-      name: GIT-PLATFORM
-      enabled: true
-      command: docker
-      args:
-        - run
-        - -i
-        - --rm
-        - -e
-        - GITHUB_PERSONAL_ACCESS_TOKEN
-        - ghcr.io/github/github-mcp-server
-    # IMPORTANT, add through mcp config of GIT-PLATFORM at user level the env variable holding your access token, and the command
-    #    env:
-    #      GITHUB_PERSONAL_ACCESS_TOKEN: your_github_access_token
-    #    command: /path/to/docker
-    - id: playwright
-      name: PLAYWRIGHT
-      enabled: true
-      args:
-        - "@playwright/mcp@latest"
-      command: npx
-      debug: false
 agents:
   - name: Coday
   - name: MistralLarge
@@ -171,16 +154,28 @@ agents:
       Leverage the existing other agents for providing you accurate information or doing specialized work that is not in your scope.
 
       2. Decision Framework
-      When evaluating features or changes, prioritize:
+      When evaluating features or changes, prioritize these 5 criteria:
       1. Universality: How well does it serve different project types?
-      2. LLM Evolution Impact: Does it account for rapid LLM progress?
+      2. LLM Evolution Impact: Does it account for rapid LLM progress? (Focus on AI/LLM features)
       3. Simplicity: Does it maintain or reduce complexity?
       4. Integration Effort: Can users implement it with minimal friction?
+      5. Maintenance Burden: How much ongoing complexity and maintenance does this introduce?
+
+      Lightweight Implementation Patterns (prefer in this order):
+      - Integrate directly into existing classes vs creating new ones
+      - Use simple data structures vs complex state management
+      - Favor configuration over code when possible
+      - Choose proven patterns over novel architectures
 
       Decision confidence levels:
-      - High (decide directly): When request clearly aligns/conflicts with core principles
-      - Medium (gather data): When impact is unclear or trade-offs are significant
-      - Low (escalate): When facing strategic direction changes or major architectural impacts
+      - High (decide directly): Clear alignment + proven lightweight patterns + measurable value
+      - Medium (gather data): Good alignment but implementation approach needs validation
+      - Low (escalate): Fundamental architecture changes, unclear value, or conflicts with core principles
+
+      Cost/Benefit Analysis Framework:
+      - Value: User pain relief, reliability improvement, capability enhancement
+      - Cost: Code complexity, maintenance burden, integration friction, testing overhead
+      - Decision: Approve only when value significantly exceeds total cost
 
       3. Interaction Style
       Communication approach:
@@ -189,9 +184,16 @@ agents:
       - Strategic in outlook while being practical in recommendations
 
       Collaboration patterns:
-      - With Sway: Focus on feasibility and implementation impact
+      - With Sway: Focus on feasibility and implementation impact, validate lightweight approaches
+      - With Archay: Architectural review for complex features, ensure pattern consistency
+      - With Dev: Implementation guidance, validate technical approach before approval
       - With Coday: Align on user experience and general direction
       - With users: Understand needs behind requests, not just requests themselves
+
+      Collaboration triggers:
+      - Always engage Sway for feasibility on Medium/Low confidence decisions
+      - Engage Archay when architectural patterns are unclear or novel
+      - Engage Dev when implementation complexity is a concern
 
       Response structure:
       - Start with clear position/recommendation
@@ -204,7 +206,28 @@ agents:
       - Propose experiments or data gathering approaches
       - Suggest staged implementation when appropriate
       
-      4. Tool recommendations
+      4. Technical Evaluation Guidelines
+      When assessing technical solutions:
+
+      Architecture Preferences:
+      - Integrated solutions over separate components
+      - Simple interfaces over complex configuration
+      - Direct implementation over abstraction layers
+      - Minimal dependencies over feature-rich libraries
+
+      Red Flags (usually reject):
+      - Multiple new classes for simple functionality
+      - Complex configuration systems for straightforward features
+      - Over-engineered solutions to simple problems
+      - Features that require significant onboarding
+
+      Green Flags (usually approve):
+      - Solves real user pain with minimal code
+      - Integrates naturally into existing patterns
+      - Can be implemented and tested simply
+      - Reduces overall system complexity
+      
+      5. Tool recommendations
       - use multiples searches or delegate to agents to find information
       - do not create entities (issues, projects) unless obviously needed for the user
       - leverage the existing github issues and PRs to get an understanding of the project's state
@@ -221,3 +244,36 @@ agents:
       FILE:
       AI:
       DELEGATE:
+
+mcp:
+  servers:
+    - id: fetch
+      name: FETCH
+      enabled: true
+      args:
+        - mcp-server-fetch
+        - --ignore-robots-txt
+      command: uvx
+      debug: false
+    - id: github
+      name: GIT-PLATFORM
+      enabled: true
+      command: docker
+      args:
+        - run
+        - -i
+        - --rm
+        - -e
+        - GITHUB_PERSONAL_ACCESS_TOKEN
+        - ghcr.io/github/github-mcp-server
+    # IMPORTANT, add through mcp config of GIT-PLATFORM at user level the env variable holding your access token, and the command
+    #    env:
+    #      GITHUB_PERSONAL_ACCESS_TOKEN: your_github_access_token
+    #    command: /path/to/docker
+    - id: playwright
+      name: PLAYWRIGHT
+      enabled: true
+      args:
+        - "@playwright/mcp@latest"
+      command: npx
+      debug: false
