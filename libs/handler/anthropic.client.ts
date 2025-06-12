@@ -43,6 +43,9 @@ const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
   },
 ]
 
+const MAX_THROTTLING_DELAY = 60
+const THROTTLING_THRESHOLD = 0.4
+
 export class AnthropicClient extends AiClient {
   name: string
   private rateLimitInfo: RateLimitInfo | null = null
@@ -317,7 +320,7 @@ export class AnthropicClient extends AiClient {
 
     // Only create rateLimitInfo if we have at least one valid numeric header
     // Check that we have actual numeric values, not just null/undefined
-    const hasValidRemainingHeaders = 
+    const hasValidRemainingHeaders =
       (inputTokensRemaining && !isNaN(parseInt(inputTokensRemaining))) ||
       (outputTokensRemaining && !isNaN(parseInt(outputTokensRemaining))) ||
       (requestsRemaining && !isNaN(parseInt(requestsRemaining)))
@@ -354,21 +357,23 @@ export class AnthropicClient extends AiClient {
     const requestsRatio = this.rateLimitInfo.requestsRemaining / Math.max(this.rateLimitInfo.requestsLimit, 1)
 
     // Debug logging
-    console.log('DEBUG: Rate limit ratios:', {
-      inputTokensRatio,
-      outputTokensRatio,
-      requestsRatio,
-      rateLimitInfo: this.rateLimitInfo
-    })
+    this.interactor.debug(
+      `Rate limit ratios: ${{
+        inputTokensRatio,
+        outputTokensRatio,
+        requestsRatio,
+        rateLimitInfo: this.rateLimitInfo,
+      }}`
+    )
 
     // Find the most restrictive limit
     const minRatio = Math.min(inputTokensRatio, outputTokensRatio, requestsRatio)
 
-    // Throttle if any limit is below 20%
-    if (minRatio < 0.2) {
-      const delaySeconds = Math.max(1, Math.round((0.2 - minRatio) * 20))
-      console.log('DEBUG: Throttling calculation:', { minRatio, delaySeconds, formula: `(0.2 - ${minRatio}) * 20 = ${(0.2 - minRatio) * 20}` })
-      
+    // Throttle if any limit is below threshold
+    if (minRatio < THROTTLING_THRESHOLD) {
+      const proportion = (THROTTLING_THRESHOLD - minRatio) / THROTTLING_THRESHOLD
+      const delaySeconds = Math.max(1, Math.round(proportion * MAX_THROTTLING_DELAY))
+
       this.interactor.displayText(
         `⏳ Rate limit approaching (${Math.round(minRatio * 100)}% remaining), waiting ${delaySeconds} seconds...`
       )
