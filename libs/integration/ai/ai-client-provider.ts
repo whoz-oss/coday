@@ -124,8 +124,22 @@ export class AiClientProvider {
     return clients.length ? clients[0] : undefined
   }
 
+  /**
+   * Cleanup AI clients for fresh connections but keep configurations.
+   * Used when ending a conversation but keeping Coday instance alive.
+   */
+  public cleanup(): void {
+    this.aiClients.forEach((client) => client.kill())
+    this.aiClients = []
+    // Keep aiProviderConfigs so we can recreate clients later
+  }
+
+  /**
+   * Completely destroy all AI clients and configurations.
+   * Used when terminating the Coday instance entirely.
+   */
   public kill(): void {
-    this.aiClients.forEach((client, key, map) => client.kill())
+    this.cleanup()
     this.aiProviderConfigs = undefined
   }
 
