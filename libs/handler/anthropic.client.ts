@@ -46,6 +46,11 @@ const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
 const MAX_THROTTLING_DELAY = 60
 const THROTTLING_THRESHOLD = 0.4
 
+// Cache marker strategy constants
+const CACHE_MARKER_PLACEMENT_RATIO = 0.9
+const CACHE_MARKER_UPDATE_THRESHOLD = 0.5
+const CACHE_MIN_MESSAGES = 5
+
 export class AnthropicClient extends AiClient {
   name: string
   private rateLimitInfo: RateLimitInfo | null = null
@@ -267,13 +272,14 @@ export class AnthropicClient extends AiClient {
 
   /**
    * Get or update the cache marker position using mobile marker strategy
-   * Places marker at ~70% of conversation, repositions when it drops below 40%
+   * Places marker at CACHE_MARKER_PLACEMENT_RATIO% of conversation,
+   * repositions when it drops below CACHE_MARKER_UPDATE_THRESHOLD%
    */
   private getOrUpdateCacheMarker(thread: AiThread, messages: ThreadMessage[]): string | null {
     const messageCount = messages.length
 
     // No cache marker for short conversations
-    if (messageCount < 5) {
+    if (messageCount < CACHE_MIN_MESSAGES) {
       this.interactor.debug(`📋 Cache: Conversation too short (${messageCount} messages), no marker`)
       return null
     }
@@ -292,14 +298,20 @@ export class AnthropicClient extends AiClient {
       if (markerIndex !== -1) {
         const ratio = markerIndex / messageCount
         const percentage = Math.round(ratio * 100)
+        const minPercentage = Math.round(CACHE_MARKER_UPDATE_THRESHOLD * 100)
+        const maxPercentage = Math.round(CACHE_MARKER_PLACEMENT_RATIO * 100)
 
-        // Keep marker if it's still in the valid range (40%-70%)
-        if (ratio >= 0.4 && ratio <= 0.7) {
-          this.interactor.debug(`✅ Cache: Keeping marker at message ${markerIndex + 1}/${messageCount} (${percentage}%)`)
+        // Keep marker if it's still in the valid range
+        if (ratio >= CACHE_MARKER_UPDATE_THRESHOLD && ratio <= CACHE_MARKER_PLACEMENT_RATIO) {
+          this.interactor.debug(
+            `✅ Cache: Keeping marker at message ${markerIndex + 1}/${messageCount} (${percentage}%)`
+          )
           return currentMarkerId
         }
-        
-        this.interactor.debug(`🔄 Cache: Marker at ${percentage}% is out of range (40-70%), repositioning...`)
+
+        this.interactor.debug(
+          `🔄 Cache: Marker at ${percentage}% is out of range (${minPercentage}-${maxPercentage}%), repositioning...`
+        )
       } else {
         this.interactor.debug(`⚠️ Cache: Marker message not found, creating new marker`)
       }
@@ -307,14 +319,16 @@ export class AnthropicClient extends AiClient {
       this.interactor.debug(`🆕 Cache: No existing marker, creating first marker`)
     }
 
-    // Place/move marker to 70% position
-    const newIndex = Math.floor(messageCount * 0.7)
+    // Place/move marker to configured position
+    const newIndex = Math.floor(messageCount * CACHE_MARKER_PLACEMENT_RATIO)
     const newMarkerId = messages[newIndex]?.timestamp
     const newPercentage = Math.round((newIndex / messageCount) * 100)
 
     if (newMarkerId) {
       thread.data.anthropic.cacheMarkerMessageId = newMarkerId
-      this.interactor.debug(`📍 Cache: Placed marker at message ${newIndex + 1}/${messageCount} (${newPercentage}%) - ID: ${newMarkerId}`)
+      this.interactor.debug(
+        `📍 Cache: Placed marker at message ${newIndex + 1}/${messageCount} (${newPercentage}%) - ID: ${newMarkerId}`
+      )
       return newMarkerId
     }
 
