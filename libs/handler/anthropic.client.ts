@@ -9,6 +9,15 @@ import { ThreadMessage } from '../ai-thread/ai-thread.types'
 import { TextBlockParam } from '@anthropic-ai/sdk/resources/messages'
 import { CodayLogger } from '../service/coday-logger'
 
+interface RateLimitInfo {
+  inputTokensRemaining: number
+  outputTokensRemaining: number
+  requestsRemaining: number
+  inputTokensLimit: number
+  outputTokensLimit: number
+  requestsLimit: number
+}
+
 const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
   {
     name: 'claude-sonnet-4-20250514',
@@ -34,8 +43,12 @@ const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
   },
 ]
 
+const MAX_THROTTLING_DELAY = 60
+const THROTTLING_THRESHOLD = 0.4
+
 export class AnthropicClient extends AiClient {
   name: string
+  private rateLimitInfo: RateLimitInfo | null = null
 
   constructor(
     readonly interactor: Interactor,
@@ -75,52 +88,79 @@ export class AnthropicClient extends AiClient {
     thread: AiThread,
     subscriber: Subject<CodayEvent>
   ): Promise<void> {
+    // Apply throttling delay if needed
+    await this.applyThrottlingDelay()
+    const initialContextCharLength = agent.systemInstructions.length + agent.tools.charLength + 20
+    const charBudget = model.contextWindow * this.charsPerToken - initialContextCharLength
+
+    // API call with localized error handling
+    let response: Anthropic.Messages.Message
+    let httpResponse: Response
     try {
-      const initialContextCharLength = agent.systemInstructions.length + agent.tools.charLength + 20
-      const charBudget = model.contextWindow * this.charsPerToken - initialContextCharLength
-
-      const response = await client.messages.create({
-        model: model.name,
-        messages: this.toClaudeMessage(thread.getMessages(charBudget)),
-        system: [
-          {
-            text: agent.systemInstructions,
-            type: 'text',
-            cache_control: { type: 'ephemeral' },
-          },
-        ] as unknown as Array<TextBlockParam>,
-        tools: this.getClaudeTools(agent.tools),
-        temperature: agent.definition.temperature ?? 0.8,
-        max_tokens: 8192,
-      })
-
-      this.updateUsage(response?.usage, agent, thread)
-
-      if (response.stop_reason === 'max_tokens') throw new Error('Max tokens reached for Anthropic 😬')
-
-      const text = response.content
-        .filter((block) => block.type === 'text')
-        .map((block) => block.text.trim())
-        .filter((t) => !!t)
-        .join('\n')
-      this.handleText(thread, text, agent, subscriber)
-
-      const toolRequests = response.content
-        .filter((block) => block.type === 'tool_use')
-        .map(
-          (block) =>
-            new ToolRequestEvent({
-              toolRequestId: block.id,
-              name: block.name,
-              args: JSON.stringify(block.input),
-            })
-        )
-      if (await this.shouldProcessAgainAfterResponse(text, toolRequests, agent, thread)) {
-        // then tool responses to send
-        await this.processThread(client, agent, model, thread, subscriber)
-      }
+      const result = await this.makeApiCall(client, model, agent, thread, charBudget)
+      response = result.data
+      httpResponse = result.response
     } catch (error: any) {
-      this.handleError(error, subscriber, this.name)
+      // Handle 429 rate limit errors with retry
+      if (error.status === 429 && error.headers) {
+        const retryAfter = parseInt(error.headers['retry-after'] || '60')
+        this.interactor.displayText(`⏳ Rate limit hit. Waiting ${retryAfter} seconds before retry...`)
+
+        // Update rate limits from error headers
+        this.updateRateLimitsFromHeaders(error.headers)
+
+        // Show which limit was hit
+        this.displayRateLimitStatus(error.headers)
+
+        // Wait and retry once
+        await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000))
+
+        this.interactor.displayText(`🔄 Retrying request...`)
+
+        // Retry the API call once
+        try {
+          const retryResult = await this.makeApiCall(client, model, agent, thread, charBudget)
+          response = retryResult.data
+          httpResponse = retryResult.response
+        } catch (retryError: any) {
+          // If retry also fails, handle as normal error
+          this.handleError(retryError, subscriber, this.name)
+          return
+        }
+      } else {
+        // Other errors propagate immediately
+        this.handleError(error, subscriber, this.name)
+        return
+      }
+    }
+
+    // Update rate limits from successful response headers
+    this.updateRateLimitsFromHeaders(httpResponse?.headers)
+
+    this.updateUsage(response?.usage, agent, thread)
+
+    if (response.stop_reason === 'max_tokens') throw new Error('Max tokens reached for Anthropic 😬')
+
+    const text = response.content
+      .filter((block) => block.type === 'text')
+      .map((block) => block.text.trim())
+      .filter((t) => !!t)
+      .join('\n')
+    this.handleText(thread, text, agent, subscriber)
+
+    const toolRequests = response.content
+      .filter((block) => block.type === 'tool_use')
+      .map(
+        (block) =>
+          new ToolRequestEvent({
+            toolRequestId: block.id,
+            name: block.name,
+            args: JSON.stringify(block.input),
+          })
+      )
+    if (await this.shouldProcessAgainAfterResponse(text, toolRequests, agent, thread)) {
+      // Continue with tool processing - recursive call is now outside try-catch
+      await this.processThread(client, agent, model, thread, subscriber)
     }
   }
 
@@ -218,5 +258,153 @@ export class AnthropicClient extends AiClient {
       description: t.function.description,
       input_schema: t.function.parameters,
     }))
+  }
+
+  /**
+   * Make the actual API call to Anthropic
+   * Extracted to avoid code duplication between initial call and retry
+   */
+  private async makeApiCall(
+    client: Anthropic,
+    model: AiModel,
+    agent: Agent,
+    thread: AiThread,
+    charBudget: number
+  ): Promise<{ data: Anthropic.Messages.Message; response: Response }> {
+    return await client.messages
+      .create({
+        model: model.name,
+        messages: this.toClaudeMessage(thread.getMessages(charBudget)),
+        system: [
+          {
+            text: agent.systemInstructions,
+            type: 'text',
+            cache_control: { type: 'ephemeral' },
+          },
+        ] as unknown as Array<TextBlockParam>,
+        tools: this.getClaudeTools(agent.tools),
+        temperature: agent.definition.temperature ?? 0.8,
+        max_tokens: 8192,
+      })
+      .withResponse()
+  }
+
+  private getHeader = (headers: Headers | Record<string, string> | undefined, key: string): string | null => {
+    if (!headers) {
+      return null
+    }
+    if (headers instanceof Headers) {
+      return headers.get(key)
+    } else {
+      return headers[key] || null
+    }
+  }
+
+  /**
+   * Update rate limit information from headers
+   * Only create rateLimitInfo if we have actual numeric rate limit headers.
+   */
+  private updateRateLimitsFromHeaders(headers: Headers | Record<string, string> | undefined): void {
+    if (!headers) {
+      this.rateLimitInfo = null
+      return
+    }
+
+    // Try to get rate limit headers
+    const inputTokensRemaining = this.getHeader(headers, 'anthropic-ratelimit-input-tokens-remaining')
+    const outputTokensRemaining = this.getHeader(headers, 'anthropic-ratelimit-output-tokens-remaining')
+    const requestsRemaining = this.getHeader(headers, 'anthropic-ratelimit-requests-remaining')
+    const inputTokensLimit = this.getHeader(headers, 'anthropic-ratelimit-input-tokens-limit')
+    const outputTokensLimit = this.getHeader(headers, 'anthropic-ratelimit-output-tokens-limit')
+    const requestsLimit = this.getHeader(headers, 'anthropic-ratelimit-requests-limit')
+
+    // Only create rateLimitInfo if we have at least one valid numeric header
+    // Check that we have actual numeric values, not just null/undefined
+    const hasValidRemainingHeaders =
+      (inputTokensRemaining && !isNaN(parseInt(inputTokensRemaining))) ||
+      (outputTokensRemaining && !isNaN(parseInt(outputTokensRemaining))) ||
+      (requestsRemaining && !isNaN(parseInt(requestsRemaining)))
+
+    if (hasValidRemainingHeaders) {
+      this.rateLimitInfo = {
+        inputTokensRemaining: inputTokensRemaining ? parseInt(inputTokensRemaining) : 999999,
+        outputTokensRemaining: outputTokensRemaining ? parseInt(outputTokensRemaining) : 999999,
+        requestsRemaining: requestsRemaining ? parseInt(requestsRemaining) : 999999,
+        inputTokensLimit: inputTokensLimit ? parseInt(inputTokensLimit) : 200000,
+        outputTokensLimit: outputTokensLimit ? parseInt(outputTokensLimit) : 80000,
+        requestsLimit: requestsLimit ? parseInt(requestsLimit) : 4000,
+      }
+    } else {
+      // No valid rate limit headers = no throttling
+      this.rateLimitInfo = null
+    }
+  }
+
+  /**
+   * Apply throttling delay based on current rate limits
+   * Simple approach: if we have rate limit info and limits are low, throttle. Otherwise, no throttling.
+   */
+  private async applyThrottlingDelay(): Promise<void> {
+    // No rate limit info = no throttling
+    if (!this.rateLimitInfo) {
+      return
+    }
+
+    // Calculate remaining ratios
+    const inputTokensRatio = this.rateLimitInfo.inputTokensRemaining / Math.max(this.rateLimitInfo.inputTokensLimit, 1)
+    const outputTokensRatio =
+      this.rateLimitInfo.outputTokensRemaining / Math.max(this.rateLimitInfo.outputTokensLimit, 1)
+    const requestsRatio = this.rateLimitInfo.requestsRemaining / Math.max(this.rateLimitInfo.requestsLimit, 1)
+
+    // Debug logging
+    this.interactor.debug(
+      `Rate limit ratios: ${{
+        inputTokensRatio,
+        outputTokensRatio,
+        requestsRatio,
+        rateLimitInfo: this.rateLimitInfo,
+      }}`
+    )
+
+    // Find the most restrictive limit
+    const minRatio = Math.min(inputTokensRatio, outputTokensRatio, requestsRatio)
+
+    // Throttle if any limit is below threshold
+    if (minRatio < THROTTLING_THRESHOLD) {
+      const proportion = (THROTTLING_THRESHOLD - minRatio) / THROTTLING_THRESHOLD
+      const delaySeconds = Math.max(1, Math.round(proportion * MAX_THROTTLING_DELAY))
+
+      this.interactor.displayText(
+        `⏳ Rate limit approaching (${Math.round(minRatio * 100)}% remaining), waiting ${delaySeconds} seconds...`
+      )
+      await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000))
+    }
+  }
+
+  /**
+   * Display which rate limit was hit
+   */
+  private displayRateLimitStatus(headers: any): void {
+    const inputRemaining = parseInt(headers['anthropic-ratelimit-input-tokens-remaining'] || '0')
+    const outputRemaining = parseInt(headers['anthropic-ratelimit-output-tokens-remaining'] || '0')
+    const requestsRemaining = parseInt(headers['anthropic-ratelimit-requests-remaining'] || '0')
+
+    let limitType = 'unknown'
+    if (inputRemaining === 0) limitType = 'input tokens'
+    else if (outputRemaining === 0) limitType = 'output tokens'
+    else if (requestsRemaining === 0) limitType = 'requests'
+
+    this.interactor.debug(`🚨 Rate limit exceeded: ${limitType} limit reached`)
+  }
+
+  /**
+   * Enhanced error handling for Anthropic-specific errors
+   * Note: 429 errors are now handled locally in processThread, so this method
+   * focuses on other error types and provides Anthropic-specific context.
+   */
+  protected handleError(error: unknown, subscriber: Subject<CodayEvent>, providerName: string): void {
+    // Use the parent implementation for all errors
+    // 429 errors are handled locally in processThread before reaching here
+    super.handleError(error, subscriber, providerName)
   }
 }
