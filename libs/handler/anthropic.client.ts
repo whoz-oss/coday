@@ -456,12 +456,12 @@ export class AnthropicClient extends AiClient {
 
     // Debug logging
     this.interactor.debug(
-      `Rate limit ratios: ${{
+      `Rate limit ratios: ${JSON.stringify({
         inputTokensRatio,
         outputTokensRatio,
         requestsRatio,
         rateLimitInfo: this.rateLimitInfo,
-      }}`
+      })}`
     )
 
     // Find the most restrictive limit
