@@ -46,6 +46,11 @@ const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
 const MAX_THROTTLING_DELAY = 60
 const THROTTLING_THRESHOLD = 0.4
 
+// Cache marker strategy constants
+const CACHE_MARKER_PLACEMENT_RATIO = 0.9
+const CACHE_MARKER_UPDATE_THRESHOLD = 0.5
+const CACHE_MIN_MESSAGES = 5
+
 export class AnthropicClient extends AiClient {
   name: string
   private rateLimitInfo: RateLimitInfo | null = null
@@ -205,16 +210,32 @@ export class AnthropicClient extends AiClient {
 
   /**
    * Convert a ThreadMessage to Claude's MessageParam format
+   * Includes mobile cache marker optimization
    */
-  private toClaudeMessage(messages: ThreadMessage[]): MessageParam[] {
+  private toClaudeMessage(messages: ThreadMessage[], thread: AiThread): MessageParam[] {
+    // Get or update the cache marker position
+    const markerMessageId = this.getOrUpdateCacheMarker(thread, messages)
+
     return messages
       .map((msg, index) => {
         let claudeMessage: MessageParam | undefined
+        const shouldAddCache = markerMessageId && msg.timestamp === markerMessageId
+
         if (msg instanceof MessageEvent) {
           const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
           const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
 
-          claudeMessage = { role: msg.role, content }
+          // Structure message with content blocks for cache_control support
+          claudeMessage = {
+            role: msg.role,
+            content: [
+              {
+                type: 'text',
+                text: content,
+                ...(shouldAddCache && { cache_control: { type: 'ephemeral' } }),
+              },
+            ],
+          }
         }
         if (msg instanceof ToolRequestEvent) {
           claudeMessage = {
@@ -225,6 +246,7 @@ export class AnthropicClient extends AiClient {
                 id: msg.toolRequestId,
                 name: msg.name,
                 input: JSON.parse(msg.args),
+                ...(shouldAddCache && { cache_control: { type: 'ephemeral' } }),
               },
             ],
           }
@@ -237,27 +259,103 @@ export class AnthropicClient extends AiClient {
                 type: 'tool_result',
                 tool_use_id: msg.toolRequestId,
                 content: msg.output,
+                ...(shouldAddCache && { cache_control: { type: 'ephemeral' } }),
               },
             ],
           }
         }
+
         return claudeMessage
       })
       .filter((m) => !!m)
   }
 
   /**
+   * Get or update the cache marker position using mobile marker strategy
+   * Places marker at CACHE_MARKER_PLACEMENT_RATIO% of conversation,
+   * repositions when it drops below CACHE_MARKER_UPDATE_THRESHOLD%
+   */
+  private getOrUpdateCacheMarker(thread: AiThread, messages: ThreadMessage[]): string | null {
+    const messageCount = messages.length
+
+    // No cache marker for short conversations
+    if (messageCount < CACHE_MIN_MESSAGES) {
+      this.interactor.debug(`📋 Cache: Conversation too short (${messageCount} messages), no marker`)
+      return null
+    }
+
+    // Initialize anthropic data if needed
+    if (!thread.data.anthropic) {
+      thread.data.anthropic = {}
+    }
+
+    // Get current marker
+    const currentMarkerId = thread.data.anthropic.cacheMarkerMessageId
+
+    if (currentMarkerId) {
+      // Find current marker position
+      const markerIndex = messages.findIndex((m) => m.timestamp === currentMarkerId)
+      if (markerIndex !== -1) {
+        const ratio = markerIndex / messageCount
+        const percentage = Math.round(ratio * 100)
+        const minPercentage = Math.round(CACHE_MARKER_UPDATE_THRESHOLD * 100)
+        const maxPercentage = Math.round(CACHE_MARKER_PLACEMENT_RATIO * 100)
+
+        // Keep marker if it's still in the valid range
+        if (ratio >= CACHE_MARKER_UPDATE_THRESHOLD && ratio <= CACHE_MARKER_PLACEMENT_RATIO) {
+          this.interactor.debug(
+            `✅ Cache: Keeping marker at message ${markerIndex + 1}/${messageCount} (${percentage}%)`
+          )
+          return currentMarkerId
+        }
+
+        this.interactor.debug(
+          `🔄 Cache: Marker at ${percentage}% is out of range (${minPercentage}-${maxPercentage}%), repositioning...`
+        )
+      } else {
+        this.interactor.debug(`⚠️ Cache: Marker message not found, creating new marker`)
+      }
+    } else {
+      this.interactor.debug(`🆕 Cache: No existing marker, creating first marker`)
+    }
+
+    // Place/move marker to configured position
+    const newIndex = Math.floor(messageCount * CACHE_MARKER_PLACEMENT_RATIO)
+    const newMarkerId = messages[newIndex]?.timestamp
+    const newPercentage = Math.round((newIndex / messageCount) * 100)
+
+    if (newMarkerId) {
+      thread.data.anthropic.cacheMarkerMessageId = newMarkerId
+      this.interactor.debug(
+        `📍 Cache: Placed marker at message ${newIndex + 1}/${messageCount} (${newPercentage}%) - ID: ${newMarkerId}`
+      )
+      return newMarkerId
+    }
+
+    this.interactor.debug(`❌ Cache: Failed to place marker at position ${newIndex}`)
+    return null
+  }
+
+  /**
    * Map tool definitions to match Anthropic's API
+   * Adds cache_control to tools since they're static throughout the conversation
    *
    * @param toolSet
    * @private
    */
   private getClaudeTools(toolSet: ToolSet) {
-    return toolSet.getTools().map((t) => ({
+    const tools = toolSet.getTools().map((t) => ({
       name: t.function.name,
       description: t.function.description,
       input_schema: t.function.parameters,
     }))
+
+    // Add cache_control to the last tool (covers all tools)
+    if (tools.length > 0) {
+      ;(tools[tools.length - 1] as any).cache_control = { type: 'ephemeral' }
+    }
+
+    return tools
   }
 
   /**
@@ -274,7 +372,7 @@ export class AnthropicClient extends AiClient {
     return await client.messages
       .create({
         model: model.name,
-        messages: this.toClaudeMessage(thread.getMessages(charBudget)),
+        messages: this.toClaudeMessage(thread.getMessages(charBudget), thread),
         system: [
           {
             text: agent.systemInstructions,
@@ -358,12 +456,12 @@ export class AnthropicClient extends AiClient {
 
     // Debug logging
     this.interactor.debug(
-      `Rate limit ratios: ${{
+      `Rate limit ratios: ${JSON.stringify({
         inputTokensRatio,
         outputTokensRatio,
         requestsRatio,
         rateLimitInfo: this.rateLimitInfo,
-      }}`
+      })}`
     )
 
     // Find the most restrictive limit
