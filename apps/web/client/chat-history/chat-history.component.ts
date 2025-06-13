@@ -13,6 +13,7 @@ import { VoiceSynthesisComponent } from '../voice-synthesis/voice-synthesis.comp
 
 const PARAGRAPH_MIN_LENGTH = 80
 const MAX_PARAGRAPHS = 3
+const MESSAGE_FRESHNESS_THRESHOLD = 5 * 60 * 1000 //  in millis
 
 export class ChatHistoryComponent implements CodayEventHandler {
   private chatHistory: HTMLDivElement
@@ -52,7 +53,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
       if (event.speaker) {
         // Stop any current speech when new response arrives
         this.voiceSynthesis.stopSpeech()
-        this.addText(event.text, event.speaker)
+        this.addText(event.text, event.speaker, event.timestamp)
       } else {
         this.addTechnical(event.text)
       }
@@ -102,7 +103,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
     this.appendMessageElement(newEntry)
   }
 
-  addText(text: string, speaker: string | undefined): void {
+  addText(text: string, speaker: string | undefined, messageTimestamp?: string): void {
     const newEntry = this.createMessageElement(text, speaker)
     newEntry.classList.add('text', 'left')
     newEntry.addEventListener('click', () => {
@@ -146,11 +147,9 @@ export class ChatHistoryComponent implements CodayEventHandler {
 
     this.appendMessageElement(newEntry)
 
-    // Announce agent responses if enabled
-    if (speaker) {
-      if (this.isVoiceAnnounceEnabled()) {
-        this.announceText(text)
-      }
+    // Announce agent responses if enabled (and message is recent enough)
+    if (speaker && this.isVoiceAnnounceEnabled() && this.isMessageRecentEnoughForAnnouncement(messageTimestamp)) {
+      this.announceText(text)
     }
   }
 
@@ -368,6 +367,26 @@ export class ChatHistoryComponent implements CodayEventHandler {
     }
   }
 
+  private isMessageRecentEnoughForAnnouncement(messageTimestamp?: string): boolean {
+    if (!messageTimestamp) {
+      return true // If no timestamp, assume it's recent
+    }
+
+    try {
+      // Extract ISO date part before the random suffix
+      // Format: "2024-01-15T10:30:45.123Z-abc12" -> "2024-01-15T10:30:45.123Z"
+      const isoDatePart = messageTimestamp.split('-').slice(0, -1).join('-')
+
+      const messageTime = new Date(isoDatePart).getTime()
+      const now = Date.now()
+      const timeDiff = now - messageTime
+
+      return timeDiff <= MESSAGE_FRESHNESS_THRESHOLD
+    } catch (error) {
+      return true // If parsing fails, assume it's recent
+    }
+  }
+
   private announceText(text: string): void {
     const mode = this.getVoiceMode()
 
@@ -380,7 +399,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
 
     // Check if we should read full text or just the beginning
     let textToSpeak: string
-    
+
     if (this.readFullText) {
       // Read the entire text
       textToSpeak = plainText
