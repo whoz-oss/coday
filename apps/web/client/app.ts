@@ -9,14 +9,7 @@ import { voiceSynthesis } from './preferences'
 
 // Debug logging function
 function debugLog(context: string, ...args: any[]) {
-  //console.log(`[DEBUG ${context}]`, ...args)
-}
-
-// Add global test function
-declare global {
-  interface Window {
-    triggerTestDisconnect: () => void
-  }
+  console.log(`[DEBUG ${context}]`, ...args)
 }
 
 /**

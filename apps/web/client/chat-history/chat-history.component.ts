@@ -321,16 +321,13 @@ export class ChatHistoryComponent implements CodayEventHandler {
 
   private extractPlainText(markdown: string): string {
     // Remove basic markdown formatting
-    return (
-      markdown
-        .replace(/\*\*(.*?)\*\*/g, '$1') // Bold
-        .replace(/\*(.*?)\*/g, '$1') // Italic
-        .replace(/`(.*?)`/g, '$1') // Code
-        .replace(/#{1,6}\s*(.*)/g, '$1') // Headers
-        .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Links
-        //.replace(/\n/g, ' ') // Line breaks
-        .trim()
-    )
+    return markdown
+      .replace(/\*\*(.*?)\*\*/g, '$1') // Bold
+      .replace(/\*(.*?)\*/g, '$1') // Italic
+      .replace(/`(.*?)`/g, '$1') // Code
+      .replace(/#{1,6}\s*(.*)/g, '$1') // Headers
+      .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Links
+      .trim()
   }
 
   private getVoiceMode(): 'speech' | 'notification' {
