@@ -401,11 +401,16 @@ export class OpenaiClient extends AiClient {
     const openai = this.isOpenaiReady()
     if (!openai) throw new Error('OpenAI client not ready')
 
+    // Select model: options > SMALL alias > fallback
+    const modelName = options?.model || 
+                     this.models.find(m => m.alias === 'SMALL')?.name || 
+                     'gpt-4o-mini'
+
     try {
       const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini', // Use fast model for completions
+        model: modelName,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: options?.maxTokens ?? 100,
+        max_completion_tokens: options?.maxTokens ?? 100,
         temperature: options?.temperature ?? 0.5,
         stop: options?.stopSequences,
       })

@@ -510,9 +510,14 @@ export class AnthropicClient extends AiClient {
     const anthropic = this.isAnthropicReady()
     if (!anthropic) throw new Error('Anthropic client not ready')
 
+    // Select model: options > SMALL alias > fallback
+    const modelName = options?.model || 
+                     this.models.find(m => m.alias === 'SMALL')?.name || 
+                     'claude-3-5-haiku-latest'
+
     try {
       const response = await anthropic.messages.create({
-        model: 'claude-3-5-haiku-latest', // Use fast model for completions
+        model: modelName,
         messages: [{ role: 'user', content: prompt }],
         max_tokens: options?.maxTokens ?? 100,
         temperature: options?.temperature ?? 0.5,

@@ -9,6 +9,7 @@ import { AiProviderConfig } from './ai-provider-config'
 import { CodayLogger } from '../service/coday-logger'
 
 export interface CompletionOptions {
+  model?: string
   maxTokens?: number
   temperature?: number
   stopSequences?: string[]
