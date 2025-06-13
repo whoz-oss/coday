@@ -23,7 +23,7 @@ const TestTexts: Record<string, string> = {
 export class VoiceSynthesisComponent {
   private voices: Promise<SpeechSynthesisVoice[]> | undefined
   private currentUtterance: SpeechSynthesisUtterance | null = null
-  volume: number = 1.0
+  volume: number = 0.8
   rate: number = 1.2
   language: string = 'en'
   public selectedVoice: SpeechSynthesisVoice | undefined

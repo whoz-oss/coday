@@ -23,7 +23,14 @@
         <div class="logo-container">
             <img src="static/CODAY-Logo.png" alt="Coday Logo" class="header-logo"/>
         </div>
-        <button id="options-button">⚙️</button>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <div id="voice-volume-control" style="display: none; align-items: center; gap: 4px;">
+                <span style="font-size: 12px;">🔊</span>
+                <input type="range" id="voice-volume-slider" min="0" max="100" value="80" style="width: 60px;">
+                <span id="volume-display" style="font-size: 12px; min-width: 30px;">80%</span>
+            </div>
+            <button id="options-button">⚙️</button>
+        </div>
     </div>
     <div id="options-panel">
         <div style="margin-bottom: 10px;">
@@ -54,8 +61,10 @@
             </div>
         </div>
         <div style="margin-top: 10px;">
-            <label for="voice-language-select" style="margin: 5px 0; display: block;">Voice Recognition Language:</label>
-            <select id="voice-language-select" style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; background: white;">
+            <label for="voice-language-select" style="margin: 5px 0; display: block;">Voice Recognition
+                Language:</label>
+            <select id="voice-language-select"
+                    style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; background: white;">
                 <option value="fr-FR">🇫🇷 Français</option>
                 <option value="en-US">🇺🇸 English (US)</option>
                 <option value="en-GB">🇬🇧 English (UK)</option>
@@ -77,17 +86,32 @@
             </div>
             <div style="margin-top: 10px; display: none;" id="voice-options">
                 <label for="voice-mode-select" style="margin: 5px 0; display: block;">Announcement Mode:</label>
-                <select id="voice-mode-select" style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; background: white;">
+                <select id="voice-mode-select"
+                        style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; background: white;">
                     <option value="speech">🔊 Voice Synthesis</option>
                     <option value="notification">🔔 Notification Sound</option>
                 </select>
-                
+
                 <div id="voice-selection-container" style="margin-top: 10px; display: none;">
                     <label for="voice-select" style="margin: 5px 0; display: block;">Select Voice:</label>
-                    <select id="voice-select" style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; background: white;">
+                    <select id="voice-select"
+                            style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; background: white;">
                         <option value="">Loading voices...</option>
                     </select>
-                    <p style="font-size: 0.8em; color: #666; margin: 5px 0;">💡 Voice will be tested automatically when selected</p>
+
+                    <label for="voice-rate-select" style="margin: 10px 0 5px 0; display: block;">Vitesse de
+                        parole:</label>
+                    <select id="voice-rate-select"
+                            style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; background: white;">
+                        <option value="0.8">Lent (0.8x)</option>
+                        <option value="1.0">Normal (1.0x)</option>
+                        <option value="1.2" selected>Rapide (1.2x)</option>
+                        <option value="1.4">Très rapide (1.4x)</option>
+                        <option value="1.7">Maximum (1.7x)</option>
+                    </select>
+
+                    <p style="font-size: 0.8em; color: #666; margin: 5px 0;">💡 Voice will be tested automatically when
+                        selected</p>
                 </div>
             </div>
         </div>

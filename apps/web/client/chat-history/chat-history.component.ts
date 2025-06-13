@@ -11,8 +11,8 @@ import { CodayEventHandler } from '../utils/coday-event-handler'
 import { getPreference } from '../utils/preferences'
 import { VoiceSynthesisComponent } from '../voice-synthesis/voice-synthesis.component'
 
-const PARAGRAPH_MIN_LENGTH = 40
-const MAX_PARAGRAPHS = 2
+const PARAGRAPH_MIN_LENGTH = 80
+const MAX_PARAGRAPHS = 3
 
 export class ChatHistoryComponent implements CodayEventHandler {
   private chatHistory: HTMLDivElement
@@ -96,6 +96,9 @@ export class ChatHistoryComponent implements CodayEventHandler {
   addText(text: string, speaker: string | undefined): void {
     const newEntry = this.createMessageElement(text, speaker)
     newEntry.classList.add('text', 'left')
+    newEntry.addEventListener('click', () => {
+      this.voiceSynthesis.stopSpeech()
+    })
 
     // Add copy button for agent responses
     const copyButtonContainer = document.createElement('div')

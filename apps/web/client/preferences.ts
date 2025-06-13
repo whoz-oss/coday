@@ -8,6 +8,10 @@ const voiceModeSelect = document.getElementById('voice-mode-select') as HTMLSele
 const voiceSelectionContainer = document.getElementById('voice-selection-container') as HTMLDivElement
 const voiceSelect = document.getElementById('voice-select') as HTMLSelectElement
 const voiceLanguageSelect = document.getElementById('voice-language-select') as HTMLSelectElement
+const voiceRateSelect = document.getElementById('voice-rate-select') as HTMLSelectElement
+const voiceVolumeSlider = document.getElementById('voice-volume-slider') as HTMLInputElement
+const volumeDisplay = document.getElementById('volume-display') as HTMLSpanElement
+const voiceVolumeControl = document.getElementById('voice-volume-control') as HTMLDivElement
 
 const voiceOptions = document.getElementById('voice-options') as HTMLDivElement
 
@@ -28,10 +32,22 @@ voiceModeSelect.value = savedVoiceMode
 const selectedVoice = getPreference<string>('selectedVoice', '')
 voiceSynthesis.setSelectedVoice(selectedVoice)
 
+// Set initial speech rate based on stored preference
+const savedSpeechSpeed = getPreference<string>('speechSpeed', '1.2') || '1.2'
+voiceRateSelect.value = savedSpeechSpeed
+voiceSynthesis.rate = parseFloat(savedSpeechSpeed)
+
+// Set initial speech volume based on stored preference
+const savedSpeechVolume = getPreference<number>('speechVolume', 80) || 80
+voiceVolumeSlider.value = savedSpeechVolume.toString()
+volumeDisplay.textContent = `${savedSpeechVolume}%`
+voiceSynthesis.volume = savedSpeechVolume / 100
+
 // Show/hide voice selection based on mode
 export function updateVoiceSelectionVisibility() {
   const showVoiceSelection = voiceAnnounceToggle.checked && voiceModeSelect.value === 'speech'
   voiceSelectionContainer.style.display = showVoiceSelection ? 'block' : 'none'
+  voiceVolumeControl.style.display = showVoiceSelection ? 'flex' : 'none'
 
   if (showVoiceSelection) {
     populateVoiceSelect()
@@ -41,6 +57,7 @@ export function updateVoiceSelectionVisibility() {
 // Show/hide voice options based on toggle state
 export function updateVoiceOptionsVisibility() {
   voiceOptions.style.display = voiceAnnounceToggle.checked ? 'block' : 'none'
+  voiceVolumeControl.style.display = voiceAnnounceToggle.checked && voiceModeSelect.value === 'speech' ? 'flex' : 'none'
   updateVoiceSelectionVisibility()
 }
 
@@ -49,7 +66,7 @@ async function populateVoiceSelect() {
   try {
     // Add loading indicator
     voiceSelect.innerHTML = '<option value="">Loading voices...</option>'
-    
+
     const voices = await voiceSynthesis.getVoices()
     console.log('[VOICE] Populate voice select with', voices.length, 'voices for language:', voiceSynthesis.language)
 
@@ -119,6 +136,25 @@ voiceSelect.addEventListener('change', () => {
   }
 })
 
+voiceRateSelect.addEventListener('change', () => {
+  const selectedRate = voiceRateSelect.value
+  setPreference('speechSpeed', selectedRate)
+  voiceSynthesis.rate = parseFloat(selectedRate)
+  voiceSynthesis.testSelectedVoice()
+})
+
+voiceVolumeSlider.addEventListener('input', () => {
+  const volumeValue = parseInt(voiceVolumeSlider.value)
+  volumeDisplay.textContent = `${volumeValue}%`
+  setPreference('speechVolume', volumeValue)
+  voiceSynthesis.volume = volumeValue / 100
+})
+
+voiceVolumeSlider.addEventListener('change', () => {
+  // Test voice when user finishes adjusting volume (mouseup/touchend)
+  voiceSynthesis.testSelectedVoice()
+})
+
 function testAudioAnnouncement() {
   const mode = voiceModeSelect.value
 
@@ -148,7 +184,7 @@ function testAudioAnnouncement() {
 // Initialize the page
 function initializePreferences() {
   updateVoiceOptionsVisibility()
-  
+
   // Populate voices after a small delay to ensure DOM is ready
   setTimeout(() => {
     populateVoiceSelect()
