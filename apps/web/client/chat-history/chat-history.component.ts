@@ -9,6 +9,10 @@ import {
 } from '@coday/coday-events'
 import { CodayEventHandler } from '../utils/coday-event-handler'
 import { getPreference } from '../utils/preferences'
+import { VoiceSynthesisComponent } from '../voice-synthesis/voice-synthesis.component'
+
+const PARAGRAPH_MIN_LENGTH = 40
+const MAX_PARAGRAPHS = 2
 
 export class ChatHistoryComponent implements CodayEventHandler {
   private chatHistory: HTMLDivElement
@@ -17,9 +21,11 @@ export class ChatHistoryComponent implements CodayEventHandler {
   private history = new Map<string, CodayEvent>()
   private thinkingTimeout: any
   private readonly onStopCallback: () => void
-  private currentSpeech: SpeechSynthesisUtterance | null = null
 
-  constructor(onStopCallback: () => void) {
+  constructor(
+    onStopCallback: () => void,
+    private readonly voiceSynthesis: VoiceSynthesisComponent
+  ) {
     this.chatHistory = document.getElementById('chat-history') as HTMLDivElement
     this.thinkingDots = document.getElementById('thinking-dots') as HTMLDivElement
     this.stopButton = this.thinkingDots.querySelector('.stop-button') as HTMLButtonElement
@@ -36,10 +42,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
     if (event instanceof TextEvent) {
       if (event.speaker) {
         // Stop any current speech when new response arrives
-        if (this.currentSpeech) {
-          speechSynthesis.cancel()
-          this.currentSpeech = null
-        }
+        this.voiceSynthesis.stopSpeech()
         this.addText(event.text, event.speaker)
       } else {
         this.addTechnical(event.text)
@@ -133,15 +136,9 @@ export class ChatHistoryComponent implements CodayEventHandler {
 
     // Announce agent responses if enabled
     if (speaker) {
-      console.log('[VOICE] Agent response detected, speaker:', speaker)
-      const isEnabled = this.isVoiceAnnounceEnabled()
-      console.log('[VOICE] Voice announce enabled:', isEnabled)
-      if (isEnabled) {
-        console.log('[VOICE] Calling announceText from addText')
+      if (this.isVoiceAnnounceEnabled()) {
         this.announceText(text)
       }
-    } else {
-      console.log('[VOICE] No speaker detected, skipping announce')
     }
   }
 
@@ -319,22 +316,18 @@ export class ChatHistoryComponent implements CodayEventHandler {
     return isEnabled
   }
 
-  private getVoiceLanguage(): string {
-    const language = getPreference<string>('voiceLanguage', 'en-US') || 'en-US'
-    console.log('[VOICE] getVoiceLanguage from preferences:', language)
-    return language
-  }
-
   private extractPlainText(markdown: string): string {
     // Remove basic markdown formatting
-    return markdown
-      .replace(/\*\*(.*?)\*\*/g, '$1') // Bold
-      .replace(/\*(.*?)\*/g, '$1') // Italic
-      .replace(/`(.*?)`/g, '$1') // Code
-      .replace(/#{1,6}\s*(.*)/g, '$1') // Headers
-      .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Links
-      .replace(/\n/g, ' ') // Line breaks
-      .trim()
+    return (
+      markdown
+        .replace(/\*\*(.*?)\*\*/g, '$1') // Bold
+        .replace(/\*(.*?)\*/g, '$1') // Italic
+        .replace(/`(.*?)`/g, '$1') // Code
+        .replace(/#{1,6}\s*(.*)/g, '$1') // Headers
+        .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Links
+        //.replace(/\n/g, ' ') // Line breaks
+        .trim()
+    )
   }
 
   private getVoiceMode(): 'speech' | 'notification' {
@@ -367,212 +360,36 @@ export class ChatHistoryComponent implements CodayEventHandler {
   }
 
   private announceText(text: string): void {
-    console.log('[VOICE] announceText called with text length:', text.length)
     const mode = this.getVoiceMode()
-    console.log('[VOICE] announceText - mode detected:', mode)
 
     if (mode === 'notification') {
-      console.log('[VOICE] Playing notification sound')
       this.playNotificationSound()
       return
     }
 
-    console.log('[VOICE] Proceeding with speech synthesis')
-
-    // Speech synthesis mode
-    if (!('speechSynthesis' in window)) {
-      console.warn('Speech synthesis not available, falling back to notification')
-      this.playNotificationSound()
-      return
-    }
-
-    // Check if voices are loaded
-    const voices = speechSynthesis.getVoices()
-    if (voices.length === 0) {
-      console.warn('[VOICE] No voices loaded yet, trying to trigger voiceschanged event')
-      const currentLanguage = this.getVoiceLanguage()
-      // Try to force voices to load
-      speechSynthesis.onvoiceschanged = () => {
-        console.log('[VOICE] Voices loaded, retrying speech')
-        this.announceTextWithVoices(text, currentLanguage)
-      }
-      // Also try a small delay
-      setTimeout(() => {
-        if (speechSynthesis.getVoices().length > 0) {
-          console.log('[VOICE] Voices loaded after delay, retrying speech')
-          this.announceTextWithVoices(text, currentLanguage)
-        }
-      }, 100)
-      return
-    }
-
-    const currentLanguage = this.getVoiceLanguage()
-    this.announceTextWithVoices(text, currentLanguage)
-  }
-
-  private announceTextWithVoices(text: string, language: string): void {
-    console.log('[VOICE] Starting voice announcement for language:', language)
-
-    // Stop any current speech
-    if (this.currentSpeech) {
-      speechSynthesis.cancel()
-      this.currentSpeech = null
-    }
-
-    // Extract plain text and limit to 200 characters
     let plainText = this.extractPlainText(text)
-    if (plainText.length > 200) {
-      plainText = plainText.substring(0, 200) + '...'
-    }
 
-    console.log('[VOICE] Plain text to speak:', JSON.stringify(plainText))
-    console.log('[VOICE] Plain text length:', plainText.length)
-
-    if (plainText.trim()) {
-      this.speakWithVoiceSelection(plainText, language)
-    } else {
-      console.log('[VOICE] No text to speak after processing!')
-    }
-  }
-
-  private speakWithVoiceSelection(text: string, language: string): void {
-    console.log('[VOICE] Starting speech with language:', language)
-
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.rate = 1.3
-    utterance.volume = 1.0
-
-    // Find the best voice for the requested language
-    const selectedVoice = this.findBestVoice(language)
-
-    if (selectedVoice) {
-      utterance.voice = selectedVoice
-      utterance.lang = selectedVoice.lang
-      console.log('[VOICE] Using voice:', selectedVoice.name, 'for language:', selectedVoice.lang)
-    } else {
-      // Fallback: try the language without specific voice
-      utterance.lang = language
-      console.log('[VOICE] No specific voice found, using system default for:', language)
-    }
-
-    this.currentSpeech = utterance
-
-    const startTime = Date.now()
-
-    utterance.onstart = () => {
-      console.log('[VOICE] Speech started with text:', JSON.stringify(utterance.text))
-      console.log('[VOICE] Speech config:', {
-        voice: utterance.voice?.name,
-        lang: utterance.lang,
-        rate: utterance.rate,
-        volume: utterance.volume,
-        textLength: utterance.text.length,
-      })
-    }
-
-    utterance.onend = () => {
-      const duration = Date.now() - startTime
-      console.log('[VOICE] Speech ended after', duration, 'ms')
-
-      // Detect suspiciously short speech (likely failed silently)
-      const expectedMinDuration = utterance.text.length * 50 // ~50ms per character minimum
-      if (duration < expectedMinDuration && language !== 'en-US') {
-        console.log(
-          '[VOICE] Speech ended too quickly (' +
-            duration +
-            'ms for ' +
-            utterance.text.length +
-            ' chars), trying English fallback'
-        )
-        this.currentSpeech = null
-        setTimeout(() => this.speakWithVoiceSelection(text, 'en-US'), 100)
-        return
-      }
-
-      this.currentSpeech = null
-    }
-
-    utterance.onerror = (event) => {
-      console.error('[VOICE] Speech error:', event.error)
-      this.currentSpeech = null
-
-      // Auto-fallback to English if the requested language fails
-      if (language !== 'en-US' && event.error !== 'interrupted') {
-        console.log('[VOICE] Language failed, trying English fallback')
-        setTimeout(() => this.speakWithVoiceSelection(text, 'en-US'), 100)
-      }
-    }
-
-    speechSynthesis.speak(utterance)
-  }
-
-  private findBestVoice(language: string): SpeechSynthesisVoice | null {
-    const voices = speechSynthesis.getVoices()
-    const langLower = language.toLowerCase()
-    const langCode = langLower.split('-')[0] // 'fr' from 'fr-FR'
-
-    console.log('[VOICE] Looking for voice matching:', language)
-
-    // Debug: Show available voices for this language
-    const availableVoices = voices.filter((v) => v.lang.toLowerCase().startsWith(langCode))
-    console.log('[VOICE] Available voices for', langCode + ':')
-    availableVoices.forEach((v) => console.log('[VOICE] -', v.name, '(' + v.lang + ')', v.default ? '[DEFAULT]' : ''))
-
-    // Priority 1: Known high-quality voices for French (macOS system voices)
-    if (langCode === 'fr') {
-      // Thomas and Marie are the best French voices on macOS
-      const preferredNames = ['Thomas', 'Marie', 'Amélie', 'Audrey']
-      for (const name of preferredNames) {
-        const voice = voices.find((v) => v.name === name && v.lang.toLowerCase().startsWith('fr'))
-        if (voice) {
-          console.log('[VOICE] Found preferred French voice:', voice.name, '(' + voice.lang + ')')
-          return voice
+    const speech = plainText.split('\n').reduce(
+      (acc, value) => {
+        if (acc.paragraphs >= MAX_PARAGRAPHS) {
+          return acc
+        } else {
+          const paragraphIncrement = value.length > PARAGRAPH_MIN_LENGTH ? 1 : 0
+          return {
+            paragraphs: acc.paragraphs + paragraphIncrement,
+            text: acc.text + '\n' + value,
+          }
         }
-      }
-
-      // If Google French is available and working, use it
-      const googleFrench = voices.find((v) => v.name === 'Google français')
-      if (googleFrench) {
-        console.log('[VOICE] Found Google French voice:', googleFrench.name, '(' + googleFrench.lang + ')')
-        return googleFrench
-      }
-    }
-
-    // Priority 2: Exact language match (case-insensitive)
-    let voice = voices.find((v) => v.lang.toLowerCase() === langLower)
-    if (voice) {
-      console.log('[VOICE] Found exact language match:', voice.name, 'with lang:', voice.lang)
-      return voice
-    }
-
-    // Priority 3: Language code match (e.g., 'fr' matches 'fr-FR', 'fr-CA')
-    // Prefer system voices over online voices for reliability
-    const systemVoice = voices.find(
-      (v) =>
-        v.lang.toLowerCase().startsWith(langCode) &&
-        !v.name.toLowerCase().includes('google') &&
-        !v.name.toLowerCase().includes('chrome')
+      },
+      { paragraphs: 0, text: '' }
     )
-    if (systemVoice) {
-      console.log('[VOICE] Found system voice for language code:', systemVoice.name, 'with lang:', systemVoice.lang)
-      return systemVoice
+
+    if (!speech.text.trim()) {
+      console.log('[VOICE] No text to speak after processing!')
+      return
     }
 
-    // Priority 4: Any voice matching the language code
-    voice = voices.find((v) => v.lang.toLowerCase().startsWith(langCode))
-    if (voice) {
-      console.log('[VOICE] Found any voice for language code:', voice.name, 'with lang:', voice.lang)
-      return voice
-    }
-
-    // Priority 5: Default voice as last resort
-    voice = voices.find((v) => v.default)
-    if (voice) {
-      console.log('[VOICE] Using default voice as fallback:', voice.name)
-      return voice
-    }
-
-    console.log('[VOICE] No suitable voice found')
-    return null
+    // Use the voice synthesis component
+    this.voiceSynthesis.speak(speech.text)
   }
 }
