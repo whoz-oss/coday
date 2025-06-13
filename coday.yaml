@@ -38,7 +38,8 @@ scripts:
     command: yarn run nx run-many --target=build --all
   test:
     description: run tests for a specific file or pattern (or all of them if no arguments)
-    command: yarn test PARAMETERS
+    # should be yarn test, but current non-nx code architecture prevents it to be useful
+    command: npx jest PARAMETERS
     parametersDescription: the test file path or pattern to run specific tests (e.g., "parseAgentCommand.test.ts" or "--testNamePattern=specific test name")
 #  yarn:
 #    description: |

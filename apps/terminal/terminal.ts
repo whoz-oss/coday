@@ -45,8 +45,9 @@ if (interactor instanceof TerminalInteractor) {
   const handleForcedTermination = async (signal: string) => {
     console.log(`\nReceived ${signal}, cleaning up...`)
     try {
-      await coday.kill()
-      interactor.cleanup()
+      coday.kill().then(() => {
+        interactor.cleanup()
+      })
     } catch (error) {
       console.error('Error during cleanup:', error)
     } finally {

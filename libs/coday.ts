@@ -137,7 +137,7 @@ export class Coday {
         this.stop()
       }
     } while (!this.context?.oneshot)
-    
+
     // Always cleanup resources when conversation ends normally
     // This ensures MCP Docker containers are stopped
     await this.cleanup()
@@ -159,7 +159,7 @@ export class Coday {
 
   /**
    * Cleanup resources at the end of a conversation.
-   * - Stops MCP servers and Docker containers
+   * - Stops MCP servers and Docker containers tied to agents
    * - Preserves thread state and Coday instance
    * - Keeps instance ready for new conversations
    * - Called when conversation ends normally (exit, oneshot completion)
@@ -167,21 +167,18 @@ export class Coday {
   async cleanup(): Promise<void> {
     try {
       if (this.services.agent) {
-        console.log('Cleaning up MCP resources...')
         await this.services.agent.kill()
-        console.log('MCP resources cleaned up successfully')
       }
-      
+
       // Reset AI client provider for fresh connections
       this.aiClientProvider.cleanup()
-      
+
       // Clear context but keep services available
       this.context = null
       this.handlerLooper = undefined
       this.aiHandler = undefined
-      
     } catch (error) {
-      console.error('Error during MCP cleanup:', error)
+      console.error('Error during agent cleanup:', error)
       // Don't throw - cleanup should be best-effort
     }
   }
@@ -196,13 +193,13 @@ export class Coday {
   async kill(): Promise<void> {
     this.killed = true
     this.stop()
-    
+
     try {
       await this.cleanup()
     } catch (error) {
       console.error('Error during kill cleanup:', error)
     }
-    
+
     this.handlerLooper?.kill()
     this.interactor.kill()
   }
