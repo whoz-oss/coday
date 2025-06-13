@@ -69,6 +69,33 @@
                 <option value="ru-RU">🇷🇺 Русский</option>
                 <option value="ar-SA">🇸🇦 العربية</option>
             </select>
+            <div style="margin-top: 10px;">
+                <label>
+                    <input type="checkbox" id="voice-announce-toggle">
+                    Announce agent responses
+                </label>
+            </div>
+            <div style="margin-top: 10px; display: none;" id="voice-options">
+                <label for="voice-mode-select" style="margin: 5px 0; display: block;">Announcement Mode:</label>
+                <select id="voice-mode-select" style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; background: white;">
+                    <option value="speech">🔊 Voice Synthesis</option>
+                    <option value="notification">🔔 Notification Sound</option>
+                </select>
+                
+                <div id="voice-selection-container" style="margin-top: 10px; display: none;">
+                    <label for="voice-select" style="margin: 5px 0; display: block;">Select Voice:</label>
+                    <select id="voice-select" style="width: 100%; padding: 4px; border: 1px solid #ddd; border-radius: 4px; background: white;">
+                        <option value="">Loading voices...</option>
+                    </select>
+                    <button id="voice-test-selected" style="margin-top: 5px; width: 100%; padding: 6px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                        🎤 Test Selected Voice
+                    </button>
+                </div>
+                
+                <button id="voice-test-button" style="margin-top: 10px; width: 100%; padding: 8px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    🔧 Voice Debug Test
+                </button>
+            </div>
         </div>
     </div>
 </div>
