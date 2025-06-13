@@ -144,10 +144,8 @@ const voiceLanguageSelect = document.getElementById('voice-language-select') as 
 const voiceAnnounceToggle = document.getElementById('voice-announce-toggle') as HTMLInputElement
 const voiceModeSelect = document.getElementById('voice-mode-select') as HTMLSelectElement
 const voiceOptions = document.getElementById('voice-options') as HTMLDivElement
-const voiceTestButton = document.getElementById('voice-test-button') as HTMLButtonElement
 const voiceSelectionContainer = document.getElementById('voice-selection-container') as HTMLDivElement
 const voiceSelect = document.getElementById('voice-select') as HTMLSelectElement
-const voiceTestSelected = document.getElementById('voice-test-selected') as HTMLButtonElement
 
 // Set initial toggle state based on stored preference
 const useEnterToSend = getPreference('useEnterToSend', false)
@@ -310,44 +308,6 @@ voiceSelect.addEventListener('change', () => {
   }
 })
 
-// Test selected voice button
-voiceTestSelected.addEventListener('click', () => {
-  testSelectedVoice()
-})
-
-// Voice test button (now for debugging)
-voiceTestButton.addEventListener('click', () => {
-  console.log('[VOICE] Debug test button clicked')
-  
-  if ('speechSynthesis' in window) {
-    const voices = speechSynthesis.getVoices()
-    const currentLang = voiceLanguageSelect.value
-    const langCode = currentLang.toLowerCase().split('-')[0]
-    
-    console.log('[VOICE] === VOICE DEBUG INFO ===')
-    console.log('[VOICE] Current language:', currentLang)
-    console.log('[VOICE] Language code:', langCode)
-    console.log('[VOICE] Total voices available:', voices.length)
-    
-    const matchingVoices = voices.filter(v => v.lang.toLowerCase().startsWith(langCode))
-    console.log('[VOICE] Voices for', langCode + ':', matchingVoices.length)
-    
-    matchingVoices.forEach((voice, index) => {
-      const local = voice.localService ? 'LOCAL' : 'REMOTE'
-      const def = voice.default ? 'DEFAULT' : ''
-      console.log(`[VOICE] ${index + 1}. ${voice.name} (${voice.lang}) [${local}] ${def}`)
-    })
-    
-    const selectedVoice = getSelectedVoice()
-    console.log('[VOICE] Currently selected voice:', selectedVoice ? selectedVoice.name : 'auto-select')
-    
-    console.log('[VOICE] =========================')
-  }
-  
-  // Run the normal test
-  testVoiceAnnouncement()
-})
-
 // Populate voice selector based on selected language
 function populateVoiceSelect() {
   if (!voicesLoaded || currentVoices.length === 0) {
@@ -464,15 +424,11 @@ function testSelectedVoice() {
   
   utterance.onstart = () => {
     console.log('[VOICE] Voice test started')
-    voiceTestSelected.textContent = '🔊 Playing...'
-    voiceTestSelected.disabled = true
   }
   
   utterance.onend = () => {
     const duration = Date.now() - startTime
     console.log('[VOICE] Voice test completed in', duration, 'ms')
-    voiceTestSelected.textContent = '🎤 Test Selected Voice'
-    voiceTestSelected.disabled = false
     
     // Check if the test seems to have worked
     const expectedMinDuration = testText.length * 40
@@ -485,11 +441,6 @@ function testSelectedVoice() {
   
   utterance.onerror = (event) => {
     console.error('[VOICE] Voice test error:', event.error)
-    voiceTestSelected.textContent = '❌ Error'
-    setTimeout(() => {
-      voiceTestSelected.textContent = '🎤 Test Selected Voice'
-      voiceTestSelected.disabled = false
-    }, 2000)
   }
   
   speechSynthesis.speak(utterance)
@@ -498,7 +449,7 @@ function testSelectedVoice() {
 // Test function for voice announcement - SIMPLIFIED
 function testVoiceAnnouncement() {
   const mode = voiceModeSelect.value
-  console.log('[VOICE] SIMPLE test with mode:', mode)
+  console.log('[VOICE] Testing announcement with mode:', mode)
 
   if (mode === 'notification') {
     console.log('[VOICE] Testing notification sound')
@@ -521,8 +472,7 @@ function testVoiceAnnouncement() {
       console.error('[VOICE] Notification sound test failed:', error)
     }
   } else if (mode === 'speech' && 'speechSynthesis' in window) {
-    console.log('[VOICE] Testing voice - using selected voice if available')
-    testSelectedVoice()
+    console.log('[VOICE] Speech mode selected - use voice selector to test individual voices')
   } else {
     console.log('[VOICE] Speech synthesis not available')
   }

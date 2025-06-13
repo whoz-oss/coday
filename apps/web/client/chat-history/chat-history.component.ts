@@ -427,7 +427,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
 
     console.log('[VOICE] Plain text to speak:', JSON.stringify(plainText))
     console.log('[VOICE] Plain text length:', plainText.length)
-    
+
     if (plainText.trim()) {
       this.speakWithVoiceSelection(plainText, language)
     } else {
@@ -437,14 +437,14 @@ export class ChatHistoryComponent implements CodayEventHandler {
 
   private speakWithVoiceSelection(text: string, language: string): void {
     console.log('[VOICE] Starting speech with language:', language)
-    
+
     const utterance = new SpeechSynthesisUtterance(text)
-    utterance.rate = 1.0
+    utterance.rate = 1.3
     utterance.volume = 1.0
-    
+
     // Find the best voice for the requested language
     const selectedVoice = this.findBestVoice(language)
-    
+
     if (selectedVoice) {
       utterance.voice = selectedVoice
       utterance.lang = selectedVoice.lang
@@ -454,11 +454,11 @@ export class ChatHistoryComponent implements CodayEventHandler {
       utterance.lang = language
       console.log('[VOICE] No specific voice found, using system default for:', language)
     }
-    
+
     this.currentSpeech = utterance
-    
+
     const startTime = Date.now()
-    
+
     utterance.onstart = () => {
       console.log('[VOICE] Speech started with text:', JSON.stringify(utterance.text))
       console.log('[VOICE] Speech config:', {
@@ -466,105 +466,112 @@ export class ChatHistoryComponent implements CodayEventHandler {
         lang: utterance.lang,
         rate: utterance.rate,
         volume: utterance.volume,
-        textLength: utterance.text.length
+        textLength: utterance.text.length,
       })
     }
-    
+
     utterance.onend = () => {
       const duration = Date.now() - startTime
       console.log('[VOICE] Speech ended after', duration, 'ms')
-      
+
       // Detect suspiciously short speech (likely failed silently)
       const expectedMinDuration = utterance.text.length * 50 // ~50ms per character minimum
       if (duration < expectedMinDuration && language !== 'en-US') {
-        console.log('[VOICE] Speech ended too quickly (' + duration + 'ms for ' + utterance.text.length + ' chars), trying English fallback')
+        console.log(
+          '[VOICE] Speech ended too quickly (' +
+            duration +
+            'ms for ' +
+            utterance.text.length +
+            ' chars), trying English fallback'
+        )
         this.currentSpeech = null
         setTimeout(() => this.speakWithVoiceSelection(text, 'en-US'), 100)
         return
       }
-      
+
       this.currentSpeech = null
     }
-    
+
     utterance.onerror = (event) => {
       console.error('[VOICE] Speech error:', event.error)
       this.currentSpeech = null
-      
+
       // Auto-fallback to English if the requested language fails
       if (language !== 'en-US' && event.error !== 'interrupted') {
         console.log('[VOICE] Language failed, trying English fallback')
         setTimeout(() => this.speakWithVoiceSelection(text, 'en-US'), 100)
       }
     }
-    
+
     speechSynthesis.speak(utterance)
   }
-  
+
   private findBestVoice(language: string): SpeechSynthesisVoice | null {
     const voices = speechSynthesis.getVoices()
     const langLower = language.toLowerCase()
     const langCode = langLower.split('-')[0] // 'fr' from 'fr-FR'
-    
+
     console.log('[VOICE] Looking for voice matching:', language)
-    
+
     // Debug: Show available voices for this language
-    const availableVoices = voices.filter(v => v.lang.toLowerCase().startsWith(langCode))
+    const availableVoices = voices.filter((v) => v.lang.toLowerCase().startsWith(langCode))
     console.log('[VOICE] Available voices for', langCode + ':')
-    availableVoices.forEach(v => console.log('[VOICE] -', v.name, '(' + v.lang + ')', v.default ? '[DEFAULT]' : ''))
-    
+    availableVoices.forEach((v) => console.log('[VOICE] -', v.name, '(' + v.lang + ')', v.default ? '[DEFAULT]' : ''))
+
     // Priority 1: Known high-quality voices for French (macOS system voices)
     if (langCode === 'fr') {
       // Thomas and Marie are the best French voices on macOS
       const preferredNames = ['Thomas', 'Marie', 'Amélie', 'Audrey']
       for (const name of preferredNames) {
-        const voice = voices.find(v => v.name === name && v.lang.toLowerCase().startsWith('fr'))
+        const voice = voices.find((v) => v.name === name && v.lang.toLowerCase().startsWith('fr'))
         if (voice) {
           console.log('[VOICE] Found preferred French voice:', voice.name, '(' + voice.lang + ')')
           return voice
         }
       }
-      
+
       // If Google French is available and working, use it
-      const googleFrench = voices.find(v => v.name === 'Google français')
+      const googleFrench = voices.find((v) => v.name === 'Google français')
       if (googleFrench) {
         console.log('[VOICE] Found Google French voice:', googleFrench.name, '(' + googleFrench.lang + ')')
         return googleFrench
       }
     }
-    
+
     // Priority 2: Exact language match (case-insensitive)
-    let voice = voices.find(v => v.lang.toLowerCase() === langLower)
+    let voice = voices.find((v) => v.lang.toLowerCase() === langLower)
     if (voice) {
       console.log('[VOICE] Found exact language match:', voice.name, 'with lang:', voice.lang)
       return voice
     }
-    
+
     // Priority 3: Language code match (e.g., 'fr' matches 'fr-FR', 'fr-CA')
     // Prefer system voices over online voices for reliability
-    const systemVoice = voices.find(v => 
-      v.lang.toLowerCase().startsWith(langCode) && 
-      !v.name.toLowerCase().includes('google') &&
-      !v.name.toLowerCase().includes('chrome')
+    const systemVoice = voices.find(
+      (v) =>
+        v.lang.toLowerCase().startsWith(langCode) &&
+        !v.name.toLowerCase().includes('google') &&
+        !v.name.toLowerCase().includes('chrome')
     )
     if (systemVoice) {
       console.log('[VOICE] Found system voice for language code:', systemVoice.name, 'with lang:', systemVoice.lang)
       return systemVoice
     }
-    
+
     // Priority 4: Any voice matching the language code
-    voice = voices.find(v => v.lang.toLowerCase().startsWith(langCode))
+    voice = voices.find((v) => v.lang.toLowerCase().startsWith(langCode))
     if (voice) {
       console.log('[VOICE] Found any voice for language code:', voice.name, 'with lang:', voice.lang)
       return voice
     }
-    
+
     // Priority 5: Default voice as last resort
-    voice = voices.find(v => v.default)
+    voice = voices.find((v) => v.default)
     if (voice) {
       console.log('[VOICE] Using default voice as fallback:', voice.name)
       return voice
     }
-    
+
     console.log('[VOICE] No suitable voice found')
     return null
   }
