@@ -1,4 +1,4 @@
-import { Agent, AiClient, AiModel, AiProviderConfig, Interactor } from '../model'
+import { Agent, AiClient, AiModel, AiProviderConfig, CompletionOptions, Interactor } from '../model'
 import Anthropic from '@anthropic-ai/sdk'
 import { MessageParam } from '@anthropic-ai/sdk/resources'
 import { ToolSet } from '../integration/tool-set'
@@ -504,5 +504,30 @@ export class AnthropicClient extends AiClient {
     // Use the parent implementation for all errors
     // 429 errors are handled locally in processThread before reaching here
     super.handleError(error, subscriber, providerName)
+  }
+
+  async complete(prompt: string, options?: CompletionOptions): Promise<string> {
+    const anthropic = this.isAnthropicReady()
+    if (!anthropic) throw new Error('Anthropic client not ready')
+
+    try {
+      const response = await anthropic.messages.create({
+        model: 'claude-3-5-haiku-latest', // Use fast model for completions
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: options?.maxTokens ?? 100,
+        temperature: options?.temperature ?? 0.5,
+        stop_sequences: options?.stopSequences,
+      })
+
+      const text = response.content
+        .filter((block) => block.type === 'text')
+        .map((block) => block.text.trim())
+        .join(' ')
+
+      return text
+    } catch (error: any) {
+      console.error('Anthropic completion error:', error)
+      throw new Error(`Anthropic completion failed: ${error.message}`)
+    }
   }
 }
