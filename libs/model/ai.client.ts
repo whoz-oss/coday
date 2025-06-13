@@ -212,13 +212,14 @@ export abstract class AiClient {
   }
 
   protected showAgentAndUsage(agent: Agent, aiProvider: string, model: string, thread: AiThread): void {
-    const agentPart = `🤖 ${agent.name} | ${aiProvider} - ${model}  \n`
+    const agentPart = `🤖 ${agent.name} | ${aiProvider} - ${model} `
     if (!thread.usage) return
-    const loop = `🔁${thread.usage.iterations} | `
-    const tokensIO = `Tokens ⬇️${thread.usage.input} ⬆️${thread.usage.output} | `
-    const cacheIO = `Cache ${thread.usage.cache_write ? `✍️${thread.usage.cache_write} ` : ''}📖${thread.usage.cache_read} | `
-    const price = `💸 🏃$${thread.usage.price.toFixed(3)} 🧵$${thread.price.toFixed(3)}`
-    this.interactor.displayText(agentPart + loop + tokensIO + cacheIO + price)
+    const loop = `Loop${thread.usage.iterations > 1 ? 's' : ''}: ${thread.usage.iterations} | `
+    const tokensIO = `Input: ${thread.usage.input}, Output: ${thread.usage.output} | `
+    const cacheIO = `Cache write: ${thread.usage.cache_write}, Cache read: ${thread.usage.cache_read}`
+    const price = `🏃$${thread.usage.price.toFixed(3)} / 🧵$${thread.price.toFixed(3)}`
+    this.interactor.displayText(agentPart + price)
+    this.interactor.debug(loop + tokensIO + cacheIO)
   }
 
   protected getModel(agent: Agent): AiModel | undefined {
@@ -236,14 +237,6 @@ export abstract class AiClient {
 
   returnError(error: string): Observable<CodayEvent> {
     return of(new ErrorEvent({ error }))
-  }
-
-  /**
-   * Set the usage logger for this AI client
-   */
-  setLogger(logger: CodayLogger, username: string): void {
-    this.logger = logger
-    this.username = username
   }
 
   /**
