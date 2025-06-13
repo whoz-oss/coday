@@ -21,6 +21,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
   private history = new Map<string, CodayEvent>()
   private thinkingTimeout: any
   private readonly onStopCallback: () => void
+  private readFullText: boolean = false
 
   constructor(
     onStopCallback: () => void,
@@ -35,6 +36,14 @@ export class ChatHistoryComponent implements CodayEventHandler {
     if (this.stopButton) {
       this.stopButton.addEventListener('click', () => this.onStopCallback())
     }
+
+    // Load initial preference
+    this.readFullText = getPreference<boolean>('voiceReadFullText', false) || false
+
+    // Listen for preference changes
+    window.addEventListener('voiceReadFullTextChanged', (event: any) => {
+      this.readFullText = event.detail
+    })
   }
 
   handle(event: CodayEvent): void {
@@ -369,27 +378,37 @@ export class ChatHistoryComponent implements CodayEventHandler {
 
     let plainText = this.extractPlainText(text)
 
-    const speech = plainText.split('\n').reduce(
-      (acc, value) => {
-        if (acc.paragraphs >= MAX_PARAGRAPHS) {
-          return acc
-        } else {
-          const paragraphIncrement = value.length > PARAGRAPH_MIN_LENGTH ? 1 : 0
-          return {
-            paragraphs: acc.paragraphs + paragraphIncrement,
-            text: acc.text + '\n' + value,
+    // Check if we should read full text or just the beginning
+    let textToSpeak: string
+    
+    if (this.readFullText) {
+      // Read the entire text
+      textToSpeak = plainText
+    } else {
+      // Read only the first few paragraphs
+      const speech = plainText.split('\n').reduce(
+        (acc, value) => {
+          if (acc.paragraphs >= MAX_PARAGRAPHS) {
+            return acc
+          } else {
+            const paragraphIncrement = value.length > PARAGRAPH_MIN_LENGTH ? 1 : 0
+            return {
+              paragraphs: acc.paragraphs + paragraphIncrement,
+              text: acc.text + '\n' + value,
+            }
           }
-        }
-      },
-      { paragraphs: 0, text: '' }
-    )
+        },
+        { paragraphs: 0, text: '' }
+      )
+      textToSpeak = speech.text
+    }
 
-    if (!speech.text.trim()) {
+    if (!textToSpeak.trim()) {
       console.log('[VOICE] No text to speak after processing!')
       return
     }
 
     // Use the voice synthesis component
-    this.voiceSynthesis.speak(speech.text)
+    this.voiceSynthesis.speak(textToSpeak)
   }
 }

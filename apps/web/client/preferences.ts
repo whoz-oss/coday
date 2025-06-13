@@ -12,6 +12,7 @@ const voiceRateSelect = document.getElementById('voice-rate-select') as HTMLSele
 const voiceVolumeSlider = document.getElementById('voice-volume-slider') as HTMLInputElement
 const volumeDisplay = document.getElementById('volume-display') as HTMLSpanElement
 const voiceVolumeControl = document.getElementById('voice-volume-control') as HTMLDivElement
+const voiceReadFullToggle = document.getElementById('voice-read-full-toggle') as HTMLInputElement
 
 const voiceOptions = document.getElementById('voice-options') as HTMLDivElement
 
@@ -42,6 +43,10 @@ const savedSpeechVolume = getPreference<number>('speechVolume', 80) || 80
 voiceVolumeSlider.value = savedSpeechVolume.toString()
 volumeDisplay.textContent = `${savedSpeechVolume}%`
 voiceSynthesis.volume = savedSpeechVolume / 100
+
+// Set initial read full text preference
+const readFullText = getPreference<boolean>('voiceReadFullText', false)
+voiceReadFullToggle.checked = readFullText !== undefined ? readFullText : false
 
 // Show/hide voice selection based on mode
 export function updateVoiceSelectionVisibility() {
@@ -153,6 +158,12 @@ voiceVolumeSlider.addEventListener('input', () => {
 voiceVolumeSlider.addEventListener('change', () => {
   // Test voice when user finishes adjusting volume (mouseup/touchend)
   voiceSynthesis.testSelectedVoice()
+})
+
+voiceReadFullToggle.addEventListener('change', () => {
+  setPreference('voiceReadFullText', voiceReadFullToggle.checked)
+  // Dispatch event to notify chat history component
+  window.dispatchEvent(new CustomEvent('voiceReadFullTextChanged', { detail: voiceReadFullToggle.checked }))
 })
 
 function testAudioAnnouncement() {
