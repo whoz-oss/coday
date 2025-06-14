@@ -230,13 +230,16 @@ PORT_PROMISE.then(async (PORT) => {
   
   // Start thread cleanup service after server is running
   try {
-    // We'll need to get a repository factory instance from the client manager
-    // This is a temporary solution - ideally we'd have a global repository factory
     debugLog('CLEANUP', 'Starting thread cleanup service...')
-    // TODO: Get repository factory from client manager or create a global one
-    // cleanupService = new ThreadCleanupService(repositoryFactory, logger)
-    // await cleanupService.start()
-    debugLog('CLEANUP', 'Thread cleanup service will be initialized when first client connects')
+    
+    // Construire le chemin vers les projets (même logique que ProjectService)
+    const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
+    const configPath = codayOptions.configDir ?? defaultConfigPath
+    const projectsConfigPath = path.join(configPath, 'projects')
+    
+    cleanupService = new ThreadCleanupService(projectsConfigPath, logger)
+    await cleanupService.start()
+    debugLog('CLEANUP', 'Thread cleanup service started successfully')
   } catch (error) {
     console.error('Failed to start thread cleanup service:', error)
   }
