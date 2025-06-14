@@ -75,7 +75,7 @@ app.use(express.json())
 // Initialize the client manager with usage logger
 const clientManager = new ServerClientManager(logger)
 
-// Initialize thread cleanup service for GDPR compliance (server-only)
+// Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null
 
 // POST endpoint for stopping the current run

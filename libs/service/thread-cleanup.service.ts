@@ -1,6 +1,6 @@
 /**
  * Service de nettoyage automatique des threads expirés
- * Utilisé uniquement côté serveur pour la conformité RGPD
+ * Utilisé uniquement côté serveur
  */
 
 import * as fs from 'fs/promises'
@@ -177,7 +177,7 @@ export class ThreadCleanupService {
           if (this.isThreadExpired(threadData.modifiedDate)) {
             await fs.unlink(filePath)
             deleted++
-            // Log de l'audit trail pour RGPD
+            // Log de l'audit trail
             await this.logger.logAgentUsage('system', 'ThreadCleanup', 'cleanup', 0)
             console.log(`ThreadCleanup: Deleted expired thread: ${threadData.id || file} from project ${projectName}`)
           }
