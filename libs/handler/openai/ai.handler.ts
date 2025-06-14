@@ -130,11 +130,52 @@ export class AiHandler extends CommandHandler implements Killable {
    * Check if thread should be auto-saved and perform auto-save if needed
    */
   private async checkAndAutoSave(thread: AiThread, agent: Agent): Promise<void> {
-    // TODO: Implement auto-save logic
-    // - Check if thread.getUserMessageCount() === 3
-    // - Check if thread doesn't already have an ID
-    // - Generate thread name using agent's AI client
-    // - Save thread with generated name
+    const AUTO_SAVE_THRESHOLD = 3
+    
+    // Only auto-save if we hit the threshold and thread is not already saved
+    if (thread.getUserMessageCount() === AUTO_SAVE_THRESHOLD && !thread.id) {
+      try {
+        // Generate thread name using the agent's AI client
+        const threadName = await this.generateThreadName(thread, agent)
+        
+        // Save the thread with the generated name
+        await this.threadService.save(threadName)
+        
+        // Notify user
+        this.interactor.displayText(`Thread auto-saved as "${threadName}"`)
+      } catch (error) {
+        this.interactor.debug(`Auto-save failed: ${error}`)
+      }
+    }
+  }
+
+  /**
+   * Generate a descriptive thread name using AI completion
+   */
+  private async generateThreadName(thread: AiThread, agent: Agent): Promise<string> {
+    // Extract context from first few user messages
+    const messages = thread.getMessages()
+      .filter(msg => msg instanceof MessageEvent && msg.role === 'user')
+      .slice(0, 3)
+      .map(msg => (msg as MessageEvent).content)
+      .join('\n\n')
+    
+    const prompt = `Generate a descriptive title for this conversation in one sentence:\n\n${messages}\n\nTitle:`
+    
+    try {
+      // Use the agent's AI client to generate the name
+      const title = await agent.getAiClient().complete(prompt, {
+        maxTokens: 50,
+        temperature: 0.7,
+        stopSequences: ['\n', '.']
+      })
+      
+      // Clean up the title
+      return title.trim().replace(/^["']|["']$/g, '').replace(/\.$/, '')
+    } catch (error) {
+      // Fallback to date-based name
+      return `Thread ${new Date().toISOString().split('T')[0]}`
+    }
   }
 
   async kill(): Promise<void> {

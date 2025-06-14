@@ -39,6 +39,13 @@ export class Agent {
   }
 
   /**
+   * Access to the agent's AI client for completion operations
+   */
+  getAiClient(): AiClient {
+    return this.aiClient
+  }
+
+  /**
    * Process a work request through this agent
    *
    * @returns Observable stream of events from the processing
