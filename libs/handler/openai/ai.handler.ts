@@ -142,7 +142,7 @@ export class AiHandler extends CommandHandler implements Killable {
         await this.threadService.save(threadName)
 
         // Notify user
-        this.interactor.displayText(`Thread auto-saved as "${threadName}"`)
+        this.interactor.displayText(`Thread auto-saved as "${threadName}" (expires in 3 months)`)
       } catch (error) {
         this.interactor.debug(`Auto-save failed: ${error}`)
       }

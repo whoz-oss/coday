@@ -331,6 +331,17 @@ export class AiThread {
   }
 
   /**
+   * Check if this thread has expired based on TTL from last modification
+   * @param ttlDays Number of days before expiration (default: 90)
+   * @returns true if thread is expired
+   */
+  isExpired(ttlDays: number = 90): boolean {
+    const expirationDate = new Date(this.modifiedDate)
+    expirationDate.setDate(expirationDate.getDate() + ttlDays)
+    return new Date() > expirationDate
+  }
+
+  /**
    * Gets an event by its timestamp ID
    * @param eventId The timestamp ID of the event to retrieve
    * @returns The event if found, undefined otherwise
