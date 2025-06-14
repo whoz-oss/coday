@@ -5,13 +5,14 @@ import { SaveAiThreadHandler } from './save-ai-thread.handler'
 import { DeleteAiThreadHandler } from './delete-ai-thread.handler'
 import { AiThreadService } from '../../ai-thread/ai-thread.service'
 import { NewAiThreadHandler } from './new-ai-thread.handler'
+import { AgentService } from '../../agent/agent.service'
 
 /**
  * Nested handler managing AI thread operations through dedicated sub-handlers.
  * Provides thread-related commands like list, select, save, and delete.
  */
 export class AiThreadHandler extends NestedHandler {
-  constructor(interactor: Interactor, threadService: AiThreadService) {
+  constructor(interactor: Interactor, threadService: AiThreadService, agentService: AgentService) {
     super(
       {
         commandWord: 'thread',
@@ -24,7 +25,7 @@ export class AiThreadHandler extends NestedHandler {
       new NewAiThreadHandler(interactor, threadService),
       new ListAiThreadHandler(interactor, threadService),
       new SelectAiThreadHandler(interactor, threadService),
-      new SaveAiThreadHandler(interactor, threadService),
+      new SaveAiThreadHandler(interactor, threadService, agentService),
       new DeleteAiThreadHandler(interactor, threadService),
     ]
   }
