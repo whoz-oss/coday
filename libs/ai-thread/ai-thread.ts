@@ -325,12 +325,8 @@ export class AiThread {
    * Returns the count of user messages in this thread.
    */
   getUserMessageCount(): number {
-    return this.messages.filter(
-      msg => msg instanceof MessageEvent && msg.role === 'user'
-    ).length
+    return this.messages.filter((msg) => msg instanceof MessageEvent && msg.role === 'user').length
   }
-
-
 
   /**
    * Gets an event by its timestamp ID
