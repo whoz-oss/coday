@@ -103,10 +103,10 @@ export class AiHandler extends CommandHandler implements Killable {
    */
   private async runAgent(agent: Agent, cmd: string, context: CommandContext): Promise<CommandContext> {
     const events: Observable<CodayEvent> = await agent.run(cmd, context.aiThread!)
-    
+
     // Check for auto-save after user message is added to thread
     await this.checkAndAutoSave(context.aiThread!, agent)
-    
+
     events.subscribe({
       next: (event) => {
         this.interactor.sendEvent(event)
@@ -131,16 +131,16 @@ export class AiHandler extends CommandHandler implements Killable {
    */
   private async checkAndAutoSave(thread: AiThread, agent: Agent): Promise<void> {
     const AUTO_SAVE_THRESHOLD = 3
-    
+
     // Only auto-save if we hit the threshold and thread is not already saved
     if (thread.getUserMessageCount() === AUTO_SAVE_THRESHOLD && !thread.id) {
       try {
         // Generate thread name using the agent's AI client
         const threadName = await this.generateThreadName(thread, agent)
-        
+
         // Save the thread with the generated name
         await this.threadService.save(threadName)
-        
+
         // Notify user
         this.interactor.displayText(`Thread auto-saved as "${threadName}"`)
       } catch (error) {
@@ -154,24 +154,28 @@ export class AiHandler extends CommandHandler implements Killable {
    */
   private async generateThreadName(thread: AiThread, agent: Agent): Promise<string> {
     // Extract context from first few user messages
-    const messages = thread.getMessages()
-      .filter(msg => msg instanceof MessageEvent && msg.role === 'user')
+    const messages = thread
+      .getMessages()
+      .filter((msg) => msg instanceof MessageEvent && msg.role === 'user')
       .slice(0, 3)
-      .map(msg => (msg as MessageEvent).content)
+      .map((msg) => (msg as MessageEvent).content)
       .join('\n\n')
-    
-    const prompt = `Generate a descriptive title for this conversation in one sentence:\n\n${messages}\n\nTitle:`
-    
+
+    const prompt = `Here are the messages a user sent in a conversation with an AI:\n\n${messages}\n\nGenerate a title for this conversation between the conversation-name tags <conversation-name>`
+
     try {
       // Use the agent's AI client to generate the name
       const title = await agent.getAiClient().complete(prompt, {
         maxTokens: 50,
         temperature: 0.7,
-        stopSequences: ['\n', '.']
+        stopSequences: ['</conversation-name>'],
       })
-      
+
       // Clean up the title
-      return title.trim().replace(/^["']|["']$/g, '').replace(/\.$/, '')
+      return title
+        .trim()
+        .replace(/^["']|["']$/g, '')
+        .replace(/\.$/, '')
     } catch (error) {
       // Fallback to date-based name
       return `Thread ${new Date().toISOString().split('T')[0]}`
