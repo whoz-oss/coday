@@ -4,11 +4,14 @@ import { lastValueFrom, Observable } from 'rxjs'
 import { CodayEvent, MessageEvent } from '@coday/coday-events'
 import { AgentService } from '../../agent'
 import { parseAgentCommand } from './parseAgentCommand'
+import { AiThreadService } from '../../ai-thread/ai-thread.service'
+import { AiThread } from '../../ai-thread/ai-thread'
 
 export class AiHandler extends CommandHandler implements Killable {
   constructor(
     private interactor: Interactor,
-    private agentService: AgentService
+    private agentService: AgentService,
+    private threadService: AiThreadService
   ) {
     super({
       commandWord: keywords.assistantPrefix,
@@ -100,6 +103,10 @@ export class AiHandler extends CommandHandler implements Killable {
    */
   private async runAgent(agent: Agent, cmd: string, context: CommandContext): Promise<CommandContext> {
     const events: Observable<CodayEvent> = await agent.run(cmd, context.aiThread!)
+    
+    // Check for auto-save after user message is added to thread
+    await this.checkAndAutoSave(context.aiThread!, agent)
+    
     events.subscribe({
       next: (event) => {
         this.interactor.sendEvent(event)
@@ -117,6 +124,17 @@ export class AiHandler extends CommandHandler implements Killable {
     })
     await lastValueFrom(events)
     return context
+  }
+
+  /**
+   * Check if thread should be auto-saved and perform auto-save if needed
+   */
+  private async checkAndAutoSave(thread: AiThread, agent: Agent): Promise<void> {
+    // TODO: Implement auto-save logic
+    // - Check if thread.getUserMessageCount() === 3
+    // - Check if thread doesn't already have an ID
+    // - Generate thread name using agent's AI client
+    // - Save thread with generated name
   }
 
   async kill(): Promise<void> {
