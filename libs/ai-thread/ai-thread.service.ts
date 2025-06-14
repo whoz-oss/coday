@@ -163,6 +163,18 @@ export class AiThreadService {
   }
 
   /**
+   * Check if a thread has expired based on TTL from last modification
+   * @param threadData Thread summary data to check
+   * @param ttlDays Number of days before expiration (default: 90)
+   * @returns true if thread is expired
+   */
+  private isThreadExpired(threadData: ThreadSummary, ttlDays: number = 90): boolean {
+    const expirationDate = new Date(threadData.modifiedDate)
+    expirationDate.setDate(expirationDate.getDate() + ttlDays)
+    return new Date() > expirationDate
+  }
+
+  /**
    * List all available threads.
    * Returns an Observable that will emit once with the list of threads
    * or error if repository is not available.
@@ -173,7 +185,9 @@ export class AiThreadService {
       this.getRepository()
         .then((repository) => repository.listThreadsByUsername(this.username))
         .then((threads) => {
-          subscriber.next(threads)
+          // Filter out expired threads at the service level
+          const activeThreads = threads.filter(threadData => !this.isThreadExpired(threadData))
+          subscriber.next(activeThreads)
           subscriber.complete()
         })
         .catch((error) => subscriber.error(error))

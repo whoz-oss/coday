@@ -132,7 +132,6 @@ export class FileAiThreadRepository implements AiThreadRepository {
 
   // TODO: kill this monstruosity someday, reading all threads is not sustainable
   async listThreadsByUsername(username: string): Promise<ThreadSummary[]> {
-    const TTL_DAYS = 90
     await this.initPromise
     try {
       const files = await fs.readdir(this.threadsDir)
@@ -144,12 +143,6 @@ export class FileAiThreadRepository implements AiThreadRepository {
               .map(async (file) => {
                 const data = await readYamlFile(path.join(this.threadsDir, file))
                 if (!data) return null
-                
-                // Create a temporary AiThread instance to check expiration
-                const tempThread = new AiThread(data)
-                if (tempThread.isExpired(TTL_DAYS)) {
-                  return null // Filter out expired threads
-                }
                 
                 return {
                   id: data.id,
