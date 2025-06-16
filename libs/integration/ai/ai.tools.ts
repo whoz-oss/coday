@@ -30,7 +30,7 @@ export class AiTools extends AssistantToolFactory {
         function: {
           name: 'queryUser',
           description:
-            'Allows to ask the user a question. If no options are provided, the user can answer with free text. If options are provided, the user will have to choose a single option. IMPORTANT: Use this tool only when necessary, as it interrupts the flow of execution to seek user input.',
+            'Allows to ask the user a question. If no options are provided, the user can answer with free text. If options are provided, the user will have to choose a single option. IMPORTANT: Use this tool only when necessary, as it interrupts the flow of execution to seek user input. AVOID closed options unless the user explicitly needs to choose between specific technical alternatives (like file selection, configuration choices, etc.). Prefer open-ended questions to allow natural, nuanced responses.',
           parameters: {
             type: 'object',
             properties: {
@@ -43,7 +43,7 @@ export class AiTools extends AssistantToolFactory {
                 items: {
                   type: 'string',
                   description:
-                    'Optional: list of values for the user to choose one, the list is closed so include specific options if needed (exit, free text, ...).',
+                    'Optional: list of values for the user to choose one. Use ONLY for technical choices where specific options are required (file selection, configuration values, yes/no decisions). AVOID for general conversation - let users respond naturally with free text instead.',
                 },
               },
             },
