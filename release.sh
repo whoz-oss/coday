@@ -22,7 +22,7 @@ nx release --skip-publish
 
 # 4. Push branch to remote server
 echo "Pushing chore/release branch to remote server..."
-git push origin "chore/release"
+git push origin "chore/release" --follow-tags
 
 # 5. Open link to create PR
 echo "Opening link to create Pull Request..."
