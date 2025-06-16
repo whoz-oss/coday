@@ -1,3 +1,16 @@
+## 0.12.0 (2025-06-16)
+
+### 🚀 Features
+
+- ai providers in coday yaml and free config ([#74](https://github.com/biznet-io/coday/pull/74))
+- #110 implement intelligent rate limiting and throttling for Anthropic API ([#116](https://github.com/biznet-io/coday/pull/116), [#110](https://github.com/biznet-io/coday/issues/110))
+- #117 optimize Anthropic cache with mobile marker strategy ([#118](https://github.com/biznet-io/coday/pull/118), [#117](https://github.com/biznet-io/coday/issues/117))
+- separate token info from agent and price ([#120](https://github.com/biznet-io/coday/pull/120))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 
 
 ## 0.11.0 (2025-06-03)
