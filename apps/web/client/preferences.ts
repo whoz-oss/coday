@@ -155,11 +155,6 @@ voiceVolumeSlider.addEventListener('input', () => {
   voiceSynthesis.volume = volumeValue / 100
 })
 
-voiceVolumeSlider.addEventListener('change', () => {
-  // Test voice when user finishes adjusting volume (mouseup/touchend)
-  voiceSynthesis.testSelectedVoice()
-})
-
 voiceReadFullToggle.addEventListener('change', () => {
   setPreference('voiceReadFullText', voiceReadFullToggle.checked)
   // Dispatch event to notify chat history component
