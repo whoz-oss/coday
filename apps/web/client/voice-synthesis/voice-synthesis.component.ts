@@ -77,13 +77,63 @@ export class VoiceSynthesisComponent {
   }
 
   public extractPlainText(text: string): string {
-    return text
+    let processed = text
+      // Remove emojis (Unicode ranges for emojis) + specific stars
+      .replace(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|⭐/gu, '')
+      
+      // Remove code blocks
+      .replace(/```[\s\S]*?```/g, 'code block')
+      .replace(/`([^`]+)`/g, '$1') // Inline code
+      
+      // Remove markdown formatting
+      .replace(/\*\*\*(.*?)\*\*\*/g, '$1') // Bold italic
       .replace(/\*\*(.*?)\*\*/g, '$1') // Bold
       .replace(/\*(.*?)\*/g, '$1') // Italic
-      .replace(/`(.*?)`/g, '$1') // Code
-      .replace(/#{1,6}\s*(.*)/g, '$1') // Headers
-      .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Links
+      .replace(/~~(.*?)~~/g, '$1') // Strikethrough
+      
+      // Remove headers
+      .replace(/#{1,6}\s*(.*)/g, '$1')
+      
+      // Replace links with just the text
+      .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
+      
+      // Remove standalone URLs
+      .replace(/https?:\/\/[^\s]+/g, 'link')
+      
+      // Remove HTML entities
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, 'and')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+    
+    // Add punctuation for natural pauses BEFORE removing line breaks
+    processed = this.addNaturalPunctuation(processed)
+    
+    return processed
+      // Clean up multiple spaces and trim
+      .replace(/\s+/g, ' ')
       .trim()
+  }
+
+  private addNaturalPunctuation(text: string): string {
+    return text
+      // Normalize multiple line breaks
+      .replace(/\n+/g, '\n')
+      .split('\n')
+      .map(line => this.addPeriodIfNeeded(line.trim()))
+      .filter(line => line.length > 0)
+      .join(' ') // Join with spaces for speech synthesis
+  }
+
+  private addPeriodIfNeeded(line: string): string {
+    if (!line) return ''
+    
+    // If line doesn't end with punctuation, add a period
+    if (!/[.!?;:]$/.test(line)) {
+      return line + '.'
+    }
+    return line
   }
 
   public speak(markdown: string, onEnd?: () => void) {

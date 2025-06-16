@@ -3,7 +3,7 @@ import { CodayEventHandler } from '../utils/coday-event-handler'
 import { VoiceSynthesisComponent } from '../voice-synthesis/voice-synthesis.component'
 import { getPreference } from '../utils/preferences'
 
-const MINIMUM_SPEECH_LENGTH = 60
+const MINIMUM_SPEECH_LENGTH = 50
 
 export class ChoiceSelectComponent implements CodayEventHandler {
   private choiceForm: HTMLFormElement

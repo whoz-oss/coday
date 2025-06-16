@@ -4,7 +4,7 @@ import { getPreference } from '../utils/preferences'
 import { SpeechToTextareaComponent } from './speech-to-textarea.component'
 import { VoiceSynthesisComponent } from '../voice-synthesis/voice-synthesis.component'
 
-const MINIMUM_SPEECH_LENGTH = 60
+const MINIMUM_SPEECH_LENGTH = 50
 
 export class ChatTextareaComponent implements CodayEventHandler {
   private chatForm: HTMLFormElement
