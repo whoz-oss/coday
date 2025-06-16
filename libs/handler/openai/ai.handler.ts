@@ -6,6 +6,7 @@ import { AgentService } from '../../agent'
 import { parseAgentCommand } from './parseAgentCommand'
 import { AiThreadService } from '../../ai-thread/ai-thread.service'
 import { AiThread } from '../../ai-thread/ai-thread'
+import { generateThreadName } from '../generate-thread-name'
 
 export class AiHandler extends CommandHandler implements Killable {
   constructor(
@@ -136,7 +137,7 @@ export class AiHandler extends CommandHandler implements Killable {
     if (thread.getUserMessageCount() === AUTO_SAVE_THRESHOLD && !thread.id) {
       try {
         // Generate thread name using the agent's AI client
-        const threadName = await this.generateThreadName(thread, agent)
+        const threadName = await generateThreadName(thread, agent)
 
         // Save the thread with the generated name
         await this.threadService.save(threadName)
@@ -146,39 +147,6 @@ export class AiHandler extends CommandHandler implements Killable {
       } catch (error) {
         this.interactor.debug(`Auto-save failed: ${error}`)
       }
-    }
-  }
-
-  /**
-   * Generate a descriptive thread name using AI completion
-   */
-  private async generateThreadName(thread: AiThread, agent: Agent): Promise<string> {
-    // Extract context from first few user messages
-    const messages = thread
-      .getMessages()
-      .filter((msg) => msg instanceof MessageEvent && msg.role === 'user')
-      .slice(0, 3)
-      .map((msg) => (msg as MessageEvent).content)
-      .join('\n\n')
-
-    const prompt = `Here are the messages a user sent in a conversation with an AI:\n\n${messages}\n\nGenerate a title for this conversation between the conversation-name tags <conversation-name>`
-
-    try {
-      // Use the agent's AI client to generate the name
-      const title = await agent.getAiClient().complete(prompt, {
-        maxTokens: 50,
-        temperature: 0.7,
-        stopSequences: ['</conversation-name>'],
-      })
-
-      // Clean up the title
-      return title
-        .trim()
-        .replace(/^["']|["']$/g, '')
-        .replace(/\.$/, '')
-    } catch (error) {
-      // Fallback to date-based name
-      return `Thread ${new Date().toISOString().split('T')[0]}`
     }
   }
 

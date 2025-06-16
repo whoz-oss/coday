@@ -2,8 +2,8 @@ import { CommandHandler } from '../../model/command.handler'
 import { Interactor } from '../../model/interactor'
 import { AiThreadService } from '../../ai-thread/ai-thread.service'
 import { CommandContext } from '../../model/command-context'
-import { MessageEvent } from '@coday/coday-events'
 import { AgentService } from '../../agent/agent.service'
+import { generateThreadName } from '../generate-thread-name'
 
 /**
  * Handler for saving the current AI thread state.
@@ -47,16 +47,23 @@ export class SaveAiThreadHandler extends CommandHandler {
         this.interactor.displayText(`Thread saved with new name: ${newName} (${currentThread.id})`)
       } else {
         // No name provided - check if thread needs a better name
-        const needsBetterName = !currentThread.name || 
-                               currentThread.name === 'Temporary thread' || 
-                               currentThread.name === 'untitled'
-        
+        const needsBetterName =
+          !currentThread.name || currentThread.name === 'Temporary thread' || currentThread.name === 'untitled'
+
         if (needsBetterName && currentThread.getUserMessageCount() > 0) {
           // Generate AI name like in auto-save
           try {
-            const generatedName = await this.generateThreadName(currentThread, context)
-            await this.threadService.save(generatedName)
-            this.interactor.displayText(`Thread saved with generated name: ${generatedName} (${currentThread.id})`)
+            const agent = await this.agentService.findByName('coday', context)
+            let threadName: string
+            if (!agent) {
+              threadName = await this.interactor.promptText(
+                `Default agent 'Coday' not available, thread name generation not available, please type the thread title`
+              )
+            } else {
+              threadName = await generateThreadName(currentThread, agent)
+            }
+            await this.threadService.save(threadName)
+            this.interactor.displayText(`Thread saved with generated name: ${threadName} (${currentThread.id})`)
           } catch (error) {
             // Fallback to manual save if AI generation fails
             await this.threadService.save()
@@ -71,34 +78,5 @@ export class SaveAiThreadHandler extends CommandHandler {
       this.interactor.error(error)
     }
     return context
-  }
-
-  /**
-   * Generate a thread name using AI based on conversation content
-   */
-  private async generateThreadName(thread: any, context: CommandContext): Promise<string> {
-    // Extract context from first few user messages
-    const messages = thread.getMessages()
-      .filter((msg: any) => msg instanceof MessageEvent && msg.role === 'user')
-      .slice(0, 3)
-      .map((msg: any) => msg.content)
-      .join('\n\n')
-    
-    const prompt = `Generate a descriptive title for this conversation in one sentence:\n\n${messages}\n\nTitle:`
-    
-    // Get the default agent to use its AI client
-    const agent = await this.agentService.findByName('coday', context)
-    if (!agent) {
-      throw new Error('Default agent not available')
-    }
-    
-    const title = await agent.getAiClient().complete(prompt, {
-      maxTokens: 50,
-      temperature: 0.7,
-      stopSequences: ['\n', '.']
-    })
-    
-    // Clean up the title
-    return title.trim().replace(/^["']|["']$/g, '').replace(/\.$/, '')
   }
 }
