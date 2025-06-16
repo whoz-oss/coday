@@ -57,8 +57,8 @@ const handleStop = () => {
 }
 
 const chatHistory = new ChatHistoryComponent(handleStop, voiceSynthesis)
-const chatInputComponent = new ChatTextareaComponent(postEvent)
-const choiceInputComponent = new ChoiceSelectComponent(postEvent)
+const chatInputComponent = new ChatTextareaComponent(postEvent, voiceSynthesis)
+const choiceInputComponent = new ChoiceSelectComponent(postEvent, voiceSynthesis)
 
 const components: CodayEventHandler[] = [chatInputComponent, choiceInputComponent, chatHistory, new HeaderComponent()]
 let eventSource: EventSource | null = null

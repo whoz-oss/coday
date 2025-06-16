@@ -55,14 +55,46 @@ export class VoiceSynthesisComponent {
     })
   }
 
-  public speak(text: string, onEnd?: () => void) {
+  public ding(): void {
+    // Create a simple notification sound using Web Audio API
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const oscillator = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContext.destination)
+
+      oscillator.frequency.setValueAtTime(800, audioContext.currentTime) // 800Hz tone
+      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime) // Low volume
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1)
+
+      oscillator.start(audioContext.currentTime)
+      oscillator.stop(audioContext.currentTime + 0.1)
+    } catch (error) {
+      console.error('Notification sound failed:', error)
+    }
+  }
+
+  public extractPlainText(text: string): string {
+    return text
+      .replace(/\*\*(.*?)\*\*/g, '$1') // Bold
+      .replace(/\*(.*?)\*/g, '$1') // Italic
+      .replace(/`(.*?)`/g, '$1') // Code
+      .replace(/#{1,6}\s*(.*)/g, '$1') // Headers
+      .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Links
+      .trim()
+  }
+
+  public speak(markdown: string, onEnd?: () => void) {
     if (!this.selectedVoice) {
       console.warn('no voice selected')
       return
     }
 
-    // Arrêter toute synthèse en cours et annuler l'ancienne callback
     this.stopSpeech()
+
+    const text = this.extractPlainText(markdown)
 
     const utterance = new SpeechSynthesisUtterance(text)
     utterance.voice = this.selectedVoice
@@ -70,20 +102,16 @@ export class VoiceSynthesisComponent {
     utterance.volume = this.volume
     utterance.rate = this.rate
 
-    // Stocker la callback pour pouvoir l'annuler si nécessaire
     this.currentOnEndCallback = onEnd || null
 
-    // Ajouter la callback si fournie, mais vérifier qu'elle est toujours valide
     if (onEnd) {
       utterance.onend = () => {
-        // Vérifier que cette callback est toujours la callback active
         if (this.currentOnEndCallback === onEnd) {
           this.currentOnEndCallback = null
           onEnd()
         }
       }
       utterance.onerror = () => {
-        // Même vérification pour les erreurs
         if (this.currentOnEndCallback === onEnd) {
           this.currentOnEndCallback = null
           onEnd()
@@ -165,7 +193,6 @@ export class VoiceSynthesisComponent {
     if (this.currentUtterance || speechSynthesis.speaking) {
       speechSynthesis.cancel()
       this.currentUtterance = null
-      // Annuler la callback en cours pour éviter qu'elle se déclenche
       this.currentOnEndCallback = null
       console.log('[VOICE-COMPONENT] Speech stopped')
     }

@@ -160,7 +160,8 @@ export class ChatHistoryComponent implements CodayEventHandler {
     this.appendMessageElement(newEntry)
 
     // Announce agent responses if enabled (and message is recent enough)
-    if (speaker && this.isVoiceAnnounceEnabled() && this.isMessageRecentEnoughForAnnouncement(messageTimestamp)) {
+    const audioEnabled = getPreference<boolean>('voiceAnnounceEnabled', false) || false
+    if (speaker && audioEnabled && this.isMessageRecentEnoughForAnnouncement(messageTimestamp)) {
       this.announceText(text)
     }
   }
@@ -246,7 +247,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
       this.resetAllPlayButtons()
 
       // Start new message avec callback
-      const plainText = this.extractPlainText(text)
+      const plainText = this.voiceSynthesis.extractPlainText(text)
 
       // Créer une callback spécifique à ce bouton
       const onEndCallback = () => {
@@ -413,52 +414,6 @@ export class ChatHistoryComponent implements CodayEventHandler {
     this.appendMessageElement(element)
   }
 
-  private isVoiceAnnounceEnabled(): boolean {
-    const isEnabled = getPreference<boolean>('voiceAnnounceEnabled', false) || false
-    console.log('[VOICE] isVoiceAnnounceEnabled from preferences:', isEnabled)
-    return isEnabled
-  }
-
-  private extractPlainText(markdown: string): string {
-    // Remove basic markdown formatting
-    return markdown
-      .replace(/\*\*(.*?)\*\*/g, '$1') // Bold
-      .replace(/\*(.*?)\*/g, '$1') // Italic
-      .replace(/`(.*?)`/g, '$1') // Code
-      .replace(/#{1,6}\s*(.*)/g, '$1') // Headers
-      .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Links
-      .trim()
-  }
-
-  private getVoiceMode(): 'speech' | 'notification' {
-    const mode = (getPreference<string>('voiceMode', 'speech') as 'speech' | 'notification') || 'speech'
-    console.log('[VOICE] getVoiceMode from preferences:', mode)
-    return mode
-  }
-
-  private playNotificationSound(): void {
-    // Create a simple notification sound using Web Audio API or HTML5 Audio
-    try {
-      // Try to create a simple beep sound
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-      const oscillator = audioContext.createOscillator()
-      const gainNode = audioContext.createGain()
-
-      oscillator.connect(gainNode)
-      gainNode.connect(audioContext.destination)
-
-      oscillator.frequency.setValueAtTime(800, audioContext.currentTime) // 800Hz tone
-      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime) // Low volume
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1)
-
-      oscillator.start(audioContext.currentTime)
-      oscillator.stop(audioContext.currentTime + 0.1)
-    } catch (error) {
-      // Fallback: try to use a simple beep
-      console.log('\u0007') // Bell character (might work in some terminals)
-    }
-  }
-
   private isMessageRecentEnoughForAnnouncement(messageTimestamp?: string): boolean {
     if (!messageTimestamp) {
       return true // If no timestamp, assume it's recent
@@ -480,14 +435,14 @@ export class ChatHistoryComponent implements CodayEventHandler {
   }
 
   private announceText(text: string): void {
-    const mode = this.getVoiceMode()
+    const mode = (getPreference<string>('voiceMode', 'speech') as 'speech' | 'notification') || 'speech'
 
     if (mode === 'notification') {
-      this.playNotificationSound()
+      this.voiceSynthesis.ding()
       return
     }
 
-    let plainText = this.extractPlainText(text)
+    let plainText = this.voiceSynthesis.extractPlainText(text)
 
     // Check if we should read full text or just the beginning
     let textToSpeak: string

@@ -120,12 +120,16 @@ voiceAnnounceToggle.addEventListener('change', () => {
   if (voiceAnnounceToggle.checked) {
     testAudioAnnouncement()
   }
+  // Dispatch event to notify components of voice announce change
+  window.dispatchEvent(new CustomEvent('voiceAnnounceEnabledChanged', { detail: voiceAnnounceToggle.checked }))
 })
 
 voiceModeSelect.addEventListener('change', () => {
   setPreference('voiceMode', voiceModeSelect.value)
   updateVoiceSelectionVisibility()
   testAudioAnnouncement()
+  // Dispatch event to notify components of mode change
+  window.dispatchEvent(new CustomEvent('voiceModeChanged', { detail: voiceModeSelect.value }))
 })
 
 voiceSelect.addEventListener('change', () => {
