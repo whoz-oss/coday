@@ -23,6 +23,7 @@ const TestTexts: Record<string, string> = {
 export class VoiceSynthesisComponent {
   private voices: Promise<SpeechSynthesisVoice[]> | undefined
   private currentUtterance: SpeechSynthesisUtterance | null = null
+  private currentOnEndCallback: (() => void) | null = null
   volume: number = 0.8
   rate: number = 1.2
   language: string = 'en'
@@ -54,11 +55,14 @@ export class VoiceSynthesisComponent {
     })
   }
 
-  public speak(text: string) {
+  public speak(text: string, onEnd?: () => void) {
     if (!this.selectedVoice) {
       console.warn('no voice selected')
       return
     }
+
+    // Arrêter toute synthèse en cours et annuler l'ancienne callback
+    this.stopSpeech()
 
     const utterance = new SpeechSynthesisUtterance(text)
     utterance.voice = this.selectedVoice
@@ -66,8 +70,30 @@ export class VoiceSynthesisComponent {
     utterance.volume = this.volume
     utterance.rate = this.rate
 
+    // Stocker la callback pour pouvoir l'annuler si nécessaire
+    this.currentOnEndCallback = onEnd || null
+
+    // Ajouter la callback si fournie, mais vérifier qu'elle est toujours valide
+    if (onEnd) {
+      utterance.onend = () => {
+        // Vérifier que cette callback est toujours la callback active
+        if (this.currentOnEndCallback === onEnd) {
+          this.currentOnEndCallback = null
+          onEnd()
+        }
+      }
+      utterance.onerror = () => {
+        // Même vérification pour les erreurs
+        if (this.currentOnEndCallback === onEnd) {
+          this.currentOnEndCallback = null
+          onEnd()
+        }
+      }
+    }
+
     this.currentUtterance = utterance
     speechSynthesis.speak(utterance)
+    console.log('[VOICE-COMPONENT] Started speaking:', text.substring(0, 50) + '...')
   }
 
   public async getVoices(): Promise<VoiceInfo[]> {
@@ -136,10 +162,16 @@ export class VoiceSynthesisComponent {
   }
 
   public stopSpeech(): void {
-    if (this.currentUtterance) {
+    if (this.currentUtterance || speechSynthesis.speaking) {
       speechSynthesis.cancel()
       this.currentUtterance = null
+      // Annuler la callback en cours pour éviter qu'elle se déclenche
+      this.currentOnEndCallback = null
       console.log('[VOICE-COMPONENT] Speech stopped')
     }
+  }
+
+  public isSpeaking(): boolean {
+    return speechSynthesis.speaking
   }
 }

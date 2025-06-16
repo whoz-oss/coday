@@ -122,20 +122,22 @@
     }
 }
 
-/* Copy button styles */
-.copy-button-container {
+/* Message button styles */
+.message-button-container {
     position: absolute;
     top: 10px;
     right: 10px;
     opacity: 0;
     transition: opacity 0.2s ease-in-out;
+    display: flex;
+    gap: 4px;
 }
 
-.text:hover .copy-button-container {
+.text:hover .message-button-container {
     opacity: 1;
 }
 
-.copy-button {
+.copy-button, .play-button {
     background: var(--color-bg);
     border: 1px solid var(--color-text-secondary);
     border-radius: 4px;
@@ -144,9 +146,14 @@
     transition: all 0.2s ease;
     font-size: 14px;
     color: var(--color-text);
+    min-width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.copy-button:hover {
+.copy-button:hover, .play-button:hover {
     background: var(--color-primary);
     color: var(--color-bg);
 }
@@ -155,4 +162,8 @@
     background: var(--color-success, #28a745);
     color: white;
     border-color: var(--color-success, #28a745);
+}
+
+.play-button:active {
+    transform: scale(0.95);
 }
