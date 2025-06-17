@@ -118,10 +118,12 @@ export class ServerClient {
       return
     }
 
-    // Stop Coday but keep it alive
+    // Cleanup conversation resources but keep Coday alive for reconnection
     if (this.coday) {
-      debugLog('CODAY', `Stopping Coday for client ${this.clientId}`)
-      this.coday.stop()
+      debugLog('CODAY', `Cleaning up conversation for client ${this.clientId}`)
+      this.coday.cleanup().catch((error) => {
+        debugLog('CODAY', `Error during conversation cleanup for client ${this.clientId}:`, error)
+      })
     }
 
     // Clear any existing termination timeout
@@ -190,20 +192,29 @@ export class ServerClient {
     return this.coday.context.aiThread.getEventById(eventId)
   }
 
+  /**
+   * Complete cleanup of client resources.
+   * Destroys the Coday instance and all associated resources.
+   */
   private cleanup(): void {
-    debugLog('CLIENT', `Starting cleanup for client ${this.clientId}`)
+    debugLog('CLIENT', `Starting full cleanup for client ${this.clientId}`)
     this.subscription?.unsubscribe()
+    
     if (this.coday) {
       debugLog('CODAY', `Killing Coday instance for client ${this.clientId}`)
-      this.coday.kill()
+      this.coday.kill().catch((error) => {
+        debugLog('CODAY', `Error during Coday kill for client ${this.clientId}:`, error)
+      })
       delete this.coday
     }
+    
     if (this.terminationTimeout) {
       debugLog('CLIENT', `Clearing termination timeout during cleanup for client ${this.clientId}`)
       clearTimeout(this.terminationTimeout)
       delete this.terminationTimeout
     }
-    debugLog('CLIENT', `Cleanup completed for client ${this.clientId}`)
+    
+    debugLog('CLIENT', `Full cleanup completed for client ${this.clientId}`)
   }
 }
 

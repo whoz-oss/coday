@@ -25,25 +25,42 @@ const mcp = new McpConfigService(user, project, interactor)
 const loggingEnabled = options.log && !options.noAuth
 const logger = new CodayLogger(loggingEnabled, options.logFolder)
 
-// Setup cleanup for terminal interactor when process exits
-if (interactor instanceof TerminalInteractor) {
-  // Clean up readline interface on exit
-  process.on('exit', () => {
-    interactor.cleanup()
-  })
-
-  // Let Node.js handle Ctrl+C normally
-  process.on('SIGINT', () => {
-    console.log('\nExiting...')
-    process.exit(0)
-  })
-}
-
-new Coday(interactor, options, {
+const coday = new Coday(interactor, options, {
   user,
   project,
   integration,
   memory,
   mcp,
   logger: logger,
-}).run()
+})
+
+// Setup comprehensive cleanup for all termination scenarios
+if (interactor instanceof TerminalInteractor) {
+  // Normal process exit - cleanup interactor only
+  process.on('exit', () => {
+    interactor.cleanup()
+  })
+
+  // Forced termination (Ctrl+C, SIGTERM) - full cleanup
+  const handleForcedTermination = async (signal: string) => {
+    console.log(`\nReceived ${signal}, cleaning up...`)
+    try {
+      coday.kill().then(() => {
+        interactor.cleanup()
+      })
+    } catch (error) {
+      console.error('Error during cleanup:', error)
+    } finally {
+      process.exit(0)
+    }
+  }
+
+  process.on('SIGINT', () => handleForcedTermination('SIGINT'))
+  process.on('SIGTERM', () => handleForcedTermination('SIGTERM'))
+}
+
+// Run Coday
+coday.run().catch((error) => {
+  console.error('Coday run failed:', error)
+  process.exit(1)
+})
