@@ -1,3 +1,19 @@
+## 0.13.0 (2025-06-17)
+
+### 🚀 Features
+
+- Add voice synthesis for agent responses ([#121](https://github.com/biznet-io/coday/pull/121))
+- stats handler ([#126](https://github.com/biznet-io/coday/pull/126))
+
+### 🩹 Fixes
+
+- stop mcps with thread ([#119](https://github.com/biznet-io/coday/pull/119))
+- silent error on mandatory docs ([#125](https://github.com/biznet-io/coday/pull/125))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.12.0 (2025-06-16)
 
 ### 🚀 Features
