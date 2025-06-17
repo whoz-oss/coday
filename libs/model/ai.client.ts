@@ -54,7 +54,7 @@ export abstract class AiClient {
   /**
    * Simple completion method for generating short, focused text.
    * Used for tasks like thread naming, summaries, etc.
-   * 
+   *
    * @param prompt The prompt to complete
    * @param options Optional completion parameters
    * @returns The completed text
@@ -224,8 +224,9 @@ export abstract class AiClient {
       hour12: false,
       timeZone: 'UTC',
     })
+    const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'long' })
 
-    return `${content}\n\n[Current date: ${currentDate}, time: ${currentTime} UTC]`
+    return `${content}\n\n[Current date: ${currentDate} (${dayOfWeek}), time: ${currentTime} UTC]`
   }
 
   protected showAgentAndUsage(agent: Agent, aiProvider: string, model: string, thread: AiThread): void {
