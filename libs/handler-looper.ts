@@ -12,6 +12,7 @@ import {
   PromptChainHandler,
   RunBashHandler,
 } from './handler'
+import { StatsHandler } from './handler/stats/stats.handler'
 import { AiThreadService } from './ai-thread/ai-thread.service'
 import { keywords } from './keywords'
 import { RunStatus } from './ai-thread/ai-thread.types'
@@ -47,6 +48,7 @@ export class HandlerLooper {
         memoryHandler,
         new FileMapHandler(this.interactor),
         new LoadHandler(this.interactor),
+        new StatsHandler(this.interactor, this.services),
       ]
 
       CodayPromptChains.forEach((promptChain) =>
