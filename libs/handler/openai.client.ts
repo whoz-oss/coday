@@ -1,5 +1,5 @@
 import OpenAI from 'openai'
-import { Agent, AiClient, AiModel, AiProviderConfig, Interactor } from '../model'
+import { Agent, AiClient, AiModel, AiProviderConfig, CompletionOptions, Interactor } from '../model'
 import { CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 import { AiThread } from '../ai-thread/ai-thread'
 import { Observable, Subject } from 'rxjs'
@@ -394,6 +394,31 @@ export class OpenaiClient extends AiClient {
       }
     } catch (error) {
       this.handleError(error, subscriber, this.aiProviderConfig.name)
+    }
+  }
+
+  async complete(prompt: string, options?: CompletionOptions): Promise<string> {
+    const openai = this.isOpenaiReady()
+    if (!openai) throw new Error('OpenAI client not ready')
+
+    // Select model: options > SMALL alias > fallback
+    const modelName = options?.model || 
+                     this.models.find(m => m.alias === 'SMALL')?.name || 
+                     'gpt-4o-mini'
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: modelName,
+        messages: [{ role: 'user', content: prompt }],
+        max_completion_tokens: options?.maxTokens ?? 100,
+        temperature: options?.temperature ?? 0.5,
+        stop: options?.stopSequences,
+      })
+
+      return response.choices[0]?.message?.content?.trim() || ''
+    } catch (error: any) {
+      console.error('OpenAI completion error:', error)
+      throw new Error(`OpenAI completion failed: ${error.message}`)
     }
   }
 }

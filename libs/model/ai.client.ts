@@ -8,6 +8,13 @@ import { AiModel } from './ai-model'
 import { AiProviderConfig } from './ai-provider-config'
 import { CodayLogger } from '../service/coday-logger'
 
+export interface CompletionOptions {
+  model?: string
+  maxTokens?: number
+  temperature?: number
+  stopSequences?: string[]
+}
+
 /**
  * Common abstraction over different AI provider APIs.
  */
@@ -43,6 +50,16 @@ export abstract class AiClient {
    * @returns Observable stream of events from the AI interaction (messages, tool calls, tool responses)
    */
   abstract run(agent: Agent, thread: AiThread): Promise<Observable<CodayEvent>>
+
+  /**
+   * Simple completion method for generating short, focused text.
+   * Used for tasks like thread naming, summaries, etc.
+   * 
+   * @param prompt The prompt to complete
+   * @param options Optional completion parameters
+   * @returns The completed text
+   */
+  abstract complete(prompt: string, options?: CompletionOptions): Promise<string>
 
   /**
    * Kills the process, deprecating

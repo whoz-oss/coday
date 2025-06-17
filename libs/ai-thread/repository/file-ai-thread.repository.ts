@@ -142,17 +142,17 @@ export class FileAiThreadRepository implements AiThreadRepository {
               .filter((file) => file.endsWith('.yml'))
               .map(async (file) => {
                 const data = await readYamlFile(path.join(this.threadsDir, file))
-                return data
-                  ? {
-                      id: data.id,
-                      username: data.username,
-                      name: data.name || 'untitled',
-                      summary: data.summary || '',
-                      createdDate: data.createdDate || '',
-                      modifiedDate: data.modifiedDate || '',
-                      price: data.price || 0,
-                    }
-                  : null
+                if (!data) return null
+                
+                return {
+                  id: data.id,
+                  username: data.username,
+                  name: data.name || 'untitled',
+                  summary: data.summary || '',
+                  createdDate: data.createdDate || '',
+                  modifiedDate: data.modifiedDate || '',
+                  price: data.price || 0,
+                }
               })
           )
         )
