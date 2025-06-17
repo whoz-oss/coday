@@ -1,22 +1,15 @@
 import { ChatTextareaComponent } from './chat-textarea/chat-textarea.component'
 import { ChoiceSelectComponent } from './choice-select/choice-select.component'
 import { ChatHistoryComponent } from './chat-history/chat-history.component'
-
 import { buildCodayEvent, CodayEvent, ErrorEvent } from '@coday/coday-events'
 import { CodayEventHandler } from './utils/coday-event-handler'
 import { HeaderComponent } from './header/header.component'
 import { getPreference, setPreference } from './utils/preferences'
+import { voiceSynthesis } from './preferences'
 
 // Debug logging function
 function debugLog(context: string, ...args: any[]) {
   console.log(`[DEBUG ${context}]`, ...args)
-}
-
-// Add global test function
-declare global {
-  interface Window {
-    triggerTestDisconnect: () => void
-  }
 }
 
 /**
@@ -63,9 +56,9 @@ const handleStop = () => {
   )
 }
 
-const chatHistory = new ChatHistoryComponent(handleStop)
-const chatInputComponent = new ChatTextareaComponent(postEvent)
-const choiceInputComponent = new ChoiceSelectComponent(postEvent)
+const chatHistory = new ChatHistoryComponent(handleStop, voiceSynthesis)
+const chatInputComponent = new ChatTextareaComponent(postEvent, voiceSynthesis)
+const choiceInputComponent = new ChoiceSelectComponent(postEvent, voiceSynthesis)
 
 const components: CodayEventHandler[] = [chatInputComponent, choiceInputComponent, chatHistory, new HeaderComponent()]
 let eventSource: EventSource | null = null
@@ -140,15 +133,10 @@ const enterToSendToggle = document.getElementById('enter-to-send-toggle') as HTM
 const themeLight = document.getElementById('theme-light') as HTMLInputElement
 const themeDark = document.getElementById('theme-dark') as HTMLInputElement
 const themeSystem = document.getElementById('theme-system') as HTMLInputElement
-const voiceLanguageSelect = document.getElementById('voice-language-select') as HTMLSelectElement
 
 // Set initial toggle state based on stored preference
 const useEnterToSend = getPreference('useEnterToSend', false)
 enterToSendToggle.checked = useEnterToSend !== undefined ? useEnterToSend : false
-
-// Set initial voice language based on stored preference
-const savedVoiceLanguage = getPreference<string>('voiceLanguage', 'en-US') || 'en-US'
-voiceLanguageSelect.value = savedVoiceLanguage
 
 // Apply theme based on preference or system setting
 function applyTheme() {
@@ -207,13 +195,6 @@ document.addEventListener('click', (event) => {
 // Save preference when toggle changes
 enterToSendToggle.addEventListener('change', () => {
   setPreference('useEnterToSend', enterToSendToggle.checked)
-})
-
-// Save voice language preference when changed
-voiceLanguageSelect.addEventListener('change', () => {
-  setPreference('voiceLanguage', voiceLanguageSelect.value)
-  // Trigger custom event to notify chat component of language change
-  window.dispatchEvent(new CustomEvent('voiceLanguageChanged', { detail: voiceLanguageSelect.value }))
 })
 
 // Handle theme selection

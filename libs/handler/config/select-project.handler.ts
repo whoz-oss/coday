@@ -28,11 +28,7 @@ export class SelectProjectHandler extends CommandHandler {
     let selection = projectName
     if (!selection) {
       const names = this.services.project.projects
-      selection = await this.interactor.chooseOption(
-        [...names, 'new'],
-        'Selection: ',
-        'Choose an existing project or select "new" to create one'
-      )
+      selection = await this.interactor.chooseOption([...names, 'new'], 'Selection: ', 'Choose or create a project')
     }
     if (selection === 'new') {
       const projectName = await this.interactor.promptText('Project name')

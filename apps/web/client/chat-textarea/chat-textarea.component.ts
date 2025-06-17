@@ -2,6 +2,9 @@ import { CodayEvent, InviteEvent } from '@coday/coday-events'
 import { CodayEventHandler } from '../utils/coday-event-handler'
 import { getPreference } from '../utils/preferences'
 import { SpeechToTextareaComponent } from './speech-to-textarea.component'
+import { VoiceSynthesisComponent } from '../voice-synthesis/voice-synthesis.component'
+
+const MINIMUM_SPEECH_LENGTH = 50
 
 export class ChatTextareaComponent implements CodayEventHandler {
   private chatForm: HTMLFormElement
@@ -42,7 +45,10 @@ export class ChatTextareaComponent implements CodayEventHandler {
     }
   }
 
-  constructor(private postEvent: (event: CodayEvent) => Promise<Response>) {
+  constructor(
+    private postEvent: (event: CodayEvent) => Promise<Response>,
+    private voiceSynthesis: VoiceSynthesisComponent
+  ) {
     // Detect OS once during initialization
     this.os = this.detectOS()
 
@@ -104,6 +110,15 @@ export class ChatTextareaComponent implements CodayEventHandler {
         this.updateSendButtonLabel()
       }
     })
+
+    // Listen for voice preference changes
+    window.addEventListener('voiceModeChanged', (event: any) => {
+      console.log('[CHAT-TEXTAREA] Voice mode changed to:', event.detail)
+    })
+
+    window.addEventListener('voiceAnnounceEnabledChanged', (event: any) => {
+      console.log('[CHAT-TEXTAREA] Voice announce enabled changed to:', event.detail)
+    })
   }
 
   handle(event: CodayEvent): void {
@@ -112,15 +127,25 @@ export class ChatTextareaComponent implements CodayEventHandler {
       // Parse markdown for the chat label
       const parsed = marked.parse(this.inviteEvent.invite)
       if (parsed instanceof Promise) {
-        parsed.then((html) => (this.chatLabel.innerHTML = html))
+        parsed.then((html) => {
+          this.chatLabel.innerHTML = html
+          this.setupLabelClickHandler()
+        })
       } else {
         this.chatLabel.innerHTML = parsed
+        this.setupLabelClickHandler()
       }
       this.chatForm.style.display = 'block'
       this.chatTextarea.focus()
       if (this.inviteEvent.defaultValue) {
         console.log(`handling defaultValue: ${this.inviteEvent.defaultValue}`)
         this.chatTextarea.value = this.inviteEvent.defaultValue
+      }
+
+      // Annonce selon le mode et la longueur
+      const audioEnabled = getPreference<boolean>('voiceAnnounceEnabled', false) || false
+      if (audioEnabled) {
+        this.announceLabel(this.inviteEvent.invite)
       }
     }
   }
@@ -225,6 +250,27 @@ export class ChatTextareaComponent implements CodayEventHandler {
       }
     } catch (error) {
       console.error('Error occurred while sending message:', error)
+    }
+  }
+
+  private setupLabelClickHandler(): void {
+    // Ajouter un event listener pour arrêter la synthèse vocale au clic
+    this.chatLabel.addEventListener('click', () => {
+      this.voiceSynthesis.stopSpeech()
+    })
+
+    // Ajouter un style pour indiquer que le label est cliquable
+    this.chatLabel.style.cursor = 'pointer'
+    this.chatLabel.title = 'Click to stop speech'
+  }
+
+  private announceLabel(text: string): void {
+    const mode = (getPreference<string>('voiceMode', 'speech') as 'speech' | 'notification') || 'speech'
+
+    if (mode === 'notification' || text.length <= MINIMUM_SPEECH_LENGTH) {
+      this.voiceSynthesis.ding()
+    } else {
+      this.voiceSynthesis.speak(text)
     }
   }
 }
