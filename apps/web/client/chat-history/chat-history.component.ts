@@ -6,6 +6,7 @@ import {
   ThinkingEvent,
   ToolRequestEvent,
   ToolResponseEvent,
+  WarnEvent,
 } from '@coday/coday-events'
 import { CodayEventHandler } from '../utils/coday-event-handler'
 import { getPreference } from '../utils/preferences'
@@ -71,6 +72,10 @@ export class ChatHistoryComponent implements CodayEventHandler {
     if (event instanceof ErrorEvent) {
       const errorMessage = JSON.stringify(event.error)
       this.addError(errorMessage)
+    }
+    if (event instanceof WarnEvent) {
+      const warnMessage = JSON.stringify(event.warning)
+      this.addError(warnMessage, 'Warning')
     }
     if (event instanceof ThinkingEvent) {
       this.setThinking(true)
@@ -321,29 +326,33 @@ export class ChatHistoryComponent implements CodayEventHandler {
     return textElement
   }
 
-  addError(error: string): void {
+  addError(error: string, level: 'Error' | 'Warning' = 'Error'): void {
     this.setThinking(false)
     const errorEntry = document.createElement('div')
-    errorEntry.classList.add('error-message')
 
     // Create an error icon
     const errorIcon = document.createElement('span')
-    errorIcon.textContent = '\u274c ' // Red X symbol
-    errorIcon.classList.add('error-icon')
+    errorIcon.textContent = level === 'Error' ? '❌' : '⚠️'
     errorEntry.appendChild(errorIcon)
 
     // Create the error text
     const errorText = document.createElement('span')
-    errorText.textContent = `Error: ${error}`
+    errorText.textContent = `${level}: ${error}`
     errorEntry.appendChild(errorText)
 
     // Add styling
-    errorEntry.style.color = '#e74c3c' // Red color
-    errorEntry.style.background = '#ffeeee' // Light red background
+    errorEntry.style.color =
+      level === 'Error'
+        ? '#e74c3c' // Red color
+        : '#e7ab3c' // Amber color
+    errorEntry.style.background =
+      level === 'Error'
+        ? '#ffeeee' // Light red background
+        : '#fffaee' // Light yellow-ish background
     errorEntry.style.padding = '10px'
     errorEntry.style.margin = '10px 0'
     errorEntry.style.borderRadius = '4px'
-    errorEntry.style.border = '1px solid #e74c3c'
+    errorEntry.style.border = `1px solid ${level === 'Error' ? '#e74c3c' : '#e7ab3c'}`
 
     this.chatHistory?.appendChild(errorEntry)
     this.scrollToBottom()

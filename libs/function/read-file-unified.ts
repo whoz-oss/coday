@@ -26,9 +26,11 @@ export const readFileUnified = async (input: FileReaderInput): Promise<FileConte
     // Handle PDF files
     if (extension === '.pdf') {
       if (!input.interactor) {
+        const errorMsg = `Interactor is required for PDF reading: ${input.relPath}`
+        // Cannot call error on undefined interactor
         return {
           type: 'error',
-          content: 'Interactor is required for PDF reading',
+          content: errorMsg,
         }
       }
       return await readPdfWrapper(input)
@@ -37,9 +39,10 @@ export const readFileUnified = async (input: FileReaderInput): Promise<FileConte
     // Default to text file reading
     return await readFileByPath(input)
   } catch (error) {
+    const errorMsg = `Failed to read file ${input.relPath}: ${error}`
     return {
       type: 'error',
-      content: `Failed to read file ${input.relPath}: ${error}`,
+      content: errorMsg,
     }
   }
 }
