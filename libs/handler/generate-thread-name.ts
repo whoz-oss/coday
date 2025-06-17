@@ -11,12 +11,12 @@ export async function generateThreadName(thread: AiThread, agent: Agent): Promis
     .map((msg) => (msg as MessageEvent).content)
     .join('\n\n')
 
-  const prompt = `Here are the messages a user sent in a conversation with an AI:\n\n${messages}\n\nGenerate a title for this conversation between the conversation-name tags <conversation-name>`
+  const prompt = `Here are the messages a user sent in a conversation with an AI:\n\n${messages}\n\nGenerate a title for this conversation between the conversation-name tags, and without introduction nor line jumps.\n<conversation-name>`
 
   try {
     // Use the agent's AI client to generate the name
     const title = await agent.getAiClient().complete(prompt, {
-      maxTokens: 50,
+      maxTokens: 30,
       temperature: 0.7,
       stopSequences: ['</conversation-name>'],
     })
