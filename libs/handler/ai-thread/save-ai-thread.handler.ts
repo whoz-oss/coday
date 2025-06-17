@@ -2,6 +2,8 @@ import { CommandHandler } from '../../model/command.handler'
 import { Interactor } from '../../model/interactor'
 import { AiThreadService } from '../../ai-thread/ai-thread.service'
 import { CommandContext } from '../../model/command-context'
+import { AgentService } from '../../agent/agent.service'
+import { generateThreadName } from '../generate-thread-name'
 
 /**
  * Handler for saving the current AI thread state.
@@ -14,7 +16,8 @@ import { CommandContext } from '../../model/command-context'
 export class SaveAiThreadHandler extends CommandHandler {
   constructor(
     private readonly interactor: Interactor,
-    private readonly threadService: AiThreadService
+    private readonly threadService: AiThreadService,
+    private readonly agentService: AgentService
   ) {
     super({
       commandWord: 'save',
@@ -43,8 +46,33 @@ export class SaveAiThreadHandler extends CommandHandler {
         await this.threadService.save(newName)
         this.interactor.displayText(`Thread saved with new name: ${newName} (${currentThread.id})`)
       } else {
-        await this.threadService.save()
-        this.interactor.displayText(`Thread saved: ${currentThread.name} (${currentThread.id})`)
+        // No name provided - check if thread needs a better name
+        const needsBetterName =
+          !currentThread.name || currentThread.name === 'Temporary thread' || currentThread.name === 'untitled'
+
+        if (needsBetterName && currentThread.getUserMessageCount() > 0) {
+          // Generate AI name like in auto-save
+          try {
+            const agent = await this.agentService.findByName('coday', context)
+            let threadName: string
+            if (!agent) {
+              threadName = await this.interactor.promptText(
+                `Default agent 'Coday' not available, thread name generation not available, please type the thread title`
+              )
+            } else {
+              threadName = await generateThreadName(currentThread, agent)
+            }
+            await this.threadService.save(threadName)
+            this.interactor.displayText(`Thread saved with generated name: ${threadName} (${currentThread.id})`)
+          } catch (error) {
+            // Fallback to manual save if AI generation fails
+            await this.threadService.save()
+            this.interactor.displayText(`Thread saved: ${currentThread.name} (${currentThread.id})`)
+          }
+        } else {
+          await this.threadService.save()
+          this.interactor.displayText(`Thread saved: ${currentThread.name} (${currentThread.id})`)
+        }
       }
     } catch (error) {
       this.interactor.error(error)

@@ -42,7 +42,7 @@ export class HandlerLooper {
         this.configHandler,
         new RunBashHandler(this.interactor),
         new DebugHandler(this.interactor),
-        new AiThreadHandler(this.interactor, this.aiThreadService),
+        new AiThreadHandler(this.interactor, this.aiThreadService, this.services.agent!),
         queryHandler,
         memoryHandler,
         new FileMapHandler(this.interactor),

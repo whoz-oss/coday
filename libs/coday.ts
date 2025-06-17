@@ -193,7 +193,7 @@ export class Coday {
         this.context.project.root,
         this.options.agentFolders
       )
-      this.aiHandler = new AiHandler(this.interactor, this.services.agent)
+      this.aiHandler = new AiHandler(this.interactor, this.services.agent, this.aiThreadService)
       this.handlerLooper = new HandlerLooper(
         this.interactor,
         this.aiHandler,

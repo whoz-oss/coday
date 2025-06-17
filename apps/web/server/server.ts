@@ -7,6 +7,7 @@ import { parseCodayOptions } from '@coday/options'
 import * as os from 'node:os'
 import { debugLog } from './log'
 import { CodayLogger } from '@coday/service/coday-logger'
+import { ThreadCleanupService } from '@coday/service/thread-cleanup.service'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000
@@ -73,6 +74,9 @@ app.use(express.json())
 
 // Initialize the client manager with usage logger
 const clientManager = new ServerClientManager(logger)
+
+// Initialize thread cleanup service (server-only)
+let cleanupService: ThreadCleanupService | null = null
 
 // POST endpoint for stopping the current run
 app.post('/api/stop', (req: express.Request, res: express.Response) => {
@@ -219,11 +223,44 @@ app.use((err: any, _: express.Request, res: express.Response, __: express.NextFu
 setInterval(() => clientManager.cleanupExpired(), 60000) // Check every minute
 
 // Use PORT_PROMISE to listen on the available port
-PORT_PROMISE.then((PORT) => {
+PORT_PROMISE.then(async (PORT) => {
   app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`)
   })
+  
+  // Start thread cleanup service after server is running
+  try {
+    debugLog('CLEANUP', 'Starting thread cleanup service...')
+    
+    // Construire le chemin vers les projets (même logique que ProjectService)
+    const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
+    const configPath = codayOptions.configDir ?? defaultConfigPath
+    const projectsConfigPath = path.join(configPath, 'projects')
+    
+    cleanupService = new ThreadCleanupService(projectsConfigPath, logger)
+    await cleanupService.start()
+    debugLog('CLEANUP', 'Thread cleanup service started successfully')
+  } catch (error) {
+    console.error('Failed to start thread cleanup service:', error)
+  }
 }).catch((error) => {
   console.error('Failed to start server:', error)
   process.exit(1)
+})
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('Received SIGTERM, shutting down gracefully...')
+  if (cleanupService) {
+    await cleanupService.stop()
+  }
+  process.exit(0)
+})
+
+process.on('SIGINT', async () => {
+  console.log('Received SIGINT, shutting down gracefully...')
+  if (cleanupService) {
+    await cleanupService.stop()
+  }
+  process.exit(0)
 })

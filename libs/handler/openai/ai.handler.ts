@@ -4,11 +4,15 @@ import { lastValueFrom, Observable } from 'rxjs'
 import { CodayEvent, MessageEvent } from '@coday/coday-events'
 import { AgentService } from '../../agent'
 import { parseAgentCommand } from './parseAgentCommand'
+import { AiThreadService } from '../../ai-thread/ai-thread.service'
+import { AiThread } from '../../ai-thread/ai-thread'
+import { generateThreadName } from '../generate-thread-name'
 
 export class AiHandler extends CommandHandler implements Killable {
   constructor(
     private interactor: Interactor,
-    private agentService: AgentService
+    private agentService: AgentService,
+    private threadService: AiThreadService
   ) {
     super({
       commandWord: keywords.assistantPrefix,
@@ -100,6 +104,10 @@ export class AiHandler extends CommandHandler implements Killable {
    */
   private async runAgent(agent: Agent, cmd: string, context: CommandContext): Promise<CommandContext> {
     const events: Observable<CodayEvent> = await agent.run(cmd, context.aiThread!)
+
+    // Check for auto-save after user message is added to thread
+    await this.checkAndAutoSave(context.aiThread!, agent)
+
     events.subscribe({
       next: (event) => {
         this.interactor.sendEvent(event)
@@ -117,6 +125,29 @@ export class AiHandler extends CommandHandler implements Killable {
     })
     await lastValueFrom(events)
     return context
+  }
+
+  /**
+   * Check if thread should be auto-saved and perform auto-save if needed
+   */
+  private async checkAndAutoSave(thread: AiThread, agent: Agent): Promise<void> {
+    const AUTO_SAVE_THRESHOLD = 3
+
+    // Only auto-save if we hit the threshold and thread is not already saved
+    if (thread.getUserMessageCount() === AUTO_SAVE_THRESHOLD && !thread.id) {
+      try {
+        // Generate thread name using the agent's AI client
+        const threadName = await generateThreadName(thread, agent)
+
+        // Save the thread with the generated name
+        await this.threadService.save(threadName)
+
+        // Notify user
+        this.interactor.displayText(`Thread auto-saved as "${threadName}" (expires in 3 months)`)
+      } catch (error) {
+        this.interactor.debug(`Auto-save failed: ${error}`)
+      }
+    }
   }
 
   async kill(): Promise<void> {
