@@ -137,6 +137,10 @@ export class Coday {
         this.stop()
       }
     } while (!this.context?.oneshot)
+
+    // Always cleanup resources when conversation ends normally
+    // This ensures MCP Docker containers are stopped
+    await this.cleanup()
   }
 
   /**
@@ -144,8 +148,7 @@ export class Coday {
    * - Preserves thread and context state
    * - Allows clean completion of current operation
    * - Prevents new processing steps
-   *
-   * @returns Promise that resolves when stop is complete
+   * - Keeps Coday instance alive for potential resume
    */
   stop(): void {
     const thread = this.context?.aiThread
@@ -155,14 +158,48 @@ export class Coday {
   }
 
   /**
-   * Immediately terminates all processing.
-   * Unlike stop(), this method:
-   * - Does not preserve state
-   * - Immediately ends all processing
-   * - May leave cleanup needed
+   * Cleanup resources at the end of a conversation.
+   * - Stops MCP servers and Docker containers tied to agents
+   * - Preserves thread state and Coday instance
+   * - Keeps instance ready for new conversations
+   * - Called when conversation ends normally (exit, oneshot completion)
    */
-  kill(): void {
+  async cleanup(): Promise<void> {
+    try {
+      if (this.services.agent) {
+        await this.services.agent.kill()
+      }
+
+      // Reset AI client provider for fresh connections
+      this.aiClientProvider.cleanup()
+
+      // Clear context but keep services available
+      this.context = null
+      this.handlerLooper = undefined
+      this.aiHandler = undefined
+    } catch (error) {
+      console.error('Error during agent cleanup:', error)
+      // Don't throw - cleanup should be best-effort
+    }
+  }
+
+  /**
+   * Force terminate everything and destroy the instance.
+   * - Stops all processing immediately
+   * - Cleans up all resources
+   * - Destroys the Coday instance
+   * - Used for forced termination (Ctrl+C, process exit)
+   */
+  async kill(): Promise<void> {
+    this.killed = true
     this.stop()
+
+    try {
+      await this.cleanup()
+    } catch (error) {
+      console.error('Error during kill cleanup:', error)
+    }
+
     this.handlerLooper?.kill()
     this.interactor.kill()
   }
