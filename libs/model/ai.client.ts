@@ -54,7 +54,7 @@ export abstract class AiClient {
   /**
    * Simple completion method for generating short, focused text.
    * Used for tasks like thread naming, summaries, etc.
-   * 
+   *
    * @param prompt The prompt to complete
    * @param options Optional completion parameters
    * @returns The completed text
@@ -224,8 +224,9 @@ export abstract class AiClient {
       hour12: false,
       timeZone: 'UTC',
     })
+    const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'long' })
 
-    return `${content}\n\n[Current date: ${currentDate}, time: ${currentTime} UTC]`
+    return `${content}\n\n[Current date: ${currentDate} (${dayOfWeek}), time: ${currentTime} UTC]`
   }
 
   protected showAgentAndUsage(agent: Agent, aiProvider: string, model: string, thread: AiThread): void {
@@ -260,13 +261,6 @@ export abstract class AiClient {
    * Log agent usage after a complete response cycle
    */
   protected async logAgentUsage(agent: Agent, model: string, cost: number): Promise<void> {
-    if (!this.logger || !this.username) return
-
-    try {
-      await this.logger.logAgentUsage(this.username, agent.name, model, cost)
-    } catch (error) {
-      // Silent failure - logging should never disrupt the main flow
-      console.warn('Failed to log agent usage:', error)
-    }
+    await this.logger?.logAgentUsage(this.username ?? 'no_username', agent.name, model, cost)
   }
 }
