@@ -43,7 +43,6 @@ export async function getFormattedDocs(
         } else if (value.type === 'error') {
           // Important: log error for mandatory files
           const warningMessage = `Mandatory file error - ${filePath}: ${value.content}`
-          interactor.warn(warningMessage)
           return {
             content: null,
             error: warningMessage,
@@ -51,7 +50,6 @@ export async function getFormattedDocs(
         } else {
           // For other types (image, binary), create a warning
           const warningMessage = `Mandatory file ${filePath} is of type '${value.type}' and cannot be included as text`
-          interactor.warn(warningMessage)
           return {
             content: null,
             error: warningMessage,
