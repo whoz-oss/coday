@@ -8,6 +8,12 @@ import {
   ToolResponseEvent,
 } from '@coday/coday-events'
 import { CodayEventHandler } from '../utils/coday-event-handler'
+import { getPreference } from '../utils/preferences'
+import { VoiceSynthesisComponent } from '../voice-synthesis/voice-synthesis.component'
+
+const PARAGRAPH_MIN_LENGTH = 80
+const MAX_PARAGRAPHS = 3
+const MESSAGE_FRESHNESS_THRESHOLD = 5 * 60 * 1000 //  in millis
 
 export class ChatHistoryComponent implements CodayEventHandler {
   private chatHistory: HTMLDivElement
@@ -16,8 +22,13 @@ export class ChatHistoryComponent implements CodayEventHandler {
   private history = new Map<string, CodayEvent>()
   private thinkingTimeout: any
   private readonly onStopCallback: () => void
+  private readFullText: boolean = false
+  private currentPlayingButton: HTMLButtonElement | null = null
 
-  constructor(onStopCallback: () => void) {
+  constructor(
+    onStopCallback: () => void,
+    private readonly voiceSynthesis: VoiceSynthesisComponent
+  ) {
     this.chatHistory = document.getElementById('chat-history') as HTMLDivElement
     this.thinkingDots = document.getElementById('thinking-dots') as HTMLDivElement
     this.stopButton = this.thinkingDots.querySelector('.stop-button') as HTMLButtonElement
@@ -27,13 +38,29 @@ export class ChatHistoryComponent implements CodayEventHandler {
     if (this.stopButton) {
       this.stopButton.addEventListener('click', () => this.onStopCallback())
     }
+
+    // Load initial preference
+    this.readFullText = getPreference<boolean>('voiceReadFullText', false) || false
+
+    // Listen for preference changes
+    window.addEventListener('voiceReadFullTextChanged', (event: any) => {
+      this.readFullText = event.detail
+    })
+
+    // Vérification périodique pour s'assurer que l'état reste cohérent
+    setInterval(() => {
+      this.checkStateConsistency()
+    }, 1000)
   }
 
   handle(event: CodayEvent): void {
     this.history.set(event.timestamp, event)
     if (event instanceof TextEvent) {
       if (event.speaker) {
-        this.addText(event.text, event.speaker)
+        // Stop any current speech when new response arrives and reset buttons
+        this.voiceSynthesis.stopSpeech()
+        this.resetAllPlayButtons()
+        this.addText(event.text, event.speaker, event.timestamp)
       } else {
         this.addTechnical(event.text)
       }
@@ -83,14 +110,22 @@ export class ChatHistoryComponent implements CodayEventHandler {
     this.appendMessageElement(newEntry)
   }
 
-  addText(text: string, speaker: string | undefined): void {
+  addText(text: string, speaker: string | undefined, messageTimestamp?: string): void {
     const newEntry = this.createMessageElement(text, speaker)
     newEntry.classList.add('text', 'left')
+    newEntry.addEventListener('click', () => {
+      this.voiceSynthesis.stopSpeech()
+    })
 
-    // Add copy button for agent responses
-    const copyButtonContainer = document.createElement('div')
-    copyButtonContainer.classList.add('copy-button-container')
+    // Add button container for agent responses
+    const buttonContainer = document.createElement('div')
+    buttonContainer.classList.add('message-button-container')
 
+    // Create play button
+    const playButton = this.createPlayButton(text)
+    buttonContainer.appendChild(playButton)
+
+    // Create copy button
     const copyButton = document.createElement('button')
     copyButton.classList.add('copy-button')
     copyButton.title = 'Copy raw response'
@@ -119,20 +154,31 @@ export class ChatHistoryComponent implements CodayEventHandler {
       }
     })
 
-    copyButtonContainer.appendChild(copyButton)
-    newEntry.appendChild(copyButtonContainer)
+    buttonContainer.appendChild(copyButton)
+    newEntry.appendChild(buttonContainer)
 
     this.appendMessageElement(newEntry)
+
+    // Announce agent responses if enabled (and message is recent enough)
+    const audioEnabled = getPreference<boolean>('voiceAnnounceEnabled', false) || false
+    if (speaker && audioEnabled && this.isMessageRecentEnoughForAnnouncement(messageTimestamp)) {
+      this.announceText(text)
+    }
   }
 
   addAnswer(answer: string, speaker: string | undefined): void {
     const newEntry = this.createMessageElement(answer, speaker)
     newEntry.classList.add('text', 'right')
 
-    // Add copy button for user messages (similar to agent messages)
-    const copyButtonContainer = document.createElement('div')
-    copyButtonContainer.classList.add('copy-button-container')
+    // Add button container for user messages
+    const buttonContainer = document.createElement('div')
+    buttonContainer.classList.add('message-button-container')
 
+    // Create play button
+    const playButton = this.createPlayButton(answer)
+    buttonContainer.appendChild(playButton)
+
+    // Create copy button
     const copyButton = document.createElement('button')
     copyButton.classList.add('copy-button')
     copyButton.title = 'Copy raw message'
@@ -161,14 +207,89 @@ export class ChatHistoryComponent implements CodayEventHandler {
       }
     })
 
-    copyButtonContainer.appendChild(copyButton)
-    newEntry.appendChild(copyButtonContainer)
+    buttonContainer.appendChild(copyButton)
+    newEntry.appendChild(buttonContainer)
 
     this.appendMessageElement(newEntry)
   }
 
   private copyToClipboard(text: string): void {
     navigator.clipboard.writeText(text).catch((err) => console.error('Failed to copy text: ', err))
+  }
+
+  private createPlayButton(text: string): HTMLButtonElement {
+    const playButton = document.createElement('button')
+    playButton.classList.add('play-button')
+    playButton.title = 'Play message'
+    playButton.textContent = '▶️'
+
+    playButton.addEventListener('click', (event) => {
+      event.stopPropagation()
+      this.togglePlayback(text, playButton)
+    })
+
+    return playButton
+  }
+
+  private togglePlayback(text: string, button: HTMLButtonElement): void {
+    if (this.voiceSynthesis.isSpeaking() && this.currentPlayingButton === button) {
+      // Stop current message
+      console.log('[CHAT] Stopping current playback')
+      this.voiceSynthesis.stopSpeech()
+      this.resetPlayButton(button)
+      this.currentPlayingButton = null
+    } else {
+      // Stop any other playing message et reset previous button
+      console.log('[CHAT] Starting new playback, stopping previous if any')
+      this.voiceSynthesis.stopSpeech()
+
+      // Reset tous les boutons pour être sûr
+      this.resetAllPlayButtons()
+
+      // Start new message avec callback
+      const plainText = this.voiceSynthesis.extractPlainText(text)
+
+      // Créer une callback spécifique à ce bouton
+      const onEndCallback = () => {
+        console.log('[CHAT] Playback ended, resetting button')
+        // Vérifier que ce bouton est toujours le bouton actif
+        if (this.currentPlayingButton === button) {
+          this.resetPlayButton(button)
+          this.currentPlayingButton = null
+        }
+      }
+
+      this.voiceSynthesis.speak(plainText, onEndCallback)
+
+      // Mettre à jour l'état APRES avoir lancé la synthèse
+      this.currentPlayingButton = button
+      button.textContent = '⏸️'
+      button.title = 'Stop playback'
+      console.log('[CHAT] Button set to pause state')
+    }
+  }
+
+  private resetPlayButton(button: HTMLButtonElement): void {
+    button.textContent = '▶️'
+    button.title = 'Play message'
+  }
+
+  private resetAllPlayButtons(): void {
+    // Reset tous les boutons play dans le chat
+    const allPlayButtons = document.querySelectorAll('.play-button')
+    allPlayButtons.forEach((btn) => {
+      const button = btn as HTMLButtonElement
+      button.textContent = '▶️'
+      button.title = 'Play message'
+    })
+    this.currentPlayingButton = null
+  }
+
+  private checkStateConsistency(): void {
+    if (!this.voiceSynthesis.isSpeaking() && this.currentPlayingButton) {
+      console.log('[CHAT] State inconsistency detected: no speech but button still active, fixing...')
+      this.resetAllPlayButtons()
+    }
   }
 
   private createMessageElement(content: string, speaker: string | undefined): HTMLDivElement {
@@ -291,5 +412,69 @@ export class ChatHistoryComponent implements CodayEventHandler {
 
     element.appendChild(container)
     this.appendMessageElement(element)
+  }
+
+  private isMessageRecentEnoughForAnnouncement(messageTimestamp?: string): boolean {
+    if (!messageTimestamp) {
+      return true // If no timestamp, assume it's recent
+    }
+
+    try {
+      // Extract ISO date part before the random suffix
+      // Format: "2024-01-15T10:30:45.123Z-abc12" -> "2024-01-15T10:30:45.123Z"
+      const isoDatePart = messageTimestamp.split('-').slice(0, -1).join('-')
+
+      const messageTime = new Date(isoDatePart).getTime()
+      const now = Date.now()
+      const timeDiff = now - messageTime
+
+      return timeDiff <= MESSAGE_FRESHNESS_THRESHOLD
+    } catch (error) {
+      return true // If parsing fails, assume it's recent
+    }
+  }
+
+  private announceText(text: string): void {
+    const mode = (getPreference<string>('voiceMode', 'speech') as 'speech' | 'notification') || 'speech'
+
+    if (mode === 'notification') {
+      this.voiceSynthesis.ding()
+      return
+    }
+
+    let plainText = this.voiceSynthesis.extractPlainText(text)
+
+    // Check if we should read full text or just the beginning
+    let textToSpeak: string
+
+    if (this.readFullText) {
+      // Read the entire text
+      textToSpeak = plainText
+    } else {
+      // Read only the first few paragraphs
+      const speech = plainText.split('\n').reduce(
+        (acc, value) => {
+          if (acc.paragraphs >= MAX_PARAGRAPHS) {
+            return acc
+          } else {
+            const paragraphIncrement = value.length > PARAGRAPH_MIN_LENGTH ? 1 : 0
+            return {
+              paragraphs: acc.paragraphs + paragraphIncrement,
+              text: acc.text + '\n' + value,
+            }
+          }
+        },
+        { paragraphs: 0, text: '' }
+      )
+      textToSpeak = speech.text
+    }
+
+    if (!textToSpeak.trim()) {
+      console.log('[VOICE] No text to speak after processing!')
+      return
+    }
+
+    // Use the voice synthesis component
+    this.voiceSynthesis.speak(textToSpeak)
   }
 }
