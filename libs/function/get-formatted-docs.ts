@@ -14,7 +14,9 @@ export async function getFormattedDocs(
   let formattedDocs = ''
   let mandatoryDocText = ''
   let warnings = ''
+
   try {
+    // Process mandatory documents
     const fileContents = await Promise.allSettled(
       (withDocs.mandatoryDocs ?? []).map(
         (docPath): Promise<FileContent> =>
@@ -25,34 +27,60 @@ export async function getFormattedDocs(
           })
       )
     )
-    mandatoryDocText += fileContents
-      .map((settled, index) => {
-        const filePath = withDocs.mandatoryDocs ? withDocs.mandatoryDocs[index] : 'no file path'
-        if (settled.status === 'fulfilled') {
-          const value = settled.value as FileContent
-          if (value.type === 'text') {
-            return `File: ${filePath}\n\n${value.content}`
+    // Process each file result
+    const processedFiles = fileContents.map((settled, index) => {
+      const filePath = withDocs.mandatoryDocs ? withDocs.mandatoryDocs[index] : 'no file path'
+
+      if (settled.status === 'fulfilled') {
+        const value = settled.value as FileContent
+        // Process based on content type
+
+        if (value.type === 'text') {
+          return {
+            content: `File: ${filePath}\n\n${value.content}`,
+            error: null,
+          }
+        } else if (value.type === 'error') {
+          // Important: log error for mandatory files
+          const warningMessage = `Mandatory file error - ${filePath}: ${value.content}`
+          return {
+            content: null,
+            error: warningMessage,
+          }
+        } else {
+          // For other types (image, binary), create a warning
+          const warningMessage = `Mandatory file ${filePath} is of type '${value.type}' and cannot be included as text`
+          return {
+            content: null,
+            error: warningMessage,
           }
         }
-        return null
-      })
+      } else {
+        // This should not happen with current readFileUnified implementation
+        const errorMsg = `${filePath}: ${settled.reason?.toString()}`
+        interactor.error(errorMsg)
+        return {
+          content: null,
+          error: errorMsg,
+        }
+      }
+    })
+
+    // Build mandatory docs text from successful reads
+    mandatoryDocText += processedFiles
+      .filter((result) => result.content !== null)
+      .map((result) => result.content)
       .join('\n\n')
 
-    warnings += fileContents
-      .map((settled, index) => {
-        if (settled.status === 'rejected') {
-          return `  - ${settled.reason?.toString()}`
-        }
-        if (settled.status === 'fulfilled') {
-          const value = settled.value as FileContent
-          if (value.type === 'error') {
-            return `  - ${value.content.toString()}`
-          }
-        }
-        return null
-      })
-      .filter((text) => !!text)
+    // Collect all errors as warnings
+    const fileErrors = processedFiles
+      .filter((result) => result.error !== null)
+      .map((result) => `  - ${result.error}`)
       .join('\n')
+
+    if (fileErrors) {
+      warnings += fileErrors
+    }
 
     if (mandatoryDocText) {
       formattedDocs += `\n\nMandatory documents
@@ -82,7 +110,7 @@ export async function getFormattedDocs(
 
     return formattedDocs
   } catch (e: any) {
-    console.error(`Could not format docs`)
+    console.error(`Could not format docs: ${e.message}`)
     return ''
   }
 }

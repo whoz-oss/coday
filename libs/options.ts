@@ -42,7 +42,7 @@ export function parseCodayOptions(): CodayOptions {
   const args = hideBin(process.argv)
   console.log('raw args', args)
   const argv: Argv = yargs(args)
-    .option('project', {
+    .option('coday_project', {
       type: 'string',
       description: 'Project name',
     })
