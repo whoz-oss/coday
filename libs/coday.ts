@@ -125,7 +125,7 @@ export class Coday {
         continue
       }
 
-      const thread = this.context.aiThread
+      const thread = this.context?.aiThread
       if (thread) thread.runStatus = RunStatus.RUNNING
 
       // add the user command to the queue and let handlers decompose it in many and resolve them ultimately

@@ -2,6 +2,14 @@ import { promises as fs } from 'fs'
 import * as path from 'path'
 import * as os from 'os'
 
+export interface LogEntry {
+  timestamp: string
+  username: string
+  agent: string
+  model: string
+  cost: number
+}
+
 /**
  * Simple usage logger for AI agent interactions
  * Logs to daily JSONL files when logging is enabled
@@ -45,6 +53,49 @@ export class CodayLogger {
     if (this.buffer.length >= 100) {
       await this.flush()
     }
+  }
+
+  /**
+   * Read logs for a date range
+   */
+  async readLogs(from: Date, to: Date): Promise<LogEntry[]> {
+    const entries: LogEntry[] = []
+    
+    // Generate all dates in the range
+    const currentDate = new Date(from)
+    while (currentDate <= to) {
+      const year = currentDate.getFullYear()
+      const month = String(currentDate.getMonth() + 1).padStart(2, '0')
+      const day = String(currentDate.getDate()).padStart(2, '0')
+      const filename = `${year}-${month}-${day}.jsonl`
+      const filePath = path.join(this.logFolder, filename)
+
+      try {
+        const content = await fs.readFile(filePath, 'utf8')
+        const lines = content.trim().split('\n').filter(line => line.length > 0)
+        
+        for (const line of lines) {
+          try {
+            const entry = JSON.parse(line) as LogEntry
+            // Filter by exact date range
+            const entryDate = new Date(entry.timestamp)
+            if (entryDate >= from && entryDate <= to) {
+              entries.push(entry)
+            }
+          } catch (parseError) {
+            // Skip malformed lines
+            console.warn(`Failed to parse log line: ${line}`)
+          }
+        }
+      } catch (fileError) {
+        // File doesn't exist for this date, continue
+      }
+
+      // Move to next day
+      currentDate.setDate(currentDate.getDate() + 1)
+    }
+
+    return entries
   }
 
   /**
