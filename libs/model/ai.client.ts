@@ -261,13 +261,6 @@ export abstract class AiClient {
    * Log agent usage after a complete response cycle
    */
   protected async logAgentUsage(agent: Agent, model: string, cost: number): Promise<void> {
-    if (!this.logger || !this.username) return
-
-    try {
-      await this.logger.logAgentUsage(this.username, agent.name, model, cost)
-    } catch (error) {
-      // Silent failure - logging should never disrupt the main flow
-      console.warn('Failed to log agent usage:', error)
-    }
+    await this.logger?.logAgentUsage(this.username ?? 'no_username', agent.name, model, cost)
   }
 }
