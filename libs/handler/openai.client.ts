@@ -93,6 +93,14 @@ export class OpenaiClient extends AiClient {
       assistantThreadData: thread.data?.openai?.assistantThreadData ?? {},
     }
 
+    const charBudget =
+      model.contextWindow * this.charsPerToken - agent.systemInstructions.length - agent.tools.charLength
+    const data = await this.getMessages(thread, charBudget, model.name)
+    if (data.compacted) {
+      // then need to reset the assistant thread as all the beginning is compacted
+      thread.data.openai.assistantThreadData = {}
+    }
+
     const threadData: AssistantThreadData = thread.data.openai.assistantThreadData
     const thinking = setInterval(() => this.interactor.thinking(), 3000)
 
@@ -103,7 +111,7 @@ export class OpenaiClient extends AiClient {
       threadData.threadId = assistantThread.id
     }
 
-    const messages = thread.getMessages()
+    const messages = data.messages
     const lastMessageIndex = threadData.lastTimestamp
       ? messages.findIndex((m) => m.timestamp >= threadData.lastTimestamp!)
       : -1
@@ -149,12 +157,15 @@ export class OpenaiClient extends AiClient {
     subscriber: Subject<CodayEvent>
   ): Promise<void> {
     try {
+      // Recalculate budget on each iteration to account for growing thread
       const initialContextCharLength = agent.systemInstructions.length + agent.tools.charLength + 20
       const charBudget = model.contextWindow * this.charsPerToken - initialContextCharLength
 
+      const data = await this.getMessages(thread, charBudget, model.name)
+
       const response = await client.chat.completions.create({
         model: model.name,
-        messages: this.toOpenAiMessage(agent, thread.getMessages(charBudget)),
+        messages: this.toOpenAiMessage(agent, data.messages),
         tools: agent.tools.getTools(),
         max_completion_tokens: undefined,
         temperature: agent.definition.temperature ?? 0.8,
@@ -402,9 +413,7 @@ export class OpenaiClient extends AiClient {
     if (!openai) throw new Error('OpenAI client not ready')
 
     // Select model: options > SMALL alias > fallback
-    const modelName = options?.model || 
-                     this.models.find(m => m.alias === 'SMALL')?.name || 
-                     'gpt-4o-mini'
+    const modelName = options?.model || this.models.find((m) => m.alias === 'SMALL')?.name || 'gpt-4o-mini'
 
     try {
       const response = await openai.chat.completions.create({

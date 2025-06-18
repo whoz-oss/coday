@@ -1,6 +1,6 @@
 import { AiThread } from './ai-thread/ai-thread'
 import { AiThreadService } from './ai-thread/ai-thread.service'
-import { RunStatus } from './ai-thread/ai-thread.types'
+import { RunStatus, ThreadMessage } from './ai-thread/ai-thread.types'
 import { AiThreadRepositoryFactory } from './ai-thread/repository/ai-thread.repository.factory'
 import { AiHandler, ConfigHandler } from './handler'
 import { HandlerLooper } from './handler-looper'
@@ -56,8 +56,8 @@ export class Coday {
   /**
    * Replay messages from an AiThread through the interactor
    */
-  private replayThread(aiThread: AiThread): void {
-    const messages = aiThread.getMessages()
+  private async replayThread(aiThread: AiThread): Promise<void> {
+    const messages: ThreadMessage[] = (await aiThread.getMessages(undefined, undefined)).messages
     if (!messages?.length) return
     // Sort messages by timestamp to maintain chronological order
     const sortedMessages = [...messages].sort(
