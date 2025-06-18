@@ -95,8 +95,10 @@ export class AnthropicClient extends AiClient {
   ): Promise<void> {
     // Apply throttling delay if needed
     await this.applyThrottlingDelay()
+
+    // Recalculate budget on each iteration to account for growing thread
     const initialContextCharLength = agent.systemInstructions.length + agent.tools.charLength + 20
-    const charBudget = model.contextWindow * this.charsPerToken - initialContextCharLength
+    const charBudget = Math.max(model.contextWindow * this.charsPerToken - initialContextCharLength, 10000)
 
     // API call with localized error handling
     let response: Anthropic.Messages.Message
@@ -122,7 +124,6 @@ export class AnthropicClient extends AiClient {
 
         this.interactor.displayText(`🔄 Retrying request...`)
 
-        // Retry the API call once
         try {
           const retryResult = await this.makeApiCall(client, model, agent, thread, charBudget)
           response = retryResult.data
@@ -212,9 +213,9 @@ export class AnthropicClient extends AiClient {
    * Convert a ThreadMessage to Claude's MessageParam format
    * Includes mobile cache marker optimization
    */
-  private toClaudeMessage(messages: ThreadMessage[], thread: AiThread): MessageParam[] {
+  private toClaudeMessage(messages: ThreadMessage[], thread: AiThread, updateCache: boolean = false): MessageParam[] {
     // Get or update the cache marker position
-    const markerMessageId = this.getOrUpdateCacheMarker(thread, messages)
+    const markerMessageId = this.getOrUpdateCacheMarker(thread, messages, updateCache)
 
     return messages
       .map((msg, index) => {
@@ -275,7 +276,7 @@ export class AnthropicClient extends AiClient {
    * Places marker at CACHE_MARKER_PLACEMENT_RATIO% of conversation,
    * repositions when it drops below CACHE_MARKER_UPDATE_THRESHOLD%
    */
-  private getOrUpdateCacheMarker(thread: AiThread, messages: ThreadMessage[]): string | null {
+  private getOrUpdateCacheMarker(thread: AiThread, messages: ThreadMessage[], updateCache: boolean): string | null {
     const messageCount = messages.length
 
     // No cache marker for short conversations
@@ -292,7 +293,7 @@ export class AnthropicClient extends AiClient {
     // Get current marker
     const currentMarkerId = thread.data.anthropic.cacheMarkerMessageId
 
-    if (currentMarkerId) {
+    if (currentMarkerId && !updateCache) {
       // Find current marker position
       const markerIndex = messages.findIndex((m) => m.timestamp === currentMarkerId)
       if (markerIndex !== -1) {
@@ -369,10 +370,11 @@ export class AnthropicClient extends AiClient {
     thread: AiThread,
     charBudget: number
   ): Promise<{ data: Anthropic.Messages.Message; response: Response }> {
+    const data = await this.getMessages(thread, charBudget, model.name)
     return await client.messages
       .create({
         model: model.name,
-        messages: this.toClaudeMessage(thread.getMessages(charBudget), thread),
+        messages: this.toClaudeMessage(data.messages, thread),
         system: [
           {
             text: agent.systemInstructions,
@@ -511,9 +513,7 @@ export class AnthropicClient extends AiClient {
     if (!anthropic) throw new Error('Anthropic client not ready')
 
     // Select model: options > SMALL alias > fallback
-    const modelName = options?.model || 
-                     this.models.find(m => m.alias === 'SMALL')?.name || 
-                     'claude-3-5-haiku-latest'
+    const modelName = options?.model || this.models.find((m) => m.alias === 'SMALL')?.name || 'claude-3-5-haiku-latest'
 
     try {
       const response = await anthropic.messages.create({
