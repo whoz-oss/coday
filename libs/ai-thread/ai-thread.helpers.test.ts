@@ -33,4 +33,28 @@ describe('partition', () => {
     expect(result.messages.length).toBe(0)
     expect(result.overflow.length).toBe(4)
   })
+  it('should partially overflow with max after msg1', () => {
+    const length = message1.length + 1
+    const result = partition(allMessages, length)
+    expect(result.messages.length).toBe(1)
+    expect(result.overflow.length).toBe(3)
+  })
+  it('should partially overflow with max after msg2', () => {
+    const length = message1.length + message2.length + 1
+    const result = partition(allMessages, length)
+    expect(result.messages.length).toBe(2)
+    expect(result.overflow.length).toBe(2)
+  })
+  it('should partially overflow with max after msg3', () => {
+    const length = message1.length + message2.length + message3.length + 1
+    const result = partition(allMessages, length)
+    expect(result.messages.length).toBe(3)
+    expect(result.overflow.length).toBe(1)
+  })
+  it('should not overflow with max after msg4', () => {
+    const length = message1.length + message2.length + message3.length + message4.length + 1
+    const result = partition(allMessages, length)
+    expect(result.messages.length).toBe(4)
+    expect(result.overflow.length).toBe(0)
+  })
 })
