@@ -104,8 +104,6 @@ export class AiThread {
   }> {
     if (!maxChars) return { messages: [...this.messages], compacted: false }
 
-    console.log('🐼', this.messages.length, 'maxChars', maxChars)
-
     // from the end (hence the toReversed), take all messages that fit into the charbudget
     let { messages, overflow } = partition(this.messages.toReversed(), maxChars)
     messages = messages.toReversed()
@@ -117,7 +115,6 @@ export class AiThread {
     for (let i = 0; i < messages.length; i++) {
       const message = messages[i]
       if (message instanceof ToolResponseEvent && messageIds.has(message.toolRequestId)) {
-        console.log(`moving message ${message.timestamp} - ${message.type} to overflow`)
         messages.splice(i, 1)
         overflow.push(message)
       }
@@ -126,7 +123,7 @@ export class AiThread {
 
     if (!compactor) {
       // IMPORTANT: apply compaction to the thread to avoid re-doing it all over for every LLM call.
-      this.messages = messages
+      this.messages = messages // forget about the overflow part
       return { messages, compacted: true }
     }
 
@@ -134,14 +131,16 @@ export class AiThread {
     // overflow itself can be larger than the charBudget, so need to iteratively summarize
     let summary: ThreadMessage | undefined
     while (overflow.length) {
-      console.log('overflow reduction', overflow.length)
       const overflowPartition = partition(overflow, maxChars)
-      console.log('partition', overflowPartition.messages.length, overflowPartition.overflow.length)
       summary = await compactor(overflowPartition.messages)
-      console.log('summary content', (summary as MessageEvent).content)
       overflow = overflowPartition.overflow.length ? [summary, ...overflowPartition.overflow] : []
     }
-    // IMPORTANT: apply compaction to the thread to avoid re-doing it all over for every LLM call.
+
+    /*
+     * IMPORTANT: apply compaction to the thread to avoid re-doing it all over for every LLM call.
+     * This might happen if a small model is taking part in the current thread and that is a questionable decision.
+     * Smaller models should have delegation instead of being selected or redirected to.
+     */
     this.messages = summary ? [summary, ...messages] : messages
 
     return {

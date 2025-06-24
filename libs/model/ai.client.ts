@@ -79,21 +79,24 @@ export abstract class AiClient {
 
       const firstUserMessage = messages.find((m) => m instanceof MessageEvent && m.role === 'user')
 
+      const summaryBudget = Math.floor(maxChars / 20)
+
       const prompt = `Here is a transcript of a conversation:
 <transcript>${transcript}</transcript>
 
 It can be summarized as:
 <summary>
 `
-      let summary = '...previous conversation compacted'
+      let summary: string
       try {
         summary = await this.complete(prompt, {
           model,
-          maxTokens: Math.floor(maxChars / 20),
+          maxTokens: summaryBudget,
           stopSequences: ['</summary>'],
         })
         this.interactor.debug(`Compacted ${messages.length} messages into ${summary.length} chars summary.`)
       } catch (e) {
+        summary = '...previous conversation truncated'
         this.interactor.warn('Could not compact properly the conversation, truncated beginning instead.')
       }
 
@@ -114,7 +117,7 @@ It can be summarized as:
     messages: ThreadMessage[]
     compacted: boolean
   }> {
-    const compactor = this.getCompactor(model)
+    const compactor = this.getCompactor(model, charBudget)
     return await thread.getMessages(charBudget, compactor)
   }
 
