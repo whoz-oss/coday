@@ -2,7 +2,6 @@
  * @fileoverview Type definitions for thread-related structures
  */
 
-// eslint-disable-next-line @nx/enforce-module-boundaries
 import { MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 
 /**

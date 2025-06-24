@@ -8,7 +8,7 @@ import { buildCodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } fr
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import { ToolCall, ToolResponse } from '../integration/tool-call'
 import { EmptyUsage, RunStatus, ThreadMessage, ThreadSerialized, Usage } from './ai-thread.types'
-import { partition } from '@coday/ai-thread/ai-thread.helpers'
+import { partition } from './ai-thread.helpers'
 
 /**
  * Allowed message types for filtering when building thread history

@@ -1,4 +1,4 @@
-import { ThreadMessage } from '@coday/ai-thread/ai-thread.types'
+import { ThreadMessage } from './ai-thread.types'
 
 export function partition(
   messages: ThreadMessage[],
