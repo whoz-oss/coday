@@ -37,16 +37,22 @@ export class ThreadCleanupService {
     this.log(`Starting thread cleanup service (TTL: ${TTL_DAYS} days)`)
 
     // Premier nettoyage après délai initial
-    setTimeout(async () => {
-      await this.performCleanup()
-
-      // Puis nettoyage périodique
-      this.cleanupTimer = setInterval(async () => {
+    setTimeout(
+      async () => {
         await this.performCleanup()
-      }, CLEANUP_INTERVAL_HOURS * 60 * 60 * 1000)
 
-      this.log(`Thread cleanup scheduled every ${CLEANUP_INTERVAL_HOURS} hours`)
-    }, INITIAL_DELAY_MINUTES * 60 * 1000)
+        // Puis nettoyage périodique
+        this.cleanupTimer = setInterval(
+          async () => {
+            await this.performCleanup()
+          },
+          CLEANUP_INTERVAL_HOURS * 60 * 60 * 1000
+        )
+
+        this.log(`Thread cleanup scheduled every ${CLEANUP_INTERVAL_HOURS} hours`)
+      },
+      INITIAL_DELAY_MINUTES * 60 * 1000
+    )
 
     this.log(`Initial cleanup scheduled in ${INITIAL_DELAY_MINUTES} minutes`)
   }
@@ -84,11 +90,11 @@ export class ThreadCleanupService {
         try {
           const projectPath = path.join(this.projectsConfigPath, projectName)
           const stat = await fs.lstat(projectPath)
-          
+
           if (!stat.isDirectory()) continue
 
           const threadsDir = path.join(projectPath, 'threads')
-          
+
           // Vérifier si le répertoire threads existe
           try {
             await fs.access(threadsDir)
@@ -100,7 +106,6 @@ export class ThreadCleanupService {
           totalScanned += scanned
           totalDeleted += deleted
           totalErrors += errors
-
         } catch (error) {
           this.logError(`Error processing project ${projectName}: ${error}`)
           totalErrors++
@@ -108,8 +113,9 @@ export class ThreadCleanupService {
       }
 
       const duration = Date.now() - startTime
-      this.log(`Cleanup completed: ${totalDeleted}/${totalScanned} threads deleted across all projects in ${duration}ms (${totalErrors} errors)`)
-
+      this.log(
+        `Cleanup completed: ${totalDeleted}/${totalScanned} threads deleted across all projects in ${duration}ms (${totalErrors} errors)`
+      )
     } catch (error) {
       const duration = Date.now() - startTime
       this.logError(`Cleanup failed after ${duration}ms: ${error}`)
@@ -119,14 +125,21 @@ export class ThreadCleanupService {
   /**
    * Nettoie les threads expirés d'un projet spécifique
    */
-  private async cleanupProjectThreads(projectName: string, threadsDir: string): Promise<{ scanned: number, deleted: number, errors: number }> {
+  private async cleanupProjectThreads(
+    projectName: string,
+    threadsDir: string
+  ): Promise<{
+    scanned: number
+    deleted: number
+    errors: number
+  }> {
     let scanned = 0
     let deleted = 0
     let errors = 0
 
     try {
       const files = await fs.readdir(threadsDir)
-      const threadFiles = files.filter(file => file.endsWith('.yml'))
+      const threadFiles = files.filter((file) => file.endsWith('.yml'))
       scanned = threadFiles.length
 
       if (threadFiles.length === 0) {
@@ -146,7 +159,6 @@ export class ThreadCleanupService {
       if (deleted > 0) {
         this.log(`Project ${projectName}: deleted ${deleted}/${scanned} expired threads`)
       }
-
     } catch (error) {
       this.logError(`Error scanning project ${projectName}: ${error}`)
       errors++
@@ -158,33 +170,40 @@ export class ThreadCleanupService {
   /**
    * Traite un lot de fichiers de threads
    */
-  private async processBatch(files: string[], threadsDir: string, projectName: string): Promise<{ deleted: number, errors: number }> {
+  private async processBatch(
+    files: string[],
+    threadsDir: string,
+    projectName: string
+  ): Promise<{
+    deleted: number
+    errors: number
+  }> {
     let deleted = 0
     let errors = 0
 
     await Promise.all(
       files.map(async (file) => {
+        const filePath = path.join(threadsDir, file)
+        let threadData: any
         try {
-          const filePath = path.join(threadsDir, file)
           const content = await fs.readFile(filePath, 'utf-8')
-          const threadData = yaml.parse(content)
-
-          if (!threadData || !threadData.modifiedDate) {
-            return // Skip invalid files
-          }
-
-          // Vérifier si le thread est expiré
-          if (this.isThreadExpired(threadData.modifiedDate)) {
-            await fs.unlink(filePath)
-            deleted++
-            // Log de l'audit trail
-            await this.logger.logAgentUsage('system', 'ThreadCleanup', 'cleanup', 0)
-            console.log(`ThreadCleanup: Deleted expired thread: ${threadData.id || file} from project ${projectName}`)
-          }
-
+          threadData = yaml.parse(content)
         } catch (error) {
+          await fs.unlink(filePath)
           this.logError(`Error processing file ${file} in project ${projectName}: ${error}`)
-          errors++
+        }
+
+        if (!threadData || !threadData.modifiedDate) {
+          return // Skip invalid files
+        }
+
+        // Vérifier si le thread est expiré
+        if (this.isThreadExpired(threadData.modifiedDate)) {
+          await fs.unlink(filePath)
+          deleted++
+          // Log de l'audit trail
+          await this.logger.logAgentUsage('system', 'ThreadCleanup', 'cleanup', 0)
+          console.log(`ThreadCleanup: Deleted expired thread: ${threadData.id || file} from project ${projectName}`)
         }
       })
     )

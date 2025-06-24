@@ -6,10 +6,13 @@ import * as path from 'path'
 const execAsync = promisify(exec)
 
 const DEFAULT_LINE_LIMIT = 1000
+const DEFAULT_CHAR_LIMIT = 50000
 const DEFAULT_MAX_BUFFER = 10 * 1024 * 1024 // 10MB buffer
 
 const limitOutputLines = (output: string, limit: number): string => {
-  const lines = output.split('\n')
+  const truncated = output.length > DEFAULT_CHAR_LIMIT ? output.slice(-DEFAULT_CHAR_LIMIT) : output
+
+  const lines = truncated.split('\n')
   if (lines.length > limit) {
     return lines.slice(-limit).join('\n')
   }
