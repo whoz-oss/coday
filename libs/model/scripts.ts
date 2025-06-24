@@ -18,6 +18,8 @@ type Script = {
    * Be extensive in describing what are the arguments, the order, meaning and connection to the command line.
    */
   parametersDescription?: string
+
+  requireConfirmation?: boolean
 }
 
 /**

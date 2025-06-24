@@ -1,4 +1,3 @@
-
 import { CodayEvent, ProjectSelectedEvent } from '@coday/coday-events'
 import { CodayEventHandler } from '../utils/coday-event-handler'
 
@@ -7,8 +6,7 @@ export class HeaderComponent implements CodayEventHandler {
 
   handle(event: CodayEvent): void {
     if (event instanceof ProjectSelectedEvent) {
-      const projectSuffix = event.projectName ? ` (${event.projectName})` : ''
-      const title = `Coday${projectSuffix}`
+      const title = event.projectName || `Coday`
       document.title = title
       this.headerTitle.innerHTML = title
     }

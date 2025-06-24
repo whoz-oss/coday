@@ -129,7 +129,7 @@ export class Coday {
       if (thread) thread.runStatus = RunStatus.RUNNING
 
       // add the user command to the queue and let handlers decompose it in many and resolve them ultimately
-      this.context.addCommands(userCommand!)
+      this.context?.addCommands(userCommand!)
 
       try {
         this.context = await this.handlerLooper!.handle(this.context)
