@@ -1,5 +1,5 @@
 import { MessageEvent } from '@coday/coday-events'
-import { partition } from '@coday/ai-thread/ai-thread.helpers'
+import { partition } from './ai-thread.helpers'
 
 const message1 = new MessageEvent({ role: 'user', name: 'joe', content: 'hello' })
 const message2 = new MessageEvent({ role: 'assistant', name: 'HAL', content: 'Hi, how are you ?' })
