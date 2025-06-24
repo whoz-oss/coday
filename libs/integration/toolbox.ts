@@ -59,7 +59,7 @@ export class Toolbox implements Killable {
             const tools = await factory.getTools(context, integrations?.get(factory.name) ?? [], agentName ?? 'default')
             return tools
           } catch (error) {
-            this.interactor.error(`Error building tools from ${factory.name} for agent ${agentName}: ${error}`)
+            this.interactor.debug(`Error building tools from ${factory.name} for agent ${agentName}: ${error}`)
             // Return empty array if a specific factory fails
             return []
           }
@@ -69,7 +69,7 @@ export class Toolbox implements Killable {
       this.tools = toolResults.flat()
       return this.tools
     } catch (error) {
-      this.interactor.error(`Unexpected error building tools for agent ${agentName}: ${error}`)
+      this.interactor.debug(`Unexpected error building tools for agent ${agentName}: ${error}`)
       // Return empty array in case of critical failure
       return []
     }
