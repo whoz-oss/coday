@@ -6,36 +6,23 @@ on:
       - 'release/*'
 
 env:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  INIT_REPOSITORY_PIPELINE_ID_ENV_FILE: "tmp.init-repository-pipeline-id"
-  MASTER_BRANCH: master
   NPM_CONFIG_PROVENANCE: true
   NX_MAX_WORKERS: 4
-  SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-  WORKING_DIRECTORY_PREFIX: ${{ secrets.WORKING_DIRECTORY_PREFIX }}
 
 defaults:
   run:
     shell: bash
 
 jobs:
-  init:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: whoz-oss/github-actions/setup-working-directory@v1.2
-      - uses: whoz-oss/github-actions/init@v1.3
-
   release:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write # needed for provenance data generation
-    needs: [ init ]
     steps:
-      - uses: whoz-oss/github-actions/setup-working-directory@v1.2
+      - uses: actions/checkout@v4
       - name: Publish release
         run: |
-          cd ${{ env.WORKING_DIRECTORY }}
           npm config set //${{ vars.NPM_REGISTRY }}/:_authToken=${{ secrets.NPM_ACCESS_TOKEN }}
           npx nx release publish --registry=https://${{ vars.NPM_REGISTRY }}
           npm config delete //${{ vars.NPM_REGISTRY }}/:_authToken
