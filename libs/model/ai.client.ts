@@ -2,7 +2,7 @@ import { Observable, of, Subject } from 'rxjs'
 import { CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 import { Agent } from './agent'
 import { AiThread } from '../ai-thread/ai-thread'
-import { RunStatus } from '../ai-thread/ai-thread.types'
+import { RunStatus, ThreadMessage } from '../ai-thread/ai-thread.types'
 import { Interactor } from './interactor'
 import { AiModel } from './ai-model'
 import { AiProviderConfig } from './ai-provider-config'
@@ -25,7 +25,7 @@ export abstract class AiClient {
   protected abstract interactor: Interactor
   protected killed: boolean = false
   protected thinkingInterval: number = 3000
-  protected charsPerToken: number = 3.5 // should be 4, some margin baked in to avoid overshoot on tool call
+  protected charsPerToken: number = 3 // should be 4, some margin baked in to avoid overshoot on tool call
   protected username?: string
 
   protected constructor(
@@ -67,6 +67,59 @@ export abstract class AiClient {
    */
   kill(): void {
     this.killed = true
+  }
+
+  private getCompactor(model: string, maxChars: number): (messages: ThreadMessage[]) => Promise<ThreadMessage> {
+    return async (messages: ThreadMessage[]): Promise<ThreadMessage> => {
+      const transcript = messages
+        // without the tool request and response, hypothesis is we can do without and simply the "text"
+        .filter((m) => m instanceof MessageEvent)
+        .map((m) => ` - ${m.role}: ${m.content}`)
+        .join('\n')
+
+      const firstUserMessage = messages.find((m) => m instanceof MessageEvent && m.role === 'user')
+
+      const summaryBudget = Math.floor(maxChars / 20)
+
+      const prompt = `Here is a transcript of a conversation:
+<transcript>${transcript}</transcript>
+
+It can be summarized as:
+<summary>
+`
+      let summary: string
+      try {
+        summary = await this.complete(prompt, {
+          model,
+          maxTokens: summaryBudget,
+          stopSequences: ['</summary>'],
+        })
+        this.interactor.debug(`Compacted ${messages.length} messages into ${summary.length} chars summary.`)
+      } catch (e) {
+        summary = '...previous conversation truncated'
+        console.error(e)
+        this.interactor.warn('Could not compact properly the conversation, truncated beginning instead.')
+      }
+
+      // then make summary the first message
+      return new MessageEvent({
+        role: 'user',
+        name: firstUserMessage ? (firstUserMessage as MessageEvent).name : 'user',
+        content: summary,
+      })
+    }
+  }
+
+  protected async getMessages(
+    thread: AiThread,
+    charBudget: number,
+    model: string
+  ): Promise<{
+    messages: ThreadMessage[]
+    compacted: boolean
+  }> {
+    const compactor = this.getCompactor(model, charBudget)
+    return await thread.getMessages(charBudget, compactor)
   }
 
   /**

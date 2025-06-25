@@ -29,7 +29,7 @@ export class ProjectScriptsTools extends AssistantToolFactory {
               command: commandWithParams,
               root: context.project.root,
               interactor: this.interactor,
-              requireConfirmation: false,
+              requireConfirmation: entry[1].requireConfirmation,
             })
           }
           const scriptFunction: FunctionTool<unknown> = {

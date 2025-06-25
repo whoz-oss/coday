@@ -5,7 +5,7 @@ import { CodayLogger } from '../service/coday-logger'
 export class GoogleClient extends OpenaiClient {
   models = [
     {
-      name: 'gemini-2.5-pro-preview-05-06',
+      name: 'gemini-2.5-pro',
       contextWindow: 1000000,
       alias: 'BIG',
       price: {
@@ -15,7 +15,7 @@ export class GoogleClient extends OpenaiClient {
       },
     },
     {
-      name: 'gemini-2.0-flash',
+      name: 'gemini-2.5-flash',
       alias: 'SMALL',
       contextWindow: 1000000,
       price: {

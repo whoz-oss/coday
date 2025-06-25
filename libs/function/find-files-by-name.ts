@@ -18,7 +18,6 @@ export const findFilesByName = async ({ text, path, root, interactor, timeout, l
 
   const expression = `${path ? tweakedPath + '/' : ''}**/*${text}*`
 
-  interactor?.displayText(`Looking for "${expression}" in ${root}`)
   const results = await glob(expression, {
     cwd: root,
     absolute: false,
@@ -27,7 +26,6 @@ export const findFilesByName = async ({ text, path, root, interactor, timeout, l
     signal: AbortSignal.timeout(timeout || defaultTimeout),
     ignore: ['**/node_modules/**', '**/build/**'],
   })
-  interactor?.displayText(`Found ${results.length} files.`)
 
   return !limit || results.length < limit
     ? results
