@@ -1030,9 +1030,9 @@
   resolved "https://registry.yarnpkg.com/@bcoe/v8-coverage/-/v8-coverage-0.2.3.tgz#75a2e8b51cb758a7553d6804a5932d7aace75c39"
   integrity sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==
 
-"@biznet.io/coday-web@0.8.0":
+"@whoz-oss/coday-web@0.8.0":
   version "0.8.0"
-  resolved "https://registry.yarnpkg.com/@biznet.io/coday-web/-/coday-web-0.8.0.tgz#a2adc0866236e35eefd8a846869d20d5959ee50f"
+  resolved "https://registry.yarnpkg.com/@whoz-oss/coday-web/-/coday-web-0.8.0.tgz#a2adc0866236e35eefd8a846869d20d5959ee50f"
   integrity sha512-SkrNsSy6RK7On8CJw2GNMuq6gJp3XYQcwzsntXD/mhtdmkrcN56cW9KYn+6tpRGmrcJAlY6PnXTkpZc+cXlIDQ==
 
 "@cspotcode/source-map-support@^0.8.0":
