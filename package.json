@@ -7,8 +7,7 @@
     "start": "nx run terminal:serve",
     "test": "nx run-many --target=test",
     "web": "nx run web:serve",
-    "web:debug": "nx run web:serve:debug",
-    "coday": "node ./node_modules/@whoz-oss/coday-web/server/server.js --no_auth"
+    "web:debug": "nx run web:serve:debug"
   },
   "author": "vincent.audibert@whoz.com",
   "license": "MIT",
@@ -23,7 +22,6 @@
     "*.ts": "prettier --write"
   },
   "devDependencies": {
-    "@whoz-oss/coday-web": "0.8.0",
     "@eslint/js": "^9.27.0",
     "@nx/devkit": "21.1.1",
     "@nx/esbuild": "21.1.1",
