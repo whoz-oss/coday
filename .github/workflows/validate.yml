@@ -10,8 +10,7 @@ env:
   INIT_REPOSITORY_PIPELINE_ID_ENV_FILE: "tmp.init-repository-pipeline-id"
   MASTER_BRANCH: master
   NX_MAX_WORKERS: 4
-  SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-  WORKING_DIRECTORY_PREFIX: ${{ secrets.WORKING_DIRECTORY_PREFIX }}
+  WORKING_DIRECTORY_PREFIX: validate
 
 defaults:
   run:
@@ -21,14 +20,14 @@ jobs:
   init:
     runs-on: ubuntu-latest
     steps:
-      - uses: whoz-oss/github-actions/setup-working-directory@v1.2
-      - uses: whoz-oss/github-actions/init@v1.3
+      - uses: whoz-oss/github-actions/setup-working-directory@v1.4
+      - uses: whoz-oss/github-actions/init@v1.4
 
   tests:
     runs-on: ubuntu-latest
     needs: [ init ]
     steps:
-      - uses: whoz-oss/github-actions/setup-working-directory@v1.2
+      - uses: whoz-oss/github-actions/setup-working-directory@v1.4
       - name: Run tests
         run: |
           cd ${{ env.WORKING_DIRECTORY }}
