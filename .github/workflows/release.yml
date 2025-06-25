@@ -21,9 +21,17 @@ jobs:
       id-token: write # needed for provenance data generation
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
       - name: Publish release
         run: |
-          yarn install --frozen-lockfile
           npm config set //${{ vars.NPM_REGISTRY }}/:_authToken=${{ secrets.NPM_ACCESS_TOKEN }}
           npx nx release publish --registry=https://${{ vars.NPM_REGISTRY }}
           npm config delete //${{ vars.NPM_REGISTRY }}/:_authToken

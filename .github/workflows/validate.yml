@@ -21,13 +21,11 @@ jobs:
           fetch-depth: 0
           filter: tree:0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'yarn'
 
-      # Install dependencies
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
