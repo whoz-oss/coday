@@ -1,3 +1,29 @@
+
+
+## 0.13.1 (2025-06-25)
+
+### 🚀 Features
+
+- self-review thread compaction ([617ee21](https://github.com/whoz-oss/coday/commit/617ee21))
+- various misc fixes or changes ([7939617](https://github.com/whoz-oss/coday/commit/7939617))
+- move MCP errors in debug ([e7447ee](https://github.com/whoz-oss/coday/commit/e7447ee))
+- reformat queryUser tools description ([cd05bdf](https://github.com/whoz-oss/coday/commit/cd05bdf))
+
+### 🩹 Fixes
+
+- avoid contextWindow overflow by compaction (or last-resort truncation), WIP... ([108fe0f](https://github.com/whoz-oss/coday/commit/108fe0f))
+- extract partition function ([71239b9](https://github.com/whoz-oss/coday/commit/71239b9))
+- englished comments ([ec272d5](https://github.com/whoz-oss/coday/commit/ec272d5))
+- remove redundant tools displayText ([317078b](https://github.com/whoz-oss/coday/commit/317078b))
+- remove more redundant displayText ([4aa04b8](https://github.com/whoz-oss/coday/commit/4aa04b8))
+- lower chars per token to avoid contextWindow overflow ([e13544c](https://github.com/whoz-oss/coday/commit/e13544c))
+- thread truncating for context window ([#129](https://github.com/whoz-oss/coday/pull/129))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+- vincent.audibert
+
 ## 0.13.0 (2025-06-17)
 
 ### 🚀 Features
