@@ -17,28 +17,20 @@ defaults:
     shell: bash
 
 jobs:
-  init:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: whoz-oss/github-actions/setup-working-directory@v1.4
-      - uses: whoz-oss/github-actions/init@v1.4
-
   tests:
     runs-on: ubuntu-latest
-    needs: [ init ]
     steps:
-      - uses: whoz-oss/github-actions/setup-working-directory@v1.4
+      - uses: actions/checkout@v4
       - name: Run tests
         run: |
-          cd ${{ env.WORKING_DIRECTORY }}
+          yarn install --frozen-lockfile
           npx nx affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --target="lint,test" --parallel=$NX_MAX_WORKERS
 
   build:
     runs-on: ubuntu-latest
-    needs: [ init ]
     steps:
-      - uses: whoz-oss/github-actions/setup-working-directory@v1.2
+      - uses: actions/checkout@v4
       - name: Build app
         run: |
-          cd ${{ env.WORKING_DIRECTORY }}
+          yarn install --frozen-lockfile
           npx nx run web:build --parallel=$NX_MAX_WORKERS
