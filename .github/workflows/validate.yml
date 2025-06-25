@@ -6,11 +6,7 @@ on:
     branches: [ master ]
 
 env:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  INIT_REPOSITORY_PIPELINE_ID_ENV_FILE: "tmp.init-repository-pipeline-id"
-  MASTER_BRANCH: master
   NX_MAX_WORKERS: 4
-  WORKING_DIRECTORY_PREFIX: validate
 
 defaults:
   run:
