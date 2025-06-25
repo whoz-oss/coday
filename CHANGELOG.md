@@ -2,13 +2,13 @@
 
 ### 🚀 Features
 
-- Add voice synthesis for agent responses ([#121](https://github.com/biznet-io/coday/pull/121))
-- stats handler ([#126](https://github.com/biznet-io/coday/pull/126))
+- Add voice synthesis for agent responses ([#121](https://github.com/whoz-oss/coday/pull/121))
+- stats handler ([#126](https://github.com/whoz-oss/coday/pull/126))
 
 ### 🩹 Fixes
 
-- stop mcps with thread ([#119](https://github.com/biznet-io/coday/pull/119))
-- silent error on mandatory docs ([#125](https://github.com/biznet-io/coday/pull/125))
+- stop mcps with thread ([#119](https://github.com/whoz-oss/coday/pull/119))
+- silent error on mandatory docs ([#125](https://github.com/whoz-oss/coday/pull/125))
 
 ### ❤️ Thank You
 
@@ -18,10 +18,10 @@
 
 ### 🚀 Features
 
-- ai providers in coday yaml and free config ([#74](https://github.com/biznet-io/coday/pull/74))
-- #110 implement intelligent rate limiting and throttling for Anthropic API ([#116](https://github.com/biznet-io/coday/pull/116), [#110](https://github.com/biznet-io/coday/issues/110))
-- #117 optimize Anthropic cache with mobile marker strategy ([#118](https://github.com/biznet-io/coday/pull/118), [#117](https://github.com/biznet-io/coday/issues/117))
-- separate token info from agent and price ([#120](https://github.com/biznet-io/coday/pull/120))
+- ai providers in coday yaml and free config ([#74](https://github.com/whoz-oss/coday/pull/74))
+- #110 implement intelligent rate limiting and throttling for Anthropic API ([#116](https://github.com/whoz-oss/coday/pull/116), [#110](https://github.com/whoz-oss/coday/issues/110))
+- #117 optimize Anthropic cache with mobile marker strategy ([#118](https://github.com/whoz-oss/coday/pull/118), [#117](https://github.com/whoz-oss/coday/issues/117))
+- separate token info from agent and price ([#120](https://github.com/whoz-oss/coday/pull/120))
 
 ### ❤️ Thank You
 
@@ -33,13 +33,13 @@
 
 ### 🚀 Features
 
-- add user bio feature with user/project levels for personalized agent context ([#104](https://github.com/biznet-io/coday/pull/104))
-- add transient date/time injection for agent context ([#105](https://github.com/biznet-io/coday/pull/105))
-- #106 add usage logging with daily file granularity ([#108](https://github.com/biznet-io/coday/pull/108), [#106](https://github.com/biznet-io/coday/issues/106))
+- add user bio feature with user/project levels for personalized agent context ([#104](https://github.com/whoz-oss/coday/pull/104))
+- add transient date/time injection for agent context ([#105](https://github.com/whoz-oss/coday/pull/105))
+- #106 add usage logging with daily file granularity ([#108](https://github.com/whoz-oss/coday/pull/108), [#106](https://github.com/whoz-oss/coday/issues/106))
 
 ### 🩹 Fixes
 
-- agent selection with multiline input ([#107](https://github.com/biznet-io/coday/pull/107))
+- agent selection with multiline input ([#107](https://github.com/whoz-oss/coday/pull/107))
 
 ### ❤️ Thank You
 
@@ -49,16 +49,16 @@
 
 ### 🚀 Features
 
-- speech-to-text integration for web interface ([#102](https://github.com/biznet-io/coday/pull/102))
-- clean tool logs ([#100](https://github.com/biznet-io/coday/pull/100))
-- expand memory handlers ([#86](https://github.com/biznet-io/coday/pull/86))
-- #58 more generic read file tool ([#101](https://github.com/biznet-io/coday/pull/101))
-- various ux,copy user message, less scroll, logo ([#96](https://github.com/biznet-io/coday/pull/96))
-- bump gemini & sonnet versions ([#97](https://github.com/biznet-io/coday/pull/97))
+- speech-to-text integration for web interface ([#102](https://github.com/whoz-oss/coday/pull/102))
+- clean tool logs ([#100](https://github.com/whoz-oss/coday/pull/100))
+- expand memory handlers ([#86](https://github.com/whoz-oss/coday/pull/86))
+- #58 more generic read file tool ([#101](https://github.com/whoz-oss/coday/pull/101))
+- various ux,copy user message, less scroll, logo ([#96](https://github.com/whoz-oss/coday/pull/96))
+- bump gemini & sonnet versions ([#97](https://github.com/whoz-oss/coday/pull/97))
 
 ### 🩹 Fixes
 
-- put lint back ([#98](https://github.com/biznet-io/coday/pull/98))
+- put lint back ([#98](https://github.com/whoz-oss/coday/pull/98))
 
 ### ❤️ Thank You
 
@@ -69,7 +69,7 @@
 
 ### 🚀 Features
 
-- #43 create jira ticket ([#70](https://github.com/biznet-io/coday/pull/70), [#43](https://github.com/biznet-io/coday/issues/43))
+- #43 create jira ticket ([#70](https://github.com/whoz-oss/coday/pull/70), [#43](https://github.com/whoz-oss/coday/issues/43))
 
 ### ❤️ Thank You
 
@@ -79,7 +79,7 @@
 
 ### 🩹 Fixes
 
-- clean agent selection, get rid of dubious and untested logic ([#93](https://github.com/biznet-io/coday/pull/93))
+- clean agent selection, get rid of dubious and untested logic ([#93](https://github.com/whoz-oss/coday/pull/93))
 
 ### ❤️ Thank You
 
@@ -95,11 +95,11 @@
 
 ### 🚀 Features
 
-- Display tool request and response events in UI ([#85](https://github.com/biznet-io/coday/pull/85))
+- Display tool request and response events in UI ([#85](https://github.com/whoz-oss/coday/pull/85))
 
 ### 🩹 Fixes
 
-- issue 80, agent selection again ([#82](https://github.com/biznet-io/coday/pull/82))
+- issue 80, agent selection again ([#82](https://github.com/whoz-oss/coday/pull/82))
 
 ### ❤️ Thank You
 
@@ -109,13 +109,13 @@
 
 ### 🚀 Features
 
-- issue 65 ai tools splitting 2 ([#83](https://github.com/biznet-io/coday/pull/83))
-- #87 update nx to 21.0.3 ([#88](https://github.com/biznet-io/coday/pull/88), [#87](https://github.com/biznet-io/coday/issues/87))
+- issue 65 ai tools splitting 2 ([#83](https://github.com/whoz-oss/coday/pull/83))
+- #87 update nx to 21.0.3 ([#88](https://github.com/whoz-oss/coday/pull/88), [#87](https://github.com/whoz-oss/coday/issues/87))
 
 ### 🩹 Fixes
 
-- remove too early default case in agent selection ([#81](https://github.com/biznet-io/coday/pull/81))
-- agent selection from thread ([#78](https://github.com/biznet-io/coday/pull/78))
+- remove too early default case in agent selection ([#81](https://github.com/whoz-oss/coday/pull/81))
+- agent selection from thread ([#78](https://github.com/whoz-oss/coday/pull/78))
 
 ### ❤️ Thank You
 
@@ -126,14 +126,14 @@
 
 ### 🚀 Features
 
-- jira count tool and lazy laod the jiraFieldMappingDescription ([#9](https://github.com/biznet-io/coday/pull/9))
-- add copy button for agent responses in web UI ([#60](https://github.com/biznet-io/coday/pull/60), [#62](https://github.com/biznet-io/coday/pull/62))
-- #49 Support MCP Inspector debug mode as separate process (not as tool server) ([#55](https://github.com/biznet-io/coday/pull/55), [#49](https://github.com/biznet-io/coday/issues/49))
+- jira count tool and lazy laod the jiraFieldMappingDescription ([#9](https://github.com/whoz-oss/coday/pull/9))
+- add copy button for agent responses in web UI ([#60](https://github.com/whoz-oss/coday/pull/60), [#62](https://github.com/whoz-oss/coday/pull/62))
+- #49 Support MCP Inspector debug mode as separate process (not as tool server) ([#55](https://github.com/whoz-oss/coday/pull/55), [#49](https://github.com/whoz-oss/coday/issues/49))
 
 ### 🩹 Fixes
 
-- do not write silently the default coday.yaml file ([#73](https://github.com/biznet-io/coday/pull/73))
-- textarea component default value not lost to history functionality ([#56](https://github.com/biznet-io/coday/pull/56))
+- do not write silently the default coday.yaml file ([#73](https://github.com/whoz-oss/coday/pull/73))
+- textarea component default value not lost to history functionality ([#56](https://github.com/whoz-oss/coday/pull/56))
 
 ### ❤️ Thank You
 
@@ -143,7 +143,7 @@
 
 ### 🩹 Fixes
 
-- integration config lost when editing MCP config ([#39](https://github.com/biznet-io/coday/pull/39))
+- integration config lost when editing MCP config ([#39](https://github.com/whoz-oss/coday/pull/39))
 
 ### ❤️ Thank You
 
@@ -153,12 +153,12 @@
 
 ### 🚀 Features
 
-- add web UI options ([#31](https://github.com/biznet-io/coday/pull/31))
-- add MCP first integration ([#29](https://github.com/biznet-io/coday/pull/29))
+- add web UI options ([#31](https://github.com/whoz-oss/coday/pull/31))
+- add MCP first integration ([#29](https://github.com/whoz-oss/coday/pull/29))
 
 ### 🩹 Fixes
 
-- tweak the pdf-parse import as lib not ESM ([#37](https://github.com/biznet-io/coday/pull/37))
+- tweak the pdf-parse import as lib not ESM ([#37](https://github.com/whoz-oss/coday/pull/37))
 
 ### ❤️ Thank You
 
@@ -200,7 +200,7 @@
 
 ### 🩹 Fixes
 
-- Release app in GitHub Actions workflow ([ddeb62b](https://github.com/biznet-io/coday/commit/ddeb62b))
+- Release app in GitHub Actions workflow ([ddeb62b](https://github.com/whoz-oss/coday/commit/ddeb62b))
 
 ### ❤️ Thank You
 
@@ -210,10 +210,10 @@
 
 ### 🩹 Fixes
 
-- update the last connected date on user message + 8h inactivity allowed ([83aafb1](https://github.com/biznet-io/coday/commit/83aafb1))
-- update the last connected date ([#19](https://github.com/biznet-io/coday/pull/19))
-- JIRA tools selectables as other tools ([8707143](https://github.com/biznet-io/coday/commit/8707143))
-- JIRA tools selectables as other tools ([#20](https://github.com/biznet-io/coday/pull/20))
+- update the last connected date on user message + 8h inactivity allowed ([83aafb1](https://github.com/whoz-oss/coday/commit/83aafb1))
+- update the last connected date ([#19](https://github.com/whoz-oss/coday/pull/19))
+- JIRA tools selectables as other tools ([8707143](https://github.com/whoz-oss/coday/commit/8707143))
+- JIRA tools selectables as other tools ([#20](https://github.com/whoz-oss/coday/pull/20))
 
 ### ❤️ Thank You
 
@@ -224,15 +224,15 @@
 
 ### 🚀 Features
 
-- add default agent per user and project ([546ab6e](https://github.com/biznet-io/coday/commit/546ab6e))
+- add default agent per user and project ([546ab6e](https://github.com/whoz-oss/coday/commit/546ab6e))
 
 ### 🩹 Fixes
 
-- remove un-necessary error log on optional `/agents` folders ([ae95c6e](https://github.com/biznet-io/coday/commit/ae95c6e))
-- add logs in ai.client.ts and implementations. ([9df6783](https://github.com/biznet-io/coday/commit/9df6783))
-- better error logs ([b829418](https://github.com/biznet-io/coday/commit/b829418))
-- improve logs ([820484f](https://github.com/biznet-io/coday/commit/820484f))
-- add "-f" option in project.json to allow removal of not found package.json file ([0260f91](https://github.com/biznet-io/coday/commit/0260f91))
+- remove un-necessary error log on optional `/agents` folders ([ae95c6e](https://github.com/whoz-oss/coday/commit/ae95c6e))
+- add logs in ai.client.ts and implementations. ([9df6783](https://github.com/whoz-oss/coday/commit/9df6783))
+- better error logs ([b829418](https://github.com/whoz-oss/coday/commit/b829418))
+- improve logs ([820484f](https://github.com/whoz-oss/coday/commit/820484f))
+- add "-f" option in project.json to allow removal of not found package.json file ([0260f91](https://github.com/whoz-oss/coday/commit/0260f91))
 
 ### ❤️ Thank You
 
@@ -244,7 +244,7 @@
 
 ### 🚀 Features
 
-- add debug capabilities ([dbc5b53](https://github.com/biznet-io/coday/commit/dbc5b53))
+- add debug capabilities ([dbc5b53](https://github.com/whoz-oss/coday/commit/dbc5b53))
 
 ### ❤️ Thank You
 
@@ -254,25 +254,25 @@
 
 ### 🚀 Features
 
-- Add AiThread forking mechanism with agent delegation support ([2d072d3](https://github.com/biznet-io/coday/commit/2d072d3))
-- allow AiThreads to be forked and price-merged. ([e37c1f2](https://github.com/biznet-io/coday/commit/e37c1f2))
-- open delegate tool ([5223bbb](https://github.com/biznet-io/coday/commit/5223bbb))
-- add Project Manager agent ([8698ae5](https://github.com/biznet-io/coday/commit/8698ae5))
-- add agent docs ([3778984](https://github.com/biznet-io/coday/commit/3778984))
-- move to sonnet 3.7, not thinking yet ([56c72de](https://github.com/biznet-io/coday/commit/56c72de))
-- init context simplification ([7a02fb1](https://github.com/biznet-io/coday/commit/7a02fb1))
-- move delegate tool declaration ([6b6f310](https://github.com/biznet-io/coday/commit/6b6f310))
-- fix delegation attempt, to test... ([c1f7774](https://github.com/biznet-io/coday/commit/c1f7774))
-- formatting... ([8b8bfa6](https://github.com/biznet-io/coday/commit/8b8bfa6))
-- multi-agent foundations ([10afdf0](https://github.com/biznet-io/coday/commit/10afdf0))
-- add `--local` option to take the repo clone folder name as the project name ([87a6c1d](https://github.com/biznet-io/coday/commit/87a6c1d))
-- add `--local` option to auto-select the project ([1471658](https://github.com/biznet-io/coday/commit/1471658))
-- allow agents to be defined outside of `coday.yaml` ([0f3d494](https://github.com/biznet-io/coday/commit/0f3d494))
-- allow agents to be defined outside of `coday.yaml` ([1e82fe7](https://github.com/biznet-io/coday/commit/1e82fe7))
+- Add AiThread forking mechanism with agent delegation support ([2d072d3](https://github.com/whoz-oss/coday/commit/2d072d3))
+- allow AiThreads to be forked and price-merged. ([e37c1f2](https://github.com/whoz-oss/coday/commit/e37c1f2))
+- open delegate tool ([5223bbb](https://github.com/whoz-oss/coday/commit/5223bbb))
+- add Project Manager agent ([8698ae5](https://github.com/whoz-oss/coday/commit/8698ae5))
+- add agent docs ([3778984](https://github.com/whoz-oss/coday/commit/3778984))
+- move to sonnet 3.7, not thinking yet ([56c72de](https://github.com/whoz-oss/coday/commit/56c72de))
+- init context simplification ([7a02fb1](https://github.com/whoz-oss/coday/commit/7a02fb1))
+- move delegate tool declaration ([6b6f310](https://github.com/whoz-oss/coday/commit/6b6f310))
+- fix delegation attempt, to test... ([c1f7774](https://github.com/whoz-oss/coday/commit/c1f7774))
+- formatting... ([8b8bfa6](https://github.com/whoz-oss/coday/commit/8b8bfa6))
+- multi-agent foundations ([10afdf0](https://github.com/whoz-oss/coday/commit/10afdf0))
+- add `--local` option to take the repo clone folder name as the project name ([87a6c1d](https://github.com/whoz-oss/coday/commit/87a6c1d))
+- add `--local` option to auto-select the project ([1471658](https://github.com/whoz-oss/coday/commit/1471658))
+- allow agents to be defined outside of `coday.yaml` ([0f3d494](https://github.com/whoz-oss/coday/commit/0f3d494))
+- allow agents to be defined outside of `coday.yaml` ([1e82fe7](https://github.com/whoz-oss/coday/commit/1e82fe7))
 
 ### 🩹 Fixes
 
-- manage aithread runStatus for delegation ([db67157](https://github.com/biznet-io/coday/commit/db67157))
+- manage aithread runStatus for delegation ([db67157](https://github.com/whoz-oss/coday/commit/db67157))
 
 ### ❤️ Thank You
 
@@ -283,9 +283,9 @@
 
 ### 🚀 Features
 
-- bump dependencies & upgrade claude-sonnet to 3.7 ([72dd074](https://github.com/biznet-io/coday/commit/72dd074))
-- bump repository to 0.0.7 ([60a21e1](https://github.com/biznet-io/coday/commit/60a21e1))
-- enable jira global research ([#2](https://github.com/biznet-io/coday/pull/2))
+- bump dependencies & upgrade claude-sonnet to 3.7 ([72dd074](https://github.com/whoz-oss/coday/commit/72dd074))
+- bump repository to 0.0.7 ([60a21e1](https://github.com/whoz-oss/coday/commit/60a21e1))
+- enable jira global research ([#2](https://github.com/whoz-oss/coday/pull/2))
 
 ### ❤️ Thank You
 
@@ -296,7 +296,7 @@
 
 ### 🚀 Features
 
-- bump repository to 0.0.7 ([60a21e1](https://github.com/biznet-io/coday/commit/60a21e1))
+- bump repository to 0.0.7 ([60a21e1](https://github.com/whoz-oss/coday/commit/60a21e1))
 
 ### ❤️ Thank You
 
@@ -306,7 +306,7 @@
 
 ### 🚀 Features
 
-- bump dependencies & upgrade claude-sonnet to 3.7 ([72dd074](https://github.com/biznet-io/coday/commit/72dd074))
+- bump dependencies & upgrade claude-sonnet to 3.7 ([72dd074](https://github.com/whoz-oss/coday/commit/72dd074))
 
 ### ❤️ Thank You
 
