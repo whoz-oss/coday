@@ -25,7 +25,7 @@ export abstract class AiClient {
   protected abstract interactor: Interactor
   protected killed: boolean = false
   protected thinkingInterval: number = 3000
-  protected charsPerToken: number = 3.5 // should be 4, some margin baked in to avoid overshoot on tool call
+  protected charsPerToken: number = 3 // should be 4, some margin baked in to avoid overshoot on tool call
   protected username?: string
 
   protected constructor(
@@ -97,6 +97,7 @@ It can be summarized as:
         this.interactor.debug(`Compacted ${messages.length} messages into ${summary.length} chars summary.`)
       } catch (e) {
         summary = '...previous conversation truncated'
+        console.error(e)
         this.interactor.warn('Could not compact properly the conversation, truncated beginning instead.')
       }
 
