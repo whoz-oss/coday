@@ -1,6 +1,6 @@
 /**
- * Service de nettoyage automatique des threads expirés
- * Utilisé uniquement côté serveur
+ * Automatic cleanup service for expired threads
+ * Used only on server side
  */
 
 import * as fs from 'fs/promises'
@@ -8,7 +8,7 @@ import * as path from 'path'
 import * as yaml from 'yaml'
 import { CodayLogger } from './coday-logger'
 
-// Configuration du service
+// Service configuration
 const INITIAL_DELAY_MINUTES = 5
 const CLEANUP_INTERVAL_HOURS = 24
 const TTL_DAYS = 90
@@ -24,8 +24,8 @@ export class ThreadCleanupService {
   ) {}
 
   /**
-   * Démarre le service de nettoyage
-   * Effectue un premier nettoyage après délai initial, puis périodiquement
+   * Starts the cleanup service
+   * Performs first cleanup after initial delay, then periodically
    */
   async start(): Promise<void> {
     if (this.isRunning) {
@@ -36,12 +36,12 @@ export class ThreadCleanupService {
     this.isRunning = true
     this.log(`Starting thread cleanup service (TTL: ${TTL_DAYS} days)`)
 
-    // Premier nettoyage après délai initial
+    // First cleanup after initial delay
     setTimeout(
       async () => {
         await this.performCleanup()
 
-        // Puis nettoyage périodique
+        // Then periodic cleanup
         this.cleanupTimer = setInterval(
           async () => {
             await this.performCleanup()
@@ -58,7 +58,7 @@ export class ThreadCleanupService {
   }
 
   /**
-   * Arrête le service de nettoyage
+   * Stops the cleanup service
    */
   async stop(): Promise<void> {
     if (this.cleanupTimer) {
@@ -70,7 +70,7 @@ export class ThreadCleanupService {
   }
 
   /**
-   * Effectue le nettoyage des threads expirés
+   * Performs cleanup of expired threads
    */
   private async performCleanup(): Promise<void> {
     const startTime = Date.now()
@@ -81,11 +81,11 @@ export class ThreadCleanupService {
     try {
       this.log('Starting thread cleanup...')
 
-      // Lister tous les projets existants
+      // List all existing projects
       const projectDirs = await fs.readdir(this.projectsConfigPath)
       this.log(`Found ${projectDirs.length} projects to scan`)
 
-      // Nettoyer les threads de chaque projet
+      // Clean threads for each project
       for (const projectName of projectDirs) {
         try {
           const projectPath = path.join(this.projectsConfigPath, projectName)
@@ -95,11 +95,11 @@ export class ThreadCleanupService {
 
           const threadsDir = path.join(projectPath, 'threads')
 
-          // Vérifier si le répertoire threads existe
+          // Check if threads directory exists
           try {
             await fs.access(threadsDir)
           } catch {
-            continue // Pas de répertoire threads pour ce projet
+            continue // No threads directory for this project
           }
 
           const { scanned, deleted, errors } = await this.cleanupProjectThreads(projectName, threadsDir)
@@ -123,7 +123,7 @@ export class ThreadCleanupService {
   }
 
   /**
-   * Nettoie les threads expirés d'un projet spécifique
+   * Cleans expired threads for a specific project
    */
   private async cleanupProjectThreads(
     projectName: string,
@@ -148,7 +148,7 @@ export class ThreadCleanupService {
 
       this.log(`Scanning ${threadFiles.length} threads in project ${projectName}`)
 
-      // Traiter par lots pour éviter la surcharge
+      // Process in batches to avoid overload
       for (let i = 0; i < threadFiles.length; i += BATCH_SIZE) {
         const batch = threadFiles.slice(i, i + BATCH_SIZE)
         const batchResult = await this.processBatch(batch, threadsDir, projectName)
@@ -168,7 +168,7 @@ export class ThreadCleanupService {
   }
 
   /**
-   * Traite un lot de fichiers de threads
+   * Processes a batch of thread files
    */
   private async processBatch(
     files: string[],
@@ -197,11 +197,11 @@ export class ThreadCleanupService {
           return // Skip invalid files
         }
 
-        // Vérifier si le thread est expiré
+        // Check if thread is expired
         if (this.isThreadExpired(threadData.modifiedDate)) {
           await fs.unlink(filePath)
           deleted++
-          // Log de l'audit trail
+          // Audit trail logging
           await this.logger.logAgentUsage('system', 'ThreadCleanup', 'cleanup', 0)
           console.log(`ThreadCleanup: Deleted expired thread: ${threadData.id || file} from project ${projectName}`)
         }
@@ -212,7 +212,7 @@ export class ThreadCleanupService {
   }
 
   /**
-   * Vérifie si un thread est expiré
+   * Checks if a thread is expired
    */
   private isThreadExpired(modifiedDate: string): boolean {
     const expirationDate = new Date(modifiedDate)
@@ -221,25 +221,25 @@ export class ThreadCleanupService {
   }
 
   /**
-   * Logging standard
+   * Standard logging
    */
   private log(message: string): void {
     const timestamp = new Date().toISOString()
     console.log(`[${timestamp}] ThreadCleanup: ${message}`)
-    // Note: CodayLogger ne log que les interactions agents, pas les messages généraux
+    // Note: CodayLogger only logs agent interactions, not general messages
   }
 
   /**
-   * Logging d'erreur
+   * Error logging
    */
   private logError(message: string): void {
     const timestamp = new Date().toISOString()
     console.error(`[${timestamp}] ThreadCleanup ERROR: ${message}`)
-    // Note: CodayLogger ne log que les interactions agents, pas les erreurs
+    // Note: CodayLogger only logs agent interactions, not errors
   }
 
   /**
-   * Méthode pour forcer un nettoyage manuel (utile pour tests/debug)
+   * Method to force manual cleanup (useful for tests/debug)
    */
   async forceCleanup(): Promise<void> {
     this.log('Manual cleanup triggered')
