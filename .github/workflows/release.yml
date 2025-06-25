@@ -20,13 +20,13 @@ defaults:
 
 jobs:
   init:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: whoz-oss/github-actions/setup-working-directory@v1.2
       - uses: whoz-oss/github-actions/init@v1.3
 
   release:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write # needed for provenance data generation
