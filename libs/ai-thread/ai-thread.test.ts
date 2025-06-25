@@ -25,20 +25,20 @@ describe('AiThread', () => {
   })
 
   describe('messages management', () => {
-    it('should add and retrieve messages', () => {
+    it('should add and retrieve messages', async () => {
       thread.addUserMessage('user1', 'test message')
 
-      const messages = thread.getMessages()
+      const messages = (await thread.getMessages(undefined, undefined)).messages
       expect(messages).toHaveLength(1)
       expect(messages[0]).toBeInstanceOf(MessageEvent)
       expect(messages[0].type).toBe(MessageEvent.type)
     })
 
-    it('should return a copy of messages', () => {
+    it('should return a copy of messages', async () => {
       thread.addUserMessage('user1', 'test message')
 
-      const messages1 = thread.getMessages()
-      const messages2 = thread.getMessages()
+      const messages1 = (await thread.getMessages(undefined, undefined)).messages
+      const messages2 = (await thread.getMessages(undefined, undefined)).messages
 
       expect(messages1).not.toBe(messages2) // Different array instances
       expect(messages1[0]).toBe(messages2[0]) // Same message objects
@@ -46,24 +46,24 @@ describe('AiThread', () => {
   })
 
   describe('tool calls and responses', () => {
-    it('should add tool calls', () => {
+    it('should add tool calls', async () => {
       const call = createToolCall('test-tool', '{"arg": "value"}')
       thread.addToolCalls('agent1', [call])
 
-      const messages = thread.getMessages()
+      const messages = (await thread.getMessages(undefined, undefined)).messages
       expect(messages).toHaveLength(1)
       expect(messages[0]).toBeInstanceOf(ToolRequestEvent)
       expect((messages[0] as ToolRequestEvent).name).toBe('test-tool')
     })
 
-    it('should skip tool calls with missing required fields', () => {
+    it('should skip tool calls with missing required fields', async () => {
       const invalidCall = { name: 'test' } as ToolCall
       thread.addToolCalls('agent1', [invalidCall])
 
-      expect(thread.getMessages()).toHaveLength(0)
+      expect((await thread.getMessages(undefined, undefined)).messages).toHaveLength(0)
     })
 
-    it('should add tool response and keep only latest similar calls', () => {
+    it('should add tool response and keep only latest similar calls', async () => {
       // Add two similar tool calls
       const call1 = createToolCall('test-tool', '{"arg": "value"}', 'id1')
       const call2 = createToolCall('test-tool', '{"arg": "value"}', 'id2')
@@ -75,7 +75,7 @@ describe('AiThread', () => {
       const response = createToolResponse('id2', 'test-tool', 'test response')
       thread.addToolResponses('user1', [response])
 
-      const messages = thread.getMessages()
+      const messages = (await thread.getMessages(undefined, undefined)).messages
       expect(messages).toHaveLength(2) // Only the latest request and its response remain
 
       const request = messages.find((m) => m instanceof ToolRequestEvent) as ToolRequestEvent
@@ -85,7 +85,7 @@ describe('AiThread', () => {
       expect(response2?.toolRequestId).toBe('id2')
     })
 
-    it('should handle multiple different tool calls independently', () => {
+    it('should handle multiple different tool calls independently', async () => {
       // Add two different tool calls
       const call1 = createToolCall('tool1', '{"arg": "value"}', 'id1')
       const call2 = createToolCall('tool2', '{"arg": "value"}', 'id2')
@@ -98,7 +98,7 @@ describe('AiThread', () => {
 
       thread.addToolResponses('user1', [response1, response2])
 
-      const messages = thread.getMessages()
+      const messages = (await thread.getMessages(undefined, undefined)).messages
       expect(messages).toHaveLength(4) // Both requests and responses remain
 
       const requests = messages.filter((m) => m instanceof ToolRequestEvent) as ToolRequestEvent[]
@@ -110,14 +110,14 @@ describe('AiThread', () => {
       expect(requests.map((r) => r.name)).toContain('tool2')
     })
 
-    it('should ignore responses without matching requests', () => {
+    it('should ignore responses without matching requests', async () => {
       const response = createToolResponse('non-existent', 'test-tool', 'test')
       thread.addToolResponses('user1', [response])
 
-      expect(thread.getMessages()).toHaveLength(0)
+      expect((await thread.getMessages(undefined, undefined)).messages).toHaveLength(0)
     })
 
-    it('should handle args comparison properly', () => {
+    it('should handle args comparison properly', async () => {
       // Add two calls with same tool but different args
       const call1 = createToolCall('test-tool', '{"arg": "value1"}', 'id1')
       const call2 = createToolCall('test-tool', '{"arg": "value2"}', 'id2')
@@ -130,7 +130,7 @@ describe('AiThread', () => {
 
       thread.addToolResponses('user1', [response1, response2])
 
-      const messages = thread.getMessages()
+      const messages = (await thread.getMessages(undefined, undefined)).messages
       expect(messages).toHaveLength(4) // Both sets remain as args are different
 
       const requests = messages.filter((m) => m instanceof ToolRequestEvent) as ToolRequestEvent[]
@@ -140,7 +140,7 @@ describe('AiThread', () => {
   })
 
   describe('message removal', () => {
-    it('should maintain order after removals', () => {
+    it('should maintain order after removals', async () => {
       // Add a sequence of messages with some to be removed
       thread.addUserMessage('user1', 'message1')
 
@@ -155,7 +155,7 @@ describe('AiThread', () => {
       const response = createToolResponse('id2', 'test-tool', 'response')
       thread.addToolResponses('user1', [response])
 
-      const messages = thread.getMessages()
+      const messages = (await thread.getMessages(undefined, undefined)).messages
       expect(messages[0].type).toBe(MessageEvent.type) // First user message
       expect(messages[1].type).toBe(MessageEvent.type) // Second user message
       expect(messages[2].type).toBe(ToolRequestEvent.type) // Latest tool request
@@ -165,7 +165,7 @@ describe('AiThread', () => {
   })
 
   describe('thread forking', () => {
-    it('should fork a thread without an agent name', () => {
+    it('should fork a thread without an agent name', async () => {
       // Add some initial messages
       thread.addUserMessage('user1', 'Initial message')
       thread.addAgentMessage('agent1', 'Agent response')
@@ -181,7 +181,7 @@ describe('AiThread', () => {
       expect(forkedThread.delegationDepth).toBe(1)
 
       // Check messages were copied
-      const forkedMessages = forkedThread.getMessages()
+      const forkedMessages = (await forkedThread.getMessages(undefined, undefined)).messages
       expect(forkedMessages).toHaveLength(2)
       expect(forkedMessages[0].type).toBe(MessageEvent.type)
       expect(forkedMessages[1].type).toBe(MessageEvent.type)
@@ -234,7 +234,7 @@ describe('AiThread', () => {
       expect(forkedThread.totalPrice).toBe(2)
     })
 
-    it('should create a new messages array when forking', () => {
+    it('should create a new messages array when forking', async () => {
       // Add messages to original thread
       thread.addUserMessage('user1', 'Initial message')
 
@@ -245,7 +245,7 @@ describe('AiThread', () => {
       forkedThread.addAgentMessage('agent2', 'Forked response')
 
       // Check original thread is unchanged
-      const originalMessages = thread.getMessages()
+      const originalMessages = (await thread.getMessages(undefined, undefined)).messages
       expect(originalMessages).toHaveLength(1)
     })
   })

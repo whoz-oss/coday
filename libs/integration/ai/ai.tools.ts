@@ -29,8 +29,14 @@ export class AiTools extends AssistantToolFactory {
         type: 'function',
         function: {
           name: 'queryUser',
-          description:
-            'Allows to ask the user a question. If no options are provided, the user can answer with free text. If options are provided, the user will have to choose a single option. IMPORTANT: Use this tool only when necessary, as it interrupts the flow of execution to seek user input. AVOID closed options unless the user explicitly needs to choose between specific technical alternatives (like file selection, configuration choices, etc.). Prefer open-ended questions to allow natural, nuanced responses.',
+          description: `Allows to ask the user a question.
+IMPORTANT: Use this tool only when necessary, as it is intrusive for the user.
+
+If no options are provided, the user can answer with free text.
+If options are provided, the user will have to choose a single option.
+
+AVOID closed options unless the user explicitly needs to choose between specific technical alternatives (like file selection, configuration choices, etc.). Prefer open-ended questions to allow natural, nuanced responses.`,
+
           parameters: {
             type: 'object',
             properties: {

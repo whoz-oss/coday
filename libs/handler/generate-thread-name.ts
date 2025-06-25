@@ -4,8 +4,7 @@ import { MessageEvent } from '@coday/coday-events'
 
 export async function generateThreadName(thread: AiThread, agent: Agent): Promise<string> {
   // Extract context from first few user messages
-  const messages = thread
-    .getMessages()
+  const messages = (await thread.getMessages(undefined, undefined)).messages
     .filter((msg) => msg instanceof MessageEvent && msg.role === 'user')
     .slice(0, 3)
     .map((msg) => (msg as MessageEvent).content)

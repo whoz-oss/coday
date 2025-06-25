@@ -19,7 +19,7 @@ export const writeFileByPath = ({ relPath, root, interactor, content }: WriteFil
   try {
     const dir = path.dirname(fullPath)
     if (!existsSync(dir)) {
-      interactor?.displayText(`Making directory ${dir}`)
+      interactor?.debug(`Making directory ${dir}`)
       mkdirSync(dir, { recursive: true })
     }
 
@@ -32,7 +32,6 @@ export const writeFileByPath = ({ relPath, root, interactor, content }: WriteFil
       }
     }
 
-    interactor?.displayText(`Writing file ${fullPath}`)
     const data = new Uint8Array(Buffer.from(content))
     writeFileSync(fullPath, data)
     return 'File write success'

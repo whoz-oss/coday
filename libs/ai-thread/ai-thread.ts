@@ -8,6 +8,7 @@ import { buildCodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } fr
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import { ToolCall, ToolResponse } from '../integration/tool-call'
 import { EmptyUsage, RunStatus, ThreadMessage, ThreadSerialized, Usage } from './ai-thread.types'
+import { partition } from './ai-thread.helpers'
 
 /**
  * Allowed message types for filtering when building thread history
@@ -87,43 +88,65 @@ export class AiThread {
   }
 
   /**
-   * Returns a copy of all messages in the thread.
-   * @returns Array of thread messages in chronological order
+   * Returns a partition of the messages regarding the charBudget.
+   * `messages` contains the last messages that fit under the charBudget.
+   * `overflow` contains the first messages that make the conversation overflow the charBudget.
+   * Both are chronolically ordered.
+   * @param maxChars Maximum character limit for the returned messages
+   * @returns an object with truncated messages and those that overflow
    */
-  getMessages(maxChars?: number): ThreadMessage[] {
-    if (!maxChars) return [...this.messages]
+  async getMessages(
+    maxChars: number | undefined,
+    compactor: undefined | ((msgs: ThreadMessage[]) => Promise<ThreadMessage>)
+  ): Promise<{
+    messages: ThreadMessage[]
+    compacted: boolean
+  }> {
+    if (!maxChars) return { messages: [...this.messages], compacted: false }
 
-    const totalChars = this.messages.reduce((count, msg) => count + msg.length, 0)
-    if (totalChars < maxChars) return [...this.messages]
+    // from the end (hence the toReversed), take all messages that fit into the charbudget
+    let { messages, overflow } = partition(this.messages.toReversed(), maxChars)
+    messages = messages.toReversed()
+    overflow = overflow.toReversed()
 
-    console.warn(`Truncating context, got ${totalChars} > ${maxChars} allowed chars.`)
-    // Then need to check if still under the limit
-    const firstUserMessageIndex = this.messages.findIndex((msg) => msg instanceof MessageEvent && msg.role === 'user')
-    const limit = maxChars - this.messages[firstUserMessageIndex].length
-
-    let index = this.messages.length - 1
-    let lastAssistantAnswerIndex = this.messages.length - 1
-    let count = 0
-    while (count < limit && index > firstUserMessageIndex) {
-      const msg = this.messages[index]
-      // update the count
-      count += msg.length
-
-      if (count < limit && msg instanceof MessageEvent && msg.role === 'assistant') {
-        // track the oldest assistant response that fits in the context window
-        lastAssistantAnswerIndex = index
+    // loop into the accepted message to catch all the tool responses without tool requests
+    // this can break the API, so move these lone tool responses into the overflow section instead
+    const messageIds: Set<string> = new Set(messages.map((m) => m.timestamp))
+    for (let i = 0; i < messages.length; i++) {
+      const message = messages[i]
+      if (message instanceof ToolResponseEvent && messageIds.has(message.toolRequestId)) {
+        messages.splice(i, 1)
+        overflow.push(message)
       }
-
-      index--
+      // ignore other weird cases like a tool request without a response, the thread is either broken or oblivious to that
     }
 
-    // truncate the messages to keep until firstUserMessage included, and from lastAssistantAnswerIndex up to the end
-    const truncated = [
-      ...this.messages.slice(0, firstUserMessageIndex + 1),
-      ...this.messages.slice(lastAssistantAnswerIndex),
-    ]
+    if (!compactor) {
+      // IMPORTANT: apply compaction to the thread to avoid re-doing it all over for every LLM call.
+      this.messages = messages // forget about the overflow part
+      return { messages, compacted: true }
+    }
 
-    return truncated
+    // time to compact, with the same charBudget
+    // overflow itself can be larger than the charBudget, so need to iteratively summarize
+    let summary: ThreadMessage | undefined
+    while (overflow.length) {
+      const overflowPartition = partition(overflow, maxChars)
+      summary = await compactor(overflowPartition.messages)
+      overflow = overflowPartition.overflow.length ? [summary, ...overflowPartition.overflow] : []
+    }
+
+    /*
+     * IMPORTANT: apply compaction to the thread to avoid re-doing it all over for every LLM call.
+     * This might happen if a small model is taking part in the current thread and that is a questionable decision.
+     * Smaller models should have delegation instead of being selected or redirected to.
+     */
+    this.messages = summary ? [summary, ...messages] : messages
+
+    return {
+      messages,
+      compacted: true,
+    }
   }
 
   /**
