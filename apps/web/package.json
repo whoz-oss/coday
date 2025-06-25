@@ -1,7 +1,8 @@
 {
-  "name": "@biznet.io/coday-web",
+  "name": "@whoz-oss/coday-web",
+  "repository": "https://github.com/whoz-oss/coday",
   "publishConfig": {
     "access": "public"
   },
-  "version": "0.13.0"
+  "version": "0.13.3"
 }
