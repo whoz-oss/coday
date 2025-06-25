@@ -20,17 +20,17 @@ When in the context of a code project, use the npm package to run locally throug
 
 1. Check dependencies
     - node.js (v14.x or later)
-    - npm (v6.x or later) 
+    - npm (v6.x or later)
     - [ripgrep](https://github.com/BurntSushi/ripgrep) (important for file search)
 
 2. Add npm package
 
     ```sh
-    yarn add --dev @biznet.io/coday-web@latest
+    yarn add --dev @whoz-oss/coday-web@latest
     ```
-    
+
     ```sh
-    npm install @biznet.io/coday-web@latest --save-dev
+    npm install @whoz-oss/coday-web@latest --save-dev
     ```
 
 2. Add start script in `package.json`
@@ -38,7 +38,7 @@ When in the context of a code project, use the npm package to run locally throug
     ```json
     {
       "scripts": {
-        "coday": "node ./node_modules/@biznet.io/coday-web/server/server.js --no_auth"
+        "coday": "node ./node_modules/@whoz-oss/coday-web/server/server.js --no_auth"
       }
     }
     ```
@@ -51,13 +51,13 @@ When in the context of a code project, use the npm package to run locally throug
    - Node.js (v14.x or later)
    - npm (v6.x or later)
    - [ripgrep](https://github.com/BurntSushi/ripgrep)
-   - git 
-   - yarn 
+   - git
+   - yarn
 2. Clone the repo
    ```sh
-   # through ssh 
+   # through ssh
    git clone git@gitlab.com:biznet.io/coday.git
-   
+
    # through http
    git clone https://gitlab.com/biznet.io/coday.git
     ```
@@ -67,14 +67,14 @@ When in the context of a code project, use the npm package to run locally throug
     yarn install
     ```
 4. Run one of the targets:
-   - in the terminal: 
+   - in the terminal:
    ```sh
    yarn run nx reset && yarn start
-   ``` 
-   - in the browser: 
+   ```
+   - in the browser:
    ```sh
    yarn run nx reset && yarn web --no_auth
-   ``` 
+   ```
 5. Setup the first coday project
 
 

@@ -1,5 +1,5 @@
 {
-  "name": "@biznet.io/coday-web",
+  "name": "@whoz-oss/coday-web",
   "publishConfig": {
     "access": "public"
   },
