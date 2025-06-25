@@ -1,5 +1,6 @@
 {
   "name": "@whoz-oss/coday-web",
+  "repository": "https://github.com/whoz-oss/coday",
   "publishConfig": {
     "access": "public"
   },
