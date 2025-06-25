@@ -2,22 +2,11 @@ import { Interactor } from '../model'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import * as path from 'path'
+import { DEFAULT_CHAR_LIMIT, DEFAULT_LINE_LIMIT, limitOutput } from '../utils/output-limiter'
 
 const execAsync = promisify(exec)
 
-const DEFAULT_LINE_LIMIT = 1000
-const DEFAULT_CHAR_LIMIT = 50000
 const DEFAULT_MAX_BUFFER = 10 * 1024 * 1024 // 10MB buffer
-
-const limitOutputLines = (output: string, limit: number): string => {
-  const truncated = output.length > DEFAULT_CHAR_LIMIT ? output.slice(-DEFAULT_CHAR_LIMIT) : output
-
-  const lines = truncated.split('\n')
-  if (lines.length > limit) {
-    return lines.slice(-limit).join('\n')
-  }
-  return output
-}
 
 export const runBash = async ({
   command,
@@ -37,6 +26,7 @@ export const runBash = async ({
   maxBuffer?: number
 }): Promise<string> => {
   let resolvedPath = root
+  const limits = { lineLimit, charLimit: DEFAULT_CHAR_LIMIT }
 
   if (relPath) {
     resolvedPath = path.resolve(root, relPath)
@@ -71,12 +61,12 @@ export const runBash = async ({
       maxBuffer,
     })
 
-    const limitedOutput = limitOutputLines(stdout, lineLimit)
-    const limitedErr = limitOutputLines(stderr, lineLimit)
+    const limitedOutput = limitOutput(stdout, limits)
+    const limitedErr = limitOutput(stderr, limits)
     return `Output:\n${limitedOutput}${limitedErr ? `\n\nError:\n${limitedErr}` : ''}`
   } catch (error: any) {
-    const stdout = error.stdout ? `\nstdout: ${limitOutputLines(error.stdout, lineLimit)}` : ''
-    const stderr = error.stderr ? `\nstderr: ${limitOutputLines(error.stderr, lineLimit)}` : ''
+    const stdout = error.stdout ? `\nstdout: ${limitOutput(error.stdout, limits)}` : ''
+    const stderr = error.stderr ? `\nstderr: ${limitOutput(error.stderr, limits)}` : ''
     const message = `An error occurred while executing the command: ${error}${stdout}${stderr}`
     interactor.error(message)
     return message
