@@ -48,9 +48,6 @@ export class ToolSet {
       output = JSON.stringify(output)
     }
 
-    return new ToolResponseEvent({
-      toolRequestId: toolRequest.toolRequestId,
-      output,
-    })
+    return toolRequest.buildResponse(output)
   }
 }
