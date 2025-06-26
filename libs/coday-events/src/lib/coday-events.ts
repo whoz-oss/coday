@@ -151,7 +151,7 @@ export class ToolRequestEvent extends CodayEvent {
   }
 
   buildResponse(output: string): ToolResponseEvent {
-    return new ToolResponseEvent({ output, toolRequestId: this.toolRequestId })
+    return new ToolResponseEvent({ output, toolRequestId: this.toolRequestId, parentKey: this.timestamp })
   }
 
   /**
