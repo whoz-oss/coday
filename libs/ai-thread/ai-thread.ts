@@ -114,11 +114,11 @@ export class AiThread {
     const messageIds: Set<string> = new Set(messages.map((m) => m.timestamp))
     for (let i = 0; i < messages.length; i++) {
       const message = messages[i]
-      if (message instanceof ToolResponseEvent && messageIds.has(message.toolRequestId)) {
+      if (message instanceof ToolResponseEvent && !messageIds.has(message.parentKey ?? 'no_parent_key')) {
         messages.splice(i, 1)
         overflow.push(message)
       }
-      // ignore other weird cases like a tool request without a response, the thread is either broken or oblivious to that
+      //ignore other weird cases like a tool request without a response, the thread is either broken or oblivious to that
     }
 
     if (!compactor) {

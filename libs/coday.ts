@@ -132,7 +132,7 @@ export class Coday {
       this.context?.addCommands(userCommand!)
 
       try {
-        this.context = await this.handlerLooper!.handle(this.context)
+        this.context = (await this.handlerLooper?.handle(this.context)) ?? null
       } finally {
         this.stop()
       }
