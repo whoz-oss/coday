@@ -24,7 +24,7 @@ debugLog('INIT', 'Coday options:', codayOptions)
 
 // Create single usage logger instance for all clients
 // Logging is enabled when --log flag is used and not in no-auth mode
-const loggingEnabled = codayOptions.log || !codayOptions.noAuth
+const loggingEnabled = !codayOptions.noLog
 const logger = new CodayLogger(loggingEnabled, codayOptions.logFolder)
 debugLog(
   'INIT',
