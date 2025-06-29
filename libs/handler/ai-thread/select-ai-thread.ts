@@ -4,14 +4,10 @@ import { ThreadSummary } from '../../ai-thread/ai-thread.types'
 import { lastValueFrom } from 'rxjs'
 import { AiThread } from '../../ai-thread/ai-thread'
 
-export async function selectAiThread(
-  interactor: Interactor,
-  threadService: AiThreadService,
-  forceCreate: boolean = false
-): Promise<void> {
+export async function selectAiThread(interactor: Interactor, threadService: AiThreadService): Promise<void> {
   // Interactive selection
   const threads: ThreadSummary[] = await lastValueFrom(threadService.list())
-  if (threads.length === 0 || forceCreate) {
+  if (threads.length === 0) {
     threadService.create()
     return
   }

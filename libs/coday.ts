@@ -4,7 +4,6 @@ import { RunStatus, ThreadMessage } from './ai-thread/ai-thread.types'
 import { AiThreadRepositoryFactory } from './ai-thread/repository/ai-thread.repository.factory'
 import { AiHandler, ConfigHandler } from './handler'
 import { HandlerLooper } from './handler-looper'
-import { selectAiThread } from './handler/ai-thread/select-ai-thread'
 import { AiClientProvider } from './integration/ai/ai-client-provider'
 import { keywords } from './keywords'
 import { CommandContext, Interactor } from './model'
@@ -247,7 +246,7 @@ export class Coday {
 
   private async initThread(): Promise<void> {
     if (!this.context?.aiThread) {
-      await selectAiThread(this.interactor, this.aiThreadService, this.options.oneshot)
+      this.aiThreadService.create()
     }
   }
 
