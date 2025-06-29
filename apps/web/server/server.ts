@@ -363,4 +363,13 @@ process.on('SIGTERM', async () => {
   if (cleanupService) {
     await cleanupService.stop()
   }
+  process.exit(0)
+})
+
+process.on('SIGINT', async () => {
+  console.log('Received SIGINT, shutting down gracefully...')
+  if (cleanupService) {
+    await cleanupService.stop()
+  }
+  process.exit(0)
 })
