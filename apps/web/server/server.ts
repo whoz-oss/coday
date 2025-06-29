@@ -74,6 +74,12 @@ app.post('/api/webhook', (req: express.Request, res: express.Response) => {
   // start a Coday instance in standalone
   client.startCoday()
 
+  logger.logWebhook({
+    project,
+    title,
+    username,
+  })
+
   const threadIdSource = client.getThreadId()
 
   // plug the response on the right end: either starting of Coday or final message

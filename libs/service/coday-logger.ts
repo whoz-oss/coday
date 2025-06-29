@@ -2,14 +2,6 @@ import { promises as fs } from 'fs'
 import * as path from 'path'
 import * as os from 'os'
 
-export interface LogEntry {
-  timestamp: string
-  username: string
-  agent: string
-  model: string
-  cost: number
-}
-
 /**
  * Simple usage logger for AI agent interactions
  * Logs to daily JSONL files when logging is enabled
@@ -34,22 +26,41 @@ export class CodayLogger {
   /**
    * Log an agent interaction
    */
-  async logAgentUsage(username: string, agent: string, model: string, cost: number): Promise<void> {
-    // Skip logging if not enabled
-    if (!this.enabled) return
-
+  logAgentUsage(username: string, agent: string, model: string, cost: number): void {
     const entry = {
+      type: 'AGENT_USAGE',
       timestamp: new Date().toISOString(),
       username,
       agent,
       model,
       cost,
     }
+    this.pushEntry(entry)
+  }
 
-    // Add to buffer
+  logWebhook(data: Record<string, any>): void {
+    const entry = {
+      ...data,
+      type: 'WEBHOOK',
+      timestamp: new Date().toISOString(),
+    }
+    this.pushEntry(entry)
+  }
+
+  logThreadCleanup(project: string, threadFileName: string): void {
+    const entry = {
+      type: 'THREAD_CLEANUP',
+      timestamp: new Date().toISOString(),
+      project,
+      threadFileName,
+    }
+    this.pushEntry(entry)
+  }
+
+  private async pushEntry(entry: any): Promise<void> {
+    if (!this.enabled) return
     this.buffer.push(entry)
 
-    // Flush immediately if buffer gets too large
     if (this.buffer.length >= 100) {
       await this.flush()
     }
@@ -58,9 +69,9 @@ export class CodayLogger {
   /**
    * Read logs for a date range
    */
-  async readLogs(from: Date, to: Date): Promise<LogEntry[]> {
-    const entries: LogEntry[] = []
-    
+  async readLogs(from: Date, to: Date): Promise<any[]> {
+    const entries: any[] = []
+
     // Generate all dates in the range
     const currentDate = new Date(from)
     while (currentDate <= to) {
@@ -72,11 +83,15 @@ export class CodayLogger {
 
       try {
         const content = await fs.readFile(filePath, 'utf8')
-        const lines = content.trim().split('\n').filter(line => line.length > 0)
-        
+        const lines = content
+          .trim()
+          .split('\n')
+          .filter((line) => line.length > 0)
+
         for (const line of lines) {
           try {
-            const entry = JSON.parse(line) as LogEntry
+            const entry = JSON.parse(line)
+            if (!entry.timestamp) continue
             // Filter by exact date range
             const entryDate = new Date(entry.timestamp)
             if (entryDate >= from && entryDate <= to) {
