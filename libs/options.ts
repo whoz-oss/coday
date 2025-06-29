@@ -29,7 +29,7 @@ export interface CodayOptions {
   configDir?: string
   noAuth: boolean
   agentFolders: string[]
-  log: boolean
+  noLog: boolean
   logFolder?: string
 }
 
@@ -40,7 +40,6 @@ export interface CodayOptions {
 export function parseCodayOptions(): CodayOptions {
   // Parse arguments
   const args = hideBin(process.argv)
-  console.log('raw args', args)
   const argv: Argv = yargs(args)
     .option('coday_project', {
       type: 'string',
@@ -77,7 +76,8 @@ export function parseCodayOptions(): CodayOptions {
     })
     .option('log', {
       type: 'boolean',
-      description: 'Enable usage logging',
+      description: 'Enable logging (use --no-log to disable)',
+      default: true,
     })
     .option('log-folder', {
       type: 'string',
@@ -88,7 +88,6 @@ export function parseCodayOptions(): CodayOptions {
       description: 'Sets debug right at startup',
     })
     .help().argv as Argv
-
   let projectName: string | undefined = argv.coday_project || (argv._[0] as string)
   const prompts: string[] = (argv.prompt || argv._.slice(1)) as string[]
   const oneshot: boolean = !!argv.oneshot
@@ -96,7 +95,7 @@ export function parseCodayOptions(): CodayOptions {
   const configDir: string | undefined = argv.coday_config_dir
   const noAuth: boolean = !!argv.no_auth
   const debug: boolean = !!argv.debug
-  const log: boolean = !!argv.log
+  const noLog: boolean = !argv.log // Inverted: log=false means noLog=true
   const logFolder: string | undefined = argv.log_folder
 
   // If --local is set, use current directory name as project
@@ -114,7 +113,7 @@ export function parseCodayOptions(): CodayOptions {
     configDir,
     noAuth,
     agentFolders: (argv.agentFolders || []) as string[],
-    log,
+    noLog,
     logFolder,
   }
 }

@@ -43,21 +43,25 @@ export abstract class Interactor {
    * - If input is blank/empty/undefined/null, returns undefined.
    * - Otherwise, returns input.
    */
-  async promptSecretText(invite: string, currentValue?: string, mask: string = '********'): Promise<string | undefined> {
+  async promptSecretText(
+    invite: string,
+    currentValue?: string,
+    mask: string = '********'
+  ): Promise<string | undefined> {
     // Show mask only if there's a current value
-    const defaultText = currentValue ? mask : '';
-    const input = await this.promptText(invite, defaultText);
+    const defaultText = currentValue ? mask : ''
+    const input = await this.promptText(invite, defaultText)
 
     if (input === mask && currentValue) {
       // User wants to keep the existing value
-      return currentValue;
+      return currentValue
     }
     if (!input) {
       // User wants to clear the field
-      return undefined;
+      return undefined
     }
     // User provided a new value
-    return input;
+    return input
   }
 
   async chooseOption(options: string[], question: string, invite?: string): Promise<string> {
@@ -112,5 +116,6 @@ export abstract class Interactor {
 
   kill() {
     this.subs.forEach((s) => s.unsubscribe())
+    this.events.complete()
   }
 }

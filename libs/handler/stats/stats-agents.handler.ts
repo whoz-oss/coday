@@ -1,4 +1,4 @@
-import { CommandHandler, CommandContext, Interactor } from '../../model'
+import { CommandContext, CommandHandler, Interactor } from '../../model'
 import { CodayServices } from '../../coday-services'
 import { parseArgs } from '../parse-args'
 
@@ -16,7 +16,8 @@ export class StatsAgentsHandler extends CommandHandler {
   ) {
     super({
       commandWord: 'agents',
-      description: 'Show agent usage statistics sorted by number of calls. Use --from=YYYY-MM-DD and --to=YYYY-MM-DD for custom date range (default: last 7 days)'
+      description:
+        'Show agent usage statistics sorted by number of calls. Use --from=YYYY-MM-DD and --to=YYYY-MM-DD for custom date range (default: last 7 days)',
     })
   }
 
@@ -26,7 +27,7 @@ export class StatsAgentsHandler extends CommandHandler {
       const subCommand = this.getSubCommand(command)
       const args = parseArgs(subCommand, [
         { key: 'from', alias: 'f' },
-        { key: 'to', alias: 't' }
+        { key: 'to', alias: 't' },
       ])
 
       // Set date range
@@ -72,8 +73,10 @@ export class StatsAgentsHandler extends CommandHandler {
         return context
       }
 
-      const logs = await this.services.logger.readLogs(from, to)
-      
+      const logs = (await this.services.logger.readLogs(from, to)).filter(
+        (log) => !log.type || log.type === 'AGENT_USAGE'
+      )
+
       if (logs.length === 0) {
         const dateRange = this.formatDateRange(from, to)
         this.interactor.displayText(`📊 No usage data found for ${dateRange}`)
@@ -82,12 +85,12 @@ export class StatsAgentsHandler extends CommandHandler {
 
       // Aggregate stats by agent
       const agentStatsMap = new Map<string, { calls: number; totalCost: number }>()
-      
+
       for (const log of logs) {
         const existing = agentStatsMap.get(log.agent) || { calls: 0, totalCost: 0 }
         agentStatsMap.set(log.agent, {
           calls: existing.calls + 1,
-          totalCost: existing.totalCost + log.cost
+          totalCost: existing.totalCost + log.cost,
         })
       }
 
@@ -96,7 +99,7 @@ export class StatsAgentsHandler extends CommandHandler {
         agent,
         calls: stats.calls,
         totalCost: stats.totalCost,
-        avgCost: stats.totalCost / stats.calls
+        avgCost: stats.totalCost / stats.calls,
       }))
 
       // Sort by number of calls (most used first)
@@ -105,7 +108,6 @@ export class StatsAgentsHandler extends CommandHandler {
       // Format output
       const output = this.formatAgentStats(agentStats, from, to)
       this.interactor.displayText(output)
-
     } catch (error) {
       this.interactor.error(`Failed to retrieve agent statistics: ${error}`)
     }
@@ -116,11 +118,11 @@ export class StatsAgentsHandler extends CommandHandler {
   private parseDate(dateStr: string): Date | null {
     const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/)
     if (!match) return null
-    
+
     const date = new Date(dateStr)
     // Check if date is valid
     if (isNaN(date.getTime())) return null
-    
+
     return date
   }
 
@@ -138,12 +140,12 @@ export class StatsAgentsHandler extends CommandHandler {
 Agent      | Calls | Total Cost | Avg Cost
 -----------|-------|------------|----------`
 
-    const rows = stats.map(stat => {
+    const rows = stats.map((stat) => {
       const agent = stat.agent.padEnd(10)
       const calls = stat.calls.toString().padStart(5)
       const totalCost = `$${stat.totalCost.toFixed(2)}`.padStart(10)
       const avgCost = `$${stat.avgCost.toFixed(3)}`.padStart(8)
-      
+
       return `${agent} | ${calls} | ${totalCost} | ${avgCost}`
     })
 

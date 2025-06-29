@@ -2,48 +2,17 @@ import express from 'express'
 import path from 'path'
 import { ServerClientManager } from './server-client'
 
-import { AnswerEvent } from '@coday/coday-events'
-import { parseCodayOptions } from '@coday/options'
+import { AnswerEvent, CodayEvent, MessageEvent } from '@coday/coday-events'
+import { CodayOptions, parseCodayOptions } from '@coday/options'
 import * as os from 'node:os'
 import { debugLog } from './log'
 import { CodayLogger } from '@coday/service/coday-logger'
 import { ThreadCleanupService } from '@coday/service/thread-cleanup.service'
+import { findAvailablePort } from './find-available-port'
+import { filter, firstValueFrom, lastValueFrom, withLatestFrom } from 'rxjs'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000
-
-// Function to find the next available port
-async function findAvailablePort(startPort: number, maxAttempts = 10): Promise<number> {
-  const net = await import('node:net')
-
-  return new Promise((resolve, reject) => {
-    function checkPort(port: number, attempts: number) {
-      const server = net.createServer()
-
-      server.listen(port, () => {
-        server.close(() => {
-          debugLog('PORT', `Port ${port} is available`)
-          resolve(port)
-        })
-      })
-
-      server.on('error', (err: NodeJS.ErrnoException) => {
-        if (err.code === 'EADDRINUSE') {
-          if (attempts > 0) {
-            debugLog('PORT', `Port ${port} is in use, trying next`)
-            checkPort(port + 1, attempts - 1)
-          } else {
-            reject(new Error(`Could not find an available port starting from ${startPort}`))
-          }
-        } else {
-          reject(err)
-        }
-      })
-    }
-
-    checkPort(startPort, maxAttempts)
-  })
-}
 
 // Dynamically find an available port
 const PORT_PROMISE = findAvailablePort(DEFAULT_PORT)
@@ -55,7 +24,7 @@ debugLog('INIT', 'Coday options:', codayOptions)
 
 // Create single usage logger instance for all clients
 // Logging is enabled when --log flag is used and not in no-auth mode
-const loggingEnabled = codayOptions.log || !codayOptions.noAuth
+const loggingEnabled = !codayOptions.noLog
 const logger = new CodayLogger(loggingEnabled, codayOptions.logFolder)
 debugLog(
   'INIT',
@@ -77,6 +46,131 @@ const clientManager = new ServerClientManager(logger)
 
 // Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null
+
+/**
+ * Webhook Endpoint - Programmatic AI Agent Interaction
+ *
+ * This endpoint enables external systems to trigger Coday AI agent interactions remotely.
+ * It creates a one-shot Coday instance that processes prompts sequentially and optionally
+ * waits for completion before responding.
+ *
+ * Request Body:
+ * - project: string (required) - The Coday project name to execute against
+ * - title: string (optional) - Title for the saved conversation thread
+ * - prompts: string[] (required) - Array of prompts to execute in sequence
+ * - shouldWait: boolean (optional, default: false) - Whether to wait for completion
+ *
+ * Response Modes:
+ * - Async (shouldWait: false): Returns immediately with threadId for fire-and-forget operations
+ * - Sync (shouldWait: true): Waits for all prompts to complete and returns final result
+ *
+ * Use Cases:
+ * - CI/CD pipeline integration for automated code analysis
+ * - External system integration for batch processing
+ * - Scheduled tasks and monitoring workflows
+ * - API-driven AI agent interactions
+ */
+app.post('/api/webhook', (req: express.Request, res: express.Response) => {
+  let clientId: string | null = null
+
+  try {
+    // Validate required fields
+    const { project: projectInput, title, prompts, shouldWait } = req.body
+
+    if (!projectInput && !codayOptions.project) {
+      res.status(422).send({ error: 'Missing required parameter: project' })
+    }
+
+    const project: string = codayOptions.project ?? projectInput
+
+    if (!prompts || !Array.isArray(prompts) || prompts.length === 0) {
+      res.status(422).send({ error: 'Missing or invalid prompts array' })
+    }
+
+    const username = getUsername(codayOptions, req)
+    if (!username) {
+      res.status(403).send({ error: 'Unable to determine username' })
+    }
+
+    // Generate unique client ID for this webhook request
+    clientId = `webhook_${Math.random().toString(36).substring(2, 15)}`
+
+    // Configure one-shot Coday instance with automatic thread saving
+    const oneShotOptions = {
+      ...codayOptions,
+      oneshot: true, // Creates isolated instance that terminates after processing
+      project, // Target project for the AI agent interaction
+      prompts: title ? [`thread save ${title}`, ...prompts] : prompts, // Auto-save thread with title + user prompts
+    }
+
+    // Create a dedicated client instance for this webhook request
+    const client = clientManager.getOrCreate(clientId, null, oneShotOptions, username)
+    const interactor = client.getInteractor()
+    client.startCoday()
+
+    // Log successful webhook initiation with clientId for log correlation
+    logger.logWebhook({
+      project,
+      title: title || 'Untitled',
+      username,
+      clientId,
+      promptCount: prompts.length,
+      shouldWait: !!shouldWait,
+    })
+
+    const threadIdSource = client.getThreadId()
+
+    if (shouldWait) {
+      // Synchronous mode: wait for completion
+      const lastEventObservable = interactor.events.pipe(
+        filter((event: CodayEvent) => event instanceof MessageEvent && event.role === 'assistant' && !!event.name)
+      )
+
+      lastValueFrom(lastEventObservable.pipe(withLatestFrom(threadIdSource)))
+        .then(([lastEvent, threadId]) => {
+          res.status(200).send({ threadId, lastEvent })
+        })
+        .catch((error) => {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+          logger.logWebhookError({
+            error: `Webhook completion failed: ${errorMessage}`,
+            username,
+            project,
+            clientId,
+          })
+          console.error('Error waiting for webhook completion:', error)
+          res.status(500).send({ error: 'Webhook processing failed' })
+        })
+    } else {
+      // Asynchronous mode: return immediately with thread ID
+      firstValueFrom(threadIdSource)
+        .then((threadId) => {
+          res.status(201).send({ threadId })
+        })
+        .catch((error) => {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+          logger.logWebhookError({
+            error: `Failed to get thread ID: ${errorMessage}`,
+            username,
+            project,
+            clientId,
+          })
+          console.error('Error getting thread ID for webhook:', error)
+          res.status(500).send({ error: 'Failed to initialize webhook processing' })
+        })
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    logger.logWebhookError({
+      error: `Webhook request failed: ${errorMessage}`,
+      username: null,
+      project: req.body?.project || null,
+      clientId,
+    })
+    console.error('Unexpected error in webhook endpoint:', error)
+    res.status(500).send({ error: 'Internal server error' })
+  }
+})
 
 // POST endpoint for stopping the current run
 app.post('/api/stop', (req: express.Request, res: express.Response) => {
@@ -121,6 +215,21 @@ app.post('/api/message', (req: express.Request, res: express.Response) => {
     res.status(400).send('Invalid event data!')
   }
 })
+
+/**
+ * Extract username for authentication and logging purposes
+ *
+ * In authenticated mode, extracts username from the x-forwarded-email header
+ * (typically set by reverse proxy or authentication middleware).
+ * In no-auth mode, uses the local system username for development/testing.
+ *
+ * @param codayOptions - Coday configuration options
+ * @param req - Express request object containing headers
+ * @returns Username string for logging and thread ownership
+ */
+function getUsername(codayOptions: CodayOptions, req: express.Request): string {
+  return codayOptions.noAuth ? os.userInfo().username : (req.headers[EMAIL_HEADER] as string)
+}
 
 // GET endpoint for retrieving full event details
 app.get('/api/event/:eventId', (req: express.Request, res: express.Response) => {
@@ -178,9 +287,9 @@ app.get('/events', (req: express.Request, res: express.Response) => {
   debugLog('SSE', `New connection request for client ${clientId}`)
 
   // handle username header coming from auth (or local frontend) or local in noAuth
-  const usernameHeaderValue = codayOptions.noAuth ? os.userInfo().username : req.headers[EMAIL_HEADER]
+  const usernameHeaderValue = getUsername(codayOptions, req)
   debugLog('SSE', `Connection started, clientId: ${clientId}, username: ${usernameHeaderValue}`)
-  if (!usernameHeaderValue || !(typeof usernameHeaderValue === 'string')) {
+  if (!usernameHeaderValue || typeof usernameHeaderValue !== 'string') {
     debugLog('SSE', 'Rejected: No username provided')
     res.status(400).send(`Invalid or missing request headers '${EMAIL_HEADER}'.`)
     return
@@ -227,16 +336,16 @@ PORT_PROMISE.then(async (PORT) => {
   app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`)
   })
-  
+
   // Start thread cleanup service after server is running
   try {
     debugLog('CLEANUP', 'Starting thread cleanup service...')
-    
+
     // Construire le chemin vers les projets (même logique que ProjectService)
     const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
     const configPath = codayOptions.configDir ?? defaultConfigPath
     const projectsConfigPath = path.join(configPath, 'projects')
-    
+
     cleanupService = new ThreadCleanupService(projectsConfigPath, logger)
     await cleanupService.start()
     debugLog('CLEANUP', 'Thread cleanup service started successfully')
@@ -254,13 +363,4 @@ process.on('SIGTERM', async () => {
   if (cleanupService) {
     await cleanupService.stop()
   }
-  process.exit(0)
-})
-
-process.on('SIGINT', async () => {
-  console.log('Received SIGINT, shutting down gracefully...')
-  if (cleanupService) {
-    await cleanupService.stop()
-  }
-  process.exit(0)
 })

@@ -38,7 +38,15 @@ export class McpToolsFactory extends AssistantToolFactory {
   async kill(): Promise<void> {
     this.tools = []
     console.log(`Closing mcp client ${this.serverConfig.name}`)
-    await (await this.clientPromise)?.close()
+    
+    try {
+      const client = await this.clientPromise
+      await client?.close()
+    } catch (error) {
+      // If the client failed to initialize, that's fine - nothing to close
+      console.log(`MCP client ${this.serverConfig.name} was already failed/closed`)
+    }
+    
     if (this.inspectorProcess) {
       console.log(`Stopping MCP Inspector process for ${this.serverConfig.name}`)
       this.inspectorProcess.kill()

@@ -202,7 +202,7 @@ export class ThreadCleanupService {
           await fs.unlink(filePath)
           deleted++
           // Audit trail logging
-          await this.logger.logAgentUsage('system', 'ThreadCleanup', 'cleanup', 0)
+          this.logger.logThreadCleanup(projectName, file)
           console.log(`ThreadCleanup: Deleted expired thread: ${threadData.id || file} from project ${projectName}`)
         }
       })
