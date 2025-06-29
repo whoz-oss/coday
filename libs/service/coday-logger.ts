@@ -47,6 +47,15 @@ export class CodayLogger {
     this.pushEntry(entry)
   }
 
+  logWebhookError(data: { error: string; username: string | null; project: string | null; clientId?: string | null; duration?: number }): void {
+    const entry = {
+      ...data,
+      type: 'WEBHOOK_ERROR',
+      timestamp: new Date().toISOString(),
+    }
+    this.pushEntry(entry)
+  }
+
   logThreadCleanup(project: string, threadFileName: string): void {
     const entry = {
       type: 'THREAD_CLEANUP',

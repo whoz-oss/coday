@@ -49,21 +49,21 @@ let cleanupService: ThreadCleanupService | null = null
 
 /**
  * Webhook Endpoint - Programmatic AI Agent Interaction
- * 
+ *
  * This endpoint enables external systems to trigger Coday AI agent interactions remotely.
  * It creates a one-shot Coday instance that processes prompts sequentially and optionally
  * waits for completion before responding.
- * 
+ *
  * Request Body:
  * - project: string (required) - The Coday project name to execute against
  * - title: string (optional) - Title for the saved conversation thread
  * - prompts: string[] (required) - Array of prompts to execute in sequence
  * - shouldWait: boolean (optional, default: false) - Whether to wait for completion
- * 
+ *
  * Response Modes:
  * - Async (shouldWait: false): Returns immediately with threadId for fire-and-forget operations
  * - Sync (shouldWait: true): Waits for all prompts to complete and returns final result
- * 
+ *
  * Use Cases:
  * - CI/CD pipeline integration for automated code analysis
  * - External system integration for batch processing
@@ -72,15 +72,17 @@ let cleanupService: ThreadCleanupService | null = null
  */
 app.post('/api/webhook', (req: express.Request, res: express.Response) => {
   let clientId: string | null = null
-  
+
   try {
     // Validate required fields
-    const { project, title, prompts, shouldWait } = req.body
-    
-    if (!project &) {
+    const { project: projectInput, title, prompts, shouldWait } = req.body
+
+    if (!projectInput && !codayOptions.project) {
       res.status(422).send({ error: 'Missing required parameter: project' })
     }
-    
+
+    const project: string = codayOptions.project ?? projectInput
+
     if (!prompts || !Array.isArray(prompts) || prompts.length === 0) {
       res.status(422).send({ error: 'Missing or invalid prompts array' })
     }
@@ -96,8 +98,8 @@ app.post('/api/webhook', (req: express.Request, res: express.Response) => {
     // Configure one-shot Coday instance with automatic thread saving
     const oneShotOptions = {
       ...codayOptions,
-      oneshot: true,      // Creates isolated instance that terminates after processing
-      project,            // Target project for the AI agent interaction
+      oneshot: true, // Creates isolated instance that terminates after processing
+      project, // Target project for the AI agent interaction
       prompts: title ? [`thread save ${title}`, ...prompts] : prompts, // Auto-save thread with title + user prompts
     }
 
@@ -113,7 +115,7 @@ app.post('/api/webhook', (req: express.Request, res: express.Response) => {
       username,
       clientId,
       promptCount: prompts.length,
-      shouldWait: !!shouldWait
+      shouldWait: !!shouldWait,
     })
 
     const threadIdSource = client.getThreadId()
@@ -123,18 +125,18 @@ app.post('/api/webhook', (req: express.Request, res: express.Response) => {
       const lastEventObservable = interactor.events.pipe(
         filter((event: CodayEvent) => event instanceof MessageEvent && event.role === 'assistant' && !!event.name)
       )
-      
+
       lastValueFrom(lastEventObservable.pipe(withLatestFrom(threadIdSource)))
         .then(([lastEvent, threadId]) => {
           res.status(200).send({ threadId, lastEvent })
         })
         .catch((error) => {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-          logger.logWebhookError({ 
-            error: `Webhook completion failed: ${errorMessage}`, 
-            username, 
-            project, 
-            clientId, 
+          logger.logWebhookError({
+            error: `Webhook completion failed: ${errorMessage}`,
+            username,
+            project,
+            clientId,
           })
           console.error('Error waiting for webhook completion:', error)
           res.status(500).send({ error: 'Webhook processing failed' })
@@ -147,11 +149,11 @@ app.post('/api/webhook', (req: express.Request, res: express.Response) => {
         })
         .catch((error) => {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-          logger.logWebhookError({ 
-            error: `Failed to get thread ID: ${errorMessage}`, 
-            username, 
-            project, 
-            clientId, 
+          logger.logWebhookError({
+            error: `Failed to get thread ID: ${errorMessage}`,
+            username,
+            project,
+            clientId,
           })
           console.error('Error getting thread ID for webhook:', error)
           res.status(500).send({ error: 'Failed to initialize webhook processing' })
@@ -159,11 +161,11 @@ app.post('/api/webhook', (req: express.Request, res: express.Response) => {
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    logger.logWebhookError({ 
-      error: `Webhook request failed: ${errorMessage}`, 
-      username: null, 
-      project: req.body?.project || null, 
-      clientId, 
+    logger.logWebhookError({
+      error: `Webhook request failed: ${errorMessage}`,
+      username: null,
+      project: req.body?.project || null,
+      clientId,
     })
     console.error('Unexpected error in webhook endpoint:', error)
     res.status(500).send({ error: 'Internal server error' })
@@ -216,11 +218,11 @@ app.post('/api/message', (req: express.Request, res: express.Response) => {
 
 /**
  * Extract username for authentication and logging purposes
- * 
+ *
  * In authenticated mode, extracts username from the x-forwarded-email header
  * (typically set by reverse proxy or authentication middleware).
  * In no-auth mode, uses the local system username for development/testing.
- * 
+ *
  * @param codayOptions - Coday configuration options
  * @param req - Express request object containing headers
  * @returns Username string for logging and thread ownership
