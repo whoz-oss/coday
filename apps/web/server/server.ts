@@ -47,59 +47,126 @@ const clientManager = new ServerClientManager(logger)
 // Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null
 
-// should take as input:
-// - project: string, the project name
-// - title: string, optional, title of the thread for
-// - prompts: array of strings, the prompts to run sequentially
-// - shouldWait: boolean (optional), whether or not to wait for the final message
+/**
+ * Webhook Endpoint - Programmatic AI Agent Interaction
+ * 
+ * This endpoint enables external systems to trigger Coday AI agent interactions remotely.
+ * It creates a one-shot Coday instance that processes prompts sequentially and optionally
+ * waits for completion before responding.
+ * 
+ * Request Body:
+ * - project: string (required) - The Coday project name to execute against
+ * - title: string (optional) - Title for the saved conversation thread
+ * - prompts: string[] (required) - Array of prompts to execute in sequence
+ * - shouldWait: boolean (optional, default: false) - Whether to wait for completion
+ * 
+ * Response Modes:
+ * - Async (shouldWait: false): Returns immediately with threadId for fire-and-forget operations
+ * - Sync (shouldWait: true): Waits for all prompts to complete and returns final result
+ * 
+ * Use Cases:
+ * - CI/CD pipeline integration for automated code analysis
+ * - External system integration for batch processing
+ * - Scheduled tasks and monitoring workflows
+ * - API-driven AI agent interactions
+ */
 app.post('/api/webhook', (req: express.Request, res: express.Response) => {
-  // extract the inputs
-  const { project, title, prompts, shouldWait } = req.body
+  let clientId: string | null = null
+  
+  try {
+    // Validate required fields
+    const { project, title, prompts, shouldWait } = req.body
+    
+    if (!project &) {
+      res.status(422).send({ error: 'Missing required parameter: project' })
+    }
+    
+    if (!prompts || !Array.isArray(prompts) || prompts.length === 0) {
+      res.status(422).send({ error: 'Missing or invalid prompts array' })
+    }
 
-  const username = getUsername(codayOptions, req)
+    const username = getUsername(codayOptions, req)
+    if (!username) {
+      res.status(403).send({ error: 'Unable to determine username' })
+    }
 
-  // make sure to add the thread save title instruction
-  const oneShotOptions = {
-    ...codayOptions,
-    oneshot: true,
-    project,
-    prompts: [`thread save ${title}`, ...prompts],
-  }
-  const clientId = Math.random().toString(36).substring(2, 15)
+    // Generate unique client ID for this webhook request
+    clientId = `webhook_${Math.random().toString(36).substring(2, 15)}`
 
-  const client = clientManager.getOrCreate(clientId, null, oneShotOptions, username)
+    // Configure one-shot Coday instance with automatic thread saving
+    const oneShotOptions = {
+      ...codayOptions,
+      oneshot: true,      // Creates isolated instance that terminates after processing
+      project,            // Target project for the AI agent interaction
+      prompts: title ? [`thread save ${title}`, ...prompts] : prompts, // Auto-save thread with title + user prompts
+    }
 
-  const interactor = client.getInteractor()
+    // Create a dedicated client instance for this webhook request
+    const client = clientManager.getOrCreate(clientId, null, oneShotOptions, username)
+    const interactor = client.getInteractor()
+    client.startCoday()
 
-  // start a Coday instance in standalone
-  client.startCoday()
+    // Log successful webhook initiation with clientId for log correlation
+    logger.logWebhook({
+      project,
+      title: title || 'Untitled',
+      username,
+      clientId,
+      promptCount: prompts.length,
+      shouldWait: !!shouldWait
+    })
 
-  logger.logWebhook({
-    project,
-    title,
-    username,
-  })
+    const threadIdSource = client.getThreadId()
 
-  const threadIdSource = client.getThreadId()
-
-  // plug the response on the right end: either starting of Coday or final message
-  if (shouldWait) {
-    // Wait for the interactor events stream to complete, then get the last message
-    const lastEventObservable = interactor.events.pipe(
-      filter((event: CodayEvent) => event instanceof MessageEvent && event.role === 'assistant' && !!event.name)
-    )
-    // Assume if the run has ended, the threadId is defined
-    lastValueFrom(lastEventObservable.pipe(withLatestFrom(threadIdSource)))
-      .then(([lastEvent, threadId]) => {
-        res.status(200).send({ threadId, lastEvent })
-      })
-      .catch((error) => {
-        console.error('Error waiting for webhook completion:', error)
-        res.status(500).send({ error: 'Webhook processing failed' })
-      })
-  } else {
-    // return asap with the id of the thread
-    firstValueFrom(threadIdSource).then((threadId) => res.status(201).send({ threadId }))
+    if (shouldWait) {
+      // Synchronous mode: wait for completion
+      const lastEventObservable = interactor.events.pipe(
+        filter((event: CodayEvent) => event instanceof MessageEvent && event.role === 'assistant' && !!event.name)
+      )
+      
+      lastValueFrom(lastEventObservable.pipe(withLatestFrom(threadIdSource)))
+        .then(([lastEvent, threadId]) => {
+          res.status(200).send({ threadId, lastEvent })
+        })
+        .catch((error) => {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+          logger.logWebhookError({ 
+            error: `Webhook completion failed: ${errorMessage}`, 
+            username, 
+            project, 
+            clientId, 
+          })
+          console.error('Error waiting for webhook completion:', error)
+          res.status(500).send({ error: 'Webhook processing failed' })
+        })
+    } else {
+      // Asynchronous mode: return immediately with thread ID
+      firstValueFrom(threadIdSource)
+        .then((threadId) => {
+          res.status(201).send({ threadId })
+        })
+        .catch((error) => {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+          logger.logWebhookError({ 
+            error: `Failed to get thread ID: ${errorMessage}`, 
+            username, 
+            project, 
+            clientId, 
+          })
+          console.error('Error getting thread ID for webhook:', error)
+          res.status(500).send({ error: 'Failed to initialize webhook processing' })
+        })
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    logger.logWebhookError({ 
+      error: `Webhook request failed: ${errorMessage}`, 
+      username: null, 
+      project: req.body?.project || null, 
+      clientId, 
+    })
+    console.error('Unexpected error in webhook endpoint:', error)
+    res.status(500).send({ error: 'Internal server error' })
   }
 })
 
@@ -147,6 +214,17 @@ app.post('/api/message', (req: express.Request, res: express.Response) => {
   }
 })
 
+/**
+ * Extract username for authentication and logging purposes
+ * 
+ * In authenticated mode, extracts username from the x-forwarded-email header
+ * (typically set by reverse proxy or authentication middleware).
+ * In no-auth mode, uses the local system username for development/testing.
+ * 
+ * @param codayOptions - Coday configuration options
+ * @param req - Express request object containing headers
+ * @returns Username string for logging and thread ownership
+ */
 function getUsername(codayOptions: CodayOptions, req: express.Request): string {
   return codayOptions.noAuth ? os.userInfo().username : (req.headers[EMAIL_HEADER] as string)
 }
