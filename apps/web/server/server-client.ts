@@ -10,6 +10,7 @@ import { ProjectService } from '@coday/service/project.service'
 import { IntegrationService } from '@coday/service/integration.service'
 import { MemoryService } from '@coday/service/memory.service'
 import { McpConfigService } from '@coday/service/mcp-config.service'
+import { WebhookService } from '@coday/service/webhook.service'
 import { CodayLogger } from '@coday/service/coday-logger'
 import { debugLog } from './log'
 
@@ -28,7 +29,8 @@ export class ServerClient {
     private readonly interactor: ServerInteractor,
     private readonly options: CodayOptions,
     private readonly username: string,
-    private readonly logger: CodayLogger
+    private readonly logger: CodayLogger,
+    private readonly webhookService: WebhookService
   ) {
     // Subscribe to interactor events
     if (response) {
@@ -94,6 +96,7 @@ export class ServerClient {
       memory,
       mcp,
       logger: this.logger,
+      webhook: this.webhookService,
     })
     this.coday.run().finally(() => {
       debugLog('CODAY', `Coday run finished for client ${this.clientId}`)
@@ -240,7 +243,10 @@ export class ServerClient {
 export class ServerClientManager {
   private readonly clients: Map<string, ServerClient> = new Map()
 
-  constructor(private readonly logger: CodayLogger) {}
+  constructor(
+    private readonly logger: CodayLogger,
+    private readonly webhookService: WebhookService
+  ) {}
 
   /**
    * Get or create a client for the given clientId
@@ -255,7 +261,7 @@ export class ServerClientManager {
     }
 
     const interactor = new ServerInteractor(clientId)
-    const client = new ServerClient(clientId, response, interactor, options, username, this.logger)
+    const client = new ServerClient(clientId, response, interactor, options, username, this.logger, this.webhookService)
     this.clients.set(clientId, client)
     return client
   }

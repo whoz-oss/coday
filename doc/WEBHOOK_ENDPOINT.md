@@ -21,7 +21,7 @@ x-forwarded-email: user@example.com  # Required unless running in no-auth mode
   "project": "string",           // Required: Project name
   "title": "string",             // Optional: Thread title  
   "prompts": ["string"],         // Required: Array of prompts
-  "shouldWait": boolean          // Optional: Wait for completion (default: false)
+  "awaitFinalAnswer": boolean          // Optional: Wait for completion (default: false)
 }
 ```
 
@@ -34,7 +34,7 @@ x-forwarded-email: user@example.com  # Required unless running in no-auth mode
 }
 ```
 
-**Synchronous (shouldWait: true)**:
+**Synchronous (awaitFinalAnswer: true)**:
 ```json
 {
   "threadId": "thread_abc123",
@@ -76,7 +76,7 @@ curl -X POST http://localhost:3000/api/webhook \
         "project": "ci-analysis", 
         "title": "PR Analysis - ${{ github.event.pull_request.number }}",
         "prompts": ["analyze pull request changes", "generate review summary"],
-        "shouldWait": true
+        "awaitFinalAnswer": true
       }'
 ```
 

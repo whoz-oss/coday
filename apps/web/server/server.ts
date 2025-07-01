@@ -7,6 +7,7 @@ import { CodayOptions, parseCodayOptions } from '@coday/options'
 import * as os from 'node:os'
 import { debugLog } from './log'
 import { CodayLogger } from '@coday/service/coday-logger'
+import { WebhookService } from '@coday/service/webhook.service'
 import { ThreadCleanupService } from '@coday/service/thread-cleanup.service'
 import { findAvailablePort } from './find-available-port'
 import { filter, firstValueFrom, lastValueFrom, withLatestFrom } from 'rxjs'
@@ -30,6 +31,12 @@ debugLog(
   'INIT',
   `Usage logging ${loggingEnabled ? 'enabled' : 'disabled'} ${codayOptions.logFolder ? `(custom folder: ${codayOptions.logFolder})` : ''}`
 )
+
+// Create single webhook service instance for all clients
+const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
+const configPath = codayOptions.configDir ?? defaultConfigPath
+const webhookService = new WebhookService(configPath)
+debugLog('INIT', 'Webhook service initialized')
 // Serve static files from the 'static' directory
 app.use(express.static(path.join(__dirname, '../client')))
 
@@ -41,55 +48,103 @@ app.get('/', (req: express.Request, res: express.Response) => {
 // Middleware to parse JSON bodies
 app.use(express.json())
 
-// Initialize the client manager with usage logger
-const clientManager = new ServerClientManager(logger)
+// Initialize the client manager with usage logger and webhook service
+const clientManager = new ServerClientManager(logger, webhookService)
 
 // Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null
 
 /**
- * Webhook Endpoint - Programmatic AI Agent Interaction
+ * Webhook Endpoint - UUID-based Programmatic AI Agent Interaction
  *
- * This endpoint enables external systems to trigger Coday AI agent interactions remotely.
- * It creates a one-shot Coday instance that processes prompts sequentially and optionally
- * waits for completion before responding.
+ * This endpoint enables external systems to trigger Coday AI agent interactions remotely
+ * using pre-configured webhook definitions identified by UUID.
+ *
+ * URL Parameters:
+ * - uuid: string (required) - The UUID of the configured webhook
  *
  * Request Body:
- * - project: string (required) - The Coday project name to execute against
  * - title: string (optional) - Title for the saved conversation thread
- * - prompts: string[] (required) - Array of prompts to execute in sequence
- * - shouldWait: boolean (optional, default: false) - Whether to wait for completion
+ * - prompts: string[] (required for 'free' type) - Array of prompts to execute
+ * - awaitFinalAnswer: boolean (optional, default: false) - Whether to wait for completion
+ * - [key: string]: any (for 'template' type) - Values to replace placeholders in template commands
  *
  * Response Modes:
- * - Async (shouldWait: false): Returns immediately with threadId for fire-and-forget operations
- * - Sync (shouldWait: true): Waits for all prompts to complete and returns final result
+ * - Async (awaitFinalAnswer: false): Returns immediately with threadId for fire-and-forget operations
+ * - Sync (awaitFinalAnswer: true): Waits for all prompts to complete and returns final result
  *
  * Use Cases:
  * - CI/CD pipeline integration for automated code analysis
  * - External system integration for batch processing
  * - Scheduled tasks and monitoring workflows
- * - API-driven AI agent interactions
+ * - API-driven AI agent interactions with pre-configured templates
  */
-app.post('/api/webhook', (req: express.Request, res: express.Response) => {
+app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Response) => {
   let clientId: string | null = null
 
   try {
-    // Validate required fields
-    const { project: projectInput, title, prompts, shouldWait } = req.body
-
-    if (!projectInput && !codayOptions.project) {
-      res.status(422).send({ error: 'Missing required parameter: project' })
+    // Extract UUID from URL parameters
+    const { uuid } = req.params
+    if (!uuid) {
+      res.status(400).send({ error: 'Missing webhook UUID in URL' })
+      return
     }
 
-    const project: string = codayOptions.project ?? projectInput
-
-    if (!prompts || !Array.isArray(prompts) || prompts.length === 0) {
-      res.status(422).send({ error: 'Missing or invalid prompts array' })
+    // Load webhook configuration
+    const webhook = await webhookService.get(uuid)
+    if (!webhook) {
+      res.status(404).send({ error: `Webhook with UUID '${uuid}' not found` })
+      return
     }
 
+    // Extract request body fields
+    const { title, prompts: bodyPrompts, awaitFinalAnswer, ...placeholderValues } = req.body
+
+    // Use webhook configuration
+    const project = webhook.project
+
+    // Use username that initiated the webhook call
     const username = getUsername(codayOptions, req)
+
+    // Determine prompts based on webhook command type
+    let prompts: string[]
+    if (webhook.commandType === 'free') {
+      // For 'free' type, use prompts from request body
+      if (!bodyPrompts || !Array.isArray(bodyPrompts) || bodyPrompts.length === 0) {
+        res.status(422).send({ error: 'Missing or invalid prompts array for free command type' })
+        return
+      }
+      prompts = bodyPrompts
+    } else if (webhook.commandType === 'template') {
+      // For 'template' type, use webhook commands with placeholder replacement
+      if (!webhook.commands || webhook.commands.length === 0) {
+        res.status(422).send({ error: 'Webhook has no template commands configured' })
+        return
+      }
+
+      // Replace placeholders in template commands
+      prompts = webhook.commands.map((command) => {
+        let processedCommand = command
+        // Simple string replacement for placeholders like {{key}}
+        Object.entries(placeholderValues).forEach(([key, value]) => {
+          const placeholder = `{{${key}}}`
+          processedCommand = processedCommand.replace(new RegExp(placeholder, 'g'), String(value))
+        })
+        return processedCommand
+      })
+    } else {
+      res.status(500).send({ error: `Unknown webhook command type: ${webhook.commandType}` })
+      return
+    }
+
+    if (!project) {
+      res.status(422).send({ error: 'Webhook project not configured' })
+      return
+    }
+
     if (!username) {
-      res.status(403).send({ error: 'Unable to determine username' })
+      res.status(422).send({ error: 'Webhook createdBy not configured' })
+      return
     }
 
     // Generate unique client ID for this webhook request
@@ -115,12 +170,14 @@ app.post('/api/webhook', (req: express.Request, res: express.Response) => {
       username,
       clientId,
       promptCount: prompts.length,
-      shouldWait: !!shouldWait,
+      awaitFinalAnswer: !!awaitFinalAnswer,
+      webhookName: webhook.name,
+      webhookUuid: webhook.uuid,
     })
 
     const threadIdSource = client.getThreadId()
 
-    if (shouldWait) {
+    if (awaitFinalAnswer) {
       // Synchronous mode: wait for completion
       const lastEventObservable = interactor.events.pipe(
         filter((event: CodayEvent) => event instanceof MessageEvent && event.role === 'assistant' && !!event.name)
@@ -164,7 +221,7 @@ app.post('/api/webhook', (req: express.Request, res: express.Response) => {
     logger.logWebhookError({
       error: `Webhook request failed: ${errorMessage}`,
       username: null,
-      project: req.body?.project || null,
+      project: null,
       clientId,
     })
     console.error('Unexpected error in webhook endpoint:', error)
