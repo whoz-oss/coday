@@ -2,7 +2,8 @@ import { ThreadMessage } from './ai-thread.types'
 
 export function partition(
   messages: ThreadMessage[],
-  charBudget: number | undefined
+  charBudget: number | undefined,
+  ratio: number = 0.7
 ): {
   messages: ThreadMessage[]
   overflow: ThreadMessage[]
@@ -10,9 +11,13 @@ export function partition(
   if (!charBudget || !messages.length) return { messages, overflow: [] }
   let overflowIndex = 0
   let count = 0
-  while (count < charBudget && overflowIndex < messages.length) {
-    count += messages[overflowIndex].length
-    overflowIndex += count < charBudget ? 1 : 0
+  const threshold = charBudget * ratio
+  for (const message of messages) {
+    count += message.length
+    overflowIndex += count < threshold ? 1 : 0
+  }
+  if (count < charBudget) {
+    return { messages, overflow: [] }
   }
 
   const underflow = messages.slice(0, overflowIndex)
