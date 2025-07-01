@@ -8,6 +8,16 @@
 
 This project is an agentic framework leveraging existing LLMs to let you define your agents on your projects.
 
+## Features
+
+- **Multi-Agent Support**: Define and configure custom AI agents for your projects
+- **Multiple LLM Providers**: Support for OpenAI, Anthropic, and other AI providers
+- **Web & Terminal Interfaces**: Choose between browser-based or command-line interaction
+- **Project-Based Configuration**: Scope agents and settings to specific projects
+- **Webhook Integration**: Trigger AI agent interactions programmatically from external systems
+- **Memory Management**: Persistent conversation history and context
+- **Tool Integration**: Extensible tool system for file operations, code analysis, and more
+
 There are several ways to use Coday:
 
 - as a dev-dep of a code project: uses the published npm package to run locally
@@ -116,3 +126,12 @@ Configure integrations via `config integration`.
 Directly edit `coday.yaml` for all project-specific configurations.
 
 See Coday's own `coday.yaml` file for reference, examples and documentation.
+
+## Documentation
+
+- [AI Configuration](doc/AI_CONFIGURATION.md) - Configure AI providers and models
+- [Integrations](doc/INTEGRATIONS.md) - Set up external service integrations
+- [Webhooks](doc/WEBHOOKS.md) - Programmatic API for triggering AI agent interactions
+- [Project Configuration](doc/PROJECT_CONFIGURATION.md) - Project-specific settings and options
+- [Architecture](doc/ARCHITECTURE.md) - System architecture and request flow
+- [Handler Design](doc/HANDLER_DESIGN.md) - Command handler patterns and implementation

@@ -313,7 +313,7 @@ It can be summarized as:
   /**
    * Log agent usage after a complete response cycle
    */
-  protected async logAgentUsage(agent: Agent, model: string, cost: number): Promise<void> {
-    await this.logger?.logAgentUsage(this.username ?? 'no_username', agent.name, model, cost)
+  protected logAgentUsage(agent: Agent, model: string, cost: number): void {
+    this.logger?.logAgentUsage(this.username ?? 'no_username', agent.name, model, cost)
   }
 }

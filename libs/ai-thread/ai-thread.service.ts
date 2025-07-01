@@ -12,8 +12,9 @@ import { filter } from 'rxjs/operators'
 import { ThreadSummary } from './ai-thread.types'
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import { UserService } from '../service/user.service'
+import { Killable } from '@coday/model/killable'
 
-export class AiThreadService {
+export class AiThreadService implements Killable {
   private readonly activeThread$ = new BehaviorSubject<AiThread | null>(null)
 
   /**
@@ -33,6 +34,10 @@ export class AiThreadService {
       this.activeThread$.next(null)
     })
     this.username = userService.username
+  }
+
+  async kill(): Promise<void> {
+    this.activeThread$.complete()
   }
 
   /**
@@ -121,12 +126,13 @@ export class AiThreadService {
       thread.id = crypto.randomUUID()
       thread.name = newName
     }
-    await repository.save(thread)
+    const saved = await repository.save(thread)
 
     // TODO: Post-processing
     // - Summarization
     // - Memory extraction
     // - Knowledge sharing
+    this.activeThread$.next(saved)
   }
 
   async autoSave(): Promise<void> {
