@@ -3,13 +3,14 @@ import { ServerInteractor } from '@coday/model/server-interactor'
 import { Coday } from '@coday/core'
 
 import { HeartBeatEvent } from '@coday/coday-events'
-import { Subscription } from 'rxjs'
+import { catchError, filter, first, map, Observable, of, Subscription, timeout } from 'rxjs'
 import { CodayOptions } from '@coday/options'
 import { UserService } from '@coday/service/user.service'
 import { ProjectService } from '@coday/service/project.service'
 import { IntegrationService } from '@coday/service/integration.service'
 import { MemoryService } from '@coday/service/memory.service'
 import { McpConfigService } from '@coday/service/mcp-config.service'
+import { WebhookService } from '@coday/service/webhook.service'
 import { CodayLogger } from '@coday/service/coday-logger'
 import { debugLog } from './log'
 
@@ -24,17 +25,20 @@ export class ServerClient {
 
   constructor(
     private readonly clientId: string,
-    private response: Response,
+    private response: Response | null,
     private readonly interactor: ServerInteractor,
     private readonly options: CodayOptions,
     private readonly username: string,
-    private readonly logger: CodayLogger
+    private readonly logger: CodayLogger,
+    private readonly webhookService: WebhookService
   ) {
     // Subscribe to interactor events
-    this.subscription = this.interactor.events.subscribe((event) => {
-      const data = `data: ${JSON.stringify(event)}\n\n`
-      this.response.write(data)
-    })
+    if (response) {
+      this.subscription = this.interactor.events.subscribe((event) => {
+        const data = `data: ${JSON.stringify(event)}\n\n`
+        this.response?.write(data)
+      })
+    }
     this.heartbeatInterval = setInterval(() => this.sendHeartbeat(), ServerClient.HEARTBEAT_INTERVAL)
   }
 
@@ -92,6 +96,7 @@ export class ServerClient {
       memory,
       mcp,
       logger: this.logger,
+      webhook: this.webhookService,
     })
     this.coday.run().finally(() => {
       debugLog('CODAY', `Coday run finished for client ${this.clientId}`)
@@ -110,7 +115,7 @@ export class ServerClient {
 
     // Clear heartbeat interval
     clearInterval(this.heartbeatInterval)
-    this.response.end()
+    this.response?.end()
 
     if (immediate) {
       debugLog('CLIENT', `Immediate cleanup for client ${this.clientId}`)
@@ -192,6 +197,20 @@ export class ServerClient {
     return this.coday.context.aiThread.getEventById(eventId)
   }
 
+  getThreadId(): Observable<string | undefined> {
+    const source = this.coday?.aiThreadService?.activeThread
+
+    if (!source) return of(undefined)
+
+    return source.pipe(
+      map((thread) => thread?.id),
+      filter((id): id is string => !!id), // Filter out falsy values and type guard
+      first(), // Take the first truthy value and complete
+      timeout(5000), // Timeout after 5 seconds
+      catchError(() => of(undefined)) // Return undefined on timeout or error
+    )
+  }
+
   /**
    * Complete cleanup of client resources.
    * Destroys the Coday instance and all associated resources.
@@ -199,7 +218,7 @@ export class ServerClient {
   private cleanup(): void {
     debugLog('CLIENT', `Starting full cleanup for client ${this.clientId}`)
     this.subscription?.unsubscribe()
-    
+
     if (this.coday) {
       debugLog('CODAY', `Killing Coday instance for client ${this.clientId}`)
       this.coday.kill().catch((error) => {
@@ -207,13 +226,13 @@ export class ServerClient {
       })
       delete this.coday
     }
-    
+
     if (this.terminationTimeout) {
       debugLog('CLIENT', `Clearing termination timeout during cleanup for client ${this.clientId}`)
       clearTimeout(this.terminationTimeout)
       delete this.terminationTimeout
     }
-    
+
     debugLog('CLIENT', `Full cleanup completed for client ${this.clientId}`)
   }
 }
@@ -224,20 +243,25 @@ export class ServerClient {
 export class ServerClientManager {
   private readonly clients: Map<string, ServerClient> = new Map()
 
-  constructor(private readonly logger: CodayLogger) {}
+  constructor(
+    private readonly logger: CodayLogger,
+    private readonly webhookService: WebhookService
+  ) {}
 
   /**
    * Get or create a client for the given clientId
    */
-  getOrCreate(clientId: string, response: Response, options: CodayOptions, username: string): ServerClient {
+  getOrCreate(clientId: string, response: Response | null, options: CodayOptions, username: string): ServerClient {
     const existingClient = this.clients.get(clientId)
     if (existingClient) {
-      existingClient.reconnect(response)
+      if (response) {
+        existingClient.reconnect(response)
+      }
       return existingClient
     }
 
     const interactor = new ServerInteractor(clientId)
-    const client = new ServerClient(clientId, response, interactor, options, username, this.logger)
+    const client = new ServerClient(clientId, response, interactor, options, username, this.logger, this.webhookService)
     this.clients.set(clientId, client)
     return client
   }

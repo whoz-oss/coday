@@ -3,6 +3,7 @@ import { IntegrationHandler } from './integration.handler'
 import { AiConfigHandler } from './ai-config.handler'
 import { DefaultAgentHandler } from './default-agent.handler'
 import { McpConfigHandler } from './mcp-config/mcp-config.handler'
+import { WebhookHandler } from './webhook.handler'
 import { Interactor, NestedHandler } from '../../model'
 import { CodayServices } from '../../coday-services'
 import { UserBioHandler } from './user-bio.handler'
@@ -29,6 +30,7 @@ export class ConfigHandler extends NestedHandler {
       new AiConfigHandler(this.interactor, this.services),
       new DefaultAgentHandler(this.interactor, this.services),
       new McpConfigHandler(this.interactor, this.services),
+      new WebhookHandler(this.interactor, this.services),
       new UserBioHandler(this.interactor, this.services),
     ]
   }

@@ -4,7 +4,6 @@ import { RunStatus, ThreadMessage } from './ai-thread/ai-thread.types'
 import { AiThreadRepositoryFactory } from './ai-thread/repository/ai-thread.repository.factory'
 import { AiHandler, ConfigHandler } from './handler'
 import { HandlerLooper } from './handler-looper'
-import { selectAiThread } from './handler/ai-thread/select-ai-thread'
 import { AiClientProvider } from './integration/ai/ai-client-provider'
 import { keywords } from './keywords'
 import { CommandContext, Interactor } from './model'
@@ -27,7 +26,7 @@ export class Coday {
 
   private killed: boolean = false
 
-  private aiThreadService: AiThreadService
+  aiThreadService: AiThreadService
   private aiClientProvider: AiClientProvider
 
   constructor(
@@ -169,6 +168,7 @@ export class Coday {
       if (this.services.agent) {
         await this.services.agent.kill()
       }
+      this.aiThreadService.kill()
 
       // Reset AI client provider for fresh connections
       this.aiClientProvider.cleanup()
@@ -246,7 +246,7 @@ export class Coday {
 
   private async initThread(): Promise<void> {
     if (!this.context?.aiThread) {
-      await selectAiThread(this.interactor, this.aiThreadService)
+      this.aiThreadService.create()
     }
   }
 
@@ -261,8 +261,7 @@ export class Coday {
       }
     } else if (!this.options.oneshot) {
       // allow user input
-      const projectName = this.context?.project.name
-      userCommand = await this.interactor.promptText(`${this.services.user.username} (${projectName})`)
+      userCommand = await this.interactor.promptText(`${this.services.user.username}`)
     }
     return userCommand
   }
