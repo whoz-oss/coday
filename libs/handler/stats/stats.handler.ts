@@ -1,6 +1,7 @@
 import { Interactor, NestedHandler } from '../../model'
 import { CodayServices } from '../../coday-services'
 import { StatsAgentsHandler } from './stats-agents.handler'
+import { StatsWebhooksHandler } from './stats-webhooks.handler'
 
 export class StatsHandler extends NestedHandler {
   constructor(
@@ -16,6 +17,9 @@ export class StatsHandler extends NestedHandler {
       interactor
     )
 
-    this.handlers = [new StatsAgentsHandler(this.interactor, this.services)]
+    this.handlers = [
+      new StatsAgentsHandler(this.interactor, this.services),
+      new StatsWebhooksHandler(this.interactor, this.services)
+    ]
   }
 }
