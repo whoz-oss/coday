@@ -71,15 +71,38 @@ export abstract class AiClient {
 
   private getCompactor(model: string, maxChars: number): (messages: ThreadMessage[]) => Promise<ThreadMessage> {
     return async (messages: ThreadMessage[]): Promise<ThreadMessage> => {
-      const transcript = messages
+      // Build the initial transcript
+      const fullTranscript = messages
         // without the tool request and response, hypothesis is we can do without and simply the "text"
         .filter((m) => m instanceof MessageEvent)
         .map((m) => ` - ${m.role}: ${m.content}`)
         .join('\n')
 
       const firstUserMessage = messages.find((m) => m instanceof MessageEvent && m.role === 'user')
-
       const summaryBudget = Math.floor(maxChars / 20)
+
+      // Calculate safe transcript size
+      // Account for: prompt template (~150 chars) + response budget + safety margin (20%)
+      const promptTemplateOverhead = 150
+      const safetyMargin = 0.2
+      const maxTranscriptChars = Math.floor(
+        (maxChars - promptTemplateOverhead - summaryBudget) * (1 - safetyMargin)
+      )
+
+      // Limit transcript size to prevent context window overflow
+      let transcript = fullTranscript
+      let wasTruncated = false
+      
+      if (fullTranscript.length > maxTranscriptChars) {
+        // Truncate from the beginning to keep most recent content
+        transcript = '...' + fullTranscript.slice(-(maxTranscriptChars - 3))
+        wasTruncated = true
+        
+        this.interactor.debug(
+          `Transcript truncated: ${fullTranscript.length} → ${transcript.length} chars ` +
+          `(limit: ${maxTranscriptChars}, budget: ${maxChars})`
+        )
+      }
 
       const prompt = `Here is a transcript of a conversation:
 <transcript>${transcript}</transcript>
@@ -87,6 +110,7 @@ export abstract class AiClient {
 It can be summarized as:
 <summary>
 `
+      
       let summary: string
       try {
         summary = await this.complete(prompt, {
@@ -94,11 +118,21 @@ It can be summarized as:
           maxTokens: summaryBudget,
           stopSequences: ['</summary>'],
         })
-        this.interactor.debug(`Compacted ${messages.length} messages into ${summary.length} chars summary.`)
+        
+        const truncatedInfo = wasTruncated ? ' (from truncated transcript)' : ''
+        this.interactor.debug(
+          `Compacted ${messages.length} messages into ${summary.length} chars summary${truncatedInfo}.`
+        )
       } catch (e) {
         summary = '...previous conversation truncated'
-        console.error(e)
-        this.interactor.warn('Could not compact properly the conversation, truncated beginning instead.')
+        console.error('Compaction failed:', e)
+        
+        const errorDetails = e instanceof Error ? e.message : 'Unknown error'
+        this.interactor.warn(
+          `Could not compact conversation (${errorDetails}). ` +
+          `Transcript size: ${transcript.length} chars, Budget: ${maxChars} chars. ` +
+          'Falling back to simple truncation.'
+        )
       }
 
       // then make summary the first message
