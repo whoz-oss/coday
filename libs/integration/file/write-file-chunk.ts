@@ -16,16 +16,15 @@ type WriteFileChunkInput = {
 const MINIMUM_CHUNK_LENGTH = 15
 
 export const writeFileChunk = ({ relPath, root, interactor, replacements }: WriteFileChunkInput) => {
-  // need to prevent double slashes
-  // Construct the absolute path ensuring no double slashes
   const fullPath = relPath ? path.resolve(root, relPath) : root
+  if (!replacements || !Array.isArray(replacements) || !replacements.length) {
+    return 'File not edited, `replacements` needs to be an array of `{oldPart: string; newPart: string}`.'
+  }
 
   try {
     // Check if the file exists
     if (!existsSync(fullPath)) {
-      const errorMessage = `No file found at ${fullPath}`
-      interactor.error(errorMessage)
-      return errorMessage
+      return `No file found at ${fullPath}`
     }
 
     // Read the entire file content as a string
@@ -35,7 +34,7 @@ export const writeFileChunk = ({ relPath, root, interactor, replacements }: Writ
     let tooShortChunks: string[] = []
 
     // Perform replacements for each pair of old and new parts
-    replacements?.forEach(({ oldPart, newPart }) => {
+    replacements.forEach(({ oldPart, newPart }) => {
       if (oldPart.length < MINIMUM_CHUNK_LENGTH) {
         tooShortChunks.push(oldPart)
         return
