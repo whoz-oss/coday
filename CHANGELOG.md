@@ -1,3 +1,18 @@
+## 0.14.0 (2025-07-01)
+
+### 🩹 Fixes
+
+- incorrect toolResponse creation resulting in lost link to toolRequest ([ae43868](https://github.com/whoz-oss/coday/commit/ae43868))
+- incorrect toolResponse creation ([#134](https://github.com/whoz-oss/coday/pull/134))
+- compact more than just the strict over-budget ([fbe55bd](https://github.com/whoz-oss/coday/commit/fbe55bd))
+- do not overshoot the compacting limits ([0cf188c](https://github.com/whoz-oss/coday/commit/0cf188c))
+- too frequent compaction ([#135](https://github.com/whoz-oss/coday/pull/135))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+- vincent.audibert
+
 
 
 ## 0.13.1 (2025-06-25)
