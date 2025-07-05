@@ -422,8 +422,7 @@ export class OpenaiClient extends AiClient {
 
             const newStream = client!.beta.threads.runs.submitToolOutputsStream(
               thread.data.openai.assistantThreadData.threadId!,
-              chunk.data.id,
-              { tool_outputs: toolOutputs }
+              { tool_outputs: toolOutputs, thread_id: thread.data.op.assistantThreadData.threadId! }
             )
             if (!this.shouldProceed(thread)) return
             await this.processAssistantStream.call(this, newStream, agent, model, client, thread, subscriber)

@@ -1,13 +1,12 @@
 import { Agent, AiClient, AiModel, AiProviderConfig, CompletionOptions, Interactor } from '../model'
 import Anthropic from '@anthropic-ai/sdk'
-import { MessageParam } from '@anthropic-ai/sdk/resources'
 import { ToolSet } from '../integration/tool-set'
 import { CodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 import { Observable, of, Subject } from 'rxjs'
 import { AiThread } from '../ai-thread/ai-thread'
 import { ThreadMessage } from '../ai-thread/ai-thread.types'
-import { TextBlockParam } from '@anthropic-ai/sdk/resources/messages'
 import { CodayLogger } from '../service/coday-logger'
+import { TextContent } from '../coday-events'
 
 interface RateLimitInfo {
   inputTokensRemaining: number
@@ -213,31 +212,35 @@ export class AnthropicClient extends AiClient {
    * Convert a ThreadMessage to Claude's MessageParam format
    * Includes mobile cache marker optimization
    */
-  private toClaudeMessage(messages: ThreadMessage[], thread: AiThread, updateCache: boolean = false): MessageParam[] {
+  private toClaudeMessage(
+    messages: ThreadMessage[],
+    thread: AiThread,
+    updateCache: boolean = false
+  ): Anthropic.MessageParam[] {
     // Get or update the cache marker position
     const markerMessageId = this.getOrUpdateCacheMarker(thread, messages, updateCache)
 
     return messages
       .map((msg, index) => {
-        let claudeMessage: MessageParam | undefined
+        let claudeMessage: Anthropic.MessageParam | undefined
         const shouldAddCache = markerMessageId && msg.timestamp === markerMessageId
-
         if (msg instanceof MessageEvent) {
           const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
           const message = msg as MessageEvent
           const content = this.enhanceWithCurrentDateTime(message.content, isLastUserMessage)
-          const claudeContent: string | Anthropic.ContentBlockParam[] =
+          const claudeContent: string | (Anthropic.ImageBlockParam | TextContent)[] =
             typeof content === 'string'
               ? content
-              : content
-                  .map((c) => {
+              : (content
+                  .map((c, index) => {
+                    let result: Anthropic.ImageBlockParam | TextContent | undefined = undefined
                     if (c.type === 'text') {
                       // Coday TextContent already matches the Claude type, how convenient...
-                      return c
+                      result = c
                     }
                     if (c.type === 'image') {
                       // Convert Coday ImageContent to Claude ImageBlockParam
-                      const imageBlock: Anthropic.ContentBlockParam = {
+                      result = {
                         type: 'image',
                         source: {
                           type: 'base64',
@@ -245,22 +248,37 @@ export class AnthropicClient extends AiClient {
                           data: c.data,
                         },
                       }
-                      return imageBlock
                     }
-                    // Fallback for unknown content types
-                    throw new Error(`Unknown content type: ${(c as any).type}`)
+                    if (!result) {
+                      // Fallback for unknown content types
+                      this.interactor.warn(`Unknown content type: ${(c as any).type}`)
+                      return null
+                    }
+                    return {
+                      ...result,
+                      // add cache marker on last element of content
+                      ...(shouldAddCache && index === content.length - 1 && { cache_control: { type: 'ephemeral' } }),
+                    }
                   })
-                  .filter(Boolean)
+                  // cast forced by cache_control type unduly generalized as string instead of 'ephemeral'
+                  .filter(Boolean) as (Anthropic.ImageBlockParam | TextContent)[])
           // Structure message with content blocks for cache_control support
-          claudeMessage = {
-            role: msg.role,
-            content: [
-              {
-                type: 'text',
-                text: content,
-                ...(shouldAddCache && { cache_control: { type: 'ephemeral' } }),
-              },
-            ],
+          if (typeof claudeContent === 'string') {
+            // Always use block format for text, and put cache_control on the block if needed
+            const block: TextContent & { cache_control?: { type: 'ephemeral' } } = {
+              type: 'text',
+              text: claudeContent,
+              ...(shouldAddCache ? { cache_control: { type: 'ephemeral' } } : {}),
+            };
+            claudeMessage = {
+              role: msg.role,
+              content: [block],
+            };
+          } else {
+            claudeMessage = {
+              role: msg.role,
+              content: claudeContent,
+            };
           }
         }
         if (msg instanceof ToolRequestEvent) {
@@ -406,7 +424,7 @@ export class AnthropicClient extends AiClient {
             type: 'text',
             cache_control: { type: 'ephemeral' },
           },
-        ] as unknown as Array<TextBlockParam>,
+        ] as unknown as Array<Anthropic.TextBlockParam>,
         tools: this.getClaudeTools(agent.tools),
         temperature: agent.definition.temperature ?? 0.8,
         max_tokens: 8192,

@@ -1,7 +1,7 @@
 import { keywords } from '../../keywords'
 import { Agent, CommandContext, CommandHandler, Interactor, Killable } from '../../model'
 import { lastValueFrom, Observable } from 'rxjs'
-import { CodayEvent, MessageEvent } from '@coday/coday-events'
+import { CodayEvent } from '@coday/coday-events'
 import { AgentService } from '../../agent'
 import { parseAgentCommand } from './parseAgentCommand'
 import { AiThreadService } from '../../ai-thread/ai-thread.service'
@@ -111,9 +111,8 @@ export class AiHandler extends CommandHandler implements Killable {
     events.subscribe({
       next: (event) => {
         this.interactor.sendEvent(event)
-        if (event instanceof MessageEvent) {
-          this.interactor.displayText(event.getTextContent(), event.name)
-        }
+        // MessageEvent is now handled directly by the frontend
+        // No need to convert to TextEvent - this would cause duplication
       },
       error: (error) => {
         if (error.message === 'Processing interrupted by user request') {

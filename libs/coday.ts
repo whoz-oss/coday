@@ -7,7 +7,7 @@ import { HandlerLooper } from './handler-looper'
 import { AiClientProvider } from './integration/ai/ai-client-provider'
 import { keywords } from './keywords'
 import { CommandContext, Interactor } from './model'
-import { AnswerEvent, MessageEvent, TextEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
+import { MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 import { AgentService } from './agent'
 import { CodayOptions } from './options'
 import { CodayServices } from './coday-services'
@@ -63,14 +63,11 @@ export class Coday {
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     )
 
-    // Convert and emit each message
+    // Send messages directly - no conversion needed
     for (const message of sortedMessages) {
       if (message instanceof MessageEvent) {
-        if (message.role === 'assistant') {
-          this.interactor.sendEvent(new TextEvent({ ...message, speaker: message.name, text: message.getTextContent() }))
-        } else {
-          this.interactor.sendEvent(new AnswerEvent({ ...message, answer: message.getTextContent(), invite: message.name }))
-        }
+        // Send MessageEvent directly - frontend now handles rich content
+        this.interactor.sendEvent(message)
       } else if (message instanceof ToolRequestEvent || message instanceof ToolResponseEvent) {
         this.interactor.sendEvent(message)
       }
