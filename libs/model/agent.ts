@@ -73,7 +73,8 @@ export class Agent {
     this.definition.modelSize = newModelSize
 
     // Add processed command to thread
-    thread.addUserMessage('user', processedCommand)
+    // TODO: assess whether we can make the command a MessageContent array: containing text and images
+    thread.addUserMessage('user', { type: 'text', content: processedCommand })
 
     // Run with updated configuration
     return await this.aiClient.run(this, thread)

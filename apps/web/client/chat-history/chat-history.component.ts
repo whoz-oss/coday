@@ -311,7 +311,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
   private addUserMessage(event: MessageEvent): void {
     const newEntry = this.createRichMessageElement(event)
     newEntry.classList.add('text', 'right')
-    
+
     // Add button container
     const buttonContainer = document.createElement('div')
     buttonContainer.classList.add('message-button-container')
@@ -331,17 +331,17 @@ export class ChatHistoryComponent implements CodayEventHandler {
     copyButton.addEventListener('click', (event) => {
       event.stopPropagation()
       this.copyToClipboard(textContent)
-      
+
       const clickedButton = event.currentTarget as HTMLButtonElement
       if (clickedButton) {
         document.querySelectorAll('.copy-button.active').forEach((btn) => {
           btn.classList.remove('active')
           btn.textContent = '📋'
         })
-        
+
         clickedButton.classList.add('active')
         clickedButton.textContent = '✓'
-        
+
         setTimeout(() => {
           clickedButton.classList.remove('active')
           clickedButton.textContent = '📋'
@@ -351,7 +351,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
 
     buttonContainer.appendChild(copyButton)
     newEntry.appendChild(buttonContainer)
-    
+
     this.appendMessageElement(newEntry)
   }
 
@@ -381,17 +381,17 @@ export class ChatHistoryComponent implements CodayEventHandler {
     copyButton.addEventListener('click', (event) => {
       event.stopPropagation()
       this.copyToClipboard(textContent)
-      
+
       const clickedButton = event.currentTarget as HTMLButtonElement
       if (clickedButton) {
         document.querySelectorAll('.copy-button.active').forEach((btn) => {
           btn.classList.remove('active')
           btn.textContent = '📋'
         })
-        
+
         clickedButton.classList.add('active')
         clickedButton.textContent = '✓'
-        
+
         setTimeout(() => {
           clickedButton.classList.remove('active')
           clickedButton.textContent = '📋'
@@ -401,7 +401,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
 
     buttonContainer.appendChild(copyButton)
     newEntry.appendChild(buttonContainer)
-    
+
     this.appendMessageElement(newEntry)
 
     // Announce if enabled and recent
@@ -414,17 +414,17 @@ export class ChatHistoryComponent implements CodayEventHandler {
   private createRichMessageElement(event: MessageEvent): HTMLDivElement {
     const newEntry = document.createElement('div')
     newEntry.classList.add('message')
-    
+
     // Add speaker
     const speakerElement = document.createElement('div')
     speakerElement.classList.add('speaker')
     speakerElement.textContent = event.name
     newEntry.appendChild(speakerElement)
-    
+
     // Create content container
     const contentContainer = document.createElement('div')
     contentContainer.classList.add('message-content')
-    
+
     if (typeof event.content === 'string') {
       // Simple string content - parse as markdown
       const parsed = marked.parse(event.content)
@@ -441,7 +441,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
         if (content.type === 'text') {
           const textDiv = document.createElement('div')
           textDiv.classList.add('text-content')
-          const parsed = marked.parse(content.text)
+          const parsed = marked.parse(content.content)
           if (parsed instanceof Promise) {
             parsed.then((html) => {
               textDiv.innerHTML = html
@@ -453,25 +453,25 @@ export class ChatHistoryComponent implements CodayEventHandler {
         } else if (content.type === 'image') {
           const imageContainer = document.createElement('div')
           imageContainer.classList.add('image-content')
-          
+
           const img = document.createElement('img')
-          img.src = `data:${content.mimeType};base64,${content.data}`
+          img.src = `data:${content.mimeType};base64,${content.content}`
           img.alt = content.source || 'Image'
           img.classList.add('chat-image')
-          
+
           // Add max dimensions to prevent huge images
           img.style.maxWidth = '100%'
           img.style.maxHeight = '500px'
           img.style.objectFit = 'contain'
-          
+
           // Add click to open in new tab
           img.addEventListener('click', (e) => {
             e.stopPropagation()
             window.open(img.src, '_blank')
           })
-          
+
           imageContainer.appendChild(img)
-          
+
           // Add source info if available
           if (content.source) {
             const sourceDiv = document.createElement('div')
@@ -482,12 +482,12 @@ export class ChatHistoryComponent implements CodayEventHandler {
             sourceDiv.style.marginTop = '4px'
             imageContainer.appendChild(sourceDiv)
           }
-          
+
           contentContainer.appendChild(imageContainer)
         }
       })
     }
-    
+
     newEntry.appendChild(contentContainer)
     return newEntry
   }

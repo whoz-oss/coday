@@ -183,7 +183,7 @@ export class ToolResponseEvent extends CodayEvent {
       if (this.output.type === 'text') {
         this.length = this.output.content.length + this.toolRequestId.length + 20
       } else if (this.output.type === 'image') {
-        const tokens = ((this.output.width || 0) * (this.output.height || 0)) / 750
+        const tokens = ((this.output.width ?? 0) * (this.output.height ?? 0)) / 750
         this.length = (tokens ? tokens * 3.5 : this.output.content.length) + this.toolRequestId.length + 20
       } else {
         this.length = this.toolRequestId.length + 20
@@ -208,13 +208,6 @@ export class ToolResponseEvent extends CodayEvent {
   }
 
   /**
-   * Check if the tool response contains an image
-   */
-  hasImages(): boolean {
-    return typeof this.output !== 'string' && this.output.type === 'image'
-  }
-
-  /**
    * Renders the tool response as a single line string with truncation
    * @param maxLength Maximum length for the output before truncation
    * @returns A formatted string representation
@@ -222,7 +215,7 @@ export class ToolResponseEvent extends CodayEvent {
   toSingleLineString(maxLength: number = 50): string {
     const textOutput = this.getTextOutput()
     const truncatedOutput = truncateText(textOutput, maxLength)
-    const imageIndicator = this.hasImages() ? ' [image]' : ''
+    const imageIndicator = typeof this.output !== 'string' && this.output.type === 'image' ? ' [image]' : ''
     return `⮑ ${truncatedOutput}${imageIndicator}`
   }
 }

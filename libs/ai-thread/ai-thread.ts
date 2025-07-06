@@ -4,7 +4,7 @@
  * and ensuring proper message sequencing.
  */
 
-import { buildCodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
+import { buildCodayEvent, MessageContent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import { ToolCall, ToolResponse } from '../integration/tool-call'
 import { EmptyUsage, RunStatus, ThreadMessage, ThreadSerialized, Usage } from './ai-thread.types'
@@ -230,18 +230,18 @@ export class AiThread {
    * @param username - The name of the user sending the message
    * @param content - The content of the message
    */
-  addUserMessage(username: string, content: string): void {
+  addUserMessage(username: string, content: MessageContent): void {
     const lastMessage = this.messages[this.messages.length - 1]
     const shouldMergeIntoLastMessage =
       lastMessage && lastMessage instanceof MessageEvent && lastMessage.role === 'user' && lastMessage.name === username
 
     if (shouldMergeIntoLastMessage) {
-      lastMessage.content += `\n\n${content}`
+      lastMessage.content.push(content)
     } else {
       this.add(
         new MessageEvent({
           role: 'user',
-          content,
+          content: [content],
           name: username,
         })
       )
@@ -253,7 +253,7 @@ export class AiThread {
    * @param agentName - The name of the AI agent sending the message
    * @param content - The content of the message
    */
-  addAgentMessage(agentName: string, content: string): void {
+  addAgentMessage(agentName: string, content: MessageContent): void {
     const lastMessage = this.messages[this.messages.length - 1]
     const shouldMergeIntoLastMessage =
       lastMessage &&
@@ -262,12 +262,12 @@ export class AiThread {
       lastMessage.name === agentName
 
     if (shouldMergeIntoLastMessage) {
-      lastMessage.content += `\n\n${content}`
+      lastMessage.content.push(content)
     } else {
       this.add(
         new MessageEvent({
           role: 'assistant',
-          content,
+          content: [content],
           name: agentName,
         })
       )

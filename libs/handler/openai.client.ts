@@ -243,52 +243,57 @@ export class OpenaiClient extends AiClient {
       content: agent.systemInstructions,
       role: 'system',
     }
-    const openaiMessages = messages
-      .map((msg, index) => {
-        let openaiMessage: ChatCompletionMessageParam | undefined
-        if (msg instanceof MessageEvent) {
-          const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
-          const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
 
-          // Convert rich content to OpenAI format
-          const openaiContent: string | OpenAI.ChatCompletionContentPart[] =
-            typeof content === 'string'
-              ? content
-              : content.map((c) => {
-                  if (c.type === 'text') {
-                    return { type: 'text' as const, text: c.text }
-                  }
-                  if (c.type === 'image') {
-                    return {
-                      type: 'image_url' as const,
-                      image_url: {
-                        url: `data:${c.mimeType};base64,${c.data}`,
-                        detail: 'auto' as const, // Let OpenAI choose the appropriate detail level
-                      },
-                    }
-                  }
-                  throw new Error(`Unknown content type: ${(c as any).type}`)
-                })
+    const openaiMessages = messages.flatMap((msg, index): ChatCompletionMessageParam[] => {
+      if (msg instanceof MessageEvent) {
+        const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
+        const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
 
-          if (msg.role === 'assistant') {
-            openaiMessage = {
+        // Convert rich content to OpenAI format
+        const openaiContent: string | OpenAI.ChatCompletionContentPart[] =
+          typeof content === 'string'
+            ? content
+            : content.map((c) => {
+                if (c.type === 'text') {
+                  return { type: 'text' as const, text: c.content }
+                }
+                if (c.type === 'image') {
+                  return {
+                    type: 'image_url' as const,
+                    image_url: {
+                      url: `data:${c.mimeType};base64,${c.content}`,
+                      detail: 'auto' as const, // Let OpenAI choose the appropriate detail level
+                    },
+                  }
+                }
+                throw new Error(`Unknown content type: ${(c as any).type}`)
+              })
+
+        if (msg.role === 'assistant') {
+          return [
+            {
               role: 'assistant' as const,
               content:
                 typeof openaiContent === 'string'
                   ? openaiContent
                   : openaiContent.map((c) => (c.type === 'text' ? c.text : '[Image]')).join(' '),
               name: agent.name,
-            }
-          } else {
-            openaiMessage = {
+            },
+          ]
+        } else {
+          return [
+            {
               role: 'user' as const,
               content: openaiContent,
               name: msg.name,
-            }
-          }
+            },
+          ]
         }
-        if (msg instanceof ToolRequestEvent) {
-          openaiMessage = {
+      }
+
+      if (msg instanceof ToolRequestEvent) {
+        return [
+          {
             role: 'assistant',
             name: agent.name,
             tool_calls: [
@@ -301,18 +306,63 @@ export class OpenaiClient extends AiClient {
                 },
               },
             ],
+          },
+        ]
+      }
+
+      if (msg instanceof ToolResponseEvent) {
+        if (typeof msg.output === 'string') {
+          // Simple string output
+          return [
+            {
+              role: 'tool',
+              content: msg.output,
+              tool_call_id: msg.toolRequestId,
+            },
+          ]
+        } else {
+          // Rich content (MessageContent) - OpenAI workaround needed for images
+          const content = msg.output
+
+          if (content.type === 'image') {
+            // Return two messages: tool response + user message with image
+            return [
+              {
+                role: 'tool',
+                content: 'Image retrieved successfully. See following message.',
+                tool_call_id: msg.toolRequestId,
+              },
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'image_url' as const,
+                    image_url: {
+                      url: `data:${content.mimeType};base64,${content.data}`,
+                      detail: 'auto' as const,
+                    },
+                  },
+                ],
+                name: 'system', // Indicate this is a system-generated message
+              },
+            ]
+          } else if (content.type === 'text') {
+            // Text content
+            return [
+              {
+                role: 'tool',
+                content: content.text,
+                tool_call_id: msg.toolRequestId,
+              },
+            ]
+          } else {
+            throw new Error(`Unknown content type: ${(content as any).type}`)
           }
         }
-        if (msg instanceof ToolResponseEvent) {
-          openaiMessage = {
-            role: 'tool',
-            content: msg.output,
-            tool_call_id: msg.toolRequestId,
-          }
-        }
-        return openaiMessage
-      })
-      .filter((m) => !!m)
+      }
+
+      return [] // Should not happen, but satisfies TypeScript
+    })
 
     return [systemInstructionMessage, ...openaiMessages]
   }
@@ -415,7 +465,8 @@ export class OpenaiClient extends AiClient {
                 thread.addToolResponseEvents([responseEvent])
                 toolOutputs.push({
                   tool_call_id: request.toolRequestId,
-                  output: responseEvent.output,
+                  // TODO: see if we cannot use a MessageContent for toolOutput ?
+                  output: responseEvent.getTextOutput(),
                 })
               })
             )

@@ -8,6 +8,9 @@ import * as yaml from 'yaml'
 import { AiThread } from '../ai-thread'
 import { AiThreadRepository } from '../ai-thread.repository'
 import { ThreadRepositoryError, ThreadSummary } from '../ai-thread.types'
+import { migrateData } from '../../utils/data-migration'
+import { aiThreadMigrations } from '@coday/ai-thread/ai-thread.migrations'
+import { writeYamlFile } from '@coday/service/write-yaml-file'
 
 /**
  * Helper function to safely read YAML file content
@@ -72,8 +75,19 @@ export class FileAiThreadRepository implements AiThreadRepository {
       const file = await this.findThreadFile(id)
       if (!file) return null
 
-      const data = await readYamlFile(path.join(this.threadsDir, file))
-      return data ? new AiThread(data) : null
+      const filePath = path.join(this.threadsDir, file)
+      const data = await readYamlFile(filePath)
+      if (!data) {
+        return null
+      }
+      // do migrations on thread
+      const migratedThread = migrateData(data, aiThreadMigrations)
+
+      if (migratedThread !== data) {
+        writeYamlFile(filePath, migratedThread)
+      }
+
+      return new AiThread(migratedThread)
     } catch (error) {
       throw new ThreadRepositoryError(`Failed to read thread ${id}`, error as Error)
     }
@@ -143,7 +157,7 @@ export class FileAiThreadRepository implements AiThreadRepository {
               .map(async (file) => {
                 const data = await readYamlFile(path.join(this.threadsDir, file))
                 if (!data) return null
-                
+
                 return {
                   id: data.id,
                   username: data.username,

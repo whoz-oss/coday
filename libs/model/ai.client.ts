@@ -7,7 +7,7 @@ import { Interactor } from './interactor'
 import { AiModel } from './ai-model'
 import { AiProviderConfig } from './ai-provider-config'
 import { CodayLogger } from '../service/coday-logger'
-import { MessageContent } from '../coday-events'
+import { MessageContent, TextContent } from '../coday-events'
 
 export interface CompletionOptions {
   model?: string
@@ -86,22 +86,20 @@ export abstract class AiClient {
       // Account for: prompt template (~150 chars) + response budget + safety margin (20%)
       const promptTemplateOverhead = 150
       const safetyMargin = 0.2
-      const maxTranscriptChars = Math.floor(
-        (maxChars - promptTemplateOverhead - summaryBudget) * (1 - safetyMargin)
-      )
+      const maxTranscriptChars = Math.floor((maxChars - promptTemplateOverhead - summaryBudget) * (1 - safetyMargin))
 
       // Limit transcript size to prevent context window overflow
       let transcript = fullTranscript
       let wasTruncated = false
-      
+
       if (fullTranscript.length > maxTranscriptChars) {
         // Truncate from the beginning to keep most recent content
         transcript = '...' + fullTranscript.slice(-(maxTranscriptChars - 3))
         wasTruncated = true
-        
+
         this.interactor.debug(
           `Transcript truncated: ${fullTranscript.length} → ${transcript.length} chars ` +
-          `(limit: ${maxTranscriptChars}, budget: ${maxChars})`
+            `(limit: ${maxTranscriptChars}, budget: ${maxChars})`
         )
       }
 
@@ -111,7 +109,7 @@ export abstract class AiClient {
 It can be summarized as:
 <summary>
 `
-      
+
       let summary: string
       try {
         summary = await this.complete(prompt, {
@@ -119,7 +117,7 @@ It can be summarized as:
           maxTokens: summaryBudget,
           stopSequences: ['</summary>'],
         })
-        
+
         const truncatedInfo = wasTruncated ? ' (from truncated transcript)' : ''
         this.interactor.debug(
           `Compacted ${messages.length} messages into ${summary.length} chars summary${truncatedInfo}.`
@@ -127,12 +125,12 @@ It can be summarized as:
       } catch (e) {
         summary = '...previous conversation truncated'
         console.error('Compaction failed:', e)
-        
+
         const errorDetails = e instanceof Error ? e.message : 'Unknown error'
         this.interactor.warn(
           `Could not compact conversation (${errorDetails}). ` +
-          `Transcript size: ${transcript.length} chars, Budget: ${maxChars} chars. ` +
-          'Falling back to simple truncation.'
+            `Transcript size: ${transcript.length} chars, Budget: ${maxChars} chars. ` +
+            'Falling back to simple truncation.'
         )
       }
 
@@ -172,12 +170,13 @@ It can be summarized as:
     subscriber: Subject<CodayEvent>
   ): string | undefined {
     if (text) {
+      const content: TextContent = { type: 'text', content: text }
       const messageEvent = new MessageEvent({
         role: 'assistant',
-        content: text,
+        content: [content],
         name: agent.name,
       })
-      thread.addAgentMessage(agent.name, text)
+      thread.addAgentMessage(agent.name, content)
       subscriber.next(messageEvent)
       return messageEvent.timestamp
     }
@@ -327,7 +326,7 @@ It can be summarized as:
       while (!found && i >= 0) {
         if (contentArray[i].type === 'text') {
           const textContent = contentArray[i] as any
-          contentArray[i] = { type: 'text', text: `${textContent.text}${dateInfo}` }
+          contentArray[i] = { type: 'text', content: `${textContent.text}${dateInfo}` }
           found = true
         }
         i--

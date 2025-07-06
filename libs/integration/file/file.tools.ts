@@ -7,7 +7,7 @@ import { CommandContext, Interactor } from '../../model'
 import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 import { unlinkFile } from './unlink-file'
-import { readFileUnifiedAsString } from '../../function/read-file-unified'
+import { readFileUnifiedAsMessageContent } from '../../function/read-file-unified'
 
 /**
  * FileTools: A comprehensive file manipulation tool factory for Coday
@@ -242,9 +242,9 @@ export class FileTools extends AssistantToolFactory {
     }
     result.push(searchFilesByTextFunction)
 
-    // Unified file reader tool - handles all file types automatically
+    // Unified file reader tool - handles all file types automatically including images
     const readFileUnified = async ({ filePath }: { filePath: string }) => {
-      return readFileUnifiedAsString({
+      return readFileUnifiedAsMessageContent({
         relPath: filePath,
         root: context.project.root,
         interactor: this.interactor,
@@ -256,7 +256,7 @@ export class FileTools extends AssistantToolFactory {
       function: {
         name: 'readFile',
         description:
-          'Read content from any file type. Supports text files, PDFs, and other formats. Automatically detects file type and uses appropriate reader.',
+          'Read content from any file type. Supports text files, PDFs, and image files (PNG, JPEG, GIF, WebP). Automatically detects file type and uses appropriate reader. For images, returns both description and image content.',
         parameters: {
           type: 'object',
           properties: {

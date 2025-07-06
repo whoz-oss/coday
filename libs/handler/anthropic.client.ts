@@ -1,12 +1,11 @@
 import { Agent, AiClient, AiModel, AiProviderConfig, CompletionOptions, Interactor } from '../model'
 import Anthropic from '@anthropic-ai/sdk'
 import { ToolSet } from '../integration/tool-set'
-import { CodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
+import { CodayEvent, MessageEvent, TextContent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 import { Observable, of, Subject } from 'rxjs'
 import { AiThread } from '../ai-thread/ai-thread'
 import { ThreadMessage } from '../ai-thread/ai-thread.types'
 import { CodayLogger } from '../service/coday-logger'
-import { TextContent } from '../coday-events'
 
 interface RateLimitInfo {
   inputTokensRemaining: number
@@ -245,7 +244,7 @@ export class AnthropicClient extends AiClient {
                         source: {
                           type: 'base64',
                           media_type: c.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-                          data: c.data,
+                          data: c.content,
                         },
                       }
                     }
@@ -269,16 +268,16 @@ export class AnthropicClient extends AiClient {
               type: 'text',
               text: claudeContent,
               ...(shouldAddCache ? { cache_control: { type: 'ephemeral' } } : {}),
-            };
+            }
             claudeMessage = {
               role: msg.role,
               content: [block],
-            };
+            }
           } else {
             claudeMessage = {
               role: msg.role,
               content: claudeContent,
-            };
+            }
           }
         }
         if (msg instanceof ToolRequestEvent) {
@@ -296,13 +295,44 @@ export class AnthropicClient extends AiClient {
           }
         }
         if (msg instanceof ToolResponseEvent) {
+          let toolResultContent: string | (Anthropic.ImageBlockParam | Anthropic.TextBlockParam)[]
+
+          if (typeof msg.output === 'string') {
+            // Simple string output
+            toolResultContent = msg.output
+          } else {
+            // Rich content (MessageContent)
+            const content = msg.output
+            if (content.type === 'text') {
+              toolResultContent = [
+                {
+                  type: 'text' as const,
+                  text: content.text,
+                },
+              ]
+            } else if (content.type === 'image') {
+              toolResultContent = [
+                {
+                  type: 'image' as const,
+                  source: {
+                    type: 'base64' as const,
+                    media_type: content.mimeType,
+                    data: content.data,
+                  },
+                },
+              ]
+            } else {
+              throw new Error(`Unknown content type: ${(content as any).type}`)
+            }
+          }
+
           claudeMessage = {
             role: 'user',
             content: [
               {
                 type: 'tool_result',
                 tool_use_id: msg.toolRequestId,
-                content: msg.output,
+                content: toolResultContent,
                 ...(shouldAddCache && { cache_control: { type: 'ephemeral' } }),
               },
             ],
