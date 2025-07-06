@@ -1,4 +1,4 @@
-import { migrateData } from './data-migration'
+import { migrateData } from '../../utils/data-migration'
 import { aiPropertyToAi } from './ai-providers-to-ai.migration'
 import { ProjectLocalConfig } from '../../model/project-local-config'
 import { UserConfig } from '../../model/user-config'

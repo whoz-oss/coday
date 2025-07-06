@@ -3,6 +3,7 @@
   "type": "module",
   "description": "",
   "scripts": {
+    "coday": "node ./node_modules/@whoz-oss/coday-web/server/server.js --local --no_auth",
     "lint": "nx run-many --target=lint",
     "start": "nx run terminal:serve",
     "test": "nx run-many --target=test",
@@ -22,6 +23,7 @@
     "*.ts": "prettier --write"
   },
   "devDependencies": {
+    "@whoz-oss/coday-web": "^0.14.0",
     "@eslint/js": "^9.27.0",
     "@nx/devkit": "21.1.1",
     "@nx/esbuild": "21.1.1",

@@ -2727,6 +2727,11 @@
     "@typescript-eslint/types" "8.32.1"
     eslint-visitor-keys "^4.2.0"
 
+"@whoz-oss/coday-web@^0.14.0":
+  version "0.14.0"
+  resolved "https://registry.yarnpkg.com/@whoz-oss/coday-web/-/coday-web-0.14.0.tgz#db380249d39bb9f24bde2a3be1e31cf16ffc00ba"
+  integrity sha512-UxzxKD8jcktlGZxNS91feUv8wGUD1cahJyXxfDnBaJfUwHiGHf31EZ/zYi+etlKi8jEUnMfYRer45o/nbH1KYQ==
+
 "@xhmikosr/archive-type@^7.0.0":
   version "7.0.0"
   resolved "https://registry.yarnpkg.com/@xhmikosr/archive-type/-/archive-type-7.0.0.tgz#74746a210b59d7d8a77aa69a422f0dae025b3798"

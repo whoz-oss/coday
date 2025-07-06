@@ -1,3 +1,5 @@
+import { MessageContent, MessageEvent } from './message-event'
+
 /**
  * Helper function to truncate text for display
  * @param text Text to truncate
@@ -150,7 +152,7 @@ export class ToolRequestEvent extends CodayEvent {
     this.length = this.args.length + this.name.length + this.toolRequestId.length + 20
   }
 
-  buildResponse(output: string): ToolResponseEvent {
+  buildResponse(output: string | MessageContent): ToolResponseEvent {
     return new ToolResponseEvent({ output, toolRequestId: this.toolRequestId, parentKey: this.timestamp })
   }
 
@@ -167,7 +169,7 @@ export class ToolRequestEvent extends CodayEvent {
 
 export class ToolResponseEvent extends CodayEvent {
   toolRequestId: string
-  output: string
+  output: string | MessageContent
   static override type = 'tool_response'
 
   constructor(event: Partial<ToolResponseEvent>) {
@@ -175,7 +177,41 @@ export class ToolResponseEvent extends CodayEvent {
     this.toolRequestId = event.toolRequestId || this.timestamp || new Date().toISOString()
 
     this.output = event.output!!
-    this.length = this.output.length + this.toolRequestId.length + 20
+    if (typeof this.output === 'string') {
+      this.length = this.output.length + this.toolRequestId.length + 20
+    } else {
+      if (this.output.type === 'text') {
+        this.length = this.output.content.length + this.toolRequestId.length + 20
+      } else if (this.output.type === 'image') {
+        const tokens = ((this.output.width || 0) * (this.output.height || 0)) / 750
+        this.length = (tokens ? tokens * 3.5 : this.output.content.length) + this.toolRequestId.length + 20
+      } else {
+        this.length = this.toolRequestId.length + 20
+      }
+    }
+  }
+
+  /**
+   * Get the text content as a string for backward compatibility
+   */
+  getTextOutput(): string {
+    if (typeof this.output === 'string') {
+      return this.output
+    }
+    if (this.output.type === 'text') {
+      return this.output.content
+    }
+    if (this.output.type === 'image') {
+      return `[Image: ${this.output.mimeType}]`
+    }
+    return ''
+  }
+
+  /**
+   * Check if the tool response contains an image
+   */
+  hasImages(): boolean {
+    return typeof this.output !== 'string' && this.output.type === 'image'
   }
 
   /**
@@ -184,8 +220,10 @@ export class ToolResponseEvent extends CodayEvent {
    * @returns A formatted string representation
    */
   toSingleLineString(maxLength: number = 50): string {
-    const truncatedOutput = truncateText(this.output, maxLength)
-    return `⮑ ${truncatedOutput}`
+    const textOutput = this.getTextOutput()
+    const truncatedOutput = truncateText(textOutput, maxLength)
+    const imageIndicator = this.hasImages() ? ' [image]' : ''
+    return `⮑ ${truncatedOutput}${imageIndicator}`
   }
 }
 
@@ -206,82 +244,6 @@ export class ThinkingEvent extends CodayEvent {
   constructor(event: Partial<ThinkingEvent>) {
     super(event, ThinkingEvent.type)
   }
-}
-
-export class MessageEvent extends CodayEvent {
-  role: 'user' | 'assistant'
-  name: string
-  content: string | MessageContent[]
-  static override type = 'message'
-
-  constructor(event: Partial<MessageEvent>) {
-    super(event, MessageEvent.type)
-    this.role = event.role!
-    this.name = event.name!
-    this.content = event.content!
-    if (typeof this.content === 'string') {
-      this.length = this.content.length + this.role.length + this.name.length + 20 // made up number for ", : and {}
-    } else {
-      this.length = this.content
-        .map((content) => {
-          if (content.type === 'text') {
-            return content.text.length
-          }
-          if (content.type === 'image') {
-            const tokens = ((content.width || 0) * (content.height || 0)) / 750
-            return tokens ? tokens * 3.5 : content.data.length
-          }
-          return 0
-        })
-        .reduce((sum, length) => sum + length, 0)
-    }
-  }
-
-  /**
-   * Get the text content as a string, combining all text parts if it's rich content
-   */
-  getTextContent(): string {
-    if (typeof this.content === 'string') {
-      return this.content
-    }
-    return this.content
-      .filter((c) => c.type === 'text')
-      .map((c) => (c as TextContent).text)
-      .join(' ')
-  }
-
-  /**
-   * Get all image content from the message
-   */
-  getImageContent(): ImageContent[] {
-    if (typeof this.content === 'string') {
-      return []
-    }
-    return this.content.filter((c) => c.type === 'image') as ImageContent[]
-  }
-
-  /**
-   * Check if the message contains images
-   */
-  hasImages(): boolean {
-    return this.getImageContent().length > 0
-  }
-}
-
-export type MessageContent = TextContent | ImageContent
-
-export type TextContent = {
-  type: 'text'
-  text: string
-}
-
-export type ImageContent = {
-  type: 'image'
-  data: string
-  mimeType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
-  source?: string
-  width?: number
-  height?: number
 }
 
 // Exposing a map of event types to their corresponding classes
