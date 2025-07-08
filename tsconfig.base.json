@@ -39,6 +39,11 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "strict": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noUnusedParameters": true,
+    "noUncheckedIndexedAccess": true,
     "target": "ESNext",
     "typeRoots": [
       "node_modules/@types"

@@ -83,7 +83,7 @@ export class InviteEvent extends QuestionEvent {
 
 export class AnswerEvent extends CodayEvent {
   answer: string
-  invite?: string
+  invite: string | undefined
   static override type = 'answer'
 
   constructor(event: Partial<AnswerEvent>) {
