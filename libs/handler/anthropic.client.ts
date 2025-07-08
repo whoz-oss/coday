@@ -1,7 +1,7 @@
 import { Agent, AiClient, AiModel, AiProviderConfig, CompletionOptions, Interactor } from '../model'
 import Anthropic from '@anthropic-ai/sdk'
 import { ToolSet } from '../integration/tool-set'
-import { CodayEvent, MessageEvent, TextContent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
+import { CodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 import { Observable, of, Subject } from 'rxjs'
 import { AiThread } from '../ai-thread/ai-thread'
 import { ThreadMessage } from '../ai-thread/ai-thread.types'
@@ -227,57 +227,45 @@ export class AnthropicClient extends AiClient {
           const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
           const message = msg as MessageEvent
           const content = this.enhanceWithCurrentDateTime(message.content, isLastUserMessage)
-          const claudeContent: string | (Anthropic.ImageBlockParam | TextContent)[] =
-            typeof content === 'string'
-              ? content
-              : (content
-                  .map((c, index) => {
-                    let result: Anthropic.ImageBlockParam | TextContent | undefined = undefined
-                    if (c.type === 'text') {
-                      // Coday TextContent already matches the Claude type, how convenient...
-                      result = c
-                    }
-                    if (c.type === 'image') {
-                      // Convert Coday ImageContent to Claude ImageBlockParam
-                      result = {
-                        type: 'image',
-                        source: {
-                          type: 'base64',
-                          media_type: c.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-                          data: c.content,
-                        },
-                      }
-                    }
-                    if (!result) {
-                      // Fallback for unknown content types
-                      this.interactor.warn(`Unknown content type: ${(c as any).type}`)
-                      return null
-                    }
-                    return {
-                      ...result,
-                      // add cache marker on last element of content
-                      ...(shouldAddCache && index === content.length - 1 && { cache_control: { type: 'ephemeral' } }),
-                    }
-                  })
-                  // cast forced by cache_control type unduly generalized as string instead of 'ephemeral'
-                  .filter(Boolean) as (Anthropic.ImageBlockParam | TextContent)[])
+          const claudeContent: (Anthropic.ImageBlockParam | Anthropic.TextBlockParam)[] = content
+            .map((c, index) => {
+              let result: Anthropic.ImageBlockParam | Anthropic.TextBlockParam | undefined = undefined
+              if (c.type === 'text') {
+                // Coday TextContent already matches the Claude type, how convenient...
+                result = {
+                  type: 'text',
+                  text: c.content,
+                }
+              }
+              if (c.type === 'image') {
+                // Convert Coday ImageContent to Claude ImageBlockParam
+                result = {
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: c.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+                    data: c.content,
+                  },
+                }
+              }
+              if (!result) {
+                // Fallback for unknown content types
+                this.interactor.warn(`Unknown content type: ${(c as any).type}`)
+                return null
+              }
+              return {
+                ...result,
+                // add cache marker on last element of content
+                ...(shouldAddCache && index === content.length - 1 && { cache_control: { type: 'ephemeral' } }),
+              }
+            })
+            // cast forced by cache_control type unduly generalized as string instead of 'ephemeral'
+            .filter(Boolean) as (Anthropic.ImageBlockParam | Anthropic.TextBlockParam)[]
           // Structure message with content blocks for cache_control support
-          if (typeof claudeContent === 'string') {
-            // Always use block format for text, and put cache_control on the block if needed
-            const block: Anthropic.TextBlockParam & { cache_control?: { type: 'ephemeral' } } = {
-              type: 'text',
-              text: claudeContent,
-              ...(shouldAddCache ? { cache_control: { type: 'ephemeral' } } : {}),
-            }
-            claudeMessage = {
-              role: msg.role,
-              content: [block],
-            }
-          } else {
-            claudeMessage = {
-              role: msg.role,
-              content: claudeContent,
-            }
+
+          claudeMessage = {
+            role: msg.role,
+            content: claudeContent,
           }
         }
         if (msg instanceof ToolRequestEvent) {

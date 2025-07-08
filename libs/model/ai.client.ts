@@ -138,7 +138,7 @@ It can be summarized as:
       return new MessageEvent({
         role: 'user',
         name: firstUserMessage ? (firstUserMessage as MessageEvent).name : 'user',
-        content: summary,
+        content: [{type: 'text', content: summary}],
       })
     }
   }
@@ -184,7 +184,7 @@ It can be summarized as:
   }
 
   protected async shouldProcessAgainAfterResponse(
-    text: string | undefined,
+    _text: string | undefined,
     toolRequests: ToolRequestEvent[] | undefined,
     agent: Agent,
     thread: AiThread
@@ -303,9 +303,9 @@ It can be summarized as:
    * @returns Enhanced content with date/time if applicable, otherwise original content
    */
   protected enhanceWithCurrentDateTime(
-    content: string | MessageContent[],
+    content: MessageContent[],
     isLastUserMessage: boolean
-  ): string | MessageContent[] {
+  ): MessageContent[] {
     if (!isLastUserMessage) return content
 
     const now = new Date()
@@ -316,23 +316,20 @@ It can be summarized as:
     })
     const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'long' })
     const dateInfo = `\n\n[Current date: ${currentDate} (${dayOfWeek}, time: ${currentTime} UTC)]`
-    if (typeof content === 'string') {
-      return `${content}${dateInfo}`
-    } else {
-      const contentArray = [...content]
-      // need to find the last text content, if any, to clone and add the date info
-      let found = false
-      let i = contentArray.length - 1
-      while (!found && i >= 0) {
-        if (contentArray[i]?.type === 'text') {
-          const textContent = contentArray[i] as any
-          contentArray[i] = { type: 'text', content: `${textContent.text}${dateInfo}` }
-          found = true
-        }
-        i--
+
+    const contentArray = [...content]
+    // need to find the last text content, if any, to clone and add the date info
+    let found = false
+    let i = contentArray.length - 1
+    while (!found && i >= 0) {
+      if (contentArray[i]?.type === 'text') {
+        const textContent = contentArray[i] as any
+        contentArray[i] = { type: 'text', content: `${textContent.text}${dateInfo}` }
+        found = true
       }
-      return contentArray
+      i--
     }
+    return contentArray
   }
 
   protected showAgentAndUsage(agent: Agent, aiProvider: string, model: string, thread: AiThread): void {

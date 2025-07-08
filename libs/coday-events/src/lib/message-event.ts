@@ -1,4 +1,4 @@
-import { CodayEvent } from '@coday/coday-events'
+import { CodayEvent } from './coday-events'
 
 export type TextContent = {
   type: 'text'

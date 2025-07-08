@@ -198,7 +198,7 @@ export class OpenaiClient extends AiClient {
     }
   }
 
-  private updateUsage(usage: any, agent: Agent, model: AiModel, thread: AiThread): void {
+  private updateUsage(usage: any, _agent: Agent, model: AiModel, thread: AiThread): void {
     const cacheReadTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0
     const inputNoCacheTokens = (usage?.prompt_tokens ?? 0) - cacheReadTokens // TODO: check again with doc...
     const input = inputNoCacheTokens * (model?.price?.inputMTokens ?? 0)
@@ -340,7 +340,7 @@ export class OpenaiClient extends AiClient {
                   {
                     type: 'image_url' as const,
                     image_url: {
-                      url: `data:${content.mimeType};base64,${content.data}`,
+                      url: `data:${content.mimeType};base64,${content.content}`,
                       detail: 'auto' as const,
                     },
                   },
@@ -353,7 +353,7 @@ export class OpenaiClient extends AiClient {
             return [
               {
                 role: 'tool',
-                content: content.text,
+                content: content.content,
                 tool_call_id: msg.toolRequestId,
               },
             ]
@@ -401,7 +401,7 @@ export class OpenaiClient extends AiClient {
       const content =
         typeof m.content === 'string'
           ? m.content
-          : m.getTextContent() + (m.hasImages() ? ` [${m.getImageContent().length} image(s) attached]` : '')
+          : m.content.filter(c => c.type === 'text').map(c => c.content).join('\n')
 
       return {
         role: m.role,
