@@ -51,7 +51,7 @@ const readImageFile = async (input: FileReaderInput): Promise<ImageContent> => {
 
     return {
       type: 'image',
-      data: base64Data,
+      content: base64Data,
       mimeType: mimeType,
       source: `${fileName} (${(buffer.length / 1024).toFixed(1)} KB)`,
     }
@@ -95,7 +95,7 @@ export const readFileUnified = async (input: FileReaderInput): Promise<FileConte
 
 // Enhanced helper that can return either string or MessageContent[]
 export const readFileUnifiedAsString = async (input: FileReaderInput): Promise<string> => {
-  const result = await readFileUnified(input)
+  const result: FileContent = await readFileUnified(input)
 
   if (result.type === 'error') {
     return result.content as string
@@ -104,9 +104,8 @@ export const readFileUnifiedAsString = async (input: FileReaderInput): Promise<s
     return result.content
   }
   if (result.type === 'image') {
-    // For images, return the source description for backward compatibility
-    const imageContent = result.content as ImageContent
-    return imageContent.source || '[IMAGE CONTENT]'
+    // For images, return the that it is an image to not overflow the caller
+    return '[IMAGE CONTENT]'
   }
   return `[${result.type.toUpperCase()} CONTENT]`
 }
@@ -118,14 +117,14 @@ export const readFileUnifiedAsMessageContent = async (input: FileReaderInput): P
   if (result.type === 'error') {
     return result.content as string
   }
-  if (result.type === 'text' && typeof result.content === 'string') {
+  if (result.type === 'text') {
     return {
       type: 'text',
-      text: result.content,
+      content: typeof result.content === 'string' ? result.content: result.content.toString(),
     }
   }
   if (result.type === 'image') {
     return result.content
   }
-  return `[${result.type.toUpperCase()} CONTENT]`
+  return `[${(result.type as string).toUpperCase()} CONTENT]`
 }

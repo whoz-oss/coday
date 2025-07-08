@@ -264,7 +264,7 @@ export class AnthropicClient extends AiClient {
           // Structure message with content blocks for cache_control support
           if (typeof claudeContent === 'string') {
             // Always use block format for text, and put cache_control on the block if needed
-            const block: TextContent & { cache_control?: { type: 'ephemeral' } } = {
+            const block: Anthropic.TextBlockParam & { cache_control?: { type: 'ephemeral' } } = {
               type: 'text',
               text: claudeContent,
               ...(shouldAddCache ? { cache_control: { type: 'ephemeral' } } : {}),
@@ -307,7 +307,7 @@ export class AnthropicClient extends AiClient {
               toolResultContent = [
                 {
                   type: 'text' as const,
-                  text: content.text,
+                  text: content.content,
                 },
               ]
             } else if (content.type === 'image') {
@@ -317,7 +317,7 @@ export class AnthropicClient extends AiClient {
                   source: {
                     type: 'base64' as const,
                     media_type: content.mimeType,
-                    data: content.data,
+                    data: content.content,
                   },
                 },
               ]

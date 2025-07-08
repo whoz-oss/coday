@@ -191,8 +191,8 @@ export class McpConfigService {
         }
 
         // Update the MCP configuration while preserving other MCP settings
-        userProjectConfig.mcp = {
-          ...userProjectConfig.mcp,
+        userProjectConfig!.mcp = {
+          ...userProjectConfig!.mcp,
           servers: mcpServers,
         }
 

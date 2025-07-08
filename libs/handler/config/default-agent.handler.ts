@@ -12,7 +12,7 @@ export class DefaultAgentHandler extends CommandHandler {
     })
   }
 
-  async handle(command: string, context: CommandContext): Promise<CommandContext> {
+  async handle(_command: string, context: CommandContext): Promise<CommandContext> {
     // Ensure a project is selected
     if (!this.services.project.selectedProject) {
       this.interactor.error('No project selected. Please select a project first.')

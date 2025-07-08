@@ -32,7 +32,7 @@ export function parseArgs(command: string, inputs: KeyInput[]): ParseResult {
     if (index === -1) {
       return
     }
-    const match = splited[index]
+    const match = splited[index]!
 
     // remove the matched element
     splited.splice(index, 1)

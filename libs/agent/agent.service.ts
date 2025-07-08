@@ -101,7 +101,7 @@ export class AgentService implements Killable {
   }
 
   async findAgentByNameStart(nameStart: string | undefined, context: CommandContext): Promise<Agent | undefined> {
-    if (!nameStart) {
+    if (!nameStart || context.oneshot) {
       return
     }
 
@@ -118,19 +118,18 @@ export class AgentService implements Killable {
       return matchingAgents[0]
     }
 
-    if (!context.oneshot) {
-      const options = matchingAgents.map((agent) => agent.name)
-      try {
-        const selection = await this.interactor.chooseOption(
-          options,
-          `Multiple agents match '${nameStart}', please select one:`
-        )
-        return matchingAgents.find((agent) => agent.name === selection)
-      } catch (error) {
-        this.interactor.error('Selection cancelled')
-        return undefined
-      }
+    const options = matchingAgents.map((agent) => agent.name)
+    try {
+      const selection = await this.interactor.chooseOption(
+        options,
+        `Multiple agents match '${nameStart}', please select one:`
+      )
+      return matchingAgents.find((agent) => agent.name === selection)
+    } catch (error) {
+      this.interactor.error('Selection cancelled')
+      return undefined
     }
+
   }
 
   /**
@@ -197,7 +196,7 @@ export class AgentService implements Killable {
     if (projectPath) {
       const codayFiles = await findFilesByName({ text: 'coday.yaml', root: projectPath })
       if (codayFiles.length > 0) {
-        const codayFolder = path.dirname(codayFiles[0])
+        const codayFolder = path.dirname(codayFiles[0]!)
         agentsPaths.push(path.join(projectPath, codayFolder, 'agents'))
       }
       if (context.project.agentFolders?.length) {
@@ -308,6 +307,7 @@ ${agentDocs}
       const errorMessage = `Failed to create agent ${def.name}`
       console.error(`${errorMessage}:`, error)
       this.interactor.error(errorMessage)
+      return undefined
     }
   }
 }

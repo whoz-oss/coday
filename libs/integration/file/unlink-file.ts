@@ -4,6 +4,6 @@ import { Interactor } from '../../model'
 
 const unlink = promisify(fs.unlink)
 
-export async function unlinkFile(filePath: string, interactor: Interactor): Promise<void> {
+export async function unlinkFile(filePath: string, _interactor: Interactor): Promise<void> {
   await unlink(filePath)
 }

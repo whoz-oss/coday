@@ -20,7 +20,7 @@ export class WebhookAddHandler extends CommandHandler {
     })
   }
 
-  async handle(command: string, context: CommandContext): Promise<CommandContext> {
+  async handle(_command: string, context: CommandContext): Promise<CommandContext> {
     // Check if webhook service exists
     if (!this.services.webhook) {
       this.interactor.error('Webhook service is not available')

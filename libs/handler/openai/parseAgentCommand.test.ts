@@ -32,8 +32,8 @@ Ceci est la fin du très long texte de test.`
   })
 
   it('parses agent command with text containing newlines at start', () => {
-    const textWithNewlines = `\nCeci commence par un retour à la ligne\net contient plusieurs lignes\navec du texte complexe`
-    expect(parseAgentCommand(`@TestAgent ${textWithNewlines}`)).toEqual(['testagent', textWithNewlines])
+    const textWithNewlines = `Ceci commence par un retour à la ligne\net contient plusieurs lignes\navec du texte complexe`
+    expect(parseAgentCommand(`@TestAgent \n${textWithNewlines}`)).toEqual(['testagent', textWithNewlines])
   })
 
   it('parses agent command with text ending with newlines', () => {

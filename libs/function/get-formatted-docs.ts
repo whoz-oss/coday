@@ -95,6 +95,7 @@ export async function getFormattedDocs(
           return `  - ${doc.path}\n    ${doc.description}`
         } else {
           warnings += `\n  - Optional document not found: ${doc.path}`
+          return undefined
         }
       })
       .filter((text) => !!text)

@@ -38,12 +38,6 @@ The parent conversation (all previous messages) is there for context, but your c
         tap((e) => {
           console.log(`delegated event ${e.type}`)
           let event: CodayEvent = e
-          if (e instanceof MessageEvent) {
-            event = new MessageEvent({ ...e, name: `-> ${e.name}` })
-            // if (!e.name.startsWith("->")) {
-            interactor.displayText(e.getTextContent(), (event as MessageEvent).name)
-            // }
-          }
           interactor.sendEvent(event)
         }),
         filter((e) => e instanceof MessageEvent)

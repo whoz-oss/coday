@@ -41,7 +41,7 @@ debugLog('INIT', 'Webhook service initialized')
 app.use(express.static(path.join(__dirname, '../client')))
 
 // Basic route to test server setup
-app.get('/', (req: express.Request, res: express.Response) => {
+app.get('/', (_req: express.Request, res: express.Response) => {
   res.send('Server is up and running!')
 })
 
@@ -298,6 +298,10 @@ app.get('/api/event/:eventId', (req: express.Request, res: express.Response) => 
 
     if (!client) {
       res.status(404).send('Client not found')
+      return
+    }
+    if (!eventId) {
+      res.status(400).send('Missing eventId')
       return
     }
 

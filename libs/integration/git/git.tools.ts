@@ -14,7 +14,7 @@ export class GitTools extends AssistantToolFactory {
     super(interactor)
   }
 
-  protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {
+  protected async buildTools(context: CommandContext, _agentName: string): Promise<CodayTool[]> {
     const result: CodayTool[] = []
 
     if (!this.integrationService.hasIntegration('GIT')) {

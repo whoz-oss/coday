@@ -173,12 +173,14 @@ export class OpenaiClient extends AiClient {
       2
       this.updateUsage(response.usage, agent, model, thread)
 
-      if (response.choices[0].finish_reason === 'length') throw new Error('Max tokens reached for Openai 😬')
+      const firstChoice = response.choices[0]!
 
-      const text = response.choices[0].message.content?.trim()
+      if (firstChoice.finish_reason === 'length') throw new Error('Max tokens reached for Openai 😬')
+
+      const text = firstChoice.message.content?.trim()
       this.handleText(thread, text, agent, subscriber)
 
-      const toolRequests = response.choices[0].message?.tool_calls?.map(
+      const toolRequests = firstChoice.message?.tool_calls?.map(
         (toolCall) =>
           new ToolRequestEvent({
             toolRequestId: toolCall.id,

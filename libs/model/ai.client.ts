@@ -324,7 +324,7 @@ It can be summarized as:
       let found = false
       let i = contentArray.length - 1
       while (!found && i >= 0) {
-        if (contentArray[i].type === 'text') {
+        if (contentArray[i]?.type === 'text') {
           const textContent = contentArray[i] as any
           contentArray[i] = { type: 'text', content: `${textContent.text}${dateInfo}` }
           found = true

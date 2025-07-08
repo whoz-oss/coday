@@ -16,7 +16,7 @@ export class UserIntegrationHandler extends CommandHandler {
     })
   }
 
-  async handle(command: string, context: CommandContext): Promise<CommandContext> {
+  async handle(_command: string, context: CommandContext): Promise<CommandContext> {
     const project = this.services.project.selectedProject
     if (!project) {
       this.interactor.displayText('No current project, select one first.')

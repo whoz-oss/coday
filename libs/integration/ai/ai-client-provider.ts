@@ -56,7 +56,7 @@ export class AiClientProvider {
         this.aiProviderConfigs.push(aiDef)
       } else {
         // existing provider, merge new def in it
-        const currentConfig = this.aiProviderConfigs[i]
+        const currentConfig = this.aiProviderConfigs[i]!
         const currentModels = currentConfig.models ? [...currentConfig.models] : []
         const aiDefModels = aiDef.models ?? []
         aiDefModels.forEach((model) => {
@@ -66,7 +66,7 @@ export class AiClientProvider {
             currentModels.push(model)
           } else {
             // merging the new model def over the current one
-            const current = currentModels[j]
+            const current = currentModels[j]!
             currentModels[j] = { ...current, ...model, price: { ...current.price, ...model.price } }
           }
         })
@@ -144,8 +144,9 @@ export class AiClientProvider {
   }
 
   private getApiKey(aiProviderConfig: AiProviderConfig): string | undefined {
+    const envVar = ENV_VARS[aiProviderConfig.name]
     const envKey =
-      process.env[ENV_VARS[aiProviderConfig.name]] || process.env[`${aiProviderConfig.name.toUpperCase()}_API_KEY`]
+      envVar ? process.env[envVar] || process.env[`${aiProviderConfig.name.toUpperCase()}_API_KEY`] : undefined
     return envKey || aiProviderConfig.apiKey
   }
 

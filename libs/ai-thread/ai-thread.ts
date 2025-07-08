@@ -360,7 +360,7 @@ export class AiThread {
     return this.messages.find((msg) => msg.timestamp === eventId)
   }
 
-  addToolRequests(agentName: string, toolRequests: ToolRequestEvent[]): void {
+  addToolRequests(_agentName: string, toolRequests: ToolRequestEvent[]): void {
     toolRequests.forEach((toolRequest) => {
       if (!toolRequest.toolRequestId || !toolRequest.name || !toolRequest.args) return
       this.add(toolRequest)
@@ -391,7 +391,7 @@ export class AiThread {
    * @param agentName - The name of the AI agent making the tool calls
    * @param toolCalls - Array of tool calls to process
    */
-  addToolCalls(agentName: string, toolCalls: ToolCall[]): void {
+  addToolCalls(_agentName: string, toolCalls: ToolCall[]): void {
     toolCalls.forEach((call) => {
       if (!call.id || !call.name || !call.args) return
       this.add(
@@ -413,7 +413,7 @@ export class AiThread {
    * @param username - The name of the user/system processing the tool responses
    * @param responses - Array of tool responses to process
    */
-  addToolResponses(username: string, responses: ToolResponse[]): void {
+  addToolResponses(_username: string, responses: ToolResponse[]): void {
     responses.forEach((response) => {
       if (!response.id || !response.response) return
       const request = this.findToolRequestById(response.id)

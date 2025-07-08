@@ -47,7 +47,7 @@ export class FileTools extends AssistantToolFactory {
     super(interactor)
   }
 
-  protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {
+  protected async buildTools(context: CommandContext, _agentName: string): Promise<CodayTool[]> {
     const result: CodayTool[] = []
 
     // Only add write/delete tools if not in read-only mode
@@ -147,7 +147,7 @@ export class FileTools extends AssistantToolFactory {
     }
 
     const searchProjectFile = ({ text, path }: { text: string; path?: string }) => {
-      return findFilesByName({ text, path, root: context.project.root, interactor: this.interactor, limit: 100 })
+      return findFilesByName({ text, path, root: context.project.root, limit: 100 })
     }
 
     const searchProjectFileFunction: FunctionTool<{ text: string; path?: string }> = {

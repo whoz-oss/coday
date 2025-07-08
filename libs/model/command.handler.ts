@@ -24,7 +24,7 @@ export abstract class CommandHandler {
     return command.slice(this.commandWord.length).trim()
   }
 
-  accept(command: string, context: CommandContext): boolean {
+  accept(command: string, _context: CommandContext): boolean {
     return !!command && command.toLowerCase().startsWith(this.commandWord)
   }
 

@@ -234,6 +234,9 @@ export class VoiceSynthesisComponent {
       // Get test text
       const langCode = this.selectedVoice.lang.slice(0, 2)
       const testText = TestTexts[langCode] || TestTexts['en']
+      if (!testText) { 
+        return 
+      }
 
       this.speak(testText)
     }, 100)
