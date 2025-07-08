@@ -76,7 +76,7 @@ export abstract class AiClient {
       const fullTranscript = messages
         // without the tool request and response, hypothesis is we can do without and simply the "text"
         .filter((m) => m instanceof MessageEvent)
-        .map((m) => ` - ${m.role}: ${m.content}`)
+        .map((m) => ` - ${m.role}: ${m.getTextContent()}`)
         .join('\n')
 
       const firstUserMessage = messages.find((m) => m instanceof MessageEvent && m.role === 'user')
@@ -323,8 +323,8 @@ It can be summarized as:
     let i = contentArray.length - 1
     while (!found && i >= 0) {
       if (contentArray[i]?.type === 'text') {
-        const textContent = contentArray[i] as any
-        contentArray[i] = { type: 'text', content: `${textContent.text}${dateInfo}` }
+        const textContent = contentArray[i]!
+        contentArray[i] = { type: 'text', content: `${textContent.content}${dateInfo}` }
         found = true
       }
       i--

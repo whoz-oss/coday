@@ -317,7 +317,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
     buttonContainer.classList.add('message-button-container')
 
     // Create play button for text content
-    const textContent = event.getTextContent()
+    const textContent = this.extractTextContent(event)
     if (textContent) {
       const playButton = this.createPlayButton(textContent)
       buttonContainer.appendChild(playButton)
@@ -367,7 +367,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
     buttonContainer.classList.add('message-button-container')
 
     // Create play button for text content
-    const textContent = event.getTextContent()
+    const textContent = this.extractTextContent(event)
     if (textContent) {
       const playButton = this.createPlayButton(textContent)
       buttonContainer.appendChild(playButton)
@@ -425,71 +425,58 @@ export class ChatHistoryComponent implements CodayEventHandler {
     const contentContainer = document.createElement('div')
     contentContainer.classList.add('message-content')
 
-    if (typeof event.content === 'string') {
-      // Simple string content - parse as markdown
-      const parsed = marked.parse(event.content)
-      if (parsed instanceof Promise) {
-        parsed.then((html) => {
-          contentContainer.innerHTML = html
-        })
-      } else {
-        contentContainer.innerHTML = parsed
-      }
-    } else {
-      // Rich content - handle each part
-      event.content.forEach((content) => {
-        if (content.type === 'text') {
-          const textDiv = document.createElement('div')
-          textDiv.classList.add('text-content')
-          const parsed = marked.parse(content.content)
-          if (parsed instanceof Promise) {
-            parsed.then((html) => {
-              textDiv.innerHTML = html
-            })
-          } else {
-            textDiv.innerHTML = parsed
-          }
-          contentContainer.appendChild(textDiv)
-        } else if (content.type === 'image') {
-          const imageContainer = document.createElement('div')
-          imageContainer.classList.add('image-content')
-
-          const img = document.createElement('img')
-          img.src = `data:${content.mimeType};base64,${content.content}`
-          img.alt = content.source || 'Image'
-          img.classList.add('chat-image')
-
-          // Add max dimensions to prevent huge images
-          img.style.maxWidth = '100%'
-          img.style.maxHeight = '500px'
-          img.style.objectFit = 'contain'
-
-          // Add click to open in new tab
-          img.addEventListener('click', (e) => {
-            e.stopPropagation()
-            window.open(img.src, '_blank')
+    // Render each content piece in order
+    event.content.forEach((content) => {
+      if (content.type === 'text') {
+        const textDiv = document.createElement('div')
+        textDiv.classList.add('text-part')
+        
+        const parsed = marked.parse(content.content)
+        if (parsed instanceof Promise) {
+          parsed.then((html) => {
+            textDiv.innerHTML = html
           })
-
-          imageContainer.appendChild(img)
-
-          // Add source info if available
-          if (content.source) {
-            const sourceDiv = document.createElement('div')
-            sourceDiv.classList.add('image-source')
-            sourceDiv.textContent = `Source: ${content.source}`
-            sourceDiv.style.fontSize = '0.8em'
-            sourceDiv.style.color = 'var(--color-text-secondary)'
-            sourceDiv.style.marginTop = '4px'
-            imageContainer.appendChild(sourceDiv)
-          }
-
-          contentContainer.appendChild(imageContainer)
+        } else {
+          textDiv.innerHTML = parsed
         }
-      })
-    }
+        
+        contentContainer.appendChild(textDiv)
+        
+      } else if (content.type === 'image') {
+        const img = document.createElement('img')
+        img.src = `data:${content.mimeType};base64,${content.content}`
+        img.alt = content.source || 'Image'
+        img.classList.add('message-image')
+        
+        // Simple styling
+        img.style.maxWidth = '100%'
+        img.style.height = 'auto'
+        img.style.margin = '8px 0'
+        img.style.borderRadius = '4px'
+        img.style.cursor = 'pointer'
+        
+        // Click to open
+        img.addEventListener('click', (e) => {
+          e.stopPropagation()
+          window.open(img.src, '_blank')
+        })
+        
+        contentContainer.appendChild(img)
+      }
+    })
 
     newEntry.appendChild(contentContainer)
     return newEntry
+  }
+
+  /**
+   * Extract all text content from a MessageEvent for voice synthesis and copying
+   */
+  private extractTextContent(event: MessageEvent): string {
+    return event.content
+      .filter(content => content.type === 'text')
+      .map(content => content.content)
+      .join('\n\n')
   }
 
   private createMessageElement(content: string, speaker: string | undefined): HTMLDivElement {

@@ -203,3 +203,25 @@
     margin-top: 0.5em;
     font-style: italic;
 }
+
+/* Sequential content styles */
+.text-part {
+    margin: 4px 0;
+}
+
+.message-image {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 8px 0;
+    border-radius: 4px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.message-image:hover {
+    opacity: 0.9;
+    transform: scale(1.02);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}

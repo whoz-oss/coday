@@ -432,10 +432,11 @@ export class AnthropicClient extends AiClient {
     charBudget: number
   ): Promise<{ data: Anthropic.Messages.Message; response: Response }> {
     const data = await this.getMessages(thread, charBudget, model.name)
+    const messages = this.toClaudeMessage(data.messages, thread)
     return await client.messages
       .create({
         model: model.name,
-        messages: this.toClaudeMessage(data.messages, thread),
+        messages,
         system: [
           {
             text: agent.systemInstructions,

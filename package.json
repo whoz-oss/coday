@@ -3,7 +3,7 @@
   "type": "module",
   "description": "",
   "scripts": {
-    "coday": "node ./node_modules/@whoz-oss/coday-web/server/server.js --local --no_auth",
+    "coday": "node ./node_modules/@whoz-oss/coday-web/server/server.js --no_auth",
     "lint": "nx run-many --target=lint",
     "start": "nx run terminal:serve",
     "test": "nx run-many --target=test",

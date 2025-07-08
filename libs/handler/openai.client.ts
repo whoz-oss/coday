@@ -253,20 +253,20 @@ export class OpenaiClient extends AiClient {
 
         // Convert rich content to OpenAI format
         const openaiContent: string | OpenAI.ChatCompletionContentPart[] =
-          typeof content === 'string'
-            ? content
-            : content.map((c) => {
+          content.map((c) => {
                 if (c.type === 'text') {
                   return { type: 'text' as const, text: c.content }
                 }
                 if (c.type === 'image') {
-                  return {
+                  const image = {
                     type: 'image_url' as const,
                     image_url: {
                       url: `data:${c.mimeType};base64,${c.content}`,
                       detail: 'auto' as const, // Let OpenAI choose the appropriate detail level
                     },
                   }
+                  console.log(`got an image in message event`)
+                  return image
                 }
                 throw new Error(`Unknown content type: ${(c as any).type}`)
               })

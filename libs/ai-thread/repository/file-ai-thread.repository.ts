@@ -73,7 +73,9 @@ export class FileAiThreadRepository implements AiThreadRepository {
     await this.initPromise
     try {
       const file = await this.findThreadFile(id)
-      if (!file) return null
+      if (!file) {
+        return null
+      }
 
       const filePath = path.join(this.threadsDir, file)
       const data = await readYamlFile(filePath)
@@ -132,7 +134,8 @@ export class FileAiThreadRepository implements AiThreadRepository {
         thread.id = crypto.randomUUID()
       }
       const fileName = this.getThreadFileName(thread)
-      const contentToSave = yaml.stringify(thread)
+      const versionned = {...thread, version: aiThreadMigrations.length + 1}
+      const contentToSave = yaml.stringify(versionned)
 
       // Write the file
       const threadPath = path.join(this.threadsDir, fileName)
