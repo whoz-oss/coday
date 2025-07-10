@@ -1,3 +1,4 @@
+// eslint-disable-next-line @nx/enforce-module-boundaries
 import { migrateData } from '../utils/data-migration'
 import { aiThreadMigrations } from './ai-thread.migrations'
 
