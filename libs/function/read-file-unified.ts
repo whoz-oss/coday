@@ -124,7 +124,7 @@ export const readFileUnifiedAsMessageContent = async (input: FileReaderInput): P
     }
   }
   if (result.type === 'image') {
-    return result.content
+    return result
   }
   return `[${(result.type as string).toUpperCase()} CONTENT]`
 }
