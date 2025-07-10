@@ -43,6 +43,7 @@
     "@types/express": "^5.0.2",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.15.21",
+    "@types/sharp": "^0.32.0",
     "esbuild": "^0.25.4",
     "eslint": "^9.27.0",
     "eslint-config-prettier": "^10.1.5",
@@ -82,6 +83,7 @@
     "os": "^0.1.2",
     "pdf2json": "^3.1.5",
     "rxjs": "^7.8.2",
+    "sharp": "^0.33.5",
     "tslib": "^2.3.0",
     "yaml": "^2.8.0",
     "yargs": "^17.7.2"

@@ -3,6 +3,7 @@ import { ImageContent, MessageContent } from '@coday/coday-events'
 import { readFileByPath } from './read-file-by-path'
 import { readPdfFile } from './pdf-reader'
 import { Interactor } from '../model'
+import { processImageBuffer, getMimeTypeFromExtension, getProcessingDescription } from './image-processor'
 import * as path from 'path'
 import * as fs from 'fs/promises'
 
@@ -21,24 +22,7 @@ const readPdfWrapper = (input: FileReaderInput): Promise<FileContent> => {
   })
 }
 
-// Helper function to get MIME type from file extension
-const getMimeType = (extension: string): ImageContent['mimeType'] => {
-  switch (extension.toLowerCase()) {
-    case '.png':
-      return 'image/png'
-    case '.jpg':
-    case '.jpeg':
-      return 'image/jpeg'
-    case '.gif':
-      return 'image/gif'
-    case '.webp':
-      return 'image/webp'
-    default:
-      return 'image/png' // fallback
-  }
-}
-
-// Helper function to read image files
+// Helper function to read and process image files
 const readImageFile = async (input: FileReaderInput): Promise<ImageContent> => {
   const fullPath = path.join(input.root, input.relPath)
   const extension = path.extname(input.relPath).toLowerCase()
@@ -46,14 +30,32 @@ const readImageFile = async (input: FileReaderInput): Promise<ImageContent> => {
 
   try {
     const buffer = await fs.readFile(fullPath)
-    const base64Data = buffer.toString('base64')
-    const mimeType = getMimeType(extension)
+    const originalMimeType = getMimeTypeFromExtension(extension)
+    
+    // Process the image with resizing and compression
+    const processedImage = await processImageBuffer(buffer, originalMimeType)
+    
+    // Generate source description with processing info
+    const originalSizeKB = (processedImage.originalSize / 1024).toFixed(1)
+    const finalSizeKB = (processedImage.processedSize / 1024).toFixed(1)
+    const processingDesc = getProcessingDescription(processedImage)
+    
+    let sourceDesc = `${fileName} (${finalSizeKB} KB`
+    if (processedImage.originalSize !== processedImage.processedSize) {
+      sourceDesc += `, was ${originalSizeKB} KB`
+    }
+    if (processingDesc !== 'no processing needed') {
+      sourceDesc += `, ${processingDesc}`
+    }
+    sourceDesc += ')'
 
     return {
       type: 'image',
-      content: base64Data,
-      mimeType: mimeType,
-      source: `${fileName} (${(buffer.length / 1024).toFixed(1)} KB)`,
+      content: processedImage.content,
+      mimeType: processedImage.mimeType,
+      source: sourceDesc,
+      width: processedImage.width,
+      height: processedImage.height,
     }
   } catch (error) {
     throw new Error(`Failed to read image file ${input.relPath}: ${error}`)
