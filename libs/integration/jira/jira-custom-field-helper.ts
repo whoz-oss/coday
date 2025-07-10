@@ -36,7 +36,7 @@ export class JiraCustomFieldHelper {
       }
 
       // Get options for the first context
-      const contextId = contexts[0].id
+      const contextId = contexts[0]!.id
       const options = await retrieveFieldOptions(
         fieldId,
         contextId,

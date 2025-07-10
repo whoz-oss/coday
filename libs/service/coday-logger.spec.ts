@@ -75,15 +75,15 @@ describe('CodayLogger', () => {
       expect(jsonlFiles[0]).toBe(expectedFileName)
 
       // Check file content
-      const filePath = path.join(testLogDir, jsonlFiles[0])
+      const filePath = path.join(testLogDir, jsonlFiles[0]!)
       const content = await fs.readFile(filePath, 'utf8')
       const lines = content.trim().split('\n')
 
       expect(lines).toHaveLength(2)
 
       // Parse and validate entries
-      const entry1 = JSON.parse(lines[0])
-      const entry2 = JSON.parse(lines[1])
+      const entry1 = JSON.parse(lines[0]!)
+      const entry2 = JSON.parse(lines[1]!)
 
       expect(entry1).toEqual({
         timestamp: expect.any(String),
