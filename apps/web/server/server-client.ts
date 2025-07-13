@@ -18,7 +18,7 @@ export class ServerClient {
   private readonly heartbeatInterval: NodeJS.Timeout
   private terminationTimeout?: NodeJS.Timeout
   private lastConnected: number = Date.now()
-  private coday?: Coday
+  coday?: Coday
 
   static readonly SESSION_TIMEOUT = 8 * 60 * 60 * 1000 // 8 hours in milliseconds
   static readonly HEARTBEAT_INTERVAL = 10_000 // 10 seconds

@@ -12,6 +12,7 @@ import {
 import { CodayEventHandler } from '../utils/coday-event-handler'
 import { getPreference } from '../utils/preferences'
 import { VoiceSynthesisComponent } from '../voice-synthesis/voice-synthesis.component'
+import { ImageUploadHandler } from '../image-upload/image-upload-handler'
 
 const PARAGRAPH_MIN_LENGTH = 80
 const MAX_PARAGRAPHS = 3
@@ -26,6 +27,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
   private readonly onStopCallback: () => void
   private readFullText: boolean = false
   private currentPlayingButton: HTMLButtonElement | null = null
+  private imageUploadHandler: ImageUploadHandler
 
   constructor(
     onStopCallback: () => void,
@@ -48,6 +50,12 @@ export class ChatHistoryComponent implements CodayEventHandler {
     window.addEventListener('voiceReadFullTextChanged', (event: any) => {
       this.readFullText = event.detail
     })
+
+    // Initialize image upload handler
+    this.imageUploadHandler = new ImageUploadHandler(this.getClientId())
+    
+    // Setup drag and drop
+    this.setupDragAndDrop()
 
     // Vérification périodique pour s'assurer que l'état reste cohérent
     setInterval(() => {
@@ -623,6 +631,93 @@ export class ChatHistoryComponent implements CodayEventHandler {
     } catch (error) {
       return true // If parsing fails, assume it's recent
     }
+  }
+
+  private setupDragAndDrop(): void {
+    this.chatHistory.addEventListener('dragenter', this.handleDragEnter.bind(this))
+    this.chatHistory.addEventListener('dragover', this.handleDragOver.bind(this))
+    this.chatHistory.addEventListener('dragleave', this.handleDragLeave.bind(this))
+    this.chatHistory.addEventListener('drop', this.handleDrop.bind(this))
+  }
+
+  private handleDragEnter(e: DragEvent): void {
+    e.preventDefault()
+    if (this.hasImageFiles(e.dataTransfer)) {
+      this.chatHistory.classList.add('drag-over')
+    }
+  }
+
+  private handleDragOver(e: DragEvent): void {
+    e.preventDefault()
+    if (this.hasImageFiles(e.dataTransfer)) {
+      e.dataTransfer!.dropEffect = 'copy'
+    }
+  }
+
+  private handleDragLeave(e: DragEvent): void {
+    if (e.target === this.chatHistory) {
+      this.chatHistory.classList.remove('drag-over')
+    }
+  }
+
+  private async handleDrop(e: DragEvent): Promise<void> {
+    e.preventDefault()
+    this.chatHistory.classList.remove('drag-over')
+    
+    const files = Array.from(e.dataTransfer?.files || [])
+    const imageFiles = files.filter(f => f.type.startsWith('image/'))
+    
+    for (const file of imageFiles) {
+      try {
+        this.showUploadStatus(`Uploading ${file.name}...`)
+        await this.imageUploadHandler.uploadImage(file)
+        this.hideUploadStatus()
+      } catch (error: any) {
+        console.error('Upload error:', error)
+        this.showUploadError(`Failed to upload ${file.name}: ${error.message}`)
+      }
+    }
+  }
+
+  private hasImageFiles(dataTransfer: DataTransfer | null): boolean {
+    if (!dataTransfer) return false
+    return Array.from(dataTransfer.types).includes('Files')
+  }
+
+  private showUploadStatus(message: string): void {
+    // Remove any existing status
+    this.hideUploadStatus()
+    
+    const statusDiv = document.createElement('div')
+    statusDiv.classList.add('upload-status')
+    statusDiv.textContent = message
+    statusDiv.id = 'upload-status'
+    
+    this.chatHistory.appendChild(statusDiv)
+    this.scrollToBottom()
+  }
+
+  private hideUploadStatus(): void {
+    const existing = document.getElementById('upload-status')
+    if (existing) {
+      existing.remove()
+    }
+  }
+
+  private showUploadError(message: string): void {
+    this.hideUploadStatus()
+    
+    const errorDiv = document.createElement('div')
+    errorDiv.classList.add('upload-status', 'error')
+    errorDiv.textContent = message
+    
+    this.chatHistory.appendChild(errorDiv)
+    this.scrollToBottom()
+    
+    // Auto-remove error after 5 seconds
+    setTimeout(() => {
+      errorDiv.remove()
+    }, 5000)
   }
 
   private announceText(text: string): void {

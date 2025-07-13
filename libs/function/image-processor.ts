@@ -26,7 +26,7 @@ export interface ImageProcessingOptions {
 const DEFAULT_OPTIONS: ImageProcessingOptions = {
   maxWidth: 1024,
   maxHeight: 1024,
-  maxFileSize: 5 * 1024 * 1024, // 5MB
+  maxFileSize: 15 * 1024 * 1024, // 5MB
   quality: 80,
   preserveFormat: false, // Convert to JPEG for better compression by default
   areaThresholdFactor: 2.0 // Images 2x larger than target area are considered "large"

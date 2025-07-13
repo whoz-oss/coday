@@ -7,7 +7,7 @@ import { HandlerLooper } from './handler-looper'
 import { AiClientProvider } from './integration/ai/ai-client-provider'
 import { keywords } from './keywords'
 import { CommandContext, Interactor } from './model'
-import { MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
+import { MessageEvent, MessageContent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 import { AgentService } from './agent'
 import { CodayOptions } from './options'
 import { CodayServices } from './coday-services'
@@ -93,6 +93,33 @@ export class Coday {
     if (!this.options.oneshot && thread.runStatus !== RunStatus.RUNNING) {
       this.interactor.replayLastInvite()
     }
+  }
+
+  /**
+   * Upload content to the current AI thread as a user message.
+   * @param content Array of MessageContent to upload
+   */
+  upload(content: MessageContent[]): void {
+    const thread = this.aiThreadService.getCurrentThread()
+    if (!thread) {
+      this.interactor.error('No active thread available for upload')
+      return
+    }
+
+    const username = this.services.user.username
+    
+    // Add each content item as a user message
+    content.forEach(item => {
+      thread.addUserMessage(username, item)
+    })
+
+    // Send the message event to update the UI
+    const messageEvent = new MessageEvent({
+      role: 'user',
+      content,
+      name: username
+    })
+    this.interactor.sendEvent(messageEvent)
   }
 
   async run(): Promise<void> {
