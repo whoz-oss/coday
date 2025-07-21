@@ -3,6 +3,7 @@ import path from 'path'
 import { ServerClientManager } from './server-client'
 
 import { AnswerEvent, CodayEvent, MessageEvent, ImageContent } from '@coday/coday-events'
+// eslint-disable-next-line @nx/enforce-module-boundaries
 import { processImageBuffer } from '../../../libs/function/image-processor'
 import { CodayOptions, parseCodayOptions } from '@coday/options'
 import * as os from 'node:os'

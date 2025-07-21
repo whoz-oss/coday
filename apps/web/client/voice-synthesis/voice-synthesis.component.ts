@@ -95,7 +95,7 @@ export class VoiceSynthesisComponent {
       .replace(/#{1,6}\s*(.*)/g, '$1')
       
       // Replace links with just the text
-      .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
       
       // Remove standalone URLs
       .replace(/https?:\/\/[^\s]+/g, 'link')
