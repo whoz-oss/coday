@@ -173,12 +173,14 @@ export class OpenaiClient extends AiClient {
       2
       this.updateUsage(response.usage, agent, model, thread)
 
-      if (response.choices[0].finish_reason === 'length') throw new Error('Max tokens reached for Openai 😬')
+      const firstChoice = response.choices[0]!
 
-      const text = response.choices[0].message.content?.trim()
+      if (firstChoice.finish_reason === 'length') throw new Error('Max tokens reached for Openai 😬')
+
+      const text = firstChoice.message.content?.trim()
       this.handleText(thread, text, agent, subscriber)
 
-      const toolRequests = response.choices[0].message?.tool_calls?.map(
+      const toolRequests = firstChoice.message?.tool_calls?.map(
         (toolCall) =>
           new ToolRequestEvent({
             toolRequestId: toolCall.id,
@@ -196,7 +198,7 @@ export class OpenaiClient extends AiClient {
     }
   }
 
-  private updateUsage(usage: any, agent: Agent, model: AiModel, thread: AiThread): void {
+  private updateUsage(usage: any, _agent: Agent, model: AiModel, thread: AiThread): void {
     const cacheReadTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0
     const inputNoCacheTokens = (usage?.prompt_tokens ?? 0) - cacheReadTokens // TODO: check again with doc...
     const input = inputNoCacheTokens * (model?.price?.inputMTokens ?? 0)
@@ -243,22 +245,57 @@ export class OpenaiClient extends AiClient {
       content: agent.systemInstructions,
       role: 'system',
     }
-    const openaiMessages = messages
-      .map((msg, index) => {
-        let openaiMessage: ChatCompletionMessageParam | undefined
-        if (msg instanceof MessageEvent) {
-          const role = msg.role === 'assistant' ? 'system' : 'user'
-          const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
-          const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
 
-          openaiMessage = {
-            role,
-            content,
-            name: msg.role === 'user' ? msg.name : undefined,
-          }
+    const openaiMessages = messages.flatMap((msg, index): ChatCompletionMessageParam[] => {
+      if (msg instanceof MessageEvent) {
+        const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
+        const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
+
+        // Convert rich content to OpenAI format
+        const openaiContent: string | OpenAI.ChatCompletionContentPart[] =
+          content.map((c) => {
+                if (c.type === 'text') {
+                  return { type: 'text' as const, text: c.content }
+                }
+                if (c.type === 'image') {
+                  const image = {
+                    type: 'image_url' as const,
+                    image_url: {
+                      url: `data:${c.mimeType};base64,${c.content}`,
+                      detail: 'auto' as const, // Let OpenAI choose the appropriate detail level
+                    },
+                  }
+                  console.log(`got an image in message event`)
+                  return image
+                }
+                throw new Error(`Unknown content type: ${(c as any).type}`)
+              })
+
+        if (msg.role === 'assistant') {
+          return [
+            {
+              role: 'assistant' as const,
+              content:
+                typeof openaiContent === 'string'
+                  ? openaiContent
+                  : openaiContent.map((c) => (c.type === 'text' ? c.text : '[Image]')).join(' '),
+              name: agent.name,
+            },
+          ]
+        } else {
+          return [
+            {
+              role: 'user' as const,
+              content: openaiContent,
+              name: msg.name,
+            },
+          ]
         }
-        if (msg instanceof ToolRequestEvent) {
-          openaiMessage = {
+      }
+
+      if (msg instanceof ToolRequestEvent) {
+        return [
+          {
             role: 'assistant',
             name: agent.name,
             tool_calls: [
@@ -271,18 +308,63 @@ export class OpenaiClient extends AiClient {
                 },
               },
             ],
+          },
+        ]
+      }
+
+      if (msg instanceof ToolResponseEvent) {
+        if (typeof msg.output === 'string') {
+          // Simple string output
+          return [
+            {
+              role: 'tool',
+              content: msg.output,
+              tool_call_id: msg.toolRequestId,
+            },
+          ]
+        } else {
+          // Rich content (MessageContent) - OpenAI workaround needed for images
+          const content = msg.output
+
+          if (content.type === 'image') {
+            // Return two messages: tool response + user message with image
+            return [
+              {
+                role: 'tool',
+                content: 'Image retrieved successfully. See following message.',
+                tool_call_id: msg.toolRequestId,
+              },
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'image_url' as const,
+                    image_url: {
+                      url: `data:${content.mimeType};base64,${content.content}`,
+                      detail: 'auto' as const,
+                    },
+                  },
+                ],
+                name: 'system', // Indicate this is a system-generated message
+              },
+            ]
+          } else if (content.type === 'text') {
+            // Text content
+            return [
+              {
+                role: 'tool',
+                content: content.content,
+                tool_call_id: msg.toolRequestId,
+              },
+            ]
+          } else {
+            throw new Error(`Unknown content type: ${(content as any).type}`)
           }
         }
-        if (msg instanceof ToolResponseEvent) {
-          openaiMessage = {
-            role: 'tool',
-            content: msg.output,
-            tool_call_id: msg.toolRequestId,
-          }
-        }
-        return openaiMessage
-      })
-      .filter((m) => !!m)
+      }
+
+      return [] // Should not happen, but satisfies TypeScript
+    })
 
     return [systemInstructionMessage, ...openaiMessages]
   }
@@ -315,9 +397,15 @@ export class OpenaiClient extends AiClient {
 
   private toAssistantMessage(m: ThreadMessage): MessageCreateParams {
     if (m instanceof MessageEvent) {
+      // For assistant API, convert rich content to text representation
+      const content =
+        typeof m.content === 'string'
+          ? m.content
+          : m.content.filter(c => c.type === 'text').map(c => c.content).join('\n')
+
       return {
         role: m.role,
-        content: m.content,
+        content,
       }
     }
     if (m instanceof ToolResponseEvent) {
@@ -379,15 +467,15 @@ export class OpenaiClient extends AiClient {
                 thread.addToolResponseEvents([responseEvent])
                 toolOutputs.push({
                   tool_call_id: request.toolRequestId,
-                  output: responseEvent.output,
+                  // TODO: see if we cannot use a MessageContent for toolOutput ?
+                  output: responseEvent.getTextOutput(),
                 })
               })
             )
 
             const newStream = client!.beta.threads.runs.submitToolOutputsStream(
               thread.data.openai.assistantThreadData.threadId!,
-              chunk.data.id,
-              { tool_outputs: toolOutputs }
+              { tool_outputs: toolOutputs, thread_id: thread.data.op.assistantThreadData.threadId! }
             )
             if (!this.shouldProceed(thread)) return
             await this.processAssistantStream.call(this, newStream, agent, model, client, thread, subscriber)

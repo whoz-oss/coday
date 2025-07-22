@@ -1,4 +1,4 @@
-import { Migration } from './data-migration'
+import { Migration } from '../../utils/data-migration'
 import { aiPropertyToAi } from './ai-providers-to-ai.migration'
 
 /**

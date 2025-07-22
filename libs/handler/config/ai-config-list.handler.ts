@@ -17,7 +17,7 @@ export class AiConfigListHandler extends CommandHandler {
     })
   }
 
-  async handle(command: string, context: CommandContext): Promise<CommandContext> {
+  async handle(_command: string, context: CommandContext): Promise<CommandContext> {
     // Get merged and per-level configs
     const mergedConfig = this.services.aiConfig?.getMergedConfiguration()
     const codayProviders = this.services.aiConfig?.getProviders(ConfigLevel.CODAY) || []

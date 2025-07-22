@@ -55,7 +55,7 @@ export class WebhookDeleteHandler extends CommandHandler {
         
         // Extract UUID from selection
         const match = chosen.match(/\(([^)]+)\)/)
-        uuid = match ? match[1] : ''
+        uuid = match ? match[1]! : ''
       }
 
       if (!uuid) {

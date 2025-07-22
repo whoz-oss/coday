@@ -2,12 +2,19 @@
  * @fileoverview File-based implementation of ThreadRepository using YAML files
  */
 
-import * as fs from 'fs/promises'
-import * as path from 'path'
-import * as yaml from 'yaml'
+// eslint-disable-next-line @nx/enforce-module-boundaries
+import { promises as fs } from 'fs'
+// eslint-disable-next-line @nx/enforce-module-boundaries
+import path from 'path'
+// eslint-disable-next-line @nx/enforce-module-boundaries
+import yaml from 'yaml'
 import { AiThread } from '../ai-thread'
 import { AiThreadRepository } from '../ai-thread.repository'
 import { ThreadRepositoryError, ThreadSummary } from '../ai-thread.types'
+// eslint-disable-next-line @nx/enforce-module-boundaries
+import { migrateData } from '../../utils/data-migration'
+import { aiThreadMigrations } from '../ai-thread.migrations'
+import { writeYamlFile } from '@coday/service/write-yaml-file'
 
 /**
  * Helper function to safely read YAML file content
@@ -70,10 +77,23 @@ export class FileAiThreadRepository implements AiThreadRepository {
     await this.initPromise
     try {
       const file = await this.findThreadFile(id)
-      if (!file) return null
+      if (!file) {
+        return null
+      }
 
-      const data = await readYamlFile(path.join(this.threadsDir, file))
-      return data ? new AiThread(data) : null
+      const filePath = path.join(this.threadsDir, file)
+      const data = await readYamlFile(filePath)
+      if (!data) {
+        return null
+      }
+      // do migrations on thread
+      const migratedThread = migrateData(data, aiThreadMigrations)
+
+      if (migratedThread !== data) {
+        writeYamlFile(filePath, migratedThread)
+      }
+
+      return new AiThread(migratedThread)
     } catch (error) {
       throw new ThreadRepositoryError(`Failed to read thread ${id}`, error as Error)
     }
@@ -118,7 +138,8 @@ export class FileAiThreadRepository implements AiThreadRepository {
         thread.id = crypto.randomUUID()
       }
       const fileName = this.getThreadFileName(thread)
-      const contentToSave = yaml.stringify(thread)
+      const versionned = {...thread, version: aiThreadMigrations.length + 1}
+      const contentToSave = yaml.stringify(versionned)
 
       // Write the file
       const threadPath = path.join(this.threadsDir, fileName)
@@ -143,7 +164,7 @@ export class FileAiThreadRepository implements AiThreadRepository {
               .map(async (file) => {
                 const data = await readYamlFile(path.join(this.threadsDir, file))
                 if (!data) return null
-                
+
                 return {
                   id: data.id,
                   username: data.username,

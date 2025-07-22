@@ -52,7 +52,7 @@ export class WebhookEditHandler extends CommandHandler {
         
         // Extract UUID from selection
         const match = chosen.match(/\(([^)]+)\)$/)
-        uuid = match ? match[1] : ''
+        uuid = match ? match[1]! : ''
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         this.interactor.error(`Failed to list webhooks: ${errorMessage}`)

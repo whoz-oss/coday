@@ -7,7 +7,7 @@ import { HandlerLooper } from './handler-looper'
 import { AiClientProvider } from './integration/ai/ai-client-provider'
 import { keywords } from './keywords'
 import { CommandContext, Interactor } from './model'
-import { AnswerEvent, MessageEvent, TextEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
+import { MessageEvent, MessageContent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 import { AgentService } from './agent'
 import { CodayOptions } from './options'
 import { CodayServices } from './coday-services'
@@ -63,14 +63,11 @@ export class Coday {
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     )
 
-    // Convert and emit each message
+    // Send messages directly - no conversion needed
     for (const message of sortedMessages) {
       if (message instanceof MessageEvent) {
-        if (message.role === 'assistant') {
-          this.interactor.sendEvent(new TextEvent({ ...message, speaker: message.name, text: message.content }))
-        } else {
-          this.interactor.sendEvent(new AnswerEvent({ ...message, answer: message.content, invite: message.name }))
-        }
+        // Send MessageEvent directly - frontend now handles rich content
+        this.interactor.sendEvent(message)
       } else if (message instanceof ToolRequestEvent || message instanceof ToolResponseEvent) {
         this.interactor.sendEvent(message)
       }
@@ -96,6 +93,33 @@ export class Coday {
     if (!this.options.oneshot && thread.runStatus !== RunStatus.RUNNING) {
       this.interactor.replayLastInvite()
     }
+  }
+
+  /**
+   * Upload content to the current AI thread as a user message.
+   * @param content Array of MessageContent to upload
+   */
+  upload(content: MessageContent[]): void {
+    const thread = this.aiThreadService.getCurrentThread()
+    if (!thread) {
+      this.interactor.error('No active thread available for upload')
+      return
+    }
+
+    const username = this.services.user.username
+    
+    // Add each content item as a user message
+    content.forEach(item => {
+      thread.addUserMessage(username, item)
+    })
+
+    // Send the message event to update the UI
+    const messageEvent = new MessageEvent({
+      role: 'user',
+      content,
+      name: username
+    })
+    this.interactor.sendEvent(messageEvent)
   }
 
   async run(): Promise<void> {

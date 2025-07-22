@@ -68,7 +68,7 @@ describe('FileAiThreadRepository', () => {
 
       // Check the actual file content
       const files = await fs.readdir(tmpDir)
-      const filePath = path.join(tmpDir, files[0])
+      const filePath = path.join(tmpDir, files[0]!)
       const fileContent = await fs.readFile(filePath, 'utf-8')
       const savedData = yaml.parse(fileContent)
 
@@ -101,7 +101,7 @@ describe('FileAiThreadRepository', () => {
 
       // Get the original file name
       const originalFiles = await fs.readdir(tmpDir)
-      const originalFile = originalFiles[0]
+      const originalFile = originalFiles[0]!
 
       // Save same thread with new name
       thread.name = 'New Name'

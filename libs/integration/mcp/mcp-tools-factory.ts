@@ -55,7 +55,7 @@ export class McpToolsFactory extends AssistantToolFactory {
     console.log(`Closed mcp client ${this.serverConfig.name}`)
   }
 
-  protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {
+  protected async buildTools(_context: CommandContext, _agentName: string): Promise<CodayTool[]> {
     // if tools are already created, return them
     if (this.tools.length) return this.tools
 
@@ -209,7 +209,7 @@ export class McpToolsFactory extends AssistantToolFactory {
     const getResource = async (args: Record<string, any>) => {
       try {
         // Build the resource URI with parameters
-        const uri = resource.uriTemplate.replace(/\{([^}]+)\}/g, (match: string, param: string) => {
+        const uri = resource.uriTemplate.replace(/\{([^}]+)\}/g, (_match: string, param: string) => {
           return encodeURIComponent(args[param] || '')
         })
 

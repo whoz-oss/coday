@@ -2,7 +2,9 @@ import express from 'express'
 import path from 'path'
 import { ServerClientManager } from './server-client'
 
-import { AnswerEvent, CodayEvent, MessageEvent } from '@coday/coday-events'
+import { AnswerEvent, CodayEvent, MessageEvent, ImageContent } from '@coday/coday-events'
+// eslint-disable-next-line @nx/enforce-module-boundaries
+import { processImageBuffer } from '../../../libs/function/image-processor'
 import { CodayOptions, parseCodayOptions } from '@coday/options'
 import * as os from 'node:os'
 import { debugLog } from './log'
@@ -41,12 +43,12 @@ debugLog('INIT', 'Webhook service initialized')
 app.use(express.static(path.join(__dirname, '../client')))
 
 // Basic route to test server setup
-app.get('/', (req: express.Request, res: express.Response) => {
+app.get('/', (_req: express.Request, res: express.Response) => {
   res.send('Server is up and running!')
 })
 
-// Middleware to parse JSON bodies
-app.use(express.json())
+// Middleware to parse JSON bodies with increased limit for image uploads
+app.use(express.json({ limit: '20mb' }))
 
 // Initialize the client manager with usage logger and webhook service
 const clientManager = new ServerClientManager(logger, webhookService)
@@ -250,6 +252,61 @@ app.post('/api/stop', (req: express.Request, res: express.Response) => {
   }
 })
 
+// POST endpoint for file uploads
+app.post('/api/files/upload', async (req: express.Request, res: express.Response) => {
+  try {
+    const { clientId, content, mimeType, filename } = req.body
+    
+    // Validate required fields
+    if (!clientId || !content || !mimeType || !filename) {
+      res.status(400).json({ error: 'Missing required fields: clientId, content, mimeType, filename' })
+      return
+    }
+    
+    debugLog('UPLOAD', `clientId: ${clientId}, uploading: ${filename}`)
+    
+    const client = clientManager.get(clientId)
+    if (!client) {
+      res.status(404).json({ error: 'Client not found' })
+      return
+    }
+
+    // Process the image
+    const buffer = Buffer.from(content, 'base64')
+    const processed = await processImageBuffer(buffer, mimeType)
+    
+    // Create ImageContent
+    const imageContent: ImageContent = {
+      type: 'image',
+      content: processed.content,
+      mimeType: processed.mimeType,
+      width: processed.width,
+      height: processed.height,
+      source: `${filename} (${(processed.processedSize / 1024).toFixed(1)} KB)`
+    }
+
+    // Upload to thread via Coday
+    if (!client.coday) {
+      console.log('No Coday instance available')
+      res.status(400).json({ error: 'No active session available' })
+      return
+    }
+    client.coday?.upload([imageContent])
+
+    client.updateLastConnection()
+    
+    res.json({ 
+      success: true,
+      processedSize: processed.processedSize,
+      dimensions: { width: processed.width, height: processed.height }
+    })
+    
+  } catch (error) {
+    console.error('Error processing file upload:', error)
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Upload failed' })
+  }
+})
+
 // POST endpoint for receiving AnswerEvent messages
 app.post('/api/message', (req: express.Request, res: express.Response) => {
   try {
@@ -298,6 +355,10 @@ app.get('/api/event/:eventId', (req: express.Request, res: express.Response) => 
 
     if (!client) {
       res.status(404).send('Client not found')
+      return
+    }
+    if (!eventId) {
+      res.status(400).send('Missing eventId')
       return
     }
 

@@ -10,3 +10,33 @@ main {
   color: var(--color-text);
   transition: background-color 0.3s ease, color 0.3s ease;
 }
+
+/* Drag and drop styles */
+#chat-history.drag-over {
+  border: 2px dashed var(--color-primary);
+  background-color: var(--color-bg-secondary);
+  opacity: 0.8;
+}
+
+.upload-status {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--color-bg-secondary);
+  border-radius: 4px;
+  margin: 5px 0;
+  font-size: 0.9em;
+  color: var(--color-text-secondary);
+}
+
+.upload-status.error {
+  background: #ffebee;
+  color: #c62828;
+  border: 1px solid #ffcdd2;
+}
+
+[data-theme="dark"] .upload-status.error {
+  background: #4a2c2a;
+  color: #ef5350;
+  border: 1px solid #6d4c41;
+}

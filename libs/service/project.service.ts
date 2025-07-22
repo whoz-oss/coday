@@ -6,7 +6,7 @@ import { Interactor, ProjectLocalConfig, SelectedProject } from '../model'
 import { writeYamlFile } from './write-yaml-file'
 import { readYamlFile } from './read-yaml-file'
 import { ProjectSelectedEvent } from '@coday/coday-events'
-import { migrateData } from './migration/data-migration'
+import { migrateData } from '../utils/data-migration'
 import { projectConfigMigrations } from './migration/project-config-migrations'
 
 const PROJECTS = 'projects'

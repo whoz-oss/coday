@@ -175,7 +175,7 @@ Webhook Name                 | Calls | Success | Errors | Projects | Last Used
       const success = stat.successCount.toString().padStart(7)
       const errors = stat.errorCount.toString().padStart(6)
       const projects = stat.projects.size.toString().padStart(8)
-      const lastUsed = stat.lastUsed.toISOString().split('T')[0].padStart(10)
+      const lastUsed = stat.lastUsed.toISOString().split('T')[0]?.padStart(10)
 
       return `${name} | ${calls} | ${success} | ${errors} | ${projects} | ${lastUsed}`
     })

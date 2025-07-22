@@ -7,7 +7,7 @@ export async function generateThreadName(thread: AiThread, agent: Agent): Promis
   const messages = (await thread.getMessages(undefined, undefined)).messages
     .filter((msg) => msg instanceof MessageEvent && msg.role === 'user')
     .slice(0, 3)
-    .map((msg) => (msg as MessageEvent).content)
+    .map((msg) => (msg as MessageEvent).getTextContent())
     .join('\n\n')
 
   const prompt = `Here are the messages a user sent in a conversation with an AI:\n\n${messages}\n\nGenerate a title for this conversation between the conversation-name tags, and without introduction nor line jumps.\n<conversation-name>`
@@ -25,6 +25,10 @@ export async function generateThreadName(thread: AiThread, agent: Agent): Promis
       .trim()
       .replace(/^["']|["']$/g, '')
       .replace(/\.$/, '')
+      .replace('conversation-name', '')
+      .replace(/<>/g, '') // Remove orphaned angle brackets from duplicate tags
+      .replace(/^<|>$/g, '') // Remove leading/trailing angle brackets
+      .trim()
   } catch (error) {
     // Fallback to date-based name
     return `Thread ${new Date().toISOString().split('T')[0]}`

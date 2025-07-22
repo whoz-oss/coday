@@ -15,5 +15,5 @@ export function parseAgentCommand(command: string): [string, string] {
   if (!match) return ['', command]
   const agentName = match[1]
   const restOfCommand = match[2] || ''
-  return [agentName?.toLowerCase(), restOfCommand]
+  return [agentName?.toLowerCase() ?? '', restOfCommand]
 }

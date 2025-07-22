@@ -1,6 +1,6 @@
 name: Octopuss
 description: GitHub integration specialist with expertise in repository management and collaboration
-aiProvider: openai
+aiProvider: anthropic
 modelSize: BIG
 modelName: BIG
 integrations:

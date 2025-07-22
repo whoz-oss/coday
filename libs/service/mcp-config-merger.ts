@@ -27,7 +27,7 @@ export function mergeMcpConfigs(
 
       if (existingIndex >= 0) {
         // Merge with existing MCP server using specific rules
-        merged[existingIndex] = mergeServerConfigs(merged[existingIndex], mcpServer)
+        merged[existingIndex] = mergeServerConfigs(merged[existingIndex]!, mcpServer)
       } else {
         // Add new MCP server with safe defaults
         merged.push(applyServerDefaults(mcpServer))

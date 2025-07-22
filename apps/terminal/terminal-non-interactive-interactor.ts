@@ -2,11 +2,11 @@ import { TerminalInteractor } from './terminal-interactor'
 import { ChoiceEvent, InviteEvent } from '@coday/coday-events'
 
 export class TerminalNonInteractiveInteractor extends TerminalInteractor {
-  override handleChoiceEvent(event: ChoiceEvent) {
+  override handleChoiceEvent(_event: ChoiceEvent) {
     this.throwError()
   }
 
-  override handleInviteEvent(event: InviteEvent) {
+  override handleInviteEvent(_event: InviteEvent) {
     this.throwError()
   }
 

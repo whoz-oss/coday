@@ -170,7 +170,7 @@ export class AiConfigService {
 
         if (existingIndex >= 0) {
           // Merge with existing provider
-          const existing = merged[existingIndex]
+          const existing = merged[existingIndex]!
 
           // Merge provider-level properties
           merged[existingIndex] = {
@@ -192,7 +192,7 @@ export class AiConfigService {
                 mergedModels[modelIndex] = {
                   ...mergedModels[modelIndex],
                   ...model,
-                  price: { ...mergedModels[modelIndex].price, ...model.price },
+                  price: { ...mergedModels[modelIndex]?.price, ...model.price },
                 }
               } else {
                 // Add new model

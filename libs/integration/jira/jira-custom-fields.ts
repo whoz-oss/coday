@@ -210,7 +210,7 @@ export async function retrieveCustomFieldInfo(
     
     // Step 4: Get options for the first context
     // Note: We're using the first context by default, but this could be parameterized if needed
-    const contextId = contexts[0].id
+    const contextId = contexts[0]!.id
     const options = await retrieveFieldOptions(
       field.id,
       contextId,

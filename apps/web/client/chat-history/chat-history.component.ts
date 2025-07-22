@@ -2,6 +2,7 @@ import {
   AnswerEvent,
   CodayEvent,
   ErrorEvent,
+  MessageEvent,
   TextEvent,
   ThinkingEvent,
   ToolRequestEvent,
@@ -11,6 +12,7 @@ import {
 import { CodayEventHandler } from '../utils/coday-event-handler'
 import { getPreference } from '../utils/preferences'
 import { VoiceSynthesisComponent } from '../voice-synthesis/voice-synthesis.component'
+import { ImageUploadHandler } from '../image-upload/image-upload-handler'
 
 const PARAGRAPH_MIN_LENGTH = 80
 const MAX_PARAGRAPHS = 3
@@ -25,6 +27,7 @@ export class ChatHistoryComponent implements CodayEventHandler {
   private readonly onStopCallback: () => void
   private readFullText: boolean = false
   private currentPlayingButton: HTMLButtonElement | null = null
+  private imageUploadHandler: ImageUploadHandler
 
   constructor(
     onStopCallback: () => void,
@@ -48,6 +51,12 @@ export class ChatHistoryComponent implements CodayEventHandler {
       this.readFullText = event.detail
     })
 
+    // Initialize image upload handler
+    this.imageUploadHandler = new ImageUploadHandler(this.getClientId())
+    
+    // Setup drag and drop
+    this.setupDragAndDrop()
+
     // Vérification périodique pour s'assurer que l'état reste cohérent
     setInterval(() => {
       this.checkStateConsistency()
@@ -56,7 +65,17 @@ export class ChatHistoryComponent implements CodayEventHandler {
 
   handle(event: CodayEvent): void {
     this.history.set(event.timestamp, event)
-    if (event instanceof TextEvent) {
+    if (event instanceof MessageEvent) {
+      // Handle rich content messages
+      if (event.role === 'user') {
+        this.addUserMessage(event)
+      } else {
+        // Stop any current speech when new response arrives and reset buttons
+        this.voiceSynthesis.stopSpeech()
+        this.resetAllPlayButtons()
+        this.addAssistantMessage(event)
+      }
+    } else if (event instanceof TextEvent) {
       if (event.speaker) {
         // Stop any current speech when new response arrives and reset buttons
         this.voiceSynthesis.stopSpeech()
@@ -297,6 +316,177 @@ export class ChatHistoryComponent implements CodayEventHandler {
     }
   }
 
+  private addUserMessage(event: MessageEvent): void {
+    const newEntry = this.createRichMessageElement(event)
+    newEntry.classList.add('text', 'right')
+
+    // Add button container
+    const buttonContainer = document.createElement('div')
+    buttonContainer.classList.add('message-button-container')
+
+    // Create play button for text content
+    const textContent = this.extractTextContent(event)
+    if (textContent) {
+      const playButton = this.createPlayButton(textContent)
+      buttonContainer.appendChild(playButton)
+    }
+
+    // Create copy button
+    const copyButton = document.createElement('button')
+    copyButton.classList.add('copy-button')
+    copyButton.title = 'Copy raw message'
+    copyButton.textContent = '📋'
+    copyButton.addEventListener('click', (event) => {
+      event.stopPropagation()
+      this.copyToClipboard(textContent)
+
+      const clickedButton = event.currentTarget as HTMLButtonElement
+      if (clickedButton) {
+        document.querySelectorAll('.copy-button.active').forEach((btn) => {
+          btn.classList.remove('active')
+          btn.textContent = '📋'
+        })
+
+        clickedButton.classList.add('active')
+        clickedButton.textContent = '✓'
+
+        setTimeout(() => {
+          clickedButton.classList.remove('active')
+          clickedButton.textContent = '📋'
+        }, 2000)
+      }
+    })
+
+    buttonContainer.appendChild(copyButton)
+    newEntry.appendChild(buttonContainer)
+
+    this.appendMessageElement(newEntry)
+  }
+
+  private addAssistantMessage(event: MessageEvent): void {
+    const newEntry = this.createRichMessageElement(event)
+    newEntry.classList.add('text', 'left')
+    newEntry.addEventListener('click', () => {
+      this.voiceSynthesis.stopSpeech()
+    })
+
+    // Add button container
+    const buttonContainer = document.createElement('div')
+    buttonContainer.classList.add('message-button-container')
+
+    // Create play button for text content
+    const textContent = this.extractTextContent(event)
+    if (textContent) {
+      const playButton = this.createPlayButton(textContent)
+      buttonContainer.appendChild(playButton)
+    }
+
+    // Create copy button
+    const copyButton = document.createElement('button')
+    copyButton.classList.add('copy-button')
+    copyButton.title = 'Copy raw response'
+    copyButton.textContent = '📋'
+    copyButton.addEventListener('click', (event) => {
+      event.stopPropagation()
+      this.copyToClipboard(textContent)
+
+      const clickedButton = event.currentTarget as HTMLButtonElement
+      if (clickedButton) {
+        document.querySelectorAll('.copy-button.active').forEach((btn) => {
+          btn.classList.remove('active')
+          btn.textContent = '📋'
+        })
+
+        clickedButton.classList.add('active')
+        clickedButton.textContent = '✓'
+
+        setTimeout(() => {
+          clickedButton.classList.remove('active')
+          clickedButton.textContent = '📋'
+        }, 2000)
+      }
+    })
+
+    buttonContainer.appendChild(copyButton)
+    newEntry.appendChild(buttonContainer)
+
+    this.appendMessageElement(newEntry)
+
+    // Announce if enabled and recent
+    const audioEnabled = getPreference<boolean>('voiceAnnounceEnabled', false) || false
+    if (audioEnabled && this.isMessageRecentEnoughForAnnouncement(event.timestamp)) {
+      this.announceText(textContent)
+    }
+  }
+
+  private createRichMessageElement(event: MessageEvent): HTMLDivElement {
+    const newEntry = document.createElement('div')
+    newEntry.classList.add('message')
+
+    // Add speaker
+    const speakerElement = document.createElement('div')
+    speakerElement.classList.add('speaker')
+    speakerElement.textContent = event.name
+    newEntry.appendChild(speakerElement)
+
+    // Create content container
+    const contentContainer = document.createElement('div')
+    contentContainer.classList.add('message-content')
+
+    // Render each content piece in order
+    event.content.forEach((content) => {
+      if (content.type === 'text') {
+        const textDiv = document.createElement('div')
+        textDiv.classList.add('text-part')
+        
+        const parsed = marked.parse(content.content)
+        if (parsed instanceof Promise) {
+          parsed.then((html) => {
+            textDiv.innerHTML = html
+          })
+        } else {
+          textDiv.innerHTML = parsed
+        }
+        
+        contentContainer.appendChild(textDiv)
+        
+      } else if (content.type === 'image') {
+        const img = document.createElement('img')
+        img.src = `data:${content.mimeType};base64,${content.content}`
+        img.alt = content.source || 'Image'
+        img.classList.add('message-image')
+        
+        // Simple styling
+        img.style.maxWidth = '100%'
+        img.style.height = 'auto'
+        img.style.margin = '8px 0'
+        img.style.borderRadius = '4px'
+        img.style.cursor = 'pointer'
+        
+        // Click to open
+        img.addEventListener('click', (e) => {
+          e.stopPropagation()
+          window.open(img.src, '_blank')
+        })
+        
+        contentContainer.appendChild(img)
+      }
+    })
+
+    newEntry.appendChild(contentContainer)
+    return newEntry
+  }
+
+  /**
+   * Extract all text content from a MessageEvent for voice synthesis and copying
+   */
+  private extractTextContent(event: MessageEvent): string {
+    return event.content
+      .filter(content => content.type === 'text')
+      .map(content => content.content)
+      .join('\n\n')
+  }
+
   private createMessageElement(content: string, speaker: string | undefined): HTMLDivElement {
     const newEntry = document.createElement('div')
     newEntry.classList.add('message')
@@ -441,6 +631,93 @@ export class ChatHistoryComponent implements CodayEventHandler {
     } catch (error) {
       return true // If parsing fails, assume it's recent
     }
+  }
+
+  private setupDragAndDrop(): void {
+    this.chatHistory.addEventListener('dragenter', this.handleDragEnter.bind(this))
+    this.chatHistory.addEventListener('dragover', this.handleDragOver.bind(this))
+    this.chatHistory.addEventListener('dragleave', this.handleDragLeave.bind(this))
+    this.chatHistory.addEventListener('drop', this.handleDrop.bind(this))
+  }
+
+  private handleDragEnter(e: DragEvent): void {
+    e.preventDefault()
+    if (this.hasImageFiles(e.dataTransfer)) {
+      this.chatHistory.classList.add('drag-over')
+    }
+  }
+
+  private handleDragOver(e: DragEvent): void {
+    e.preventDefault()
+    if (this.hasImageFiles(e.dataTransfer)) {
+      e.dataTransfer!.dropEffect = 'copy'
+    }
+  }
+
+  private handleDragLeave(e: DragEvent): void {
+    if (e.target === this.chatHistory) {
+      this.chatHistory.classList.remove('drag-over')
+    }
+  }
+
+  private async handleDrop(e: DragEvent): Promise<void> {
+    e.preventDefault()
+    this.chatHistory.classList.remove('drag-over')
+    
+    const files = Array.from(e.dataTransfer?.files || [])
+    const imageFiles = files.filter(f => f.type.startsWith('image/'))
+    
+    for (const file of imageFiles) {
+      try {
+        this.showUploadStatus(`Uploading ${file.name}...`)
+        await this.imageUploadHandler.uploadImage(file)
+        this.hideUploadStatus()
+      } catch (error: any) {
+        console.error('Upload error:', error)
+        this.showUploadError(`Failed to upload ${file.name}: ${error.message}`)
+      }
+    }
+  }
+
+  private hasImageFiles(dataTransfer: DataTransfer | null): boolean {
+    if (!dataTransfer) return false
+    return Array.from(dataTransfer.types).includes('Files')
+  }
+
+  private showUploadStatus(message: string): void {
+    // Remove any existing status
+    this.hideUploadStatus()
+    
+    const statusDiv = document.createElement('div')
+    statusDiv.classList.add('upload-status')
+    statusDiv.textContent = message
+    statusDiv.id = 'upload-status'
+    
+    this.chatHistory.appendChild(statusDiv)
+    this.scrollToBottom()
+  }
+
+  private hideUploadStatus(): void {
+    const existing = document.getElementById('upload-status')
+    if (existing) {
+      existing.remove()
+    }
+  }
+
+  private showUploadError(message: string): void {
+    this.hideUploadStatus()
+    
+    const errorDiv = document.createElement('div')
+    errorDiv.classList.add('upload-status', 'error')
+    errorDiv.textContent = message
+    
+    this.chatHistory.appendChild(errorDiv)
+    this.scrollToBottom()
+    
+    // Auto-remove error after 5 seconds
+    setTimeout(() => {
+      errorDiv.remove()
+    }, 5000)
   }
 
   private announceText(text: string): void {

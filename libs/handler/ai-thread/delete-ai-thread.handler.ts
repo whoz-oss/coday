@@ -18,7 +18,7 @@ export class DeleteAiThreadHandler extends CommandHandler {
     })
   }
 
-  async handle(command: string, context: CommandContext): Promise<CommandContext> {
+  async handle(_command: string, context: CommandContext): Promise<CommandContext> {
     try {
       // Get threads and prepare selection
       const threads = await lastValueFrom(this.threadService.list())

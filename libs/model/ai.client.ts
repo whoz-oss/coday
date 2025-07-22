@@ -7,6 +7,7 @@ import { Interactor } from './interactor'
 import { AiModel } from './ai-model'
 import { AiProviderConfig } from './ai-provider-config'
 import { CodayLogger } from '../service/coday-logger'
+import { MessageContent, TextContent } from '../coday-events'
 
 export interface CompletionOptions {
   model?: string
@@ -75,7 +76,7 @@ export abstract class AiClient {
       const fullTranscript = messages
         // without the tool request and response, hypothesis is we can do without and simply the "text"
         .filter((m) => m instanceof MessageEvent)
-        .map((m) => ` - ${m.role}: ${m.content}`)
+        .map((m) => ` - ${m.role}: ${m.getTextContent()}`)
         .join('\n')
 
       const firstUserMessage = messages.find((m) => m instanceof MessageEvent && m.role === 'user')
@@ -85,22 +86,20 @@ export abstract class AiClient {
       // Account for: prompt template (~150 chars) + response budget + safety margin (20%)
       const promptTemplateOverhead = 150
       const safetyMargin = 0.2
-      const maxTranscriptChars = Math.floor(
-        (maxChars - promptTemplateOverhead - summaryBudget) * (1 - safetyMargin)
-      )
+      const maxTranscriptChars = Math.floor((maxChars - promptTemplateOverhead - summaryBudget) * (1 - safetyMargin))
 
       // Limit transcript size to prevent context window overflow
       let transcript = fullTranscript
       let wasTruncated = false
-      
+
       if (fullTranscript.length > maxTranscriptChars) {
         // Truncate from the beginning to keep most recent content
         transcript = '...' + fullTranscript.slice(-(maxTranscriptChars - 3))
         wasTruncated = true
-        
+
         this.interactor.debug(
           `Transcript truncated: ${fullTranscript.length} → ${transcript.length} chars ` +
-          `(limit: ${maxTranscriptChars}, budget: ${maxChars})`
+            `(limit: ${maxTranscriptChars}, budget: ${maxChars})`
         )
       }
 
@@ -110,7 +109,7 @@ export abstract class AiClient {
 It can be summarized as:
 <summary>
 `
-      
+
       let summary: string
       try {
         summary = await this.complete(prompt, {
@@ -118,7 +117,7 @@ It can be summarized as:
           maxTokens: summaryBudget,
           stopSequences: ['</summary>'],
         })
-        
+
         const truncatedInfo = wasTruncated ? ' (from truncated transcript)' : ''
         this.interactor.debug(
           `Compacted ${messages.length} messages into ${summary.length} chars summary${truncatedInfo}.`
@@ -126,12 +125,12 @@ It can be summarized as:
       } catch (e) {
         summary = '...previous conversation truncated'
         console.error('Compaction failed:', e)
-        
+
         const errorDetails = e instanceof Error ? e.message : 'Unknown error'
         this.interactor.warn(
           `Could not compact conversation (${errorDetails}). ` +
-          `Transcript size: ${transcript.length} chars, Budget: ${maxChars} chars. ` +
-          'Falling back to simple truncation.'
+            `Transcript size: ${transcript.length} chars, Budget: ${maxChars} chars. ` +
+            'Falling back to simple truncation.'
         )
       }
 
@@ -139,7 +138,7 @@ It can be summarized as:
       return new MessageEvent({
         role: 'user',
         name: firstUserMessage ? (firstUserMessage as MessageEvent).name : 'user',
-        content: summary,
+        content: [{type: 'text', content: summary}],
       })
     }
   }
@@ -171,12 +170,13 @@ It can be summarized as:
     subscriber: Subject<CodayEvent>
   ): string | undefined {
     if (text) {
+      const content: TextContent = { type: 'text', content: text }
       const messageEvent = new MessageEvent({
         role: 'assistant',
-        content: text,
+        content: [content],
         name: agent.name,
       })
-      thread.addAgentMessage(agent.name, text)
+      thread.addAgentMessage(agent.name, content)
       subscriber.next(messageEvent)
       return messageEvent.timestamp
     }
@@ -184,7 +184,7 @@ It can be summarized as:
   }
 
   protected async shouldProcessAgainAfterResponse(
-    text: string | undefined,
+    _text: string | undefined,
     toolRequests: ToolRequestEvent[] | undefined,
     agent: Agent,
     thread: AiThread
@@ -302,7 +302,10 @@ It can be summarized as:
    * @param isLastUserMessage Whether this is the last user message in the thread
    * @returns Enhanced content with date/time if applicable, otherwise original content
    */
-  protected enhanceWithCurrentDateTime(content: string, isLastUserMessage: boolean): string {
+  protected enhanceWithCurrentDateTime(
+    content: MessageContent[],
+    isLastUserMessage: boolean
+  ): MessageContent[] {
     if (!isLastUserMessage) return content
 
     const now = new Date()
@@ -312,8 +315,21 @@ It can be summarized as:
       timeZone: 'UTC',
     })
     const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'long' })
+    const dateInfo = `\n\n[Current date: ${currentDate} (${dayOfWeek}, time: ${currentTime} UTC)]`
 
-    return `${content}\n\n[Current date: ${currentDate} (${dayOfWeek}), time: ${currentTime} UTC]`
+    const contentArray = [...content]
+    // need to find the last text content, if any, to clone and add the date info
+    let found = false
+    let i = contentArray.length - 1
+    while (!found && i >= 0) {
+      if (contentArray[i]?.type === 'text') {
+        const textContent = contentArray[i]!
+        contentArray[i] = { type: 'text', content: `${textContent.content}${dateInfo}` }
+        found = true
+      }
+      i--
+    }
+    return contentArray
   }
 
   protected showAgentAndUsage(agent: Agent, aiProvider: string, model: string, thread: AiThread): void {

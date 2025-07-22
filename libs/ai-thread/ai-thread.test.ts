@@ -26,16 +26,17 @@ describe('AiThread', () => {
 
   describe('messages management', () => {
     it('should add and retrieve messages', async () => {
-      thread.addUserMessage('user1', 'test message')
+      thread.addUserMessage('user1', { type: 'text', content: 'test message'})
 
       const messages = (await thread.getMessages(undefined, undefined)).messages
       expect(messages).toHaveLength(1)
       expect(messages[0]).toBeInstanceOf(MessageEvent)
-      expect(messages[0].type).toBe(MessageEvent.type)
+      expect(messages[0]!.type).toBe(MessageEvent.type)
+      expect((messages[0] as MessageEvent).content).toEqual([{ type: 'text', content: 'test message'}])
     })
 
     it('should return a copy of messages', async () => {
-      thread.addUserMessage('user1', 'test message')
+      thread.addUserMessage('user1', { type: 'text', content: 'test message'})
 
       const messages1 = (await thread.getMessages(undefined, undefined)).messages
       const messages2 = (await thread.getMessages(undefined, undefined)).messages
@@ -142,12 +143,12 @@ describe('AiThread', () => {
   describe('message removal', () => {
     it('should maintain order after removals', async () => {
       // Add a sequence of messages with some to be removed
-      thread.addUserMessage('user1', 'message1')
+      thread.addUserMessage('user1', { type: 'text', content: 'message1' })
 
       const call1 = createToolCall('test-tool', '{"arg": "value"}', 'id1')
       thread.addToolCalls('agent1', [call1])
 
-      thread.addUserMessage('user1', 'message2')
+      thread.addUserMessage('user1', { type: 'text', content: 'message2' })
 
       const call2 = createToolCall('test-tool', '{"arg": "value"}', 'id2')
       thread.addToolCalls('agent1', [call2])
@@ -156,10 +157,10 @@ describe('AiThread', () => {
       thread.addToolResponses('user1', [response])
 
       const messages = (await thread.getMessages(undefined, undefined)).messages
-      expect(messages[0].type).toBe(MessageEvent.type) // First user message
-      expect(messages[1].type).toBe(MessageEvent.type) // Second user message
-      expect(messages[2].type).toBe(ToolRequestEvent.type) // Latest tool request
-      expect(messages[3].type).toBe(ToolResponseEvent.type) // Its response
+      expect(messages[0]?.type).toBe(MessageEvent.type) // First user message
+      expect(messages[1]?.type).toBe(MessageEvent.type) // Second user message
+      expect(messages[2]?.type).toBe(ToolRequestEvent.type) // Latest tool request
+      expect(messages[3]?.type).toBe(ToolResponseEvent.type) // Its response
       expect(messages).toHaveLength(4)
     })
   })
@@ -167,8 +168,8 @@ describe('AiThread', () => {
   describe('thread forking', () => {
     it('should fork a thread without an agent name', async () => {
       // Add some initial messages
-      thread.addUserMessage('user1', 'Initial message')
-      thread.addAgentMessage('agent1', 'Agent response')
+      thread.addUserMessage('user1', { type: 'text', content: 'Initial message' })
+      thread.addAgentMessage('agent1', { type: 'text', content: 'Agent response' })
 
       // Fork the thread
       const forkedThread = thread.fork()
@@ -183,14 +184,14 @@ describe('AiThread', () => {
       // Check messages were copied
       const forkedMessages = (await forkedThread.getMessages(undefined, undefined)).messages
       expect(forkedMessages).toHaveLength(2)
-      expect(forkedMessages[0].type).toBe(MessageEvent.type)
-      expect(forkedMessages[1].type).toBe(MessageEvent.type)
+      expect(forkedMessages[0]?.type).toBe(MessageEvent.type)
+      expect(forkedMessages[1]?.type).toBe(MessageEvent.type)
     })
 
     it('should fork a thread with an agent name', () => {
       // Add some initial messages
-      thread.addUserMessage('user1', 'Initial message')
-      thread.addAgentMessage('agent1', 'Agent response')
+      thread.addUserMessage('user1', { type: 'text', content: 'Initial message' })
+      thread.addAgentMessage('agent1', { type: 'text', content: 'Agent response' })
 
       // Fork the thread for a specific agent
       const forkedThread = thread.fork('agent2')
@@ -236,13 +237,13 @@ describe('AiThread', () => {
 
     it('should create a new messages array when forking', async () => {
       // Add messages to original thread
-      thread.addUserMessage('user1', 'Initial message')
+      thread.addUserMessage('user1', { type: 'text', content: 'Initial message' })
 
       // Fork the thread
       const forkedThread = thread.fork('agent2')
 
       // Modify messages in forked thread
-      forkedThread.addAgentMessage('agent2', 'Forked response')
+      forkedThread.addAgentMessage('agent2', { type: 'text', content: 'Forked response' })
 
       // Check original thread is unchanged
       const originalMessages = (await thread.getMessages(undefined, undefined)).messages
