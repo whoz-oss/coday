@@ -35,14 +35,12 @@ export function migrateData(data: any, migrations: Migration[]): any {
   let currentConfig = data.version ? data : { ...data, version: 1 }
 
   // Order migrations by version
-  const orderedMigrations = [...migrations].sort((a, b) => a.version - b.version)
+  const orderedMigrations = [...migrations]
+    .filter((migration) => migration.version >= currentConfig.version)
+    .sort((a, b) => a.version - b.version)
 
   // Apply migrations sequentially based on the current version
   for (const migration of orderedMigrations) {
-    // Skip migrations that don't apply to our current version
-    if (migration.version !== currentConfig.version) {
-      continue
-    }
     const newConfig = migration.migrate({ ...currentConfig })
     newConfig.version = migration.version + 1
     currentConfig = newConfig

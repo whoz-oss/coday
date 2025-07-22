@@ -44,8 +44,17 @@ export class ToolSet {
       output = `Tool function ${toolRequest.name} finished without error.`
     }
 
+    // Handle rich content (MessageContent) or string output
     if (typeof output !== 'string') {
-      output = JSON.stringify(output)
+      // Check if it's MessageContent format
+      if (output && typeof output === 'object' && 'type' in output && 
+          (output.type === 'text' || output.type === 'image')) {
+        // Pass through MessageContent directly
+        return toolRequest.buildResponse(output)
+      } else {
+        // Fallback to JSON stringify for other object types
+        output = JSON.stringify(output)
+      }
     }
 
     return toolRequest.buildResponse(output)

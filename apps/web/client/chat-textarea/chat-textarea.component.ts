@@ -195,7 +195,7 @@ export class ChatTextareaComponent implements CodayEventHandler {
     if (direction === 'up' && this.historyIndex < this.promptHistory.length - 1) {
       // Move up in history
       this.historyIndex++
-      this.chatTextarea.value = this.promptHistory[this.promptHistory.length - 1 - this.historyIndex]
+      this.chatTextarea.value = this.promptHistory[this.promptHistory.length - 1 - this.historyIndex]!
       this.moveCursorToEnd()
     } else if (direction === 'down' && this.historyIndex > -1) {
       // Move down in history
@@ -205,7 +205,7 @@ export class ChatTextareaComponent implements CodayEventHandler {
         // We've reached the end of history, restore the temporary input
         this.chatTextarea.value = this.tempInput
       } else {
-        this.chatTextarea.value = this.promptHistory[this.promptHistory.length - 1 - this.historyIndex]
+        this.chatTextarea.value = this.promptHistory[this.promptHistory.length - 1 - this.historyIndex]!
       }
       this.moveCursorToEnd()
     }

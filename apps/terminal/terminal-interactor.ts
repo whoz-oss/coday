@@ -137,7 +137,7 @@ export class TerminalInteractor extends Interactor {
         resolve(answer)
       }
 
-      this.keypressListener = (str: string, key: Key) => {
+      this.keypressListener = (_str: string, key: Key) => {
         if (!this.rl) return
         const currentLine = this.rl.line // Read is fine
         const cursor = this.rl.cursor // Read is fine
@@ -186,8 +186,10 @@ export class TerminalInteractor extends Interactor {
 
             // NOTE: Direct assignment bypasses TS read-only restriction
             const historyLine = this.promptHistory[currentHistoryIndex]
-            this.rl.line = historyLine
-            this.rl.cursor = historyLine.length
+            if (historyLine) {
+              this.rl.line = historyLine
+              this.rl.cursor = historyLine.length
+            }
             this.rl._refreshLine()
             return
           }
@@ -215,7 +217,7 @@ export class TerminalInteractor extends Interactor {
             let historyLine: string
             if (currentHistoryIndex < this.promptHistory.length - 1) {
               currentHistoryIndex++
-              historyLine = this.promptHistory[currentHistoryIndex]
+              historyLine = this.promptHistory[currentHistoryIndex] || ''
             } else {
               currentHistoryIndex = -1
               historyLine = originalInput
@@ -266,7 +268,7 @@ export class TerminalInteractor extends Interactor {
     const textBeforeCursor = text.slice(0, cursor)
     const linesBeforeCursor = textBeforeCursor.split('\n')
     const lineIndex = linesBeforeCursor.length - 1
-    const positionInLine = linesBeforeCursor[lineIndex].length
+    const positionInLine = linesBeforeCursor[lineIndex]?.length || 0
     return { lineIndex, positionInLine }
   }
 
@@ -275,11 +277,12 @@ export class TerminalInteractor extends Interactor {
     // ... (remains the same) ...
     const lines = text.split('\n')
     const targetLine = lines[targetLineIndex]
+    if (!targetLine) return 0
     const targetPosition = Math.min(desiredPositionInLine, targetLine.length)
 
     let newCursor = 0
     for (let i = 0; i < targetLineIndex; i++) {
-      newCursor += lines[i].length + 1 // +1 for the newline character
+      newCursor += (lines[i]?.length || 0) + 1 // +1 for the newline character
     }
     newCursor += targetPosition
     return newCursor

@@ -1,4 +1,4 @@
-import { Migration } from './data-migration'
+import { Migration } from '../../utils/data-migration'
 
 const defaultProviders = ['anthropic', 'openai', 'google']
 export const aiPropertyToAi: Migration = {

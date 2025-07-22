@@ -95,7 +95,7 @@ export class VoiceSynthesisComponent {
       .replace(/#{1,6}\s*(.*)/g, '$1')
       
       // Replace links with just the text
-      .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
       
       // Remove standalone URLs
       .replace(/https?:\/\/[^\s]+/g, 'link')
@@ -234,6 +234,9 @@ export class VoiceSynthesisComponent {
       // Get test text
       const langCode = this.selectedVoice.lang.slice(0, 2)
       const testText = TestTexts[langCode] || TestTexts['en']
+      if (!testText) { 
+        return 
+      }
 
       this.speak(testText)
     }, 100)

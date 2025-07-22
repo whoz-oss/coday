@@ -15,7 +15,7 @@ export class SpeechToTextareaComponent {
     this.initializeVoiceInput()
 
     // Listen for voice language changes from options panel
-    window.addEventListener('voiceLanguageChanged', (event: any) => {
+    window.addEventListener('voiceLanguageChanged', (_event: any) => {
       this.updateRecognitionLanguage()
     })
   }

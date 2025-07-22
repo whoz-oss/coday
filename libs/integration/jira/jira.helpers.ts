@@ -54,7 +54,7 @@ export function validateJqlOperators(jql: string, fieldMapping: ActiveFieldMappi
     }
 
     // Clean up the operator (remove extra whitespace)
-    const cleanOperator = operator.trim()
+    const cleanOperator = operator!.trim()
 
     const allowedOperators = mappedField.operators || []
     if (!allowedOperators.includes(cleanOperator)) {

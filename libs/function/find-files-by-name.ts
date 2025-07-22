@@ -1,18 +1,16 @@
-import { Interactor } from '../model'
 import { glob } from 'glob'
 
 type FindFilesInput = {
   text: string
   path?: string
   root: string
-  interactor?: Interactor
   timeout?: number
   limit?: number
 }
 
 const defaultTimeout = 5000
 
-export const findFilesByName = async ({ text, path, root, interactor, timeout, limit }: FindFilesInput) => {
+export const findFilesByName = async ({ text, path, root, timeout, limit }: FindFilesInput) => {
   // need to prevent double slashes
   const tweakedPath = path?.startsWith('/') ? path.substring(1) : path
 

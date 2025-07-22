@@ -1,12 +1,10 @@
 import { Agent, AiClient, AiModel, AiProviderConfig, CompletionOptions, Interactor } from '../model'
 import Anthropic from '@anthropic-ai/sdk'
-import { MessageParam } from '@anthropic-ai/sdk/resources'
 import { ToolSet } from '../integration/tool-set'
 import { CodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 import { Observable, of, Subject } from 'rxjs'
 import { AiThread } from '../ai-thread/ai-thread'
 import { ThreadMessage } from '../ai-thread/ai-thread.types'
-import { TextBlockParam } from '@anthropic-ai/sdk/resources/messages'
 import { CodayLogger } from '../service/coday-logger'
 
 interface RateLimitInfo {
@@ -213,29 +211,61 @@ export class AnthropicClient extends AiClient {
    * Convert a ThreadMessage to Claude's MessageParam format
    * Includes mobile cache marker optimization
    */
-  private toClaudeMessage(messages: ThreadMessage[], thread: AiThread, updateCache: boolean = false): MessageParam[] {
+  private toClaudeMessage(
+    messages: ThreadMessage[],
+    thread: AiThread,
+    updateCache: boolean = false
+  ): Anthropic.MessageParam[] {
     // Get or update the cache marker position
     const markerMessageId = this.getOrUpdateCacheMarker(thread, messages, updateCache)
 
     return messages
       .map((msg, index) => {
-        let claudeMessage: MessageParam | undefined
+        let claudeMessage: Anthropic.MessageParam | undefined
         const shouldAddCache = markerMessageId && msg.timestamp === markerMessageId
-
         if (msg instanceof MessageEvent) {
           const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
-          const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
-
+          const message = msg as MessageEvent
+          const content = this.enhanceWithCurrentDateTime(message.content, isLastUserMessage)
+          const claudeContent: (Anthropic.ImageBlockParam | Anthropic.TextBlockParam)[] = content
+            .map((c, index) => {
+              let result: Anthropic.ImageBlockParam | Anthropic.TextBlockParam | undefined = undefined
+              if (c.type === 'text') {
+                // Coday TextContent already matches the Claude type, how convenient...
+                result = {
+                  type: 'text',
+                  text: c.content,
+                }
+              }
+              if (c.type === 'image') {
+                // Convert Coday ImageContent to Claude ImageBlockParam
+                result = {
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: c.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+                    data: c.content,
+                  },
+                }
+              }
+              if (!result) {
+                // Fallback for unknown content types
+                this.interactor.warn(`Unknown content type: ${(c as any).type}`)
+                return null
+              }
+              return {
+                ...result,
+                // add cache marker on last element of content
+                ...(shouldAddCache && index === content.length - 1 && { cache_control: { type: 'ephemeral' } }),
+              }
+            })
+            // cast forced by cache_control type unduly generalized as string instead of 'ephemeral'
+            .filter(Boolean) as (Anthropic.ImageBlockParam | Anthropic.TextBlockParam)[]
           // Structure message with content blocks for cache_control support
+
           claudeMessage = {
             role: msg.role,
-            content: [
-              {
-                type: 'text',
-                text: content,
-                ...(shouldAddCache && { cache_control: { type: 'ephemeral' } }),
-              },
-            ],
+            content: claudeContent,
           }
         }
         if (msg instanceof ToolRequestEvent) {
@@ -253,13 +283,44 @@ export class AnthropicClient extends AiClient {
           }
         }
         if (msg instanceof ToolResponseEvent) {
+          let toolResultContent: string | (Anthropic.ImageBlockParam | Anthropic.TextBlockParam)[]
+
+          if (typeof msg.output === 'string') {
+            // Simple string output
+            toolResultContent = msg.output
+          } else {
+            // Rich content (MessageContent)
+            const content = msg.output
+            if (content.type === 'text') {
+              toolResultContent = [
+                {
+                  type: 'text' as const,
+                  text: content.content,
+                },
+              ]
+            } else if (content.type === 'image') {
+              toolResultContent = [
+                {
+                  type: 'image' as const,
+                  source: {
+                    type: 'base64' as const,
+                    media_type: content.mimeType,
+                    data: content.content,
+                  },
+                },
+              ]
+            } else {
+              throw new Error(`Unknown content type: ${(content as any).type}`)
+            }
+          }
+
           claudeMessage = {
             role: 'user',
             content: [
               {
                 type: 'tool_result',
                 tool_use_id: msg.toolRequestId,
-                content: msg.output,
+                content: toolResultContent,
                 ...(shouldAddCache && { cache_control: { type: 'ephemeral' } }),
               },
             ],
@@ -371,17 +432,18 @@ export class AnthropicClient extends AiClient {
     charBudget: number
   ): Promise<{ data: Anthropic.Messages.Message; response: Response }> {
     const data = await this.getMessages(thread, charBudget, model.name)
+    const messages = this.toClaudeMessage(data.messages, thread)
     return await client.messages
       .create({
         model: model.name,
-        messages: this.toClaudeMessage(data.messages, thread),
+        messages,
         system: [
           {
             text: agent.systemInstructions,
             type: 'text',
             cache_control: { type: 'ephemeral' },
           },
-        ] as unknown as Array<TextBlockParam>,
+        ] as unknown as Array<Anthropic.TextBlockParam>,
         tools: this.getClaudeTools(agent.tools),
         temperature: agent.definition.temperature ?? 0.8,
         max_tokens: 8192,

@@ -15,7 +15,7 @@ export class SelectProjectHandler extends CommandHandler {
     })
   }
 
-  async handle(command: string, context: CommandContext): Promise<CommandContext> {
+  async handle(_command: string, context: CommandContext): Promise<CommandContext> {
     try {
       return (await this.selectProject()) ?? context
     } catch (_: any) {

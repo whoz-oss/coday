@@ -6,7 +6,7 @@ import { DEFAULT_USER_CONFIG, UserConfig } from '../model/user-config'
 import { UserData } from '../model/user-data'
 import { IntegrationLocalConfig, Interactor } from '../model'
 import * as os from 'node:os'
-import { migrateData } from './migration/data-migration'
+import { migrateData } from '../utils/data-migration'
 import { userConfigMigrations } from './migration/user-config-migrations'
 
 const usersFolder = 'users'
@@ -136,9 +136,7 @@ export class UserService {
   public getUserData(projectName?: string): UserData {
     return {
       username: this.username,
-      bio: this.getCombinedBio(projectName)
+      bio: this.getCombinedBio(projectName),
     }
   }
 }
-
-

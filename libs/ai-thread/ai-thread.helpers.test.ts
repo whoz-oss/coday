@@ -1,10 +1,10 @@
 import { MessageEvent } from '@coday/coday-events'
 import { partition } from './ai-thread.helpers'
 
-const message1 = new MessageEvent({ role: 'user', name: 'joe', content: 'hello' })
-const message2 = new MessageEvent({ role: 'assistant', name: 'HAL', content: 'Hi, how are you ?' })
-const message3 = new MessageEvent({ role: 'user', name: 'joe', content: 'HAL, you need to sleep.' })
-const message4 = new MessageEvent({ role: 'assistant', name: 'HAL', content: 'How dare you, meatbag !!' })
+const message1 = new MessageEvent({ role: 'user', name: 'joe', content: [{ type: 'text', content: 'hello' }] })
+const message2 = new MessageEvent({ role: 'assistant', name: 'HAL', content: [{ type: 'text', content: 'Hi, how are you ?' }] })
+const message3 = new MessageEvent({ role: 'user', name: 'joe', content: [{ type: 'text', content: 'HAL, you need to sleep.' }] })
+const message4 = new MessageEvent({ role: 'assistant', name: 'HAL', content: [{ type: 'text', content: 'How dare you, meatbag !!' }] })
 const allMessages = [message1, message2, message3, message4]
 
 describe('partition', () => {

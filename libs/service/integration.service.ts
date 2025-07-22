@@ -36,7 +36,7 @@ export class IntegrationService {
       
       // Safely merge user integrations
       Object.keys(this.userIntegrations).forEach((key) => {
-        const userIntegration = this.userIntegrations[key]
+        const userIntegration = this.userIntegrations[key]!
         const currentProjectIntegration = this.integrations[key]
 
         if (!currentProjectIntegration) {

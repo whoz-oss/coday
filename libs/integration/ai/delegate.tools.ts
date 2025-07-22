@@ -28,7 +28,7 @@ export class DelegateTools extends AssistantToolFactory {
    */
   protected async buildTools(
     context: CommandContext,
-    agentName: string,
+    _agentName: string,
     allowedAgentNames?: string[]
   ): Promise<CodayTool[]> {
     const allowList =

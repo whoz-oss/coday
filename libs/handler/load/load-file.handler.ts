@@ -27,7 +27,10 @@ export class LoadFileHandler extends CommandHandler {
       root: context.project.root,
       interactor: this.interactor,
     })
-    context.aiThread?.addUserMessage(context.username, `File with path: ${filePath}\n\n${content}`)
+    context.aiThread?.addUserMessage(context.username, {
+      type: 'text',
+      content: `File with path: ${filePath}\n\n${content}`,
+    })
 
     return context
   }

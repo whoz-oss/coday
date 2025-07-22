@@ -24,7 +24,7 @@ export const loadOrInitProjectDescription = async (
     )
   }
   if (foundFiles.length === 1) {
-    absoluteProjectDescriptionPath = path.join(projectPath, foundFiles[0])
+    absoluteProjectDescriptionPath = path.join(projectPath, foundFiles[0]!)
   }
 
   try {

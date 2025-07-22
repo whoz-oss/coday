@@ -40,7 +40,7 @@ describe('McpConfigMerger', () => {
 
       expect(result).toHaveLength(1)
 
-      const mergedServer = result[0]
+      const mergedServer = result[0]!
 
       // Basic properties: later levels win
       expect(mergedServer.id).toBe('github')
@@ -137,7 +137,7 @@ describe('McpConfigMerger', () => {
 
       const result = mergeMcpConfigs(codayServers, projectServers, userServers)
 
-      expect(result[0].allowedTools).toEqual([
+      expect(result[0]?.allowedTools).toEqual([
         'read_file',
         'write_file', // CODAY
         'list_files',
@@ -175,7 +175,7 @@ describe('McpConfigMerger', () => {
 
       const result = mergeMcpConfigs(codayServers, projectServers, userServers)
 
-      expect(result[0].allowedTools).toEqual(['some_tool'])
+      expect(result[0]?.allowedTools).toEqual(['some_tool'])
     })
 
     it('should handle debug flag correctly - true if any level sets it', () => {
@@ -207,7 +207,7 @@ describe('McpConfigMerger', () => {
 
       const result = mergeMcpConfigs(codayServers, projectServers, userServers)
 
-      expect(result[0].debug).toBe(true)
+      expect(result[0]?.debug).toBe(true)
     })
 
     it('should handle enabled flag correctly - last level wins', () => {
@@ -239,7 +239,7 @@ describe('McpConfigMerger', () => {
       const result = mergeMcpConfigs(codayServers, projectServers, userServers)
 
       // Since USER level doesn't specify enabled, PROJECT level (false) should win
-      expect(result[0].enabled).toBe(false)
+      expect(result[0]?.enabled).toBe(false)
     })
 
     it('should apply safe defaults for new servers', () => {
@@ -310,7 +310,7 @@ describe('McpConfigMerger', () => {
 
       const result = mergeMcpConfigs(codayServers, projectServers, userServers)
 
-      expect(result[0].env).toEqual({
+      expect(result[0]?.env).toEqual({
         BASE_VAR: 'base-value', // From CODAY
         PROJECT_VAR: 'project-value', // From PROJECT
         USER_VAR: 'user-value', // From USER

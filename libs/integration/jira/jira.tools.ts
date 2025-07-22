@@ -25,7 +25,7 @@ export class JiraTools extends AssistantToolFactory {
     this.jiraService = new JiraService(interactor, integrationService)
   }
 
-  protected async buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]> {
+  protected async buildTools(_context: CommandContext, _agentName: string): Promise<CodayTool[]> {
     const result: CodayTool[] = []
     if (!this.integrationService.hasIntegration('JIRA')) {
       return result
