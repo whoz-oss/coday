@@ -1,6 +1,7 @@
 import { Component } from '@angular/core'
 import { HeaderComponent } from './components/header/header.component'
-import { ChatHistoryComponent, ChatMessage } from './components/chat-history/chat-history.component'
+import { ChatHistoryComponent } from './components/chat-history/chat-history.component'
+import { ChatMessage } from './components/chat-message/chat-message.component'
 import { ChatTextareaComponent } from './components/chat-textarea/chat-textarea.component'
 import { ChoiceSelectComponent, ChoiceOption } from './components/choice-select/choice-select.component'
 
@@ -33,6 +34,9 @@ import { ChoiceSelectComponent, ChoiceOption } from './components/choice-select/
             <app-chat-history 
               [messages]="demoMessages"
               [isThinking]="isThinking"
+              (playRequested)="onPlayMessage($event)"
+              (copyRequested)="onCopyMessage($event)"
+              (stopRequested)="onStopRequested()"
             ></app-chat-history>
             
             <app-chat-textarea 
@@ -260,6 +264,19 @@ export class HelloWorldComponent {
     }
     
     this.demoMessages = [...this.demoMessages, choiceMessage]
+  }
+  
+  onPlayMessage(message: ChatMessage) {
+    console.log('Play requested for message:', message.content)
+  }
+  
+  onCopyMessage(message: ChatMessage) {
+    console.log('Copy requested for message:', message.content)
+  }
+  
+  onStopRequested() {
+    console.log('Stop requested')
+    this.isThinking = false
   }
   
   toggleChoices() {
