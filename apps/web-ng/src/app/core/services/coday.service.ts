@@ -83,27 +83,18 @@ export class CodayService implements OnDestroy {
     if (this.currentInviteEvent) {
       // Use the original InviteEvent to build proper answer with parentKey
       const answerEvent = this.currentInviteEvent.buildAnswer(message)
-      console.log('[CODAY] Sending message with proper parentKey:', {
-        message: message,
-        parentKey: answerEvent.parentKey,
-        invite: answerEvent.invite,
-        answer: answerEvent.answer
-      })
+      console.log('[CODAY] Sending message:', message)
       
       this.codayApi.sendEvent(answerEvent).subscribe({
-        next: () => {
-          console.log('[CODAY] Message sent successfully')
-          this.currentInviteEvent = null // Clear stored event
-        },
-        error: (error) => console.error('[CODAY] Error sending message:', error)
+        next: () => this.currentInviteEvent = null,
+        error: (error) => console.error('[CODAY] Send error:', error)
       })
     } else {
       // Fallback to basic AnswerEvent if no invite event stored
-      console.warn('[CODAY] No current invite event, sending basic answer')
+      console.warn('[CODAY] No invite event, sending basic answer')
       const answerEvent = new AnswerEvent({ answer: message })
       this.codayApi.sendEvent(answerEvent).subscribe({
-        next: () => console.log('[CODAY] Message sent successfully'),
-        error: (error) => console.error('[CODAY] Error sending message:', error)
+        error: (error) => console.error('[CODAY] Send error:', error)
       })
     }
   }
@@ -115,23 +106,17 @@ export class CodayService implements OnDestroy {
     if (this.currentChoiceEvent) {
       // Use the original ChoiceEvent to build proper answer with parentKey
       const answerEvent = this.currentChoiceEvent.buildAnswer(choice)
-      console.log('[CODAY] Sending choice with proper parentKey:', {
-        choice: choice,
-        parentKey: answerEvent.parentKey,
-        invite: answerEvent.invite,
-        answer: answerEvent.answer
-      })
+      console.log('[CODAY] Sending choice:', choice)
       
       this.codayApi.sendEvent(answerEvent).subscribe({
         next: () => {
-          console.log('[CODAY] Choice sent successfully')
-          this.currentChoiceSubject.next(null) // Clear choice
-          this.currentChoiceEvent = null // Clear stored event
+          this.currentChoiceSubject.next(null)
+          this.currentChoiceEvent = null
         },
-        error: (error) => console.error('[CODAY] Error sending choice:', error)
+        error: (error) => console.error('[CODAY] Choice error:', error)
       })
     } else {
-      console.error('[CODAY] No current choice event to build answer from')
+      console.error('[CODAY] No choice event available')
     }
   }
 
@@ -146,21 +131,12 @@ export class CodayService implements OnDestroy {
    * Initialize event handling
    */
   private initializeEventHandling(): void {
-    console.log('[CODAY-SERVICE] Initializing event handling...')
-    
     this.eventStream.events$
       .pipe(takeUntil(this.destroy$))
       .subscribe({
-        next: event => {
-          console.log('[CODAY-SERVICE] Received event from stream:', event.type, event)
-          this.handleEvent(event)
-        },
-        error: error => {
-          console.error('[CODAY-SERVICE] Error in event stream:', error)
-        },
-        complete: () => {
-          console.log('[CODAY-SERVICE] Event stream completed')
-        }
+        next: event => this.handleEvent(event),
+        error: error => console.error('[CODAY] Event stream error:', error),
+        complete: () => console.log('[CODAY] Event stream completed')
       })
   }
 
@@ -168,11 +144,7 @@ export class CodayService implements OnDestroy {
    * Handle incoming Coday events
    */
   private handleEvent(event: CodayEvent): void {
-    console.log('[CODAY-SERVICE] ===== HANDLING EVENT =====', {
-      type: event.type,
-      timestamp: event.timestamp,
-      event: event
-    })
+    console.log('[CODAY] Handling:', event.type)
 
     if (event instanceof MessageEvent) {
       this.handleMessageEvent(event)
@@ -199,41 +171,25 @@ export class CodayService implements OnDestroy {
     } else if (event instanceof InviteEvent) {
       this.handleInviteEvent(event)
     } else {
-      console.log('[CODAY-SERVICE] ===== UNHANDLED EVENT TYPE =====', {
-        type: event.type,
-        event: event
-      })
+      console.warn('[CODAY] Unhandled event type:', event.type)
     }
   }
 
   private handleMessageEvent(event: MessageEvent): void {
-    console.log('[CODAY-SERVICE] Processing MessageEvent:', {
-      role: event.role,
-      speaker: event.name,
-      contentLength: event.content.length,
-      textContent: event.getTextContent()
-    })
-    
     const message: ChatMessage = {
       id: event.timestamp,
       role: event.role,
       speaker: event.name,
-      content: event.getTextContent(), // Extract text content
+      content: event.getTextContent(),
       timestamp: new Date(),
       type: 'text'
     }
     
-    console.log('[CODAY-SERVICE] Adding message to history:', message)
+    console.log('[CODAY] Message from:', event.name)
     this.addMessage(message)
   }
 
   private handleTextEvent(event: TextEvent): void {
-    console.log('[CODAY-SERVICE] Processing TextEvent:', {
-      speaker: event.speaker,
-      textLength: event.text.length,
-      text: event.text.substring(0, 100) + (event.text.length > 100 ? '...' : '')
-    })
-    
     const message: ChatMessage = {
       id: event.timestamp,
       role: event.speaker ? 'assistant' : 'system',
@@ -243,7 +199,7 @@ export class CodayService implements OnDestroy {
       type: event.speaker ? 'text' : 'technical'
     }
     
-    console.log('[CODAY-SERVICE] Adding text message to history:', message)
+    console.log('[CODAY] Text from:', event.speaker || 'System')
     this.addMessage(message)
   }
 
@@ -322,17 +278,10 @@ export class CodayService implements OnDestroy {
   }
 
   private handleChoiceEvent(event: ChoiceEvent): void {
-    console.log('[CODAY-SERVICE] Processing ChoiceEvent:', {
-      options: event.options,
-      invite: event.invite,
-      optionalQuestion: event.optionalQuestion,
-      timestamp: event.timestamp
-    })
+    console.log('[CODAY] Choice:', event.options.join(', '))
     
-    // Store the original event for proper answer building
     this.currentChoiceEvent = event
     
-    // Convert to our choice format
     const options: ChoiceOption[] = event.options.map(option => ({
       value: option,
       label: option
@@ -351,22 +300,11 @@ export class CodayService implements OnDestroy {
 
   private handleHeartBeatEvent(_event: HeartBeatEvent): void {
     // HeartBeat events are just for connection keep-alive, no action needed
-    console.log('[CODAY-SERVICE] HeartBeat received - connection alive')
   }
 
   private handleInviteEvent(event: InviteEvent): void {
-    console.log('[CODAY-SERVICE] Processing InviteEvent:', {
-      invite: event.invite,
-      defaultValue: event.defaultValue,
-      timestamp: event.timestamp
-    })
-    
-    // Store the original event for proper answer building
+    console.log('[CODAY] Ready for input:', event.invite)
     this.currentInviteEvent = event
-    
-    // InviteEvent means Coday is ready for user input
-    // The chat input should be enabled and ready
-    console.log('[CODAY-SERVICE] Ready for user input')
   }
 
   /**
@@ -376,22 +314,8 @@ export class CodayService implements OnDestroy {
     const currentMessages = this.messagesSubject.value
     const newMessages = [...currentMessages, message]
     
-    console.log('[CODAY-SERVICE] Adding message to history:', {
-      messageId: message.id,
-      role: message.role,
-      speaker: message.speaker,
-      type: message.type,
-      currentCount: currentMessages.length,
-      newCount: newMessages.length
-    })
-    
+    console.log('[CODAY] Added message:', message.role, '-', message.speaker)
     this.messagesSubject.next(newMessages)
-    
-    // Verify the update was applied
-    setTimeout(() => {
-      const updatedMessages = this.messagesSubject.value
-      console.log('[CODAY-SERVICE] Message history updated. Current count:', updatedMessages.length)
-    }, 0)
   }
 
   ngOnDestroy(): void {

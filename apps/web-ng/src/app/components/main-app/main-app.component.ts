@@ -55,16 +55,10 @@ export class MainAppComponent implements OnInit, OnDestroy {
   constructor(private codayService: CodayService) {}
 
   ngOnInit(): void {
-    console.log('[MAIN-APP] Component initializing...')
-    
-    // Subscribe to service observables
     this.codayService.messages$
       .pipe(takeUntil(this.destroy$))
       .subscribe(messages => {
-        console.log('[MAIN-APP] Received messages update:', {
-          count: messages.length,
-          messages: messages.map(m => ({ id: m.id, role: m.role, speaker: m.speaker, type: m.type }))
-        })
+        console.log('[MAIN-APP] Messages updated:', messages.length)
         this.messages = messages
       })
 
@@ -88,10 +82,7 @@ export class MainAppComponent implements OnInit, OnDestroy {
       })
 
     // Start the Coday service
-    console.log('[MAIN-APP] Starting Coday service...')
     this.codayService.start()
-    
-    console.log('[MAIN-APP] Component initialization complete')
   }
 
   ngOnDestroy(): void {
@@ -100,7 +91,6 @@ export class MainAppComponent implements OnInit, OnDestroy {
   }
 
   onMessageSubmitted(message: string): void {
-    console.log('[MAIN-APP] User submitted message:', message)
     this.codayService.sendMessage(message)
   }
 

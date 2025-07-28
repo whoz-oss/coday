@@ -316,7 +316,6 @@ app.post('/api/message', (req: express.Request, res: express.Response) => {
     const payload = req.body
     const clientId = req.query.clientId as string
     debugLog('MESSAGE', `clientId: ${clientId}, received message`)
-    debugLog('MESSAGE', `payload: ${JSON.stringify(payload, undefined, 2)}`)
     const client = clientManager.get(clientId)
 
     if (!client) {

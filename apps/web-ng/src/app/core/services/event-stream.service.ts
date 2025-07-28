@@ -51,43 +51,23 @@ export class EventStreamService {
     this.eventSource.onmessage = (event) => {
       // NgZone is needed because SSE events come from outside Angular's zone
       this.ngZone.run(() => {
-        console.log('[SSE] ===== RAW MESSAGE RECEIVED =====', {
-          data: event.data,
-          type: event.type,
-          origin: event.origin
-        })
+        console.log('[SSE] Message received:', event.data.substring(0, 100))
         
         this.reconnectAttempts = 0 // Reset on successful message
         this.updateConnectionStatus(true, 0)
 
         try {
-          console.log('[SSE] before parsing', event.data)
           const data = JSON.parse(event.data)
-          console.log('[SSE] ===== PARSED DATA DETAILS =====', {
-            fullData: data
-          })
-          
           const codayEvent = buildCodayEvent(data)
+          
           if (codayEvent) {
-            console.log('[SSE] ===== BUILT CODAY EVENT =====', {
-              type: codayEvent.type,
-              timestamp: codayEvent.timestamp,
-              constructor: codayEvent.constructor.name,
-              event: codayEvent
-            })
+            console.log('[SSE] Event:', codayEvent.type)
             this.eventsSubject.next(codayEvent)
-            console.log('[SSE] Event emitted to subscribers')
           } else {
-            console.warn('[SSE] ===== FAILED TO BUILD EVENT =====', {
-              rawData: data,
-              buildResult: codayEvent
-            })
+            console.warn('[SSE] Failed to build event:', data.type)
           }
         } catch (error: any) {
-          console.error('[SSE] Could not parse event:', {
-            error: error.message,
-            rawData: event.data
-          })
+          console.error('[SSE] Parse error:', error.message)
         }
       })
     }
