@@ -110,6 +110,7 @@ export class MainAppComponent implements OnInit, OnDestroy {
   }
 
   onChoiceSelected(choice: string): void {
+    console.log('choosing selected', choice)
     this.codayService.sendChoice(choice)
   }
 
