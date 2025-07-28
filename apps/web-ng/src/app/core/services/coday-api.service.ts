@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
 import { Observable } from 'rxjs'
+import { tap, map } from 'rxjs/operators'
 import { CodayEvent } from '@coday/coday-events'
 
 @Injectable({
@@ -11,6 +12,7 @@ export class CodayApiService {
 
   constructor(private http: HttpClient) {
     this.clientId = this.getOrCreateClientId()
+    console.log('[API] Initialized with clientId:', this.clientId)
   }
 
   /**
@@ -46,7 +48,21 @@ export class CodayApiService {
    */
   sendEvent(event: CodayEvent): Observable<any> {
     console.log('[API] Posting event:', event)
-    return this.http.post(`/api/message?clientId=${this.clientId}`, event)
+    
+    return this.http.post(`/api/message?clientId=${this.clientId}`, event, {
+      observe: 'response', // Get full response
+      responseType: 'text' // Expect text response
+    }).pipe(
+      tap(response => {
+        console.log('[API] Full HTTP response:', {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+          body: response.body
+        })
+      }),
+      map(response => response.body) // Extract just the body
+    )
   }
 
   /**

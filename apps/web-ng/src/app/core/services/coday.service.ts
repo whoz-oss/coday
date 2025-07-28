@@ -12,7 +12,8 @@ import {
   ToolRequestEvent, 
   ToolResponseEvent, 
   ChoiceEvent,
-  ProjectSelectedEvent
+  ProjectSelectedEvent,
+  HeartBeatEvent
 } from '@coday/coday-events'
 
 import { CodayApiService } from './coday-api.service'
@@ -160,6 +161,13 @@ export class CodayService implements OnDestroy {
       this.handleChoiceEvent(event)
     } else if (event instanceof ProjectSelectedEvent) {
       this.handleProjectSelectedEvent(event)
+    } else if (event instanceof HeartBeatEvent) {
+      this.handleHeartBeatEvent(event)
+    } else {
+      console.log('[CODAY-SERVICE] ===== UNHANDLED EVENT TYPE =====', {
+        type: event.type,
+        event: event
+      })
     }
   }
 
@@ -294,6 +302,11 @@ export class CodayService implements OnDestroy {
 
   private handleProjectSelectedEvent(event: ProjectSelectedEvent): void {
     this.projectTitleSubject.next(event.projectName || 'Coday')
+  }
+
+  private handleHeartBeatEvent(_event: HeartBeatEvent): void {
+    // HeartBeat events are just for connection keep-alive, no action needed
+    console.log('[CODAY-SERVICE] HeartBeat received - connection alive')
   }
 
   /**
