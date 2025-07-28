@@ -16,43 +16,7 @@ import { ConnectionStatus } from '../../core/services/event-stream.service'
   selector: 'app-main',
   standalone: true,
   imports: [CommonModule, HeaderComponent, ChatHistoryComponent, ChatTextareaComponent, ChoiceSelectComponent],
-  template: `
-    <div class="app">
-      <!-- Connection Status -->
-      <div *ngIf="connectionStatus && !connectionStatus.connected" class="connection-status">
-        ⚠️ Connection lost. Reconnecting... ({{ connectionStatus.reconnectAttempts }}/{{ connectionStatus.maxAttempts }})
-      </div>
-      
-      <!-- Header -->
-      <app-header></app-header>
-      
-      <!-- Main Chat Interface -->
-      <div class="chat-container">
-        <app-chat-history 
-          [messages]="messages"
-          [isThinking]="isThinking"
-          (playRequested)="onPlayMessage($event)"
-          (copyRequested)="onCopyMessage($event)"
-          (stopRequested)="onStopRequested()"
-        ></app-chat-history>
-        
-        <app-chat-textarea 
-          [isDisabled]="!isConnected"
-          (messageSubmitted)="onMessageSubmitted($event)"
-          (voiceRecordingToggled)="onVoiceToggled($event)"
-        ></app-chat-textarea>
-      </div>
-      
-      <!-- Choice Selection -->
-      <app-choice-select
-        *ngIf="currentChoice"
-        [options]="currentChoice.options"
-        [labelHtml]="currentChoice.label"
-        [isVisible]="!!currentChoice"
-        (choiceSelected)="onChoiceSelected($event)"
-      ></app-choice-select>
-    </div>
-  `,
+  templateUrl: './main-app.component.html',
   styles: [`
     .app {
       height: 100vh;
@@ -91,10 +55,16 @@ export class MainAppComponent implements OnInit, OnDestroy {
   constructor(private codayService: CodayService) {}
 
   ngOnInit(): void {
+    console.log('[MAIN-APP] Component initializing...')
+    
     // Subscribe to service observables
     this.codayService.messages$
       .pipe(takeUntil(this.destroy$))
       .subscribe(messages => {
+        console.log('[MAIN-APP] Received messages update:', {
+          count: messages.length,
+          messages: messages.map(m => ({ id: m.id, role: m.role, speaker: m.speaker, type: m.type }))
+        })
         this.messages = messages
       })
 
@@ -118,7 +88,10 @@ export class MainAppComponent implements OnInit, OnDestroy {
       })
 
     // Start the Coday service
+    console.log('[MAIN-APP] Starting Coday service...')
     this.codayService.start()
+    
+    console.log('[MAIN-APP] Component initialization complete')
   }
 
   ngOnDestroy(): void {
@@ -127,6 +100,7 @@ export class MainAppComponent implements OnInit, OnDestroy {
   }
 
   onMessageSubmitted(message: string): void {
+    console.log('[MAIN-APP] User submitted message:', message)
     this.codayService.sendMessage(message)
   }
 

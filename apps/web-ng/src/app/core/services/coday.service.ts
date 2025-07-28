@@ -112,16 +112,33 @@ export class CodayService implements OnDestroy {
    * Initialize event handling
    */
   private initializeEventHandling(): void {
+    console.log('[CODAY-SERVICE] Initializing event handling...')
+    
     this.eventStream.events$
       .pipe(takeUntil(this.destroy$))
-      .subscribe(event => this.handleEvent(event))
+      .subscribe({
+        next: event => {
+          console.log('[CODAY-SERVICE] Received event from stream:', event.type, event)
+          this.handleEvent(event)
+        },
+        error: error => {
+          console.error('[CODAY-SERVICE] Error in event stream:', error)
+        },
+        complete: () => {
+          console.log('[CODAY-SERVICE] Event stream completed')
+        }
+      })
   }
 
   /**
    * Handle incoming Coday events
    */
   private handleEvent(event: CodayEvent): void {
-    console.log('[CODAY] Handling event:', event.type, event)
+    console.log('[CODAY-SERVICE] ===== HANDLING EVENT =====', {
+      type: event.type,
+      timestamp: event.timestamp,
+      event: event
+    })
 
     if (event instanceof MessageEvent) {
       this.handleMessageEvent(event)
@@ -147,6 +164,13 @@ export class CodayService implements OnDestroy {
   }
 
   private handleMessageEvent(event: MessageEvent): void {
+    console.log('[CODAY-SERVICE] Processing MessageEvent:', {
+      role: event.role,
+      speaker: event.name,
+      contentLength: event.content.length,
+      textContent: event.getTextContent()
+    })
+    
     const message: ChatMessage = {
       id: event.timestamp,
       role: event.role,
@@ -156,10 +180,17 @@ export class CodayService implements OnDestroy {
       type: 'text'
     }
     
+    console.log('[CODAY-SERVICE] Adding message to history:', message)
     this.addMessage(message)
   }
 
   private handleTextEvent(event: TextEvent): void {
+    console.log('[CODAY-SERVICE] Processing TextEvent:', {
+      speaker: event.speaker,
+      textLength: event.text.length,
+      text: event.text.substring(0, 100) + (event.text.length > 100 ? '...' : '')
+    })
+    
     const message: ChatMessage = {
       id: event.timestamp,
       role: event.speaker ? 'assistant' : 'system',
@@ -169,6 +200,7 @@ export class CodayService implements OnDestroy {
       type: event.speaker ? 'text' : 'technical'
     }
     
+    console.log('[CODAY-SERVICE] Adding text message to history:', message)
     this.addMessage(message)
   }
 
@@ -269,7 +301,24 @@ export class CodayService implements OnDestroy {
    */
   private addMessage(message: ChatMessage): void {
     const currentMessages = this.messagesSubject.value
-    this.messagesSubject.next([...currentMessages, message])
+    const newMessages = [...currentMessages, message]
+    
+    console.log('[CODAY-SERVICE] Adding message to history:', {
+      messageId: message.id,
+      role: message.role,
+      speaker: message.speaker,
+      type: message.type,
+      currentCount: currentMessages.length,
+      newCount: newMessages.length
+    })
+    
+    this.messagesSubject.next(newMessages)
+    
+    // Verify the update was applied
+    setTimeout(() => {
+      const updatedMessages = this.messagesSubject.value
+      console.log('[CODAY-SERVICE] Message history updated. Current count:', updatedMessages.length)
+    }, 0)
   }
 
   ngOnDestroy(): void {

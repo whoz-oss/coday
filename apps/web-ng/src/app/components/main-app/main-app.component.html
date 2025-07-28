@@ -1,0 +1,35 @@
+<div class="app">
+  <!-- Connection Status -->
+  <div *ngIf="connectionStatus && !connectionStatus.connected" class="connection-status">
+    ⚠️ Connection lost. Reconnecting... ({{ connectionStatus.reconnectAttempts }}/{{ connectionStatus.maxAttempts }})
+  </div>
+  
+  <!-- Header -->
+  <app-header></app-header>
+  
+  <!-- Main Chat Interface -->
+  <div class="chat-container">
+    <app-chat-history 
+      [messages]="messages"
+      [isThinking]="isThinking"
+      (playRequested)="onPlayMessage($event)"
+      (copyRequested)="onCopyMessage($event)"
+      (stopRequested)="onStopRequested()"
+    ></app-chat-history>
+    
+    <app-chat-textarea 
+      [isDisabled]="!isConnected"
+      (messageSubmitted)="onMessageSubmitted($event)"
+      (voiceRecordingToggled)="onVoiceToggled($event)"
+    ></app-chat-textarea>
+  </div>
+  
+  <!-- Choice Selection -->
+  <app-choice-select
+    *ngIf="currentChoice"
+    [options]="currentChoice.options"
+    [labelHtml]="currentChoice.label"
+    [isVisible]="!!currentChoice"
+    (choiceSelected)="onChoiceSelected($event)"
+  ></app-choice-select>
+</div>

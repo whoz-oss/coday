@@ -50,19 +50,36 @@ export class EventStreamService {
 
     this.eventSource.onmessage = (event) => {
       this.ngZone.run(() => {
-        console.log('[SSE] Received message:', event.data)
+        console.log('[SSE] ===== RAW MESSAGE RECEIVED =====', {
+          data: event.data,
+          type: event.type,
+          origin: event.origin
+        })
+        
         this.reconnectAttempts = 0 // Reset on successful message
         this.updateConnectionStatus(true, 0)
 
         try {
           const data = JSON.parse(event.data)
+          console.log('[SSE] Parsed data:', data)
+          
           const codayEvent = buildCodayEvent(data)
           if (codayEvent) {
-            console.log('[EVENT] Processing event:', codayEvent)
+            console.log('[SSE] Built CodayEvent:', {
+              type: codayEvent.type,
+              timestamp: codayEvent.timestamp,
+              event: codayEvent
+            })
             this.eventsSubject.next(codayEvent)
+            console.log('[SSE] Event emitted to subscribers')
+          } else {
+            console.warn('[SSE] Failed to build CodayEvent from data:', data)
           }
         } catch (error: any) {
-          console.error('Could not parse event', event)
+          console.error('[SSE] Could not parse event:', {
+            error: error.message,
+            rawData: event.data
+          })
         }
       })
     }
