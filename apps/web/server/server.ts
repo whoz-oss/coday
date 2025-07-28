@@ -42,6 +42,9 @@ debugLog('INIT', 'Webhook service initialized')
 // Serve static files from the 'static' directory
 app.use(express.static(path.join(__dirname, '../client')))
 
+// Serve Angular app on /ng route
+app.use('/ng', express.static(path.join(__dirname, '../ng-client')))
+
 // Basic route to test server setup
 app.get('/', (_req: express.Request, res: express.Response) => {
   res.send('Server is up and running!')
