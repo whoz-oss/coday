@@ -36,6 +36,9 @@ scripts:
   compile:
     description: compile the typescript project to raise any issue on code correctness, it does not run the tests.
     command: yarn run nx run-many --target=build --all
+  yarn:
+    description: runs a yarn command, give just the arguments. Do not start interactive commands !!!
+    command: yarn
   test:
     description: run tests for a specific file or pattern (or all of them if no arguments)
     # should be yarn test, but current non-nx code architecture prevents it to be useful

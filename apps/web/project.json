@@ -80,11 +80,24 @@
         }
       }
     },
+    "build:ng-client": {
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        "web-ng:build"
+      ],
+      "options": {
+        "commands": [
+          "mkdir -p dist/web/ng-client",
+          "cp -r dist/apps/web-ng/browser/* dist/web/ng-client/"
+        ]
+      }
+    },
     "build": {
       "executor": "nx:run-commands",
       "dependsOn": [
         "web:build:client",
-        "web:build:server"
+        "web:build:server",
+        "web:build:ng-client"
       ],
       "options": {
         "commands": [

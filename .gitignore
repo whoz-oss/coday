@@ -46,3 +46,5 @@ dist/**/*
 
 # Electron build output
 dist/electron
+
+.angular
