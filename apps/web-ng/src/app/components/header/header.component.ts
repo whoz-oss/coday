@@ -1,4 +1,7 @@
-import { Component } from '@angular/core'
+import { Component, OnInit, OnDestroy } from '@angular/core'
+import { Subject } from 'rxjs'
+import { takeUntil } from 'rxjs/operators'
+import { CodayService } from '../../core/services/coday.service'
 
 @Component({
   selector: 'app-header',
@@ -22,12 +25,23 @@ import { Component } from '@angular/core'
     }
   `]
 })
-export class HeaderComponent {
+export class HeaderComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>()
   title = 'Coday'
 
-  // TODO: Connect to EventStreamService to handle ProjectSelectedEvent
-  updateTitle(projectName: string | null) {
-    this.title = projectName || 'Coday'
-    document.title = this.title
+  constructor(private codayService: CodayService) {}
+
+  ngOnInit(): void {
+    this.codayService.projectTitle$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(title => {
+        this.title = title
+        document.title = title
+      })
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next()
+    this.destroy$.complete()
   }
 }
