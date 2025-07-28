@@ -12,10 +12,7 @@ export class CodayApiService {
 
   constructor(private http: HttpClient) {
     this.clientId = this.getOrCreateClientId()
-    console.log('[API] ===== INITIALIZED =====', {
-      clientId: this.clientId,
-      url: window.location.href
-    })
+    console.log('[API] Client ID:', this.clientId)
   }
 
   /**
@@ -50,24 +47,18 @@ export class CodayApiService {
    * Send an event to the Coday API
    */
   sendEvent(event: CodayEvent): Observable<any> {
-    console.log('[API] Posting event with clientId:', this.clientId, 'Event:', event)
+    console.log('[API] Sending:', event.type)
     
-    const url = `/api/message?clientId=${this.clientId}`
-    console.log('[API] POST URL:', url)
-    
-    return this.http.post(url, event, {
-      observe: 'response', // Get full response
-      responseType: 'text' // Expect text response
+    return this.http.post(`/api/message?clientId=${this.clientId}`, event, {
+      observe: 'response',
+      responseType: 'text'
     }).pipe(
       tap(response => {
-        console.log('[API] Full HTTP response:', {
-          status: response.status,
-          statusText: response.statusText,
-          headers: response.headers,
-          body: response.body
-        })
+        if (response.status !== 200) {
+          console.warn('[API] Unexpected status:', response.status)
+        }
       }),
-      map(response => response.body) // Extract just the body
+      map(response => response.body)
     )
   }
 
@@ -99,8 +90,6 @@ export class CodayApiService {
    * Get the SSE URL for events
    */
   getEventsUrl(): string {
-    const url = `/events?clientId=${this.clientId}`
-    console.log('[API] SSE URL:', url)
-    return url
+    return `/events?clientId=${this.clientId}`
   }
 }
