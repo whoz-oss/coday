@@ -34,6 +34,9 @@ export class CodayService implements OnDestroy {
   private currentChoiceSubject = new BehaviorSubject<{options: ChoiceOption[], label: string} | null>(null)
   private projectTitleSubject = new BehaviorSubject<string>('Coday')
   
+  // Store original events for proper response building
+  private currentChoiceEvent: ChoiceEvent | null = null
+  
   // Public observables
   messages$ = this.messagesSubject.asObservable()
   isThinking$ = this.isThinkingSubject.asObservable()
@@ -86,19 +89,26 @@ export class CodayService implements OnDestroy {
    * Send a choice selection
    */
   sendChoice(choice: string): void {
-    // Find the current choice event to build proper answer
-    const currentChoice = this.currentChoiceSubject.value
-    if (currentChoice) {
-      // For now, create a simple answer event
-      // TODO: Store the original ChoiceEvent to build proper answer
-      const answerEvent = new AnswerEvent({ answer: choice })
+    if (this.currentChoiceEvent) {
+      // Use the original ChoiceEvent to build proper answer with parentKey
+      const answerEvent = this.currentChoiceEvent.buildAnswer(choice)
+      console.log('[CODAY] Sending choice with proper parentKey:', {
+        choice: choice,
+        parentKey: answerEvent.parentKey,
+        invite: answerEvent.invite,
+        answer: answerEvent.answer
+      })
+      
       this.codayApi.sendEvent(answerEvent).subscribe({
         next: () => {
           console.log('[CODAY] Choice sent successfully')
           this.currentChoiceSubject.next(null) // Clear choice
+          this.currentChoiceEvent = null // Clear stored event
         },
         error: (error) => console.error('[CODAY] Error sending choice:', error)
       })
+    } else {
+      console.error('[CODAY] No current choice event to build answer from')
     }
   }
 
@@ -287,6 +297,16 @@ export class CodayService implements OnDestroy {
   }
 
   private handleChoiceEvent(event: ChoiceEvent): void {
+    console.log('[CODAY-SERVICE] Processing ChoiceEvent:', {
+      options: event.options,
+      invite: event.invite,
+      optionalQuestion: event.optionalQuestion,
+      timestamp: event.timestamp
+    })
+    
+    // Store the original event for proper answer building
+    this.currentChoiceEvent = event
+    
     // Convert to our choice format
     const options: ChoiceOption[] = event.options.map(option => ({
       value: option,
