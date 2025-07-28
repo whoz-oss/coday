@@ -62,19 +62,27 @@ export class EventStreamService {
 
         try {
           const data = JSON.parse(event.data)
-          console.log('[SSE] Parsed data:', data)
+          console.log('[SSE] ===== PARSED DATA DETAILS =====', {
+            type: data.type,
+            timestamp: data.timestamp,
+            fullData: data
+          })
           
           const codayEvent = buildCodayEvent(data)
           if (codayEvent) {
-            console.log('[SSE] Built CodayEvent:', {
+            console.log('[SSE] ===== BUILT CODAY EVENT =====', {
               type: codayEvent.type,
               timestamp: codayEvent.timestamp,
+              constructor: codayEvent.constructor.name,
               event: codayEvent
             })
             this.eventsSubject.next(codayEvent)
             console.log('[SSE] Event emitted to subscribers')
           } else {
-            console.warn('[SSE] Failed to build CodayEvent from data:', data)
+            console.warn('[SSE] ===== FAILED TO BUILD EVENT =====', {
+              rawData: data,
+              buildResult: codayEvent
+            })
           }
         } catch (error: any) {
           console.error('[SSE] Could not parse event:', {
