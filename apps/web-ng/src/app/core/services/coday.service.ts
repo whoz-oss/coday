@@ -13,7 +13,8 @@ import {
   ToolResponseEvent, 
   ChoiceEvent,
   ProjectSelectedEvent,
-  HeartBeatEvent
+  HeartBeatEvent,
+  InviteEvent
 } from '@coday/coday-events'
 
 import { CodayApiService } from './coday-api.service'
@@ -36,6 +37,7 @@ export class CodayService implements OnDestroy {
   
   // Store original events for proper response building
   private currentChoiceEvent: ChoiceEvent | null = null
+  private currentInviteEvent: InviteEvent | null = null
   
   // Public observables
   messages$ = this.messagesSubject.asObservable()
@@ -78,11 +80,32 @@ export class CodayService implements OnDestroy {
    * Send a message
    */
   sendMessage(message: string): void {
-    const answerEvent = new AnswerEvent({ answer: message })
-    this.codayApi.sendEvent(answerEvent).subscribe({
-      next: () => console.log('[CODAY] Message sent successfully'),
-      error: (error) => console.error('[CODAY] Error sending message:', error)
-    })
+    if (this.currentInviteEvent) {
+      // Use the original InviteEvent to build proper answer with parentKey
+      const answerEvent = this.currentInviteEvent.buildAnswer(message)
+      console.log('[CODAY] Sending message with proper parentKey:', {
+        message: message,
+        parentKey: answerEvent.parentKey,
+        invite: answerEvent.invite,
+        answer: answerEvent.answer
+      })
+      
+      this.codayApi.sendEvent(answerEvent).subscribe({
+        next: () => {
+          console.log('[CODAY] Message sent successfully')
+          this.currentInviteEvent = null // Clear stored event
+        },
+        error: (error) => console.error('[CODAY] Error sending message:', error)
+      })
+    } else {
+      // Fallback to basic AnswerEvent if no invite event stored
+      console.warn('[CODAY] No current invite event, sending basic answer')
+      const answerEvent = new AnswerEvent({ answer: message })
+      this.codayApi.sendEvent(answerEvent).subscribe({
+        next: () => console.log('[CODAY] Message sent successfully'),
+        error: (error) => console.error('[CODAY] Error sending message:', error)
+      })
+    }
   }
 
   /**
@@ -173,6 +196,8 @@ export class CodayService implements OnDestroy {
       this.handleProjectSelectedEvent(event)
     } else if (event instanceof HeartBeatEvent) {
       this.handleHeartBeatEvent(event)
+    } else if (event instanceof InviteEvent) {
+      this.handleInviteEvent(event)
     } else {
       console.log('[CODAY-SERVICE] ===== UNHANDLED EVENT TYPE =====', {
         type: event.type,
@@ -327,6 +352,21 @@ export class CodayService implements OnDestroy {
   private handleHeartBeatEvent(_event: HeartBeatEvent): void {
     // HeartBeat events are just for connection keep-alive, no action needed
     console.log('[CODAY-SERVICE] HeartBeat received - connection alive')
+  }
+
+  private handleInviteEvent(event: InviteEvent): void {
+    console.log('[CODAY-SERVICE] Processing InviteEvent:', {
+      invite: event.invite,
+      defaultValue: event.defaultValue,
+      timestamp: event.timestamp
+    })
+    
+    // Store the original event for proper answer building
+    this.currentInviteEvent = event
+    
+    // InviteEvent means Coday is ready for user input
+    // The chat input should be enabled and ready
+    console.log('[CODAY-SERVICE] Ready for user input')
   }
 
   /**

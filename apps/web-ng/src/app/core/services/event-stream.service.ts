@@ -61,10 +61,9 @@ export class EventStreamService {
         this.updateConnectionStatus(true, 0)
 
         try {
+          console.log('[SSE] before parsing', event.data)
           const data = JSON.parse(event.data)
           console.log('[SSE] ===== PARSED DATA DETAILS =====', {
-            type: data.type,
-            timestamp: data.timestamp,
             fullData: data
           })
           
