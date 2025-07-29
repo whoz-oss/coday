@@ -1,23 +1,46 @@
 .message {
   margin: 0.5rem 0;
-  border-radius: 6px;
+  border-radius: 8px;
   position: relative;
+  max-width: 75%; // Largeur maximale pour éviter les messages trop larges
+  width: fit-content; // S'adapte au contenu
+  min-width: 100px; // Largeur minimale pour éviter les messages trop étroits
+  word-wrap: break-word; // Gestion des mots longs
   
-  // Messages utilisateur
+  // Messages utilisateur - alignés à droite
   &.user {
-    padding: 0.75rem;
+    padding: 0.75rem 1rem;
     background: var(--color-message-user, #e2dee2);
-    margin-left: 6rem;
+    margin-left: auto; // Pousse vers la droite
+    margin-right: 0;
+    border-bottom-right-radius: 4px; // Coin arrondi réduit côté utilisateur
   }
   
-  // Messages assistant
+  // Messages assistant - alignés à gauche
   &.assistant {
-    padding: 0.75rem;
+    padding: 0.75rem 1rem;
     background: var(--color-message-ai, #e8ecf6);
-    margin-right: 6rem;
+    margin-left: 0;
+    margin-right: auto; // Pousse vers la gauche
+    border-bottom-left-radius: 4px; // Coin arrondi réduit côté assistant
   }
   
-  // Messages système - style minimal
+  // Responsive : sur petits écrans, augmenter la largeur max
+  @media (max-width: 768px) {
+    max-width: 85%;
+    min-width: 80px;
+  }
+  
+  @media (max-width: 480px) {
+    max-width: 90%;
+    min-width: 60px;
+    
+    &.user, &.assistant {
+      padding: 0.6rem 0.8rem;
+    }
+  }
+  
+  // Messages système - style minimal (pas de contrainte de largeur)
   &.system, &.technical {
     padding: 0.25rem 0;
     background: transparent;
@@ -26,6 +49,9 @@
     font-family: monospace;
     font-size: 0.85rem;
     color: var(--color-text-secondary, #6272a4);
+    max-width: none; // Pas de limite de largeur pour les messages techniques
+    width: auto;
+    min-width: auto;
   }
   
   // Messages d'erreur
