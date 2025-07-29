@@ -32,7 +32,7 @@ import { ChatMessageComponent, ChatMessage } from '../chat-message/chat-message.
       flex: 1;
       overflow-y: auto;
       padding: 1rem;
-      background: #ffffff;
+      background: var(--color-input-bg, #ffffff);
     }
     
     .thinking {

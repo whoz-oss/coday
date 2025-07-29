@@ -1,1 +1,11 @@
-/* You can add global styles to this file, and also import other style files */
+/* Global styles */
+@use './app/styles/colors.scss';
+
+/* Apply theme variables to body */
+body {
+  background-color: var(--color-bg, #f8f8f2);
+  color: var(--color-text, #282a36);
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
