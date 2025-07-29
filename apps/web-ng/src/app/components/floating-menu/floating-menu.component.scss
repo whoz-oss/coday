@@ -1,21 +1,10 @@
-// Reset du composant header pour qu'il n'ait aucune hauteur
-:host {
-  display: contents; // Le composant n'existe pas dans le layout
-  // Ou alternativement :
-  // position: absolute;
-  // top: 0;
-  // left: 0;
-  // width: 100%;
-  // height: 0;
-  // pointer-events: none;
-}
-
 // Floating Action Button
+// Les styles sont maintenant dans styles.scss global
 .floating-menu-btn {
   position: fixed;
   top: 1rem;
   left: 1rem;
-  z-index: 1000; // Flotte au-dessus du contenu
+  z-index: 1500; // Au-dessus de tout (input zone comprise)
   
   width: 48px;
   height: 48px;
@@ -49,8 +38,8 @@
   }
   
   .logo {
-    width: 24px;
-    height: 24px;
+    width: 48px;
+    height: 48px;
     transition: opacity 0.2s;
     border-radius: 2px;
   }
@@ -77,7 +66,7 @@
   position: fixed;
   top: 4rem;
   left: 1rem;
-  z-index: 999;
+  z-index: 1499; // Juste en dessous du FAB
   
   background: var(--color-input-bg, #ffffff);
   border: 1px solid var(--color-border, #e5e7eb);
@@ -189,7 +178,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 998;
+  z-index: 1498; // En dessous du menu
   background: transparent;
 }
 
