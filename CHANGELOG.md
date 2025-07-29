@@ -1,3 +1,17 @@
+## 0.15.0 (2025-07-29)
+
+### 🚀 Features
+
+- issue 61 add images ([#141](https://github.com/whoz-oss/coday/pull/141))
+
+### 🩹 Fixes
+
+- insufficient write-file-chunk input validation ([#138](https://github.com/whoz-oss/coday/pull/138))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.14.0 (2025-07-01)
 
 ### 🩹 Fixes
