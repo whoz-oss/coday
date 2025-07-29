@@ -22,16 +22,17 @@ import { ConnectionStatus } from '../../core/services/event-stream.service'
       height: 100vh;
       display: flex;
       flex-direction: column;
-      font-family: system-ui, sans-serif;
+      background: var(--color-bg, #f8f8f2);
+      color: var(--color-text, #282a36);
     }
 
     .connection-status {
       padding: 0.5rem 1rem;
       text-align: center;
       font-size: 0.9rem;
-      background: #fef2f2;
-      color: #dc2626;
-      border-bottom: 1px solid #fecaca;
+      background: var(--color-error, #ff5555);
+      color: var(--color-text-inverse, #ffffff);
+      border-bottom: 1px solid var(--color-border, #aeaeae);
     }
 
     .chat-container {
