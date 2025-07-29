@@ -25,20 +25,6 @@
     border-bottom-left-radius: 4px; // Coin arrondi réduit côté assistant
   }
   
-  // Responsive : sur petits écrans, augmenter la largeur max
-  @media (max-width: 768px) {
-    max-width: 85%;
-    min-width: 80px;
-  }
-  
-  @media (max-width: 480px) {
-    max-width: 90%;
-    min-width: 60px;
-    
-    &.user, &.assistant {
-      padding: 0.6rem 0.8rem;
-    }
-  }
   
   // Messages système - style minimal (pas de contrainte de largeur)
   &.system, &.technical {
@@ -102,7 +88,7 @@
 
 // Layout simplifié (system/technical/error/warning)
 .simple-content {
-  display: inline;
+  display: flex;
   
   .event-link {
     margin-left: 5px;
