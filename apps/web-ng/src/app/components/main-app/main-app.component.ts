@@ -4,7 +4,7 @@ import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
 import { trigger, transition, style, animate } from '@angular/animations'
 
-import { HeaderComponent } from '../header/header.component'
+
 import { ChatHistoryComponent } from '../chat-history/chat-history.component'
 import { ChatMessage } from '../chat-message/chat-message.component'
 import { ChatTextareaComponent } from '../chat-textarea/chat-textarea.component'
@@ -16,7 +16,7 @@ import { ConnectionStatus } from '../../core/services/event-stream.service'
 @Component({
   selector: 'app-main',
   standalone: true,
-  imports: [CommonModule, HeaderComponent, ChatHistoryComponent, ChatTextareaComponent, ChoiceSelectComponent],
+  imports: [CommonModule, ChatHistoryComponent, ChatTextareaComponent, ChoiceSelectComponent],
   templateUrl: './main-app.component.html',
   animations: [
     trigger('slideIn', [
@@ -45,17 +45,22 @@ import { ConnectionStatus } from '../../core/services/event-stream.service'
     }
 
     .connection-status {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1001; /* Au-dessus du FAB */
       padding: 0.5rem 1rem;
       text-align: center;
       font-size: 0.9rem;
       background: var(--color-error, #ff5555);
       color: var(--color-text-inverse, #ffffff);
       border-bottom: 1px solid var(--color-border, #aeaeae);
-      flex-shrink: 0;
     }
 
+    /* Le header est maintenant un FAB flottant - pas d'espace réservé */
     app-header {
-      flex-shrink: 0;
+      /* Pas de flex-shrink car le header est flottant */
     }
 
     .chat-wrapper {
@@ -64,6 +69,7 @@ import { ConnectionStatus } from '../../core/services/event-stream.service'
       overflow-y: auto;
       overflow-x: hidden;
       background: var(--color-input-bg, #ffffff);
+      /* Pas de padding-top : le contenu peut passer sous le FAB avec l'effet de dégradé */
       
       /* Force scrollbar visibility on all platforms */
       &::-webkit-scrollbar {

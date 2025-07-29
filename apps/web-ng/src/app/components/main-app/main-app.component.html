@@ -4,9 +4,7 @@
     ⚠️ Connection lost. Reconnecting... ({{ connectionStatus.reconnectAttempts }}/{{ connectionStatus.maxAttempts }})
   </div>
   
-  <!-- Header -->
-  <app-header></app-header>
-  <!-- Chat History - Zone scrollable -->
+  <!-- Chat History - Zone scrollable (maintenant pleine hauteur) -->
   <div class="chat-wrapper">
     <app-chat-history 
       [messages]="messages"

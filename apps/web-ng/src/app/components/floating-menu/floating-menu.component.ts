@@ -7,13 +7,13 @@ import { ThemeSelectorComponent } from '../theme-selector/theme-selector.compone
 import { OptionsPanelComponent } from '../options-panel/options-panel.component'
 
 @Component({
-  selector: 'app-header',
+  selector: 'app-floating-menu',
   standalone: true,
   imports: [CommonModule, ThemeSelectorComponent, OptionsPanelComponent],
-  templateUrl: './header.component.html',
-  styleUrl: './header.component.scss'
+  templateUrl: './floating-menu.component.html',
+  styleUrl: './floating-menu.component.scss'
 })
-export class HeaderComponent implements OnInit, OnDestroy {
+export class FloatingMenuComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>()
   title = 'Coday'
   isMenuOpen = false
@@ -25,7 +25,6 @@ export class HeaderComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe(title => {
         this.title = title
-        document.title = title
       })
   }
 

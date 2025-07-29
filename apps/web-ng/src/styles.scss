@@ -142,3 +142,42 @@ body {
     }
   }
 }
+
+/* Global Floating Menu Styles */
+/* Force le FAB à être vraiment au-dessus de tout */
+.floating-menu-btn {
+  position: fixed !important;
+  top: 1rem !important;
+  left: 1rem !important;
+  z-index: 9999 !important; /* Maximum z-index */
+  
+  width: 48px !important;
+  height: 48px !important;
+  border-radius: 50% !important;
+  border: 2px solid rgba(255, 255, 255, 0.2) !important;
+  
+  background: var(--color-primary, #7064fb) !important;
+  color: white !important;
+  
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+  cursor: pointer !important;
+  
+  /* S'assurer qu'aucun parent ne peut interférer */
+  isolation: isolate;
+}
+
+/* Force les composants Angular à ne pas interférer */
+app-floating-menu {
+  display: contents !important; /* Le composant n'existe pas dans le layout */
+}
+
+/* S'assurer que le main-app n'a pas de z-index qui interfère */
+app-main {
+  position: relative;
+  z-index: 1;
+}
+
+.app {
+  position: relative;
+  z-index: 1;
+}
