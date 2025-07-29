@@ -1,0 +1,26 @@
+<div class="message" [ngClass]="messageClasses">
+  <div class="speaker" *ngIf="shouldShowSpeaker">
+    {{ message.speaker }}
+  </div>
+  
+  <div class="content" [innerHTML]="renderedContent">
+  </div>
+  
+  <div class="actions">
+    <button 
+      class="action-btn" 
+      (click)="onPlay()"
+      title="Play message"
+    >
+      ▶️
+    </button>
+    
+    <button 
+      class="action-btn" 
+      (click)="onCopy()"
+      title="Copy message"
+    >
+      📋
+    </button>
+  </div>
+</div>

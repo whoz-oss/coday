@@ -1,0 +1,26 @@
+<form 
+  *ngIf="isVisible" 
+  class="choice-form" 
+  (ngSubmit)="onSubmit()"
+>
+  <label class="choice-label" [innerHTML]="labelHtml"></label>
+  
+  <select 
+    class="choice-select" 
+    [(ngModel)]="selectedValue"
+    name="choice"
+    required
+    #choiceSelect
+  >
+    <option 
+      *ngFor="let option of options" 
+      [value]="option.value"
+    >
+      {{ option.label }}
+    </option>
+  </select>
+  
+  <button type="submit" class="submit-btn">
+    Submit Choice
+  </button>
+</form>

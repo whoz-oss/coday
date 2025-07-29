@@ -1,0 +1,90 @@
+.message {
+  margin: 0.5rem 0;
+  border-radius: 6px;
+  position: relative;
+  
+  // Messages utilisateur
+  &.user {
+    padding: 0.75rem;
+    background: var(--color-message-user, #e2dee2);
+    margin-left: 2rem;
+    border-left: 3px solid var(--color-primary, #7064fb);
+  }
+  
+  // Messages assistant
+  &.assistant {
+    padding: 0.75rem;
+    background: var(--color-message-ai, #e8ecf6);
+    margin-right: 2rem;
+    border-left: 3px solid var(--color-link, #3498db);
+  }
+  
+  // Messages système - style minimal
+  &.system, &.technical {
+    padding: 0.25rem 0.5rem;
+    background: transparent;
+    border: none;
+    margin: 0.25rem 0;
+    font-family: monospace;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary, #6272a4);
+  }
+  
+  // Messages d'erreur
+  &.error {
+    padding: 0.75rem;
+    background: rgba(255, 85, 85, 0.1);
+    border-left: 3px solid var(--color-error, #ff5555);
+    color: var(--color-error, #ff5555);
+  }
+  
+  // Messages d'avertissement
+  &.warning {
+    padding: 0.75rem;
+    background: rgba(255, 184, 108, 0.1);
+    border-left: 3px solid var(--color-warning, #ffb86c);
+    color: var(--color-warning, #ffb86c);
+  }
+}
+
+.speaker {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary, #6272a4);
+  margin-bottom: 0.25rem;
+}
+
+.content {
+  line-height: 1.5;
+  margin-bottom: 0.5rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.message:hover .actions {
+  opacity: 1;
+}
+
+// Pas d'actions pour les messages système
+.message.system .actions,
+.message.technical .actions {
+  display: none;
+}
+
+.action-btn {
+  background: none;
+  border: 1px solid var(--color-border, #aeaeae);
+  border-radius: 3px;
+  padding: 0.2rem 0.4rem;
+  cursor: pointer;
+  font-size: 0.7rem;
+  
+  &:hover {
+    background: var(--color-bg-secondary, #f1f1eb);
+  }
+}

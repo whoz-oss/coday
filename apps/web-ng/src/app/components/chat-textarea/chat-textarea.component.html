@@ -1,0 +1,38 @@
+<div class="chat-input-container">
+  <div class="input-wrapper">
+    <textarea
+      #messageInput
+      class="message-input"
+      [(ngModel)]="message"
+      placeholder="Type your message here..."
+      (keydown)="onKeyDown($event)"
+      [disabled]="isDisabled"
+      rows="3"
+    ></textarea>
+    
+    <div class="input-actions">
+      <button
+        class="voice-btn"
+        [class.recording]="isRecording"
+        (click)="toggleVoiceRecording()"
+        title="Voice input"
+      >
+        🎤
+      </button>
+      
+      <button
+        class="send-btn"
+        (click)="sendMessage()"
+        [disabled]="!message.trim() || isDisabled"
+        title="Send message"
+      >
+        Send
+      </button>
+    </div>
+  </div>
+  
+  <div *ngIf="isRecording" class="recording-indicator">
+    <span class="recording-dot"></span>
+    Recording... Click microphone to stop
+  </div>
+</div>
