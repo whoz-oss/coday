@@ -80,20 +80,31 @@ export class CodayService implements OnDestroy {
    * Send a message
    */
   sendMessage(message: string): void {
+    console.log('[CODAY] sendMessage called with:', message)
+    console.log('[CODAY] currentInviteEvent:', this.currentInviteEvent ? 'exists' : 'null')
+    
     if (this.currentInviteEvent) {
       // Use the original InviteEvent to build proper answer with parentKey
       const answerEvent = this.currentInviteEvent.buildAnswer(message)
-      console.log('[CODAY] Sending message:', message)
+      console.log('[CODAY] Built AnswerEvent with parentKey:', answerEvent.parentKey)
       
+      this.currentInviteEvent = null
       this.codayApi.sendEvent(answerEvent).subscribe({
-        next: () => this.currentInviteEvent = null,
+        next: () => {
+          console.log('[CODAY] Message sent successfully')
+          // Ne pas réinitialiser currentInviteEvent ici
+          // Il sera remplacé par le prochain InviteEvent du serveur
+        },
         error: (error) => console.error('[CODAY] Send error:', error)
       })
     } else {
       // Fallback to basic AnswerEvent if no invite event stored
-      console.warn('[CODAY] No invite event, sending basic answer')
+      console.warn('[CODAY] No invite event available, sending basic answer')
       const answerEvent = new AnswerEvent({ answer: message })
+      console.log('[CODAY] Sending basic AnswerEvent without parentKey')
+      
       this.codayApi.sendEvent(answerEvent).subscribe({
+        next: () => console.log('[CODAY] Basic message sent'),
         error: (error) => console.error('[CODAY] Send error:', error)
       })
     }
@@ -110,8 +121,10 @@ export class CodayService implements OnDestroy {
       
       this.codayApi.sendEvent(answerEvent).subscribe({
         next: () => {
+          console.log('[CODAY] Choice sent successfully')
+          // Masquer l'interface de choix immédiatement
           this.currentChoiceSubject.next(null)
-          this.currentChoiceEvent = null
+          // Mais garder currentChoiceEvent jusqu'au prochain événement
         },
         error: (error) => console.error('[CODAY] Choice error:', error)
       })
@@ -144,7 +157,7 @@ export class CodayService implements OnDestroy {
    * Handle incoming Coday events
    */
   private handleEvent(event: CodayEvent): void {
-    console.log('[CODAY] Handling:', event.type)
+    console.log('[CODAY] Handling event:', event.type, event)
 
     if (event instanceof MessageEvent) {
       this.handleMessageEvent(event)
@@ -278,7 +291,9 @@ export class CodayService implements OnDestroy {
   }
 
   private handleChoiceEvent(event: ChoiceEvent): void {
-    console.log('[CODAY] Choice:', event.options.join(', '))
+    console.log('[CODAY] ChoiceEvent received:', event.options.join(', '))
+    console.log('[CODAY] ChoiceEvent parentKey:', event.parentKey)
+    console.log('[CODAY] Replacing previous ChoiceEvent:', this.currentChoiceEvent ? 'exists' : 'none')
     
     this.currentChoiceEvent = event
     
@@ -303,7 +318,9 @@ export class CodayService implements OnDestroy {
   }
 
   private handleInviteEvent(event: InviteEvent): void {
-    console.log('[CODAY] Ready for input:', event.invite)
+    console.log('[CODAY] InviteEvent received:', event.invite)
+    console.log('[CODAY] InviteEvent parentKey:', event.parentKey)
+    console.log('[CODAY] Replacing previous InviteEvent:', this.currentInviteEvent ? 'exists' : 'none')
     this.currentInviteEvent = event
   }
 

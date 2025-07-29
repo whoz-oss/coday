@@ -1,0 +1,67 @@
+<div class="options-container">
+  <!-- Bouton pour ouvrir/fermer le panneau -->
+  <button 
+    class="options-toggle-btn"
+    (click)="togglePanel()"
+    [class.active]="isVisible"
+    title="Options"
+    type="button"
+  >
+    ⚙️
+  </button>
+  
+  <!-- Backdrop pour fermer le panneau en cliquant à l'extérieur -->
+  <div 
+    *ngIf="isVisible"
+    class="options-backdrop"
+    (click)="onBackdropClick()"
+  ></div>
+  
+  <!-- Panneau d'options -->
+  <div 
+    *ngIf="isVisible"
+    class="options-panel"
+    (click)="onPanelClick($event)"
+  >
+    <div class="options-header">
+      <h3>Options</h3>
+      <button 
+        class="close-btn"
+        (click)="closePanel()"
+        title="Fermer"
+        type="button"
+      >
+        ✕
+      </button>
+    </div>
+    
+    <div class="options-content">
+      <!-- Sélection de langue vocale -->
+      <div class="option-group">
+        <label for="voice-language-select" class="option-label">
+          Langue de reconnaissance vocale :
+        </label>
+        <select 
+          id="voice-language-select"
+          class="option-select"
+          [(ngModel)]="selectedVoiceLanguage"
+          (change)="onVoiceLanguageChange()"
+        >
+          <option 
+            *ngFor="let option of voiceLanguageOptions" 
+            [value]="option.code"
+          >
+            {{ option.flag }} {{ option.label }}
+          </option>
+        </select>
+      </div>
+      
+      <!-- Placeholder pour futures options -->
+      <div class="option-group">
+        <p class="option-note">
+          Plus d'options seront ajoutées prochainement...
+        </p>
+      </div>
+    </div>
+  </div>
+</div>

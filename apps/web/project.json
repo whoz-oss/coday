@@ -87,8 +87,9 @@
       ],
       "options": {
         "commands": [
+          "rm -rf dist/web/ng-client",
           "mkdir -p dist/web/ng-client",
-          "cp -r dist/apps/web-ng/browser/* dist/web/ng-client/"
+          "rsync -av dist/apps/web-ng/browser/ dist/web/ng-client/"
         ]
       }
     },
@@ -109,7 +110,7 @@
     },
     "serve": {
       "executor": "nx:run-commands",
-      "dependsOn": ["web:build:client", "web:build:server"],
+      "dependsOn": ["web:build:client", "web:build:server", "web:build:ng-client"],
       "options": {
         "commands": ["node dist/web/server/server.js --no_auth"]
       }

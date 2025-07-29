@@ -1,11 +1,22 @@
 /* Global styles */
 @use './app/styles/colors.scss';
 
+/* Reset */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+}
+
 /* Apply theme variables to body */
 body {
   background-color: var(--color-bg, #f8f8f2);
   color: var(--color-text, #282a36);
   font-family: system-ui, sans-serif;
-  margin: 0;
   transition: background-color 0.2s ease, color 0.2s ease;
 }

@@ -2,6 +2,7 @@
   padding: 1rem;
   background: var(--color-input-bg, #ffffff);
   border-top: 1px solid var(--color-border, #e5e7eb);
+  flex-shrink: 0;
 }
 
 .input-wrapper {
@@ -58,9 +59,15 @@
 .voice-btn {
   font-size: 1.2rem;
   color: var(--color-text, #282a36);
+  user-select: none; // Éviter la sélection de texte lors du push-to-talk
   
-  &:hover {
+  &:hover:not(.recording) {
     background: var(--color-bg-secondary, #f1f1eb);
+  }
+  
+  &:focus {
+    outline: 2px solid var(--color-primary, #7064fb);
+    outline-offset: 2px;
   }
   
   &.recording {
@@ -68,6 +75,10 @@
     border-color: var(--color-error, #ff5555);
     color: var(--color-error, #ff5555);
     animation: pulse 1.5s infinite;
+    
+    &:hover {
+      background: rgba(255, 85, 85, 0.2);
+    }
   }
 }
 

@@ -6,9 +6,8 @@
   
   <!-- Header -->
   <app-header></app-header>
-  
-  <!-- Main Chat Interface -->
-  <div class="chat-container">
+  <!-- Chat History - Zone scrollable -->
+  <div class="chat-wrapper">
     <app-chat-history 
       [messages]="messages"
       [isThinking]="isThinking"
@@ -16,20 +15,25 @@
       (copyRequested)="onCopyMessage($event)"
       (stopRequested)="onStopRequested()"
     ></app-chat-history>
-    
+  </div>
+  
+  <!-- Input Section - Toujours visible en bas -->
+  <div class="input-section">
     <app-chat-textarea 
+      *ngIf="!currentChoice"
+      [@slideIn]
       [isDisabled]="!isConnected"
       (messageSubmitted)="onMessageSubmitted($event)"
       (voiceRecordingToggled)="onVoiceToggled($event)"
     ></app-chat-textarea>
+    
+    <app-choice-select
+      *ngIf="currentChoice"
+      [@slideIn]
+      [options]="currentChoice.options"
+      [labelHtml]="currentChoice.label"
+      [isVisible]="!!currentChoice"
+      (choiceSelected)="onChoiceSelected($event)"
+    ></app-choice-select>
   </div>
-  
-  <!-- Choice Selection -->
-  <app-choice-select
-    *ngIf="currentChoice"
-    [options]="currentChoice.options"
-    [labelHtml]="currentChoice.label"
-    [isVisible]="!!currentChoice"
-    (choiceSelected)="onChoiceSelected($event)"
-  ></app-choice-select>
 </div>

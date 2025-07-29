@@ -14,10 +14,17 @@
       <button
         class="voice-btn"
         [class.recording]="isRecording"
-        (click)="toggleVoiceRecording()"
-        title="Voice input"
+        (mousedown)="onVoiceButtonMouseDown($event)"
+        (mouseup)="onVoiceButtonMouseUp()"
+        (mouseleave)="onVoiceButtonMouseLeave()"
+        (touchstart)="onVoiceButtonTouchStart($event)"
+        (touchend)="onVoiceButtonTouchEnd($event)"
+        (keydown)="onVoiceButtonKeyDown($event)"
+        (keyup)="onVoiceButtonKeyUp($event)"
+        tabindex="0"
+        title="Maintenir clic souris, touch, ou barre espace pour parler"
       >
-        🎤
+        {{ isRecording ? '🔴' : '🎤' }}
       </button>
       
       <button
@@ -33,6 +40,6 @@
   
   <div *ngIf="isRecording" class="recording-indicator">
     <span class="recording-dot"></span>
-    Recording... Click microphone to stop
+    Recording... Release to stop
   </div>
 </div>

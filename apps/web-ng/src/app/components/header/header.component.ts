@@ -3,11 +3,12 @@ import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
 import { CodayService } from '../../core/services/coday.service'
 import { ThemeSelectorComponent } from '../theme-selector/theme-selector.component'
+import { OptionsPanelComponent } from '../options-panel/options-panel.component'
 
 @Component({
   selector: 'app-header',
   standalone: true,
-  imports: [ThemeSelectorComponent],
+  imports: [ThemeSelectorComponent, OptionsPanelComponent],
   templateUrl: './header.component.html',
   styleUrl: './header.component.scss'
 })
