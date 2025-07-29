@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter } from '@angular/core'
+import { Component, Input, Output, EventEmitter, ElementRef, AfterViewChecked } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { ChatMessageComponent, ChatMessage } from '../chat-message/chat-message.component'
 
@@ -9,12 +9,44 @@ import { ChatMessageComponent, ChatMessage } from '../chat-message/chat-message.
   templateUrl: './chat-history.component.html',
   styleUrl: './chat-history.component.scss'
 })
-export class ChatHistoryComponent {
+export class ChatHistoryComponent implements AfterViewChecked {
   @Input() messages: ChatMessage[] = []
   @Input() isThinking: boolean = false
   @Output() playRequested = new EventEmitter<ChatMessage>()
   @Output() copyRequested = new EventEmitter<ChatMessage>()
   @Output() stopRequested = new EventEmitter<void>()
+  
+  private lastMessageCount = 0
+  constructor(private elementRef: ElementRef) {}
+  
+  ngAfterViewChecked() {
+    // Check if we need to scroll after each view update
+    if (this.messages.length !== this.lastMessageCount) {
+      console.log('[CHAT-HISTORY] Message count changed:', this.lastMessageCount, '->', this.messages.length)
+      this.lastMessageCount = this.messages.length
+      this.scrollToBottom()
+    }
+  }
+  
+  private scrollToBottom() {
+    try {
+      // Find the scrollable parent (.chat-wrapper)
+      const chatHistory = this.elementRef.nativeElement
+      const scrollableParent = chatHistory.closest('.chat-wrapper')
+      
+      if (scrollableParent) {
+        // Small delay to ensure DOM is updated
+        setTimeout(() => {
+          scrollableParent.scrollTo({
+            top: scrollableParent.scrollHeight,
+            behavior: 'smooth'
+          })
+        }, 100)
+      }
+    } catch (err) {
+      console.error('Error scrolling to bottom:', err)
+    }
+  }
   
   trackByMessageId(_index: number, message: ChatMessage): string {
     return message.id
