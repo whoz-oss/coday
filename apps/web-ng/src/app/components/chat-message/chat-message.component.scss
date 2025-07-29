@@ -8,7 +8,6 @@
     padding: 0.75rem;
     background: var(--color-message-user, #e2dee2);
     margin-left: 6rem;
-    border-left: 3px solid var(--color-primary, #7064fb);
   }
   
   // Messages assistant
@@ -16,12 +15,11 @@
     padding: 0.75rem;
     background: var(--color-message-ai, #e8ecf6);
     margin-right: 6rem;
-    border-left: 3px solid var(--color-link, #3498db);
   }
   
   // Messages système - style minimal
   &.system, &.technical {
-    padding: 0.25rem 0.5rem;
+    padding: 0.25rem 0;
     background: transparent;
     border: none;
     margin: 0.25rem 0;
@@ -47,16 +45,22 @@
   }
 }
 
+// Layout normal (user/assistant)
+.message-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
 .speaker {
   font-weight: 600;
   font-size: 0.85rem;
   color: var(--color-text-secondary, #6272a4);
-  margin-bottom: 0.25rem;
 }
 
 .content {
   line-height: 1.5;
-  margin-bottom: 0.5rem;
 }
 
 .actions {
@@ -70,10 +74,20 @@
   opacity: 1;
 }
 
-// Pas d'actions pour les messages système
-.message.system .actions,
-.message.technical .actions {
-  display: none;
+// Layout simplifié (system/technical/error/warning)
+.simple-content {
+  display: inline;
+  
+  .event-link {
+    margin-left: 5px;
+    font-size: 0.9em;
+    color: var(--color-link, #3498db);
+    text-decoration: none;
+    
+    &:hover {
+      text-decoration: underline;
+    }
+  }
 }
 
 .action-btn {

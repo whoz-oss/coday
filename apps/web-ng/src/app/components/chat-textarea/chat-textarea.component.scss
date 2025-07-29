@@ -10,68 +10,10 @@
   cursor: pointer;
   transition: background-color 0.2s ease;
   
-  
   .invite-content {
     color: var(--color-text, #282a36);
     font-size: 0.95rem;
     line-height: 1.4;
-    
-    // Style pour le contenu markdown
-    ::ng-deep {
-      p {
-        margin: 0 0 0.5rem 0;
-        
-        &:last-child {
-          margin-bottom: 0;
-        }
-      }
-      
-      code {
-        background: var(--color-code-bg, #f1f1f1);
-        padding: 0.125rem 0.25rem;
-        border-radius: 3px;
-        font-family: 'Courier New', monospace;
-        font-size: 0.9em;
-      }
-      
-      pre {
-        background: var(--color-code-bg, #f1f1f1);
-        padding: 0.5rem;
-        border-radius: 4px;
-        overflow-x: auto;
-        margin: 0.5rem 0;
-        
-        code {
-          background: none;
-          padding: 0;
-        }
-      }
-      
-      strong {
-        font-weight: 600;
-      }
-      
-      em {
-        font-style: italic;
-      }
-      
-      ul, ol {
-        margin: 0.5rem 0;
-        padding-left: 1.5rem;
-      }
-      
-      li {
-        margin: 0.25rem 0;
-      }
-      
-      blockquote {
-        border-left: 3px solid var(--color-primary, #7064fb);
-        margin: 0.5rem 0;
-        padding-left: 1rem;
-        font-style: italic;
-        color: var(--color-text-secondary, #6272a4);
-      }
-    }
   }
 }
 

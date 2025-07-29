@@ -271,7 +271,8 @@ export class CodayService implements OnDestroy {
       speaker: 'System',
       content: event.toSingleLineString(),
       timestamp: new Date(),
-      type: 'technical'
+      type: 'technical',
+      eventId: event.timestamp
     }
     
     this.addMessage(message)
@@ -284,7 +285,8 @@ export class CodayService implements OnDestroy {
       speaker: 'System',
       content: event.toSingleLineString(),
       timestamp: new Date(),
-      type: 'technical'
+      type: 'technical',
+      eventId: event.timestamp
     }
     
     this.addMessage(message)
