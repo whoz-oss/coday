@@ -16,13 +16,16 @@
   padding: 0.75rem;
   border: 1px solid var(--color-border, #aeaeae);
   border-radius: 8px;
-  resize: vertical;
-  min-height: 60px;
+  resize: none; // Disable manual resize since we handle it automatically
+  overflow-y: auto; // Allow scrolling when content exceeds max height
   font-family: inherit;
   font-size: 1rem;
   line-height: 1.5;
   background: var(--color-input-bg, #ffffff);
   color: var(--color-text, #282a36);
+  
+  // Height will be set dynamically by the adjustTextareaHeight method
+  // Min and max heights are calculated in TypeScript based on line height
   
   &:focus {
     outline: none;
@@ -87,6 +90,12 @@
   color: var(--color-text-inverse, #ffffff);
   border-color: var(--color-primary, #7064fb);
   font-weight: 500;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  min-width: 70px;
   
   &:hover:not(:disabled) {
     background: var(--color-primary-hover, #ff79c6);
@@ -97,6 +106,18 @@
     background: var(--color-text-secondary, #6272a4);
     border-color: var(--color-text-secondary, #6272a4);
     cursor: not-allowed;
+  }
+  
+  .send-text {
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+  
+  .send-shortcut {
+    font-size: 0.7rem;
+    opacity: 0.8;
+    font-weight: 400;
+    line-height: 1;
   }
 }
 

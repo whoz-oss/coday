@@ -36,6 +36,19 @@
     </div>
     
     <div class="options-content">
+      <!-- Comportement touche Entrée -->
+      <div class="option-group">
+        <label class="option-checkbox">
+          <input 
+            type="checkbox"
+            [(ngModel)]="useEnterToSend"
+            (change)="onEnterToSendChange()"
+          />
+          <span class="checkmark"></span>
+          Utiliser Entrée pour envoyer (Shift+Entrée pour nouvelle ligne)
+        </label>
+      </div>
+      
       <!-- Sélection de langue vocale -->
       <div class="option-group">
         <label for="voice-language-select" class="option-label">
@@ -54,13 +67,6 @@
             {{ option.flag }} {{ option.label }}
           </option>
         </select>
-      </div>
-      
-      <!-- Placeholder pour futures options -->
-      <div class="option-group">
-        <p class="option-note">
-          Plus d'options seront ajoutées prochainement...
-        </p>
       </div>
     </div>
   </div>

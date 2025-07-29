@@ -6,8 +6,8 @@
       [(ngModel)]="message"
       placeholder="Type your message here..."
       (keydown)="onKeyDown($event)"
+      (input)="onInput()"
       [disabled]="isDisabled"
-      rows="3"
     ></textarea>
     
     <div class="input-actions">
@@ -31,9 +31,10 @@
         class="send-btn"
         (click)="sendMessage()"
         [disabled]="!message.trim() || isDisabled"
-        title="Send message"
+        [title]="getSendButtonTooltip()"
       >
-        Send
+        <span class="send-text">Send</span>
+        <span class="send-shortcut">{{ getSendButtonShortcut() }}</span>
       </button>
     </div>
   </div>
