@@ -49,8 +49,8 @@ import { FormsModule } from '@angular/forms'
   styles: [`
     .chat-input-container {
       padding: 1rem;
-      background: #ffffff;
-      border-top: 1px solid #e5e7eb;
+      background: var(--color-input-bg, #ffffff);
+      border-top: 1px solid var(--color-border, #e5e7eb);
     }
     
     .input-wrapper {
@@ -62,24 +62,31 @@ import { FormsModule } from '@angular/forms'
     .message-input {
       flex: 1;
       padding: 0.75rem;
-      border: 1px solid #d1d5db;
+      border: 1px solid var(--color-border, #aeaeae);
       border-radius: 8px;
       resize: vertical;
       min-height: 60px;
       font-family: inherit;
       font-size: 1rem;
       line-height: 1.5;
-    }
-    
-    .message-input:focus {
-      outline: none;
-      border-color: #3b82f6;
-      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-    }
-    
-    .message-input:disabled {
-      background-color: #f9fafb;
-      color: #6b7280;
+      background: var(--color-input-bg, #ffffff);
+      color: var(--color-text, #282a36);
+      
+      &:focus {
+        outline: none;
+        border-color: var(--color-primary, #7064fb);
+        box-shadow: 0 0 0 3px rgba(112, 100, 251, 0.1);
+      }
+      
+      &:disabled {
+        background-color: var(--color-bg-secondary, #f1f1eb);
+        color: var(--color-text-secondary, #6272a4);
+        cursor: not-allowed;
+      }
+      
+      &::placeholder {
+        color: var(--color-text-secondary, #6272a4);
+      }
     }
     
     .input-actions {
@@ -90,43 +97,45 @@ import { FormsModule } from '@angular/forms'
     
     .voice-btn, .send-btn {
       padding: 0.75rem;
-      border: 1px solid #d1d5db;
+      border: 1px solid var(--color-border, #aeaeae);
       border-radius: 6px;
-      background: #ffffff;
+      background: var(--color-input-bg, #ffffff);
       cursor: pointer;
       transition: all 0.2s;
     }
     
     .voice-btn {
       font-size: 1.2rem;
-    }
-    
-    .voice-btn.recording {
-      background: #fef2f2;
-      border-color: #ef4444;
-      animation: pulse 1.5s infinite;
+      color: var(--color-text, #282a36);
+      
+      &:hover {
+        background: var(--color-bg-secondary, #f1f1eb);
+      }
+      
+      &.recording {
+        background: rgba(255, 85, 85, 0.1);
+        border-color: var(--color-error, #ff5555);
+        color: var(--color-error, #ff5555);
+        animation: pulse 1.5s infinite;
+      }
     }
     
     .send-btn {
-      background: #3b82f6;
-      color: white;
-      border-color: #3b82f6;
+      background: var(--color-primary, #7064fb);
+      color: var(--color-text-inverse, #ffffff);
+      border-color: var(--color-primary, #7064fb);
       font-weight: 500;
-    }
-    
-    .send-btn:hover:not(:disabled) {
-      background: #2563eb;
-      border-color: #2563eb;
-    }
-    
-    .send-btn:disabled {
-      background: #9ca3af;
-      border-color: #9ca3af;
-      cursor: not-allowed;
-    }
-    
-    .voice-btn:hover {
-      background: #f3f4f6;
+      
+      &:hover:not(:disabled) {
+        background: var(--color-primary-hover, #ff79c6);
+        border-color: var(--color-primary-hover, #ff79c6);
+      }
+      
+      &:disabled {
+        background: var(--color-text-secondary, #6272a4);
+        border-color: var(--color-text-secondary, #6272a4);
+        cursor: not-allowed;
+      }
     }
     
     .recording-indicator {
@@ -134,14 +143,14 @@ import { FormsModule } from '@angular/forms'
       align-items: center;
       gap: 0.5rem;
       margin-top: 0.5rem;
-      color: #ef4444;
+      color: var(--color-error, #ff5555);
       font-size: 0.9rem;
     }
     
     .recording-dot {
       width: 8px;
       height: 8px;
-      background: #ef4444;
+      background: var(--color-error, #ff5555);
       border-radius: 50%;
       animation: pulse 1.5s infinite;
     }
