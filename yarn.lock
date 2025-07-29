@@ -2984,10 +2984,10 @@
     "@typescript-eslint/types" "8.32.1"
     eslint-visitor-keys "^4.2.0"
 
-"@whoz-oss/coday-web@^0.14.0":
-  version "0.14.0"
-  resolved "https://registry.yarnpkg.com/@whoz-oss/coday-web/-/coday-web-0.14.0.tgz#db380249d39bb9f24bde2a3be1e31cf16ffc00ba"
-  integrity sha512-UxzxKD8jcktlGZxNS91feUv8wGUD1cahJyXxfDnBaJfUwHiGHf31EZ/zYi+etlKi8jEUnMfYRer45o/nbH1KYQ==
+"@whoz-oss/coday-web@^0.15.0":
+  version "0.15.0"
+  resolved "https://registry.yarnpkg.com/@whoz-oss/coday-web/-/coday-web-0.15.0.tgz#17f40ba971c0ff085f29fe892c3640e9af1602df"
+  integrity sha512-tQqRPshvKn9CQWHlDgfY1MlLeVBGibUkKxb1A5G3PeAcmxtoOHdQPdfHLJcuwPl43cfiYWF4JRz97YJlJs+K7g==
 
 "@xhmikosr/archive-type@^7.0.0":
   version "7.0.0"

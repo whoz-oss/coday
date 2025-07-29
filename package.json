@@ -23,7 +23,7 @@
     "*.ts": "prettier --write"
   },
   "devDependencies": {
-    "@whoz-oss/coday-web": "^0.14.0",
+    "@whoz-oss/coday-web": "^0.15.0",
     "@eslint/js": "^9.27.0",
     "@nx/devkit": "21.1.1",
     "@nx/esbuild": "21.1.1",
