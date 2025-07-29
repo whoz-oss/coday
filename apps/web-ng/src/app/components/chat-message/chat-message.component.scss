@@ -7,7 +7,7 @@
   &.user {
     padding: 0.75rem;
     background: var(--color-message-user, #e2dee2);
-    margin-left: 2rem;
+    margin-left: 6rem;
     border-left: 3px solid var(--color-primary, #7064fb);
   }
   
@@ -15,7 +15,7 @@
   &.assistant {
     padding: 0.75rem;
     background: var(--color-message-ai, #e8ecf6);
-    margin-right: 2rem;
+    margin-right: 6rem;
     border-left: 3px solid var(--color-link, #3498db);
   }
   

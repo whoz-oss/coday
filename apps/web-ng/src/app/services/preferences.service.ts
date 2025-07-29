@@ -14,11 +14,18 @@ export class PreferencesService {
   // Observable pour les changements de langue vocale
   private voiceLanguageSubject = new BehaviorSubject<string>('en-US')
   public voiceLanguage$ = this.voiceLanguageSubject.asObservable()
+  
+  // Observable pour les changements du comportement de la touche Entrée
+  private enterToSendSubject = new BehaviorSubject<boolean>(false)
+  public enterToSend$ = this.enterToSendSubject.asObservable()
 
   constructor() {
     // Initialiser avec la valeur stockée
     const storedLanguage = this.getPreference<string>('voiceLanguage', 'en-US') ?? 'en-US'
     this.voiceLanguageSubject.next(storedLanguage)
+    
+    const storedEnterToSend = this.getPreference<boolean>('useEnterToSend', false) ?? false
+    this.enterToSendSubject.next(storedEnterToSend)
   }
 
   /**
@@ -51,6 +58,11 @@ export class PreferencesService {
       if (key === 'voiceLanguage') {
         this.voiceLanguageSubject.next(value as string)
       }
+      
+      // Émettre le changement pour le comportement de la touche Entrée
+      if (key === 'useEnterToSend') {
+        this.enterToSendSubject.next(value as boolean)
+      }
     } catch (error) {
       console.error('Failed to set preference:', error)
     }
@@ -69,5 +81,20 @@ export class PreferencesService {
    */
   getVoiceLanguage(): string {
     return this.getPreference<string>('voiceLanguage', 'en-US') ?? 'en-US'
+  }
+  
+  /**
+   * Méthode spécifique pour changer le comportement de la touche Entrée
+   */
+  setEnterToSend(useEnterToSend: boolean): void {
+    console.log('[PREFERENCES] Setting Enter to send to:', useEnterToSend)
+    this.setPreference('useEnterToSend', useEnterToSend)
+  }
+  
+  /**
+   * Obtenir le comportement actuel de la touche Entrée
+   */
+  getEnterToSend(): boolean {
+    return this.getPreference<boolean>('useEnterToSend', false) ?? false
   }
 }

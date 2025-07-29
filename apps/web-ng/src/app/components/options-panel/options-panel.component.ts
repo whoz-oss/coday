@@ -23,6 +23,7 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   
   isVisible = false
   selectedVoiceLanguage = 'en-US'
+  useEnterToSend = false
   
   voiceLanguageOptions: VoiceLanguageOption[] = [
     { code: 'fr-FR', label: 'Français', flag: '🇫🇷' },
@@ -45,11 +46,21 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
     // Initialiser avec la langue actuelle
     this.selectedVoiceLanguage = this.preferencesService.getVoiceLanguage()
     
+    // Initialiser avec le comportement actuel de la touche Entrée
+    this.useEnterToSend = this.preferencesService.getEnterToSend()
+    
     // Écouter les changements de langue pour synchroniser l'affichage
     this.preferencesService.voiceLanguage$
       .pipe(takeUntil(this.destroy$))
       .subscribe(language => {
         this.selectedVoiceLanguage = language
+      })
+      
+    // Écouter les changements du comportement de la touche Entrée
+    this.preferencesService.enterToSend$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(useEnterToSend => {
+        this.useEnterToSend = useEnterToSend
       })
   }
   
@@ -69,6 +80,11 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   onVoiceLanguageChange(): void {
     console.log('[OPTIONS] Voice language changed to:', this.selectedVoiceLanguage)
     this.preferencesService.setVoiceLanguage(this.selectedVoiceLanguage)
+  }
+  
+  onEnterToSendChange(): void {
+    console.log('[OPTIONS] Enter to send changed to:', this.useEnterToSend)
+    this.preferencesService.setEnterToSend(this.useEnterToSend)
   }
   
   onPanelClick(event: Event): void {

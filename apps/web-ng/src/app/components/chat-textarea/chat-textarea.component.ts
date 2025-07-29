@@ -1,4 +1,4 @@
-import { Component, Output, EventEmitter, Input, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core'
+import { Component, Output, EventEmitter, Input, OnInit, OnDestroy, AfterViewInit, ViewChild, ElementRef } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { Subscription } from 'rxjs'
@@ -11,7 +11,10 @@ import { PreferencesService } from '../../services/preferences.service'
   templateUrl: './chat-textarea.component.html',
   styleUrl: './chat-textarea.component.scss'
 })
-export class ChatTextareaComponent implements OnInit, OnDestroy {
+export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
+  // Constantes pour la taille du textarea
+  private static readonly MIN_TEXTAREA_LINES = 2
+  private static readonly MAX_TEXTAREA_LINES = 15
   @Input() isDisabled: boolean = false
   @Output() messageSubmitted = new EventEmitter<string>()
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
@@ -26,37 +29,82 @@ export class ChatTextareaComponent implements OnInit, OnDestroy {
   private sessionHadTranscript: boolean = false
   private pendingLineBreaksTimeout: number | null = null
   private voiceLanguageSubscription?: Subscription
+  private enterToSendSubscription?: Subscription
+  
+  // Enter behavior preference
+  private useEnterToSend: boolean = false
   
   constructor(private preferencesService: PreferencesService) {}
   
   ngOnInit(): void {
     this.initializeVoiceInput()
     
+    // Initialiser la préférence du comportement de la touche Entrée
+    this.useEnterToSend = this.preferencesService.getEnterToSend()
+    
     // Écouter les changements de langue vocale
     this.voiceLanguageSubscription = this.preferencesService.voiceLanguage$.subscribe(
       () => this.updateRecognitionLanguage()
     )
+    
+    // Écouter les changements du comportement de la touche Entrée
+    this.enterToSendSubscription = this.preferencesService.enterToSend$.subscribe(
+      (useEnterToSend) => {
+        this.useEnterToSend = useEnterToSend
+        console.log('[CHAT-TEXTAREA] Enter to send preference changed to:', useEnterToSend)
+      }
+    )
+  }
+  
+  ngAfterViewInit(): void {
+    // Set initial height after view initialization
+    this.adjustTextareaHeight()
   }
   
   ngOnDestroy(): void {
     if (this.voiceLanguageSubscription) {
       this.voiceLanguageSubscription.unsubscribe()
     }
+    if (this.enterToSendSubscription) {
+      this.enterToSendSubscription.unsubscribe()
+    }
     this.clearPendingLineBreaks()
   }
   
   onKeyDown(event: KeyboardEvent) {
-    // TODO: Add preference for Enter to send vs Shift+Enter
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault()
-      this.sendMessage()
+    if (event.key === 'Enter') {
+      if (this.useEnterToSend) {
+        // Mode: Entrée pour envoyer, Shift+Entrée pour nouvelle ligne
+        if (!event.shiftKey && !event.metaKey && !event.ctrlKey) {
+          event.preventDefault()
+          this.sendMessage()
+        }
+        // Shift+Entrée : laisser le comportement par défaut (nouvelle ligne)
+      } else {
+        // Mode: Cmd/Ctrl+Entrée pour envoyer, Entrée pour nouvelle ligne
+        const isMac = navigator.platform.toLowerCase().includes('mac')
+        const correctModifier = isMac ? event.metaKey : event.ctrlKey
+        
+        if (correctModifier && !event.shiftKey) {
+          event.preventDefault()
+          this.sendMessage()
+        }
+        // Entrée simple : laisser le comportement par défaut (nouvelle ligne)
+      }
     }
+  }
+  
+  onInput() {
+    // Adjust textarea height when content changes
+    this.adjustTextareaHeight()
   }
   
   sendMessage() {
     if (this.message.trim() && !this.isDisabled) {
       this.messageSubmitted.emit(this.message.trim())
       this.message = ''
+      // Reset height after clearing message
+      setTimeout(() => this.adjustTextareaHeight(), 0)
     }
   }
   
@@ -260,6 +308,9 @@ export class ChatTextareaComponent implements OnInit, OnDestroy {
       const length = this.message.length
       this.messageInput.nativeElement.setSelectionRange(length, length)
     }
+    
+    // Adjust height after programmatic content change
+    setTimeout(() => this.adjustTextareaHeight(), 0)
   }
 
   private schedulePendingLineBreaks(): void {
@@ -283,6 +334,64 @@ export class ChatTextareaComponent implements OnInit, OnDestroy {
     }
   }
   
+  /**
+   * Adjusts the textarea height based on content
+   * Sets min-height equivalent to MIN_TEXTAREA_LINES rows and max-height equivalent to MAX_TEXTAREA_LINES rows
+   */
+  private adjustTextareaHeight(): void {
+    const textarea = this.messageInput?.nativeElement
+    if (!textarea) return
+    
+    // Calculate line height (approximately 1.5em based on CSS)
+    const style = window.getComputedStyle(textarea)
+    const fontSize = parseFloat(style.fontSize)
+    const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.5
+    
+    // Define min and max heights in pixels using constants
+    const minHeight = lineHeight * ChatTextareaComponent.MIN_TEXTAREA_LINES + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+    const maxHeight = lineHeight * ChatTextareaComponent.MAX_TEXTAREA_LINES + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+    
+    // Reset height to auto to get the actual scroll height
+    textarea.style.height = 'auto'
+    
+    // Calculate the new height based on scroll height
+    let newHeight = textarea.scrollHeight
+    
+    // Apply min/max constraints
+    if (newHeight < minHeight) {
+      newHeight = minHeight
+    } else if (newHeight > maxHeight) {
+      newHeight = maxHeight
+    }
+    
+    // Set the new height
+    textarea.style.height = `${newHeight}px`
+  }
+  
+  /**
+   * Obtient le raccourci clavier actuel pour l'envoi de message
+   */
+  getSendButtonShortcut(): string {
+    if (this.useEnterToSend) {
+      return 'Enter'
+    } else {
+      const isMac = navigator.platform.toLowerCase().includes('mac')
+      return isMac ? '⌘+Enter' : 'Ctrl+Enter'
+    }
+  }
+  
+  /**
+   * Obtient le tooltip du bouton d'envoi
+   */
+  getSendButtonTooltip(): string {
+    if (this.useEnterToSend) {
+      return 'Send message (Enter) - Shift+Enter for new line'
+    } else {
+      const isMac = navigator.platform.toLowerCase().includes('mac')
+      const shortcut = isMac ? 'Cmd+Enter' : 'Ctrl+Enter'
+      return `Send message (${shortcut}) - Enter for new line`
+    }
+  }
+  
   // TODO: Add file upload drag & drop
-  // TODO: Add preferences integration for Enter behavior
 }
