@@ -2,7 +2,11 @@ import { Component, Output, EventEmitter, Input, OnInit, OnDestroy, AfterViewIni
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { Subscription } from 'rxjs'
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
+import { marked } from 'marked'
 import { PreferencesService } from '../../services/preferences.service'
+import { EventStreamService } from '../../core/services/event-stream.service'
+import { InviteEvent } from '@coday/coday-events'
 
 @Component({
   selector: 'app-chat-textarea',
@@ -34,7 +38,17 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   // Enter behavior preference
   private useEnterToSend: boolean = false
   
-  constructor(private preferencesService: PreferencesService) {}
+  // Invite properties
+  currentInvite: string = ''
+  renderedInvite: SafeHtml = ''
+  showInvite: boolean = false
+  private codaySubscription?: Subscription
+  
+  constructor(
+    private preferencesService: PreferencesService,
+    private eventStreamService: EventStreamService,
+    private sanitizer: DomSanitizer
+  ) {}
   
   ngOnInit(): void {
     this.initializeVoiceInput()
@@ -54,6 +68,9 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
         console.log('[CHAT-TEXTAREA] Enter to send preference changed to:', useEnterToSend)
       }
     )
+    
+    // Écouter les événements Coday pour détecter les InviteEvents
+    this.subscribeToInviteEvents()
   }
   
   ngAfterViewInit(): void {
@@ -67,6 +84,9 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
     }
     if (this.enterToSendSubscription) {
       this.enterToSendSubscription.unsubscribe()
+    }
+    if (this.codaySubscription) {
+      this.codaySubscription.unsubscribe()
     }
     this.clearPendingLineBreaks()
   }
@@ -103,6 +123,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.message.trim() && !this.isDisabled) {
       this.messageSubmitted.emit(this.message.trim())
       this.message = ''
+      // Masquer l'invite après l'envoi
+      this.hideInvite()
       // Reset height after clearing message
       setTimeout(() => this.adjustTextareaHeight(), 0)
     }
@@ -391,6 +413,66 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
       const shortcut = isMac ? 'Cmd+Enter' : 'Ctrl+Enter'
       return `Send message (${shortcut}) - Enter for new line`
     }
+  }
+  
+  /**
+   * S'abonner aux événements Coday pour détecter les InviteEvents
+   */
+  private subscribeToInviteEvents(): void {
+    this.codaySubscription = this.eventStreamService.events$.subscribe(event => {
+      if (event instanceof InviteEvent) {
+        console.log('[CHAT-TEXTAREA] InviteEvent received:', event.invite)
+        this.handleInviteEvent(event.invite, event.defaultValue)
+      }
+    })
+    
+    console.log('[CHAT-TEXTAREA] Subscribed to invite events')
+  }
+  
+  /**
+   * Traiter un événement InviteEvent
+   */
+  private async handleInviteEvent(invite: string, defaultValue?: string): Promise<void> {
+    console.log('[CHAT-TEXTAREA] Handling invite event:', invite)
+    
+    this.currentInvite = invite
+    this.showInvite = true
+    
+    // Rendre le markdown de l'invite
+    await this.renderInviteMarkdown(invite)
+    
+    // Définir la valeur par défaut si fournie
+    if (defaultValue) {
+      this.message = defaultValue
+      setTimeout(() => this.adjustTextareaHeight(), 0)
+    }
+    
+    // Focus sur le textarea
+    if (this.messageInput?.nativeElement) {
+      this.messageInput.nativeElement.focus()
+    }
+  }
+  
+  /**
+   * Rendre le markdown de l'invite
+   */
+  private async renderInviteMarkdown(invite: string): Promise<void> {
+    try {
+      const html = await marked.parse(invite)
+      this.renderedInvite = this.sanitizer.bypassSecurityTrustHtml(html)
+    } catch (error) {
+      console.error('[CHAT-TEXTAREA] Error parsing invite markdown:', error)
+      this.renderedInvite = this.sanitizer.bypassSecurityTrustHtml(invite)
+    }
+  }
+  
+  /**
+   * Masquer l'invite après envoi du message
+   */
+  private hideInvite(): void {
+    this.showInvite = false
+    this.currentInvite = ''
+    this.renderedInvite = ''
   }
   
   // TODO: Add file upload drag & drop
