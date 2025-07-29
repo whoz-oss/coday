@@ -1,7 +1,7 @@
 <div class="chat-input-container">
   <!-- Invite display -->
   <div *ngIf="showInvite" class="invite-container">
-    <div class="invite-content" [innerHTML]="renderedInvite"></div>
+    <div class="invite-content markdown-content" [innerHTML]="renderedInvite"></div>
   </div>
   <div *ngIf="isRecording" class="recording-indicator">
     <span class="recording-dot"></span>

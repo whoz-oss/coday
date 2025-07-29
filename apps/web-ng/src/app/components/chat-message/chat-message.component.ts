@@ -10,6 +10,7 @@ export interface ChatMessage {
   content: string
   timestamp: Date
   type: 'text' | 'error' | 'warning' | 'technical'
+  eventId?: string // Pour les liens vers les événements
 }
 
 @Component({
@@ -40,8 +41,29 @@ export class ChatMessageComponent implements OnInit {
   }
   
   get shouldShowSpeaker(): boolean {
-    // Ne pas afficher le speaker pour les messages système/techniques
-    return this.message.type !== 'technical' && this.message.speaker !== 'System'
+    // Afficher le speaker pour user et assistant, pas pour les autres
+    return this.message.role === 'user' || this.message.role === 'assistant'
+  }
+  
+  get shouldShowActions(): boolean {
+    // Afficher les actions seulement pour user et assistant
+    return this.message.role === 'user' || this.message.role === 'assistant'
+  }
+  
+  get isSimplified(): boolean {
+    // Messages simplifiés pour tout ce qui n'est pas user/assistant
+    return this.message.role !== 'user' && this.message.role !== 'assistant'
+  }
+  
+  get eventLink(): string | null {
+    if (!this.message.eventId) return null
+    
+    // Obtenir le clientId depuis l'URL
+    const params = new URLSearchParams(window.location.search)
+    const clientId = params.get('clientId')
+    if (!clientId) return null
+    
+    return `/api/event/${this.message.eventId}?clientId=${clientId}`
   }
   
   private async renderMarkdown() {
