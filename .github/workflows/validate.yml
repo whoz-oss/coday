@@ -27,9 +27,7 @@ jobs:
           cache: 'yarn'
 
       - name: Install dependencies
-        run: | 
-          yarn install --frozen-lockfile
-          yarn add sharp --platform=linux --architecture=x64
+        run: yarn install --frozen-lockfile
 
       - name: Run tests
         run: npx nx affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --target="lint,test" --parallel=$NX_MAX_WORKERS

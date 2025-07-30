@@ -24,10 +24,7 @@ jobs:
           cache: 'yarn'
 
       - name: Install dependencies
-        run: | 
-          yarn install --frozen-lockfile
-          yarn add sharp --platform=linux --architecture=x64
+        run: yarn install --frozen-lockfile
 
       - name: Build app
-        run: |
-          npx nx run web:build --parallel=$NX_MAX_WORKERS
+        run: npx nx run web:build --parallel=$NX_MAX_WORKERS
