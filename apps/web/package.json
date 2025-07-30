@@ -4,5 +4,8 @@
   "publishConfig": {
     "access": "public"
   },
+  "dependencies": {
+    "sharp": "^0.33.5"
+  },
   "version": "0.15.3"
 }
