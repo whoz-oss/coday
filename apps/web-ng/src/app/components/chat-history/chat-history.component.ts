@@ -2,6 +2,9 @@ import { Component, Input, Output, EventEmitter, ElementRef, AfterViewChecked, H
 import { CommonModule } from '@angular/common'
 import { ChatMessageComponent, ChatMessage } from '../chat-message/chat-message.component'
 import { UnreadMessagesService } from '../../services/unread-messages.service'
+import { VoiceSynthesisService } from '../../services/voice-synthesis.service'
+import { PreferencesService } from '../../services/preferences.service'
+import { Subject } from 'rxjs'
 
 @Component({
   selector: 'app-chat-history',
@@ -18,6 +21,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   @Output() stopRequested = new EventEmitter<void>()
   
   private lastMessageCount = 0
+  private destroy$ = new Subject<void>()
   
   // Scroll tracking state
   isTracking = true // Tracking mode active by default
@@ -27,9 +31,14 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   private readonly NEAR_BOTTOM_THRESHOLD = 100 // pixels
   private scrollCheckTimeout: any
   
+  // Seuil de fraîcheur des messages pour l'annonce automatique (5 minutes)
+  private readonly MESSAGE_FRESHNESS_THRESHOLD = 5 * 60 * 1000 // en millisecondes
+  
   constructor(
     private elementRef: ElementRef,
-    private unreadService: UnreadMessagesService
+    private unreadService: UnreadMessagesService,
+    private voiceSynthesisService: VoiceSynthesisService,
+    private preferencesService: PreferencesService
   ) {}
   
   ngOnInit() {
@@ -41,6 +50,9 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   }
   
   ngOnDestroy() {
+    this.destroy$.next()
+    this.destroy$.complete()
+    
     if (this.scrollCheckTimeout) {
       clearTimeout(this.scrollCheckTimeout)
     }
@@ -59,6 +71,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
       const newMessagesCount = this.messages.length - this.lastMessageCount
       if (newMessagesCount > 0) {
         this.handleNewMessages(newMessagesCount)
+        this.handleVoiceAnnouncement(newMessagesCount)
       }
       
       this.lastMessageCount = this.messages.length
@@ -307,5 +320,122 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   private handleWindowBlur = (): void => {
     console.log('[CHAT-HISTORY] Window lost focus')
     // No special action needed, new messages will be marked as unread
+  }
+  
+  /**
+   * Gérer l'annonce vocale des nouveaux messages assistant
+   */
+  private handleVoiceAnnouncement(newMessagesCount: number): void {
+    // Vérifier si l'annonce automatique est activée
+    const announceEnabled = this.preferencesService.getVoiceAnnounceEnabled()
+    if (!announceEnabled) {
+      return
+    }
+    
+    // Filtrer seulement les nouveaux messages assistant
+    const newMessages = this.messages.slice(-newMessagesCount)
+    const newAssistantMessages = newMessages.filter(msg => msg.role === 'assistant')
+    
+    if (newAssistantMessages.length === 0) {
+      console.log('[CHAT-HISTORY] No new assistant messages to announce')
+      return
+    }
+    
+    // Prendre le dernier message assistant pour l'annonce
+    const lastAssistantMessage = newAssistantMessages[newAssistantMessages.length - 1]
+    
+    if (!lastAssistantMessage) {
+      console.warn('[CHAT-HISTORY] No last assistant message found')
+      return
+    }
+    
+    // Vérifier si le message est assez récent
+    if (!this.isMessageRecentEnoughForAnnouncement(lastAssistantMessage)) {
+      console.log('[CHAT-HISTORY] Message too old for voice announcement')
+      return
+    }
+    
+    // Vérifier le mode vocal
+    const voiceMode = this.preferencesService.getVoiceMode()
+    
+    if (voiceMode === 'notification') {
+      // Mode notification : jouer un son
+      console.log('[CHAT-HISTORY] Playing notification sound for new assistant message')
+      this.voiceSynthesisService.ding()
+    } else {
+      // Mode speech : lire le message
+      const textContent = this.extractTextContentFromMessage(lastAssistantMessage)
+      if (textContent.trim()) {
+        console.log('[CHAT-HISTORY] Announcing new assistant message via speech')
+        
+        // Déterminer si lecture complète ou partielle
+        const readFullText = this.preferencesService.getVoiceReadFullText()
+        const textToSpeak = readFullText ? textContent : this.extractPartialText(textContent)
+        
+        this.voiceSynthesisService.speak(textToSpeak)
+          .then(success => {
+            if (!success) {
+              console.warn('[CHAT-HISTORY] Failed to announce message via speech')
+            }
+          })
+          .catch(error => {
+            console.error('[CHAT-HISTORY] Error during voice announcement:', error)
+          })
+      }
+    }
+  }
+  
+  /**
+   * Vérifier si un message est assez récent pour l'annonce automatique
+   */
+  private isMessageRecentEnoughForAnnouncement(message: ChatMessage): boolean {
+    try {
+      const messageTime = message.timestamp.getTime()
+      const now = Date.now()
+      const timeDiff = now - messageTime
+      
+      return timeDiff <= this.MESSAGE_FRESHNESS_THRESHOLD
+    } catch (error) {
+      console.warn('[CHAT-HISTORY] Error checking message freshness:', error)
+      return true // Si erreur, supposer que c'est récent
+    }
+  }
+  
+  /**
+   * Extraire le contenu textuel d'un message
+   */
+  private extractTextContentFromMessage(message: ChatMessage): string {
+    return message.content
+      .filter(content => content.type === 'text')
+      .map(content => content.content)
+      .join('\n\n')
+  }
+  
+  /**
+   * Extraire une partie du texte pour la lecture partielle
+   * (porté de l'ancienne logique)
+   */
+  private extractPartialText(text: string): string {
+    const PARAGRAPH_MIN_LENGTH = 80
+    const MAX_PARAGRAPHS = 3
+    
+    const paragraphs = text.split('\n').filter(p => p.trim().length > 0)
+    
+    const result = paragraphs.reduce(
+      (acc, paragraph) => {
+        if (acc.paragraphs >= MAX_PARAGRAPHS) {
+          return acc
+        }
+        
+        const paragraphIncrement = paragraph.length > PARAGRAPH_MIN_LENGTH ? 1 : 0
+        return {
+          paragraphs: acc.paragraphs + paragraphIncrement,
+          text: acc.text + (acc.text ? '\n' : '') + paragraph,
+        }
+      },
+      { paragraphs: 0, text: '' }
+    )
+    
+    return result.text || text // Fallback au texte complet si rien n'est extrait
   }
 }

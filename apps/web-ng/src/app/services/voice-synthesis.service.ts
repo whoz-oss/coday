@@ -1,5 +1,5 @@
 import { Injectable, OnDestroy } from '@angular/core'
-import { Subject } from 'rxjs'
+import { Subject, BehaviorSubject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
 import { PreferencesService } from './preferences.service'
 
@@ -19,6 +19,10 @@ export class VoiceSynthesisService implements OnDestroy {
   private voices: Promise<SpeechSynthesisVoice[]> | undefined
   private currentUtterance: SpeechSynthesisUtterance | null = null
   private currentOnEndCallback: (() => void) | null = null
+  
+  // Observable pour l'état de lecture global
+  private speakingSubject = new BehaviorSubject<boolean>(false)
+  public speaking$ = this.speakingSubject.asObservable()
   
   private volume: number = 0.8
   private rate: number = 1.2
@@ -121,10 +125,18 @@ export class VoiceSynthesisService implements OnDestroy {
       return false
     }
 
+    // Nettoyer le markdown pour la synthèse vocale
+    const cleanText = this.extractPlainText(text)
+    
+    if (!cleanText.trim()) {
+      console.warn('[VOICE-SERVICE] No text to speak after markdown cleaning')
+      return false
+    }
+
     this.stopSpeech()
 
     try {
-      const utterance = new SpeechSynthesisUtterance(text)
+      const utterance = new SpeechSynthesisUtterance(cleanText)
       utterance.voice = this.selectedVoice
       utterance.lang = this.selectedVoice.lang
       utterance.volume = this.volume
@@ -148,6 +160,24 @@ export class VoiceSynthesisService implements OnDestroy {
       }
 
       this.currentUtterance = utterance
+      
+      // Mettre à jour l'état global au démarrage
+      this.speakingSubject.next(true)
+      
+      // Ajouter les callbacks pour mettre à jour l'état global
+      const originalOnEnd = utterance.onend
+      const originalOnError = utterance.onerror
+      
+      utterance.onend = (event) => {
+        this.speakingSubject.next(false)
+        if (originalOnEnd) originalOnEnd.call(utterance, event)
+      }
+      
+      utterance.onerror = (event) => {
+        this.speakingSubject.next(false)
+        if (originalOnError) originalOnError.call(utterance, event)
+      }
+      
       speechSynthesis.speak(utterance)
       
       console.log('[VOICE-SERVICE] Started speaking:', text.substring(0, 50) + '...')
@@ -162,7 +192,17 @@ export class VoiceSynthesisService implements OnDestroy {
     if (this.currentUtterance || speechSynthesis.speaking) {
       speechSynthesis.cancel()
       this.currentUtterance = null
-      this.currentOnEndCallback = null
+      
+      // Exécuter le callback avant de le nettoyer
+      if (this.currentOnEndCallback) {
+        const callback = this.currentOnEndCallback
+        this.currentOnEndCallback = null
+        callback()
+      }
+      
+      // Mettre à jour l'état global
+      this.speakingSubject.next(false)
+      
       console.log('[VOICE-SERVICE] Speech stopped')
     }
   }
@@ -259,9 +299,32 @@ export class VoiceSynthesisService implements OnDestroy {
     if (availableVoices.length === 0) {
       console.warn('[VOICE-SERVICE] No voices available for language:', this.language)
       this.selectedVoice = undefined
+      this.preferencesService.setSelectedVoice(null)
       return
     }
 
+    // Vérifier si la voix actuellement sélectionnée est compatible avec la nouvelle langue
+    const currentSelectedVoice = this.preferencesService.getSelectedVoice()
+    
+    if (currentSelectedVoice) {
+      const [currentVoiceName, currentVoiceLang] = currentSelectedVoice.split('|')
+      const currentLangCode = currentVoiceLang?.slice(0, 2)
+      const newLangCode = this.language.slice(0, 2)
+      
+      // Si la voix actuelle est compatible avec la nouvelle langue, la garder
+      if (currentLangCode === newLangCode) {
+        const isStillAvailable = availableVoices.some(v => 
+          v.name === currentVoiceName && v.lang === currentVoiceLang
+        )
+        
+        if (isStillAvailable) {
+          console.log('[VOICE-SERVICE] Keeping current voice for language:', currentSelectedVoice)
+          return
+        }
+      }
+    }
+
+    // Seulement si aucune voix compatible n'est sélectionnée, auto-sélectionner la première
     const firstVoice = availableVoices[0]
     if (firstVoice) {
       const voiceId = `${firstVoice.name}|${firstVoice.lang}`
@@ -308,5 +371,75 @@ export class VoiceSynthesisService implements OnDestroy {
     }
 
     return testTexts[langCode] || testTexts['en'] || 'Hello, this is a test.'
+  }
+  
+  /**
+   * Extraire le texte brut d'un contenu markdown pour la synthèse vocale
+   * (porté de l'ancienne application)
+   */
+  extractPlainText(text: string): string {
+    let processed = text
+      // Remove emojis (Unicode ranges for emojis) + specific stars
+      .replace(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|⭐/gu, '')
+      
+      // Remove code blocks
+      .replace(/```[\s\S]*?```/g, 'code block')
+      .replace(/`([^`]+)`/g, '$1') // Inline code
+      
+      // Remove markdown formatting
+      .replace(/\*\*\*(.*?)\*\*\*/g, '$1') // Bold italic
+      .replace(/\*\*(.*?)\*\*/g, '$1') // Bold
+      .replace(/\*(.*?)\*/g, '$1') // Italic
+      .replace(/~~(.*?)~~/g, '$1') // Strikethrough
+      
+      // Remove headers
+      .replace(/#{1,6}\s*(.*)/g, '$1')
+      
+      // Replace links with just the text
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      
+      // Remove standalone URLs
+      .replace(/https?:\/\/[^\s]+/g, 'link')
+      
+      // Remove HTML entities
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, 'and')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+    
+    // Add punctuation for natural pauses BEFORE removing line breaks
+    processed = this.addNaturalPunctuation(processed)
+    
+    return processed
+      // Clean up multiple spaces and trim
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+  
+  /**
+   * Ajouter une ponctuation naturelle pour les pauses vocales
+   */
+  private addNaturalPunctuation(text: string): string {
+    return text
+      // Normalize multiple line breaks
+      .replace(/\n+/g, '\n')
+      .split('\n')
+      .map(line => this.addPeriodIfNeeded(line.trim()))
+      .filter(line => line.length > 0)
+      .join(' ') // Join with spaces for speech synthesis
+  }
+  
+  /**
+   * Ajouter un point à la fin d'une ligne si nécessaire
+   */
+  private addPeriodIfNeeded(line: string): string {
+    if (!line) return ''
+    
+    // If line doesn't end with punctuation, add a period
+    if (!/[.!?;:]$/.test(line)) {
+      return line + '.'
+    }
+    return line
   }
 }

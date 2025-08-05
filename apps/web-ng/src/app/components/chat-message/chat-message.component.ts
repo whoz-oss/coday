@@ -1,8 +1,11 @@
-import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core'
+import { Component, Input, Output, EventEmitter, OnInit, OnDestroy } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { marked } from 'marked'
 import { MessageContent } from '@coday/coday-events'
+import { VoiceSynthesisService } from '../../services/voice-synthesis.service'
+import { Subject } from 'rxjs'
+import { takeUntil } from 'rxjs/operators'
 
 export interface ChatMessage {
   id: string
@@ -21,14 +24,21 @@ export interface ChatMessage {
   templateUrl: './chat-message.component.html',
   styleUrl: './chat-message.component.scss'
 })
-export class ChatMessageComponent implements OnInit {
+export class ChatMessageComponent implements OnInit, OnDestroy {
   @Input() message!: ChatMessage
   @Output() playRequested = new EventEmitter<ChatMessage>()
   @Output() copyRequested = new EventEmitter<ChatMessage>()
   
   renderedContent: SafeHtml = ''
+  private destroy$ = new Subject<void>()
   
-  constructor(private sanitizer: DomSanitizer) {}
+  // État du bouton play
+  isPlaying = false
+  
+  constructor(
+    private sanitizer: DomSanitizer,
+    private voiceSynthesisService: VoiceSynthesisService
+  ) {}
   
   get messageClasses() {
     return {
@@ -39,6 +49,21 @@ export class ChatMessageComponent implements OnInit {
   
   async ngOnInit() {
     await this.renderMarkdown()
+    
+    // Écouter l'état global de la synthèse vocale
+    this.voiceSynthesisService.speaking$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(globalSpeaking => {
+        // Si la synthèse globale s'arrête et que ce message était en train de jouer
+        if (!globalSpeaking && this.isPlaying) {
+          this.isPlaying = false
+        }
+      })
+  }
+  
+  ngOnDestroy(): void {
+    this.destroy$.next()
+    this.destroy$.complete()
   }
   
   get shouldShowSpeaker(): boolean {
@@ -109,11 +134,71 @@ export class ChatMessageComponent implements OnInit {
   }
   
   onPlay() {
+    const textContent = this.getTextContentForVoice()
+    
+    if (!textContent.trim()) {
+      console.warn('[CHAT-MESSAGE] No text content to play')
+      return
+    }
+    
+    if (this.isPlaying) {
+      // Arrêter la lecture en cours
+      console.log('[CHAT-MESSAGE] Stopping current playback')
+      this.voiceSynthesisService.stopSpeech()
+      this.isPlaying = false
+    } else {
+      // Démarrer une nouvelle lecture
+      console.log('[CHAT-MESSAGE] Starting playback for message:', this.message.id)
+      
+      // Callback pour remettre le bouton en état normal quand la lecture se termine
+      const onEndCallback = () => {
+        console.log('[CHAT-MESSAGE] Playback ended for message:', this.message.id)
+        this.isPlaying = false
+      }
+      
+      this.voiceSynthesisService.speak(textContent, onEndCallback)
+        .then(success => {
+          if (success) {
+            this.isPlaying = true
+          } else {
+            console.warn('[CHAT-MESSAGE] Failed to start speech synthesis')
+          }
+        })
+        .catch(error => {
+          console.error('[CHAT-MESSAGE] Error during speech synthesis:', error)
+          this.isPlaying = false
+        })
+    }
+    
+    // Émettre l'événement pour compatibilité (si nécessaire pour d'autres composants)
     this.playRequested.emit(this.message)
   }
   
   onCopy() {
+    const textContent = this.getTextContentForVoice()
+    
+    if (textContent.trim()) {
+      navigator.clipboard.writeText(textContent)
+        .then(() => {
+          console.log('[CHAT-MESSAGE] Message copied to clipboard')
+        })
+        .catch(err => {
+          console.error('[CHAT-MESSAGE] Failed to copy message:', err)
+        })
+    }
+    
+    // Émettre l'événement pour compatibilité
     this.copyRequested.emit(this.message)
+  }
+  
+  /**
+   * Gestionnaire de clic sur le message - arrête la synthèse vocale
+   */
+  onMessageClick(): void {
+    // Arrêter la synthèse vocale si elle est en cours
+    if (this.voiceSynthesisService.isSpeaking()) {
+      this.voiceSynthesisService.stopSpeech()
+    }
   }
   
   /**

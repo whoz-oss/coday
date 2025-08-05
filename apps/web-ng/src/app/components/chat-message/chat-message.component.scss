@@ -6,6 +6,7 @@
   width: fit-content; // S'adapte au contenu
   min-width: 100px; // Largeur minimale pour éviter les messages trop étroits
   word-wrap: break-word; // Gestion des mots longs
+  cursor: pointer;
   
   // Messages utilisateur - alignés à droite
   &.user {
@@ -38,6 +39,7 @@
     max-width: none; // Pas de limite de largeur pour les messages techniques
     width: auto;
     min-width: auto;
+    cursor: default
   }
   
   // Messages d'erreur
@@ -109,9 +111,29 @@
   padding: 0.2rem 0.4rem;
   cursor: pointer;
   font-size: 0.7rem;
+  transition: all 0.2s ease;
   
   &:hover {
     background: var(--color-bg-secondary, #f1f1eb);
+    transform: scale(1.05);
+  }
+  
+  &:active {
+    transform: scale(0.95);
+  }
+}
+
+// Styles spécifiques pour le bouton play
+.play-btn {
+  &.playing {
+    background: var(--color-primary, #7064fb);
+    color: white;
+    border-color: var(--color-primary, #7064fb);
+    
+    &:hover {
+      background: var(--color-primary-hover, #5a4df5);
+      border-color: var(--color-primary-hover, #5a4df5);
+    }
   }
 }
 
