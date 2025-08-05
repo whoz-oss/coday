@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
 import { PreferencesService } from '../../services/preferences.service'
+import { VoiceSynthesisService, VoiceInfo } from '../../services/voice-synthesis.service'
 
 interface VoiceLanguageOption {
   code: string
@@ -25,6 +26,16 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   selectedVoiceLanguage = 'en-US'
   useEnterToSend = false
   
+  voiceAnnounceEnabled = false
+  voiceMode: 'speech' | 'notification' = 'speech'
+  voiceReadFullText = false
+  voiceVolume = 80
+  voiceRate = 120
+  
+  availableVoices: VoiceInfo[] = []
+  selectedVoiceId: string | null = null
+  loadingVoices = false
+  
   voiceLanguageOptions: VoiceLanguageOption[] = [
     { code: 'fr-FR', label: 'Français', flag: '🇫🇷' },
     { code: 'en-US', label: 'English (US)', flag: '🇺🇸' },
@@ -40,27 +51,75 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
     { code: 'ar-SA', label: 'العربية', flag: '🇸🇦' }
   ]
   
-  constructor(private preferencesService: PreferencesService) {}
+  constructor(
+    private preferencesService: PreferencesService,
+    private voiceSynthesisService: VoiceSynthesisService
+  ) {}
   
   ngOnInit(): void {
-    // Initialiser avec la langue actuelle
     this.selectedVoiceLanguage = this.preferencesService.getVoiceLanguage()
-    
-    // Initialiser avec le comportement actuel de la touche Entrée
     this.useEnterToSend = this.preferencesService.getEnterToSend()
+    this.voiceAnnounceEnabled = this.preferencesService.getVoiceAnnounceEnabled()
+    this.voiceMode = this.preferencesService.getVoiceMode()
+    this.voiceReadFullText = this.preferencesService.getVoiceReadFullText()
+    this.voiceVolume = Math.round(this.preferencesService.getVoiceVolume() * 100)
+    this.voiceRate = Math.round(this.preferencesService.getVoiceRate() * 100)
+    this.selectedVoiceId = this.preferencesService.getSelectedVoice()
     
-    // Écouter les changements de langue pour synchroniser l'affichage
+    this.loadAvailableVoices()
+    
     this.preferencesService.voiceLanguage$
       .pipe(takeUntil(this.destroy$))
       .subscribe(language => {
         this.selectedVoiceLanguage = language
       })
       
-    // Écouter les changements du comportement de la touche Entrée
     this.preferencesService.enterToSend$
       .pipe(takeUntil(this.destroy$))
       .subscribe(useEnterToSend => {
         this.useEnterToSend = useEnterToSend
+      })
+      
+    this.preferencesService.voiceAnnounceEnabled$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(enabled => {
+        this.voiceAnnounceEnabled = enabled
+      })
+      
+    this.preferencesService.voiceMode$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(mode => {
+        this.voiceMode = mode
+      })
+      
+    this.preferencesService.voiceReadFullText$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(enabled => {
+        this.voiceReadFullText = enabled
+      })
+      
+    this.preferencesService.voiceVolume$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(volume => {
+        this.voiceVolume = Math.round(volume * 100)
+      })
+      
+    this.preferencesService.voiceRate$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(rate => {
+        this.voiceRate = Math.round(rate * 100)
+      })
+      
+    this.preferencesService.selectedVoice$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(voice => {
+        this.selectedVoiceId = voice
+      })
+      
+    this.preferencesService.voiceLanguage$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => {
+        this.loadAvailableVoices()
       })
   }
   
@@ -87,13 +146,65 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
     this.preferencesService.setEnterToSend(this.useEnterToSend)
   }
   
+  
+  onVoiceAnnounceEnabledChange(): void {
+    console.log('[OPTIONS] Voice announce enabled changed to:', this.voiceAnnounceEnabled)
+    this.preferencesService.setVoiceAnnounceEnabled(this.voiceAnnounceEnabled)
+  }
+  
+  onVoiceModeChange(): void {
+    console.log('[OPTIONS] Voice mode changed to:', this.voiceMode)
+    this.preferencesService.setVoiceMode(this.voiceMode)
+  }
+  
+  onVoiceReadFullTextChange(): void {
+    console.log('[OPTIONS] Voice read full text changed to:', this.voiceReadFullText)
+    this.preferencesService.setVoiceReadFullText(this.voiceReadFullText)
+  }
+  
+  onVoiceVolumeChange(): void {
+    const normalizedVolume = this.voiceVolume / 100 
+    console.log('[OPTIONS] Voice volume changed to:', normalizedVolume)
+    this.preferencesService.setVoiceVolume(normalizedVolume)
+  }
+  
+  onVoiceRateChange(): void {
+    const normalizedRate = this.voiceRate / 100 
+    console.log('[OPTIONS] Voice rate changed to:', normalizedRate)
+    this.preferencesService.setVoiceRate(normalizedRate)
+  }
+  
+  
+  async loadAvailableVoices(): Promise<void> {
+    this.loadingVoices = true
+    try {
+      this.availableVoices = await this.voiceSynthesisService.getVoicesForLanguage()
+      console.log('[OPTIONS] Loaded', this.availableVoices.length, 'voices for current language')
+    } catch (error) {
+      console.error('[OPTIONS] Error loading voices:', error)
+      this.availableVoices = []
+    } finally {
+      this.loadingVoices = false
+    }
+  }
+  
+  
+  onSelectedVoiceChange(): void {
+    console.log('[OPTIONS] Selected voice changed to:', this.selectedVoiceId)
+    this.preferencesService.setSelectedVoice(this.selectedVoiceId)
+  }
+  
+  
+  testVoice(): void {
+    console.log('[OPTIONS] Testing voice with current settings')
+    this.voiceSynthesisService.testSelectedVoice()
+  }
+  
   onPanelClick(event: Event): void {
-    // Empêcher la fermeture du panneau quand on clique à l'intérieur
     event.stopPropagation()
   }
   
   onBackdropClick(): void {
-    // Fermer le panneau quand on clique en dehors
     this.closePanel()
   }
 }

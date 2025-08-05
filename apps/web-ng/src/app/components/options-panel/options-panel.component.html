@@ -68,6 +68,135 @@
           </option>
         </select>
       </div>
+      
+      <!-- Section Synthèse vocale -->
+      <div class="option-section">
+        <h4 class="section-title">🔊 Synthèse vocale</h4>
+        
+        <!-- Annonce automatique -->
+        <div class="option-group">
+          <label class="option-checkbox">
+            <input 
+              type="checkbox"
+              [(ngModel)]="voiceAnnounceEnabled"
+              (change)="onVoiceAnnounceEnabledChange()"
+            />
+            <span class="checkmark"></span>
+            Annonce automatique des réponses
+          </label>
+        </div>
+        
+        <!-- Mode vocal -->
+        <div class="option-group">
+          <label class="option-label">Mode vocal :</label>
+          <div class="radio-group">
+            <label class="option-radio">
+              <input 
+                type="radio" 
+                name="voiceMode" 
+                value="speech"
+                [(ngModel)]="voiceMode"
+                (change)="onVoiceModeChange()"
+              />
+              <span class="radio-mark"></span>
+              🗣️ Synthèse vocale
+            </label>
+            <label class="option-radio">
+              <input 
+                type="radio" 
+                name="voiceMode" 
+                value="notification"
+                [(ngModel)]="voiceMode"
+                (change)="onVoiceModeChange()"
+              />
+              <span class="radio-mark"></span>
+              🔔 Notification sonore
+            </label>
+          </div>
+        </div>
+        
+        <!-- Lecture complète -->
+        <div class="option-group">
+          <label class="option-checkbox">
+            <input 
+              type="checkbox"
+              [(ngModel)]="voiceReadFullText"
+              (change)="onVoiceReadFullTextChange()"
+            />
+            <span class="checkmark"></span>
+            Lecture complète des messages (sinon premiers paragraphes)
+          </label>
+        </div>
+        
+        <!-- Sélection de voix -->
+        <div class="option-group">
+          <label for="voice-select" class="option-label">
+            Voix sélectionnée :
+          </label>
+          <select 
+            id="voice-select"
+            class="option-select"
+            [(ngModel)]="selectedVoiceId"
+            (change)="onSelectedVoiceChange()"
+            [disabled]="loadingVoices || availableVoices.length === 0"
+          >
+            <option value="" *ngIf="loadingVoices">🔄 Chargement des voix...</option>
+            <option value="" *ngIf="!loadingVoices && availableVoices.length === 0">⚠️ Aucune voix disponible</option>
+            <option 
+              *ngFor="let voice of availableVoices" 
+              [value]="voice.name + '|' + voice.lang"
+            >
+              {{ voice.displayName }}
+            </option>
+          </select>
+        </div>
+        
+        <!-- Volume -->
+        <div class="option-group">
+          <label for="voice-volume-slider" class="option-label">
+            Volume : {{ voiceVolume }}%
+          </label>
+          <input 
+            id="voice-volume-slider"
+            type="range" 
+            min="0" 
+            max="100" 
+            step="5"
+            class="option-slider"
+            [(ngModel)]="voiceVolume"
+            (input)="onVoiceVolumeChange()"
+          />
+        </div>
+        
+        <!-- Vitesse -->
+        <div class="option-group">
+          <label for="voice-rate-slider" class="option-label">
+            Vitesse : {{ voiceRate }}%
+          </label>
+          <input 
+            id="voice-rate-slider"
+            type="range" 
+            min="50" 
+            max="200" 
+            step="10"
+            class="option-slider"
+            [(ngModel)]="voiceRate"
+            (input)="onVoiceRateChange()"
+          />
+        </div>
+        
+        <!-- Test de la voix -->
+        <div class="option-group">
+          <button 
+            type="button" 
+            class="test-voice-btn"
+            (click)="testVoice()"
+            title="Tester la voix avec les paramètres actuels"
+          >
+            🔊 Tester la voix
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
