@@ -239,15 +239,24 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
    * Gérer l'arrivée de nouveaux messages
    */
   private handleNewMessages(newMessagesCount: number): void {
+    // Filtrer seulement les nouveaux messages assistant
+    const newMessages = this.messages.slice(-newMessagesCount)
+    const newAssistantMessages = newMessages.filter(msg => msg.role === 'assistant')
+    
+    if (newAssistantMessages.length === 0) {
+      console.log('[CHAT-HISTORY] No new assistant messages to count')
+      return
+    }
+    
     const shouldMarkAsUnread = this.shouldMarkNewMessagesAsUnread()
     
     if (shouldMarkAsUnread) {
-      console.log('[CHAT-HISTORY] Marking', newMessagesCount, 'new messages as unread')
-      for (let i = 0; i < newMessagesCount; i++) {
+      console.log('[CHAT-HISTORY] Marking', newAssistantMessages.length, 'new assistant messages as unread')
+      for (let i = 0; i < newAssistantMessages.length; i++) {
         this.unreadService.addUnread()
       }
     } else {
-      console.log('[CHAT-HISTORY] New messages are considered read (user is focused and tracking)')
+      console.log('[CHAT-HISTORY] New assistant messages are considered read (user is focused and tracking)')
     }
   }
   

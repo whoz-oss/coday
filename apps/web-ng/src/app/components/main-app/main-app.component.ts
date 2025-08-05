@@ -207,6 +207,9 @@ export class MainAppComponent implements OnInit, OnDestroy {
         this.isConnected = status.connected
       })
 
+    // Connecter les services (pour éviter la dépendance circulaire)
+    this.codayService.setTabTitleService(this.titleService)
+    
     // Start the Coday service
     this.codayService.start()
     
@@ -215,10 +218,10 @@ export class MainAppComponent implements OnInit, OnDestroy {
       (window as any).debugUnread = {
         cycleEmoji: () => this.debugCycleEmoji(),
         setEmoji: (emoji: string) => this.debugSetEmoji(emoji),
-        getEmojis: () => this.debugGetAvailableEmojis()
+        getEmojis: () => this.debugGetAvailableEmojis(),
+        setSystemActive: () => this.titleService.setSystemActive(),
+        setSystemInactive: () => this.titleService.setSystemInactive()
       }
-      console.log('[DEBUG] Unread messages debug methods available at window.debugUnread')
-      console.log('Available commands: cycleEmoji(), setEmoji(emoji), getEmojis()')
     }
   }
 

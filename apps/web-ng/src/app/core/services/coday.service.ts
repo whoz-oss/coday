@@ -48,6 +48,9 @@ export class CodayService implements OnDestroy {
   // Connection status will be initialized in constructor
   connectionStatus$!: typeof this.eventStream.connectionStatus$
 
+  // Référence au service de titre (injectée depuis l'extérieur)
+  private tabTitleService: any = null
+  
   constructor(
     private codayApi: CodayApiService,
     private eventStream: EventStreamService
@@ -55,6 +58,13 @@ export class CodayService implements OnDestroy {
     // Initialize connection status observable after eventStream is available
     this.connectionStatus$ = this.eventStream.connectionStatus$
     this.initializeEventHandling()
+  }
+  
+  /**
+   * Injecter le service de titre (pour éviter la dépendance circulaire)
+   */
+  setTabTitleService(tabTitleService: any): void {
+    this.tabTitleService = tabTitleService
   }
 
   /**
@@ -265,6 +275,11 @@ export class CodayService implements OnDestroy {
   private handleThinkingEvent(_event: ThinkingEvent): void {
     this.isThinkingSubject.next(true)
     
+    // Notifier le service de titre que le système est actif
+    if (this.tabTitleService) {
+      this.tabTitleService.setSystemActive()
+    }
+    
     // Auto-hide thinking after debounce time + buffer
     setTimeout(() => {
       this.isThinkingSubject.next(false)
@@ -306,6 +321,11 @@ export class CodayService implements OnDestroy {
     
     this.currentChoiceEvent = event
     
+    // Notifier le service de titre que le système est inactif (interface utilisateur disponible)
+    if (this.tabTitleService) {
+      this.tabTitleService.setSystemInactive()
+    }
+    
     const options: ChoiceOption[] = event.options.map(option => ({
       value: option,
       label: option
@@ -331,6 +351,11 @@ export class CodayService implements OnDestroy {
     console.log('[CODAY] InviteEvent parentKey:', event.parentKey)
     console.log('[CODAY] Replacing previous InviteEvent:', this.currentInviteEvent ? 'exists' : 'none')
     this.currentInviteEvent = event
+    
+    // Notifier le service de titre que le système est inactif (interface utilisateur disponible)
+    if (this.tabTitleService) {
+      this.tabTitleService.setSystemInactive()
+    }
   }
 
   /**

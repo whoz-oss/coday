@@ -21,6 +21,11 @@ export class TabTitleService {
   
   private currentEmojiIndex = 0 // Pour tester différents emojis
   
+  // État de l'activité système
+  private isSystemActive = false
+  private systemActiveTimer: any = null
+  private readonly SYSTEM_ACTIVE_TIMEOUT = 4000 // 4 secondes
+  
   constructor(
     private unreadService: UnreadMessagesService,
     private codayService: CodayService
@@ -47,10 +52,15 @@ export class TabTitleService {
   private updateTitle(projectTitle: string, unreadCount: number): void {
     let title: string
     
-    if (unreadCount > 0) {
+    if (this.isSystemActive) {
+      // Priorité au sablier quand le système est actif
+      title = `${projectTitle} ⏳${unreadCount > 0 ? ` (${unreadCount})` : ''}`
+    } else if (unreadCount > 0) {
+      // Pastille rouge seulement si messages non lus et système inactif
       const emoji = this.getCurrentEmoji()
       title = `${projectTitle} ${emoji} (${unreadCount})`
     } else {
+      // État normal
       title = projectTitle
     }
     
@@ -102,5 +112,54 @@ export class TabTitleService {
    */
   getAvailableEmojis(): string[] {
     return [...this.NOTIFICATION_EMOJIS]
+  }
+  
+  /**
+   * Marquer le système comme actif (ThinkingEvent reçu)
+   */
+  setSystemActive(): void {
+    console.log('[TAB-TITLE] System active - showing hourglass')
+    this.isSystemActive = true
+    
+    // Reset le timer précédent s'il existe
+    if (this.systemActiveTimer) {
+      clearTimeout(this.systemActiveTimer)
+    }
+    
+    // Démarrer le timer de 4 secondes
+    this.systemActiveTimer = setTimeout(() => {
+      console.log('[TAB-TITLE] System active timeout - hiding hourglass')
+      this.isSystemActive = false
+      this.forceUpdateTitle()
+    }, this.SYSTEM_ACTIVE_TIMEOUT)
+    
+    // Mettre à jour le titre immédiatement
+    this.forceUpdateTitle()
+  }
+  
+  /**
+   * Marquer le système comme inactif (ChoiceEvent/InviteEvent reçu)
+   */
+  setSystemInactive(): void {
+    console.log('[TAB-TITLE] System inactive - hiding hourglass')
+    this.isSystemActive = false
+    
+    // Annuler le timer s'il est actif
+    if (this.systemActiveTimer) {
+      clearTimeout(this.systemActiveTimer)
+      this.systemActiveTimer = null
+    }
+    
+    // Mettre à jour le titre immédiatement
+    this.forceUpdateTitle()
+  }
+  
+  /**
+   * Forcer la mise à jour du titre avec les valeurs actuelles
+   */
+  private forceUpdateTitle(): void {
+    const currentProject = this.codayService.getCurrentProjectTitle()
+    const currentUnread = this.unreadService.getCurrentCount()
+    this.updateTitle(currentProject, currentUnread)
   }
 }
