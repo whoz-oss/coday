@@ -14,6 +14,7 @@ import { CodayService } from '../../core/services/coday.service'
 import { CodayApiService } from '../../core/services/coday-api.service'
 import { ConnectionStatus } from '../../core/services/event-stream.service'
 import { ImageUploadService } from '../../services/image-upload.service'
+import { TabTitleService } from '../../services/tab-title.service'
 
 @Component({
   selector: 'app-main',
@@ -172,7 +173,8 @@ export class MainAppComponent implements OnInit, OnDestroy {
   constructor(
     private codayService: CodayService,
     private codayApiService: CodayApiService,
-    private imageUploadService: ImageUploadService
+    private imageUploadService: ImageUploadService,
+    private titleService: TabTitleService // Renommé pour éviter les conflits
   ) {
     this.clientId = this.codayApiService.getClientId()
     console.log('[MAIN-APP] Constructor - clientId:', this.clientId)
@@ -207,6 +209,17 @@ export class MainAppComponent implements OnInit, OnDestroy {
 
     // Start the Coday service
     this.codayService.start()
+    
+    // Exposer les méthodes de debug dans la console (pour les tests)
+    if (typeof window !== 'undefined') {
+      (window as any).debugUnread = {
+        cycleEmoji: () => this.debugCycleEmoji(),
+        setEmoji: (emoji: string) => this.debugSetEmoji(emoji),
+        getEmojis: () => this.debugGetAvailableEmojis()
+      }
+      console.log('[DEBUG] Unread messages debug methods available at window.debugUnread')
+      console.log('Available commands: cycleEmoji(), setEmoji(emoji), getEmojis()')
+    }
   }
 
   ngOnDestroy(): void {
@@ -334,4 +347,19 @@ export class MainAppComponent implements OnInit, OnDestroy {
       this.uploadStatus = { message: '', isError: false }
     }, 5000)
   }
+  
+  // Méthodes de debug pour tester les notifications (accessibles depuis la console)
+  debugCycleEmoji(): void {
+    this.titleService.cycleEmoji()
+  }
+  
+  debugSetEmoji(emoji: string): void {
+    this.titleService.setEmoji(emoji)
+  }
+  
+  debugGetAvailableEmojis(): string[] {
+    return this.titleService.getAvailableEmojis()
+  }
+  
+
 }

@@ -16,4 +16,14 @@
       Stop
     </button>
   </div>
+  
+  <!-- Bouton Go to Bottom -->
+  <button 
+    *ngIf="showGoToBottom" 
+    class="go-to-bottom-btn"
+    (click)="goToBottom()"
+    title="Go to bottom"
+  >
+    ↓
+  </button>
 </div>

@@ -139,6 +139,13 @@ export class CodayService implements OnDestroy {
   getCurrentMessages(): ChatMessage[] {
     return this.messagesSubject.value
   }
+  
+  /**
+   * Get current project title
+   */
+  getCurrentProjectTitle(): string {
+    return this.projectTitleSubject.value
+  }
 
   /**
    * Initialize event handling
