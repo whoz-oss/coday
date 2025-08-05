@@ -11,7 +11,7 @@
       "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "dist/apps/web-ng",
-        "baseHref": "/ng/",
+        "baseHref": "/",
         "browser": "apps/web-ng/src/main.ts",
         "polyfills": ["zone.js"],
         "tsConfig": "apps/web-ng/tsconfig.app.json",

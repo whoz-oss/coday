@@ -80,6 +80,19 @@
         }
       }
     },
+    "build:legacy-client": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "rm -rf dist/web/legacy-client",
+          "mkdir -p dist/web/legacy-client",
+          "rsync -av dist/web/client/ dist/web/legacy-client/"
+        ]
+      },
+      "dependsOn": [
+        "web:build:client"
+      ]
+    },
     "build:ng-client": {
       "executor": "nx:run-commands",
       "dependsOn": [
@@ -87,30 +100,30 @@
       ],
       "options": {
         "commands": [
-          "rm -rf dist/web/ng-client",
-          "mkdir -p dist/web/ng-client",
-          "rsync -av dist/apps/web-ng/browser/ dist/web/ng-client/"
+          "rm -rf dist/web/client",
+          "mkdir -p dist/web/client",
+          "rsync -av dist/apps/web-ng/browser/ dist/web/client/"
         ]
       }
     },
     "build": {
       "executor": "nx:run-commands",
       "dependsOn": [
-        "web:build:client",
         "web:build:server",
-        "web:build:ng-client"
+        "web:build:ng-client",
+        "web:build:legacy-client"
       ],
       "options": {
         "commands": [
           "rm -f dist/web/package.json",
           "mv dist/web/server/package.json dist/web",
-          "rm dist/web/client/package.json"
+          "rm -rf dist/web/ng-client"
         ]
       }
     },
     "serve": {
       "executor": "nx:run-commands",
-      "dependsOn": ["web:build:client", "web:build:server", "web:build:ng-client"],
+      "dependsOn": ["web:build:server", "web:build:ng-client", "web:build:legacy-client"],
       "options": {
         "commands": ["node dist/web/server/server.js --no_auth"]
       }
@@ -119,7 +132,6 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "nx run web:build:client:watch",
           "nx run web:build:server:watch",
           "nodemon --watch 'dist/web/**/*.*' --verbose --inspect-brk=9229 dist/web/server/server.js --no_auth"
         ]
