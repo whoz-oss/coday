@@ -3,24 +3,35 @@
   class="choice-form" 
   (ngSubmit)="onSubmit()"
 >
-  <label class="choice-label" [innerHTML]="labelHtml"></label>
+  <!-- Label en haut -->
+  <div class="choice-label" [innerHTML]="labelHtml"></div>
   
-  <select 
-    class="choice-select" 
-    [(ngModel)]="selectedValue"
-    name="choice"
-    required
-    #choiceSelect
-  >
-    <option 
-      *ngFor="let option of options" 
-      [value]="option.value"
+  <!-- Select et bouton sur la même ligne -->
+  <div class="select-button-row">
+    <select 
+      class="choice-select-inline" 
+      [(ngModel)]="selectedValue"
+      name="choice"
+      required
+      #choiceSelect
+      (change)="onSelectChange()"
+      (keydown.enter)="onSubmit()"
     >
-      {{ option.label }}
-    </option>
-  </select>
-  
-  <button type="submit" class="submit-btn">
-    Submit Choice
-  </button>
+      <option value="" disabled>-- Sélectionnez une option --</option>
+      <option 
+        *ngFor="let option of options" 
+        [value]="option.value"
+      >
+        {{ option.label }}
+      </option>
+    </select>
+    
+    <button 
+      type="submit" 
+      class="submit-btn"
+      [disabled]="!selectedValue"
+    >
+      Valider
+    </button>
+  </div>
 </form>

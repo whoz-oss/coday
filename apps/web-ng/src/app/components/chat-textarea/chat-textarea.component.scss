@@ -1,8 +1,7 @@
 .chat-input-container {
-  padding: 1rem;
-  background: var(--color-input-bg, #ffffff);
-  border-top: 1px solid var(--color-border, #e5e7eb);
+  // Pas de padding/background ici - géré par le parent (input-section)
   flex-shrink: 0;
+  width: 100%;
 }
 
 .invite-container {

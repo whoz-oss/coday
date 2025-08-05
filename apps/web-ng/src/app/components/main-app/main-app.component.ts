@@ -21,6 +21,7 @@ import { TabTitleService } from '../../services/tab-title.service'
   standalone: true,
   imports: [CommonModule, ChatHistoryComponent, ChatTextareaComponent, ChoiceSelectComponent],
   templateUrl: './main-app.component.html',
+  styleUrl: './main-app.component.scss',
   animations: [
     trigger('slideIn', [
       transition(':enter', [
@@ -31,127 +32,7 @@ import { TabTitleService } from '../../services/tab-title.service'
         animate('200ms ease-in', style({ transform: 'translateY(100%)', opacity: 0 }))
       ])
     ])
-  ],
-  styles: [`
-    :host {
-      display: block;
-      height: 100vh;
-      overflow: hidden;
-    }
-
-    .app {
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      background: var(--color-bg, #f8f8f2);
-      color: var(--color-text, #282a36);
-      transition: all 0.2s ease;
-    }
-
-    .app.drag-over {
-      border: 3px dashed var(--color-primary, #007acc);
-      background-color: var(--color-bg-secondary, #f1f1f1);
-      opacity: 0.9;
-    }
-
-    .connection-status {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      z-index: 1001; /* Au-dessus du FAB */
-      padding: 0.5rem 1rem;
-      text-align: center;
-      font-size: 0.9rem;
-      background: var(--color-error, #ff5555);
-      color: var(--color-text-inverse, #ffffff);
-      border-bottom: 1px solid var(--color-border, #aeaeae);
-    }
-
-    /* Le header est maintenant un FAB flottant - pas d'espace réservé */
-    app-header {
-      /* Pas de flex-shrink car le header est flottant */
-    }
-
-    .chat-wrapper {
-      flex: 1;
-      min-height: 0; /* Important pour flex */
-      overflow-y: auto;
-      overflow-x: hidden;
-      background: var(--color-input-bg, #ffffff);
-      /* Pas de padding-top : le contenu peut passer sous le FAB avec l'effet de dégradé */
-      
-      /* Force scrollbar visibility on all platforms */
-      &::-webkit-scrollbar {
-        width: 12px;
-      }
-      
-      &::-webkit-scrollbar-track {
-        background: var(--color-bg-secondary, #f1f1f1);
-        border: 1px solid var(--color-border, #e5e7eb);
-      }
-      
-      &::-webkit-scrollbar-thumb {
-        background: var(--color-text-secondary, #888);
-        border-radius: 6px;
-        border: 2px solid transparent;
-        background-clip: padding-box;
-        
-        &:hover {
-          background: var(--color-text, #555);
-        }
-      }
-      
-      /* Firefox */
-      scrollbar-width: thin;
-      scrollbar-color: var(--color-text-secondary, #888) var(--color-bg-secondary, #f1f1f1);
-    }
-
-    .input-section {
-      flex-shrink: 0;
-      border-top: 1px solid var(--color-border, #e5e7eb);
-      background: var(--color-bg, #f8f8f2);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .upload-status {
-      position: fixed;
-      bottom: 100px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 1000;
-      display: flex;
-      align-items: center;
-      padding: 8px 16px;
-      background: var(--color-bg-secondary, #f1f1f1);
-      border: 1px solid var(--color-border, #e5e7eb);
-      border-radius: 6px;
-      font-size: 0.9em;
-      color: var(--color-text-secondary, #666);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-      max-width: 300px;
-      text-align: center;
-    }
-
-    .upload-status.error {
-      background: #ffebee;
-      color: #c62828;
-      border-color: #ffcdd2;
-    }
-
-    [data-theme="dark"] .upload-status {
-      background: var(--color-bg-secondary, #2a2a2a);
-      color: var(--color-text-secondary, #ccc);
-      border-color: var(--color-border, #444);
-    }
-
-    [data-theme="dark"] .upload-status.error {
-      background: #4a2c2a;
-      color: #ef5350;
-      border-color: #6d4c41;
-    }
-  `]
+  ]
 })
 export class MainAppComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>()
