@@ -212,17 +212,6 @@ export class MainAppComponent implements OnInit, OnDestroy {
     
     // Start the Coday service
     this.codayService.start()
-    
-    // Exposer les méthodes de debug dans la console (pour les tests)
-    if (typeof window !== 'undefined') {
-      (window as any).debugUnread = {
-        cycleEmoji: () => this.debugCycleEmoji(),
-        setEmoji: (emoji: string) => this.debugSetEmoji(emoji),
-        getEmojis: () => this.debugGetAvailableEmojis(),
-        setSystemActive: () => this.titleService.setSystemActive(),
-        setSystemInactive: () => this.titleService.setSystemInactive()
-      }
-    }
   }
 
   ngOnDestroy(): void {
@@ -350,19 +339,4 @@ export class MainAppComponent implements OnInit, OnDestroy {
       this.uploadStatus = { message: '', isError: false }
     }, 5000)
   }
-  
-  // Méthodes de debug pour tester les notifications (accessibles depuis la console)
-  debugCycleEmoji(): void {
-    this.titleService.cycleEmoji()
-  }
-  
-  debugSetEmoji(emoji: string): void {
-    this.titleService.setEmoji(emoji)
-  }
-  
-  debugGetAvailableEmojis(): string[] {
-    return this.titleService.getAvailableEmojis()
-  }
-  
-
 }

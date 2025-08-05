@@ -20,8 +20,8 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   private lastMessageCount = 0
   
   // Scroll tracking state
-  isTracking = true // Mode tracking actif par défaut
-  showGoToBottom = false // Bouton go-to-bottom visible
+  isTracking = true // Tracking mode active by default
+  showGoToBottom = false // Go-to-bottom button visibility
   private scrollContainer: HTMLElement | null = null
   private lastScrollTop = 0
   private readonly NEAR_BOTTOM_THRESHOLD = 100 // pixels
@@ -33,10 +33,10 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   ) {}
   
   ngOnInit() {
-    // Trouver le conteneur scrollable au démarrage
+    // Find scrollable container on startup
     this.findScrollContainer()
     
-    // Écouter les changements de focus de l'onglet
+    // Listen to tab focus changes
     this.setupFocusListeners()
   }
   
@@ -45,7 +45,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
       clearTimeout(this.scrollCheckTimeout)
     }
     
-    // Nettoyer les listeners de focus
+    // Clean up focus listeners
     window.removeEventListener('focus', this.handleWindowFocus)
     window.removeEventListener('blur', this.handleWindowBlur)
   }
@@ -55,7 +55,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     if (this.messages.length !== this.lastMessageCount) {
       console.log('[CHAT-HISTORY] Message count changed:', this.lastMessageCount, '->', this.messages.length)
       
-      // Détecter les nouveaux messages et marquer comme non lus si nécessaire
+      // Detect new messages and mark as unread if necessary
       const newMessagesCount = this.messages.length - this.lastMessageCount
       if (newMessagesCount > 0) {
         this.handleNewMessages(newMessagesCount)
@@ -63,13 +63,13 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
       
       this.lastMessageCount = this.messages.length
       
-      // Auto-scroll seulement si on est en mode tracking
+      // Auto-scroll only if in tracking mode
       if (this.isTracking) {
         this.scrollToBottom()
       }
     }
     
-    // S'assurer que le scroll container est trouvé
+    // Ensure scroll container is found
     if (!this.scrollContainer) {
       this.findScrollContainer()
     }
@@ -108,7 +108,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   }
   
   onCopyMessage(message: ChatMessage) {
-    // Extraire le texte du contenu riche
+    // Extract text from rich content
     const textContent = message.content
       .filter(content => content.type === 'text')
       .map(content => content.content)
@@ -126,18 +126,18 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   }
   
   /**
-   * Gestion du scroll pour détecter si l'utilisateur scrolle vers le haut
-   * Note: Ce listener ne sera pas déclenché car le scroll est sur le parent (.chat-wrapper)
-   * On utilise handleScroll() directement sur le scroll container
+   * Scroll handling to detect if user scrolls up
+   * Note: This listener won't be triggered since scroll is on parent (.chat-wrapper)
+   * We use handleScroll() directly on the scroll container
    */
   @HostListener('scroll')
   onScroll(): void {
-    // Ce listener ne sera pas déclenché car le scroll est sur le parent
-    // On utilisera handleScroll() directement
+    // This listener won't be triggered since scroll is on parent
+    // We'll use handleScroll() directly
   }
   
   /**
-   * Trouver le conteneur scrollable (.chat-wrapper)
+   * Find the scrollable container (.chat-wrapper)
    */
   private findScrollContainer(): void {
     const chatHistory = this.elementRef.nativeElement
@@ -145,20 +145,20 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     
     if (this.scrollContainer) {
       console.log('[CHAT-HISTORY] Scroll container found')
-      // Ajouter le listener de scroll sur le bon élément
+      // Add scroll listener on the correct element
       this.scrollContainer.addEventListener('scroll', this.handleScroll.bind(this))
-      // Initialiser la position
+      // Initialize position
       this.lastScrollTop = this.scrollContainer.scrollTop
       this.checkScrollPosition()
     } else {
       console.warn('[CHAT-HISTORY] Scroll container not found')
-      // Réessayer plus tard
+      // Retry later
       setTimeout(() => this.findScrollContainer(), 100)
     }
   }
   
   /**
-   * Gestionnaire de scroll sur le conteneur
+   * Scroll handler on the container
    */
   private handleScroll = (): void => {
     if (!this.scrollContainer) return
@@ -167,7 +167,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     const scrollDirection = currentScrollTop > this.lastScrollTop ? 'down' : 'up'
     const scrollDelta = Math.abs(currentScrollTop - this.lastScrollTop)
     
-    // Ignorer les micro-scrolls (peut être du scroll programmatique)
+    // Ignore micro-scrolls (might be programmatic scroll)
     if (scrollDelta < 5) {
       this.lastScrollTop = currentScrollTop
       return
@@ -175,29 +175,29 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     
     console.log('[CHAT-HISTORY] Scroll direction:', scrollDirection, 'delta:', scrollDelta, 'position:', currentScrollTop)
     
-    // Note: On pourrait détecter le scroll utilisateur vs programmatique ici si nécessaire
+    // Note: We could detect user vs programmatic scroll here if needed
     
-    // Si l'utilisateur scrolle vers le haut de manière significative, quitter le mode tracking
+    // If user scrolls up significantly, exit tracking mode
     if (scrollDirection === 'up' && this.isTracking && scrollDelta > 10) {
       console.log('[CHAT-HISTORY] User scrolled up significantly - exiting tracking mode')
       this.isTracking = false
       this.showGoToBottom = true
     }
     
-    // Vérifier si on est proche du bas
+    // Check if we're near the bottom
     this.checkScrollPosition()
     
     this.lastScrollTop = currentScrollTop
     
-    // Debounce pour éviter les appels trop fréquents
+    // Debounce to avoid too frequent calls
     clearTimeout(this.scrollCheckTimeout)
     this.scrollCheckTimeout = setTimeout(() => {
-      // Peut être utilisé pour des optimisations futures
+      // Can be used for future optimizations
     }, 150)
   }
   
   /**
-   * Vérifier la position de scroll et ajuster l'état
+   * Check scroll position and adjust state
    */
   private checkScrollPosition(): void {
     if (!this.scrollContainer) return
@@ -206,24 +206,24 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight
     const isNearBottom = distanceFromBottom <= this.NEAR_BOTTOM_THRESHOLD
     
-    // Si on est proche du bas et qu'on n'était pas en tracking, réactiver
+    // If near bottom and not tracking, reactivate tracking
     if (isNearBottom && !this.isTracking) {
       console.log('[CHAT-HISTORY] Near bottom - entering tracking mode')
       this.isTracking = true
       this.showGoToBottom = false
       
-      // Marquer les messages comme lus car l'utilisateur est revenu au bas
+      // Mark messages as read since user returned to bottom
       this.unreadService.markAllAsRead()
     }
     
-    // Si on n'est pas en tracking et qu'on est loin du bas, s'assurer que le bouton est visible
+    // If not tracking and far from bottom, ensure button is visible
     if (!this.isTracking && !isNearBottom) {
       this.showGoToBottom = true
     }
   }
   
   /**
-   * Aller en bas de la conversation (déclenché par le bouton)
+   * Go to bottom of conversation (triggered by button)
    */
   goToBottom(): void {
     console.log('[CHAT-HISTORY] Go to bottom clicked')
@@ -231,15 +231,15 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     this.isTracking = true
     this.showGoToBottom = false
     
-    // Marquer tous les messages comme lus
+    // Mark all messages as read
     this.unreadService.markAllAsRead()
   }
   
   /**
-   * Gérer l'arrivée de nouveaux messages
+   * Handle arrival of new messages
    */
   private handleNewMessages(newMessagesCount: number): void {
-    // Filtrer seulement les nouveaux messages assistant
+    // Filter only new assistant messages
     const newMessages = this.messages.slice(-newMessagesCount)
     const newAssistantMessages = newMessages.filter(msg => msg.role === 'assistant')
     
@@ -261,27 +261,27 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   }
   
   /**
-   * Déterminer si les nouveaux messages doivent être marqués comme non lus
+   * Determine if new messages should be marked as unread
    */
   private shouldMarkNewMessagesAsUnread(): boolean {
-    // Condition 1: L'onglet n'a pas le focus
+    // Condition 1: Tab doesn't have focus
     if (!document.hasFocus()) {
       console.log('[CHAT-HISTORY] Tab does not have focus -> unread')
       return true
     }
     
-    // Condition 2: L'utilisateur n'est pas en mode tracking (a scrollé vers le haut)
+    // Condition 2: User is not in tracking mode (scrolled up)
     if (!this.isTracking) {
       console.log('[CHAT-HISTORY] User is not tracking (scrolled up) -> unread')
       return true
     }
     
-    // Sinon, les messages sont considérés comme lus
+    // Otherwise, messages are considered read
     return false
   }
   
   /**
-   * Configurer les listeners pour le focus/blur de la fenêtre
+   * Set up listeners for window focus/blur
    */
   private setupFocusListeners(): void {
     window.addEventListener('focus', this.handleWindowFocus)
@@ -289,12 +289,12 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   }
   
   /**
-   * Gestionnaire quand la fenêtre regagne le focus
+   * Handler when window regains focus
    */
   private handleWindowFocus = (): void => {
     console.log('[CHAT-HISTORY] Window gained focus')
     
-    // Si l'utilisateur est en mode tracking, marquer les messages comme lus
+    // If user is in tracking mode, mark messages as read
     if (this.isTracking) {
       console.log('[CHAT-HISTORY] User is tracking and focused -> marking messages as read')
       this.unreadService.markAllAsRead()
@@ -302,10 +302,10 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   }
   
   /**
-   * Gestionnaire quand la fenêtre perd le focus
+   * Handler when window loses focus
    */
   private handleWindowBlur = (): void => {
     console.log('[CHAT-HISTORY] Window lost focus')
-    // Pas d'action spéciale nécessaire, les nouveaux messages seront marqués comme non lus
+    // No special action needed, new messages will be marked as unread
   }
 }
