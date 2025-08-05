@@ -4,50 +4,6 @@
   "projectType": "application",
   "tags": [],
   "targets": {
-    "build:client": {
-      "executor": "@nx/esbuild:esbuild",
-      "outputs": [
-        "{options.outputPath}"
-      ],
-      "options": {
-        "assets": [
-          {
-            "input": "apps/web/client",
-            "glob": "index.html",
-            "output": "."
-          },
-          {
-            "input": "apps/web/client",
-            "glob": "**/*.css",
-            "output": "."
-          },
-          {
-            "input": "apps/web/client/static",
-            "glob": "**/*",
-            "output": "static"
-          }
-        ],
-        "esbuildOptions": {
-          "outExtension": {
-            ".js": ".js"
-          },
-          "sourcemap": true
-        },
-        "format": [
-          "cjs"
-        ],
-        "main": "apps/web/client/app.ts",
-        "outputFileName": "app.js",
-        "outputPath": "dist/web/client",
-        "platform": "browser",
-        "tsConfig": "apps/web/client/tsconfig.app.json"
-      },
-      "configurations": {
-        "watch": {
-          "watch": true
-        }
-      }
-    },
     "build:server": {
       "executor": "@nx/esbuild:esbuild",
       "outputs": [
@@ -80,20 +36,7 @@
         }
       }
     },
-    "build:legacy-client": {
-      "executor": "nx:run-commands",
-      "options": {
-        "commands": [
-          "rm -rf dist/web/legacy-client",
-          "mkdir -p dist/web/legacy-client",
-          "rsync -av dist/web/client/ dist/web/legacy-client/"
-        ]
-      },
-      "dependsOn": [
-        "web:build:client"
-      ]
-    },
-    "build:ng-client": {
+    "build:client": {
       "executor": "nx:run-commands",
       "dependsOn": [
         "web-ng:build"
@@ -110,20 +53,19 @@
       "executor": "nx:run-commands",
       "dependsOn": [
         "web:build:server",
-        "web:build:ng-client",
-        "web:build:legacy-client"
+        "web:build:client"
       ],
       "options": {
         "commands": [
           "rm -f dist/web/package.json",
           "mv dist/web/server/package.json dist/web",
-          "rm -rf dist/web/ng-client"
+          "rm -rf dist/web/legacy-client dist/web/ng-client"
         ]
       }
     },
     "serve": {
       "executor": "nx:run-commands",
-      "dependsOn": ["web:build:server", "web:build:ng-client", "web:build:legacy-client"],
+      "dependsOn": ["web:build"],
       "options": {
         "commands": ["node dist/web/server/server.js --no_auth"]
       }
