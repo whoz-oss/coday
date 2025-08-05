@@ -193,12 +193,12 @@ export class CodayService implements OnDestroy {
       id: event.timestamp,
       role: event.role,
       speaker: event.name,
-      content: event.getTextContent(),
+      content: event.content, // Directement le contenu riche
       timestamp: new Date(),
       type: 'text'
     }
     
-    console.log('[CODAY] Message from:', event.name)
+    console.log('[CODAY] Message from:', event.name, 'with', event.content.length, 'content items')
     this.addMessage(message)
   }
 
@@ -207,7 +207,7 @@ export class CodayService implements OnDestroy {
       id: event.timestamp,
       role: event.speaker ? 'assistant' : 'system',
       speaker: event.speaker || 'System',
-      content: event.text,
+      content: [{ type: 'text', content: event.text }], // Convertir en contenu riche
       timestamp: new Date(),
       type: event.speaker ? 'text' : 'technical'
     }
@@ -221,7 +221,7 @@ export class CodayService implements OnDestroy {
       id: event.timestamp,
       role: 'user',
       speaker: 'User',
-      content: event.answer,
+      content: [{ type: 'text', content: event.answer }], // Convertir en contenu riche
       timestamp: new Date(),
       type: 'text'
     }
@@ -234,7 +234,7 @@ export class CodayService implements OnDestroy {
       id: event.timestamp,
       role: 'system',
       speaker: 'System',
-      content: `Error: ${JSON.stringify(event.error)}`,
+      content: [{ type: 'text', content: `Error: ${JSON.stringify(event.error)}` }], // Convertir en contenu riche
       timestamp: new Date(),
       type: 'error'
     }
@@ -247,7 +247,7 @@ export class CodayService implements OnDestroy {
       id: event.timestamp,
       role: 'system',
       speaker: 'System',
-      content: `Warning: ${JSON.stringify(event.warning)}`,
+      content: [{ type: 'text', content: `Warning: ${JSON.stringify(event.warning)}` }], // Convertir en contenu riche
       timestamp: new Date(),
       type: 'warning'
     }
@@ -269,7 +269,7 @@ export class CodayService implements OnDestroy {
       id: event.timestamp,
       role: 'system',
       speaker: 'System',
-      content: event.toSingleLineString(),
+      content: [{ type: 'text', content: event.toSingleLineString() }], // Convertir en contenu riche
       timestamp: new Date(),
       type: 'technical',
       eventId: event.timestamp
@@ -283,7 +283,7 @@ export class CodayService implements OnDestroy {
       id: event.timestamp,
       role: 'system',
       speaker: 'System',
-      content: event.toSingleLineString(),
+      content: [{ type: 'text', content: event.toSingleLineString() }], // Convertir en contenu riche
       timestamp: new Date(),
       type: 'technical',
       eventId: event.timestamp

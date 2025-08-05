@@ -13,6 +13,13 @@
       (copyRequested)="onCopyMessage($event)"
       (stopRequested)="onStopRequested()"
     ></app-chat-history>
+    
+    <!-- Upload Status Display -->
+    <div *ngIf="uploadStatus.message" 
+         class="upload-status" 
+         [class.error]="uploadStatus.isError">
+      {{ uploadStatus.message }}
+    </div>
   </div>
   
   <!-- Input Section - Toujours visible en bas -->

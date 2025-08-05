@@ -17,7 +17,10 @@ export class ChatHistoryComponent implements AfterViewChecked {
   @Output() stopRequested = new EventEmitter<void>()
   
   private lastMessageCount = 0
-  constructor(private elementRef: ElementRef) {}
+  
+  constructor(
+    private elementRef: ElementRef
+  ) {}
   
   ngAfterViewChecked() {
     // Check if we need to scroll after each view update
@@ -57,7 +60,13 @@ export class ChatHistoryComponent implements AfterViewChecked {
   }
   
   onCopyMessage(message: ChatMessage) {
-    navigator.clipboard.writeText(message.content)
+    // Extraire le texte du contenu riche
+    const textContent = message.content
+      .filter(content => content.type === 'text')
+      .map(content => content.content)
+      .join('\n\n')
+      
+    navigator.clipboard.writeText(textContent)
       .then(() => console.log('Message copied'))
       .catch(err => console.error('Failed to copy:', err))
     

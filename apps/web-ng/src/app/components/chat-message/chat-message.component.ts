@@ -2,12 +2,13 @@ import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { marked } from 'marked'
+import { MessageContent } from '@coday/coday-events'
 
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant' | 'system'
   speaker: string
-  content: string
+  content: MessageContent[] // Toujours du contenu riche maintenant
   timestamp: Date
   type: 'text' | 'error' | 'warning' | 'technical'
   eventId?: string // Pour les liens vers les événements
@@ -68,15 +69,43 @@ export class ChatMessageComponent implements OnInit {
   
   private async renderMarkdown() {
     try {
-      // Parse markdown to HTML
-      const html = await marked.parse(this.message.content)
-      // Sanitize the HTML for security
+      // Toujours utiliser le contenu riche maintenant
+      const html = await this.renderRichContent(this.message.content)
       this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(html)
     } catch (error) {
-      console.error('Error parsing markdown:', error)
-      // Fallback to plain text
-      this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(this.message.content)
+      console.error('Error parsing rich content:', error)
+      // Fallback: essayer d'extraire le texte et l'afficher
+      const textContent = this.extractTextContent()
+      this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(textContent)
     }
+  }
+  
+  private async renderRichContent(content: MessageContent[]): Promise<string> {
+    const htmlParts: string[] = []
+    
+    for (const item of content) {
+      if (item.type === 'text') {
+        // Parse markdown for text content
+        const html = await marked.parse(item.content)
+        htmlParts.push(`<div class="text-part">${html}</div>`)
+      } else if (item.type === 'image') {
+        // Create image element
+        const imgSrc = `data:${item.mimeType};base64,${item.content}`
+        const imgAlt = item.source || 'Image'
+        const imgHtml = `
+          <div class="image-content">
+            <img src="${imgSrc}" 
+                 alt="${imgAlt}" 
+                 class="message-image"
+                 style="max-width: 100%; height: auto; margin: 8px 0; border-radius: 8px; cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); transition: transform 0.2s ease, box-shadow 0.2s ease;"
+                 onclick="window.open(this.src, '_blank')" />
+          </div>
+        `
+        htmlParts.push(imgHtml)
+      }
+    }
+    
+    return htmlParts.join('')
   }
   
   onPlay() {
@@ -85,5 +114,22 @@ export class ChatMessageComponent implements OnInit {
   
   onCopy() {
     this.copyRequested.emit(this.message)
+  }
+  
+  /**
+   * Extract all text content from rich content for voice synthesis and copying
+   */
+  getTextContentForVoice(): string {
+    return this.extractTextContent()
+  }
+  
+  /**
+   * Extract text content from message content
+   */
+  private extractTextContent(): string {
+    return this.message.content
+      .filter(content => content.type === 'text')
+      .map(content => content.content)
+      .join('\n\n')
   }
 }

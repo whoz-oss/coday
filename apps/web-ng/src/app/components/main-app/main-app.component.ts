@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core'
+import { Component, OnInit, OnDestroy, HostListener } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
@@ -11,7 +11,9 @@ import { ChatTextareaComponent } from '../chat-textarea/chat-textarea.component'
 import { ChoiceSelectComponent, ChoiceOption } from '../choice-select/choice-select.component'
 
 import { CodayService } from '../../core/services/coday.service'
+import { CodayApiService } from '../../core/services/coday-api.service'
 import { ConnectionStatus } from '../../core/services/event-stream.service'
+import { ImageUploadService } from '../../services/image-upload.service'
 
 @Component({
   selector: 'app-main',
@@ -42,6 +44,13 @@ import { ConnectionStatus } from '../../core/services/event-stream.service'
       flex-direction: column;
       background: var(--color-bg, #f8f8f2);
       color: var(--color-text, #282a36);
+      transition: all 0.2s ease;
+    }
+
+    .app.drag-over {
+      border: 3px dashed var(--color-primary, #007acc);
+      background-color: var(--color-bg-secondary, #f1f1f1);
+      opacity: 0.9;
     }
 
     .connection-status {
@@ -104,6 +113,43 @@ import { ConnectionStatus } from '../../core/services/event-stream.service'
       position: relative;
       overflow: hidden;
     }
+
+    .upload-status {
+      position: fixed;
+      bottom: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      padding: 8px 16px;
+      background: var(--color-bg-secondary, #f1f1f1);
+      border: 1px solid var(--color-border, #e5e7eb);
+      border-radius: 6px;
+      font-size: 0.9em;
+      color: var(--color-text-secondary, #666);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      max-width: 300px;
+      text-align: center;
+    }
+
+    .upload-status.error {
+      background: #ffebee;
+      color: #c62828;
+      border-color: #ffcdd2;
+    }
+
+    [data-theme="dark"] .upload-status {
+      background: var(--color-bg-secondary, #2a2a2a);
+      color: var(--color-text-secondary, #ccc);
+      border-color: var(--color-border, #444);
+    }
+
+    [data-theme="dark"] .upload-status.error {
+      background: #4a2c2a;
+      color: #ef5350;
+      border-color: #6d4c41;
+    }
   `]
 })
 export class MainAppComponent implements OnInit, OnDestroy {
@@ -115,8 +161,22 @@ export class MainAppComponent implements OnInit, OnDestroy {
   currentChoice: {options: ChoiceOption[], label: string} | null = null
   connectionStatus: ConnectionStatus | null = null
   isConnected: boolean = false
+  
+  // Upload status
+  uploadStatus: { message: string; isError: boolean } = { message: '', isError: false }
+  clientId: string
+  
+  // Drag and drop state
+  isDragOver: boolean = false
 
-  constructor(private codayService: CodayService) {}
+  constructor(
+    private codayService: CodayService,
+    private codayApiService: CodayApiService,
+    private imageUploadService: ImageUploadService
+  ) {
+    this.clientId = this.codayApiService.getClientId()
+    console.log('[MAIN-APP] Constructor - clientId:', this.clientId)
+  }
 
   ngOnInit(): void {
     this.codayService.messages$
@@ -170,7 +230,12 @@ export class MainAppComponent implements OnInit, OnDestroy {
   }
 
   onPlayMessage(message: ChatMessage): void {
-    console.log('[VOICE] Play requested:', message.content)
+    // Extraire le texte du contenu riche pour le log
+    const textContent = message.content
+      .filter(content => content.type === 'text')
+      .map(content => content.content)
+      .join(' ')
+    console.log('[VOICE] Play requested:', textContent)
     // TODO: Implement voice synthesis
   }
 
@@ -180,5 +245,93 @@ export class MainAppComponent implements OnInit, OnDestroy {
 
   onStopRequested(): void {
     this.codayService.stop()
+  }
+
+
+
+  // Drag and Drop Event Handlers for the entire application
+  @HostListener('dragenter', ['$event'])
+  onDragEnter(event: DragEvent): void {
+    event.preventDefault()
+    if (this.imageUploadService.hasImageFiles(event.dataTransfer)) {
+      console.log('[MAIN-APP] Image files detected - showing drag overlay')
+      this.isDragOver = true
+    }
+  }
+
+  @HostListener('dragover', ['$event'])
+  onDragOver(event: DragEvent): void {
+    event.preventDefault()
+    if (this.imageUploadService.hasImageFiles(event.dataTransfer)) {
+      event.dataTransfer!.dropEffect = 'copy'
+    }
+  }
+
+  @HostListener('dragleave', ['$event'])
+  onDragLeave(event: DragEvent): void {
+    // Only remove drag-over state if we're leaving the document body
+    if (event.target === document.body || !document.body.contains(event.relatedTarget as Node)) {
+      console.log('[MAIN-APP] Leaving application area - hiding drag overlay')
+      this.isDragOver = false
+    }
+  }
+
+  @HostListener('drop', ['$event'])
+  async onDrop(event: DragEvent): Promise<void> {
+    event.preventDefault()
+    this.isDragOver = false
+    
+    console.log('[MAIN-APP] Files dropped:', event.dataTransfer?.files?.length || 0)
+    
+    if (!this.clientId) {
+      this.showUploadError('No client ID available for upload')
+      return
+    }
+    
+    const files = this.imageUploadService.filterImageFiles(event.dataTransfer?.files || [])
+    
+    if (files.length === 0) {
+      this.showUploadError('No valid image files found')
+      return
+    }
+
+    console.log('[MAIN-APP] Uploading', files.length, 'image(s)')
+    
+    // Upload each image file
+    for (const file of files) {
+      try {
+        this.showUploadStatus(`Uploading ${file.name}...`)
+        const result = await this.imageUploadService.uploadImage(file, this.clientId)
+        
+        if (result.success) {
+          this.showUploadSuccess(`${file.name} uploaded successfully`)
+        } else {
+          this.showUploadError(`Failed to upload ${file.name}: ${result.error}`)
+        }
+      } catch (error) {
+        console.error('[MAIN-APP] Upload error:', error)
+        this.showUploadError(`Failed to upload ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
+    }
+  }
+  
+  private showUploadStatus(message: string): void {
+    this.uploadStatus = { message, isError: false }
+  }
+  
+  private showUploadSuccess(message: string): void {
+    this.uploadStatus = { message: `✅ ${message}`, isError: false }
+    // Auto-hide success message after 3 seconds
+    setTimeout(() => {
+      this.uploadStatus = { message: '', isError: false }
+    }, 3000)
+  }
+  
+  private showUploadError(message: string): void {
+    this.uploadStatus = { message, isError: true }
+    // Auto-hide error message after 5 seconds
+    setTimeout(() => {
+      this.uploadStatus = { message: '', isError: false }
+    }, 5000)
   }
 }
