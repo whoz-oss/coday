@@ -2,7 +2,10 @@
   "name": "web",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
-  "tags": [],
+  "tags": [
+    "web-server",
+    "depends:web-ng"
+  ],
   "targets": {
     "build:server": {
       "executor": "@nx/esbuild:esbuild",
@@ -43,9 +46,11 @@
       ],
       "options": {
         "commands": [
+          "echo 'Copying Angular client from web-ng build...'",
           "rm -rf dist/web/client",
           "mkdir -p dist/web/client",
-          "rsync -av dist/apps/web-ng/browser/ dist/web/client/"
+          "rsync -av dist/apps/web-ng/browser/ dist/web/client/",
+          "echo 'Client copy completed.'"
         ]
       }
     },
@@ -57,9 +62,10 @@
       ],
       "options": {
         "commands": [
+          "echo 'Finalizing web application build...'",
           "rm -f dist/web/package.json",
           "mv dist/web/server/package.json dist/web",
-          "rm -rf dist/web/legacy-client dist/web/ng-client"
+          "echo 'Web application build completed.'"
         ]
       }
     },

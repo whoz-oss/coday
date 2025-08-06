@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, HostListener } from '@angular/core'
+import { Component, OnInit, OnDestroy, HostListener, ViewChild, ElementRef, AfterViewInit } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
@@ -34,8 +34,10 @@ import { TabTitleService } from '../../services/tab-title.service'
     ])
   ]
 })
-export class MainAppComponent implements OnInit, OnDestroy {
+export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   private destroy$ = new Subject<void>()
+  
+  @ViewChild('inputSection') inputSection!: ElementRef<HTMLElement>
   
   // State from services
   messages: ChatMessage[] = []
@@ -43,6 +45,9 @@ export class MainAppComponent implements OnInit, OnDestroy {
   currentChoice: {options: ChoiceOption[], label: string} | null = null
   connectionStatus: ConnectionStatus | null = null
   isConnected: boolean = false
+  
+  // Input height management
+  inputSectionHeight: number = 80 // Default height
   
   // Upload status
   uploadStatus: { message: string; isError: boolean } = { message: '', isError: false }
@@ -94,6 +99,11 @@ export class MainAppComponent implements OnInit, OnDestroy {
     // Start the Coday service
     this.codayService.start()
   }
+  
+  ngAfterViewInit(): void {
+    // Initial height measurement
+    setTimeout(() => this.updateInputSectionHeight(), 100)
+  }
 
   ngOnDestroy(): void {
     this.destroy$.next()
@@ -131,6 +141,21 @@ export class MainAppComponent implements OnInit, OnDestroy {
 
   onStopRequested(): void {
     this.codayService.stop()
+  }
+  
+  onInputHeightChanged(height: number): void {
+    console.log('[MAIN-APP] Input height changed:', height)
+    this.inputSectionHeight = height
+  }
+  
+  private updateInputSectionHeight(): void {
+    if (this.inputSection?.nativeElement) {
+      const height = this.inputSection.nativeElement.offsetHeight
+      if (height !== this.inputSectionHeight) {
+        console.log('[MAIN-APP] Input section height updated:', height)
+        this.inputSectionHeight = height
+      }
+    }
   }
 
 

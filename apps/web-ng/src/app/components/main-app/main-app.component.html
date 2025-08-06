@@ -22,23 +22,25 @@
     </div>
   </div>
   
-  <!-- Input Section - Seulement pour le chat-textarea -->
-  <div class="input-section">
+  <!-- Input Section - Dans le flux normal -->
+  <div class="input-section" #inputSection>
     <app-chat-textarea 
+      *ngIf="!currentChoice"
       [isDisabled]="!isConnected"
       (messageSubmitted)="onMessageSubmitted($event)"
       (voiceRecordingToggled)="onVoiceToggled($event)"
+      (heightChanged)="onInputHeightChanged($event)"
     ></app-chat-textarea>
+    
+    <!-- Choice Select - Overlay au-dessus de l'input-section -->
+    <app-choice-select
+      *ngIf="currentChoice"
+      [@slideIn]
+      [options]="currentChoice.options"
+      [labelHtml]="currentChoice.label"
+      [isVisible]="!!currentChoice"
+      (choiceSelected)="onChoiceSelected($event)"
+      class="choice-overlay"
+    ></app-choice-select>
   </div>
-  
-  <!-- Choice Select - Overlay par-dessus la conversation -->
-  <app-choice-select
-    *ngIf="currentChoice"
-    [@slideIn]
-    [options]="currentChoice.options"
-    [labelHtml]="currentChoice.label"
-    [isVisible]="!!currentChoice"
-    (choiceSelected)="onChoiceSelected($event)"
-    class="choice-overlay"
-  ></app-choice-select>
 </div>

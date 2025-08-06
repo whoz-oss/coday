@@ -22,6 +22,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   @Input() isDisabled: boolean = false
   @Output() messageSubmitted = new EventEmitter<string>()
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
+  @Output() heightChanged = new EventEmitter<number>()
   
   @ViewChild('messageInput', { static: true }) messageInput!: ElementRef<HTMLTextAreaElement>
   
@@ -388,6 +389,12 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
     
     // Set the new height
     textarea.style.height = `${newHeight}px`
+    
+    // Émettre le changement de hauteur vers le parent
+    const containerHeight = textarea.parentElement?.offsetHeight || newHeight + 32
+    this.heightChanged.emit(containerHeight)
+    
+    console.log('[CHAT-TEXTAREA] Height adjusted to:', newHeight, 'px, container:', containerHeight, 'px')
   }
   
   /**
