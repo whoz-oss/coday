@@ -1,4 +1,4 @@
-import { Component, Output, EventEmitter, Input, OnInit, OnDestroy, AfterViewInit, ViewChild, ElementRef } from '@angular/core'
+import { Component, Output, EventEmitter, Input, OnInit, OnDestroy, AfterViewInit, ViewChild, ElementRef, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { Subscription } from 'rxjs'
@@ -45,11 +45,10 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   showInvite: boolean = false
   private codaySubscription?: Subscription
   
-  constructor(
-    private preferencesService: PreferencesService,
-    private eventStreamService: EventStreamService,
-    private sanitizer: DomSanitizer
-  ) {}
+  // Modern Angular dependency injection
+  private preferencesService = inject(PreferencesService)
+  private eventStreamService = inject(EventStreamService)
+  private sanitizer = inject(DomSanitizer)
   
   ngOnInit(): void {
     this.initializeVoiceInput()

@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, HostListener } from '@angular/core'
+import { Component, OnInit, OnDestroy, HostListener, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
@@ -18,7 +18,8 @@ export class HeaderComponent implements OnInit, OnDestroy {
   title = 'Coday'
   isMenuOpen = false
 
-  constructor(private codayService: CodayService) {}
+  // Modern Angular dependency injection
+  private codayService = inject(CodayService)
 
   ngOnInit(): void {
     this.codayService.projectTitle$

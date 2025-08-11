@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnDestroy } from '@angular/core'
+import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { marked } from 'marked'
@@ -35,10 +35,9 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   // État du bouton play
   isPlaying = false
   
-  constructor(
-    private sanitizer: DomSanitizer,
-    private voiceSynthesisService: VoiceSynthesisService
-  ) {}
+  // Modern Angular dependency injection
+  private sanitizer = inject(DomSanitizer)
+  private voiceSynthesisService = inject(VoiceSynthesisService)
   
   get messageClasses() {
     return {

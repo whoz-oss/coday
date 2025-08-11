@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core'
+import { Component, OnInit, OnDestroy, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { Subject } from 'rxjs'
@@ -51,10 +51,9 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
     { code: 'ar-SA', label: 'العربية', flag: '🇸🇦' }
   ]
   
-  constructor(
-    private preferencesService: PreferencesService,
-    private voiceSynthesisService: VoiceSynthesisService
-  ) {}
+  // Modern Angular dependency injection
+  private preferencesService = inject(PreferencesService)
+  private voiceSynthesisService = inject(VoiceSynthesisService)
   
   ngOnInit(): void {
     this.selectedVoiceLanguage = this.preferencesService.getVoiceLanguage()

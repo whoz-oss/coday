@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, HostListener, ViewChild, ElementRef, AfterViewInit } from '@angular/core'
+import { Component, OnInit, OnDestroy, HostListener, ViewChild, ElementRef, AfterViewInit, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
@@ -56,12 +56,13 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   // Drag and drop state
   isDragOver: boolean = false
 
-  constructor(
-    private codayService: CodayService,
-    private codayApiService: CodayApiService,
-    private imageUploadService: ImageUploadService,
-    private titleService: TabTitleService // Renommé pour éviter les conflits
-  ) {
+  // Modern Angular dependency injection
+  private codayService = inject(CodayService)
+  private codayApiService = inject(CodayApiService)
+  private imageUploadService = inject(ImageUploadService)
+  private titleService = inject(TabTitleService) // Renommé pour éviter les conflits
+  
+  constructor() {
     this.clientId = this.codayApiService.getClientId()
     console.log('[MAIN-APP] Constructor - clientId:', this.clientId)
   }

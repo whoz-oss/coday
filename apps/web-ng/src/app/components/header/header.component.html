@@ -14,6 +14,10 @@
   *ngIf="isMenuOpen" 
   class="floating-menu"
   (click)="$event.stopPropagation()"
+  (keydown)="$event.stopPropagation()"
+  tabindex="-1"
+  role="menu"
+  aria-label="Menu principal de Coday"
 >
   <!-- Project info -->
   <div class="menu-section project-info">
@@ -57,4 +61,8 @@
   *ngIf="isMenuOpen" 
   class="menu-backdrop"
   (click)="closeMenu()"
+  (keydown.escape)="closeMenu()"
+  tabindex="-1"
+  role="button"
+  aria-label="Fermer le menu (cliquez ou appuyez sur Échap)"
 ></div>

@@ -1,4 +1,4 @@
-import { Injectable, OnDestroy } from '@angular/core'
+import { Injectable, OnDestroy, inject } from '@angular/core'
 import { Subject, BehaviorSubject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
 import { 
@@ -51,10 +51,11 @@ export class CodayService implements OnDestroy {
   // Référence au service de titre (injectée depuis l'extérieur)
   private tabTitleService: any = null
   
-  constructor(
-    private codayApi: CodayApiService,
-    private eventStream: EventStreamService
-  ) {
+  // Modern Angular dependency injection
+  private codayApi = inject(CodayApiService)
+  private eventStream = inject(EventStreamService)
+  
+  constructor() {
     // Initialize connection status observable after eventStream is available
     this.connectionStatus$ = this.eventStream.connectionStatus$
     this.initializeEventHandling()

@@ -1,4 +1,11 @@
-<div class="message" [ngClass]="messageClasses" (click)="onMessageClick()">
+<div class="message" 
+     [ngClass]="messageClasses" 
+     (click)="onMessageClick()" 
+     (keydown.enter)="onMessageClick()" 
+     (keydown.space)="onMessageClick()" 
+     tabindex="0" 
+     role="button" 
+     [attr.aria-label]="'Message from ' + message.speaker + '. Click to stop speech if playing.'">
   <!-- Layout normal pour user et assistant -->
   <ng-container *ngIf="!isSimplified">
     <!-- En-tête avec speaker et actions -->

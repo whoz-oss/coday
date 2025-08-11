@@ -15,6 +15,10 @@
     *ngIf="isVisible"
     class="options-backdrop"
     (click)="onBackdropClick()"
+    (keydown.escape)="closePanel()"
+    tabindex="-1"
+    role="button"
+    aria-label="Fermer les options (cliquez ou appuyez sur Échap)"
   ></div>
   
   <!-- Panneau d'options -->
@@ -22,6 +26,9 @@
     *ngIf="isVisible"
     class="options-panel"
     (click)="onPanelClick($event)"
+    (keydown)="onPanelClick($event)"
+    role="dialog"
+    aria-label="Panneau des options de configuration"
   >
     <div class="options-header">
       <h3>Options</h3>
@@ -88,7 +95,7 @@
         
         <!-- Mode vocal -->
         <div class="option-group">
-          <label class="option-label">Mode vocal :</label>
+          <span class="option-label">Mode vocal :</span>
           <div class="radio-group">
             <label class="option-radio">
               <input 

@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core'
+import { Injectable, inject } from '@angular/core'
 import { combineLatest } from 'rxjs'
 import { UnreadMessagesService } from './unread-messages.service'
 import { CodayService } from '../core/services/coday.service'
@@ -16,10 +16,11 @@ export class TabTitleService {
   private systemActiveTimer: any = null
   private readonly SYSTEM_ACTIVE_TIMEOUT = 4000 // 4 seconds
   
-  constructor(
-    private unreadService: UnreadMessagesService,
-    private codayService: CodayService
-  ) {
+  // Modern Angular dependency injection
+  private unreadService = inject(UnreadMessagesService)
+  private codayService = inject(CodayService)
+  
+  constructor() {
     this.initializeTitleUpdates()
   }
   

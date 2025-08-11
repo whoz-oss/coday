@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, ElementRef, AfterViewChecked, HostListener, OnInit, OnDestroy } from '@angular/core'
+import { Component, Input, Output, EventEmitter, ElementRef, AfterViewChecked, HostListener, OnInit, OnDestroy, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { ChatMessageComponent, ChatMessage } from '../chat-message/chat-message.component'
 import { UnreadMessagesService } from '../../services/unread-messages.service'
@@ -34,12 +34,11 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   // Seuil de fraîcheur des messages pour l'annonce automatique (5 minutes)
   private readonly MESSAGE_FRESHNESS_THRESHOLD = 5 * 60 * 1000 // en millisecondes
   
-  constructor(
-    private elementRef: ElementRef,
-    private unreadService: UnreadMessagesService,
-    private voiceSynthesisService: VoiceSynthesisService,
-    private preferencesService: PreferencesService
-  ) {}
+  // Modern Angular dependency injection
+  private elementRef = inject(ElementRef)
+  private unreadService = inject(UnreadMessagesService)
+  private voiceSynthesisService = inject(VoiceSynthesisService)
+  private preferencesService = inject(PreferencesService)
   
   ngOnInit() {
     // Find scrollable container on startup

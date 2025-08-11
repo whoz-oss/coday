@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core'
+import { Component, OnInit, OnDestroy, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { Subject } from 'rxjs'
@@ -140,7 +140,8 @@ export class ThemeSelectorComponent implements OnInit, OnDestroy {
   selectedTheme: ThemeMode = 'light'
   isPanelVisible = false
 
-  constructor(private themeService: ThemeService) {}
+  // Modern Angular dependency injection
+  private themeService = inject(ThemeService)
 
   ngOnInit(): void {
     // Subscribe to current theme

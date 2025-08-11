@@ -1,4 +1,4 @@
-import { Injectable, NgZone } from '@angular/core'
+import { Injectable, NgZone, OnDestroy, inject } from '@angular/core'
 import { Subject, BehaviorSubject } from 'rxjs'
 import { CodayEvent, buildCodayEvent, ErrorEvent } from '@coday/coday-events'
 import { CodayApiService } from './coday-api.service'
@@ -12,7 +12,7 @@ export interface ConnectionStatus {
 @Injectable({
   providedIn: 'root'
 })
-export class EventStreamService {
+export class EventStreamService implements OnDestroy {
   private eventSource: EventSource | null = null
   private eventsSubject = new Subject<CodayEvent>()
   private connectionStatusSubject = new BehaviorSubject<ConnectionStatus>({
@@ -29,10 +29,9 @@ export class EventStreamService {
   events$ = this.eventsSubject.asObservable()
   connectionStatus$ = this.connectionStatusSubject.asObservable()
 
-  constructor(
-    private codayApi: CodayApiService,
-    private ngZone: NgZone
-  ) {}
+  // Modern Angular dependency injection
+  private codayApi = inject(CodayApiService)
+  private ngZone = inject(NgZone)
 
   /**
    * Start the SSE connection

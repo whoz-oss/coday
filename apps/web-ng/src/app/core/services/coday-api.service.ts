@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core'
+import { Injectable, inject } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
 import { Observable } from 'rxjs'
 import { tap, map } from 'rxjs/operators'
@@ -10,7 +10,10 @@ import { CodayEvent } from '@coday/coday-events'
 export class CodayApiService {
   private clientId: string
 
-  constructor(private http: HttpClient) {
+  // Modern Angular dependency injection
+  private http = inject(HttpClient)
+  
+  constructor() {
     this.clientId = this.getOrCreateClientId()
     console.log('[API] Client ID:', this.clientId)
   }

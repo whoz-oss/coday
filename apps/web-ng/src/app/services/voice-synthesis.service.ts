@@ -1,4 +1,4 @@
-import { Injectable, OnDestroy } from '@angular/core'
+import { Injectable, OnDestroy, inject } from '@angular/core'
 import { Subject, BehaviorSubject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
 import { PreferencesService } from './preferences.service'
@@ -29,7 +29,10 @@ export class VoiceSynthesisService implements OnDestroy {
   private language: string = 'en-US'
   private selectedVoice: SpeechSynthesisVoice | undefined
 
-  constructor(private preferencesService: PreferencesService) {
+  // Modern Angular dependency injection
+  private preferencesService = inject(PreferencesService)
+  
+  constructor() {
     this.initializeSpeechSynthesis()
     this.subscribeToPreferences()
   }
