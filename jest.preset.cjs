@@ -1,8 +1,4 @@
 const nxPreset = require('@nx/jest/preset').default
-const path = require('path')
-
-// Get workspace root
-const workspaceRoot = process.cwd()
 
 module.exports = {
   ...nxPreset,
@@ -14,14 +10,14 @@ module.exports = {
   coverageDirectory: `${process.env.NX_WORKSPACE_ROOT}/coverage/${process.env.NX_TASK_TARGET_PROJECT}`,
   coverageReporters: ['html'],
   
-  // Mapping avec chemins absolus
+  // CORRECTION : Utiliser <rootDir>/../../ pour remonter au workspace root
   moduleNameMapper: {
-    '^@coday/coday-events$': path.join(workspaceRoot, 'libs/coday-events/src/index.ts'),
-    '^@coday/ai-thread/(.*)$': path.join(workspaceRoot, 'libs/ai-thread/$1'),
-    '^@coday/core$': path.join(workspaceRoot, 'libs/coday.ts'), 
-    '^@coday/model/(.*)$': path.join(workspaceRoot, 'libs/model/$1'),
-    '^@coday/options$': path.join(workspaceRoot, 'libs/options.ts'),
-    '^@coday/service/(.*)$': path.join(workspaceRoot, 'libs/service/$1'),
+    '^@coday/coday-events$': '<rootDir>/../../libs/coday-events/src/index.ts',
+    '^@coday/ai-thread/(.*)$': '<rootDir>/../../libs/ai-thread/$1',
+    '^@coday/core$': '<rootDir>/../../libs/coday.ts', 
+    '^@coday/model/(.*)$': '<rootDir>/../../libs/model/$1',
+    '^@coday/options$': '<rootDir>/../../libs/options.ts',
+    '^@coday/service/(.*)$': '<rootDir>/../../libs/service/$1',
   },
   
   // Exclude problematic directories
