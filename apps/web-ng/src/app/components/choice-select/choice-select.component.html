@@ -1,0 +1,37 @@
+<form 
+  *ngIf="isVisible" 
+  class="choice-form" 
+  (ngSubmit)="onSubmit()"
+>
+  <!-- Label en haut -->
+  <div class="choice-label" [innerHTML]="labelHtml"></div>
+  
+  <!-- Select et bouton sur la même ligne -->
+  <div class="select-button-row">
+    <select 
+      class="choice-select-inline" 
+      [(ngModel)]="selectedValue"
+      name="choice"
+      required
+      #choiceSelect
+      (change)="onSelectChange()"
+      (keydown.enter)="onSubmit()"
+    >
+      <option value="" disabled>-- Sélectionnez une option --</option>
+      <option 
+        *ngFor="let option of options" 
+        [value]="option.value"
+      >
+        {{ option.label }}
+      </option>
+    </select>
+    
+    <button 
+      type="submit" 
+      class="submit-btn"
+      [disabled]="!selectedValue"
+    >
+      Valider
+    </button>
+  </div>
+</form>

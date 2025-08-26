@@ -13,6 +13,20 @@ export default {
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov'],
   coveragePathIgnorePatterns: ['/node_modules/', '/__tests__/', '/dist/'],
+  
+  // FORCE IGNORE PROBLEMATIC DIRECTORIES
+  modulePathIgnorePatterns: [
+    '<rootDir>/dist/',
+    '<rootDir>/.nx/',
+  ],
+  
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/dist/',
+    '/.nx/',
+    '\\.e2e-spec\\.(ts|js)$',
+  ],
+  
   // Useful for debugging
   verbose: true,
 }

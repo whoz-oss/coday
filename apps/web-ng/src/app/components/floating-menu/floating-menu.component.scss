@@ -1,0 +1,210 @@
+// Floating Action Button
+// Les styles sont maintenant dans styles.scss global
+.floating-menu-btn {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 1500; // Au-dessus de tout (input zone comprise)
+  
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  
+  background: var(--color-primary, #7064fb);
+  color: white;
+  
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  
+  &:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25), 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+  
+  &:active {
+    transform: scale(0.95);
+  }
+  
+  &.active {
+    background: var(--color-primary-hover, #ff79c6);
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+  
+  .logo {
+    width: 48px;
+    height: 48px;
+    transition: opacity 0.2s;
+    border-radius: 2px;
+  }
+  
+  .hamburger-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    transition: opacity 0.2s;
+    font-size: 18px;
+    font-weight: normal;
+  }
+  
+  &:hover {
+    .logo { opacity: 0.2; }
+    .hamburger-overlay { opacity: 1; }
+  }
+}
+
+// Menu dropdown
+.floating-menu {
+  position: fixed;
+  top: 4rem;
+  left: 1rem;
+  z-index: 1499; // Juste en dessous du FAB
+  
+  background: var(--color-input-bg, #ffffff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  
+  min-width: 280px;
+  max-width: 320px;
+  
+  animation: slideIn 0.2s ease-out;
+  
+  .menu-section {
+    padding: 0.75rem;
+    
+    &:not(:last-child) {
+      border-bottom: 1px solid var(--color-border, #e5e7eb);
+    }
+  }
+}
+
+// Project info section
+.project-info {
+  .project-title {
+    margin: 0 0 0.25rem 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--color-text, #282a36);
+  }
+  
+  .project-subtitle {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary, #6272a4);
+  }
+}
+
+// Menu items
+.menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  text-align: left;
+  
+  &:hover:not(:disabled) {
+    background: var(--color-bg-secondary, #f1f1eb);
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  .menu-icon {
+    font-size: 1.1rem;
+    width: 20px;
+    text-align: center;
+  }
+  
+  .menu-text {
+    flex: 1;
+    font-size: 0.9rem;
+    color: var(--color-text, #282a36);
+  }
+  
+  .coming-soon {
+    font-size: 0.7rem;
+    color: var(--color-text-secondary, #6272a4);
+    background: var(--color-bg-secondary, #f1f1eb);
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+  }
+}
+
+// Wrapper pour les éléments inline (theme selector, options)
+.menu-item-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  
+  .menu-icon {
+    font-size: 1.1rem;
+    width: 20px;
+    text-align: center;
+  }
+  
+  .menu-text {
+    flex: 1;
+    font-size: 0.9rem;
+    color: var(--color-text, #282a36);
+  }
+  
+  .inline-selector,
+  .inline-panel {
+    flex-shrink: 0;
+  }
+}
+
+// Backdrop
+.menu-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1498; // En dessous du menu
+  background: transparent;
+}
+
+// Animation
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// Responsive
+@media (max-width: 480px) {
+  .floating-menu {
+    left: 0.5rem;
+    right: 0.5rem;
+    min-width: auto;
+    max-width: none;
+  }
+  
+  .floating-menu-btn {
+    left: 0.5rem;
+    top: 0.5rem;
+  }
+}

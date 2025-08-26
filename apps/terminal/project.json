@@ -8,13 +8,16 @@
       "outputs": ["{options.outputPath}"],
       "options": {
         "assets": [],
+        "external": [
+          "sharp"
+        ],
         "format": ["cjs"],
         "main": "apps/terminal/terminal.ts",
         "outputFileName": "terminal.cjs",
         "outputPath": "dist/terminal",
         "platform": "node",
         "thirdParty": true,
-        "tsConfig": "tsconfig.base.json"
+        "tsConfig": "apps/terminal/tsconfig.app.json"
       }
     },
     "serve": {

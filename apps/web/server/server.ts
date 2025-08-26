@@ -39,7 +39,7 @@ const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
 const configPath = codayOptions.configDir ?? defaultConfigPath
 const webhookService = new WebhookService(configPath)
 debugLog('INIT', 'Webhook service initialized')
-// Serve static files from the 'static' directory
+// Serve Angular app as default (root)
 app.use(express.static(path.join(__dirname, '../client')))
 
 // Basic route to test server setup

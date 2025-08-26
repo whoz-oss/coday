@@ -1,0 +1,71 @@
+/**
+ * Coday Color Variables
+ * 
+ * A simplified theme system with essential color variables.
+ * Default theme is light, with dark theme available via data-theme="dark".
+ */
+
+:root {
+  /* Light Theme (Default) */
+
+  /* Base Colors */
+  --color-bg: #f8f8f2;
+  --color-bg-secondary: #f1f1eb;
+  --color-text: #282a36;
+  --color-text-secondary: #6272a4;
+  --color-text-inverse: #ffffff;
+
+  /* Interactive Elements */
+  --color-primary: #7064fb;
+  --color-primary-hover: #ff79c6;
+  --color-link: #3498db;
+  --color-border: #aeaeae;
+  --color-input-bg: #ffffff;
+
+  /* Status Colors */
+  --color-success: #50fa7b;
+  --color-error: #ff5555;
+  --color-warning: #ffb86c;
+  --color-info: #8be9fd;
+
+  /* Application-Specific */
+  --color-message-user: #e2dee2;
+  --color-message-ai: #e8ecf6;
+  --color-code-bg: #f1f1f1;
+  --color-code-text: #d63384;
+  --color-bg-hover: #f1f3f4;
+
+  /* Utility Colors */
+  --color-shadow: rgba(0, 0, 0, 0.1);
+  --color-overlay: rgba(0, 0, 0, 0.3);
+}
+
+/* Dark Theme */
+[data-theme="dark"] {
+  /* Base Colors */
+  --color-bg: #333339;
+  --color-bg-secondary: #44475a;
+  --color-text: #f8f8f2;
+  --color-text-secondary: #8192c5;
+  --color-text-inverse: #ffffff;
+
+  /* Interactive Elements */
+  --color-primary: #b47eff;
+  --color-primary-hover: #ff79c6;
+  --color-link: #61afef;
+  --color-border: #6272a4;
+  --color-input-bg: #282a36;
+
+  /* Status Colors remain the same for consistency */
+
+  /* Application-Specific */
+  --color-message-user: #6a5b7e;
+  --color-message-ai: #677088;
+  --color-code-bg: #1e1f29;
+  --color-code-text: #ff79c6;
+  --color-bg-hover: #565761;
+
+  /* Utility Colors */
+  --color-shadow: rgba(0, 0, 0, 0.3);
+  --color-overlay: rgba(0, 0, 0, 0.7);
+}
