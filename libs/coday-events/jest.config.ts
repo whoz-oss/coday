@@ -1,6 +1,6 @@
 export default {
   displayName: 'coday-events',
-  preset: '../../jest.preset.ts',
+  preset: '../../jest.preset.cjs',
   testEnvironment: 'node',
   transform: {
     '^.+\\.[tj]s$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.spec.json' }],

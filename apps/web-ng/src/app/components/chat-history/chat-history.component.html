@@ -1,0 +1,29 @@
+<div class="chat-history">
+  <app-chat-message
+    *ngFor="let message of messages; trackBy: trackByMessageId"
+    [message]="message"
+    (playRequested)="onPlayMessage($event)"
+    (copyRequested)="onCopyMessage($event)"
+  ></app-chat-message>
+  
+  <div *ngIf="isThinking" class="thinking">
+    <div class="dots">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+    <button class="stop-btn" (click)="onStop()">
+      Stop
+    </button>
+  </div>
+  
+  <!-- Bouton Go to Bottom -->
+  <button 
+    *ngIf="showGoToBottom" 
+    class="go-to-bottom-btn"
+    (click)="goToBottom()"
+    title="Go to bottom"
+  >
+    ↓
+  </button>
+</div>

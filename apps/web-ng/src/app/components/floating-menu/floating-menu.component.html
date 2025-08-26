@@ -1,0 +1,68 @@
+<!-- Floating Action Button -->
+<button 
+  class="floating-menu-btn"
+  (click)="toggleMenu()"
+  [class.active]="isMenuOpen"
+  title="Menu Coday"
+>
+  <img src="CODAY-Logo.png" alt="Coday" class="logo" />
+  <div class="hamburger-overlay">☰</div>
+</button>
+
+<!-- Menu dropdown -->
+<div 
+  *ngIf="isMenuOpen" 
+  class="floating-menu"
+  (click)="$event.stopPropagation()"
+  (keydown)="$event.stopPropagation()"
+  tabindex="-1"
+  role="menu"
+  aria-label="Menu principal de Coday"
+>
+  <!-- Project info -->
+  <div class="menu-section project-info">
+    <h3 class="project-title">{{ title }}</h3>
+    <span class="project-subtitle">Projet actuel</span>
+  </div>
+  
+  <!-- Navigation -->
+  <div class="menu-section navigation">
+    <button class="menu-item" disabled>
+      <span class="menu-icon">📁</span>
+      <span class="menu-text">Projets</span>
+      <span class="coming-soon">Bientôt</span>
+    </button>
+    
+    <button class="menu-item" disabled>
+      <span class="menu-icon">🧵</span>
+      <span class="menu-text">Threads</span>
+      <span class="coming-soon">Bientôt</span>
+    </button>
+  </div>
+  
+  <!-- Settings -->
+  <div class="menu-section settings">
+    <div class="menu-item-wrapper">
+      <span class="menu-icon">🎨</span>
+      <span class="menu-text">Thème</span>
+      <app-theme-selector class="inline-selector"></app-theme-selector>
+    </div>
+    
+    <div class="menu-item-wrapper">
+      <span class="menu-icon">⚙️</span>
+      <span class="menu-text">Préférences</span>
+      <app-options-panel class="inline-panel"></app-options-panel>
+    </div>
+  </div>
+</div>
+
+<!-- Backdrop pour fermer le menu -->
+<div 
+  *ngIf="isMenuOpen" 
+  class="menu-backdrop"
+  (click)="closeMenu()"
+  (keydown.escape)="closeMenu()"
+  tabindex="-1"
+  role="button"
+  aria-label="Fermer le menu (cliquez ou appuyez sur Échap)"
+></div>

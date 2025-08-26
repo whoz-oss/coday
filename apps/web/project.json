@@ -2,52 +2,11 @@
   "name": "web",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
-  "tags": [],
+  "tags": [
+    "web-server",
+    "depends:web-ng"
+  ],
   "targets": {
-    "build:client": {
-      "executor": "@nx/esbuild:esbuild",
-      "outputs": [
-        "{options.outputPath}"
-      ],
-      "options": {
-        "assets": [
-          {
-            "input": "apps/web/client",
-            "glob": "index.html",
-            "output": "."
-          },
-          {
-            "input": "apps/web/client",
-            "glob": "**/*.css",
-            "output": "."
-          },
-          {
-            "input": "apps/web/client/static",
-            "glob": "**/*",
-            "output": "static"
-          }
-        ],
-        "esbuildOptions": {
-          "outExtension": {
-            ".js": ".js"
-          },
-          "sourcemap": true
-        },
-        "format": [
-          "cjs"
-        ],
-        "main": "apps/web/client/app.ts",
-        "outputFileName": "app.js",
-        "outputPath": "dist/web/client",
-        "platform": "browser",
-        "tsConfig": "apps/web/client/tsconfig.app.json"
-      },
-      "configurations": {
-        "watch": {
-          "watch": true
-        }
-      }
-    },
     "build:server": {
       "executor": "@nx/esbuild:esbuild",
       "outputs": [
@@ -80,23 +39,39 @@
         }
       }
     },
-    "build": {
+    "build:client": {
       "executor": "nx:run-commands",
       "dependsOn": [
-        "web:build:client",
-        "web:build:server"
+        "web-ng:build"
       ],
       "options": {
         "commands": [
+          "echo 'Copying Angular client from web-ng build...'",
+          "rm -rf dist/web/client",
+          "mkdir -p dist/web/client",
+          "rsync -av dist/apps/web-ng/browser/ dist/web/client/",
+          "echo 'Client copy completed.'"
+        ]
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        "web:build:server",
+        "web:build:client"
+      ],
+      "options": {
+        "commands": [
+          "echo 'Finalizing web application build...'",
           "rm -f dist/web/package.json",
           "mv dist/web/server/package.json dist/web",
-          "rm dist/web/client/package.json"
+          "echo 'Web application build completed.'"
         ]
       }
     },
     "serve": {
       "executor": "nx:run-commands",
-      "dependsOn": ["web:build:client", "web:build:server"],
+      "dependsOn": ["web:build"],
       "options": {
         "commands": ["node dist/web/server/server.js --no_auth"]
       }
@@ -105,7 +80,6 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "nx run web:build:client:watch",
           "nx run web:build:server:watch",
           "nodemon --watch 'dist/web/**/*.*' --verbose --inspect-brk=9229 dist/web/server/server.js --no_auth"
         ]

@@ -1,0 +1,50 @@
+<div class="chat-input-container">
+  <!-- Invite display -->
+  <div *ngIf="showInvite" class="invite-container">
+    <div class="invite-content markdown-content" [innerHTML]="renderedInvite"></div>
+  </div>
+  <div *ngIf="isRecording" class="recording-indicator">
+    <span class="recording-dot"></span>
+    Recording... Release to stop
+  </div>
+  <!-- Input row with voice, textarea, and send buttons -->
+  <div class="input-row">
+    <button
+      class="voice-btn"
+      [class.recording]="isRecording"
+      (mousedown)="onVoiceButtonMouseDown($event)"
+      (mouseup)="onVoiceButtonMouseUp()"
+      (mouseleave)="onVoiceButtonMouseLeave()"
+      (touchstart)="onVoiceButtonTouchStart($event)"
+      (touchend)="onVoiceButtonTouchEnd($event)"
+      (keydown)="onVoiceButtonKeyDown($event)"
+      (keyup)="onVoiceButtonKeyUp($event)"
+      tabindex="0"
+      title="Maintenir clic souris, touch, ou barre espace pour parler"
+    >
+      {{ isRecording ? '🔴' : '🎤' }}
+    </button>
+    
+    <textarea
+      #messageInput
+      class="message-input"
+      [(ngModel)]="message"
+      placeholder="Type your message here..."
+      (keydown)="onKeyDown($event)"
+      (input)="onInput()"
+      [disabled]="isDisabled"
+    ></textarea>
+    
+    <button
+      class="send-btn"
+      (click)="sendMessage()"
+      [disabled]="!message.trim() || isDisabled"
+      [title]="getSendButtonTooltip()"
+    >
+      <span class="send-text">Send</span>
+      <span class="send-shortcut">{{ getSendButtonShortcut() }}</span>
+    </button>
+  </div>
+  
+  
+</div>

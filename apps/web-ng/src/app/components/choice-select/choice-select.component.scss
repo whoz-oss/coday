@@ -1,0 +1,127 @@
+.choice-form {
+  width: 100%;
+  max-width: 600px; // Augmenté de 400px à 600px (+50%)
+  margin: 0 auto;
+  padding: 1.5rem;
+  background: var(--color-input-bg, #ffffff);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.choice-label {
+  display: block;
+  margin-bottom: 1rem;
+  font-weight: 500;
+  color: var(--color-text, #374151);
+  font-size: 1rem;
+}
+
+.choice-select {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 6px;
+  background: var(--color-input-bg, #ffffff);
+  color: var(--color-text, #374151);
+  font-size: 1rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+  
+  &:focus {
+    outline: none;
+    border-color: var(--color-primary, #7064fb);
+    box-shadow: 0 0 0 2px rgba(112, 100, 251, 0.1);
+  }
+  
+  &:hover {
+    border-color: var(--color-primary, #7064fb);
+  }
+  
+  option:disabled {
+    color: var(--color-text-secondary, #9ca3af);
+    font-style: italic;
+  }
+}
+
+.select-button-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: stretch;
+  margin-top: 1rem;
+}
+
+.choice-select-inline {
+  flex: 1;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 6px;
+  background: var(--color-input-bg, #ffffff);
+  color: var(--color-text, #374151);
+  font-size: 1rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+  
+  &:focus {
+    outline: none;
+    border-color: var(--color-primary, #7064fb);
+    box-shadow: 0 0 0 2px rgba(112, 100, 251, 0.1);
+  }
+  
+  &:hover {
+    border-color: var(--color-primary, #7064fb);
+  }
+  
+  option:disabled {
+    color: var(--color-text-secondary, #9ca3af);
+    font-style: italic;
+  }
+}
+
+.submit-btn {
+  background: var(--color-primary, #7064fb);
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  
+  &:hover:not(:disabled) {
+    background: var(--color-primary-hover, #5a4df5);
+  }
+  
+  &:disabled {
+    background: var(--color-text-secondary, #9ca3af);
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+  
+  &:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(112, 100, 251, 0.3);
+  }
+}
+
+// Responsive : sur mobile, layout vertical
+@media (max-width: 480px) {
+  .choice-form {
+    max-width: none;
+    margin: 0 1rem;
+    padding: 1rem;
+  }
+  
+  .select-button-row {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .submit-btn {
+    width: 100%;
+  }
+}

@@ -1,0 +1,153 @@
+.chat-input-container {
+  // Pas de padding/background ici - géré par le parent (input-section)
+  flex-shrink: 0;
+  width: 100%;
+}
+
+.invite-container {
+  margin-bottom: 0.5rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  
+  .invite-content {
+    color: var(--color-text, #282a36);
+    font-size: 0.95rem;
+    line-height: 1.4;
+  }
+}
+
+.input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch; // Permet aux boutons de s'étendre en hauteur
+}
+
+.message-input {
+  flex: 1;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border, #aeaeae);
+  border-radius: 8px;
+  resize: none; // Disable manual resize since we handle it automatically
+  overflow-y: auto; // Allow scrolling when content exceeds max height
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.5;
+  background: var(--color-input-bg, #ffffff);
+  color: var(--color-text, #282a36);
+  
+  // Height will be set dynamically by the adjustTextareaHeight method
+  // Min and max heights are calculated in TypeScript based on line height
+  
+  &:focus {
+    outline: none;
+    border-color: var(--color-primary, #7064fb);
+    box-shadow: 0 0 0 3px rgba(112, 100, 251, 0.1);
+  }
+  
+  &:disabled {
+    background-color: var(--color-bg-secondary, #f1f1eb);
+    color: var(--color-text-secondary, #6272a4);
+    cursor: not-allowed;
+  }
+  
+  &::placeholder {
+    color: var(--color-text-secondary, #6272a4);
+  }
+}
+
+.voice-btn, .send-btn {
+  padding: 0.75rem;
+  border: 1px solid var(--color-border, #aeaeae);
+  border-radius: 8px;
+  background: var(--color-input-bg, #ffffff);
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 60px; // Largeur minimale pour les boutons
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.voice-btn {
+  font-size: 1.2rem;
+  color: var(--color-text, #282a36);
+  user-select: none; // Éviter la sélection de texte lors du push-to-talk
+  flex-shrink: 0; // Ne pas rétrécir
+  
+  &:hover:not(.recording) {
+    background: var(--color-bg-secondary, #f1f1eb);
+  }
+  
+  &:focus {
+    outline: 2px solid var(--color-primary, #7064fb);
+    outline-offset: 2px;
+  }
+  
+  &.recording {
+    background: rgba(255, 85, 85, 0.1);
+    border-color: var(--color-error, #ff5555);
+    color: var(--color-error, #ff5555);
+    animation: pulse 1.5s infinite;
+    
+    &:hover {
+      background: rgba(255, 85, 85, 0.2);
+    }
+  }
+}
+
+.send-btn {
+  background: var(--color-primary, #7064fb);
+  color: var(--color-text-inverse, #ffffff);
+  border-color: var(--color-primary, #7064fb);
+  font-weight: 500;
+  gap: 0.25rem;
+  min-width: 70px;
+  flex-shrink: 0; // Ne pas rétrécir
+  
+  &:hover:not(:disabled) {
+    background: var(--color-primary-hover, #ff79c6);
+    border-color: var(--color-primary-hover, #ff79c6);
+  }
+  
+  &:disabled {
+    background: var(--color-text-secondary, #6272a4);
+    border-color: var(--color-text-secondary, #6272a4);
+    cursor: not-allowed;
+  }
+  
+  .send-text {
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+  
+  .send-shortcut {
+    font-size: 0.7rem;
+    opacity: 0.8;
+    font-weight: 400;
+    line-height: 1;
+  }
+}
+
+.recording-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+  margin-bottom: 0.2rem;
+  color: var(--color-error, #ff5555);
+  font-size: 0.9rem;
+}
+
+.recording-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--color-error, #ff5555);
+  border-radius: 50%;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
