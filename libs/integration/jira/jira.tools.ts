@@ -148,6 +148,7 @@ export class JiraTools extends AssistantToolFactory {
     const addCommentFunction: FunctionTool<{
       ticketId: string
       comment: string
+      internal?: boolean
     }> = {
       type: 'function',
       function: {
@@ -158,11 +159,15 @@ export class JiraTools extends AssistantToolFactory {
           properties: {
             ticketId: { type: 'string', description: 'Jira ticket ID' },
             comment: { type: 'string', description: 'Comment text to add to the ticket' },
+            internal: { 
+              type: 'boolean', 
+              description: 'Whether the comment should be an internal note (note visible by the customer). Default: true'
+            },
           },
         },
         parse: JSON.parse,
-        function: ({ ticketId, comment }) =>
-          addJiraComment(ticketId, comment, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor),
+        function: ({ ticketId, comment, internal = false }) =>
+          addJiraComment(ticketId, comment, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor, internal),
       },
     }
 
