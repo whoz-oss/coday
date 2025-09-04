@@ -6,6 +6,12 @@ const messageEventToMessageContent: Migration = {
   description: 'Migrate AiThread MessageEvent.content from string to MessageContent',
   migrate: (aiThread: any) => {
     const migrated = { ...aiThread }
+    // Ensure messages array exists before mapping
+    if (!migrated.messages || !Array.isArray(migrated.messages)) {
+      migrated.messages = []
+      return migrated
+    }
+    
     migrated.messages = migrated.messages.map((message: any) => {
       if (message.type !== 'message') {
         return message
