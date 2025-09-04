@@ -9,7 +9,8 @@ export async function addJiraComment(
   jiraBaseUrl: string,
   jiraApiToken: string,
   jiraUsername: string,
-  interactor: Interactor
+  interactor: Interactor,
+  internal: boolean = true
 ): Promise<void> {
   const url = `${jiraBaseUrl}/rest/api/2/issue/${ticketId}/comment`
   const auth = Buffer.from(`${jiraUsername}:${jiraApiToken}`).toString('base64')
@@ -21,7 +22,19 @@ export async function addJiraComment(
         Authorization: `Basic ${auth}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ body: comment }),
+      body: JSON.stringify({
+        body: comment,
+        ...(internal && {
+          properties: [
+            {
+              key: 'sd.public.comment',
+              value: {
+                internal: true
+              }
+            }
+          ]
+        })
+      }),
     })
 
     if (!response.ok) {
