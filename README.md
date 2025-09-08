@@ -66,15 +66,15 @@ When in the context of a code project, use the npm package to run locally throug
 2. Clone the repo
    ```sh
    # through ssh
-   git clone git@gitlab.com:biznet.io/coday.git
+   git clone git@github.com:whoz-oss/coday.git
 
    # through http
-   git clone https://gitlab.com/biznet.io/coday.git
+   git clone https://github.com/whoz-oss/coday.git
     ```
 3. Install packages
 
     ```sh
-    yarn install
+    yarn install --frozen-lockfile
     ```
 4. Run one of the targets:
    - in the terminal:
