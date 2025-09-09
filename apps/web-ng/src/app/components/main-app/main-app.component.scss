@@ -73,6 +73,8 @@
   border-top: 1px solid var(--color-border, #e5e7eb);
   background: var(--color-bg-secondary, #f8fafc);
   padding: 1rem;
+  overflow-y: auto;
+  max-height: 90vh;
   
   // Centrer le contenu
   display: flex;
@@ -81,18 +83,13 @@
   
   // Largeur maximale pour le textarea
   > app-chat-textarea {
+    height: 100%;
     width: 100%;
     max-width: 900px;
   }
 }
 
 .choice-overlay {
-  position: absolute;
-  bottom: 100%; // Au-dessus de l'input-section
-  left: 0;
-  right: 0;
-  background: var(--color-bg-secondary, #f8fafc);
-  border-top: 1px solid var(--color-border, #e5e7eb);
   padding: 1rem;
   z-index: 10;
   
