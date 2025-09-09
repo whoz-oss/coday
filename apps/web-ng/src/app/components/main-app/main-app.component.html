@@ -35,7 +35,6 @@
     <!-- Choice Select - Overlay au-dessus de l'input-section -->
     <app-choice-select
       *ngIf="currentChoice"
-      [@slideIn]
       [options]="currentChoice.options"
       [labelHtml]="currentChoice.label"
       [isVisible]="!!currentChoice"
