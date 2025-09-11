@@ -24,6 +24,7 @@
   <!-- Panneau d'options -->
   <div 
     *ngIf="isVisible"
+    #optionsPanel
     class="options-panel"
     (click)="onPanelClick($event)"
     (keydown)="onPanelClick($event)"
