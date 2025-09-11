@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core'
+import { Component, OnInit, OnDestroy, inject, ElementRef, viewChild } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { Subject } from 'rxjs'
@@ -54,6 +54,8 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   // Modern Angular dependency injection
   private preferencesService = inject(PreferencesService)
   private voiceSynthesisService = inject(VoiceSynthesisService)
+
+  private readonly optionsPanel = viewChild<ElementRef<HTMLElement>>('optionsPanel')
   
   ngOnInit(): void {
     this.selectedVoiceLanguage = this.preferencesService.getVoiceLanguage()
@@ -129,6 +131,9 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   
   togglePanel(): void {
     this.isVisible = !this.isVisible
+    if (this.isVisible) {
+      setTimeout(() => this.adjustPanelHeight())
+    }
   }
   
   closePanel(): void {
@@ -205,5 +210,24 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   
   onBackdropClick(): void {
     this.closePanel()
+  }
+
+  private adjustPanelHeight(): void {
+    const optionsPanel = this.optionsPanel()
+
+    if (optionsPanel) {
+      const panel = optionsPanel.nativeElement
+      const rect = panel.getBoundingClientRect()
+      const viewportHeight = window.innerHeight
+      const bottomPadding = 20 // Space from bottom of screen
+
+      const availableHeight = viewportHeight - rect.top - bottomPadding
+
+      if (availableHeight < rect.height) {
+        panel.style.maxHeight = `${availableHeight}px`
+      } else {
+        panel.style.maxHeight = 'none'
+      }
+    }
   }
 }
