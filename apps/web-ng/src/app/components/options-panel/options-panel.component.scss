@@ -48,6 +48,7 @@
   min-width: 280px;
   max-width: 320px;
   z-index: 999;
+  overflow-y: auto;
   
   // Animation d'apparition
   animation: slideIn 0.2s ease-out;
