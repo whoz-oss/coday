@@ -73,7 +73,6 @@
   position: absolute;
   top: 100%;
   left: 0;
-  right: 0;
   z-index: 1000;
   background: var(--color-bg);
   border: 1px solid var(--color-border);
@@ -82,6 +81,11 @@
   margin-top: 0.25rem;
   max-height: 250px;
   overflow-y: auto;
+  
+  // Wider dropdown for thread names
+  min-width: 350px;
+  max-width: 450px;
+  width: max-content;
   
   // Dark theme shadow
   [data-theme="dark"] & {
@@ -212,9 +216,20 @@
 }
 
 // Responsive adjustments
+@media (max-width: 768px) {
+  .dropdown-menu {
+    // Adjust width for tablet
+    min-width: 280px;
+    max-width: calc(100vw - 2rem); // Don't exceed viewport
+  }
+}
+
 @media (max-width: 480px) {
   .dropdown-menu {
     max-height: 200px;
+    // Mobile width adjustments
+    min-width: 250px;
+    max-width: calc(100vw - 1rem);
   }
   
   .selector-button,

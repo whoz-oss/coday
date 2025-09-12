@@ -2,7 +2,8 @@ import { HttpErrorResponse } from '@angular/common/http'
 import { Injectable, OnDestroy, inject } from '@angular/core'
 import {
   CodayEvent,
-  ProjectSelectedEvent
+  ProjectSelectedEvent,
+  ThreadSelectedEvent
 } from '@coday/coday-events'
 import { SessionState } from '@coday/model/session-state'
 import { BehaviorSubject, Observable, Subject, catchError, map, of, tap } from 'rxjs'
@@ -76,8 +77,19 @@ export class SessionStateService implements OnDestroy {
    * Handle incoming Coday events and trigger state refresh when needed
    */
   private handleEvent(event: CodayEvent): void {
+    console.log('[SESSION-STATE] Event received:', event.type, event)
+    let shouldRefresh = false
+    
     if (event instanceof ProjectSelectedEvent) {
       console.log('[SESSION-STATE] Project selected event received')
+      shouldRefresh = true
+    } else if (event instanceof ThreadSelectedEvent) {
+      console.log('[SESSION-STATE] Thread selected event received:', event.threadName)
+      shouldRefresh = true
+    }
+    
+    if (shouldRefresh) {
+      console.log('[SESSION-STATE] Triggering state refresh due to event:', event.type)
       this.refreshState().subscribe({
         error: (error) => console.error('[SESSION-STATE] Auto-refresh failed:', error)
       })
