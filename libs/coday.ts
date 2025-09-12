@@ -122,6 +122,14 @@ export class Coday {
     this.interactor.sendEvent(messageEvent)
   }
 
+  /**
+   * Get the services instance (for internal use)
+   * @returns CodayServices instance
+   */
+  getServices(): CodayServices {
+    return this.services
+  }
+
   async run(): Promise<void> {
     this.initialPrompts = this.options.prompts ? [...this.options.prompts] : []
     // Main loop to keep waiting for user input
