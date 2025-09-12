@@ -80,7 +80,7 @@ export class ProjectSelectorComponent implements OnInit, OnDestroy {
    */
   getDisplayText(): string {
     if (!this.projects) {
-      return 'Chargement...'
+      return 'Loading...'
     }
     
     if (this.projects.current) {
@@ -88,14 +88,14 @@ export class ProjectSelectorComponent implements OnInit, OnDestroy {
     }
     
     if (!this.projects.canCreate) {
-      return 'Projet verrouillé'
+      return 'Projects locked'
     }
     
     if (!this.projects.list || this.projects.list.length === 0) {
-      return 'Aucun projet'
+      return 'No projet'
     }
     
-    return 'Sélectionner un projet'
+    return 'Select a project'
   }
   
   /**

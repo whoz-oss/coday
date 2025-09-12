@@ -1,15 +1,14 @@
-import { Injectable, OnDestroy, inject } from '@angular/core'
 import { HttpErrorResponse } from '@angular/common/http'
-import { BehaviorSubject, Observable, Subject, catchError, of, tap, map } from 'rxjs'
-import { takeUntil } from 'rxjs/operators'
-import { 
-  CodayEvent, 
-  ProjectSelectedEvent,
-  TextEvent
+import { Injectable, OnDestroy, inject } from '@angular/core'
+import {
+  CodayEvent,
+  ProjectSelectedEvent
 } from '@coday/coday-events'
+import { SessionState } from '@coday/model/session-state'
+import { BehaviorSubject, Observable, Subject, catchError, map, of, tap } from 'rxjs'
+import { takeUntil } from 'rxjs/operators'
 import { CodayApiService } from './coday-api.service'
 import { EventStreamService } from './event-stream.service'
-import { SessionState } from '@coday/model/session-state'
 
 // Default empty state
 const DEFAULT_SESSION_STATE: SessionState = {

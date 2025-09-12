@@ -118,11 +118,11 @@ export class ThreadSelectorComponent implements OnInit, OnDestroy {
    */
   getDisplayText(): string {
     if (!this.projects || !this.threads) {
-      return 'Chargement...'
+      return 'Loading...'
     }
     
     if (!this.hasProjectSelected()) {
-      return 'Aucun projet sélectionné'
+      return 'No project selected'
     }
     
     // Get current thread name if available
@@ -135,10 +135,10 @@ export class ThreadSelectorComponent implements OnInit, OnDestroy {
     
     // Check if we have threads available
     if (this.threads.list && this.threads.list.length > 0) {
-      return 'Sélectionner un thread'
+      return 'Select a thread'
     }
     
-    return 'Nouveau thread'
+    return 'New thread'
   }
   
   /**
@@ -150,7 +150,7 @@ export class ThreadSelectorComponent implements OnInit, OnDestroy {
     }
     
     if (!this.hasProjectSelected()) {
-      return 'Aucun projet sélectionné'
+      return 'No project selected'
     }
     
     // Show full thread name in tooltip if available
@@ -244,11 +244,11 @@ export class ThreadSelectorComponent implements OnInit, OnDestroy {
       const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
       
       if (diffDays === 0) {
-        return 'Aujourd\'hui'
+        return 'Today'
       } else if (diffDays === 1) {
-        return 'Hier'
+        return 'Yesterday'
       } else if (diffDays < 7) {
-        return `Il y a ${diffDays} jours`
+        return `${diffDays} days ago`
       } else {
         return date.toLocaleDateString('fr-FR', { 
           day: 'numeric', 
@@ -256,7 +256,7 @@ export class ThreadSelectorComponent implements OnInit, OnDestroy {
         })
       }
     } catch (error) {
-      return 'Date inconnue'
+      return 'No date'
     }
   }
   
