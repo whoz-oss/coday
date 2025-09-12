@@ -5,11 +5,12 @@ import { SessionStateService } from '../../core/services/session-state.service'
 import { ThemeSelectorComponent } from '../theme-selector/theme-selector.component'
 import { OptionsPanelComponent } from '../options-panel/options-panel.component'
 import { ProjectSelectorComponent } from '../project-selector/project-selector.component'
+import { ThreadSelectorComponent } from '../thread-selector/thread-selector.component'
 
 @Component({
   selector: 'app-floating-menu',
   standalone: true,
-  imports: [CommonModule, ThemeSelectorComponent, OptionsPanelComponent, ProjectSelectorComponent],
+  imports: [CommonModule, ThemeSelectorComponent, OptionsPanelComponent, ProjectSelectorComponent, ThreadSelectorComponent],
   templateUrl: './floating-menu.component.html',
   styleUrl: './floating-menu.component.scss'
 })

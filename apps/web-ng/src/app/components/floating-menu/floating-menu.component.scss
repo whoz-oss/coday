@@ -186,6 +186,25 @@
   }
 }
 
+// Special styling for main thread selector
+.main-thread-selector {
+  width: 100%;
+  
+  .selector-button {
+    font-size: 0.95rem;
+    font-weight: 500;
+    padding: 0.75rem 1rem;
+    
+    &.clickable:hover {
+      background: var(--color-bg-hover);
+    }
+  }
+  
+  .selector-text {
+    font-weight: 500;
+  }
+}
+
 // Backdrop
 .menu-backdrop {
   position: fixed;

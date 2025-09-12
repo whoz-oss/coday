@@ -1,0 +1,66 @@
+<div class="thread-selector" (click)="$event.stopPropagation()">
+  <!-- Main selector button -->
+  <button 
+    class="selector-button"
+    [class.clickable]="isClickable()"
+    [class.expanded]="isExpanded"
+    [disabled]="!isClickable()"
+    [title]="getTooltipText()"
+    (click)="toggleDropdown()"
+    type="button"
+  >
+    <span class="selector-icon">{{ getIcon() }}</span>
+    <span class="selector-text">{{ getDisplayText() }}</span>
+    <span class="dropdown-arrow" *ngIf="canShowDropdown()">
+      {{ isExpanded ? '▲' : '▼' }}
+    </span>
+  </button>
+  
+  <!-- Dropdown menu -->
+  <div 
+    *ngIf="isExpanded && canShowDropdown()" 
+    class="dropdown-menu"
+    role="menu"
+    aria-label="Sélection de thread"
+  >
+    <!-- New thread option (always first) -->
+    <button
+      class="dropdown-item new-thread-item"
+      (click)="createNewThread()"
+      type="button"
+      role="menuitem"
+    >
+      <span class="thread-icon">➕</span>
+      <span class="thread-name">Nouveau thread</span>
+    </button>
+    
+    <!-- Separator if we have existing threads -->
+    <div *ngIf="hasThreadsAvailable()" class="dropdown-separator"></div>
+    
+    <!-- Existing threads -->
+    <button
+      *ngFor="let thread of getAvailableThreads(); trackBy: trackByThreadId"
+      class="dropdown-item"
+      [class.current]="thread.id === threads?.current"
+      [title]="thread.name"
+      (click)="selectThread(thread.id)"
+      type="button"
+      role="menuitem"
+    >
+      <span class="thread-name">{{ thread.name }}</span>
+      <span class="thread-date">{{ formatDate(thread.modifiedDate) }}</span>
+      <span class="current-indicator" *ngIf="thread.id === threads?.current">✓</span>
+    </button>
+    
+    <div *ngIf="!hasThreadsAvailable()" class="dropdown-empty">
+      Aucun thread existant
+    </div>
+  </div>
+</div>
+
+<!-- Backdrop to close dropdown -->
+<div 
+  *ngIf="isExpanded"
+  class="dropdown-backdrop"
+  (click)="closeDropdown()"
+></div>
