@@ -5,8 +5,7 @@ import { takeUntil } from 'rxjs/operators'
 import { 
   CodayEvent, 
   ProjectSelectedEvent,
-  TextEvent,
-  MessageEvent
+  TextEvent
 } from '@coday/coday-events'
 import { CodayApiService } from './coday-api.service'
 import { EventStreamService } from './event-stream.service'
@@ -78,24 +77,8 @@ export class SessionStateService implements OnDestroy {
    * Handle incoming Coday events and trigger state refresh when needed
    */
   private handleEvent(event: CodayEvent): void {
-    let shouldRefresh = false
-    
     if (event instanceof ProjectSelectedEvent) {
       console.log('[SESSION-STATE] Project selected event received')
-      shouldRefresh = true
-    } else if (event instanceof TextEvent) {
-      // Check for thread selection messages
-      if (event.text && event.text.includes('Selected thread')) {
-        console.log('[SESSION-STATE] Thread selection detected')
-        shouldRefresh = true
-      }
-    } else if (event instanceof MessageEvent) {
-      // Thread might have changed, refresh to get updated current thread
-      shouldRefresh = true
-    }
-    
-    if (shouldRefresh) {
-      console.log('[SESSION-STATE] Triggering state refresh due to event:', event.type)
       this.refreshState().subscribe({
         error: (error) => console.error('[SESSION-STATE] Auto-refresh failed:', error)
       })
