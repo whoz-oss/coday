@@ -112,6 +112,58 @@ describe('AI Thread migrations', () => {
       expect(result.messages).toHaveLength(0)
     })
 
+    it('should handle thread with missing or null messages property', () => {
+      // Create a sample AI thread without messages property
+      const aiThreadWithoutMessages = {
+        id: 'test-thread-id',
+        name: 'Thread Without Messages',
+        username: 'test-user',
+        createdDate: '2024-01-01T00:00:00.000Z',
+        modifiedDate: '2024-01-01T00:00:00.000Z',
+        summary: 'Thread without messages property',
+        price: 0,
+      }
+
+      // Apply migration
+      const result1 = migrateData(aiThreadWithoutMessages, aiThreadMigrations)
+      expect(result1.version).toBe(2)
+      expect(result1.messages).toEqual([])
+
+      // Create a sample AI thread with null messages
+      const aiThreadWithNullMessages = {
+        id: 'test-thread-id',
+        name: 'Thread With Null Messages',
+        username: 'test-user',
+        createdDate: '2024-01-01T00:00:00.000Z',
+        modifiedDate: '2024-01-01T00:00:00.000Z',
+        summary: 'Thread with null messages',
+        price: 0,
+        messages: null,
+      }
+
+      // Apply migration
+      const result2 = migrateData(aiThreadWithNullMessages, aiThreadMigrations)
+      expect(result2.version).toBe(2)
+      expect(result2.messages).toEqual([])
+
+      // Create a sample AI thread with non-array messages
+      const aiThreadWithInvalidMessages = {
+        id: 'test-thread-id',
+        name: 'Thread With Invalid Messages',
+        username: 'test-user',
+        createdDate: '2024-01-01T00:00:00.000Z',
+        modifiedDate: '2024-01-01T00:00:00.000Z',
+        summary: 'Thread with invalid messages',
+        price: 0,
+        messages: 'not an array',
+      }
+
+      // Apply migration
+      const result3 = migrateData(aiThreadWithInvalidMessages, aiThreadMigrations)
+      expect(result3.version).toBe(2)
+      expect(result3.messages).toEqual([])
+    })
+
     it('should handle thread with only non-message events', () => {
       // Create a sample AI thread with only tool events
       const aiThread = {

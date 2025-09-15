@@ -81,10 +81,16 @@ export class AiThread {
     this.price = thread.price ?? 0
 
     // Filter on type first, then build events
-    this.messages = (thread.messages ?? [])
-      .filter((msg) => THREAD_MESSAGE_TYPES.includes(msg.type))
-      .map((msg) => buildCodayEvent(msg))
-      .filter((event): event is ThreadMessage => event !== undefined)
+    // Ensure messages is always initialized as an array, even if empty
+    const rawMessages = thread.messages ?? []
+    if (!Array.isArray(rawMessages)) {
+      this.messages = []
+    } else {
+      this.messages = rawMessages
+        .filter((msg) => THREAD_MESSAGE_TYPES.includes(msg.type))
+        .map((msg) => buildCodayEvent(msg))
+        .filter((event): event is ThreadMessage => event !== undefined)
+    }
   }
 
   /**
@@ -102,6 +108,11 @@ export class AiThread {
     messages: ThreadMessage[]
     compacted: boolean
   }> {
+    // Defensive programming: ensure messages is always an array
+    if (!this.messages || !Array.isArray(this.messages)) {
+      this.messages = []
+    }
+    
     if (!maxChars) return { messages: [...this.messages], compacted: false }
 
     // from the end (hence the toReversed), take all messages that fit into the charbudget
