@@ -4,7 +4,7 @@
   (keydown)="$event.stopPropagation()" 
   tabindex="0" 
   role="application" 
-  aria-label="Sélecteur de thread">
+  aria-label="Thread selector">
   <!-- Main selector button -->
   <button 
     class="selector-button"
@@ -25,7 +25,7 @@
     *ngIf="isExpanded && canShowDropdown()" 
     class="dropdown-menu"
     role="menu"
-    aria-label="Sélection de thread"
+    aria-label="Thread selection"
   >
     <!-- New thread option (always first) -->
     <button
@@ -35,7 +35,7 @@
       role="menuitem"
     >
       <span class="thread-icon">➕</span>
-      <span class="thread-name">Nouveau thread</span>
+      <span class="thread-name">New thread</span>
     </button>
     
     <!-- Separator if we have existing threads -->
@@ -57,7 +57,7 @@
     </button>
     
     <div *ngIf="!hasThreadsAvailable()" class="dropdown-empty">
-      Aucun thread existant
+      No existing threads
     </div>
   </div>
 </div>
@@ -70,5 +70,5 @@
   (keydown.escape)="closeDropdown()"
   tabindex="0"
   role="button"
-  aria-label="Fermer le menu de sélection"
+  aria-label="Close selection menu"
 ></div>

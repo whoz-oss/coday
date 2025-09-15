@@ -83,8 +83,8 @@ export class ThreadSelectorComponent implements OnInit, OnDestroy {
   createNewThread(): void {
     console.log('[THREAD-SELECTOR] Creating new thread')
     
-    // Use thread select without ID to trigger creation
-    this.codayService.sendMessage('thread select')
+    // Use thread new command to create a new thread
+    this.codayService.sendMessage('thread new')
     
     // Close dropdown
     this.closeDropdown()
