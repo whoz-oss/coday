@@ -1,6 +1,6 @@
+import * as path from 'path'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
-import * as path from 'path'
 
 // Define the argv type
 export interface Argv {

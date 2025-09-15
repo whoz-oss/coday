@@ -18,7 +18,7 @@ git checkout -B "chore/release" origin/master
 # 3. Run nx release
 # /!\ WARNING, interactive step /!\
 echo "Running nx release --skip-publish..."
-nx release --skip-publish
+yarn run nx release --skip-publish
 
 # 4. Push branch to remote server
 echo "Pushing chore/release branch to remote server..."
