@@ -13,8 +13,8 @@ import { ThreadSummary } from './ai-thread.types'
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import { UserService } from '../service/user.service'
 import { Killable } from '@coday/model/killable'
-import { Interactor } from '../model/interactor'
 import { ThreadSelectedEvent } from '@coday/coday-events'
+import { Interactor } from '@coday/model/interactor'
 
 export class AiThreadService implements Killable {
   private readonly activeThread$ = new BehaviorSubject<AiThread | null>(null)

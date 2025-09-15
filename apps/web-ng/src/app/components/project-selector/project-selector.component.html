@@ -1,4 +1,10 @@
-<div class="project-selector" (click)="$event.stopPropagation()">
+<div 
+  class="project-selector" 
+  (click)="$event.stopPropagation()" 
+  (keydown)="$event.stopPropagation()" 
+  tabindex="0" 
+  role="application" 
+  aria-label="Sélecteur de projet">
   <!-- Main selector button -->
   <button 
     class="selector-button"
@@ -45,4 +51,8 @@
   *ngIf="isExpanded"
   class="dropdown-backdrop"
   (click)="closeDropdown()"
+  (keydown.escape)="closeDropdown()"
+  tabindex="0"
+  role="button"
+  aria-label="Fermer le menu de sélection"
 ></div>

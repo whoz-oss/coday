@@ -13,9 +13,9 @@ import { McpConfigService } from '@coday/service/mcp-config.service'
 import { WebhookService } from '@coday/service/webhook.service'
 import { CodayLogger } from '@coday/service/coday-logger'
 import { SessionState } from '@coday/model/session-state'
-import { ThreadSummary } from '../../../libs/ai-thread/ai-thread.types'
 import { firstValueFrom } from 'rxjs'
 import { debugLog } from './log'
+import { ThreadSummary } from '@coday/ai-thread/ai-thread.types'
 
 export class ServerClient {
   private readonly heartbeatInterval: NodeJS.Timeout
