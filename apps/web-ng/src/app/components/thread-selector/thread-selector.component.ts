@@ -250,7 +250,7 @@ export class ThreadSelectorComponent implements OnInit, OnDestroy {
       } else if (diffDays < 7) {
         return `${diffDays} days ago`
       } else {
-        return date.toLocaleDateString('fr-FR', { 
+        return date.toLocaleDateString('en-EN', { 
           day: 'numeric', 
           month: 'short' 
         })
