@@ -62,23 +62,18 @@
   text-overflow: ellipsis;
 }
 
-.dropdown-arrow {
-  font-size: 0.8rem;
-  color: var(--color-text-muted);
-  margin-left: 0.5rem;
-  transition: transform 0.2s ease;
-}
+
 
 .dropdown-menu {
   position: absolute;
-  top: 100%;
-  left: 0;
+  top: 0;        // Aligné en haut du bouton
+  left: 100%;    // Positioné à droite du bouton
   z-index: 1000;
   background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  margin-top: 0.25rem;
+  margin-left: 0.25rem;  // Espacement à droite du bouton
   max-height: 250px;
   overflow-y: auto;
   
