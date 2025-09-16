@@ -67,12 +67,11 @@ import { ThemeService, ThemeMode } from '../../core/services/theme.service'
     
     .theme-toggle-btn {
       background: none;
-      border: 1px solid var(--color-border, #d1d5db);
+      border: none;
       border-radius: 4px;
       padding: 0.5rem;
       cursor: pointer;
       font-size: 1rem;
-      color: var(--color-text, #374151);
       
       &:hover {
         background: var(--color-bg-secondary, #f3f4f6);

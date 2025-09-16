@@ -398,6 +398,34 @@ app.get('/api/event/:eventId', (req: express.Request, res: express.Response) => 
   }
 })
 
+// GET endpoint for retrieving current session state
+app.get('/api/session/state', async (req: express.Request, res: express.Response) => {
+  try {
+    const clientId = req.query.clientId as string
+    debugLog('SESSION_STATE', `clientId: ${clientId}, requesting session state`)
+    
+    if (!clientId) {
+      res.status(400).json({ error: 'Client ID is required' })
+      return
+    }
+
+    const client = clientManager.get(clientId)
+    if (!client) {
+      res.status(404).json({ error: 'Client not found' })
+      return
+    }
+
+    client.updateLastConnection()
+
+    // Delegate to ServerClient for session state logic
+    const sessionState = await client.getSessionState()
+    res.status(200).json(sessionState)
+  } catch (error) {
+    console.error('Error retrieving session state:', error)
+    res.status(500).json({ error: 'Error retrieving session state' })
+  }
+})
+
 // Implement SSE for Heartbeat
 app.get('/events', (req: express.Request, res: express.Response) => {
   const clientId = req.query.clientId as string

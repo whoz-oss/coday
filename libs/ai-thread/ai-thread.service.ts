@@ -13,6 +13,8 @@ import { ThreadSummary } from './ai-thread.types'
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import { UserService } from '../service/user.service'
 import { Killable } from '@coday/model/killable'
+import { ThreadSelectedEvent } from '@coday/coday-events'
+import { Interactor } from '@coday/model/interactor'
 
 export class AiThreadService implements Killable {
   private readonly activeThread$ = new BehaviorSubject<AiThread | null>(null)
@@ -27,7 +29,8 @@ export class AiThreadService implements Killable {
 
   constructor(
     private readonly repositoryFactory: AiThreadRepositoryFactory,
-    userService: UserService
+    userService: UserService,
+    private readonly interactor?: Interactor
   ) {
     // Reset active thread when repository changes
     this.repositoryFactory.repository.pipe(filter((repository) => !!repository)).subscribe(() => {
@@ -79,6 +82,15 @@ export class AiThreadService implements Killable {
         throw new Error(`Thread ${threadId} not found`)
       }
       this.activeThread$.next(thread)
+      
+      // Emit ThreadSelectedEvent
+      if (this.interactor) {
+        this.interactor.sendEvent(new ThreadSelectedEvent({ 
+          threadId: thread.id, 
+          threadName: thread.name 
+        }))
+      }
+      
       return thread
     }
 
@@ -102,6 +114,16 @@ export class AiThreadService implements Killable {
     }
 
     this.activeThread$.next(thread)
+    
+    // Emit ThreadSelectedEvent
+    if (this.interactor) {
+      this.interactor.sendEvent(new ThreadSelectedEvent({ 
+        threadId: thread.id, 
+        threadName: thread.name 
+      }))
+      this.interactor.displayText(`Selected thread '${thread.name}'`)
+    }
+    
     return thread
   }
 

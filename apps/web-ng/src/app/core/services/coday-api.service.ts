@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http'
 import { Observable } from 'rxjs'
 import { tap, map } from 'rxjs/operators'
 import { CodayEvent } from '@coday/coday-events'
+import { SessionState } from '@coday/model/session-state'
 
 @Injectable({
   providedIn: 'root'
@@ -82,17 +83,21 @@ export class CodayApiService {
     })
   }
 
-  /**
-   * Upload files
-   */
-  uploadFiles(files: { clientId: string, content: string, mimeType: string, filename: string }[]): Observable<any> {
-    return this.http.post('/api/files/upload', files[0]) // Simplified for now
-  }
 
   /**
    * Get the SSE URL for events
    */
   getEventsUrl(): string {
     return `/events?clientId=${this.clientId}`
+  }
+
+  /**
+   * Get session state (projects and threads)
+   */
+  getSessionState(): Observable<SessionState> {
+    console.log('[API] Getting session state')
+    return this.http.get<SessionState>(`/api/session/state?clientId=${this.clientId}`).pipe(
+      tap(state => console.log('[API] Session state received:', state))
+    )
   }
 }

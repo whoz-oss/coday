@@ -244,6 +244,18 @@ export class ProjectSelectedEvent extends CodayEvent {
   }
 }
 
+export class ThreadSelectedEvent extends CodayEvent {
+  threadId: string
+  threadName: string
+  static override type = 'thread_selected'
+
+  constructor(event: Partial<ThreadSelectedEvent>) {
+    super(event, ThreadSelectedEvent.type)
+    this.threadId = event.threadId!
+    this.threadName = event.threadName!
+  }
+}
+
 export class ThinkingEvent extends CodayEvent {
   static override type = 'thinking'
   static debounce = 5000
@@ -293,6 +305,7 @@ const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [HeartBeatEvent.type]: HeartBeatEvent,
   [InviteEvent.type]: InviteEvent,
   [ProjectSelectedEvent.type]: ProjectSelectedEvent,
+  [ThreadSelectedEvent.type]: ThreadSelectedEvent,
   [ToolRequestEvent.type]: ToolRequestEvent,
   [ToolResponseEvent.type]: ToolResponseEvent,
   [TextEvent.type]: TextEvent,

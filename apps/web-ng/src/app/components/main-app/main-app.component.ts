@@ -13,6 +13,7 @@ import { ChoiceSelectComponent, ChoiceOption } from '../choice-select/choice-sel
 import { CodayService } from '../../core/services/coday.service'
 import { CodayApiService } from '../../core/services/coday-api.service'
 import { ConnectionStatus } from '../../core/services/event-stream.service'
+import { SessionStateService } from '../../core/services/session-state.service'
 import { ImageUploadService } from '../../services/image-upload.service'
 import { TabTitleService } from '../../services/tab-title.service'
 
@@ -59,12 +60,14 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   // Modern Angular dependency injection
   private codayService = inject(CodayService)
   private codayApiService = inject(CodayApiService)
+  private sessionStateService = inject(SessionStateService) // Injection pour initialiser le service
   private imageUploadService = inject(ImageUploadService)
   private titleService = inject(TabTitleService) // Renommé pour éviter les conflits
   
   constructor() {
     this.clientId = this.codayApiService.getClientId()
     console.log('[MAIN-APP] Constructor - clientId:', this.clientId)
+    console.log('[MAIN-APP] SessionStateService injected and will initialize:', !!this.sessionStateService)
   }
 
   ngOnInit(): void {

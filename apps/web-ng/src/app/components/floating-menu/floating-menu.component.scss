@@ -87,18 +87,12 @@
   }
 }
 
-// Project info section
-.project-info {
-  .project-title {
-    margin: 0 0 0.25rem 0;
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--color-text, #282a36);
-  }
+// Project selector section (moved to top)
+.project-selector-section {
+  padding: 1rem !important; // More padding for prominence
   
-  .project-subtitle {
-    font-size: 0.8rem;
-    color: var(--color-text-secondary, #6272a4);
+  .main-project-selector {
+    width: 100%;
   }
 }
 
@@ -130,6 +124,7 @@
     width: 20px;
     text-align: center;
   }
+  
   
   .menu-text {
     flex: 1;
@@ -168,6 +163,46 @@
   .inline-selector,
   .inline-panel {
     flex-shrink: 0;
+  }
+}
+
+// Special styling for main project selector
+.main-project-selector {
+  // Override any conflicting styles from the component
+  .selector-button {
+    font-size: 1rem;
+    font-weight: 600;
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--color-border, #e5e7eb);
+    border-radius: 8px;
+    background: var(--color-bg, #ffffff);
+    
+    &.clickable:hover {
+      border-color: var(--color-primary, #7064fb);
+    }
+  }
+  
+  .selector-text {
+    font-weight: 600;
+  }
+}
+
+// Special styling for main thread selector
+.main-thread-selector {
+  width: 100%;
+  
+  .selector-button {
+    font-size: 0.95rem;
+    font-weight: 500;
+    padding: 0.75rem 1rem;
+    
+    &.clickable:hover {
+      background: var(--color-bg-hover);
+    }
+  }
+  
+  .selector-text {
+    font-weight: 500;
   }
 }
 
