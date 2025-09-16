@@ -11,7 +11,7 @@ import { CodayLogger } from './coday-logger'
 // Service configuration
 const INITIAL_DELAY_MINUTES = 5
 const CLEANUP_INTERVAL_HOURS = 24
-const TTL_DAYS = 90
+const TTL_DAYS = 30
 const BATCH_SIZE = 100
 
 export class ThreadCleanupService {
