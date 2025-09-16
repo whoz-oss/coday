@@ -4,7 +4,11 @@ import { CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEve
 import { AiThread } from '../ai-thread/ai-thread'
 import { Observable, Subject } from 'rxjs'
 import { ThreadMessage } from '../ai-thread/ai-thread.types'
-import { ChatCompletionMessageParam, ChatCompletionSystemMessageParam } from 'openai/resources/chat/completions'
+import {
+  ChatCompletionMessageFunctionToolCall,
+  ChatCompletionMessageParam,
+  ChatCompletionSystemMessageParam,
+} from 'openai/resources/chat/completions'
 import { MessageCreateParams } from 'openai/resources/beta/threads/messages'
 import { AssistantStream } from 'openai/lib/AssistantStream'
 import { RunSubmitToolOutputsParams } from 'openai/resources/beta/threads/runs/runs'
@@ -180,14 +184,16 @@ export class OpenaiClient extends AiClient {
       const text = firstChoice.message.content?.trim()
       this.handleText(thread, text, agent, subscriber)
 
-      const toolRequests = firstChoice.message?.tool_calls?.map(
-        (toolCall) =>
-          new ToolRequestEvent({
-            toolRequestId: toolCall.id,
-            name: toolCall.function.name,
-            args: toolCall.function.arguments,
-          })
-      )
+      const toolRequests = firstChoice.message?.tool_calls
+        ?.filter((toolCall): toolCall is ChatCompletionMessageFunctionToolCall => 'function' in toolCall)
+        .map(
+          (toolCall) =>
+            new ToolRequestEvent({
+              toolRequestId: toolCall.id,
+              name: toolCall.function.name,
+              args: toolCall.function.arguments,
+            })
+        )
 
       if (await this.shouldProcessAgainAfterResponse(text, toolRequests, agent, thread)) {
         // then tool responses to send
@@ -252,24 +258,23 @@ export class OpenaiClient extends AiClient {
         const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
 
         // Convert rich content to OpenAI format
-        const openaiContent: string | OpenAI.ChatCompletionContentPart[] =
-          content.map((c) => {
-                if (c.type === 'text') {
-                  return { type: 'text' as const, text: c.content }
-                }
-                if (c.type === 'image') {
-                  const image = {
-                    type: 'image_url' as const,
-                    image_url: {
-                      url: `data:${c.mimeType};base64,${c.content}`,
-                      detail: 'auto' as const, // Let OpenAI choose the appropriate detail level
-                    },
-                  }
-                  console.log(`got an image in message event`)
-                  return image
-                }
-                throw new Error(`Unknown content type: ${(c as any).type}`)
-              })
+        const openaiContent: string | OpenAI.ChatCompletionContentPart[] = content.map((c) => {
+          if (c.type === 'text') {
+            return { type: 'text' as const, text: c.content }
+          }
+          if (c.type === 'image') {
+            const image = {
+              type: 'image_url' as const,
+              image_url: {
+                url: `data:${c.mimeType};base64,${c.content}`,
+                detail: 'auto' as const, // Let OpenAI choose the appropriate detail level
+              },
+            }
+            console.log(`got an image in message event`)
+            return image
+          }
+          throw new Error(`Unknown content type: ${(c as any).type}`)
+        })
 
         if (msg.role === 'assistant') {
           return [
@@ -401,7 +406,10 @@ export class OpenaiClient extends AiClient {
       const content =
         typeof m.content === 'string'
           ? m.content
-          : m.content.filter(c => c.type === 'text').map(c => c.content).join('\n')
+          : m.content
+              .filter((c) => c.type === 'text')
+              .map((c) => c.content)
+              .join('\n')
 
       return {
         role: m.role,
