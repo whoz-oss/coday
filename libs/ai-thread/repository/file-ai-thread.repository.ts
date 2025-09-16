@@ -2,19 +2,16 @@
  * @fileoverview File-based implementation of ThreadRepository using YAML files
  */
 
-// eslint-disable-next-line @nx/enforce-module-boundaries
 import { promises as fs } from 'fs'
-// eslint-disable-next-line @nx/enforce-module-boundaries
 import path from 'path'
-// eslint-disable-next-line @nx/enforce-module-boundaries
 import yaml from 'yaml'
 import { AiThread } from '../ai-thread'
 import { AiThreadRepository } from '../ai-thread.repository'
 import { ThreadRepositoryError, ThreadSummary } from '../ai-thread.types'
-// eslint-disable-next-line @nx/enforce-module-boundaries
-import { migrateData } from '../../utils/data-migration'
 import { aiThreadMigrations } from '../ai-thread.migrations'
 import { writeYamlFile } from '@coday/service/write-yaml-file'
+// eslint-disable-next-line @nx/enforce-module-boundaries
+import { migrateData } from '../../utils/data-migration'
 
 /**
  * Helper function to safely read YAML file content

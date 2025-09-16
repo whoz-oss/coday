@@ -17,7 +17,8 @@ export class SelectProjectHandler extends CommandHandler {
 
   async handle(_command: string, context: CommandContext): Promise<CommandContext> {
     try {
-      return (await this.selectProject()) ?? context
+      const projectName = this.getSubCommand(_command)
+      return (await this.selectProject(projectName)) ?? context
     } catch (_: any) {
       this.interactor.error(`Invalid project selection because: ${_.toString()}`)
       return context

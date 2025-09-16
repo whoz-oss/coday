@@ -38,7 +38,7 @@ export class Coday {
     this.interactor.debug('Coday started with debug')
     this.configHandler = new ConfigHandler(interactor, this.services)
     this.maxIterations = MAX_ITERATIONS
-    this.aiThreadService = new AiThreadService(new AiThreadRepositoryFactory(this.services.project), services.user)
+    this.aiThreadService = new AiThreadService(new AiThreadRepositoryFactory(this.services.project), services.user, interactor)
     this.aiThreadService.activeThread.subscribe((aiThread) => {
       if (!this.context || !aiThread) return
       this.context.aiThread = aiThread
@@ -120,6 +120,14 @@ export class Coday {
       name: username
     })
     this.interactor.sendEvent(messageEvent)
+  }
+
+  /**
+   * Get the services instance (for internal use)
+   * @returns CodayServices instance
+   */
+  getServices(): CodayServices {
+    return this.services
   }
 
   async run(): Promise<void> {
