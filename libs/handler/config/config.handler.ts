@@ -7,6 +7,7 @@ import { WebhookHandler } from './webhook.handler'
 import { Interactor, NestedHandler } from '../../model'
 import { CodayServices } from '../../coday-services'
 import { UserBioHandler } from './user-bio.handler'
+import { CostLimitHandler } from './cost-limit.handler'
 
 export class ConfigHandler extends NestedHandler {
   selectProjectHandler: SelectProjectHandler
@@ -32,6 +33,7 @@ export class ConfigHandler extends NestedHandler {
       new McpConfigHandler(this.interactor, this.services),
       new WebhookHandler(this.interactor, this.services),
       new UserBioHandler(this.interactor, this.services),
+      new CostLimitHandler(this.interactor),
     ]
   }
 }
