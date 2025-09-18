@@ -1,9 +1,9 @@
-import { Component, Input, Output, EventEmitter, ViewChild, ElementRef, AfterViewInit, OnChanges, SimpleChanges, OnInit, OnDestroy, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
+import { AfterViewInit, Component, ElementRef, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges, ViewChild, inject } from '@angular/core'
 import { FormsModule } from '@angular/forms'
-import { BehaviorSubject, Observable } from 'rxjs'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { marked } from 'marked'
+import { BehaviorSubject, Observable } from 'rxjs'
 
 export interface ChoiceOption {
   value: string
@@ -17,7 +17,7 @@ export interface ChoiceOption {
   templateUrl: './choice-select.component.html',
   styleUrl: './choice-select.component.scss'
 })
-export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnInit, OnDestroy {
+export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input() options: ChoiceOption[] = []
   @Input() set labelHtml(value: string | SafeHtml) {
     // Si c'est déjà du SafeHtml, on l'utilise directement
@@ -43,9 +43,6 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnInit, 
   // Modern Angular dependency injection
   private sanitizer = inject(DomSanitizer)
   
-  ngOnInit(): void {
-    // Initialization logic if needed
-  }
   
   ngOnDestroy(): void {
     this.renderedLabelSubject.complete()
