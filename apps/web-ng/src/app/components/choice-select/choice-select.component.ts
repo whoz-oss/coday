@@ -1,6 +1,9 @@
-import { Component, Input, Output, EventEmitter, ViewChild, ElementRef, AfterViewInit, OnChanges, SimpleChanges } from '@angular/core'
+import { Component, Input, Output, EventEmitter, ViewChild, ElementRef, AfterViewInit, OnChanges, SimpleChanges, OnInit, OnDestroy, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
+import { BehaviorSubject, Observable } from 'rxjs'
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
+import { marked } from 'marked'
 
 export interface ChoiceOption {
   value: string
@@ -14,9 +17,17 @@ export interface ChoiceOption {
   templateUrl: './choice-select.component.html',
   styleUrl: './choice-select.component.scss'
 })
-export class ChoiceSelectComponent implements AfterViewInit, OnChanges {
+export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnInit, OnDestroy {
   @Input() options: ChoiceOption[] = []
-  @Input() labelHtml: string = ''
+  @Input() set labelHtml(value: string | SafeHtml) {
+    // Si c'est déjà du SafeHtml, on l'utilise directement
+    if (typeof value === 'object') {
+      this.renderedLabelSubject.next(value as SafeHtml)
+    } else {
+      // Sinon on fait le rendu markdown
+      this.renderLabelMarkdown(value as string)
+    }
+  }
   @Input() isVisible: boolean = false
   
   @Output() choiceSelected = new EventEmitter<string>()
@@ -24,6 +35,21 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges {
   @ViewChild('choiceSelect') selectElement!: ElementRef<HTMLSelectElement>
   
   selectedValue: string = ''
+  
+  // Observable pour le rendu asynchrone du label
+  private renderedLabelSubject = new BehaviorSubject<SafeHtml>('')
+  renderedLabel$: Observable<SafeHtml> = this.renderedLabelSubject.asObservable()
+  
+  // Modern Angular dependency injection
+  private sanitizer = inject(DomSanitizer)
+  
+  ngOnInit(): void {
+    // Initialization logic if needed
+  }
+  
+  ngOnDestroy(): void {
+    this.renderedLabelSubject.complete()
+  }
   
   ngAfterViewInit(): void {
     // Focus automatique quand le composant devient visible
@@ -64,7 +90,25 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges {
     console.log('[CHOICE-SELECT] Selection changed to:', this.selectedValue)
   }
   
+  /**
+   * Rendre le markdown du label de manière asynchrone
+   */
+  private async renderLabelMarkdown(label: string): Promise<void> {
+    if (!label) {
+      this.renderedLabelSubject.next(this.sanitizer.bypassSecurityTrustHtml(''))
+      return
+    }
+    
+    try {
+      const html = await marked.parse(label)
+      this.renderedLabelSubject.next(this.sanitizer.bypassSecurityTrustHtml(html))
+    } catch (error) {
+      console.error('[CHOICE-SELECT] Error parsing label markdown:', error)
+      // En cas d'erreur, afficher le texte brut
+      this.renderedLabelSubject.next(this.sanitizer.bypassSecurityTrustHtml(label))
+    }
+  }
+  
   // TODO: Connect to CodayEventHandler to handle ChoiceEvent
   // TODO: Add voice synthesis integration
-  // TODO: Add markdown parsing for labels
 }
