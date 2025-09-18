@@ -4,7 +4,7 @@
   (ngSubmit)="onSubmit()"
 >
   <!-- Label en haut -->
-  <div class="choice-label" [innerHTML]="labelHtml"></div>
+  <div class="choice-label" [innerHTML]="renderedLabel$ | async"></div>
   
   <!-- Select et bouton sur la même ligne -->
   <div class="select-button-row">
