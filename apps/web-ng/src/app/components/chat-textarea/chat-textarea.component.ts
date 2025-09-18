@@ -1,7 +1,7 @@
 import { Component, Output, EventEmitter, Input, OnInit, OnDestroy, AfterViewInit, ViewChild, ElementRef, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
-import { Subscription } from 'rxjs'
+import { Subscription, BehaviorSubject, Observable } from 'rxjs'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { marked } from 'marked'
 import { PreferencesService } from '../../services/preferences.service'
@@ -41,7 +41,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   
   // Invite properties
   currentInvite: string = ''
-  renderedInvite: SafeHtml = ''
+  private renderedInviteSubject = new BehaviorSubject<SafeHtml>('')
+  renderedInvite$: Observable<SafeHtml> = this.renderedInviteSubject.asObservable()
   showInvite: boolean = false
   private codaySubscription?: Subscription
   
@@ -89,6 +90,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
       this.codaySubscription.unsubscribe()
     }
     this.clearPendingLineBreaks()
+    this.renderedInviteSubject.complete()
   }
   
   onKeyDown(event: KeyboardEvent) {
@@ -438,14 +440,14 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   /**
    * Traiter un événement InviteEvent
    */
-  private async handleInviteEvent(invite: string, defaultValue?: string): Promise<void> {
+  private handleInviteEvent(invite: string, defaultValue?: string): void {
     console.log('[CHAT-TEXTAREA] Handling invite event:', invite)
     
     this.currentInvite = invite
     this.showInvite = true
     
-    // Rendre le markdown de l'invite
-    await this.renderInviteMarkdown(invite)
+    // Rendre le markdown de l'invite de manière asynchrone
+    this.renderInviteMarkdown(invite)
     
     // Définir la valeur par défaut si fournie
     if (defaultValue) {
@@ -465,10 +467,10 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   private async renderInviteMarkdown(invite: string): Promise<void> {
     try {
       const html = await marked.parse(invite)
-      this.renderedInvite = this.sanitizer.bypassSecurityTrustHtml(html)
+      this.renderedInviteSubject.next(this.sanitizer.bypassSecurityTrustHtml(html))
     } catch (error) {
       console.error('[CHAT-TEXTAREA] Error parsing invite markdown:', error)
-      this.renderedInvite = this.sanitizer.bypassSecurityTrustHtml(invite)
+      this.renderedInviteSubject.next(this.sanitizer.bypassSecurityTrustHtml(invite))
     }
   }
   
@@ -478,7 +480,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   private hideInvite(): void {
     this.showInvite = false
     this.currentInvite = ''
-    this.renderedInvite = ''
+    this.renderedInviteSubject.next('')
   }
   
   // TODO: Add file upload drag & drop
