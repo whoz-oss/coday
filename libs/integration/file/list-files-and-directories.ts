@@ -77,7 +77,6 @@ const getFileInfo = async (filePath: string, fileName: string): Promise<string> 
 }
 
 export const listFilesAndDirectories = async ({ relPath, root }: ListFilesInput): Promise<string[]> => {
-  try {
     // Validate path security and get full path
     const fullPath = validatePathSecurity(relPath, root)
     
@@ -97,9 +96,4 @@ export const listFilesAndDirectories = async ({ relPath, root }: ListFilesInput)
     )
 
     return result
-    
-  } catch (error: any) {
-    const errorMsg = `Error listing directory: ${error.message || error}`
-    throw new Error(errorMsg)
-  }
 }

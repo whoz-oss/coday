@@ -174,7 +174,6 @@ export class FileTools extends AssistantToolFactory {
 
     const listProjectFilesAndDirectories = ({ relPath }: { relPath: string }) => {
         return listFilesAndDirectories({ relPath, root: context.project.root})
-  
     }
 
     const listProjectFilesAndDirectoriesFunction: FunctionTool<{ relPath: string }> = {
