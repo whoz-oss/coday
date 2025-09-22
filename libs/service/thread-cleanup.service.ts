@@ -11,8 +11,13 @@ import { CodayLogger } from './coday-logger'
 // Service configuration
 const INITIAL_DELAY_MINUTES = 5
 const CLEANUP_INTERVAL_HOURS = 24
-const TTL_DAYS = 30
 const BATCH_SIZE = 100
+
+// Retention periods based on user message count
+const RETENTION_RULES = {
+  SHORT_THREADS: 7,   // 3 or fewer user messages: 7 days
+  LONG_THREADS: 30    // 4 or more user messages: 30 days
+}
 
 export class ThreadCleanupService {
   private cleanupTimer: NodeJS.Timeout | null = null
@@ -34,7 +39,7 @@ export class ThreadCleanupService {
     }
 
     this.isRunning = true
-    this.log(`Starting thread cleanup service (TTL: ${TTL_DAYS} days)`)
+    this.log('Starting thread cleanup service with user message-based retention')
 
     // First cleanup after initial delay
     setTimeout(
@@ -197,13 +202,17 @@ export class ThreadCleanupService {
           return // Skip invalid files
         }
 
-        // Check if thread is expired
-        if (this.isThreadExpired(threadData.modifiedDate)) {
+        // Check if thread should be deleted
+        if (this.shouldDeleteThread(threadData)) {
+          const userMessageCount = this.countUserMessages(threadData.messages || [])
+          const daysSinceModified = this.getDaysSinceModified(threadData.modifiedDate)
+          
           await fs.unlink(filePath)
           deleted++
+          
           // Audit trail logging
           this.logger.logThreadCleanup(projectName, file)
-          console.log(`ThreadCleanup: Deleted expired thread: ${threadData.id || file} from project ${projectName}`)
+          console.log(`ThreadCleanup: Deleted thread ${threadData.id || file} (${userMessageCount} user messages, ${daysSinceModified} days old)`)
         }
       })
     )
@@ -212,12 +221,43 @@ export class ThreadCleanupService {
   }
 
   /**
-   * Checks if a thread is expired
+   * Determines if a thread should be deleted based on user message count and age
    */
-  private isThreadExpired(modifiedDate: string): boolean {
-    const expirationDate = new Date(modifiedDate)
-    expirationDate.setDate(expirationDate.getDate() + TTL_DAYS)
-    return new Date() > expirationDate
+  private shouldDeleteThread(threadData: any): boolean {
+    if (!threadData || !threadData.modifiedDate) {
+      return false // Skip invalid threads
+    }
+
+    // Count user messages
+    const userMessageCount = this.countUserMessages(threadData.messages || [])
+    
+    // Determine retention period: 7 days for short threads, 30 days for longer ones
+    const retentionDays = userMessageCount <= 3 
+      ? RETENTION_RULES.SHORT_THREADS 
+      : RETENTION_RULES.LONG_THREADS
+
+    // Check if thread has exceeded its retention period
+    const daysSinceModified = this.getDaysSinceModified(threadData.modifiedDate)
+    return daysSinceModified > retentionDays
+  }
+
+  /**
+   * Counts user messages in thread data
+   */
+  private countUserMessages(messages: any[]): number {
+    return messages.filter(msg => 
+      msg && msg.type === 'message' && msg.role === 'user'
+    ).length
+  }
+
+  /**
+   * Calculates days since thread was modified
+   */
+  private getDaysSinceModified(modifiedDate: string): number {
+    const modified = new Date(modifiedDate)
+    const now = new Date()
+    const diffTime = now.getTime() - modified.getTime()
+    return Math.floor(diffTime / (1000 * 60 * 60 * 24))
   }
 
   /**
