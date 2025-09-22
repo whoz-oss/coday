@@ -173,13 +173,8 @@ export class FileTools extends AssistantToolFactory {
     result.push(searchProjectFileFunction)
 
     const listProjectFilesAndDirectories = ({ relPath }: { relPath: string }) => {
-      try {
-        return listFilesAndDirectories({ relPath, root: context.project.root, interactor: this.interactor })
-      } catch (error: any) {
-        const errorMessage = `Could not list files and directories in '${relPath}', got error:\n${error}`
-        this.interactor.error(errorMessage)
-        return errorMessage
-      }
+        return listFilesAndDirectories({ relPath, root: context.project.root})
+  
     }
 
     const listProjectFilesAndDirectoriesFunction: FunctionTool<{ relPath: string }> = {

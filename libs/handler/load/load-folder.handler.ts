@@ -26,7 +26,6 @@ export class LoadFolderHandler extends CommandHandler {
       entries = await listFilesAndDirectories({
         relPath: folderPath,
         root: context.project.root,
-        interactor: this.interactor,
       })
 
       const fileCommands = entries
