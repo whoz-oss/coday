@@ -55,15 +55,20 @@ export class AiThreadService implements Killable {
     )
   }
 
-  create(name?: string): AiThread {
+  async create(name?: string): Promise<AiThread> {
     const newThread = new AiThread({
       id: '', // TODO falsy, will be overriden by repository, shitty pattern FTW...
       username: this.username,
-      name: name ? name : 'Temporary thread',
+      name: name ?? '',
       price: 0,
     })
-    this.activeThread$.next(newThread)
-    return newThread
+    
+    // Save the thread immediately upon creation
+    const repository = await this.getRepository()
+    const savedThread = await repository.save(newThread)
+    
+    this.activeThread$.next(savedThread)
+    return savedThread
   }
 
   /**
@@ -97,7 +102,7 @@ export class AiThreadService implements Killable {
     // No ID provided, get last used or create new
     const threads = await repository.listThreadsByUsername(this.username)
     if (threads.length === 0) {
-      return this.create()
+      return await this.create()
     }
 
     // Select most recent thread
@@ -142,10 +147,8 @@ export class AiThreadService implements Killable {
 
     const repository = await this.getRepository()
 
-    // If renaming, update the name and modified date
+    // If renaming, update the name
     if (newName) {
-      // assign new id
-      thread.id = crypto.randomUUID()
       thread.name = newName
     }
     const saved = await repository.save(thread)
@@ -159,7 +162,7 @@ export class AiThreadService implements Killable {
 
   async autoSave(): Promise<void> {
     const thread = this.activeThread$.value
-    if (!thread?.id) {
+    if (!thread) {
       return
     }
     const repository = await this.getRepository()

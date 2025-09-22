@@ -278,7 +278,7 @@ export class Coday {
 
   private async initThread(): Promise<void> {
     if (!this.context?.aiThread) {
-      this.aiThreadService.create()
+      await this.aiThreadService.create()
     }
   }
 

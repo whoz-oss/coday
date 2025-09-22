@@ -8,6 +8,8 @@ import { AiThreadService } from '../../ai-thread/ai-thread.service'
 import { AiThread } from '../../ai-thread/ai-thread'
 import { generateThreadName } from '../generate-thread-name'
 
+const AUTO_RENAME_THRESHOLD = 2
+
 export class AiHandler extends CommandHandler implements Killable {
   constructor(
     private interactor: Interactor,
@@ -127,13 +129,22 @@ export class AiHandler extends CommandHandler implements Killable {
   }
 
   /**
-   * Check if thread should be auto-saved and perform auto-save if needed
+   * Auto-save thread after each message and rename if needed
    */
   private async checkAndAutoSave(thread: AiThread, agent: Agent): Promise<void> {
-    const AUTO_SAVE_THRESHOLD = 3
 
-    // Only auto-save if we hit the threshold and thread is not already saved
-    if (thread.getUserMessageCount() === AUTO_SAVE_THRESHOLD && !thread.id) {
+    // Always auto-save the thread (since all threads are now persistent)
+    try {
+      await this.threadService.autoSave()
+    } catch (error) {
+      this.interactor.debug(`Auto-save failed: ${error}`)
+    }
+
+    // Check if we should rename the thread (at 3 messages and still has default name)
+    if (
+      thread.getUserMessageCount() <= AUTO_RENAME_THRESHOLD && 
+      !thread.name
+    ) {
       try {
         // Generate thread name using the agent's AI client
         const threadName = await generateThreadName(thread, agent)
@@ -142,10 +153,12 @@ export class AiHandler extends CommandHandler implements Killable {
         await this.threadService.save(threadName)
 
         // Notify user
-        this.interactor.displayText(`Thread auto-saved as "${threadName}" (expires in 3 months)`)
+        this.interactor.displayText(`Thread auto-renamed to "${threadName}"`)
       } catch (error) {
-        this.interactor.debug(`Auto-save failed: ${error}`)
+        this.interactor.debug(`Auto-rename failed: ${error}`)
       }
+    } else {
+      await this.threadService.save()
     }
   }
 
