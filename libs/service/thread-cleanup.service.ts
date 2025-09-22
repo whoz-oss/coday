@@ -16,6 +16,7 @@ const BATCH_SIZE = 100
 
 export class ThreadCleanupService {
   private cleanupTimer: NodeJS.Timeout | null = null
+  private initialTimer: NodeJS.Timeout | null = null
   private isRunning = false
 
   constructor(
@@ -37,7 +38,7 @@ export class ThreadCleanupService {
     this.log(`Starting thread cleanup service (TTL: ${TTL_DAYS} days)`)
 
     // First cleanup after initial delay
-    setTimeout(
+    this.initialTimer = setTimeout(
       async () => {
         await this.performCleanup()
 
@@ -61,12 +62,19 @@ export class ThreadCleanupService {
    * Stops the cleanup service
    */
   async stop(): Promise<void> {
+    // Clear both timers to prevent any cleanup from running
+    if (this.initialTimer) {
+      clearTimeout(this.initialTimer)
+      this.initialTimer = null
+    }
+    
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer)
       this.cleanupTimer = null
     }
+    
     this.isRunning = false
-    this.log('Thread cleanup service stopped')
+    this.log('Thread cleanup service stopped (all timers cleared)')
   }
 
   /**

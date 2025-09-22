@@ -474,8 +474,8 @@ app.use((err: any, _: express.Request, res: express.Response, __: express.NextFu
   res.status(500).send('Something went wrong!')
 })
 
-// Start cleanup interval for expired clients
-setInterval(() => clientManager.cleanupExpired(), 60000) // Check every minute
+// Start cleanup interval for expired clients with reference for cleanup
+const clientCleanupInterval = setInterval(() => clientManager.cleanupExpired(), 60000) // Check every minute
 
 // Use PORT_PROMISE to listen on the available port
 PORT_PROMISE.then(async (PORT) => {
@@ -503,19 +503,58 @@ PORT_PROMISE.then(async (PORT) => {
   process.exit(1)
 })
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('Received SIGTERM, shutting down gracefully...')
-  if (cleanupService) {
-    await cleanupService.stop()
+// Graceful shutdown with proper cleanup
+let isShuttingDown = false
+
+async function gracefulShutdown(signal: string) {
+  if (isShuttingDown) {
+    console.log(`Received ${signal} during shutdown, forcing exit...`)
+    process.exit(1)
   }
-  process.exit(0)
+  
+  isShuttingDown = true
+  console.log(`Received ${signal}, shutting down gracefully...`)
+  
+  try {
+    // Stop accepting new connections and clear intervals
+    console.log('Stopping client cleanup interval...')
+    clearInterval(clientCleanupInterval)
+    
+    // Stop thread cleanup service
+    if (cleanupService) {
+      console.log('Stopping thread cleanup service...')
+      await cleanupService.stop()
+    }
+    
+    // Cleanup client manager resources
+    console.log('Cleaning up client connections...')
+    clientManager.shutdown()
+    
+    console.log('Graceful shutdown completed')
+    process.exit(0)
+  } catch (error) {
+    console.error('Error during graceful shutdown:', error)
+    process.exit(1)
+  }
+}
+
+// Handle various termination signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
+process.on('SIGINT', () => gracefulShutdown('SIGINT'))
+process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')) // nodemon restart
+process.on('SIGHUP', () => gracefulShutdown('SIGHUP'))   // terminal closed
+
+// Handle uncaught exceptions to prevent hanging
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error)
+  if (!isShuttingDown) {
+    gracefulShutdown('uncaughtException')
+  }
 })
 
-process.on('SIGINT', async () => {
-  console.log('Received SIGINT, shutting down gracefully...')
-  if (cleanupService) {
-    await cleanupService.stop()
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled rejection at:', promise, 'reason:', reason)
+  if (!isShuttingDown) {
+    gracefulShutdown('unhandledRejection')
   }
-  process.exit(0)
 })
