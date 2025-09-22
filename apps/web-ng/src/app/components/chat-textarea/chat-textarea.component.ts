@@ -122,7 +122,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   }
   
   sendMessage() {
-    if (this.message.trim() && !this.isDisabled) {
+    if (!this.isDisabled) {
       this.messageSubmitted.emit(this.message.trim())
       this.message = ''
       // Masquer l'invite après l'envoi
