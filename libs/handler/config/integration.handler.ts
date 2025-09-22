@@ -1,7 +1,9 @@
 import { Interactor, NestedHandler } from '../../model'
 import { CodayServices } from '../../coday-services'
-import { UserIntegrationHandler } from './user-integration.handler'
-import { ProjectIntegrationHandler } from './project-integration.handler'
+import { IntegrationListHandler } from './integration-list.handler'
+import { IntegrationAddHandler } from './integration-add.handler'
+import { IntegrationEditHandler } from './integration-edit.handler'
+import { IntegrationDeleteHandler } from './integration-delete.handler'
 
 export class IntegrationHandler extends NestedHandler {
   constructor(interactor: Interactor, services: CodayServices) {
@@ -13,9 +15,14 @@ export class IntegrationHandler extends NestedHandler {
       interactor
     )
 
+    // Create edit handler first so it can be referenced by add handler
+    const editHandler = new IntegrationEditHandler(interactor, services.integrationConfig)
+
     this.handlers = [
-      new UserIntegrationHandler(interactor, services),
-      new ProjectIntegrationHandler(interactor, services),
+      new IntegrationListHandler(interactor, services.integrationConfig),
+      editHandler,
+      new IntegrationAddHandler(interactor, services.integrationConfig, editHandler),
+      new IntegrationDeleteHandler(interactor, services.integrationConfig),
     ]
   }
 }
