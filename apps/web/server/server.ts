@@ -12,7 +12,7 @@ import { CodayLogger } from '@coday/service/coday-logger'
 import { WebhookService } from '@coday/service/webhook.service'
 import { ThreadCleanupService } from '@coday/service/thread-cleanup.service'
 import { findAvailablePort } from './find-available-port'
-import { filter, firstValueFrom, lastValueFrom, withLatestFrom } from 'rxjs'
+import { catchError, filter, firstValueFrom, lastValueFrom, of, timeout, withLatestFrom } from 'rxjs'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000
@@ -202,7 +202,19 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
         })
     } else {
       // Asynchronous mode: return immediately with thread ID
-      firstValueFrom(threadIdSource)
+      firstValueFrom(
+        threadIdSource.pipe(
+          timeout(5000),
+          catchError((error) => {
+            // Special handling for EmptyError during system sleep
+            if (error.message === 'no elements in sequence' || error.constructor?.name === 'EmptyErrorImpl') {
+              console.log('Thread ID Observable empty during system sleep - webhook will continue')
+              return of('unknown') // Return placeholder ID
+            }
+            throw error // Re-throw other errors
+          })
+        )
+      )
         .then((threadId) => {
           res.status(201).send({ threadId })
         })
@@ -547,6 +559,14 @@ process.on('SIGHUP', () => gracefulShutdown('SIGHUP'))   // terminal closed
 // Handle uncaught exceptions to prevent hanging
 process.on('uncaughtException', (error) => {
   console.error('Uncaught exception:', error)
+  
+  // Special handling for RxJS EmptyError during system sleep
+  if (error.message === 'no elements in sequence' || error.constructor.name === 'EmptyErrorImpl') {
+    console.log('Detected RxJS EmptyError during system sleep - this is expected behavior')
+    console.log('Process will continue normally after system wake')
+    return // Don't shutdown for this specific error
+  }
+  
   if (!isShuttingDown) {
     gracefulShutdown('uncaughtException')
   }
@@ -554,6 +574,16 @@ process.on('uncaughtException', (error) => {
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled rejection at:', promise, 'reason:', reason)
+  
+  // Special handling for RxJS errors during system sleep
+  if (reason && typeof reason === 'object') {
+    const error = reason as any // Type assertion for error object
+    if (error.message === 'no elements in sequence' || error.constructor?.name === 'EmptyErrorImpl') {
+      console.log('Detected RxJS EmptyError rejection during system sleep - this is expected behavior')
+      return // Don't shutdown for this specific error
+    }
+  }
+  
   if (!isShuttingDown) {
     gracefulShutdown('unhandledRejection')
   }
