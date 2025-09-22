@@ -23,13 +23,11 @@ export class CostLimitHandler extends CommandHandler {
 
     // Validate input
     const newLimit = parseFloat(input.trim())
-    if (isNaN(newLimit) || newLimit < 0) {
+    if (isNaN(newLimit) || newLimit <= 0) {
       this.interactor.error('Invalid cost limit. Please enter a positive number or 0.')
       return context
     }
 
-    // Update the default for all new threads
-    EmptyUsage.priceThreshold = newLimit
 
     // Update current thread if it exists
     if (context.aiThread) {
