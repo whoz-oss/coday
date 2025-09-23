@@ -63,12 +63,8 @@ export class AiThreadService implements Killable {
       price: 0,
     })
     
-    // Save the thread immediately upon creation
-    const repository = await this.getRepository()
-    const savedThread = await repository.save(newThread)
-    
-    this.activeThread$.next(savedThread)
-    return savedThread
+    this.activeThread$.next(newThread)
+    return newThread
   }
 
   /**
@@ -160,10 +156,13 @@ export class AiThreadService implements Killable {
     this.activeThread$.next(saved)
   }
 
-  async autoSave(): Promise<void> {
+  async autoSave(newName?: string): Promise<void> {
     const thread = this.activeThread$.value
     if (!thread) {
       return
+    }
+    if (newName) {
+      thread.name = newName
     }
     const repository = await this.getRepository()
     await repository.save(thread)
