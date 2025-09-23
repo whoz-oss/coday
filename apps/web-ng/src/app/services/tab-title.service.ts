@@ -45,10 +45,10 @@ export class TabTitleService {
     
     if (this.isSystemActive) {
       // Priority to hourglass when system is active
-      title = `${projectTitle} ⏳${unreadCount > 0 ? ` (${unreadCount})` : ''}`
+      title = `⏳${unreadCount > 0 ? ` (${unreadCount}) ` : ' '}${projectTitle}`
     } else if (unreadCount > 0) {
       // Red dot only if unread messages and system inactive
-      title = `${projectTitle} ${this.ATTENTION_EMOJI} (${unreadCount})`
+      title = `${this.ATTENTION_EMOJI} (${unreadCount}) ${projectTitle}`
     } else {
       // Normal state
       title = projectTitle
