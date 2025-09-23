@@ -4,6 +4,7 @@ import { ChatMessageComponent, ChatMessage } from '../chat-message/chat-message.
 import { UnreadMessagesService } from '../../services/unread-messages.service'
 import { VoiceSynthesisService } from '../../services/voice-synthesis.service'
 import { PreferencesService } from '../../services/preferences.service'
+import { CodayService } from '../../core/services/coday.service'
 import { Subject } from 'rxjs'
 
 @Component({
@@ -39,6 +40,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   private unreadService = inject(UnreadMessagesService)
   private voiceSynthesisService = inject(VoiceSynthesisService)
   private preferencesService = inject(PreferencesService)
+  private codayService = inject(CodayService)
   
   ngOnInit() {
     // Find scrollable container on startup
@@ -135,6 +137,77 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   
   onStop() {
     this.stopRequested.emit()
+  }
+
+  /**
+   * Check if a message can be deleted
+   * @param index Index of the message in the messages array
+   * @returns true if the message can be deleted
+   */
+  canDeleteMessage(index: number): boolean {
+    // Cannot delete the first message
+    if (index === 0) {
+      return false
+    }
+    
+    // Cannot delete while thinking
+    if (this.isThinking) {
+      return false
+    }
+    
+    return true
+  }
+
+  /**
+   * Handle message deletion request
+   * @param message The message to delete
+   */
+  onDeleteMessage(message: ChatMessage): void {
+    console.log('[CHAT-HISTORY] Delete requested for message:', message.id)
+    
+    // Find the message index
+    const messageIndex = this.messages.findIndex(msg => msg.id === message.id)
+    
+    // Additional validation
+    if (messageIndex === 0) {
+      console.warn('[CHAT-HISTORY] Cannot delete first message')
+      return
+    }
+    
+    if (this.isThinking) {
+      console.warn('[CHAT-HISTORY] Cannot delete message while agent is thinking')
+      return
+    }
+    
+    if (message.role !== 'user') {
+      console.warn('[CHAT-HISTORY] Can only delete user messages')
+      return
+    }
+    
+    // Show confirmation dialog
+    const confirmMessage = `Delete this message and all following messages?\n\nThis action cannot be undone.`
+    if (!confirm(confirmMessage)) {
+      console.log('[CHAT-HISTORY] Delete cancelled by user')
+      return
+    }
+    
+    // Perform deletion
+    console.log('[CHAT-HISTORY] Proceeding with message deletion')
+    this.codayService.deleteMessage(message.id).subscribe({
+      next: (response: {success: boolean, message?: string, error?: string}) => {
+        if (response.success) {
+          console.log('[CHAT-HISTORY] Message deleted successfully')
+          // The messages will be refreshed automatically via event stream replay
+        } else {
+          console.error('[CHAT-HISTORY] Failed to delete message:', response.error)
+          alert(`Failed to delete message: ${response.error}`)
+        }
+      },
+      error: (error: any) => {
+        console.error('[CHAT-HISTORY] Error deleting message:', error)
+        alert(`Error deleting message: ${error.message || 'Unknown error'}`)
+      }
+    })
   }
   
   /**

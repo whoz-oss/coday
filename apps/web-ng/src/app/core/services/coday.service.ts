@@ -1,6 +1,6 @@
 import { Injectable, OnDestroy, inject } from '@angular/core'
-import { Subject, BehaviorSubject } from 'rxjs'
-import { takeUntil } from 'rxjs/operators'
+import { Subject, BehaviorSubject, Observable } from 'rxjs'
+import { takeUntil, tap } from 'rxjs/operators'
 import { 
   CodayEvent, 
   MessageEvent, 
@@ -134,6 +134,24 @@ export class CodayService implements OnDestroy {
     } else {
       console.error('[CODAY] No choice event available')
     }
+  }
+
+  /**
+   * Delete a message from the thread (rewind/retry functionality)
+   */
+  deleteMessage(messageId: string): Observable<{success: boolean, message?: string, error?: string}> {
+    console.log('[CODAY] Deleting message:', messageId)
+    return this.codayApi.deleteMessage(messageId).pipe(
+      tap((response: {success: boolean, message?: string, error?: string}) => {
+        if (response.success) {
+          console.log('[CODAY] Message deleted successfully, messages will be refreshed via event stream')
+          // The backend calls replay() which will send fresh events
+          // So we don't need to manually update the messages here
+        } else {
+          console.warn('[CODAY] Failed to delete message:', response.error)
+        }
+      })
+    )
   }
 
   /**
