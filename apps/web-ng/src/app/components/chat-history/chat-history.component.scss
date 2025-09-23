@@ -1,13 +1,12 @@
-.chat-history {
-  // Pas de padding ici - géré par le parent (chat-wrapper)
-}
+
 
 .thinking {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem;
-  background: #f8fafc;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   margin: 0.5rem 0;
 }
@@ -20,7 +19,7 @@
 .dots span {
   width: 6px;
   height: 6px;
-  background: #3b82f6;
+  background: var(--color-primary);
   border-radius: 50%;
   animation: bounce 1.4s infinite ease-in-out;
 }
@@ -34,17 +33,19 @@
 }
 
 .stop-btn {
-  background: #ef4444;
-  color: white;
+  background: var(--color-error);
+  color: var(--color-text-inverse);
   border: none;
   padding: 0.3rem 0.6rem;
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.8rem;
+  transition: background-color 0.2s ease;
 }
 
 .stop-btn:hover {
-  background: #dc2626;
+  background: var(--color-error);
+  opacity: 0.8;
 }
 
 // Go to bottom button
