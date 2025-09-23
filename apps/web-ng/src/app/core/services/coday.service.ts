@@ -39,6 +39,9 @@ export class CodayService implements OnDestroy {
   // Store original events for proper response building
   private currentChoiceEvent: ChoiceEvent | null = null
   
+  // Thinking state management
+  private thinkingTimeout: ReturnType<typeof setTimeout> | null = null
+  
   // Public observables
   messages$ = this.messagesSubject.asObservable()
   isThinking$ = this.isThinkingSubject.asObservable()
@@ -211,7 +214,6 @@ export class CodayService implements OnDestroy {
       type: 'text'
     }
     
-
     this.addMessage(message)
   }
 
@@ -225,7 +227,6 @@ export class CodayService implements OnDestroy {
       type: event.speaker ? 'text' : 'technical'
     }
     
-
     this.addMessage(message)
   }
 
@@ -269,16 +270,18 @@ export class CodayService implements OnDestroy {
   }
 
   private handleThinkingEvent(_event: ThinkingEvent): void {
+    // Clear any existing thinking timeout to prevent blinking
+    this.clearThinkingTimeout()
+    
     this.isThinkingSubject.next(true)
     
-    // Notify title service that system is active
-    if (this.tabTitleService) {
-      this.tabTitleService.setSystemActive()
-    }
+    this.tabTitleService?.setSystemActive()
     
     // Auto-hide thinking after debounce time + buffer
-    setTimeout(() => {
+    this.thinkingTimeout = setTimeout(() => {
       this.isThinkingSubject.next(false)
+      this.thinkingTimeout = null
+      this.tabTitleService?.setSystemInactive()
     }, ThinkingEvent.debounce + 1000)
   }
 
@@ -311,13 +314,11 @@ export class CodayService implements OnDestroy {
   }
 
   private handleChoiceEvent(event: ChoiceEvent): void {
+    this.stopThinking()
     
     this.currentChoiceEvent = event
     
-    // Notify title service that system is inactive (user interface available)
-    if (this.tabTitleService) {
-      this.tabTitleService.setSystemInactive()
-    }
+    this.tabTitleService?.setSystemInactive()
     
     const options: ChoiceOption[] = event.options.map(option => ({
       value: option,
@@ -340,12 +341,11 @@ export class CodayService implements OnDestroy {
   }
 
   private handleInviteEvent(event: InviteEvent): void {
+    this.stopThinking()
+    
     this.currentInviteEventSubject.next(event)
     
-    // Notify title service that system is inactive (user interface available)
-    if (this.tabTitleService) {
-      this.tabTitleService.setSystemInactive()
-    }
+    this.tabTitleService?.setSystemInactive()
   }
 
   /**
@@ -355,11 +355,36 @@ export class CodayService implements OnDestroy {
     const currentMessages = this.messagesSubject.value
     const newMessages = [...currentMessages, message]
     
-
     this.messagesSubject.next(newMessages)
   }
 
+  /**
+   * Clear the thinking timeout to prevent blinking
+   */
+  private clearThinkingTimeout(): void {
+    if (this.thinkingTimeout) {
+      clearTimeout(this.thinkingTimeout)
+      this.thinkingTimeout = null
+    }
+  }
+  
+  /**
+   * Stop thinking state immediately and clear timeout
+   */
+  private stopThinking(): void {
+    this.clearThinkingTimeout()
+    this.isThinkingSubject.next(false)
+    
+    // Notifier le service de titre que le système est inactif
+    if (this.tabTitleService) {
+      this.tabTitleService.setSystemInactive()
+    }
+  }
+
   ngOnDestroy(): void {
+    // Clear thinking timeout on destroy
+    this.clearThinkingTimeout()
+    
     this.destroy$.next()
     this.destroy$.complete()
     this.currentInviteEventSubject.complete()
