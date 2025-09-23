@@ -5,6 +5,17 @@
 
 set -e  # Exit on any error
 
+# Parse command line arguments
+DRY_RUN=false
+RELEASE_ARGS=""
+
+for arg in "$@"; do
+    if [ "$arg" = "--dry-run" ]; then
+        DRY_RUN=true
+    fi
+    RELEASE_ARGS="$RELEASE_ARGS $arg"
+done
+
 # 1. Fetch tags from remote, forcing the operation
 echo "Fetching tags from remote server..."
 git fetch --tags --force
@@ -15,10 +26,15 @@ git fetch origin master
 echo "Creating chore/release branch from origin/master..."
 git checkout -B "chore/release" origin/master
 
-# 3. Run nx release
-# /!\ WARNING, interactive step /!\
-echo "Running nx release --skip-publish..."
-yarn run nx release --skip-publish
+# 3. Run yarn release with all arguments
+echo "Running yarn release$RELEASE_ARGS..."
+yarn release$RELEASE_ARGS
+
+# Stop here if dry-run
+if [ "$DRY_RUN" = true ]; then
+    echo "🔍 Dry-run completed - stopping before push and PR creation"
+    exit 0
+fi
 
 # 4. Push branch to remote server
 echo "Pushing chore/release branch to remote server..."
