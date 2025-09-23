@@ -28,7 +28,7 @@ git checkout -B "chore/release" origin/master
 
 # 3. Run yarn release with all arguments
 echo "Running yarn release$RELEASE_ARGS..."
-yarn release$RELEASE_ARGS
+yarn run nx release$RELEASE_ARGS
 
 # Stop here if dry-run
 if [ "$DRY_RUN" = true ]; then
