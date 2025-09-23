@@ -39,6 +39,9 @@ export class CodayService implements OnDestroy {
   private currentChoiceEvent: ChoiceEvent | null = null
   private currentInviteEvent: InviteEvent | null = null
   
+  // Thinking state management
+  private thinkingTimeout: ReturnType<typeof setTimeout> | null = null
+  
   // Public observables
   messages$ = this.messagesSubject.asObservable()
   isThinking$ = this.isThinkingSubject.asObservable()
@@ -274,6 +277,9 @@ export class CodayService implements OnDestroy {
   }
 
   private handleThinkingEvent(_event: ThinkingEvent): void {
+    // Clear any existing thinking timeout to prevent blinking
+    this.clearThinkingTimeout()
+    
     this.isThinkingSubject.next(true)
     
     // Notifier le service de titre que le système est actif
@@ -282,8 +288,14 @@ export class CodayService implements OnDestroy {
     }
     
     // Auto-hide thinking after debounce time + buffer
-    setTimeout(() => {
+    this.thinkingTimeout = setTimeout(() => {
       this.isThinkingSubject.next(false)
+      this.thinkingTimeout = null
+      
+      // Notifier le service de titre que le système est inactif
+      if (this.tabTitleService) {
+        this.tabTitleService.setSystemInactive()
+      }
     }, ThinkingEvent.debounce + 1000)
   }
 
@@ -316,6 +328,9 @@ export class CodayService implements OnDestroy {
   }
 
   private handleChoiceEvent(event: ChoiceEvent): void {
+    // Stop thinking when a choice event arrives
+    this.stopThinking()
+    
     console.log('[CODAY] ChoiceEvent received:', event.options.join(', '))
     console.log('[CODAY] ChoiceEvent parentKey:', event.parentKey)
     console.log('[CODAY] Replacing previous ChoiceEvent:', this.currentChoiceEvent ? 'exists' : 'none')
@@ -348,6 +363,9 @@ export class CodayService implements OnDestroy {
   }
 
   private handleInviteEvent(event: InviteEvent): void {
+    // Stop thinking when an invite event arrives
+    this.stopThinking()
+    
     console.log('[CODAY] InviteEvent received:', event.invite)
     console.log('[CODAY] InviteEvent parentKey:', event.parentKey)
     console.log('[CODAY] Replacing previous InviteEvent:', this.currentInviteEvent ? 'exists' : 'none')
@@ -370,7 +388,33 @@ export class CodayService implements OnDestroy {
     this.messagesSubject.next(newMessages)
   }
 
+  /**
+   * Clear the thinking timeout to prevent blinking
+   */
+  private clearThinkingTimeout(): void {
+    if (this.thinkingTimeout) {
+      clearTimeout(this.thinkingTimeout)
+      this.thinkingTimeout = null
+    }
+  }
+  
+  /**
+   * Stop thinking state immediately and clear timeout
+   */
+  private stopThinking(): void {
+    this.clearThinkingTimeout()
+    this.isThinkingSubject.next(false)
+    
+    // Notifier le service de titre que le système est inactif
+    if (this.tabTitleService) {
+      this.tabTitleService.setSystemInactive()
+    }
+  }
+
   ngOnDestroy(): void {
+    // Clear thinking timeout on destroy
+    this.clearThinkingTimeout()
+    
     this.destroy$.next()
     this.destroy$.complete()
     this.eventStream.disconnect()
