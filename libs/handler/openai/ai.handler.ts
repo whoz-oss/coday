@@ -155,7 +155,7 @@ export class AiHandler extends CommandHandler implements Killable {
         // Notify user
         this.interactor.displayText(`Thread auto-renamed to "${threadName}"`)
       } catch (error) {
-        this.interactor.debug(`Auto-rename failed: ${error}`)
+        this.interactor.warn(`Auto-rename failed: ${error}`)
       }
     } else {
       await this.threadService.save()
