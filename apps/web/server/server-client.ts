@@ -8,6 +8,7 @@ import { CodayOptions } from '@coday/options'
 import { UserService } from '@coday/service/user.service'
 import { ProjectService } from '@coday/service/project.service'
 import { IntegrationService } from '@coday/service/integration.service'
+import { IntegrationConfigService } from '@coday/service/integration-config.service'
 import { MemoryService } from '@coday/service/memory.service'
 import { McpConfigService } from '@coday/service/mcp-config.service'
 import { WebhookService } from '@coday/service/webhook.service'
@@ -88,6 +89,7 @@ export class ServerClient {
     const user = new UserService(this.options.configDir, this.username, this.interactor)
     const project = new ProjectService(this.interactor, this.options.configDir)
     const integration = new IntegrationService(project, user)
+    const integrationConfig = new IntegrationConfigService(user, project, this.interactor)
     const memory = new MemoryService(project, user)
     const mcp = new McpConfigService(user, project, this.interactor)
 
@@ -96,6 +98,7 @@ export class ServerClient {
       user,
       project,
       integration,
+      integrationConfig,
       memory,
       mcp,
       logger: this.logger,
