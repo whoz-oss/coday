@@ -38,7 +38,7 @@
     <button
       class="send-btn"
       (click)="sendMessage()"
-      [disabled]="!message.trim() || isDisabled"
+      [disabled]="isDisabled"
       [title]="getSendButtonTooltip()"
     >
       <span class="send-text">Send</span>
