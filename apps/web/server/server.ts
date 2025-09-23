@@ -12,7 +12,7 @@ import { CodayLogger } from '@coday/service/coday-logger'
 import { WebhookService } from '@coday/service/webhook.service'
 import { ThreadCleanupService } from '@coday/service/thread-cleanup.service'
 import { findAvailablePort } from './find-available-port'
-import { filter, firstValueFrom, lastValueFrom, withLatestFrom } from 'rxjs'
+import { catchError, filter, firstValueFrom, lastValueFrom, of, timeout, withLatestFrom } from 'rxjs'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000
@@ -202,7 +202,19 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
         })
     } else {
       // Asynchronous mode: return immediately with thread ID
-      firstValueFrom(threadIdSource)
+      firstValueFrom(
+        threadIdSource.pipe(
+          timeout(5000),
+          catchError((error) => {
+            // Special handling for EmptyError during system sleep
+            if (error.message === 'no elements in sequence' || error.constructor?.name === 'EmptyErrorImpl') {
+              console.log('Thread ID Observable empty during system sleep - webhook will continue')
+              return of('unknown') // Return placeholder ID
+            }
+            throw error // Re-throw other errors
+          })
+        )
+      )
         .then((threadId) => {
           res.status(201).send({ threadId })
         })
@@ -474,8 +486,8 @@ app.use((err: any, _: express.Request, res: express.Response, __: express.NextFu
   res.status(500).send('Something went wrong!')
 })
 
-// Start cleanup interval for expired clients
-setInterval(() => clientManager.cleanupExpired(), 60000) // Check every minute
+// Start cleanup interval for expired clients with reference for cleanup
+const clientCleanupInterval = setInterval(() => clientManager.cleanupExpired(), 60000) // Check every minute
 
 // Use PORT_PROMISE to listen on the available port
 PORT_PROMISE.then(async (PORT) => {
@@ -503,19 +515,76 @@ PORT_PROMISE.then(async (PORT) => {
   process.exit(1)
 })
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('Received SIGTERM, shutting down gracefully...')
-  if (cleanupService) {
-    await cleanupService.stop()
+// Graceful shutdown with proper cleanup
+let isShuttingDown = false
+
+async function gracefulShutdown(signal: string) {
+  if (isShuttingDown) {
+    console.log(`Received ${signal} during shutdown, forcing exit...`)
+    process.exit(1)
   }
-  process.exit(0)
+  
+  isShuttingDown = true
+  console.log(`Received ${signal}, shutting down gracefully...`)
+  
+  try {
+    // Stop accepting new connections and clear intervals
+    console.log('Stopping client cleanup interval...')
+    clearInterval(clientCleanupInterval)
+    
+    // Stop thread cleanup service
+    if (cleanupService) {
+      console.log('Stopping thread cleanup service...')
+      await cleanupService.stop()
+    }
+    
+    // Cleanup client manager resources
+    console.log('Cleaning up client connections...')
+    clientManager.shutdown()
+    
+    console.log('Graceful shutdown completed')
+    process.exit(0)
+  } catch (error) {
+    console.error('Error during graceful shutdown:', error)
+    process.exit(1)
+  }
+}
+
+// Handle various termination signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
+process.on('SIGINT', () => gracefulShutdown('SIGINT'))
+process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')) // nodemon restart
+process.on('SIGHUP', () => gracefulShutdown('SIGHUP'))   // terminal closed
+
+// Handle uncaught exceptions to prevent hanging
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error)
+  
+  // Special handling for RxJS EmptyError during system sleep
+  if (error.message === 'no elements in sequence' || error.constructor.name === 'EmptyErrorImpl') {
+    console.log('Detected RxJS EmptyError during system sleep - this is expected behavior')
+    console.log('Process will continue normally after system wake')
+    return // Don't shutdown for this specific error
+  }
+  
+  if (!isShuttingDown) {
+    gracefulShutdown('uncaughtException')
+  }
 })
 
-process.on('SIGINT', async () => {
-  console.log('Received SIGINT, shutting down gracefully...')
-  if (cleanupService) {
-    await cleanupService.stop()
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled rejection at:', promise, 'reason:', reason)
+  
+  // Special handling for RxJS errors during system sleep
+  if (reason && typeof reason === 'object') {
+    const error = reason as any // Type assertion for error object
+    if (error.message === 'no elements in sequence' || error.constructor?.name === 'EmptyErrorImpl') {
+      console.log('Detected RxJS EmptyError rejection during system sleep - this is expected behavior')
+      return // Don't shutdown for this specific error
+    }
   }
-  process.exit(0)
+  
+  if (!isShuttingDown) {
+    gracefulShutdown('unhandledRejection')
+  }
 })
