@@ -8,7 +8,7 @@ export async function selectAiThread(interactor: Interactor, threadService: AiTh
   // Interactive selection
   const threads: ThreadSummary[] = await lastValueFrom(threadService.list())
   if (threads.length === 0) {
-    threadService.create()
+    await threadService.create()
     return
   }
 
@@ -25,13 +25,13 @@ export async function selectAiThread(interactor: Interactor, threadService: AiTh
   options.unshift(newThreadLabel)
   const selected = await interactor.chooseOption(options, 'Select a thread')
   if (selected === newThreadLabel) {
-    threadService.create()
+    await threadService.create()
     return
   }
   const selectedId = threadsByText.get(selected)
   if (!selectedId) {
     interactor.error('Failed to get selected thread ID')
-    threadService.create()
+    await threadService.create()
     return
   }
 
