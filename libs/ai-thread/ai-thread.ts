@@ -74,7 +74,7 @@ export class AiThread {
   constructor(thread: ThreadSerialized) {
     this.id = thread.id
     this.username = thread.username
-    this.name = thread.name ?? 'untitled'
+    this.name = thread.name ?? ''
     this.summary = thread.summary ?? ''
     this.createdDate = thread.createdDate ?? new Date().toISOString()
     this.modifiedDate = thread.modifiedDate ?? this.createdDate

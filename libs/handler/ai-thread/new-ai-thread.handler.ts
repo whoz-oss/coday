@@ -16,7 +16,7 @@ export class NewAiThreadHandler extends CommandHandler {
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
     const name = this.getSubCommand(command)
 
-    const created: AiThread = this.threadService.create(name)
+    const created: AiThread = await this.threadService.create(name)
     this.interactor.displayText(`Created and selected new thread '${created.name}', with id '${created.id}'`)
 
     return context
