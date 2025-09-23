@@ -275,7 +275,7 @@ agents:
     integrations:
       GIT-PLATFORM:
       FETCH:
-      FILE:
+      FILES:
       AI:
       DELEGATE:
 
