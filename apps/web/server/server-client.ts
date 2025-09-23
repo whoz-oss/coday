@@ -54,6 +54,18 @@ export class ServerClient {
 
   updateLastConnection(): void {
     this.lastConnected = Date.now()
+ 
+    if (this.terminationTimeout) {
+      clearTimeout(this.terminationTimeout)
+    }
+    this.terminationTimeout = setTimeout(() => {
+      const idleTime = Date.now() - this.lastConnected
+        debugLog(
+          'CLIENT',
+          `Session expired for client ${this.clientId} after ${Math.round(idleTime / 1000)}s of inactivity`
+        )
+        this.cleanup()
+    }, ServerClient.SESSION_TIMEOUT)
   }
 
   reconnect(response: Response): void {
@@ -136,27 +148,6 @@ export class ServerClient {
         debugLog('CODAY', `Error during conversation cleanup for client ${this.clientId}:`, error)
       })
     }
-
-    // Clear any existing termination timeout
-    if (this.terminationTimeout) {
-      debugLog('CLIENT', `Clearing existing termination timeout for client ${this.clientId}`)
-      clearTimeout(this.terminationTimeout)
-    }
-
-    // Set new termination timeout
-    debugLog('CLIENT', `Setting termination timeout for client ${this.clientId}`)
-    this.terminationTimeout = setTimeout(() => {
-      const idleTime = Date.now() - this.lastConnected
-      if (idleTime >= ServerClient.SESSION_TIMEOUT) {
-        debugLog(
-          'CLIENT',
-          `Session expired for client ${this.clientId} after ${Math.round(idleTime / 1000)}s of inactivity`
-        )
-        this.cleanup()
-      } else {
-        debugLog('CLIENT', `Client ${this.clientId} still active, skipping cleanup`)
-      }
-    }, ServerClient.SESSION_TIMEOUT)
   }
 
   /**
