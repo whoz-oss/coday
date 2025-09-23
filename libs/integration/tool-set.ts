@@ -30,15 +30,12 @@ export class ToolSet {
     let output: any
     const toolFunc = tool.function.function as (...args: any[]) => Promise<any>
 
-    try {
       // Parse args from the request
       const args = JSON.parse(toolRequest.args)
       // Make sure args is always an array
       const argsArray = Array.isArray(args) ? args : [args]
       output = await toolFunc(...argsArray)
-    } catch (err) {
-      throw new Error(`Error executing tool '${toolRequest.name}': ${JSON.stringify(err)}`)
-    }
+    
 
     if (!output) {
       output = `Tool function ${toolRequest.name} finished without error.`
