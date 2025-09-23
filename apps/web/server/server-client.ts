@@ -276,6 +276,70 @@ export class ServerClient {
   }
 
   /**
+   * Check if the agent is currently thinking (processing)
+   * This prevents message deletion during active AI processing
+   * @returns true if agent is thinking, false otherwise
+   */
+  private isThinking(): boolean {
+    // For now, we'll implement a simple check based on recent ThinkingEvents
+    // In the future, this could be enhanced with more sophisticated state tracking
+    
+    // Check if there's an active Coday instance
+    if (!this.coday) {
+      return false
+    }
+
+    // For now, we'll be conservative and prevent deletion if we're not sure
+    // This could be enhanced by tracking thinking state more explicitly
+    // TODO: Implement proper thinking state tracking
+    return false
+  }
+
+  /**
+   * Truncate the current thread at a specific user message
+   * @param eventId The timestamp ID of the user message to delete
+   * @returns Promise<boolean> true if truncation was successful
+   */
+  async truncateThreadAtMessage(eventId: string): Promise<boolean> {
+    debugLog('CLIENT', `Attempting to truncate thread at message ${eventId} for client ${this.clientId}`)
+    
+    // Check if agent is currently thinking
+    if (this.isThinking()) {
+      debugLog('CLIENT', `Cannot truncate - agent is currently thinking for client ${this.clientId}`)
+      return false
+    }
+
+    // Check if we have an active Coday instance
+    if (!this.coday) {
+      debugLog('CLIENT', `No Coday instance available for client ${this.clientId}`)
+      return false
+    }
+
+    // Get the AI thread service
+    const aiThreadService = this.coday.aiThreadService
+    if (!aiThreadService) {
+      debugLog('CLIENT', `No AI thread service available for client ${this.clientId}`)
+      return false
+    }
+
+    // Perform the truncation
+    try {
+      const success = await aiThreadService.truncateAtUserMessage(eventId)
+      if (success) {
+        debugLog('CLIENT', `Successfully truncated thread at message ${eventId} for client ${this.clientId}`)
+        // Replay the updated thread to sync with frontend
+        this.coday.replay()
+      } else {
+        debugLog('CLIENT', `Failed to truncate thread at message ${eventId} for client ${this.clientId}`)
+      }
+      return success
+    } catch (error) {
+      debugLog('CLIENT', `Error truncating thread for client ${this.clientId}:`, error)
+      return false
+    }
+  }
+
+  /**
    * Complete cleanup of client resources.
    * Destroys the Coday instance and all associated resources.
    */

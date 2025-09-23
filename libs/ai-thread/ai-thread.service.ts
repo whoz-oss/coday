@@ -170,6 +170,30 @@ export class AiThreadService implements Killable {
   }
 
   /**
+   * Truncate the current thread at a specific user message
+   * @param eventId The timestamp ID of the user message to delete
+   * @returns Promise<boolean> true if truncation was successful
+   */
+  async truncateAtUserMessage(eventId: string): Promise<boolean> {
+    const thread = this.activeThread$.value
+    if (!thread) {
+      console.error('No active thread available for truncation')
+      return false
+    }
+
+    const success = thread.truncateAtUserMessage(eventId)
+    if (success) {
+      // Save the modified thread immediately
+      await this.autoSave()
+      console.log(`Thread truncated at message ${eventId}`)
+    } else {
+      console.warn(`Failed to truncate thread at message ${eventId}`)
+    }
+
+    return success
+  }
+
+  /**
    * Delete a thread permanently
    */
   async delete(threadId: string): Promise<void> {
