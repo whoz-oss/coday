@@ -6,6 +6,7 @@ import * as os from 'node:os'
 import { UserService } from '@coday/service/user.service'
 import { ProjectService } from '@coday/service/project.service'
 import { IntegrationService } from '@coday/service/integration.service'
+import { IntegrationConfigService } from '@coday/service/integration-config.service'
 import { MemoryService } from '@coday/service/memory.service'
 import { McpConfigService } from '@coday/service/mcp-config.service'
 import { CodayLogger } from '@coday/service/coday-logger'
@@ -19,6 +20,7 @@ const username = os.userInfo().username
 const user = new UserService(options.configDir, username, interactor)
 const project = new ProjectService(interactor, options.configDir)
 const integration = new IntegrationService(project, user)
+const integrationConfig = new IntegrationConfigService(user, project, interactor)
 const memory = new MemoryService(project, user)
 const mcp = new McpConfigService(user, project, interactor)
 // Logging is enabled when --no-log flag is NOT used
@@ -29,6 +31,7 @@ const coday = new Coday(interactor, options, {
   user,
   project,
   integration,
+  integrationConfig,
   memory,
   mcp,
   logger: logger,
