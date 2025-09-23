@@ -355,4 +355,20 @@ export class ServerClientManager {
       }
     }
   }
+
+  /**
+   * Shutdown all clients and cleanup resources
+   * Used during graceful server shutdown
+   */
+  shutdown(): void {
+    debugLog('MANAGER', `Shutting down ${this.clients.size} clients`)
+    
+    for (const [clientId, client] of this.clients.entries()) {
+      debugLog('MANAGER', `Terminating client ${clientId}`)
+      client.terminate(true)
+    }
+    
+    this.clients.clear()
+    debugLog('MANAGER', 'All clients terminated')
+  }
 }
