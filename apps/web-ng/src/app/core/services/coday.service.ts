@@ -282,20 +282,13 @@ export class CodayService implements OnDestroy {
     
     this.isThinkingSubject.next(true)
     
-    // Notifier le service de titre que le système est actif
-    if (this.tabTitleService) {
-      this.tabTitleService.setSystemActive()
-    }
+    this.tabTitleService?.setSystemActive()
     
     // Auto-hide thinking after debounce time + buffer
     this.thinkingTimeout = setTimeout(() => {
       this.isThinkingSubject.next(false)
       this.thinkingTimeout = null
-      
-      // Notifier le service de titre que le système est inactif
-      if (this.tabTitleService) {
-        this.tabTitleService.setSystemInactive()
-      }
+      this.tabTitleService?.setSystemInactive()
     }, ThinkingEvent.debounce + 1000)
   }
 
