@@ -5559,10 +5559,10 @@
     "@webassemblyjs/ast" "1.14.1"
     "@xtuc/long" "4.2.2"
 
-"@whoz-oss/coday-web@^0.17.0":
-  version "0.17.0"
-  resolved "https://registry.yarnpkg.com/@whoz-oss/coday-web/-/coday-web-0.17.0.tgz#1503a45a141b07d28915dd3df806612fa56df60e"
-  integrity sha512-aLnHnQEew1uAYnhC7xl2cf5QhItWRMTWReGwm2TGU6DzTbDN2MyoGiqL2uYOghSP3ucVwXivHpDv4lK7H0EFQw==
+"@whoz-oss/coday-web@^0.17.1":
+  version "0.17.1"
+  resolved "https://registry.yarnpkg.com/@whoz-oss/coday-web/-/coday-web-0.17.1.tgz#a342304c2e10f3cf4d3434616a907761522b54b4"
+  integrity sha512-mjPy3HbmCG74wwrX/hMS+A2gzyhM4eYtFw56DCTDpeQd2wzwIN3yuU2gw7MX6aKobfVNB94534q4A+PCFJjgjw==
   dependencies:
     sharp "^0.33.5"
 
