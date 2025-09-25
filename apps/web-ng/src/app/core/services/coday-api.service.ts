@@ -16,7 +16,6 @@ export class CodayApiService {
   
   constructor() {
     this.clientId = this.getOrCreateClientId()
-    console.log('[API] Client ID:', this.clientId)
   }
 
   /**
@@ -51,8 +50,6 @@ export class CodayApiService {
    * Send an event to the Coday API
    */
   sendEvent(event: CodayEvent): Observable<any> {
-    console.log('[API] Sending:', event.type)
-    
     return this.http.post(`/api/message?clientId=${this.clientId}`, event, {
       observe: 'response',
       responseType: 'text'
@@ -70,7 +67,6 @@ export class CodayApiService {
    * Stop the current execution
    */
   stopExecution(): Observable<any> {
-    console.log('[API] Stopping execution')
     return this.http.post(`/api/stop?clientId=${this.clientId}`, {})
   }
 
@@ -95,7 +91,6 @@ export class CodayApiService {
    * Get session state (projects and threads)
    */
   getSessionState(): Observable<SessionState> {
-    console.log('[API] Getting session state')
     return this.http.get<SessionState>(`/api/session/state?clientId=${this.clientId}`).pipe(
       tap(state => console.log('[API] Session state received:', state))
     )
@@ -105,10 +100,8 @@ export class CodayApiService {
    * Delete a message from the thread (rewind/retry functionality)
    */
   deleteMessage(eventId: string): Observable<{success: boolean, message?: string, error?: string}> {
-    console.log('[API] Deleting message:', eventId)
-    return this.http.delete<{success: boolean, message?: string, error?: string}>(
-      `/api/thread/message/${eventId}?clientId=${this.clientId}`
-    ).pipe(
+    const url = `/api/thread/message/${encodeURIComponent(eventId)}?clientId=${this.clientId}`
+    return this.http.delete<{success: boolean, message?: string, error?: string}>(url).pipe(
       tap(response => console.log('[API] Delete message response:', response))
     )
   }
