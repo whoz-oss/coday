@@ -29,6 +29,8 @@ export class McpToolsFactory extends AssistantToolFactory {
 
   name: string = 'Not defined yet'
 
+  private errorLogged: boolean = false
+
   constructor(
     interactor: Interactor,
     private serverConfig: McpServerConfig
@@ -59,7 +61,9 @@ export class McpToolsFactory extends AssistantToolFactory {
 
   protected async buildTools(_context: CommandContext, _agentName: string): Promise<CodayTool[]> {
     // if tools are already created, return them
-    if (this.tools.length) return this.tools
+    if (this.tools.length) {
+      return this.tools
+    }
 
     // if server is not enabled, no tools to return
     if (!this.serverConfig.enabled) {
@@ -78,7 +82,7 @@ export class McpToolsFactory extends AssistantToolFactory {
 
       if (!this.toolsPromise) {
         this.toolsPromise = this.buildInternalTools(client)
-      }
+      } 
 
       const tools = await this.toolsPromise
       console.log(`MCP server ${this.serverConfig.name} loaded ${tools.length} tools successfully`)
@@ -86,8 +90,13 @@ export class McpToolsFactory extends AssistantToolFactory {
     } catch (error) {
       // Log the error but don't crash the entire agent initialization
       const errorMessage = error instanceof Error ? error.message : String(error)
-      console.error(`MCP server ${this.serverConfig.name} failed to initialize: ${errorMessage}`)
-      this.interactor.warn(`MCP server '${this.serverConfig.name}' is unavailable and will be skipped: ${errorMessage}`)
+      
+      // Only log the error once per factory instance
+      if (!this.errorLogged) {
+        this.errorLogged = true
+        console.error(`MCP server ${this.serverConfig.name} failed to initialize: ${errorMessage}`)
+        this.interactor.warn(`MCP server '${this.serverConfig.name}' is unavailable and will be skipped: ${errorMessage}`)
+      }
       
       // Return empty tools array to allow other tools to work
       return []
