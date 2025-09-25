@@ -6,6 +6,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { ResourceTemplate, ToolInfo } from './types'
 import { ChildProcess, spawn } from 'child_process'
 
+const MCP_CONNECT_TIMEOUT = 5000 // in ms
+
 export class McpToolsFactory extends AssistantToolFactory {
   /**
    * Client promise, ensuring all calls to buildTools use the same instance of client
@@ -60,20 +62,36 @@ export class McpToolsFactory extends AssistantToolFactory {
     if (this.tools.length) return this.tools
 
     // if server is not enabled, no tools to return
-    if (!this.serverConfig.enabled) return []
-
-    // check if the client has already started being instanciated
-    if (!this.clientPromise) {
-      this.clientPromise = this.buildClient()
+    if (!this.serverConfig.enabled) {
+      this.interactor.debug(`MCP server ${this.serverConfig.name} is disabled, skipping`)
+      return []
     }
 
-    const client: Client = await this.clientPromise
+    try {
+      // check if the client has already started being instanciated
+      if (!this.clientPromise) {
+        console.log(`Initializing MCP server ${this.serverConfig.name}...`)
+        this.clientPromise = this.buildClient()
+      }
 
-    if (!this.toolsPromise) {
-      this.toolsPromise = this.buildInternalTools(client)
+      const client: Client = await this.clientPromise
+
+      if (!this.toolsPromise) {
+        this.toolsPromise = this.buildInternalTools(client)
+      }
+
+      const tools = await this.toolsPromise
+      console.log(`MCP server ${this.serverConfig.name} loaded ${tools.length} tools successfully`)
+      return tools
+    } catch (error) {
+      // Log the error but don't crash the entire agent initialization
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error(`MCP server ${this.serverConfig.name} failed to initialize: ${errorMessage}`)
+      this.interactor.warn(`MCP server '${this.serverConfig.name}' is unavailable and will be skipped: ${errorMessage}`)
+      
+      // Return empty tools array to allow other tools to work
+      return []
     }
-
-    return this.toolsPromise
   }
 
   private async buildClient(): Promise<Client> {
@@ -143,14 +161,50 @@ export class McpToolsFactory extends AssistantToolFactory {
       }
       transport = new StdioClientTransport(transportOptions)
       console.log(`Starting MCP server ${this.serverConfig.name} with command: ${transportOptions.command}`)
+      
+      // Add error handling for transport to catch early failures
+      transport.onerror = (error) => {
+        console.error(`MCP server ${this.serverConfig.name} transport error:`, error)
+      }
     } else {
       throw new Error(
         `MCP server ${this.serverConfig.name} has no command configured. Only local command-based servers are supported.`
       )
     }
-    // Connect to the server
-    await instance.connect(transport)
-    return instance
+    // Connect to the server with timeout and better error handling
+    try {
+      // Set a shorter timeout for MCP connections (default is 60s, we use MCP_CONNECT_TIMEOUT)
+      const connectPromise = instance.connect(transport)
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error(`Connection timeout after ${MCP_CONNECT_TIMEOUT}ms`)), MCP_CONNECT_TIMEOUT)
+      )
+      
+      await Promise.race([connectPromise, timeoutPromise])
+      console.log(`Successfully connected to MCP server ${this.serverConfig.name}`)
+      return instance
+    } catch (error) {
+      // Enhanced error reporting
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error(`Failed to connect to MCP server ${this.serverConfig.name}: ${errorMessage}`)
+      
+      // Check if it's a Docker-related issue
+      if (errorMessage.includes('docker') || errorMessage.includes('Docker') || 
+          errorMessage.includes('container') || errorMessage.includes('Container')) {
+        throw new Error(`MCP server ${this.serverConfig.name} failed to start. This may be because Docker is not available or the Docker container failed to start. Original error: ${errorMessage}`)
+      }
+      
+      // Check if it's a timeout
+      if (errorMessage.includes('timeout') || errorMessage.includes('Connection timeout')) {
+        throw new Error(`MCP server ${this.serverConfig.name} did not respond within ${MCP_CONNECT_TIMEOUT}ms. Check if the server command is correct and the server starts quickly. Original error: ${errorMessage}`)
+      }
+      
+      // Check for common command not found errors
+      if (errorMessage.includes('ENOENT') || errorMessage.includes('command not found')) {
+        throw new Error(`MCP server ${this.serverConfig.name} command not found. Check that the command '${this.serverConfig.command}' is available in your PATH. Original error: ${errorMessage}`)
+      }
+      
+      throw new Error(`MCP server ${this.serverConfig.name} connection failed: ${errorMessage}`)
+    }
   }
 
   private async buildInternalTools(client: Client): Promise<CodayTool[]> {
