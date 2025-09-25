@@ -74,6 +74,9 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
     
     // Subscribe to InviteEvent changes
     this.subscribeToInviteEvents()
+    
+    // Subscribe to message restoration after deletion
+    this.subscribeToMessageRestore()
   }
   
   ngAfterViewInit(): void {
@@ -470,6 +473,44 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
       console.error('[CHAT-TEXTAREA] Error parsing invite markdown:', error)
       this.renderedInviteSubject.next(this.sanitizer.bypassSecurityTrustHtml(invite))
     }
+  }
+
+  /**
+   * Subscribe to message restoration after deletion
+   */
+  private subscribeToMessageRestore(): void {
+    this.subscriptions.push(
+      this.codayService.messageToRestore$.subscribe(content => {
+        if (content.trim()) {
+          console.log('[CHAT-TEXTAREA] Restoring message content:', content.substring(0, 50) + '...')
+          this.restoreMessageContent(content)
+        }
+      })
+    )
+  }
+
+  /**
+   * Restore deleted message content to textarea
+   * @param content The text content to restore
+   */
+  private restoreMessageContent(content: string): void {
+    // Set the content in the textarea
+    this.message = content
+    
+    // Focus the textarea and place cursor at the end
+    if (this.messageInput?.nativeElement) {
+      this.messageInput.nativeElement.focus()
+      
+      // Use setTimeout to ensure the value is set before positioning cursor
+      setTimeout(() => {
+        const textarea = this.messageInput.nativeElement
+        const length = this.message.length
+        textarea.setSelectionRange(length, length)
+      }, 0)
+    }
+    
+    // Adjust textarea height to fit the restored content
+    setTimeout(() => this.adjustTextareaHeight(), 10)
   }
 
   

@@ -181,12 +181,8 @@ export class AiThreadService implements Killable {
     }
 
     const success = thread.truncateAtUserMessage(eventId)
-    if (success) {
-      // Save the modified thread immediately
-      await this.autoSave()
-      console.log(`Thread truncated at message ${eventId}`)
-    } else {
-      console.warn(`Failed to truncate thread at message ${eventId}`)
+    if (!success) {
+      this.interactor?.warn(`Failed to truncate thread.`)
     }
 
     return success

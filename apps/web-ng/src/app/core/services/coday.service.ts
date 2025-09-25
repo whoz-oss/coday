@@ -35,6 +35,7 @@ export class CodayService implements OnDestroy {
   private currentChoiceSubject = new BehaviorSubject<{options: ChoiceOption[], label: string} | null>(null)
   private projectTitleSubject = new BehaviorSubject<string>('Coday')
   private currentInviteEventSubject = new BehaviorSubject<InviteEvent | null>(null)
+  private messageToRestoreSubject = new BehaviorSubject<string>('')
   
   // Store original events for proper response building
   private currentChoiceEvent: ChoiceEvent | null = null
@@ -48,6 +49,7 @@ export class CodayService implements OnDestroy {
   currentChoice$ = this.currentChoiceSubject.asObservable()
   projectTitle$ = this.projectTitleSubject.asObservable()
   currentInviteEvent$ = this.currentInviteEventSubject.asObservable()
+  messageToRestore$ = this.messageToRestoreSubject.asObservable()
   
   // Connection status will be initialized in constructor
   connectionStatus$!: typeof this.eventStream.connectionStatus$
@@ -141,12 +143,23 @@ export class CodayService implements OnDestroy {
    */
   deleteMessage(messageId: string): Observable<{success: boolean, message?: string, error?: string}> {
     console.log('[CODAY] Deleting message:', messageId)
+    
+    // Extract text content from the message before deleting it
+    const messageToDelete = this.messagesSubject.value.find(msg => msg.id === messageId)
+    const textContent = this.extractTextContentFromMessage(messageToDelete)
+    
     return this.codayApi.deleteMessage(messageId).pipe(
       tap((response: {success: boolean, message?: string, error?: string}) => {
         if (response.success) {
           console.log('[CODAY] Message deleted successfully, updating local messages')
           // Update local messages immediately for better UX (no replay needed)
           this.removeMessagesFromIndex(messageId)
+          
+          // Restore the message content to textarea if it has text content
+          if (textContent.trim()) {
+            console.log('[CODAY] Restoring deleted message content to textarea')
+            this.messageToRestoreSubject.next(textContent)
+          }
         } else {
           console.warn('[CODAY] Failed to delete message:', response.error)
         }
@@ -412,6 +425,22 @@ export class CodayService implements OnDestroy {
   }
 
   /**
+   * Extract text content from a ChatMessage for restoration
+   * @param message The message to extract text from
+   * @returns The extracted text content
+   */
+  private extractTextContentFromMessage(message: ChatMessage | undefined): string {
+    if (!message) {
+      return ''
+    }
+    
+    return message.content
+      .filter(content => content.type === 'text')
+      .map(content => content.content)
+      .join('\n\n')
+  }
+
+  /**
    * Clear the thinking timeout to prevent blinking
    */
   private clearThinkingTimeout(): void {
@@ -441,6 +470,7 @@ export class CodayService implements OnDestroy {
     this.destroy$.next()
     this.destroy$.complete()
     this.currentInviteEventSubject.complete()
+    this.messageToRestoreSubject.complete()
     this.eventStream.disconnect()
   }
 }

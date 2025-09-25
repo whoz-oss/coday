@@ -185,9 +185,8 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     }
     
     // Show confirmation dialog
-    const confirmMessage = `Delete this message and all following messages?\n\nThis action cannot be undone.`
+    const confirmMessage = `Delete this message and all following messages?\n\nThis action cannot be undone once you post another message.`
     if (!confirm(confirmMessage)) {
-      console.log('[CHAT-HISTORY] Delete cancelled by user')
       return
     }
     
