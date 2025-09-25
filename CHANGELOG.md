@@ -1,3 +1,17 @@
+## 0.18.0 (2025-09-25)
+
+### 🚀 Features
+
+- issue 174 rewind thread to a user message ([#210](https://github.com/whoz-oss/coday/pull/210), [#174](https://github.com/whoz-oss/coday/issues/174))
+
+### 🩹 Fixes
+
+- issue 180 shorter mcp timeout ([#209](https://github.com/whoz-oss/coday/pull/209), [#180](https://github.com/whoz-oss/coday/issues/180))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 
 
 ## 0.17.0 (2025-09-23)
