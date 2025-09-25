@@ -441,10 +441,11 @@ app.get('/api/session/state', async (req: express.Request, res: express.Response
 // DELETE endpoint for message deletion (rewind/retry functionality)
 app.delete('/api/thread/message/:eventId', async (req: express.Request, res: express.Response) => {
   try {
-    const { eventId } = req.params
+    const { eventId: rawEventId } = req.params
     const clientId = req.query.clientId as string
     
-    debugLog('DELETE_MESSAGE', `clientId: ${clientId}, eventId: ${eventId}`)
+    // Decode the eventId in case it was URL encoded
+    const eventId = rawEventId ? decodeURIComponent(rawEventId) : ''
     
     // Validate required parameters
     if (!eventId) {
@@ -476,7 +477,6 @@ app.delete('/api/thread/message/:eventId', async (req: express.Request, res: exp
         message: 'Message deleted successfully'
       })
     } else {
-      debugLog('DELETE_MESSAGE', `Failed to delete message ${eventId} for client ${clientId}`)
       res.status(400).json({ 
         error: 'Failed to delete message. Message may not exist, may not be a user message, may be the first message, or agent may be thinking.'
       })
