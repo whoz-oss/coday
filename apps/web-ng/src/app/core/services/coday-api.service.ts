@@ -100,4 +100,16 @@ export class CodayApiService {
       tap(state => console.log('[API] Session state received:', state))
     )
   }
+
+  /**
+   * Delete a message from the thread (rewind/retry functionality)
+   */
+  deleteMessage(eventId: string): Observable<{success: boolean, message?: string, error?: string}> {
+    console.log('[API] Deleting message:', eventId)
+    return this.http.delete<{success: boolean, message?: string, error?: string}>(
+      `/api/thread/message/${eventId}?clientId=${this.clientId}`
+    ).pipe(
+      tap(response => console.log('[API] Delete message response:', response))
+    )
+  }
 }

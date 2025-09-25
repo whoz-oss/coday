@@ -1,6 +1,6 @@
 import { Injectable, OnDestroy, inject } from '@angular/core'
-import { Subject, BehaviorSubject } from 'rxjs'
-import { takeUntil } from 'rxjs/operators'
+import { Subject, BehaviorSubject, Observable } from 'rxjs'
+import { takeUntil, tap } from 'rxjs/operators'
 import { 
   CodayEvent, 
   MessageEvent, 
@@ -13,6 +13,7 @@ import {
   ToolResponseEvent, 
   ChoiceEvent,
   ProjectSelectedEvent,
+  ThreadSelectedEvent,
   HeartBeatEvent,
   InviteEvent
 } from '@coday/coday-events'
@@ -35,6 +36,7 @@ export class CodayService implements OnDestroy {
   private currentChoiceSubject = new BehaviorSubject<{options: ChoiceOption[], label: string} | null>(null)
   private projectTitleSubject = new BehaviorSubject<string>('Coday')
   private currentInviteEventSubject = new BehaviorSubject<InviteEvent | null>(null)
+  private messageToRestoreSubject = new BehaviorSubject<string>('')
   
   // Store original events for proper response building
   private currentChoiceEvent: ChoiceEvent | null = null
@@ -48,6 +50,7 @@ export class CodayService implements OnDestroy {
   currentChoice$ = this.currentChoiceSubject.asObservable()
   projectTitle$ = this.projectTitleSubject.asObservable()
   currentInviteEvent$ = this.currentInviteEventSubject.asObservable()
+  messageToRestore$ = this.messageToRestoreSubject.asObservable()
   
   // Connection status will be initialized in constructor
   connectionStatus$!: typeof this.eventStream.connectionStatus$
@@ -88,6 +91,22 @@ export class CodayService implements OnDestroy {
       error: (error) => console.error('[CODAY] Error stopping:', error)
     })
   }
+
+  /**
+   * Reset messages when changing project or thread context
+   */
+  resetMessages(): void {
+    console.log('[CODAY] Resetting messages for context change')
+    this.messagesSubject.next([])
+    
+    // Also clear related state that doesn't make sense in new context
+    this.currentChoiceSubject.next(null)
+    this.currentInviteEventSubject.next(null)
+    this.currentChoiceEvent = null
+    this.stopThinking()
+  }
+
+
 
   /**
    * Send a message
@@ -134,6 +153,35 @@ export class CodayService implements OnDestroy {
     } else {
       console.error('[CODAY] No choice event available')
     }
+  }
+
+  /**
+   * Delete a message from the thread (rewind/retry functionality)
+   */
+  deleteMessage(messageId: string): Observable<{success: boolean, message?: string, error?: string}> {
+    console.log('[CODAY] Deleting message:', messageId)
+    
+    // Extract text content from the message before deleting it
+    const messageToDelete = this.messagesSubject.value.find(msg => msg.id === messageId)
+    const textContent = this.extractTextContentFromMessage(messageToDelete)
+    
+    return this.codayApi.deleteMessage(messageId).pipe(
+      tap((response: {success: boolean, message?: string, error?: string}) => {
+        if (response.success) {
+          console.log('[CODAY] Message deleted successfully, updating local messages')
+          // Update local messages immediately for better UX (no replay needed)
+          this.removeMessagesFromIndex(messageId)
+          
+          // Restore the message content to textarea if it has text content
+          if (textContent.trim()) {
+            console.log('[CODAY] Restoring deleted message content to textarea')
+            this.messageToRestoreSubject.next(textContent)
+          }
+        } else {
+          console.warn('[CODAY] Failed to delete message:', response.error)
+        }
+      })
+    )
   }
 
   /**
@@ -195,6 +243,8 @@ export class CodayService implements OnDestroy {
       this.handleChoiceEvent(event)
     } else if (event instanceof ProjectSelectedEvent) {
       this.handleProjectSelectedEvent(event)
+    } else if (event instanceof ThreadSelectedEvent) {
+      this.handleThreadSelectedEvent(event)
     } else if (event instanceof HeartBeatEvent) {
       this.handleHeartBeatEvent(event)
     } else if (event instanceof InviteEvent) {
@@ -333,7 +383,20 @@ export class CodayService implements OnDestroy {
   }
 
   private handleProjectSelectedEvent(event: ProjectSelectedEvent): void {
+    console.log('[CODAY] Project selected:', event.projectName)
+    
+    // Reset messages when changing project
+    this.resetMessages()
+    
+    // Update project title
     this.projectTitleSubject.next(event.projectName || 'Coday')
+  }
+
+  private handleThreadSelectedEvent(event: ThreadSelectedEvent): void {
+    console.log('[CODAY] Thread selected:', event.threadId, event.threadName)
+    
+    // Reset messages when changing thread
+    this.resetMessages()
   }
 
   private handleHeartBeatEvent(_event: HeartBeatEvent): void {
@@ -356,6 +419,57 @@ export class CodayService implements OnDestroy {
     const newMessages = [...currentMessages, message]
     
     this.messagesSubject.next(newMessages)
+  }
+
+  /**
+   * Remove messages from the specified message index onwards
+   * Used for local message deletion after successful truncation
+   * @param messageId The ID of the message that was deleted (and all following messages)
+   */
+  private removeMessagesFromIndex(messageId: string): void {
+    const currentMessages = this.messagesSubject.value
+    const messageIndex = currentMessages.findIndex(msg => msg.id === messageId)
+    
+    if (messageIndex === -1) {
+      console.warn('[CODAY] Message not found for local deletion:', messageId)
+      return
+    }
+    
+    if (messageIndex === 0) {
+      console.warn('[CODAY] Cannot delete first message locally')
+      return
+    }
+    
+    // Remove the message and all messages that come after it
+    const updatedMessages = currentMessages.slice(0, messageIndex)
+    
+    console.log(`[CODAY] Locally removed ${currentMessages.length - updatedMessages.length} messages from index ${messageIndex}`)
+    
+    this.messagesSubject.next(updatedMessages)
+    
+    // Clear any pending choice or invite since the conversation state has changed
+    // this.currentChoiceSubject.next(null)
+    // this.currentInviteEventSubject.next(null)
+    // this.currentChoiceEvent = null
+    
+    // Stop thinking state since we've truncated the conversation
+    this.stopThinking()
+  }
+
+  /**
+   * Extract text content from a ChatMessage for restoration
+   * @param message The message to extract text from
+   * @returns The extracted text content
+   */
+  private extractTextContentFromMessage(message: ChatMessage | undefined): string {
+    if (!message) {
+      return ''
+    }
+    
+    return message.content
+      .filter(content => content.type === 'text')
+      .map(content => content.content)
+      .join('\n\n')
   }
 
   /**
@@ -388,6 +502,7 @@ export class CodayService implements OnDestroy {
     this.destroy$.next()
     this.destroy$.complete()
     this.currentInviteEventSubject.complete()
+    this.messageToRestoreSubject.complete()
     this.eventStream.disconnect()
   }
 }
