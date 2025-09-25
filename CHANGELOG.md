@@ -1,5 +1,30 @@
 
 
+## 0.17.0 (2025-09-23)
+
+### 🚀 Features
+
+- issue 175 list threads and projects ([#176](https://github.com/whoz-oss/coday/pull/176))
+- issue 177 shorten thread TTL ([#182](https://github.com/whoz-oss/coday/pull/182))
+- move emoji left in tab title ([#199](https://github.com/whoz-oss/coday/pull/199))
+- add cost config handler ([#186](https://github.com/whoz-oss/coday/pull/186))
+- always save threads ([#193](https://github.com/whoz-oss/coday/pull/193))
+
+### 🩹 Fixes
+
+- add robustness in messages initialization ([#167](https://github.com/whoz-oss/coday/pull/167))
+- issue 181 config handler ([#184](https://github.com/whoz-oss/coday/pull/184))
+- chat textarea missing label ([#191](https://github.com/whoz-oss/coday/pull/191))
+- issue 200 stop blinking ([#201](https://github.com/whoz-oss/coday/pull/201), [#200](https://github.com/whoz-oss/coday/issues/200))
+- track last connection date for ServerClient timeout ([#196](https://github.com/whoz-oss/coday/pull/196))
+- pre release fixes ([#204](https://github.com/whoz-oss/coday/pull/204))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+
+
 
 
 
