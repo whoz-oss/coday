@@ -371,6 +371,45 @@ export class AiThread {
     return this.messages.find((msg) => msg.timestamp === eventId)
   }
 
+  /**
+   * Truncates the thread at a specific user message, removing that message and all subsequent messages.
+   * This provides a "rewind" functionality allowing users to retry from an earlier point in the conversation.
+   * 
+   * @param eventId The timestamp ID of the user message to delete
+   * @returns true if truncation was successful, false otherwise
+   * 
+   * Validation rules:
+   * - Only user messages (MessageEvent with role='user') can be deleted
+   * - Cannot delete the first message in the thread (index 0)
+   * - Message must exist in the thread
+   */
+  truncateAtUserMessage(eventId: string): boolean {
+    // Find the message index
+    const index = this.messages.findIndex((msg) => msg.timestamp === eventId)
+    if (index === -1) {
+      return false // Message not found
+    }
+
+    // Validate that it's a user message
+    const message = this.messages[index]
+    if (!(message instanceof MessageEvent) || message.role !== 'user') {
+      return false // Not a user message
+    }
+
+    // Prevent deletion of the first message
+    if (index === 0) {
+      return false // Cannot delete first message
+    }
+
+    // Truncate the messages array at the specified index
+    this.messages = this.messages.slice(0, index)
+    
+    // Update modification timestamp
+    this.modifiedDate = new Date().toISOString()
+    
+    return true
+  }
+
   addToolRequests(_agentName: string, toolRequests: ToolRequestEvent[]): void {
     toolRequests.forEach((toolRequest) => {
       if (!toolRequest.toolRequestId || !toolRequest.name || !toolRequest.args) return

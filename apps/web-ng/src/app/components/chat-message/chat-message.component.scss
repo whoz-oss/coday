@@ -123,6 +123,23 @@
   }
 }
 
+// Styles spécifiques pour le bouton delete
+.delete-btn {
+  border-color: var(--color-error, #ff5555);
+  color: var(--color-error, #ff5555);
+  
+  &:hover {
+    background: rgba(255, 85, 85, 0.1);
+    border-color: var(--color-error, #ff5555);
+    transform: scale(1.05);
+  }
+  
+  &:active {
+    background: rgba(255, 85, 85, 0.2);
+    transform: scale(0.95);
+  }
+}
+
 // Styles spécifiques pour le bouton play
 .play-btn {
   &.playing {

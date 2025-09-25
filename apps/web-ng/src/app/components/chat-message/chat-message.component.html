@@ -31,6 +31,15 @@
         >
           📋
         </button>
+        
+        <button 
+          *ngIf="message.role === 'user' && canDelete"
+          class="action-btn delete-btn" 
+          (click)="onDelete(); $event.stopPropagation()"
+          title="Delete this message and all following messages"
+        >
+          🗑️
+        </button>
       </div>
     </div>
     

@@ -438,6 +438,56 @@ app.get('/api/session/state', async (req: express.Request, res: express.Response
   }
 })
 
+// DELETE endpoint for message deletion (rewind/retry functionality)
+app.delete('/api/thread/message/:eventId', async (req: express.Request, res: express.Response) => {
+  try {
+    const { eventId } = req.params
+    const clientId = req.query.clientId as string
+    
+    debugLog('DELETE_MESSAGE', `clientId: ${clientId}, eventId: ${eventId}`)
+    
+    // Validate required parameters
+    if (!eventId) {
+      res.status(400).json({ error: 'Message eventId is required' })
+      return
+    }
+    
+    if (!clientId) {
+      res.status(400).json({ error: 'Client ID is required' })
+      return
+    }
+
+    // Get the client instance
+    const client = clientManager.get(clientId)
+    if (!client) {
+      res.status(404).json({ error: 'Client not found' })
+      return
+    }
+
+    client.updateLastConnection()
+
+    // Attempt to truncate the thread at the specified message
+    const success = await client.truncateThreadAtMessage(eventId)
+    
+    if (success) {
+      debugLog('DELETE_MESSAGE', `Successfully deleted message ${eventId} for client ${clientId}`)
+      res.status(200).json({ 
+        success: true,
+        message: 'Message deleted successfully'
+      })
+    } else {
+      debugLog('DELETE_MESSAGE', `Failed to delete message ${eventId} for client ${clientId}`)
+      res.status(400).json({ 
+        error: 'Failed to delete message. Message may not exist, may not be a user message, may be the first message, or agent may be thinking.'
+      })
+    }
+    
+  } catch (error) {
+    console.error('Error processing message deletion:', error)
+    res.status(500).json({ error: 'Internal server error during message deletion' })
+  }
+})
+
 // Implement SSE for Heartbeat
 app.get('/events', (req: express.Request, res: express.Response) => {
   const clientId = req.query.clientId as string

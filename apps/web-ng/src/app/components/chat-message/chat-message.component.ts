@@ -26,8 +26,10 @@ export interface ChatMessage {
 })
 export class ChatMessageComponent implements OnInit, OnDestroy {
   @Input() message!: ChatMessage
+  @Input() canDelete: boolean = true // Can this message be deleted (not first message, not during thinking)
   @Output() playRequested = new EventEmitter<ChatMessage>()
   @Output() copyRequested = new EventEmitter<ChatMessage>()
+  @Output() deleteRequested = new EventEmitter<ChatMessage>()
   
   renderedContent: SafeHtml = ''
   private destroy$ = new Subject<void>()
@@ -188,6 +190,11 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
     
     // Émettre l'événement pour compatibilité
     this.copyRequested.emit(this.message)
+  }
+
+  onDelete() {
+    console.log('[CHAT-MESSAGE] Delete requested for message:', this.message.id)
+    this.deleteRequested.emit(this.message)
   }
   
   /**
