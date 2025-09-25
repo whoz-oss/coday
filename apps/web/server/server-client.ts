@@ -328,7 +328,7 @@ export class ServerClient {
       if (success) {
         debugLog('CLIENT', `Successfully truncated thread at message ${eventId} for client ${this.clientId}`)
         // Replay the updated thread to sync with frontend
-        this.coday.replay()
+        // this.coday.replay()
       } else {
         debugLog('CLIENT', `Failed to truncate thread at message ${eventId} for client ${this.clientId}`)
       }

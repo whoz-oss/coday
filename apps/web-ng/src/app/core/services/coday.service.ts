@@ -144,9 +144,9 @@ export class CodayService implements OnDestroy {
     return this.codayApi.deleteMessage(messageId).pipe(
       tap((response: {success: boolean, message?: string, error?: string}) => {
         if (response.success) {
-          console.log('[CODAY] Message deleted successfully, messages will be refreshed via event stream')
-          // The backend calls replay() which will send fresh events
-          // So we don't need to manually update the messages here
+          console.log('[CODAY] Message deleted successfully, updating local messages')
+          // Update local messages immediately for better UX (no replay needed)
+          this.removeMessagesFromIndex(messageId)
         } else {
           console.warn('[CODAY] Failed to delete message:', response.error)
         }
@@ -374,6 +374,41 @@ export class CodayService implements OnDestroy {
     const newMessages = [...currentMessages, message]
     
     this.messagesSubject.next(newMessages)
+  }
+
+  /**
+   * Remove messages from the specified message index onwards
+   * Used for local message deletion after successful truncation
+   * @param messageId The ID of the message that was deleted (and all following messages)
+   */
+  private removeMessagesFromIndex(messageId: string): void {
+    const currentMessages = this.messagesSubject.value
+    const messageIndex = currentMessages.findIndex(msg => msg.id === messageId)
+    
+    if (messageIndex === -1) {
+      console.warn('[CODAY] Message not found for local deletion:', messageId)
+      return
+    }
+    
+    if (messageIndex === 0) {
+      console.warn('[CODAY] Cannot delete first message locally')
+      return
+    }
+    
+    // Remove the message and all messages that come after it
+    const updatedMessages = currentMessages.slice(0, messageIndex)
+    
+    console.log(`[CODAY] Locally removed ${currentMessages.length - updatedMessages.length} messages from index ${messageIndex}`)
+    
+    this.messagesSubject.next(updatedMessages)
+    
+    // Clear any pending choice or invite since the conversation state has changed
+    // this.currentChoiceSubject.next(null)
+    // this.currentInviteEventSubject.next(null)
+    // this.currentChoiceEvent = null
+    
+    // Stop thinking state since we've truncated the conversation
+    this.stopThinking()
   }
 
   /**
