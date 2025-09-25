@@ -13,6 +13,7 @@ import {
   ToolResponseEvent, 
   ChoiceEvent,
   ProjectSelectedEvent,
+  ThreadSelectedEvent,
   HeartBeatEvent,
   InviteEvent
 } from '@coday/coday-events'
@@ -90,6 +91,22 @@ export class CodayService implements OnDestroy {
       error: (error) => console.error('[CODAY] Error stopping:', error)
     })
   }
+
+  /**
+   * Reset messages when changing project or thread context
+   */
+  resetMessages(): void {
+    console.log('[CODAY] Resetting messages for context change')
+    this.messagesSubject.next([])
+    
+    // Also clear related state that doesn't make sense in new context
+    this.currentChoiceSubject.next(null)
+    this.currentInviteEventSubject.next(null)
+    this.currentChoiceEvent = null
+    this.stopThinking()
+  }
+
+
 
   /**
    * Send a message
@@ -226,6 +243,8 @@ export class CodayService implements OnDestroy {
       this.handleChoiceEvent(event)
     } else if (event instanceof ProjectSelectedEvent) {
       this.handleProjectSelectedEvent(event)
+    } else if (event instanceof ThreadSelectedEvent) {
+      this.handleThreadSelectedEvent(event)
     } else if (event instanceof HeartBeatEvent) {
       this.handleHeartBeatEvent(event)
     } else if (event instanceof InviteEvent) {
@@ -364,7 +383,20 @@ export class CodayService implements OnDestroy {
   }
 
   private handleProjectSelectedEvent(event: ProjectSelectedEvent): void {
+    console.log('[CODAY] Project selected:', event.projectName)
+    
+    // Reset messages when changing project
+    this.resetMessages()
+    
+    // Update project title
     this.projectTitleSubject.next(event.projectName || 'Coday')
+  }
+
+  private handleThreadSelectedEvent(event: ThreadSelectedEvent): void {
+    console.log('[CODAY] Thread selected:', event.threadId, event.threadName)
+    
+    // Reset messages when changing thread
+    this.resetMessages()
   }
 
   private handleHeartBeatEvent(_event: HeartBeatEvent): void {
