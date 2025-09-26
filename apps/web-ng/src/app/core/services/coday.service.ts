@@ -40,7 +40,6 @@ export class CodayService implements OnDestroy {
   
   // RxJS-based invite queue management
   private inviteEventStream$ = new Subject<InviteEvent>()
-  private pendingInvites: InviteEvent[] = []
   
   // Store original events for proper response building
   private currentChoiceEvent: ChoiceEvent | null = null
@@ -92,8 +91,6 @@ export class CodayService implements OnDestroy {
    * Stop the Coday service
    */
   stop(): void {
-    // Clear invite queue when stopping execution
-    this.clearInviteQueue()
     this.currentInviteEventSubject.next(null)
     
     this.codayApi.stopExecution().subscribe({
@@ -113,7 +110,6 @@ export class CodayService implements OnDestroy {
     this.currentChoiceSubject.next(null)
     this.currentInviteEventSubject.next(null)
     this.currentChoiceEvent = null
-    this.clearInviteQueue()
     this.stopThinking()
   }
 
@@ -238,8 +234,6 @@ export class CodayService implements OnDestroy {
         takeUntil(this.destroy$),
         tap(inviteEvent => {
           console.log('[CODAY] Processing invite:', inviteEvent.invite.substring(0, 50) + '...')
-          // Add to pending invites
-          this.pendingInvites.push(inviteEvent)
         }),
         concatMap(inviteEvent => {
           // Set this invite as current
@@ -250,9 +244,6 @@ export class CodayService implements OnDestroy {
             filter(event => event instanceof AnswerEvent && event.parentKey === inviteEvent.timestamp),
             first(), // Take only the first matching answer
             tap(() => {
-              console.log('[CODAY] Answer received for invite:', inviteEvent.timestamp)
-              // Remove this invite from pending list
-              this.pendingInvites = this.pendingInvites.filter(pending => pending.timestamp !== inviteEvent.timestamp)
               // Clear current invite (will be set by next invite if any)
               this.currentInviteEventSubject.next(null)
             })
@@ -560,22 +551,12 @@ export class CodayService implements OnDestroy {
     return this.codayApi.sendFeedback(params)
   }
 
-  /**
-   * Clear the entire invite queue
-   */
-  private clearInviteQueue(): void {
-    console.log('[CODAY] Clearing invite queue')
-    this.pendingInvites = []
-  }
 
 
 
   ngOnDestroy(): void {
     // Clear thinking timeout on destroy
     this.clearThinkingTimeout()
-    
-    // Clear invite queue on destroy
-    this.clearInviteQueue()
     
     this.destroy$.next()
     this.destroy$.complete()
