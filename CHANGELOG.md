@@ -1,3 +1,13 @@
+## 0.18.2 (2025-09-26)
+
+### 🚀 Features
+
+- #180 lazy load agents ([#215](https://github.com/whoz-oss/coday/pull/215), [#180](https://github.com/whoz-oss/coday/issues/180))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.18.1 (2025-09-26)
 
 ### 🩹 Fixes
