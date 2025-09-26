@@ -208,6 +208,58 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
       }
     })
   }
+
+  /**
+   * Handle positive feedback on a message
+   */
+  onFeedbackPositive(message: ChatMessage): void {
+    console.log('[CHAT-HISTORY] Positive feedback for message:', message.id, 'from agent:', message.speaker)
+    
+    if (message.role !== 'assistant') {
+      console.warn('[CHAT-HISTORY] Feedback only available for assistant messages')
+      return
+    }
+    
+    this.codayService.sendFeedback({
+      messageId: message.id,
+      agentName: message.speaker,
+      feedback: 'positive'
+    }).subscribe({
+      next: () => {
+        console.log('[CHAT-HISTORY] Positive feedback sent successfully')
+      },
+      error: (error: any) => {
+        console.error('[CHAT-HISTORY] Error sending positive feedback:', error)
+        // User feedback for errors will be handled by the backend service
+      }
+    })
+  }
+
+  /**
+   * Handle negative feedback on a message
+   */
+  onFeedbackNegative(message: ChatMessage): void {
+    console.log('[CHAT-HISTORY] Negative feedback for message:', message.id, 'from agent:', message.speaker)
+    
+    if (message.role !== 'assistant') {
+      console.warn('[CHAT-HISTORY] Feedback only available for assistant messages')
+      return
+    }
+    
+    this.codayService.sendFeedback({
+      messageId: message.id,
+      agentName: message.speaker,
+      feedback: 'negative'
+    }).subscribe({
+      next: () => {
+        console.log('[CHAT-HISTORY] Negative feedback sent successfully')
+      },
+      error: (error: any) => {
+        console.error('[CHAT-HISTORY] Error sending negative feedback:', error)
+        // User feedback for errors will be handled by the backend service
+      }
+    })
+  }
   
   /**
    * Scroll handling to detect if user scrolls up

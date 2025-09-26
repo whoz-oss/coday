@@ -495,6 +495,18 @@ export class CodayService implements OnDestroy {
     }
   }
 
+  /**
+   * Send feedback for an agent message
+   */
+  sendFeedback(params: {
+    messageId: string,
+    agentName: string,
+    feedback: 'positive' | 'negative'
+  }): Observable<any> {
+    console.log('[CODAY] Sending feedback:', params)
+    return this.codayApi.sendFeedback(params)
+  }
+
   ngOnDestroy(): void {
     // Clear thinking timeout on destroy
     this.clearThinkingTimeout()

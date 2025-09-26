@@ -30,6 +30,8 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   @Output() playRequested = new EventEmitter<ChatMessage>()
   @Output() copyRequested = new EventEmitter<ChatMessage>()
   @Output() deleteRequested = new EventEmitter<ChatMessage>()
+  @Output() feedbackPositive = new EventEmitter<void>()
+  @Output() feedbackNegative = new EventEmitter<void>()
   
   renderedContent: SafeHtml = ''
   private destroy$ = new Subject<void>()
@@ -195,6 +197,16 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   onDelete() {
     console.log('[CHAT-MESSAGE] Delete requested for message:', this.message.id)
     this.deleteRequested.emit(this.message)
+  }
+  
+  onThumbsUp() {
+    console.log('[CHAT-MESSAGE] Positive feedback for message:', this.message.id)
+    this.feedbackPositive.emit()
+  }
+  
+  onThumbsDown() {
+    console.log('[CHAT-MESSAGE] Negative feedback for message:', this.message.id)
+    this.feedbackNegative.emit()
   }
   
   /**
