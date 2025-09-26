@@ -105,4 +105,18 @@ export class CodayApiService {
       tap(response => console.log('[API] Delete message response:', response))
     )
   }
+
+  /**
+   * Send feedback for an agent message
+   */
+  sendFeedback(params: {
+    messageId: string,
+    agentName: string,
+    feedback: 'positive' | 'negative'
+  }): Observable<any> {
+    const url = `/api/feedback?clientId=${this.clientId}`
+    return this.http.post(url, params).pipe(
+      tap(response => console.log('[API] Feedback response:', response))
+    )
+  }
 }

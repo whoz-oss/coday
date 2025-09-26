@@ -154,6 +154,23 @@
   }
 }
 
+// Styles spécifiques pour les boutons de feedback
+.feedback-btn {
+  font-size: 0.8rem;
+  
+  &:hover {
+    background: var(--color-bg-hover, #f1f3f4);
+    transform: scale(1.1);
+  }
+  
+  &:active {
+    transform: scale(0.9);
+  }
+  
+  // Animation subtile pour indiquer l'interactivité
+  transition: all 0.2s ease;
+}
+
 // Styles pour les images dans les messages
 .text-part {
   margin: 4px 0;

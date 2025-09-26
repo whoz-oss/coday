@@ -6,6 +6,8 @@
     (playRequested)="onPlayMessage($event)"
     (copyRequested)="onCopyMessage($event)"
     (deleteRequested)="onDeleteMessage($event)"
+    (feedbackPositive)="onFeedbackPositive(message)"
+    (feedbackNegative)="onFeedbackNegative(message)"
   ></app-chat-message>
   
   <div *ngIf="isThinking" class="thinking">
