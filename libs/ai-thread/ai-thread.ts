@@ -112,7 +112,7 @@ export class AiThread {
     if (!this.messages || !Array.isArray(this.messages)) {
       this.messages = []
     }
-    
+
     if (!maxChars) return { messages: [...this.messages], compacted: false }
 
     // from the end (hence the toReversed), take all messages that fit into the charbudget
@@ -374,26 +374,26 @@ export class AiThread {
   /**
    * Truncates the thread at a specific user message, removing that message and all subsequent messages.
    * This provides a "rewind" functionality allowing users to retry from an earlier point in the conversation.
-   * 
+   *
    * @param eventId The timestamp ID of the user message to delete
    * @returns true if truncation was successful, false otherwise
-   * 
+   *
    * Validation rules:
    * - Only user messages (MessageEvent with role='user') can be deleted
    * - Cannot delete the first message in the thread (index 0)
    * - Message must exist in the thread
    */
-  truncateAtUserMessage(eventId: string): boolean {
+  truncateAtMessage(eventId: string, shift: number = 0): boolean {
     // Find the message index
     const index = this.messages.findIndex((msg) => msg.timestamp === eventId)
     if (index === -1) {
       return false // Message not found
     }
 
-    // Validate that it's a user message
+    // Validate that it's a user or assistant message
     const message = this.messages[index]
-    if (!(message instanceof MessageEvent) || message.role !== 'user') {
-      return false // Not a user message
+    if (!(message instanceof MessageEvent)) {
+      return false // Not a user or assistant message
     }
 
     // Prevent deletion of the first message
@@ -402,11 +402,11 @@ export class AiThread {
     }
 
     // Truncate the messages array at the specified index
-    this.messages = this.messages.slice(0, index)
-    
+    this.messages = this.messages.slice(0, index + shift)
+
     // Update modification timestamp
     this.modifiedDate = new Date().toISOString()
-    
+
     return true
   }
 

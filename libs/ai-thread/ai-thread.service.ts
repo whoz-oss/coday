@@ -62,7 +62,7 @@ export class AiThreadService implements Killable {
       name: name ?? '',
       price: 0,
     })
-    
+
     this.activeThread$.next(newThread)
     return newThread
   }
@@ -83,15 +83,17 @@ export class AiThreadService implements Killable {
         throw new Error(`Thread ${threadId} not found`)
       }
       this.activeThread$.next(thread)
-      
+
       // Emit ThreadSelectedEvent
       if (this.interactor) {
-        this.interactor.sendEvent(new ThreadSelectedEvent({ 
-          threadId: thread.id, 
-          threadName: thread.name 
-        }))
+        this.interactor.sendEvent(
+          new ThreadSelectedEvent({
+            threadId: thread.id,
+            threadName: thread.name,
+          })
+        )
       }
-      
+
       return thread
     }
 
@@ -115,16 +117,18 @@ export class AiThreadService implements Killable {
     }
 
     this.activeThread$.next(thread)
-    
+
     // Emit ThreadSelectedEvent
     if (this.interactor) {
-      this.interactor.sendEvent(new ThreadSelectedEvent({ 
-        threadId: thread.id, 
-        threadName: thread.name 
-      }))
+      this.interactor.sendEvent(
+        new ThreadSelectedEvent({
+          threadId: thread.id,
+          threadName: thread.name,
+        })
+      )
       this.interactor.displayText(`Selected thread '${thread.name}'`)
     }
-    
+
     return thread
   }
 
@@ -180,7 +184,7 @@ export class AiThreadService implements Killable {
       return false
     }
 
-    const success = thread.truncateAtUserMessage(eventId)
+    const success = thread.truncateAtMessage(eventId)
     if (!success) {
       this.interactor?.warn(`Failed to truncate thread.`)
     }
