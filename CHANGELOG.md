@@ -1,3 +1,13 @@
+## 0.18.1 (2025-09-26)
+
+### 🩹 Fixes
+
+- encode and decode eventId ([#213](https://github.com/whoz-oss/coday/pull/213))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.18.0 (2025-09-25)
 
 ### 🚀 Features
