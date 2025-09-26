@@ -29,12 +29,7 @@ Title: "${title}"
 Level: ${parsedLevel}
 Agent: ${agentName}
 
-Proposed content (you can edit this):
-${'─'.repeat(50)}
-${content}
-${'─'.repeat(50)}
-
-➤ Press Enter to confirm, edit the content above, or leave empty to cancel:`
+➤ Send to confirm, edit the content, or send empty to cancel:`
       
       const confirmation = await this.interactor.promptText(
         promptMessage,

@@ -1,6 +1,19 @@
 import { CommandContext, Interactor } from '../model'
 import { AgentService } from '../agent'
 import { AiThread } from '../ai-thread/ai-thread'
+import { MessageEvent } from '@coday/coday-events'
+
+const MEMORY_CURATION = `As we are working with your memories, it might be the right time to do some light curation:
+
+- are there outdated or irrelevant memories you can remove ?
+- are there duplicated memories that would benefit a merge ?
+
+Use the memory tools, and only if obviously necessary:
+
+- when less than 5 memories present, do not curate.
+- between 10 and 20 memories, look for simplification.
+- over 40 memories, time for significant cleanup !
+`
 
 export class FeedbackService {
   constructor(
@@ -33,7 +46,7 @@ export class FeedbackService {
       }
 
       // Cast to MessageEvent to access role and speaker properties
-      const messageEvent = message as any // MessageEvent from coday-events
+      const messageEvent = message as MessageEvent // MessageEvent from coday-events
       
       if (messageEvent.role !== 'assistant') {
         this.interactor.error('Feedback can only be provided on assistant messages')
@@ -51,7 +64,12 @@ export class FeedbackService {
       }
 
       // 3. Check if agent has memory tools access
-      // For now, we'll try to use memory tools and let the agent fail naturally if not available
+      const integrations = agent.definition.integrations
+      console.log(`agent ${agentName} integrations`, integrations)
+      if (!integrations || !Object.hasOwn(integrations, 'MEMORY')) {
+        this.interactor.warn(`Agent ${agentName} does not have memory integration, feedback not effective.`)
+        return
+      }
 
       // 4. Ask user for feedback details
       const promptMessage = feedback === 'negative' 
@@ -65,21 +83,22 @@ export class FeedbackService {
       }
 
       // 5. Fork the thread for isolated processing
-      const forkedThread = aiThread.fork(agentName)
+      const forkedThread = aiThread.fork(null)
+      forkedThread.truncateAtMessage(messageId, 1)
       
       // 6. Build the appropriate curation prompt
       const curationPrompt = await this.buildCurationPrompt(
-        messageId, 
         details, 
         feedback, 
-        forkedThread
       )
 
       // 7. Execute agent in forked thread (no merge back)
       this.interactor.displayText(`🔄 Processing ${feedback} feedback for agent ${agentName}...`)
       await agent.run(curationPrompt, forkedThread)
-      
-      this.interactor.displayText('✅ Feedback processed successfully')
+
+      await agent.run(MEMORY_CURATION, forkedThread).then(() => 
+        this.interactor.displayText('✅ Feedback processed successfully')
+      )
     } catch (error: any) {
       console.error('Error processing feedback:', error)
       this.interactor.error(`Error processing feedback: ${error.message}`)
@@ -87,30 +106,13 @@ export class FeedbackService {
   }
 
   private async buildCurationPrompt(
-    messageId: string, 
     userFeedback: string, 
     feedbackType: 'positive' | 'negative',
-    thread: AiThread
   ): Promise<string> {
-    // Obtenir tout le contexte jusqu'au message concerné
-    const messagesResult = await thread.getMessages(undefined, undefined)
-    const allMessages = messagesResult.messages
-    const messageIndex = allMessages.findIndex((m: any) => m.timestamp === messageId)
     
-    if (messageIndex === -1) {
-      throw new Error(`Message ${messageId} not found in thread`)
-    }
-
-    // Contexte = tous les messages jusqu'à celui concerné inclus
-    const contextMessages = allMessages.slice(0, messageIndex + 1)
     
     if (feedbackType === 'positive') {
-      return `You have received positive feedback on one of your responses. The user wants to reinforce this type of approach.
-
-Complete conversation context up to your response:
-<context>
-${this.formatMessages(contextMessages)}
-</context>
+      return `You have received positive feedback on the very last of your responses. The user wants to reinforce this type of approach.
 
 Positive user feedback:
 "${userFeedback}"
@@ -122,14 +124,9 @@ Important:
 - Stay nuanced and avoid becoming repetitive
 - Focus on useful principles rather than specific details`
     } else {
-      return `You have received constructive feedback on one of your responses. The user suggests an improvement.
+      return `You have received constructive feedback on one of your responses. The user is not satisfied with your last or previous answers.
 
-Complete conversation context up to your response:
-<context>
-${this.formatMessages(contextMessages)}
-</context>
-
-User improvement suggestion:
+User feedback:
 "${userFeedback}"
 
 Analyze this feedback and identify what could be improved in your approach. If you identify patterns or behaviors that should be adjusted, use the memorize tool to capture these learnings.
@@ -142,24 +139,4 @@ Important:
     }
   }
 
-  private formatMessages(messages: any[]): string {
-    return messages.map(m => {
-      const role = m.role || 'unknown'
-      let content = ''
-      
-      if (typeof m.content === 'string') {
-        content = m.content
-      } else if (Array.isArray(m.content)) {
-        // Handle rich content format
-        content = m.content
-          .filter((c: any) => c.type === 'text')
-          .map((c: any) => c.content)
-          .join('\n')
-      } else {
-        content = JSON.stringify(m.content)
-      }
-      
-      return `${role}: ${content}`
-    }).join('\n\n')
-  }
 }
