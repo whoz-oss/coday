@@ -1,6 +1,6 @@
 import { Injectable, OnDestroy, inject } from '@angular/core'
 import { Subject, BehaviorSubject, Observable } from 'rxjs'
-import { takeUntil, tap } from 'rxjs/operators'
+import { takeUntil, tap, concatMap, filter, first } from 'rxjs/operators'
 import { 
   CodayEvent, 
   MessageEvent, 
@@ -38,6 +38,10 @@ export class CodayService implements OnDestroy {
   private currentInviteEventSubject = new BehaviorSubject<InviteEvent | null>(null)
   private messageToRestoreSubject = new BehaviorSubject<string>('')
   
+  // RxJS-based invite queue management
+  private inviteEventStream$ = new Subject<InviteEvent>()
+  private pendingInvites: InviteEvent[] = []
+  
   // Store original events for proper response building
   private currentChoiceEvent: ChoiceEvent | null = null
   
@@ -51,6 +55,7 @@ export class CodayService implements OnDestroy {
   projectTitle$ = this.projectTitleSubject.asObservable()
   currentInviteEvent$ = this.currentInviteEventSubject.asObservable()
   messageToRestore$ = this.messageToRestoreSubject.asObservable()
+
   
   // Connection status will be initialized in constructor
   connectionStatus$!: typeof this.eventStream.connectionStatus$
@@ -66,6 +71,7 @@ export class CodayService implements OnDestroy {
     // Initialize connection status observable after eventStream is available
     this.connectionStatus$ = this.eventStream.connectionStatus$
     this.initializeEventHandling()
+    this.initializeInviteQueueHandling()
   }
   
   /**
@@ -86,6 +92,10 @@ export class CodayService implements OnDestroy {
    * Stop the Coday service
    */
   stop(): void {
+    // Clear invite queue when stopping execution
+    this.clearInviteQueue()
+    this.currentInviteEventSubject.next(null)
+    
     this.codayApi.stopExecution().subscribe({
       next: () => console.log('[CODAY] Stop signal sent'),
       error: (error) => console.error('[CODAY] Error stopping:', error)
@@ -103,6 +113,7 @@ export class CodayService implements OnDestroy {
     this.currentChoiceSubject.next(null)
     this.currentInviteEventSubject.next(null)
     this.currentChoiceEvent = null
+    this.clearInviteQueue()
     this.stopThinking()
   }
 
@@ -118,8 +129,8 @@ export class CodayService implements OnDestroy {
       // Use the original InviteEvent to build proper answer with parentKey
       const answerEvent = currentInviteEvent.buildAnswer(message)
       
-      // Clear the current invite event immediately after using it
-      this.currentInviteEventSubject.next(null)
+      // The concatMap operator will automatically handle the next invite
+      // after the AnswerEvent is processed
       
       this.codayApi.sendEvent(answerEvent).subscribe({
         error: (error) => console.error('[CODAY] Send error:', error)
@@ -217,6 +228,48 @@ export class CodayService implements OnDestroy {
         complete: () => console.log('[CODAY] Event stream completed')
       })
   }
+
+  /**
+   * Initialize RxJS-based invite queue handling with concatMap
+   */
+  private initializeInviteQueueHandling(): void {
+    this.inviteEventStream$
+      .pipe(
+        takeUntil(this.destroy$),
+        tap(inviteEvent => {
+          console.log('[CODAY] Processing invite:', inviteEvent.invite.substring(0, 50) + '...')
+          // Add to pending invites
+          this.pendingInvites.push(inviteEvent)
+        }),
+        concatMap(inviteEvent => {
+          // Set this invite as current
+          this.currentInviteEventSubject.next(inviteEvent)
+          
+          // Wait for the corresponding AnswerEvent with matching parentKey
+          return this.eventStream.events$.pipe(
+            filter(event => event instanceof AnswerEvent && event.parentKey === inviteEvent.timestamp),
+            first(), // Take only the first matching answer
+            tap(() => {
+              console.log('[CODAY] Answer received for invite:', inviteEvent.timestamp)
+              // Remove this invite from pending list
+              this.pendingInvites = this.pendingInvites.filter(pending => pending.timestamp !== inviteEvent.timestamp)
+              // Clear current invite (will be set by next invite if any)
+              this.currentInviteEventSubject.next(null)
+            })
+          )
+        })
+      )
+      .subscribe({
+        next: () => {
+          console.log('[CODAY] Invite processed, ready for next')
+        },
+        error: (error) => {
+          console.error('[CODAY] Error in invite queue processing:', error)
+        }
+      })
+  }
+
+
 
   /**
    * Handle incoming Coday events
@@ -406,7 +459,8 @@ export class CodayService implements OnDestroy {
   private handleInviteEvent(event: InviteEvent): void {
     this.stopThinking()
     
-    this.currentInviteEventSubject.next(event)
+    // Send the invite to the RxJS stream for processing
+    this.inviteEventStream$.next(event)
     
     this.tabTitleService?.setSystemInactive()
   }
@@ -506,14 +560,28 @@ export class CodayService implements OnDestroy {
     return this.codayApi.sendFeedback(params)
   }
 
+  /**
+   * Clear the entire invite queue
+   */
+  private clearInviteQueue(): void {
+    console.log('[CODAY] Clearing invite queue')
+    this.pendingInvites = []
+  }
+
+
+
   ngOnDestroy(): void {
     // Clear thinking timeout on destroy
     this.clearThinkingTimeout()
+    
+    // Clear invite queue on destroy
+    this.clearInviteQueue()
     
     this.destroy$.next()
     this.destroy$.complete()
     this.currentInviteEventSubject.complete()
     this.messageToRestoreSubject.complete()
+    this.inviteEventStream$.complete()
     this.eventStream.disconnect()
   }
 }
