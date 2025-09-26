@@ -8,6 +8,7 @@ import { McpConfigService } from './service/mcp-config.service'
 import { AiConfigService } from './service/ai-config.service'
 import { WebhookService } from './service/webhook.service'
 import { CodayLogger } from './service/coday-logger'
+import { FeedbackService } from './service/feedback.service'
 
 export type CodayServices = {
   user: UserService
@@ -20,4 +21,5 @@ export type CodayServices = {
   agent?: AgentService
   aiConfig?: AiConfigService
   webhook?: WebhookService
+  feedback?: FeedbackService
 }

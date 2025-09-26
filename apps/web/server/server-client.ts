@@ -17,6 +17,7 @@ import { SessionState } from '@coday/model/session-state'
 import { firstValueFrom } from 'rxjs'
 import { debugLog } from './log'
 import { ThreadSummary } from '@coday/ai-thread/ai-thread.types'
+import { FeedbackService } from '@coday/service/feedback.service'
 
 export class ServerClient {
   private readonly heartbeatInterval: NodeJS.Timeout
@@ -337,6 +338,44 @@ export class ServerClient {
       debugLog('CLIENT', `Error truncating thread for client ${this.clientId}:`, error)
       return false
     }
+  }
+
+  /**
+   * Process feedback for an agent message
+   * @param params Feedback parameters
+   */
+  async processFeedback(params: {
+    messageId: string,
+    feedback: 'positive' | 'negative'
+  }): Promise<void> {
+    debugLog('FEEDBACK', `Processing ${params.feedback} feedback for message ${params.messageId} for client ${this.clientId}`)
+    
+    // Check if we have an active Coday instance
+    if (!this.coday) {
+      throw new Error('No Coday instance available')
+    }
+
+    // Get current context and thread
+    const context = this.coday.context
+    if (!context || !context.aiThread) {
+      throw new Error('No active thread context available')
+    }
+
+    // Create feedback service
+    const agentService = this.coday.getServices()?.agent
+    if (!agentService) {
+      throw new Error('Agent service not available')
+    }
+
+    const feedbackService = new FeedbackService(this.interactor, agentService)
+    
+    // Process the feedback - agent name will be extracted from the message
+    await feedbackService.processFeedback({
+      messageId: params.messageId,
+      feedback: params.feedback,
+      aiThread: context.aiThread,
+      context: context
+    })
   }
 
   /**

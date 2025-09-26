@@ -33,6 +33,24 @@
         </button>
         
         <button 
+          *ngIf="message.role === 'assistant'"
+          class="action-btn feedback-btn" 
+          (click)="onThumbsUp(); $event.stopPropagation()"
+          title="Good response"
+        >
+          👍
+        </button>
+        
+        <button 
+          *ngIf="message.role === 'assistant'"
+          class="action-btn feedback-btn" 
+          (click)="onThumbsDown(); $event.stopPropagation()"
+          title="Needs improvement"
+        >
+          👎
+        </button>
+        
+        <button 
           *ngIf="message.role === 'user' && canDelete"
           class="action-btn delete-btn" 
           (click)="onDelete(); $event.stopPropagation()"
