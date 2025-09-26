@@ -491,12 +491,12 @@ app.delete('/api/thread/message/:eventId', async (req: express.Request, res: exp
 // POST endpoint for agent feedback
 app.post('/api/feedback', async (req: express.Request, res: express.Response) => {
   try {
-    const { messageId, agentName, feedback } = req.body
+    const { messageId, feedback } = req.body
     const clientId = req.query.clientId as string
     
     // Validate required parameters
-    if (!messageId || !agentName || !feedback) {
-      res.status(400).json({ error: 'Missing required fields: messageId, agentName, feedback' })
+    if (!messageId || !feedback) {
+      res.status(400).json({ error: 'Missing required fields: messageId, feedback' })
       return
     }
     
@@ -510,7 +510,7 @@ app.post('/api/feedback', async (req: express.Request, res: express.Response) =>
       return
     }
 
-    debugLog('FEEDBACK', `Processing ${feedback} feedback for agent ${agentName}, message ${messageId}, client ${clientId}`)
+    debugLog('FEEDBACK', `Processing ${feedback} feedback for message ${messageId}, client ${clientId}`)
 
     // Get the client instance
     const client = clientManager.get(clientId)
@@ -521,10 +521,9 @@ app.post('/api/feedback', async (req: express.Request, res: express.Response) =>
 
     client.updateLastConnection()
 
-    // Process the feedback
+    // Process the feedback - agent name will be extracted from the message
     await client.processFeedback({
       messageId,
-      agentName,
       feedback
     })
     

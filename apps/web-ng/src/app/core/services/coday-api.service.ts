@@ -111,7 +111,6 @@ export class CodayApiService {
    */
   sendFeedback(params: {
     messageId: string,
-    agentName: string,
     feedback: 'positive' | 'negative'
   }): Observable<any> {
     const url = `/api/feedback?clientId=${this.clientId}`

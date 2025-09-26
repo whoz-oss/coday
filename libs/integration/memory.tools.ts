@@ -22,19 +22,33 @@ export class MemoryTools extends AssistantToolFactory {
     const memorize = async ({ title, content, level }: { title: string; content: string; level: string }) => {
       const parsedLevel: MemoryLevel = level === 'USER' ? MemoryLevel.USER : MemoryLevel.PROJECT
 
-      // Demander validation à l'utilisateur
+      // Request user validation with detailed information
+      const promptMessage = `📝 Memory Update Confirmation
+
+Title: "${title}"
+Level: ${parsedLevel}
+Agent: ${agentName}
+
+Proposed content (you can edit this):
+${'─'.repeat(50)}
+${content}
+${'─'.repeat(50)}
+
+➤ Press Enter to confirm, edit the content above, or leave empty to cancel:`
+      
       const confirmation = await this.interactor.promptText(
-        `Confirm memory update:\n\nTitle: ${title}\nLevel: ${parsedLevel}\n\nContent:\n${content}\n\n(Press Enter to confirm, or modify the content)`,
-        content // Valeur par défaut = le contenu proposé
+        promptMessage,
+        content // Default value = proposed content
       )
 
-      if (!confirmation) {
-        return 'Memory update cancelled'
+      // Check if user cancelled (empty response)
+      if (!confirmation || confirmation.trim() === '') {
+        return '❌ Memory update cancelled by user'
       }
 
-      // Utiliser le contenu validé/modifié
-      this.memoryService.upsertMemory({ title, content: confirmation, level: parsedLevel, agentName })
-      return `Memory updated with title: ${title}`
+      // Use the validated/modified content
+      this.memoryService.upsertMemory({ title, content: confirmation.trim(), level: parsedLevel, agentName })
+      return `✅ Memory successfully updated with title: "${title}" at ${parsedLevel} level`
     }
 
     const addMemoryTool: FunctionTool<{ title: string; content: string; level: string }> = {
