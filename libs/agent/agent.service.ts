@@ -56,36 +56,58 @@ export class AgentService implements Killable {
     // Already initialized if we have any agents
     if (this.agents.size > 0) return
 
+    const startTime = performance.now()
+    this.interactor.debug('🚀 Starting agent initialization...')
+
     try {
       // Load from coday.yml agents section first
+      const codayYmlStart = performance.now()
       if (context.project.agents?.length) {
         for (const def of context.project.agents) {
           this.addDefinition(def, this.projectPath)
         }
       }
+      const codayYmlTime = performance.now() - codayYmlStart
+      this.interactor.debug(`📋 Loaded agents from coday.yml: ${codayYmlTime.toFixed(2)}ms (${context.project.agents?.length || 0} agents)`)
 
       // Load from project local configuration
+      const projectConfigStart = performance.now()
       const selectedProject = this.services.project.selectedProject
       if (selectedProject?.config.agents?.length) {
         for (const def of selectedProject.config.agents) {
           this.addDefinition(def, this.projectPath)
         }
       }
+      const projectConfigTime = performance.now() - projectConfigStart
+      this.interactor.debug(`⚙️ Loaded agents from project local config: ${projectConfigTime.toFixed(2)}ms (${selectedProject?.config.agents?.length || 0} agents)`)
 
       // Then load from files
+      const filesStart = performance.now()
       await this.loadFromFiles(context)
+      const filesTime = performance.now() - filesStart
+      this.interactor.debug(`📁 Loaded agents from files: ${filesTime.toFixed(2)}ms`)
 
       // If no agents were loaded, use Coday as backup
       if (this.agents.size === 0) {
         this.addDefinition(CodayAgentDefinition, this.projectPath)
+        this.interactor.debug('🔄 No agents found, using Coday as backup')
       }
     } catch (error: unknown) {
       this.interactor.error(`Failed to initialize agents: ${error}`)
       throw error
     }
 
+    // Create agent instances
+    const instancesStart = performance.now()
+    this.interactor.debug(`🏗️ Creating ${this.agentDefinitions.length} agent instances...`)
     const allAgents = await Promise.all(this.agentDefinitions.map((entry) => this.tryAddAgent(entry, context)))
     allAgents.filter((agent) => !!agent).forEach((agent) => this.agents.set(agent.name.toLowerCase(), agent))
+    const instancesTime = performance.now() - instancesStart
+    this.interactor.debug(`✨ Created agent instances: ${instancesTime.toFixed(2)}ms (${this.agents.size} successful)`)
+
+    const totalTime = performance.now() - startTime
+    this.interactor.debug(`🎯 Total agent initialization time: ${totalTime.toFixed(2)}ms`)
+
     const agentNames = this.listAgentSummaries().map((a) => `  - ${a.name} : ${a.description}`)
     if (agentNames.length > 1) {
       this.interactor.displayText(`Loaded agents (callable with '@[agent name]'):\n${agentNames.join('\n')}`)
@@ -206,6 +228,7 @@ export class AgentService implements Killable {
 
     agentsPaths.push(...this.commandLineAgentFolders)
 
+    const scanStart = performance.now()
     await Promise.all(
       agentsPaths.map(async (agentsPath) => {
         try {
@@ -226,7 +249,10 @@ export class AgentService implements Killable {
         }
       })
     )
+    const scanTime = performance.now() - scanStart
+    this.interactor.debug(`  📂 Scanned agent directories: ${scanTime.toFixed(2)}ms (found ${agentFiles.length} files)`)
 
+    const parseStart = performance.now()
     await Promise.all(
       agentFiles.map(async (agentFilePath) => {
         try {
@@ -245,6 +271,8 @@ export class AgentService implements Killable {
         }
       })
     )
+    const parseTime = performance.now() - parseStart
+    this.interactor.debug(`  📝 Parsed agent files: ${parseTime.toFixed(2)}ms`)
   }
 
   /**
@@ -259,6 +287,7 @@ export class AgentService implements Killable {
     context: CommandContext
   ): Promise<Agent | undefined> {
     const def: AgentDefinition = { ...CodayAgentDefinition, ...entry.definition }
+    const agentStart = performance.now()
 
     try {
       // force aiProvider for OpenAI assistants
@@ -269,14 +298,19 @@ export class AgentService implements Killable {
         return
       }
       console.log(`getting client for agent ${def.name}, ${def.aiProvider}, ${def.modelName}`)
+      
+      const clientStart = performance.now()
       const aiClient = this.aiClientProvider.getClient(def.aiProvider, def.modelName)
       if (!aiClient) {
         this.interactor.error(`Cannot create agent ${def.name}: AI client creation failed`)
         return
       }
+      const clientTime = performance.now() - clientStart
 
       const basePath = entry.basePath
+      const docsStart = performance.now()
       const agentDocs = await getFormattedDocs(def, this.interactor, basePath, def.name)
+      const docsTime = performance.now() - docsStart
 
       // overwrite agent instructions with the added project and user context
       def.instructions = `${def.instructions}\n\n
@@ -299,10 +333,18 @@ ${agentDocs}
             })
           )
         : undefined
+      
+      const toolsStart = performance.now()
       const syncTools = await this.toolbox.getTools({ context, integrations, agentName: def.name })
+      const toolsTime = performance.now() - toolsStart
 
       const toolset = new ToolSet([...syncTools])
-      return new Agent(def, aiClient, toolset)
+      const agent = new Agent(def, aiClient, toolset)
+      
+      const totalTime = performance.now() - agentStart
+      this.interactor.debug(`    🤖 Agent '${def.name}': ${totalTime.toFixed(2)}ms (client: ${clientTime.toFixed(2)}ms, docs: ${docsTime.toFixed(2)}ms, tools: ${toolsTime.toFixed(2)}ms)`)
+      
+      return agent
     } catch (error) {
       const errorMessage = `Failed to create agent ${def.name}`
       console.error(`${errorMessage}:`, error)
