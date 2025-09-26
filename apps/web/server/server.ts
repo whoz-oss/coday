@@ -488,6 +488,58 @@ app.delete('/api/thread/message/:eventId', async (req: express.Request, res: exp
   }
 })
 
+// POST endpoint for agent feedback
+app.post('/api/feedback', async (req: express.Request, res: express.Response) => {
+  try {
+    const { messageId, agentName, feedback } = req.body
+    const clientId = req.query.clientId as string
+    
+    // Validate required parameters
+    if (!messageId || !agentName || !feedback) {
+      res.status(400).json({ error: 'Missing required fields: messageId, agentName, feedback' })
+      return
+    }
+    
+    if (!['positive', 'negative'].includes(feedback)) {
+      res.status(400).json({ error: 'Invalid feedback type. Must be "positive" or "negative"' })
+      return
+    }
+    
+    if (!clientId) {
+      res.status(400).json({ error: 'Client ID is required' })
+      return
+    }
+
+    debugLog('FEEDBACK', `Processing ${feedback} feedback for agent ${agentName}, message ${messageId}, client ${clientId}`)
+
+    // Get the client instance
+    const client = clientManager.get(clientId)
+    if (!client) {
+      res.status(404).json({ error: 'Client not found' })
+      return
+    }
+
+    client.updateLastConnection()
+
+    // Process the feedback
+    await client.processFeedback({
+      messageId,
+      agentName,
+      feedback
+    })
+    
+    debugLog('FEEDBACK', `Successfully processed ${feedback} feedback for client ${clientId}`)
+    res.status(200).json({ 
+      success: true,
+      message: 'Feedback processed successfully'
+    })
+    
+  } catch (error) {
+    console.error('Error processing feedback:', error)
+    res.status(500).json({ error: 'Internal server error during feedback processing' })
+  }
+})
+
 // Implement SSE for Heartbeat
 app.get('/events', (req: express.Request, res: express.Response) => {
   const clientId = req.query.clientId as string
