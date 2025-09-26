@@ -19,7 +19,7 @@ import { MemoryLevel } from '../model/memory'
 import { findFilesByName } from '../function/find-files-by-name'
 
 export class AgentService implements Killable {
-  private agents: Map<string, Agent> = new Map()
+  private agentCache: Map<string, Agent> = new Map()
   private agentDefinitions: { definition: AgentDefinition; basePath: string }[] = []
   private toolbox: Toolbox
 
@@ -32,7 +32,8 @@ export class AgentService implements Killable {
   ) {
     // Subscribe to project changes to reset agents
     this.services.project.selectedProject$.subscribe(() => {
-      this.agents.clear()
+      this.agentCache.clear()
+      this.agentDefinitions = []
     })
     this.toolbox = new Toolbox(this.interactor, services, this)
   }
@@ -53,39 +54,59 @@ export class AgentService implements Killable {
    * - ~/.coday/[project]/agents/ folder
    */
   async initialize(context: CommandContext): Promise<void> {
-    // Already initialized if we have any agents
-    if (this.agents.size > 0) return
+    // Already initialized if we have any definitions
+    if (this.agentDefinitions.length > 0) return
+
+    const startTime = performance.now()
+    this.interactor.debug('🚀 Starting agent initialization...')
+
+    // Pre-initialize tools in parallel (fire-and-forget)
+    this.interactor.debug('🛠️ Pre-initializing tools in parallel...')
+    this.toolbox.getTools({ context, integrations: undefined, agentName: 'pre-init' })
+    .then(_ => this.interactor.debug('🛠️ ...completed pre-initializing tools in parallel'))
+      .catch(error => this.interactor.debug(`Pre-initialization warning: ${error.message}`))
 
     try {
       // Load from coday.yml agents section first
+      const codayYmlStart = performance.now()
       if (context.project.agents?.length) {
         for (const def of context.project.agents) {
           this.addDefinition(def, this.projectPath)
         }
       }
+      const codayYmlTime = performance.now() - codayYmlStart
+      this.interactor.debug(`📋 Loaded agent definitions from coday.yml: ${codayYmlTime.toFixed(2)}ms (${context.project.agents?.length || 0} agents)`)
 
       // Load from project local configuration
+      const projectConfigStart = performance.now()
       const selectedProject = this.services.project.selectedProject
       if (selectedProject?.config.agents?.length) {
         for (const def of selectedProject.config.agents) {
           this.addDefinition(def, this.projectPath)
         }
       }
+      const projectConfigTime = performance.now() - projectConfigStart
+      this.interactor.debug(`⚙️ Loaded agent definitions from project local config: ${projectConfigTime.toFixed(2)}ms (${selectedProject?.config.agents?.length || 0} agents)`)
 
       // Then load from files
+      const filesStart = performance.now()
       await this.loadFromFiles(context)
+      const filesTime = performance.now() - filesStart
+      this.interactor.debug(`📁 Loaded agent definitions from files: ${filesTime.toFixed(2)}ms`)
 
-      // If no agents were loaded, use Coday as backup
-      if (this.agents.size === 0) {
+      // If no agent definitions were loaded, use Coday as backup
+      if (this.agentDefinitions.length === 0) {
         this.addDefinition(CodayAgentDefinition, this.projectPath)
+        this.interactor.debug('🔄 No agent definitions found, using Coday as backup')
       }
     } catch (error: unknown) {
-      this.interactor.error(`Failed to initialize agents: ${error}`)
+      this.interactor.error(`Failed to initialize agent definitions: ${error}`)
       throw error
     }
 
-    const allAgents = await Promise.all(this.agentDefinitions.map((entry) => this.tryAddAgent(entry, context)))
-    allAgents.filter((agent) => !!agent).forEach((agent) => this.agents.set(agent.name.toLowerCase(), agent))
+    const totalTime = performance.now() - startTime
+    this.interactor.debug(`🎯 Total agent definition loading time: ${totalTime.toFixed(2)}ms`)
+
     const agentNames = this.listAgentSummaries().map((a) => `  - ${a.name} : ${a.description}`)
     if (agentNames.length > 1) {
       this.interactor.displayText(`Loaded agents (callable with '@[agent name]'):\n${agentNames.join('\n')}`)
@@ -94,10 +115,29 @@ export class AgentService implements Killable {
 
   /**
    * Find an agent by exact name match (case insensitive)
+   * Uses lazy loading - creates agent on-demand if not in cache
    */
   async findByName(name: string, context: CommandContext): Promise<Agent | undefined> {
     await this.initialize(context)
-    return this.agents.get(name.toLowerCase())
+    
+    const lowerName = name.toLowerCase()
+    
+    // Check cache first
+    if (this.agentCache.has(lowerName)) {
+      return this.agentCache.get(lowerName)
+    }
+    
+    // Find definition and create agent on-demand
+    const entry = this.agentDefinitions.find(e => e.definition.name.toLowerCase() === lowerName)
+    if (entry) {
+      const agent = await this.tryAddAgent(entry, context)
+      if (agent) {
+        this.agentCache.set(lowerName, agent)
+        return agent
+      }
+    }
+    
+    return undefined
   }
 
   async findAgentByNameStart(nameStart: string | undefined, context: CommandContext): Promise<Agent | undefined> {
@@ -136,15 +176,37 @@ export class AgentService implements Killable {
    * Find agents by the start of their name (case insensitive)
    * For example, "fid" will match "Fido_the_dog"
    * Returns all matching agents or empty array if none found
+   * Uses lazy loading - creates agents on-demand if not in cache
    */
   async findAgentsByNameStart(nameStart: string, context: CommandContext): Promise<Agent[]> {
     await this.initialize(context)
 
     const lowerNameStart = nameStart.toLowerCase()
-    return Array.from(this.agents.keys())
-      .filter((agentName) => agentName.toLowerCase().startsWith(lowerNameStart))
-      .map((agentName) => this.agents.get(agentName))
-      .filter((agent) => !!agent)
+    const matchingEntries = this.agentDefinitions.filter(entry => 
+      entry.definition.name.toLowerCase().startsWith(lowerNameStart)
+    )
+    
+    const agents: Agent[] = []
+    for (const entry of matchingEntries) {
+      const lowerName = entry.definition.name.toLowerCase()
+      
+      // Check cache first
+      let agent = this.agentCache.get(lowerName)
+      
+      // Create on-demand if not in cache
+      if (!agent) {
+        agent = await this.tryAddAgent(entry, context)
+        if (agent) {
+          this.agentCache.set(lowerName, agent)
+        }
+      }
+      
+      if (agent) {
+        agents.push(agent)
+      }
+    }
+    
+    return agents
   }
 
   /**
@@ -206,6 +268,7 @@ export class AgentService implements Killable {
 
     agentsPaths.push(...this.commandLineAgentFolders)
 
+    const scanStart = performance.now()
     await Promise.all(
       agentsPaths.map(async (agentsPath) => {
         try {
@@ -226,7 +289,10 @@ export class AgentService implements Killable {
         }
       })
     )
+    const scanTime = performance.now() - scanStart
+    this.interactor.debug(`  📂 Scanned agent directories: ${scanTime.toFixed(2)}ms (found ${agentFiles.length} files)`)
 
+    const parseStart = performance.now()
     await Promise.all(
       agentFiles.map(async (agentFilePath) => {
         try {
@@ -245,10 +311,12 @@ export class AgentService implements Killable {
         }
       })
     )
+    const parseTime = performance.now() - parseStart
+    this.interactor.debug(`  📝 Parsed agent files: ${parseTime.toFixed(2)}ms`)
   }
 
   /**
-   * Try to create and add an agent to the map
+   * Try to create and add an agent (lazy loading)
    * Logs error if dependencies are missing
    */
   private async tryAddAgent(
@@ -259,6 +327,7 @@ export class AgentService implements Killable {
     context: CommandContext
   ): Promise<Agent | undefined> {
     const def: AgentDefinition = { ...CodayAgentDefinition, ...entry.definition }
+    const agentStart = performance.now()
 
     try {
       // force aiProvider for OpenAI assistants
@@ -268,15 +337,20 @@ export class AgentService implements Killable {
         console.error(`Cannot create agent ${def.name}: dependencies not set. Call setDependencies first.`)
         return
       }
-      console.log(`getting client for agent ${def.name}, ${def.aiProvider}, ${def.modelName}`)
+      this.interactor.debug(`🏗️ Creating agent '${def.name}' on-demand...`)
+      
+      const clientStart = performance.now()
       const aiClient = this.aiClientProvider.getClient(def.aiProvider, def.modelName)
       if (!aiClient) {
         this.interactor.error(`Cannot create agent ${def.name}: AI client creation failed`)
         return
       }
+      const clientTime = performance.now() - clientStart
 
       const basePath = entry.basePath
+      const docsStart = performance.now()
       const agentDocs = await getFormattedDocs(def, this.interactor, basePath, def.name)
+      const docsTime = performance.now() - docsStart
 
       // overwrite agent instructions with the added project and user context
       def.instructions = `${def.instructions}\n\n
@@ -299,10 +373,18 @@ ${agentDocs}
             })
           )
         : undefined
+      
+      const toolsStart = performance.now()
       const syncTools = await this.toolbox.getTools({ context, integrations, agentName: def.name })
+      const toolsTime = performance.now() - toolsStart
 
       const toolset = new ToolSet([...syncTools])
-      return new Agent(def, aiClient, toolset)
+      const agent = new Agent(def, aiClient, toolset)
+      
+      const totalTime = performance.now() - agentStart
+      this.interactor.debug(`✨ Agent '${def.name}' created: ${totalTime.toFixed(2)}ms (client: ${clientTime.toFixed(2)}ms, docs: ${docsTime.toFixed(2)}ms, tools: ${toolsTime.toFixed(2)}ms)`)
+      
+      return agent
     } catch (error) {
       const errorMessage = `Failed to create agent ${def.name}`
       console.error(`${errorMessage}:`, error)
