@@ -346,10 +346,9 @@ export class ServerClient {
    */
   async processFeedback(params: {
     messageId: string,
-    agentName: string,
     feedback: 'positive' | 'negative'
   }): Promise<void> {
-    debugLog('FEEDBACK', `Processing ${params.feedback} feedback for agent ${params.agentName} for client ${this.clientId}`)
+    debugLog('FEEDBACK', `Processing ${params.feedback} feedback for message ${params.messageId} for client ${this.clientId}`)
     
     // Check if we have an active Coday instance
     if (!this.coday) {
@@ -370,10 +369,9 @@ export class ServerClient {
 
     const feedbackService = new FeedbackService(this.interactor, agentService)
     
-    // Process the feedback
+    // Process the feedback - agent name will be extracted from the message
     await feedbackService.processFeedback({
       messageId: params.messageId,
-      agentName: params.agentName,
       feedback: params.feedback,
       aiThread: context.aiThread,
       context: context

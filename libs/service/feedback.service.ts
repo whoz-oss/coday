@@ -10,29 +10,53 @@ export class FeedbackService {
 
   async processFeedback(params: {
     messageId: string,
-    agentName: string,
     feedback: 'positive' | 'negative',
     aiThread: AiThread,
     context: CommandContext
   }): Promise<void> {
-    const { messageId, agentName, feedback, aiThread, context } = params
+    const { messageId, feedback, aiThread, context } = params
 
     try {
-      // 1. Obtenir l'agent
+      // 1. Find the message and extract agent name from it
+      const messagesResult = await aiThread.getMessages(undefined, undefined)
+      const message = messagesResult.messages.find((m: any) => m.timestamp === messageId)
+      
+      if (!message) {
+        this.interactor.error(`Message ${messageId} not found in thread`)
+        return
+      }
+
+      // Check if this is a MessageEvent (only MessageEvents can receive feedback)
+      if (message.type !== 'message') {
+        this.interactor.error('Feedback can only be provided on message events')
+        return
+      }
+
+      // Cast to MessageEvent to access role and speaker properties
+      const messageEvent = message as any // MessageEvent from coday-events
+      
+      if (messageEvent.role !== 'assistant') {
+        this.interactor.error('Feedback can only be provided on assistant messages')
+        return
+      }
+
+      // Extract agent name from message speaker
+      const agentName = messageEvent.name || 'assistant'
+      
+      // 2. Get the agent
       const agent = await this.agentService.findByName(agentName, context)
       if (!agent) {
         this.interactor.error(`Agent ${agentName} not found`)
         return
       }
 
-      // 2. Vérifier que l'agent a accès aux memory tools
-      // Pour simplifier, nous essaierons d'utiliser les memory tools
-      // L'agent échouera naturellement s'il n'y a pas accès
+      // 3. Check if agent has memory tools access
+      // For now, we'll try to use memory tools and let the agent fail naturally if not available
 
-      // 3. Demander des détails à l'utilisateur
+      // 4. Ask user for feedback details
       const promptMessage = feedback === 'negative' 
-        ? "Qu'est-ce qui pourrait être amélioré dans cette réponse ?"
-        : "Qu'est-ce qui était particulièrement utile dans cette réponse ?"
+        ? "What could be improved in this response?"
+        : "What was particularly useful in this response?"
       
       const details = await this.interactor.promptText(promptMessage)
       if (!details) {
@@ -40,10 +64,10 @@ export class FeedbackService {
         return
       }
 
-      // 4. Fork du thread et préparer le contexte
+      // 5. Fork the thread for isolated processing
       const forkedThread = aiThread.fork(agentName)
       
-      // 5. Construire le prompt de curation adapté
+      // 6. Build the appropriate curation prompt
       const curationPrompt = await this.buildCurationPrompt(
         messageId, 
         details, 
@@ -51,7 +75,7 @@ export class FeedbackService {
         forkedThread
       )
 
-      // 6. Exécuter l'agent dans le thread forké (pas de merge)
+      // 7. Execute agent in forked thread (no merge back)
       this.interactor.displayText(`🔄 Processing ${feedback} feedback for agent ${agentName}...`)
       await agent.run(curationPrompt, forkedThread)
       
@@ -81,40 +105,40 @@ export class FeedbackService {
     const contextMessages = allMessages.slice(0, messageIndex + 1)
     
     if (feedbackType === 'positive') {
-      return `Tu as reçu un retour positif sur l'une de tes réponses. L'utilisateur souhaite renforcer ce type d'approche.
+      return `You have received positive feedback on one of your responses. The user wants to reinforce this type of approach.
 
-Contexte complet de la conversation jusqu'à ta réponse:
+Complete conversation context up to your response:
 <context>
 ${this.formatMessages(contextMessages)}
 </context>
 
-Retour positif de l'utilisateur:
+Positive user feedback:
 "${userFeedback}"
 
-Analyse ce retour et identifie les éléments qui ont été appréciés. Si tu identifies des patterns ou approches qui mériteraient d'être renforcés pour des situations similaires futures, utilise l'outil memorize pour les capturer.
+Analyze this feedback and identify the elements that were appreciated. If you identify patterns or approaches that should be reinforced for similar future situations, use the memorize tool to capture them.
 
 Important:
-- Ne sur-généralise pas à partir d'un seul exemple
-- Reste nuancé et évite de devenir répétitif
-- Focus sur les principes utiles plutôt que sur des détails spécifiques`
+- Don't over-generalize from a single example
+- Stay nuanced and avoid becoming repetitive
+- Focus on useful principles rather than specific details`
     } else {
-      return `Tu as reçu un retour constructif sur l'une de tes réponses. L'utilisateur suggère une amélioration.
+      return `You have received constructive feedback on one of your responses. The user suggests an improvement.
 
-Contexte complet de la conversation jusqu'à ta réponse:
+Complete conversation context up to your response:
 <context>
 ${this.formatMessages(contextMessages)}
 </context>
 
-Suggestion d'amélioration de l'utilisateur:
+User improvement suggestion:
 "${userFeedback}"
 
-Analyse ce retour et identifie ce qui pourrait être amélioré dans ton approche. Si tu identifies des patterns ou comportements qui devraient être ajustés, utilise l'outil memorize pour capturer ces apprentissages.
+Analyze this feedback and identify what could be improved in your approach. If you identify patterns or behaviors that should be adjusted, use the memorize tool to capture these learnings.
 
 Important:
-- Reste équilibré dans tes ajustements
-- Ne sur-corrige pas au point de perdre tes forces existantes
-- Focus sur des améliorations actionnables et contextuelles
-- Évite les généralisations excessives`
+- Stay balanced in your adjustments
+- Don't over-correct to the point of losing your existing strengths
+- Focus on actionable and contextual improvements
+- Avoid excessive generalizations`
     }
   }
 

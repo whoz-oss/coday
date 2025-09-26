@@ -500,7 +500,6 @@ export class CodayService implements OnDestroy {
    */
   sendFeedback(params: {
     messageId: string,
-    agentName: string,
     feedback: 'positive' | 'negative'
   }): Observable<any> {
     console.log('[CODAY] Sending feedback:', params)

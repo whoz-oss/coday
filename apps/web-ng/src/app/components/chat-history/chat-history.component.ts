@@ -222,7 +222,6 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     
     this.codayService.sendFeedback({
       messageId: message.id,
-      agentName: message.speaker,
       feedback: 'positive'
     }).subscribe({
       next: () => {
@@ -248,7 +247,6 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     
     this.codayService.sendFeedback({
       messageId: message.id,
-      agentName: message.speaker,
       feedback: 'negative'
     }).subscribe({
       next: () => {
