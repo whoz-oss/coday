@@ -59,6 +59,12 @@ export class AgentService implements Killable {
     const startTime = performance.now()
     this.interactor.debug('🚀 Starting agent initialization...')
 
+    // Pre-initialize tools in parallel (fire-and-forget)
+    this.interactor.debug('🛠️ Pre-initializing tools in parallel...')
+    this.toolbox.getTools({ context, integrations: undefined, agentName: 'pre-init' })
+      .catch(error => this.interactor.debug(`Pre-initialization warning: ${error.message}`))
+
+
     try {
       // Load from coday.yml agents section first
       const codayYmlStart = performance.now()
