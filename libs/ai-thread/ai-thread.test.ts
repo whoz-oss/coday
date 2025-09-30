@@ -281,4 +281,131 @@ describe('AiThread', () => {
       expect(thread.price).toBe(initialPrice)
     })
   })
+
+  describe('cleanToolRequestResponseConsistency', () => {
+    beforeEach(() => {
+      thread = new AiThread({
+        id: 'test-thread',
+        username: 'testuser',
+        messages: []
+      })
+    })
+
+    it('should remove orphaned tool requests without responses', async () => {
+      const messages = [
+        new MessageEvent({ role: 'user', content: [{ type: 'text', content: 'Hello' }] }),
+        new ToolRequestEvent({ name: 'test-tool', args: '{}', toolRequestId: 'orphaned-request' }),
+        new MessageEvent({ role: 'assistant', content: [{ type: 'text', content: 'Done' }] })
+      ]
+      thread['messages'] = messages
+      
+      const result = await thread.getMessages(undefined, undefined)
+      
+      // Should remove the orphaned tool request
+      expect(result.messages).toHaveLength(2)
+      expect(result.messages[0]).toBeInstanceOf(MessageEvent)
+      expect(result.messages[1]).toBeInstanceOf(MessageEvent)
+      expect(result.messages.some(m => m instanceof ToolRequestEvent)).toBe(false)
+    })
+
+    it('should remove orphaned tool responses without requests', async () => {
+      const messages = [
+        new MessageEvent({ role: 'user', content: [{ type: 'text', content: 'Hello' }] }),
+        new ToolResponseEvent({ toolRequestId: 'missing-request', output: 'result' }),
+        new MessageEvent({ role: 'assistant', content: [{ type: 'text', content: 'Done' }] })
+      ]
+      thread['messages'] = messages
+      
+      const result = await thread.getMessages(undefined, undefined)
+      
+      // Should remove the orphaned tool response
+      expect(result.messages).toHaveLength(2)
+      expect(result.messages[0]).toBeInstanceOf(MessageEvent)
+      expect(result.messages[1]).toBeInstanceOf(MessageEvent)
+      expect(result.messages.some(m => m instanceof ToolResponseEvent)).toBe(false)
+    })
+
+    it('should remove tool responses without toolRequestId', async () => {
+      const brokenResponse = new ToolResponseEvent({ toolRequestId: '', output: 'result' })
+      // Simulate a broken response by removing the toolRequestId
+      brokenResponse.toolRequestId = undefined as any
+      
+      const messages = [
+        new MessageEvent({ role: 'user', content: [{ type: 'text', content: 'Hello' }] }),
+        brokenResponse,
+        new MessageEvent({ role: 'assistant', content: [{ type: 'text', content: 'Done' }] })
+      ]
+      thread['messages'] = messages
+      
+      const result = await thread.getMessages(undefined, undefined)
+      
+      // Should remove the broken tool response
+      expect(result.messages).toHaveLength(2)
+      expect(result.messages[0]).toBeInstanceOf(MessageEvent)
+      expect(result.messages[1]).toBeInstanceOf(MessageEvent)
+      expect(result.messages.some(m => m instanceof ToolResponseEvent)).toBe(false)
+    })
+
+    it('should keep valid tool request-response pairs', async () => {
+      const messages = [
+        new MessageEvent({ role: 'user', content: [{ type: 'text', content: 'Hello' }] }),
+        new ToolRequestEvent({ name: 'test-tool', args: '{}', toolRequestId: 'valid-request' }),
+        new ToolResponseEvent({ toolRequestId: 'valid-request', output: 'result' }),
+        new MessageEvent({ role: 'assistant', content: [{ type: 'text', content: 'Done' }] })
+      ]
+      thread['messages'] = messages
+      
+      const result = await thread.getMessages(undefined, undefined)
+      
+      // Should keep all messages
+      expect(result.messages).toHaveLength(4)
+      expect(result.messages[0]).toBeInstanceOf(MessageEvent)
+      expect(result.messages[1]).toBeInstanceOf(ToolRequestEvent)
+      expect(result.messages[2]).toBeInstanceOf(ToolResponseEvent)
+      expect(result.messages[3]).toBeInstanceOf(MessageEvent)
+    })
+
+    it('should handle mixed scenarios with both valid and invalid pairs', async () => {
+      const messages = [
+        new MessageEvent({ role: 'user', content: [{ type: 'text', content: 'Hello' }] }),
+        new ToolRequestEvent({ name: 'orphaned-tool', args: '{}', toolRequestId: 'orphaned' }),
+        new ToolRequestEvent({ name: 'valid-tool', args: '{}', toolRequestId: 'valid' }),
+        new ToolResponseEvent({ toolRequestId: 'valid', output: 'valid result' }),
+        new ToolResponseEvent({ toolRequestId: 'missing', output: 'orphaned result' }),
+        new MessageEvent({ role: 'assistant', content: [{ type: 'text', content: 'Done' }] })
+      ]
+      thread['messages'] = messages
+      
+      const result = await thread.getMessages(undefined, undefined)
+      
+      // Should keep: user message, valid tool pair, assistant message
+      expect(result.messages).toHaveLength(4)
+      expect(result.messages[0]).toBeInstanceOf(MessageEvent)
+      expect(result.messages[1]).toBeInstanceOf(ToolRequestEvent)
+      expect((result.messages[1] as ToolRequestEvent).toolRequestId).toBe('valid')
+      expect(result.messages[2]).toBeInstanceOf(ToolResponseEvent)
+      expect((result.messages[2] as ToolResponseEvent).toolRequestId).toBe('valid')
+      expect(result.messages[3]).toBeInstanceOf(MessageEvent)
+    })
+
+    it('should work with charBudget limitations', async () => {
+      const messages = [
+        new MessageEvent({ role: 'user', content: [{ type: 'text', content: 'A'.repeat(50) }] }),
+        new ToolRequestEvent({ name: 'orphaned-tool', args: '{}', toolRequestId: 'orphaned' }),
+        new ToolRequestEvent({ name: 'valid-tool', args: '{}', toolRequestId: 'valid' }),
+        new ToolResponseEvent({ toolRequestId: 'valid', output: 'valid result' }),
+        new MessageEvent({ role: 'assistant', content: [{ type: 'text', content: 'B'.repeat(50) }] })
+      ]
+      thread['messages'] = messages
+      
+      // Use a character budget that should include most messages
+      const result = await thread.getMessages(500, undefined)
+      
+      // Should remove orphaned tool request and keep valid pair
+      expect(result.messages).toHaveLength(4)
+      expect(result.messages.some(m => m instanceof ToolRequestEvent && (m as ToolRequestEvent).toolRequestId === 'orphaned')).toBe(false)
+      expect(result.messages.some(m => m instanceof ToolRequestEvent && (m as ToolRequestEvent).toolRequestId === 'valid')).toBe(true)
+      expect(result.messages.some(m => m instanceof ToolResponseEvent && (m as ToolResponseEvent).toolRequestId === 'valid')).toBe(true)
+    })
+  })
 })

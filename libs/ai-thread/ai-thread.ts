@@ -113,29 +113,21 @@ export class AiThread {
       this.messages = []
     }
     
-    if (!maxChars) return { messages: [...this.messages], compacted: false }
+    if (!maxChars) {
+      const cleanedMessages = this.cleanToolRequestResponseConsistency([...this.messages])
+      return { messages: cleanedMessages, compacted: false }
+    }
 
     // from the end (hence the toReversed), take all messages that fit into the charbudget
     let { messages, overflow } = partition(this.messages.toReversed(), maxChars)
-    messages = messages.toReversed()
-    overflow = overflow.toReversed()
-
-    // loop into the accepted message to catch all the tool responses without tool requests
-    // this can break the API, so move these lone tool responses into the overflow section instead
-    const messageIds: Set<string> = new Set(messages.map((m) => m.timestamp))
-    for (let i = 0; i < messages.length; i++) {
-      const message = messages[i]
-      if (message instanceof ToolResponseEvent && !messageIds.has(message.parentKey ?? 'no_parent_key')) {
-        messages.splice(i, 1)
-        overflow.push(message)
-      }
-      //ignore other weird cases like a tool request without a response, the thread is either broken or oblivious to that
-    }
+    messages = this.cleanToolRequestResponseConsistency(messages.toReversed())
+    overflow = this.cleanToolRequestResponseConsistency(overflow.toReversed())
 
     if (!compactor) {
+      // Apply tool request-response consistency cleaning before returning
       // IMPORTANT: apply compaction to the thread to avoid re-doing it all over for every LLM call.
-      this.messages = messages // forget about the overflow part
-      return { messages, compacted: true }
+      this.messages = this.cleanToolRequestResponseConsistency(messages) // forget about the overflow part
+      return { messages: this.messages, compacted: true }
     }
 
     // time to compact, with the same charBudget
@@ -147,17 +139,73 @@ export class AiThread {
       overflow = overflowPartition.overflow.length ? [summary, ...overflowPartition.overflow] : []
     }
 
+    // Apply tool request-response consistency cleaning before returning
+    const cleanedMessages = this.cleanToolRequestResponseConsistency(messages)
+
     /*
      * IMPORTANT: apply compaction to the thread to avoid re-doing it all over for every LLM call.
      * This might happen if a small model is taking part in the current thread and that is a questionable decision.
      * Smaller models should have delegation instead of being selected or redirected to.
      */
-    this.messages = summary ? [summary, ...messages] : messages
+    this.messages = summary ? [summary, ...cleanedMessages] : cleanedMessages
 
     return {
-      messages,
+      messages: cleanedMessages,
       compacted: true,
     }
+  }
+
+  /**
+   * Cleans tool request-response consistency to prevent API errors.
+   * Removes orphaned tool requests/responses that would cause Anthropic API 400 errors.
+   * 
+   * @param messages Array of messages to clean
+   * @returns Cleaned array of messages
+   * @private
+   */
+  private cleanToolRequestResponseConsistency(messages: ThreadMessage[]): ThreadMessage[] {
+    const cleanedMessages: ThreadMessage[] = []
+    const toolRequestIds = new Set<string>()
+    const toolResponseIds = new Set<string>()
+    
+    // First pass: collect all tool request and response IDs
+    for (const message of messages) {
+      if (message instanceof ToolRequestEvent && message.toolRequestId) {
+        toolRequestIds.add(message.toolRequestId)
+      } else if (message instanceof ToolResponseEvent && message.toolRequestId) {
+        toolResponseIds.add(message.toolRequestId)
+      }
+    }
+    
+    // Second pass: filter messages based on consistency rules
+    for (const message of messages) {
+      let shouldKeep = true
+      
+      if (message instanceof ToolRequestEvent) {
+        // Rule 1: Remove toolRequest without corresponding toolResponse
+        if (message.toolRequestId && !toolResponseIds.has(message.toolRequestId)) {
+          console.debug(`[AiThread] Removing orphaned tool request: ${message.name} (ID: ${message.toolRequestId})`)
+          shouldKeep = false
+        }
+      } else if (message instanceof ToolResponseEvent) {
+        // Rule 2: Remove toolResponse without reference to tool (missing toolRequestId)
+        if (!message.toolRequestId) {
+          console.warn(`[AiThread] Removing tool response without tool reference (timestamp: ${message.timestamp})`)
+          shouldKeep = false
+        }
+        // Rule 3: Remove toolResponse without matching toolRequest
+        else if (!toolRequestIds.has(message.toolRequestId)) {
+          console.debug(`[AiThread] Removing orphaned tool response for missing request ID: ${message.toolRequestId}`)
+          shouldKeep = false
+        }
+      }
+      
+      if (shouldKeep) {
+        cleanedMessages.push(message)
+      }
+    }
+    
+    return cleanedMessages
   }
 
   /**
