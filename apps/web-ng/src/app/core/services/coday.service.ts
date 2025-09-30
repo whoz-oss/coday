@@ -142,16 +142,19 @@ export class CodayService implements OnDestroy {
       // Use the original ChoiceEvent to build proper answer with parentKey
       const answerEvent = this.currentChoiceEvent.buildAnswer(choice)
       
+      console.log('[CODAY-CHOICE] Choice sent successfully, clearing UI')
+      // Hide choice interface immediately
+      this.currentChoiceSubject.next(null)
+      // Clear the current choice event to prevent reuse
+      this.currentChoiceEvent = null
       this.codayApi.sendEvent(answerEvent).subscribe({
-        next: () => {
-          // Hide choice interface immediately
-          this.currentChoiceSubject.next(null)
-          // But keep currentChoiceEvent until next event
-        },
-        error: (error) => console.error('[CODAY] Choice error:', error)
+        next: () => {},
+        error: (error) => {
+          console.error('[CODAY-CHOICE] Choice error:', error)
+        }
       })
     } else {
-      console.error('[CODAY] No choice event available')
+      console.error('[CODAY-CHOICE] No choice event available for choice:', choice)
     }
   }
 
