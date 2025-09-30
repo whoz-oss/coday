@@ -40,6 +40,7 @@ const OPENAI_DEFAULT_MODELS: AiModel[] = [
 
 export class OpenaiClient extends AiClient {
   name: string
+  private static readonly MAX_TOOLS = 128
 
   constructor(
     readonly interactor: Interactor,
@@ -52,6 +53,23 @@ export class OpenaiClient extends AiClient {
       this.models = aiProviderConfig.models ?? []
     }
     this.name = aiProviderConfig.name
+  }
+
+  /**
+   * Truncates the tools list to OpenAI's maximum of 128 tools and warns the user if truncation occurs
+   */
+  private truncateToolsIfNeeded(tools: any[]): any[] {
+    if (tools.length <= OpenaiClient.MAX_TOOLS) {
+      return tools
+    }
+
+    this.interactor.warn(
+      `⚠️ OpenAI limits tools to ${OpenaiClient.MAX_TOOLS} maximum. Your agent has ${tools.length} tools. ` +
+      `Truncating to first ${OpenaiClient.MAX_TOOLS} tools. ` +
+      `Consider reducing your integrations or using a shorter tool list for better performance.`
+    )
+
+    return tools.slice(0, OpenaiClient.MAX_TOOLS)
   }
 
   async run(agent: Agent, thread: AiThread): Promise<Observable<CodayEvent>> {
@@ -139,7 +157,7 @@ export class OpenaiClient extends AiClient {
   ): Promise<void> {
     const assistantStream = client.beta.threads.runs.stream(thread.data.openai.assistantThreadData.threadId, {
       assistant_id: agent.definition.openaiAssistantId!,
-      tools: [...agent.tools.getTools(), { type: 'file_search' }],
+      tools: this.truncateToolsIfNeeded([...agent.tools.getTools(), { type: 'file_search' }]),
       tool_choice: 'auto',
       max_completion_tokens: 120000,
       max_prompt_tokens: 120000,
@@ -166,7 +184,7 @@ export class OpenaiClient extends AiClient {
       const response = await client.chat.completions.create({
         model: model.name,
         messages: this.toOpenAiMessage(agent, data.messages),
-        tools: agent.tools.getTools(),
+        tools: this.truncateToolsIfNeeded(agent.tools.getTools()),
         max_completion_tokens: undefined,
         temperature: agent.definition.temperature ?? 0.8,
       })
