@@ -1,4 +1,4 @@
-import { MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
+import { MessageEvent, ToolRequestEvent, ToolResponseEvent } from '../coday-events/src/lib/coday-events'
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import { ToolCall, ToolResponse } from '../integration/tool-call'
 import { AiThread } from './ai-thread'
@@ -47,14 +47,20 @@ describe('AiThread', () => {
   })
 
   describe('tool calls and responses', () => {
-    it('should add tool calls', async () => {
-      const call = createToolCall('test-tool', '{"arg": "value"}')
+    it('should add tool calls with response pair', async () => {
+      const call = createToolCall('test-tool', '{"arg": "value"}', 'test-id')
       thread.addToolCalls('agent1', [call])
+      
+      // Add matching response to keep the pair
+      const response = createToolResponse('test-id', 'test-tool', 'test response')
+      thread.addToolResponses('user1', [response])
 
       const messages = (await thread.getMessages(undefined, undefined)).messages
-      expect(messages).toHaveLength(1)
+      expect(messages).toHaveLength(2)
       expect(messages[0]).toBeInstanceOf(ToolRequestEvent)
+      expect(messages[1]).toBeInstanceOf(ToolResponseEvent)
       expect((messages[0] as ToolRequestEvent).name).toBe('test-tool')
+      expect((messages[1] as ToolResponseEvent).toolRequestId).toBe('test-id')
     })
 
     it('should skip tool calls with missing required fields', async () => {
@@ -62,6 +68,15 @@ describe('AiThread', () => {
       thread.addToolCalls('agent1', [invalidCall])
 
       expect((await thread.getMessages(undefined, undefined)).messages).toHaveLength(0)
+    })
+
+    it('should remove orphaned tool calls without responses', async () => {
+      const call = createToolCall('test-tool', '{"arg": "value"}')
+      thread.addToolCalls('agent1', [call])
+
+      const messages = (await thread.getMessages(undefined, undefined)).messages
+      // Orphaned tool request should be removed by cleanToolRequestResponseConsistency
+      expect(messages).toHaveLength(0)
     })
 
     it('should add tool response and keep only latest similar calls', async () => {
@@ -282,7 +297,7 @@ describe('AiThread', () => {
     })
   })
 
-  describe('cleanToolRequestResponseConsistency', () => {
+  describe('tool request-response consistency cleaning', () => {
     beforeEach(() => {
       thread = new AiThread({
         id: 'test-thread',
@@ -388,24 +403,115 @@ describe('AiThread', () => {
       expect(result.messages[3]).toBeInstanceOf(MessageEvent)
     })
 
-    it('should work with charBudget limitations', async () => {
+    it('should handle budget truncation that splits tool request-response pairs', async () => {
+      // Create messages with known sizes to control budget truncation precisely
       const messages = [
-        new MessageEvent({ role: 'user', content: [{ type: 'text', content: 'A'.repeat(50) }] }),
-        new ToolRequestEvent({ name: 'orphaned-tool', args: '{}', toolRequestId: 'orphaned' }),
-        new ToolRequestEvent({ name: 'valid-tool', args: '{}', toolRequestId: 'valid' }),
-        new ToolResponseEvent({ toolRequestId: 'valid', output: 'valid result' }),
-        new MessageEvent({ role: 'assistant', content: [{ type: 'text', content: 'B'.repeat(50) }] })
+        // Early messages (will be in overflow due to budget limit)
+        new MessageEvent({ role: 'user', content: [{ type: 'text', content: 'Early message '.repeat(10) }] }), // ~150 chars
+        new ToolRequestEvent({ name: 'early-tool', args: '{"data": "early"}', toolRequestId: 'early-request' }), // ~100 chars
+        new ToolResponseEvent({ toolRequestId: 'early-request', output: 'Early tool response '.repeat(5) }), // ~100 chars
+        
+        // Middle messages (truncation point - request kept, response goes to overflow)
+        new MessageEvent({ role: 'user', content: [{ type: 'text', content: 'Middle message' }] }), // ~20 chars
+        new ToolRequestEvent({ name: 'split-tool', args: '{"split": true}', toolRequestId: 'split-request' }), // ~80 chars
+        new ToolResponseEvent({ toolRequestId: 'split-request', output: 'This response will be truncated' }), // ~50 chars
+        
+        // Recent messages (will be kept within budget)
+        new MessageEvent({ role: 'assistant', content: [{ type: 'text', content: 'Recent response' }] }) // ~20 chars
       ]
       thread['messages'] = messages
       
-      // Use a character budget that should include most messages
-      const result = await thread.getMessages(500, undefined)
+      // Verify we start with 7 messages total
+      expect(messages).toHaveLength(7)
       
-      // Should remove orphaned tool request and keep valid pair
+      // Set budget to approximately 150 chars - should keep last ~3 messages but split the tool pair
+      const result = await thread.getMessages(150, undefined)
+      
+      // Count message types in result
+      const toolRequests = result.messages.filter(m => m instanceof ToolRequestEvent) as ToolRequestEvent[]
+      const toolResponses = result.messages.filter(m => m instanceof ToolResponseEvent) as ToolResponseEvent[]
+      const messageEvents = result.messages.filter(m => m instanceof MessageEvent) as MessageEvent[]
+      
+      // Specific assertions on message counts and content
+      expect(result.messages.length).toBeGreaterThan(0)
+      expect(result.messages.length).toBeLessThan(7) // Should be truncated
+      
+      // Should have exactly the recent assistant message
+      expect(messageEvents).toHaveLength(1)
+      expect(messageEvents[0]?.role).toBe('assistant')
+      expect((messageEvents[0]?.content[0] as any)?.content).toBe('Recent response')
+      
+      // The split pair should be completely removed (both request and response)
+      const splitRequestPresent = toolRequests.some(req => req.toolRequestId === 'split-request')
+      const splitResponsePresent = toolResponses.some(res => res.toolRequestId === 'split-request')
+      expect(splitRequestPresent).toBe(false)
+      expect(splitResponsePresent).toBe(false)
+      
+      // Should not have any orphaned tool requests or responses
+      expect(toolRequests.every(req => 
+        toolResponses.some(res => res.toolRequestId === req.toolRequestId)
+      )).toBe(true)
+      
+      expect(toolResponses.every(res => 
+        toolRequests.some(req => req.toolRequestId === res.toolRequestId)
+      )).toBe(true)
+      
+      // Early complete pair should not be present (due to budget truncation)
+      const earlyRequestPresent = toolRequests.some(req => req.toolRequestId === 'early-request')
+      const earlyResponsePresent = toolResponses.some(res => res.toolRequestId === 'early-request')
+      expect(earlyRequestPresent).toBe(false)
+      expect(earlyResponsePresent).toBe(false)
+      
+      // Should have no tool pairs at all due to budget constraints and cleaning
+      expect(toolRequests).toHaveLength(0)
+      expect(toolResponses).toHaveLength(0)
+      
+      expect(result.compacted).toBe(true)
+    })
+    
+    it('should work with charBudget when no truncation occurs', async () => {
+      const messages = [
+        new MessageEvent({ role: 'user', content: [{ type: 'text', content: 'Hello' }] }),
+        new ToolRequestEvent({ name: 'orphaned-tool', args: '{}', toolRequestId: 'orphaned' }),
+        new ToolRequestEvent({ name: 'valid-tool', args: '{}', toolRequestId: 'valid' }),
+        new ToolResponseEvent({ toolRequestId: 'valid', output: 'valid result' }),
+        new MessageEvent({ role: 'assistant', content: [{ type: 'text', content: 'Done' }] })
+      ]
+      thread['messages'] = messages
+      
+      // Verify we start with 5 messages
+      expect(messages).toHaveLength(5)
+      
+      // Use a large character budget that should include all messages
+      const result = await thread.getMessages(1000, undefined)
+      
+      // Count message types in result
+      const toolRequests = result.messages.filter(m => m instanceof ToolRequestEvent) as ToolRequestEvent[]
+      const toolResponses = result.messages.filter(m => m instanceof ToolResponseEvent) as ToolResponseEvent[]
+      const messageEvents = result.messages.filter(m => m instanceof MessageEvent) as MessageEvent[]
+      
+      // Should remove orphaned tool request and keep valid pair + 2 messages
       expect(result.messages).toHaveLength(4)
-      expect(result.messages.some(m => m instanceof ToolRequestEvent && (m as ToolRequestEvent).toolRequestId === 'orphaned')).toBe(false)
-      expect(result.messages.some(m => m instanceof ToolRequestEvent && (m as ToolRequestEvent).toolRequestId === 'valid')).toBe(true)
-      expect(result.messages.some(m => m instanceof ToolResponseEvent && (m as ToolResponseEvent).toolRequestId === 'valid')).toBe(true)
+      expect(messageEvents).toHaveLength(2) // user 'Hello' + assistant 'Done'
+      expect(toolRequests).toHaveLength(1) // only 'valid' tool request
+      expect(toolResponses).toHaveLength(1) // only 'valid' tool response
+      
+      // Verify specific messages are present/absent
+      expect(toolRequests[0]?.toolRequestId).toBe('valid')
+      expect(toolRequests[0]?.name).toBe('valid-tool')
+      expect(toolResponses[0]?.toolRequestId).toBe('valid')
+      expect(toolResponses[0]?.getTextOutput()).toBe('valid result')
+      
+      // Verify orphaned tool request was removed
+      expect(toolRequests.some(req => req.toolRequestId === 'orphaned')).toBe(false)
+      
+      // Verify message events content
+      const userMessage = messageEvents.find(m => m.role === 'user')
+      const assistantMessage = messageEvents.find(m => m.role === 'assistant')
+      expect(userMessage).toBeDefined()
+      expect(assistantMessage).toBeDefined()
+      expect((userMessage!.content[0] as any).content).toBe('Hello')
+      expect((assistantMessage!.content[0] as any).content).toBe('Done')
     })
   })
 })
