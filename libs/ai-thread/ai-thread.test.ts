@@ -1,4 +1,4 @@
-import { MessageEvent, ToolRequestEvent, ToolResponseEvent } from '../coday-events/src/lib/coday-events'
+import { MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import { ToolCall, ToolResponse } from '../integration/tool-call'
 import { AiThread } from './ai-thread'
