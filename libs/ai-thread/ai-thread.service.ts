@@ -158,7 +158,9 @@ export class AiThreadService implements Killable {
 
   async autoSave(newName?: string): Promise<void> {
     const thread = this.activeThread$.value
-    if (!thread) {
+    if (!thread || thread.messagesLength == 0) {
+      // skip saving a thread that has no messages
+      console.error(`Autosave of an empty or falsy thread aborted, threadId: ${thread?.id}`)
       return
     }
     if (newName) {
