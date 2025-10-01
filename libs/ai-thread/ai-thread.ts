@@ -65,6 +65,10 @@ export class AiThread {
   /** Internal storage of thread messages in chronological order */
   private messages: ThreadMessage[]
 
+  get messagesLength(): number {
+    return this.messages.length
+  }
+
   /**
    * Creates a new AiThread instance.
    * @param thread - Configuration object containing thread ID and optional message history
