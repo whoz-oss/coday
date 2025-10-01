@@ -1,3 +1,16 @@
+## 0.18.3 (2025-10-01)
+
+### 🩹 Fixes
+
+- #220 add OpenAI tool truncation to prevent 128+ tools error ([#221](https://github.com/whoz-oss/coday/pull/221), [#220](https://github.com/whoz-oss/coday/issues/220))
+- #225 and #224 select agent in oneshot context ([#228](https://github.com/whoz-oss/coday/pull/228), [#225](https://github.com/whoz-oss/coday/issues/225), [#224](https://github.com/whoz-oss/coday/issues/224), [#227](https://github.com/whoz-oss/coday/issues/227))
+- #144 prevent autosaving empty thread ([#226](https://github.com/whoz-oss/coday/pull/226), [#144](https://github.com/whoz-oss/coday/issues/144))
+- #222 thread corrupted tool response request ([#223](https://github.com/whoz-oss/coday/pull/223), [#222](https://github.com/whoz-oss/coday/issues/222))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.18.2 (2025-09-26)
 
 ### 🚀 Features
