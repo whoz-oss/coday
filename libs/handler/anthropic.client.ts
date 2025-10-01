@@ -18,7 +18,7 @@ interface RateLimitInfo {
 
 const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
   {
-    name: 'claude-sonnet-4-20250514',
+    name: 'claude-sonnet-4-5-20250929',
     alias: 'BIG',
     contextWindow: 200000,
     price: {
