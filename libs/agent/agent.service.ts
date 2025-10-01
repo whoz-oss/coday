@@ -141,7 +141,7 @@ export class AgentService implements Killable {
   }
 
   async findAgentByNameStart(nameStart: string | undefined, context: CommandContext): Promise<Agent | undefined> {
-    if (!nameStart || context.oneshot) {
+    if (!nameStart) {
       return
     }
 
@@ -160,6 +160,9 @@ export class AgentService implements Killable {
 
     const options = matchingAgents.map((agent) => agent.name)
     try {
+      if (context.oneshot) {
+        throw new Error('Agent ambiguous names not allowed in oneshot context')
+      }
       const selection = await this.interactor.chooseOption(
         options,
         `Multiple agents match '${nameStart}', please select one:`

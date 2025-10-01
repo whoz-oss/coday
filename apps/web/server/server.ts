@@ -88,6 +88,7 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
     // Extract UUID from URL parameters
     const { uuid } = req.params
     if (!uuid) {
+      debugLog('WEBHOOK', 'Missing UUID in request')
       res.status(400).send({ error: 'Missing webhook UUID in URL' })
       return
     }
@@ -95,6 +96,7 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
     // Load webhook configuration
     const webhook = await webhookService.get(uuid)
     if (!webhook) {
+      debugLog('WEBHOOK', `Webhook not found for UUID: ${uuid}`)
       res.status(404).send({ error: `Webhook with UUID '${uuid}' not found` })
       return
     }
@@ -153,29 +155,32 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
     clientId = `webhook_${Math.random().toString(36).substring(2, 15)}`
 
     // Configure one-shot Coday instance with automatic thread saving
+    const finalPrompts = title ? [`thread save ${title}`, ...prompts] : prompts
+    
     const oneShotOptions = {
       ...codayOptions,
       oneshot: true, // Creates isolated instance that terminates after processing
       project, // Target project for the AI agent interaction
-      prompts: title ? [`thread save ${title}`, ...prompts] : prompts, // Auto-save thread with title + user prompts
+      prompts: finalPrompts, // Auto-save thread with title + user prompts
     }
-
+    
     // Create a dedicated client instance for this webhook request
     const client = clientManager.getOrCreate(clientId, null, oneShotOptions, username)
     const interactor = client.getInteractor()
     client.startCoday()
 
     // Log successful webhook initiation with clientId for log correlation
-    logger.logWebhook({
+    const logData = {
       project,
       title: title || 'Untitled',
       username,
       clientId,
-      promptCount: prompts.length,
+      promptCount: finalPrompts.length,
       awaitFinalAnswer: !!awaitFinalAnswer,
       webhookName: webhook.name,
       webhookUuid: webhook.uuid,
-    })
+    }
+    logger.logWebhook(logData)
 
     const threadIdSource = client.getThreadId()
 
