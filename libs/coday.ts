@@ -143,7 +143,7 @@ export class Coday {
         this.interactor.error('Could not initialize context 😭')
         break
       }
-
+      
       let userCommand = await this.initCommand()
       if ((!userCommand && this.options.oneshot) || userCommand === keywords.exit) {
         // default case: no initial prompt (or empty) and not interactive = get out
@@ -157,7 +157,9 @@ export class Coday {
       }
 
       const thread = this.context?.aiThread
-      if (thread) thread.runStatus = RunStatus.RUNNING
+      if (thread) {
+        thread.runStatus = RunStatus.RUNNING
+      }
 
       // add the user command to the queue and let handlers decompose it in many and resolve them ultimately
       this.context?.addCommands(userCommand!)
