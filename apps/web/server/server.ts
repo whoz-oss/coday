@@ -203,27 +203,40 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
             clientId,
           })
           console.error('Error waiting for webhook completion:', error)
-          res.status(500).send({ error: 'Webhook processing failed' })
+          
+          // Don't trigger shutdown for webhook errors
+          if (!res.headersSent) {
+            res.status(500).send({ error: 'Webhook processing failed' })
+          }
         })
     } else {
       // Asynchronous mode: return immediately with thread ID
       firstValueFrom(
         threadIdSource.pipe(
-          timeout(5000),
+          timeout(10000), // Increased timeout to 10 seconds
           catchError((error) => {
             // Special handling for EmptyError during system sleep
             if (error.message === 'no elements in sequence' || error.constructor?.name === 'EmptyErrorImpl') {
               console.log('Thread ID Observable empty during system sleep - webhook will continue')
               return of('unknown') // Return placeholder ID
             }
-            throw error // Re-throw other errors
+            // Handle timeout errors gracefully
+            if (error.name === 'TimeoutError') {
+              console.log('Thread ID timeout - webhook will continue with unknown ID')
+              return of('unknown')
+            }
+            console.error('Error in thread ID observable:', error)
+            return of('unknown') // Return placeholder for any error
           })
         )
       )
         .then((threadId) => {
-          res.status(201).send({ threadId })
+          if (!res.headersSent) {
+            res.status(201).send({ threadId })
+          }
         })
         .catch((error) => {
+          // This catch should rarely be reached now due to comprehensive error handling above
           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
           logger.logWebhookError({
             error: `Failed to get thread ID: ${errorMessage}`,
@@ -232,7 +245,11 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
             clientId,
           })
           console.error('Error getting thread ID for webhook:', error)
-          res.status(500).send({ error: 'Failed to initialize webhook processing' })
+          
+          // Don't trigger shutdown for webhook errors
+          if (!res.headersSent) {
+            res.status(500).send({ error: 'Failed to initialize webhook processing' })
+          }
         })
     }
   } catch (error) {
@@ -637,8 +654,22 @@ process.on('unhandledRejection', (reason, promise) => {
       console.log('Detected RxJS EmptyError rejection during system sleep - this is expected behavior')
       return // Don't shutdown for this specific error
     }
+    
+    // Handle timeout errors gracefully - these are expected during high load
+    if (error.name === 'TimeoutError' || error.message?.includes('timeout')) {
+      console.log('Detected timeout error - handling gracefully without shutdown')
+      return // Don't shutdown for timeout errors
+    }
+    
+    // Handle AbortError from timeouts
+    if (error.name === 'AbortError' || error.message?.includes('aborted')) {
+      console.log('Detected abort error - handling gracefully without shutdown')
+      return // Don't shutdown for abort errors
+    }
   }
   
+  // Only shutdown for critical unhandled rejections
+  console.error('Critical unhandled rejection detected')
   if (!isShuttingDown) {
     gracefulShutdown('unhandledRejection')
   }

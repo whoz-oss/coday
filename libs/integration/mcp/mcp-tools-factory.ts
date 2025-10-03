@@ -6,7 +6,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { ResourceTemplate, ToolInfo } from './types'
 import { ChildProcess, spawn } from 'child_process'
 
-const MCP_CONNECT_TIMEOUT = 5000 // in ms
+const MCP_CONNECT_TIMEOUT = 15000 // in ms
 
 export class McpToolsFactory extends AssistantToolFactory {
   /**
