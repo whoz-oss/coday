@@ -1,3 +1,13 @@
+## 0.18.5 (2025-10-03)
+
+### 🩹 Fixes
+
+- #233 handle process specific exceptions ([#234](https://github.com/whoz-oss/coday/pull/234), [#233](https://github.com/whoz-oss/coday/issues/233))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 
 
 ## 0.18.3 (2025-10-01)
