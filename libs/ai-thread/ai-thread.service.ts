@@ -18,6 +18,7 @@ import { Interactor } from '@coday/model/interactor'
 
 export class AiThreadService implements Killable {
   private readonly activeThread$ = new BehaviorSubject<AiThread | null>(null)
+  private isKilled = false
 
   /**
    * Observable of the currently active thread.
@@ -40,6 +41,7 @@ export class AiThreadService implements Killable {
   }
 
   async kill(): Promise<void> {
+    this.isKilled = true
     this.activeThread$.complete()
   }
 
@@ -157,17 +159,29 @@ export class AiThreadService implements Killable {
   }
 
   async autoSave(newName?: string): Promise<void> {
+    // Check if service has been killed
+    if (this.isKilled) {
+      console.log('Autosave skipped: service has been killed')
+      return
+    }
+
     const thread = this.activeThread$.value
     if (!thread || thread.messagesLength == 0) {
       // skip saving a thread that has no messages
-      console.error(`Autosave of an empty or falsy thread aborted, threadId: ${thread?.id}`)
+      console.log(`Autosave of an empty or falsy thread aborted, threadId: ${thread?.id}`)
       return
     }
-    if (newName) {
-      thread.name = newName
+    
+    try {
+      if (newName) {
+        thread.name = newName
+      }
+      const repository = await this.getRepository()
+      await repository.save(thread)
+    } catch (error) {
+      // Gracefully handle errors during autosave (e.g., service killed during operation)
+      console.log('Autosave failed (service may have been killed):', error instanceof Error ? error.message : error)
     }
-    const repository = await this.getRepository()
-    await repository.save(thread)
   }
 
   /**

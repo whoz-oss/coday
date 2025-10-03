@@ -270,8 +270,12 @@ export class ServerClient {
       map((thread) => thread?.id),
       filter((id): id is string => !!id), // Filter out falsy values and type guard
       first(), // Take the first truthy value and complete
-      timeout(5000), // Timeout after 5 seconds
-      catchError(() => of(undefined)) // Return undefined on timeout or error
+      timeout(10000), // Increased timeout to 10 seconds for slower operations
+      catchError((error) => {
+        // Log timeout errors for debugging but handle gracefully
+        debugLog('CLIENT', `getThreadId timeout or error for client ${this.clientId}:`, error.message)
+        return of(undefined)
+      }) // Return undefined on timeout or error
     )
   }
 
