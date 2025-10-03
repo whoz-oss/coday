@@ -226,9 +226,13 @@ export class Coday {
    */
   async kill(): Promise<void> {
     this.killed = true
+    
+    // Stop processing and autosave BEFORE cleanup
+    // This ensures thread service is still active when autosave is called
     this.stop()
 
     try {
+      // Now cleanup resources after autosave is complete
       await this.cleanup()
     } catch (error) {
       console.error('Error during kill cleanup:', error)
