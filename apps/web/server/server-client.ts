@@ -245,7 +245,7 @@ export class ServerClient {
           sessionState.threads.current = currentThread?.id || null
 
           // Get thread list
-          const threadList = await firstValueFrom(aiThreadService.list()) as ThreadSummary[]
+          const threadList = await firstValueFrom(aiThreadService.list())
           sessionState.threads.list = threadList.map((thread: ThreadSummary) => ({
             id: thread.id,
             name: thread.name,

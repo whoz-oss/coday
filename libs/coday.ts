@@ -1,17 +1,17 @@
-import { AiThread } from './ai-thread/ai-thread'
-import { AiThreadService } from './ai-thread/ai-thread.service'
-import { RunStatus, ThreadMessage } from './ai-thread/ai-thread.types'
-import { AiThreadRepositoryFactory } from './ai-thread/repository/ai-thread.repository.factory'
-import { AiHandler, ConfigHandler } from './handler'
-import { HandlerLooper } from './handler-looper'
-import { AiClientProvider } from './integration/ai/ai-client-provider'
-import { keywords } from './keywords'
-import { CommandContext, Interactor } from './model'
-import { MessageEvent, MessageContent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
-import { AgentService } from './agent'
-import { CodayOptions } from './options'
-import { CodayServices } from './coday-services'
-import { AiConfigService } from './service/ai-config.service'
+import {AiThread} from './ai-thread/ai-thread'
+import {AiThreadService} from './ai-thread/ai-thread.service'
+import {RunStatus, ThreadMessage} from './ai-thread/ai-thread.types'
+import {AiThreadRepositoryFactory} from './ai-thread/repository/ai-thread.repository.factory'
+import {AiHandler, ConfigHandler} from './handler'
+import {HandlerLooper} from './handler-looper'
+import {AiClientProvider} from './integration/ai/ai-client-provider'
+import {keywords} from './keywords'
+import {CommandContext, Interactor} from './model'
+import {MessageContent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from '@coday/coday-events'
+import {AgentService} from './agent'
+import {CodayOptions} from './options'
+import {CodayServices} from './coday-services'
+import {AiConfigService} from './service/ai-config.service'
 
 const MAX_ITERATIONS = 100
 
@@ -23,17 +23,11 @@ export class Coday {
   aiHandler: AiHandler | undefined
   maxIterations: number
   initialPrompts: string[] = []
-
-  private killed: boolean = false
-
   aiThreadService: AiThreadService
+  private killed: boolean = false
   private aiClientProvider: AiClientProvider
 
-  constructor(
-    private interactor: Interactor,
-    private options: CodayOptions,
-    private services: CodayServices
-  ) {
+  constructor(private interactor: Interactor, private options: CodayOptions, private services: CodayServices) {
     this.interactor.debugLevelEnabled = options.debug
     this.interactor.debug('Coday started with debug')
     this.configHandler = new ConfigHandler(interactor, this.services)
@@ -44,37 +38,7 @@ export class Coday {
       this.context.aiThread = aiThread
       this.replayThread(aiThread)
     })
-    this.aiClientProvider = new AiClientProvider(
-      this.interactor,
-      this.services.user,
-      this.services.project,
-      this.services.logger
-    )
-  }
-
-  /**
-   * Replay messages from an AiThread through the interactor
-   */
-  private async replayThread(aiThread: AiThread): Promise<void> {
-    const messages: ThreadMessage[] = (await aiThread.getMessages(undefined, undefined)).messages
-    if (!messages?.length) return
-    // Sort messages by timestamp to maintain chronological order
-    const sortedMessages = [...messages].sort(
-      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-    )
-
-    // Send messages directly - no conversion needed
-    for (const message of sortedMessages) {
-      if (message instanceof MessageEvent) {
-        // Send MessageEvent directly - frontend now handles rich content
-        this.interactor.sendEvent(message)
-      } else if (message instanceof ToolRequestEvent || message instanceof ToolResponseEvent) {
-        this.interactor.sendEvent(message)
-      }
-    }
-
-    // Always emit the thread selection message last
-    this.interactor.displayText(`Selected thread '${aiThread.name}'`)
+    this.aiClientProvider = new AiClientProvider(this.interactor, this.services.user, this.services.project, this.services.logger)
   }
 
   /**
@@ -107,7 +71,7 @@ export class Coday {
     }
 
     const username = this.services.user.username
-    
+
     // Add each content item as a user message
     content.forEach(item => {
       thread.addUserMessage(username, item)
@@ -115,9 +79,7 @@ export class Coday {
 
     // Send the message event to update the UI
     const messageEvent = new MessageEvent({
-      role: 'user',
-      content,
-      name: username
+      role: 'user', content, name: username
     })
     this.interactor.sendEvent(messageEvent)
   }
@@ -133,43 +95,43 @@ export class Coday {
   async run(): Promise<void> {
     this.initialPrompts = this.options.prompts ? [...this.options.prompts] : []
     // Main loop to keep waiting for user input
-    do {
-      if (this.killed) {
-        return
-      }
-      await this.initContext()
-      await this.initThread()
-      if (!this.context) {
-        this.interactor.error('Could not initialize context 😭')
-        break
-      }
-      
-      let userCommand = await this.initCommand()
-      if ((!userCommand && this.options.oneshot) || userCommand === keywords.exit) {
-        // default case: no initial prompt (or empty) and not interactive = get out
-        break
-      }
+    try {
+      do {
+        if (this.killed) {
+          return
+        }
+        await this.initContext()
+        await this.initThread()
+        if (!this.context) {
+          this.interactor.error('Could not initialize context 😭')
+          break
+        }
 
-      if (userCommand === keywords.reset) {
-        this.context = null
-        this.services.project.resetProjectSelection()
-        continue
-      }
+        let userCommand = await this.initCommand()
+        if ((!userCommand && this.options.oneshot) || userCommand === keywords.exit) {
+          // default case: no initial prompt (or empty) and not interactive = get out
+          break
+        }
 
-      const thread = this.context?.aiThread
-      if (thread) {
-        thread.runStatus = RunStatus.RUNNING
-      }
+        if (userCommand === keywords.reset) {
+          this.context = null
+          this.services.project.resetProjectSelection()
+          continue
+        }
 
-      // add the user command to the queue and let handlers decompose it in many and resolve them ultimately
-      this.context?.addCommands(userCommand!)
+        const thread = this.context?.aiThread
+        if (thread) {
+          thread.runStatus = RunStatus.RUNNING
+        }
 
-      try {
+        // add the user command to the queue and let handlers decompose it in many and resolve them ultimately
+        this.context?.addCommands(userCommand!)
+
         this.context = (await this.handlerLooper?.handle(this.context)) ?? null
-      } finally {
-        this.stop()
-      }
-    } while (!this.context?.oneshot)
+      } while (!this.context?.oneshot)
+    } finally {
+      this.stop()
+    }
 
     // Always cleanup resources when conversation ends normally
     // This ensures MCP Docker containers are stopped
@@ -226,7 +188,7 @@ export class Coday {
    */
   async kill(): Promise<void> {
     this.killed = true
-    
+
     // Stop processing and autosave BEFORE cleanup
     // This ensures thread service is still active when autosave is called
     this.stop()
@@ -240,6 +202,29 @@ export class Coday {
 
     this.handlerLooper?.kill()
     this.interactor.kill()
+  }
+
+  /**
+   * Replay messages from an AiThread through the interactor
+   */
+  private async replayThread(aiThread: AiThread): Promise<void> {
+    const messages: ThreadMessage[] = (await aiThread.getMessages(undefined, undefined)).messages
+    if (!messages?.length) return
+    // Sort messages by timestamp to maintain chronological order
+    const sortedMessages = [...messages].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+
+    // Send messages directly - no conversion needed
+    for (const message of sortedMessages) {
+      if (message instanceof MessageEvent) {
+        // Send MessageEvent directly - frontend now handles rich content
+        this.interactor.sendEvent(message)
+      } else if (message instanceof ToolRequestEvent || message instanceof ToolResponseEvent) {
+        this.interactor.sendEvent(message)
+      }
+    }
+
+    // Always emit the thread selection message last
+    this.interactor.displayText(`Selected thread '${aiThread.name}'`)
   }
 
   private async initContext(): Promise<void> {
@@ -261,21 +246,9 @@ export class Coday {
       this.services.mcp.initialize(this.context)
 
       // Create and store the agent service
-      this.services.agent = new AgentService(
-        this.interactor,
-        this.aiClientProvider,
-        this.services,
-        this.context.project.root,
-        this.options.agentFolders
-      )
+      this.services.agent = new AgentService(this.interactor, this.aiClientProvider, this.services, this.context.project.root, this.options.agentFolders)
       this.aiHandler = new AiHandler(this.interactor, this.services.agent, this.aiThreadService)
-      this.handlerLooper = new HandlerLooper(
-        this.interactor,
-        this.aiHandler,
-        this.aiThreadService,
-        this.configHandler,
-        this.services
-      )
+      this.handlerLooper = new HandlerLooper(this.interactor, this.aiHandler, this.aiThreadService, this.configHandler, this.services)
       this.aiClientProvider.init(this.context)
       this.handlerLooper.init(this.context.project)
       await this.services.agent.initialize(this.context)

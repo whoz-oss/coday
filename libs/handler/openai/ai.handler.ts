@@ -122,7 +122,11 @@ export class AiHandler extends CommandHandler implements Killable {
         }
       },
     })
-    await lastValueFrom(events)
+    try {
+      await lastValueFrom(events)
+    } catch (error:any) {
+      this.interactor.error(`Could not run agent ${agent.name} : ${error.message}`)
+    }
     return context
   }
 
