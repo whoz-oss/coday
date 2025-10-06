@@ -49,7 +49,6 @@ export class ProjectService {
       version: 1,
       path: projectPath,
       integration: {},
-      aiProviders: {},
       storage: { type: 'file' },
       agents: [],
     }
