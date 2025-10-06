@@ -72,11 +72,11 @@ export class AnthropicClient extends AiClient {
 
     thread.resetUsageForRun()
     const outputSubject: Subject<CodayEvent> = new Subject()
-    const thinking = setInterval(() => this.interactor.thinking(), this.thinkingInterval)
+    const thinking = this.startThinkingInterval()
     this.processThread(anthropic, agent, model, thread, outputSubject).catch((reason) => {
       outputSubject.next(new ErrorEvent({error: reason}))
     }).finally(() => {
-      clearInterval(thinking)
+      this.stopThinkingInterval(thinking)
       this.showAgentAndUsage(agent, 'Anthropic', model.name, thread)
       // Log usage after the complete response cycle
       const cost = thread.usage?.price || 0
@@ -119,8 +119,14 @@ export class AnthropicClient extends AiClient {
         // Show which limit was hit
         this.displayRateLimitStatus(error.headers)
 
-        // Wait and retry once
-        await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000))
+        // Wait and retry once (interruptible)
+        try {
+          await this.delay(retryAfter * 1000, 'rate limit retry')
+        } catch (delayError) {
+          // Shutdown during delay - abort gracefully
+          this.handleError(new Error('Rate limit retry interrupted by shutdown'), subscriber, this.name)
+          return
+        }
 
         this.interactor.displayText(`🔄 Retrying request...`)
 
@@ -541,7 +547,13 @@ export class AnthropicClient extends AiClient {
       this.interactor.displayText(
         `⏳ Rate limit approaching (${Math.round(minRatio * 100)}% remaining), waiting ${delaySeconds} seconds...`
       )
-      await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000))
+
+      try {
+        await this.delay(delaySeconds * 1000, 'throttling')
+      } catch (error) {
+        // Shutdown during throttling - throw to abort the request
+        throw new Error('Throttling delay interrupted by shutdown')
+      }
     }
   }
 

@@ -86,11 +86,11 @@ export class OpenaiClient extends AiClient {
     }
 
     const outputSubject: Subject<CodayEvent> = new Subject()
-    const thinking = setInterval(() => this.interactor.thinking(), this.thinkingInterval)
+    const thinking = this.startThinkingInterval()
     this.processThread(openai, agent, model, thread, outputSubject).catch((reason) => {
       outputSubject.next(new ErrorEvent({error: reason}))
     }).finally(() => {
-      clearInterval(thinking)
+      this.stopThinkingInterval(thinking)
       this.showAgentAndUsage(agent, this.aiProviderConfig.name, model.name, thread)
       // Log usage after the complete response cycle
       const cost = thread.usage?.price || 0
@@ -122,7 +122,7 @@ export class OpenaiClient extends AiClient {
     }
 
     const threadData: AssistantThreadData = thread.data.openai.assistantThreadData
-    const thinking = setInterval(() => this.interactor.thinking(), 3000)
+    const thinking = this.startThinkingInterval()
 
     // Create assistant thread if not existing
     if (!threadData.threadId) {
@@ -140,7 +140,7 @@ export class OpenaiClient extends AiClient {
     this.updateAssistantThread(openai, thread, messagesToUpload)
       .then(async () => await this.processAssistantThread(openai, agent, model, thread, outputSubject))
       .finally(() => {
-        clearInterval(thinking)
+        this.stopThinkingInterval(thinking)
         this.showAgentAndUsage(agent, this.aiProviderConfig.name, model.name, thread)
         // Log usage after the complete response cycle
         const cost = thread.usage?.price || 0

@@ -4,17 +4,17 @@
  * while handling complex internal state and transitions.
  */
 
-import { BehaviorSubject, firstValueFrom, Observable } from 'rxjs'
-import { AiThread } from './ai-thread'
-import { AiThreadRepository } from './ai-thread.repository'
-import { AiThreadRepositoryFactory } from './repository/ai-thread.repository.factory'
-import { filter } from 'rxjs/operators'
-import { ThreadSummary } from './ai-thread.types'
+import {BehaviorSubject, catchError, firstValueFrom, Observable, of, timeout} from 'rxjs'
+import {AiThread} from './ai-thread'
+import {AiThreadRepository} from './ai-thread.repository'
+import {AiThreadRepositoryFactory} from './repository/ai-thread.repository.factory'
+import {filter} from 'rxjs/operators'
+import {ThreadSummary} from './ai-thread.types'
 // eslint-disable-next-line @nx/enforce-module-boundaries
-import { UserService } from '../service/user.service'
-import { Killable } from '@coday/model/killable'
-import { ThreadSelectedEvent } from '@coday/coday-events'
-import { Interactor } from '@coday/model/interactor'
+import {UserService} from '../service/user.service'
+import {Killable} from '@coday/model/killable'
+import {ThreadSelectedEvent} from '@coday/coday-events'
+import {Interactor} from '@coday/model/interactor'
 
 export class AiThreadService implements Killable {
   private readonly activeThread$ = new BehaviorSubject<AiThread | null>(null)
@@ -53,7 +53,14 @@ export class AiThreadService implements Killable {
   private async getRepository(): Promise<AiThreadRepository> {
     // Use firstValueFrom to get the first valid repository
     return await firstValueFrom(
-      this.repositoryFactory.repository.pipe(filter((repo): repo is AiThreadRepository => repo !== null))
+      this.repositoryFactory.repository.pipe(
+          filter((repo): repo is AiThreadRepository => repo !== null),
+          timeout(10000),
+          catchError((error) => {
+            this.interactor?.warn(`Could not get thread repository: ${error}`)
+            throw new Error(`Could not get thread repository: ${error}`)
+          })
+      )
     )
   }
 
@@ -235,7 +242,7 @@ export class AiThreadService implements Killable {
    */
   list(): Observable<ThreadSummary[]> {
     // Convert Promise to Observable for consistency
-    return new Observable<ThreadSummary[]>((subscriber) => {
+    return (new Observable<ThreadSummary[]>((subscriber) => {
       this.getRepository()
         .then((repository) => repository.listThreadsByUsername(this.username))
         .then((threads) => {
@@ -243,6 +250,12 @@ export class AiThreadService implements Killable {
           subscriber.complete()
         })
         .catch((error) => subscriber.error(error))
-    })
+    })).pipe(
+        timeout(10000),
+        catchError((error: any) => {
+          this.interactor?.warn(`Could not list threads in time : ${error.message}`)
+          return of([])
+        })
+    )
   }
 }
