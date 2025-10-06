@@ -122,8 +122,23 @@ export class AiThread {
       return { messages: cleanedMessages, compacted: false }
     }
 
+    // Filter oversized tool responses before partitioning (truncate those >50% of budget)
+    const maxSingleMessageSize = Math.floor(maxChars * 0.5)
+    const filteredMessages = this.messages.map(msg => {
+      if (msg instanceof ToolResponseEvent && msg.length > maxSingleMessageSize) {
+        const truncateAt = Math.floor(maxChars * 0.15)
+        const output = msg.getTextOutput()
+        const truncated = `[... truncated ${msg.length - truncateAt} chars]\n` + output.slice(-truncateAt)
+        return new ToolResponseEvent({
+          ...msg,
+          output: truncated
+        })
+      }
+      return msg
+    })
+
     // from the end (hence the toReversed), take all messages that fit into the charbudget
-    let { messages, overflow } = partition(this.messages.toReversed(), maxChars)
+    let { messages, overflow } = partition(filteredMessages.toReversed(), maxChars)
     messages = this.cleanToolRequestResponseConsistency(messages.toReversed())
     overflow = this.cleanToolRequestResponseConsistency(overflow.toReversed())
 
@@ -137,10 +152,16 @@ export class AiThread {
     // time to compact, with the same charBudget
     // overflow itself can be larger than the charBudget, so need to iteratively summarize
     let summary: ThreadMessage | undefined
-    while (overflow.length) {
-      const overflowPartition = partition(overflow, maxChars)
-      summary = await compactor(overflowPartition.messages)
-      overflow = overflowPartition.overflow.length ? [summary, ...overflowPartition.overflow] : []
+    try {
+      while (overflow.length) {
+        const overflowPartition = partition(overflow, maxChars)
+        summary = await compactor(overflowPartition.messages)
+        overflow = overflowPartition.overflow.length ? [summary, ...overflowPartition.overflow] : []
+      }
+    } catch (error) {
+      // If compaction fails completely, just truncate instead of losing everything
+      console.error('[AiThread] Compaction failed, keeping recent messages only:', error)
+      summary = undefined
     }
 
     // Apply tool request-response consistency cleaning before returning
