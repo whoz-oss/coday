@@ -51,20 +51,30 @@ export class ServerClient {
    * Called when client reconnects with same clientId.
    */
   private subscription?: Subscription
+  private isCleaningUp = false
 
   updateLastConnection(): void {
+    // Don't update if already cleaning up
+    if (this.isCleaningUp) {
+      return
+    }
+
     this.lastConnected = Date.now()
  
+    // Clear existing timeout
     if (this.terminationTimeout) {
       clearTimeout(this.terminationTimeout)
+      this.terminationTimeout = undefined
     }
+
+    // Create new timeout
     this.terminationTimeout = setTimeout(() => {
       const idleTime = Date.now() - this.lastConnected
-        debugLog(
-          'CLIENT',
-          `Session expired for client ${this.clientId} after ${Math.round(idleTime / 1000)}s of inactivity`
-        )
-        this.cleanup()
+      debugLog(
+        'CLIENT',
+        `Session expired for client ${this.clientId} after ${Math.round(idleTime / 1000)}s of inactivity`
+      )
+      this.cleanup()
     }, ServerClient.SESSION_TIMEOUT)
   }
 
@@ -348,21 +358,32 @@ export class ServerClient {
    * Destroys the Coday instance and all associated resources.
    */
   private cleanup(): void {
+    // Prevent multiple cleanup calls
+    if (this.isCleaningUp) {
+      debugLog('CLIENT', `Cleanup already in progress for client ${this.clientId}`)
+      return
+    }
+
+    this.isCleaningUp = true
     debugLog('CLIENT', `Starting full cleanup for client ${this.clientId}`)
+
+    // Unsubscribe from events
     this.subscription?.unsubscribe()
 
+    // Clear termination timeout
+    if (this.terminationTimeout) {
+      debugLog('CLIENT', `Clearing termination timeout during cleanup for client ${this.clientId}`)
+      clearTimeout(this.terminationTimeout)
+      this.terminationTimeout = undefined
+    }
+
+    // Kill Coday instance (which will cleanup AI clients)
     if (this.coday) {
       debugLog('CODAY', `Killing Coday instance for client ${this.clientId}`)
       this.coday.kill().catch((error) => {
         debugLog('CODAY', `Error during Coday kill for client ${this.clientId}:`, error)
       })
       delete this.coday
-    }
-
-    if (this.terminationTimeout) {
-      debugLog('CLIENT', `Clearing termination timeout during cleanup for client ${this.clientId}`)
-      clearTimeout(this.terminationTimeout)
-      delete this.terminationTimeout
     }
 
     debugLog('CLIENT', `Full cleanup completed for client ${this.clientId}`)

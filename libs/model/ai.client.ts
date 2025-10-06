@@ -29,6 +29,11 @@ export abstract class AiClient {
   protected charsPerToken: number = 3 // should be 4, some margin baked in to avoid overshoot on tool call
   protected username?: string
 
+  // Timer management for proper cleanup
+  private activeThinkingIntervals: Set<NodeJS.Timeout> = new Set()
+  private activeDelays: Set<NodeJS.Timeout> = new Set()
+  private isShuttingDown = false
+
   protected constructor(
     protected aiProviderConfig: AiProviderConfig,
     protected logger?: CodayLogger
@@ -68,6 +73,74 @@ export abstract class AiClient {
    */
   kill(): void {
     this.killed = true
+    this.cleanup()
+  }
+
+  /**
+   * Cleanup all active timers and intervals
+   * Called during shutdown or kill to prevent memory leaks
+   */
+  cleanup(): void {
+    this.isShuttingDown = true
+
+    // Clear all active delays
+    for (const timeout of this.activeDelays) {
+      clearTimeout(timeout)
+    }
+    this.activeDelays.clear()
+
+    // Clear all thinking intervals
+    for (const interval of this.activeThinkingIntervals) {
+      clearInterval(interval)
+    }
+    this.activeThinkingIntervals.clear()
+  }
+
+  /**
+   * Create an interruptible delay that can be cancelled during shutdown
+   * @param ms Delay in milliseconds
+   * @param reason Optional reason for logging
+   * @returns Promise that resolves after delay or rejects if interrupted
+   */
+  protected async delay(ms: number, reason?: string): Promise<void> {
+    if (this.isShuttingDown) {
+      throw new Error('Client is shutting down')
+    }
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.activeDelays.delete(timeout)
+        resolve()
+      }, ms)
+
+      this.activeDelays.add(timeout)
+
+      // Check for shutdown during delay
+      if (this.isShuttingDown) {
+        clearTimeout(timeout)
+        this.activeDelays.delete(timeout)
+        reject(new Error(`Delay interrupted by shutdown${reason ? `: ${reason}` : ''}`))
+      }
+    })
+  }
+
+  /**
+   * Start a thinking interval with automatic cleanup tracking
+   * @returns The interval handle
+   */
+  protected startThinkingInterval(): NodeJS.Timeout {
+    const interval = setInterval(() => this.interactor.thinking(), this.thinkingInterval)
+    this.activeThinkingIntervals.add(interval)
+    return interval
+  }
+
+  /**
+   * Stop a thinking interval and remove from tracking
+   * @param interval The interval to stop
+   */
+  protected stopThinkingInterval(interval: NodeJS.Timeout): void {
+    clearInterval(interval)
+    this.activeThinkingIntervals.delete(interval)
   }
 
   private getCompactor(model: string, maxChars: number): (messages: ThreadMessage[]) => Promise<ThreadMessage> {
