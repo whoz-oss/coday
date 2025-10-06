@@ -1,7 +1,7 @@
 import { Agent, AiClient, AiModel, AiProviderConfig, CompletionOptions, Interactor } from '../model'
 import Anthropic from '@anthropic-ai/sdk'
 import { ToolSet } from '../integration/tool-set'
-import { CodayEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
+import {CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from '@coday/coday-events'
 import { Observable, of, Subject } from 'rxjs'
 import { AiThread } from '../ai-thread/ai-thread'
 import { ThreadMessage } from '../ai-thread/ai-thread.types'
@@ -73,7 +73,9 @@ export class AnthropicClient extends AiClient {
     thread.resetUsageForRun()
     const outputSubject: Subject<CodayEvent> = new Subject()
     const thinking = setInterval(() => this.interactor.thinking(), this.thinkingInterval)
-    this.processThread(anthropic, agent, model, thread, outputSubject).finally(() => {
+    this.processThread(anthropic, agent, model, thread, outputSubject).catch((reason) => {
+      outputSubject.next(new ErrorEvent({error: reason}))
+    }).finally(() => {
       clearInterval(thinking)
       this.showAgentAndUsage(agent, 'Anthropic', model.name, thread)
       // Log usage after the complete response cycle
