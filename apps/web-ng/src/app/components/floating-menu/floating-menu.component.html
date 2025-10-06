@@ -30,6 +30,25 @@
     <app-thread-selector class="main-thread-selector"></app-thread-selector>
   </div>
   
+  <!-- Configuration -->
+  <div class="menu-section configuration">
+    <button class="menu-item" (click)="openUserConfig()">
+      <span class="menu-icon">👤</span>
+      <span class="menu-text">User Config</span>
+    </button>
+    
+    <button 
+      class="menu-item" 
+      (click)="openProjectConfig()"
+      [disabled]="!hasProject()"
+      [title]="hasProject() ? 'Edit project configuration' : 'No project selected'"
+    >
+      <span class="menu-icon">📁</span>
+      <span class="menu-text">Project Config</span>
+      <span *ngIf="!hasProject()" class="disabled-hint">(No project)</span>
+    </button>
+  </div>
+  
   <!-- Settings -->
   <div class="menu-section">
     <div class="menu-item-wrapper">
@@ -43,6 +62,29 @@
     </div>
   </div>
 </div>
+
+<!-- JSON Editor Modals -->
+<app-json-editor 
+  [configType]="'user'"
+  [isOpen]="isUserConfigOpen"
+  [initialContent]="userConfigJson"
+  [isLoading]="isLoadingUserConfig"
+  [isSaving]="isSavingUserConfig"
+  (save)="onUserConfigSave($event)"
+  (cancel)="onUserConfigCancel()"
+></app-json-editor>
+
+<app-json-editor 
+  *ngIf="hasProject()"
+  [configType]="'project'" 
+  [projectName]="getCurrentProjectName()!"
+  [isOpen]="isProjectConfigOpen"
+  [initialContent]="projectConfigJson"
+  [isLoading]="isLoadingProjectConfig"
+  [isSaving]="isSavingProjectConfig"
+  (save)="onProjectConfigSave($event)"
+  (cancel)="onProjectConfigCancel()"
+></app-json-editor>
 
 <!-- Backdrop pour fermer le menu -->
 <div 

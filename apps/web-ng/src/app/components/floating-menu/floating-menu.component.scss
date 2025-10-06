@@ -139,6 +139,12 @@
     padding: 0.2rem 0.4rem;
     border-radius: 4px;
   }
+  
+  .disabled-hint {
+    font-size: 0.7rem;
+    color: var(--color-text-secondary, #6272a4);
+    font-style: italic;
+  }
 }
 
 // Wrapper pour les éléments inline (theme selector, options)
