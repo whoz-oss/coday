@@ -87,7 +87,9 @@ export class OpenaiClient extends AiClient {
 
     const outputSubject: Subject<CodayEvent> = new Subject()
     const thinking = setInterval(() => this.interactor.thinking(), this.thinkingInterval)
-    this.processThread(openai, agent, model, thread, outputSubject).finally(() => {
+    this.processThread(openai, agent, model, thread, outputSubject).catch((reason) => {
+      outputSubject.next(new ErrorEvent({error: reason}))
+    }).finally(() => {
       clearInterval(thinking)
       this.showAgentAndUsage(agent, this.aiProviderConfig.name, model.name, thread)
       // Log usage after the complete response cycle
