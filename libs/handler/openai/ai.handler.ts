@@ -126,6 +126,14 @@ export class AiHandler extends CommandHandler implements Killable {
       await lastValueFrom(events)
     } catch (error:any) {
       this.interactor.error(`Could not run agent ${agent.name} : ${error.message}`)
+    } finally {
+      // Always perform final autosave, even if there was an error
+      // This ensures the last agent message is saved
+      try {
+        await this.threadService.autoSave()
+      } catch (saveError) {
+        this.interactor.debug(`Final auto-save failed: ${saveError}`)
+      }
     }
     return context
   }
