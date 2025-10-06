@@ -1,5 +1,5 @@
-<div *ngIf="isOpen" class="json-editor-overlay" (click)="onCancel()">
-  <div class="json-editor-modal" (click)="$event.stopPropagation()">
+<div *ngIf="isOpen" class="json-editor-overlay" (click)="onCancel()" (keyup.escape)="onCancel()" tabindex="0" role="dialog" aria-modal="true" aria-label="JSON Editor">
+  <div class="json-editor-modal" (click)="$event.stopPropagation()" (keydown.enter)="$event.stopPropagation()" tabindex="-1">
     <!-- Header -->
     <div class="editor-header">
       <h2>{{ getTitle() }}</h2>
