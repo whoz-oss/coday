@@ -25,7 +25,7 @@ export class JsonEditorComponent implements OnChanges {
   
   @Output() isOpenChange = new EventEmitter<boolean>()
   @Output() save = new EventEmitter<any>()
-  @Output() cancel = new EventEmitter<void>()
+  @Output() closeEditor = new EventEmitter<void>()
 
   jsonContent = ''
   errorMessage = ''
@@ -63,7 +63,7 @@ export class JsonEditorComponent implements OnChanges {
    */
   onCancel(): void {
     this.errorMessage = ''
-    this.cancel.emit()
+    this.closeEditor.emit()
   }
 
   /**

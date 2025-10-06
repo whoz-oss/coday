@@ -73,7 +73,7 @@
   [isLoading]="isLoadingUserConfig"
   [isSaving]="isSavingUserConfig"
   (save)="onUserConfigSave($event)"
-  (cancel)="onUserConfigCancel()"
+  (closeEditor)="onUserConfigCancel()"
 ></app-json-editor>
 
 <app-json-editor 
@@ -85,7 +85,7 @@
   [isLoading]="isLoadingProjectConfig"
   [isSaving]="isSavingProjectConfig"
   (save)="onProjectConfigSave($event)"
-  (cancel)="onProjectConfigCancel()"
+  (closeEditor)="onProjectConfigCancel()"
 ></app-json-editor>
 
 <!-- Backdrop pour fermer le menu -->
