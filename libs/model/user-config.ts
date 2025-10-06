@@ -42,6 +42,8 @@ export type UserProjectConfig = {
 export interface UserConfig {
   version: number
 
+  temp_groups?: string[]
+
   ai?: AiProviderConfig[]
   /**
    * User bio (optional)

@@ -22,6 +22,9 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
   isUserConfigOpen = false
   isProjectConfigOpen = false
   
+  // Role-based access control
+  isAdmin = false
+  
   // Configuration data
   userConfigJson = ''
   projectConfigJson = ''
@@ -34,12 +37,25 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
   configSuccessMessage = ''
 
   // Modern Angular dependency injection
-  private sessionState = inject(SessionStateService)
-  private configApi = inject(ConfigApiService)
+  private readonly sessionState = inject(SessionStateService)
+  private readonly configApi = inject(ConfigApiService)
 
   ngOnInit(): void {
     // Log session state for debugging (ensures sessionState is used)
     console.log('[FLOATING-MENU] SessionState service injected:', !!this.sessionState)
+    
+    // Load user config to check roles
+    this.configApi.getUserConfig().subscribe({
+      next: (config: any) => {
+        // Check if user has CODAY_ADMIN role in temp_groups
+        this.isAdmin = config.temp_groups?.includes('CODAY_ADMIN') ?? false
+        console.log('[FLOATING-MENU] User admin status:', this.isAdmin)
+      },
+      error: (error) => {
+        console.error('[FLOATING-MENU] Error loading user config for roles:', error)
+        this.isAdmin = false
+      }
+    })
   }
 
   ngOnDestroy(): void {
@@ -146,7 +162,7 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
       next: (response) => {
         console.log('[FLOATING-MENU] User config saved successfully')
         this.isSavingUserConfig = false
-        this.configSuccessMessage = response.message || 'Configuration saved successfully'
+        this.configSuccessMessage = response.message ?? 'Configuration saved successfully'
         
         // Close modal after short delay
         setTimeout(() => {
@@ -178,7 +194,7 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
       next: (response) => {
         console.log('[FLOATING-MENU] Project config saved successfully')
         this.isSavingProjectConfig = false
-        this.configSuccessMessage = response.message || 'Configuration saved successfully'
+        this.configSuccessMessage = response.message ?? 'Configuration saved successfully'
         
         // Close modal after short delay
         setTimeout(() => {
