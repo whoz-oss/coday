@@ -13,7 +13,7 @@ const PROJECTS = 'projects'
 const PROJECT_FILENAME = 'project.yaml'
 
 export class ProjectService {
-  private projectsConfigPath: string
+  private readonly projectsConfigPath: string
 
   /**
    * List of project names, as taken from the folder existing in the config directory
@@ -22,11 +22,11 @@ export class ProjectService {
    */
   projects: string[]
 
-  private selectedProjectBehaviorSubject = new BehaviorSubject<SelectedProject>(null)
+  private readonly selectedProjectBehaviorSubject = new BehaviorSubject<SelectedProject>(null)
   selectedProject$: Observable<SelectedProject> = this.selectedProjectBehaviorSubject.asObservable()
 
   constructor(
-    private interactor: Interactor,
+    private readonly interactor: Interactor,
     codayConfigPath: string | undefined
   ) {
     const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
