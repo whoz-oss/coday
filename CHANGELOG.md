@@ -1,3 +1,14 @@
+## 0.18.6 (2025-10-06)
+
+### 🩹 Fixes
+
+- #149 add aiThread compaction robustness around too long tool responses ([#238](https://github.com/whoz-oss/coday/pull/238), [#149](https://github.com/whoz-oss/coday/issues/149))
+- add error catching for `No element in sequence` ([#239](https://github.com/whoz-oss/coday/pull/239), [#163](https://github.com/whoz-oss/coday/issues/163))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.18.5 (2025-10-03)
 
 ### 🩹 Fixes
