@@ -1,0 +1,43 @@
+<div *ngIf="isOpen" class="json-editor-overlay" (click)="onCancel()">
+  <div class="json-editor-modal" (click)="$event.stopPropagation()">
+    <!-- Header -->
+    <div class="editor-header">
+      <h2>{{ getTitle() }}</h2>
+      <button class="close-btn" (click)="onCancel()" title="Close">✕</button>
+    </div>
+
+    <!-- Loading State -->
+    <div *ngIf="isLoading" class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading configuration...</p>
+    </div>
+
+    <!-- Editor Content -->
+    <div *ngIf="!isLoading" class="editor-content">
+      <textarea
+        [(ngModel)]="jsonContent"
+        class="json-textarea"
+        spellcheck="false"
+        placeholder="Enter JSON configuration..."
+      ></textarea>
+
+      <!-- Messages -->
+      <div class="messages">
+        <div *ngIf="errorMessage" class="error-message">
+          ❌ {{ errorMessage }}
+        </div>
+        <!-- Success message removed - handled by parent component -->
+      </div>
+
+      <!-- Actions -->
+      <div class="editor-actions">
+        <button class="btn btn-secondary" (click)="onCancel()" [disabled]="isSaving">
+          Cancel
+        </button>
+        <button class="btn btn-primary" (click)="onSave()" [disabled]="isSaving">
+          {{ isSaving ? 'Saving...' : 'Save' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
