@@ -30,27 +30,29 @@
     <app-thread-selector class="main-thread-selector"></app-thread-selector>
   </div>
   
-  <!-- Configuration -->
-  <div class="menu-section configuration">
-    <button class="menu-item" (click)="openUserConfig()">
-      <span class="menu-icon">👤</span>
-      <span class="menu-text">User Config</span>
-    </button>
-    
-    <button 
-      class="menu-item" 
-      (click)="openProjectConfig()"
-      [disabled]="!hasProject()"
-      [title]="hasProject() ? 'Edit project configuration' : 'No project selected'"
-    >
-      <span class="menu-icon">📁</span>
-      <span class="menu-text">Project Config</span>
-      <span *ngIf="!hasProject()" class="disabled-hint">(No project)</span>
-    </button>
-  </div>
-  
   <!-- Settings -->
   <div class="menu-section">
+    <!-- User Config - always visible -->
+    <div class="menu-item-wrapper">
+      <button class="menu-button" (click)="openUserConfig()">
+        <span class="menu-icon">👤</span>
+        <span class="menu-text">User Config</span>
+      </button>
+    </div>
+    
+    <!-- Project Config - only for CODAY_ADMIN -->
+    <div class="menu-item-wrapper" *ngIf="isAdmin">
+      <button class="menu-button" 
+              (click)="openProjectConfig()"
+              [disabled]="!hasProject()"
+              [class.disabled]="!hasProject()"
+              [title]="hasProject() ? 'Edit project configuration' : 'No project selected'">
+        <span class="menu-icon">📁</span>
+        <span class="menu-text">Project Config</span>
+        <span class="disabled-hint" *ngIf="!hasProject()">(No project)</span>
+      </button>
+    </div>
+    
     <div class="menu-item-wrapper">
       <span class="menu-text">Theme</span>
       <app-theme-selector class="inline-selector"></app-theme-selector>
