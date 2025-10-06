@@ -1,3 +1,13 @@
+## 0.18.7 (2025-10-06)
+
+### 🩹 Fixes
+
+- catch more observable and timeout errors ([#241](https://github.com/whoz-oss/coday/pull/241), [#163](https://github.com/whoz-oss/coday/issues/163))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.18.6 (2025-10-06)
 
 ### 🩹 Fixes
