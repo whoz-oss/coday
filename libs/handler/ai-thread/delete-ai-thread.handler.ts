@@ -2,7 +2,7 @@ import { CommandHandler } from '../../model/command.handler'
 import { Interactor } from '../../model/interactor'
 import { AiThreadService } from '../../ai-thread/ai-thread.service'
 import { CommandContext } from '../../model/command-context'
-import { lastValueFrom } from 'rxjs'
+import {catchError, lastValueFrom, of, timeout} from 'rxjs'
 
 /**
  * Handler for deleting an AI thread.
@@ -21,7 +21,12 @@ export class DeleteAiThreadHandler extends CommandHandler {
   async handle(_command: string, context: CommandContext): Promise<CommandContext> {
     try {
       // Get threads and prepare selection
-      const threads = await lastValueFrom(this.threadService.list())
+      const threads = await lastValueFrom(this.threadService.list().pipe(
+          timeout(10000),
+          catchError(() => {
+            return of([])
+          })
+      ))
       if (threads.length === 0) {
         this.interactor.displayText('No threads available to delete.')
         return context

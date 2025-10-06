@@ -34,7 +34,11 @@ export abstract class Interactor {
       map((e) => e.answer)
     )
     this.sendEvent(inviteEvent)
-    return firstValueFrom(answer)
+    try {
+      return await firstValueFrom(answer)
+    } catch (error: any) {
+      throw new Error(`No answer received over invite ${inviteEvent.timestamp} : ${error.message}`)
+    }
   }
 
   /**
@@ -73,7 +77,11 @@ export abstract class Interactor {
       map((e) => e.answer)
     )
     this.sendEvent(choiceEvent)
-    return firstValueFrom(answer)
+    try {
+      return await firstValueFrom(answer)
+    } catch (error:any) {
+      throw new Error(`No answer received over choice ${choiceEvent.timestamp} : ${error.message}`)
+    }
   }
 
   displayText(text: string, speaker?: string): void {
