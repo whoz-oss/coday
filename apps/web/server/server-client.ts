@@ -25,7 +25,7 @@ export class ServerClient {
   coday?: Coday
 
   static readonly SESSION_TIMEOUT = 8 * 60 * 60 * 1000 // 8 hours in milliseconds
-  static readonly HEARTBEAT_INTERVAL = 10_000 // 10 seconds
+  static readonly HEARTBEAT_INTERVAL = 30_000 // 30 seconds (optimized for proxy stability)
 
   constructor(
     private readonly clientId: string,
@@ -39,8 +39,7 @@ export class ServerClient {
     // Subscribe to interactor events
     if (response) {
       this.subscription = this.interactor.events.subscribe((event) => {
-        const data = `data: ${JSON.stringify(event)}\n\n`
-        this.response?.write(data)
+        this.writeSSEEvent(event)
       })
     }
     this.heartbeatInterval = setInterval(() => this.sendHeartbeat(), ServerClient.HEARTBEAT_INTERVAL)
@@ -126,10 +125,16 @@ export class ServerClient {
       logger: this.logger,
       webhook: this.webhookService,
     })
-    this.coday.run().finally(() => {
-      debugLog('CODAY', `Coday run finished for client ${this.clientId}`)
-      this.terminate(true)
-    })
+    this.coday.run()
+      .catch((error) => {
+        debugLog('CODAY', `Error during Coday run for client ${this.clientId}:`, error)
+        // Log the error but don't crash the entire server
+        console.error(`Coday run failed for client ${this.clientId}:`, error)
+      })
+      .finally(() => {
+        debugLog('CODAY', `Coday run finished for client ${this.clientId}`)
+        this.terminate(true)
+      })
     return true
   }
 
@@ -174,8 +179,41 @@ export class ServerClient {
     return Date.now() - this.lastConnected >= ServerClient.SESSION_TIMEOUT
   }
 
+  /**
+   * Write an SSE event safely with error handling
+   * @param event The event to write
+   * @returns true if write was successful, false otherwise
+   */
+  private writeSSEEvent(event: any): boolean {
+    try {
+      // Check if response is still writable
+      if (!this.response || this.response.writableEnded) {
+        debugLog('SSE', `Response no longer writable for client ${this.clientId}`)
+        return false
+      }
+
+      const data = `data: ${JSON.stringify(event)}\n\n`
+      this.response.write(data)
+      return true
+    } catch (error) {
+      debugLog('SSE', `Error writing event to client ${this.clientId}:`, error)
+      this.terminate()
+      return false
+    }
+  }
+
+
+
   private sendHeartbeat(): void {
     try {
+      // Check if response is still writable before attempting to send
+      if (!this.response || this.response.writableEnded) {
+        debugLog('HEARTBEAT', `Response no longer writable for client ${this.clientId}, terminating`)
+        this.terminate()
+        return
+      }
+
+      // Send heartbeat event (keeps connection alive and provides client feedback)
       const heartBeatEvent = new HeartBeatEvent({})
       this.interactor.sendEvent(heartBeatEvent)
     } catch (error) {
