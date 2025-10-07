@@ -1,3 +1,13 @@
+## 0.18.8 (2025-10-07)
+
+### 🩹 Fixes
+
+- catch exception on root startCoday ([#247](https://github.com/whoz-oss/coday/pull/247))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.18.7 (2025-10-06)
 
 ### 🩹 Fixes
