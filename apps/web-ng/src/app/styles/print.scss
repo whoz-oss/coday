@@ -1,6 +1,6 @@
 /* ============================================
    PRINT STYLES - Coday Chat Conversations
-   Version minimaliste pour amélioration progressive
+   Design moderne inspiré de chat bubbles
    ============================================ */
 
 @media print {
@@ -22,6 +22,15 @@
     min-height: auto !important;
     overflow: visible !important;
     position: static !important;
+  }
+  
+  body {
+    background: white !important;
+    color: #000 !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif !important;
+    font-size: 11pt;
+    line-height: 1.6;
+    padding: 1rem !important;
   }
   
   /* ==========================================
@@ -47,7 +56,108 @@
   }
   
   /* ==========================================
-     3. MESSAGES TECHNIQUES (contrôlés par préférence)
+     3. LAYOUT GÉNÉRAL
+     ========================================== */
+  
+  .chat-wrapper {
+    padding: 1rem 2rem !important;
+    background: white !important;
+  }
+  
+  .chat-history {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 1rem !important;
+  }
+  
+  /* ==========================================
+     4. MESSAGES - STYLE MODERNE CHAT BUBBLE
+     ========================================== */
+  
+  .message {
+    page-break-inside: avoid;
+    display: flex !important;
+    flex-direction: column !important;
+    max-width: 75% !important;
+    margin: 0.5rem 0 !important;
+    padding: 0 !important;
+    background: none !important;
+    border: none !important;
+    cursor: default !important;
+  }
+  
+  /* Messages User - alignés à droite */
+  .message.user {
+    align-self: flex-end !important;
+    margin-left: auto !important;
+    margin-right: 0 !important;
+  }
+  
+  /* Messages Assistant - alignés à gauche */
+  .message.assistant {
+    align-self: flex-start !important;
+    margin-left: 0 !important;
+    margin-right: auto !important;
+  }
+  
+  /* ==========================================
+     5. HEADER DU MESSAGE (Speaker)
+     ========================================== */
+  
+  .message-header {
+    display: flex !important;
+    flex-direction: column !important;
+    margin-bottom: 0.25rem !important;
+    gap: 0.25rem !important;
+    align-items: normal  !important;
+  }
+  
+  .speaker {
+    font-size: 9pt !important;
+    font-weight: 600 !important;
+    color: #333 !important;
+    margin: 0 !important;
+    padding: 0 0.25rem !important;
+  }
+  
+  /* Speaker aligné selon le type de message */
+  .message.user .speaker {
+    text-align: right !important;
+  }
+  
+  .message.assistant .speaker {
+    text-align: left !important;
+  }
+  
+  /* ==========================================
+     6. CONTENU - BULLES DE CHAT
+     ========================================== */
+  
+  .content {
+    padding: 0.75rem 1rem !important;
+    border-radius: 1rem !important;
+    font-size: 10pt !important;
+    line-height: 1.5 !important;
+    word-wrap: break-word !important;
+    box-shadow: none !important;
+  }
+  
+  /* Bulle User - style moderne avec coin coupé */
+  .message.user .content {
+    background: #e8e5ff !important; /* Violet très clair */
+    color: #000 !important;
+    border-bottom-right-radius: 0.25rem !important; /* Coin coupé */
+  }
+  
+  /* Bulle Assistant - style moderne avec coin coupé */
+  .message.assistant .content {
+    background: #f3f4f6 !important; /* Gris très clair */
+    color: #000 !important;
+    border-bottom-left-radius: 0.25rem !important; /* Coin coupé */
+  }
+  
+  /* ==========================================
+     7. MESSAGES TECHNIQUES (contrôlés par préférence)
      ========================================== */
   
   /* Masqués par défaut */
@@ -59,21 +169,265 @@
   /* Affichés si la préférence est activée */
   body.print-include-technical .message.technical,
   body.print-include-technical .message.system {
-    display: block !important;
+    display: flex !important;
+    max-width: 100% !important;
+    margin: 0.25rem 0 !important;
+    align-self: stretch !important;
+  }
+  
+  body.print-include-technical .message.technical .simple-content,
+  body.print-include-technical .message.system .simple-content {
+    padding: 0.5rem !important;
+    font-family: 'Courier New', monospace !important;
+    font-size: 8pt !important;
+    color: #666 !important;
+    background: #fafafa !important;
+    border-left: 2px solid #ddd !important;
+    border-radius: 0.25rem !important;
   }
   
   /* ==========================================
-     4. OPTIMISATIONS BASIQUES
+     8. MESSAGES D'ERREUR ET WARNING
      ========================================== */
   
-  /* Éviter de couper les messages entre les pages */
-  .message {
+  .message.error {
+    max-width: 100% !important;
+    align-self: stretch !important;
+  }
+  
+  .message.error .content {
+    background: #fff5f5 !important;
+    border-left: 3px solid #e53e3e !important;
+    color: #c53030 !important;
+    border-radius: 0.5rem !important;
+  }
+  
+  .message.warning {
+    max-width: 100% !important;
+    align-self: stretch !important;
+  }
+  
+  .message.warning .content {
+    background: #fffaf0 !important;
+    border-left: 3px solid #dd6b20 !important;
+    color: #c05621 !important;
+    border-radius: 0.5rem !important;
+  }
+  
+  /* ==========================================
+     9. CONTENU MARKDOWN
+     ========================================== */
+
+  .markdown-content {
+    p {
+      margin: 0.5rem 0 !important;
+      color: #000 !important;
+      
+      &:first-child {
+        margin-top: 0 !important;
+      }
+      
+      &:last-child {
+        margin-bottom: 0 !important;
+      }
+    }
+
+    
+    /* Code inline */
+    code {
+      background: rgba(0, 0, 0, 0.05) !important;
+      padding: 0.1rem 0.3rem !important;
+      border-radius: 0.25rem !important;
+      font-family: 'Courier New', 'Consolas', monospace !important;
+      font-size: 9pt !important;
+      color: #000 !important;
+      border: 1px solid rgba(0, 0, 0, 0.1) !important;
+    }
+    
+    /* Bloc de code */
+    pre {
+      background: #f8f9fa !important;
+      padding: 0.75rem !important;
+      border: 1px solid #e0e0e0 !important;
+      border-radius: 0.5rem !important;
+      page-break-inside: avoid;
+      overflow: visible !important;
+      white-space: pre-wrap !important;
+      word-wrap: break-word !important;
+      margin: 0.75rem 0 !important;
+      
+      code {
+        background: none !important;
+        border: none !important;
+        padding: 0 !important;
+        font-size: 8pt !important;
+      }
+    }
+    
+    /* Texte en gras */
+    strong, b {
+      font-weight: 700 !important;
+      color: #000 !important;
+    }
+    
+    /* Texte en italique */
+    em, i {
+      font-style: italic !important;
+    }
+    
+    /* Listes */
+    ul, ol {
+      margin: 0.5rem 0 !important;
+      padding-left: 1.5rem !important;
+      
+      li {
+        margin: 0.25rem 0 !important;
+        line-height: 1.5 !important;
+      }
+    }
+    
+    /* Citations */
+    blockquote {
+      border-left: 3px solid #999 !important;
+      margin: 0.75rem 0 !important;
+      padding: 0.5rem 0 0.5rem 1rem !important;
+      font-style: italic !important;
+      color: #333 !important;
+      background: rgba(0, 0, 0, 0.02) !important;
+      border-radius: 0 0.25rem 0.25rem 0 !important;
+    }
+    
+    /* Titres */
+    h1, h2, h3, h4, h5, h6 {
+      margin: 1rem 0 0.5rem 0 !important;
+      font-weight: 700 !important;
+      color: #000 !important;
+      page-break-after: avoid;
+      
+      &:first-child {
+        margin-top: 0 !important;
+      }
+    }
+    
+    h1 { font-size: 14pt !important; }
+    h2 { font-size: 12pt !important; }
+    h3 { font-size: 11pt !important; }
+    h4, h5, h6 { font-size: 10pt !important; }
+    
+    /* Liens */
+    a {
+      color: #000 !important;
+      text-decoration: underline !important;
+      
+      &:after {
+        content: " (" attr(href) ")";
+        font-size: 8pt;
+        color: #666;
+        font-style: italic;
+      }
+    }
+    
+    /* Séparateur horizontal */
+    hr {
+      border: none !important;
+      border-top: 1px solid #ddd !important;
+      margin: 1rem 0 !important;
+      page-break-after: avoid;
+    }
+    
+    /* Tableaux */
+    table {
+      border-collapse: collapse !important;
+      margin: 0.75rem 0 !important;
+      page-break-inside: avoid;
+      width: 100% !important;
+      
+      th, td {
+        padding: 0.5rem !important;
+        border: 1px solid #ddd !important;
+        font-size: 9pt !important;
+        text-align: left !important;
+      }
+      
+      th {
+        font-weight: 700 !important;
+        background: #f5f5f5 !important;
+      }
+      
+      tr:nth-child(even) td {
+        background: #fafafa !important;
+      }
+    }
+  }
+
+  .user .markdown-content {
+    a {
+      color: #328dff!important;
+      background-color:#ffffff;
+      padding:2px;
+      display: inline-block;
+      border-radius :4px;
+      text-decoration: underline!important;
+
+      &:after {
+        display: inline-block;
+      }
+    }
+  }
+
+  /* ==========================================
+     10. IMAGES
+     ========================================== */
+  
+  .message-image {
+    max-width: 100% !important;
+    height: auto !important;
+    page-break-inside: avoid;
+    border: 1px solid #ddd !important;
+    border-radius: 0.5rem !important;
+    margin: 0.5rem 0 !important;
+  }
+  
+  .image-content {
+    page-break-inside: avoid;
+    margin: 0.5rem 0 !important;
+  }
+  
+  /* ==========================================
+     11. OPTIMISATIONS PAGE BREAKS
+     ========================================== */
+  
+  /* Éviter de couper ces éléments */
+  .message,
+  .message-header,
+  blockquote,
+  pre,
+  table,
+  .image-content {
     page-break-inside: avoid;
   }
   
-  /* Supprimer les animations et transitions */
+  /* Éviter un saut de page juste après */
+  h1, h2, h3, h4, h5, h6,
+  .speaker {
+    page-break-after: avoid;
+  }
+  
+  /* Encourager un saut de page avant les nouveaux messages */
+  .message {
+    page-break-before: auto;
+  }
+  
+  /* ==========================================
+     12. UTILITIES
+     ========================================== */
+  
+  /* Supprimer toutes les animations */
   * {
     animation: none !important;
     transition: none !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
   }
+
 }
