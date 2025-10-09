@@ -155,3 +155,46 @@
     padding: 0.75rem;
   }
 }
+
+// Print styles - Override component styles for printing
+@media print {
+  :host {
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+  
+  .app {
+    height: auto !important;
+    max-height: none !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+    flex-direction: column !important;
+    position: static !important;
+  }
+  
+  .chat-wrapper {
+    flex: none !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    overflow-y: visible !important;
+    overflow-x: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    position: static !important;
+  }
+  
+  .input-section {
+    display: none !important;
+  }
+  
+  .connection-status,
+  .upload-status {
+    display: none !important;
+  }
+}

@@ -1,0 +1,79 @@
+/* ============================================
+   PRINT STYLES - Coday Chat Conversations
+   Version minimaliste pour amélioration progressive
+   ============================================ */
+
+@media print {
+  
+  /* ==========================================
+     1. FORCER LA VISIBILITÉ COMPLÈTE
+     ========================================== */
+  
+  /* Annuler les contraintes de hauteur Angular */
+  html, body,
+  app-root,
+  app-main,
+  .app,
+  .chat-wrapper,
+  app-chat-history,
+  .chat-history {
+    height: auto !important;
+    max-height: none !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+  
+  /* ==========================================
+     2. MASQUER LES ÉLÉMENTS UI
+     ========================================== */
+  
+  /* Tous les éléments d'interface utilisateur */
+  app-floating-menu,
+  .floating-menu-btn,
+  .floating-menu,
+  .menu-backdrop,
+  .input-section,
+  app-chat-textarea,
+  app-choice-select,
+  .actions,
+  .action-btn,
+  .go-to-bottom-btn,
+  .thinking,
+  .stop-btn,
+  .connection-status,
+  .upload-status {
+    display: none !important;
+  }
+  
+  /* ==========================================
+     3. MESSAGES TECHNIQUES (contrôlés par préférence)
+     ========================================== */
+  
+  /* Masqués par défaut */
+  .message.technical,
+  .message.system {
+    display: none !important;
+  }
+  
+  /* Affichés si la préférence est activée */
+  body.print-include-technical .message.technical,
+  body.print-include-technical .message.system {
+    display: block !important;
+  }
+  
+  /* ==========================================
+     4. OPTIMISATIONS BASIQUES
+     ========================================== */
+  
+  /* Éviter de couper les messages entre les pages */
+  .message {
+    page-break-inside: avoid;
+  }
+  
+  /* Supprimer les animations et transitions */
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

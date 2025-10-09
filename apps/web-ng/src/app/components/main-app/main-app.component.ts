@@ -16,6 +16,7 @@ import { ConnectionStatus } from '../../core/services/event-stream.service'
 import { SessionStateService } from '../../core/services/session-state.service'
 import { ImageUploadService } from '../../services/image-upload.service'
 import { TabTitleService } from '../../services/tab-title.service'
+import { PreferencesService } from '../../services/preferences.service'
 
 @Component({
   selector: 'app-main',
@@ -63,6 +64,7 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   private sessionStateService = inject(SessionStateService) // Injection pour initialiser le service
   private imageUploadService = inject(ImageUploadService)
   private titleService = inject(TabTitleService) // Renommé pour éviter les conflits
+  private preferencesService = inject(PreferencesService)
   
   constructor() {
     this.clientId = this.codayApiService.getClientId()
@@ -71,6 +73,9 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   ngOnInit(): void {
+    // Setup print event listeners
+    this.setupPrintHandlers()
+    
     this.codayService.messages$
       .pipe(takeUntil(this.destroy$))
       .subscribe(messages => {
@@ -112,6 +117,10 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   ngOnDestroy(): void {
     this.destroy$.next()
     this.destroy$.complete()
+    
+    // Cleanup print handlers
+    window.removeEventListener('beforeprint', this.handleBeforePrint)
+    window.removeEventListener('afterprint', this.handleAfterPrint)
   }
 
   onMessageSubmitted(message: string): void {
@@ -238,5 +247,29 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     setTimeout(() => {
       this.uploadStatus = { message: '', isError: false }
     }, 5000)
+  }
+  
+  // Print handling
+  private setupPrintHandlers(): void {
+    window.addEventListener('beforeprint', this.handleBeforePrint)
+    window.addEventListener('afterprint', this.handleAfterPrint)
+  }
+  
+  private handleBeforePrint = (): void => {
+    console.log('[PRINT] Before print event triggered')
+    const printTechnicalMessages = this.preferencesService.getPrintTechnicalMessages()
+    console.log('[PRINT] Print technical messages:', printTechnicalMessages)
+    
+    if (printTechnicalMessages) {
+      document.body.classList.add('print-include-technical')
+    } else {
+      document.body.classList.remove('print-include-technical')
+    }
+  }
+  
+  private handleAfterPrint = (): void => {
+    console.log('[PRINT] After print event triggered')
+    // Clean up the class after printing
+    document.body.classList.remove('print-include-technical')
   }
 }
