@@ -57,6 +57,19 @@
         </label>
       </div>
       
+      <!-- Impression des messages techniques -->
+      <div class="option-group">
+        <label class="option-checkbox">
+          <input 
+            type="checkbox"
+            [(ngModel)]="printTechnicalMessages"
+            (change)="onPrintTechnicalMessagesChange()"
+          />
+          <span class="checkmark"></span>
+          Inclure les messages techniques à l'impression
+        </label>
+      </div>
+      
       <!-- Sélection de langue vocale -->
       <div class="option-group">
         <label for="voice-language-select" class="option-label">
