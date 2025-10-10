@@ -1,15 +1,15 @@
 /* ============================================
    PRINT STYLES - Coday Chat Conversations
-   Design moderne inspiré de chat bubbles
+   Modern Bubbles chat styles
    ============================================ */
 
 @media print {
   
   /* ==========================================
-     1. FORCER LA VISIBILITÉ COMPLÈTE
+     1. FORCE FULL VISIBILITY
      ========================================== */
   
-  /* Annuler les contraintes de hauteur Angular */
+  /* Cancel Angular height constraints */
   html, body,
   app-root,
   app-main,
@@ -34,10 +34,10 @@
   }
   
   /* ==========================================
-     2. MASQUER LES ÉLÉMENTS UI
+     2. HIDE UI ELEMENTS
      ========================================== */
   
-  /* Tous les éléments d'interface utilisateur */
+  /* All user interface elements */
   app-floating-menu,
   .floating-menu-btn,
   .floating-menu,
@@ -56,7 +56,7 @@
   }
   
   /* ==========================================
-     3. LAYOUT GÉNÉRAL
+     3. GENERAL LAYOUT
      ========================================== */
   
   .chat-wrapper {
@@ -101,7 +101,7 @@
   }
   
   /* ==========================================
-     5. HEADER DU MESSAGE (Speaker)
+     5. MESSAGE HEADER (Speaker)
      ========================================== */
   
   .message-header {
@@ -120,7 +120,7 @@
     padding: 0 0.25rem !important;
   }
   
-  /* Speaker aligné selon le type de message */
+  /* Speaker aligned according to message type */
   .message.user .speaker {
     text-align: right !important;
   }
@@ -130,7 +130,7 @@
   }
   
   /* ==========================================
-     6. CONTENU - BULLES DE CHAT
+     6. CONTENT - CHAT BUBBLES
      ========================================== */
   
   .content {
@@ -142,31 +142,31 @@
     box-shadow: none !important;
   }
   
-  /* Bulle User - style moderne avec coin coupé */
+  /* User bubble - modern style with cut corner */
   .message.user .content {
-    background: #e8e5ff !important; /* Violet très clair */
+    background: #e8e5ff !important; /* Very light purple */
     color: #000 !important;
-    border-bottom-right-radius: 0.25rem !important; /* Coin coupé */
+    border-bottom-right-radius: 0.25rem !important; /* Cut corner */
   }
   
-  /* Bulle Assistant - style moderne avec coin coupé */
+  /* Assistant bubble - modern style with cut corner */
   .message.assistant .content {
-    background: #f3f4f6 !important; /* Gris très clair */
+    background: #f3f4f6 !important; /* Very light gray */
     color: #000 !important;
-    border-bottom-left-radius: 0.25rem !important; /* Coin coupé */
+    border-bottom-left-radius: 0.25rem !important; /* Cut corner */
   }
   
   /* ==========================================
-     7. MESSAGES TECHNIQUES (contrôlés par préférence)
+     7. TECHNICAL MESSAGES (controlled by preference)
      ========================================== */
   
-  /* Masqués par défaut */
+  /* Hidden by default */
   .message.technical,
   .message.system {
     display: none !important;
   }
   
-  /* Affichés si la préférence est activée */
+  /* Displayed if preference is enabled */
   body.print-include-technical .message.technical,
   body.print-include-technical .message.system {
     display: flex !important;
@@ -187,7 +187,7 @@
   }
   
   /* ==========================================
-     8. MESSAGES D'ERREUR ET WARNING
+     8. ERROR AND WARNING MESSAGES
      ========================================== */
   
   .message.error {
@@ -233,7 +233,7 @@
     }
 
     
-    /* Code inline */
+    /* Inline code */
     code {
       background: rgba(0, 0, 0, 0.05) !important;
       padding: 0.1rem 0.3rem !important;
@@ -244,7 +244,7 @@
       border: 1px solid rgba(0, 0, 0, 0.1) !important;
     }
     
-    /* Bloc de code */
+    /* Code block */
     pre {
       background: #f8f9fa !important;
       padding: 0.75rem !important;
@@ -264,18 +264,18 @@
       }
     }
     
-    /* Texte en gras */
+    /* Bold text */
     strong, b {
       font-weight: 700 !important;
       color: #000 !important;
     }
     
-    /* Texte en italique */
+    /* Italic text */
     em, i {
       font-style: italic !important;
     }
     
-    /* Listes */
+    /* Lists */
     ul, ol {
       margin: 0.5rem 0 !important;
       padding-left: 1.5rem !important;
@@ -286,7 +286,7 @@
       }
     }
     
-    /* Citations */
+    /* Blockquotes */
     blockquote {
       border-left: 3px solid #999 !important;
       margin: 0.75rem 0 !important;
@@ -297,7 +297,7 @@
       border-radius: 0 0.25rem 0.25rem 0 !important;
     }
     
-    /* Titres */
+    /* Headings */
     h1, h2, h3, h4, h5, h6 {
       margin: 1rem 0 0.5rem 0 !important;
       font-weight: 700 !important;
@@ -314,7 +314,7 @@
     h3 { font-size: 11pt !important; }
     h4, h5, h6 { font-size: 10pt !important; }
     
-    /* Liens */
+    /* Links */
     a {
       color: #000 !important;
       text-decoration: underline !important;
@@ -327,7 +327,7 @@
       }
     }
     
-    /* Séparateur horizontal */
+    /* Horizontal separator */
     hr {
       border: none !important;
       border-top: 1px solid #ddd !important;
@@ -335,7 +335,7 @@
       page-break-after: avoid;
     }
     
-    /* Tableaux */
+    /* Tables */
     table {
       border-collapse: collapse !important;
       margin: 0.75rem 0 !important;
@@ -394,10 +394,10 @@
   }
   
   /* ==========================================
-     11. OPTIMISATIONS PAGE BREAKS
+     11. PAGE BREAK OPTIMIZATIONS
      ========================================== */
   
-  /* Éviter de couper ces éléments */
+  /* Avoid breaking these elements */
   .message,
   .message-header,
   blockquote,
@@ -407,13 +407,13 @@
     page-break-inside: avoid;
   }
   
-  /* Éviter un saut de page juste après */
+  /* Avoid page break right after */
   h1, h2, h3, h4, h5, h6,
   .speaker {
     page-break-after: avoid;
   }
   
-  /* Encourager un saut de page avant les nouveaux messages */
+  /* Encourage page break before new messages */
   .message {
     page-break-before: auto;
   }
@@ -422,7 +422,7 @@
      12. UTILITIES
      ========================================== */
   
-  /* Supprimer toutes les animations */
+  /* Remove all animations */
   * {
     animation: none !important;
     transition: none !important;

@@ -76,12 +76,12 @@
   overflow-y: auto;
   max-height: 90vh;
   
-  // Centrer le contenu
+  // Center the content
   display: flex;
   justify-content: center;
   align-items: center;
   
-  // Largeur maximale pour le textarea
+  // Maximum width for the textarea
   > app-chat-textarea {
     height: 100%;
     width: 100%;
@@ -93,7 +93,7 @@
   padding: 1rem;
   z-index: 10;
   
-  // Centrer le contenu du choice
+  // Center the choice content
   display: flex;
   justify-content: center;
   align-items: center;

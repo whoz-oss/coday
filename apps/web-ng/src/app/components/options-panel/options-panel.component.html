@@ -1,5 +1,5 @@
 <div class="options-container">
-  <!-- Bouton pour ouvrir/fermer le panneau -->
+  <!-- Button to open/close the panel -->
   <button 
     class="options-toggle-btn"
     (click)="togglePanel()"
@@ -10,7 +10,7 @@
     ⚙️
   </button>
   
-  <!-- Backdrop pour fermer le panneau en cliquant à l'extérieur -->
+  <!-- Backdrop to close the panel by clicking outside -->
   <div 
     *ngIf="isVisible"
     class="options-backdrop"
@@ -18,10 +18,10 @@
     (keydown.escape)="closePanel()"
     tabindex="-1"
     role="button"
-    aria-label="Fermer les options (cliquez ou appuyez sur Échap)"
+    aria-label="Close options (click or press Escape)"
   ></div>
   
-  <!-- Panneau d'options -->
+  <!-- Options panel -->
   <div 
     *ngIf="isVisible"
     #optionsPanel
@@ -29,7 +29,7 @@
     (click)="onPanelClick($event)"
     (keydown)="onPanelClick($event)"
     role="dialog"
-    aria-label="Panneau des options de configuration"
+    aria-label="Configuration options panel"
   >
     <div class="options-header">
       <h3>Options</h3>
@@ -44,7 +44,7 @@
     </div>
     
     <div class="options-content">
-      <!-- Comportement touche Entrée -->
+      <!-- Enter key behavior -->
       <div class="option-group">
         <label class="option-checkbox">
           <input 
@@ -53,12 +53,12 @@
             (change)="onEnterToSendChange()"
           />
           <span class="checkmark"></span>
-          Utiliser Entrée pour envoyer (Shift+Entrée pour nouvelle ligne)
+          Use Enter to send (Shift+Enter for new line)
         </label>
       </div>
       
-      <!-- Impression des messages techniques -->
-      <div class="option-group">
+      <!-- Print technical messages -->
+      <div class="option-group"}
         <label class="option-checkbox">
           <input 
             type="checkbox"
@@ -66,14 +66,14 @@
             (change)="onPrintTechnicalMessagesChange()"
           />
           <span class="checkmark"></span>
-          Inclure les messages techniques à l'impression
+          Include technical messages in print
         </label>
       </div>
       
-      <!-- Sélection de langue vocale -->
+      <!-- Voice language selection -->
       <div class="option-group">
         <label for="voice-language-select" class="option-label">
-          Langue de reconnaissance vocale :
+          Voice recognition language:
         </label>
         <select 
           id="voice-language-select"
@@ -90,11 +90,11 @@
         </select>
       </div>
       
-      <!-- Section Synthèse vocale -->
+      <!-- Voice synthesis section -->
       <div class="option-section">
-        <h4 class="section-title">🔊 Synthèse vocale</h4>
+        <h4 class="section-title">🔊 Voice synthesis</h4>
         
-        <!-- Annonce automatique -->
+        <!-- Automatic announcement -->
         <div class="option-group">
           <label class="option-checkbox">
             <input 
@@ -103,13 +103,13 @@
               (change)="onVoiceAnnounceEnabledChange()"
             />
             <span class="checkmark"></span>
-            Annonce automatique des réponses
+            Automatic announcement of responses
           </label>
         </div>
         
-        <!-- Mode vocal -->
+        <!-- Voice mode -->
         <div class="option-group">
-          <span class="option-label">Mode vocal :</span>
+          <span class="option-label">Voice mode:</span>
           <div class="radio-group">
             <label class="option-radio">
               <input 
@@ -120,7 +120,7 @@
                 (change)="onVoiceModeChange()"
               />
               <span class="radio-mark"></span>
-              🗣️ Synthèse vocale
+              🗣️ Voice synthesis
             </label>
             <label class="option-radio">
               <input 
@@ -131,12 +131,12 @@
                 (change)="onVoiceModeChange()"
               />
               <span class="radio-mark"></span>
-              🔔 Notification sonore
+              🔔 Sound notification
             </label>
           </div>
         </div>
         
-        <!-- Lecture complète -->
+        <!-- Full reading -->
         <div class="option-group">
           <label class="option-checkbox">
             <input 
@@ -145,14 +145,14 @@
               (change)="onVoiceReadFullTextChange()"
             />
             <span class="checkmark"></span>
-            Lecture complète des messages (sinon premiers paragraphes)
+            Full message reading (otherwise first paragraphs)
           </label>
         </div>
         
-        <!-- Sélection de voix -->
+        <!-- Voice selection -->
         <div class="option-group">
           <label for="voice-select" class="option-label">
-            Voix sélectionnée :
+            Selected voice:
           </label>
           <select 
             id="voice-select"
@@ -161,8 +161,8 @@
             (change)="onSelectedVoiceChange()"
             [disabled]="loadingVoices || availableVoices.length === 0"
           >
-            <option value="" *ngIf="loadingVoices">🔄 Chargement des voix...</option>
-            <option value="" *ngIf="!loadingVoices && availableVoices.length === 0">⚠️ Aucune voix disponible</option>
+            <option value="" *ngIf="loadingVoices">🔄 Loading voices...</option>
+            <option value="" *ngIf="!loadingVoices && availableVoices.length === 0">⚠️ No voice available</option>
             <option 
               *ngFor="let voice of availableVoices" 
               [value]="voice.name + '|' + voice.lang"
@@ -175,7 +175,7 @@
         <!-- Volume -->
         <div class="option-group">
           <label for="voice-volume-slider" class="option-label">
-            Volume : {{ voiceVolume }}%
+            Volume: {{ voiceVolume }}%
           </label>
           <input 
             id="voice-volume-slider"
@@ -189,10 +189,10 @@
           />
         </div>
         
-        <!-- Vitesse -->
+        <!-- Speed -->
         <div class="option-group">
           <label for="voice-rate-slider" class="option-label">
-            Vitesse : {{ voiceRate }}%
+            Speed: {{ voiceRate }}%
           </label>
           <input 
             id="voice-rate-slider"
@@ -206,15 +206,15 @@
           />
         </div>
         
-        <!-- Test de la voix -->
+        <!-- Voice test -->
         <div class="option-group">
           <button 
             type="button" 
             class="test-voice-btn"
             (click)="testVoice()"
-            title="Tester la voix avec les paramètres actuels"
+            title="Test voice with current settings"
           >
-            🔊 Tester la voix
+            🔊 Test voice
           </button>
         </div>
       </div>

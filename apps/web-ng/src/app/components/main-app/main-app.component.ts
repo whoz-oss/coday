@@ -61,9 +61,9 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   // Modern Angular dependency injection
   private codayService = inject(CodayService)
   private codayApiService = inject(CodayApiService)
-  private sessionStateService = inject(SessionStateService) // Injection pour initialiser le service
+  private sessionStateService = inject(SessionStateService) // Injection to initialize the service
   private imageUploadService = inject(ImageUploadService)
-  private titleService = inject(TabTitleService) // Renommé pour éviter les conflits
+  private titleService = inject(TabTitleService) // Renamed to avoid conflicts
   private preferencesService = inject(PreferencesService)
   
   constructor() {
@@ -102,7 +102,7 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
         this.isConnected = status.connected
       })
 
-    // Connecter les services (pour éviter la dépendance circulaire)
+    // Connect services (to avoid circular dependency)
     this.codayService.setTabTitleService(this.titleService)
     
     // Start the Coday service
