@@ -97,3 +97,28 @@
   }
 }
 
+// Print styles
+@media print {
+  :host {
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+  
+  .chat-history {
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+  
+  .thinking,
+  .stop-btn,
+  .go-to-bottom-btn {
+    display: none !important;
+  }
+}
+

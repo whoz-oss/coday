@@ -31,6 +31,9 @@ export class PreferencesService {
   
   private selectedVoiceSubject = new BehaviorSubject<string | null>(null)
   public selectedVoice$ = this.selectedVoiceSubject.asObservable()
+  
+  private printTechnicalMessagesSubject = new BehaviorSubject<boolean>(false)
+  public printTechnicalMessages$ = this.printTechnicalMessagesSubject.asObservable()
 
   constructor() {
     console.log('[PREFERENCES] Initializing preferences service')
@@ -60,6 +63,9 @@ export class PreferencesService {
     
     const storedSelectedVoice = this.getPreference<string | null>('selectedVoice', null) ?? null
     this.selectedVoiceSubject.next(storedSelectedVoice)
+    
+    const storedPrintTechnicalMessages = this.getPreference<boolean>('printTechnicalMessages', false) ?? false
+    this.printTechnicalMessagesSubject.next(storedPrintTechnicalMessages)
     
     console.log('[PREFERENCES] All preferences initialized successfully')
   }
@@ -109,6 +115,9 @@ export class PreferencesService {
       }
       if (key === 'selectedVoice') {
         this.selectedVoiceSubject.next(value as string | null)
+      }
+      if (key === 'printTechnicalMessages') {
+        this.printTechnicalMessagesSubject.next(value as boolean)
       }
     } catch (error) {
       console.error('Failed to set preference:', error)
@@ -187,5 +196,14 @@ export class PreferencesService {
   
   getSelectedVoice(): string | null {
     return this.getPreference<string | null>('selectedVoice', null) ?? null
+  }
+  
+  setPrintTechnicalMessages(enabled: boolean): void {
+    console.log('[PREFERENCES] Setting print technical messages to:', enabled)
+    this.setPreference('printTechnicalMessages', enabled)
+  }
+  
+  getPrintTechnicalMessages(): boolean {
+    return this.getPreference<boolean>('printTechnicalMessages', false) ?? false
   }
 }

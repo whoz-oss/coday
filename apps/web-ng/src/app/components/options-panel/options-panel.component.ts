@@ -25,6 +25,7 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   isVisible = false
   selectedVoiceLanguage = 'en-US'
   useEnterToSend = false
+  printTechnicalMessages = false
   
   voiceAnnounceEnabled = false
   voiceMode: 'speech' | 'notification' = 'speech'
@@ -60,6 +61,7 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.selectedVoiceLanguage = this.preferencesService.getVoiceLanguage()
     this.useEnterToSend = this.preferencesService.getEnterToSend()
+    this.printTechnicalMessages = this.preferencesService.getPrintTechnicalMessages()
     this.voiceAnnounceEnabled = this.preferencesService.getVoiceAnnounceEnabled()
     this.voiceMode = this.preferencesService.getVoiceMode()
     this.voiceReadFullText = this.preferencesService.getVoiceReadFullText()
@@ -79,6 +81,12 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe(useEnterToSend => {
         this.useEnterToSend = useEnterToSend
+      })
+      
+    this.preferencesService.printTechnicalMessages$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(printTechnicalMessages => {
+        this.printTechnicalMessages = printTechnicalMessages
       })
       
     this.preferencesService.voiceAnnounceEnabled$
@@ -148,6 +156,11 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   onEnterToSendChange(): void {
     console.log('[OPTIONS] Enter to send changed to:', this.useEnterToSend)
     this.preferencesService.setEnterToSend(this.useEnterToSend)
+  }
+  
+  onPrintTechnicalMessagesChange(): void {
+    console.log('[OPTIONS] Print technical messages changed to:', this.printTechnicalMessages)
+    this.preferencesService.setPrintTechnicalMessages(this.printTechnicalMessages)
   }
   
   
