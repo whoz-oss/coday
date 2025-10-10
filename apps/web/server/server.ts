@@ -13,6 +13,10 @@ import { WebhookService } from '@coday/service/webhook.service'
 import { ThreadCleanupService } from '@coday/service/thread-cleanup.service'
 import { findAvailablePort } from './find-available-port'
 import { catchError, filter, firstValueFrom, lastValueFrom, of, timeout, withLatestFrom } from 'rxjs'
+import { ConfigServiceRegistry } from '@coday/service/config-service-registry'
+import { ServerInteractor } from '@coday/model/server-interactor'
+import { UserConfig } from '@coday/model/user-config'
+import { ProjectLocalConfig } from '@coday/model/project-local-config'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000
@@ -52,6 +56,10 @@ app.use(express.json({ limit: '20mb' }))
 
 // Initialize the client manager with usage logger and webhook service
 const clientManager = new ServerClientManager(logger, webhookService)
+
+// Initialize config service registry for REST API endpoints
+const configInteractor = new ServerInteractor('config-api')
+const configRegistry = new ConfigServiceRegistry(configPath, configInteractor)
 
 // Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null
@@ -340,6 +348,165 @@ app.post('/api/files/upload', async (req: express.Request, res: express.Response
     res.status(400).json({ error: error instanceof Error ? error.message : 'Upload failed' })
   }
 })
+
+// ============================================================================
+// Configuration Management Endpoints
+// ============================================================================
+
+/**
+ * GET /api/config/user
+ * Retrieve user configuration
+ */
+app.get('/api/config/user', (req: express.Request, res: express.Response) => {
+  try {
+    const username = getUsername(codayOptions, req)
+    if (!username) {
+      res.status(401).json({ error: 'Username not found in request headers' })
+      return
+    }
+
+    debugLog('CONFIG', `GET user config for: ${username}`)
+    const userService = configRegistry.getUserService(username)
+    const config = userService.config
+
+    res.status(200).json(config)
+  } catch (error) {
+    console.error('Error retrieving user config:', error)
+    res.status(500).json({ error: 'Failed to retrieve user configuration' })
+  }
+})
+
+/**
+ * PUT /api/config/user
+ * Update user configuration
+ */
+app.put('/api/config/user', (req: express.Request, res: express.Response) => {
+  try {
+    const username = getUsername(codayOptions, req)
+    if (!username) {
+      res.status(401).json({ error: 'Username not found in request headers' })
+      return
+    }
+
+    const updatedConfig = req.body as UserConfig
+
+    // Basic validation
+    if (!updatedConfig || typeof updatedConfig !== 'object') {
+      res.status(400).json({ error: 'Invalid configuration format' })
+      return
+    }
+
+    if (typeof updatedConfig.version !== 'number') {
+      res.status(400).json({ error: 'Configuration must have a version number' })
+      return
+    }
+
+    debugLog('CONFIG', `PUT user config for: ${username}`)
+    const userService = configRegistry.getUserService(username)
+    
+    // Update the config
+    userService.config = updatedConfig
+    userService.save()
+
+    res.status(200).json({ success: true, message: 'User configuration updated successfully' })
+  } catch (error) {
+    console.error('Error updating user config:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    res.status(500).json({ error: `Failed to update user configuration: ${errorMessage}` })
+  }
+})
+
+/**
+ * GET /api/config/project/:name
+ * Retrieve project configuration
+ */
+app.get('/api/config/project/:name', (req: express.Request, res: express.Response) => {
+  try {
+    const { name } = req.params
+    if (!name) {
+      res.status(400).json({ error: 'Project name is required' })
+      return
+    }
+
+    debugLog('CONFIG', `GET project config for: ${name}`)
+    const projectService = configRegistry.getProjectService()
+    
+    // Select the project if not already selected or if different
+    if (!projectService.selectedProject || projectService.selectedProject.name !== name) {
+      projectService.selectProject(name)
+    }
+
+    const selectedProject = projectService.selectedProject
+    if (!selectedProject) {
+      res.status(404).json({ error: `Project '${name}' not found` })
+      return
+    }
+
+    res.status(200).json(selectedProject.config)
+  } catch (error) {
+    console.error('Error retrieving project config:', error)
+    res.status(500).json({ error: 'Failed to retrieve project configuration' })
+  }
+})
+
+/**
+ * PUT /api/config/project/:name
+ * Update project configuration
+ */
+app.put('/api/config/project/:name', (req: express.Request, res: express.Response) => {
+  try {
+    const { name } = req.params
+    if (!name) {
+      res.status(400).json({ error: 'Project name is required' })
+      return
+    }
+
+    const updatedConfig = req.body as ProjectLocalConfig
+
+    // Basic validation
+    if (!updatedConfig || typeof updatedConfig !== 'object') {
+      res.status(400).json({ error: 'Invalid configuration format' })
+      return
+    }
+
+    if (typeof updatedConfig.version !== 'number') {
+      res.status(400).json({ error: 'Configuration must have a version number' })
+      return
+    }
+
+    if (!updatedConfig.path || typeof updatedConfig.path !== 'string') {
+      res.status(400).json({ error: 'Configuration must have a valid path' })
+      return
+    }
+
+    debugLog('CONFIG', `PUT project config for: ${name}`)
+    const projectService = configRegistry.getProjectService()
+    
+    // Select the project if not already selected or if different
+    if (!projectService.selectedProject || projectService.selectedProject.name !== name) {
+      projectService.selectProject(name)
+    }
+
+    const selectedProject = projectService.selectedProject
+    if (!selectedProject) {
+      res.status(404).json({ error: `Project '${name}' not found` })
+      return
+    }
+
+    // Update the entire config
+    projectService.save(updatedConfig)
+
+    res.status(200).json({ success: true, message: 'Project configuration updated successfully' })
+  } catch (error) {
+    console.error('Error updating project config:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    res.status(500).json({ error: `Failed to update project configuration: ${errorMessage}` })
+  }
+})
+
+// ============================================================================
+// End of Configuration Management Endpoints
+// ============================================================================
 
 // POST endpoint for receiving AnswerEvent messages
 app.post('/api/message', (req: express.Request, res: express.Response) => {

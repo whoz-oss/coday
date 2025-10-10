@@ -32,6 +32,27 @@
   
   <!-- Settings -->
   <div class="menu-section">
+    <!-- User Config - always visible -->
+    <div class="menu-item-wrapper">
+      <button class="menu-button" (click)="openUserConfig()">
+        <span class="menu-icon">👤</span>
+        <span class="menu-text">User Config</span>
+      </button>
+    </div>
+    
+    <!-- Project Config - only for CODAY_ADMIN -->
+    <div class="menu-item-wrapper" *ngIf="isAdmin">
+      <button class="menu-button" 
+              (click)="openProjectConfig()"
+              [disabled]="!hasProject()"
+              [class.disabled]="!hasProject()"
+              [title]="hasProject() ? 'Edit project configuration' : 'No project selected'">
+        <span class="menu-icon">📁</span>
+        <span class="menu-text">Project Config</span>
+        <span class="disabled-hint" *ngIf="!hasProject()">(No project)</span>
+      </button>
+    </div>
+    
     <div class="menu-item-wrapper">
       <span class="menu-text">Theme</span>
       <app-theme-selector class="inline-selector"></app-theme-selector>
@@ -43,6 +64,29 @@
     </div>
   </div>
 </div>
+
+<!-- JSON Editor Modals -->
+<app-json-editor 
+  [configType]="'user'"
+  [isOpen]="isUserConfigOpen"
+  [initialContent]="userConfigJson"
+  [isLoading]="isLoadingUserConfig"
+  [isSaving]="isSavingUserConfig"
+  (save)="onUserConfigSave($event)"
+  (closeEditor)="onUserConfigCancel()"
+></app-json-editor>
+
+<app-json-editor 
+  *ngIf="hasProject()"
+  [configType]="'project'" 
+  [projectName]="getCurrentProjectName()!"
+  [isOpen]="isProjectConfigOpen"
+  [initialContent]="projectConfigJson"
+  [isLoading]="isLoadingProjectConfig"
+  [isSaving]="isSavingProjectConfig"
+  (save)="onProjectConfigSave($event)"
+  (closeEditor)="onProjectConfigCancel()"
+></app-json-editor>
 
 <!-- Backdrop pour fermer le menu -->
 <div 

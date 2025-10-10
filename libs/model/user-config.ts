@@ -1,7 +1,6 @@
-import { IntegrationLocalConfig } from './project-local-config'
-import { McpConfig } from './mcp-server-config'
-import { AiProviderLocalConfig } from './ai-providers'
-import { AiProviderConfig } from './ai-provider-config'
+import {IntegrationLocalConfig} from './project-local-config'
+import {McpConfig} from './mcp-server-config'
+import {AiProviderConfig} from './ai-provider-config'
 
 export type AiProviderConfigOld = {
   apiKey?: string
@@ -43,10 +42,8 @@ export type UserProjectConfig = {
 export interface UserConfig {
   version: number
 
-  /**
-   * DEPRECATED AiProvider config
-   */
-  aiProviders?: AiProviderLocalConfig
+  temp_groups?: string[]
+
   ai?: AiProviderConfig[]
   /**
    * User bio (optional)
