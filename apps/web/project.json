@@ -65,6 +65,7 @@
           "echo 'Finalizing web application build...'",
           "rm -f dist/web/package.json",
           "mv dist/web/server/package.json dist/web",
+          "cp apps/web/bin.js dist/web/bin.js",
           "echo 'Web application build completed.'"
         ]
       }
