@@ -3,7 +3,7 @@
   "type": "module",
   "description": "",
   "scripts": {
-    "coday": "node ./node_modules/@whoz-oss/coday-web/server/server.js --no_auth",
+    "coday": "npm install @whoz-oss/coday-web@latest --prefix coday --no-audit --no-save && node ./coday/node_modules/@whoz-oss/coday-web/server/server.js --local --no_auth",
     "lint": "nx run-many --target=lint",
     "start": "nx run terminal:serve",
     "test": "nx run-many --target=test",
@@ -53,7 +53,6 @@
     "@types/node": "^22.15.21",
     "@types/sharp": "^0.32.0",
     "@typescript-eslint/utils": "^8.29.0",
-    "@whoz-oss/coday-web": "^0.17.1",
     "angular-eslint": "^20.0.0",
     "esbuild": "^0.25.4",
     "eslint": "^9.27.0",
