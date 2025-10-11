@@ -4,7 +4,7 @@
     ⚠️ Connection lost. Reconnecting... ({{ connectionStatus.reconnectAttempts }}/{{ connectionStatus.maxAttempts }})
   </div>
   
-  <!-- Chat History - Zone scrollable (maintenant pleine hauteur) -->
+  <!-- Chat History - Scrollable area (now full height) -->
   <div class="chat-wrapper">
     <app-chat-history 
       [messages]="messages"
@@ -21,7 +21,7 @@
     </div>
   </div>
   
-  <!-- Input Section - Dans le flux normal -->
+  <!-- Input Section - In normal flow -->
   <div class="input-section" #inputSection>
     <app-chat-textarea 
       *ngIf="!currentChoice"
@@ -31,7 +31,7 @@
       (heightChanged)="onInputHeightChanged($event)"
     ></app-chat-textarea>
     
-    <!-- Choice Select - Overlay au-dessus de l'input-section -->
+    <!-- Choice Select - Overlay on top of input-section -->
     <app-choice-select
       *ngIf="currentChoice"
       [options]="currentChoice.options"

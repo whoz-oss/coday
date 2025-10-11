@@ -32,7 +32,7 @@
   }
 }
 
-// Rendre visible au hover du message parent
+// Make visible on parent message hover
 :host-context(.message:hover) .menu-trigger {
   opacity: 1;
 }
@@ -121,7 +121,7 @@
   flex-grow: 1;
 }
 
-// Responsive pour mobile
+// Responsive for mobile
 @media (max-width: 768px) {
   .menu-dropdown {
     min-width: 140px;

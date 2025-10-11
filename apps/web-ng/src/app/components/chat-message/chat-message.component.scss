@@ -7,26 +7,26 @@
   min-width: 100px; // Largeur minimale pour éviter les messages trop étroits
   word-wrap: break-word; // Gestion des mots longs
   
-  // Messages utilisateur - alignés à droite
+  // User messages - aligned to the right
   &.user {
     padding: 0.75rem 1rem;
     background: var(--color-message-user, #e2dee2);
-    margin-left: auto; // Pousse vers la droite
+    margin-left: auto; // Push to the right
     margin-right: 0;
-    border-bottom-right-radius: 4px; // Coin arrondi réduit côté utilisateur
+    border-bottom-right-radius: 4px; // Reduced corner radius on user side
   }
   
-  // Messages assistant - alignés à gauche
+  // Assistant messages - aligned to the left
   &.assistant {
     padding: 0.75rem 1rem;
     background: var(--color-message-ai, #e8ecf6);
     margin-left: 0;
-    margin-right: auto; // Pousse vers la gauche
-    border-bottom-left-radius: 4px; // Coin arrondi réduit côté assistant
+    margin-right: auto; // Push to the left
+    border-bottom-left-radius: 4px; // Reduced corner radius on assistant side
   }
   
   
-  // Messages système - style minimal (pas de contrainte de largeur)
+  // System messages - minimal style (no width constraint)
   &.system, &.technical {
     padding: 0.25rem 0;
     background: transparent;
@@ -35,12 +35,12 @@
     font-family: monospace;
     font-size: 0.85rem;
     color: var(--color-text-secondary, #6272a4);
-    max-width: none; // Pas de limite de largeur pour les messages techniques
+    max-width: none; // No width limit for technical messages
     width: auto;
     min-width: auto;
   }
   
-  // Messages d'erreur
+  // Error messages
   &.error {
     padding: 0.75rem;
     background: rgba(255, 85, 85, 0.1);
@@ -48,7 +48,7 @@
     color: var(--color-error, #ff5555);
   }
   
-  // Messages d'avertissement
+  // Warning messages
   &.warning {
     padding: 0.75rem;
     background: rgba(255, 184, 108, 0.1);
@@ -57,7 +57,7 @@
   }
 }
 
-// Layout normal (user/assistant)
+// Normal layout (user/assistant)
 .message-header {
   margin-bottom: 0.5rem;
 }
@@ -72,7 +72,7 @@
   line-height: 1.5;
 }
 
-// Positionnement des menus contextuels
+// Context menu positioning
 .context-menu-top {
   position: absolute;
   top: 0.5rem;
@@ -87,7 +87,7 @@
   z-index: 10;
 }
 
-// Layout simplifié (system/technical/error/warning)
+// Simplified layout (system/technical/error/warning)
 .simple-content {
   display: flex;
   
@@ -105,7 +105,7 @@
 
 
 
-// Styles pour les images dans les messages
+// Styles for images in messages
 .text-part {
   margin: 4px 0;
 }
@@ -134,7 +134,7 @@
   }
 }
 
-// Responsive pour les images sur mobile
+// Responsive for images on mobile
 @media (max-width: 768px) {
   .message-image {
     border-radius: 4px;

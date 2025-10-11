@@ -9,10 +9,10 @@ export interface ChatMessage {
   id: string
   role: 'user' | 'assistant' | 'system'
   speaker: string
-  content: MessageContent[] // Toujours du contenu riche maintenant
+  content: MessageContent[] // Always rich content now
   timestamp: Date
   type: 'text' | 'error' | 'warning' | 'technical'
-  eventId?: string // Pour les liens vers les événements
+  eventId?: string // For event detail links
 }
 
 @Component({
@@ -45,17 +45,17 @@ export class ChatMessageComponent implements OnInit {
   }
   
   get shouldShowSpeaker(): boolean {
-    // Afficher le speaker pour user et assistant, pas pour les autres
+    // Show speaker for user and assistant, not for others
     return this.message.role === 'user' || this.message.role === 'assistant'
   }
   
   get shouldShowActions(): boolean {
-    // Afficher les actions seulement pour user et assistant
+    // Show actions only for user and assistant
     return this.message.role === 'user' || this.message.role === 'assistant'
   }
   
   get isSimplified(): boolean {
-    // Messages simplifiés pour tout ce qui n'est pas user/assistant
+    // Simplified messages for everything except user/assistant
     return this.message.role !== 'user' && this.message.role !== 'assistant'
   }
   
@@ -88,7 +88,7 @@ export class ChatMessageComponent implements OnInit {
   }
   
   get bottomActions(): MenuAction[] {
-    // Pour le menu du bas, on ne met que le copy (pas de delete)
+    // For bottom menu, only show copy (no delete)
     return [
       {
         icon: '📋',
@@ -102,7 +102,7 @@ export class ChatMessageComponent implements OnInit {
   get eventLink(): string | null {
     if (!this.message.eventId) return null
     
-    // Obtenir le clientId depuis l'URL
+    // Get clientId from URL
     const params = new URLSearchParams(window.location.search)
     const clientId = params.get('clientId')
     if (!clientId) return null
@@ -112,12 +112,12 @@ export class ChatMessageComponent implements OnInit {
   
   private async renderMarkdown() {
     try {
-      // Toujours utiliser le contenu riche maintenant
+      // Always use rich content now
       const html = await this.renderRichContent(this.message.content)
       this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(html)
     } catch (error) {
       console.error('Error parsing rich content:', error)
-      // Fallback: essayer d'extraire le texte et l'afficher
+      // Fallback: try to extract text and display it
       const textContent = this.extractTextContent()
       this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(textContent)
     }
@@ -164,7 +164,7 @@ export class ChatMessageComponent implements OnInit {
         })
     }
     
-    // Émettre l'événement pour compatibilité
+    // Emit event for compatibility
     this.copyRequested.emit(this.message)
   }
 

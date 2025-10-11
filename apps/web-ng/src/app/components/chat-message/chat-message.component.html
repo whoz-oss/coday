@@ -1,14 +1,14 @@
 <div class="message" [ngClass]="messageClasses">
-  <!-- Layout normal pour user et assistant -->
+  <!-- Normal layout for user and assistant messages -->
   <ng-container *ngIf="!isSimplified">
-    <!-- En-tête avec speaker -->
+    <!-- Header with speaker -->
     <div class="message-header">
       <div class="speaker" *ngIf="shouldShowSpeaker">
         {{ message.speaker }}
       </div>
     </div>
     
-    <!-- Menu contextuel en haut à droite -->
+    <!-- Context menu in top-right corner -->
     <app-message-context-menu 
       *ngIf="shouldShowActions"
       [actions]="topActions" 
@@ -16,10 +16,10 @@
       class="context-menu-top">
     </app-message-context-menu>
     
-    <!-- Contenu -->
+    <!-- Content -->
     <div class="content markdown-content" [innerHTML]="renderedContent"></div>
     
-    <!-- Menu contextuel en bas à droite pour les longs messages -->
+    <!-- Context menu in bottom-right corner for long messages -->
     <app-message-context-menu 
       *ngIf="isLongMessage && shouldShowActions"
       [actions]="bottomActions" 
@@ -28,7 +28,7 @@
     </app-message-context-menu>
   </ng-container>
   
-  <!-- Layout simplifié pour les autres types -->
+  <!-- Simplified layout for other message types -->
   <ng-container *ngIf="isSimplified">
     <div class="simple-content markdown-content">
       <span [innerHTML]="renderedContent"></span>

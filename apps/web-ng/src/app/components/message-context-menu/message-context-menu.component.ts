@@ -6,7 +6,7 @@ export interface MenuAction {
   label: string
   tooltip?: string
   action: () => void
-  destructive?: boolean // Pour style rouge (ex: delete)
+  destructive?: boolean // For red styling (e.g., delete)
 }
 
 @Component({
@@ -39,7 +39,7 @@ export class MessageContextMenuComponent {
   
   @HostListener('document:click')
   onDocumentClick(): void {
-    // Fermer le menu si on clique ailleurs
+    // Close menu when clicking outside
     this.closeMenu()
   }
 }
