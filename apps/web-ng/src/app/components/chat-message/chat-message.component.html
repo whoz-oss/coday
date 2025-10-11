@@ -1,29 +1,31 @@
 <div class="message" [ngClass]="messageClasses">
   <!-- Layout normal pour user et assistant -->
   <ng-container *ngIf="!isSimplified">
-    <!-- En-tête avec speaker et menu contextuel -->
+    <!-- En-tête avec speaker -->
     <div class="message-header">
       <div class="speaker" *ngIf="shouldShowSpeaker">
         {{ message.speaker }}
       </div>
-      
-      <app-message-context-menu 
-        *ngIf="shouldShowActions"
-        [actions]="topActions" 
-        position="top">
-      </app-message-context-menu>
     </div>
+    
+    <!-- Menu contextuel en haut à droite -->
+    <app-message-context-menu 
+      *ngIf="shouldShowActions"
+      [actions]="topActions" 
+      position="top"
+      class="context-menu-top">
+    </app-message-context-menu>
     
     <!-- Contenu -->
     <div class="content markdown-content" [innerHTML]="renderedContent"></div>
     
-    <!-- Menu contextuel en bas pour les longs messages -->
-    <div class="message-footer" *ngIf="isLongMessage && shouldShowActions">
-      <app-message-context-menu 
-        [actions]="bottomActions" 
-        position="bottom">
-      </app-message-context-menu>
-    </div>
+    <!-- Menu contextuel en bas à droite pour les longs messages -->
+    <app-message-context-menu 
+      *ngIf="isLongMessage && shouldShowActions"
+      [actions]="bottomActions" 
+      position="bottom"
+      class="context-menu-bottom">
+    </app-message-context-menu>
   </ng-container>
   
   <!-- Layout simplifié pour les autres types -->

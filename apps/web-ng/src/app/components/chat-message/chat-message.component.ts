@@ -61,7 +61,7 @@ export class ChatMessageComponent implements OnInit {
   
   get isLongMessage(): boolean {
     const textContent = this.extractTextContent()
-    return textContent.length > 500 || textContent.split('\n').length > 10
+    return textContent.length > 1000 || textContent.split('\n').length > 20
   }
   
   get topActions(): MenuAction[] {

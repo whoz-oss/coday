@@ -6,7 +6,6 @@
   width: fit-content; // S'adapte au contenu
   min-width: 100px; // Largeur minimale pour éviter les messages trop étroits
   word-wrap: break-word; // Gestion des mots longs
-  cursor: pointer;
   
   // Messages utilisateur - alignés à droite
   &.user {
@@ -60,9 +59,6 @@
 
 // Layout normal (user/assistant)
 .message-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   margin-bottom: 0.5rem;
 }
 
@@ -76,12 +72,19 @@
   line-height: 1.5;
 }
 
-.message-footer {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--color-border-light, rgba(0, 0, 0, 0.05));
+// Positionnement des menus contextuels
+.context-menu-top {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 10;
+}
+
+.context-menu-bottom {
+  position: absolute;
+  bottom: 0.5rem;
+  right: 0.5rem;
+  z-index: 10;
 }
 
 // Layout simplifié (system/technical/error/warning)

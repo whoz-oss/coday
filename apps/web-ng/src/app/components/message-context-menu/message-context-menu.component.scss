@@ -4,7 +4,7 @@
 }
 
 .menu-trigger {
-  background: none;
+  background: var(--color-bg-primary, #ffffff);
   border: 1px solid var(--color-border, #aeaeae);
   border-radius: 4px;
   padding: 0.2rem 0.4rem;
@@ -14,10 +14,12 @@
   opacity: 0;
   transition: all 0.2s ease;
   color: var(--color-text-secondary, #6272a4);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   
   &:hover {
-    background: var(--color-bg-secondary, #f1f1eb);
+    background: var(--color-bg-hover, #f1f3f4);
     transform: scale(1.1);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
   }
   
   &:active {
@@ -26,7 +28,7 @@
   
   &.open {
     opacity: 1;
-    background: var(--color-bg-secondary, #f1f1eb);
+    background: var(--color-bg-hover, #f1f3f4);
   }
 }
 
