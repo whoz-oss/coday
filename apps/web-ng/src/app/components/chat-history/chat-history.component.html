@@ -3,7 +3,6 @@
     *ngFor="let message of messages; trackBy: trackByMessageId; let i = index"
     [message]="message"
     [canDelete]="canDeleteMessage(i)"
-    (playRequested)="onPlayMessage($event)"
     (copyRequested)="onCopyMessage($event)"
     (deleteRequested)="onDeleteMessage($event)"
   ></app-chat-message>

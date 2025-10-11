@@ -1,57 +1,38 @@
-<div class="message" 
-     [ngClass]="messageClasses" 
-     (click)="onMessageClick()" 
-     (keydown.enter)="onMessageClick()" 
-     (keydown.space)="onMessageClick()" 
-     tabindex="0" 
-     role="button" 
-     [attr.aria-label]="'Message from ' + message.speaker + '. Click to stop speech if playing.'">
+<div class="message" [ngClass]="messageClasses">
   <!-- Layout normal pour user et assistant -->
   <ng-container *ngIf="!isSimplified">
-    <!-- En-tête avec speaker et actions -->
+    <!-- En-tête avec speaker -->
     <div class="message-header">
       <div class="speaker" *ngIf="shouldShowSpeaker">
         {{ message.speaker }}
       </div>
-      
-      <div class="actions" *ngIf="shouldShowActions">
-        <button 
-          class="action-btn play-btn" 
-          [class.playing]="isPlaying"
-          (click)="onPlay(); $event.stopPropagation()"
-          [title]="isPlaying ? 'Stop playback' : 'Play message'"
-        >
-          {{ isPlaying ? '⏸️' : '▶️' }}
-        </button>
-        
-        <button 
-          class="action-btn" 
-          (click)="onCopy(); $event.stopPropagation()"
-          title="Copy message"
-        >
-          📋
-        </button>
-        
-        <button 
-          *ngIf="message.role === 'user' && canDelete"
-          class="action-btn delete-btn" 
-          (click)="onDelete(); $event.stopPropagation()"
-          title="Delete this message and all following messages"
-        >
-          🗑️
-        </button>
-      </div>
     </div>
+    
+    <!-- Menu contextuel en haut à droite -->
+    <app-message-context-menu 
+      *ngIf="shouldShowActions"
+      [actions]="topActions" 
+      position="top"
+      class="context-menu-top">
+    </app-message-context-menu>
     
     <!-- Contenu -->
     <div class="content markdown-content" [innerHTML]="renderedContent"></div>
+    
+    <!-- Menu contextuel en bas à droite pour les longs messages -->
+    <app-message-context-menu 
+      *ngIf="isLongMessage && shouldShowActions"
+      [actions]="bottomActions" 
+      position="bottom"
+      class="context-menu-bottom">
+    </app-message-context-menu>
   </ng-container>
   
   <!-- Layout simplifié pour les autres types -->
   <ng-container *ngIf="isSimplified">
     <div class="simple-content markdown-content">
       <span [innerHTML]="renderedContent"></span>
-      <a *ngIf="eventLink" [href]="eventLink" target="_blank" class="event-link" (click)="$event.stopPropagation()">view</a>
+      <a *ngIf="eventLink" [href]="eventLink" target="_blank" class="event-link">view</a>
     </div>
   </ng-container>
 </div>

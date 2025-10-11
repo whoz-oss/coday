@@ -1,11 +1,9 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, inject } from '@angular/core'
+import { Component, Input, Output, EventEmitter, OnInit, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { marked } from 'marked'
 import { MessageContent } from '@coday/coday-events'
-import { VoiceSynthesisService } from '../../services/voice-synthesis.service'
-import { Subject } from 'rxjs'
-import { takeUntil } from 'rxjs/operators'
+import { MessageContextMenuComponent, MenuAction } from '../message-context-menu/message-context-menu.component'
 
 export interface ChatMessage {
   id: string
@@ -20,26 +18,20 @@ export interface ChatMessage {
 @Component({
   selector: 'app-chat-message',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, MessageContextMenuComponent],
   templateUrl: './chat-message.component.html',
   styleUrl: './chat-message.component.scss'
 })
-export class ChatMessageComponent implements OnInit, OnDestroy {
+export class ChatMessageComponent implements OnInit {
   @Input() message!: ChatMessage
   @Input() canDelete: boolean = true // Can this message be deleted (not first message, not during thinking)
-  @Output() playRequested = new EventEmitter<ChatMessage>()
   @Output() copyRequested = new EventEmitter<ChatMessage>()
   @Output() deleteRequested = new EventEmitter<ChatMessage>()
   
   renderedContent: SafeHtml = ''
-  private destroy$ = new Subject<void>()
-  
-  // État du bouton play
-  isPlaying = false
   
   // Modern Angular dependency injection
   private sanitizer = inject(DomSanitizer)
-  private voiceSynthesisService = inject(VoiceSynthesisService)
   
   get messageClasses() {
     return {
@@ -50,21 +42,6 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   
   async ngOnInit() {
     await this.renderMarkdown()
-    
-    // Écouter l'état global de la synthèse vocale
-    this.voiceSynthesisService.speaking$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(globalSpeaking => {
-        // Si la synthèse globale s'arrête et que ce message était en train de jouer
-        if (!globalSpeaking && this.isPlaying) {
-          this.isPlaying = false
-        }
-      })
-  }
-  
-  ngOnDestroy(): void {
-    this.destroy$.next()
-    this.destroy$.complete()
   }
   
   get shouldShowSpeaker(): boolean {
@@ -80,6 +57,46 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   get isSimplified(): boolean {
     // Messages simplifiés pour tout ce qui n'est pas user/assistant
     return this.message.role !== 'user' && this.message.role !== 'assistant'
+  }
+  
+  get isLongMessage(): boolean {
+    const textContent = this.extractTextContent()
+    return textContent.length > 1000 || textContent.split('\n').length > 20
+  }
+  
+  get topActions(): MenuAction[] {
+    const actions: MenuAction[] = [
+      {
+        icon: '📋',
+        label: 'Copy message',
+        tooltip: 'Copy message content to clipboard',
+        action: () => this.onCopy()
+      }
+    ]
+    
+    if (this.message.role === 'user' && this.canDelete) {
+      actions.push({
+        icon: '🗑️',
+        label: 'Delete from here',
+        tooltip: 'Delete this message and all following messages',
+        action: () => this.onDelete(),
+        destructive: true
+      })
+    }
+    
+    return actions
+  }
+  
+  get bottomActions(): MenuAction[] {
+    // Pour le menu du bas, on ne met que le copy (pas de delete)
+    return [
+      {
+        icon: '📋',
+        label: 'Copy message',
+        tooltip: 'Copy message content to clipboard',
+        action: () => this.onCopy()
+      }
+    ]
   }
   
   get eventLink(): string | null {
@@ -134,49 +151,8 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
     return htmlParts.join('')
   }
   
-  onPlay() {
-    const textContent = this.getTextContentForVoice()
-    
-    if (!textContent.trim()) {
-      console.warn('[CHAT-MESSAGE] No text content to play')
-      return
-    }
-    
-    if (this.isPlaying) {
-      // Arrêter la lecture en cours
-      console.log('[CHAT-MESSAGE] Stopping current playback')
-      this.voiceSynthesisService.stopSpeech()
-      this.isPlaying = false
-    } else {
-      // Démarrer une nouvelle lecture
-      console.log('[CHAT-MESSAGE] Starting playback for message:', this.message.id)
-      
-      // Callback pour remettre le bouton en état normal quand la lecture se termine
-      const onEndCallback = () => {
-        console.log('[CHAT-MESSAGE] Playback ended for message:', this.message.id)
-        this.isPlaying = false
-      }
-      
-      this.voiceSynthesisService.speak(textContent, onEndCallback)
-        .then(success => {
-          if (success) {
-            this.isPlaying = true
-          } else {
-            console.warn('[CHAT-MESSAGE] Failed to start speech synthesis')
-          }
-        })
-        .catch(error => {
-          console.error('[CHAT-MESSAGE] Error during speech synthesis:', error)
-          this.isPlaying = false
-        })
-    }
-    
-    // Émettre l'événement pour compatibilité (si nécessaire pour d'autres composants)
-    this.playRequested.emit(this.message)
-  }
-  
   onCopy() {
-    const textContent = this.getTextContentForVoice()
+    const textContent = this.extractTextContent()
     
     if (textContent.trim()) {
       navigator.clipboard.writeText(textContent)
@@ -195,23 +171,6 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   onDelete() {
     console.log('[CHAT-MESSAGE] Delete requested for message:', this.message.id)
     this.deleteRequested.emit(this.message)
-  }
-  
-  /**
-   * Gestionnaire de clic sur le message - arrête la synthèse vocale
-   */
-  onMessageClick(): void {
-    // Arrêter la synthèse vocale si elle est en cours
-    if (this.voiceSynthesisService.isSpeaking()) {
-      this.voiceSynthesisService.stopSpeech()
-    }
-  }
-  
-  /**
-   * Extract all text content from rich content for voice synthesis and copying
-   */
-  getTextContentForVoice(): string {
-    return this.extractTextContent()
   }
   
   /**

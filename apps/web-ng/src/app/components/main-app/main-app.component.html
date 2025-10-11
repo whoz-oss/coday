@@ -9,7 +9,6 @@
     <app-chat-history 
       [messages]="messages"
       [isThinking]="isThinking"
-      (playRequested)="onPlayMessage($event)"
       (copyRequested)="onCopyMessage($event)"
       (stopRequested)="onStopRequested()"
     ></app-chat-history>
