@@ -8,12 +8,14 @@ import { readYamlFile } from './read-yaml-file'
 import { ProjectSelectedEvent } from '@coday/coday-events'
 import { migrateData } from '../utils/data-migration'
 import { projectConfigMigrations } from './migration/project-config-migrations'
+import { ConfigMaskingService } from './config-masking.service'
 
 const PROJECTS = 'projects'
 const PROJECT_FILENAME = 'project.yaml'
 
 export class ProjectService {
   private readonly projectsConfigPath: string
+  private maskingService = new ConfigMaskingService()
 
   /**
    * List of project names, as taken from the folder existing in the config directory
@@ -119,5 +121,29 @@ export class ProjectService {
     writeYamlFile(path.join(current.configPath, PROJECT_FILENAME), updated)
     current.config = updated
     this.updateSelectedProject(current)
+  }
+
+  /**
+   * Get configuration with sensitive values masked for client display
+   */
+  getConfigForClient(): ProjectLocalConfig | null {
+    const current = this.selectedProjectBehaviorSubject.value
+    if (!current) {
+      return null
+    }
+    return this.maskingService.maskConfig(current.config)
+  }
+
+  /**
+   * Update configuration from client, unmasking to preserve original sensitive values
+   */
+  updateConfigFromClient(incomingConfig: ProjectLocalConfig): void {
+    const current = this.selectedProjectBehaviorSubject.value
+    if (!current) {
+      this.interactor.error(`No current project selected, update not possible`)
+      return
+    }
+    const unmaskedConfig = this.maskingService.unmaskConfig(incomingConfig, current.config)
+    this.save(unmaskedConfig)
   }
 }

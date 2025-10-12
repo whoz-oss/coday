@@ -8,6 +8,7 @@ import { IntegrationLocalConfig, Interactor } from '../model'
 import * as os from 'node:os'
 import { migrateData } from '../utils/data-migration'
 import { userConfigMigrations } from './migration/user-config-migrations'
+import { ConfigMaskingService } from './config-masking.service'
 
 const usersFolder = 'users'
 const USER_FILENAME = 'user.yaml'
@@ -16,6 +17,7 @@ export class UserService {
   public userConfigPath: string
   readonly sanitizedUsername: string
   config: UserConfig
+  private maskingService = new ConfigMaskingService()
 
   constructor(
     codayConfigPath: string | undefined,
@@ -138,5 +140,20 @@ export class UserService {
       username: this.username,
       bio: this.getCombinedBio(projectName),
     }
+  }
+
+  /**
+   * Get configuration with sensitive values masked for client display
+   */
+  public getConfigForClient(): UserConfig {
+    return this.maskingService.maskConfig(this.config)
+  }
+
+  /**
+   * Update configuration from client, unmasking to preserve original sensitive values
+   */
+  public updateConfigFromClient(incomingConfig: UserConfig): void {
+    this.config = this.maskingService.unmaskConfig(incomingConfig, this.config)
+    this.save()
   }
 }

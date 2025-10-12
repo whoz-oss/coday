@@ -367,10 +367,9 @@ app.get('/api/config/user', (req: express.Request, res: express.Response) => {
 
     debugLog('CONFIG', `GET user config for: ${username}`)
     const userService = configRegistry.getUserService(username)
-    const config = userService.config
     
-    // Mask sensitive values before sending to client
-    const maskedConfig = configRegistry.maskConfig(config)
+    // Get masked config from service
+    const maskedConfig = userService.getConfigForClient()
 
     res.status(200).json(maskedConfig)
   } catch (error) {
@@ -406,14 +405,9 @@ app.put('/api/config/user', (req: express.Request, res: express.Response) => {
 
     debugLog('CONFIG', `PUT user config for: ${username}`)
     const userService = configRegistry.getUserService(username)
-    const originalConfig = userService.config
     
-    // Unmask: preserve original values where masked placeholders exist
-    const unmaskedConfig = configRegistry.unmaskConfig(incomingConfig, originalConfig)
-    
-    // Update the config
-    userService.config = unmaskedConfig
-    userService.save()
+    // Update config through service (handles unmasking internally)
+    userService.updateConfigFromClient(incomingConfig)
 
     res.status(200).json({ success: true, message: 'User configuration updated successfully' })
   } catch (error) {
@@ -443,14 +437,12 @@ app.get('/api/config/project/:name', (req: express.Request, res: express.Respons
       projectService.selectProject(name)
     }
 
-    const selectedProject = projectService.selectedProject
-    if (!selectedProject) {
+    // Get masked config from service
+    const maskedConfig = projectService.getConfigForClient()
+    if (!maskedConfig) {
       res.status(404).json({ error: `Project '${name}' not found` })
       return
     }
-    
-    // Mask sensitive values before sending to client
-    const maskedConfig = configRegistry.maskConfig(selectedProject.config)
 
     res.status(200).json(maskedConfig)
   } catch (error) {
@@ -497,19 +489,13 @@ app.put('/api/config/project/:name', (req: express.Request, res: express.Respons
       projectService.selectProject(name)
     }
 
-    const selectedProject = projectService.selectedProject
-    if (!selectedProject) {
+    if (!projectService.selectedProject) {
       res.status(404).json({ error: `Project '${name}' not found` })
       return
     }
-    
-    const originalConfig = selectedProject.config
-    
-    // Unmask: preserve original values where masked placeholders exist
-    const unmaskedConfig = configRegistry.unmaskConfig(incomingConfig, originalConfig)
 
-    // Update the entire config
-    projectService.save(unmaskedConfig)
+    // Update config through service (handles unmasking internally)
+    projectService.updateConfigFromClient(incomingConfig)
 
     res.status(200).json({ success: true, message: 'Project configuration updated successfully' })
   } catch (error) {
