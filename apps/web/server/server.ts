@@ -355,7 +355,7 @@ app.post('/api/files/upload', async (req: express.Request, res: express.Response
 
 /**
  * GET /api/config/user
- * Retrieve user configuration
+ * Retrieve user configuration with masked sensitive values
  */
 app.get('/api/config/user', (req: express.Request, res: express.Response) => {
   try {
@@ -368,8 +368,11 @@ app.get('/api/config/user', (req: express.Request, res: express.Response) => {
     debugLog('CONFIG', `GET user config for: ${username}`)
     const userService = configRegistry.getUserService(username)
     const config = userService.config
+    
+    // Mask sensitive values before sending to client
+    const maskedConfig = configRegistry.maskConfig(config)
 
-    res.status(200).json(config)
+    res.status(200).json(maskedConfig)
   } catch (error) {
     console.error('Error retrieving user config:', error)
     res.status(500).json({ error: 'Failed to retrieve user configuration' })
@@ -378,7 +381,7 @@ app.get('/api/config/user', (req: express.Request, res: express.Response) => {
 
 /**
  * PUT /api/config/user
- * Update user configuration
+ * Update user configuration with automatic unmasking of sensitive values
  */
 app.put('/api/config/user', (req: express.Request, res: express.Response) => {
   try {
@@ -388,24 +391,28 @@ app.put('/api/config/user', (req: express.Request, res: express.Response) => {
       return
     }
 
-    const updatedConfig = req.body as UserConfig
+    const incomingConfig = req.body as UserConfig
 
     // Basic validation
-    if (!updatedConfig || typeof updatedConfig !== 'object') {
+    if (!incomingConfig || typeof incomingConfig !== 'object') {
       res.status(400).json({ error: 'Invalid configuration format' })
       return
     }
 
-    if (typeof updatedConfig.version !== 'number') {
+    if (typeof incomingConfig.version !== 'number') {
       res.status(400).json({ error: 'Configuration must have a version number' })
       return
     }
 
     debugLog('CONFIG', `PUT user config for: ${username}`)
     const userService = configRegistry.getUserService(username)
+    const originalConfig = userService.config
+    
+    // Unmask: preserve original values where masked placeholders exist
+    const unmaskedConfig = configRegistry.unmaskConfig(incomingConfig, originalConfig)
     
     // Update the config
-    userService.config = updatedConfig
+    userService.config = unmaskedConfig
     userService.save()
 
     res.status(200).json({ success: true, message: 'User configuration updated successfully' })
@@ -418,7 +425,7 @@ app.put('/api/config/user', (req: express.Request, res: express.Response) => {
 
 /**
  * GET /api/config/project/:name
- * Retrieve project configuration
+ * Retrieve project configuration with masked sensitive values
  */
 app.get('/api/config/project/:name', (req: express.Request, res: express.Response) => {
   try {
@@ -441,8 +448,11 @@ app.get('/api/config/project/:name', (req: express.Request, res: express.Respons
       res.status(404).json({ error: `Project '${name}' not found` })
       return
     }
+    
+    // Mask sensitive values before sending to client
+    const maskedConfig = configRegistry.maskConfig(selectedProject.config)
 
-    res.status(200).json(selectedProject.config)
+    res.status(200).json(maskedConfig)
   } catch (error) {
     console.error('Error retrieving project config:', error)
     res.status(500).json({ error: 'Failed to retrieve project configuration' })
@@ -451,7 +461,7 @@ app.get('/api/config/project/:name', (req: express.Request, res: express.Respons
 
 /**
  * PUT /api/config/project/:name
- * Update project configuration
+ * Update project configuration with automatic unmasking of sensitive values
  */
 app.put('/api/config/project/:name', (req: express.Request, res: express.Response) => {
   try {
@@ -461,20 +471,20 @@ app.put('/api/config/project/:name', (req: express.Request, res: express.Respons
       return
     }
 
-    const updatedConfig = req.body as ProjectLocalConfig
+    const incomingConfig = req.body as ProjectLocalConfig
 
     // Basic validation
-    if (!updatedConfig || typeof updatedConfig !== 'object') {
+    if (!incomingConfig || typeof incomingConfig !== 'object') {
       res.status(400).json({ error: 'Invalid configuration format' })
       return
     }
 
-    if (typeof updatedConfig.version !== 'number') {
+    if (typeof incomingConfig.version !== 'number') {
       res.status(400).json({ error: 'Configuration must have a version number' })
       return
     }
 
-    if (!updatedConfig.path || typeof updatedConfig.path !== 'string') {
+    if (!incomingConfig.path || typeof incomingConfig.path !== 'string') {
       res.status(400).json({ error: 'Configuration must have a valid path' })
       return
     }
@@ -492,9 +502,14 @@ app.put('/api/config/project/:name', (req: express.Request, res: express.Respons
       res.status(404).json({ error: `Project '${name}' not found` })
       return
     }
+    
+    const originalConfig = selectedProject.config
+    
+    // Unmask: preserve original values where masked placeholders exist
+    const unmaskedConfig = configRegistry.unmaskConfig(incomingConfig, originalConfig)
 
     // Update the entire config
-    projectService.save(updatedConfig)
+    projectService.save(unmaskedConfig)
 
     res.status(200).json({ success: true, message: 'Project configuration updated successfully' })
   } catch (error) {

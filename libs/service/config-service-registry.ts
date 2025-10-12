@@ -1,6 +1,7 @@
 import { UserService } from './user.service'
 import { ProjectService } from './project.service'
 import { Interactor } from '../model'
+import { ConfigMaskingService } from './config-masking.service'
 
 /**
  * Registry for managing UserService and ProjectService instances
@@ -10,6 +11,7 @@ import { Interactor } from '../model'
  * independently of the SSE session management.
  */
 export class ConfigServiceRegistry {
+  private maskingService = new ConfigMaskingService()
   private userServices = new Map<string, UserService>()
   private projectServices = new Map<string, ProjectService>()
   
@@ -62,5 +64,20 @@ export class ConfigServiceRegistry {
   clearAll(): void {
     this.userServices.clear()
     this.projectServices.clear()
+  }
+  
+  /**
+   * Mask sensitive values in configuration before sending to client
+   */
+  maskConfig<T>(config: T): T {
+    return this.maskingService.maskConfig(config)
+  }
+  
+  /**
+   * Unmask configuration by comparing with original
+   * Preserves original values where masked placeholders exist
+   */
+  unmaskConfig<T>(incomingConfig: T, originalConfig: T): T {
+    return this.maskingService.unmaskConfig(incomingConfig, originalConfig)
   }
 }
