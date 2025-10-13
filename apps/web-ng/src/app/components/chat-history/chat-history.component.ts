@@ -17,7 +17,6 @@ import { Subject } from 'rxjs'
 export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy {
   @Input() messages: ChatMessage[] = []
   @Input() isThinking: boolean = false
-  @Output() playRequested = new EventEmitter<ChatMessage>()
   @Output() copyRequested = new EventEmitter<ChatMessage>()
   @Output() stopRequested = new EventEmitter<void>()
   
@@ -115,10 +114,6 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   
   trackByMessageId(_index: number, message: ChatMessage): string {
     return message.id
-  }
-  
-  onPlayMessage(message: ChatMessage) {
-    this.playRequested.emit(message)
   }
   
   onCopyMessage(message: ChatMessage) {
