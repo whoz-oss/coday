@@ -1,13 +1,14 @@
 import * as path from 'node:path'
-import { existsSync, mkdirSync } from 'fs'
-import { readYamlFile } from './read-yaml-file'
-import { writeYamlFile } from './write-yaml-file'
-import { DEFAULT_USER_CONFIG, UserConfig } from '../model/user-config'
-import { UserData } from '../model/user-data'
-import { IntegrationLocalConfig, Interactor } from '../model'
+import {existsSync, mkdirSync} from 'fs'
+import {readYamlFile} from './read-yaml-file'
+import {writeYamlFile} from './write-yaml-file'
+import {DEFAULT_USER_CONFIG, UserConfig} from '../model/user-config'
+import {UserData} from '../model/user-data'
+import {IntegrationLocalConfig, Interactor} from '../model'
 import * as os from 'node:os'
-import { migrateData } from '../utils/data-migration'
-import { userConfigMigrations } from './migration/user-config-migrations'
+import {migrateData} from '../utils/data-migration'
+import {userConfigMigrations} from './migration/user-config-migrations'
+import {ConfigMaskingService} from './config-masking.service'
 
 const usersFolder = 'users'
 const USER_FILENAME = 'user.yaml'
@@ -16,11 +17,12 @@ export class UserService {
   public userConfigPath: string
   readonly sanitizedUsername: string
   config: UserConfig
+  private readonly maskingService = new ConfigMaskingService()
 
   constructor(
     codayConfigPath: string | undefined,
     public readonly username: string,
-    private interactor: Interactor
+    private readonly interactor: Interactor
   ) {
     // Format username correctly
     this.sanitizedUsername = this.sanitizeUsername(username)
@@ -31,13 +33,13 @@ export class UserService {
     this.userConfigPath = path.join(usersPath, this.sanitizedUsername)
 
     // Ensure the user's directory exists
-    mkdirSync(this.userConfigPath, { recursive: true })
+    mkdirSync(this.userConfigPath, {recursive: true})
 
     // Load user configuration
     const filePath = path.join(this.userConfigPath, USER_FILENAME)
     if (!existsSync(filePath)) {
       // Add version to default config
-      const defaultConfig = { ...DEFAULT_USER_CONFIG, version: 1 }
+      const defaultConfig = {...DEFAULT_USER_CONFIG, version: 1}
       writeYamlFile(filePath, defaultConfig)
     }
 
@@ -73,16 +75,12 @@ export class UserService {
    */
   public setProjectIntegration(projectName: string, integrations: IntegrationLocalConfig) {
     // Ensure projects object exists
-    if (!this.config.projects) {
-      this.config.projects = {}
-    }
+    this.config.projects ??= {};
 
     // Create/update project-specific user integrations
-    if (!this.config.projects[projectName]) {
-      this.config.projects[projectName] = {
-        integration: {},
-      }
-    }
+    this.config.projects[projectName] ??= {
+      integration: {},
+    };
 
     this.config.projects[projectName].integration = {
       ...this.config.projects[projectName].integration,
@@ -109,12 +107,8 @@ export class UserService {
 
   // Project-level bio methods
   public setProjectBio(projectName: string, bio: string): void {
-    if (!this.config.projects) {
-      this.config.projects = {}
-    }
-    if (!this.config.projects[projectName]) {
-      this.config.projects[projectName] = { integration: {} }
-    }
+    this.config.projects ??= {};
+    this.config.projects[projectName] ??= {integration: {}};
     this.config.projects[projectName].bio = bio?.trim() || undefined
     this.save()
   }
@@ -130,7 +124,7 @@ export class UserService {
     if (userBio && projectBio) {
       return `${userBio}\n\n    Project context: ${projectBio}`
     }
-    return projectBio || userBio
+    return projectBio ?? userBio
   }
 
   public getUserData(projectName?: string): UserData {
@@ -138,5 +132,20 @@ export class UserService {
       username: this.username,
       bio: this.getCombinedBio(projectName),
     }
+  }
+
+  /**
+   * Get configuration with sensitive values masked for client display
+   */
+  public getConfigForClient(): UserConfig {
+    return this.maskingService.maskConfig(this.config)
+  }
+
+  /**
+   * Update configuration from client, unmasking to preserve original sensitive values
+   */
+  public updateConfigFromClient(incomingConfig: UserConfig): void {
+    this.config = this.maskingService.unmaskConfig(incomingConfig, this.config)
+    this.save()
   }
 }

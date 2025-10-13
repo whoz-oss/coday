@@ -1,19 +1,21 @@
 import * as path from 'node:path'
 import * as os from 'node:os'
-import { existsSync, lstatSync, mkdirSync, readdirSync } from 'fs'
-import { BehaviorSubject, Observable } from 'rxjs'
-import { Interactor, ProjectLocalConfig, SelectedProject } from '../model'
-import { writeYamlFile } from './write-yaml-file'
-import { readYamlFile } from './read-yaml-file'
-import { ProjectSelectedEvent } from '@coday/coday-events'
-import { migrateData } from '../utils/data-migration'
-import { projectConfigMigrations } from './migration/project-config-migrations'
+import {existsSync, lstatSync, mkdirSync, readdirSync} from 'fs'
+import {BehaviorSubject, Observable} from 'rxjs'
+import {Interactor, ProjectLocalConfig, SelectedProject} from '../model'
+import {writeYamlFile} from './write-yaml-file'
+import {readYamlFile} from './read-yaml-file'
+import {ProjectSelectedEvent} from '@coday/coday-events'
+import {migrateData} from '../utils/data-migration'
+import {projectConfigMigrations} from './migration/project-config-migrations'
+import {ConfigMaskingService} from './config-masking.service'
 
 const PROJECTS = 'projects'
 const PROJECT_FILENAME = 'project.yaml'
 
 export class ProjectService {
-  private projectsConfigPath: string
+  private readonly projectsConfigPath: string
+  private readonly maskingService = new ConfigMaskingService()
 
   /**
    * List of project names, as taken from the folder existing in the config directory
@@ -22,17 +24,17 @@ export class ProjectService {
    */
   projects: string[]
 
-  private selectedProjectBehaviorSubject = new BehaviorSubject<SelectedProject>(null)
+  private readonly selectedProjectBehaviorSubject = new BehaviorSubject<SelectedProject>(null)
   selectedProject$: Observable<SelectedProject> = this.selectedProjectBehaviorSubject.asObservable()
 
   constructor(
-    private interactor: Interactor,
+    private readonly interactor: Interactor,
     codayConfigPath: string | undefined
   ) {
     const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
     this.projectsConfigPath = path.join(codayConfigPath ?? defaultConfigPath, PROJECTS)
     // Ensure the user's directory exists
-    mkdirSync(this.projectsConfigPath, { recursive: true })
+    mkdirSync(this.projectsConfigPath, {recursive: true})
     const dirs: string[] = readdirSync(this.projectsConfigPath)
     this.projects = dirs.filter((dir) => lstatSync(path.join(this.projectsConfigPath, dir)).isDirectory())
   }
@@ -49,8 +51,7 @@ export class ProjectService {
       version: 1,
       path: projectPath,
       integration: {},
-      aiProviders: {},
-      storage: { type: 'file' },
+      storage: {type: 'file'},
       agents: [],
     }
     writeYamlFile(projectConfigFile, defaultProjectConfig)
@@ -95,7 +96,7 @@ export class ProjectService {
     }
     this.updateSelectedProject(selectedProject)
     this.interactor.displayText(`Project local configuration used: ${projectConfigFile}`)
-    this.interactor.sendEvent(new ProjectSelectedEvent({ projectName: name }))
+    this.interactor.sendEvent(new ProjectSelectedEvent({projectName: name}))
   }
 
   private updateSelectedProject(selectedProject: SelectedProject): void {
@@ -116,9 +117,33 @@ export class ProjectService {
       this.interactor.error(`No current project selected, save not possible`)
       return
     }
-    const updated: ProjectLocalConfig = { ...current.config, ...update }
+    const updated: ProjectLocalConfig = {...current.config, ...update}
     writeYamlFile(path.join(current.configPath, PROJECT_FILENAME), updated)
     current.config = updated
     this.updateSelectedProject(current)
+  }
+
+  /**
+   * Get configuration with sensitive values masked for client display
+   */
+  getConfigForClient(): ProjectLocalConfig | null {
+    const current = this.selectedProjectBehaviorSubject.value
+    if (!current) {
+      return null
+    }
+    return this.maskingService.maskConfig(current.config)
+  }
+
+  /**
+   * Update configuration from client, unmasking to preserve original sensitive values
+   */
+  updateConfigFromClient(incomingConfig: ProjectLocalConfig): void {
+    const current = this.selectedProjectBehaviorSubject.value
+    if (!current) {
+      this.interactor.error(`No current project selected, update not possible`)
+      return
+    }
+    const unmaskedConfig = this.maskingService.unmaskConfig(incomingConfig, current.config)
+    this.save(unmaskedConfig)
   }
 }

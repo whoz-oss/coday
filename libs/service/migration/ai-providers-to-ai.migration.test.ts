@@ -1,7 +1,6 @@
-import { migrateData } from '../../utils/data-migration'
-import { aiPropertyToAi } from './ai-providers-to-ai.migration'
-import { ProjectLocalConfig } from '../../model/project-local-config'
-import { UserConfig } from '../../model/user-config'
+import {migrateData} from '../../utils/data-migration'
+import {aiPropertyToAi} from './ai-providers-to-ai.migration'
+import {ProjectLocalConfig} from '../../model/project-local-config'
 
 describe('aiProviders to ai migration', () => {
   describe('ProjectLocalConfig migration', () => {
@@ -105,7 +104,7 @@ describe('aiProviders to ai migration', () => {
   describe('UserConfig migration', () => {
     it('should handle UserConfig with aiProviders', () => {
       // Create a sample UserConfig
-      const config: Partial<UserConfig> = {
+      const config: any = {
         version: 1,
         aiProviders: {
           anthropic: {
@@ -167,7 +166,7 @@ describe('aiProviders to ai migration', () => {
 
     it('should handle UserConfig with empty aiProviders', () => {
       // Create a sample UserConfig with empty aiProviders
-      const config: Partial<UserConfig> = {
+      const config: any = {
         version: 1,
         aiProviders: {},
         projects: {
@@ -196,7 +195,7 @@ describe('aiProviders to ai migration', () => {
 
     it('should handle UserConfig with multiple default providers', () => {
       // Create a sample UserConfig with all default providers
-      const config: Partial<UserConfig> = {
+      const config: any = {
         version: 1,
         aiProviders: {
           anthropic: {
