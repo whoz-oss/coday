@@ -1,0 +1,70 @@
+<div class="webhook-list-container">
+  <!-- Header with Create Button -->
+  <div class="list-header">
+    <h2>Webhooks</h2>
+    <button class="btn-create" (click)="onCreateClick()" [disabled]="isLoading">
+      ➕ New Webhook
+    </button>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="isLoading" class="loading-state">
+    <div class="spinner"></div>
+    <p>Loading webhooks...</p>
+  </div>
+
+  <!-- Error State -->
+  <div *ngIf="errorMessage && !isLoading" class="error-state">
+    <p>❌ {{ errorMessage }}</p>
+  </div>
+
+  <!-- Empty State -->
+  <div *ngIf="!isLoading && !errorMessage && webhooks.length === 0" class="empty-state">
+    <p>No webhooks configured yet.</p>
+    <p class="hint">Create your first webhook to enable programmatic AI interactions.</p>
+  </div>
+
+  <!-- Webhook Table -->
+  <div *ngIf="!isLoading && !errorMessage && webhooks.length > 0" class="webhook-table">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Project</th>
+          <th>Type</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let webhook of webhooks">
+          <td class="name-cell">{{ webhook.name }}</td>
+          <td class="project-cell">{{ webhook.project }}</td>
+          <td class="type-cell">
+            <span class="type-badge" [class.type-free]="webhook.commandType === 'free'" 
+                  [class.type-template]="webhook.commandType === 'template'">
+              {{ getCommandTypeLabel(webhook.commandType) }}
+            </span>
+          </td>
+          <td class="date-cell">
+            <div class="date-info">
+              <span class="date">{{ formatDate(webhook.createdAt) }}</span>
+              <span class="creator">by {{ webhook.createdBy }}</span>
+            </div>
+          </td>
+          <td class="actions-cell">
+            <button class="btn-action btn-copy" (click)="onCopyUrl(webhook)" title="Copy webhook URL">
+              📋
+            </button>
+            <button class="btn-action btn-edit" (click)="onEditClick(webhook)" title="Edit webhook">
+              ✏️
+            </button>
+            <button class="btn-action btn-delete" (click)="onDeleteClick(webhook)" title="Delete webhook">
+              🗑️
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>

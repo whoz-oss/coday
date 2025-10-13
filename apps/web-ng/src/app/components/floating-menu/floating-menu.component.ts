@@ -9,11 +9,12 @@ import {OptionsPanelComponent} from '../options-panel'
 import {ProjectSelectorComponent} from '../project-selector/project-selector.component'
 import {ThreadSelectorComponent} from '../thread-selector/thread-selector.component'
 import {JsonEditorComponent} from '../json-editor/json-editor.component'
+import {WebhookManagerComponent} from '../webhook-manager/webhook-manager.component'
 
 @Component({
   selector: 'app-floating-menu',
   standalone: true,
-  imports: [CommonModule, ThemeSelectorComponent, OptionsPanelComponent, ProjectSelectorComponent, ThreadSelectorComponent, JsonEditorComponent],
+  imports: [CommonModule, ThemeSelectorComponent, OptionsPanelComponent, ProjectSelectorComponent, ThreadSelectorComponent, JsonEditorComponent, WebhookManagerComponent],
   templateUrl: './floating-menu.component.html',
   styleUrl: './floating-menu.component.scss'
 })
@@ -22,6 +23,7 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
   isMenuOpen = false
   isUserConfigOpen = false
   isProjectConfigOpen = false
+  isWebhooksOpen = false
 
   // Role-based access control
   isAdmin = false
@@ -244,5 +246,21 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
     this.isProjectConfigOpen = false
     this.configSuccessMessage = ''
     this.configErrorMessage = ''
+  }
+
+  /**
+   * Open webhook manager
+   */
+  openWebhooks(): void {
+    this.closeMenu()
+    this.isWebhooksOpen = true
+  }
+
+  /**
+   * Get available projects for webhook form
+   */
+  getAvailableProjects(): string[] {
+    // TODO: Get from session state when project list is available
+    return []
   }
 }

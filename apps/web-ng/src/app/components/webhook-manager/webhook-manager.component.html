@@ -1,0 +1,55 @@
+<!-- Modal Backdrop and Container -->
+<div *ngIf="isOpen" class="modal-backdrop" (click)="onBackdropClick($event)">
+  <div class="modal-container" (click)="$event.stopPropagation()">
+    <!-- Modal Header -->
+    <div class="modal-header">
+      <button 
+        *ngIf="currentView === 'form'" 
+        class="btn-back" 
+        (click)="onFormCancel()"
+        title="Back to list"
+      >
+        ← Back
+      </button>
+      <h1 class="modal-title">
+        {{ currentView === 'list' ? 'Webhook Management' : (editingWebhook ? 'Edit Webhook' : 'Create Webhook') }}
+      </h1>
+      <button class="btn-close" (click)="onCloseClick()" title="Close">✕</button>
+    </div>
+    
+    <!-- Success Message -->
+    <div *ngIf="successMessage" class="success-message">
+      ✅ {{ successMessage }}
+    </div>
+    
+    <!-- Error Message (global) -->
+    <div *ngIf="errorMessage && currentView === 'list'" class="error-message">
+      ❌ {{ errorMessage }}
+    </div>
+    
+    <!-- Modal Body -->
+    <div class="modal-body">
+      <!-- List View -->
+      <app-webhook-list
+        *ngIf="currentView === 'list'"
+        [webhooks]="webhooks"
+        [isLoading]="isLoading"
+        [errorMessage]="errorMessage"
+        (create)="onCreateClick()"
+        (edit)="onEditClick($event)"
+        (delete)="onDeleteClick($event)"
+        (copy)="onCopyUrl($event)"
+      ></app-webhook-list>
+      
+      <!-- Form View -->
+      <app-webhook-form
+        *ngIf="currentView === 'form'"
+        [webhook]="editingWebhook"
+        [isSaving]="isSaving"
+        [availableProjects]="availableProjects"
+        (save)="onFormSave($event)"
+        (cancel)="onFormCancel()"
+      ></app-webhook-form>
+    </div>
+  </div>
+</div>
