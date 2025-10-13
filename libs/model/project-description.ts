@@ -1,17 +1,11 @@
-import { Scripts } from './scripts'
-import { AgentDefinition } from './agent-definition'
-import { WithDocs } from './with-docs'
-import { AiProviderLocalConfig } from './ai-providers'
-import { AiProviderConfig } from './ai-provider-config'
-import { PromptChain } from './prompt-chain'
-import { McpConfig } from './mcp-server-config'
+import {Scripts} from './scripts'
+import {AgentDefinition} from './agent-definition'
+import {WithDocs} from './with-docs'
+import {AiProviderConfig} from './ai-provider-config'
+import {PromptChain} from './prompt-chain'
+import {McpConfig} from './mcp-server-config'
 
 export interface ProjectDescription extends WithDocs {
-  /**
-   * DEPRECATED AiProvider config
-   */
-  aiProviders?: AiProviderLocalConfig
-
   ai?: AiProviderConfig[]
 
   /**
