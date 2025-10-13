@@ -5,7 +5,7 @@ import {ServerClientManager} from './server-client'
 import {AnswerEvent, CodayEvent, MessageEvent, ImageContent} from '@coday/coday-events'
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import {processImageBuffer} from '../../../libs/function/image-processor'
-import {CodayOptions, parseCodayOptions} from '@coday/options'
+import {parseCodayOptions} from '@coday/options'
 import * as os from 'node:os'
 import {debugLog} from './log'
 import {CodayLogger} from '@coday/service/coday-logger'
@@ -15,8 +15,7 @@ import {findAvailablePort} from './find-available-port'
 import {catchError, filter, firstValueFrom, lastValueFrom, of, timeout, withLatestFrom} from 'rxjs'
 import {ConfigServiceRegistry} from '@coday/service/config-service-registry'
 import {ServerInteractor} from '@coday/model/server-interactor'
-import {UserConfig} from '@coday/model/user-config'
-import {ProjectLocalConfig} from '@coday/model/project-local-config'
+import {registerConfigRoutes} from './config.routes'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000
@@ -60,6 +59,23 @@ const clientManager = new ServerClientManager(logger, webhookService)
 // Initialize config service registry for REST API endpoints
 const configInteractor = new ServerInteractor('config-api')
 const configRegistry = new ConfigServiceRegistry(configPath, configInteractor)
+
+/**
+ * Extract username for authentication and logging purposes
+ *
+ * In authenticated mode, extracts username from the x-forwarded-email header
+ * (typically set by reverse proxy or authentication middleware).
+ * In no-auth mode, uses the local system username for development/testing.
+ *
+ * @param req - Express request object containing headers
+ * @returns Username string for logging and thread ownership
+ */
+function getUsername(req: express.Request): string {
+  return codayOptions.noAuth ? os.userInfo().username : (req.headers[EMAIL_HEADER] as string)
+}
+
+// Register configuration management routes
+registerConfigRoutes(app, configRegistry, getUsername)
 
 // Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null
@@ -116,7 +132,7 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
     const project = webhook.project
 
     // Use username that initiated the webhook call
-    const username = getUsername(codayOptions, req)
+    const username = getUsername(req)
 
     // Determine prompts based on webhook command type
     let prompts: string[]
@@ -349,165 +365,7 @@ app.post('/api/files/upload', async (req: express.Request, res: express.Response
   }
 })
 
-// ============================================================================
-// Configuration Management Endpoints
-// ============================================================================
 
-/**
- * GET /api/config/user
- * Retrieve user configuration with masked sensitive values
- */
-app.get('/api/config/user', (req: express.Request, res: express.Response) => {
-  try {
-    const username = getUsername(codayOptions, req)
-    if (!username) {
-      res.status(401).json({error: 'Username not found in request headers'})
-      return
-    }
-
-    debugLog('CONFIG', `GET user config for: ${username}`)
-    const userService = configRegistry.getUserService(username)
-
-    // Get masked config from service
-    const maskedConfig = userService.getConfigForClient()
-
-    res.status(200).json(maskedConfig)
-  } catch (error) {
-    console.error('Error retrieving user config:', error)
-    res.status(500).json({error: 'Failed to retrieve user configuration'})
-  }
-})
-
-/**
- * PUT /api/config/user
- * Update user configuration with automatic unmasking of sensitive values
- */
-app.put('/api/config/user', (req: express.Request, res: express.Response) => {
-  try {
-    const username = getUsername(codayOptions, req)
-    if (!username) {
-      res.status(401).json({error: 'Username not found in request headers'})
-      return
-    }
-
-    const incomingConfig = req.body as UserConfig
-
-    // Basic validation
-    if (!incomingConfig || typeof incomingConfig !== 'object') {
-      res.status(400).json({error: 'Invalid configuration format'})
-      return
-    }
-
-    if (typeof incomingConfig.version !== 'number') {
-      res.status(400).json({error: 'Configuration must have a version number'})
-      return
-    }
-
-    debugLog('CONFIG', `PUT user config for: ${username}`)
-    const userService = configRegistry.getUserService(username)
-
-    // Update config through service (handles unmasking internally)
-    userService.updateConfigFromClient(incomingConfig)
-
-    res.status(200).json({success: true, message: 'User configuration updated successfully'})
-  } catch (error) {
-    console.error('Error updating user config:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    res.status(500).json({error: `Failed to update user configuration: ${errorMessage}`})
-  }
-})
-
-/**
- * GET /api/config/project/:name
- * Retrieve project configuration with masked sensitive values
- */
-app.get('/api/config/project/:name', (req: express.Request, res: express.Response) => {
-  try {
-    const {name} = req.params
-    if (!name) {
-      res.status(400).json({error: 'Project name is required'})
-      return
-    }
-
-    debugLog('CONFIG', `GET project config for: ${name}`)
-    const projectService = configRegistry.getProjectService()
-
-    // Select the project if not already selected or if different
-    if (!projectService.selectedProject || projectService.selectedProject.name !== name) {
-      projectService.selectProject(name)
-    }
-
-    // Get masked config from service
-    const maskedConfig = projectService.getConfigForClient()
-    if (!maskedConfig) {
-      res.status(404).json({error: `Project '${name}' not found`})
-      return
-    }
-
-    res.status(200).json(maskedConfig)
-  } catch (error) {
-    console.error('Error retrieving project config:', error)
-    res.status(500).json({error: 'Failed to retrieve project configuration'})
-  }
-})
-
-/**
- * PUT /api/config/project/:name
- * Update project configuration with automatic unmasking of sensitive values
- */
-app.put('/api/config/project/:name', (req: express.Request, res: express.Response) => {
-  try {
-    const {name} = req.params
-    if (!name) {
-      res.status(400).json({error: 'Project name is required'})
-      return
-    }
-
-    const incomingConfig = req.body as ProjectLocalConfig
-
-    // Basic validation
-    if (!incomingConfig || typeof incomingConfig !== 'object') {
-      res.status(400).json({error: 'Invalid configuration format'})
-      return
-    }
-
-    if (typeof incomingConfig.version !== 'number') {
-      res.status(400).json({error: 'Configuration must have a version number'})
-      return
-    }
-
-    if (!incomingConfig.path || typeof incomingConfig.path !== 'string') {
-      res.status(400).json({error: 'Configuration must have a valid path'})
-      return
-    }
-
-    debugLog('CONFIG', `PUT project config for: ${name}`)
-    const projectService = configRegistry.getProjectService()
-
-    // Select the project if not already selected or if different
-    if (!projectService.selectedProject || projectService.selectedProject.name !== name) {
-      projectService.selectProject(name)
-    }
-
-    if (!projectService.selectedProject) {
-      res.status(404).json({error: `Project '${name}' not found`})
-      return
-    }
-
-    // Update config through service (handles unmasking internally)
-    projectService.updateConfigFromClient(incomingConfig)
-
-    res.status(200).json({success: true, message: 'Project configuration updated successfully'})
-  } catch (error) {
-    console.error('Error updating project config:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    res.status(500).json({error: `Failed to update project configuration: ${errorMessage}`})
-  }
-})
-
-// ============================================================================
-// End of Configuration Management Endpoints
-// ============================================================================
 
 // POST endpoint for receiving AnswerEvent messages
 app.post('/api/message', (req: express.Request, res: express.Response) => {
@@ -532,20 +390,7 @@ app.post('/api/message', (req: express.Request, res: express.Response) => {
   }
 })
 
-/**
- * Extract username for authentication and logging purposes
- *
- * In authenticated mode, extracts username from the x-forwarded-email header
- * (typically set by reverse proxy or authentication middleware).
- * In no-auth mode, uses the local system username for development/testing.
- *
- * @param codayOptions - Coday configuration options
- * @param req - Express request object containing headers
- * @returns Username string for logging and thread ownership
- */
-function getUsername(codayOptions: CodayOptions, req: express.Request): string {
-  return codayOptions.noAuth ? os.userInfo().username : (req.headers[EMAIL_HEADER] as string)
-}
+
 
 // GET endpoint for retrieving full event details
 app.get('/api/event/:eventId', (req: express.Request, res: express.Response) => {
@@ -685,7 +530,7 @@ app.get('/events', (req: express.Request, res: express.Response) => {
   debugLog('SSE', `New connection request for client ${clientId}`)
 
   // handle username header coming from auth (or local frontend) or local in noAuth
-  const usernameHeaderValue = getUsername(codayOptions, req)
+  const usernameHeaderValue = getUsername(req)
   debugLog('SSE', `Connection started, clientId: ${clientId}, username: ${usernameHeaderValue}`)
   if (!usernameHeaderValue || typeof usernameHeaderValue !== 'string') {
     debugLog('SSE', 'Rejected: No username provided')
