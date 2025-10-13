@@ -1,5 +1,6 @@
 /* Global styles */
 @use './app/styles/colors.scss';
+@use './app/styles/print.scss';
 
 /* Reset */
 * {
@@ -22,7 +23,7 @@ body {
 }
 
 /* Global Markdown Styles */
-/* Ces styles s'appliquent à tout contenu markdown rendu dans l'application */
+/* These styles apply to all markdown content rendered in the application */
 .markdown-content {
   p {
     margin: 0 0 0.75rem 0;
@@ -76,7 +77,7 @@ body {
       line-height: 1.5;
     }
     
-    // Listes imbriquées
+    // Nested lists
     ul, ol {
       margin: 0.25rem 0;
     }
@@ -144,7 +145,7 @@ body {
 }
 
 /* Global Floating Menu Styles */
-/* Force le FAB à être vraiment au-dessus de tout */
+/* Force the FAB to be really on top of everything */
 .floating-menu-btn {
   position: fixed !important;
   top: 1rem !important;
@@ -162,16 +163,16 @@ body {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.1) !important;
   cursor: pointer !important;
   
-  /* S'assurer qu'aucun parent ne peut interférer */
+  /* Ensure no parent can interfere */
   isolation: isolate;
 }
 
-/* Force les composants Angular à ne pas interférer */
+/* Force Angular components not to interfere */
 app-floating-menu {
-  display: contents !important; /* Le composant n'existe pas dans le layout */
+  display: contents !important; /* The component doesn't exist in the layout */
 }
 
-/* S'assurer que le main-app n'a pas de z-index qui interfère */
+/* Ensure main-app has no interfering z-index */
 app-main {
   position: relative;
   z-index: 1;

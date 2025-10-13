@@ -51,7 +51,7 @@
 // Go to bottom button
 .go-to-bottom-btn {
   position: fixed;
-  bottom: 120px; // Au-dessus de la zone de saisie
+  bottom: 120px; // Above the input area
   right: 2rem;
   z-index: 1000;
   
@@ -86,7 +86,7 @@
   }
 }
 
-// Responsive pour mobile
+// Responsive for mobile
 @media (max-width: 768px) {
   .go-to-bottom-btn {
     right: 1rem;
@@ -94,6 +94,31 @@
     width: 40px;
     height: 40px;
     font-size: 1rem;
+  }
+}
+
+// Print styles
+@media print {
+  :host {
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+  
+  .chat-history {
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+  
+  .thinking,
+  .stop-btn,
+  .go-to-bottom-btn {
+    display: none !important;
   }
 }
 
