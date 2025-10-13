@@ -10,15 +10,15 @@
 </button>
 
 <!-- Menu dropdown -->
-<div 
-  *ngIf="isMenuOpen" 
-  class="floating-menu"
-  (click)="$event.stopPropagation()"
-  (keydown)="$event.stopPropagation()"
-  tabindex="-1"
-  role="menu"
-  aria-label="Menu principal de Coday"
->
+@if (isMenuOpen) {
+  <div 
+    class="floating-menu"
+    (click)="$event.stopPropagation()"
+    (keydown)="$event.stopPropagation()"
+    tabindex="-1"
+    role="menu"
+    aria-label="Menu principal de Coday"
+  >
   <!-- Project selector - moved to top -->
   <div class="menu-section project-selector-section">
     <app-project-selector class="main-project-selector"></app-project-selector>
@@ -41,17 +41,21 @@
     </div>
     
     <!-- Project Config - only for CODAY_ADMIN -->
-    <div class="menu-item-wrapper" *ngIf="isAdmin">
-      <button class="menu-button" 
-              (click)="openProjectConfig()"
-              [disabled]="!hasProject()"
-              [class.disabled]="!hasProject()"
-              [title]="hasProject() ? 'Edit project configuration' : 'No project selected'">
-        <span class="menu-icon">📁</span>
-        <span class="menu-text">Project Config</span>
-        <span class="disabled-hint" *ngIf="!hasProject()">(No project)</span>
-      </button>
-    </div>
+    @if (isAdmin) {
+      <div class="menu-item-wrapper">
+        <button class="menu-button" 
+                (click)="openProjectConfig()"
+                [disabled]="!hasProject()"
+                [class.disabled]="!hasProject()"
+                [title]="hasProject() ? 'Edit project configuration' : 'No project selected'">
+          <span class="menu-icon">📁</span>
+          <span class="menu-text">Project Config</span>
+          @if (!hasProject()) {
+            <span class="disabled-hint">(No project)</span>
+          }
+        </button>
+      </div>
+    }
     
     <div class="menu-item-wrapper">
       <span class="menu-text">Theme</span>
@@ -63,7 +67,17 @@
       <app-options-panel class="inline-panel"></app-options-panel>
     </div>
   </div>
-</div>
+  </div>
+}
+
+<!-- Error notification -->
+@if (configErrorMessage) {
+  <div class="error-notification" role="alert">
+    <span class="error-icon">⚠️</span>
+    <span class="error-text">{{ configErrorMessage }}</span>
+    <button class="error-close" (click)="configErrorMessage = ''" aria-label="Close error message">✕</button>
+  </div>
+}
 
 <!-- JSON Editor Modals -->
 <app-json-editor 
@@ -76,25 +90,27 @@
   (closeEditor)="onUserConfigCancel()"
 ></app-json-editor>
 
-<app-json-editor 
-  *ngIf="hasProject()"
-  [configType]="'project'" 
-  [projectName]="getCurrentProjectName()!"
-  [isOpen]="isProjectConfigOpen"
-  [initialContent]="projectConfigJson"
-  [isLoading]="isLoadingProjectConfig"
-  [isSaving]="isSavingProjectConfig"
-  (save)="onProjectConfigSave($event)"
-  (closeEditor)="onProjectConfigCancel()"
-></app-json-editor>
+@if (hasProject()) {
+  <app-json-editor 
+    [configType]="'project'" 
+    [projectName]="getCurrentProjectName()!"
+    [isOpen]="isProjectConfigOpen"
+    [initialContent]="projectConfigJson"
+    [isLoading]="isLoadingProjectConfig"
+    [isSaving]="isSavingProjectConfig"
+    (save)="onProjectConfigSave($event)"
+    (closeEditor)="onProjectConfigCancel()"
+  ></app-json-editor>
+}
 
 <!-- Backdrop pour fermer le menu -->
-<div 
-  *ngIf="isMenuOpen" 
-  class="menu-backdrop"
-  (click)="closeMenu()"
-  (keydown.escape)="closeMenu()"
-  tabindex="-1"
-  role="button"
-  aria-label="Fermer le menu (cliquez ou appuyez sur Échap)"
-></div>
+@if (isMenuOpen) {
+  <div 
+    class="menu-backdrop"
+    (click)="closeMenu()"
+    (keydown.escape)="closeMenu()"
+    tabindex="-1"
+    role="button"
+    aria-label="Fermer le menu (cliquez ou appuyez sur Échap)"
+  ></div>
+}

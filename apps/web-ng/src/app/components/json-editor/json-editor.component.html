@@ -1,19 +1,23 @@
-<div *ngIf="isOpen" class="json-editor-overlay" (click)="onCancel()" (keyup.escape)="onCancel()" tabindex="0" role="dialog" aria-modal="true" aria-label="JSON Editor">
-  <div class="json-editor-modal" (click)="$event.stopPropagation()" (keydown.enter)="$event.stopPropagation()" tabindex="-1">
+@if (isOpen) {
+  <div class="json-editor-overlay" (click)="onCancel()" (keyup.escape)="onCancel()" tabindex="0" role="dialog" aria-modal="true" aria-label="JSON Editor">
+    <div class="json-editor-modal" (click)="$event.stopPropagation()" (keydown.enter)="$event.stopPropagation()" tabindex="-1">
     <!-- Header -->
     <div class="editor-header">
       <h2>{{ getTitle() }}</h2>
       <button class="close-btn" (click)="onCancel()" title="Close">✕</button>
     </div>
 
-    <!-- Loading State -->
-    <div *ngIf="isLoading" class="loading-state">
-      <div class="spinner"></div>
-      <p>Loading configuration...</p>
-    </div>
+      <!-- Loading State -->
+      @if (isLoading) {
+        <div class="loading-state">
+          <div class="spinner"></div>
+          <p>Loading configuration...</p>
+        </div>
+      }
 
-    <!-- Editor Content -->
-    <div *ngIf="!isLoading" class="editor-content">
+      <!-- Editor Content -->
+      @if (!isLoading) {
+        <div class="editor-content">
       <textarea
         [(ngModel)]="jsonContent"
         class="json-textarea"
@@ -21,23 +25,27 @@
         placeholder="Enter JSON configuration..."
       ></textarea>
 
-      <!-- Messages -->
-      <div class="messages">
-        <div *ngIf="errorMessage" class="error-message">
-          ❌ {{ errorMessage }}
-        </div>
-        <!-- Success message removed - handled by parent component -->
-      </div>
+          <!-- Messages -->
+          <div class="messages">
+            @if (errorMessage) {
+              <div class="error-message">
+                ❌ {{ errorMessage }}
+              </div>
+            }
+            <!-- Success message removed - handled by parent component -->
+          </div>
 
-      <!-- Actions -->
-      <div class="editor-actions">
-        <button class="btn btn-secondary" (click)="onCancel()" [disabled]="isSaving">
-          Cancel
-        </button>
-        <button class="btn btn-primary" (click)="onSave()" [disabled]="isSaving">
-          {{ isSaving ? 'Saving...' : 'Save' }}
-        </button>
-      </div>
+          <!-- Actions -->
+          <div class="editor-actions">
+            <button class="btn btn-secondary" (click)="onCancel()" [disabled]="isSaving">
+              Cancel
+            </button>
+            <button class="btn btn-primary" (click)="onSave()" [disabled]="isSaving">
+              {{ isSaving ? 'Saving...' : 'Save' }}
+            </button>
+          </div>
+        </div>
+      }
     </div>
   </div>
-</div>
+}
