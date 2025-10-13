@@ -1,14 +1,14 @@
-import { Component, OnInit, OnDestroy, HostListener, inject } from '@angular/core'
-import { CommonModule } from '@angular/common'
-import { Subject } from 'rxjs'
-import { takeUntil } from 'rxjs/operators'
-import { SessionStateService } from '../../core/services/session-state.service'
-import { ConfigApiService } from '../../core/services/config-api.service'
-import { ThemeSelectorComponent } from '../theme-selector/theme-selector.component'
-import { OptionsPanelComponent } from '../options-panel'
-import { ProjectSelectorComponent } from '../project-selector/project-selector.component'
-import { ThreadSelectorComponent } from '../thread-selector/thread-selector.component'
-import { JsonEditorComponent } from '../json-editor/json-editor.component'
+import {Component, OnInit, OnDestroy, HostListener, inject} from '@angular/core'
+import {CommonModule} from '@angular/common'
+import {Subject} from 'rxjs'
+import {takeUntil} from 'rxjs/operators'
+import {SessionStateService} from '../../core/services/session-state.service'
+import {ConfigApiService} from '../../core/services/config-api.service'
+import {ThemeSelectorComponent} from '../theme-selector/theme-selector.component'
+import {OptionsPanelComponent} from '../options-panel'
+import {ProjectSelectorComponent} from '../project-selector/project-selector.component'
+import {ThreadSelectorComponent} from '../thread-selector/thread-selector.component'
+import {JsonEditorComponent} from '../json-editor/json-editor.component'
 
 @Component({
   selector: 'app-floating-menu',
@@ -22,10 +22,10 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
   isMenuOpen = false
   isUserConfigOpen = false
   isProjectConfigOpen = false
-  
+
   // Role-based access control
   isAdmin = false
-  
+
   // Configuration data
   userConfigJson = ''
   projectConfigJson = ''
@@ -33,7 +33,7 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
   isLoadingProjectConfig = false
   isSavingUserConfig = false
   isSavingProjectConfig = false
-  
+
   // User feedback messages
   configSuccessMessage = ''
   configErrorMessage = ''
@@ -45,7 +45,7 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     // Log session state for debugging (ensures sessionState is used)
     console.log('[FLOATING-MENU] SessionState service injected:', !!this.sessionState)
-    
+
     // Load user config to check roles
     this.configApi.getUserConfig()
       .pipe(takeUntil(this.destroy$))
@@ -66,15 +66,15 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
     this.destroy$.next()
     this.destroy$.complete()
   }
-  
+
   toggleMenu(): void {
     this.isMenuOpen = !this.isMenuOpen
   }
-  
+
   closeMenu(): void {
     this.isMenuOpen = false
   }
-  
+
   // Fermer le menu si on clique ailleurs
   @HostListener('document:click', ['$event'])
   onDocumentClick(event: Event): void {
@@ -83,13 +83,13 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
       this.closeMenu()
     }
   }
-  
+
   // Fermer le menu avec Escape
   @HostListener('document:keydown.escape')
   onEscapeKey(): void {
     this.closeMenu()
   }
-  
+
   /**
    * Open user configuration editor
    */
@@ -98,7 +98,7 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
     this.isLoadingUserConfig = true
     this.configSuccessMessage = ''
     this.configErrorMessage = ''
-    
+
     this.configApi.getUserConfig()
       .pipe(takeUntil(this.destroy$))
       .subscribe({
@@ -115,23 +115,23 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
         }
       })
   }
-  
+
   /**
    * Open project configuration editor
    */
   openProjectConfig(): void {
     const projectName = this.getCurrentProjectName()
+    this.closeMenu()
     if (!projectName) {
       console.error('[FLOATING-MENU] No project selected')
       this.configErrorMessage = 'No project selected. Please select a project first.'
       return
     }
-    
-    this.closeMenu()
+
     this.isLoadingProjectConfig = true
     this.configSuccessMessage = ''
     this.configErrorMessage = ''
-    
+
     this.configApi.getProjectConfig(projectName)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
@@ -148,28 +148,28 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
         }
       })
   }
-  
+
   /**
    * Check if a project is currently selected
    */
   hasProject(): boolean {
     return this.sessionState.hasProjectSelected()
   }
-  
+
   /**
    * Get current project name
    */
   getCurrentProjectName(): string | null {
     return this.sessionState.getCurrentProject()
   }
-  
+
   /**
    * Handle user config save
    */
   onUserConfigSave(parsedConfig: any): void {
     this.isSavingUserConfig = true
     this.configErrorMessage = ''
-    
+
     this.configApi.updateUserConfig(parsedConfig)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
@@ -177,7 +177,7 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
           console.log('[FLOATING-MENU] User config saved successfully')
           this.isSavingUserConfig = false
           this.configSuccessMessage = response.message ?? 'Configuration saved successfully'
-          
+
           // Close modal after short delay
           setTimeout(() => {
             this.isUserConfigOpen = false
@@ -191,7 +191,7 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
         }
       })
   }
-  
+
   /**
    * Handle project config save
    */
@@ -202,10 +202,10 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
       this.configErrorMessage = 'No project selected. Cannot save configuration.'
       return
     }
-    
+
     this.isSavingProjectConfig = true
     this.configErrorMessage = ''
-    
+
     this.configApi.updateProjectConfig(projectName, parsedConfig)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
@@ -213,7 +213,7 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
           console.log('[FLOATING-MENU] Project config saved successfully')
           this.isSavingProjectConfig = false
           this.configSuccessMessage = response.message ?? 'Configuration saved successfully'
-          
+
           // Close modal after short delay
           setTimeout(() => {
             this.isProjectConfigOpen = false
@@ -227,7 +227,7 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
         }
       })
   }
-  
+
   /**
    * Handle user config cancel
    */
@@ -236,7 +236,7 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
     this.configSuccessMessage = ''
     this.configErrorMessage = ''
   }
-  
+
   /**
    * Handle project config cancel
    */
