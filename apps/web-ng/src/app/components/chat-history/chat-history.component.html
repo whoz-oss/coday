@@ -3,7 +3,6 @@
     *ngFor="let message of messages; trackBy: trackByMessageId; let i = index"
     [message]="message"
     [canDelete]="canDeleteMessage(i)"
-    (playRequested)="onPlayMessage($event)"
     (copyRequested)="onCopyMessage($event)"
     (deleteRequested)="onDeleteMessage($event)"
   ></app-chat-message>
@@ -19,7 +18,7 @@
     </button>
   </div>
   
-  <!-- Bouton Go to Bottom -->
+  <!-- Go to Bottom Button -->
   <button 
     *ngIf="showGoToBottom" 
     class="go-to-bottom-btn"

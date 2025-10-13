@@ -129,16 +129,6 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     this.codayService.sendChoice(choice)
   }
 
-  onPlayMessage(message: ChatMessage): void {
-    // Extraire le texte du contenu riche pour le log
-    const textContent = message.content
-      .filter(content => content.type === 'text')
-      .map(content => content.content)
-      .join(' ')
-    console.log('[VOICE] Play requested:', textContent)
-    // TODO: Implement voice synthesis
-  }
-
   onCopyMessage(message: ChatMessage): void {
     console.log('[COPY] Message copied:', message.id)
   }
