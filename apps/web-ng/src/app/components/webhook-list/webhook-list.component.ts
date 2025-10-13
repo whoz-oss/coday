@@ -34,8 +34,8 @@ export class WebhookListComponent {
   
   @Output() create = new EventEmitter<void>()
   @Output() edit = new EventEmitter<Webhook>()
-  @Output() delete = new EventEmitter<Webhook>()
-  @Output() copy = new EventEmitter<string>() // Copy webhook URL
+  @Output() deleteWebhook = new EventEmitter<Webhook>()
+  @Output() copyUrl = new EventEmitter<string>() // Copy webhook URL
   
   onCreateClick(): void {
     this.create.emit()
@@ -46,13 +46,13 @@ export class WebhookListComponent {
   }
   
   onDeleteClick(webhook: Webhook): void {
-    this.delete.emit(webhook)
+    this.deleteWebhook.emit(webhook)
   }
   
   onCopyUrl(webhook: Webhook): void {
     const url = `${window.location.origin}/api/webhook/${webhook.uuid}`
     navigator.clipboard.writeText(url).then(() => {
-      this.copy.emit(url)
+      this.copyUrl.emit(url)
     }).catch(err => {
       console.error('Failed to copy URL:', err)
     })

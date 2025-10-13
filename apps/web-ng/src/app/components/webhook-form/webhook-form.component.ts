@@ -27,7 +27,7 @@ export class WebhookFormComponent implements OnChanges {
   @Input() availableProjects: string[] = [] // List of projects for dropdown
   
   @Output() save = new EventEmitter<WebhookCreateData | WebhookUpdateData>()
-  @Output() cancel = new EventEmitter<void>()
+  @Output() cancelForm = new EventEmitter<void>()
   
   // Form fields
   name: string = ''
@@ -101,6 +101,6 @@ export class WebhookFormComponent implements OnChanges {
   }
   
   onCancel(): void {
-    this.cancel.emit()
+    this.cancelForm.emit()
   }
 }

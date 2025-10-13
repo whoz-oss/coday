@@ -32,7 +32,7 @@ export class WebhookManagerComponent implements OnChanges {
   @Input() availableProjects: string[] = [] // Passed from parent
   
   @Output() isOpenChange = new EventEmitter<boolean>()
-  @Output() close = new EventEmitter<void>()
+  @Output() closeModal = new EventEmitter<void>()
   
   private webhookApi = inject(WebhookApiService)
   
@@ -182,12 +182,6 @@ export class WebhookManagerComponent implements OnChanges {
   
   onCloseClick(): void {
     this.isOpenChange.emit(false)
-    this.close.emit()
-  }
-  
-  onBackdropClick(event: MouseEvent): void {
-    if (event.target === event.currentTarget) {
-      this.onCloseClick()
-    }
+    this.closeModal.emit()
   }
 }

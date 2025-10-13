@@ -33,7 +33,8 @@ form {
   flex-direction: column;
   gap: 0.5rem;
 
-  label {
+  label,
+  .field-label {
     font-weight: 500;
     color: var(--color-text);
     font-size: 0.95rem;
