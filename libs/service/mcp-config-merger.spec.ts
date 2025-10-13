@@ -243,28 +243,39 @@ describe('McpConfigMerger', () => {
     })
 
     it('should apply safe defaults for new servers', () => {
-      const codayServers: McpServerConfig[] = []
-      const projectServers: McpServerConfig[] = []
-      const userServers: McpServerConfig[] = [
-        {
+      // Clear env for this test
+      const originalEnv = process.env.GITHUB_PERSONAL_ACCESS_TOKEN
+      delete process.env.GITHUB_PERSONAL_ACCESS_TOKEN
+
+      try {
+        const codayServers: McpServerConfig[] = []
+        const projectServers: McpServerConfig[] = []
+        const userServers: McpServerConfig[] = [
+          {
+            id: 'minimal',
+            name: 'Minimal Server',
+            command: 'minimal-command',
+            // No enabled, debug, args, env specified
+          },
+        ]
+
+        const result = mergeMcpConfigs(codayServers, projectServers, userServers)
+
+        expect(result[0]).toEqual({
           id: 'minimal',
           name: 'Minimal Server',
           command: 'minimal-command',
-          // No enabled, debug, args, env specified
-        },
-      ]
-
-      const result = mergeMcpConfigs(codayServers, projectServers, userServers)
-
-      expect(result[0]).toEqual({
-        id: 'minimal',
-        name: 'Minimal Server',
-        command: 'minimal-command',
-        enabled: true, // Default
-        debug: false, // Default
-        args: [], // Default
-        env: {}, // Default
-      })
+          enabled: true, // Default
+          debug: false, // Default
+          args: [], // Default
+          env: {}, // Default
+        })
+      } finally {
+        // Restore original env
+        if (originalEnv !== undefined) {
+          process.env.GITHUB_PERSONAL_ACCESS_TOKEN = originalEnv
+        }
+      }
     })
 
     it('should handle empty arrays correctly', () => {
@@ -273,16 +284,218 @@ describe('McpConfigMerger', () => {
     })
 
     it('should preserve environment variables from all levels with proper override', () => {
+      // Clear env for this test
+      const originalEnv = process.env.GITHUB_PERSONAL_ACCESS_TOKEN
+      delete process.env.GITHUB_PERSONAL_ACCESS_TOKEN
+
+      try {
+        const codayServers: McpServerConfig[] = [
+          {
+            id: 'test',
+            name: 'Test Server',
+            command: 'test',
+            enabled: true,
+            env: {
+              BASE_VAR: 'base-value',
+              SHARED_VAR: 'coday-value',
+            },
+          },
+        ]
+
+        const projectServers: McpServerConfig[] = [
+          {
+            id: 'test',
+            name: 'Test Server',
+            env: {
+              PROJECT_VAR: 'project-value',
+              SHARED_VAR: 'project-value',
+            },
+          },
+        ]
+
+        const userServers: McpServerConfig[] = [
+          {
+            id: 'test',
+            name: 'Test Server',
+            env: {
+              USER_VAR: 'user-value',
+              SHARED_VAR: 'user-value',
+            },
+          },
+        ]
+
+        const result = mergeMcpConfigs(codayServers, projectServers, userServers)
+
+        expect(result[0]?.env).toEqual({
+          BASE_VAR: 'base-value', // From CODAY
+          PROJECT_VAR: 'project-value', // From PROJECT
+          USER_VAR: 'user-value', // From USER
+          SHARED_VAR: 'user-value', // USER overrides PROJECT overrides CODAY
+        })
+      } finally {
+        // Restore original env
+        if (originalEnv !== undefined) {
+          process.env.GITHUB_PERSONAL_ACCESS_TOKEN = originalEnv
+        }
+      }
+    })
+
+    it('should fall back to process.env for variables listed in envVarNames when not set', () => {
+      // Set up process.env
+      const originalEnv = process.env.GITHUB_PERSONAL_ACCESS_TOKEN
+      process.env.GITHUB_PERSONAL_ACCESS_TOKEN = 'env-token-value'
+
+      try {
+        const codayServers: McpServerConfig[] = [
+          {
+            id: 'github',
+            name: 'GIT-PLATFORM',
+            command: 'docker',
+            enabled: true,
+            envVarNames: ['GITHUB_PERSONAL_ACCESS_TOKEN'],
+            // No env specified
+          },
+        ]
+
+        const result = mergeMcpConfigs(codayServers, [], [])
+
+        expect(result[0]?.env).toEqual({
+          GITHUB_PERSONAL_ACCESS_TOKEN: 'env-token-value',
+        })
+      } finally {
+        // Restore original env
+        if (originalEnv !== undefined) {
+          process.env.GITHUB_PERSONAL_ACCESS_TOKEN = originalEnv
+        } else {
+          delete process.env.GITHUB_PERSONAL_ACCESS_TOKEN
+        }
+      }
+    })
+
+    it('should not override GITHUB_PERSONAL_ACCESS_TOKEN if explicitly set in config', () => {
+      // Set up process.env
+      const originalEnv = process.env.GITHUB_PERSONAL_ACCESS_TOKEN
+      process.env.GITHUB_PERSONAL_ACCESS_TOKEN = 'env-token-value'
+
+      try {
+        const codayServers: McpServerConfig[] = [
+          {
+            id: 'github',
+            name: 'GIT-PLATFORM',
+            command: 'docker',
+            enabled: true,
+            envVarNames: ['GITHUB_PERSONAL_ACCESS_TOKEN'],
+            env: {
+              GITHUB_PERSONAL_ACCESS_TOKEN: 'config-token-value',
+            },
+          },
+        ]
+
+        const result = mergeMcpConfigs(codayServers, [], [])
+
+        expect(result[0]?.env).toEqual({
+          GITHUB_PERSONAL_ACCESS_TOKEN: 'config-token-value',
+        })
+      } finally {
+        // Restore original env
+        if (originalEnv !== undefined) {
+          process.env.GITHUB_PERSONAL_ACCESS_TOKEN = originalEnv
+        } else {
+          delete process.env.GITHUB_PERSONAL_ACCESS_TOKEN
+        }
+      }
+    })
+
+    it('should apply env fallback when merging multiple levels', () => {
+      // Set up process.env
+      const originalEnv = process.env.GITHUB_PERSONAL_ACCESS_TOKEN
+      process.env.GITHUB_PERSONAL_ACCESS_TOKEN = 'env-token-value'
+
+      try {
+        const codayServers: McpServerConfig[] = [
+          {
+            id: 'github',
+            name: 'GIT-PLATFORM',
+            command: 'docker',
+            enabled: true,
+            args: ['-e', 'GITHUB_PERSONAL_ACCESS_TOKEN'],
+            envVarNames: ['GITHUB_PERSONAL_ACCESS_TOKEN'],
+          },
+        ]
+
+        const projectServers: McpServerConfig[] = [
+          {
+            id: 'github',
+            name: 'GIT-PLATFORM',
+            env: {
+              OTHER_VAR: 'other-value',
+            },
+          },
+        ]
+
+        const result = mergeMcpConfigs(codayServers, projectServers, [])
+
+        expect(result[0]?.env).toEqual({
+          GITHUB_PERSONAL_ACCESS_TOKEN: 'env-token-value',
+          OTHER_VAR: 'other-value',
+        })
+      } finally {
+        // Restore original env
+        if (originalEnv !== undefined) {
+          process.env.GITHUB_PERSONAL_ACCESS_TOKEN = originalEnv
+        } else {
+          delete process.env.GITHUB_PERSONAL_ACCESS_TOKEN
+        }
+      }
+    })
+
+    it('should not fall back to process.env for variables not listed in envVarNames', () => {
+      // Set up process.env with a variable that's NOT in envVarNames
+      const originalSomeOtherToken = process.env.SOME_OTHER_TOKEN
+      const originalGithubToken = process.env.GITHUB_PERSONAL_ACCESS_TOKEN
+      
+      process.env.SOME_OTHER_TOKEN = 'should-not-be-used'
+      delete process.env.GITHUB_PERSONAL_ACCESS_TOKEN // Clear this to ensure test isolation
+
+      try {
+        const codayServers: McpServerConfig[] = [
+          {
+            id: 'test',
+            name: 'Test Server',
+            command: 'test',
+            enabled: true,
+            envVarNames: ['GITHUB_PERSONAL_ACCESS_TOKEN'], // Only this one should be picked up, but it's not in process.env
+            // No env specified
+          },
+        ]
+
+        const result = mergeMcpConfigs(codayServers, [], [])
+
+        // Should be empty because:
+        // - SOME_OTHER_TOKEN is in process.env but not in envVarNames
+        // - GITHUB_PERSONAL_ACCESS_TOKEN is in envVarNames but not in process.env
+        expect(result[0]?.env).toEqual({})
+      } finally {
+        // Restore original env
+        if (originalSomeOtherToken !== undefined) {
+          process.env.SOME_OTHER_TOKEN = originalSomeOtherToken
+        } else {
+          delete process.env.SOME_OTHER_TOKEN
+        }
+        if (originalGithubToken !== undefined) {
+          process.env.GITHUB_PERSONAL_ACCESS_TOKEN = originalGithubToken
+        }
+      }
+    })
+
+    it('should merge envVarNames from multiple levels', () => {
       const codayServers: McpServerConfig[] = [
         {
           id: 'test',
           name: 'Test Server',
           command: 'test',
           enabled: true,
-          env: {
-            BASE_VAR: 'base-value',
-            SHARED_VAR: 'coday-value',
-          },
+          envVarNames: ['VAR1', 'VAR2'],
         },
       ]
 
@@ -290,10 +503,7 @@ describe('McpConfigMerger', () => {
         {
           id: 'test',
           name: 'Test Server',
-          env: {
-            PROJECT_VAR: 'project-value',
-            SHARED_VAR: 'project-value',
-          },
+          envVarNames: ['VAR2', 'VAR3'], // VAR2 is duplicate
         },
       ]
 
@@ -301,21 +511,63 @@ describe('McpConfigMerger', () => {
         {
           id: 'test',
           name: 'Test Server',
-          env: {
-            USER_VAR: 'user-value',
-            SHARED_VAR: 'user-value',
-          },
+          envVarNames: ['VAR4'],
         },
       ]
 
       const result = mergeMcpConfigs(codayServers, projectServers, userServers)
 
-      expect(result[0]?.env).toEqual({
-        BASE_VAR: 'base-value', // From CODAY
-        PROJECT_VAR: 'project-value', // From PROJECT
-        USER_VAR: 'user-value', // From USER
-        SHARED_VAR: 'user-value', // USER overrides PROJECT overrides CODAY
-      })
+      // Should have unique values from all levels
+      expect(result[0]?.envVarNames).toEqual(['VAR1', 'VAR2', 'VAR3', 'VAR4'])
+    })
+
+    it('should handle multiple environment variables in envVarNames', () => {
+      // Set up process.env with multiple variables
+      const originalToken = process.env.GITHUB_PERSONAL_ACCESS_TOKEN
+      const originalApiKey = process.env.API_KEY
+      const originalSecret = process.env.SECRET_TOKEN
+
+      process.env.GITHUB_PERSONAL_ACCESS_TOKEN = 'github-token'
+      process.env.API_KEY = 'api-key-value'
+      process.env.SECRET_TOKEN = 'secret-value'
+
+      try {
+        const codayServers: McpServerConfig[] = [
+          {
+            id: 'test',
+            name: 'Test Server',
+            command: 'test',
+            enabled: true,
+            envVarNames: ['GITHUB_PERSONAL_ACCESS_TOKEN', 'API_KEY', 'SECRET_TOKEN'],
+            // No env specified
+          },
+        ]
+
+        const result = mergeMcpConfigs(codayServers, [], [])
+
+        expect(result[0]?.env).toEqual({
+          GITHUB_PERSONAL_ACCESS_TOKEN: 'github-token',
+          API_KEY: 'api-key-value',
+          SECRET_TOKEN: 'secret-value',
+        })
+      } finally {
+        // Restore original env
+        if (originalToken !== undefined) {
+          process.env.GITHUB_PERSONAL_ACCESS_TOKEN = originalToken
+        } else {
+          delete process.env.GITHUB_PERSONAL_ACCESS_TOKEN
+        }
+        if (originalApiKey !== undefined) {
+          process.env.API_KEY = originalApiKey
+        } else {
+          delete process.env.API_KEY
+        }
+        if (originalSecret !== undefined) {
+          process.env.SECRET_TOKEN = originalSecret
+        } else {
+          delete process.env.SECRET_TOKEN
+        }
+      }
     })
   })
 })

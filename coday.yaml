@@ -45,15 +45,13 @@ scripts:
     command: npx jest PARAMETERS
     parametersDescription: the test file path or pattern to run specific tests (e.g., "parseAgentCommand.test.ts" or "--testNamePattern=specific test name")
   yarn-web-ng-lint:
-   description: |
-     Runs the lint for the web-ng app.
-   command: yarn run nx run web-ng:lint
+    description: |
+      Runs the lint for the web-ng app.
+    command: yarn run nx run web-ng:lint
   yarn-web-ng-test:
-   description: |
-     Runs the test for the web-ng app.
-   command: yarn run nx run web-ng:test
-   
-
+    description: |
+      Runs the test for the web-ng app.
+    command: yarn run nx run web-ng:test
 
 # The prompts section allows you to define custom sequences of commands, known as prompt chains,
 # that the system can execute in order. Each prompt chain is identified by a unique key and
@@ -79,10 +77,10 @@ prompts:
     description: |
       a dummy prompt chain for demo, the `PROMPT` value comes from the sub-command, ex: `say-hello answer with banana` => PROMPT = `answer with banana`. PROMPT can be used in several commands.
     commands:
-      - "@ hello, PROMPT"
-      - "@ how are you ?"
+      - '@ hello, PROMPT'
+      - '@ how are you ?'
     requiredIntegrations:
-      - "GIT"
+      - 'GIT'
 
 ai:
   - name: anthropic
@@ -293,6 +291,9 @@ mcp:
       name: GIT-PLATFORM
       enabled: true
       command: docker
+      envVarNames:
+        - PATH
+        - GITHUB_PERSONAL_ACCESS_TOKEN
       args:
         - run
         - -i
@@ -308,6 +309,6 @@ mcp:
       name: PLAYWRIGHT
       enabled: true
       args:
-        - "@playwright/mcp@latest"
+        - '@playwright/mcp@latest'
       command: npx
       debug: false
