@@ -51,6 +51,15 @@ function mergeServerConfigs(existing: McpServerConfig, override: McpServerConfig
     ...override,
   }
 
+  // Merge environment variables from all levels (later levels override)
+  const mergedEnv = { ...existing.env, ...override.env }
+
+  // Merge envVarNames from all levels (aggregate unique values)
+  const mergedEnvVarNames = Array.from(new Set([...(existing.envVarNames || []), ...(override.envVarNames || [])]))
+
+  // Apply environment variable fallbacks for specific known variables
+  const envWithFallbacks = applyEnvFallbacks(mergedEnv, mergedEnvVarNames)
+
   // Apply special merging rules for specific properties:
   return {
     ...baseConfig,
@@ -71,8 +80,11 @@ function mergeServerConfigs(existing: McpServerConfig, override: McpServerConfig
     enabled:
       override.enabled !== undefined ? override.enabled : existing.enabled !== undefined ? existing.enabled : true,
 
-    // Env: merge environment variables from all levels (later levels override)
-    env: { ...existing.env, ...override.env },
+    // Env: use merged environment with fallbacks applied
+    env: envWithFallbacks,
+
+    // EnvVarNames: use merged list of environment variable names
+    envVarNames: mergedEnvVarNames.length > 0 ? mergedEnvVarNames : undefined,
   }
 }
 
@@ -82,11 +94,35 @@ function mergeServerConfigs(existing: McpServerConfig, override: McpServerConfig
  * @returns Server configuration with safe defaults applied
  */
 function applyServerDefaults(server: McpServerConfig): McpServerConfig {
+  const env = server.env || {}
+  const envWithFallbacks = applyEnvFallbacks(env, server.envVarNames || [])
+
   return {
     ...server,
     enabled: server.enabled !== undefined ? server.enabled : true,
     debug: server.debug || false,
     args: server.args || [],
-    env: server.env || {},
+    env: envWithFallbacks,
   }
+}
+
+/**
+ * Apply environment variable fallbacks from process.env
+ * Returns a new object with fallbacks applied
+ * @param env The environment variables object to apply fallbacks to
+ * @param envVarNames List of environment variable names to look up in process.env
+ * @returns A new object with fallbacks applied
+ */
+function applyEnvFallbacks(env: Record<string, string>, envVarNames: string[]): Record<string, string> {
+  const result = { ...env }
+
+  // Only apply fallbacks for variables listed in envVarNames
+  for (const envVarName of envVarNames) {
+    // Only apply fallback if the variable is not already set in env
+    if (!result[envVarName] && process.env[envVarName]) {
+      result[envVarName] = process.env[envVarName]!
+    }
+  }
+
+  return result
 }
