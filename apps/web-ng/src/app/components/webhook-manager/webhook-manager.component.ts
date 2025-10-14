@@ -49,9 +49,10 @@ export class WebhookManagerComponent implements OnChanges {
   successMessage: string = ''
   
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['isOpen']) {
-      const currentValue = changes['isOpen'].currentValue
-      const previousValue = changes['isOpen'].previousValue
+    const isOpenChange = changes['isOpen']
+    if (isOpenChange) {
+      const currentValue = isOpenChange.currentValue
+      const previousValue = isOpenChange.previousValue
       
       // Load webhooks when modal opens
       if (currentValue === true && previousValue === false) {
@@ -77,6 +78,15 @@ export class WebhookManagerComponent implements OnChanges {
     this.isSaving = false
   }
   
+  /**
+   * Handle API errors consistently
+   * Extracts error message from different error formats
+   */
+  private handleError(error: any, defaultMessage: string): string {
+    console.error(defaultMessage, error)
+    return `${defaultMessage}: ${error.error?.error || error.message || 'Unknown error'}`
+  }
+  
   private loadWebhooks(): void {
     this.isLoading = true
     this.errorMessage = ''
@@ -87,8 +97,7 @@ export class WebhookManagerComponent implements OnChanges {
         this.isLoading = false
       },
       error: (error) => {
-        console.error('Failed to load webhooks:', error)
-        this.errorMessage = 'Failed to load webhooks. Please try again.'
+        this.errorMessage = this.handleError(error, 'Failed to load webhooks')
         this.isLoading = false
       }
     })
@@ -121,8 +130,7 @@ export class WebhookManagerComponent implements OnChanges {
         this.loadWebhooks()
       },
       error: (error) => {
-        console.error('Failed to delete webhook:', error)
-        this.errorMessage = `Failed to delete webhook: ${error.error?.error || 'Unknown error'}`
+        this.errorMessage = this.handleError(error, 'Failed to delete webhook')
       }
     })
   }
@@ -146,8 +154,7 @@ export class WebhookManagerComponent implements OnChanges {
           this.loadWebhooks()
         },
         error: (error) => {
-          console.error('Failed to update webhook:', error)
-          this.errorMessage = `Failed to update webhook: ${error.error?.error || 'Unknown error'}`
+          this.errorMessage = this.handleError(error, 'Failed to update webhook')
           this.isSaving = false
         }
       })
@@ -161,8 +168,7 @@ export class WebhookManagerComponent implements OnChanges {
           this.loadWebhooks()
         },
         error: (error) => {
-          console.error('Failed to create webhook:', error)
-          this.errorMessage = `Failed to create webhook: ${error.error?.error || 'Unknown error'}`
+          this.errorMessage = this.handleError(error, 'Failed to create webhook')
           this.isSaving = false
         }
       })
@@ -175,6 +181,11 @@ export class WebhookManagerComponent implements OnChanges {
     this.errorMessage = ''
   }
   
+  /**
+   * Show success message that auto-dismisses after 3 seconds
+   * The 3-second timeout provides enough time for users to read the message
+   * without being intrusive or requiring manual dismissal
+   */
   private showSuccess(message: string): void {
     this.successMessage = message
     setTimeout(() => this.successMessage = '', 3000)

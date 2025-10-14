@@ -52,7 +52,7 @@ export class WebhookFormComponent implements OnChanges {
       this.name = this.webhook.name
       this.project = this.webhook.project
       this.commandType = this.webhook.commandType
-      this.commands = this.webhook.commands?.join('\n') || ''
+      this.commands = this.webhook.commands?.join('\n') ?? ''
     }
   }
   

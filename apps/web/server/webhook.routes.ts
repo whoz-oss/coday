@@ -14,6 +14,12 @@ import {WebhookService, Webhook} from '@coday/service/webhook.service'
  * - POST   /api/webhooks          - Create new webhook
  * - PUT    /api/webhooks/:uuid    - Update existing webhook
  * - DELETE /api/webhooks/:uuid    - Delete webhook
+ * 
+ * TODO: Consider implementing JSON Schema validation (e.g., using Ajv) for more robust
+ * and maintainable validation instead of manual checks. This would provide:
+ * - Automatic validation with clear error messages
+ * - Self-documenting API through schema
+ * - Easier maintenance as requirements evolve
  */
 
 /**
@@ -137,7 +143,7 @@ export function registerWebhookRoutes(
     try {
       const {uuid} = req.params
       if (!uuid) {
-        res.status(400).json({error: 'Webhook UUID is required'})
+        res.status(404).json({error: 'Webhook UUID is required'})
         return
       }
 
