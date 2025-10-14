@@ -1,11 +1,16 @@
 {
   "name": "@whoz-oss/coday-web",
   "repository": "https://github.com/whoz-oss/coday",
+  "main": "server/server.ts",
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
-    "sharp": "^0.33.5"
+    "sharp": "0.34.4",
+    "process": "0.11.10",
+    "express": "5.1.0",
+    "tsx": "^4.19.2",
+    "http-proxy-middleware": "^3.0.3"
   },
   "version": "0.20.0",
   "bin": {

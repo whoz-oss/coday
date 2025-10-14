@@ -43,16 +43,48 @@ const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
 const configPath = codayOptions.configDir ?? defaultConfigPath
 const webhookService = new WebhookService(configPath)
 debugLog('INIT', 'Webhook service initialized')
-// Serve Angular app as default (root)
-app.use(express.static(path.join(__dirname, '../client')))
-
-// Basic route to test server setup
-app.get('/', (_req: express.Request, res: express.Response) => {
-  res.send('Server is up and running!')
-})
-
 // Middleware to parse JSON bodies with increased limit for image uploads
 app.use(express.json({limit: '20mb'}))
+
+// Development mode: proxy to Angular dev server
+const DEV_MODE = !process.env.CLIENT_FOLDER
+const ANGULAR_DEV_SERVER = 'http://localhost:4200'
+
+if (DEV_MODE) {
+  debugLog('INIT', `Development mode: proxying to Angular dev server at ${ANGULAR_DEV_SERVER}`)
+
+  // Import http-proxy-middleware dynamically
+  import('http-proxy-middleware').then(({createProxyMiddleware}) => {
+    // Proxy all non-API requests to Angular dev server
+    const proxyMiddleware = createProxyMiddleware({
+      target: ANGULAR_DEV_SERVER,
+      changeOrigin: true,
+      ws: true, // Enable WebSocket proxying for Angular HMR
+    })
+
+    // Only proxy if not an API route
+    app.use('/', (req, res, next) => {
+      if (req.path.startsWith('/api') || req.path.startsWith('/events')) {
+        next()
+      } else {
+        proxyMiddleware(req, res, next)
+      }
+    })
+
+    debugLog('INIT', 'Proxy middleware configured successfully')
+  }).catch((error) => {
+    console.error('Failed to load http-proxy-middleware:', error)
+  })
+} else {
+// Serve Angular app as default (root)
+  app.use(express.static(path.join(__dirname, '../client')))
+
+// Basic route to test server setup
+  app.get('/', (_req: express.Request, res: express.Response) => {
+    res.send('Server is up and running!')
+  })
+
+}
 
 // Initialize the client manager with usage logger and webhook service
 const clientManager = new ServerClientManager(logger, webhookService)
@@ -318,7 +350,6 @@ app.post('/api/stop', (req: express.Request, res: express.Response) => {
 app.post('/api/files/upload', async (req: express.Request, res: express.Response) => {
   try {
     const {clientId, content, mimeType, filename} = req.body
-
     // Validate required fields
     if (!clientId || !content || !mimeType || !filename) {
       res.status(400).json({error: 'Missing required fields: clientId, content, mimeType, filename'})
