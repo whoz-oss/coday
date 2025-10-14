@@ -54,8 +54,10 @@ function mergeServerConfigs(existing: McpServerConfig, override: McpServerConfig
   // Merge environment variables from all levels (later levels override)
   const mergedEnv = { ...existing.env, ...override.env }
 
-  // Merge envVarNames from all levels (aggregate unique values)
-  const mergedEnvVarNames = Array.from(new Set([...(existing.envVarNames || []), ...(override.envVarNames || [])]))
+  // Merge whiteListedHostEnvVarNames from all levels (aggregate unique values)
+  const mergedEnvVarNames = Array.from(
+    new Set([...(existing.whiteListedHostEnvVarNames || []), ...(override.whiteListedHostEnvVarNames || [])])
+  )
 
   // Apply environment variable fallbacks for specific known variables
   const envWithFallbacks = applyEnvFallbacks(mergedEnv, mergedEnvVarNames)
@@ -84,7 +86,7 @@ function mergeServerConfigs(existing: McpServerConfig, override: McpServerConfig
     env: envWithFallbacks,
 
     // EnvVarNames: use merged list of environment variable names
-    envVarNames: mergedEnvVarNames.length > 0 ? mergedEnvVarNames : undefined,
+    whiteListedHostEnvVarNames: mergedEnvVarNames.length > 0 ? mergedEnvVarNames : undefined,
   }
 }
 
@@ -95,7 +97,7 @@ function mergeServerConfigs(existing: McpServerConfig, override: McpServerConfig
  */
 function applyServerDefaults(server: McpServerConfig): McpServerConfig {
   const env = server.env || {}
-  const envWithFallbacks = applyEnvFallbacks(env, server.envVarNames || [])
+  const envWithFallbacks = applyEnvFallbacks(env, server.whiteListedHostEnvVarNames || [])
 
   return {
     ...server,
@@ -107,17 +109,50 @@ function applyServerDefaults(server: McpServerConfig): McpServerConfig {
 }
 
 /**
- * Apply environment variable fallbacks from process.env
+ * Default environment variables that are always inherited from the host process.
+ * These are considered safe, non-sensitive variables that MCP servers commonly need.
+ */
+const DEFAULT_INHERITED_ENV_VARS = [
+  // Execution environment - essential for running commands
+  'PATH',           // Command search path (essential)
+  'HOME',           // User's home directory
+  'USER',           // Current username
+  'TMPDIR',         // Temp directory (Unix/Linux/Mac)
+  'TEMP',           // Temp directory (Windows)
+  'TMP',            // Alternative temp directory (Windows)
+  
+  // Locale and encoding - important for text processing
+  'LANG',           // Language/locale settings
+  'LC_ALL',         // Locale override
+  'LC_CTYPE',       // Character encoding
+  
+  // Terminal settings - useful for CLI tools
+  'TERM',           // Terminal type
+  'COLORTERM',      // Color support indicator
+  
+  // Shell and platform detection
+  'SHELL',          // User's default shell (Unix/Linux/Mac)
+  'OS',             // Operating system (Windows)
+  
+  // Note: Security-sensitive variables (tokens, keys, passwords, secrets)
+  // are NOT included and must be explicitly whitelisted via whiteListedHostEnvVarNames
+]
+
+/**
+ * Apply environment variable fallbacks from process.env white listed vars + basic non sensitive vars
  * Returns a new object with fallbacks applied
  * @param env The environment variables object to apply fallbacks to
- * @param envVarNames List of environment variable names to look up in process.env
+ * @param whiteListedHostEnvVarNames List of environment variable names to look up in process.env
  * @returns A new object with fallbacks applied
  */
-function applyEnvFallbacks(env: Record<string, string>, envVarNames: string[]): Record<string, string> {
+function applyEnvFallbacks(env: Record<string, string>, whiteListedHostEnvVarNames: string[]): Record<string, string> {
   const result = { ...env }
 
-  // Only apply fallbacks for variables listed in envVarNames
-  for (const envVarName of envVarNames) {
+  // Combine default whitelist with user-specified whitelist
+  const allWhitelistedVars = [...DEFAULT_INHERITED_ENV_VARS, ...whiteListedHostEnvVarNames]
+
+  // Only apply fallbacks for whitelisted variables
+  for (const envVarName of allWhitelistedVars) {
     // Only apply fallback if the variable is not already set in env
     if (!result[envVarName] && process.env[envVarName]) {
       result[envVarName] = process.env[envVarName]!
