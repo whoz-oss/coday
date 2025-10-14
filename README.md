@@ -31,6 +31,7 @@ When in the context of a code project, use the npm package to run locally throug
 1. Check dependencies
     - node.js (v14.x or later)
     - npm (v6.x or later)
+    - tsx (v4)
     - [ripgrep](https://github.com/BurntSushi/ripgrep) (important for file search)
 
 2. Add npm package
