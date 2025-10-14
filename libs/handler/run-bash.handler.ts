@@ -6,6 +6,7 @@ export class RunBashHandler extends CommandHandler {
     super({
       commandWord: 'run-bash',
       description: 'Executes bash commands',
+      isInternal: true,
     })
   }
 
