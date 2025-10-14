@@ -291,8 +291,7 @@ mcp:
       name: GIT-PLATFORM
       enabled: true
       command: docker
-      envVarNames:
-        - PATH
+      whiteListedHostEnvVarNames:
         - GITHUB_PERSONAL_ACCESS_TOKEN
       args:
         - run

@@ -42,7 +42,7 @@ export class McpToolsFactory extends AssistantToolFactory {
   async kill(): Promise<void> {
     this.tools = []
     console.log(`Closing mcp client ${this.serverConfig.name}`)
-    
+
     try {
       const client = await this.clientPromise
       await client?.close()
@@ -50,7 +50,7 @@ export class McpToolsFactory extends AssistantToolFactory {
       // If the client failed to initialize, that's fine - nothing to close
       console.log(`MCP client ${this.serverConfig.name} was already failed/closed`)
     }
-    
+
     if (this.inspectorProcess) {
       console.log(`Stopping MCP Inspector process for ${this.serverConfig.name}`)
       this.inspectorProcess.kill()
@@ -82,7 +82,7 @@ export class McpToolsFactory extends AssistantToolFactory {
 
       if (!this.toolsPromise) {
         this.toolsPromise = this.buildInternalTools(client)
-      } 
+      }
 
       const tools = await this.toolsPromise
       console.log(`MCP server ${this.serverConfig.name} loaded ${tools.length} tools successfully`)
@@ -90,14 +90,16 @@ export class McpToolsFactory extends AssistantToolFactory {
     } catch (error) {
       // Log the error but don't crash the entire agent initialization
       const errorMessage = error instanceof Error ? error.message : String(error)
-      
+
       // Only log the error once per factory instance
       if (!this.errorLogged) {
         this.errorLogged = true
         console.error(`MCP server ${this.serverConfig.name} failed to initialize: ${errorMessage}`)
-        this.interactor.warn(`MCP server '${this.serverConfig.name}' is unavailable and will be skipped: ${errorMessage}`)
+        this.interactor.warn(
+          `MCP server '${this.serverConfig.name}' is unavailable and will be skipped: ${errorMessage}`
+        )
       }
-      
+
       // Return empty tools array to allow other tools to work
       return []
     }
@@ -142,7 +144,9 @@ export class McpToolsFactory extends AssistantToolFactory {
           ]
           const inspectorOptions: any = {}
           if (this.serverConfig.env && Object.keys(this.serverConfig.env).length > 0) {
-            inspectorOptions.env = { ...process.env, ...this.serverConfig.env }
+            // Use isolated environment (same as main transport for consistency)
+            // serverConfig.env already includes whitelisted variables from merger
+            inspectorOptions.env = this.serverConfig.env
           }
           if (this.serverConfig.cwd) {
             inspectorOptions.cwd = this.serverConfig.cwd
@@ -170,7 +174,7 @@ export class McpToolsFactory extends AssistantToolFactory {
       }
       transport = new StdioClientTransport(transportOptions)
       console.log(`Starting MCP server ${this.serverConfig.name} with command: ${transportOptions.command}`)
-      
+
       // Add error handling for transport to catch early failures
       transport.onerror = (error) => {
         console.error(`MCP server ${this.serverConfig.name} transport error:`, error)
@@ -184,10 +188,10 @@ export class McpToolsFactory extends AssistantToolFactory {
     try {
       // Set a shorter timeout for MCP connections (default is 60s, we use MCP_CONNECT_TIMEOUT)
       const connectPromise = instance.connect(transport)
-      const timeoutPromise = new Promise<never>((_, reject) => 
+      const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error(`Connection timeout after ${MCP_CONNECT_TIMEOUT}ms`)), MCP_CONNECT_TIMEOUT)
       )
-      
+
       await Promise.race([connectPromise, timeoutPromise])
       console.log(`Successfully connected to MCP server ${this.serverConfig.name}`)
       return instance
@@ -195,23 +199,33 @@ export class McpToolsFactory extends AssistantToolFactory {
       // Enhanced error reporting
       const errorMessage = error instanceof Error ? error.message : String(error)
       console.error(`Failed to connect to MCP server ${this.serverConfig.name}: ${errorMessage}`)
-      
+
       // Check if it's a Docker-related issue
-      if (errorMessage.includes('docker') || errorMessage.includes('Docker') || 
-          errorMessage.includes('container') || errorMessage.includes('Container')) {
-        throw new Error(`MCP server ${this.serverConfig.name} failed to start. This may be because Docker is not available or the Docker container failed to start. Original error: ${errorMessage}`)
+      if (
+        errorMessage.includes('docker') ||
+        errorMessage.includes('Docker') ||
+        errorMessage.includes('container') ||
+        errorMessage.includes('Container')
+      ) {
+        throw new Error(
+          `MCP server ${this.serverConfig.name} failed to start. This may be because Docker is not available or the Docker container failed to start. Original error: ${errorMessage}`
+        )
       }
-      
+
       // Check if it's a timeout
       if (errorMessage.includes('timeout') || errorMessage.includes('Connection timeout')) {
-        throw new Error(`MCP server ${this.serverConfig.name} did not respond within ${MCP_CONNECT_TIMEOUT}ms. Check if the server command is correct and the server starts quickly. Original error: ${errorMessage}`)
+        throw new Error(
+          `MCP server ${this.serverConfig.name} did not respond within ${MCP_CONNECT_TIMEOUT}ms. Check if the server command is correct and the server starts quickly. Original error: ${errorMessage}`
+        )
       }
-      
+
       // Check for common command not found errors
       if (errorMessage.includes('ENOENT') || errorMessage.includes('command not found')) {
-        throw new Error(`MCP server ${this.serverConfig.name} command not found. Check that the command '${this.serverConfig.command}' is available in your PATH. Original error: ${errorMessage}`)
+        throw new Error(
+          `MCP server ${this.serverConfig.name} command not found. Check that the command '${this.serverConfig.command}' is available in your PATH. Original error: ${errorMessage}`
+        )
       }
-      
+
       throw new Error(`MCP server ${this.serverConfig.name} connection failed: ${errorMessage}`)
     }
   }
