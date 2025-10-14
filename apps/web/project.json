@@ -6,20 +6,44 @@
   "targets": {
     "build": {
       "executor": "nx:run-commands",
-      "dependsOn": ["web-ng:build"],
+      "dependsOn": ["web-ng:build", "web:build-server"],
       "outputs": ["{workspaceRoot}/dist/web"],
       "options": {
         "commands": [
           "echo '🏗️  Building web application...'",
-          "rm -rf dist/web",
-          "mkdir -p dist/web",
-          "cp -r apps/web/server dist/web/server",
+          "echo '📦 Copying client files...'",
           "cp -r dist/apps/web-ng/browser dist/web/client",
+          "echo '📦 Copying package files...'",
           "cp apps/web/package.json dist/web/package.json",
           "cp apps/web/bin.js dist/web/bin.js",
           "echo '✅ Web build complete: dist/web'"
         ],
         "parallel": false
+      }
+    },
+    "build-server": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "assets": [],
+        "bundle": true,
+        "esbuildOptions": {
+          "outExtension": {
+            ".js": ".js"
+          },
+          "sourcemap": true,
+          "banner": {
+            "js": "import { createRequire as __createRequire } from 'module';import { dirname as __dirname_func } from 'path';const require = __createRequire(import.meta.url);const __filename = import.meta.url.slice(7);const __dirname = __dirname_func(__filename);"
+          }
+        },
+        "external": ["sharp"],
+        "format": ["esm"],
+        "main": "apps/web/server/server.ts",
+        "outputFileName": "server.js",
+        "outputPath": "dist/web/server",
+        "platform": "node",
+        "thirdParty": true,
+        "tsConfig": "apps/web/server/tsconfig.app.json"
       }
     },
     "serve": {

@@ -6,11 +6,11 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const serverPath = resolve(__dirname, 'server/server.ts');
+const serverPath = resolve(__dirname, 'server/server.js');
 const args = process.argv.slice(2);
 
-// Run the server using tsx
-const child = spawn('tsx', [serverPath, ...args], {
+// Run the compiled JavaScript server
+const child = spawn('node', [serverPath, ...args], {
   stdio: 'inherit',
   shell: true
 });
