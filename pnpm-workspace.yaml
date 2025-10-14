@@ -1,0 +1,13 @@
+#minimumReleaseAge: 14400 # 10 days
+
+ignoredBuiltDependencies:
+  - '@parcel/watcher'
+  - lmdb
+  - msgpackr-extract
+  - unrs-resolver
+
+onlyBuiltDependencies:
+  - '@swc/core'
+  - esbuild
+  - nx
+  - sharp

@@ -24,7 +24,7 @@
     >
       {{ isRecording ? '🔴' : '🎤' }}
     </button>
-    
+
     <textarea
       #messageInput
       class="message-input"
@@ -34,7 +34,7 @@
       (input)="onInput()"
       [disabled]="isDisabled"
     ></textarea>
-    
+
     <button
       class="send-btn"
       (click)="sendMessage()"
@@ -45,6 +45,6 @@
       <span class="send-shortcut">{{ getSendButtonShortcut() }}</span>
     </button>
   </div>
-  
-  
+
+
 </div>

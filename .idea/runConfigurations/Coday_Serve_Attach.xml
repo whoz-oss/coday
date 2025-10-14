@@ -1,4 +1,0 @@
-<component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Coday Serve Attach" type="ChromiumRemoteDebugType" factoryName="Chromium Remote" port="9229" restartOnDisconnect="true">
-  </configuration>
-</component>

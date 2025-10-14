@@ -1,7 +1,0 @@
-<component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Coday Debug" type="CompoundRunConfigurationType">
-    <toRun name="Coday Serve Attach" type="ChromiumRemoteDebugType" />
-    <toRun name="Coday Serve Watch" type="NxRunConfigurationType" />
-    <method v="2" />
-  </configuration>
-</component>
