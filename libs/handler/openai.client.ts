@@ -1,6 +1,6 @@
 import OpenAI from 'openai'
 import { Agent, AiClient, AiModel, AiProviderConfig, CompletionOptions, Interactor } from '../model'
-import { CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
+import { CodayEvent, ErrorEvent, MessageEvent, SummaryEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 import { AiThread } from '../ai-thread/ai-thread'
 import { Observable, Subject } from 'rxjs'
 import { ThreadMessage } from '../ai-thread/ai-thread.types'
@@ -267,6 +267,17 @@ export class OpenaiClient extends AiClient {
     }
 
     const openaiMessages = messages.flatMap((msg, index): ChatCompletionMessageParam[] => {
+      // Handle SummaryEvent - just the summary text
+      if (msg instanceof SummaryEvent) {
+        return [
+          {
+            role: 'user' as const,
+            content: msg.summary
+          }
+        ]
+      }
+      
+      // Handle regular MessageEvent
       if (msg instanceof MessageEvent) {
         const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
         const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
@@ -416,6 +427,15 @@ export class OpenaiClient extends AiClient {
   }
 
   private toAssistantMessage(m: ThreadMessage): MessageCreateParams {
+    // Handle SummaryEvent
+    if (m instanceof SummaryEvent) {
+      return {
+        role: 'user',
+        content: m.summary,
+      }
+    }
+    
+    // Handle MessageEvent
     if (m instanceof MessageEvent) {
       // For assistant API, convert rich content to text representation
       const content =
@@ -428,12 +448,16 @@ export class OpenaiClient extends AiClient {
         content,
       }
     }
+    
+    // Handle ToolResponseEvent
     if (m instanceof ToolResponseEvent) {
       return {
         role: 'user',
         content: `Here is the result of : \n<toolRequestId>${m.toolRequestId}</toolRequestId>\n<output>${m.output}</output>`,
       }
     }
+    
+    // Handle ToolRequestEvent
     return {
       role: 'assistant',
       content: `${m.name}: Can you provide me the result of this :\n<toolRequestId>${m.toolRequestId}</toolRequestId>\n<function>${m.name}</function>\n<args>${m.args}</args>`,

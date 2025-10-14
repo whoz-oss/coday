@@ -1,7 +1,7 @@
 import { Agent, AiClient, AiModel, AiProviderConfig, CompletionOptions, Interactor } from '../model'
 import Anthropic from '@anthropic-ai/sdk'
 import { ToolSet } from '../integration/tool-set'
-import {CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from '@coday/coday-events'
+import {CodayEvent, ErrorEvent, MessageEvent, SummaryEvent, ToolRequestEvent, ToolResponseEvent} from '@coday/coday-events'
 import { Observable, of, Subject } from 'rxjs'
 import { AiThread } from '../ai-thread/ai-thread'
 import { ThreadMessage } from '../ai-thread/ai-thread.types'
@@ -231,7 +231,22 @@ export class AnthropicClient extends AiClient {
       .map((msg, index) => {
         let claudeMessage: Anthropic.MessageParam | undefined
         const shouldAddCache = markerMessageId && msg.timestamp === markerMessageId
-        if (msg instanceof MessageEvent) {
+        
+        // Handle SummaryEvent - just the summary text
+        if (msg instanceof SummaryEvent) {
+          claudeMessage = {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: msg.summary,
+                ...(shouldAddCache && { cache_control: { type: 'ephemeral' } })
+              }
+            ]
+          }
+        }
+        // Handle regular MessageEvent
+        else if (msg instanceof MessageEvent) {
           const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
           const message = msg as MessageEvent
           const content = this.enhanceWithCurrentDateTime(message.content, isLastUserMessage)
