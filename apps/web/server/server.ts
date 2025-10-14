@@ -1,22 +1,22 @@
 import express from 'express'
 import path from 'path'
-import {ServerClientManager} from './server-client'
+import { ServerClientManager } from './server-client'
 
-import {AnswerEvent, CodayEvent, MessageEvent, ImageContent} from '@coday/coday-events'
+import { AnswerEvent, CodayEvent, MessageEvent, ImageContent } from '@coday/coday-events'
 // eslint-disable-next-line @nx/enforce-module-boundaries
-import {processImageBuffer} from '../../../libs/function/image-processor'
-import {parseCodayOptions} from '@coday/options'
+import { processImageBuffer } from '../../../libs/function/image-processor'
+import { parseCodayOptions } from '@coday/options'
 import * as os from 'node:os'
-import {debugLog} from './log'
-import {CodayLogger} from '@coday/service/coday-logger'
-import {WebhookService} from '@coday/service/webhook.service'
-import {ThreadCleanupService} from '@coday/service/thread-cleanup.service'
-import {findAvailablePort} from './find-available-port'
-import {catchError, filter, firstValueFrom, lastValueFrom, of, timeout, withLatestFrom} from 'rxjs'
-import {ConfigServiceRegistry} from '@coday/service/config-service-registry'
-import {ServerInteractor} from '@coday/model/server-interactor'
-import {registerConfigRoutes} from './config.routes'
-import {registerWebhookRoutes} from './webhook.routes'
+import { debugLog } from './log'
+import { CodayLogger } from '@coday/service/coday-logger'
+import { WebhookService } from '@coday/service/webhook.service'
+import { ThreadCleanupService } from '@coday/service/thread-cleanup.service'
+import { findAvailablePort } from './find-available-port'
+import { catchError, filter, firstValueFrom, lastValueFrom, of, timeout, withLatestFrom } from 'rxjs'
+import { ConfigServiceRegistry } from '@coday/service/config-service-registry'
+import { ServerInteractor } from '@coday/model/server-interactor'
+import { registerConfigRoutes } from './config.routes'
+import { registerWebhookRoutes } from './webhook.routes'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000
@@ -44,46 +44,45 @@ const configPath = codayOptions.configDir ?? defaultConfigPath
 const webhookService = new WebhookService(configPath)
 debugLog('INIT', 'Webhook service initialized')
 // Middleware to parse JSON bodies with increased limit for image uploads
-app.use(express.json({limit: '20mb'}))
+app.use(express.json({ limit: '20mb' }))
 
 // Development mode: proxy to Angular dev server
-const DEV_MODE = !process.env.CLIENT_FOLDER
-const ANGULAR_DEV_SERVER = 'http://localhost:4200'
-
-if (DEV_MODE) {
+if (process.env.BUILD_ENV === 'development') {
+  const ANGULAR_DEV_SERVER = 'http://localhost:4200'
   debugLog('INIT', `Development mode: proxying to Angular dev server at ${ANGULAR_DEV_SERVER}`)
 
   // Import http-proxy-middleware dynamically
-  import('http-proxy-middleware').then(({createProxyMiddleware}) => {
-    // Proxy all non-API requests to Angular dev server
-    const proxyMiddleware = createProxyMiddleware({
-      target: ANGULAR_DEV_SERVER,
-      changeOrigin: true,
-      ws: true, // Enable WebSocket proxying for Angular HMR
-    })
+  import('http-proxy-middleware')
+    .then(({ createProxyMiddleware }) => {
+      // Proxy all non-API requests to Angular dev server
+      const proxyMiddleware = createProxyMiddleware({
+        target: ANGULAR_DEV_SERVER,
+        changeOrigin: true,
+        ws: true, // Enable WebSocket proxying for Angular HMR
+      })
 
-    // Only proxy if not an API route
-    app.use('/', (req, res, next) => {
-      if (req.path.startsWith('/api') || req.path.startsWith('/events')) {
-        next()
-      } else {
-        proxyMiddleware(req, res, next)
-      }
-    })
+      // Only proxy if not an API route
+      app.use('/', (req, res, next) => {
+        if (req.path.startsWith('/api') || req.path.startsWith('/events')) {
+          next()
+        } else {
+          proxyMiddleware(req, res, next)
+        }
+      })
 
-    debugLog('INIT', 'Proxy middleware configured successfully')
-  }).catch((error) => {
-    console.error('Failed to load http-proxy-middleware:', error)
-  })
+      debugLog('INIT', 'Proxy middleware configured successfully')
+    })
+    .catch((error) => {
+      console.error('Failed to load http-proxy-middleware:', error)
+    })
 } else {
-// Serve Angular app as default (root)
+  // Serve Angular app as default (root)
   app.use(express.static(path.join(__dirname, '../client')))
 
-// Basic route to test server setup
+  // Basic route to test server setup
   app.get('/', (_req: express.Request, res: express.Response) => {
     res.send('Server is up and running!')
   })
-
 }
 
 // Initialize the client manager with usage logger and webhook service
@@ -146,10 +145,10 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
 
   try {
     // Extract UUID from URL parameters
-    const {uuid} = req.params
+    const { uuid } = req.params
     if (!uuid) {
       debugLog('WEBHOOK', 'Missing UUID in request')
-      res.status(400).send({error: 'Missing webhook UUID in URL'})
+      res.status(400).send({ error: 'Missing webhook UUID in URL' })
       return
     }
 
@@ -157,12 +156,12 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
     const webhook = await webhookService.get(uuid)
     if (!webhook) {
       debugLog('WEBHOOK', `Webhook not found for UUID: ${uuid}`)
-      res.status(404).send({error: `Webhook with UUID '${uuid}' not found`})
+      res.status(404).send({ error: `Webhook with UUID '${uuid}' not found` })
       return
     }
 
     // Extract request body fields
-    const {title, prompts: bodyPrompts, awaitFinalAnswer, ...placeholderValues} = req.body
+    const { title, prompts: bodyPrompts, awaitFinalAnswer, ...placeholderValues } = req.body
 
     // Use webhook configuration
     const project = webhook.project
@@ -175,14 +174,14 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
     if (webhook.commandType === 'free') {
       // For 'free' type, use prompts from request body
       if (!bodyPrompts || !Array.isArray(bodyPrompts) || bodyPrompts.length === 0) {
-        res.status(422).send({error: 'Missing or invalid prompts array for free command type'})
+        res.status(422).send({ error: 'Missing or invalid prompts array for free command type' })
         return
       }
       prompts = bodyPrompts
     } else if (webhook.commandType === 'template') {
       // For 'template' type, use webhook commands with placeholder replacement
       if (!webhook.commands || webhook.commands.length === 0) {
-        res.status(422).send({error: 'Webhook has no template commands configured'})
+        res.status(422).send({ error: 'Webhook has no template commands configured' })
         return
       }
 
@@ -197,17 +196,17 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
         return processedCommand
       })
     } else {
-      res.status(500).send({error: `Unknown webhook command type: ${webhook.commandType}`})
+      res.status(500).send({ error: `Unknown webhook command type: ${webhook.commandType}` })
       return
     }
 
     if (!project) {
-      res.status(422).send({error: 'Webhook project not configured'})
+      res.status(422).send({ error: 'Webhook project not configured' })
       return
     }
 
     if (!username) {
-      res.status(422).send({error: 'Webhook createdBy not configured'})
+      res.status(422).send({ error: 'Webhook createdBy not configured' })
       return
     }
 
@@ -252,7 +251,7 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
 
       lastValueFrom(lastEventObservable.pipe(withLatestFrom(threadIdSource)))
         .then(([lastEvent, threadId]) => {
-          res.status(200).send({threadId, lastEvent})
+          res.status(200).send({ threadId, lastEvent })
         })
         .catch((error) => {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -266,7 +265,7 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
 
           // Don't trigger shutdown for webhook errors
           if (!res.headersSent) {
-            res.status(500).send({error: 'Webhook processing failed'})
+            res.status(500).send({ error: 'Webhook processing failed' })
           }
         })
     } else {
@@ -292,7 +291,7 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
       )
         .then((threadId) => {
           if (!res.headersSent) {
-            res.status(201).send({threadId})
+            res.status(201).send({ threadId })
           }
         })
         .catch((error) => {
@@ -308,7 +307,7 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
 
           // Don't trigger shutdown for webhook errors
           if (!res.headersSent) {
-            res.status(500).send({error: 'Failed to initialize webhook processing'})
+            res.status(500).send({ error: 'Failed to initialize webhook processing' })
           }
         })
     }
@@ -321,7 +320,7 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
       clientId,
     })
     console.error('Unexpected error in webhook endpoint:', error)
-    res.status(500).send({error: 'Internal server error'})
+    res.status(500).send({ error: 'Internal server error' })
   }
 })
 
@@ -349,10 +348,10 @@ app.post('/api/stop', (req: express.Request, res: express.Response) => {
 // POST endpoint for file uploads
 app.post('/api/files/upload', async (req: express.Request, res: express.Response) => {
   try {
-    const {clientId, content, mimeType, filename} = req.body
+    const { clientId, content, mimeType, filename } = req.body
     // Validate required fields
     if (!clientId || !content || !mimeType || !filename) {
-      res.status(400).json({error: 'Missing required fields: clientId, content, mimeType, filename'})
+      res.status(400).json({ error: 'Missing required fields: clientId, content, mimeType, filename' })
       return
     }
 
@@ -360,7 +359,7 @@ app.post('/api/files/upload', async (req: express.Request, res: express.Response
 
     const client = clientManager.get(clientId)
     if (!client) {
-      res.status(404).json({error: 'Client not found'})
+      res.status(404).json({ error: 'Client not found' })
       return
     }
 
@@ -375,13 +374,13 @@ app.post('/api/files/upload', async (req: express.Request, res: express.Response
       mimeType: processed.mimeType,
       width: processed.width,
       height: processed.height,
-      source: `${filename} (${(processed.processedSize / 1024).toFixed(1)} KB)`
+      source: `${filename} (${(processed.processedSize / 1024).toFixed(1)} KB)`,
     }
 
     // Upload to thread via Coday
     if (!client.coday) {
       console.log('No Coday instance available')
-      res.status(400).json({error: 'No active session available'})
+      res.status(400).json({ error: 'No active session available' })
       return
     }
     client.coday?.upload([imageContent])
@@ -391,16 +390,13 @@ app.post('/api/files/upload', async (req: express.Request, res: express.Response
     res.json({
       success: true,
       processedSize: processed.processedSize,
-      dimensions: {width: processed.width, height: processed.height}
+      dimensions: { width: processed.width, height: processed.height },
     })
-
   } catch (error) {
     console.error('Error processing file upload:', error)
-    res.status(400).json({error: error instanceof Error ? error.message : 'Upload failed'})
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Upload failed' })
   }
 })
-
-
 
 // POST endpoint for receiving AnswerEvent messages
 app.post('/api/message', (req: express.Request, res: express.Response) => {
@@ -425,12 +421,10 @@ app.post('/api/message', (req: express.Request, res: express.Response) => {
   }
 })
 
-
-
 // GET endpoint for retrieving full event details
 app.get('/api/event/:eventId', (req: express.Request, res: express.Response) => {
   try {
-    const {eventId} = req.params
+    const { eventId } = req.params
     const clientId = req.query.clientId as string
     debugLog('EVENT', `clientId: ${clientId}, requesting event ${eventId}`)
     const client = clientManager.get(clientId)
@@ -487,13 +481,13 @@ app.get('/api/session/state', async (req: express.Request, res: express.Response
     debugLog('SESSION_STATE', `clientId: ${clientId}, requesting session state`)
 
     if (!clientId) {
-      res.status(400).json({error: 'Client ID is required'})
+      res.status(400).json({ error: 'Client ID is required' })
       return
     }
 
     const client = clientManager.get(clientId)
     if (!client) {
-      res.status(404).json({error: 'Client not found'})
+      res.status(404).json({ error: 'Client not found' })
       return
     }
 
@@ -504,14 +498,14 @@ app.get('/api/session/state', async (req: express.Request, res: express.Response
     res.status(200).json(sessionState)
   } catch (error) {
     console.error('Error retrieving session state:', error)
-    res.status(500).json({error: 'Error retrieving session state'})
+    res.status(500).json({ error: 'Error retrieving session state' })
   }
 })
 
 // DELETE endpoint for message deletion (rewind/retry functionality)
 app.delete('/api/thread/message/:eventId', async (req: express.Request, res: express.Response) => {
   try {
-    const {eventId: rawEventId} = req.params
+    const { eventId: rawEventId } = req.params
     const clientId = req.query.clientId as string
 
     // Decode the eventId in case it was URL encoded
@@ -519,19 +513,19 @@ app.delete('/api/thread/message/:eventId', async (req: express.Request, res: exp
 
     // Validate required parameters
     if (!eventId) {
-      res.status(400).json({error: 'Message eventId is required'})
+      res.status(400).json({ error: 'Message eventId is required' })
       return
     }
 
     if (!clientId) {
-      res.status(400).json({error: 'Client ID is required'})
+      res.status(400).json({ error: 'Client ID is required' })
       return
     }
 
     // Get the client instance
     const client = clientManager.get(clientId)
     if (!client) {
-      res.status(404).json({error: 'Client not found'})
+      res.status(404).json({ error: 'Client not found' })
       return
     }
 
@@ -544,17 +538,17 @@ app.delete('/api/thread/message/:eventId', async (req: express.Request, res: exp
       debugLog('DELETE_MESSAGE', `Successfully deleted message ${eventId} for client ${clientId}`)
       res.status(200).json({
         success: true,
-        message: 'Message deleted successfully'
+        message: 'Message deleted successfully',
       })
     } else {
       res.status(400).json({
-        error: 'Failed to delete message. Message may not exist, may not be a user message, may be the first message, or agent may be thinking.'
+        error:
+          'Failed to delete message. Message may not exist, may not be a user message, may be the first message, or agent may be thinking.',
       })
     }
-
   } catch (error) {
     console.error('Error processing message deletion:', error)
-    res.status(500).json({error: 'Internal server error during message deletion'})
+    res.status(500).json({ error: 'Internal server error during message deletion' })
   }
 })
 
@@ -674,7 +668,7 @@ async function gracefulShutdown(signal: string) {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
 process.on('SIGINT', () => gracefulShutdown('SIGINT'))
 process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')) // nodemon restart
-process.on('SIGHUP', () => gracefulShutdown('SIGHUP'))   // terminal closed
+process.on('SIGHUP', () => gracefulShutdown('SIGHUP')) // terminal closed
 
 // Handle uncaught exceptions to prevent hanging
 process.on('uncaughtException', (error) => {
