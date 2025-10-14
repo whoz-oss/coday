@@ -52,7 +52,7 @@
       "options": {
         "commands": [
           "echo '🚀 Starting development servers...'",
-          "tsx watch apps/web/server/server.ts --local --no_auth"
+          "BUILD_ENV=development tsx watch apps/web/server/server.ts --local --no_auth"
         ]
       }
     }
