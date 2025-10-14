@@ -16,6 +16,7 @@ import {catchError, filter, firstValueFrom, lastValueFrom, of, timeout, withLate
 import {ConfigServiceRegistry} from '@coday/service/config-service-registry'
 import {ServerInteractor} from '@coday/model/server-interactor'
 import {registerConfigRoutes} from './config.routes'
+import {registerWebhookRoutes} from './webhook.routes'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000
@@ -76,6 +77,9 @@ function getUsername(req: express.Request): string {
 
 // Register configuration management routes
 registerConfigRoutes(app, configRegistry, getUsername)
+
+// Register webhook management routes
+registerWebhookRoutes(app, webhookService, getUsername)
 
 // Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null

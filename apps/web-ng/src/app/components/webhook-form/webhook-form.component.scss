@@ -1,0 +1,230 @@
+.webhook-form-container {
+  padding: 1.5rem;
+  background: var(--color-bg);
+  border-radius: 8px;
+  max-width: 600px;
+  margin: 0 auto;
+
+  h2 {
+    margin: 0 0 1.5rem 0;
+    font-size: 1.5rem;
+    color: var(--color-text);
+  }
+}
+
+.error-message {
+  padding: 0.75rem;
+  background: rgba(255, 0, 0, 0.1);
+  border-left: 4px solid var(--color-error);
+  color: var(--color-error);
+  margin-bottom: 1rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+
+  label,
+  .field-label {
+    font-weight: 500;
+    color: var(--color-text);
+    font-size: 0.95rem;
+  }
+
+  input[type="text"],
+  select,
+  textarea {
+    padding: 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    font-size: 0.95rem;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: inherit;
+    transition: border-color 0.2s;
+
+    &:focus {
+      outline: none;
+      border-color: var(--color-primary);
+    }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    &::placeholder {
+      color: var(--color-text-secondary);
+    }
+  }
+
+  textarea {
+    resize: vertical;
+    min-height: 120px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+    font-size: 0.9rem;
+  }
+
+  .hint {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    margin-top: -0.25rem;
+
+    code {
+      background: var(--color-code-bg);
+      padding: 0.125rem 0.25rem;
+      border-radius: 3px;
+      font-size: 0.8rem;
+    }
+  }
+}
+
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+
+  .radio-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border: 2px solid var(--color-border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+      border-color: var(--color-primary);
+      background: var(--color-bg-hover);
+    }
+
+    input[type="radio"] {
+      margin-top: 0.25rem;
+      cursor: pointer;
+      
+      &:disabled {
+        cursor: not-allowed;
+      }
+    }
+
+    .radio-label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      flex: 1;
+
+      strong {
+        color: var(--color-text);
+        font-size: 0.95rem;
+      }
+
+      small {
+        color: var(--color-text-secondary);
+        font-size: 0.85rem;
+      }
+    }
+
+    &:has(input:checked) {
+      border-color: var(--color-primary);
+      background: rgba(var(--color-primary-rgb), 0.05);
+    }
+  }
+}
+
+.info-box {
+  padding: 1rem;
+  background: var(--color-bg-hover);
+  border-left: 4px solid var(--color-primary);
+  border-radius: 4px;
+  font-size: 0.9rem;
+
+  p {
+    margin: 0;
+    color: var(--color-text);
+    line-height: 1.6;
+
+    strong {
+      display: block;
+      margin-bottom: 0.5rem;
+    }
+
+    code {
+      background: var(--color-code-bg);
+      padding: 0.125rem 0.25rem;
+      border-radius: 3px;
+      font-size: 0.85rem;
+    }
+  }
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+
+  button {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  }
+
+  .btn-cancel {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+
+    &:hover:not(:disabled) {
+      background: var(--color-bg-hover);
+    }
+  }
+
+  .btn-save {
+    background: var(--color-primary);
+    color: white;
+
+    &:hover:not(:disabled) {
+      background: var(--color-primary-hover);
+    }
+  }
+}
+
+// Responsive design
+@media (max-width: 768px) {
+  .webhook-form-container {
+    padding: 1rem;
+
+    h2 {
+      font-size: 1.25rem;
+    }
+  }
+
+  .form-actions {
+    flex-direction: column-reverse;
+
+    button {
+      width: 100%;
+    }
+  }
+}

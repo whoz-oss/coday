@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="apps/web/client/static/CODAY-Logo.png" alt="Coday Logo" width="100"/>
+<img src="apps/web-ng/public/CODAY-Logo.png" alt="Coday Logo" width="100"/>
 
 </div>
 
