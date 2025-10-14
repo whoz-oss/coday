@@ -55,6 +55,14 @@
           }
         </button>
       </div>
+      
+      <!-- Webhooks - only for CODAY_ADMIN -->
+      <div class="menu-item-wrapper">
+        <button class="menu-button" (click)="openWebhooks()">
+          <span class="menu-icon">🔗</span>
+          <span class="menu-text">Webhooks</span>
+        </button>
+      </div>
     }
     
     <div class="menu-item-wrapper">
@@ -102,6 +110,14 @@
     (closeEditor)="onProjectConfigCancel()"
   ></app-json-editor>
 }
+
+<!-- Webhook Manager Modal -->
+<app-webhook-manager
+  [isOpen]="isWebhooksOpen"
+  [availableProjects]="getAvailableProjects()"
+  (isOpenChange)="isWebhooksOpen = $event"
+  (closeModal)="isWebhooksOpen = false"
+></app-webhook-manager>
 
 <!-- Backdrop pour fermer le menu -->
 @if (isMenuOpen) {
