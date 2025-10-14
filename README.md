@@ -31,12 +31,13 @@ When in the context of a code project, use the npm package to run locally throug
 1. Check dependencies
     - node.js (v14.x or later)
     - npm (v6.x or later)
+    - tsx (v4)
     - [ripgrep](https://github.com/BurntSushi/ripgrep) (important for file search)
 
 2. Add npm package
 
     ```sh
-    yarn add --dev @whoz-oss/coday-web@latest
+    pnpm add --dev @whoz-oss/coday-web@latest
     ```
 
     ```sh
@@ -62,7 +63,7 @@ When in the context of a code project, use the npm package to run locally throug
    - npm (v6.x or later)
    - [ripgrep](https://github.com/BurntSushi/ripgrep)
    - git
-   - yarn
+   - pnpm
 2. Clone the repo
    ```sh
    # through ssh
@@ -74,16 +75,16 @@ When in the context of a code project, use the npm package to run locally throug
 3. Install packages
 
     ```sh
-    yarn install --frozen-lockfile
+    pnpm install --frozen-lockfile
     ```
 4. Run one of the targets:
    - in the terminal:
    ```sh
-   yarn run nx reset && yarn start
+   pnpm run nx reset && pnpm start
    ```
    - in the browser:
    ```sh
-   yarn run nx reset && yarn web --no_auth
+   pnpm run nx reset && pnpm web --no_auth
    ```
 5. Setup the first coday project
 
