@@ -41,8 +41,13 @@ export class ServerClient {
       this.subscription = this.interactor.events.subscribe((event) => {
         this.writeSSEEvent(event)
       })
+      // Only start heartbeat for SSE connections (not for webhooks)
+      this.heartbeatInterval = setInterval(() => this.sendHeartbeat(), ServerClient.HEARTBEAT_INTERVAL)
+    } else {
+      // For webhooks (no SSE response), create a dummy interval that does nothing
+      // This ensures the type is satisfied but doesn't interfere with execution
+      this.heartbeatInterval = setInterval(() => {}, ServerClient.SESSION_TIMEOUT)
     }
-    this.heartbeatInterval = setInterval(() => this.sendHeartbeat(), ServerClient.HEARTBEAT_INTERVAL)
   }
 
   /**
@@ -146,8 +151,12 @@ export class ServerClient {
   terminate(immediate: boolean = false): void {
     debugLog('CLIENT', `Terminating client ${this.clientId} (immediate: ${immediate})`)
 
-    // Clear heartbeat interval
-    clearInterval(this.heartbeatInterval)
+    // Clear heartbeat interval if it exists
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval)
+    }
+    
+    // End SSE response if it exists
     this.response?.end()
 
     if (immediate) {
