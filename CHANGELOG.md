@@ -1,3 +1,21 @@
+## 0.20.0 (2025-10-14)
+
+### 🚀 Features
+
+- #254 implement context menu for message actions ([#256](https://github.com/whoz-oss/coday/pull/256), [#254](https://github.com/whoz-oss/coday/issues/254))
+- #236 UI editable config ([#237](https://github.com/whoz-oss/coday/pull/237), [#236](https://github.com/whoz-oss/coday/issues/236))
+- print css ([#253](https://github.com/whoz-oss/coday/pull/253))
+- #236 Webhook Management UI - Phase 1 ([#257](https://github.com/whoz-oss/coday/pull/257), [#236](https://github.com/whoz-oss/coday/issues/236))
+
+### 🩹 Fixes
+
+- #261 disable heartbeat for webhook clients ([#262](https://github.com/whoz-oss/coday/pull/262), [#261](https://github.com/whoz-oss/coday/issues/261))
+
+### ❤️ Thank You
+
+- Thomas SAN ANDRES - Whoz @tsanandres
+- vincent-audibert-whoz
+
 
 
 ## 0.18.8 (2025-10-07)
