@@ -20,6 +20,9 @@ export interface McpServerConfig {
   /** Optional environment variables for the command when using stdio transport */
   env?: Record<string, string>
 
+  /** Optional names of the variables to lookup in the process' env */
+  whiteListedHostEnvVarNames?: string[]
+
   /** Optional working directory for the command when using stdio transport */
   cwd?: string
 
