@@ -85,7 +85,8 @@
       "preVersionCommand": "nx run web:build",
       "currentVersionResolver": "registry",
       "preserveLocalDependencyProtocols": false,
-      "manifestRootsToUpdate": ["apps/{projectName}"]
+      "manifestRootsToUpdate": ["apps/{projectName}"],
+      "conventionalCommits": true
     }
   },
   "tui": {
