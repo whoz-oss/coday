@@ -136,3 +136,20 @@ See Coday's own `coday.yaml` file for reference, examples and documentation.
 - [Project Configuration](doc/PROJECT_CONFIGURATION.md) - Project-specific settings and options
 - [Architecture](doc/ARCHITECTURE.md) - System architecture and request flow
 - [Handler Design](doc/HANDLER_DESIGN.md) - Command handler patterns and implementation
+
+## Development
+
+### Contributing
+
+See [Development Workflow](doc/DEV_WORKFLOW.md) for contribution guidelines.
+
+### Release Process
+
+Releases are fully automated via GitHub Actions. Every push to the master branch triggers:
+
+1. Version bumping based on conventional commits
+2. Changelog generation
+3. npm package publishing
+4. GitHub release creation
+
+For details, see [Automated Release Process](doc/AUTOMATED_RELEASE.md).
