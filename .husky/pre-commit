@@ -1,4 +1,6 @@
-declare -x root_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/.. >/dev/null 2>&1 && pwd )"
+#!/usr/bin/env bash
+
+root_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/.. >/dev/null 2>&1 && pwd )"
 
 ## AUTO LINT/PRETTIER
 pnpm lint-staged

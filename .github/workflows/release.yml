@@ -49,6 +49,8 @@ jobs:
 
       - name: Run nx release
         id: release
+        env:
+          HUSKY: 0
         run: |
           # Run nx release and capture output
           npx nx release --yes 2>&1 | tee release-output.txt
