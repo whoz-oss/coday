@@ -7,15 +7,11 @@ import { MemoryEditHandler } from './memory/edit.handler'
 import { MemoryCurateHandler } from './memory/curate.handler'
 
 export class MemoryHandler extends NestedHandler {
-  constructor(
-    interactor: Interactor,
-    services: CodayServices
-  ) {
+  constructor(interactor: Interactor, services: CodayServices) {
     super(
       {
         commandWord: 'memory',
         description: 'memory management commands',
-        isInternal: true,
       },
       interactor
     )
@@ -24,7 +20,7 @@ export class MemoryHandler extends NestedHandler {
       new MemoryListHandler(interactor, services.memory),
       new MemoryEditHandler(interactor, services.memory),
       new MemoryDeleteHandler(interactor, services.memory),
-      new MemoryCurateHandler(interactor)
+      new MemoryCurateHandler(interactor),
     ]
   }
 }
