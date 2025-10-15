@@ -1,3 +1,13 @@
+## 0.22.0 (2025-10-15)
+
+### 🚀 Features
+
+- add full debug mode + automate release process ([#277](https://github.com/whoz-oss/coday/pull/277))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 
 
 ## 0.21.0 (2025-10-14)
