@@ -1,59 +1,80 @@
 .message {
-  margin: 0.5rem 0;
-  border-radius: 8px;
-  position: relative;
-  max-width: 75%; // Largeur maximale pour éviter les messages trop larges
-  width: fit-content; // S'adapte au contenu
-  min-width: 100px; // Largeur minimale pour éviter les messages trop étroits
-  word-wrap: break-word; // Gestion des mots longs
-  
-  // User messages - aligned to the right
+  margin: 0.75rem 0;
+
   &.user {
-    padding: 0.75rem 1rem;
-    background: var(--color-message-user, #e2dee2);
-    margin-left: auto; // Push to the right
+    padding: 1rem 1.25rem;
+    background: var(--color-message-user);
+    border-radius: 18px;
+    border-bottom-right-radius: 6px;
+    margin-left: auto;
     margin-right: 0;
-    border-bottom-right-radius: 4px; // Reduced corner radius on user side
+    border: 1px solid var(--glass-border);
+    box-shadow: none;
+    backdrop-filter: var(--glass-backdrop-blur);
+    -webkit-backdrop-filter: var(--glass-backdrop-blur);
+    width: fit-content;
+    max-width: 75%;
+    min-width: 120px;
+    word-wrap: break-word;
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease;
+    &:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.2);
+    }
   }
-  
-  // Assistant messages - aligned to the left
+
   &.assistant {
-    padding: 0.75rem 1rem;
-    background: var(--color-message-ai, #e8ecf6);
-    margin-left: 0;
-    margin-right: auto; // Push to the left
-    border-bottom-left-radius: 4px; // Reduced corner radius on assistant side
-  }
-  
-  
-  // System messages - minimal style (no width constraint)
-  &.system, &.technical {
-    padding: 0.25rem 0;
     background: transparent;
     border: none;
-    margin: 0.25rem 0;
-    font-family: monospace;
+    box-shadow: none;
+    border-radius: 0;
+    margin-left: 0;
+    margin-right: auto;
+    padding: 0.5rem 0 0.5rem 0;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  // System messages - minimal style (no width constraint)
+  &.system,
+  &.technical {
+    padding: 0.5rem 0.75rem;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    margin: 0.5rem 0;
+    font-family: 'SF Mono', Monaco, Menlo, monospace;
     font-size: 0.85rem;
-    color: var(--color-text-secondary, #6272a4);
-    max-width: none; // No width limit for technical messages
+    color: var(--color-text-secondary);
+    max-width: none;
     width: auto;
     min-width: auto;
+
+    &:hover {
+      transform: none;
+      box-shadow: none;
+    }
   }
-  
+
   // Error messages
   &.error {
-    padding: 0.75rem;
-    background: rgba(255, 85, 85, 0.1);
-    border-left: 3px solid var(--color-error, #ff5555);
-    color: var(--color-error, #ff5555);
+    padding: 1rem 1.25rem;
+    background: rgba(255, 59, 48, 0.12);
+    border-left: 3px solid var(--color-error);
+    color: var(--color-error);
   }
-  
+
   // Warning messages
   &.warning {
-    padding: 0.75rem;
-    background: rgba(255, 184, 108, 0.1);
-    border-left: 3px solid var(--color-warning, #ffb86c);
-    color: var(--color-warning, #ffb86c);
+    padding: 1rem 1.25rem;
+    background: rgba(255, 149, 0, 0.12);
+    border-left: 3px solid var(--color-warning);
+    color: var(--color-warning);
   }
 }
 
@@ -90,20 +111,18 @@
 // Simplified layout (system/technical/error/warning)
 .simple-content {
   display: flex;
-  
+
   .event-link {
     margin-left: 5px;
     font-size: 0.9em;
     color: var(--color-link, #3498db);
     text-decoration: none;
-    
+
     &:hover {
       text-decoration: underline;
     }
   }
 }
-
-
 
 // Styles for images in messages
 .text-part {
@@ -122,15 +141,17 @@
   max-width: 100%;
   height: auto;
   margin: 8px 0;
-  border-radius: 8px;
+  border-radius: 12px;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  
+  box-shadow: var(--glass-shadow);
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+  border: 1px solid var(--glass-border);
+
   &:hover {
-    opacity: 0.9;
-    transform: scale(1.02);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    transform: scale(1.02) translateY(-2px);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
   }
 }
 

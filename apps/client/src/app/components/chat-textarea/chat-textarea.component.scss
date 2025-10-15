@@ -8,7 +8,7 @@
   margin-bottom: 0.5rem;
   cursor: pointer;
   transition: background-color 0.2s ease;
-  
+
   .invite-content {
     color: var(--color-text, #282a36);
     font-size: 0.95rem;
@@ -17,116 +17,230 @@
 }
 
 .input-row {
+  overflow: hidden;
+}
+
+.input-row.grouped-input {
   display: flex;
-  gap: 0.5rem;
-  align-items: stretch; // Permet aux boutons de s'étendre en hauteur
+  align-items: center;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  padding: 0 0.15rem 0 1.25rem;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.input-row.grouped-input.focused {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
 }
 
 .message-input {
   flex: 1;
-  padding: 0.75rem;
-  border: 1px solid var(--color-border, #aeaeae);
-  border-radius: 8px;
-  resize: none; // Disable manual resize since we handle it automatically
-  overflow-y: auto; // Allow scrolling when content exceeds max height
-  font-family: inherit;
+  border: none;
+  outline: none;
+  background: transparent;
+  box-shadow: none;
   font-size: 1rem;
+  padding: 1rem 0;
+  color: var(--color-text);
+  resize: none;
+  min-height: 36px;
+  max-height: 180px;
+  border-radius: 16px;
+  overflow-y: auto;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
   line-height: 1.5;
-  background: var(--color-input-bg, #ffffff);
-  color: var(--color-text, #282a36);
-  
-  // Height will be set dynamically by the adjustTextareaHeight method
-  // Min and max heights are calculated in TypeScript based on line height
-  
-  &:focus {
-    outline: none;
-    border-color: var(--color-primary, #7064fb);
-    box-shadow: 0 0 0 3px rgba(112, 100, 251, 0.1);
-  }
-  
-  &:disabled {
-    background-color: var(--color-bg-secondary, #f1f1eb);
-    color: var(--color-text-secondary, #6272a4);
-    cursor: not-allowed;
-  }
-  
-  &::placeholder {
-    color: var(--color-text-secondary, #6272a4);
-  }
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.voice-btn, .send-btn {
-  padding: 0.75rem;
-  border: 1px solid var(--color-border, #aeaeae);
-  border-radius: 8px;
-  background: var(--color-input-bg, #ffffff);
-  cursor: pointer;
-  transition: all 0.2s;
-  min-width: 60px; // Largeur minimale pour les boutons
+.message-input:focus {
+  outline: none;
+  border: none;
+  box-shadow: none;
+}
+
+.message-input:disabled {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.message-input::placeholder {
+  color: var(--color-text-secondary);
+}
+
+.voice-btn,
+.send-btn {
+  background: transparent;
+  border: none;
+  margin: 0 0.08rem;
+  padding: 0.5rem 0.8rem;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 50%;
+  transition:
+    background 0.14s,
+    color 0.14s;
+  color: var(--color-text);
+  box-shadow: none;
+  cursor: pointer;
+  margin-right: 0.5rem;
+}
+
+.voice-btn:hover:not(.recording),
+.send-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.voice-btn.recording {
+  background: rgba(255, 59, 48, 0.14);
+  color: var(--color-error);
+}
+
+.send-btn {
+  color: white;
+  background: var(--color-primary);
+}
+.send-btn:disabled {
+  background: var(--color-text-secondary);
+  color: white;
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .voice-btn {
-  font-size: 1.2rem;
-  color: var(--color-text, #282a36);
-  user-select: none; // Éviter la sélection de texte lors du push-to-talk
-  flex-shrink: 0; // Ne pas rétrécir
-  
+  color: var(--color-text);
+  user-select: none;
+  flex: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 42px;
+  border: none;
+  background: transparent;
+  transition:
+    background 0.18s,
+    box-shadow 0.18s,
+    transform 0.12s,
+    opacity 0.5s;
+  padding: 0;
+  opacity: 1;
+  position: relative;
+
   &:hover:not(.recording) {
-    background: var(--color-bg-secondary, #f1f1eb);
+    background: var(--color-bg-hover);
   }
-  
+
   &:focus {
-    outline: 2px solid var(--color-primary, #7064fb);
-    outline-offset: 2px;
+    outline: none;
+    border-color: var(--color-primary);
   }
-  
+
+  &.hidden {
+    opacity: 0;
+    right: -100px;
+  }
+
   &.recording {
-    background: rgba(255, 85, 85, 0.1);
-    border-color: var(--color-error, #ff5555);
-    color: var(--color-error, #ff5555);
+    background: rgba(255, 59, 48, 0.07);
+    color: var(--color-error);
     animation: pulse 1.5s infinite;
-    
+
+    .voice-icon {
+      color: var(--color-error);
+    }
+
     &:hover {
-      background: rgba(255, 85, 85, 0.2);
+      background: rgba(255, 59, 48, 0.11);
     }
   }
 }
 
+.voice-icon {
+  font-family: 'Material Icons';
+  font-size: 28px;
+  line-height: 1;
+  vertical-align: middle;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  // width: 28px;
+  // height: 28px;
+  // transform: translateY(1px); // Optional: tweak if 1px off visually
+}
+
 .send-btn {
-  background: var(--color-primary, #7064fb);
-  color: var(--color-text-inverse, #ffffff);
-  border-color: var(--color-primary, #7064fb);
-  font-weight: 500;
-  gap: 0.25rem;
-  min-width: 70px;
-  flex-shrink: 0; // Ne pas rétrécir
-  
+  background: var(--color-text-secondary);
+  color: white;
+  border: none;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.11);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin-left: 0.15rem;
+  transition:
+    background 0.18s,
+    box-shadow 0.18s,
+    transform 0.12s,
+    opacity 1s,
+    margin-right 0.4s;
+  cursor: pointer;
+  position: relative;
+
+  &.active {
+    background: var(--color-primary);
+    color: white;
+    opacity: 1;
+  }
+
+  &:not(.active) {
+    opacity: 0;
+    margin-right: calc(-0.5rem + -36px);
+  }
+
   &:hover:not(:disabled) {
-    background: var(--color-primary-hover, #ff79c6);
-    border-color: var(--color-primary-hover, #ff79c6);
+    background: var(--color-primary-hover);
+    box-shadow: 0 4px 14px rgba(0, 122, 255, 0.19);
+    transform: scale(1.06);
   }
-  
+  &:active:not(:disabled) {
+    transform: scale(0.97);
+  }
   &:disabled {
-    background: var(--color-text-secondary, #6272a4);
-    border-color: var(--color-text-secondary, #6272a4);
+    background: var(--color-text-secondary);
+    color: white;
     cursor: not-allowed;
+    opacity: 0.5;
+    box-shadow: none;
   }
-  
-  .send-text {
-    font-size: 0.9rem;
-    font-weight: 500;
-  }
-  
-  .send-shortcut {
-    font-size: 0.7rem;
-    opacity: 0.8;
-    font-weight: 400;
-    line-height: 1;
-  }
+}
+
+.send-icon {
+  font-family: 'Material Icons';
+  font-size: 25px;
+  font-weight: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
 }
 
 .recording-indicator {
@@ -148,6 +262,11 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }

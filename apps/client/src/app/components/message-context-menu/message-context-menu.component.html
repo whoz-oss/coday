@@ -1,5 +1,5 @@
 <div class="context-menu-wrapper">
-  <button 
+  <button
     class="menu-trigger"
     (click)="toggleMenu($event)"
     [class.open]="isOpen"
@@ -8,8 +8,8 @@
   >
     ⋮
   </button>
-  
-  <div 
+
+  <div
     class="menu-dropdown"
     [class.open]="isOpen"
     [class.position-top]="position === 'top'"
@@ -22,7 +22,7 @@
       [attr.title]="action.tooltip"
       (click)="executeAction(action, $event)"
     >
-      <span class="menu-icon">{{ action.icon }}</span>
+      <span class="material-icons menu-icon">{{ action.icon }}</span>
       <span class="menu-label">{{ action.label }}</span>
     </button>
   </div>

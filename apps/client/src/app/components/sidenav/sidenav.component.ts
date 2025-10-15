@@ -1,29 +1,52 @@
-import {Component, OnInit, OnDestroy, HostListener, inject} from '@angular/core'
-import {CommonModule} from '@angular/common'
-import {Subject} from 'rxjs'
-import {takeUntil} from 'rxjs/operators'
-import {SessionStateService} from '../../core/services/session-state.service'
-import {ConfigApiService} from '../../core/services/config-api.service'
-import {ThemeSelectorComponent} from '../theme-selector/theme-selector.component'
-import {OptionsPanelComponent} from '../options-panel'
-import {ProjectSelectorComponent} from '../project-selector/project-selector.component'
-import {ThreadSelectorComponent} from '../thread-selector/thread-selector.component'
-import {JsonEditorComponent} from '../json-editor/json-editor.component'
-import {WebhookManagerComponent} from '../webhook-manager/webhook-manager.component'
+import { Component, inject, OnDestroy, OnInit } from '@angular/core'
+import { FormsModule } from '@angular/forms'
+import { Subject } from 'rxjs'
+import { takeUntil } from 'rxjs/operators'
+import { MatSidenavModule } from '@angular/material/sidenav'
+import { MatIconModule } from '@angular/material/icon'
+import { MatButtonModule } from '@angular/material/button'
+import { MatDividerModule } from '@angular/material/divider'
+import { MatExpansionModule } from '@angular/material/expansion'
+import { SessionStateService } from '../../core/services/session-state.service'
+import { ConfigApiService } from '../../core/services/config-api.service'
+import { CodayService } from '../../core/services/coday.service'
+import { ThemeSelectorComponent } from '../theme-selector/theme-selector.component'
+import { OptionsPanelComponent } from '../options-panel'
+import { ThreadSelectorComponent } from '../thread-selector/thread-selector.component'
+import { JsonEditorComponent } from '../json-editor/json-editor.component'
+import { WebhookManagerComponent } from '../webhook-manager/webhook-manager.component'
+import { SessionState } from '@coday/model/session-state'
 
 @Component({
-  selector: 'app-floating-menu',
+  selector: 'app-sidenav',
   standalone: true,
-  imports: [CommonModule, ThemeSelectorComponent, OptionsPanelComponent, ProjectSelectorComponent, ThreadSelectorComponent, JsonEditorComponent, WebhookManagerComponent],
-  templateUrl: './floating-menu.component.html',
-  styleUrl: './floating-menu.component.scss'
+  imports: [
+    FormsModule,
+    MatSidenavModule,
+    MatIconModule,
+    MatButtonModule,
+    MatDividerModule,
+    MatExpansionModule,
+    ThemeSelectorComponent,
+    OptionsPanelComponent,
+    ThreadSelectorComponent,
+    JsonEditorComponent,
+    WebhookManagerComponent,
+  ],
+  templateUrl: './sidenav.component.html',
+  styleUrl: './sidenav.component.scss',
 })
-export class FloatingMenuComponent implements OnInit, OnDestroy {
+export class SidenavComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>()
-  isMenuOpen = false
+  isOpen = false
   isUserConfigOpen = false
   isProjectConfigOpen = false
   isWebhooksOpen = false
+  isProjectSelectorExpanded = false
+
+  // Project state
+  projects: SessionState['projects'] | null = null
+  selectedProjectName: string = ''
 
   // Role-based access control
   isAdmin = false
@@ -43,24 +66,36 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
   // Modern Angular dependency injection
   private readonly sessionState = inject(SessionStateService)
   private readonly configApi = inject(ConfigApiService)
+  private readonly codayService = inject(CodayService)
 
   ngOnInit(): void {
     // Log session state for debugging (ensures sessionState is used)
-    console.log('[FLOATING-MENU] SessionState service injected:', !!this.sessionState)
+    console.log('[SIDENAV] SessionState service injected:', !!this.sessionState)
+
+    // Subscribe to projects state
+    this.sessionState
+      .getProjects$()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((projects) => {
+        console.log('[SIDENAV] Projects updated:', projects)
+        this.projects = projects
+        this.selectedProjectName = projects?.current || ''
+      })
 
     // Load user config to check roles
-    this.configApi.getUserConfig()
+    this.configApi
+      .getUserConfig()
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (config: any) => {
           // Check if user has CODAY_ADMIN role in temp_groups
           this.isAdmin = config.temp_groups?.includes('CODAY_ADMIN') ?? false
-          console.log('[FLOATING-MENU] User admin status:', this.isAdmin)
+          console.log('[SIDENAV] User admin status:', this.isAdmin)
         },
         error: (error) => {
-          console.error('[FLOATING-MENU] Error loading user config for roles:', error)
+          console.error('[SIDENAV] Error loading user config for roles:', error)
           this.isAdmin = false
-        }
+        },
       })
   }
 
@@ -69,52 +104,40 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
     this.destroy$.complete()
   }
 
-  toggleMenu(): void {
-    this.isMenuOpen = !this.isMenuOpen
+  toggle(): void {
+    this.isOpen = !this.isOpen
   }
 
-  closeMenu(): void {
-    this.isMenuOpen = false
-  }
-
-  // Fermer le menu si on clique ailleurs
-  @HostListener('document:click', ['$event'])
-  onDocumentClick(event: Event): void {
-    const target = event.target as HTMLElement
-    if (!target.closest('.floating-menu-btn') && !target.closest('.floating-menu')) {
-      this.closeMenu()
-    }
-  }
-
-  // Fermer le menu avec Escape
-  @HostListener('document:keydown.escape')
-  onEscapeKey(): void {
-    this.closeMenu()
+  close(): void {
+    this.isOpen = false
   }
 
   /**
    * Open user configuration editor
    */
   openUserConfig(): void {
-    this.closeMenu()
+    console.log('[SIDENAV] openUserConfig called')
     this.isLoadingUserConfig = true
     this.configSuccessMessage = ''
     this.configErrorMessage = ''
 
-    this.configApi.getUserConfig()
+    this.configApi
+      .getUserConfig()
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (config) => {
+          console.log('[SIDENAV] User config loaded, opening modal')
           // Format JSON with 2-space indentation
           this.userConfigJson = JSON.stringify(config, null, 2)
           this.isLoadingUserConfig = false
           this.isUserConfigOpen = true
+          console.log('[SIDENAV] isUserConfigOpen set to:', this.isUserConfigOpen)
         },
         error: (error) => {
-          console.error('[FLOATING-MENU] Error loading user config:', error)
+          console.error('[SIDENAV] Error loading user config:', error)
           this.isLoadingUserConfig = false
           this.configErrorMessage = error?.error?.error || 'Failed to load user configuration'
-        }
+        },
       })
   }
 
@@ -123,9 +146,8 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
    */
   openProjectConfig(): void {
     const projectName = this.getCurrentProjectName()
-    this.closeMenu()
     if (!projectName) {
-      console.error('[FLOATING-MENU] No project selected')
+      console.error('[SIDENAV] No project selected')
       this.configErrorMessage = 'No project selected. Please select a project first.'
       return
     }
@@ -134,7 +156,8 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
     this.configSuccessMessage = ''
     this.configErrorMessage = ''
 
-    this.configApi.getProjectConfig(projectName)
+    this.configApi
+      .getProjectConfig(projectName)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (config) => {
@@ -142,12 +165,14 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
           this.projectConfigJson = JSON.stringify(config, null, 2)
           this.isLoadingProjectConfig = false
           this.isProjectConfigOpen = true
+          // Close sidenav after successfully opening the modal
+          this.close()
         },
         error: (error) => {
-          console.error('[FLOATING-MENU] Error loading project config:', error)
+          console.error('[SIDENAV] Error loading project config:', error)
           this.isLoadingProjectConfig = false
           this.configErrorMessage = error?.error?.error || 'Failed to load project configuration'
-        }
+        },
       })
   }
 
@@ -172,11 +197,12 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
     this.isSavingUserConfig = true
     this.configErrorMessage = ''
 
-    this.configApi.updateUserConfig(parsedConfig)
+    this.configApi
+      .updateUserConfig(parsedConfig)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (response) => {
-          console.log('[FLOATING-MENU] User config saved successfully')
+          console.log('[SIDENAV] User config saved successfully')
           this.isSavingUserConfig = false
           this.configSuccessMessage = response.message ?? 'Configuration saved successfully'
 
@@ -187,10 +213,10 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
           }, 1500)
         },
         error: (error) => {
-          console.error('[FLOATING-MENU] Error saving user config:', error)
+          console.error('[SIDENAV] Error saving user config:', error)
           this.isSavingUserConfig = false
           this.configErrorMessage = error?.error?.error || 'Failed to save user configuration'
-        }
+        },
       })
   }
 
@@ -200,7 +226,7 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
   onProjectConfigSave(parsedConfig: any): void {
     const projectName = this.getCurrentProjectName()
     if (!projectName) {
-      console.error('[FLOATING-MENU] No project selected')
+      console.error('[SIDENAV] No project selected')
       this.configErrorMessage = 'No project selected. Cannot save configuration.'
       return
     }
@@ -208,11 +234,12 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
     this.isSavingProjectConfig = true
     this.configErrorMessage = ''
 
-    this.configApi.updateProjectConfig(projectName, parsedConfig)
+    this.configApi
+      .updateProjectConfig(projectName, parsedConfig)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (response) => {
-          console.log('[FLOATING-MENU] Project config saved successfully')
+          console.log('[SIDENAV] Project config saved successfully')
           this.isSavingProjectConfig = false
           this.configSuccessMessage = response.message ?? 'Configuration saved successfully'
 
@@ -223,10 +250,10 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
           }, 1500)
         },
         error: (error) => {
-          console.error('[FLOATING-MENU] Error saving project config:', error)
+          console.error('[SIDENAV] Error saving project config:', error)
           this.isSavingProjectConfig = false
           this.configErrorMessage = error?.error?.error || 'Failed to save project configuration'
-        }
+        },
       })
   }
 
@@ -252,8 +279,9 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
    * Open webhook manager
    */
   openWebhooks(): void {
-    this.closeMenu()
     this.isWebhooksOpen = true
+    // Close sidenav after opening the modal
+    this.close()
   }
 
   /**
@@ -262,5 +290,51 @@ export class FloatingMenuComponent implements OnInit, OnDestroy {
   getAvailableProjects(): string[] {
     // TODO: Get from session state when project list is available
     return []
+  }
+
+  /**
+   * Toggle project selector dropdown
+   */
+  toggleProjectSelector(): void {
+    // Don't toggle if there's no project or can't switch projects
+    if (!this.canShowProjectSelector()) {
+      return
+    }
+    this.isProjectSelectorExpanded = !this.isProjectSelectorExpanded
+  }
+
+  /**
+   * Check if we can show the project selector
+   */
+  canShowProjectSelector(): boolean {
+    return !!(this.projects?.canCreate && this.projects?.list && this.projects.list.length > 0)
+  }
+
+  /**
+   * Handle project selection from native select
+   */
+  onProjectChange(event: Event): void {
+    const selectElement = event.target as HTMLSelectElement
+    const projectName = selectElement.value
+
+    if (projectName && projectName !== this.projects?.current) {
+      console.log('[SIDENAV] Selecting project:', projectName)
+      this.codayService.sendMessage(`config select-project ${projectName}`)
+    }
+  }
+
+  /**
+   * Get the project name to display in the header
+   */
+  getProjectDisplayName(): string {
+    const projectName = this.sessionState.getCurrentProject()
+    return projectName || 'Coday'
+  }
+
+  /**
+   * Get available project names for the select dropdown
+   */
+  getProjectList(): Array<{ name: string }> {
+    return this.projects?.list || []
   }
 }

@@ -1,5 +1,6 @@
 /* Global styles */
 @use './app/styles/colors.scss';
+@use './app/styles/glass-effects.scss';
 @use './app/styles/print.scss';
 
 /* Reset */
@@ -7,19 +8,24 @@
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   width: 100%;
   height: 100%;
 }
 
-/* Apply theme variables to body */
+/* Apply theme variables to body - Apple Glass Style */
 body {
-  background-color: var(--color-bg, #f8f8f2);
-  color: var(--color-text, #282a36);
-  font-family: system-ui, sans-serif;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  transition:
+    background 0.3s ease,
+    color 0.3s ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Global Markdown Styles */
@@ -28,61 +34,70 @@ body {
   p {
     margin: 0 0 0.75rem 0;
     line-height: 1.6;
-    
+
     &:last-child {
       margin-bottom: 0;
     }
   }
-  
+
   code {
-    background: var(--color-code-bg, #f1f1f1);
-    padding: 0.125rem 0.25rem;
-    border-radius: 3px;
-    font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', 'Consolas', 'Courier New', monospace;
-    font-size: 0.9em;
-    color: var(--color-code-text, #d63384);
-  }
-  
-  pre {
-    background: var(--color-code-bg, #f1f1f1);
-    padding: 0.75rem;
+    background: var(--color-code-bg);
+    padding: 0.125rem 0.375rem;
     border-radius: 6px;
+    font-family: 'SF Mono', 'Monaco', 'Menlo', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 0.9em;
+    color: var(--color-code-text);
+    border: 1px solid var(--color-border);
+  }
+
+  pre {
+    background: var(--color-code-bg);
+    padding: 1rem;
+    border-radius: 12px;
     overflow-x: auto;
     margin: 0.75rem 0;
-    border: 1px solid var(--color-border, #e5e7eb);
-    
+    border: 1px solid var(--color-border);
+    backdrop-filter: var(--glass-backdrop-blur);
+    -webkit-backdrop-filter: var(--glass-backdrop-blur);
+    box-shadow: var(--glass-shadow);
+
     code {
       background: none;
       padding: 0;
       color: inherit;
       font-size: 0.85rem;
+      border: none;
     }
   }
-  
-  strong, b {
+
+  strong,
+  b {
     font-weight: 600;
     color: var(--color-text, #282a36);
   }
-  
-  em, i {
+
+  em,
+  i {
     font-style: italic;
   }
-  
-  ul, ol {
+
+  ul,
+  ol {
     margin: 0.75rem 0;
     padding-left: 1.5rem;
-    
+
     li {
       margin: 0.25rem 0;
       line-height: 1.5;
     }
-    
+
     // Nested lists
-    ul, ol {
+    ul,
+    ol {
       margin: 0.25rem 0;
     }
   }
-  
+
   blockquote {
     border-left: 4px solid var(--color-primary, #7064fb);
     margin: 0.75rem 0;
@@ -92,51 +107,69 @@ body {
     background: var(--color-bg-secondary, rgba(112, 100, 251, 0.05));
     border-radius: 0 4px 4px 0;
   }
-  
-  h1, h2, h3, h4, h5, h6 {
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     margin: 1rem 0 0.5rem 0;
     font-weight: 600;
     line-height: 1.3;
     color: var(--color-text, #282a36);
-    
+
     &:first-child {
       margin-top: 0;
     }
   }
-  
-  h1 { font-size: 1.5rem; }
-  h2 { font-size: 1.3rem; }
-  h3 { font-size: 1.1rem; }
-  h4 { font-size: 1rem; }
-  h5 { font-size: 0.9rem; }
-  h6 { font-size: 0.85rem; }
-  
+
+  h1 {
+    font-size: 1.5rem;
+  }
+  h2 {
+    font-size: 1.3rem;
+  }
+  h3 {
+    font-size: 1.1rem;
+  }
+  h4 {
+    font-size: 1rem;
+  }
+  h5 {
+    font-size: 0.9rem;
+  }
+  h6 {
+    font-size: 0.85rem;
+  }
+
   a {
     color: var(--color-link, #3498db);
     text-decoration: none;
-    
+
     &:hover {
       text-decoration: underline;
     }
   }
-  
+
   hr {
     border: none;
     border-top: 1px solid var(--color-border, #e5e7eb);
     margin: 1rem 0;
   }
-  
+
   table {
     width: 100%;
     border-collapse: collapse;
     margin: 0.75rem 0;
-    
-    th, td {
+
+    th,
+    td {
       padding: 0.5rem;
       text-align: left;
       border-bottom: 1px solid var(--color-border, #e5e7eb);
     }
-    
+
     th {
       font-weight: 600;
       background: var(--color-bg-secondary, #f8f9fa);
@@ -144,32 +177,12 @@ body {
   }
 }
 
-/* Global Floating Menu Styles */
-/* Force the FAB to be really on top of everything */
-.floating-menu-btn {
-  position: fixed !important;
-  top: 1rem !important;
-  left: 1rem !important;
-  z-index: 9999 !important; /* Maximum z-index */
-  
-  width: 48px !important;
-  height: 48px !important;
-  border-radius: 50% !important;
-  border: 2px solid rgba(255, 255, 255, 0.2) !important;
-  
-  background: var(--color-primary, #7064fb) !important;
-  color: white !important;
-  
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.1) !important;
-  cursor: pointer !important;
-  
-  /* Ensure no parent can interfere */
-  isolation: isolate;
-}
-
+/* Global Sidenav Styles */
 /* Force Angular components not to interfere */
-app-floating-menu {
-  display: contents !important; /* The component doesn't exist in the layout */
+app-sidenav {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 /* Ensure main-app has no interfering z-index */

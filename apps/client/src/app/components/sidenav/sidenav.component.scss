@@ -1,0 +1,534 @@
+// Host element
+:host {
+  display: block;
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+// Sidenav container - full height
+.sidenav-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1400;
+
+  &.mat-drawer-container-has-open {
+    mat-sidenav-content {
+      width: calc(100% - 310px);
+    }
+  }
+}
+
+// Sidenav content - transparent, allow content to be interactive
+:host ::ng-deep .mat-drawer-backdrop {
+  pointer-events: auto;
+}
+
+:host ::ng-deep .mat-drawer-content {
+  pointer-events: auto !important;
+  background: transparent !important;
+  overflow: visible !important;
+}
+
+// Floating toggle button
+.sidenav-toggle-btn {
+  position: fixed !important;
+  top: 1rem !important;
+  left: 1rem !important;
+  z-index: 1500 !important;
+
+  width: 56px !important;
+  height: 56px !important;
+  min-width: 56px !important;
+  min-height: 56px !important;
+  border-radius: 50% !important;
+  border: 1px solid var(--glass-border) !important;
+  padding: 0 !important;
+
+  background: var(--glass-bg) !important;
+  backdrop-filter: var(--glass-backdrop-blur) !important;
+  -webkit-backdrop-filter: var(--glass-backdrop-blur) !important;
+  color: var(--color-primary) !important;
+
+  box-shadow: var(--glass-shadow) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: visible !important;
+
+  &:hover {
+    transform: scale(1.08) translateY(-2px) !important;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2) !important;
+    border-color: var(--color-primary) !important;
+
+    .logo {
+      opacity: 0.2;
+    }
+    .hamburger-overlay {
+      opacity: 1;
+    }
+  }
+
+  &:active {
+    transform: scale(0.96) !important;
+  }
+
+  &.active {
+    background: var(--color-primary) !important;
+    color: white !important;
+    border-color: var(--color-primary) !important;
+  }
+
+  &.hidden {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transform: scale(0.8) !important;
+  }
+
+  .logo {
+    width: 48px;
+    height: 48px;
+    transition: opacity 0.2s;
+    border-radius: 2px;
+  }
+
+  .hamburger-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    transition: opacity 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    mat-icon {
+      font-size: 24px;
+      width: 24px;
+      height: 24px;
+    }
+  }
+}
+
+// Sidenav drawer
+.app-sidenav {
+  width: 310px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-backdrop-blur);
+  -webkit-backdrop-filter: var(--glass-backdrop-blur);
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+
+  // Custom scrollbar
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-text-secondary);
+    border-radius: 4px;
+
+    &:hover {
+      background: var(--color-text);
+    }
+  }
+}
+
+// Sidenav header
+.sidenav-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem 1rem;
+  position: relative;
+
+  .sidenav-logo {
+    width: 40px;
+    height: 40px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  .header-title-section {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    min-width: 0; // Allow flex child to shrink
+
+    .sidenav-title {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--color-text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .select-wrapper {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+      min-width: 0;
+
+      .project-select {
+        flex: 1;
+        min-width: 0; // Allow select to shrink
+        padding: 0.5rem 2.5rem 0.5rem 0.75rem;
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--color-text);
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+        outline: none;
+        font-family: inherit;
+
+        // Remove default select arrow in some browsers
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+
+        &:hover {
+          background-color: var(--color-bg-hover);
+          border-color: var(--glass-border);
+        }
+
+        &:focus {
+          background-color: var(--color-bg-hover);
+          border-color: var(--color-primary);
+        }
+
+        // Style options
+        option {
+          background: var(--color-bg-secondary);
+          color: var(--color-text);
+          padding: 0.5rem;
+        }
+      }
+
+      .select-arrow {
+        position: absolute;
+        right: 0.5rem;
+        top: 50%;
+        transform: translateY(-50%);
+        pointer-events: none;
+        color: var(--color-text-secondary);
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+    }
+  }
+
+  .close-btn {
+    color: var(--color-text-secondary);
+    flex-shrink: 0;
+  }
+}
+
+// Expansion accordion
+.sidenav-accordion {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+
+  // Custom scrollbar
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-text-secondary);
+    border-radius: 4px;
+
+    &:hover {
+      background: var(--color-text);
+    }
+  }
+}
+
+// Expansion panel styling
+.sidenav-panel {
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+
+  &::before {
+    display: none !important;
+  }
+
+  // Panel header
+  ::ng-deep .mat-expansion-panel-header {
+    padding: 0.75rem 1rem !important;
+    height: auto !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    transition: background-color 0.2s !important;
+
+    &:hover {
+      background: var(--color-bg-hover) !important;
+    }
+
+    &.mat-expanded {
+      background: var(--color-bg-hover) !important;
+    }
+
+    .mat-expansion-panel-header-title {
+      margin: 0 !important;
+    }
+  }
+
+  // Style the expansion indicator (arrow)
+  ::ng-deep .mat-expansion-indicator svg {
+    fill: var(--color-text-secondary) !important;
+  }
+
+  // Panel title
+  .panel-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--color-text);
+
+    .panel-icon {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+      color: var(--color-text-secondary);
+    }
+  }
+
+  // Panel content
+  ::ng-deep .mat-expansion-panel-body {
+    padding: 0 !important;
+  }
+
+  .panel-content {
+    padding: 0.5rem 0;
+  }
+}
+
+// Sidenav items (buttons)
+.sidenav-item {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+
+  &:hover:not(:disabled) {
+    background: var(--color-bg-hover) !important;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .item-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+    color: var(--color-text-secondary);
+  }
+
+  .item-text {
+    flex: 1;
+    font-size: 0.9rem;
+  }
+
+  .disabled-hint {
+    font-size: 0.7rem;
+    color: var(--color-text-secondary);
+    font-style: italic;
+  }
+}
+
+// Sidenav item wrapper (for inline components)
+.sidenav-item-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+
+  .item-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+    color: var(--color-text-secondary);
+  }
+
+  .item-text {
+    flex: 1;
+    font-size: 0.9rem;
+    color: var(--color-text);
+  }
+
+  .inline-selector,
+  .inline-panel {
+    flex-shrink: 0;
+  }
+}
+
+// Preference item (for inline preferences within expansion panel)
+.preference-item {
+  padding-bottom: 1rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+
+  &:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+
+  .preference-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+    padding: 0 1rem;
+
+    .item-icon {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+      color: var(--color-text-secondary);
+    }
+
+    .item-text {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--color-text);
+    }
+  }
+
+  .preference-content {
+    padding: 0 1rem;
+  }
+}
+
+// Project and Thread selectors in sidenav
+.sidenav-project-selector,
+.sidenav-thread-selector {
+  width: 100%;
+}
+
+// Error notification
+.error-notification {
+  position: fixed;
+  top: 5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+
+  background: rgba(255, 59, 48, 0.15);
+  backdrop-filter: var(--glass-backdrop-blur);
+  -webkit-backdrop-filter: var(--glass-backdrop-blur);
+  border: 1px solid rgba(255, 59, 48, 0.3);
+  border-radius: 16px;
+  padding: 1rem 1.5rem;
+  box-shadow: var(--glass-shadow);
+
+  animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  .error-icon {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+    color: #c00;
+  }
+
+  .error-text {
+    flex: 1;
+    color: #c00;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+
+  .error-close {
+    color: #c00;
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+// Responsive
+@media (max-width: 480px) {
+  .app-sidenav {
+    width: 280px;
+  }
+
+  .sidenav-toggle-btn {
+    left: 0.5rem !important;
+    top: 0.5rem !important;
+  }
+
+  .error-notification {
+    left: 1rem;
+    right: 1rem;
+    transform: none;
+    max-width: calc(100vw - 2rem);
+  }
+}
+
+// Dark mode adjustments
+:host-context(body.dark),
+:root[data-theme='dark'] {
+  .app-sidenav {
+    background: rgba(36, 40, 48, 0.95);
+    border-right-color: rgba(180, 200, 255, 0.09);
+  }
+
+  .sidenav-header {
+    background: rgba(36, 40, 48, 0.7);
+  }
+}

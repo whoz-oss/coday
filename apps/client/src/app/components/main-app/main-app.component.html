@@ -3,42 +3,45 @@
   <div *ngIf="connectionStatus && !connectionStatus.connected" class="connection-status">
     ⚠️ Connection lost. Reconnecting... ({{ connectionStatus.reconnectAttempts }}/{{ connectionStatus.maxAttempts }})
   </div>
-  
-  <!-- Chat History - Scrollable area (now full height) -->
-  <div class="chat-wrapper">
-    <app-chat-history 
-      [messages]="messages"
-      [isThinking]="isThinking"
-      (copyRequested)="onCopyMessage($event)"
-      (stopRequested)="onStopRequested()"
-    ></app-chat-history>
-    
-    <!-- Upload Status Display -->
-    <div *ngIf="uploadStatus.message" 
-         class="upload-status" 
-         [class.error]="uploadStatus.isError">
-      {{ uploadStatus.message }}
+
+  <!-- Chat History - Scrollable area (now full height, full-width scroll) -->
+  <div *ngIf="messages.length" class="chat-wrapper">
+    <div class="chat-center">
+      <app-chat-history
+        [messages]="messages"
+        [isThinking]="isThinking"
+        (copyRequested)="onCopyMessage($event)"
+        (stopRequested)="onStopRequested()"
+      ></app-chat-history>
+      <!-- Upload Status Display -->
+      <div *ngIf="uploadStatus.message" class="upload-status" [class.error]="uploadStatus.isError">
+        {{ uploadStatus.message }}
+      </div>
     </div>
   </div>
-  
-  <!-- Input Section - In normal flow -->
+
+  <!-- Input Section - In normal flow (centered) -->
   <div class="input-section" #inputSection>
-    <app-chat-textarea 
-      *ngIf="!currentChoice"
-      [isDisabled]="!isConnected"
-      (messageSubmitted)="onMessageSubmitted($event)"
-      (voiceRecordingToggled)="onVoiceToggled($event)"
-      (heightChanged)="onInputHeightChanged($event)"
-    ></app-chat-textarea>
-    
-    <!-- Choice Select - Overlay on top of input-section -->
-    <app-choice-select
-      *ngIf="currentChoice"
-      [options]="currentChoice.options"
-      [labelHtml]="currentChoice.label"
-      [isVisible]="!!currentChoice"
-      (choiceSelected)="onChoiceSelected($event)"
-      class="choice-overlay"
-    ></app-choice-select>
+    <div class="input-center">
+      <div class="input-glass">
+        <app-chat-textarea
+          *ngIf="!currentChoice"
+          [isDisabled]="!isConnected"
+          (messageSubmitted)="onMessageSubmitted($event)"
+          (voiceRecordingToggled)="onVoiceToggled($event)"
+          (heightChanged)="onInputHeightChanged($event)"
+        ></app-chat-textarea>
+
+        <!-- Choice Select - Overlay on top of input-section -->
+        <app-choice-select
+          *ngIf="currentChoice"
+          [options]="currentChoice.options"
+          [labelHtml]="currentChoice.label"
+          [isVisible]="!!currentChoice"
+          (choiceSelected)="onChoiceSelected($event)"
+          class="choice-overlay"
+        ></app-choice-select>
+      </div>
+    </div>
   </div>
 </div>
