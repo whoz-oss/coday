@@ -17,6 +17,8 @@ defaults:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Skip if this push was made by github-actions (prevents infinite loop)
+    if: "!contains(github.event.head_commit.message, '[skip ci]') && github.actor != 'github-actions[bot]'"
     permissions:
       contents: write
       id-token: write # needed for provenance data generation
@@ -40,6 +42,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config pull.rebase true
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -66,9 +69,22 @@ jobs:
             echo "no_changes=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Check for remote changes
+        if: steps.release.outputs.no_changes != 'true'
+        run: |
+          git fetch origin master
+          LOCAL=$(git rev-parse HEAD)
+          REMOTE=$(git rev-parse origin/master)
+          if [ "$LOCAL" != "$REMOTE" ]; then
+            echo "Remote has new commits, rebasing..."
+            git rebase origin/master
+          fi
+
       - name: Push changes and tags
         if: steps.release.outputs.no_changes != 'true'
         run: |
+          # Pull latest changes first to avoid non-fast-forward errors
+          git pull --rebase origin master
           git push origin HEAD:master --follow-tags
 
       - name: Publish release
