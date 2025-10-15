@@ -5,13 +5,12 @@ import { takeUntil } from 'rxjs/operators'
 import { SessionStateService } from '../../core/services/session-state.service'
 import { CodayService } from '../../core/services/coday.service'
 import { SessionState } from '@coday/model/session-state'
-import { MatDivider } from '@angular/material/divider'
 import { MatIcon } from '@angular/material/icon'
 
 @Component({
   selector: 'app-thread-selector',
   standalone: true,
-  imports: [CommonModule, MatDivider, MatIcon],
+  imports: [CommonModule, MatIcon],
   templateUrl: './thread-selector.component.html',
   styleUrl: './thread-selector.component.scss',
 })

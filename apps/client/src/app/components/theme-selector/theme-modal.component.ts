@@ -1,4 +1,4 @@
-import { Component, Inject } from '@angular/core'
+import { Component, inject } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import {
   MAT_DIALOG_DATA,
@@ -31,17 +31,20 @@ import { ThemeService } from '../../core/services/theme.service'
   `,
 })
 export class ThemeModalComponent {
+  data = inject(MAT_DIALOG_DATA)
+  private dialogRef = inject(MatDialogRef<ThemeModalComponent>)
+  private themeService = inject(ThemeService)
+
   selected: string
-  constructor(
-    @Inject(MAT_DIALOG_DATA) public data: any,
-    private dialogRef: MatDialogRef<ThemeModalComponent>,
-    private themeService: ThemeService
-  ) {
-    this.selected = data.selected
+
+  constructor() {
+    this.selected = this.data.selected
   }
+
   close() {
     this.dialogRef.close()
   }
+
   apply() {
     this.themeService.setTheme(this.selected as any)
     this.close()

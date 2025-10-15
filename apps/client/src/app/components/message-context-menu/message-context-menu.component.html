@@ -15,15 +15,16 @@
     [class.position-top]="position === 'top'"
     [class.position-bottom]="position === 'bottom'"
   >
-    <button
-      *ngFor="let action of actions"
-      class="menu-item"
-      [class.destructive]="action.destructive"
-      [attr.title]="action.tooltip"
-      (click)="executeAction(action, $event)"
-    >
-      <span class="material-icons menu-icon">{{ action.icon }}</span>
-      <span class="menu-label">{{ action.label }}</span>
-    </button>
+    @for (action of actions; track action.label) {
+      <button
+        class="menu-item"
+        [class.destructive]="action.destructive"
+        [attr.title]="action.tooltip"
+        (click)="executeAction(action, $event)"
+      >
+        <span class="material-icons menu-icon">{{ action.icon }}</span>
+        <span class="menu-label">{{ action.label }}</span>
+      </button>
+    }
   </div>
 </div>

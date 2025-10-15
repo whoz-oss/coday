@@ -10,7 +10,6 @@ import {
   ElementRef,
   inject,
 } from '@angular/core'
-import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { Subscription, BehaviorSubject, Observable } from 'rxjs'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
@@ -21,7 +20,7 @@ import { CodayService } from '../../core/services/coday.service'
 @Component({
   selector: 'app-chat-textarea',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [FormsModule],
   templateUrl: './chat-textarea.component.html',
   styleUrl: './chat-textarea.component.scss',
 })

@@ -1,35 +1,38 @@
 <div class="message" [ngClass]="messageClasses">
   <!-- Normal layout for user and assistant messages -->
-  <ng-container *ngIf="!isSimplified">
+  @if (!isSimplified) {
     <!-- Header with speaker -->
-    <div class="message-header" *ngIf="shouldShowSpeaker">
-      <div class="speaker">
-        {{ message.speaker }}
+    @if (shouldShowSpeaker) {
+      <div class="message-header">
+        <div class="speaker">
+          {{ message.speaker }}
+        </div>
       </div>
-    </div>
+    }
 
     <!-- Context menu in top-right corner -->
-    <app-message-context-menu *ngIf="shouldShowActions" [actions]="topActions" position="top" class="context-menu-top">
-    </app-message-context-menu>
+    @if (shouldShowActions) {
+      <app-message-context-menu [actions]="topActions" position="top" class="context-menu-top">
+      </app-message-context-menu>
+    }
 
     <!-- Content -->
     <div class="content markdown-content" [innerHTML]="renderedContent"></div>
 
     <!-- Context menu in bottom-right corner for long messages -->
-    <app-message-context-menu
-      *ngIf="isLongMessage && shouldShowActions"
-      [actions]="bottomActions"
-      position="bottom"
-      class="context-menu-bottom"
-    >
-    </app-message-context-menu>
-  </ng-container>
+    @if (isLongMessage && shouldShowActions) {
+      <app-message-context-menu [actions]="bottomActions" position="bottom" class="context-menu-bottom">
+      </app-message-context-menu>
+    }
+  }
 
   <!-- Simplified layout for other message types -->
-  <ng-container *ngIf="isSimplified">
+  @if (isSimplified) {
     <div class="simple-content markdown-content">
       <span [innerHTML]="renderedContent"></span>
-      <a *ngIf="eventLink" [href]="eventLink" target="_blank" class="event-link">view</a>
+      @if (eventLink) {
+        <a [href]="eventLink" target="_blank" class="event-link">view</a>
+      }
     </div>
-  </ng-container>
+  }
 </div>

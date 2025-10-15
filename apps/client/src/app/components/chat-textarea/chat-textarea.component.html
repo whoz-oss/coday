@@ -1,8 +1,10 @@
 <div class="chat-input-container">
-  <div *ngIf="isRecording" class="recording-indicator">
-    <span class="recording-dot"></span>
-    Recording... Release to stop
-  </div>
+  @if (isRecording) {
+    <div class="recording-indicator">
+      <span class="recording-dot"></span>
+      Recording... Release to stop
+    </div>
+  }
   <!-- Input row: textarea + voice + send, all inside rounded box -->
   <div class="input-row grouped-input" [class.focused]="isFocused">
     <textarea

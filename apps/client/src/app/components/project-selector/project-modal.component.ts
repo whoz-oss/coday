@@ -1,5 +1,4 @@
-import { Component, Inject } from '@angular/core'
-import { CommonModule } from '@angular/common'
+import { Component, inject } from '@angular/core'
 import {
   MAT_DIALOG_DATA,
   MatDialogActions,
@@ -14,14 +13,21 @@ import { CodayService } from '../../core/services/coday.service'
 @Component({
   selector: 'app-project-modal',
   standalone: true,
-  imports: [CommonModule, MatDialogTitle, MatDialogContent, MatDialogActions, MatButtonModule, MatIconModule],
+  imports: [MatDialogTitle, MatDialogContent, MatDialogActions, MatButtonModule, MatIconModule],
   template: `
     <h2 mat-dialog-title>Select Project</h2>
     <mat-dialog-content>
-      <button mat-stroked-button *ngFor="let prj of data.projects?.list" (click)="select(prj.name)">
-        {{ prj.name }} <mat-icon *ngIf="prj.name === data.projects?.current">check</mat-icon>
-      </button>
-      <div *ngIf="!data.projects?.list?.length" class="empty">No projects available</div>
+      @for (prj of data.projects?.list; track prj.name) {
+        <button mat-stroked-button (click)="select(prj.name)">
+          {{ prj.name }}
+          @if (prj.name === data.projects?.current) {
+            <mat-icon>check</mat-icon>
+          }
+        </button>
+      }
+      @if (!data.projects?.list?.length) {
+        <div class="empty">No projects available</div>
+      }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button (click)="close()">Close</button>
@@ -38,14 +44,14 @@ import { CodayService } from '../../core/services/coday.service'
   ],
 })
 export class ProjectModalComponent {
-  constructor(
-    @Inject(MAT_DIALOG_DATA) public data: any,
-    private dialogRef: MatDialogRef<ProjectModalComponent>,
-    private codayService: CodayService
-  ) {}
+  data = inject(MAT_DIALOG_DATA)
+  private dialogRef = inject(MatDialogRef<ProjectModalComponent>)
+  private codayService = inject(CodayService)
+
   close() {
     this.dialogRef.close()
   }
+
   select(name: string) {
     this.codayService.sendMessage(`config select-project ${name}`)
     this.close()

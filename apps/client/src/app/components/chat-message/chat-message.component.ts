@@ -1,9 +1,9 @@
 import { Component, Input, Output, EventEmitter, OnInit, inject } from '@angular/core'
-import { CommonModule } from '@angular/common'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { marked } from 'marked'
 import { MessageContent } from '@coday/coday-events'
 import { MessageContextMenuComponent, MenuAction } from '../message-context-menu/message-context-menu.component'
+import { NgClass } from '@angular/common'
 
 export interface ChatMessage {
   id: string
@@ -18,7 +18,7 @@ export interface ChatMessage {
 @Component({
   selector: 'app-chat-message',
   standalone: true,
-  imports: [CommonModule, MessageContextMenuComponent],
+  imports: [MessageContextMenuComponent, NgClass],
   templateUrl: './chat-message.component.html',
   styleUrl: './chat-message.component.scss',
 })
