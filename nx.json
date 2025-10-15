@@ -13,7 +13,7 @@
       "inputs": ["default", "^default"]
     },
     "nx-release-publish": {
-      "dependsOn": ["web:build"],
+      "dependsOn": ["server:build"],
       "options": {
         "packageRoot": "dist/web"
       }
@@ -81,7 +81,7 @@
       }
     },
     "version": {
-      "preVersionCommand": "nx run web:build",
+      "preVersionCommand": "nx run server:build",
       "preserveLocalDependencyProtocols": false,
       "manifestRootsToUpdate": ["apps/{projectName}"],
       "conventionalCommits": true

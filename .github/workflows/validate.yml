@@ -37,4 +37,4 @@ jobs:
         run: npx nx affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --target="lint,test" --parallel=$NX_MAX_WORKERS --verbose
 
       - name: Build app
-        run: npx nx run web:build --parallel=$NX_MAX_WORKERS --verbose
+        run: npx nx run server:build --parallel=$NX_MAX_WORKERS --verbose

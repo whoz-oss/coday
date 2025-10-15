@@ -5,7 +5,7 @@ Current config does not support multi user, all is tied to the os.userInfo = tec
 Changes needed to cover 3 situations:
 
 - terminal: still os.userInfo
-- local web: take the username from a header put by the frontend
+- local server: take the username from a header put by the frontend
 - server web: still the header, but have it written by the auth middleware
 
 ## Service hierarchy
@@ -87,8 +87,8 @@ Important: distinguish the enabling of the integration, Project level, from the 
 Later integrations:
 
 - technical account on the platform = apikey at project level
-- user-identity use 
+- user-identity use
   - with apikey at User level, implies per user config.
   - with Oauth flow => no more setup, auth on tool use, ideal in the future ?
 
-## 
+##
