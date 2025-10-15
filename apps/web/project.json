@@ -2,22 +2,27 @@
   "name": "web",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
+  "sourceRoot": "apps/web/src",
   "tags": ["web-server"],
   "targets": {
     "build": {
-      "verbose": true,
       "executor": "nx:run-commands",
-      "dependsOn": ["web-ng:build", "web:build-server"],
-      "outputs": ["{workspaceRoot}/dist/web"],
+      "dependsOn": [
+        {
+          "target": "web-ng:build",
+          "cache": false
+        },
+        {
+          "target": "web:build-server",
+          "cache": false
+        }
+      ],
+      "outputs": ["{projectRoot}/dist/web"],
       "options": {
         "commands": [
-          "echo '🏗️  Building web application...'",
-          "echo '📦 Copying client files...'",
-          "cp -r dist/apps/web-ng/browser dist/web/client",
-          "echo '📦 Copying package files...'",
-          "cp apps/web/package.json dist/web/package.json",
-          "cp apps/web/bin.js dist/web/bin.js",
-          "echo '✅ Web build complete: dist/web'"
+          "cp -r apps/web-ng/dist/browser apps/web/dist/client",
+          "cp apps/web/package.json apps/web/dist/package.json",
+          "cp apps/web/bin.js apps/web/dist/bin.js"
         ],
         "parallel": false
       }
@@ -40,19 +45,19 @@
         },
         "external": ["sharp"],
         "format": ["esm"],
-        "main": "apps/web/server/server.ts",
+        "main": "apps/web/src/server.ts",
         "outputFileName": "server.js",
-        "outputPath": "dist/web/server",
+        "outputPath": "{projectRoot}/dist",
         "platform": "node",
         "thirdParty": true,
-        "tsConfig": "apps/web/server/tsconfig.app.json"
+        "tsConfig": "apps/web/tsconfig.app.json"
       }
     },
     "serve:production": {
       "executor": "nx:run-commands",
       "dependsOn": ["web:build"],
       "options": {
-        "commands": ["node dist/web/bin.js --no_auth"],
+        "commands": ["node apps/web/dist/bin.js --no_auth"],
         "parallel": false
       }
     },
@@ -63,7 +68,7 @@
         "env": {
           "BUILD_ENV": "development"
         },
-        "commands": ["tsx watch apps/web/server/server.ts --no_auth"]
+        "commands": ["tsx watch apps/web/src/server.ts --no_auth"]
       }
     }
   }

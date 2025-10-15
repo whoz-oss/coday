@@ -77,7 +77,7 @@ if (process.env.BUILD_ENV === 'development') {
     })
 } else {
   // Serve Angular app as default (root)
-  app.use(express.static(path.join(__dirname, '../client')))
+  app.use(express.static(path.join(__dirname, 'client')))
 
   // Basic route to test server setup
   app.get('/', (_req: express.Request, res: express.Response) => {
