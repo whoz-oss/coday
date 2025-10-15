@@ -34,11 +34,11 @@ build: #XXXX short description     # For build system changes
 3. Test the fix:
    ```bash
    # Compile the entire project
-   yarn nx run-many --target=build --all
-   
+   pnpm nx run-many --target=build --all
+
    # Verify fix works in both web and terminal interfaces
-   yarn start    # Test terminal interface
-   yarn web      # Test web interface
+   pnpm start    # Test terminal interface
+   pnpm web      # Test web interface
    ```
 4. Commit and push
 5. Create PR with conventional commit format as title (e.g., "fix: #XXXX short description")
@@ -52,10 +52,10 @@ build: #XXXX short description     # For build system changes
 5. Verify:
    ```bash
    # Compile the entire project
-   yarn nx run-many --target=build --all
-   
+   pnpm nx run-many --target=build --all
+
    # Add automated tests if appropriate
-   yarn test
+   pnpm test
    ```
 6. Commit and push
 7. Create PR with conventional commit format as title (e.g., "feat: #XXXX short description")
@@ -71,17 +71,17 @@ build: #XXXX short description     # For build system changes
 
 ```bash
 # Start the terminal interface
-yarn start
+pnpm start
 
 # Start the web interface
-yarn web
+pnpm web
 
 # Run tests
-yarn test
+pnpm test
 
 # Lint code
-yarn lint
+pnpm lint
 
 # Debug web interface
-yarn web:debug
+pnpm server:debug
 ```

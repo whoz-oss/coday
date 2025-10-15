@@ -17,21 +17,21 @@
      ```typescript
      // Preferred: Only replaces null/undefined
      const value = apiResponse ?? 'default'
-     
+
      // Avoid: Replaces all falsy values (0, '', false, etc.)
      const value = apiResponse || 'default'
      ```
    - Use optional chaining (`?.`) for safe property access
    - Leverage TypeScript's type system for compile-time safety
 
-3. Angular Best Practices (web-ng app)
+3. Angular Best Practices (client app)
    - **Use modern control flow syntax** (Angular 17+) instead of structural directives
      ```typescript
      // Preferred: @if control flow
      @if (condition) {
        <div>Content</div>
      }
-     
+
      // Avoid: *ngIf structural directive
      <div *ngIf="condition">Content</div>
      ```
@@ -41,7 +41,7 @@
      @for (item of items; track item.id) {
        <div>{{ item.name }}</div>
      }
-     
+
      // Avoid: *ngFor
      <div *ngFor="let item of items">{{ item.name }}</div>
      ```
@@ -103,13 +103,13 @@
 3. Available Commands
    ```bash
    # Run tests
-   yarn test
-   
+   pnpm test
+
    # Development mode
-   yarn test:watch
-   
+   pnpm test:watch
+
    # With coverage
-   yarn test:coverage
+   pnpm test:coverage
    ```
 
 4. Current Focus

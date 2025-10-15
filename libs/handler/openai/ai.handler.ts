@@ -147,7 +147,7 @@ export class AiHandler extends CommandHandler implements Killable {
       // no autosave
       return
     }
-    
+
     // Check if we should rename the thread (at 3 messages and still has default name)
     if (
       !thread.name
@@ -155,10 +155,10 @@ export class AiHandler extends CommandHandler implements Killable {
       try {
         // Generate thread name using the agent's AI client
         const threadName = await generateThreadName(thread, agent)
-        
+
         // Save the thread with the generated name
         await this.threadService.autoSave(threadName)
-        
+
         // Notify user
         this.interactor.displayText(`Thread auto-renamed to "${threadName}"`)
       } catch (error) {

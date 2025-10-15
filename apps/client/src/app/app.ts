@@ -10,10 +10,10 @@ import { ThemeService } from './core/services/theme.service'
   styleUrl: './app.scss',
 })
 export class App implements OnInit {
-  protected title = 'web-ng'
+  protected title = 'client'
 
   private themeService = inject(ThemeService)
-  
+
   ngOnInit(): void {
     // S'assurer que le thème est appliqué dès le démarrage
     console.log('[APP] Application initialized with theme:', this.themeService.getCurrentTheme())

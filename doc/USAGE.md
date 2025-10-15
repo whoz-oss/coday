@@ -2,11 +2,11 @@
 
 The `package.json` defines the standard start script that will run in terminal:
   ```sh
-  yarn start
+  pnpm start
   ```
 or for web local interface through the browser
   ```sh
-  yarn web --no_auth
+  pnpm web --no_auth
   ```
 
 This command can accept several parameters (by default without = start interactive in terminal):
@@ -26,7 +26,7 @@ When Coday runs on a project (and it always does), it will:
 - create `coday.yaml` at project root if not found
 - load it, leading to:
   - path restrictions: only files under the project root are visible, searchable and editable
-  - only the integrations declared on the project are available 
+  - only the integrations declared on the project are available
   - only the assistants declared on the project can "see" each other.
   - scripts of the project exposed to the assistants
 

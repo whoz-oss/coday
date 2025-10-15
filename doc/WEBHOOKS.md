@@ -426,7 +426,7 @@ config webhook edit --uuid=your-uuid
 
 Test webhook manually using curl:
 ```bash
-curl -X POST "http://localhost:3000/api/webhook/your-uuid" \
+curl -X POST "http://localhost:4100/api/webhook/your-uuid" \
   -H "Content-Type: application/json" \
   -H "x-forwarded-email: your@email.com" \
   -d '{"prompts": ["test command"]}'
