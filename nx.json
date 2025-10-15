@@ -5,7 +5,7 @@
   },
   "targetDefaults": {
     "build": {
-      "cache": true
+      "cache": false
     },
     "@nx/esbuild:esbuild": {
       "cache": true,
@@ -78,11 +78,11 @@
     "changelog": {
       "workspaceChangelog": {
         "file": "CHANGELOG.md",
-        "entryWhenNoChanges": false
+        "entryWhenNoChanges": true
       }
     },
     "version": {
-      "preVersionCommand": "npx nx run web:build --verbose",
+      "preVersionCommand": "nx run web:build",
       "currentVersionResolver": "registry",
       "preserveLocalDependencyProtocols": false,
       "manifestRootsToUpdate": ["apps/{projectName}"]
