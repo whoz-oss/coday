@@ -9,12 +9,11 @@
       "executor": "nx:run-commands",
       "dependsOn": [
         {
-          "target": "web-ng:build",
-          "cache": false
+          "projects": "web-ng",
+          "target": "build"
         },
         {
-          "target": "web:build-server",
-          "cache": false
+          "target": "build-server"
         }
       ],
       "outputs": ["{projectRoot}/dist/web"],
