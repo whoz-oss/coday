@@ -20,7 +20,7 @@ The Coday project now uses a fully automated release workflow that triggers on e
 2. **Version Bumping**
    - Runs `nx release` which:
      - Determines the next version based on conventional commits
-     - Updates version in `apps/web/package.json`
+     - Updates version in `apps/server/package.json`
      - Generates/updates CHANGELOG.md
      - Creates a git commit with message `chore(release): {version}`
      - Creates a git tag `release/{version}`
@@ -54,7 +54,7 @@ The release process is configured in `nx.json`:
       }
     },
     "version": {
-      "preVersionCommand": "npx nx run web:build",
+      "preVersionCommand": "npx nx run server:build",
       "currentVersionResolver": "registry",
       "preserveLocalDependencyProtocols": false,
       "manifestRootsToUpdate": ["apps/{projectName}"]

@@ -1,15 +1,15 @@
 {
-  "name": "web",
+  "name": "server",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
-  "sourceRoot": "apps/web/src",
+  "sourceRoot": "apps/server/src",
   "tags": ["web-server"],
   "targets": {
     "build": {
       "executor": "nx:run-commands",
       "dependsOn": [
         {
-          "projects": "web-ng",
+          "projects": "client",
           "target": "build"
         },
         {
@@ -19,9 +19,9 @@
       "outputs": ["{projectRoot}/dist/web"],
       "options": {
         "commands": [
-          "cp -r apps/web-ng/dist/browser apps/web/dist/client",
-          "cp apps/web/package.json apps/web/dist/package.json",
-          "cp apps/web/bin.js apps/web/dist/bin.js"
+          "cp -r apps/client/dist/browser apps/server/dist/client",
+          "cp apps/server/package.json apps/server/dist/package.json",
+          "cp apps/server/bin.js apps/server/dist/bin.js"
         ],
         "parallel": false
       }
@@ -44,30 +44,29 @@
         },
         "external": ["sharp"],
         "format": ["esm"],
-        "main": "apps/web/src/server.ts",
+        "main": "apps/server/src/server.ts",
         "outputFileName": "server.js",
         "outputPath": "{projectRoot}/dist",
         "platform": "node",
         "thirdParty": true,
-        "tsConfig": "apps/web/tsconfig.app.json"
+        "tsConfig": "apps/server/tsconfig.app.json"
       }
     },
     "serve:production": {
       "executor": "nx:run-commands",
-      "dependsOn": ["web:build"],
+      "dependsOn": ["server:build"],
       "options": {
-        "commands": ["node apps/web/dist/bin.js --no_auth"],
+        "commands": ["node apps/server/dist/bin.js --no_auth"],
         "parallel": false
       }
     },
     "serve": {
       "executor": "nx:run-commands",
-      "dependsOn": ["web-ng:serve"],
       "options": {
         "env": {
           "BUILD_ENV": "development"
         },
-        "commands": ["tsx watch apps/web/src/server.ts --no_auth"]
+        "commands": ["tsx watch apps/server/src/server.ts --no_auth"]
       }
     }
   }

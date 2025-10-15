@@ -35,7 +35,7 @@ build: #XXXX short description     # For build system changes
    ```bash
    # Compile the entire project
    yarn nx run-many --target=build --all
-   
+
    # Verify fix works in both web and terminal interfaces
    yarn start    # Test terminal interface
    yarn web      # Test web interface
@@ -53,7 +53,7 @@ build: #XXXX short description     # For build system changes
    ```bash
    # Compile the entire project
    yarn nx run-many --target=build --all
-   
+
    # Add automated tests if appropriate
    yarn test
    ```
@@ -83,5 +83,5 @@ yarn test
 yarn lint
 
 # Debug web interface
-yarn web:debug
+yarn server:debug
 ```

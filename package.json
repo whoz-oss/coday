@@ -4,10 +4,11 @@
   "description": "",
   "scripts": {
     "coday": "npx --yes @whoz-oss/coday-web --local --no_auth",
+    "web": "npx --yes @whoz-oss/coday-web --no_auth",
     "lint": "nx run-many --target=lint",
     "start": "nx run terminal:serve",
-    "web": "nx run web:serve",
-    "web-ng": "nx run web-ng:serve",
+    "server": "nx run server:serve",
+    "client": "nx run client:serve",
     "test": "nx run-many --target=test"
   },
   "author": "vincent.audibert@whoz.com",

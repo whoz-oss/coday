@@ -1,9 +1,9 @@
 {
-  "name": "web-ng",
+  "name": "client",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "prefix": "app",
-  "sourceRoot": "apps/web-ng/src",
+  "sourceRoot": "apps/client/src",
   "tags": [],
   "targets": {
     "build": {
@@ -12,17 +12,17 @@
       "options": {
         "outputPath": "{projectRoot}/dist",
         "baseHref": "/",
-        "browser": "apps/web-ng/src/main.ts",
+        "browser": "apps/client/src/main.ts",
         "polyfills": ["zone.js"],
-        "tsConfig": "apps/web-ng/tsconfig.app.json",
+        "tsConfig": "apps/client/tsconfig.app.json",
         "inlineStyleLanguage": "scss",
         "assets": [
           {
             "glob": "**/*",
-            "input": "apps/web-ng/public"
+            "input": "apps/client/public"
           }
         ],
-        "styles": ["apps/web-ng/src/styles.scss"]
+        "styles": ["apps/client/src/styles.scss"]
       },
       "configurations": {
         "production": {
@@ -57,10 +57,10 @@
       },
       "configurations": {
         "production": {
-          "buildTarget": "web-ng:build:production"
+          "buildTarget": "client:build:production"
         },
         "development": {
-          "buildTarget": "web-ng:build:development"
+          "buildTarget": "client:build:development"
         }
       },
       "defaultConfiguration": "development"
@@ -68,7 +68,7 @@
     "extract-i18n": {
       "executor": "@angular/build:extract-i18n",
       "options": {
-        "buildTarget": "web-ng:build"
+        "buildTarget": "client:build"
       }
     }
   }

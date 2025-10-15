@@ -1,8 +1,8 @@
 export default {
-  displayName: 'web-ng',
+  displayName: 'client',
   preset: '../../jest.preset.cjs',
   setupFilesAfterEnv: ['<rootDir>/src/test-setup.ts'],
-  coverageDirectory: '../../coverage/apps/web-ng',
+  coverageDirectory: '../../coverage/apps/client',
   transform: {
     '^.+\\.(ts|mjs|js|html)$': [
       'jest-preset-angular',
