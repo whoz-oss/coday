@@ -28,26 +28,22 @@ describe('addJiraComment', () => {
       'https://company.atlassian.net',
       'api-token',
       'username',
-      mockInteractor
+      mockInteractor,
+      false // Explicitly set internal to false for public comments
     )
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://company.atlassian.net/rest/api/2/issue/TEST-123/comment',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: 'Basic dXNlcm5hbWU6YXBpLXRva2Vu',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          body: 'This is a public comment',
-        }),
-      }
-    )
+    expect(mockFetch).toHaveBeenCalledWith('https://company.atlassian.net/rest/api/2/issue/TEST-123/comment', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Basic dXNlcm5hbWU6YXBpLXRva2Vu',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        body: 'This is a public comment',
+      }),
+    })
 
-    expect(mockInteractor.displayText).toHaveBeenCalledWith(
-      'Successfully added comment to Jira ticket TEST-123'
-    )
+    expect(mockInteractor.displayText).toHaveBeenCalledWith('Successfully added comment to Jira ticket TEST-123')
   })
 
   it('should add an internal comment using sd.public.comment property', async () => {
@@ -66,34 +62,27 @@ describe('addJiraComment', () => {
       true // internal = true
     )
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://company.atlassian.net/rest/api/2/issue/TEST-123/comment',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: 'Basic dXNlcm5hbWU6YXBpLXRva2Vu',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          body: 'This is an internal comment',
-          properties: [
-            {
-              key: 'sd.public.comment',
-              value: {
-                internal: true
-              }
-            }
-          ]
-        }),
-      }
-    )
+    expect(mockFetch).toHaveBeenCalledWith('https://company.atlassian.net/rest/api/2/issue/TEST-123/comment', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Basic dXNlcm5hbWU6YXBpLXRva2Vu',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        body: 'This is an internal comment',
+        properties: [
+          {
+            key: 'sd.public.comment',
+            value: {
+              internal: true,
+            },
+          },
+        ],
+      }),
+    })
 
-    expect(mockInteractor.displayText).toHaveBeenCalledWith(
-      'Successfully added comment to Jira ticket TEST-123'
-    )
+    expect(mockInteractor.displayText).toHaveBeenCalledWith('Successfully added comment to Jira ticket TEST-123')
   })
-
-
 
   it('should handle API errors gracefully', async () => {
     mockFetch.mockResolvedValueOnce({
