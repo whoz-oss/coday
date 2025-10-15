@@ -82,7 +82,7 @@
       }
     },
     "version": {
-      "preVersionCommand": "npx nx run web:build",
+      "preVersionCommand": "npx nx run web:build --verbose",
       "currentVersionResolver": "registry",
       "preserveLocalDependencyProtocols": false,
       "manifestRootsToUpdate": ["apps/{projectName}"]
