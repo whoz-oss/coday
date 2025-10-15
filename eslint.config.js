@@ -15,6 +15,9 @@ const compat = new FlatCompat({
 })
 
 export default [
+  {
+    ignores: ['**/dist/**'],
+  },
   ...compat.extends('prettier'),
   ...compat.config({ parser: 'jsonc-eslint-parser' }).map((config) => ({
     ...config,

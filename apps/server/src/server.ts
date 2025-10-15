@@ -19,7 +19,7 @@ import { registerConfigRoutes } from './config.routes'
 import { registerWebhookRoutes } from './webhook.routes'
 
 const app = express()
-const DEFAULT_PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000
+const DEFAULT_PORT = process.env.PORT ? parseInt(process.env.PORT) : (process.env.BUILD_ENV === 'development' ? 4100 : 3000)
 
 // Dynamically find an available port
 const PORT_PROMISE = findAvailablePort(DEFAULT_PORT)
@@ -77,7 +77,7 @@ if (process.env.BUILD_ENV === 'development') {
     })
 } else {
   // Serve Angular app as default (root)
-  app.use(express.static(path.join(__dirname, '../client')))
+  app.use(express.static(path.join(__dirname, 'client')))
 
   // Basic route to test server setup
   app.get('/', (_req: express.Request, res: express.Response) => {

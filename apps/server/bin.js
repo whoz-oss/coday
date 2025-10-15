@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const serverPath = resolve(__dirname, 'server/server.js');
+const serverPath = resolve(__dirname, 'server.js');
 const args = process.argv.slice(2);
 
 // Run the compiled JavaScript server
