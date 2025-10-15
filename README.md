@@ -49,7 +49,7 @@ When in the context of a code project, use the npm package to run locally throug
     ```json
     {
       "scripts": {
-        "coday": "node ./node_modules/@whoz-oss/coday-web/server/server.js --no_auth"
+        "coday": "npx @whoz-oss/coday-web --no_auth"
       }
     }
     ```

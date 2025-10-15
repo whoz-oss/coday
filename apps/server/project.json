@@ -3,9 +3,19 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "sourceRoot": "apps/server/src",
+  "implicitDependencies": [
+    "client",
+    "coday-events",
+    "ai-thread"
+  ],
   "tags": ["web-server"],
   "targets": {
     "build": {
+      "inputs": [
+        "default",
+        "{workspaceRoot}/libs/**/*",
+        "{workspaceRoot}/apps/client/**/*"
+      ],
       "executor": "nx:run-commands",
       "dependsOn": [
         {
