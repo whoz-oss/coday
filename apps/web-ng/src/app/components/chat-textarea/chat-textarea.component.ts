@@ -22,47 +22,47 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   @Output() messageSubmitted = new EventEmitter<string>()
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
   @Output() heightChanged = new EventEmitter<number>()
-  
+
   @ViewChild('messageInput', { static: true }) messageInput!: ElementRef<HTMLTextAreaElement>
-  
+
   message: string = ''
   isRecording: boolean = false
-  
+
   // Voice recognition properties
   private recognition: any = null
   private sessionHadTranscript: boolean = false
   private pendingLineBreaksTimeout: number | null = null
-  
+
   // Enter behavior preference
   private useEnterToSend: boolean = false
-  
+
   // Invite properties
   currentInvite: string = ''
   private renderedInviteSubject = new BehaviorSubject<SafeHtml>('')
   renderedInvite$: Observable<SafeHtml> = this.renderedInviteSubject.asObservable()
   showInvite: boolean = false
-  
+
   // Subscriptions management
   private subscriptions: Subscription[] = []
-  
+
   // Modern Angular dependency injection
   private preferencesService = inject(PreferencesService)
   private codayService = inject(CodayService)
   private sanitizer = inject(DomSanitizer)
-  
+
   ngOnInit(): void {
     this.initializeVoiceInput()
-    
+
     // Initialize Enter key behavior preference
     this.useEnterToSend = this.preferencesService.getEnterToSend()
-    
+
     // Listen to voice language changes
     this.subscriptions.push(
       this.preferencesService.voiceLanguage$.subscribe(
         () => this.updateRecognitionLanguage()
       )
     )
-    
+
     // Listen to Enter key behavior changes
     this.subscriptions.push(
       this.preferencesService.enterToSend$.subscribe(
@@ -71,28 +71,28 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
         }
       )
     )
-    
+
     // Subscribe to InviteEvent changes
     this.subscribeToInviteEvents()
-    
+
     // Subscribe to message restoration after deletion
     this.subscribeToMessageRestore()
   }
-  
+
   ngAfterViewInit(): void {
     // Set initial height after view initialization
     this.adjustTextareaHeight()
   }
-  
+
   ngOnDestroy(): void {
     // Clean up all subscriptions
     this.subscriptions.forEach(sub => sub.unsubscribe())
     this.subscriptions = []
-    
+
     this.clearPendingLineBreaks()
     this.renderedInviteSubject.complete()
   }
-  
+
   onKeyDown(event: KeyboardEvent) {
     if (event.key === 'Enter') {
       if (this.useEnterToSend) {
@@ -106,7 +106,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
         // Mode: Cmd/Ctrl+Enter to send, Enter for new line
         const isMac = navigator.platform.toLowerCase().includes('mac')
         const correctModifier = isMac ? event.metaKey : event.ctrlKey
-        
+
         if (correctModifier && !event.shiftKey) {
           event.preventDefault()
           this.sendMessage()
@@ -115,55 +115,55 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
       }
     }
   }
-  
+
   onInput() {
     // Adjust textarea height when content changes
     this.adjustTextareaHeight()
   }
-  
+
   sendMessage() {
     if (!this.isDisabled) {
       this.messageSubmitted.emit(this.message.trim())
       this.message = ''
-      
+
       // Hide invite after sending (will be replaced by next server invite)
       this.showInvite = false
-      
+
       // Reset height after clearing message
       setTimeout(() => this.adjustTextareaHeight(), 0)
     }
   }
-  
+
   toggleVoiceRecording() {
     // This method is called by simple button click
     // But we now use push-to-talk mode with mousedown/mouseup events
     console.log('Toggle voice recording called - using push-to-talk mode instead')
   }
-  
+
   // Methods for push-to-talk mode
   onVoiceButtonMouseDown(event: MouseEvent): void {
     event.preventDefault()
     this.startRecording()
   }
-  
+
   onVoiceButtonMouseUp(): void {
     this.stopRecording()
   }
-  
+
   onVoiceButtonMouseLeave(): void {
     this.stopRecording()
   }
-  
+
   onVoiceButtonTouchStart(event: TouchEvent): void {
     event.preventDefault()
     this.startRecording()
   }
-  
+
   onVoiceButtonTouchEnd(event: TouchEvent): void {
     event.preventDefault()
     this.stopRecording()
   }
-  
+
   onVoiceButtonKeyDown(event: KeyboardEvent): void {
     if (event.code === 'Space' || event.key === ' ' || event.keyCode === 32) {
       event.preventDefault()
@@ -172,14 +172,14 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
       }
     }
   }
-  
+
   onVoiceButtonKeyUp(event: KeyboardEvent): void {
     if (event.code === 'Space' || event.key === ' ' || event.keyCode === 32) {
       event.preventDefault()
       this.stopRecording()
     }
   }
-  
+
   private initializeVoiceInput(): void {
     // Check if Speech Recognition is available
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -327,14 +327,14 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
     const currentValue = this.message
     const newValue = currentValue ? `${currentValue}${text}` : text
     this.message = newValue
-    
+
     // Focus textarea and place cursor at end
     if (this.messageInput?.nativeElement) {
       this.messageInput.nativeElement.focus()
       const length = this.message.length
       this.messageInput.nativeElement.setSelectionRange(length, length)
     }
-    
+
     // Adjust height after programmatic content change
     setTimeout(() => this.adjustTextareaHeight(), 0)
   }
@@ -359,7 +359,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
       this.pendingLineBreaksTimeout = null
     }
   }
-  
+
   /**
    * Adjusts the textarea height based on content
    * Sets min-height equivalent to MIN_TEXTAREA_LINES rows and max-height equivalent to MAX_TEXTAREA_LINES rows
@@ -367,37 +367,37 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   private adjustTextareaHeight(): void {
     const textarea = this.messageInput?.nativeElement
     if (!textarea) return
-    
+
     // Calculate line height (approximately 1.5em based on CSS)
     const style = window.getComputedStyle(textarea)
     const fontSize = parseFloat(style.fontSize)
     const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.5
-    
+
     // Define min and max heights in pixels using constants
     const minHeight = lineHeight * ChatTextareaComponent.MIN_TEXTAREA_LINES + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
     const maxHeight = lineHeight * ChatTextareaComponent.MAX_TEXTAREA_LINES + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
-    
+
     // Reset height to auto to get the actual scroll height
     textarea.style.height = 'auto'
-    
+
     // Calculate the new height based on scroll height
     let newHeight = textarea.scrollHeight
-    
+
     // Apply min/max constraints
     if (newHeight < minHeight) {
       newHeight = minHeight
     } else if (newHeight > maxHeight) {
       newHeight = maxHeight
     }
-    
+
     // Set the new height
     textarea.style.height = `${newHeight}px`
-    
+
     // Emit height change to parent
     const containerHeight = textarea.parentElement?.offsetHeight || newHeight + 32
     this.heightChanged.emit(containerHeight)
   }
-  
+
   /**
    * Get current keyboard shortcut for sending message
    */
@@ -409,7 +409,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
       return isMac ? '⌘+Enter' : 'Ctrl+Enter'
     }
   }
-  
+
   /**
    * Get send button tooltip
    */
@@ -422,7 +422,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
       return `Send message (${shortcut}) - Enter for new line`
     }
   }
-  
+
   /**
    * Subscribe to InviteEvent changes in CodayService
    */
@@ -439,29 +439,29 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
       })
     )
   }
-  
+
   /**
    * Handle an InviteEvent
    */
   private handleInviteEvent(invite: string, defaultValue?: string): void {
     this.currentInvite = invite
     this.showInvite = true
-    
+
     // Render invite markdown asynchronously
     this.renderInviteMarkdown(invite)
-    
+
     // Set default value if provided
     if (defaultValue) {
       this.message = defaultValue
       setTimeout(() => this.adjustTextareaHeight(), 0)
     }
-    
+
     // Focus on textarea
     if (this.messageInput?.nativeElement) {
       this.messageInput.nativeElement.focus()
     }
   }
-  
+
   /**
    * Render invite markdown
    */
@@ -496,11 +496,11 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   private restoreMessageContent(content: string): void {
     // Set the content in the textarea
     this.message = content
-    
+
     // Focus the textarea and place cursor at the end
     if (this.messageInput?.nativeElement) {
       this.messageInput.nativeElement.focus()
-      
+
       // Use setTimeout to ensure the value is set before positioning cursor
       setTimeout(() => {
         const textarea = this.messageInput.nativeElement
@@ -508,10 +508,10 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
         textarea.setSelectionRange(length, length)
       }, 0)
     }
-    
+
     // Adjust textarea height to fit the restored content
     setTimeout(() => this.adjustTextareaHeight(), 10)
   }
 
-  
+
 }

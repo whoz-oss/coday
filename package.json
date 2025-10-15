@@ -7,6 +7,7 @@
     "lint": "nx run-many --target=lint",
     "start": "nx run terminal:serve",
     "web": "nx run web:serve",
+    "web-ng": "nx run web-ng:serve",
     "test": "nx run-many --target=test"
   },
   "author": "vincent.audibert@whoz.com",

@@ -19,7 +19,7 @@ import { registerConfigRoutes } from './config.routes'
 import { registerWebhookRoutes } from './webhook.routes'
 
 const app = express()
-const DEFAULT_PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000
+const DEFAULT_PORT = process.env.PORT ? parseInt(process.env.PORT) : (process.env.BUILD_ENV === 'development' ? 4100 : 3000)
 
 // Dynamically find an available port
 const PORT_PROMISE = findAvailablePort(DEFAULT_PORT)
