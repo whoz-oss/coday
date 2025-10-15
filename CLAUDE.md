@@ -2,10 +2,10 @@
 
 ## Build & Test Commands
 ```
-yarn start           # Run terminal app
-yarn web             # Run web interface
-yarn lint            # Run linting on all packages
-yarn test            # Run all tests
+pnpm start           # Run terminal app
+pnpm web             # Run web interface
+pnpm lint            # Run linting on all packages
+pnpm test            # Run all tests
 nx test <lib-name>   # Run tests for specific lib
 nx test <lib-name> --testFile=<filename>  # Run single test
 ```
@@ -14,7 +14,7 @@ nx test <lib-name> --testFile=<filename>  # Run single test
 - **Imports**: Use absolute paths with aliases (@coday/*)
 - **Formatting**: No semicolons, single quotes, 120 char line limit
 - **Types**: TypeScript with strict mode, explicit return types on functions
-- **Naming**: 
+- **Naming**:
   - Use camelCase for variables, methods
   - Use PascalCase for classes, interfaces, types
   - Use kebab-case for files

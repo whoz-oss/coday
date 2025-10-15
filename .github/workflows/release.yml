@@ -1,9 +1,10 @@
-name: Release Coday on NPM
+name: Release and Publish
 
 on:
   push:
-    tags:
-      - 'release/*'
+    branches:
+      - master
+  workflow_dispatch:
 
 env:
   NPM_CONFIG_PROVENANCE: true
@@ -16,22 +17,91 @@ defaults:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Skip if this push was made by github-actions (prevents infinite loop)
+    if: "!contains(github.event.head_commit.message, '[skip ci]') && github.actor != 'github-actions[bot]'"
     permissions:
-      contents: read
+      contents: write
       id-token: write # needed for provenance data generation
+      pull-requests: write
+      packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'yarn'
+          cache: 'pnpm'
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config pull.rebase true
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Run nx release
+        id: release
+        env:
+          HUSKY: 0
+        run: |
+          # Run nx release and capture output
+          npx nx release --skip-publish 2>&1 | tee release-output.txt
+
+          # Extract the new version from the output
+          NEW_VERSION=$(grep -oP 'release/\K[0-9]+\.[0-9]+\.[0-9]+' release-output.txt | head -1)
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+          # Check if there were any changes
+          if grep -q "No changes were detected" release-output.txt; then
+            echo "no_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "no_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for remote changes
+        if: steps.release.outputs.no_changes != 'true'
+        run: |
+          git fetch origin master
+          LOCAL=$(git rev-parse HEAD)
+          REMOTE=$(git rev-parse origin/master)
+          if [ "$LOCAL" != "$REMOTE" ]; then
+            echo "Remote has new commits, rebasing..."
+            git rebase origin/master
+          fi
+
+      - name: Push changes and tags
+        if: steps.release.outputs.no_changes != 'true'
+        run: |
+          # Pull latest changes first to avoid non-fast-forward errors
+          git pull --rebase origin master
+          git push origin HEAD:master --follow-tags
 
       - name: Publish release
         run: |
           npm config set //${{ vars.NPM_REGISTRY }}/:_authToken=${{ secrets.NPM_ACCESS_TOKEN }}
           npx nx release publish --registry=https://${{ vars.NPM_REGISTRY }}
           npm config delete //${{ vars.NPM_REGISTRY }}/:_authToken
+
+      - name: Create GitHub Release
+        if: steps.release.outputs.no_changes != 'true'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: release/${{ steps.release.outputs.new_version }}
+          release_name: Release ${{ steps.release.outputs.new_version }}
+          body: |
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/master/CHANGELOG.md) for details.
+          draft: false
+          prerelease: false
