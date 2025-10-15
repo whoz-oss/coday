@@ -27,11 +27,6 @@
         "passWithNoTests": true
       }
     },
-    "@nx/js:tsc": {
-      "cache": true,
-      "dependsOn": ["^build"],
-      "inputs": ["default", "^default"]
-    },
     "@angular/build:application": {
       "cache": true,
       "dependsOn": ["^build"],

@@ -5,6 +5,7 @@
   "tags": ["web-server"],
   "targets": {
     "build": {
+      "verbose": true,
       "executor": "nx:run-commands",
       "dependsOn": ["web-ng:build", "web:build-server"],
       "outputs": ["{workspaceRoot}/dist/web"],
@@ -27,11 +28,12 @@
       "options": {
         "assets": [],
         "bundle": true,
+        "minify": true,
         "esbuildOptions": {
           "outExtension": {
             ".js": ".js"
           },
-          "sourcemap": true,
+          "sourcemap": false,
           "banner": {
             "js": "import { createRequire as __createRequire } from 'module';import { dirname as __dirname_func } from 'path';const require = __createRequire(import.meta.url);const __filename = import.meta.url.slice(7);const __dirname = __dirname_func(__filename);"
           }
@@ -46,14 +48,22 @@
         "tsConfig": "apps/web/server/tsconfig.app.json"
       }
     },
+    "serve:production": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["web:build"],
+      "options": {
+        "commands": ["node dist/web/bin.js --no_auth"],
+        "parallel": false
+      }
+    },
     "serve": {
       "executor": "nx:run-commands",
       "dependsOn": ["web-ng:serve"],
       "options": {
-        "commands": [
-          "echo '🚀 Starting development servers...'",
-          "BUILD_ENV=development tsx watch apps/web/server/server.ts --local --no_auth"
-        ]
+        "env": {
+          "BUILD_ENV": "development"
+        },
+        "commands": ["tsx watch apps/web/server/server.ts --no_auth"]
       }
     }
   }
