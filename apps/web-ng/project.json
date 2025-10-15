@@ -10,7 +10,7 @@
       "executor": "@angular/build:application",
       "outputs": ["{options.outputPath}"],
       "options": {
-        "outputPath": "dist/apps/web-ng",
+        "outputPath": "{projectRoot}/dist",
         "baseHref": "/",
         "browser": "apps/web-ng/src/main.ts",
         "polyfills": ["zone.js"],

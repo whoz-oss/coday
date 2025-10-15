@@ -14,7 +14,7 @@
         "format": ["cjs"],
         "main": "apps/terminal/terminal.ts",
         "outputFileName": "terminal.cjs",
-        "outputPath": "dist/terminal",
+        "outputPath": "{projectRoot}/dist",
         "platform": "node",
         "thirdParty": true,
         "tsConfig": "apps/terminal/tsconfig.app.json"
