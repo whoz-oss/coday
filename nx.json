@@ -69,7 +69,7 @@
     }
   ],
   "release": {
-    "projects": ["web"],
+    "projects": ["server"],
     "releaseTagPattern": "release/{version}",
     "git": {
       "commitMessage": "chore(release): {version}",

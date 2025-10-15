@@ -103,13 +103,13 @@
 3. Available Commands
    ```bash
    # Run tests
-   yarn test
+   pnpm test
 
    # Development mode
-   yarn test:watch
+   pnpm test:watch
 
    # With coverage
-   yarn test:coverage
+   pnpm test:coverage
    ```
 
 4. Current Focus

@@ -93,7 +93,7 @@ The version bumping follows semantic versioning based on conventional commits:
 ### Previous Manual Process (release.sh)
 1. Developer runs `./release.sh` locally
 2. Script creates a `chore/release` branch
-3. Runs `yarn nx release`
+3. Runs `pnpm nx release`
 4. Pushes branch and opens PR creation link
 5. Developer manually creates PR and merges
 6. Developer manually publishes to npm

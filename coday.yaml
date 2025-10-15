@@ -35,23 +35,23 @@ optionalDocs:
 scripts:
   compile:
     description: compile the typescript project to raise any issue on code correctness, it does not run the tests.
-    command: yarn run nx run-many --target=build --all
+    command: pnpm run nx run-many --target=build --all
   # yarn:
-  #   description: runs a yarn command, give just the arguments. Do not start interactive commands !!!
+  #   description: runs a pnpm command, give just the arguments. Do not start interactive commands !!!
   #   command: yarn
   test:
     description: run tests for a specific file or pattern (or all of them if no arguments)
-    # should be yarn test, but current non-nx code architecture prevents it to be useful
+    # should be pnpm test, but current non-nx code architecture prevents it to be useful
     command: npx jest PARAMETERS
     parametersDescription: the test file path or pattern to run specific tests (e.g., "parseAgentCommand.test.ts" or "--testNamePattern=specific test name")
   yarn-client-lint:
     description: |
       Runs the lint for the client app.
-    command: yarn run nx run client:lint
+    command: pnpm run nx run client:lint
   yarn-client-test:
     description: |
       Runs the test for the client app.
-    command: yarn run nx run client:test
+    command: pnpm run nx run client:test
 
 # The prompts section allows you to define custom sequences of commands, known as prompt chains,
 # that the system can execute in order. Each prompt chain is identified by a unique key and
