@@ -1,0 +1,132 @@
+<!-- Floating Action Button -->
+<button 
+  class="floating-menu-btn"
+  (click)="toggleMenu()"
+  [class.active]="isMenuOpen"
+  title="Menu Coday"
+>
+  <img src="CODAY-Logo.png" alt="Coday" class="logo" />
+  <div class="hamburger-overlay">☰</div>
+</button>
+
+<!-- Menu dropdown -->
+@if (isMenuOpen) {
+  <div 
+    class="floating-menu"
+    (click)="$event.stopPropagation()"
+    (keydown)="$event.stopPropagation()"
+    tabindex="-1"
+    role="menu"
+    aria-label="Menu principal de Coday"
+  >
+  <!-- Project selector - moved to top -->
+  <div class="menu-section project-selector-section">
+    <app-project-selector class="main-project-selector"></app-project-selector>
+  </div>
+  
+  <!-- Navigation -->
+  <div class="menu-section navigation">
+    <!-- Thread selector - now functional -->
+    <app-thread-selector class="main-thread-selector"></app-thread-selector>
+  </div>
+  
+  <!-- Settings -->
+  <div class="menu-section">
+    <!-- User Config - always visible -->
+    <div class="menu-item-wrapper">
+      <button class="menu-button" (click)="openUserConfig()">
+        <span class="menu-icon">👤</span>
+        <span class="menu-text">User Config</span>
+      </button>
+    </div>
+    
+    <!-- Project Config - only for CODAY_ADMIN -->
+    @if (isAdmin) {
+      <div class="menu-item-wrapper">
+        <button class="menu-button" 
+                (click)="openProjectConfig()"
+                [disabled]="!hasProject()"
+                [class.disabled]="!hasProject()"
+                [title]="hasProject() ? 'Edit project configuration' : 'No project selected'">
+          <span class="menu-icon">📁</span>
+          <span class="menu-text">Project Config</span>
+          @if (!hasProject()) {
+            <span class="disabled-hint">(No project)</span>
+          }
+        </button>
+      </div>
+      
+      <!-- Webhooks - only for CODAY_ADMIN -->
+      <div class="menu-item-wrapper">
+        <button class="menu-button" (click)="openWebhooks()">
+          <span class="menu-icon">🔗</span>
+          <span class="menu-text">Webhooks</span>
+        </button>
+      </div>
+    }
+    
+    <div class="menu-item-wrapper">
+      <span class="menu-text">Theme</span>
+      <app-theme-selector class="inline-selector"></app-theme-selector>
+    </div>
+    
+    <div class="menu-item-wrapper">
+      <span class="menu-text">Preferences</span>
+      <app-options-panel class="inline-panel"></app-options-panel>
+    </div>
+  </div>
+  </div>
+}
+
+<!-- Error notification -->
+@if (configErrorMessage) {
+  <div class="error-notification" role="alert">
+    <span class="error-icon">⚠️</span>
+    <span class="error-text">{{ configErrorMessage }}</span>
+    <button class="error-close" (click)="configErrorMessage = ''" aria-label="Close error message">✕</button>
+  </div>
+}
+
+<!-- JSON Editor Modals -->
+<app-json-editor 
+  [configType]="'user'"
+  [isOpen]="isUserConfigOpen"
+  [initialContent]="userConfigJson"
+  [isLoading]="isLoadingUserConfig"
+  [isSaving]="isSavingUserConfig"
+  (save)="onUserConfigSave($event)"
+  (closeEditor)="onUserConfigCancel()"
+></app-json-editor>
+
+@if (hasProject()) {
+  <app-json-editor 
+    [configType]="'project'" 
+    [projectName]="getCurrentProjectName()!"
+    [isOpen]="isProjectConfigOpen"
+    [initialContent]="projectConfigJson"
+    [isLoading]="isLoadingProjectConfig"
+    [isSaving]="isSavingProjectConfig"
+    (save)="onProjectConfigSave($event)"
+    (closeEditor)="onProjectConfigCancel()"
+  ></app-json-editor>
+}
+
+<!-- Webhook Manager Modal -->
+<app-webhook-manager
+  [isOpen]="isWebhooksOpen"
+  [availableProjects]="getAvailableProjects()"
+  (isOpenChange)="isWebhooksOpen = $event"
+  (closeModal)="isWebhooksOpen = false"
+></app-webhook-manager>
+
+<!-- Backdrop pour fermer le menu -->
+@if (isMenuOpen) {
+  <div 
+    class="menu-backdrop"
+    (click)="closeMenu()"
+    (keydown.escape)="closeMenu()"
+    tabindex="-1"
+    role="button"
+    aria-label="Fermer le menu (cliquez ou appuyez sur Échap)"
+  ></div>
+}
