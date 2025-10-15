@@ -77,8 +77,7 @@
     },
     "changelog": {
       "workspaceChangelog": {
-        "file": "CHANGELOG.md",
-        "entryWhenNoChanges": true
+        "file": "CHANGELOG.md"
       }
     },
     "version": {
