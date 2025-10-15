@@ -47,15 +47,13 @@ jobs:
       - name: Fetch tags
         run: git fetch --tags --force
 
-      - name: Publish release
+      - name: Run nx release
         id: release
         env:
           HUSKY: 0
         run: |
           # Run nx release and capture output
-          npm config set //${{ vars.NPM_REGISTRY }}/:_authToken=${{ secrets.NPM_ACCESS_TOKEN }}
-          npx nx release --yes --registry=https://${{ vars.NPM_REGISTRY }} 2>&1 | tee release-output.txt
-          npm config delete //${{ vars.NPM_REGISTRY }}/:_authToken
+          npx nx release --skip-publish 2>&1 | tee release-output.txt
 
           # Extract the new version from the output
           NEW_VERSION=$(grep -oP 'release/\K[0-9]+\.[0-9]+\.[0-9]+' release-output.txt | head -1)
@@ -72,6 +70,12 @@ jobs:
         if: steps.release.outputs.no_changes != 'true'
         run: |
           git push origin HEAD:master --follow-tags
+
+      - name: Publish release
+        run: |
+          npm config set //${{ vars.NPM_REGISTRY }}/:_authToken=${{ secrets.NPM_ACCESS_TOKEN }}
+          npx nx release publish --registry=https://${{ vars.NPM_REGISTRY }}
+          npm config delete //${{ vars.NPM_REGISTRY }}/:_authToken
 
       - name: Create GitHub Release
         if: steps.release.outputs.no_changes != 'true'
