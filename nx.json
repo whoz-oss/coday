@@ -15,7 +15,7 @@
     "nx-release-publish": {
       "dependsOn": ["server:build"],
       "options": {
-        "packageRoot": "dist/web"
+        "packageRoot": "apps/server/dist"
       }
     },
     "lint": {
