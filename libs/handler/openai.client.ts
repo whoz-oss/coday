@@ -209,14 +209,16 @@ export class OpenaiClient extends AiClient {
       const text = firstChoice.message.content?.trim()
       this.handleText(thread, text, agent, subscriber)
 
-      const toolRequests = firstChoice.message?.tool_calls?.map(
-        (toolCall) =>
-          new ToolRequestEvent({
-            toolRequestId: toolCall.id,
-            name: toolCall.function.name,
-            args: toolCall.function.arguments,
-          })
-      )
+      const toolRequests = firstChoice.message?.tool_calls
+        ?.filter((toolCall) => toolCall.type === 'function')
+        .map(
+          (toolCall) =>
+            new ToolRequestEvent({
+              toolRequestId: toolCall.id,
+              name: toolCall.function.name,
+              args: toolCall.function.arguments,
+            })
+        )
 
       if (await this.shouldProcessAgainAfterResponse(text, toolRequests, agent, thread)) {
         // then tool responses to send
@@ -495,14 +497,16 @@ export class OpenaiClient extends AiClient {
         if (chunk.event === 'thread.run.requires_action') {
           try {
             const toolRequests =
-              chunk.data.required_action?.submit_tool_outputs.tool_calls?.map(
-                (toolCall) =>
-                  new ToolRequestEvent({
-                    toolRequestId: toolCall.id,
-                    name: toolCall.function.name,
-                    args: toolCall.function.arguments,
-                  })
-              ) ?? []
+              chunk.data.required_action?.submit_tool_outputs.tool_calls
+                ?.filter((toolCall) => toolCall.type === 'function')
+                .map(
+                  (toolCall) =>
+                    new ToolRequestEvent({
+                      toolRequestId: toolCall.id,
+                      name: toolCall.function.name,
+                      args: toolCall.function.arguments,
+                    })
+                ) ?? []
             const toolOutputs: RunSubmitToolOutputsParams.ToolOutput[] = []
             await Promise.all(
               toolRequests.map(async (request) => {

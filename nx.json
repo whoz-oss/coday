@@ -5,7 +5,7 @@
   },
   "targetDefaults": {
     "build": {
-      "cache": true
+      "cache": false
     },
     "@nx/esbuild:esbuild": {
       "cache": true,
@@ -13,9 +13,9 @@
       "inputs": ["default", "^default"]
     },
     "nx-release-publish": {
-      "dependsOn": ["web:build"],
+      "dependsOn": ["server:build"],
       "options": {
-        "packageRoot": "dist/web"
+        "packageRoot": "apps/server/dist"
       }
     },
     "lint": {
@@ -26,11 +26,6 @@
       "options": {
         "passWithNoTests": true
       }
-    },
-    "@nx/js:tsc": {
-      "cache": true,
-      "dependsOn": ["^build"],
-      "inputs": ["default", "^default"]
     },
     "@angular/build:application": {
       "cache": true,
@@ -74,7 +69,7 @@
     }
   ],
   "release": {
-    "projects": ["web"],
+    "projects": ["server"],
     "releaseTagPattern": "release/{version}",
     "git": {
       "commitMessage": "chore(release): {version}",
@@ -82,15 +77,14 @@
     },
     "changelog": {
       "workspaceChangelog": {
-        "file": "CHANGELOG.md",
-        "entryWhenNoChanges": false
+        "file": "CHANGELOG.md"
       }
     },
     "version": {
-      "preVersionCommand": "npx nx run web:build",
-      "currentVersionResolver": "registry",
+      "preVersionCommand": "nx run server:build",
       "preserveLocalDependencyProtocols": false,
-      "manifestRootsToUpdate": ["apps/{projectName}"]
+      "manifestRootsToUpdate": ["apps/{projectName}"],
+      "conventionalCommits": true
     }
   },
   "tui": {

@@ -60,7 +60,7 @@ This pattern allows:
 
 ### Monorepo Structure
 
-The proposed repository structure follows the yarn workspaces pattern:
+The proposed repository structure follows the pnpm workspaces pattern:
 
 ```
 /
@@ -108,7 +108,7 @@ This structure is:
 
 ## Tools Consideration
 
-While more complex tools like Nx were considered, the recommendation is to start with basic yarn workspaces for:
+While more complex tools like Nx were considered, the recommendation is to start with basic pnpm workspaces for:
 
 - Simplicity and maintainability
 - Native package manager support
