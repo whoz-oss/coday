@@ -72,10 +72,10 @@
           <div class="preference-item">
             <div class="preference-content">
               <!-- User Config -->
-              <button class="sidenav-item" (click)="openUserConfig(); $event.stopPropagation()" mat-button>
-                <mat-icon class="item-icon">person</mat-icon>
-                <span class="item-text">User Config</span>
-              </button>
+              <a class="sidenav-link" (click)="openUserConfig(); $event.stopPropagation()" role="button" tabindex="0">
+                <mat-icon fontSet="material-icons-outlined">edit_square</mat-icon>
+                <span class="item-text">Edit user config</span>
+              </a>
             </div>
 
             <!-- Project Config - Admin only -->

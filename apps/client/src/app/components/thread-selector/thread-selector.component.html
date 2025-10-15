@@ -10,10 +10,10 @@
   @if (canShowDropdown()) {
     <div class="thread-list" role="menu" aria-label="Thread selection">
       <!-- New thread option (always first) -->
-      <button class="thread-item new-thread-item" (click)="createNewThread()" type="button" role="menuitem">
+      <a class="sidenav-link thread-link new-thread-link" (click)="createNewThread()" role="button" tabindex="0">
         <mat-icon fontSet="material-icons-outlined">edit_square</mat-icon>
-        <span class="thread-name">New thread</span>
-      </button>
+        <span class="thread-name">Start a new thread</span>
+      </a>
 
       <!-- Existing threads -->
       @for (thread of getAvailableThreads(); track thread.id) {

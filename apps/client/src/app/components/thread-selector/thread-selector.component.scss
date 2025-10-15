@@ -45,6 +45,41 @@
   }
 }
 
+.thread-link {
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  border: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 400;
+  padding: 0 1rem;
+
+  &:hover {
+    color: var(--color-primary-hover, var(--color-primary));
+    text-decoration-thickness: 2px;
+  }
+
+  &:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  &.new-thread-link {
+    margin-bottom: 0.5rem;
+  }
+
+  mat-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+}
+
 .thread-name {
   flex: 1;
   font-size: 0.875rem;

@@ -4,6 +4,7 @@ import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
 import { PreferencesService } from '../../services/preferences.service'
 import { VoiceSynthesisService, VoiceInfo } from '../../services/voice-synthesis.service'
+import { MatIcon } from '@angular/material/icon'
 
 interface VoiceLanguageOption {
   code: string
@@ -14,7 +15,7 @@ interface VoiceLanguageOption {
 @Component({
   selector: 'app-options-panel',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, MatIcon],
   templateUrl: './options-panel.component.html',
   styleUrl: './options-panel.component.scss',
 })
