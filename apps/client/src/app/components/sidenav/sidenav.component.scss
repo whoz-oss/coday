@@ -247,8 +247,6 @@
 // New Thread Section - Always Visible
 .new-thread-section {
   padding: 1rem 1rem 0.5rem 1rem;
-  border-bottom: 1px solid var(--color-border);
-  margin-bottom: 0.5rem;
 }
 
 .new-thread-link {
@@ -355,7 +353,7 @@
 .section-container {
   display: flex;
   flex-direction: column;
-  margin-bottom: 0.5rem;
+  flex-shrink: 0;
 }
 
 // Section toggle button (styled as a link with arrow)
@@ -371,8 +369,13 @@
   text-align: left;
   width: 100%;
 
+  &.active,
   &:hover {
     background: var(--color-bg-hover);
+  }
+
+  &.active {
+    border-top: 1px solid var(--color-border);
   }
 
   .arrow-icon {
@@ -382,10 +385,6 @@
     color: var(--color-text-secondary);
     transition: transform 0.2s ease;
     transform: rotate(0deg);
-
-    &.expanded {
-      transform: rotate(90deg);
-    }
   }
 
   .section-icon {
@@ -409,6 +408,28 @@
   flex-direction: column;
   padding: 0.5rem 0;
   animation: slideDown 0.2s ease;
+  max-height: calc(100vh - 270px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-bottom: 1px solid var(--color-border);
+
+  // Custom scrollbar for section content
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-text-secondary);
+    border-radius: 3px;
+
+    &:hover {
+      background: var(--color-text);
+    }
+  }
 }
 
 @keyframes slideDown {
@@ -576,7 +597,6 @@
       font-size: 20px;
       width: 20px;
       height: 20px;
-      color: var(--color-text-secondary);
     }
 
     .item-text {

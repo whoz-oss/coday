@@ -48,7 +48,7 @@
     <!-- New Thread Link - Always Visible -->
     <div class="new-thread-section">
       <a class="new-thread-link" (click)="createNewThread()" role="button" tabindex="0">
-        <mat-icon fontSet="material-icons-outlined">edit_note</mat-icon>
+        <mat-icon fontSet="material-icons-outlined">play_circle</mat-icon>
         <span class="new-thread-text">Start a new thread</span>
       </a>
     </div>
@@ -57,9 +57,14 @@
     <div class="sidenav-sections">
       <!-- Threads Section - Expanded by default -->
       <div class="section-container">
-        <button class="section-toggle" (click)="toggleSection('threads')" type="button">
+        <button
+          class="section-toggle"
+          [class.active]="expandedSections['threads']"
+          (click)="toggleSection('threads')"
+          type="button"
+        >
           @if (expandedSections['threads']) {
-            <mat-icon class="arrow-icon expanded">chevron_right</mat-icon>
+            <mat-icon class="arrow-icon expanded">keyboard_arrow_up</mat-icon>
           } @else {
             <mat-icon class="section-icon">forum</mat-icon>
           }
@@ -74,65 +79,64 @@
 
       <!-- Configuration Section -->
       <div class="section-container">
-        <button class="section-toggle" (click)="toggleSection('config')" type="button">
+        <button
+          class="section-toggle"
+          [class.active]="expandedSections['config']"
+          (click)="toggleSection('config')"
+          type="button"
+        >
           @if (expandedSections['config']) {
-            <mat-icon class="arrow-icon expanded">chevron_right</mat-icon>
+            <mat-icon class="arrow-icon expanded">keyboard_arrow_up</mat-icon>
           } @else {
-            <mat-icon class="section-icon">settings</mat-icon>
+            <mat-icon class="section-icon">tune</mat-icon>
           }
-          <span class="section-label">Configuration</span>
+          <span class="section-label">Preferences</span>
         </button>
         @if (expandedSections['config']) {
           <div class="section-content">
-            <div class="config-links">
-              <!-- User Config -->
-              <a class="sidenav-link" (click)="openUserConfig(); $event.stopPropagation()" role="button" tabindex="0">
-                <mat-icon fontSet="material-icons-outlined">edit_square</mat-icon>
-                <span class="item-text">Edit user config</span>
-              </a>
-
-              <!-- Project Config - Admin only -->
-              @if (isAdmin) {
-                @if (hasProject()) {
-                  <a
-                    class="sidenav-link"
-                    (click)="openProjectConfig(); $event.stopPropagation()"
-                    role="button"
-                    tabindex="0"
-                  >
-                    <mat-icon fontSet="material-icons-outlined">folder</mat-icon>
-                    <span class="item-text">Project config</span>
-                  </a>
-                } @else {
-                  <span class="sidenav-link disabled">
-                    <mat-icon fontSet="material-icons-outlined">folder</mat-icon>
-                    <span class="item-text">Project config (No project)</span>
-                  </span>
-                }
-
-                <!-- Webhooks - Admin only -->
-                <a class="sidenav-link" (click)="openWebhooks(); $event.stopPropagation()" role="button" tabindex="0">
-                  <mat-icon fontSet="material-icons-outlined">webhook</mat-icon>
-                  <span class="item-text">Webhooks</span>
-                </a>
-              }
-            </div>
-
-            <!-- Theme Selector -->
-            <div class="preference-item">
-              <div class="preference-header">
-                <mat-icon class="item-icon">palette</mat-icon>
-                <span class="item-text">Theme</span>
-              </div>
-              <div class="preference-content">
-                <app-theme-selector></app-theme-selector>
-              </div>
-            </div>
-
             <!-- Options -->
             <div class="preference-item">
               <app-options-panel class="inline-panel"></app-options-panel>
             </div>
+          </div>
+        }
+
+        <div class="section-container">
+          <button class="section-toggle" (click)="openUserConfig(); $event.stopPropagation()" type="button">
+            <mat-icon class="section-icon">settings</mat-icon>
+            <span class="section-label">User Configuration</span>
+          </button>
+        </div>
+
+        <!-- Admin only -->
+        @if (isAdmin) {
+          <!-- Project Config -->
+          @if (hasProject()) {
+            <div class="section-container">
+              <button class="section-toggle" (click)="openProjectConfig(); $event.stopPropagation()" type="button">
+                <mat-icon class="section-icon">settings_applications</mat-icon>
+                <span class="section-label">Project Configuration</span>
+              </button>
+            </div>
+          } @else {
+            <div class="section-container">
+              <button
+                class="section-toggle"
+                (click)="openProjectConfig(); $event.stopPropagation()"
+                type="button"
+                disabled
+              >
+                <mat-icon class="section-icon">settings_applications</mat-icon>
+                <span class="section-label">Project config (No project)</span>
+              </button>
+            </div>
+          }
+          <!-- Webhooks - Admin only -->
+          <div class="section-container">
+            <button class="section-toggle" (click)="openWebhooks(); $event.stopPropagation()" type="button">
+              <mat-icon class="section-icon">webhook</mat-icon>
+              <span class="section-label">Webhooks</span>
+            </button>
           </div>
         }
       </div>

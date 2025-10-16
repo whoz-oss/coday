@@ -9,7 +9,6 @@ import { MatDividerModule } from '@angular/material/divider'
 import { SessionStateService } from '../../core/services/session-state.service'
 import { ConfigApiService } from '../../core/services/config-api.service'
 import { CodayService } from '../../core/services/coday.service'
-import { ThemeSelectorComponent } from '../theme-selector/theme-selector.component'
 import { OptionsPanelComponent } from '../options-panel'
 import { ThreadSelectorComponent } from '../thread-selector/thread-selector.component'
 import { JsonEditorComponent } from '../json-editor/json-editor.component'
@@ -25,7 +24,6 @@ import { SessionState } from '@coday/model/session-state'
     MatIconModule,
     MatButtonModule,
     MatDividerModule,
-    ThemeSelectorComponent,
     OptionsPanelComponent,
     ThreadSelectorComponent,
     JsonEditorComponent,
@@ -343,10 +341,18 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Toggle section expansion
+   * Toggle section expansion (accordion behavior - closes others)
    */
   toggleSection(section: string): void {
-    this.expandedSections[section] = !this.expandedSections[section]
+    const wasExpanded = this.expandedSections[section]
+
+    // Close all sections first (accordion behavior)
+    Object.keys(this.expandedSections).forEach((key) => {
+      this.expandedSections[key] = false
+    })
+
+    // Toggle the clicked section
+    this.expandedSections[section] = !wasExpanded
   }
 
   /**

@@ -4,6 +4,7 @@ import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
 import { PreferencesService } from '../../services/preferences.service'
 import { VoiceSynthesisService, VoiceInfo } from '../../services/voice-synthesis.service'
+import { ThemeService, ThemeMode } from '../../core/services/theme.service'
 import { MatIcon } from '@angular/material/icon'
 
 interface VoiceLanguageOption {
@@ -22,6 +23,7 @@ interface VoiceLanguageOption {
 export class OptionsPanelComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>()
 
+  selectedTheme: ThemeMode = 'light'
   selectedVoiceLanguage = 'en-US'
   useEnterToSend = false
   printTechnicalMessages = false
@@ -54,8 +56,10 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   // Modern Angular dependency injection
   private preferencesService = inject(PreferencesService)
   private voiceSynthesisService = inject(VoiceSynthesisService)
+  private themeService = inject(ThemeService)
 
   ngOnInit(): void {
+    this.selectedTheme = this.themeService.getCurrentTheme()
     this.selectedVoiceLanguage = this.preferencesService.getVoiceLanguage()
     this.useEnterToSend = this.preferencesService.getEnterToSend()
     this.printTechnicalMessages = this.preferencesService.getPrintTechnicalMessages()
@@ -67,6 +71,10 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
     this.selectedVoiceId = this.preferencesService.getSelectedVoice()
 
     this.loadAvailableVoices()
+
+    this.themeService.currentTheme$.pipe(takeUntil(this.destroy$)).subscribe((theme) => {
+      this.selectedTheme = theme
+    })
 
     this.preferencesService.voiceLanguage$.pipe(takeUntil(this.destroy$)).subscribe((language) => {
       this.selectedVoiceLanguage = language
@@ -114,6 +122,11 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroy$.next()
     this.destroy$.complete()
+  }
+
+  onThemeChange(): void {
+    console.log('[OPTIONS] Theme changed to:', this.selectedTheme)
+    this.themeService.setTheme(this.selectedTheme)
   }
 
   onVoiceLanguageChange(): void {
