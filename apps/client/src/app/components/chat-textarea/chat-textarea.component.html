@@ -6,7 +6,7 @@
     </div>
   }
   <!-- Input row: textarea + voice + send, all inside rounded box -->
-  <div class="input-row grouped-input" [class.focused]="isFocused">
+  <div class="input-row grouped-input" [class.focused]="isFocused" [class.welcome-mode]="showWelcome">
     <textarea
       #messageInput
       class="message-input"

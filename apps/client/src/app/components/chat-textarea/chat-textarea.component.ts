@@ -29,6 +29,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   private static readonly MIN_TEXTAREA_LINES = 2
   private static readonly MAX_TEXTAREA_LINES = 15
   @Input() isDisabled: boolean = false
+  @Input() showWelcome: boolean = false
   @Output() messageSubmitted = new EventEmitter<string>()
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
   @Output() heightChanged = new EventEmitter<number>()

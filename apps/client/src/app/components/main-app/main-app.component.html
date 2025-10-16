@@ -40,6 +40,7 @@
         @if (!currentChoice) {
           <app-chat-textarea
             [isDisabled]="!isConnected"
+            [showWelcome]="!messages.length"
             (messageSubmitted)="onMessageSubmitted($event)"
             (voiceRecordingToggled)="onVoiceToggled($event)"
             (heightChanged)="onInputHeightChanged($event)"
