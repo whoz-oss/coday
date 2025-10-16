@@ -1,0 +1,111 @@
+/**
+ * Apple Glass Effect Utilities
+ * 
+ * Reusable mixins and utilities for applying glass morphism effects
+ * based on Apple's design language.
+ */
+
+// Base glass panel effect
+@mixin glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-backdrop-blur);
+  -webkit-backdrop-filter: var(--glass-backdrop-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+// Glass panel with custom blur
+@mixin glass-panel-blur($blur-amount) {
+  background: var(--glass-bg);
+  backdrop-filter: blur($blur-amount);
+  -webkit-backdrop-filter: blur($blur-amount);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+// Interactive glass element (buttons, cards)
+@mixin glass-interactive {
+  @include glass-panel;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+}
+
+// Glass input field
+@mixin glass-input {
+  @include glass-panel;
+  padding: 1rem 1.25rem;
+  border-radius: 12px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  &:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
+    transform: translateY(-1px);
+  }
+}
+
+// Utility classes that can be applied directly in templates
+.glass-panel {
+  @include glass-panel;
+}
+
+.glass-interactive {
+  @include glass-interactive;
+}
+
+.glass-card {
+  @include glass-panel;
+  border-radius: 20px;
+  padding: 1.5rem;
+}
+
+.glass-button {
+  @include glass-interactive;
+  border-radius: 12px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+
+    &:hover {
+      transform: none;
+    }
+  }
+}
+
+// Smooth transitions for theme changes
+.smooth-theme-transition {
+  transition:
+    background 0.3s ease,
+    color 0.3s ease,
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+// Apple-style focus ring
+@mixin apple-focus-ring($color: var(--color-primary)) {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
+  border-color: $color;
+}
+
+// Frosted glass overlay (for modals, dropdowns)
+@mixin glass-overlay {
+  background: var(--glass-bg);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border: 1px solid var(--glass-border);
+}

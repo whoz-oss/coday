@@ -1,131 +1,180 @@
+@use '../../styles/animated-gradient-border.scss' as animated-gradient-border;
+
 .chat-input-container {
   // Pas de padding/background ici - géré par le parent (input-section)
   flex-shrink: 0;
   width: 100%;
+  position: relative;
 }
 
-.invite-container {
-  margin-bottom: 0.5rem;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-  
-  .invite-content {
-    color: var(--color-text, #282a36);
-    font-size: 0.95rem;
-    line-height: 1.4;
+.thinking-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 1;
+
+  ::ng-deep .mdc-linear-progress__bar-inner {
+    border-top-width: 3px;
   }
 }
 
-.input-row {
+.input-row.grouped-input {
   display: flex;
-  gap: 0.5rem;
-  align-items: stretch; // Permet aux boutons de s'étendre en hauteur
+  align-items: center;
+  background: var(--glass-bg);
+  border-radius: 16px;
+  padding: 0 0.15rem 0 1.25rem;
+  position: relative;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+/* Animated gradient border - only when welcome is visible */
+.input-row {
+  @include animated-gradient-border.animated-gradient-border;
+}
+
+/* When focused in welcome mode, stop the animation and show solid border */
+.input-row.grouped-input.focused:not(.is-thinking) {
+  &::before {
+    background: var(--color-primary);
+    animation: none;
+  }
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
 }
 
 .message-input {
   flex: 1;
-  padding: 0.75rem;
-  border: 1px solid var(--color-border, #aeaeae);
-  border-radius: 8px;
-  resize: none; // Disable manual resize since we handle it automatically
-  overflow-y: auto; // Allow scrolling when content exceeds max height
-  font-family: inherit;
+  border: none;
+  outline: none;
+  background: transparent !important;
+  box-shadow: none;
   font-size: 1rem;
+  padding: 1rem 0;
+  color: var(--color-text);
+  resize: none;
+  min-height: 36px;
+  max-height: 180px;
+  border-radius: 16px;
+  overflow-y: auto;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
   line-height: 1.5;
-  background: var(--color-input-bg, #ffffff);
-  color: var(--color-text, #282a36);
-  
-  // Height will be set dynamically by the adjustTextareaHeight method
-  // Min and max heights are calculated in TypeScript based on line height
-  
-  &:focus {
-    outline: none;
-    border-color: var(--color-primary, #7064fb);
-    box-shadow: 0 0 0 3px rgba(112, 100, 251, 0.1);
-  }
-  
-  &:disabled {
-    background-color: var(--color-bg-secondary, #f1f1eb);
-    color: var(--color-text-secondary, #6272a4);
-    cursor: not-allowed;
-  }
-  
-  &::placeholder {
-    color: var(--color-text-secondary, #6272a4);
-  }
 }
 
-.voice-btn, .send-btn {
-  padding: 0.75rem;
-  border: 1px solid var(--color-border, #aeaeae);
-  border-radius: 8px;
-  background: var(--color-input-bg, #ffffff);
-  cursor: pointer;
-  transition: all 0.2s;
-  min-width: 60px; // Largeur minimale pour les boutons
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+.message-input:focus {
+  outline: none;
+  border: none;
+  box-shadow: none;
+}
+
+.message-input:disabled {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.message-input::placeholder {
+  color: var(--color-text-secondary);
+}
+
+.voice-btn,
+.send-btn,
+.stop-btn {
+  margin: 0 0.5rem 0 0.08rem;
+}
+
+.voice-btn:hover:not(.recording),
+.send-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.voice-btn.recording {
+  background: rgba(255, 59, 48, 0.14);
+  color: var(--color-error);
+}
+
+.send-btn {
+  background: var(--color-primary);
+}
+
+.stop-btn {
+  transition:
+    background 0.18s,
+    transform 0.12s;
+
+  &:hover {
+    opacity: 0.85;
+    transform: scale(1.05);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
 }
 
 .voice-btn {
-  font-size: 1.2rem;
-  color: var(--color-text, #282a36);
-  user-select: none; // Éviter la sélection de texte lors du push-to-talk
-  flex-shrink: 0; // Ne pas rétrécir
-  
-  &:hover:not(.recording) {
-    background: var(--color-bg-secondary, #f1f1eb);
-  }
-  
-  &:focus {
-    outline: 2px solid var(--color-primary, #7064fb);
-    outline-offset: 2px;
-  }
-  
+  transition:
+    background 0.18s,
+    box-shadow 0.18s,
+    transform 0.12s,
+    opacity 0.5s;
+  position: relative;
+
   &.recording {
-    background: rgba(255, 85, 85, 0.1);
-    border-color: var(--color-error, #ff5555);
-    color: var(--color-error, #ff5555);
+    background: rgba(255, 59, 48, 0.07);
+    color: var(--color-error);
     animation: pulse 1.5s infinite;
-    
+
     &:hover {
-      background: rgba(255, 85, 85, 0.2);
+      background: rgba(255, 59, 48, 0.11);
     }
   }
 }
 
 .send-btn {
-  background: var(--color-primary, #7064fb);
-  color: var(--color-text-inverse, #ffffff);
-  border-color: var(--color-primary, #7064fb);
-  font-weight: 500;
-  gap: 0.25rem;
-  min-width: 70px;
-  flex-shrink: 0; // Ne pas rétrécir
-  
+  transition:
+    background 0.18s,
+    box-shadow 0.18s,
+    transform 0.12s,
+    opacity 0.4s,
+    margin-left 0.4s;
+  position: relative;
+
+  &.active {
+    background: transparent;
+    opacity: 1;
+  }
+
+  &:not(.active) {
+    color: var(--color-secondary);
+    background: transparent;
+    opacity: 0;
+    margin-left: calc(-0.5rem + -36px);
+  }
+
   &:hover:not(:disabled) {
-    background: var(--color-primary-hover, #ff79c6);
-    border-color: var(--color-primary-hover, #ff79c6);
+    color: white;
+    background: linear-gradient(
+      90deg,
+      var(--color-primary, #3b82f6) 0%,
+      var(--color-primary, #3b82f6) 20%,
+      var(--color-accent, #8b5cf6) 50%,
+      var(--color-primary, #3b82f6) 80%,
+      var(--color-primary, #3b82f6) 100%
+    );
+    background-size: 300% auto;
+    animation: sendButtonGradientShift 6s ease-in-out infinite;
+    box-shadow: 0 4px 14px rgba(0, 122, 255, 0.19);
+    transform: scale(1.2);
   }
-  
-  &:disabled {
-    background: var(--color-text-secondary, #6272a4);
-    border-color: var(--color-text-secondary, #6272a4);
-    cursor: not-allowed;
-  }
-  
-  .send-text {
-    font-size: 0.9rem;
-    font-weight: 500;
-  }
-  
-  .send-shortcut {
-    font-size: 0.7rem;
-    opacity: 0.8;
-    font-weight: 400;
-    line-height: 1;
+
+  &:active:not(:disabled) {
+    transform: scale(1.3);
+    box-shadow: 0 4px 24px rgba(0, 122, 255, 0.19);
   }
 }
 
@@ -137,17 +186,39 @@
   margin-bottom: 0.2rem;
   color: var(--color-error, #ff5555);
   font-size: 0.9rem;
-}
-
-.recording-dot {
-  width: 8px;
-  height: 8px;
-  background: var(--color-error, #ff5555);
-  border-radius: 50%;
-  animation: pulse 1.5s infinite;
+  position: absolute;
+  top: -1.5rem;
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes sendButtonGradientShift {
+  0% {
+    background-position: 0% center;
+  }
+  50% {
+    background-position: 50% 10%;
+  }
+  100% {
+    background-position: 0% center;
+  }
+}
+
+// Print styles
+@media print {
+  .thinking-progress,
+  .stop-btn,
+  .voice-btn,
+  .send-btn,
+  .recording-indicator {
+    display: none !important;
+  }
 }
