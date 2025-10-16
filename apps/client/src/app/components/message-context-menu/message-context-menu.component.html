@@ -1,13 +1,7 @@
 <div class="context-menu-wrapper">
   @for (action of actions; track action.label) {
-    <button
-      class="menu-item"
-      [class.destructive]="action.destructive"
-      [attr.title]="action.tooltip"
-      (click)="executeAction(action, $event)"
-    >
-      <span class="material-icons menu-icon">{{ action.icon }}</span>
-      <span class="menu-label">{{ action.label }}</span>
+    <button mat-icon-button [attr.title]="action.tooltip || action.label" (click)="executeAction(action, $event)">
+      <mat-icon [attr.aria-label]="action.label">{{ action.icon }}</mat-icon>
     </button>
   }
 </div>

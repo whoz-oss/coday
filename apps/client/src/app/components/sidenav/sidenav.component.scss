@@ -124,6 +124,7 @@
   background: var(--glass-bg);
   backdrop-filter: var(--glass-backdrop-blur);
   -webkit-backdrop-filter: var(--glass-backdrop-blur);
+  border-radius: 0;
   overflow-y: auto !important;
   overflow-x: hidden;
   display: flex;

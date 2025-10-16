@@ -1,31 +1,40 @@
-<div class="message" [ngClass]="messageClasses">
-  <!-- Normal layout for user and assistant messages -->
-  @if (!isSimplified) {
-    <!-- Header with speaker -->
-    @if (shouldShowSpeaker) {
-      <div class="message-header">
-        <div class="speaker">
-          {{ message.speaker }}
+<div class="message-wrapper" [ngClass]="{ 'user-message-wrapper': message.role === 'user' }">
+  <div class="message" [ngClass]="messageClasses">
+    <!-- Normal layout for user and assistant messages -->
+    @if (!isSimplified) {
+      <!-- Header with speaker -->
+      @if (shouldShowSpeaker) {
+        <div class="message-header">
+          <div class="speaker">
+            {{ message.speaker }}
+          </div>
         </div>
+      }
+
+      <!-- Content -->
+      <div class="content markdown-content" [innerHTML]="renderedContent"></div>
+
+      <!-- Context menu for assistant messages (inside bubble) -->
+      @if (shouldShowActions && message.role === 'assistant') {
+        <app-message-context-menu [actions]="actions"> </app-message-context-menu>
+      }
+    }
+
+    <!-- Simplified layout for other message types -->
+    @if (isSimplified) {
+      <div class="simple-content markdown-content">
+        <span [innerHTML]="renderedContent"></span>
+        @if (eventLink) {
+          <a [href]="eventLink" target="_blank" class="event-link">view</a>
+        }
       </div>
     }
+  </div>
 
-    <!-- Content -->
-    <div class="content markdown-content" [innerHTML]="renderedContent"></div>
-
-    <!-- Context menu in bottom-right corner for long messages -->
-    @if (isLongMessage && shouldShowActions) {
+  <!-- Context menu for user messages (outside bubble) -->
+  @if (shouldShowActions && message.role === 'user') {
+    <div class="user-actions">
       <app-message-context-menu [actions]="actions"> </app-message-context-menu>
-    }
-  }
-
-  <!-- Simplified layout for other message types -->
-  @if (isSimplified) {
-    <div class="simple-content markdown-content">
-      <span [innerHTML]="renderedContent"></span>
-      @if (eventLink) {
-        <a [href]="eventLink" target="_blank" class="event-link">view</a>
-      }
     </div>
   }
 </div>

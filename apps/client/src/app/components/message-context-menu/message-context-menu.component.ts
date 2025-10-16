@@ -1,5 +1,7 @@
 import { Component, Input } from '@angular/core'
 import { CommonModule } from '@angular/common'
+import { MatIconButton } from '@angular/material/button'
+import { MatIcon } from '@angular/material/icon'
 
 export interface MenuAction {
   /** Name of the Material icon (see https://fonts.google.com/icons) */
@@ -13,7 +15,7 @@ export interface MenuAction {
 @Component({
   selector: 'app-message-context-menu',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, MatIconButton, MatIcon],
   templateUrl: './message-context-menu.component.html',
   styleUrl: './message-context-menu.component.scss',
 })

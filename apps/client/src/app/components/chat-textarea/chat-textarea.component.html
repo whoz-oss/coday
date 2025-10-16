@@ -20,6 +20,7 @@
     ></textarea>
     <button
       class="voice-btn"
+      mat-icon-button
       [class.recording]="isRecording"
       [class.hidden]="message.trim()"
       (mousedown)="onVoiceButtonMouseDown($event)"
@@ -32,10 +33,11 @@
       tabindex="0"
       title="Hold mouse click, touch, or spacebar to speak"
     >
-      <span class="material-icons voice-icon">{{ isRecording ? 'fiber_manual_record' : 'mic' }}</span>
+      <mat-icon>{{ isRecording ? 'fiber_manual_record' : 'mic' }}</mat-icon>
     </button>
     <button
       class="send-btn"
+      mat-icon-button
       (click)="sendMessage()"
       [disabled]="isDisabled || !message.trim()"
       [class.hidden]="isDisabled || !message.trim()"
@@ -43,7 +45,7 @@
       [title]="getSendButtonTooltip()"
       type="button"
     >
-      <span class="material-icons send-icon">send</span>
+      <mat-icon>send</mat-icon>
     </button>
   </div>
 </div>

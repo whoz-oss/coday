@@ -16,11 +16,13 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { marked } from 'marked'
 import { PreferencesService } from '../../services/preferences.service'
 import { CodayService } from '../../core/services/coday.service'
+import { MatIconButton } from '@angular/material/button'
+import { MatIcon } from '@angular/material/icon'
 
 @Component({
   selector: 'app-chat-textarea',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, MatIconButton, MatIcon],
   templateUrl: './chat-textarea.component.html',
   styleUrl: './chat-textarea.component.scss',
 })

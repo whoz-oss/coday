@@ -2,10 +2,37 @@
 @use './app/styles/colors.scss';
 @use './app/styles/glass-effects.scss';
 @use './app/styles/print.scss';
+@use './app/styles/animated-gradient-border.scss' as animated-gradient-border;
+
+@use '@angular/material' as mat;
+
+@include mat.elevation-classes();
 
 /* Reset */
 * {
   box-sizing: border-box;
+}
+
+html {
+  &[data-theme='dark'] {
+    color-scheme: light dark;
+  }
+
+  @include mat.theme(
+    (
+      color: mat.$violet-palette,
+      typography: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+      density: 0,
+    )
+  );
+
+  @include mat.snack-bar-overrides(
+    (
+      container-shape: transparent,
+      container-color: transparent,
+      supporting-text-color: var(--color-text),
+    )
+  );
 }
 
 html,
@@ -194,4 +221,53 @@ app-main {
 .app {
   position: relative;
   z-index: 1;
+}
+
+.cdk-overlay-container {
+  z-index: 10000;
+}
+
+.cdk-global-overlay-wrapper {
+  justify-content: left !important;
+}
+
+/* Material Design Snackbar Styles - Light Mode (default) */
+.mat-mdc-snackbar-surface {
+  z-index: 10000;
+  border-radius: 16px !important;
+
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-backdrop-blur);
+
+  @include animated-gradient-border.animated-gradient-border;
+
+  &.snackbar-error {
+    --mat-snack-bar-button-color: var(--color-error);
+    --mdc-snackbar-supporting-text-color: var(--color-error);
+
+    @include animated-gradient-border.animated-gradient-border-error;
+  }
+}
+
+/* Dark mode snackbar styles */
+[data-theme='dark'] {
+  .mat-mdc-snack-bar-container {
+    &.snackbar-success {
+      --mdc-snackbar-container-color: var(--glass-bg);
+      --mat-snack-bar-button-color: var(--color-primary, #3b82f6);
+      --mdc-snackbar-supporting-text-color: var(--color-primary, #3b82f6);
+    }
+
+    &.snackbar-error {
+      --mdc-snackbar-container-color: var(--glass-bg);
+      --mat-snack-bar-button-color: #f44336;
+      --mdc-snackbar-supporting-text-color: #f44336;
+    }
+
+    &.snackbar-info {
+      --mdc-snackbar-container-color: var(--glass-bg);
+      --mat-snack-bar-button-color: var(--color-primary, #3b82f6);
+      --mdc-snackbar-supporting-text-color: var(--color-primary, #3b82f6);
+    }
+  }
 }

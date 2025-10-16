@@ -62,27 +62,6 @@
     margin: 0 auto;
     padding: 0 1rem;
   }
-
-  // Custom scrollbar
-  &::-webkit-scrollbar {
-    width: 12px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: var(--color-bg-secondary, #f1f1f1);
-    border: 1px solid var(--color-border, #e5e7eb);
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: var(--color-text-secondary, #888);
-    border-radius: 6px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
-
-    &:hover {
-      background: var(--color-text, #555);
-    }
-  }
 }
 
 .welcome-section {

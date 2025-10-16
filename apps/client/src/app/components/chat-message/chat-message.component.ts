@@ -4,6 +4,7 @@ import { marked } from 'marked'
 import { MessageContent } from '@coday/coday-events'
 import { MessageContextMenuComponent, MenuAction } from '../message-context-menu/message-context-menu.component'
 import { NgClass } from '@angular/common'
+import { NotificationService } from '../../services/notification.service'
 
 export interface ChatMessage {
   id: string
@@ -32,6 +33,7 @@ export class ChatMessageComponent implements OnInit {
 
   // Modern Angular dependency injection
   private sanitizer = inject(DomSanitizer)
+  private notificationService = inject(NotificationService)
 
   get messageClasses() {
     return {
@@ -67,7 +69,7 @@ export class ChatMessageComponent implements OnInit {
   get actions(): MenuAction[] {
     const actions: MenuAction[] = [
       {
-        icon: '📋',
+        icon: 'content_copy',
         label: 'Copy message',
         tooltip: 'Copy message content to clipboard',
         action: () => this.onCopy(),
@@ -147,9 +149,11 @@ export class ChatMessageComponent implements OnInit {
         .writeText(textContent)
         .then(() => {
           console.log('[CHAT-MESSAGE] Message copied to clipboard')
+          this.notificationService.success('Message copied to clipboard')
         })
         .catch((err) => {
           console.error('[CHAT-MESSAGE] Failed to copy message:', err)
+          this.notificationService.error('Failed to copy message')
         })
     }
 
