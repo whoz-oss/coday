@@ -7,7 +7,7 @@
   }
 
   <!-- Chat History - Scrollable area (now full height, full-width scroll) -->
-  @if (messages.length) {
+  @if (messages.length && userHasSentMessage) {
     <div class="chat-wrapper">
       <div class="chat-center">
         <app-chat-history
@@ -26,8 +26,8 @@
     </div>
   }
 
-  <!-- Welcome Section - Shown when no messages -->
-  @if (!messages.length) {
+  <!-- Welcome Section - Shown until user sends first message -->
+  @if (!userHasSentMessage) {
     <div class="welcome-section">
       <h1 class="welcome-title">{{ currentWelcomeMessage }}</h1>
     </div>
@@ -40,7 +40,7 @@
         @if (!currentChoice) {
           <app-chat-textarea
             [isDisabled]="!isConnected"
-            [showWelcome]="!messages.length"
+            [showWelcome]="!userHasSentMessage"
             (messageSubmitted)="onMessageSubmitted($event)"
             (voiceRecordingToggled)="onVoiceToggled($event)"
             (heightChanged)="onInputHeightChanged($event)"

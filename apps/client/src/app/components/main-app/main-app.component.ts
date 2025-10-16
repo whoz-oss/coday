@@ -43,6 +43,7 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   currentChoice: { options: ChoiceOption[]; label: string } | null = null
   connectionStatus: ConnectionStatus | null = null
   isConnected: boolean = false
+  userHasSentMessage: boolean = false
 
   // Input height management
   inputSectionHeight: number = 80 // Default height
@@ -97,11 +98,6 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     this.codayService.messages$.pipe(takeUntil(this.destroy$)).subscribe((messages) => {
       console.log('[MAIN-APP] Messages updated:', messages.length)
       this.messages = messages
-
-      // Stop rotation when messages appear
-      if (messages.length > 0 && this.welcomeRotationInterval) {
-        this.stopWelcomeRotation()
-      }
     })
 
     this.codayService.isThinking$.pipe(takeUntil(this.destroy$)).subscribe((isThinking) => {
@@ -142,8 +138,8 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private startWelcomeRotation(): void {
-    // Only start if there are no messages
-    if (this.messages.length === 0) {
+    // Only start if user hasn't sent a message yet
+    if (!this.userHasSentMessage) {
       this.welcomeRotationInterval = window.setInterval(() => {
         this.currentWelcomeIndex = (this.currentWelcomeIndex + 1) % this.welcomeMessages.length
         this.currentWelcomeMessage = this.welcomeMessages[this.currentWelcomeIndex]
@@ -160,6 +156,13 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
 
   onMessageSubmitted(message: string): void {
     console.log('[MAIN-APP] Sending message:', message)
+
+    // Mark that user has sent their first message
+    if (!this.userHasSentMessage) {
+      this.userHasSentMessage = true
+      this.stopWelcomeRotation()
+    }
+
     this.codayService.sendMessage(message)
   }
 
