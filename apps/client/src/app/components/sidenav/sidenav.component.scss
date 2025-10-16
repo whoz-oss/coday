@@ -430,6 +430,10 @@
       background: var(--color-text);
     }
   }
+
+  &.threads {
+    padding-top: 0;
+  }
 }
 
 @keyframes slideDown {

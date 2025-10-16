@@ -107,6 +107,56 @@ export class ThreadSelectorComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Group threads by date categories
+   */
+  getGroupedThreads(): Array<{ label: string; threads: Array<{ id: string; name: string; modifiedDate: string }> }> {
+    const threads = this.getAvailableThreads()
+    if (threads.length === 0) {
+      return []
+    }
+
+    const groups = new Map<string, Array<{ id: string; name: string; modifiedDate: string }>>()
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+
+    for (const thread of threads) {
+      const threadDate = new Date(thread.modifiedDate)
+      threadDate.setHours(0, 0, 0, 0)
+      const diffMs = now.getTime() - threadDate.getTime()
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+      let groupLabel: string
+      if (diffDays === 0) {
+        groupLabel = 'Today'
+      } else if (diffDays === 1) {
+        groupLabel = 'Yesterday'
+      } else if (diffDays < 7) {
+        groupLabel = 'This Week'
+      } else if (diffDays < 30) {
+        groupLabel = 'This Month'
+      } else if (diffDays < 90) {
+        groupLabel = 'Last 3 Months'
+      } else {
+        groupLabel = 'Older'
+      }
+
+      if (!groups.has(groupLabel)) {
+        groups.set(groupLabel, [])
+      }
+      groups.get(groupLabel)!.push(thread)
+    }
+
+    // Convert to array and maintain order
+    const orderedLabels = ['Today', 'Yesterday', 'This Week', 'This Month', 'Last 3 Months', 'Older']
+    return orderedLabels
+      .filter((label) => groups.has(label))
+      .map((label) => ({
+        label,
+        threads: groups.get(label)!,
+      }))
+  }
+
+  /**
    * Check if we have threads available
    */
   hasThreadsAvailable(): boolean {

@@ -9,19 +9,23 @@
   <!-- Thread list (always visible in sidenav) -->
   @if (canShowDropdown()) {
     <div class="thread-list" role="menu" aria-label="Thread selection">
-      <!-- Existing threads -->
-      @for (thread of getAvailableThreads(); track thread.id) {
-        <button
-          class="thread-item"
-          [class.current]="thread.id === threads?.current"
-          [title]="thread.name"
-          (click)="selectThread(thread.id)"
-          type="button"
-          role="menuitem"
-        >
-          <span class="thread-name">{{ thread.name }}</span>
-          <span class="thread-date">{{ formatDate(thread.modifiedDate) }}</span>
-        </button>
+      <!-- Grouped threads -->
+      @for (group of getGroupedThreads(); track group.label) {
+        <div class="thread-group">
+          <div class="thread-group-header">{{ group.label }}</div>
+          @for (thread of group.threads; track thread.id) {
+            <button
+              class="thread-item"
+              [class.current]="thread.id === threads?.current"
+              [title]="thread.name"
+              (click)="selectThread(thread.id)"
+              type="button"
+              role="menuitem"
+            >
+              <span class="thread-name">{{ thread.name }}</span>
+            </button>
+          }
+        </div>
       }
 
       @if (!hasThreadsAvailable()) {

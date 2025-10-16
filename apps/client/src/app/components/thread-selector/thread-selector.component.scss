@@ -7,9 +7,34 @@
 .thread-list {
   display: flex;
   flex-direction: column;
-  gap: 0.125rem;
+  gap: 0;
   max-height: none; // Allow natural height, sidenav handles scrolling
   overflow: visible; // No internal scroll, let sidenav scroll
+}
+
+.thread-group {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0.5rem;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.thread-group-header {
+  padding: 0.5rem 1rem 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  position: sticky;
+  top: 0;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-backdrop-blur);
+  -webkit-backdrop-filter: var(--glass-backdrop-blur);
+  z-index: 1;
 }
 
 .thread-item {
@@ -143,13 +168,6 @@
   text-align: left;
 }
 
-.thread-date {
-  font-size: 0.7rem;
-  color: var(--color-text-muted);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
 .current-indicator {
   color: var(--color-success);
   font-weight: bold;
@@ -191,9 +209,5 @@
 
   .thread-name {
     font-size: 0.8rem;
-  }
-
-  .thread-date {
-    display: none; // Hide dates on smaller screens to save space
   }
 }
