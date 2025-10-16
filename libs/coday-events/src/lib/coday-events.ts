@@ -95,6 +95,8 @@ export class InviteEvent extends QuestionEvent {
   }
 }
 
+export const InviteEventDefault = 'InviteEventDefault'
+
 export class AnswerEvent extends CodayEvent {
   answer: string
   invite: string | undefined
@@ -292,7 +294,10 @@ export class MessageEvent extends CodayEvent {
   }
 
   getTextContent(): string {
-    return this.content.filter(c => c.type === 'text').map(c => c.content).join('\n')
+    return this.content
+      .filter((c) => c.type === 'text')
+      .map((c) => c.content)
+      .join('\n')
   }
 }
 

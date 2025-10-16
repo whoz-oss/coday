@@ -16,6 +16,7 @@ import {
   ThreadSelectedEvent,
   HeartBeatEvent,
   InviteEvent,
+  InviteEventDefault,
 } from '@coday/coday-events'
 
 import { CodayApiService } from './coday-api.service'
@@ -415,18 +416,34 @@ export class CodayService implements OnDestroy {
   private handleInviteEvent(event: InviteEvent): void {
     this.stopThinking()
 
-    // Create an assistant message with the invite content
-    const inviteMessage: ChatMessage = {
-      id: event.timestamp,
-      role: 'assistant',
-      speaker: 'Assistant',
-      content: [{ type: 'text', content: event.invite }],
-      timestamp: new Date(),
-      type: 'text',
-    }
+    // Check if the last message already contains this invite content to avoid duplicates
+    const currentMessages = this.messagesSubject.value
+    const lastMessage = currentMessages[currentMessages.length - 1]
+    const isInviteEventDefault = event.invite === InviteEventDefault
 
-    // Add the invite as a visible message in the chat
-    this.addMessage(inviteMessage)
+    // Only add invite as a message if it's not already displayed
+    const inviteAlreadyDisplayed =
+      !isInviteEventDefault &&
+      lastMessage &&
+      lastMessage.role === 'assistant' &&
+      lastMessage.content.some((c) => c.type === 'text' && c.content.includes(event.invite))
+
+    if (!inviteAlreadyDisplayed && event.invite !== InviteEventDefault) {
+      // Create an assistant message with the invite content
+      const inviteMessage: ChatMessage = {
+        id: event.timestamp,
+        role: 'assistant',
+        speaker: 'Assistant',
+        content: [{ type: 'text', content: event.invite }],
+        timestamp: new Date(),
+        type: 'text',
+      }
+
+      // Add the invite as a visible message in the chat
+      this.addMessage(inviteMessage)
+    } else {
+      console.log('[CODAY] Invite already displayed in last message, skipping duplicate')
+    }
 
     this.currentInviteEventSubject.next(event)
 
