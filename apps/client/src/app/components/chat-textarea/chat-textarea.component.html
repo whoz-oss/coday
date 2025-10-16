@@ -16,7 +16,7 @@
       #messageInput
       class="message-input"
       [(ngModel)]="message"
-      [placeholder]="showWelcome ? 'How can I help you today?' : 'Type your prompt here'"
+      [placeholder]="getPlaceholder()"
       (keydown)="onKeyDown($event)"
       (input)="onInput()"
       [disabled]="isDisabled"

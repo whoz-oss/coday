@@ -434,6 +434,20 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   /**
+   * Get placeholder text for textarea
+   * Uses invite text if available, otherwise shows default messages
+   */
+  getPlaceholder(): string {
+    if (this.showWelcome) {
+      return 'How can I help you today?'
+    } else if (this.currentInvite) {
+      return 'Type your message here...'
+    } else {
+      return 'Type your prompt here'
+    }
+  }
+
+  /**
    * Subscribe to InviteEvent changes in CodayService
    */
   private subscribeToInviteEvents(): void {
