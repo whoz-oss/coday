@@ -1,14 +1,9 @@
+@use '../../styles/animated-gradient-border.scss' as animated-gradient-border;
+
 .choice-form {
   width: 100%;
-  max-width: 600px;
-  margin: 0 auto;
-  padding: 2rem;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-backdrop-blur);
-  -webkit-backdrop-filter: var(--glass-backdrop-blur);
-  border: 1px solid var(--glass-border);
-  border-radius: 20px;
-  box-shadow: var(--glass-shadow);
+  flex-shrink: 0;
+  position: relative;
 }
 
 .choice-label {
@@ -19,68 +14,71 @@
   font-size: 1rem;
 }
 
-.choice-select {
-  width: 100%;
-  padding: 1rem;
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  background: var(--glass-bg);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  color: var(--color-text);
-  font-size: 1rem;
-  font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  cursor: pointer;
-  transition: all 0.3s ease;
-
-  &:focus {
-    outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
-  }
-
-  &:hover {
-    border-color: var(--color-primary);
-    transform: translateY(-1px);
-  }
-
-  option:disabled {
-    color: var(--color-text-secondary, #9ca3af);
-    font-style: italic;
-  }
-}
-
 .select-button-row {
   display: flex;
-  gap: 0.75rem;
-  align-items: stretch;
-  margin-top: 1rem;
+  align-items: center;
+  background: var(--glass-bg);
+  border-radius: 16px;
+  padding: 0 0.15rem 0 1.25rem;
+  position: relative;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+
+  // Custom select arrow icon
+  --select-arrow-icon: url('data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23666"><path d="M7 10l5 5 5-5z"/></svg>');
+}
+
+/* Animated gradient border */
+.select-button-row {
+  @include animated-gradient-border.animated-gradient-border;
+}
+
+/* When focused, stop the animation and show solid border */
+.select-button-row.focused {
+  &::before {
+    background: var(--color-primary);
+    animation: none;
+  }
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
 }
 
 .choice-select-inline {
   flex: 1;
-  padding: 1rem;
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  background: var(--glass-bg);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  color: var(--color-text);
+  border: none;
+  outline: none;
+  background: transparent !important;
+  box-shadow: none;
   font-size: 1rem;
-  font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  padding: 1rem 3rem 1rem 0; // Add right padding for custom arrow
+  color: var(--color-text);
+  border-radius: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
   cursor: pointer;
-  transition: all 0.3s ease;
-  max-width: 450px;
+  line-height: 1.5;
+
+  // Remove default arrow
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+
+  // Custom arrow using background - positioned to the left of the button
+  background-image: var(--select-arrow-icon);
+  background-repeat: no-repeat;
+  background-position: right 3.5rem center; // Position arrow to the left of the send button
+  background-size: 36px 36px; // Match button size (same as mat-icon-button)
 
   &:focus {
     outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
+    border: none;
+    box-shadow: none;
   }
 
-  &:hover {
-    border-color: var(--color-primary);
-    transform: translateY(-1px);
+  &:disabled {
+    background-color: var(--color-bg-secondary);
+    color: var(--color-text-secondary);
+    cursor: not-allowed;
+    opacity: 0.6;
   }
 
   option:disabled {
@@ -90,26 +88,34 @@
 }
 
 .submit-btn {
+  margin: 0 0.5rem 0 0.08rem;
   background: var(--color-primary);
-  color: white;
-  padding: 1rem 1.75rem;
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 1rem;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  white-space: nowrap;
-  box-shadow: 0 4px 16px rgba(0, 122, 255, 0.25);
+  transition:
+    background 0.18s,
+    box-shadow 0.18s,
+    transform 0.12s,
+    opacity 0.4s;
+  position: relative;
 
   &:hover:not(:disabled) {
-    background: var(--color-primary-hover);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 122, 255, 0.35);
+    color: white;
+    background: linear-gradient(
+      90deg,
+      var(--color-primary, #3b82f6) 0%,
+      var(--color-primary, #3b82f6) 20%,
+      var(--color-accent, #8b5cf6) 50%,
+      var(--color-primary, #3b82f6) 80%,
+      var(--color-primary, #3b82f6) 100%
+    );
+    background-size: 300% auto;
+    animation: sendButtonGradientShift 6s ease-in-out infinite;
+    box-shadow: 0 4px 14px rgba(0, 122, 255, 0.19);
+    transform: scale(1.2);
   }
 
   &:active:not(:disabled) {
-    transform: translateY(0);
+    transform: scale(1.3);
+    box-shadow: 0 4px 24px rgba(0, 122, 255, 0.19);
   }
 
   &:disabled {
@@ -118,10 +124,17 @@
     opacity: 0.5;
     box-shadow: none;
   }
+}
 
-  &:focus {
-    outline: none;
-    box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.2);
+@keyframes sendButtonGradientShift {
+  0% {
+    background-position: 0% center;
+  }
+  50% {
+    background-position: 50% 10%;
+  }
+  100% {
+    background-position: 0% center;
   }
 }
 
@@ -129,16 +142,16 @@
 @media (max-width: 480px) {
   .choice-form {
     max-width: none;
-    margin: 0 1rem;
-    padding: 1rem;
   }
 
   .select-button-row {
-    flex-direction: column;
-    gap: 0.75rem;
+    flex-direction: row;
   }
+}
 
+// Print styles
+@media print {
   .submit-btn {
-    width: 100%;
+    display: none !important;
   }
 }

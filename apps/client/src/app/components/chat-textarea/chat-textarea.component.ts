@@ -1,14 +1,14 @@
 import {
-  Component,
-  Output,
-  EventEmitter,
-  Input,
-  OnInit,
-  OnDestroy,
   AfterViewInit,
-  ViewChild,
+  Component,
   ElementRef,
+  EventEmitter,
   inject,
+  Input,
+  OnDestroy,
+  OnInit,
+  Output,
+  ViewChild,
 } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { Subscription } from 'rxjs'
@@ -16,12 +16,11 @@ import { PreferencesService } from '../../services/preferences.service'
 import { CodayService } from '../../core/services/coday.service'
 import { MatIconButton } from '@angular/material/button'
 import { MatIcon } from '@angular/material/icon'
-import { MatProgressBar } from '@angular/material/progress-bar'
 
 @Component({
   selector: 'app-chat-textarea',
   standalone: true,
-  imports: [FormsModule, MatIconButton, MatIcon, MatProgressBar],
+  imports: [FormsModule, MatIconButton, MatIcon],
   templateUrl: './chat-textarea.component.html',
   styleUrl: './chat-textarea.component.scss',
 })

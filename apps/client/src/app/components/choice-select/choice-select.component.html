@@ -3,8 +3,8 @@
     <!-- Label at top -->
     <div class="choice-label" [innerHTML]="renderedLabel$ | async"></div>
 
-    <!-- Select and button on same line -->
-    <div class="select-button-row">
+    <!-- Select and button in grouped container -->
+    <div class="select-button-row" [class.focused]="isFocused">
       <select
         class="choice-select-inline"
         [(ngModel)]="selectedValue"
@@ -13,6 +13,8 @@
         #choiceSelect
         (change)="onSelectChange()"
         (keydown.enter)="onSubmit()"
+        (focus)="isFocused = true"
+        (blur)="isFocused = false"
       >
         <option value="" disabled>-- Select an option --</option>
         @for (option of options; track option.value) {
@@ -22,7 +24,9 @@
         }
       </select>
 
-      <button type="submit" class="submit-btn" [disabled]="!selectedValue">Submit</button>
+      <button type="submit" class="submit-btn" mat-icon-button [disabled]="!selectedValue" title="Submit selection">
+        <mat-icon>send</mat-icon>
+      </button>
     </div>
   </form>
 }

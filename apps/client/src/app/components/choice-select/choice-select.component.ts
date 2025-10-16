@@ -16,6 +16,8 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { marked } from 'marked'
 import { BehaviorSubject, Observable } from 'rxjs'
 import { AsyncPipe } from '@angular/common'
+import { MatIconModule } from '@angular/material/icon'
+import { MatButtonModule } from '@angular/material/button'
 
 export interface ChoiceOption {
   value: string
@@ -25,7 +27,7 @@ export interface ChoiceOption {
 @Component({
   selector: 'app-choice-select',
   standalone: true,
-  imports: [FormsModule, AsyncPipe],
+  imports: [FormsModule, AsyncPipe, MatIconModule, MatButtonModule],
   templateUrl: './choice-select.component.html',
   styleUrl: './choice-select.component.scss',
 })
@@ -47,6 +49,7 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
   @ViewChild('choiceSelect') selectElement!: ElementRef<HTMLSelectElement>
 
   selectedValue: string = ''
+  isFocused = false
 
   // Observable for asynchronous label rendering
   private renderedLabelSubject = new BehaviorSubject<SafeHtml>('')
