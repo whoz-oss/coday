@@ -61,7 +61,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
 
   // Section expansion state
   expandedSections: Record<string, boolean> = {
-    threads: false,
+    threads: true,
     config: false,
   }
 

@@ -10,19 +10,12 @@
       </div>
     }
 
-    <!-- Context menu in top-right corner -->
-    @if (shouldShowActions) {
-      <app-message-context-menu [actions]="topActions" position="top" class="context-menu-top">
-      </app-message-context-menu>
-    }
-
     <!-- Content -->
     <div class="content markdown-content" [innerHTML]="renderedContent"></div>
 
     <!-- Context menu in bottom-right corner for long messages -->
     @if (isLongMessage && shouldShowActions) {
-      <app-message-context-menu [actions]="bottomActions" position="bottom" class="context-menu-bottom">
-      </app-message-context-menu>
+      <app-message-context-menu [actions]="actions"> </app-message-context-menu>
     }
   }
 

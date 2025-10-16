@@ -15,17 +15,17 @@
   transition: all 0.2s ease;
   color: var(--color-text-secondary, #6272a4);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  
+
   &:hover {
     background: var(--color-bg-hover, #f1f3f4);
     transform: scale(1.1);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
   }
-  
+
   &:active {
     transform: scale(0.95);
   }
-  
+
   &.open {
     opacity: 1;
     background: var(--color-bg-hover, #f1f3f4);
@@ -38,7 +38,6 @@
 }
 
 .menu-dropdown {
-  position: absolute;
   right: 0;
   background: var(--color-bg-primary, #ffffff);
   border: 1px solid var(--color-border, #aeaeae);
@@ -46,23 +45,14 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   min-width: 160px;
   z-index: 1000;
-  opacity: 0;
   visibility: hidden;
   transform: translateY(-8px);
   transition: all 0.2s ease;
-  
+
   &.open {
     opacity: 1;
     visibility: visible;
     transform: translateY(0);
-  }
-  
-  &.position-top {
-    top: calc(100% + 4px);
-  }
-  
-  &.position-bottom {
-    bottom: calc(100% + 4px);
   }
 }
 
@@ -77,32 +67,32 @@
   text-align: left;
   transition: background 0.15s ease;
   gap: 0.6rem;
-  
+
   &:first-child {
     border-top-left-radius: 6px;
     border-top-right-radius: 6px;
   }
-  
+
   &:last-child {
     border-bottom-left-radius: 6px;
     border-bottom-right-radius: 6px;
   }
-  
+
   &:hover {
     background: var(--color-bg-hover, #f1f3f4);
   }
-  
+
   &:active {
     background: var(--color-bg-secondary, #e8ecf6);
   }
-  
+
   &.destructive {
     color: var(--color-error, #ff5555);
-    
+
     &:hover {
       background: rgba(255, 85, 85, 0.1);
     }
-    
+
     &:active {
       background: rgba(255, 85, 85, 0.2);
     }
@@ -126,11 +116,11 @@
   .menu-dropdown {
     min-width: 140px;
   }
-  
+
   .menu-item {
     padding: 0.7rem 0.8rem;
   }
-  
+
   .menu-label {
     font-size: 0.85rem;
   }

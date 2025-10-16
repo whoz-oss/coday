@@ -1,4 +1,4 @@
-import { Component, Input, HostListener } from '@angular/core'
+import { Component, Input } from '@angular/core'
 import { CommonModule } from '@angular/common'
 
 export interface MenuAction {
@@ -19,28 +19,9 @@ export interface MenuAction {
 })
 export class MessageContextMenuComponent {
   @Input() actions: MenuAction[] = []
-  @Input() position: 'top' | 'bottom' = 'top'
-
-  isOpen = false
-
-  toggleMenu(event: Event): void {
-    event.stopPropagation()
-    this.isOpen = !this.isOpen
-  }
-
-  closeMenu(): void {
-    this.isOpen = false
-  }
 
   executeAction(action: MenuAction, event: Event): void {
     event.stopPropagation()
     action.action()
-    this.closeMenu()
-  }
-
-  @HostListener('document:click')
-  onDocumentClick(): void {
-    // Close menu when clicking outside
-    this.closeMenu()
   }
 }

@@ -7,7 +7,7 @@
   }
 
   <!-- Chat History - Scrollable area (now full height, full-width scroll) -->
-  @if (messages.length && userHasSentMessage) {
+  @if (messages.length) {
     <div class="chat-wrapper">
       <div class="chat-center">
         <app-chat-history

@@ -98,6 +98,20 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     this.codayService.messages$.pipe(takeUntil(this.destroy$)).subscribe((messages) => {
       console.log('[MAIN-APP] Messages updated:', messages.length)
       this.messages = messages
+
+      // If we have messages (e.g., from thread replay), hide welcome message
+      if (messages.length > 0 && !this.userHasSentMessage) {
+        console.log('[MAIN-APP] Messages loaded from thread, hiding welcome message')
+        this.userHasSentMessage = true
+        this.stopWelcomeRotation()
+      }
+
+      // If messages are cleared (e.g., project change), reset welcome state
+      if (messages.length === 0 && this.userHasSentMessage) {
+        console.log('[MAIN-APP] Messages cleared, showing welcome message again')
+        this.userHasSentMessage = false
+        this.startWelcomeRotation()
+      }
     })
 
     this.codayService.isThinking$.pipe(takeUntil(this.destroy$)).subscribe((isThinking) => {

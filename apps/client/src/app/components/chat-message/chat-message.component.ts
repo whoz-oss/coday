@@ -64,7 +64,7 @@ export class ChatMessageComponent implements OnInit {
     return textContent.length > 1000 || textContent.split('\n').length > 20
   }
 
-  get topActions(): MenuAction[] {
+  get actions(): MenuAction[] {
     const actions: MenuAction[] = [
       {
         icon: '📋',
@@ -85,18 +85,6 @@ export class ChatMessageComponent implements OnInit {
     }
 
     return actions
-  }
-
-  get bottomActions(): MenuAction[] {
-    // For bottom menu, only show copy (no delete)
-    return [
-      {
-        icon: '📋',
-        label: 'Copy message',
-        tooltip: 'Copy message content to clipboard',
-        action: () => this.onCopy(),
-      },
-    ]
   }
 
   get eventLink(): string | null {
