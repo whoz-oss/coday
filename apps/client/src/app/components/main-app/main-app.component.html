@@ -26,6 +26,13 @@
     </div>
   }
 
+  <!-- Welcome Section - Shown when no messages -->
+  @if (!messages.length) {
+    <div class="welcome-section">
+      <h1 class="welcome-title">{{ currentWelcomeMessage }}</h1>
+    </div>
+  }
+
   <!-- Input Section - In normal flow (centered) -->
   <div class="input-section" #inputSection>
     <div class="input-center">

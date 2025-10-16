@@ -54,6 +54,25 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   // Drag and drop state
   isDragOver: boolean = false
 
+  // Welcome message rotation
+  welcomeMessages = [
+    'Welcome to Coday', // English
+    'Bienvenue sur Coday', // French
+    'Bienvenido a Coday', // Spanish
+    'Willkommen bei Coday', // German
+    'Benvenuto su Coday', // Italian
+    'Bem-vindo ao Coday', // Portuguese
+    'Welkom bij Coday', // Dutch
+    'Добро пожаловать в Coday', // Russian
+    'Coday へようこそ', // Japanese
+    '欢迎来到 Coday', // Chinese
+    'Coday 에 오신 것을 환영합니다', // Korean
+    'مرحبًا بك في Coday', // Arabic
+  ]
+  currentWelcomeIndex = 0
+  currentWelcomeMessage = this.welcomeMessages[0]
+  private welcomeRotationInterval?: number
+
   // Modern Angular dependency injection
   private codayService = inject(CodayService)
   private codayApiService = inject(CodayApiService)
@@ -72,9 +91,17 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     // Setup print event listeners
     this.setupPrintHandlers()
 
+    // Start welcome message rotation
+    this.startWelcomeRotation()
+
     this.codayService.messages$.pipe(takeUntil(this.destroy$)).subscribe((messages) => {
       console.log('[MAIN-APP] Messages updated:', messages.length)
       this.messages = messages
+
+      // Stop rotation when messages appear
+      if (messages.length > 0 && this.welcomeRotationInterval) {
+        this.stopWelcomeRotation()
+      }
     })
 
     this.codayService.isThinking$.pipe(takeUntil(this.destroy$)).subscribe((isThinking) => {
@@ -109,6 +136,26 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     // Cleanup print handlers
     window.removeEventListener('beforeprint', this.handleBeforePrint)
     window.removeEventListener('afterprint', this.handleAfterPrint)
+
+    // Cleanup welcome rotation
+    this.stopWelcomeRotation()
+  }
+
+  private startWelcomeRotation(): void {
+    // Only start if there are no messages
+    if (this.messages.length === 0) {
+      this.welcomeRotationInterval = window.setInterval(() => {
+        this.currentWelcomeIndex = (this.currentWelcomeIndex + 1) % this.welcomeMessages.length
+        this.currentWelcomeMessage = this.welcomeMessages[this.currentWelcomeIndex]
+      }, 3000)
+    }
+  }
+
+  private stopWelcomeRotation(): void {
+    if (this.welcomeRotationInterval) {
+      clearInterval(this.welcomeRotationInterval)
+      this.welcomeRotationInterval = undefined
+    }
   }
 
   onMessageSubmitted(message: string): void {

@@ -24,16 +24,36 @@
   display: flex;
   align-items: center;
   background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
+  border: 2px solid transparent;
   border-radius: 16px;
   padding: 0 0.15rem 0 1.25rem;
+  position: relative;
   transition:
     border-color 0.2s,
     box-shadow 0.2s;
+
+  /* Animated gradient border background */
+  background-image:
+    linear-gradient(var(--glass-bg), var(--glass-bg)),
+    linear-gradient(
+      90deg,
+      var(--color-primary, #3b82f6) 0%,
+      var(--color-accent, #8b5cf6) 50%,
+      var(--color-primary, #3b82f6) 100%
+    );
+  background-origin: padding-box, border-box;
+  background-clip: padding-box, border-box;
+  background-size:
+    100% 100%,
+    200% 100%;
+  animation: borderGradientShift 3s ease-in-out infinite;
 }
 
 .input-row.grouped-input.focused {
-  border-color: var(--color-primary);
+  /* Solid blue border when focused */
+  background-image:
+    linear-gradient(var(--glass-bg), var(--glass-bg)), linear-gradient(var(--color-primary), var(--color-primary));
+  animation: none; /* Stop gradient animation when focused */
   box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
 }
 
@@ -268,5 +288,23 @@
   }
   50% {
     opacity: 0.5;
+  }
+}
+
+@keyframes borderGradientShift {
+  0% {
+    background-position:
+      0% 0%,
+      0% 0%;
+  }
+  50% {
+    background-position:
+      0% 0%,
+      100% 0%;
+  }
+  100% {
+    background-position:
+      0% 0%,
+      0% 0%;
   }
 }
