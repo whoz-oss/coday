@@ -18,11 +18,13 @@ import { PreferencesService } from '../../services/preferences.service'
 import { CodayService } from '../../core/services/coday.service'
 import { MatIconButton } from '@angular/material/button'
 import { MatIcon } from '@angular/material/icon'
+import { MatProgressBar } from '@angular/material/progress-bar'
+import { AsyncPipe } from '@angular/common'
 
 @Component({
   selector: 'app-chat-textarea',
   standalone: true,
-  imports: [FormsModule, MatIconButton, MatIcon],
+  imports: [FormsModule, MatIconButton, MatIcon, MatProgressBar, AsyncPipe],
   templateUrl: './chat-textarea.component.html',
   styleUrl: './chat-textarea.component.scss',
 })
@@ -32,9 +34,11 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   private static readonly MAX_TEXTAREA_LINES = 15
   @Input() isDisabled: boolean = false
   @Input() showWelcome: boolean = false
+  @Input() isThinking: boolean = false
   @Output() messageSubmitted = new EventEmitter<string>()
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
   @Output() heightChanged = new EventEmitter<number>()
+  @Output() stopRequested = new EventEmitter<void>()
 
   @ViewChild('messageInput', { static: true }) messageInput!: ElementRef<HTMLTextAreaElement>
 
@@ -54,6 +58,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   currentInvite: string = ''
   private renderedInviteSubject = new BehaviorSubject<SafeHtml>('')
   renderedInvite$: Observable<SafeHtml> = this.renderedInviteSubject.asObservable()
+  showInvite: boolean = false
 
   // Subscriptions management
   private subscriptions: Subscription[] = []
@@ -133,9 +138,16 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
       this.messageSubmitted.emit(this.message.trim())
       this.message = ''
 
+      // Hide invite after sending (will be replaced by next server invite)
+      this.showInvite = false
+
       // Reset height after clearing message
       setTimeout(() => this.adjustTextareaHeight(), 0)
     }
+  }
+
+  onStopClick() {
+    this.stopRequested.emit()
   }
 
   toggleVoiceRecording() {
@@ -442,6 +454,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
         if (inviteEvent) {
           this.handleInviteEvent(inviteEvent.invite, inviteEvent.defaultValue)
         } else {
+          this.showInvite = false
           this.currentInvite = ''
           this.renderedInviteSubject.next(this.sanitizer.bypassSecurityTrustHtml(''))
         }
@@ -454,6 +467,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
    */
   private handleInviteEvent(invite: string, defaultValue?: string): void {
     this.currentInvite = invite
+    this.showInvite = true
 
     // Render invite markdown asynchronously
     this.renderInviteMarkdown(invite)

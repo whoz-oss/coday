@@ -8,17 +8,6 @@
     ></app-chat-message>
   }
 
-  @if (isThinking) {
-    <div class="thinking">
-      <div class="dots">
-        <span></span>
-        <span></span>
-        <span></span>
-      </div>
-      <button class="stop-btn" (click)="onStop()">Stop</button>
-    </div>
-  }
-
   <!-- Go to Bottom Button -->
   @if (showGoToBottom) {
     <button class="go-to-bottom-btn" (click)="goToBottom()" title="Go to bottom">

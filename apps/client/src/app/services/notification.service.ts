@@ -10,7 +10,7 @@ export class NotificationService {
   /**
    * Show a success notification
    */
-  success(message: string, duration = 2000000): void {
+  success(message: string, duration = 2000): void {
     this.snackBar.open(message, '', {
       duration,
       horizontalPosition: 'center',
@@ -34,7 +34,7 @@ export class NotificationService {
   /**
    * Show an info notification
    */
-  info(message: string, duration = 2000000): void {
+  info(message: string, duration = 2000): void {
     this.snackBar.open(message, '', {
       duration,
       horizontalPosition: 'center',

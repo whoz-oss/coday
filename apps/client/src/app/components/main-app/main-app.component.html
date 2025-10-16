@@ -41,9 +41,11 @@
           <app-chat-textarea
             [isDisabled]="!isConnected"
             [showWelcome]="!userHasSentMessage"
+            [isThinking]="isThinking"
             (messageSubmitted)="onMessageSubmitted($event)"
             (voiceRecordingToggled)="onVoiceToggled($event)"
             (heightChanged)="onInputHeightChanged($event)"
+            (stopRequested)="onStopRequested()"
           ></app-chat-textarea>
         }
 
