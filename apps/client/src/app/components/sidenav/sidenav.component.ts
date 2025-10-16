@@ -6,7 +6,6 @@ import { MatSidenavModule } from '@angular/material/sidenav'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 import { MatDividerModule } from '@angular/material/divider'
-import { MatExpansionModule } from '@angular/material/expansion'
 import { SessionStateService } from '../../core/services/session-state.service'
 import { ConfigApiService } from '../../core/services/config-api.service'
 import { CodayService } from '../../core/services/coday.service'
@@ -26,7 +25,6 @@ import { SessionState } from '@coday/model/session-state'
     MatIconModule,
     MatButtonModule,
     MatDividerModule,
-    MatExpansionModule,
     ThemeSelectorComponent,
     OptionsPanelComponent,
     ThreadSelectorComponent,
@@ -62,6 +60,12 @@ export class SidenavComponent implements OnInit, OnDestroy {
   // User feedback messages
   configSuccessMessage = ''
   configErrorMessage = ''
+
+  // Section expansion state
+  expandedSections: Record<string, boolean> = {
+    threads: false,
+    config: false,
+  }
 
   // Modern Angular dependency injection
   private readonly sessionState = inject(SessionStateService)
@@ -336,5 +340,20 @@ export class SidenavComponent implements OnInit, OnDestroy {
    */
   getProjectList(): Array<{ name: string }> {
     return this.projects?.list || []
+  }
+
+  /**
+   * Toggle section expansion
+   */
+  toggleSection(section: string): void {
+    this.expandedSections[section] = !this.expandedSections[section]
+  }
+
+  /**
+   * Create a new thread
+   */
+  createNewThread(): void {
+    console.log('[SIDENAV] Creating new thread')
+    this.codayService.sendMessage('thread new')
   }
 }

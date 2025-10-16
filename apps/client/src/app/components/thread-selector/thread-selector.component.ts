@@ -1,16 +1,15 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core'
+import { Component, inject, OnDestroy, OnInit } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
 import { SessionStateService } from '../../core/services/session-state.service'
 import { CodayService } from '../../core/services/coday.service'
 import { SessionState } from '@coday/model/session-state'
-import { MatIcon } from '@angular/material/icon'
 
 @Component({
   selector: 'app-thread-selector',
   standalone: true,
-  imports: [CommonModule, MatIcon],
+  imports: [CommonModule],
   templateUrl: './thread-selector.component.html',
   styleUrl: './thread-selector.component.scss',
 })

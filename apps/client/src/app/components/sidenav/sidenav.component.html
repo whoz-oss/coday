@@ -7,7 +7,7 @@
   title="Menu Coday"
   type="button"
 >
-  <img src="CODAY-Logo.png" alt="Coday" class="logo" />
+  <img [attr.src]="'CODAY-Logo.png'" alt="Coday" class="logo" />
   <div class="hamburger-overlay">
     <mat-icon>menu</mat-icon>
   </div>
@@ -18,7 +18,7 @@
   <mat-sidenav mode="push" position="start" [opened]="isOpen" (closed)="close()" class="app-sidenav">
     <!-- Sidenav Header with Project Selector -->
     <div class="sidenav-header">
-      <img src="CODAY-Logo.png" alt="Coday" class="sidenav-logo" />
+      <img [attr.src]="'CODAY-Logo.png'" alt="Coday" class="sidenav-logo" />
       <div class="header-title-section">
         @if (canShowProjectSelector()) {
           <!-- Native select when projects are available -->
@@ -45,82 +45,92 @@
       </button>
     </div>
 
-    <!-- Expansion Panels Container -->
-    <mat-accordion multi class="sidenav-accordion">
-      <!-- Threads Panel - Expanded by default -->
-      <mat-expansion-panel [expanded]="true" class="sidenav-panel">
-        <mat-expansion-panel-header>
-          <mat-panel-title class="panel-title">
-            <mat-icon class="panel-icon">forum</mat-icon>
-            <span>Threads</span>
-          </mat-panel-title>
-        </mat-expansion-panel-header>
-        <div class="panel-content">
-          <app-thread-selector class="sidenav-thread-selector"></app-thread-selector>
-        </div>
-      </mat-expansion-panel>
+    <!-- New Thread Link - Always Visible -->
+    <div class="new-thread-section">
+      <a class="new-thread-link" (click)="createNewThread()" role="button" tabindex="0">
+        <mat-icon fontSet="material-icons-outlined">edit_note</mat-icon>
+        <span class="new-thread-text">Start a new thread</span>
+      </a>
+    </div>
 
-      <!-- Preferences Panel -->
-      <mat-expansion-panel class="sidenav-panel">
-        <mat-expansion-panel-header>
-          <mat-panel-title class="panel-title">
-            <mat-icon class="panel-icon">settings</mat-icon>
-            <span>Configuration</span>
-          </mat-panel-title>
-        </mat-expansion-panel-header>
-        <div class="panel-content">
-          <div class="preference-item">
-            <div class="preference-content">
+    <!-- Expansion Panels Container -->
+    <div class="sidenav-sections">
+      <!-- Threads Section - Expanded by default -->
+      <div class="section-container">
+        <button class="section-toggle" (click)="toggleSection('threads')" type="button">
+          <mat-icon class="arrow-icon" [class.expanded]="expandedSections['threads']">chevron_right</mat-icon>
+          <mat-icon class="section-icon">forum</mat-icon>
+          <span class="section-label">Threads</span>
+        </button>
+        @if (expandedSections['threads']) {
+          <div class="section-content">
+            <app-thread-selector class="sidenav-thread-selector"></app-thread-selector>
+          </div>
+        }
+      </div>
+
+      <!-- Configuration Section -->
+      <div class="section-container">
+        <button class="section-toggle" (click)="toggleSection('config')" type="button">
+          <mat-icon class="arrow-icon" [class.expanded]="expandedSections['config']">chevron_right</mat-icon>
+          <mat-icon class="section-icon">settings</mat-icon>
+          <span class="section-label">Configuration</span>
+        </button>
+        @if (expandedSections['config']) {
+          <div class="section-content">
+            <div class="config-links">
               <!-- User Config -->
               <a class="sidenav-link" (click)="openUserConfig(); $event.stopPropagation()" role="button" tabindex="0">
                 <mat-icon fontSet="material-icons-outlined">edit_square</mat-icon>
                 <span class="item-text">Edit user config</span>
               </a>
-            </div>
 
-            <!-- Project Config - Admin only -->
-            @if (isAdmin) {
-              <button
-                class="sidenav-item"
-                (click)="openProjectConfig(); $event.stopPropagation()"
-                [disabled]="!hasProject()"
-                mat-button
-              >
-                <mat-icon class="item-icon">folder</mat-icon>
-                <span class="item-text">Project Config</span>
-                @if (!hasProject()) {
-                  <span class="disabled-hint">(No project)</span>
+              <!-- Project Config - Admin only -->
+              @if (isAdmin) {
+                @if (hasProject()) {
+                  <a
+                    class="sidenav-link"
+                    (click)="openProjectConfig(); $event.stopPropagation()"
+                    role="button"
+                    tabindex="0"
+                  >
+                    <mat-icon fontSet="material-icons-outlined">folder</mat-icon>
+                    <span class="item-text">Project config</span>
+                  </a>
+                } @else {
+                  <span class="sidenav-link disabled">
+                    <mat-icon fontSet="material-icons-outlined">folder</mat-icon>
+                    <span class="item-text">Project config (No project)</span>
+                  </span>
                 }
-              </button>
 
-              <!-- Webhooks - Admin only -->
-              <button class="sidenav-item" (click)="openWebhooks(); $event.stopPropagation()" mat-button>
-                <mat-icon class="item-icon">webhook</mat-icon>
-                <span class="item-text">Webhooks</span>
-              </button>
-            }
-          </div>
-        </div>
-
-        <div class="panel-content">
-          <!-- Theme Selector -->
-          <div class="preference-item">
-            <div class="preference-header">
-              <mat-icon class="item-icon">palette</mat-icon>
-              <span class="item-text">Theme</span>
+                <!-- Webhooks - Admin only -->
+                <a class="sidenav-link" (click)="openWebhooks(); $event.stopPropagation()" role="button" tabindex="0">
+                  <mat-icon fontSet="material-icons-outlined">webhook</mat-icon>
+                  <span class="item-text">Webhooks</span>
+                </a>
+              }
             </div>
-            <div class="preference-content">
-              <app-theme-selector></app-theme-selector>
+
+            <!-- Theme Selector -->
+            <div class="preference-item">
+              <div class="preference-header">
+                <mat-icon class="item-icon">palette</mat-icon>
+                <span class="item-text">Theme</span>
+              </div>
+              <div class="preference-content">
+                <app-theme-selector></app-theme-selector>
+              </div>
+            </div>
+
+            <!-- Options -->
+            <div class="preference-item">
+              <app-options-panel class="inline-panel"></app-options-panel>
             </div>
           </div>
-
-          <!-- Options -->
-          <div class="preference-item">
-            <app-options-panel class="inline-panel"></app-options-panel>
-          </div>
-        </div>
-      </mat-expansion-panel>
-    </mat-accordion>
+        }
+      </div>
+    </div>
   </mat-sidenav>
 
   <mat-sidenav-content>

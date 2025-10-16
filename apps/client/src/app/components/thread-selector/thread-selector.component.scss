@@ -50,8 +50,7 @@
   align-items: center;
   background: transparent;
   border: none;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  text-decoration: none;
   cursor: pointer;
   transition: all 0.2s ease;
   gap: 0.5rem;
@@ -59,9 +58,11 @@
   font-weight: 400;
   padding: 0 1rem;
 
-  &:hover {
+  &:hover:not(.new-thread-link) {
     color: var(--color-primary-hover, var(--color-primary));
-    text-decoration-thickness: 2px;
+    text-decoration: underline;
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 3px;
   }
 
   &:focus {
@@ -71,12 +72,65 @@
 
   &.new-thread-link {
     margin-bottom: 0.5rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+
+    .thread-name {
+      background: linear-gradient(
+        90deg,
+        var(--color-primary, #3b82f6) 0%,
+        var(--color-accent, #8b5cf6) 50%,
+        var(--color-primary, #3b82f6) 100%
+      );
+      background-size: 200% auto;
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: gradientShift 3s ease-in-out infinite;
+    }
+
+    mat-icon {
+      color: var(--color-primary);
+      animation: iconPulse 3s ease-in-out infinite;
+    }
+
+    &:hover {
+      transform: translateX(4px);
+
+      mat-icon {
+        animation: iconPulse 1.5s ease-in-out infinite;
+      }
+    }
   }
 
   mat-icon {
     font-size: 20px;
     width: 20px;
     height: 20px;
+  }
+}
+
+@keyframes gradientShift {
+  0% {
+    background-position: 0% center;
+  }
+  50% {
+    background-position: 100% center;
+  }
+  100% {
+    background-position: 0% center;
+  }
+}
+
+@keyframes iconPulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
   }
 }
 
