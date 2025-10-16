@@ -1,21 +1,22 @@
 import { Injectable, OnDestroy, inject } from '@angular/core'
 import { Subject, BehaviorSubject, Observable } from 'rxjs'
 import { takeUntil, tap } from 'rxjs/operators'
-import { 
-  CodayEvent, 
-  MessageEvent, 
-  TextEvent, 
-  AnswerEvent, 
-  ErrorEvent, 
-  WarnEvent, 
-  ThinkingEvent, 
-  ToolRequestEvent, 
-  ToolResponseEvent, 
+import {
+  CodayEvent,
+  MessageEvent,
+  TextEvent,
+  AnswerEvent,
+  ErrorEvent,
+  WarnEvent,
+  ThinkingEvent,
+  ToolRequestEvent,
+  ToolResponseEvent,
   ChoiceEvent,
   ProjectSelectedEvent,
   ThreadSelectedEvent,
   HeartBeatEvent,
-  InviteEvent
+  InviteEvent,
+  InviteEventDefault,
 } from '@coday/coday-events'
 
 import { CodayApiService } from './coday-api.service'
@@ -25,25 +26,25 @@ import { ChatMessage } from '../../components/chat-message/chat-message.componen
 import { ChoiceOption } from '../../components/choice-select/choice-select.component'
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class CodayService implements OnDestroy {
   private destroy$ = new Subject<void>()
-  
+
   // State subjects
   private messagesSubject = new BehaviorSubject<ChatMessage[]>([])
   private isThinkingSubject = new BehaviorSubject<boolean>(false)
-  private currentChoiceSubject = new BehaviorSubject<{options: ChoiceOption[], label: string} | null>(null)
+  private currentChoiceSubject = new BehaviorSubject<{ options: ChoiceOption[]; label: string } | null>(null)
   private projectTitleSubject = new BehaviorSubject<string>('Coday')
   private currentInviteEventSubject = new BehaviorSubject<InviteEvent | null>(null)
   private messageToRestoreSubject = new BehaviorSubject<string>('')
-  
+
   // Store original events for proper response building
   private currentChoiceEvent: ChoiceEvent | null = null
-  
+
   // Thinking state management
   private thinkingTimeout: ReturnType<typeof setTimeout> | null = null
-  
+
   // Public observables
   messages$ = this.messagesSubject.asObservable()
   isThinking$ = this.isThinkingSubject.asObservable()
@@ -51,23 +52,23 @@ export class CodayService implements OnDestroy {
   projectTitle$ = this.projectTitleSubject.asObservable()
   currentInviteEvent$ = this.currentInviteEventSubject.asObservable()
   messageToRestore$ = this.messageToRestoreSubject.asObservable()
-  
+
   // Connection status will be initialized in constructor
   connectionStatus$!: typeof this.eventStream.connectionStatus$
 
   // Reference to title service (injected from outside)
   private tabTitleService: any = null
-  
+
   // Modern Angular dependency injection
   private codayApi = inject(CodayApiService)
   private eventStream = inject(EventStreamService)
-  
+
   constructor() {
     // Initialize connection status observable after eventStream is available
     this.connectionStatus$ = this.eventStream.connectionStatus$
     this.initializeEventHandling()
   }
-  
+
   /**
    * Inject title service (to avoid circular dependency)
    */
@@ -88,7 +89,7 @@ export class CodayService implements OnDestroy {
   stop(): void {
     this.codayApi.stopExecution().subscribe({
       next: () => console.log('[CODAY] Stop signal sent'),
-      error: (error) => console.error('[CODAY] Error stopping:', error)
+      error: (error) => console.error('[CODAY] Error stopping:', error),
     })
   }
 
@@ -98,7 +99,7 @@ export class CodayService implements OnDestroy {
   resetMessages(): void {
     console.log('[CODAY] Resetting messages for context change')
     this.messagesSubject.next([])
-    
+
     // Also clear related state that doesn't make sense in new context
     this.currentChoiceSubject.next(null)
     this.currentInviteEventSubject.next(null)
@@ -106,30 +107,28 @@ export class CodayService implements OnDestroy {
     this.stopThinking()
   }
 
-
-
   /**
    * Send a message
    */
   sendMessage(message: string): void {
     const currentInviteEvent = this.currentInviteEventSubject.value
-    
+
     if (currentInviteEvent) {
       // Use the original InviteEvent to build proper answer with parentKey
       const answerEvent = currentInviteEvent.buildAnswer(message)
-      
+
       // Clear the current invite event immediately after using it
       this.currentInviteEventSubject.next(null)
-      
+
       this.codayApi.sendEvent(answerEvent).subscribe({
-        error: (error) => console.error('[CODAY] Send error:', error)
+        error: (error) => console.error('[CODAY] Send error:', error),
       })
     } else {
       // Fallback to basic AnswerEvent if no invite event stored
       const answerEvent = new AnswerEvent({ answer: message })
-      
+
       this.codayApi.sendEvent(answerEvent).subscribe({
-        error: (error) => console.error('[CODAY] Send error:', error)
+        error: (error) => console.error('[CODAY] Send error:', error),
       })
     }
   }
@@ -141,7 +140,7 @@ export class CodayService implements OnDestroy {
     if (this.currentChoiceEvent) {
       // Use the original ChoiceEvent to build proper answer with parentKey
       const answerEvent = this.currentChoiceEvent.buildAnswer(choice)
-      
+
       console.log('[CODAY-CHOICE] Choice sent successfully, clearing UI')
       // Hide choice interface immediately
       this.currentChoiceSubject.next(null)
@@ -151,7 +150,7 @@ export class CodayService implements OnDestroy {
         next: () => {},
         error: (error) => {
           console.error('[CODAY-CHOICE] Choice error:', error)
-        }
+        },
       })
     } else {
       console.error('[CODAY-CHOICE] No choice event available for choice:', choice)
@@ -161,20 +160,20 @@ export class CodayService implements OnDestroy {
   /**
    * Delete a message from the thread (rewind/retry functionality)
    */
-  deleteMessage(messageId: string): Observable<{success: boolean, message?: string, error?: string}> {
+  deleteMessage(messageId: string): Observable<{ success: boolean; message?: string; error?: string }> {
     console.log('[CODAY] Deleting message:', messageId)
-    
+
     // Extract text content from the message before deleting it
-    const messageToDelete = this.messagesSubject.value.find(msg => msg.id === messageId)
+    const messageToDelete = this.messagesSubject.value.find((msg) => msg.id === messageId)
     const textContent = this.extractTextContentFromMessage(messageToDelete)
-    
+
     return this.codayApi.deleteMessage(messageId).pipe(
-      tap((response: {success: boolean, message?: string, error?: string}) => {
+      tap((response: { success: boolean; message?: string; error?: string }) => {
         if (response.success) {
           console.log('[CODAY] Message deleted successfully, updating local messages')
           // Update local messages immediately for better UX (no replay needed)
           this.removeMessagesFromIndex(messageId)
-          
+
           // Restore the message content to textarea if it has text content
           if (textContent.trim()) {
             console.log('[CODAY] Restoring deleted message content to textarea')
@@ -193,14 +192,14 @@ export class CodayService implements OnDestroy {
   getCurrentMessages(): ChatMessage[] {
     return this.messagesSubject.value
   }
-  
+
   /**
    * Get current project title
    */
   getCurrentProjectTitle(): string {
     return this.projectTitleSubject.value
   }
-  
+
   /**
    * Get current pending InviteEvent if any
    */
@@ -212,20 +211,17 @@ export class CodayService implements OnDestroy {
    * Initialize event handling
    */
   private initializeEventHandling(): void {
-    this.eventStream.events$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: event => this.handleEvent(event),
-        error: error => console.error('[CODAY] Event stream error:', error),
-        complete: () => console.log('[CODAY] Event stream completed')
-      })
+    this.eventStream.events$.pipe(takeUntil(this.destroy$)).subscribe({
+      next: (event) => this.handleEvent(event),
+      error: (error) => console.error('[CODAY] Event stream error:', error),
+      complete: () => console.log('[CODAY] Event stream completed'),
+    })
   }
 
   /**
    * Handle incoming Coday events
    */
   private handleEvent(event: CodayEvent): void {
-
     if (event instanceof MessageEvent) {
       this.handleMessageEvent(event)
     } else if (event instanceof TextEvent) {
@@ -264,9 +260,9 @@ export class CodayService implements OnDestroy {
       speaker: event.name,
       content: event.content, // Directement le contenu riche
       timestamp: new Date(),
-      type: 'text'
+      type: 'text',
     }
-    
+
     this.addMessage(message)
   }
 
@@ -277,9 +273,9 @@ export class CodayService implements OnDestroy {
       speaker: event.speaker || 'System',
       content: [{ type: 'text', content: event.text }], // Convertir en contenu riche
       timestamp: new Date(),
-      type: event.speaker ? 'text' : 'technical'
+      type: event.speaker ? 'text' : 'technical',
     }
-    
+
     this.addMessage(message)
   }
 
@@ -290,9 +286,9 @@ export class CodayService implements OnDestroy {
       speaker: 'User',
       content: [{ type: 'text', content: event.answer }], // Convertir en contenu riche
       timestamp: new Date(),
-      type: 'text'
+      type: 'text',
     }
-    
+
     this.addMessage(message)
   }
 
@@ -303,9 +299,9 @@ export class CodayService implements OnDestroy {
       speaker: 'System',
       content: [{ type: 'text', content: `Error: ${JSON.stringify(event.error)}` }], // Convertir en contenu riche
       timestamp: new Date(),
-      type: 'error'
+      type: 'error',
     }
-    
+
     this.addMessage(message)
   }
 
@@ -316,20 +312,32 @@ export class CodayService implements OnDestroy {
       speaker: 'System',
       content: [{ type: 'text', content: `Warning: ${JSON.stringify(event.warning)}` }], // Convertir en contenu riche
       timestamp: new Date(),
-      type: 'warning'
+      type: 'warning',
     }
-    
+
     this.addMessage(message)
   }
 
   private handleThinkingEvent(_event: ThinkingEvent): void {
+    // Don't show thinking state if we have an active invite waiting for user response
+    if (this.currentInviteEventSubject.value) {
+      console.log('[CODAY] Ignoring ThinkingEvent - active invite waiting for user response')
+      return
+    }
+
+    // Don't show thinking state if we have an active choice waiting for user response
+    if (this.currentChoiceEvent) {
+      console.log('[CODAY] Ignoring ThinkingEvent - active choice waiting for user response')
+      return
+    }
+
     // Clear any existing thinking timeout to prevent blinking
     this.clearThinkingTimeout()
-    
+
     this.isThinkingSubject.next(true)
-    
+
     this.tabTitleService?.setSystemActive()
-    
+
     // Auto-hide thinking after debounce time + buffer
     this.thinkingTimeout = setTimeout(() => {
       this.isThinkingSubject.next(false)
@@ -346,9 +354,9 @@ export class CodayService implements OnDestroy {
       content: [{ type: 'text', content: event.toSingleLineString() }], // Convertir en contenu riche
       timestamp: new Date(),
       type: 'technical',
-      eventId: event.timestamp
+      eventId: event.timestamp,
     }
-    
+
     this.addMessage(message)
   }
 
@@ -360,46 +368,45 @@ export class CodayService implements OnDestroy {
       content: [{ type: 'text', content: event.toSingleLineString() }], // Convertir en contenu riche
       timestamp: new Date(),
       type: 'technical',
-      eventId: event.timestamp
+      eventId: event.timestamp,
     }
-    
+
     this.addMessage(message)
   }
 
   private handleChoiceEvent(event: ChoiceEvent): void {
     this.stopThinking()
-    
+
     this.currentChoiceEvent = event
-    
+
     this.tabTitleService?.setSystemInactive()
-    
-    const options: ChoiceOption[] = event.options.map(option => ({
+
+    const options: ChoiceOption[] = event.options.map((option) => ({
       value: option,
-      label: option
+      label: option,
     }))
-    
-    const label = event.optionalQuestion ? 
-      `${event.optionalQuestion} ${event.invite}` : 
-      event.invite
-    
+
+    const label = event.optionalQuestion ? `${event.optionalQuestion} ${event.invite}` : event.invite
+
     this.currentChoiceSubject.next({ options, label })
   }
 
   private handleProjectSelectedEvent(event: ProjectSelectedEvent): void {
     console.log('[CODAY] Project selected:', event.projectName)
-    
+
     // Reset messages when changing project
     this.resetMessages()
-    
+
     // Update project title
     this.projectTitleSubject.next(event.projectName || 'Coday')
   }
 
   private handleThreadSelectedEvent(event: ThreadSelectedEvent): void {
     console.log('[CODAY] Thread selected:', event.threadId, event.threadName)
-    
-    // Reset messages when changing thread
-    this.resetMessages()
+
+    // Don't reset messages here - the backend will replay the thread's messages
+    // The replay happens through the activeThread subscription in coday.ts
+    // which calls replayThread() and sends all the thread's messages
   }
 
   private handleHeartBeatEvent(_event: HeartBeatEvent): void {
@@ -408,9 +415,38 @@ export class CodayService implements OnDestroy {
 
   private handleInviteEvent(event: InviteEvent): void {
     this.stopThinking()
-    
+
+    // Check if the last message already contains this invite content to avoid duplicates
+    const currentMessages = this.messagesSubject.value
+    const lastMessage = currentMessages[currentMessages.length - 1]
+    const isInviteEventDefault = event.invite === InviteEventDefault
+
+    // Only add invite as a message if it's not already displayed
+    const inviteAlreadyDisplayed =
+      !isInviteEventDefault &&
+      lastMessage &&
+      lastMessage.role === 'assistant' &&
+      lastMessage.content.some((c) => c.type === 'text' && c.content.includes(event.invite))
+
+    if (!inviteAlreadyDisplayed && event.invite !== InviteEventDefault) {
+      // Create an assistant message with the invite content
+      const inviteMessage: ChatMessage = {
+        id: event.timestamp,
+        role: 'assistant',
+        speaker: 'Assistant',
+        content: [{ type: 'text', content: event.invite }],
+        timestamp: new Date(),
+        type: 'text',
+      }
+
+      // Add the invite as a visible message in the chat
+      this.addMessage(inviteMessage)
+    } else {
+      console.log('[CODAY] Invite already displayed in last message, skipping duplicate')
+    }
+
     this.currentInviteEventSubject.next(event)
-    
+
     this.tabTitleService?.setSystemInactive()
   }
 
@@ -420,7 +456,7 @@ export class CodayService implements OnDestroy {
   private addMessage(message: ChatMessage): void {
     const currentMessages = this.messagesSubject.value
     const newMessages = [...currentMessages, message]
-    
+
     this.messagesSubject.next(newMessages)
   }
 
@@ -431,30 +467,32 @@ export class CodayService implements OnDestroy {
    */
   private removeMessagesFromIndex(messageId: string): void {
     const currentMessages = this.messagesSubject.value
-    const messageIndex = currentMessages.findIndex(msg => msg.id === messageId)
-    
+    const messageIndex = currentMessages.findIndex((msg) => msg.id === messageId)
+
     if (messageIndex === -1) {
       console.warn('[CODAY] Message not found for local deletion:', messageId)
       return
     }
-    
+
     if (messageIndex === 0) {
       console.warn('[CODAY] Cannot delete first message locally')
       return
     }
-    
+
     // Remove the message and all messages that come after it
     const updatedMessages = currentMessages.slice(0, messageIndex)
-    
-    console.log(`[CODAY] Locally removed ${currentMessages.length - updatedMessages.length} messages from index ${messageIndex}`)
-    
+
+    console.log(
+      `[CODAY] Locally removed ${currentMessages.length - updatedMessages.length} messages from index ${messageIndex}`
+    )
+
     this.messagesSubject.next(updatedMessages)
-    
+
     // Clear any pending choice or invite since the conversation state has changed
     // this.currentChoiceSubject.next(null)
     // this.currentInviteEventSubject.next(null)
     // this.currentChoiceEvent = null
-    
+
     // Stop thinking state since we've truncated the conversation
     this.stopThinking()
   }
@@ -468,10 +506,10 @@ export class CodayService implements OnDestroy {
     if (!message) {
       return ''
     }
-    
+
     return message.content
-      .filter(content => content.type === 'text')
-      .map(content => content.content)
+      .filter((content) => content.type === 'text')
+      .map((content) => content.content)
       .join('\n\n')
   }
 
@@ -484,14 +522,14 @@ export class CodayService implements OnDestroy {
       this.thinkingTimeout = null
     }
   }
-  
+
   /**
    * Stop thinking state immediately and clear timeout
    */
   private stopThinking(): void {
     this.clearThinkingTimeout()
     this.isThinkingSubject.next(false)
-    
+
     // Notifier le service de titre que le système est inactif
     if (this.tabTitleService) {
       this.tabTitleService.setSystemInactive()
@@ -501,7 +539,7 @@ export class CodayService implements OnDestroy {
   ngOnDestroy(): void {
     // Clear thinking timeout on destroy
     this.clearThinkingTimeout()
-    
+
     this.destroy$.next()
     this.destroy$.complete()
     this.currentInviteEventSubject.complete()

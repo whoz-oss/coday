@@ -1,17 +1,23 @@
-import {AiThread} from './ai-thread/ai-thread'
-import {AiThreadService} from './ai-thread/ai-thread.service'
-import {RunStatus, ThreadMessage} from './ai-thread/ai-thread.types'
-import {AiThreadRepositoryFactory} from './ai-thread/repository/ai-thread.repository.factory'
-import {AiHandler, ConfigHandler} from './handler'
-import {HandlerLooper} from './handler-looper'
-import {AiClientProvider} from './integration/ai/ai-client-provider'
-import {keywords} from './keywords'
-import {CommandContext, Interactor} from './model'
-import {MessageContent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from '@coday/coday-events'
-import {AgentService} from './agent'
-import {CodayOptions} from './options'
-import {CodayServices} from './coday-services'
-import {AiConfigService} from './service/ai-config.service'
+import { AiThread } from './ai-thread/ai-thread'
+import { AiThreadService } from './ai-thread/ai-thread.service'
+import { RunStatus, ThreadMessage } from './ai-thread/ai-thread.types'
+import { AiThreadRepositoryFactory } from './ai-thread/repository/ai-thread.repository.factory'
+import { AiHandler, ConfigHandler } from './handler'
+import { HandlerLooper } from './handler-looper'
+import { AiClientProvider } from './integration/ai/ai-client-provider'
+import { keywords } from './keywords'
+import { CommandContext, Interactor } from './model'
+import {
+  InviteEventDefault,
+  MessageContent,
+  MessageEvent,
+  ToolRequestEvent,
+  ToolResponseEvent,
+} from '@coday/coday-events'
+import { AgentService } from './agent'
+import { CodayOptions } from './options'
+import { CodayServices } from './coday-services'
+import { AiConfigService } from './service/ai-config.service'
 
 const MAX_ITERATIONS = 100
 
@@ -27,18 +33,31 @@ export class Coday {
   private killed: boolean = false
   private aiClientProvider: AiClientProvider
 
-  constructor(private interactor: Interactor, private options: CodayOptions, private services: CodayServices) {
+  constructor(
+    private interactor: Interactor,
+    private options: CodayOptions,
+    private services: CodayServices
+  ) {
     this.interactor.debugLevelEnabled = options.debug
     this.interactor.debug('Coday started with debug')
     this.configHandler = new ConfigHandler(interactor, this.services)
     this.maxIterations = MAX_ITERATIONS
-    this.aiThreadService = new AiThreadService(new AiThreadRepositoryFactory(this.services.project), services.user, interactor)
+    this.aiThreadService = new AiThreadService(
+      new AiThreadRepositoryFactory(this.services.project),
+      services.user,
+      interactor
+    )
     this.aiThreadService.activeThread.subscribe((aiThread) => {
       if (!this.context || !aiThread) return
       this.context.aiThread = aiThread
       this.replayThread(aiThread)
     })
-    this.aiClientProvider = new AiClientProvider(this.interactor, this.services.user, this.services.project, this.services.logger)
+    this.aiClientProvider = new AiClientProvider(
+      this.interactor,
+      this.services.user,
+      this.services.project,
+      this.services.logger
+    )
   }
 
   /**
@@ -73,13 +92,15 @@ export class Coday {
     const username = this.services.user.username
 
     // Add each content item as a user message
-    content.forEach(item => {
+    content.forEach((item) => {
       thread.addUserMessage(username, item)
     })
 
     // Send the message event to update the UI
     const messageEvent = new MessageEvent({
-      role: 'user', content, name: username
+      role: 'user',
+      content,
+      name: username,
     })
     this.interactor.sendEvent(messageEvent)
   }
@@ -211,7 +232,9 @@ export class Coday {
     const messages: ThreadMessage[] = (await aiThread.getMessages(undefined, undefined)).messages
     if (!messages?.length) return
     // Sort messages by timestamp to maintain chronological order
-    const sortedMessages = [...messages].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+    const sortedMessages = [...messages].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    )
 
     // Send messages directly - no conversion needed
     for (const message of sortedMessages) {
@@ -246,9 +269,21 @@ export class Coday {
       this.services.mcp.initialize(this.context)
 
       // Create and store the agent service
-      this.services.agent = new AgentService(this.interactor, this.aiClientProvider, this.services, this.context.project.root, this.options.agentFolders)
+      this.services.agent = new AgentService(
+        this.interactor,
+        this.aiClientProvider,
+        this.services,
+        this.context.project.root,
+        this.options.agentFolders
+      )
       this.aiHandler = new AiHandler(this.interactor, this.services.agent, this.aiThreadService)
-      this.handlerLooper = new HandlerLooper(this.interactor, this.aiHandler, this.aiThreadService, this.configHandler, this.services)
+      this.handlerLooper = new HandlerLooper(
+        this.interactor,
+        this.aiHandler,
+        this.aiThreadService,
+        this.configHandler,
+        this.services
+      )
       this.aiClientProvider.init(this.context)
       this.handlerLooper.init(this.context.project)
       await this.services.agent.initialize(this.context)
@@ -272,7 +307,7 @@ export class Coday {
       }
     } else if (!this.options.oneshot) {
       // allow user input
-      userCommand = await this.interactor.promptText(`${this.services.user.username}`)
+      userCommand = await this.interactor.promptText(InviteEventDefault)
     }
     return userCommand
   }

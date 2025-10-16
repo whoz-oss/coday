@@ -1,32 +1,46 @@
-import { Component, Output, EventEmitter, Input, OnInit, OnDestroy, AfterViewInit, ViewChild, ElementRef, inject } from '@angular/core'
-import { CommonModule } from '@angular/common'
+import {
+  AfterViewInit,
+  Component,
+  ElementRef,
+  EventEmitter,
+  inject,
+  Input,
+  OnDestroy,
+  OnInit,
+  Output,
+  ViewChild,
+} from '@angular/core'
 import { FormsModule } from '@angular/forms'
-import { Subscription, BehaviorSubject, Observable } from 'rxjs'
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
-import { marked } from 'marked'
+import { Subscription } from 'rxjs'
 import { PreferencesService } from '../../services/preferences.service'
 import { CodayService } from '../../core/services/coday.service'
+import { MatIconButton } from '@angular/material/button'
+import { MatIcon } from '@angular/material/icon'
 
 @Component({
   selector: 'app-chat-textarea',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [FormsModule, MatIconButton, MatIcon],
   templateUrl: './chat-textarea.component.html',
-  styleUrl: './chat-textarea.component.scss'
+  styleUrl: './chat-textarea.component.scss',
 })
 export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   // Constants for textarea sizing
   private static readonly MIN_TEXTAREA_LINES = 2
   private static readonly MAX_TEXTAREA_LINES = 15
   @Input() isDisabled: boolean = false
+  @Input() showWelcome: boolean = false
+  @Input() isThinking: boolean = false
   @Output() messageSubmitted = new EventEmitter<string>()
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
   @Output() heightChanged = new EventEmitter<number>()
+  @Output() stopRequested = new EventEmitter<void>()
 
   @ViewChild('messageInput', { static: true }) messageInput!: ElementRef<HTMLTextAreaElement>
 
   message: string = ''
   isRecording: boolean = false
+  isFocused: boolean = false
 
   // Voice recognition properties
   private recognition: any = null
@@ -36,11 +50,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   // Enter behavior preference
   private useEnterToSend: boolean = false
 
-  // Invite properties
+  // Invite properties (kept minimal for default value handling)
   currentInvite: string = ''
-  private renderedInviteSubject = new BehaviorSubject<SafeHtml>('')
-  renderedInvite$: Observable<SafeHtml> = this.renderedInviteSubject.asObservable()
-  showInvite: boolean = false
 
   // Subscriptions management
   private subscriptions: Subscription[] = []
@@ -48,7 +59,6 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   // Modern Angular dependency injection
   private preferencesService = inject(PreferencesService)
   private codayService = inject(CodayService)
-  private sanitizer = inject(DomSanitizer)
 
   ngOnInit(): void {
     this.initializeVoiceInput()
@@ -57,22 +67,16 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
     this.useEnterToSend = this.preferencesService.getEnterToSend()
 
     // Listen to voice language changes
-    this.subscriptions.push(
-      this.preferencesService.voiceLanguage$.subscribe(
-        () => this.updateRecognitionLanguage()
-      )
-    )
+    this.subscriptions.push(this.preferencesService.voiceLanguage$.subscribe(() => this.updateRecognitionLanguage()))
 
     // Listen to Enter key behavior changes
     this.subscriptions.push(
-      this.preferencesService.enterToSend$.subscribe(
-        (useEnterToSend) => {
-          this.useEnterToSend = useEnterToSend
-        }
-      )
+      this.preferencesService.enterToSend$.subscribe((useEnterToSend) => {
+        this.useEnterToSend = useEnterToSend
+      })
     )
 
-    // Subscribe to InviteEvent changes
+    // Subscribe to InviteEvent changes for default value handling
     this.subscribeToInviteEvents()
 
     // Subscribe to message restoration after deletion
@@ -86,11 +90,10 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
 
   ngOnDestroy(): void {
     // Clean up all subscriptions
-    this.subscriptions.forEach(sub => sub.unsubscribe())
+    this.subscriptions.forEach((sub) => sub.unsubscribe())
     this.subscriptions = []
 
     this.clearPendingLineBreaks()
-    this.renderedInviteSubject.complete()
   }
 
   onKeyDown(event: KeyboardEvent) {
@@ -126,12 +129,13 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
       this.messageSubmitted.emit(this.message.trim())
       this.message = ''
 
-      // Hide invite after sending (will be replaced by next server invite)
-      this.showInvite = false
-
       // Reset height after clearing message
       setTimeout(() => this.adjustTextareaHeight(), 0)
     }
+  }
+
+  onStopClick() {
+    this.stopRequested.emit()
   }
 
   toggleVoiceRecording() {
@@ -374,8 +378,14 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
     const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.5
 
     // Define min and max heights in pixels using constants
-    const minHeight = lineHeight * ChatTextareaComponent.MIN_TEXTAREA_LINES + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
-    const maxHeight = lineHeight * ChatTextareaComponent.MAX_TEXTAREA_LINES + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+    const minHeight =
+      lineHeight * ChatTextareaComponent.MIN_TEXTAREA_LINES +
+      parseFloat(style.paddingTop) +
+      parseFloat(style.paddingBottom)
+    const maxHeight =
+      lineHeight * ChatTextareaComponent.MAX_TEXTAREA_LINES +
+      parseFloat(style.paddingTop) +
+      parseFloat(style.paddingBottom)
 
     // Reset height to auto to get the actual scroll height
     textarea.style.height = 'auto'
@@ -424,17 +434,29 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   /**
+   * Get placeholder text for textarea
+   * Uses invite text if available, otherwise shows default messages
+   */
+  getPlaceholder(): string {
+    if (this.showWelcome) {
+      return 'How can I help you today?'
+    } else if (this.currentInvite) {
+      return 'Type your message here...'
+    } else {
+      return 'Type your prompt here'
+    }
+  }
+
+  /**
    * Subscribe to InviteEvent changes in CodayService
    */
   private subscribeToInviteEvents(): void {
     this.subscriptions.push(
-      this.codayService.currentInviteEvent$.subscribe(inviteEvent => {
+      this.codayService.currentInviteEvent$.subscribe((inviteEvent) => {
         if (inviteEvent) {
           this.handleInviteEvent(inviteEvent.invite, inviteEvent.defaultValue)
         } else {
-          this.showInvite = false
           this.currentInvite = ''
-          this.renderedInviteSubject.next(this.sanitizer.bypassSecurityTrustHtml(''))
         }
       })
     )
@@ -445,10 +467,6 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
    */
   private handleInviteEvent(invite: string, defaultValue?: string): void {
     this.currentInvite = invite
-    this.showInvite = true
-
-    // Render invite markdown asynchronously
-    this.renderInviteMarkdown(invite)
 
     // Set default value if provided
     if (defaultValue) {
@@ -463,24 +481,11 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   /**
-   * Render invite markdown
-   */
-  private async renderInviteMarkdown(invite: string): Promise<void> {
-    try {
-      const html = await marked.parse(invite)
-      this.renderedInviteSubject.next(this.sanitizer.bypassSecurityTrustHtml(html))
-    } catch (error) {
-      console.error('[CHAT-TEXTAREA] Error parsing invite markdown:', error)
-      this.renderedInviteSubject.next(this.sanitizer.bypassSecurityTrustHtml(invite))
-    }
-  }
-
-  /**
    * Subscribe to message restoration after deletion
    */
   private subscribeToMessageRestore(): void {
     this.subscriptions.push(
-      this.codayService.messageToRestore$.subscribe(content => {
+      this.codayService.messageToRestore$.subscribe((content) => {
         if (content.trim()) {
           console.log('[CHAT-TEXTAREA] Restoring message content:', content.substring(0, 50) + '...')
           this.restoreMessageContent(content)
@@ -512,6 +517,4 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
     // Adjust textarea height to fit the restored content
     setTimeout(() => this.adjustTextareaHeight(), 10)
   }
-
-
 }

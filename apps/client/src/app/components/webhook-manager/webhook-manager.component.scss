@@ -7,7 +7,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 1600; /* Higher than sidenav (1400) and toggle button (1500) */
   padding: 1rem;
 }
 

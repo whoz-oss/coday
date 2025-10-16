@@ -8,7 +8,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 1600; /* Higher than sidenav (1400) and toggle button (1500) */
   backdrop-filter: blur(2px);
 }
 
@@ -75,7 +75,9 @@
   }
 
   @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
 }
 

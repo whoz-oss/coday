@@ -1,50 +1,62 @@
 <div class="chat-input-container">
-  <!-- Invite display -->
-  <div *ngIf="showInvite" class="invite-container">
-    <div class="invite-content markdown-content" [innerHTML]="renderedInvite$ | async"></div>
-  </div>
-  <div *ngIf="isRecording" class="recording-indicator">
-    <span class="recording-dot"></span>
-    Recording... Release to stop
-  </div>
-  <!-- Input row with voice, textarea, and send buttons -->
-  <div class="input-row">
-    <button
-      class="voice-btn"
-      [class.recording]="isRecording"
-      (mousedown)="onVoiceButtonMouseDown($event)"
-      (mouseup)="onVoiceButtonMouseUp()"
-      (mouseleave)="onVoiceButtonMouseLeave()"
-      (touchstart)="onVoiceButtonTouchStart($event)"
-      (touchend)="onVoiceButtonTouchEnd($event)"
-      (keydown)="onVoiceButtonKeyDown($event)"
-      (keyup)="onVoiceButtonKeyUp($event)"
-      tabindex="0"
-      title="Maintenir clic souris, touch, ou barre espace pour parler"
-    >
-      {{ isRecording ? '🔴' : '🎤' }}
-    </button>
-
+  @if (isRecording) {
+    <div class="recording-indicator">
+      <span class="recording-dot"></span>
+      Recording... Release to stop
+    </div>
+  }
+  <!-- Input row: textarea + voice + send, all inside rounded box -->
+  <div
+    class="input-row grouped-input"
+    [class.focused]="isFocused"
+    [class.welcome-mode]="showWelcome"
+    [class.is-thinking]="isThinking"
+  >
     <textarea
       #messageInput
       class="message-input"
       [(ngModel)]="message"
-      placeholder="Type your message here..."
+      [placeholder]="getPlaceholder()"
       (keydown)="onKeyDown($event)"
       (input)="onInput()"
       [disabled]="isDisabled"
+      (focus)="isFocused = true"
+      (blur)="isFocused = false"
     ></textarea>
-
-    <button
-      class="send-btn"
-      (click)="sendMessage()"
-      [disabled]="isDisabled"
-      [title]="getSendButtonTooltip()"
-    >
-      <span class="send-text">Send</span>
-      <span class="send-shortcut">{{ getSendButtonShortcut() }}</span>
-    </button>
+    @if (isThinking) {
+      <button class="stop-btn" mat-icon-button (click)="onStopClick()" title="Stop generation" type="button">
+        <mat-icon>stop</mat-icon>
+      </button>
+    } @else {
+      <button
+        class="voice-btn"
+        mat-icon-button
+        [class.recording]="isRecording"
+        [class.hidden]="message.trim()"
+        (mousedown)="onVoiceButtonMouseDown($event)"
+        (mouseup)="onVoiceButtonMouseUp()"
+        (mouseleave)="onVoiceButtonMouseLeave()"
+        (touchstart)="onVoiceButtonTouchStart($event)"
+        (touchend)="onVoiceButtonTouchEnd($event)"
+        (keydown)="onVoiceButtonKeyDown($event)"
+        (keyup)="onVoiceButtonKeyUp($event)"
+        tabindex="0"
+        title="Hold mouse click, touch, or spacebar to speak"
+      >
+        <mat-icon>{{ isRecording ? 'fiber_manual_record' : 'mic' }}</mat-icon>
+      </button>
+      <button
+        class="send-btn"
+        mat-icon-button
+        (click)="sendMessage()"
+        [disabled]="isDisabled || !message.trim()"
+        [class.hidden]="isDisabled || !message.trim()"
+        [class.active]="!!message.trim() && !isDisabled"
+        [title]="getSendButtonTooltip()"
+        type="button"
+      >
+        <mat-icon>send</mat-icon>
+      </button>
+    }
   </div>
-
-
 </div>

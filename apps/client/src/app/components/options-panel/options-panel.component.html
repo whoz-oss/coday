@@ -1,223 +1,254 @@
-<div class="options-container">
-  <!-- Button to open/close the panel -->
-  <button 
-    class="options-toggle-btn"
-    (click)="togglePanel()"
-    [class.active]="isVisible"
-    title="Options"
-    type="button"
-  >
-    ⚙️
-  </button>
-  
-  <!-- Backdrop to close the panel by clicking outside -->
-  <div 
-    *ngIf="isVisible"
-    class="options-backdrop"
-    (click)="onBackdropClick()"
-    (keydown.escape)="closePanel()"
-    tabindex="-1"
-    role="button"
-    aria-label="Close options (click or press Escape)"
-  ></div>
-  
-  <!-- Options panel -->
-  <div 
-    *ngIf="isVisible"
-    #optionsPanel
-    class="options-panel"
-    (click)="onPanelClick($event)"
-    (keydown)="onPanelClick($event)"
-    role="dialog"
-    aria-label="Configuration options panel"
-  >
-    <div class="options-header">
-      <h3>Options</h3>
-      <button 
-        class="close-btn"
-        (click)="closePanel()"
-        title="Fermer"
-        type="button"
-      >
-        ✕
-      </button>
+<div class="options-content">
+  <!-- Appearance Preferences Group -->
+  <div class="option-section">
+    <div class="section-title">
+      <mat-icon>palette</mat-icon>
+      <span>Appearance</span>
     </div>
-    
-    <div class="options-content">
-      <!-- Enter key behavior -->
-      <div class="option-group">
-        <label class="option-checkbox">
-          <input 
-            type="checkbox"
+
+    <div class="option-group">
+      <div class="radio-group">
+        <label class="option-radio">
+          <input type="radio" name="theme" value="light" [(ngModel)]="selectedTheme" (change)="onThemeChange()" />
+          <span class="radio-mark"></span>
+          Light
+        </label>
+        <label class="option-radio">
+          <input type="radio" name="theme" value="dark" [(ngModel)]="selectedTheme" (change)="onThemeChange()" />
+          <span class="radio-mark"></span>
+          Dark
+        </label>
+        <label class="option-radio">
+          <input type="radio" name="theme" value="system" [(ngModel)]="selectedTheme" (change)="onThemeChange()" />
+          <span class="radio-mark"></span>
+          System
+        </label>
+      </div>
+    </div>
+  </div>
+  <!-- Messaging Preferences Group -->
+  <div class="option-section">
+    <div class="section-title">
+      <mat-icon>chat_bubble_outline</mat-icon>
+      <span>Messaging</span>
+    </div>
+
+    <div class="option-group">
+      <span class="option-label">Send message behavior:</span>
+      <div class="radio-group">
+        <label class="option-radio">
+          <input
+            type="radio"
+            name="enterBehavior"
+            [value]="true"
             [(ngModel)]="useEnterToSend"
             (change)="onEnterToSendChange()"
           />
-          <span class="checkmark"></span>
-          Use Enter to send (Shift+Enter for new line)
+          <span class="radio-mark"></span>
+          Enter to send
+        </label>
+        <label class="option-radio">
+          <input
+            type="radio"
+            name="enterBehavior"
+            [value]="false"
+            [(ngModel)]="useEnterToSend"
+            (change)="onEnterToSendChange()"
+          />
+          <span class="radio-mark"></span>
+          Enter for new line
         </label>
       </div>
-      
-      <!-- Print technical messages -->
-      <div class="option-group">
-        <label class="option-checkbox">
-          <input 
-            type="checkbox"
+    </div>
+
+    <div class="option-group">
+      <span class="option-label">Technical messages in print:</span>
+      <div class="radio-group">
+        <label class="option-radio">
+          <input
+            type="radio"
+            name="printTechnical"
+            [value]="true"
             [(ngModel)]="printTechnicalMessages"
             (change)="onPrintTechnicalMessagesChange()"
           />
-          <span class="checkmark"></span>
-          Include technical messages in print
+          <span class="radio-mark"></span>
+          Include technical messages
+        </label>
+        <label class="option-radio">
+          <input
+            type="radio"
+            name="printTechnical"
+            [value]="false"
+            [(ngModel)]="printTechnicalMessages"
+            (change)="onPrintTechnicalMessagesChange()"
+          />
+          <span class="radio-mark"></span>
+          Exclude technical messages
         </label>
       </div>
-      
-      <!-- Voice language selection -->
-      <div class="option-group">
-        <label for="voice-language-select" class="option-label">
-          Voice recognition language:
+    </div>
+  </div>
+
+  <!-- Voice & Speech Group -->
+  <div class="option-section">
+    <div class="section-title">
+      <mat-icon>record_voice_over</mat-icon>
+      <span>Voice & Speech</span>
+    </div>
+
+    <div class="option-group">
+      <label for="voice-language-select" class="option-label">Voice recognition language:</label>
+      <select
+        id="voice-language-select"
+        class="option-select"
+        [(ngModel)]="selectedVoiceLanguage"
+        (change)="onVoiceLanguageChange()"
+      >
+        @for (option of voiceLanguageOptions; track option.code) {
+          <option [value]="option.code">{{ option.flag }} {{ option.label }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="option-group">
+      <span class="option-label">Automatic announcement:</span>
+      <div class="radio-group">
+        <label class="option-radio">
+          <input
+            type="radio"
+            name="voiceAnnounce"
+            [value]="true"
+            [(ngModel)]="voiceAnnounceEnabled"
+            (change)="onVoiceAnnounceEnabledChange()"
+          />
+          <span class="radio-mark"></span>
+          Enabled
         </label>
-        <select 
-          id="voice-language-select"
-          class="option-select"
-          [(ngModel)]="selectedVoiceLanguage"
-          (change)="onVoiceLanguageChange()"
-        >
-          <option 
-            *ngFor="let option of voiceLanguageOptions" 
-            [value]="option.code"
-          >
-            {{ option.flag }} {{ option.label }}
+        <label class="option-radio">
+          <input
+            type="radio"
+            name="voiceAnnounce"
+            [value]="false"
+            [(ngModel)]="voiceAnnounceEnabled"
+            (change)="onVoiceAnnounceEnabledChange()"
+          />
+          <span class="radio-mark"></span>
+          Disabled
+        </label>
+      </div>
+    </div>
+
+    <div class="option-group">
+      <span class="option-label">Voice mode:</span>
+      <div class="radio-group">
+        <label class="option-radio">
+          <input type="radio" name="voiceMode" value="speech" [(ngModel)]="voiceMode" (change)="onVoiceModeChange()" />
+          <span class="radio-mark"></span>
+          Voice synthesis
+        </label>
+        <label class="option-radio">
+          <input
+            type="radio"
+            name="voiceMode"
+            value="notification"
+            [(ngModel)]="voiceMode"
+            (change)="onVoiceModeChange()"
+          />
+          <span class="radio-mark"></span>
+          Sound notification
+        </label>
+      </div>
+    </div>
+
+    <div class="option-group">
+      <span class="option-label">Message reading:</span>
+      <div class="radio-group">
+        <label class="option-radio">
+          <input
+            type="radio"
+            name="voiceReadFull"
+            [value]="true"
+            [(ngModel)]="voiceReadFullText"
+            (change)="onVoiceReadFullTextChange()"
+          />
+          <span class="radio-mark"></span>
+          Full message
+        </label>
+        <label class="option-radio">
+          <input
+            type="radio"
+            name="voiceReadFull"
+            [value]="false"
+            [(ngModel)]="voiceReadFullText"
+            (change)="onVoiceReadFullTextChange()"
+          />
+          <span class="radio-mark"></span>
+          First paragraphs only
+        </label>
+      </div>
+    </div>
+
+    <div class="option-group">
+      <label for="voice-select" class="option-label">Selected voice:</label>
+      <select
+        id="voice-select"
+        class="option-select"
+        [(ngModel)]="selectedVoiceId"
+        (change)="onSelectedVoiceChange()"
+        [disabled]="loadingVoices || availableVoices.length === 0"
+      >
+        @if (loadingVoices) {
+          <option value="">Loading voices...</option>
+        }
+        @if (!loadingVoices && availableVoices.length === 0) {
+          <option value="">No voice available</option>
+        }
+        @for (voice of availableVoices; track voice.name + voice.lang) {
+          <option [value]="voice.name + '|' + voice.lang">
+            {{ voice.displayName }}
           </option>
-        </select>
-      </div>
-      
-      <!-- Voice synthesis section -->
-      <div class="option-section">
-        <h4 class="section-title">🔊 Voice synthesis</h4>
-        
-        <!-- Automatic announcement -->
-        <div class="option-group">
-          <label class="option-checkbox">
-            <input 
-              type="checkbox"
-              [(ngModel)]="voiceAnnounceEnabled"
-              (change)="onVoiceAnnounceEnabledChange()"
-            />
-            <span class="checkmark"></span>
-            Automatic announcement of responses
-          </label>
-        </div>
-        
-        <!-- Voice mode -->
-        <div class="option-group">
-          <span class="option-label">Voice mode:</span>
-          <div class="radio-group">
-            <label class="option-radio">
-              <input 
-                type="radio" 
-                name="voiceMode" 
-                value="speech"
-                [(ngModel)]="voiceMode"
-                (change)="onVoiceModeChange()"
-              />
-              <span class="radio-mark"></span>
-              🗣️ Voice synthesis
-            </label>
-            <label class="option-radio">
-              <input 
-                type="radio" 
-                name="voiceMode" 
-                value="notification"
-                [(ngModel)]="voiceMode"
-                (change)="onVoiceModeChange()"
-              />
-              <span class="radio-mark"></span>
-              🔔 Sound notification
-            </label>
-          </div>
-        </div>
-        
-        <!-- Full reading -->
-        <div class="option-group">
-          <label class="option-checkbox">
-            <input 
-              type="checkbox"
-              [(ngModel)]="voiceReadFullText"
-              (change)="onVoiceReadFullTextChange()"
-            />
-            <span class="checkmark"></span>
-            Full message reading (otherwise first paragraphs)
-          </label>
-        </div>
-        
-        <!-- Voice selection -->
-        <div class="option-group">
-          <label for="voice-select" class="option-label">
-            Selected voice:
-          </label>
-          <select 
-            id="voice-select"
-            class="option-select"
-            [(ngModel)]="selectedVoiceId"
-            (change)="onSelectedVoiceChange()"
-            [disabled]="loadingVoices || availableVoices.length === 0"
-          >
-            <option value="" *ngIf="loadingVoices">🔄 Loading voices...</option>
-            <option value="" *ngIf="!loadingVoices && availableVoices.length === 0">⚠️ No voice available</option>
-            <option 
-              *ngFor="let voice of availableVoices" 
-              [value]="voice.name + '|' + voice.lang"
-            >
-              {{ voice.displayName }}
-            </option>
-          </select>
-        </div>
-        
-        <!-- Volume -->
-        <div class="option-group">
-          <label for="voice-volume-slider" class="option-label">
-            Volume: {{ voiceVolume }}%
-          </label>
-          <input 
-            id="voice-volume-slider"
-            type="range" 
-            min="0" 
-            max="100" 
-            step="5"
-            class="option-slider"
-            [(ngModel)]="voiceVolume"
-            (input)="onVoiceVolumeChange()"
-          />
-        </div>
-        
-        <!-- Speed -->
-        <div class="option-group">
-          <label for="voice-rate-slider" class="option-label">
-            Speed: {{ voiceRate }}%
-          </label>
-          <input 
-            id="voice-rate-slider"
-            type="range" 
-            min="50" 
-            max="200" 
-            step="10"
-            class="option-slider"
-            [(ngModel)]="voiceRate"
-            (input)="onVoiceRateChange()"
-          />
-        </div>
-        
-        <!-- Voice test -->
-        <div class="option-group">
-          <button 
-            type="button" 
-            class="test-voice-btn"
-            (click)="testVoice()"
-            title="Test voice with current settings"
-          >
-            🔊 Test voice
-          </button>
-        </div>
-      </div>
+        }
+      </select>
+
+      <div class="option-label"></div>
+      <a
+        class="test-voice-link"
+        (click)="testVoice()"
+        role="button"
+        tabindex="0"
+        title="Test voice with current settings"
+      >
+        <span class="thread-name">Test voice</span>
+      </a>
+    </div>
+
+    <div class="option-group">
+      <label for="voice-volume-slider" class="option-label">Volume: {{ voiceVolume }}%</label>
+      <input
+        id="voice-volume-slider"
+        type="range"
+        min="0"
+        max="100"
+        step="5"
+        class="option-slider"
+        [(ngModel)]="voiceVolume"
+        (input)="onVoiceVolumeChange()"
+      />
+    </div>
+
+    <div class="option-group">
+      <label for="voice-rate-slider" class="option-label">Speed: {{ voiceRate }}%</label>
+      <input
+        id="voice-rate-slider"
+        type="range"
+        min="50"
+        max="200"
+        step="10"
+        class="option-slider"
+        [(ngModel)]="voiceRate"
+        (input)="onVoiceRateChange()"
+      />
     </div>
   </div>
 </div>

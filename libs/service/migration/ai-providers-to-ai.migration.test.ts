@@ -1,12 +1,11 @@
-import {migrateData} from '../../utils/data-migration'
-import {aiPropertyToAi} from './ai-providers-to-ai.migration'
-import {ProjectLocalConfig} from '../../model/project-local-config'
+import { migrateData } from '../../utils/data-migration'
+import { aiPropertyToAi } from './ai-providers-to-ai.migration'
 
 describe('aiProviders to ai migration', () => {
   describe('ProjectLocalConfig migration', () => {
     it('should handle config with no version and no ai field', () => {
-      // Create a sample config with aiProviders only
-      const config: Partial<ProjectLocalConfig> = {
+      // Create a sample config with aiProviders only (using any since it's old structure)
+      const config: any = {
         path: '/test/project',
         aiProviders: {
           anthropic: {
@@ -45,7 +44,7 @@ describe('aiProviders to ai migration', () => {
 
     it('should handle config with no aiProviders', () => {
       // Create a sample config without aiProviders
-      const config: Partial<ProjectLocalConfig> = {
+      const config: any = {
         path: '/test/project',
         integration: {},
       }
@@ -66,7 +65,7 @@ describe('aiProviders to ai migration', () => {
 
     it('should handle custom provider configuration', () => {
       // Create a sample config with a custom provider
-      const config: Partial<ProjectLocalConfig> = {
+      const config: any = {
         path: '/test/project',
         aiProviders: {
           localLlm: {

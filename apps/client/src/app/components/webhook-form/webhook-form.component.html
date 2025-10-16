@@ -1,19 +1,19 @@
 <div class="webhook-form-container">
   <h2>{{ formTitle }}</h2>
-  
+
   <!-- Error Message -->
-  <div *ngIf="errorMessage" class="error-message">
-    ❌ {{ errorMessage }}
-  </div>
-  
+  @if (errorMessage) {
+    <div class="error-message">❌ {{ errorMessage }}</div>
+  }
+
   <form (ngSubmit)="onSave()">
     <!-- Name Field -->
     <div class="form-group">
       <label for="name">Name *</label>
-      <input 
-        type="text" 
-        id="name" 
-        [(ngModel)]="name" 
+      <input
+        type="text"
+        id="name"
+        [(ngModel)]="name"
         name="name"
         placeholder="e.g., CI Pipeline Webhook"
         [disabled]="isSaving"
@@ -21,42 +21,40 @@
       />
       <small class="hint">A descriptive name for this webhook</small>
     </div>
-    
+
     <!-- Project Field -->
     <div class="form-group">
       <label for="project">Project *</label>
-      <input 
-        *ngIf="availableProjects.length === 0"
-        type="text" 
-        id="project" 
-        [(ngModel)]="project" 
-        name="project"
-        placeholder="e.g., my-project"
-        [disabled]="isSaving"
-        required
-      />
-      <select 
-        *ngIf="availableProjects.length > 0"
-        id="project" 
-        [(ngModel)]="project" 
-        name="project"
-        [disabled]="isSaving"
-        required
-      >
-        <option value="">Select a project...</option>
-        <option *ngFor="let proj of availableProjects" [value]="proj">{{ proj }}</option>
-      </select>
+      @if (availableProjects.length === 0) {
+        <input
+          type="text"
+          id="project"
+          [(ngModel)]="project"
+          name="project"
+          placeholder="e.g., my-project"
+          [disabled]="isSaving"
+          required
+        />
+      }
+      @if (availableProjects.length > 0) {
+        <select id="project" [(ngModel)]="project" name="project" [disabled]="isSaving" required>
+          <option value="">Select a project...</option>
+          @for (proj of availableProjects; track proj) {
+            <option [value]="proj">{{ proj }}</option>
+          }
+        </select>
+      }
       <small class="hint">The project context for this webhook</small>
     </div>
-    
+
     <!-- Command Type Field -->
     <div class="form-group">
       <span class="field-label">Command Type *</span>
       <div class="radio-group">
         <label class="radio-option">
-          <input 
-            type="radio" 
-            [(ngModel)]="commandType" 
+          <input
+            type="radio"
+            [(ngModel)]="commandType"
             name="commandType"
             value="template"
             (change)="onCommandTypeChange()"
@@ -67,11 +65,11 @@
             <small>Pre-defined commands with placeholders</small>
           </span>
         </label>
-        
+
         <label class="radio-option">
-          <input 
-            type="radio" 
-            [(ngModel)]="commandType" 
+          <input
+            type="radio"
+            [(ngModel)]="commandType"
             name="commandType"
             value="free"
             (change)="onCommandTypeChange()"
@@ -84,47 +82,40 @@
         </label>
       </div>
     </div>
-    
+
     <!-- Commands Field (only for template type) -->
-    <div *ngIf="commandType === 'template'" class="form-group">
-      <label for="commands">Commands *</label>
-      <textarea 
-        id="commands" 
-        [(ngModel)]="commands" 
-        name="commands"
-        rows="6"
-        placeholder="Enter commands, one per line (use double braces for placeholders)"
-        [disabled]="isSaving"
-        required
-      ></textarea>
-      <small class="hint">
-        One command per line. Use double braces around placeholder names for dynamic values.
-      </small>
-    </div>
-    
+    @if (commandType === 'template') {
+      <div class="form-group">
+        <label for="commands">Commands *</label>
+        <textarea
+          id="commands"
+          [(ngModel)]="commands"
+          name="commands"
+          rows="6"
+          placeholder="Enter commands, one per line (use double braces for placeholders)"
+          [disabled]="isSaving"
+          required
+        ></textarea>
+        <small class="hint">
+          One command per line. Use double braces around placeholder names for dynamic values.
+        </small>
+      </div>
+    }
+
     <!-- Info for free type -->
-    <div *ngIf="commandType === 'free'" class="info-box">
-      <p>
-        <strong>ℹ️ Free Form Webhook</strong><br/>
-        Callers will provide prompts in the request body using the <code>prompts</code> array field.
-      </p>
-    </div>
-    
+    @if (commandType === 'free') {
+      <div class="info-box">
+        <p>
+          <strong>ℹ️ Free Form Webhook</strong><br />
+          Callers will provide prompts in the request body using the <code>prompts</code> array field.
+        </p>
+      </div>
+    }
+
     <!-- Action Buttons -->
     <div class="form-actions">
-      <button 
-        type="button" 
-        class="btn-cancel" 
-        (click)="onCancel()"
-        [disabled]="isSaving"
-      >
-        Cancel
-      </button>
-      <button 
-        type="submit" 
-        class="btn-save"
-        [disabled]="isSaving"
-      >
+      <button type="button" class="btn-cancel" (click)="onCancel()" [disabled]="isSaving">Cancel</button>
+      <button type="submit" class="btn-save" [disabled]="isSaving">
         {{ isSaving ? 'Saving...' : 'Save Webhook' }}
       </button>
     </div>
