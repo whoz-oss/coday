@@ -318,6 +318,18 @@ export class CodayService implements OnDestroy {
   }
 
   private handleThinkingEvent(_event: ThinkingEvent): void {
+    // Don't show thinking state if we have an active invite waiting for user response
+    if (this.currentInviteEventSubject.value) {
+      console.log('[CODAY] Ignoring ThinkingEvent - active invite waiting for user response')
+      return
+    }
+
+    // Don't show thinking state if we have an active choice waiting for user response
+    if (this.currentChoiceEvent) {
+      console.log('[CODAY] Ignoring ThinkingEvent - active choice waiting for user response')
+      return
+    }
+
     // Clear any existing thinking timeout to prevent blinking
     this.clearThinkingTimeout()
 
@@ -402,6 +414,19 @@ export class CodayService implements OnDestroy {
 
   private handleInviteEvent(event: InviteEvent): void {
     this.stopThinking()
+
+    // Create an assistant message with the invite content
+    const inviteMessage: ChatMessage = {
+      id: event.timestamp,
+      role: 'assistant',
+      speaker: 'Assistant',
+      content: [{ type: 'text', content: event.invite }],
+      timestamp: new Date(),
+      type: 'text',
+    }
+
+    // Add the invite as a visible message in the chat
+    this.addMessage(inviteMessage)
 
     this.currentInviteEventSubject.next(event)
 

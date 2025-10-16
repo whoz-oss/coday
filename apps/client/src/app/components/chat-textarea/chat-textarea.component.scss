@@ -20,18 +20,6 @@
   }
 }
 
-.invite-container {
-  margin-bottom: 0.5rem;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-
-  .invite-content {
-    color: var(--color-text, #282a36);
-    font-size: 0.95rem;
-    line-height: 1.4;
-  }
-}
-
 .input-row.grouped-input {
   display: flex;
   align-items: center;

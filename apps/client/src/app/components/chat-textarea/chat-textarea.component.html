@@ -1,11 +1,4 @@
 <div class="chat-input-container">
-  <!-- Invite display -->
-  @if (showInvite) {
-    <div class="invite-container">
-      <div class="invite-content markdown-content" [innerHTML]="renderedInvite$ | async"></div>
-    </div>
-  }
-
   @if (isRecording) {
     <div class="recording-indicator">
       <span class="recording-dot"></span>
