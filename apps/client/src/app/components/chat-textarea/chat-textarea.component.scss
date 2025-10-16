@@ -174,11 +174,6 @@
     border-color: var(--color-primary);
   }
 
-  &.hidden {
-    opacity: 0;
-    right: -100px;
-  }
-
   &.recording {
     background: rgba(255, 59, 48, 0.07);
     color: var(--color-error);
