@@ -2,20 +2,20 @@ import { Injectable } from '@angular/core'
 import { BehaviorSubject } from 'rxjs'
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class UnreadMessagesService {
   private unreadCountSubject = new BehaviorSubject<number>(0)
-  
-  // Observable public pour les composants
+
+  // Public observable for components
   unreadCount$ = this.unreadCountSubject.asObservable()
-  
+
   constructor() {
     console.log('[UNREAD] Service initialized')
   }
-  
+
   /**
-   * Ajouter un message non lu
+   * Add an unread message
    */
   addUnread(): void {
     const currentCount = this.unreadCountSubject.value
@@ -23,9 +23,9 @@ export class UnreadMessagesService {
     this.unreadCountSubject.next(newCount)
     console.log('[UNREAD] Added unread message, total:', newCount)
   }
-  
+
   /**
-   * Marquer tous les messages comme lus
+   * Mark all messages as read
    */
   markAllAsRead(): void {
     const currentCount = this.unreadCountSubject.value
@@ -34,16 +34,16 @@ export class UnreadMessagesService {
       console.log('[UNREAD] Marked all messages as read')
     }
   }
-  
+
   /**
-   * Obtenir le nombre actuel de messages non lus
+   * Get the current count of unread messages
    */
   getCurrentCount(): number {
     return this.unreadCountSubject.value
   }
-  
+
   /**
-   * Réinitialiser le compteur (pour debug ou cas spéciaux)
+   * Reset the counter (for debug or special cases)
    */
   reset(): void {
     this.unreadCountSubject.next(0)

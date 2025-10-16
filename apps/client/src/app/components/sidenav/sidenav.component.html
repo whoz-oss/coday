@@ -58,8 +58,11 @@
       <!-- Threads Section - Expanded by default -->
       <div class="section-container">
         <button class="section-toggle" (click)="toggleSection('threads')" type="button">
-          <mat-icon class="arrow-icon" [class.expanded]="expandedSections['threads']">chevron_right</mat-icon>
-          <mat-icon class="section-icon">forum</mat-icon>
+          @if (expandedSections['threads']) {
+            <mat-icon class="arrow-icon expanded">chevron_right</mat-icon>
+          } @else {
+            <mat-icon class="section-icon">forum</mat-icon>
+          }
           <span class="section-label">Threads</span>
         </button>
         @if (expandedSections['threads']) {
@@ -72,8 +75,11 @@
       <!-- Configuration Section -->
       <div class="section-container">
         <button class="section-toggle" (click)="toggleSection('config')" type="button">
-          <mat-icon class="arrow-icon" [class.expanded]="expandedSections['config']">chevron_right</mat-icon>
-          <mat-icon class="section-icon">settings</mat-icon>
+          @if (expandedSections['config']) {
+            <mat-icon class="arrow-icon expanded">chevron_right</mat-icon>
+          } @else {
+            <mat-icon class="section-icon">settings</mat-icon>
+          }
           <span class="section-label">Configuration</span>
         </button>
         @if (expandedSections['config']) {

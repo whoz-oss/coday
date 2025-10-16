@@ -32,11 +32,11 @@ export interface ChoiceOption {
 export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input() options: ChoiceOption[] = []
   @Input() set labelHtml(value: string | SafeHtml) {
-    // Si c'est déjà du SafeHtml, on l'utilise directement
+    // If it's already SafeHtml, use it directly
     if (typeof value === 'object') {
       this.renderedLabelSubject.next(value as SafeHtml)
     } else {
-      // Sinon on fait le rendu markdown
+      // Otherwise render as markdown
       this.renderLabelMarkdown(value as string)
     }
   }
@@ -48,7 +48,7 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
 
   selectedValue: string = ''
 
-  // Observable pour le rendu asynchrone du label
+  // Observable for asynchronous label rendering
   private renderedLabelSubject = new BehaviorSubject<SafeHtml>('')
   renderedLabel$: Observable<SafeHtml> = this.renderedLabelSubject.asObservable()
 
@@ -60,14 +60,14 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
   }
 
   ngAfterViewInit(): void {
-    // Focus automatique quand le composant devient visible
+    // Auto-focus when component becomes visible
     if (this.isVisible && this.selectElement) {
       setTimeout(() => this.focusSelect(), 100)
     }
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    // Focus automatique quand isVisible passe à true
+    // Auto-focus when isVisible changes to true
     if (changes['isVisible']) {
       console.log(
         '[CHOICE-SELECT] isVisible changed:',
@@ -77,7 +77,7 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
       )
       if (changes['isVisible'].currentValue && !changes['isVisible'].previousValue) {
         console.log('[CHOICE-SELECT] Component becoming visible, setting focus...')
-        setTimeout(() => this.focusSelect(), 150) // Délai un peu plus long pour l'animation
+        setTimeout(() => this.focusSelect(), 150) // Slightly longer delay for animation
       }
     }
   }
@@ -93,7 +93,7 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
     if (this.selectedValue) {
       console.log('[CHOICE-SELECT] Choice selected:', this.selectedValue)
       this.choiceSelected.emit(this.selectedValue)
-      this.selectedValue = '' // Reset pour la prochaine utilisation
+      this.selectedValue = '' // Reset for next use
     } else {
       console.warn('[CHOICE-SELECT] No choice selected')
     }
@@ -104,7 +104,7 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
   }
 
   /**
-   * Rendre le markdown du label de manière asynchrone
+   * Render label markdown asynchronously
    */
   private async renderLabelMarkdown(label: string): Promise<void> {
     if (!label) {
@@ -117,7 +117,7 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
       this.renderedLabelSubject.next(this.sanitizer.bypassSecurityTrustHtml(html))
     } catch (error) {
       console.error('[CHOICE-SELECT] Error parsing label markdown:', error)
-      // En cas d'erreur, afficher le texte brut
+      // On error, display raw text
       this.renderedLabelSubject.next(this.sanitizer.bypassSecurityTrustHtml(label))
     }
   }

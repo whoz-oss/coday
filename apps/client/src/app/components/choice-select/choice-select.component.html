@@ -1,9 +1,9 @@
 @if (isVisible) {
   <form class="choice-form" (ngSubmit)="onSubmit()">
-    <!-- Label en haut -->
+    <!-- Label at top -->
     <div class="choice-label" [innerHTML]="renderedLabel$ | async"></div>
 
-    <!-- Select et bouton sur la même ligne -->
+    <!-- Select and button on same line -->
     <div class="select-button-row">
       <select
         class="choice-select-inline"
@@ -14,7 +14,7 @@
         (change)="onSelectChange()"
         (keydown.enter)="onSubmit()"
       >
-        <option value="" disabled>-- Sélectionnez une option --</option>
+        <option value="" disabled>-- Select an option --</option>
         @for (option of options; track option.value) {
           <option [value]="option.value">
             {{ option.label }}
@@ -22,7 +22,7 @@
         }
       </select>
 
-      <button type="submit" class="submit-btn" [disabled]="!selectedValue">Valider</button>
+      <button type="submit" class="submit-btn" [disabled]="!selectedValue">Submit</button>
     </div>
   </form>
 }

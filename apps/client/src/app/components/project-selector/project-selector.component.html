@@ -4,7 +4,7 @@
   (keydown)="$event.stopPropagation()"
   tabindex="0"
   role="application"
-  aria-label="Sélecteur de projet"
+  aria-label="Project selector"
 >
   <!-- Main selector button -->
   <button
@@ -21,7 +21,7 @@
 
   <!-- Dropdown menu -->
   @if (isExpanded && canShowDropdown()) {
-    <div class="dropdown-menu" role="menu" aria-label="Sélection de projet">
+    <div class="dropdown-menu" role="menu" aria-label="Project selection">
       @for (project of getAvailableProjects(); track project.name) {
         <button
           class="dropdown-item"
@@ -38,7 +38,7 @@
       }
 
       @if (getAvailableProjects().length === 0) {
-        <div class="dropdown-empty">Aucun projet disponible</div>
+        <div class="dropdown-empty">No project available</div>
       }
     </div>
   }
@@ -52,6 +52,6 @@
     (keydown.escape)="closeDropdown()"
     tabindex="0"
     role="button"
-    aria-label="Fermer le menu de sélection"
+    aria-label="Close selection menu"
   ></div>
 }

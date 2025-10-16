@@ -42,8 +42,8 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   private readonly NEAR_BOTTOM_THRESHOLD = 100 // pixels
   private scrollCheckTimeout: any
 
-  // Seuil de fraîcheur des messages pour l'annonce automatique (5 minutes)
-  private readonly MESSAGE_FRESHNESS_THRESHOLD = 5 * 60 * 1000 // en millisecondes
+  // Message freshness threshold for automatic announcement (5 minutes)
+  private readonly MESSAGE_FRESHNESS_THRESHOLD = 5 * 60 * 1000 // in milliseconds
 
   // Modern Angular dependency injection
   private elementRef = inject(ElementRef)
@@ -106,7 +106,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
       }
 
       if (this.scrollContainer) {
-        // Note: Scroll programmatique
+        // Note: Programmatic scroll
 
         // Small delay to ensure DOM is updated
         setTimeout(() => {
@@ -408,16 +408,16 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   }
 
   /**
-   * Gérer l'annonce vocale des nouveaux messages assistant
+   * Handle voice announcement of new assistant messages
    */
   private handleVoiceAnnouncement(newMessagesCount: number): void {
-    // Vérifier si l'annonce automatique est activée
+    // Check if automatic announcement is enabled
     const announceEnabled = this.preferencesService.getVoiceAnnounceEnabled()
     if (!announceEnabled) {
       return
     }
 
-    // Filtrer seulement les nouveaux messages assistant
+    // Filter only new assistant messages
     const newMessages = this.messages.slice(-newMessagesCount)
     const newAssistantMessages = newMessages.filter((msg) => msg.role === 'assistant')
 
@@ -426,7 +426,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
       return
     }
 
-    // Prendre le dernier message assistant pour l'annonce
+    // Take the last assistant message for announcement
     const lastAssistantMessage = newAssistantMessages[newAssistantMessages.length - 1]
 
     if (!lastAssistantMessage) {
@@ -434,26 +434,26 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
       return
     }
 
-    // Vérifier si le message est assez récent
+    // Check if message is recent enough
     if (!this.isMessageRecentEnoughForAnnouncement(lastAssistantMessage)) {
       console.log('[CHAT-HISTORY] Message too old for voice announcement')
       return
     }
 
-    // Vérifier le mode vocal
+    // Check voice mode
     const voiceMode = this.preferencesService.getVoiceMode()
 
     if (voiceMode === 'notification') {
-      // Mode notification : jouer un son
+      // Notification mode: play a sound
       console.log('[CHAT-HISTORY] Playing notification sound for new assistant message')
       this.voiceSynthesisService.ding()
     } else {
-      // Mode speech : lire le message
+      // Speech mode: read the message
       const textContent = this.extractTextContentFromMessage(lastAssistantMessage)
       if (textContent.trim()) {
         console.log('[CHAT-HISTORY] Announcing new assistant message via speech')
 
-        // Déterminer si lecture complète ou partielle
+        // Determine if full or partial read
         const readFullText = this.preferencesService.getVoiceReadFullText()
         const textToSpeak = readFullText ? textContent : this.extractPartialText(textContent)
 
@@ -472,7 +472,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   }
 
   /**
-   * Vérifier si un message est assez récent pour l'annonce automatique
+   * Check if a message is recent enough for automatic announcement
    */
   private isMessageRecentEnoughForAnnouncement(message: ChatMessage): boolean {
     try {
@@ -483,12 +483,12 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
       return timeDiff <= this.MESSAGE_FRESHNESS_THRESHOLD
     } catch (error) {
       console.warn('[CHAT-HISTORY] Error checking message freshness:', error)
-      return true // Si erreur, supposer que c'est récent
+      return true // On error, assume it's recent
     }
   }
 
   /**
-   * Extraire le contenu textuel d'un message
+   * Extract text content from a message
    */
   private extractTextContentFromMessage(message: ChatMessage): string {
     return message.content
@@ -498,8 +498,8 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   }
 
   /**
-   * Extraire une partie du texte pour la lecture partielle
-   * (porté de l'ancienne logique)
+   * Extract partial text for partial reading
+   * (ported from old logic)
    */
   private extractPartialText(text: string): string {
     const PARAGRAPH_MIN_LENGTH = 80
@@ -522,6 +522,6 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
       { paragraphs: 0, text: '' }
     )
 
-    return result.text || text // Fallback au texte complet si rien n'est extrait
+    return result.text || text // Fallback to full text if nothing extracted
   }
 }
