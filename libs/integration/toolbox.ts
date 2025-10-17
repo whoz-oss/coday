@@ -35,7 +35,9 @@ export class Toolbox implements Killable {
       new MemoryTools(interactor, services.memory),
       new ConfluenceTools(interactor, services.integration),
       new JiraTools(interactor, services.integration),
-      ...mcps.map((mcpConfig) => new McpToolsFactory(interactor, mcpConfig)),
+      ...mcps
+        .filter((mcpConfig) => !mcpConfig.name.includes('atlassian'))
+        .map((mcpConfig) => new McpToolsFactory(interactor, mcpConfig)),
     ]
   }
 
