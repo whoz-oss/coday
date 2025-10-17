@@ -77,7 +77,8 @@
     },
     "changelog": {
       "workspaceChangelog": {
-        "file": "CHANGELOG.md"
+        "file": "CHANGELOG.md",
+        "createRelease": "github"
       }
     },
     "version": {
