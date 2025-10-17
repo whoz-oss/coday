@@ -1,3 +1,17 @@
+## 0.26.0 (2025-10-17)
+
+### 🚀 Features
+
+- add package.json to client's project so it is detected for release process ([fd648bf](https://github.com/whoz-oss/coday/commit/fd648bf))
+
+### 🩹 Fixes
+
+- session state to block during initialization phase ([be6f73d](https://github.com/whoz-oss/coday/commit/be6f73d))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.25.8 (2025-10-17)
 
 ### 🩹 Fixes

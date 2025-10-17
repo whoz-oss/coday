@@ -9,7 +9,7 @@
   "dependencies": {
     "sharp": "0.34.4"
   },
-  "version": "0.25.8",
+  "version": "0.26.0",
   "bin": {
     "coday-web": "./bin.js"
   }
