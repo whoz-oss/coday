@@ -600,16 +600,6 @@ app.get('/events', (req: express.Request, res: express.Response) => {
   }
 })
 
-// SPA fallback route - must be registered after all API routes
-// Serves index.html for any route not handled by API endpoints
-if (process.env.BUILD_ENV !== 'development') {
-  app.use((_req: express.Request, res: express.Response) => {
-    const indexPath = path.resolve(__dirname, 'client', 'index.html')
-    debugLog('FALLBACK', `Serving index.html from ${indexPath}`)
-    res.sendFile(indexPath)
-  })
-}
-
 // Error handling middleware
 app.use((err: any, _: express.Request, res: express.Response, __: express.NextFunction) => {
   console.error(err.stack)
