@@ -1,10 +1,12 @@
 .message-wrapper {
   margin: 0.75rem 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
 
   &.user-message-wrapper {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
+    flex-direction: row-reverse;
+    align-items: flex-start;
   }
 }
 
@@ -121,17 +123,29 @@
   z-index: 10;
 }
 
-// User actions positioned below bubble
-.user-actions {
+// User actions positioned to the left of bubble (always)
+.user-top-actions {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding-top: 0.25rem;
+  align-items: flex-start;
+  padding-top: 0.5rem;
   opacity: 0;
   transition: opacity 0.2s ease;
 }
 
-.user-message-wrapper:hover .user-actions {
+.user-message-wrapper:hover .user-top-actions {
+  opacity: 1;
+}
+
+// Assistant actions positioned to the right of bubble
+.assistant-top-actions {
+  display: flex;
+  align-items: flex-start;
+  padding-top: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.message-wrapper:hover .assistant-top-actions {
   opacity: 1;
 }
 

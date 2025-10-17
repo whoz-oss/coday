@@ -14,9 +14,11 @@
       <!-- Content -->
       <div class="content markdown-content" [innerHTML]="renderedContent"></div>
 
-      <!-- Context menu for assistant messages (inside bubble) -->
-      @if (shouldShowActions && message.role === 'assistant') {
-        <app-message-context-menu [actions]="actions"> </app-message-context-menu>
+      <!-- Context menu for assistant messages (inside bubble) when long message -->
+      @if (isLongMessage && shouldShowActions && message.role === 'assistant') {
+        <div class="actions bottom-actions">
+          <app-message-context-menu [actions]="actions"> </app-message-context-menu>
+        </div>
       }
     }
 
@@ -31,9 +33,16 @@
     }
   </div>
 
-  <!-- Context menu for user messages (outside bubble) -->
+  <!-- Context menu for assistant messages (right of bubble) -->
+  @if (!isLongMessage && shouldShowActions && message.role === 'assistant') {
+    <div class="actions assistant-top-actions">
+      <app-message-context-menu [actions]="actions"> </app-message-context-menu>
+    </div>
+  }
+
+  <!-- Context menu for user messages (always left of bubble) -->
   @if (shouldShowActions && message.role === 'user') {
-    <div class="user-actions">
+    <div class="actions user-top-actions">
       <app-message-context-menu [actions]="actions"> </app-message-context-menu>
     </div>
   }

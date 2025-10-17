@@ -50,6 +50,18 @@ jobs:
       - name: Fetch tags
         run: git fetch --tags --force
 
+      - name: Get previous tag
+        id: previous_tag
+        run: |
+          # Get the latest release tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match="release/*" 2>/dev/null || echo "")
+          echo "previous_tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
+          if [ -n "$PREVIOUS_TAG" ]; then
+            echo "Previous tag: $PREVIOUS_TAG"
+          else
+            echo "No previous tag found"
+          fi
+
       - name: Run nx release
         id: release
         env:
@@ -98,6 +110,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "release/${{ steps.release.outputs.new_version }}" \
-            --title "Release ${{ steps.release.outputs.new_version }}" \
-            --generate-notes
+          RELEASE_ARGS="release/${{ steps.release.outputs.new_version }} --title \"Release ${{ steps.release.outputs.new_version }}\" --generate-notes"
+          
+          # If there's a previous tag, use it for notes generation
+          if [ -n "${{ steps.previous_tag.outputs.previous_tag }}" ]; then
+            RELEASE_ARGS="$RELEASE_ARGS --notes-start-tag ${{ steps.previous_tag.outputs.previous_tag }}"
+          fi
+          
+          gh release create $RELEASE_ARGS

@@ -60,13 +60,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   private subscriptions: Subscription[] = []
 
   // Thinking animation
-  private thinkingPhrases: string[] = [
-    'Thinking...',
-    'Processing your request...',
-    'Analyzing...',
-    'Working on it...',
-    'Almost there...',
-  ]
+  private thinkingPhrases: string[] = ['Thinking...', 'Processing request...', 'Working on it...']
   currentThinkingPhrase: string = 'Thinking...'
   private thinkingPhraseIndex: number = 0
   private thinkingInterval: number | null = null
