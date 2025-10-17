@@ -1,3 +1,13 @@
+## 0.25.5 (2025-10-17)
+
+### 🩹 Fixes
+
+- tentative fix for windows ([da95a4d](https://github.com/whoz-oss/coday/commit/da95a4d))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.25.4 (2025-10-17)
 
 ### 🩹 Fixes
