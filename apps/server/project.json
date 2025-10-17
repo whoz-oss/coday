@@ -49,7 +49,7 @@
           },
           "sourcemap": false,
           "banner": {
-            "js": "import { createRequire as __createRequire } from 'module';import { dirname as __dirname_func } from 'path';const require = __createRequire(import.meta.url);const __filename = import.meta.url.slice(7);const __dirname = __dirname_func(__filename);"
+            "js": "import { createRequire as __createRequire } from 'module';import { dirname as __dirname_func } from 'path';import { fileURLToPath as __fileURLToPath } from 'url';const require = __createRequire(import.meta.url);const __filename = __fileURLToPath(import.meta.url);const __dirname = __dirname_func(__filename);"
           }
         },
         "external": ["sharp"],
