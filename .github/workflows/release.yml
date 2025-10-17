@@ -15,19 +15,66 @@ defaults:
     shell: bash
 
 jobs:
-  release:
+  # Job 1: Setup and determine if release is needed
+  check-release:
     runs-on: ubuntu-latest
     # Skip if this push was made by github-actions (prevents infinite loop)
     if: "!contains(github.event.head_commit.message, '[skip ci]') && github.actor != 'github-actions[bot]'"
-    permissions:
-      contents: write
-      id-token: write # needed for provenance data generation
-      pull-requests: write
-      packages: write
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      previous_tag: ${{ steps.previous_tag.outputs.previous_tag }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Get previous tag
+        id: previous_tag
+        run: |
+          # Get the latest release tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match="release/*" 2>/dev/null || echo "")
+          echo "previous_tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
+          if [ -n "$PREVIOUS_TAG" ]; then
+            echo "Previous tag: $PREVIOUS_TAG"
+          else
+            echo "No previous tag found"
+          fi
+
+      - name: Check if release needed
+        id: check
+        run: |
+          # Check if there are releasable commits since last tag
+          if [ -n "${{ steps.previous_tag.outputs.previous_tag }}" ]; then
+            COMMITS=$(git log ${{ steps.previous_tag.outputs.previous_tag }}..HEAD --oneline --grep="^feat\|^fix\|^BREAKING CHANGE" || echo "")
+          else
+            COMMITS=$(git log --oneline --grep="^feat\|^fix\|^BREAKING CHANGE" || echo "")
+          fi
+
+          if [ -n "$COMMITS" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "Found releasable commits"
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "No releasable commits found"
+          fi
+
+  # Job 2: Version bump, build, and changelog generation
+  version-and-build:
+    runs-on: ubuntu-latest
+    needs: check-release
+    if: needs.check-release.outputs.should_release == 'true'
+    permissions:
+      contents: write
+    outputs:
+      new_version: ${{ steps.release.outputs.new_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: pnpm/action-setup@v4
         with:
@@ -47,74 +94,80 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Fetch tags
-        run: git fetch --tags --force
-
-      - name: Get previous tag
-        id: previous_tag
-        run: |
-          # Get the latest release tag
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match="release/*" 2>/dev/null || echo "")
-          echo "previous_tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
-          if [ -n "$PREVIOUS_TAG" ]; then
-            echo "Previous tag: $PREVIOUS_TAG"
-          else
-            echo "No previous tag found"
-          fi
-
-      - name: Run nx release
+      - name: Run nx release (version + build)
         id: release
         env:
           HUSKY: 0
         run: |
-          # Run nx release and capture output
+          # Run nx release with --skip-publish (builds via preVersionCommand)
           npx nx release --skip-publish 2>&1 | tee release-output.txt
 
           # Extract the new version from the output
           NEW_VERSION=$(grep -oP 'release/\K[0-9]+\.[0-9]+\.[0-9]+' release-output.txt | head -1)
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
-          # Check if there were any changes
-          if grep -q "No changes were detected" release-output.txt; then
-            echo "no_changes=true" >> $GITHUB_OUTPUT
-          else
-            echo "no_changes=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Check for remote changes
-        if: steps.release.outputs.no_changes != 'true'
-        run: |
-          git fetch origin master
-          LOCAL=$(git rev-parse HEAD)
-          REMOTE=$(git rev-parse origin/master)
-          if [ "$LOCAL" != "$REMOTE" ]; then
-            echo "Remote has new commits, rebasing..."
-            git rebase origin/master
-          fi
 
       - name: Push changes and tags
-        if: steps.release.outputs.no_changes != 'true'
         run: |
           # Pull latest changes first to avoid non-fast-forward errors
           git pull --rebase origin master
           git push origin HEAD:master --follow-tags
 
-      - name: Publish release
+  # Job 3: Publish to npm
+  publish-npm:
+    runs-on: ubuntu-latest
+    needs: version-and-build
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Publish to npm
         run: |
           npm config set //${{ vars.NPM_REGISTRY }}/:_authToken=${{ secrets.NPM_ACCESS_TOKEN }}
           npx nx release publish --registry=https://${{ vars.NPM_REGISTRY }}
           npm config delete //${{ vars.NPM_REGISTRY }}/:_authToken
 
+  # Job 4: Create GitHub Release
+  create-github-release:
+    runs-on: ubuntu-latest
+    needs: [check-release, version-and-build, publish-npm]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
       - name: Create GitHub Release
-        if: steps.release.outputs.no_changes != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          RELEASE_ARGS="release/${{ steps.release.outputs.new_version }} --title \"Release ${{ steps.release.outputs.new_version }}\" --generate-notes"
-          
+          RELEASE_ARGS="release/${{ needs.version-and-build.outputs.new_version }} --title \"Release ${{ needs.version-and-build.outputs.new_version }}\" --generate-notes"
+
           # If there's a previous tag, use it for notes generation
-          if [ -n "${{ steps.previous_tag.outputs.previous_tag }}" ]; then
-            RELEASE_ARGS="$RELEASE_ARGS --notes-start-tag ${{ steps.previous_tag.outputs.previous_tag }}"
+          if [ -n "${{ needs.check-release.outputs.previous_tag }}" ]; then
+            RELEASE_ARGS="$RELEASE_ARGS --notes-start-tag ${{ needs.check-release.outputs.previous_tag }}"
           fi
-          
+
           gh release create $RELEASE_ARGS
