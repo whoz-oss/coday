@@ -61,7 +61,7 @@ jobs:
             echo "No releasable commits found"
           fi
 
-  # Job 2: Version bump, build, and changelog generation
+  # Job 2: Version bump, build, and changelog generation, and github release
   version-and-build:
     runs-on: ubuntu-latest
     needs: check-release
