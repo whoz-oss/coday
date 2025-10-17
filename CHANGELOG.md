@@ -1,3 +1,15 @@
+## 0.24.0 (2025-10-17)
+
+### 🚀 Features
+
+- release + welcome message ([244016e](https://github.com/whoz-oss/coday/commit/244016e))
+- thinking placeholder + hide technical messages ([18a600f](https://github.com/whoz-oss/coday/commit/18a600f))
+- thinking  phrases ([4960a1a](https://github.com/whoz-oss/coday/commit/4960a1a))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.23.0 (2025-10-17)
 
 ### 🚀 Features
