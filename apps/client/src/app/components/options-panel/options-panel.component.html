@@ -62,6 +62,34 @@
     </div>
 
     <div class="option-group">
+      <span class="option-label">Technical messages display:</span>
+      <div class="radio-group">
+        <label class="option-radio">
+          <input
+            type="radio"
+            name="hideTechnical"
+            [value]="false"
+            [(ngModel)]="hideTechnicalMessages"
+            (change)="onHideTechnicalMessagesChange()"
+          />
+          <span class="radio-mark"></span>
+          Show technical messages
+        </label>
+        <label class="option-radio">
+          <input
+            type="radio"
+            name="hideTechnical"
+            [value]="true"
+            [(ngModel)]="hideTechnicalMessages"
+            (change)="onHideTechnicalMessagesChange()"
+          />
+          <span class="radio-mark"></span>
+          Hide technical messages
+        </label>
+      </div>
+    </div>
+
+    <div class="option-group">
       <span class="option-label">Technical messages in print:</span>
       <div class="radio-group">
         <label class="option-radio">

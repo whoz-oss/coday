@@ -27,6 +27,7 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   selectedVoiceLanguage = 'en-US'
   useEnterToSend = false
   printTechnicalMessages = false
+  hideTechnicalMessages = false
 
   voiceAnnounceEnabled = false
   voiceMode: 'speech' | 'notification' = 'speech'
@@ -63,6 +64,7 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
     this.selectedVoiceLanguage = this.preferencesService.getVoiceLanguage()
     this.useEnterToSend = this.preferencesService.getEnterToSend()
     this.printTechnicalMessages = this.preferencesService.getPrintTechnicalMessages()
+    this.hideTechnicalMessages = this.preferencesService.getHideTechnicalMessages()
     this.voiceAnnounceEnabled = this.preferencesService.getVoiceAnnounceEnabled()
     this.voiceMode = this.preferencesService.getVoiceMode()
     this.voiceReadFullText = this.preferencesService.getVoiceReadFullText()
@@ -89,6 +91,10 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
       .subscribe((printTechnicalMessages) => {
         this.printTechnicalMessages = printTechnicalMessages
       })
+
+    this.preferencesService.hideTechnicalMessages$.pipe(takeUntil(this.destroy$)).subscribe((hideTechnicalMessages) => {
+      this.hideTechnicalMessages = hideTechnicalMessages
+    })
 
     this.preferencesService.voiceAnnounceEnabled$.pipe(takeUntil(this.destroy$)).subscribe((enabled) => {
       this.voiceAnnounceEnabled = enabled
@@ -142,6 +148,11 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   onPrintTechnicalMessagesChange(): void {
     console.log('[OPTIONS] Print technical messages changed to:', this.printTechnicalMessages)
     this.preferencesService.setPrintTechnicalMessages(this.printTechnicalMessages)
+  }
+
+  onHideTechnicalMessagesChange(): void {
+    console.log('[OPTIONS] Hide technical messages changed to:', this.hideTechnicalMessages)
+    this.preferencesService.setHideTechnicalMessages(this.hideTechnicalMessages)
   }
 
   onVoiceAnnounceEnabledChange(): void {
