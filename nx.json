@@ -69,7 +69,7 @@
     }
   ],
   "release": {
-    "projects": ["server"],
+    "projects": ["server", "client"],
     "releaseTagPattern": "release/{version}",
     "git": {
       "commitMessage": "chore(release): {version}",
@@ -84,6 +84,7 @@
     "version": {
       "preVersionCommand": "nx run server:build",
       "preserveLocalDependencyProtocols": false,
+
       "manifestRootsToUpdate": ["apps/{projectName}"],
       "conventionalCommits": true
     }
