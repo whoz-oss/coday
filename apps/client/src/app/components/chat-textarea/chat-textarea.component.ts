@@ -34,6 +34,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   @Input() showWelcome: boolean = false
   @Input() isThinking: boolean = false
   @Input() isStarting: boolean = false
+  @Input() isSessionInitializing: boolean = false
   @Output() messageSubmitted = new EventEmitter<string>()
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
   @Output() heightChanged = new EventEmitter<number>()
@@ -479,7 +480,9 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
    * Uses invite text if available, otherwise shows default messages
    */
   getPlaceholder(): string {
-    if (this.isThinking) {
+    if (this.isSessionInitializing) {
+      return 'Initializing session...'
+    } else if (this.isThinking) {
       // Show "Starting..." for first message, then rotate phrases
       return this.isStarting ? 'Starting...' : this.currentThinkingPhrase
     } else if (this.showWelcome) {

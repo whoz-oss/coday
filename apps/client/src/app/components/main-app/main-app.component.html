@@ -36,7 +36,8 @@
       <div class="input-glass">
         @if (!currentChoice) {
           <app-chat-textarea
-            [isDisabled]="!isConnected"
+            [isDisabled]="!isConnected || isSessionInitializing"
+            [isSessionInitializing]="isSessionInitializing"
             [showWelcome]="!userHasSentMessage"
             [isThinking]="isThinking"
             [isStarting]="isStartingFirstMessage"

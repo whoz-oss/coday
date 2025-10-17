@@ -44,6 +44,7 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   currentChoice: { options: ChoiceOption[]; label: string } | null = null
   connectionStatus: ConnectionStatus | null = null
   isConnected: boolean = false
+  isSessionInitializing: boolean = true
   userHasSentMessage: boolean = false
   showConnectionStatus: boolean = false
   private hasEverConnected: boolean = false
@@ -127,6 +128,11 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
 
     this.codayService.currentChoice$.pipe(takeUntil(this.destroy$)).subscribe((choice) => {
       this.currentChoice = choice
+    })
+
+    this.sessionStateService.isInitializing$.pipe(takeUntil(this.destroy$)).subscribe((isInitializing) => {
+      console.log('[MAIN-APP] Session initialization state changed:', isInitializing)
+      this.isSessionInitializing = isInitializing
     })
 
     this.codayService.connectionStatus$.pipe(takeUntil(this.destroy$)).subscribe((status) => {
