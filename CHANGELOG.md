@@ -1,3 +1,13 @@
+## 0.23.0 (2025-10-17)
+
+### 🚀 Features
+
+- ui-glass ([#278](https://github.com/whoz-oss/coday/pull/278))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.22.0 (2025-10-15)
 
 ### 🚀 Features
