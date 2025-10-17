@@ -39,6 +39,7 @@
             [isDisabled]="!isConnected"
             [showWelcome]="!userHasSentMessage"
             [isThinking]="isThinking"
+            [isStarting]="isStartingFirstMessage"
             (messageSubmitted)="onMessageSubmitted($event)"
             (voiceRecordingToggled)="onVoiceToggled($event)"
             (heightChanged)="onInputHeightChanged($event)"

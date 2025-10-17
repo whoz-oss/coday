@@ -33,6 +33,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   @Input() isDisabled: boolean = false
   @Input() showWelcome: boolean = false
   @Input() isThinking: boolean = false
+  @Input() isStarting: boolean = false
   @Output() messageSubmitted = new EventEmitter<string>()
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
   @Output() heightChanged = new EventEmitter<number>()
@@ -108,6 +109,27 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
         this.startThinkingAnimation()
       } else {
         this.stopThinkingAnimation()
+      }
+    }
+
+    // Restart animation when transitioning from Starting to normal thinking
+    // Only restart if we're still at the first phrase (index 0)
+    if (
+      changes['isStarting'] &&
+      !changes['isStarting'].currentValue &&
+      changes['isStarting'].previousValue &&
+      this.isThinking
+    ) {
+      if (this.thinkingPhraseIndex === 0) {
+        console.log('[CHAT-TEXTAREA] Transitioning from Starting to Thinking at index 0 - restarting animation')
+        this.stopThinkingAnimation()
+        this.startThinkingAnimation()
+      } else {
+        console.log(
+          '[CHAT-TEXTAREA] Transitioning from Starting to Thinking at index',
+          this.thinkingPhraseIndex,
+          '- continuing without restart'
+        )
       }
     }
   }
@@ -464,7 +486,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
    */
   getPlaceholder(): string {
     if (this.isThinking) {
-      return this.currentThinkingPhrase
+      // Show "Starting..." for first message, then rotate phrases
+      return this.isStarting ? 'Starting...' : this.currentThinkingPhrase
     } else if (this.showWelcome) {
       return 'How can I help you today?'
     } else if (this.currentInvite) {
@@ -482,8 +505,12 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     this.currentThinkingPhrase = this.thinkingPhrases[0] || 'Thinking...'
 
     this.thinkingInterval = window.setInterval(() => {
-      this.thinkingPhraseIndex = (this.thinkingPhraseIndex + 1) % this.thinkingPhrases.length
-      this.currentThinkingPhrase = this.thinkingPhrases[this.thinkingPhraseIndex] || 'Thinking...'
+      // Move to next phrase only if not at the last one
+      if (this.thinkingPhraseIndex < this.thinkingPhrases.length - 1) {
+        this.thinkingPhraseIndex++
+        this.currentThinkingPhrase = this.thinkingPhrases[this.thinkingPhraseIndex] || 'Thinking...'
+      }
+      // If we're at the last phrase, stay there (no change)
     }, 2000) // Change phrase every 2 seconds
   }
 
