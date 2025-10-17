@@ -1,3 +1,14 @@
+## 0.25.8 (2025-10-17)
+
+### 🩹 Fixes
+
+- add username in the log for undefined thread ([4c45edc](https://github.com/whoz-oss/coday/commit/4c45edc))
+- tentative fix to temporarily remove atlassian from available mcp ([d378a9a](https://github.com/whoz-oss/coday/commit/d378a9a))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.25.7 (2025-10-17)
 
 ### 🩹 Fixes
