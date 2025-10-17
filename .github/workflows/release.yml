@@ -143,31 +143,3 @@ jobs:
           npm config set //${{ vars.NPM_REGISTRY }}/:_authToken=${{ secrets.NPM_ACCESS_TOKEN }}
           npx nx release publish --registry=https://${{ vars.NPM_REGISTRY }}
           npm config delete //${{ vars.NPM_REGISTRY }}/:_authToken
-
-  # Job 4: Create GitHub Release
-  create-github-release:
-    runs-on: ubuntu-latest
-    needs: [check-release, version-and-build, publish-npm]
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: master
-          fetch-depth: 0
-
-      - name: Fetch tags
-        run: git fetch --tags --force
-
-      - name: Create GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          RELEASE_ARGS="release/${{ needs.version-and-build.outputs.new_version }} --title \"Release ${{ needs.version-and-build.outputs.new_version }}\" --generate-notes"
-
-          # If there's a previous tag, use it for notes generation
-          if [ -n "${{ needs.check-release.outputs.previous_tag }}" ]; then
-            RELEASE_ARGS="$RELEASE_ARGS --notes-start-tag ${{ needs.check-release.outputs.previous_tag }}"
-          fi
-
-          gh release create $RELEASE_ARGS
