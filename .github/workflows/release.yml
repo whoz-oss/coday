@@ -95,13 +95,9 @@ jobs:
 
       - name: Create GitHub Release
         if: steps.release.outputs.no_changes != 'true'
-        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: release/${{ steps.release.outputs.new_version }}
-          release_name: Release ${{ steps.release.outputs.new_version }}
-          body: |
-            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/master/CHANGELOG.md) for details.
-          draft: false
-          prerelease: false
+        run: |
+          gh release create "release/${{ steps.release.outputs.new_version }}" \
+            --title "Release ${{ steps.release.outputs.new_version }}" \
+            --generate-notes

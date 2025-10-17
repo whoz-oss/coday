@@ -1,12 +1,12 @@
-import { Component, OnInit, OnDestroy, HostListener, ViewChild, ElementRef, AfterViewInit, inject } from '@angular/core'
+import { AfterViewInit, Component, ElementRef, HostListener, inject, OnDestroy, OnInit, ViewChild } from '@angular/core'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
-import { trigger, transition, style, animate } from '@angular/animations'
+import { animate, style, transition, trigger } from '@angular/animations'
 
 import { ChatHistoryComponent } from '../chat-history/chat-history.component'
 import { ChatMessage } from '../chat-message/chat-message.component'
 import { ChatTextareaComponent } from '../chat-textarea/chat-textarea.component'
-import { ChoiceSelectComponent, ChoiceOption } from '../choice-select/choice-select.component'
+import { ChoiceOption, ChoiceSelectComponent } from '../choice-select/choice-select.component'
 
 import { CodayService } from '../../core/services/coday.service'
 import { CodayApiService } from '../../core/services/coday-api.service'
@@ -44,6 +44,8 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   connectionStatus: ConnectionStatus | null = null
   isConnected: boolean = false
   userHasSentMessage: boolean = false
+  showConnectionStatus: boolean = false
+  private hasEverConnected: boolean = false
 
   // Input height management
   inputSectionHeight: number = 80 // Default height
@@ -100,7 +102,7 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
       this.messages = messages
 
       // If we have messages (e.g., from thread replay), hide welcome message
-      if (messages.length > 0 && !this.userHasSentMessage) {
+      if (messages.length > 0 && messages.some((message) => message.role === 'user') && !this.userHasSentMessage) {
         console.log('[MAIN-APP] Messages loaded from thread, hiding welcome message')
         this.userHasSentMessage = true
         this.stopWelcomeRotation()
@@ -125,6 +127,30 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     this.codayService.connectionStatus$.pipe(takeUntil(this.destroy$)).subscribe((status) => {
       this.connectionStatus = status
       this.isConnected = status.connected
+
+      // Track if we've ever successfully connected
+      if (status.connected && !this.hasEverConnected) {
+        this.hasEverConnected = true
+        // Once connected, allow showing disconnection messages immediately
+        this.showConnectionStatus = true
+      }
+
+      // If not connected and we've never connected before,
+      // wait a bit before showing the status (to avoid flash on startup)
+      if (!status.connected && !this.hasEverConnected) {
+        setTimeout(() => {
+          // Only show if still not connected after delay
+          if (!this.isConnected && !this.hasEverConnected) {
+            this.showConnectionStatus = true
+          }
+        }, 2000) // 2 second delay before showing initial connection issues
+      } else if (!status.connected && this.hasEverConnected) {
+        // If we were connected and lost connection, show immediately
+        this.showConnectionStatus = true
+      } else if (status.connected) {
+        // Hide the status message when connected
+        this.showConnectionStatus = true // Keep true so it can show if disconnected later
+      }
     })
 
     // Connect services (to avoid circular dependency)
