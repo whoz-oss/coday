@@ -1,3 +1,13 @@
+## 0.25.4 (2025-10-17)
+
+### 🩹 Fixes
+
+- nx release ([4a11178](https://github.com/whoz-oss/coday/commit/4a11178))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.25.3 (2025-10-17)
 
 ### 🩹 Fixes
