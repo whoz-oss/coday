@@ -19,7 +19,11 @@ import { registerConfigRoutes } from './config.routes'
 import { registerWebhookRoutes } from './webhook.routes'
 
 const app = express()
-const DEFAULT_PORT = process.env.PORT ? parseInt(process.env.PORT) : (process.env.BUILD_ENV === 'development' ? 4100 : 3000)
+const DEFAULT_PORT = process.env.PORT
+  ? parseInt(process.env.PORT)
+  : process.env.BUILD_ENV === 'development'
+    ? 4100
+    : 3000
 
 // Dynamically find an available port
 const PORT_PROMISE = findAvailablePort(DEFAULT_PORT)
@@ -76,13 +80,15 @@ if (process.env.BUILD_ENV === 'development') {
       console.error('Failed to load http-proxy-middleware:', error)
     })
 } else {
-  // Serve Angular app as default (root)
-  app.use(express.static(path.join(__dirname, 'client')))
+  // Production mode: serve static Angular app
+  const clientPath = path.join(__dirname, 'client')
+  debugLog('INIT', `Production mode: serving static files from ${clientPath}`)
 
-  // Basic route to test server setup
-  app.get('/', (_req: express.Request, res: express.Response) => {
-    res.send('Server is up and running!')
-  })
+  // Serve static files from the Angular build output
+  app.use(express.static(clientPath))
+
+  // SPA fallback: serve index.html for all non-API routes
+  // This must come AFTER all API routes are registered
 }
 
 // Initialize the client manager with usage logger and webhook service
@@ -593,6 +599,16 @@ app.get('/events', (req: express.Request, res: express.Response) => {
     debugLog('SSE', `Existing Coday instance reused for client ${clientId}`)
   }
 })
+
+// SPA fallback route - must be registered after all API routes
+// Serves index.html for any route not handled by API endpoints
+if (process.env.BUILD_ENV !== 'development') {
+  app.use((_req: express.Request, res: express.Response) => {
+    const indexPath = path.join(__dirname, 'client', 'index.html')
+    debugLog('FALLBACK', `Serving index.html from ${indexPath}`)
+    res.sendFile(indexPath)
+  })
+}
 
 // Error handling middleware
 app.use((err: any, _: express.Request, res: express.Response, __: express.NextFunction) => {
