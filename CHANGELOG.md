@@ -1,3 +1,13 @@
+## 0.25.1 (2025-10-17)
+
+### 🩹 Fixes
+
+- release workflow ([b9ac822](https://github.com/whoz-oss/coday/commit/b9ac822))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.25.0 (2025-10-17)
 
 ### 🚀 Features
