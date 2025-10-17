@@ -1,3 +1,13 @@
+## 0.25.6 (2025-10-17)
+
+### 🩹 Fixes
+
+- tentative fix for windows #2 ([#2](https://github.com/whoz-oss/coday/issues/2))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.25.5 (2025-10-17)
 
 ### 🩹 Fixes
