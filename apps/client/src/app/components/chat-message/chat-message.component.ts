@@ -87,14 +87,7 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   }
 
   get actions(): MenuAction[] {
-    const actions: MenuAction[] = [
-      {
-        icon: 'content_copy',
-        label: 'Copy message',
-        tooltip: 'Copy message content to clipboard',
-        action: () => this.onCopy(),
-      },
-    ]
+    const actions: MenuAction[] = []
 
     if (this.message.role === 'user' && this.canDelete) {
       actions.push({
@@ -105,6 +98,13 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
         destructive: true,
       })
     }
+
+    actions.push({
+      icon: 'content_copy',
+      label: 'Copy message',
+      tooltip: 'Copy message content to clipboard',
+      action: () => this.onCopy(),
+    })
 
     return actions
   }
