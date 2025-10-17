@@ -1,3 +1,13 @@
+## 0.25.0 (2025-10-17)
+
+### 🚀 Features
+
+- change context actions design + fix release process ([80c7a65](https://github.com/whoz-oss/coday/commit/80c7a65))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.24.0 (2025-10-17)
 
 ### 🚀 Features
