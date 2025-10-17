@@ -81,7 +81,7 @@ if (process.env.BUILD_ENV === 'development') {
     })
 } else {
   // Production mode: serve static Angular app
-  const clientPath = path.join(__dirname, 'client')
+  const clientPath = path.resolve(__dirname, 'client')
   debugLog('INIT', `Production mode: serving static files from ${clientPath}`)
 
   // Serve static files from the Angular build output
@@ -604,7 +604,7 @@ app.get('/events', (req: express.Request, res: express.Response) => {
 // Serves index.html for any route not handled by API endpoints
 if (process.env.BUILD_ENV !== 'development') {
   app.use((_req: express.Request, res: express.Response) => {
-    const indexPath = path.join(__dirname, 'client', 'index.html')
+    const indexPath = path.resolve(__dirname, 'client', 'index.html')
     debugLog('FALLBACK', `Serving index.html from ${indexPath}`)
     res.sendFile(indexPath)
   })
