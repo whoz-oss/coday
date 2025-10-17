@@ -40,6 +40,7 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   // State from services
   messages: ChatMessage[] = []
   isThinking: boolean = false
+  isStartingFirstMessage: boolean = false
   currentChoice: { options: ChoiceOption[]; label: string } | null = null
   connectionStatus: ConnectionStatus | null = null
   isConnected: boolean = false
@@ -118,6 +119,10 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
 
     this.codayService.isThinking$.pipe(takeUntil(this.destroy$)).subscribe((isThinking) => {
       this.isThinking = isThinking
+      // When backend thinking starts, clear the "Starting..." state
+      if (isThinking) {
+        this.isStartingFirstMessage = false
+      }
     })
 
     this.codayService.currentChoice$.pipe(takeUntil(this.destroy$)).subscribe((choice) => {
@@ -197,10 +202,14 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   onMessageSubmitted(message: string): void {
     console.log('[MAIN-APP] Sending message:', message)
 
-    // Mark that user has sent their first message
+    // Mark that user has sent their first message and immediately show thinking state
     if (!this.userHasSentMessage) {
       this.userHasSentMessage = true
       this.stopWelcomeRotation()
+      // Immediately put textarea in thinking mode for first message
+      // The backend ThinkingEvent will take over when it arrives
+      this.isThinking = true
+      this.isStartingFirstMessage = true
     }
 
     this.codayService.sendMessage(message)
