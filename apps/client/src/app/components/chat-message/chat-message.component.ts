@@ -1,10 +1,13 @@
-import { Component, Input, Output, EventEmitter, OnInit, inject } from '@angular/core'
+import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, inject } from '@angular/core'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { marked } from 'marked'
 import { MessageContent } from '@coday/coday-events'
 import { MessageContextMenuComponent, MenuAction } from '../message-context-menu/message-context-menu.component'
 import { NgClass } from '@angular/common'
 import { NotificationService } from '../../services/notification.service'
+import { PreferencesService } from '../../services/preferences.service'
+import { Subject } from 'rxjs'
+import { takeUntil } from 'rxjs/operators'
 
 export interface ChatMessage {
   id: string
@@ -23,27 +26,44 @@ export interface ChatMessage {
   templateUrl: './chat-message.component.html',
   styleUrl: './chat-message.component.scss',
 })
-export class ChatMessageComponent implements OnInit {
+export class ChatMessageComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>()
   @Input() message!: ChatMessage
   @Input() canDelete: boolean = true // Can this message be deleted (not first message, not during thinking)
   @Output() copyRequested = new EventEmitter<ChatMessage>()
   @Output() deleteRequested = new EventEmitter<ChatMessage>()
 
   renderedContent: SafeHtml = ''
+  shouldHideTechnical = false
 
   // Modern Angular dependency injection
   private sanitizer = inject(DomSanitizer)
   private notificationService = inject(NotificationService)
+  private preferencesService = inject(PreferencesService)
 
   get messageClasses() {
     return {
       [this.message.role]: true,
       [this.message.type]: true,
+      'hidden-technical': this.shouldHideTechnical && this.message.type === 'technical',
     }
   }
 
   async ngOnInit() {
     await this.renderMarkdown()
+
+    // Subscribe to hide technical messages preference
+    this.preferencesService.hideTechnicalMessages$.pipe(takeUntil(this.destroy$)).subscribe((hide) => {
+      this.shouldHideTechnical = hide
+    })
+
+    // Initialize with current value
+    this.shouldHideTechnical = this.preferencesService.getHideTechnicalMessages()
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next()
+    this.destroy$.complete()
   }
 
   get shouldShowSpeaker(): boolean {

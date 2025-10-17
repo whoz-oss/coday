@@ -19,7 +19,7 @@
       [placeholder]="getPlaceholder()"
       (keydown)="onKeyDown($event)"
       (input)="onInput()"
-      [disabled]="isDisabled"
+      [disabled]="isDisabled || isThinking"
       (focus)="isFocused = true"
       (blur)="isFocused = false"
     ></textarea>

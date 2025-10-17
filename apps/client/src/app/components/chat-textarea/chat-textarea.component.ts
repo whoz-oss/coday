@@ -5,9 +5,11 @@ import {
   EventEmitter,
   inject,
   Input,
+  OnChanges,
   OnDestroy,
   OnInit,
   Output,
+  SimpleChanges,
   ViewChild,
 } from '@angular/core'
 import { FormsModule } from '@angular/forms'
@@ -24,7 +26,7 @@ import { MatIcon } from '@angular/material/icon'
   templateUrl: './chat-textarea.component.html',
   styleUrl: './chat-textarea.component.scss',
 })
-export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
+export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, OnChanges {
   // Constants for textarea sizing
   private static readonly MIN_TEXTAREA_LINES = 2
   private static readonly MAX_TEXTAREA_LINES = 15
@@ -55,6 +57,18 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // Subscriptions management
   private subscriptions: Subscription[] = []
+
+  // Thinking animation
+  private thinkingPhrases: string[] = [
+    'Thinking...',
+    'Processing your request...',
+    'Analyzing...',
+    'Working on it...',
+    'Almost there...',
+  ]
+  currentThinkingPhrase: string = 'Thinking...'
+  private thinkingPhraseIndex: number = 0
+  private thinkingInterval: number | null = null
 
   // Modern Angular dependency injection
   private preferencesService = inject(PreferencesService)
@@ -88,12 +102,23 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
     this.adjustTextareaHeight()
   }
 
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['isThinking']) {
+      if (changes['isThinking'].currentValue) {
+        this.startThinkingAnimation()
+      } else {
+        this.stopThinkingAnimation()
+      }
+    }
+  }
+
   ngOnDestroy(): void {
     // Clean up all subscriptions
     this.subscriptions.forEach((sub) => sub.unsubscribe())
     this.subscriptions = []
 
     this.clearPendingLineBreaks()
+    this.stopThinkingAnimation()
   }
 
   onKeyDown(event: KeyboardEvent) {
@@ -438,13 +463,40 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
    * Uses invite text if available, otherwise shows default messages
    */
   getPlaceholder(): string {
-    if (this.showWelcome) {
+    if (this.isThinking) {
+      return this.currentThinkingPhrase
+    } else if (this.showWelcome) {
       return 'How can I help you today?'
     } else if (this.currentInvite) {
       return 'Type your message here...'
     } else {
       return 'Type your prompt here'
     }
+  }
+
+  /**
+   * Start the thinking phrase animation
+   */
+  private startThinkingAnimation(): void {
+    this.thinkingPhraseIndex = 0
+    this.currentThinkingPhrase = this.thinkingPhrases[0] || 'Thinking...'
+
+    this.thinkingInterval = window.setInterval(() => {
+      this.thinkingPhraseIndex = (this.thinkingPhraseIndex + 1) % this.thinkingPhrases.length
+      this.currentThinkingPhrase = this.thinkingPhrases[this.thinkingPhraseIndex] || 'Thinking...'
+    }, 2000) // Change phrase every 2 seconds
+  }
+
+  /**
+   * Stop the thinking phrase animation
+   */
+  private stopThinkingAnimation(): void {
+    if (this.thinkingInterval) {
+      clearInterval(this.thinkingInterval)
+      this.thinkingInterval = null
+    }
+    this.thinkingPhraseIndex = 0
+    this.currentThinkingPhrase = 'Thinking...'
   }
 
   /**
