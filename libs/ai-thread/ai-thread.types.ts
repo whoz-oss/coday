@@ -52,7 +52,7 @@ export enum RunStatus {
 export class ThreadRepositoryError extends Error {
   constructor(
     message: string,
-    public cause?: Error
+    public override cause?: Error
   ) {
     super(message)
     this.name = 'ThreadRepositoryError'

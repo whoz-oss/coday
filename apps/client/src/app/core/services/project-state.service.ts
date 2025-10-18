@@ -1,5 +1,5 @@
 import { inject, Injectable } from '@angular/core'
-import { BehaviorSubject, combineLatest, of, switchMap, take } from 'rxjs'
+import { BehaviorSubject, combineLatest, of, shareReplay, switchMap, take } from 'rxjs'
 import { map } from 'rxjs/operators'
 import { ProjectApiService } from './project-api.service'
 
@@ -20,7 +20,7 @@ export class ProjectStateService {
   // Inject API service
   private readonly projectApi = inject(ProjectApiService)
 
-  private readonly projectListCall = this.projectApi.listProjects()
+  private readonly projectListCall = this.projectApi.listProjects().pipe(shareReplay({ bufferSize: 1, refCount: true }))
   projectList$ = this.projectListCall.pipe(map((response) => response.projects))
   forcedProject$ = this.projectListCall.pipe(map((response) => response.forcedProject))
 

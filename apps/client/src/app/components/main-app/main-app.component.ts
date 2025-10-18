@@ -96,13 +96,7 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     // Get project and thread from route params
     const projectName = this.route.snapshot.params['projectName']
     const threadId = this.route.snapshot.params['threadId']
-
-    if (!projectName || !threadId) {
-      console.error('[MAIN-APP] Missing project or thread in route')
-      this.router.navigate(['/'])
-      return
-    }
-
+    
     console.log('[MAIN-APP] Initializing with project:', projectName, 'thread:', threadId)
 
     // Note: projectStateGuard and threadStateGuard have already selected

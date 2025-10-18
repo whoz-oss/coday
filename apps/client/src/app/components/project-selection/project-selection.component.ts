@@ -22,7 +22,7 @@ import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 })
 export class ProjectSelectionComponent {
   // State
-  isLoading: boolean = true
+  isLoading: boolean = false
   error: string | null = null
 
   // Inject services
@@ -38,7 +38,10 @@ export class ProjectSelectionComponent {
         filter((selection) => !!selection),
         take(1)
       )
-      .subscribe((selection) => this.router.navigate(['/projects', selection.name]))
+      .subscribe((selection) => {
+        console.log(`🐼 navigate to ${selection.name}`)
+        this.router.navigate(['/project', selection.name])
+      })
   }
 
   /**
