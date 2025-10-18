@@ -79,14 +79,8 @@
       }
     },
     "version": {
-      "groups": {
-        "coday-packages": {
-          "projects": ["server", "client", "web"],
-          "version": {
-            "conventionalCommits": true
-          }
-        }
-      }
+      "conventionalCommits": true,
+      "manifestRootsToUpdate": ["apps/{projectName}"]
     }
   },
   "tui": {
