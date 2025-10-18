@@ -1,15 +1,7 @@
 import { Injectable } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
 import { Observable } from 'rxjs'
-
-/**
- * Thread summary information
- */
-export interface ThreadSummary {
-  id: string
-  name: string
-  modifiedDate: string
-}
+import { ThreadSummary } from '@coday/ai-thread/ai-thread.types'
 
 /**
  * Thread list response
@@ -68,7 +60,7 @@ export interface ThreadUpdateResponse {
   providedIn: 'root',
 })
 export class ThreadApiService {
-  constructor(private http: HttpClient) {}
+  constructor(private readonly http: HttpClient) {}
 
   /**
    * Build base URL for a project's threads
@@ -81,8 +73,8 @@ export class ThreadApiService {
    * List all threads for a project (filtered by current user on backend)
    * @param projectName Project name
    */
-  listThreads(projectName: string): Observable<ThreadListResponse> {
-    return this.http.get<ThreadListResponse>(this.getBaseUrl(projectName))
+  listThreads(projectName: string): Observable<ThreadSummary[]> {
+    return this.http.get<ThreadSummary[]>(this.getBaseUrl(projectName))
   }
 
   /**

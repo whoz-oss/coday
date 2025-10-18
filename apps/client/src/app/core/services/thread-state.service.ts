@@ -1,7 +1,8 @@
-import { Injectable, inject } from '@angular/core'
-import { BehaviorSubject, Observable } from 'rxjs'
-import { tap } from 'rxjs/operators'
-import { ThreadApiService, ThreadDetails } from './thread-api.service'
+import { inject, Injectable } from '@angular/core'
+import { BehaviorSubject, combineLatest, distinctUntilChanged, of, switchMap } from 'rxjs'
+import { map, tap } from 'rxjs/operators'
+import { ThreadApiService } from './thread-api.service'
+import { ProjectStateService } from './project-state.service'
 
 /**
  * Service managing the currently selected thread state.
@@ -12,91 +13,59 @@ import { ThreadApiService, ThreadDetails } from './thread-api.service'
   providedIn: 'root',
 })
 export class ThreadStateService {
-  private selectedThreadSubject = new BehaviorSubject<ThreadDetails | null>(null)
-  private isLoadingSubject = new BehaviorSubject<boolean>(false)
+  private readonly selectedThreadIdSubject = new BehaviorSubject<string | null>(null)
+  private readonly isLoadingSubject = new BehaviorSubject<boolean>(false)
 
   // Public observables
-  selectedThread$ = this.selectedThreadSubject.asObservable()
   isLoading$ = this.isLoadingSubject.asObservable()
 
   // Inject API service
-  private threadApi = inject(ThreadApiService)
+  private readonly threadApi = inject(ThreadApiService)
+  private readonly projectStateService = inject(ProjectStateService)
+
+  private projectName$ = this.projectStateService.selectedProject$.pipe(
+    map((project) => project?.name),
+    distinctUntilChanged()
+  )
+
+  threadList$ = this.projectName$.pipe(
+    switchMap((projectName) => {
+      if (!projectName) {
+        return of([])
+      } else {
+        return this.threadApi.listThreads(projectName)
+      }
+    })
+  )
+
+  selectedThread$ = combineLatest([this.projectName$, this.selectedThreadIdSubject.pipe(distinctUntilChanged())]).pipe(
+    switchMap(([projectName, threadId]) => {
+      if (!projectName || !threadId) {
+        return of(null)
+      } else {
+        this.isLoadingSubject.next(true)
+        return this.threadApi.getThread(projectName, threadId)
+      }
+    }),
+    tap(() => this.isLoadingSubject.next(false))
+  )
 
   /**
    * Select a thread by ID and fetch its full details
-   * @param projectName Project name the thread belongs to
    * @param threadId Thread identifier to select
-   * @returns Observable of thread details
    */
-  selectThread(projectName: string, threadId: string): Observable<ThreadDetails> {
-    this.isLoadingSubject.next(true)
-
-    return this.threadApi.getThread(projectName, threadId).pipe(
-      tap({
-        next: (thread) => {
-          console.log('[THREAD-STATE] Thread loaded:', thread.id, thread.name)
-          this.selectedThreadSubject.next(thread)
-          this.isLoadingSubject.next(false)
-        },
-        error: (error) => {
-          console.error('[THREAD-STATE] Error loading thread:', error)
-          this.isLoadingSubject.next(false)
-          // Keep previous selection on error
-        },
-      })
-    )
+  selectThread(threadId: string): void {
+    this.selectedThreadIdSubject.next(threadId)
   }
 
-  /**
-   * Get the currently selected thread (synchronous)
-   * @returns Current thread or null
-   */
-  getSelectedThread(): ThreadDetails | null {
-    return this.selectedThreadSubject.value
-  }
-
-  /**
-   * Get the currently selected thread ID (synchronous)
-   * @returns Current thread ID or null
-   */
   getSelectedThreadId(): string | null {
-    return this.selectedThreadSubject.value?.id || null
-  }
-
-  /**
-   * Get the currently selected thread name (synchronous)
-   * @returns Current thread name or null
-   */
-  getSelectedThreadName(): string | null {
-    return this.selectedThreadSubject.value?.name || null
+    return this.selectedThreadIdSubject.value
   }
 
   /**
    * Clear the selected thread
    */
   clearSelection(): void {
-    console.log('[THREAD-STATE] Clearing thread selection')
-    this.selectedThreadSubject.next(null)
-  }
-
-  /**
-   * Check if a thread is currently selected
-   */
-  hasSelection(): boolean {
-    return this.selectedThreadSubject.value !== null
-  }
-
-  /**
-   * Update the selected thread's name locally (after successful API update)
-   * @param newName New thread name
-   */
-  updateThreadName(newName: string): void {
-    const current = this.selectedThreadSubject.value
-    if (current) {
-      this.selectedThreadSubject.next({
-        ...current,
-        name: newName,
-      })
-    }
+    this.selectedThreadIdSubject.next(null)
   }
 }

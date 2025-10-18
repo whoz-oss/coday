@@ -53,7 +53,7 @@ export function registerThreadRoutes(
       debugLog('THREAD', `GET threads for project: ${projectName}, user: ${username}`)
       const threads = await threadService.listThreads(projectName, username)
 
-      res.status(200).json({ threads })
+      res.status(200).json(threads)
     } catch (error) {
       console.error('Error listing threads:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -240,7 +240,16 @@ export function registerThreadRoutes(
         return
       }
 
-      debugLog('THREAD', `DELETE thread: ${threadId} from project: ${projectName}`)
+      debugLog(
+        'THREAD',
+        `DELETE
+      thread:
+      ${threadId}
+      from
+      project
+      :
+      ${projectName}`
+      )
       const deleted = await threadService.deleteThread(projectName, threadId)
 
       if (deleted) {
