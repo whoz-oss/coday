@@ -49,10 +49,8 @@
       }
     },
     "nx-release-publish": {
-      "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm publish --access public --no-git-checks",
-        "cwd": "{projectRoot}/dist"
+        "packageRoot": "{projectRoot}/dist"
       }
     }
   }
