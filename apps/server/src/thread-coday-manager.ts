@@ -36,6 +36,44 @@ class ThreadCodayInstance {
   addConnection(response: Response): void {
     this.connections.add(response)
     debugLog('THREAD_CODAY', `Added SSE connection to thread ${this.threadId} (total: ${this.connections.size})`)
+
+    // If Coday is already running, replay the thread history for this new connection
+    if (this.coday) {
+      debugLog('THREAD_CODAY', `Replaying thread history for new connection to ${this.threadId}`)
+      this.replayThreadHistory(response)
+    }
+  }
+
+  /**
+   * Replay the thread history for a specific connection
+   * @param response Express response object for SSE
+   */
+  private async replayThreadHistory(response: Response): Promise<void> {
+    if (!this.coday) return
+
+    try {
+      // Get the thread from Coday
+      const thread = this.coday.context?.aiThread
+      if (!thread) {
+        debugLog('THREAD_CODAY', `No thread found for replay in ${this.threadId}`)
+        return
+      }
+
+      // Get all messages from the thread (it's async)
+      const result = await thread.getMessages(undefined, undefined)
+      const messages = result.messages
+      debugLog('THREAD_CODAY', `Replaying ${messages.length} messages for thread ${this.threadId}`)
+
+      // Send each message to the new connection
+      for (const message of messages) {
+        const data = `data: ${JSON.stringify(message)}\n\n`
+        if (!response.writableEnded) {
+          response.write(data)
+        }
+      }
+    } catch (error) {
+      debugLog('THREAD_CODAY', `Error replaying thread history:`, error)
+    }
   }
 
   /**
