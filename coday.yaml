@@ -35,7 +35,7 @@ optionalDocs:
 scripts:
   compile:
     description: compile the typescript project to raise any issue on code correctness, it does not run the tests.
-    command: pnpm run nx run-many --target=build --all
+    command: nx run-many --target=build --all
   # yarn:
   #   description: runs a pnpm command, give just the arguments. Do not start interactive commands !!!
   #   command: yarn
