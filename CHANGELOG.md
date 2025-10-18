@@ -1,3 +1,13 @@
+## 0.29.5 (2025-10-18)
+
+### 🩹 Fixes
+
+- switch starting message to processing request ([649573b](https://github.com/whoz-oss/coday/commit/649573b))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.29.4 (2025-10-18)
 
 ### 🩹 Fixes
