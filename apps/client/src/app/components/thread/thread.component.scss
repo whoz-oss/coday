@@ -1,0 +1,160 @@
+.thread-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  position: relative;
+  background: var(--color-background);
+}
+
+// Connection status banner
+.connection-status {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: var(--color-warning);
+  color: var(--color-text);
+  padding: 0.5rem 1rem;
+  text-align: center;
+  font-size: 0.9rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+// Chat wrapper - scrollable area
+.chat-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 1rem 0;
+}
+
+.chat-center {
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+// Upload status
+.upload-status {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: var(--color-primary-light);
+  color: var(--color-text);
+  text-align: center;
+  font-size: 0.9rem;
+  margin-top: 1rem;
+
+  &.error {
+    background: var(--color-error);
+    color: white;
+  }
+}
+
+// Input section
+.input-section {
+  flex-shrink: 0;
+  width: 100%;
+  padding: 1rem 0;
+  background: var(--color-background);
+  border-top: 1px solid var(--color-border);
+}
+
+.input-center {
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.input-glass {
+  position: relative;
+  background: var(--color-surface);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.choice-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+}
+
+// Drag and drop overlay
+.drag-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.drag-overlay-content {
+  text-align: center;
+  color: white;
+  padding: 2rem;
+  border: 3px dashed white;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.drag-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.drag-text {
+  font-size: 1.5rem;
+  font-weight: 500;
+}
+
+// Responsive adjustments
+@media (max-width: 768px) {
+  .chat-center,
+  .input-center {
+    padding: 0 0.5rem;
+  }
+
+  .drag-text {
+    font-size: 1.2rem;
+  }
+
+  .drag-icon {
+    font-size: 3rem;
+  }
+}
+
+// Print styles
+@media print {
+  .connection-status,
+  .input-section,
+  .drag-overlay {
+    display: none !important;
+  }
+
+  .chat-wrapper {
+    overflow: visible;
+    height: auto;
+  }
+
+  .thread-container {
+    height: auto;
+  }
+}

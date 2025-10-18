@@ -1,0 +1,75 @@
+<div
+  class="thread-container"
+  (dragenter)="onDragEnter($event)"
+  (dragover)="onDragOver($event)"
+  (dragleave)="onDragLeave($event)"
+  (drop)="onDrop($event)"
+>
+  <!-- Connection Status -->
+  @if (showConnectionStatus && connectionStatus && !connectionStatus.connected) {
+    <div class="connection-status">
+      ⚠️ Connection lost. Reconnecting... ({{ connectionStatus.reconnectAttempts }}/{{ connectionStatus.maxAttempts }})
+    </div>
+  }
+
+  <!-- Chat History - Scrollable area -->
+  <div class="chat-wrapper">
+    <div class="chat-center">
+      <app-chat-history
+        [messages]="messages"
+        [isThinking]="isThinking"
+        (copyRequested)="onCopyMessage($event)"
+        (stopRequested)="onStopRequested()"
+      ></app-chat-history>
+
+      <!-- Upload Status Display -->
+      @if (uploadStatus.message) {
+        <div class="upload-status" [class.error]="uploadStatus.isError">
+          {{ uploadStatus.message }}
+        </div>
+      }
+    </div>
+  </div>
+
+  <!-- Input Section -->
+  <div class="input-section" #inputSection>
+    <div class="input-center">
+      <div class="input-glass">
+        @if (!currentChoice) {
+          <app-chat-textarea
+            [isDisabled]="!isConnected"
+            [isSessionInitializing]="false"
+            [showWelcome]="false"
+            [isThinking]="isThinking"
+            [isStarting]="false"
+            (messageSubmitted)="onMessageSubmitted($event)"
+            (voiceRecordingToggled)="onVoiceToggled($event)"
+            (heightChanged)="onInputHeightChanged($event)"
+            (stopRequested)="onStopRequested()"
+          ></app-chat-textarea>
+        }
+
+        <!-- Choice Select - Overlay on top of input-section -->
+        @if (currentChoice) {
+          <app-choice-select
+            [options]="currentChoice.options"
+            [labelHtml]="currentChoice.label"
+            [isVisible]="!!currentChoice"
+            (choiceSelected)="onChoiceSelected($event)"
+            class="choice-overlay"
+          ></app-choice-select>
+        }
+      </div>
+    </div>
+  </div>
+
+  <!-- Drag and Drop Overlay -->
+  @if (isDragOver) {
+    <div class="drag-overlay">
+      <div class="drag-overlay-content">
+        <div class="drag-icon">📎</div>
+        <div class="drag-text">Drop images here to upload</div>
+      </div>
+    </div>
+  }
+</div>

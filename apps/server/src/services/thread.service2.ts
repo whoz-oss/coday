@@ -13,24 +13,52 @@ import { ThreadSummary } from '@coday/ai-thread/ai-thread.types'
  * based on the project context.
  */
 export class ThreadService2 {
+  /**
+   * Cache of thread repositories by project name.
+   * Avoids recreating repository instances for each operation.
+   */
+  private readonly repositoryCache = new Map<string, ThreadRepository>()
+
   constructor(
     private readonly projectRepository: ProjectRepository,
     private readonly projectsDir: string
   ) {}
 
   /**
-   * Create a thread repository for a specific project
+   * Get or create a cached thread repository for a specific project
    * @param projectName Project name
-   * @returns Thread repository instance
+   * @returns Cached thread repository instance
    * @throws Error if project doesn't exist
    */
-  private createThreadRepository(projectName: string): ThreadRepository {
+  private getThreadRepository(projectName: string): ThreadRepository {
+    // Check cache first
+    const cached = this.repositoryCache.get(projectName)
+    if (cached) {
+      return cached
+    }
+
+    // Validate project exists
     const projectInfo = this.projectRepository.getProjectInfo(projectName)
     if (!projectInfo) {
       throw new Error(`Project '${projectName}' not found`)
     }
 
-    return new ThreadFileRepository(this.projectsDir)
+    // Create and cache new repository
+    const repository = new ThreadFileRepository(this.projectsDir)
+    this.repositoryCache.set(projectName, repository)
+    return repository
+  }
+
+  /**
+   * Clear the repository cache for a specific project or all projects
+   * @param projectName Optional project name to clear specific cache entry
+   */
+  clearCache(projectName?: string): void {
+    if (projectName) {
+      this.repositoryCache.delete(projectName)
+    } else {
+      this.repositoryCache.clear()
+    }
   }
 
   /**
@@ -40,7 +68,7 @@ export class ThreadService2 {
    * @returns Array of thread summaries
    */
   async listThreads(projectName: string, username: string): Promise<ThreadSummary[]> {
-    const repository = this.createThreadRepository(projectName)
+    const repository = this.getThreadRepository(projectName)
     return await repository.listByProject(projectName, username)
   }
 
@@ -51,7 +79,7 @@ export class ThreadService2 {
    * @returns Thread if found, null otherwise
    */
   async getThread(projectName: string, threadId: string): Promise<AiThread | null> {
-    const repository = this.createThreadRepository(projectName)
+    const repository = this.getThreadRepository(projectName)
     return await repository.getById(projectName, threadId)
   }
 
@@ -63,7 +91,7 @@ export class ThreadService2 {
    * @returns Created thread
    */
   async createThread(projectName: string, username: string, name?: string): Promise<AiThread> {
-    const repository = this.createThreadRepository(projectName)
+    const repository = this.getThreadRepository(projectName)
 
     const thread = new AiThread({
       id: crypto.randomUUID(),
@@ -85,7 +113,7 @@ export class ThreadService2 {
    * @throws Error if thread doesn't exist
    */
   async updateThread(projectName: string, threadId: string, updates: { name?: string }): Promise<AiThread> {
-    const repository = this.createThreadRepository(projectName)
+    const repository = this.getThreadRepository(projectName)
 
     const thread = await repository.getById(projectName, threadId)
     if (!thread) {
@@ -107,7 +135,7 @@ export class ThreadService2 {
    * @returns true if deleted, false if not found
    */
   async deleteThread(projectName: string, threadId: string): Promise<boolean> {
-    const repository = this.createThreadRepository(projectName)
+    const repository = this.getThreadRepository(projectName)
     return await repository.delete(projectName, threadId)
   }
 

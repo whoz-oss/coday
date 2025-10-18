@@ -1,5 +1,5 @@
 import { inject, Injectable } from '@angular/core'
-import { BehaviorSubject, combineLatest, distinctUntilChanged, of, switchMap } from 'rxjs'
+import { BehaviorSubject, combineLatest, distinctUntilChanged, of, shareReplay, switchMap } from 'rxjs'
 import { map, tap } from 'rxjs/operators'
 import { ThreadApiService } from './thread-api.service'
 import { ProjectStateService } from './project-state.service'
@@ -23,7 +23,7 @@ export class ThreadStateService {
   private readonly threadApi = inject(ThreadApiService)
   private readonly projectStateService = inject(ProjectStateService)
 
-  private projectName$ = this.projectStateService.selectedProject$.pipe(
+  private readonly projectName$ = this.projectStateService.selectedProject$.pipe(
     map((project) => project?.name),
     distinctUntilChanged()
   )
@@ -35,19 +35,28 @@ export class ThreadStateService {
       } else {
         return this.threadApi.listThreads(projectName)
       }
-    })
+    }),
+    shareReplay({ bufferSize: 1, refCount: true })
   )
 
   selectedThread$ = combineLatest([this.projectName$, this.selectedThreadIdSubject.pipe(distinctUntilChanged())]).pipe(
     switchMap(([projectName, threadId]) => {
       if (!projectName || !threadId) {
+        console.log('🐼 null')
         return of(null)
       } else {
+        console.log('🐼 loading...')
+
         this.isLoadingSubject.next(true)
         return this.threadApi.getThread(projectName, threadId)
       }
     }),
-    tap(() => this.isLoadingSubject.next(false))
+    tap(() => {
+      console.log('🐼 finished loading')
+
+      this.isLoadingSubject.next(false)
+    }),
+    shareReplay({ bufferSize: 1, refCount: true })
   )
 
   /**

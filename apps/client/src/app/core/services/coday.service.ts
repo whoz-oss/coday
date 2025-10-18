@@ -138,16 +138,20 @@ export class CodayService implements OnDestroy {
       // Clear the current invite event immediately after using it
       this.currentInviteEventSubject.next(null)
 
-      this.codayApi.sendEvent(answerEvent, this.currentProject || undefined, this.currentThread || undefined).subscribe({
-        error: (error) => console.error('[CODAY] Send error:', error),
-      })
+      this.codayApi
+        .sendEvent(answerEvent, this.currentProject || undefined, this.currentThread || undefined)
+        .subscribe({
+          error: (error) => console.error('[CODAY] Send error:', error),
+        })
     } else {
       // Fallback to basic AnswerEvent if no invite event stored
       const answerEvent = new AnswerEvent({ answer: message })
 
-      this.codayApi.sendEvent(answerEvent, this.currentProject || undefined, this.currentThread || undefined).subscribe({
-        error: (error) => console.error('[CODAY] Send error:', error),
-      })
+      this.codayApi
+        .sendEvent(answerEvent, this.currentProject || undefined, this.currentThread || undefined)
+        .subscribe({
+          error: (error) => console.error('[CODAY] Send error:', error),
+        })
     }
   }
 
@@ -164,12 +168,14 @@ export class CodayService implements OnDestroy {
       this.currentChoiceSubject.next(null)
       // Clear the current choice event to prevent reuse
       this.currentChoiceEvent = null
-      this.codayApi.sendEvent(answerEvent, this.currentProject || undefined, this.currentThread || undefined).subscribe({
-        next: () => {},
-        error: (error) => {
-          console.error('[CODAY-CHOICE] Choice error:', error)
-        },
-      })
+      this.codayApi
+        .sendEvent(answerEvent, this.currentProject || undefined, this.currentThread || undefined)
+        .subscribe({
+          next: () => {},
+          error: (error) => {
+            console.error('[CODAY-CHOICE] Choice error:', error)
+          },
+        })
     } else {
       console.error('[CODAY-CHOICE] No choice event available for choice:', choice)
     }
@@ -463,6 +469,9 @@ export class CodayService implements OnDestroy {
       console.log('[CODAY] Invite already displayed in last message, skipping duplicate')
     }
 
+    // ALWAYS update the currentInviteEventSubject, even if we didn't display the message
+    // This is critical for components waiting for the invite (e.g., ThreadComponent with pending first message)
+    console.log('[CODAY] Setting current invite event')
     this.currentInviteEventSubject.next(event)
 
     this.tabTitleService?.setSystemInactive()

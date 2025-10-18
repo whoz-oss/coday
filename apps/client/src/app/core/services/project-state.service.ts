@@ -33,7 +33,8 @@ export class ProjectStateService {
       } else {
         return this.projectApi.getProject(projectId)
       }
-    })
+    }),
+    shareReplay({ bufferSize: 1, refCount: true })
   )
 
   /**

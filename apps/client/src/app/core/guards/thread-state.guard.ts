@@ -1,7 +1,8 @@
 import { inject } from '@angular/core'
 import { ActivatedRouteSnapshot, CanActivateFn } from '@angular/router'
-import { lastValueFrom, take } from 'rxjs'
+import { combineLatest, filter, lastValueFrom, take } from 'rxjs'
 import { ThreadStateService } from '../services/thread-state.service'
+import { map, tap } from 'rxjs/operators'
 
 /**
  * Route guard that ensures the thread state is synchronized with route parameters.
@@ -34,8 +35,15 @@ export const threadStateGuard: CanActivateFn = async (route: ActivatedRouteSnaps
   }
 
   threadState.selectThread(threadId)
-  const currentThread = await lastValueFrom(threadState.selectedThread$.pipe(take(1)))
-  const validity = currentThread?.id === threadId
+  const currentThreadId = await lastValueFrom(
+    combineLatest([threadState.isLoading$, threadState.selectedThread$]).pipe(
+      tap((_) => console.log(`🐼`, _)),
+      filter(([isLoading, threadDetails]) => !isLoading && !!threadDetails),
+      take(1),
+      map(([_, thread]) => thread?.id)
+    )
+  )
+  const validity = currentThreadId === threadId
 
   if (!validity) {
     console.log('[THREAD GUARD] current thread id not matching the route')
