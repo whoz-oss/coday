@@ -29,12 +29,40 @@
   position: relative;
   transition:
     border-color 0.2s,
-    box-shadow 0.2s;
+    box-shadow 0.2s,
+    background 0.3s;
 }
 
 /* Animated gradient border - only when welcome is visible */
 .input-row {
   @include animated-gradient-border.animated-gradient-border;
+
+  /* When thinking, apply animated gradient to full box background */
+  &.is-thinking {
+    &::before {
+      /* Override the border-only effect to fill entire box */
+      inset: 0;
+      mask: none;
+      padding: 0;
+      opacity: 0.15;
+      z-index: 0;
+      background: linear-gradient(
+        90deg,
+        var(--color-primary, #3b82f6) 0%,
+        var(--color-accent, #8b5cf6) 50%,
+        var(--color-primary, #3b82f6) 100%
+      );
+      background-size: 200% 100%;
+      animation: gradientBorderShift 3s ease-in-out infinite;
+    }
+
+    /* Keep text and buttons above the gradient */
+    .message-input,
+    .stop-btn {
+      position: relative;
+      z-index: 1;
+    }
+  }
 }
 
 /* When focused in welcome mode, stop the animation and show solid border */

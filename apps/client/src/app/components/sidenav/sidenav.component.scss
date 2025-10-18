@@ -14,11 +14,23 @@
   right: 0;
   bottom: 0;
   z-index: 1400;
+  transition: width;
+  display: flex;
 
-  &.mat-drawer-container-has-open {
-    mat-sidenav-content {
-      width: calc(100% - 310px);
+  mat-sidenav {
+    position: relative !important;
+    transition: width;
+    width: 310px;
+    flex-shrink: 0;
+
+    &:not(.mat-drawer-opened) {
+      width: 0 !important;
     }
+  }
+
+  mat-sidenav-content {
+    width: 100%;
+    margin: 0 !important;
   }
 }
 
@@ -36,22 +48,28 @@
 // Floating toggle button
 .sidenav-toggle-btn {
   position: fixed !important;
-  top: 1rem !important;
+  top: 1.5rem !important;
+  left: 1rem !important;
+  z-index: 1500 !important;
+  color: var(--color-text-secondary);
+}
+
+// Floating logo button at bottom
+.sidenav-logo-btn {
+  position: fixed !important;
+  bottom: 1rem !important;
   left: 1rem !important;
   z-index: 1500 !important;
 
   width: 56px !important;
   height: 56px !important;
-  min-width: 56px !important;
-  min-height: 56px !important;
   border-radius: 50% !important;
   border: 1px solid var(--glass-border) !important;
-  padding: 0 !important;
+  padding: 4px !important;
 
   background: var(--glass-bg) !important;
   backdrop-filter: var(--glass-backdrop-blur) !important;
   -webkit-backdrop-filter: var(--glass-backdrop-blur) !important;
-  color: var(--color-primary) !important;
 
   box-shadow: var(--glass-shadow) !important;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
@@ -61,60 +79,23 @@
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  overflow: visible !important;
+  overflow: hidden !important;
+  text-decoration: none !important;
 
   &:hover {
     transform: scale(1.08) translateY(-2px) !important;
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2) !important;
     border-color: var(--color-primary) !important;
-
-    .logo {
-      opacity: 0.2;
-    }
-    .hamburger-overlay {
-      opacity: 1;
-    }
   }
 
   &:active {
     transform: scale(0.96) !important;
   }
 
-  &.active {
-    background: var(--color-primary) !important;
-    color: white !important;
-    border-color: var(--color-primary) !important;
-  }
-
-  &.hidden {
-    opacity: 0 !important;
-    pointer-events: none !important;
-    transform: scale(0.8) !important;
-  }
-
   .logo {
     width: 48px;
     height: 48px;
-    transition: opacity 0.2s;
     border-radius: 2px;
-  }
-
-  .hamburger-overlay {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    opacity: 0;
-    transition: opacity 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    mat-icon {
-      font-size: 24px;
-      width: 24px;
-      height: 24px;
-    }
   }
 }
 
@@ -350,6 +331,22 @@
   }
 }
 
+// Contribute button styling
+.contribute-btn {
+  text-decoration: none;
+
+  &:hover {
+    background: var(--color-bg-hover);
+  }
+
+  .contribute-logo {
+    width: 20px;
+    height: 20px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+}
+
 // Section container
 .section-container {
   display: flex;
@@ -398,7 +395,6 @@
   .section-label {
     flex: 1;
     font-size: 0.9rem;
-    font-weight: 500;
     color: var(--color-text);
   }
 }
@@ -409,7 +405,7 @@
   flex-direction: column;
   padding: 0.5rem 0;
   animation: slideDown 0.2s ease;
-  max-height: calc(100vh - 270px);
+  max-height: calc(100vh - 300px);
   overflow-y: auto;
   overflow-x: hidden;
   border-bottom: 1px solid var(--color-border);

@@ -23,40 +23,42 @@
       (focus)="isFocused = true"
       (blur)="isFocused = false"
     ></textarea>
-    @if (isThinking) {
-      <button class="stop-btn" mat-icon-button (click)="onStopClick()" title="Stop generation" type="button">
-        <mat-icon>stop</mat-icon>
-      </button>
-    } @else {
-      <button
-        class="voice-btn"
-        mat-icon-button
-        [class.recording]="isRecording"
-        [class.hidden]="message.trim()"
-        (mousedown)="onVoiceButtonMouseDown($event)"
-        (mouseup)="onVoiceButtonMouseUp()"
-        (mouseleave)="onVoiceButtonMouseLeave()"
-        (touchstart)="onVoiceButtonTouchStart($event)"
-        (touchend)="onVoiceButtonTouchEnd($event)"
-        (keydown)="onVoiceButtonKeyDown($event)"
-        (keyup)="onVoiceButtonKeyUp($event)"
-        tabindex="0"
-        title="Hold mouse click, touch, or spacebar to speak"
-      >
-        <mat-icon>{{ isRecording ? 'fiber_manual_record' : 'mic' }}</mat-icon>
-      </button>
-      <button
-        class="send-btn"
-        mat-icon-button
-        (click)="sendMessage()"
-        [disabled]="isDisabled || !message.trim()"
-        [class.hidden]="isDisabled || !message.trim()"
-        [class.active]="!!message.trim() && !isDisabled"
-        [title]="getSendButtonTooltip()"
-        type="button"
-      >
-        <mat-icon>send</mat-icon>
-      </button>
+    @if (!isSessionInitializing) {
+      @if (isThinking) {
+        <button class="stop-btn" mat-icon-button (click)="onStopClick()" title="Stop generation" type="button">
+          <mat-icon>stop</mat-icon>
+        </button>
+      } @else {
+        <button
+          class="voice-btn"
+          mat-icon-button
+          [class.recording]="isRecording"
+          [class.hidden]="message.trim()"
+          (mousedown)="onVoiceButtonMouseDown($event)"
+          (mouseup)="onVoiceButtonMouseUp()"
+          (mouseleave)="onVoiceButtonMouseLeave()"
+          (touchstart)="onVoiceButtonTouchStart($event)"
+          (touchend)="onVoiceButtonTouchEnd($event)"
+          (keydown)="onVoiceButtonKeyDown($event)"
+          (keyup)="onVoiceButtonKeyUp($event)"
+          tabindex="0"
+          title="Hold mouse click, touch, or spacebar to speak"
+        >
+          <mat-icon>{{ isRecording ? 'fiber_manual_record' : 'mic' }}</mat-icon>
+        </button>
+        <button
+          class="send-btn"
+          mat-icon-button
+          (click)="sendMessage()"
+          [disabled]="isDisabled || !message.trim()"
+          [class.hidden]="isDisabled || !message.trim()"
+          [class.active]="!!message.trim() && !isDisabled"
+          [title]="getSendButtonTooltip()"
+          type="button"
+        >
+          <mat-icon>send</mat-icon>
+        </button>
+      }
     }
   </div>
 </div>

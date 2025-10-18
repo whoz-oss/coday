@@ -32,22 +32,17 @@
     position: absolute;
     inset: -2px; /* Extend 2px beyond the element to create border space */
     border-radius: inherit;
+    background-size: 200% 100%;
     background: linear-gradient(
       90deg,
       var(--color-primary, #3b82f6) 0%,
       var(--color-accent, #8b5cf6) 50%,
       var(--color-primary, #3b82f6) 100%
     );
-    background-size: 200% 100%;
-    background-position: 0% 0%;
     mask:
       linear-gradient(#fff 0 0) content-box,
       linear-gradient(#fff 0 0);
     mask-composite: exclude;
-    -webkit-mask:
-      linear-gradient(#fff 0 0) content-box,
-      linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
     padding: 1px; /* This creates the border width */
     pointer-events: none;
     z-index: -1;
@@ -76,12 +71,12 @@
 /* Gradient border animation keyframes */
 @keyframes gradientBorderShift {
   0% {
-    background-position: 0% 0%;
+    background-position: 0 0;
   }
   50% {
-    background-position: 100% 0%;
+    background-position: 100% 0;
   }
   100% {
-    background-position: 0% 0%;
+    background-position: 0 0;
   }
 }
