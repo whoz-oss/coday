@@ -1,6 +1,7 @@
 import { AfterViewInit, Component, ElementRef, inject, OnDestroy, OnInit, ViewChild } from '@angular/core'
 import { ActivatedRoute } from '@angular/router'
 import { Subject } from 'rxjs'
+import { takeUntil } from 'rxjs/operators'
 import { animate, style, transition, trigger } from '@angular/animations'
 
 import { ChatTextareaComponent } from '../chat-textarea/chat-textarea.component'
@@ -76,23 +77,33 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   ngOnInit(): void {
-    // Get project and thread from route params
-    this.projectName = this.route.snapshot.params['projectName']
-    this.threadId = this.route.snapshot.params['threadId'] || null
-
-    console.log('[MAIN-APP] Initializing with project:', this.projectName, 'thread:', this.threadId)
-
-    // If we have a threadId, ThreadComponent will handle everything
-    // If not, we show the welcome view with textarea for implicit thread creation
-    if (!this.threadId) {
-      console.log('[MAIN-APP] No thread selected - showing welcome view')
-      this.initializeWelcomeView()
-    } else {
-      console.log('[MAIN-APP] Thread selected - ThreadComponent will handle connection')
-    }
-
     // Setup print event listeners (for welcome view)
     this.setupPrintHandlers()
+
+    // Subscribe to route parameter changes to detect thread navigation
+    this.route.params.pipe(takeUntil(this.destroy$)).subscribe(params => {
+      const newProjectName = params['projectName']
+      const newThreadId = params['threadId'] || null
+      
+      console.log('[MAIN-APP] Route params updated:', { 
+        project: newProjectName, 
+        thread: newThreadId,
+        previousProject: this.projectName,
+        previousThread: this.threadId
+      })
+
+      // Update properties - this will trigger change detection in ThreadComponent
+      this.projectName = newProjectName
+      this.threadId = newThreadId
+      
+      // If no thread, initialize welcome view
+      if (!this.threadId) {
+        console.log('[MAIN-APP] No thread selected - showing welcome view')
+        this.initializeWelcomeView()
+      } else {
+        console.log('[MAIN-APP] Thread selected - ThreadComponent will display')
+      }
+    })
   }
 
   /**

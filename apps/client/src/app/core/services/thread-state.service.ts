@@ -40,23 +40,31 @@ export class ThreadStateService {
   )
 
   selectedThread$ = combineLatest([this.projectName$, this.selectedThreadIdSubject.pipe(distinctUntilChanged())]).pipe(
+    tap(([projectName, threadId]) => {
+      console.log('🐼 combineLatest emitted:', { projectName, threadId })
+    }),
     switchMap(([projectName, threadId]) => {
       if (!projectName || !threadId) {
         console.log('🐼 null')
         return of(null)
       } else {
-        console.log('🐼 loading...')
+        console.log('🐼 loading thread:', threadId)
 
         this.isLoadingSubject.next(true)
-        return this.threadApi.getThread(projectName, threadId)
+        return this.threadApi.getThread(projectName, threadId).pipe(
+          tap(thread => {
+            console.log('🐼 loaded thread:', thread?.id)
+          }),
+          // shareReplay at this level: shares the result for THIS specific threadId
+          // When threadId changes, switchMap cancels and creates a new inner observable
+          shareReplay({ bufferSize: 1, refCount: true })
+        )
       }
     }),
     tap(() => {
       console.log('🐼 finished loading')
-
       this.isLoadingSubject.next(false)
-    }),
-    shareReplay({ bufferSize: 1, refCount: true })
+    })
   )
 
   /**

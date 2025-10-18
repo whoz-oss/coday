@@ -91,11 +91,21 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   }
 
   ngOnChanges(changes: SimpleChanges): void {
+    console.log('[THREAD] ngOnChanges called', changes)
+    
     // Detect when threadId changes (user navigating to different thread)
-    if (changes['threadId'] && !changes['threadId'].firstChange) {
-      console.log('[THREAD] Thread ID changed from', changes['threadId'].previousValue, 'to', changes['threadId'].currentValue)
-      // Reconnect to the new thread
-      this.initializeThreadConnection()
+    if (changes['threadId']) {
+      console.log('[THREAD] threadId changed:', {
+        firstChange: changes['threadId'].firstChange,
+        previousValue: changes['threadId'].previousValue,
+        currentValue: changes['threadId'].currentValue
+      })
+      
+      if (!changes['threadId'].firstChange) {
+        console.log('[THREAD] Reconnecting to new thread')
+        // Reconnect to the new thread
+        this.initializeThreadConnection()
+      }
     }
   }
 

@@ -157,13 +157,28 @@ export class ThreadFileRepository implements ThreadRepository {
       }
 
       const threadsDir = this.getThreadsDir(projectId)
-      const fileName = this.getThreadFileName(thread)
+      const newFileName = this.getThreadFileName(thread)
+      const newThreadPath = path.join(threadsDir, newFileName)
+
+      // Check if an old file exists with the same ID but different name (rename case)
+      const existingFile = await this.findThreadFile(projectId, thread.id)
+      if (existingFile && existingFile !== newFileName) {
+        // Delete the old file before writing the new one
+        const oldFilePath = path.join(threadsDir, existingFile)
+        try {
+          await fs.unlink(oldFilePath)
+          console.log(`[THREAD-REPO] Deleted old thread file: ${existingFile}`)
+        } catch (error) {
+          // Ignore if old file doesn't exist or can't be deleted
+          console.warn(`[THREAD-REPO] Could not delete old thread file: ${existingFile}`, error)
+        }
+      }
+
       const versionned = { ...thread, version: aiThreadMigrations.length + 1 }
       const contentToSave = yaml.stringify(versionned)
 
-      // Write the file
-      const threadPath = path.join(threadsDir, fileName)
-      await fs.writeFile(threadPath, contentToSave, 'utf-8')
+      // Write the new file
+      await fs.writeFile(newThreadPath, contentToSave, 'utf-8')
 
       return thread
     } catch (error) {

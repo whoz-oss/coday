@@ -30,24 +30,37 @@ export const threadStateGuard: CanActivateFn = async (route: ActivatedRouteSnaps
     return false
   }
 
+  console.log('[THREAD GUARD] Checking thread:', threadId)
+  console.log('[THREAD GUARD] Current selected thread:', threadState.getSelectedThreadId())
+
   if (threadState.getSelectedThreadId() === threadId) {
+    console.log('[THREAD GUARD] Thread already selected, allowing navigation')
     return true
   }
 
+  console.log('[THREAD GUARD] Selecting thread:', threadId)
   threadState.selectThread(threadId)
-  const currentThreadId = await lastValueFrom(
-    combineLatest([threadState.isLoading$, threadState.selectedThread$]).pipe(
-      tap((_) => console.log(`🐼`, _)),
-      filter(([isLoading, threadDetails]) => !isLoading && !!threadDetails),
-      take(1),
-      map(([_, thread]) => thread?.id)
+  
+  try {
+    const currentThreadId = await lastValueFrom(
+      combineLatest([threadState.isLoading$, threadState.selectedThread$]).pipe(
+        tap(([isLoading, thread]) => console.log(`🐼 [${isLoading ? 'loading' : 'loaded'}]`, thread?.id)),
+        filter(([isLoading, threadDetails]) => !isLoading && !!threadDetails),
+        take(1),
+        map(([_, thread]) => thread?.id)
+      )
     )
-  )
-  const validity = currentThreadId === threadId
+    const validity = currentThreadId === threadId
 
-  if (!validity) {
-    console.log('[THREAD GUARD] current thread id not matching the route')
+    if (!validity) {
+      console.error('[THREAD GUARD] Thread ID mismatch - route:', threadId, 'loaded:', currentThreadId)
+    } else {
+      console.log('[THREAD GUARD] Thread validated, allowing navigation')
+    }
+
+    return validity
+  } catch (error) {
+    console.error('[THREAD GUARD] Error loading thread:', error)
+    return false
   }
-
-  return validity
 }

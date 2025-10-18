@@ -1,4 +1,5 @@
 import { Component, inject, OnDestroy, OnInit, ViewChild, ElementRef } from '@angular/core'
+import { Router } from '@angular/router'
 import { FormsModule } from '@angular/forms'
 import { Subject } from 'rxjs'
 import { map, takeUntil } from 'rxjs/operators'
@@ -8,7 +9,6 @@ import { MatButtonModule } from '@angular/material/button'
 import { MatDividerModule } from '@angular/material/divider'
 import { MatProgressBarModule } from '@angular/material/progress-bar'
 import { ConfigApiService } from '../../core/services/config-api.service'
-import { CodayService } from '../../core/services/coday.service'
 import { PreferencesService } from '../../services/preferences.service'
 import { OptionsPanelComponent } from '../options-panel'
 import { ThreadSelectorComponent } from '../thread-selector/thread-selector.component'
@@ -79,7 +79,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
   canCreateProject = toSignal(this.projectStateService.forcedProject$.pipe(map((value) => !value)))
   selectedProjectName = toSignal(this.projectStateService.selectedProject$.pipe(map((project) => project?.name)))
 
-  private readonly codayService = inject(CodayService)
+  private readonly router = inject(Router)
   private readonly preferences = inject(PreferencesService)
 
   ngOnInit(): void {
@@ -342,11 +342,22 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Create a new thread
+   * Create a new thread - Navigate to welcome view
    */
   createNewThread(): void {
-    console.log('[SIDENAV] Creating new thread')
-    this.codayService.sendMessage('thread new')
+    const projectName = this.selectedProjectName()
+    if (!projectName) {
+      console.error('[SIDENAV] No project selected, cannot create new thread')
+      this.configErrorMessage = 'Please select a project first'
+      return
+    }
+
+    console.log('[SIDENAV] Navigating to welcome view for new thread')
+    // Navigate to project route without threadId to show welcome view
+    this.router.navigate(['project', projectName])
+
+    // Close sidenav after navigation
+    this.close()
   }
 
   /**
