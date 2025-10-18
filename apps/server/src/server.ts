@@ -18,7 +18,9 @@ import { ServerInteractor } from '@coday/model/server-interactor'
 import { registerConfigRoutes } from './config.routes'
 import { registerWebhookRoutes } from './webhook.routes'
 import { registerProjectRoutes } from './project.routes'
+import { registerThreadRoutes } from './thread.routes'
 import { ProjectService2 } from './services/project.service2'
+import { ThreadService2 } from './services/thread.service2'
 import { ProjectFileRepository } from '@coday/repository/project-file.repository'
 
 const app = express()
@@ -110,6 +112,10 @@ const configRegistry = new ConfigServiceRegistry(configPath, configInteractor)
 const projectRepository = new ProjectFileRepository(configPath)
 const projectService = new ProjectService2(projectRepository)
 
+// Initialize thread service for REST API endpoints
+const projectsDir = path.join(configPath, 'projects')
+const threadService = new ThreadService2(projectRepository, projectsDir)
+
 /**
  * Extract username for authentication and logging purposes
  *
@@ -132,6 +138,9 @@ registerWebhookRoutes(app, webhookService, getUsername)
 
 // Register project management routes
 registerProjectRoutes(app, projectService)
+
+// Register thread management routes
+registerThreadRoutes(app, threadService, getUsername)
 
 // Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null

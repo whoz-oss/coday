@@ -135,7 +135,7 @@ export class FileAiThreadRepository implements AiThreadRepository {
         thread.id = crypto.randomUUID()
       }
       const fileName = this.getThreadFileName(thread)
-      const versionned = {...thread, version: aiThreadMigrations.length + 1}
+      const versionned = { ...thread, version: aiThreadMigrations.length + 1 }
       const contentToSave = yaml.stringify(versionned)
 
       // Write the file
@@ -165,6 +165,7 @@ export class FileAiThreadRepository implements AiThreadRepository {
                 return {
                   id: data.id,
                   username: data.username,
+                  projectId: data.projectId || '',
                   name: data.name || 'untitled',
                   summary: data.summary || '',
                   createdDate: data.createdDate || '',
