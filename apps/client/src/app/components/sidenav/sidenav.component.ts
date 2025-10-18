@@ -1,13 +1,12 @@
 import { Component, inject, OnDestroy, OnInit, ViewChild, ElementRef } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { Subject } from 'rxjs'
-import { takeUntil } from 'rxjs/operators'
+import { map, takeUntil } from 'rxjs/operators'
 import { MatSidenavModule } from '@angular/material/sidenav'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 import { MatDividerModule } from '@angular/material/divider'
 import { MatProgressBarModule } from '@angular/material/progress-bar'
-import { SessionStateService } from '../../core/services/session-state.service'
 import { ConfigApiService } from '../../core/services/config-api.service'
 import { CodayService } from '../../core/services/coday.service'
 import { PreferencesService } from '../../services/preferences.service'
@@ -15,7 +14,8 @@ import { OptionsPanelComponent } from '../options-panel'
 import { ThreadSelectorComponent } from '../thread-selector/thread-selector.component'
 import { JsonEditorComponent } from '../json-editor/json-editor.component'
 import { WebhookManagerComponent } from '../webhook-manager/webhook-manager.component'
-import { SessionState } from '@coday/model/session-state'
+import { ProjectStateService } from '../../core/services/project-state.service'
+import { toSignal } from '@angular/core/rxjs-interop'
 
 @Component({
   selector: 'app-sidenav',
@@ -42,10 +42,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
   isProjectConfigOpen = false
   isWebhooksOpen = false
   isProjectSelectorExpanded = false
-
-  // Project state
-  projects: SessionState['projects'] | null = null
-  selectedProjectName: string = ''
 
   // Role-based access control
   isAdmin = false
@@ -76,8 +72,13 @@ export class SidenavComponent implements OnInit, OnDestroy {
   @ViewChild('threadSearchInput') threadSearchInput?: ElementRef<HTMLInputElement>
 
   // Modern Angular dependency injection
-  private readonly sessionState = inject(SessionStateService)
   private readonly configApi = inject(ConfigApiService)
+
+  private readonly projectStateService = inject(ProjectStateService)
+  projects = toSignal(this.projectStateService.projectList$)
+  canCreateProject = toSignal(this.projectStateService.forcedProject$.pipe(map((value) => !value)))
+  selectedProjectName = toSignal(this.projectStateService.selectedProject$.pipe(map((project) => project?.name)))
+
   private readonly codayService = inject(CodayService)
   private readonly preferences = inject(PreferencesService)
 
@@ -86,19 +87,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
     const savedState = this.preferences.getPreference<boolean>('sidenavOpen', true)
     this.isOpen = savedState ?? true
     console.log('[SIDENAV] Loaded sidenav state from preferences:', this.isOpen)
-
-    // Log session state for debugging (ensures sessionState is used)
-    console.log('[SIDENAV] SessionState service injected:', !!this.sessionState)
-
-    // Subscribe to projects state
-    this.sessionState
-      .getProjects$()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((projects) => {
-        console.log('[SIDENAV] Projects updated:', projects)
-        this.projects = projects
-        this.selectedProjectName = projects?.current || ''
-      })
 
     // Load user config to check roles
     this.configApi
@@ -173,7 +161,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
    * Open project configuration editor
    */
   openProjectConfig(): void {
-    const projectName = this.getCurrentProjectName()
+    const projectName = this.selectedProjectName()
     if (!projectName) {
       console.error('[SIDENAV] No project selected')
       this.configErrorMessage = 'No project selected. Please select a project first.'
@@ -202,20 +190,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
           this.configErrorMessage = error?.error?.error || 'Failed to load project configuration'
         },
       })
-  }
-
-  /**
-   * Check if a project is currently selected
-   */
-  hasProject(): boolean {
-    return this.sessionState.hasProjectSelected()
-  }
-
-  /**
-   * Get current project name
-   */
-  getCurrentProjectName(): string | null {
-    return this.sessionState.getCurrentProject()
   }
 
   /**
@@ -252,7 +226,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
    * Handle project config save
    */
   onProjectConfigSave(parsedConfig: any): void {
-    const projectName = this.getCurrentProjectName()
+    const projectName = this.selectedProjectName()
     if (!projectName) {
       console.error('[SIDENAV] No project selected')
       this.configErrorMessage = 'No project selected. Cannot save configuration.'
@@ -335,7 +309,8 @@ export class SidenavComponent implements OnInit, OnDestroy {
    * Check if we can show the project selector
    */
   canShowProjectSelector(): boolean {
-    return !!(this.projects?.canCreate && this.projects?.list && this.projects.list.length > 0)
+    const projectList = this.projects()
+    return !!(this.canCreateProject() && projectList && projectList.length > 0)
   }
 
   /**
@@ -345,25 +320,10 @@ export class SidenavComponent implements OnInit, OnDestroy {
     const selectElement = event.target as HTMLSelectElement
     const projectName = selectElement.value
 
-    if (projectName && projectName !== this.projects?.current) {
+    if (projectName && projectName !== this.selectedProjectName()) {
       console.log('[SIDENAV] Selecting project:', projectName)
-      this.codayService.sendMessage(`config select-project ${projectName}`)
+      this.projectStateService.selectProject(projectName)
     }
-  }
-
-  /**
-   * Get the project name to display in the header
-   */
-  getProjectDisplayName(): string {
-    const projectName = this.sessionState.getCurrentProject()
-    return projectName || 'Coday'
-  }
-
-  /**
-   * Get available project names for the select dropdown
-   */
-  getProjectList(): Array<{ name: string }> {
-    return this.projects?.list || []
   }
 
   /**
