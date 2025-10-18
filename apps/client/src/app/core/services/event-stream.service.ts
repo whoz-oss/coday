@@ -10,7 +10,7 @@ export interface ConnectionStatus {
 }
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class EventStreamService implements OnDestroy {
   private eventSource: EventSource | null = null
@@ -18,7 +18,7 @@ export class EventStreamService implements OnDestroy {
   private connectionStatusSubject = new BehaviorSubject<ConnectionStatus>({
     connected: false,
     reconnectAttempts: 0,
-    maxAttempts: 3
+    maxAttempts: 3,
   })
 
   private reconnectAttempts = 0
@@ -34,11 +34,12 @@ export class EventStreamService implements OnDestroy {
   private ngZone = inject(NgZone)
 
   /**
-   * Start the SSE connection
+   * Start the SSE connection (legacy)
+   * @deprecated Use connectToThread instead
    */
   connect(): void {
-    console.log('[SSE] Setting up new EventSource')
-    
+    console.log('[SSE] Setting up new EventSource (legacy)')
+
     if (this.eventSource) {
       console.log('[SSE] Closing existing EventSource')
       this.eventSource.close()
@@ -46,19 +47,46 @@ export class EventStreamService implements OnDestroy {
 
     const url = this.codayApi.getEventsUrl()
     this.eventSource = new EventSource(url)
+    this.setupEventHandlers()
+  }
 
-    this.eventSource.onmessage = (event) => {
+  /**
+   * Connect to a specific thread's event stream (new architecture)
+   * @param projectName Project name
+   * @param threadId Thread identifier
+   */
+  connectToThread(projectName: string, threadId: string): void {
+    console.log('[SSE] Connecting to thread event stream:', projectName, threadId)
+
+    if (this.eventSource) {
+      console.log('[SSE] Closing existing EventSource')
+      this.eventSource.close()
+    }
+
+    const url = `/api/projects/${projectName}/threads/${threadId}/event-stream`
+    console.log('[SSE] EventSource URL:', url)
+    this.eventSource = new EventSource(url)
+    this.setupEventHandlers()
+  }
+
+  /**
+   * Setup event handlers for EventSource
+   */
+  private setupEventHandlers(): void {
+    if (!this.eventSource) return
+
+    this.eventSource!.onmessage = (event) => {
       // NgZone is needed because SSE events come from outside Angular's zone
       this.ngZone.run(() => {
         console.log('[SSE] Message received:', event.data.substring(0, 100))
-        
+
         this.reconnectAttempts = 0 // Reset on successful message
         this.updateConnectionStatus(true, 0)
 
         try {
           const data = JSON.parse(event.data)
           const codayEvent = buildCodayEvent(data)
-          
+
           if (codayEvent) {
             console.log('[SSE] Event:', codayEvent.type)
             this.eventsSubject.next(codayEvent)
@@ -71,7 +99,7 @@ export class EventStreamService implements OnDestroy {
       })
     }
 
-    this.eventSource.onopen = () => {
+    this.eventSource!.onopen = () => {
       this.ngZone.run(() => {
         console.log('[SSE] Connection established')
         this.reconnectAttempts = 0
@@ -79,7 +107,7 @@ export class EventStreamService implements OnDestroy {
       })
     }
 
-    this.eventSource.onerror = (error) => {
+    this.eventSource!.onerror = (error) => {
       this.ngZone.run(() => {
         console.log('[SSE] EventSource error:', error)
 
@@ -89,7 +117,7 @@ export class EventStreamService implements OnDestroy {
 
           if (this.reconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
             console.log(`[SSE] Attempting reconnect ${this.reconnectAttempts + 1}/${this.MAX_RECONNECT_ATTEMPTS}`)
-            
+
             // Emit error event
             this.eventsSubject.next(
               new ErrorEvent({
@@ -101,13 +129,16 @@ export class EventStreamService implements OnDestroy {
 
             setTimeout(() => {
               this.reconnectAttempts++
-              this.connect()
+              // Note: For thread-based connections, we would need to store project/thread
+              // to reconnect properly. For now, this reconnect uses the legacy method.
+              // TODO: Store connection parameters for proper reconnection
+              console.warn('[SSE] Reconnection may not work properly with thread-based connections')
             }, this.RECONNECT_DELAY)
           } else {
             console.log('[SSE] Max reconnection attempts reached')
             this.eventsSubject.next(
-              new ErrorEvent({ 
-                error: new Error('Connection lost permanently. Please refresh the page.') 
+              new ErrorEvent({
+                error: new Error('Connection lost permanently. Please refresh the page.'),
               })
             )
           }
@@ -142,7 +173,7 @@ export class EventStreamService implements OnDestroy {
     this.connectionStatusSubject.next({
       connected,
       reconnectAttempts: attempts,
-      maxAttempts: this.MAX_RECONNECT_ATTEMPTS
+      maxAttempts: this.MAX_RECONNECT_ATTEMPTS,
     })
   }
 

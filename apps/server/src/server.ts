@@ -600,9 +600,15 @@ app.delete('/api/thread/message/:eventId', async (req: express.Request, res: exp
 app.get(
   '/api/projects/:projectName/threads/:threadId/event-stream',
   async (req: express.Request, res: express.Response) => {
-    const { projectName, threadId: rawThreadId } = req.params
-    const threadId = rawThreadId! // Express ensures params are defined
+    const projectName = req.params['projectName']
+    const threadId = req.params['threadId']
     const username = getUsername(req)
+
+    // Validate required parameters
+    if (!projectName || !threadId) {
+      res.status(400).send('Project name and thread ID are required')
+      return
+    }
 
     debugLog('THREAD_SSE', `New connection request for thread ${threadId} in project ${projectName}`)
 

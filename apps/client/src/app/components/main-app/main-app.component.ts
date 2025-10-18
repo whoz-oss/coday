@@ -1,4 +1,5 @@
 import { AfterViewInit, Component, ElementRef, HostListener, inject, OnDestroy, OnInit, ViewChild } from '@angular/core'
+import { ActivatedRoute, Router } from '@angular/router'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
 import { animate, style, transition, trigger } from '@angular/animations'
@@ -12,6 +13,8 @@ import { CodayService } from '../../core/services/coday.service'
 import { CodayApiService } from '../../core/services/coday-api.service'
 import { ConnectionStatus } from '../../core/services/event-stream.service'
 import { SessionStateService } from '../../core/services/session-state.service'
+import { ProjectStateService } from '../../core/services/project-state.service'
+import { ThreadStateService } from '../../core/services/thread-state.service'
 import { ImageUploadService } from '../../services/image-upload.service'
 import { TabTitleService } from '../../services/tab-title.service'
 import { PreferencesService } from '../../services/preferences.service'
@@ -82,9 +85,13 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   private codayService = inject(CodayService)
   private codayApiService = inject(CodayApiService)
   private sessionStateService = inject(SessionStateService) // Injection to initialize the service
+  private projectStateService = inject(ProjectStateService)
+  private threadStateService = inject(ThreadStateService)
   private imageUploadService = inject(ImageUploadService)
   private titleService = inject(TabTitleService) // Renamed to avoid conflicts
   private preferencesService = inject(PreferencesService)
+  private route = inject(ActivatedRoute)
+  private router = inject(Router)
 
   constructor() {
     this.clientId = this.codayApiService.getClientId()
@@ -93,6 +100,26 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   ngOnInit(): void {
+    // Get project and thread from route params
+    const projectName = this.route.snapshot.params['projectName']
+    const threadId = this.route.snapshot.params['threadId']
+
+    if (!projectName || !threadId) {
+      console.error('[MAIN-APP] Missing project or thread in route')
+      this.router.navigate(['/'])
+      return
+    }
+
+    console.log('[MAIN-APP] Initializing with project:', projectName, 'thread:', threadId)
+
+    // Update state services
+    this.projectStateService.selectProject(projectName).pipe(takeUntil(this.destroy$)).subscribe()
+    this.threadStateService.selectThread(projectName, threadId).pipe(takeUntil(this.destroy$)).subscribe()
+
+    // Check if we have a first message from router state (implicit thread creation)
+    const navigation = this.router.getCurrentNavigation()
+    const firstMessage = navigation?.extras?.state?.['firstMessage'] as string | undefined
+
     // Setup print event listeners
     this.setupPrintHandlers()
 
@@ -167,8 +194,17 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     // Connect services (to avoid circular dependency)
     this.codayService.setTabTitleService(this.titleService)
 
-    // Start the Coday service
-    this.codayService.start()
+    // Connect to the thread's event stream
+    this.codayService.connectToThread(projectName, threadId)
+
+    // If we have a first message (from implicit thread creation), send it
+    if (firstMessage) {
+      console.log('[MAIN-APP] Sending first message from implicit creation')
+      // Wait a bit for the connection to be established
+      setTimeout(() => {
+        this.codayService.sendMessage(firstMessage)
+      }, 500)
+    }
   }
 
   ngAfterViewInit(): void {

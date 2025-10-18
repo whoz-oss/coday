@@ -77,10 +77,21 @@ export class CodayService implements OnDestroy {
   }
 
   /**
-   * Start the Coday service
+   * Start the Coday service (legacy - deprecated)
+   * @deprecated Use connectToThread instead
    */
   start(): void {
     this.eventStream.connect()
+  }
+
+  /**
+   * Connect to a specific thread's event stream
+   * @param projectName Project name
+   * @param threadId Thread identifier
+   */
+  connectToThread(projectName: string, threadId: string): void {
+    console.log('[CODAY] Connecting to thread:', projectName, threadId)
+    this.eventStream.connectToThread(projectName, threadId)
   }
 
   /**
