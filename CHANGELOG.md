@@ -1,3 +1,13 @@
+## 0.27.0 (2025-10-18)
+
+### 🚀 Features
+
+- ui improvements ([d873cec](https://github.com/whoz-oss/coday/commit/d873cec))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.26.0 (2025-10-17)
 
 ### 🚀 Features

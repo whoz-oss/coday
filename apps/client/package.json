@@ -1,6 +1,6 @@
 {
   "name": "coday-web-client",
-  "version": "0.26.0",
+  "version": "0.27.0",
   "repository": "https://github.com/whoz-oss/coday",
   "type": "module",
   "main": "server/server.js"
