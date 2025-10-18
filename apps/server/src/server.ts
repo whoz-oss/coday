@@ -1,11 +1,12 @@
 import express from 'express'
 import path from 'path'
 import { ServerClientManager } from './server-client'
+import { ThreadCodayManager } from './thread-coday-manager'
 
 import { AnswerEvent, CodayEvent, MessageEvent, ImageContent } from '@coday/coday-events'
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import { processImageBuffer } from '../../../libs/function/image-processor'
-import { parseCodayOptions } from '@coday/options'
+import { parseCodayOptions, CodayOptions } from '@coday/options'
 import * as os from 'node:os'
 import { debugLog } from './log'
 import { CodayLogger } from '@coday/service/coday-logger'
@@ -103,6 +104,9 @@ if (process.env.BUILD_ENV === 'development') {
 
 // Initialize the client manager with usage logger and webhook service
 const clientManager = new ServerClientManager(logger, webhookService)
+
+// Initialize the thread-based Coday manager for new SSE architecture
+const threadCodayManager = new ThreadCodayManager(logger, webhookService)
 
 // Initialize config service registry for REST API endpoints
 const configInteractor = new ServerInteractor('config-api')
@@ -582,7 +586,85 @@ app.delete('/api/thread/message/:eventId', async (req: express.Request, res: exp
   }
 })
 
-// Implement SSE for Heartbeat
+/**
+ * New SSE endpoint for thread-based event streaming
+ * GET /api/projects/:projectName/threads/:threadId/event-stream
+ *
+ * This endpoint provides Server-Sent Events for a specific thread.
+ * The Coday instance is indexed by threadId, allowing multiple users
+ * to potentially connect to the same thread in the future.
+ *
+ * Authentication: Username extracted from x-forwarded-email header
+ * Validation: Thread must exist and belong to the authenticated user
+ */
+app.get(
+  '/api/projects/:projectName/threads/:threadId/event-stream',
+  async (req: express.Request, res: express.Response) => {
+    const { projectName, threadId: rawThreadId } = req.params
+    const threadId = rawThreadId! // Express ensures params are defined
+    const username = getUsername(req)
+
+    debugLog('THREAD_SSE', `New connection request for thread ${threadId} in project ${projectName}`)
+
+    // Validate authentication
+    if (!username || typeof username !== 'string') {
+      debugLog('THREAD_SSE', 'Rejected: No username provided')
+      res.status(401).send('Authentication required')
+      return
+    }
+
+    // Validate thread exists and user has access
+    try {
+      const thread = await threadService.getThread(projectName, threadId)
+      if (!thread) {
+        debugLog('THREAD_SSE', `Thread ${threadId} not found in project ${projectName}`)
+        res.status(404).send(`Thread '${threadId}' not found in project '${projectName}'`)
+        return
+      }
+
+      // Verify ownership (will be relaxed later for multi-user)
+      if (thread.username !== username) {
+        debugLog('THREAD_SSE', `Access denied: thread ${threadId} belongs to ${thread.username}, not ${username}`)
+        res.status(403).send('Access denied: thread belongs to another user')
+        return
+      }
+    } catch (error) {
+      debugLog('THREAD_SSE', `Error validating thread ${threadId}:`, error)
+      res.status(500).send('Error validating thread access')
+      return
+    }
+
+    // Setup SSE headers
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+
+    // Create options with project and thread pre-selected
+    const threadOptions: CodayOptions = {
+      ...codayOptions,
+      project: projectName,
+      thread: threadId,
+    }
+
+    // Get or create thread-based Coday instance
+    const instance = threadCodayManager.getOrCreate(threadId, projectName, username, threadOptions, res)
+
+    // Handle client disconnect
+    req.on('close', () => {
+      debugLog('THREAD_SSE', `Client disconnected from thread ${threadId}`)
+      threadCodayManager.removeConnection(threadId, res)
+    })
+
+    // Start Coday if it's a new instance
+    if (instance.startCoday()) {
+      debugLog('THREAD_SSE', `New Coday instance started for thread ${threadId}`)
+    } else {
+      debugLog('THREAD_SSE', `Reconnected to existing Coday instance for thread ${threadId}`)
+    }
+  }
+)
+
+// Implement SSE for Heartbeat (LEGACY - kept for backward compatibility)
 app.get('/events', (req: express.Request, res: express.Response) => {
   const clientId = req.query.clientId as string
 
@@ -685,6 +767,10 @@ async function gracefulShutdown(signal: string) {
     // Cleanup client manager resources
     console.log('Cleaning up client connections...')
     clientManager.shutdown()
+
+    // Cleanup thread-based Coday instances
+    console.log('Cleaning up thread Coday instances...')
+    await threadCodayManager.shutdown()
 
     console.log('Graceful shutdown completed')
     process.exit(0)

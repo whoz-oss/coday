@@ -292,7 +292,13 @@ export class Coday {
 
   private async initThread(): Promise<void> {
     if (!this.context?.aiThread) {
-      await this.aiThreadService.create()
+      // If threadId provided in options, select that specific thread
+      if (this.options.thread) {
+        await this.aiThreadService.select(this.options.thread)
+      } else {
+        // Default behavior: select most recent or create new
+        await this.aiThreadService.select()
+      }
     }
   }
 
