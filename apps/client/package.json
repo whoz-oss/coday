@@ -1,7 +1,9 @@
 {
-  "name": "coday-web-client",
+  "name": "@whoz-oss/coday-client",
   "version": "0.27.0",
   "repository": "https://github.com/whoz-oss/coday",
   "type": "module",
-  "main": "server/server.js"
+  "publishConfig": {
+    "access": "public"
+  }
 }

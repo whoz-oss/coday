@@ -13,10 +13,7 @@
       "inputs": ["default", "^default"]
     },
     "nx-release-publish": {
-      "dependsOn": ["server:build"],
-      "options": {
-        "packageRoot": "apps/server/dist"
-      }
+      "dependsOn": ["build"]
     },
     "lint": {
       "cache": true
@@ -69,7 +66,7 @@
     }
   ],
   "release": {
-    "projects": ["server", "client"],
+    "projects": ["server", "client", "web"],
     "releaseTagPattern": "release/{version}",
     "git": {
       "commitMessage": "chore(release): {version}",
@@ -82,11 +79,14 @@
       }
     },
     "version": {
-      "preVersionCommand": "nx run server:build",
-      "preserveLocalDependencyProtocols": false,
-
-      "manifestRootsToUpdate": ["apps/{projectName}"],
-      "conventionalCommits": true
+      "groups": {
+        "coday-packages": {
+          "projects": ["server", "client", "web"],
+          "version": {
+            "conventionalCommits": true
+          }
+        }
+      }
     }
   },
   "tui": {

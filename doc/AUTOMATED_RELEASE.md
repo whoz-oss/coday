@@ -81,19 +81,52 @@ The release process is configured in `nx.json`:
 
 ### GitHub Secrets
 
-You need to configure the following secret in your GitHub repository:
+You need to configure the following secrets in your GitHub repository:
 
-1. **NPM_TOKEN**
+1. **NPM_ACCESS_TOKEN**
    - Generate at: https://www.npmjs.com/settings/[your-username]/tokens
    - Required permissions: "Automation" token type
    - Add to repository: Settings → Secrets and variables → Actions → New repository secret
+
+2. **RELEASE_PAT** (Required for branch protection bypass)
+   - This is needed because the workflow pushes directly to the protected master branch
+   - Generate a Personal Access Token (classic) at: https://github.com/settings/tokens
+   - Required scopes:
+     - `repo` (Full control of private repositories)
+     - `workflow` (Update GitHub Action workflows)
+   - Add to repository: Settings → Secrets and variables → Actions → New repository secret
+   - **Important**: The PAT must be from a user who has bypass permissions in the branch protection ruleset
+   
+   **Alternative**: If using fine-grained PATs:
+   - Repository access: Select the `whoz-oss/coday` repository
+   - Permissions:
+     - Contents: Read and write
+     - Workflows: Read and write
+     - Metadata: Read-only (automatically selected)
+   - Then add the user/bot to the branch protection ruleset bypass list
 
 ### Repository Permissions
 
 The workflow requires these permissions (already configured in the workflow):
 - `contents: write` - To push commits and create releases
-- `pull-requests: write` - For future PR creation if needed
-- `packages: write` - For package publishing
+- `id-token: write` - For npm provenance
+
+### Branch Protection Configuration
+
+Since the release workflow pushes directly to master, you need to configure your branch protection ruleset to allow this:
+
+**Option 1: Add bypass for GitHub Actions (Recommended)**
+1. Go to Repository Settings → Rules → Rulesets
+2. Edit your master branch protection ruleset
+3. Under "Bypass list", add:
+   - The user whose PAT is used in `RELEASE_PAT`
+   - OR configure to allow the GitHub Actions bot
+
+**Option 2: Use a GitHub App (Advanced)**
+- Create a GitHub App with appropriate permissions
+- Install it on your repository
+- Use the app's token in the workflow
+- This is more secure but requires more setup
 
 ## Version Strategy
 

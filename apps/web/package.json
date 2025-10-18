@@ -1,14 +1,15 @@
 {
-  "name": "@whoz-oss/coday-server",
-  "version": "0.27.0",
+  "name": "@whoz-oss/coday-web",
+  "version": "0.0.0",
   "repository": "https://github.com/whoz-oss/coday",
   "type": "module",
   "main": "server/server.js",
   "bin": {
-    "coday-server": "./bin.js"
+    "coday-web": "./bin.js"
   },
   "dependencies": {
-    "sharp": "0.34.4"
+    "@whoz-oss/coday-client": "*",
+    "@whoz-oss/coday-server": "*"
   },
   "publishConfig": {
     "access": "public"

@@ -4,32 +4,21 @@
   "projectType": "application",
   "sourceRoot": "apps/server/src",
   "implicitDependencies": [
-    "client",
     "coday-events",
     "ai-thread"
   ],
   "tags": ["web-server"],
   "targets": {
     "build": {
-      "inputs": [
-        "default",
-        "{workspaceRoot}/libs/**/*",
-        "{workspaceRoot}/apps/client/**/*"
-      ],
       "executor": "nx:run-commands",
       "dependsOn": [
-        {
-          "projects": "client",
-          "target": "build"
-        },
         {
           "target": "build-server"
         }
       ],
-      "outputs": ["{projectRoot}/dist/web"],
+      "outputs": ["{projectRoot}/dist"],
       "options": {
         "commands": [
-          "cp -r apps/client/dist/browser apps/server/dist/client",
           "cp apps/server/package.json apps/server/dist/package.json",
           "cp apps/server/bin.js apps/server/dist/bin.js"
         ],
@@ -77,6 +66,11 @@
           "BUILD_ENV": "development"
         },
         "commands": ["tsx watch apps/server/src/server.ts --local --no_auth"]
+      }
+    },
+    "nx-release-publish": {
+      "options": {
+        "packageRoot": "apps/server/dist"
       }
     }
   }
