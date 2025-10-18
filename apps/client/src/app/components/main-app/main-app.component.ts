@@ -57,7 +57,6 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // Upload status
   uploadStatus: { message: string; isError: boolean } = { message: '', isError: false }
-  clientId: string
 
   // Drag and drop state
   isDragOver: boolean = false
@@ -95,9 +94,7 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   private router = inject(Router)
 
   constructor() {
-    this.clientId = this.codayApiService.getClientId()
-    console.log('[MAIN-APP] Constructor - clientId:', this.clientId)
-    console.log('[MAIN-APP] Using new thread-based architecture (SessionStateService disabled)')
+    console.log('[MAIN-APP] Using new thread-based architecture (no clientId needed)')
   }
 
   ngOnInit(): void {
@@ -325,10 +322,9 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
 
     console.log('[MAIN-APP] Files dropped:', event.dataTransfer?.files?.length || 0)
 
-    if (!this.clientId) {
-      this.showUploadError('No client ID available for upload')
-      return
-    }
+    // TODO: Adapt image upload for thread-based architecture
+    this.showUploadError('Image upload not yet implemented in new architecture')
+    return
 
     const files = this.imageUploadService.filterImageFiles(event.dataTransfer?.files || [])
 
@@ -341,21 +337,8 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
 
     // Upload each image file
     for (const file of files) {
-      try {
-        this.showUploadStatus(`Uploading ${file.name}...`)
-        const result = await this.imageUploadService.uploadImage(file, this.clientId)
-
-        if (result.success) {
-          this.showUploadSuccess(`${file.name} uploaded successfully`)
-        } else {
-          this.showUploadError(`Failed to upload ${file.name}: ${result.error}`)
-        }
-      } catch (error) {
-        console.error('[MAIN-APP] Upload error:', error)
-        this.showUploadError(
-          `Failed to upload ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`
-        )
-      }
+      // Image upload disabled for now in new architecture
+      this.showUploadError('Image upload not yet implemented')
     }
   }
 

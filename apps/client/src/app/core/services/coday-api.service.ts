@@ -9,13 +9,14 @@ import { SessionState } from '@coday/model/session-state'
   providedIn: 'root'
 })
 export class CodayApiService {
-  private clientId: string
+  private clientId: string | null = null
 
   // Modern Angular dependency injection
   private http = inject(HttpClient)
   
   constructor() {
-    this.clientId = this.getOrCreateClientId()
+    // Don't generate clientId automatically anymore
+    // It will be generated lazily when needed (legacy mode)
   }
 
   /**
@@ -40,9 +41,12 @@ export class CodayApiService {
   }
 
   /**
-   * Get the current client ID
+   * Get the current client ID (lazy initialization for legacy mode)
    */
   getClientId(): string {
+    if (!this.clientId) {
+      this.clientId = this.getOrCreateClientId()
+    }
     return this.clientId
   }
 
@@ -66,7 +70,7 @@ export class CodayApiService {
     }
 
     // Fallback to legacy endpoint
-    return this.http.post(`/api/message?clientId=${this.clientId}`, event, {
+    return this.http.post(`/api/message?clientId=${this.getClientId()}`, event, {
       observe: 'response',
       responseType: 'text'
     }).pipe(
@@ -83,31 +87,31 @@ export class CodayApiService {
    * Stop the current execution
    */
   stopExecution(): Observable<any> {
-    return this.http.post(`/api/stop?clientId=${this.clientId}`, {})
+    return this.http.post(`/api/stop?clientId=${this.getClientId()}`, {})
   }
 
   /**
    * Get event details by ID
    */
   getEventDetails(eventId: string): Observable<string> {
-    return this.http.get(`/api/event/${eventId}?clientId=${this.clientId}`, {
+    return this.http.get(`/api/event/${eventId}?clientId=${this.getClientId()}`, {
       responseType: 'text'
     })
   }
 
 
   /**
-   * Get the SSE URL for events
+   * Get the SSE URL for events (legacy)
    */
   getEventsUrl(): string {
-    return `/events?clientId=${this.clientId}`
+    return `/events?clientId=${this.getClientId()}`
   }
 
   /**
-   * Get session state (projects and threads)
+   * Get session state (projects and threads) - LEGACY
    */
   getSessionState(): Observable<SessionState> {
-    return this.http.get<SessionState>(`/api/session/state?clientId=${this.clientId}`).pipe(
+    return this.http.get<SessionState>(`/api/session/state?clientId=${this.getClientId()}`).pipe(
       tap(state => console.log('[API] Session state received:', state))
     )
   }
@@ -116,7 +120,7 @@ export class CodayApiService {
    * Delete a message from the thread (rewind/retry functionality)
    */
   deleteMessage(eventId: string): Observable<{success: boolean, message?: string, error?: string}> {
-    const url = `/api/thread/message/${encodeURIComponent(eventId)}?clientId=${this.clientId}`
+    const url = `/api/thread/message/${encodeURIComponent(eventId)}?clientId=${this.getClientId()}`
     return this.http.delete<{success: boolean, message?: string, error?: string}>(url).pipe(
       tap(response => console.log('[API] Delete message response:', response))
     )

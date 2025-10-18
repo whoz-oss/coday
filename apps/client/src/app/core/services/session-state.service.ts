@@ -28,11 +28,9 @@ export class SessionStateService implements OnDestroy {
 
   // State management
   private sessionStateSubject = new BehaviorSubject<SessionState>(DEFAULT_SESSION_STATE)
-  private isInitializingSubject = new BehaviorSubject<boolean>(true)
 
   // Public observables
   public sessionState$ = this.sessionStateSubject.asObservable()
-  public isInitializing$ = this.isInitializingSubject.asObservable()
 
   // Modern Angular dependency injection
   private codayApi = inject(CodayApiService)
@@ -133,7 +131,6 @@ export class SessionStateService implements OnDestroy {
           }
 
           // Mark initialization as complete
-          this.isInitializingSubject.next(false)
           console.log('[SESSION-STATE] Initialization flag set to false - UI can now be enabled')
         },
       })
@@ -281,6 +278,5 @@ export class SessionStateService implements OnDestroy {
     this.destroy$.next()
     this.destroy$.complete()
     this.sessionStateSubject.complete()
-    this.isInitializingSubject.complete()
   }
 }
