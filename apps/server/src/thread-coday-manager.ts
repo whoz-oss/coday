@@ -169,7 +169,7 @@ class ThreadCodayInstance {
  * Provides a registry of active thread-based Coday instances with SSE connection management.
  */
 export class ThreadCodayManager {
-  private instances: Map<string, ThreadCodayInstance> = new Map()
+  private readonly instances: Map<string, ThreadCodayInstance> = new Map()
 
   constructor(
     private readonly logger: CodayLogger,

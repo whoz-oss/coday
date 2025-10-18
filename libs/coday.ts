@@ -34,7 +34,7 @@ export class Coday {
   private aiClientProvider: AiClientProvider
 
   constructor(
-    private interactor: Interactor,
+    public readonly interactor: Interactor,
     private options: CodayOptions,
     private services: CodayServices
   ) {

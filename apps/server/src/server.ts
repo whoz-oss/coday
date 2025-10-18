@@ -114,7 +114,7 @@ const configRegistry = new ConfigServiceRegistry(configPath, configInteractor)
 
 // Initialize project service for REST API endpoints
 const projectRepository = new ProjectFileRepository(configPath)
-const projectService = new ProjectService2(projectRepository)
+const projectService = new ProjectService2(projectRepository, codayOptions.project)
 
 // Initialize thread service for REST API endpoints
 const projectsDir = path.join(configPath, 'projects')
@@ -141,7 +141,7 @@ registerConfigRoutes(app, configRegistry, getUsername)
 registerWebhookRoutes(app, webhookService, getUsername)
 
 // Register project management routes
-registerProjectRoutes(app, projectService)
+registerProjectRoutes(app, projectService, codayOptions.project)
 
 // Register thread management routes
 registerThreadRoutes(app, threadService, getUsername)
@@ -445,14 +445,14 @@ app.post('/api/projects/:projectName/threads/:threadId/message', (req: express.R
     }
 
     debugLog('MESSAGE', `threadId: ${threadId}, project: ${projectName}, received message`)
-    
+
     const instance = threadCodayManager.get(threadId)
-    if (!instance || !instance.coday) {
+    if (!instance?.coday) {
       res.status(404).send('Thread not found or not connected')
       return
     }
 
-    instance.coday.getInteractor().sendEvent(new AnswerEvent(payload))
+    instance.coday.interactor.sendEvent(new AnswerEvent(payload))
 
     res.status(200).send('Message received successfully!')
   } catch (error) {
@@ -642,30 +642,10 @@ app.get(
     debugLog('THREAD_SSE', `New connection request for thread ${threadId} in project ${projectName}`)
 
     // Validate authentication
-    if (!username || typeof username !== 'string') {
+    // TODO: factorize
+    if (!username) {
       debugLog('THREAD_SSE', 'Rejected: No username provided')
       res.status(401).send('Authentication required')
-      return
-    }
-
-    // Validate thread exists and user has access
-    try {
-      const thread = await threadService.getThread(projectName, threadId)
-      if (!thread) {
-        debugLog('THREAD_SSE', `Thread ${threadId} not found in project ${projectName}`)
-        res.status(404).send(`Thread '${threadId}' not found in project '${projectName}'`)
-        return
-      }
-
-      // Verify ownership (will be relaxed later for multi-user)
-      if (thread.username !== username) {
-        debugLog('THREAD_SSE', `Access denied: thread ${threadId} belongs to ${thread.username}, not ${username}`)
-        res.status(403).send('Access denied: thread belongs to another user')
-        return
-      }
-    } catch (error) {
-      debugLog('THREAD_SSE', `Error validating thread ${threadId}:`, error)
-      res.status(500).send('Error validating thread access')
       return
     }
 
