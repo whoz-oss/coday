@@ -8,49 +8,30 @@
     "esModuleInterop": true,
     "experimentalDecorators": true,
     "importHelpers": true,
-    "lib": [
-      "ESNext",
-      "dom"
-    ],
+    "lib": ["ESNext", "dom"],
     "module": "esnext",
     "moduleResolution": "node",
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noUncheckedIndexedAccess": true,
     "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "paths": {
-      "@coday/ai-thread/*": [
-        "libs/ai-thread/*"
-      ],
-      "@coday/coday-events": [
-        "libs/coday-events/src/index.ts"
-      ],
-      "@coday/core": [
-        "libs/coday.ts"
-      ],
-      "@coday/model/*": [
-        "libs/model/*"
-      ],
-      "@coday/options": [
-        "libs/options.ts"
-      ],
-      "@coday/service/*": [
-        "libs/service/*"
-      ]
+      "@coday/ai-thread/*": ["libs/ai-thread/*"],
+      "@coday/coday-events": ["libs/coday-events/src/index.ts"],
+      "@coday/core": ["libs/coday.ts"],
+      "@coday/model/*": ["libs/model/*"],
+      "@coday/options": ["libs/options.ts"],
+      "@coday/repository/*": ["libs/repository/*"],
+      "@coday/service/*": ["libs/service/*"]
     },
     "skipDefaultLibCheck": true,
     "skipLibCheck": true,
     "sourceMap": true,
     "strict": true,
-    "noImplicitAny": true,
-    "noImplicitReturns": true,
-    "noImplicitThis": true,
-    "noUnusedParameters": true,
-    "noUncheckedIndexedAccess": true,
     "target": "ESNext",
-    "typeRoots": [
-      "node_modules/@types"
-    ]
+    "typeRoots": ["node_modules/@types"]
   },
-  "exclude": [
-    "node_modules",
-    "tmp"
-  ]
+  "exclude": ["node_modules", "tmp"]
 }

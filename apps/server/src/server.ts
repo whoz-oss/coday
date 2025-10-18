@@ -17,6 +17,9 @@ import { ConfigServiceRegistry } from '@coday/service/config-service-registry'
 import { ServerInteractor } from '@coday/model/server-interactor'
 import { registerConfigRoutes } from './config.routes'
 import { registerWebhookRoutes } from './webhook.routes'
+import { registerProjectRoutes } from './project.routes'
+import { ProjectService2 } from './services/project.service2'
+import { ProjectFileRepository } from '@coday/repository/project-file.repository'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT
@@ -103,6 +106,10 @@ const clientManager = new ServerClientManager(logger, webhookService)
 const configInteractor = new ServerInteractor('config-api')
 const configRegistry = new ConfigServiceRegistry(configPath, configInteractor)
 
+// Initialize project service for REST API endpoints
+const projectRepository = new ProjectFileRepository(configPath)
+const projectService = new ProjectService2(projectRepository)
+
 /**
  * Extract username for authentication and logging purposes
  *
@@ -122,6 +129,9 @@ registerConfigRoutes(app, configRegistry, getUsername)
 
 // Register webhook management routes
 registerWebhookRoutes(app, webhookService, getUsername)
+
+// Register project management routes
+registerProjectRoutes(app, projectService)
 
 // Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null
