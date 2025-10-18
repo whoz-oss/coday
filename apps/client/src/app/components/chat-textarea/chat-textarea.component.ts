@@ -35,6 +35,9 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   @Input() isThinking: boolean = false
   @Input() isStarting: boolean = false
   @Input() isSessionInitializing: boolean = false
+
+  // Internal state for stopping
+  isStopping: boolean = false
   @Output() messageSubmitted = new EventEmitter<string>()
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
   @Output() heightChanged = new EventEmitter<number>()
@@ -61,8 +64,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   private subscriptions: Subscription[] = []
 
   // Thinking animation
-  private thinkingPhrases: string[] = ['Thinking...', 'Processing request...', 'Working on it...']
-  currentThinkingPhrase: string = 'Thinking...'
+  private thinkingPhrases: string[] = ['Processing request...', 'Thinking...', 'Working on it...']
+  currentThinkingPhrase: string = 'Processing request...'
   private thinkingPhraseIndex: number = 0
   private thinkingInterval: number | null = null
 
@@ -96,6 +99,12 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   ngAfterViewInit(): void {
     // Set initial height after view initialization
     this.adjustTextareaHeight()
+
+    // Autofocus textarea on initial load if not disabled
+    // Use requestAnimationFrame to ensure DOM is ready
+    requestAnimationFrame(() => {
+      setTimeout(() => this.focusTextarea(), 200)
+    })
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -104,6 +113,26 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
         this.startThinkingAnimation()
       } else {
         this.stopThinkingAnimation()
+        // Reset stopping state when thinking ends
+        this.isStopping = false
+        // Autofocus textarea when thinking mode ends
+        // Use requestAnimationFrame + timeout to ensure disabled attribute is removed
+        if (changes['isThinking'].previousValue) {
+          console.log('[CHAT-TEXTAREA] Thinking ended, scheduling focus')
+          requestAnimationFrame(() => {
+            setTimeout(() => this.focusTextarea(), 100)
+          })
+        }
+      }
+    }
+
+    // Autofocus when session initialization completes
+    if (changes['isSessionInitializing']) {
+      if (!changes['isSessionInitializing'].currentValue && changes['isSessionInitializing'].previousValue) {
+        console.log('[CHAT-TEXTAREA] Session initialization completed, scheduling focus')
+        requestAnimationFrame(() => {
+          setTimeout(() => this.focusTextarea(), 100)
+        })
       }
     }
 
@@ -177,6 +206,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   }
 
   onStopClick() {
+    this.isStopping = true
     this.stopRequested.emit()
   }
 
@@ -483,6 +513,10 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     if (this.isSessionInitializing) {
       return 'Initializing session...'
     } else if (this.isThinking) {
+      // Show "Stopping..." if stop button was clicked
+      if (this.isStopping) {
+        return 'Stopping...'
+      }
       // Show "Starting..." for first message, then rotate phrases
       return this.isStarting ? 'Starting...' : this.currentThinkingPhrase
     } else if (this.showWelcome) {
@@ -592,5 +626,26 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
     // Adjust textarea height to fit the restored content
     setTimeout(() => this.adjustTextareaHeight(), 10)
+  }
+
+  /**
+   * Focus the textarea
+   */
+  private focusTextarea(): void {
+    const element = this.messageInput?.nativeElement
+    console.log('[CHAT-TEXTAREA] focusTextarea called', {
+      hasElement: !!element,
+      isDisabled: this.isDisabled,
+      isThinking: this.isThinking,
+      elementDisabled: element?.disabled,
+      isSessionInitializing: this.isSessionInitializing,
+    })
+
+    if (element && !element.disabled) {
+      element.focus()
+      console.log('[CHAT-TEXTAREA] Textarea focused successfully')
+    } else {
+      console.log('[CHAT-TEXTAREA] Focus blocked - element disabled or not available')
+    }
   }
 }

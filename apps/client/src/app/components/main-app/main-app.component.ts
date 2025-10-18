@@ -208,15 +208,16 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   onMessageSubmitted(message: string): void {
     console.log('[MAIN-APP] Sending message:', message)
 
-    // Mark that user has sent their first message and immediately show thinking state
+    // Mark that user has sent their first message
     if (!this.userHasSentMessage) {
       this.userHasSentMessage = true
       this.stopWelcomeRotation()
-      // Immediately put textarea in thinking mode for first message
-      // The backend ThinkingEvent will take over when it arrives
-      this.isThinking = true
       this.isStartingFirstMessage = true
     }
+
+    // Immediately put textarea in thinking mode for every message
+    // The backend ThinkingEvent will take over when it arrives
+    this.isThinking = true
 
     this.codayService.sendMessage(message)
   }

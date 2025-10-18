@@ -1,147 +1,167 @@
 <!-- Floating Action Button to toggle sidenav -->
-<button
-  class="sidenav-toggle-btn"
-  (click)="toggle()"
-  [class.active]="isOpen"
-  [class.hidden]="isOpen"
-  title="Menu Coday"
-  type="button"
->
-  <img [attr.src]="'CODAY-Logo.png'" alt="Coday" class="logo" />
-  <div class="hamburger-overlay">
+@if (hasProject() && !isOpen) {
+  <button mat-icon-button class="sidenav-toggle-btn" (click)="toggle()" title="Menu" type="button">
     <mat-icon>menu</mat-icon>
-  </div>
-</button>
+  </button>
+
+  <!-- Floating Logo Button at Bottom -->
+  @if (!isOpen) {
+    <a
+      href="https://github.com/whoz-oss/coday"
+      target="_blank"
+      rel="noopener noreferrer"
+      class="sidenav-logo-btn"
+      title="Contribute on GitHub"
+    >
+      <img [attr.src]="'CODAY-Logo.png'" alt="Coday" class="logo" />
+    </a>
+  }
+}
 
 <!-- Material Sidenav Container -->
 <mat-sidenav-container class="sidenav-container" [hasBackdrop]="false">
-  <mat-sidenav mode="push" position="start" [opened]="isOpen" (closed)="close()" class="app-sidenav">
-    <!-- Sidenav Header with Project Selector -->
-    <div class="sidenav-header">
-      <img [attr.src]="'CODAY-Logo.png'" alt="Coday" class="sidenav-logo" />
-      <div class="header-title-section">
-        @if (canShowProjectSelector()) {
-          <!-- Native select when projects are available -->
-          <div class="select-wrapper">
-            <select
-              class="project-select"
-              [(ngModel)]="selectedProjectName"
-              (change)="onProjectChange($event)"
-              [title]="'Select project'"
-            >
-              @for (project of getProjectList(); track project.name) {
-                <option [value]="project.name">{{ project.name }}</option>
-              }
-            </select>
-            <mat-icon class="select-arrow">expand_more</mat-icon>
-          </div>
-        } @else {
-          <!-- Static title when no projects available -->
-          <h2 class="sidenav-title">{{ getProjectDisplayName() }}</h2>
-        }
-      </div>
-      <button mat-icon-button (click)="close()" class="close-btn">
-        <mat-icon>close</mat-icon>
-      </button>
-    </div>
-
-    <!-- New Thread Link - Always Visible -->
-    <div class="new-thread-section">
-      <a class="new-thread-link" (click)="createNewThread()" role="button" tabindex="0">
-        <mat-icon fontSet="material-icons-outlined">play_circle</mat-icon>
-        <span class="new-thread-text">Start a new thread</span>
-      </a>
-    </div>
-
-    <!-- Expansion Panels Container -->
-    <div class="sidenav-sections">
-      <!-- Threads Section - Expanded by default -->
-      <div class="section-container">
-        <button
-          class="section-toggle"
-          [class.active]="expandedSections['threads']"
-          (click)="toggleSection('threads')"
-          type="button"
-        >
-          @if (expandedSections['threads']) {
-            <mat-icon class="arrow-icon expanded">keyboard_arrow_up</mat-icon>
-          } @else {
-            <mat-icon class="section-icon">forum</mat-icon>
-          }
-          <span class="section-label">Threads</span>
-        </button>
-        @if (expandedSections['threads']) {
-          <div class="section-content threads">
-            <app-thread-selector class="sidenav-thread-selector"></app-thread-selector>
-          </div>
-        }
-      </div>
-
-      <!-- Configuration Section -->
-      <div class="section-container">
-        <button
-          class="section-toggle"
-          [class.active]="expandedSections['config']"
-          (click)="toggleSection('config')"
-          type="button"
-        >
-          @if (expandedSections['config']) {
-            <mat-icon class="arrow-icon expanded">keyboard_arrow_up</mat-icon>
-          } @else {
-            <mat-icon class="section-icon">tune</mat-icon>
-          }
-          <span class="section-label">Preferences</span>
-        </button>
-        @if (expandedSections['config']) {
-          <div class="section-content">
-            <!-- Options -->
-            <div class="preference-item">
-              <app-options-panel class="inline-panel"></app-options-panel>
+  @if (hasProject()) {
+    <mat-sidenav mode="push" position="start" [opened]="isOpen" (closed)="close()" class="app-sidenav">
+      <!-- Sidenav Header with Project Selector -->
+      <div class="sidenav-header">
+        <img [attr.src]="'CODAY-Logo.png'" alt="Coday" class="sidenav-logo" />
+        <div class="header-title-section">
+          @if (canShowProjectSelector()) {
+            <!-- Native select when projects are available -->
+            <div class="select-wrapper">
+              <select
+                class="project-select"
+                [(ngModel)]="selectedProjectName"
+                (change)="onProjectChange($event)"
+                [title]="'Select project'"
+              >
+                @for (project of getProjectList(); track project.name) {
+                  <option [value]="project.name">{{ project.name }}</option>
+                }
+              </select>
+              <mat-icon class="select-arrow">expand_more</mat-icon>
             </div>
-          </div>
-        }
+          } @else {
+            <!-- Static title when project is selected but can't switch -->
+            <h2 class="sidenav-title">{{ getProjectDisplayName() }}</h2>
+          }
+        </div>
+        <button mat-icon-button (click)="close()" class="close-btn">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
 
+      <!-- New Thread Link - Always Visible -->
+      <div class="new-thread-section">
+        <a class="new-thread-link" (click)="createNewThread()" role="button" tabindex="0">
+          <mat-icon fontSet="material-icons-outlined">play_circle</mat-icon>
+          <span class="new-thread-text">Start a new thread</span>
+        </a>
+      </div>
+
+      <!-- Expansion Panels Container -->
+      <div class="sidenav-sections" [class.has-footer]="true">
+        <!-- Threads Section - Expanded by default -->
         <div class="section-container">
-          <button class="section-toggle" (click)="openUserConfig(); $event.stopPropagation()" type="button">
-            <mat-icon class="section-icon">settings</mat-icon>
-            <span class="section-label">User Configuration</span>
+          <button
+            class="section-toggle"
+            [class.active]="expandedSections['threads']"
+            (click)="toggleSection('threads')"
+            type="button"
+          >
+            @if (expandedSections['threads']) {
+              <mat-icon class="arrow-icon expanded">keyboard_arrow_up</mat-icon>
+            } @else {
+              <mat-icon class="section-icon">forum</mat-icon>
+            }
+            <span class="section-label">Threads</span>
           </button>
+          @if (expandedSections['threads']) {
+            <div class="section-content threads">
+              <app-thread-selector class="sidenav-thread-selector"></app-thread-selector>
+            </div>
+          }
         </div>
 
-        <!-- Admin only -->
-        @if (isAdmin) {
-          <!-- Project Config -->
-          @if (hasProject()) {
-            <div class="section-container">
-              <button class="section-toggle" (click)="openProjectConfig(); $event.stopPropagation()" type="button">
-                <mat-icon class="section-icon">settings_applications</mat-icon>
-                <span class="section-label">Project Configuration</span>
-              </button>
+        <!-- Configuration Section -->
+        <div class="section-container">
+          <button
+            class="section-toggle"
+            [class.active]="expandedSections['config']"
+            (click)="toggleSection('config')"
+            type="button"
+          >
+            @if (expandedSections['config']) {
+              <mat-icon class="arrow-icon expanded">keyboard_arrow_up</mat-icon>
+            } @else {
+              <mat-icon class="section-icon">tune</mat-icon>
+            }
+            <span class="section-label">Preferences</span>
+          </button>
+          @if (expandedSections['config']) {
+            <div class="section-content">
+              <!-- Options -->
+              <div class="preference-item">
+                <app-options-panel class="inline-panel"></app-options-panel>
+              </div>
             </div>
-          } @else {
+          }
+
+          <div class="section-container">
+            <button class="section-toggle" (click)="openUserConfig(); $event.stopPropagation()" type="button">
+              <mat-icon class="section-icon">settings</mat-icon>
+              <span class="section-label">User Configuration</span>
+            </button>
+          </div>
+
+          <div class="section-container">
+            <a
+              href="https://github.com/whoz-oss/coday"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="section-toggle contribute-btn"
+              title="Contribute on GitHub"
+            >
+              <img [attr.src]="'CODAY-Logo.png'" alt="Coday" class="contribute-logo" />
+              <span class="section-label">Contribute on GitHub</span>
+            </a>
+          </div>
+
+          <!-- Admin only -->
+          @if (isAdmin) {
+            <!-- Project Config -->
+            @if (hasProject()) {
+              <div class="section-container">
+                <button class="section-toggle" (click)="openProjectConfig(); $event.stopPropagation()" type="button">
+                  <mat-icon class="section-icon">settings_applications</mat-icon>
+                  <span class="section-label">Project Configuration</span>
+                </button>
+              </div>
+            } @else {
+              <div class="section-container">
+                <button
+                  class="section-toggle"
+                  (click)="openProjectConfig(); $event.stopPropagation()"
+                  type="button"
+                  disabled
+                >
+                  <mat-icon class="section-icon">settings_applications</mat-icon>
+                  <span class="section-label">Project config (No project)</span>
+                </button>
+              </div>
+            }
+            <!-- Webhooks - Admin only -->
             <div class="section-container">
-              <button
-                class="section-toggle"
-                (click)="openProjectConfig(); $event.stopPropagation()"
-                type="button"
-                disabled
-              >
-                <mat-icon class="section-icon">settings_applications</mat-icon>
-                <span class="section-label">Project config (No project)</span>
+              <button class="section-toggle" (click)="openWebhooks(); $event.stopPropagation()" type="button">
+                <mat-icon class="section-icon">webhook</mat-icon>
+                <span class="section-label">Webhooks</span>
               </button>
             </div>
           }
-          <!-- Webhooks - Admin only -->
-          <div class="section-container">
-            <button class="section-toggle" (click)="openWebhooks(); $event.stopPropagation()" type="button">
-              <mat-icon class="section-icon">webhook</mat-icon>
-              <span class="section-label">Webhooks</span>
-            </button>
-          </div>
-        }
+        </div>
       </div>
-    </div>
-  </mat-sidenav>
+    </mat-sidenav>
+  }
 
   <mat-sidenav-content>
     <!-- Content goes here (router-outlet) -->
