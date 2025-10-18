@@ -63,6 +63,7 @@
     @if (!isLoadingThreads && threads.length > 0) {
     <div class="thread-list">
       @for (thread of threads; track trackByThreadId($index, thread)) {
+      <div
         class="thread-item"
         (click)="selectThread(thread.id)"
         tabindex="0"

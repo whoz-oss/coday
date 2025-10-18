@@ -12,7 +12,7 @@ import { ChoiceOption, ChoiceSelectComponent } from '../choice-select/choice-sel
 import { CodayService } from '../../core/services/coday.service'
 import { CodayApiService } from '../../core/services/coday-api.service'
 import { ConnectionStatus } from '../../core/services/event-stream.service'
-import { SessionStateService } from '../../core/services/session-state.service'
+// import { SessionStateService } from '../../core/services/session-state.service' // Disabled for new architecture
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { ThreadStateService } from '../../core/services/thread-state.service'
 import { ImageUploadService } from '../../services/image-upload.service'
@@ -84,7 +84,8 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   // Modern Angular dependency injection
   private codayService = inject(CodayService)
   private codayApiService = inject(CodayApiService)
-  private sessionStateService = inject(SessionStateService) // Injection to initialize the service
+  // NOTE: SessionStateService disabled for new thread-based architecture
+  // private sessionStateService = inject(SessionStateService)
   private projectStateService = inject(ProjectStateService)
   private threadStateService = inject(ThreadStateService)
   private imageUploadService = inject(ImageUploadService)
@@ -96,7 +97,7 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   constructor() {
     this.clientId = this.codayApiService.getClientId()
     console.log('[MAIN-APP] Constructor - clientId:', this.clientId)
-    console.log('[MAIN-APP] SessionStateService injected and will initialize:', !!this.sessionStateService)
+    console.log('[MAIN-APP] Using new thread-based architecture (SessionStateService disabled)')
   }
 
   ngOnInit(): void {
@@ -157,10 +158,9 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
       this.currentChoice = choice
     })
 
-    this.sessionStateService.isInitializing$.pipe(takeUntil(this.destroy$)).subscribe((isInitializing) => {
-      console.log('[MAIN-APP] Session initialization state changed:', isInitializing)
-      this.isSessionInitializing = isInitializing
-    })
+    // Session initialization disabled for new architecture
+    // State is managed by ProjectStateService and ThreadStateService
+    this.isSessionInitializing = false
 
     this.codayService.connectionStatus$.pipe(takeUntil(this.destroy$)).subscribe((status) => {
       this.connectionStatus = status

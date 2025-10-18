@@ -26,6 +26,7 @@
     @if (!isLoading && !error && projects.length > 0) {
     <div class="project-list">
       @for (project of projects; track trackByName($index, project)) {
+      <div
         class="project-card"
         (click)="selectProject(project.name)"
         tabindex="0"
