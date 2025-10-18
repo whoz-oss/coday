@@ -1,3 +1,13 @@
+## 0.28.0 (2025-10-18)
+
+### 🚀 Features
+
+- separated packages for client, server & web ([fa2edad](https://github.com/whoz-oss/coday/commit/fa2edad))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.27.0 (2025-10-18)
 
 ### 🚀 Features
