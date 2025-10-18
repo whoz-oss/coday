@@ -103,5 +103,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
         run: |
-          # Run nx release with everything in one command (--yes to skip prompts)
           npx nx release --yes
