@@ -1,6 +1,6 @@
 {
   "name": "@whoz-oss/coday-web",
-  "version": "0.29.3",
+  "version": "0.29.4",
   "repository": "https://github.com/whoz-oss/coday",
   "type": "module",
   "main": "server/server.js",
@@ -8,8 +8,8 @@
     "coday-web": "./bin.js"
   },
   "dependencies": {
-    "@whoz-oss/coday-client": "0.29.3",
-    "@whoz-oss/coday-server": "0.29.3"
+    "@whoz-oss/coday-client": "0.29.4",
+    "@whoz-oss/coday-server": "0.29.4"
   },
   "publishConfig": {
     "access": "public"

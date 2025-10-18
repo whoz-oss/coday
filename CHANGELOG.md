@@ -1,3 +1,13 @@
+## 0.29.4 (2025-10-18)
+
+### 🩹 Fixes
+
+- release client and server for the first time ([1b8f834](https://github.com/whoz-oss/coday/commit/1b8f834))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.29.3 (2025-10-18)
 
 ### 🩹 Fixes
