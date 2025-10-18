@@ -7,21 +7,25 @@
     </div>
 
     <!-- Loading state -->
-    <div *ngIf="isLoading" class="loading">
+    @if (isLoading) {
+    <div class="loading">
       <div class="spinner"></div>
       <p>Loading projects...</p>
     </div>
+    }
 
     <!-- Error state -->
-    <div *ngIf="error && !isLoading" class="error">
+    @if (error && !isLoading) {
+    <div class="error">
       <p>{{ error }}</p>
       <button (click)="retry()" class="retry-button">Retry</button>
     </div>
+    }
 
     <!-- Project list -->
-    <div *ngIf="!isLoading && !error && projects.length > 0" class="project-list">
-      <div
-        *ngFor="let project of projects; trackBy: trackByName"
+    @if (!isLoading && !error && projects.length > 0) {
+    <div class="project-list">
+      @for (project of projects; track trackByName($index, project)) {
         class="project-card"
         (click)="selectProject(project.name)"
         tabindex="0"
@@ -31,12 +35,16 @@
         <div class="project-icon">📁</div>
         <div class="project-name">{{ project.name }}</div>
       </div>
+      }
     </div>
+    }
 
     <!-- No projects state -->
-    <div *ngIf="!isLoading && !error && projects.length === 0" class="no-projects">
+    @if (!isLoading && !error && projects.length === 0) {
+    <div class="no-projects">
       <p>No projects available.</p>
       <p class="hint">Contact your administrator to create a project.</p>
     </div>
+    }
   </div>
 </div>

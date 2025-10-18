@@ -47,9 +47,25 @@ export class CodayApiService {
   }
 
   /**
-   * Send an event to the Coday API
+   * Send an event to the Coday API (thread-based)
    */
-  sendEvent(event: CodayEvent): Observable<any> {
+  sendEvent(event: CodayEvent, projectName?: string, threadId?: string): Observable<any> {
+    // Use new thread-based endpoint if project and thread are provided
+    if (projectName && threadId) {
+      return this.http.post(`/api/projects/${projectName}/threads/${threadId}/message`, event, {
+        observe: 'response',
+        responseType: 'text'
+      }).pipe(
+        tap(response => {
+          if (response.status !== 200) {
+            console.warn('[API] Unexpected status:', response.status)
+          }
+        }),
+        map(response => response.body)
+      )
+    }
+
+    // Fallback to legacy endpoint
     return this.http.post(`/api/message?clientId=${this.clientId}`, event, {
       observe: 'response',
       responseType: 'text'

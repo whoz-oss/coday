@@ -31,6 +31,10 @@ import { ChoiceOption } from '../../components/choice-select/choice-select.compo
 export class CodayService implements OnDestroy {
   private destroy$ = new Subject<void>()
 
+  // Current project and thread for API calls
+  private currentProject: string | null = null
+  private currentThread: string | null = null
+
   // State subjects
   private messagesSubject = new BehaviorSubject<ChatMessage[]>([])
   private isThinkingSubject = new BehaviorSubject<boolean>(false)
@@ -91,6 +95,9 @@ export class CodayService implements OnDestroy {
    */
   connectToThread(projectName: string, threadId: string): void {
     console.log('[CODAY] Connecting to thread:', projectName, threadId)
+    // Store current project and thread for API calls
+    this.currentProject = projectName
+    this.currentThread = threadId
     this.eventStream.connectToThread(projectName, threadId)
   }
 
@@ -131,14 +138,14 @@ export class CodayService implements OnDestroy {
       // Clear the current invite event immediately after using it
       this.currentInviteEventSubject.next(null)
 
-      this.codayApi.sendEvent(answerEvent).subscribe({
+      this.codayApi.sendEvent(answerEvent, this.currentProject || undefined, this.currentThread || undefined).subscribe({
         error: (error) => console.error('[CODAY] Send error:', error),
       })
     } else {
       // Fallback to basic AnswerEvent if no invite event stored
       const answerEvent = new AnswerEvent({ answer: message })
 
-      this.codayApi.sendEvent(answerEvent).subscribe({
+      this.codayApi.sendEvent(answerEvent, this.currentProject || undefined, this.currentThread || undefined).subscribe({
         error: (error) => console.error('[CODAY] Send error:', error),
       })
     }
@@ -157,7 +164,7 @@ export class CodayService implements OnDestroy {
       this.currentChoiceSubject.next(null)
       // Clear the current choice event to prevent reuse
       this.currentChoiceEvent = null
-      this.codayApi.sendEvent(answerEvent).subscribe({
+      this.codayApi.sendEvent(answerEvent, this.currentProject || undefined, this.currentThread || undefined).subscribe({
         next: () => {},
         error: (error) => {
           console.error('[CODAY-CHOICE] Choice error:', error)

@@ -27,8 +27,12 @@
           [disabled]="!firstMessage.trim() || isCreatingThread"
           class="create-button"
         >
-          <span *ngIf="!isCreatingThread">Create & Send</span>
-          <span *ngIf="isCreatingThread">Creating...</span>
+          @if (!isCreatingThread) {
+          <span>Create & Send</span>
+          }
+          @if (isCreatingThread) {
+          <span>Creating...</span>
+          }
         </button>
         <span class="hint">Cmd+Enter or Ctrl+Enter</span>
       </div>
@@ -36,25 +40,29 @@
   </div>
 
   <!-- Error state -->
-  <div *ngIf="error" class="error">
+  @if (error) {
+  <div class="error">
     <p>{{ error }}</p>
     <button (click)="retry()" class="retry-button">Retry</button>
   </div>
+  }
 
   <!-- Existing threads section -->
   <div class="threads-section">
     <h2>Recent threads</h2>
 
     <!-- Loading state -->
-    <div *ngIf="isLoadingThreads" class="loading">
+    @if (isLoadingThreads) {
+    <div class="loading">
       <div class="spinner"></div>
       <p>Loading threads...</p>
     </div>
+    }
 
     <!-- Thread list -->
-    <div *ngIf="!isLoadingThreads && threads.length > 0" class="thread-list">
-      <div
-        *ngFor="let thread of threads; trackBy: trackByThreadId"
+    @if (!isLoadingThreads && threads.length > 0) {
+    <div class="thread-list">
+      @for (thread of threads; track trackByThreadId($index, thread)) {
         class="thread-item"
         (click)="selectThread(thread.id)"
         tabindex="0"
@@ -67,12 +75,16 @@
           <div class="thread-date">{{ formatDate(thread.modifiedDate) }}</div>
         </div>
       </div>
+      }
     </div>
+    }
 
     <!-- No threads state -->
-    <div *ngIf="!isLoadingThreads && threads.length === 0 && !error" class="no-threads">
+    @if (!isLoadingThreads && threads.length === 0 && !error) {
+    <div class="no-threads">
       <p>No threads yet for this project.</p>
       <p class="hint">Start a new conversation above to create your first thread.</p>
     </div>
+    }
   </div>
 </div>

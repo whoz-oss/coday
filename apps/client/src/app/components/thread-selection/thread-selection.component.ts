@@ -62,6 +62,17 @@ export class ThreadSelectionComponent implements OnInit, OnDestroy {
       this.projectState.selectProject(this.projectName).pipe(takeUntil(this.destroy$)).subscribe()
     }
 
+    // Subscribe to route parameter changes (when switching projects)
+    this.route.params.pipe(takeUntil(this.destroy$)).subscribe((params) => {
+      const newProjectName = params['projectName']
+      if (newProjectName && newProjectName !== this.projectName) {
+        console.log('[THREAD-SELECTION] Project changed from', this.projectName, 'to', newProjectName)
+        this.projectName = newProjectName
+        this.projectState.selectProject(this.projectName).pipe(takeUntil(this.destroy$)).subscribe()
+        this.loadThreads()
+      }
+    })
+
     // Load threads for this project
     this.loadThreads()
   }
