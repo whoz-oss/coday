@@ -10,11 +10,9 @@ import { ChatTextareaComponent } from '../chat-textarea/chat-textarea.component'
 import { ChoiceOption, ChoiceSelectComponent } from '../choice-select/choice-select.component'
 
 import { CodayService } from '../../core/services/coday.service'
-import { CodayApiService } from '../../core/services/coday-api.service'
 import { ConnectionStatus } from '../../core/services/event-stream.service'
 // import { SessionStateService } from '../../core/services/session-state.service' // Disabled for new architecture
-import { ProjectStateService } from '../../core/services/project-state.service'
-import { ThreadStateService } from '../../core/services/thread-state.service'
+// ProjectStateService and ThreadStateService managed by route guards
 import { ImageUploadService } from '../../services/image-upload.service'
 import { TabTitleService } from '../../services/tab-title.service'
 import { PreferencesService } from '../../services/preferences.service'
@@ -82,11 +80,8 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // Modern Angular dependency injection
   private codayService = inject(CodayService)
-  private codayApiService = inject(CodayApiService)
   // NOTE: SessionStateService disabled for new thread-based architecture
-  // private sessionStateService = inject(SessionStateService)
-  private projectStateService = inject(ProjectStateService)
-  private threadStateService = inject(ThreadStateService)
+  // NOTE: ProjectStateService and ThreadStateService are now managed by route guards
   private imageUploadService = inject(ImageUploadService)
   private titleService = inject(TabTitleService) // Renamed to avoid conflicts
   private preferencesService = inject(PreferencesService)
@@ -110,9 +105,8 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
 
     console.log('[MAIN-APP] Initializing with project:', projectName, 'thread:', threadId)
 
-    // Update state services
-    this.projectStateService.selectProject(projectName).pipe(takeUntil(this.destroy$)).subscribe()
-    this.threadStateService.selectThread(projectName, threadId).pipe(takeUntil(this.destroy$)).subscribe()
+    // Note: projectStateGuard and threadStateGuard have already selected
+    // the project and thread before this component loads
 
     // Check if we have a first message from router state (implicit thread creation)
     const navigation = this.router.getCurrentNavigation()
@@ -335,23 +329,8 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
 
     console.log('[MAIN-APP] Uploading', files.length, 'image(s)')
 
-    // Upload each image file
-    for (const file of files) {
-      // Image upload disabled for now in new architecture
-      this.showUploadError('Image upload not yet implemented')
-    }
-  }
-
-  private showUploadStatus(message: string): void {
-    this.uploadStatus = { message, isError: false }
-  }
-
-  private showUploadSuccess(message: string): void {
-    this.uploadStatus = { message: `✅ ${message}`, isError: false }
-    // Auto-hide success message after 3 seconds
-    setTimeout(() => {
-      this.uploadStatus = { message: '', isError: false }
-    }, 3000)
+    // Image upload disabled for now in new architecture
+    this.showUploadError('Image upload not yet implemented')
   }
 
   private showUploadError(message: string): void {
