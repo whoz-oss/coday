@@ -13,14 +13,20 @@ import { ConfigMaskingService } from '@coday/service/config-masking.service'
 export class ProjectService2 {
   private readonly maskingService = new ConfigMaskingService()
 
-  constructor(private readonly repository: ProjectRepository) {}
+  constructor(
+    private readonly repository: ProjectRepository,
+    private readonly forcedProject: string | undefined | null
+  ) {}
 
   /**
    * List all available projects
    * @returns Array of project objects with name
    */
   listProjects(): Array<{ name: string }> {
-    return this.repository.listProjects().map((name: string) => ({ name }))
+    return this.repository
+      .listProjects()
+      .filter((projectName) => !this.forcedProject || projectName === this.forcedProject)
+      .map((name: string) => ({ name }))
   }
 
   /**
@@ -32,6 +38,7 @@ export class ProjectService2 {
     name: string
     config: ProjectLocalConfig
   } | null {
+    this.checkAgainstForced(name)
     const config = this.repository.getConfig(name)
     if (!config) {
       return null
@@ -45,6 +52,7 @@ export class ProjectService2 {
    * @returns true if project exists
    */
   exists(name: string): boolean {
+    this.checkAgainstForced(name)
     return this.repository.exists(name)
   }
 
@@ -55,6 +63,7 @@ export class ProjectService2 {
    * @throws Error if project already exists or invalid parameters
    */
   createProject(name: string, projectPath: string): void {
+    this.checkAgainstForced(name)
     if (!name || !projectPath) {
       throw new Error('Project name and path are required')
     }
@@ -72,6 +81,7 @@ export class ProjectService2 {
    * @throws Error if project doesn't exist
    */
   updateProjectConfig(name: string, config: ProjectLocalConfig): void {
+    this.checkAgainstForced(name)
     if (!this.repository.exists(name)) {
       throw new Error(`Project '${name}' does not exist`)
     }
@@ -85,6 +95,7 @@ export class ProjectService2 {
    * @throws Error if project doesn't exist
    */
   deleteProject(name: string): void {
+    this.checkAgainstForced(name)
     const deleted = this.repository.deleteProject(name)
     if (!deleted) {
       throw new Error(`Project '${name}' does not exist`)
@@ -98,6 +109,7 @@ export class ProjectService2 {
    * @returns Masked configuration or null if not found
    */
   getProjectConfigForClient(name: string): ProjectLocalConfig | null {
+    this.checkAgainstForced(name)
     const config = this.repository.getConfig(name)
     if (!config) {
       return null
@@ -114,6 +126,7 @@ export class ProjectService2 {
    * @throws Error if project doesn't exist
    */
   updateProjectConfigFromClient(name: string, incomingConfig: ProjectLocalConfig): void {
+    this.checkAgainstForced(name)
     const currentConfig = this.repository.getConfig(name)
     if (!currentConfig) {
       throw new Error(`Project '${name}' does not exist`)
@@ -122,5 +135,11 @@ export class ProjectService2 {
     const unmaskedConfig = this.maskingService.unmaskConfig(incomingConfig, currentConfig)
 
     this.repository.saveConfig(name, unmaskedConfig)
+  }
+
+  private checkAgainstForced(name: string): void {
+    if (this.forcedProject && this.forcedProject !== name) {
+      throw Error(`Project selection outside of ${name} not allowed`)
+    }
   }
 }

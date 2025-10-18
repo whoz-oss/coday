@@ -8,44 +8,37 @@
 
     <!-- Loading state -->
     @if (isLoading) {
-    <div class="loading">
-      <div class="spinner"></div>
-      <p>Loading projects...</p>
-    </div>
-    }
-
-    <!-- Error state -->
-    @if (error && !isLoading) {
-    <div class="error">
-      <p>{{ error }}</p>
-      <button (click)="retry()" class="retry-button">Retry</button>
-    </div>
+      <div class="loading">
+        <div class="spinner"></div>
+        <p>Loading projects...</p>
+      </div>
     }
 
     <!-- Project list -->
-    @if (!isLoading && !error && projects.length > 0) {
-    <div class="project-list">
-      @for (project of projects; track trackByName($index, project)) {
-      <div
-        class="project-card"
-        (click)="selectProject(project.name)"
-        tabindex="0"
-        (keydown.enter)="selectProject(project.name)"
-        (keydown.space)="selectProject(project.name)"
-      >
-        <div class="project-icon">📁</div>
-        <div class="project-name">{{ project.name }}</div>
+    @let projectList = projects();
+    @if (!isLoading && !error && projectList && projectList.length > 0) {
+      <div class="project-list">
+        @for (project of projectList; track trackByName($index, project)) {
+          <div
+            class="project-card"
+            (click)="selectProject(project.name)"
+            tabindex="0"
+            (keydown.enter)="selectProject(project.name)"
+            (keydown.space)="selectProject(project.name)"
+          >
+            <div class="project-icon">📁</div>
+            <div class="project-name">{{ project.name }}</div>
+          </div>
+        }
       </div>
-      }
-    </div>
     }
 
     <!-- No projects state -->
     @if (!isLoading && !error && projects.length === 0) {
-    <div class="no-projects">
-      <p>No projects available.</p>
-      <p class="hint">Contact your administrator to create a project.</p>
-    </div>
+      <div class="no-projects">
+        <p>No projects available.</p>
+        <p class="hint">Contact your administrator to create a project.</p>
+      </div>
     }
   </div>
 </div>

@@ -14,6 +14,7 @@ export interface ProjectInfo {
  */
 export interface ProjectListResponse {
   projects: ProjectInfo[]
+  forcedProject?: string | null
 }
 
 /**
@@ -33,7 +34,7 @@ export interface ProjectDetails {
 export class ProjectApiService {
   private readonly baseUrl = '/api/projects'
 
-  constructor(private http: HttpClient) {}
+  constructor(private readonly http: HttpClient) {}
 
   /**
    * List all available projects

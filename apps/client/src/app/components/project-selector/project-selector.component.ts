@@ -1,7 +1,5 @@
-import { Component, OnInit, OnDestroy, Output, EventEmitter, inject } from '@angular/core'
+import { Component, EventEmitter, inject, OnDestroy, OnInit, Output } from '@angular/core'
 import { Subject } from 'rxjs'
-import { takeUntil } from 'rxjs/operators'
-import { SessionStateService } from '../../core/services/session-state.service'
 import { CodayService } from '../../core/services/coday.service'
 import { SessionState } from '@coday/model/session-state'
 
@@ -23,18 +21,10 @@ export class ProjectSelectorComponent implements OnInit, OnDestroy {
   @Output() projectSelected = new EventEmitter<string>()
 
   // Modern Angular dependency injection
-  private sessionState = inject(SessionStateService)
   private codayService = inject(CodayService)
 
   ngOnInit(): void {
     // Subscribe to projects state
-    this.sessionState
-      .getProjects$()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((projects) => {
-        console.log('[PROJECT-SELECTOR] Projects updated:', projects)
-        this.projects = projects
-      })
   }
 
   ngOnDestroy(): void {
