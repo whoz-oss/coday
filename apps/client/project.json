@@ -101,8 +101,10 @@
       }
     },
     "nx-release-publish": {
+      "executor": "nx:run-commands",
       "options": {
-        "packageRoot": "apps/client/dist"
+        "command": "pnpm publish --access public --no-git-checks",
+        "cwd": "apps/client/dist"
       }
     }
   }
