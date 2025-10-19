@@ -1,5 +1,5 @@
 <!-- Floating Action Button to toggle sidenav -->
-@if (hasProject() && !isOpen) {
+@if (!isOpen) {
   <button mat-icon-button class="sidenav-toggle-btn" (click)="toggle()" title="Menu" type="button">
     <mat-icon>menu</mat-icon>
   </button>
