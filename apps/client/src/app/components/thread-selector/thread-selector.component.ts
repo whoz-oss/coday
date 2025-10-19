@@ -1,7 +1,12 @@
-import { Component, inject, OnDestroy, OnInit } from '@angular/core'
+import { Component, inject, OnDestroy, OnInit, Input, Output, EventEmitter } from '@angular/core'
 import { CommonModule } from '@angular/common'
+import { FormsModule } from '@angular/forms'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
+import { MatIconModule } from '@angular/material/icon'
+import { MatButtonModule } from '@angular/material/button'
+import { MatInputModule } from '@angular/material/input'
+import { MatFormFieldModule } from '@angular/material/form-field'
 import { SessionStateService } from '../../core/services/session-state.service'
 import { CodayService } from '../../core/services/coday.service'
 import { SessionState } from '@coday/model/session-state'
@@ -9,7 +14,7 @@ import { SessionState } from '@coday/model/session-state'
 @Component({
   selector: 'app-thread-selector',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule, MatIconModule, MatButtonModule, MatInputModule, MatFormFieldModule],
   templateUrl: './thread-selector.component.html',
   styleUrl: './thread-selector.component.scss',
 })
@@ -19,6 +24,11 @@ export class ThreadSelectorComponent implements OnInit, OnDestroy {
   // State from SessionStateService
   threads: SessionState['threads'] | null = null
   projects: SessionState['projects'] | null = null
+
+  // Search functionality
+  @Input() searchMode = false
+  @Input() searchQuery = ''
+  @Output() searchModeChange = new EventEmitter<boolean>()
 
   // Modern Angular dependency injection
   private sessionState = inject(SessionStateService)
@@ -100,8 +110,16 @@ export class ThreadSelectorComponent implements OnInit, OnDestroy {
       return []
     }
 
+    let threads = [...this.threads.list]
+
+    // Filter by search query if in search mode
+    if (this.searchMode && this.searchQuery.trim()) {
+      const query = this.searchQuery.toLowerCase().trim()
+      threads = threads.filter((thread) => thread.name.toLowerCase().includes(query))
+    }
+
     // Sort by modified date (most recent first)
-    return [...this.threads.list].sort((a, b) => {
+    return threads.sort((a, b) => {
       return new Date(b.modifiedDate).getTime() - new Date(a.modifiedDate).getTime()
     })
   }
