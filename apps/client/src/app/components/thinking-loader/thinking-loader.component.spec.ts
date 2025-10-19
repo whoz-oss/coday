@@ -62,7 +62,7 @@ describe('ThinkingLoaderComponent', () => {
   }, 10000) // Increase timeout for this test
 
   it('should stop animation on destroy', () => {
-    const stopSpy = spyOn<any>(component, 'stopThinkingAnimation').and.callThrough()
+    const stopSpy = jest.spyOn(component as any, 'stopThinkingAnimation')
     component.ngOnDestroy()
     expect(stopSpy).toHaveBeenCalled()
   })
