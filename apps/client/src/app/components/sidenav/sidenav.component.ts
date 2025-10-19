@@ -6,9 +6,11 @@ import { MatSidenavModule } from '@angular/material/sidenav'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 import { MatDividerModule } from '@angular/material/divider'
+import { MatProgressBarModule } from '@angular/material/progress-bar'
 import { SessionStateService } from '../../core/services/session-state.service'
 import { ConfigApiService } from '../../core/services/config-api.service'
 import { CodayService } from '../../core/services/coday.service'
+import { PreferencesService } from '../../services/preferences.service'
 import { OptionsPanelComponent } from '../options-panel'
 import { ThreadSelectorComponent } from '../thread-selector/thread-selector.component'
 import { JsonEditorComponent } from '../json-editor/json-editor.component'
@@ -24,6 +26,7 @@ import { SessionState } from '@coday/model/session-state'
     MatIconModule,
     MatButtonModule,
     MatDividerModule,
+    MatProgressBarModule,
     OptionsPanelComponent,
     ThreadSelectorComponent,
     JsonEditorComponent,
@@ -34,7 +37,7 @@ import { SessionState } from '@coday/model/session-state'
 })
 export class SidenavComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>()
-  isOpen = false
+  isOpen = true
   isUserConfigOpen = false
   isProjectConfigOpen = false
   isWebhooksOpen = false
@@ -69,8 +72,14 @@ export class SidenavComponent implements OnInit, OnDestroy {
   private readonly sessionState = inject(SessionStateService)
   private readonly configApi = inject(ConfigApiService)
   private readonly codayService = inject(CodayService)
+  private readonly preferences = inject(PreferencesService)
 
   ngOnInit(): void {
+    // Load saved sidenav state from preferences
+    const savedState = this.preferences.getPreference<boolean>('sidenavOpen', true)
+    this.isOpen = savedState ?? true
+    console.log('[SIDENAV] Loaded sidenav state from preferences:', this.isOpen)
+
     // Log session state for debugging (ensures sessionState is used)
     console.log('[SIDENAV] SessionState service injected:', !!this.sessionState)
 
@@ -108,10 +117,20 @@ export class SidenavComponent implements OnInit, OnDestroy {
 
   toggle(): void {
     this.isOpen = !this.isOpen
+    this.saveSidenavState()
   }
 
   close(): void {
     this.isOpen = false
+    this.saveSidenavState()
+  }
+
+  /**
+   * Save sidenav state to preferences
+   */
+  private saveSidenavState(): void {
+    this.preferences.setPreference('sidenavOpen', this.isOpen)
+    console.log('[SIDENAV] Saved sidenav state:', this.isOpen)
   }
 
   /**
