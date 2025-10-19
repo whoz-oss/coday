@@ -105,16 +105,9 @@ export class Coday {
     this.interactor.sendEvent(messageEvent)
   }
 
-  /**
-   * Get the services instance (for internal use)
-   * @returns CodayServices instance
-   */
-  getServices(): CodayServices {
-    return this.services
-  }
-
   async run(): Promise<void> {
     this.initialPrompts = this.options.prompts ? [...this.options.prompts] : []
+    this.interactor.debug(`[CODAY] Starting run with ${this.initialPrompts.length} initial prompts`)
     // Main loop to keep waiting for user input
     try {
       do {
@@ -304,16 +297,24 @@ export class Coday {
 
   private async initCommand(): Promise<string | undefined> {
     let userCommand: string | undefined
+    this.interactor.debug(
+      `[CODAY] initCommand: ${this.initialPrompts.length} prompts available, oneshot=${this.options.oneshot}`
+    )
     if (this.initialPrompts.length) {
       // if initial prompt(s), set the first as userCommand and add the others to the queue
       userCommand = this.initialPrompts.shift()!
+      this.interactor.debug(`[CODAY] Using initial prompt: ${userCommand}`)
       if (this.initialPrompts.length) {
+        this.interactor.debug(`[CODAY] Adding ${this.initialPrompts.length} remaining prompts to queue`)
         this.context?.addCommands(...this.initialPrompts)
         this.initialPrompts = [] // clear the prompts as consumed, will not be re-used even on context reset
       }
     } else if (!this.options.oneshot) {
       // allow user input
+      this.interactor.debug(`[CODAY] No initial prompts, waiting for user input`)
       userCommand = await this.interactor.promptText(InviteEventDefault)
+    } else {
+      this.interactor.debug(`[CODAY] No initial prompts and oneshot mode, exiting`)
     }
     return userCommand
   }

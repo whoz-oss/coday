@@ -17,7 +17,7 @@ import { debugLog } from './log'
  * Manages the lifecycle and SSE connections for a single thread.
  */
 class ThreadCodayInstance {
-  private connections: Set<Response> = new Set()
+  private readonly connections: Set<Response> = new Set()
   coday?: Coday
 
   constructor(
@@ -247,6 +247,34 @@ export class ThreadCodayManager {
 
     // Add this SSE connection to the instance
     instance.addConnection(response)
+
+    return instance
+  }
+
+  /**
+   * Create a Coday instance for a specific thread without SSE connection
+   * Used for webhook and other non-SSE scenarios
+   * @param threadId Thread identifier
+   * @param projectName Project name
+   * @param username User identifier
+   * @param options Coday options (must include project and thread)
+   * @returns ThreadCodayInstance
+   */
+  createWithoutConnection(
+    threadId: string,
+    projectName: string,
+    username: string,
+    options: CodayOptions
+  ): ThreadCodayInstance {
+    let instance = this.instances.get(threadId)
+
+    if (!instance) {
+      debugLog('THREAD_CODAY', `Creating new instance for thread ${threadId} (no SSE connection)`)
+      instance = new ThreadCodayInstance(threadId, projectName, username, options, this.logger, this.webhookService)
+      this.instances.set(threadId, instance)
+    } else {
+      debugLog('THREAD_CODAY', `Reusing existing instance for thread ${threadId}`)
+    }
 
     return instance
   }
