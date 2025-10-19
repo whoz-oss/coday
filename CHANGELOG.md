@@ -1,3 +1,14 @@
+## 0.30.0 (2025-10-19)
+
+### 🚀 Features
+
+- handle sidenav open/close preferences, add loader on sidenav when loading project ([91b0bbf](https://github.com/whoz-oss/coday/commit/91b0bbf))
+- add search in threads ([a55f394](https://github.com/whoz-oss/coday/commit/a55f394))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.29.5 (2025-10-18)
 
 ### 🩹 Fixes
