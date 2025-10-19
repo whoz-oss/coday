@@ -1,3 +1,13 @@
+## 0.32.0 (2025-10-19)
+
+### 🚀 Features
+
+- make coday-web only depends on its dependencies ([ffbaa0f](https://github.com/whoz-oss/coday/commit/ffbaa0f))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.31.0 (2025-10-19)
 
 ### 🚀 Features
