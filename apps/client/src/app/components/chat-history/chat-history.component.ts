@@ -17,11 +17,12 @@ import { PreferencesService } from '../../services/preferences.service'
 import { CodayService } from '../../core/services/coday.service'
 import { Subject } from 'rxjs'
 import { MatIcon } from '@angular/material/icon'
+import { ThinkingLoaderComponent } from '../thinking-loader/thinking-loader.component'
 
 @Component({
   selector: 'app-chat-history',
   standalone: true,
-  imports: [ChatMessageComponent, MatIcon],
+  imports: [ChatMessageComponent, MatIcon, ThinkingLoaderComponent],
   templateUrl: './chat-history.component.html',
   styleUrl: './chat-history.component.scss',
 })

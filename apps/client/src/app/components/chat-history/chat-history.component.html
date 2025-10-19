@@ -8,6 +8,11 @@
     ></app-chat-message>
   }
 
+  <!-- Thinking Loader -->
+  @if (isThinking) {
+    <app-thinking-loader></app-thinking-loader>
+  }
+
   <!-- Go to Bottom Button -->
   @if (showGoToBottom) {
     <button class="go-to-bottom-btn" (click)="goToBottom()" title="Go to bottom">
