@@ -101,10 +101,11 @@ class ThreadCodayInstance {
   }
 
   /**
-   * Start the Coday instance for this thread
-   * @returns true if new instance was created, false if already running
+   * Prepare the Coday instance without starting the run
+   * Useful for webhooks where we need to subscribe to events before starting
+   * @returns true if new instance was created, false if already exists
    */
-  startCoday(): boolean {
+  prepareCoday(): boolean {
     if (this.coday) {
       debugLog('THREAD_CODAY', `Coday already running for thread ${this.threadId}`)
       return false
@@ -138,6 +139,20 @@ class ThreadCodayInstance {
       webhook: this.webhookService,
     })
 
+    return true
+  }
+
+  /**
+   * Start the Coday instance for this thread
+   * @returns true if new instance was created and started, false if already running
+   */
+  startCoday(): boolean {
+    const wasCreated = this.prepareCoday()
+    
+    if (!this.coday) {
+      return false
+    }
+
     // Start Coday run
     this.coday
       .run()
@@ -150,7 +165,7 @@ class ThreadCodayInstance {
         // Note: We keep the instance alive for potential reconnections
       })
 
-    return true
+    return wasCreated
   }
 
   /**
