@@ -81,14 +81,19 @@ if (process.env.BUILD_ENV === 'development') {
     })
 } else {
   // Production mode: serve static Angular app
-  const clientPath = path.resolve(__dirname, 'client')
+  // Check for CODAY_CLIENT_PATH environment variable (set by web launcher)
+  // Otherwise fall back to relative path (for standalone server usage)
+  const clientPath = process.env.CODAY_CLIENT_PATH
+    ? path.resolve(process.env.CODAY_CLIENT_PATH)
+    : path.resolve(__dirname, '../coday-client/browser')
+
   debugLog('INIT', `Production mode: serving static files from ${clientPath}`)
+  if (process.env.CODAY_CLIENT_PATHH) {
+    debugLog('INIT', 'Using client path from CODAY_CLIENT_PATH environment variable')
+  }
 
   // Serve static files from the Angular build output
   app.use(express.static(clientPath))
-
-  // SPA fallback: serve index.html for all non-API routes
-  // This must come AFTER all API routes are registered
 }
 
 // Initialize the client manager with usage logger and webhook service
