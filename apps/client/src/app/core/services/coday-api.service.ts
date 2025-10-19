@@ -1,19 +1,18 @@
-import { Injectable, inject } from '@angular/core'
+import { inject, Injectable } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
 import { Observable } from 'rxjs'
-import { tap, map } from 'rxjs/operators'
+import { map, tap } from 'rxjs/operators'
 import { CodayEvent } from '@coday/coday-events'
-import { SessionState } from '@coday/model/session-state'
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class CodayApiService {
   private clientId: string | null = null
 
   // Modern Angular dependency injection
   private http = inject(HttpClient)
-  
+
   constructor() {
     // Don't generate clientId automatically anymore
     // It will be generated lazily when needed (legacy mode)
@@ -56,31 +55,35 @@ export class CodayApiService {
   sendEvent(event: CodayEvent, projectName?: string, threadId?: string): Observable<any> {
     // Use new thread-based endpoint if project and thread are provided
     if (projectName && threadId) {
-      return this.http.post(`/api/projects/${projectName}/threads/${threadId}/message`, event, {
+      return this.http
+        .post(`/api/projects/${projectName}/threads/${threadId}/message`, event, {
+          observe: 'response',
+          responseType: 'text',
+        })
+        .pipe(
+          tap((response) => {
+            if (response.status !== 200) {
+              console.warn('[API] Unexpected status:', response.status)
+            }
+          }),
+          map((response) => response.body)
+        )
+    }
+
+    // Fallback to legacy endpoint
+    return this.http
+      .post(`/api/message?clientId=${this.getClientId()}`, event, {
         observe: 'response',
-        responseType: 'text'
-      }).pipe(
-        tap(response => {
+        responseType: 'text',
+      })
+      .pipe(
+        tap((response) => {
           if (response.status !== 200) {
             console.warn('[API] Unexpected status:', response.status)
           }
         }),
-        map(response => response.body)
+        map((response) => response.body)
       )
-    }
-
-    // Fallback to legacy endpoint
-    return this.http.post(`/api/message?clientId=${this.getClientId()}`, event, {
-      observe: 'response',
-      responseType: 'text'
-    }).pipe(
-      tap(response => {
-        if (response.status !== 200) {
-          console.warn('[API] Unexpected status:', response.status)
-        }
-      }),
-      map(response => response.body)
-    )
   }
 
   /**
@@ -95,25 +98,14 @@ export class CodayApiService {
    */
   getEventDetails(eventId: string): Observable<string> {
     return this.http.get(`/api/event/${eventId}?clientId=${this.getClientId()}`, {
-      responseType: 'text'
+      responseType: 'text',
     })
   }
-
 
   /**
    * Get the SSE URL for events (legacy)
    */
   getEventsUrl(): string {
     return `/events?clientId=${this.getClientId()}`
-  }
-
-  /**
-   * Delete a message from the thread (rewind/retry functionality)
-   */
-  deleteMessage(eventId: string): Observable<{success: boolean, message?: string, error?: string}> {
-    const url = `/api/thread/message/${encodeURIComponent(eventId)}?clientId=${this.getClientId()}`
-    return this.http.delete<{success: boolean, message?: string, error?: string}>(url).pipe(
-      tap(response => console.log('[API] Delete message response:', response))
-    )
   }
 }

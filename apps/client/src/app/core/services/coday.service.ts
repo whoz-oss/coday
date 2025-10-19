@@ -21,6 +21,9 @@ import {
 
 import { CodayApiService } from './coday-api.service'
 import { EventStreamService } from './event-stream.service'
+import { MessageApiService } from './message-api.service'
+import { ProjectStateService } from './project-state.service'
+import { ThreadStateService } from './thread-state.service'
 
 import { ChatMessage } from '../../components/chat-message/chat-message.component'
 import { ChoiceOption } from '../../components/choice-select/choice-select.component'
@@ -66,6 +69,9 @@ export class CodayService implements OnDestroy {
   // Modern Angular dependency injection
   private codayApi = inject(CodayApiService)
   private eventStream = inject(EventStreamService)
+  private messageApi = inject(MessageApiService)
+  private projectState = inject(ProjectStateService)
+  private threadState = inject(ThreadStateService)
 
   constructor() {
     // Initialize connection status observable after eventStream is available
@@ -187,11 +193,19 @@ export class CodayService implements OnDestroy {
   deleteMessage(messageId: string): Observable<{ success: boolean; message?: string; error?: string }> {
     console.log('[CODAY] Deleting message:', messageId)
 
+    // Get current project and thread from state services
+    const projectName = this.projectState.getSelectedProjectId()
+    const threadId = this.threadState.getSelectedThreadId()
+
+    if (!projectName || !threadId) {
+      throw new Error('Cannot delete message: no project or thread selected')
+    }
+
     // Extract text content from the message before deleting it
     const messageToDelete = this.messagesSubject.value.find((msg) => msg.id === messageId)
     const textContent = this.extractTextContentFromMessage(messageToDelete)
 
-    return this.codayApi.deleteMessage(messageId).pipe(
+    return this.messageApi.deleteMessage(projectName, threadId, messageId).pipe(
       tap((response: { success: boolean; message?: string; error?: string }) => {
         if (response.success) {
           console.log('[CODAY] Message deleted successfully, updating local messages')

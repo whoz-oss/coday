@@ -20,6 +20,7 @@ import { registerConfigRoutes } from './config.routes'
 import { registerWebhookRoutes } from './webhook.routes'
 import { registerProjectRoutes } from './project.routes'
 import { registerThreadRoutes } from './thread.routes'
+import { registerMessageRoutes } from './message.routes'
 import { ProjectService2 } from './services/project.service2'
 import { ThreadService2 } from './services/thread.service2'
 import { ProjectFileRepository } from '@coday/repository/project-file.repository'
@@ -145,6 +146,9 @@ registerProjectRoutes(app, projectService, codayOptions.project)
 
 // Register thread management routes
 registerThreadRoutes(app, threadService, getUsername)
+
+// Register message management routes
+registerMessageRoutes(app, threadCodayManager, getUsername)
 
 // Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null
