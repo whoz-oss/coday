@@ -3,54 +3,21 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "sourceRoot": "{projectRoot}",
-  "implicitDependencies": [
-    "server",
-    "client",
-    "coday-events",
-    "ai-thread"
-  ],
+  "implicitDependencies": ["server", "client", "coday-events", "ai-thread"],
   "tags": ["web-bundle"],
   "targets": {
-    "build": {
-      "inputs": [
-        "default",
-        "{workspaceRoot}/libs/**/*",
-        "{workspaceRoot}/apps/client/**/*"
-      ],
+    "serve": {
       "executor": "nx:run-commands",
-      "dependsOn": [
-        {
-          "projects": "client",
-          "target": "build"
-        },
-        {
-          "projects": "server",
-          "target": "build"
-        }
-      ],
-      "outputs": ["{projectRoot}/dist"],
       "options": {
-        "commands": [
-          "rm -Rf {projectRoot}/dist && mkdir {projectRoot}/dist",
-          "cp -r apps/client/dist/browser {projectRoot}/dist/client",
-          "cp -r apps/server/dist/server.js {projectRoot}/dist/",
-          "cp {projectRoot}/package.json {projectRoot}/dist/package.json",
-          "cp {projectRoot}/bin.js {projectRoot}/dist/bin.js"
-        ],
-        "parallel": false
-      }
-    },
-    "serve:production": {
-      "executor": "nx:run-commands",
-      "dependsOn": ["web:build"],
-      "options": {
-        "commands": ["node {projectRoot}/dist/bin.js --no_auth"],
-        "parallel": false
+        "commands": ["node index.js --no_auth"],
+        "parallel": false,
+        "cwd": "{projectRoot}"
       }
     },
     "nx-release-publish": {
+      "dependsOn": [],
       "options": {
-        "packageRoot": "{projectRoot}/dist"
+        "packageRoot": "{projectRoot}"
       }
     }
   }

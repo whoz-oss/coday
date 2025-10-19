@@ -3,13 +3,16 @@
   "version": "0.31.0",
   "repository": "https://github.com/whoz-oss/coday",
   "type": "module",
-  "main": "server/server.js",
   "bin": {
-    "coday-web": "./bin.js"
+    "coday-web": "./index.js"
   },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
   "dependencies": {
-    "@whoz-oss/coday-client": "0.31.0",
-    "@whoz-oss/coday-server": "0.31.0"
+    "@whoz-oss/coday-client": "latest",
+    "@whoz-oss/coday-server": "latest"
   },
   "publishConfig": {
     "access": "public"
