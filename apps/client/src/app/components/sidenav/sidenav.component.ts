@@ -1,4 +1,4 @@
-import { Component, inject, OnDestroy, OnInit } from '@angular/core'
+import { Component, inject, OnDestroy, OnInit, ViewChild, ElementRef } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
@@ -67,6 +67,13 @@ export class SidenavComponent implements OnInit, OnDestroy {
     threads: true,
     config: false,
   }
+
+  // Thread search state
+  isThreadSearchActive = false
+  threadSearchQuery = ''
+
+  // ViewChild for search input
+  @ViewChild('threadSearchInput') threadSearchInput?: ElementRef<HTMLInputElement>
 
   // Modern Angular dependency injection
   private readonly sessionState = inject(SessionStateService)
@@ -380,5 +387,46 @@ export class SidenavComponent implements OnInit, OnDestroy {
   createNewThread(): void {
     console.log('[SIDENAV] Creating new thread')
     this.codayService.sendMessage('thread new')
+  }
+
+  /**
+   * Toggle thread search mode
+   */
+  toggleThreadSearch(event: Event): void {
+    event.stopPropagation()
+    this.isThreadSearchActive = true
+    this.threadSearchQuery = ''
+    console.log('[SIDENAV] Thread search active:', this.isThreadSearchActive)
+
+    // Focus the input after the view updates
+    setTimeout(() => {
+      this.threadSearchInput?.nativeElement.focus()
+    }, 0)
+  }
+
+  /**
+   * Close thread search mode
+   */
+  closeThreadSearch(): void {
+    this.isThreadSearchActive = false
+    this.threadSearchQuery = ''
+    console.log('[SIDENAV] Thread search closed')
+  }
+
+  /**
+   * Handle search input changes
+   */
+  onThreadSearchInput(): void {
+    // Trigger change detection
+    console.log('[SIDENAV] Search query:', this.threadSearchQuery)
+  }
+
+  /**
+   * Handle search mode change from thread selector
+   */
+  onThreadSearchModeChange(isActive: boolean): void {
+    if (!isActive) {
+      this.closeThreadSearch()
+    }
   }
 }

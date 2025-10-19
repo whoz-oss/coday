@@ -71,22 +71,63 @@
       <div class="sidenav-sections" [class.has-footer]="true">
         <!-- Threads Section - Expanded by default -->
         <div class="section-container">
-          <button
-            class="section-toggle"
-            [class.active]="expandedSections['threads']"
-            (click)="toggleSection('threads')"
-            type="button"
-          >
-            @if (expandedSections['threads']) {
-              <mat-icon class="arrow-icon expanded">keyboard_arrow_up</mat-icon>
-            } @else {
-              <mat-icon class="section-icon">forum</mat-icon>
-            }
-            <span class="section-label">Threads</span>
-          </button>
+          @if (isThreadSearchActive && expandedSections['threads']) {
+            <!-- Search mode: show search bar instead of title -->
+            <div class="search-header">
+              <mat-icon class="search-icon">search</mat-icon>
+              <input
+                #threadSearchInput
+                type="text"
+                class="search-input"
+                placeholder="Search threads..."
+                [(ngModel)]="threadSearchQuery"
+                (input)="onThreadSearchInput()"
+              />
+              <button
+                mat-icon-button
+                class="close-search-btn"
+                (click)="closeThreadSearch()"
+                title="Close search"
+                type="button"
+              >
+                <mat-icon>close</mat-icon>
+              </button>
+            </div>
+          } @else {
+            <!-- Normal mode: show section toggle -->
+            <button
+              class="section-toggle"
+              [class.active]="expandedSections['threads']"
+              (click)="toggleSection('threads')"
+              type="button"
+            >
+              @if (expandedSections['threads']) {
+                <mat-icon class="arrow-icon expanded">keyboard_arrow_up</mat-icon>
+              } @else {
+                <mat-icon class="section-icon">forum</mat-icon>
+              }
+              <span class="section-label">Threads</span>
+              @if (expandedSections['threads']) {
+                <button
+                  mat-icon-button
+                  class="search-button"
+                  (click)="toggleThreadSearch($event)"
+                  title="Search threads"
+                  type="button"
+                >
+                  <mat-icon>search</mat-icon>
+                </button>
+              }
+            </button>
+          }
           @if (expandedSections['threads']) {
             <div class="section-content threads">
-              <app-thread-selector class="sidenav-thread-selector"></app-thread-selector>
+              <app-thread-selector
+                class="sidenav-thread-selector"
+                [searchMode]="isThreadSearchActive"
+                [searchQuery]="threadSearchQuery"
+                (searchModeChange)="onThreadSearchModeChange($event)"
+              ></app-thread-selector>
             </div>
           }
         </div>

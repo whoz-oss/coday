@@ -442,6 +442,77 @@
     font-size: 0.9rem;
     color: var(--color-text);
   }
+
+  .search-button {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    margin-left: auto;
+    flex-shrink: 0;
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      color: var(--color-text-secondary);
+    }
+
+    &:hover mat-icon {
+      color: var(--color-primary);
+    }
+  }
+}
+
+// Search header (replaces section toggle when active)
+.search-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-bg-hover);
+  border-top: 1px solid var(--color-border);
+  transition: all 0.2s ease;
+
+  .search-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+    color: var(--color-text-secondary);
+    flex-shrink: 0;
+  }
+
+  .search-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--color-text);
+    font-size: 0.9rem;
+    padding: 0;
+    min-width: 0;
+
+    &::placeholder {
+      color: var(--color-text-muted);
+    }
+  }
+
+  .close-search-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    flex-shrink: 0;
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      color: var(--color-text-secondary);
+    }
+
+    &:hover mat-icon {
+      color: var(--color-text);
+    }
+  }
 }
 
 // Section content
