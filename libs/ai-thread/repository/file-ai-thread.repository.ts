@@ -54,21 +54,7 @@ export class FileAiThreadRepository implements AiThreadRepository {
     }
   }
 
-  /**
-   * Sanitize a thread name for use as a file name
-   * @param name Thread name
-   * @returns Sanitized file name
-   */
-  private sanitizeFileName(name?: string): string {
-    return (
-      (name || 'untitled')
-        .toLowerCase()
-        // Replace spaces and special chars with hyphens
-        .replace(/[^a-z0-9]+/g, '-')
-        // Remove leading/trailing hyphens
-        .replace(/^-+|-+$/g, '')
-    )
-  }
+
 
   async getById(id: string): Promise<AiThread | null> {
     await this.initPromise
@@ -97,12 +83,24 @@ export class FileAiThreadRepository implements AiThreadRepository {
   }
 
   /**
-   * Find a thread file by its ID using the filename pattern {name}-{id}.yml
+   * Find a thread file by its ID using the filename pattern {id}.yml
+   * Also checks legacy pattern {name}-{id}.yml for backward compatibility
    * @param threadId ID of the thread to find
    * @returns Filename if found, null otherwise
    */
   private async findThreadFile(threadId: string): Promise<string | null> {
     try {
+      const newFormat = `${threadId}.yml`
+      
+      // Check if new format exists
+      try {
+        await fs.access(path.join(this.threadsDir, newFormat))
+        return newFormat
+      } catch {
+        // New format doesn't exist, check legacy format
+      }
+      
+      // Check legacy format {name}-{id}.yml for backward compatibility
       const files = await fs.readdir(this.threadsDir)
       const threadFile = files.find((file) => file.endsWith(`-${threadId}.yml`))
       return threadFile || null
@@ -112,19 +110,18 @@ export class FileAiThreadRepository implements AiThreadRepository {
   }
 
   /**
-   * Generate a filename for a thread, combining sanitized name and id
+   * Generate a filename for a thread using only the thread ID
    * @param thread Thread to generate filename for
    * @returns The filename with .yml extension
    */
   private getThreadFileName(thread: AiThread): string {
-    const sanitizedName = this.sanitizeFileName(thread.name || 'untitled')
-    return `${sanitizedName}-${thread.id}.yml`
+    return `${thread.id}.yml`
   }
 
   /**
    * Save a thread to a file.
-   * Uses thread name and id to create a unique filename.
-   * Creates a new file if name changed.
+   * Uses only thread ID for filename.
+   * Migrates from legacy {name}-{id}.yml format if needed.
    * @param thread Thread to save
    * @returns The saved thread
    */
@@ -134,13 +131,29 @@ export class FileAiThreadRepository implements AiThreadRepository {
       if (!thread.id) {
         thread.id = crypto.randomUUID()
       }
-      const fileName = this.getThreadFileName(thread)
+      
+      const newFileName = this.getThreadFileName(thread)
+      const newThreadPath = path.join(this.threadsDir, newFileName)
+
+      // Check if an old file exists (could be legacy format with name in filename)
+      const existingFile = await this.findThreadFile(thread.id)
+      if (existingFile && existingFile !== newFileName) {
+        // Delete the old file before writing the new one (handles both rename and legacy format migration)
+        const oldFilePath = path.join(this.threadsDir, existingFile)
+        try {
+          await fs.unlink(oldFilePath)
+          console.log(`[THREAD-REPO] Migrated/renamed thread file: ${existingFile} → ${newFileName}`)
+        } catch (error) {
+          // Ignore if old file doesn't exist or can't be deleted
+          console.warn(`[THREAD-REPO] Could not delete old thread file: ${existingFile}`, error)
+        }
+      }
+
       const versionned = { ...thread, version: aiThreadMigrations.length + 1 }
       const contentToSave = yaml.stringify(versionned)
 
-      // Write the file
-      const threadPath = path.join(this.threadsDir, fileName)
-      await fs.writeFile(threadPath, contentToSave, 'utf-8')
+      // Write the new file
+      await fs.writeFile(newThreadPath, contentToSave, 'utf-8')
 
       return thread
     } catch (error) {
