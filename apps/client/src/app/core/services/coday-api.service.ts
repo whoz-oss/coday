@@ -108,15 +108,6 @@ export class CodayApiService {
   }
 
   /**
-   * Get session state (projects and threads) - LEGACY
-   */
-  getSessionState(): Observable<SessionState> {
-    return this.http.get<SessionState>(`/api/session/state?clientId=${this.getClientId()}`).pipe(
-      tap(state => console.log('[API] Session state received:', state))
-    )
-  }
-
-  /**
    * Delete a message from the thread (rewind/retry functionality)
    */
   deleteMessage(eventId: string): Observable<{success: boolean, message?: string, error?: string}> {

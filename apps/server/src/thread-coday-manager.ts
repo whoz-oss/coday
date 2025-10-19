@@ -34,6 +34,11 @@ class ThreadCodayInstance {
    * @param response Express response object for SSE
    */
   addConnection(response: Response): void {
+    if (this.connections.has(response)) {
+      // do nothing, connection already registered
+      return
+    }
+
     this.connections.add(response)
     debugLog('THREAD_CODAY', `Added SSE connection to thread ${this.threadId} (total: ${this.connections.size})`)
 

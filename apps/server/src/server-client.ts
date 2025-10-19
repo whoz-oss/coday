@@ -13,10 +13,7 @@ import { MemoryService } from '@coday/service/memory.service'
 import { McpConfigService } from '@coday/service/mcp-config.service'
 import { WebhookService } from '@coday/service/webhook.service'
 import { CodayLogger } from '@coday/service/coday-logger'
-import { SessionState } from '@coday/model/session-state'
-import { firstValueFrom } from 'rxjs'
 import { debugLog } from './log'
-import { ThreadSummary } from '@coday/ai-thread/ai-thread.types'
 
 export class ServerClient {
   private readonly heartbeatInterval: NodeJS.Timeout
@@ -249,73 +246,6 @@ export class ServerClient {
     }
 
     return this.coday.context.aiThread.getEventById(eventId)
-  }
-
-  /**
-   * Get the current session state including projects and threads information
-   * @returns Promise<SessionState> The current session state
-   */
-  async getSessionState(): Promise<SessionState> {
-    const sessionState: SessionState = {
-      projects: {
-        list: null,
-        current: null,
-        canCreate: true
-      },
-      threads: {
-        list: null,
-        current: null
-      }
-    }
-
-    // Check if project is locked by options
-    const isProjectLocked = this.options.project !== undefined
-    const projectService = this.coday?.getServices()?.project
-
-    if (projectService) {
-      // Set project information
-      if (isProjectLocked) {
-        // Project is locked by options - only show the selected project
-        sessionState.projects.canCreate = false
-        const currentProject = projectService.selectedProject
-        if (currentProject) {
-          sessionState.projects.list = [{ name: currentProject.name }]
-          sessionState.projects.current = currentProject.name
-        } else {
-          sessionState.projects.list = []
-        }
-      } else {
-        // Project selection is open - show all available projects
-        sessionState.projects.canCreate = true
-        if (projectService.projects) {
-          sessionState.projects.list = projectService.projects.map(name => ({ name }))
-        }
-        const currentProject = projectService.selectedProject
-        sessionState.projects.current = currentProject?.name || null
-      }
-
-      // Set thread information (only if project is selected)
-      const aiThreadService = this.coday?.aiThreadService
-      if (sessionState.projects.current && aiThreadService) {
-        try {
-          const currentThread = aiThreadService.getCurrentThread()
-          sessionState.threads.current = currentThread?.id || null
-
-          // Get thread list
-          const threadList = await firstValueFrom(aiThreadService.list())
-          sessionState.threads.list = threadList.map((thread: ThreadSummary) => ({
-            id: thread.id,
-            name: thread.name,
-            modifiedDate: thread.modifiedDate
-          }))
-        } catch (error) {
-          console.warn('Error fetching thread list:', error)
-          // Keep threads as null on error
-        }
-      }
-    }
-
-    return sessionState
   }
 
   getThreadId(): Observable<string | undefined> {
