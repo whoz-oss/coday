@@ -1,3 +1,13 @@
+## 0.31.0 (2025-10-19)
+
+### 🚀 Features
+
+- add thinking loader ([df91e03](https://github.com/whoz-oss/coday/commit/df91e03))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.30.0 (2025-10-19)
 
 ### 🚀 Features
