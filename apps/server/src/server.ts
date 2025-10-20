@@ -145,7 +145,7 @@ registerWebhookRoutes(app, webhookService, getUsername)
 registerProjectRoutes(app, projectService, codayOptions.project)
 
 // Register thread management routes
-registerThreadRoutes(app, threadService, getUsername)
+registerThreadRoutes(app, threadService, threadCodayManager, getUsername)
 
 // Register message management routes
 registerMessageRoutes(app, threadCodayManager, getUsername)
@@ -303,7 +303,8 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
         })
 
       // Now start Coday run and wait for it to complete
-      instance.coday!.run()
+      instance
+        .coday!.run()
         .catch((error) => {
           console.error('Error during webhook Coday run:', error)
         })
@@ -379,27 +380,6 @@ app.post('/api/webhook/:uuid', async (req: express.Request, res: express.Respons
     }
 
     res.status(500).send({ error: 'Internal server error' })
-  }
-})
-
-// POST endpoint for stopping the current run
-app.post('/api/stop', (req: express.Request, res: express.Response) => {
-  try {
-    const clientId = req.query.clientId as string
-    debugLog('STOP', `clientId: ${clientId}`)
-    const client = clientManager.get(clientId)
-
-    if (!client) {
-      res.status(404).send('Client not found')
-      return
-    }
-
-    client.updateLastConnection()
-    client.stop()
-    res.status(200).send('Stop signal sent successfully!')
-  } catch (error) {
-    console.error('Error processing stop request:', error)
-    res.status(500).send('Error processing stop request')
   }
 })
 

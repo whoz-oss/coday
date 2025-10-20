@@ -114,4 +114,13 @@ export class ThreadApiService {
   deleteThread(projectName: string, threadId: string): Observable<{ success: boolean; message: string }> {
     return this.http.delete<{ success: boolean; message: string }>(`${this.getBaseUrl(projectName)}/${threadId}`)
   }
+
+  /**
+   * Stop the current execution for a thread
+   * @param projectName Project name
+   * @param threadId Thread identifier
+   */
+  stopThread(projectName: string, threadId: string): Observable<{ success: boolean; message: string }> {
+    return this.http.post<{ success: boolean; message: string }>(`${this.getBaseUrl(projectName)}/${threadId}/stop`, {})
+  }
 }

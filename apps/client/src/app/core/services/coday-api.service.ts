@@ -87,13 +87,6 @@ export class CodayApiService {
   }
 
   /**
-   * Stop the current execution
-   */
-  stopExecution(): Observable<any> {
-    return this.http.post(`/api/stop?clientId=${this.getClientId()}`, {})
-  }
-
-  /**
    * Get event details by ID
    */
   getEventDetails(eventId: string): Observable<string> {

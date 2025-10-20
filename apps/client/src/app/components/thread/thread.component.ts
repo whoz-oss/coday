@@ -1,4 +1,15 @@
-import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, AfterViewChecked, ElementRef, ViewChild, inject } from '@angular/core'
+import {
+  Component,
+  Input,
+  OnInit,
+  OnDestroy,
+  OnChanges,
+  SimpleChanges,
+  AfterViewChecked,
+  ElementRef,
+  ViewChild,
+  inject,
+} from '@angular/core'
 import { Router } from '@angular/router'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
@@ -12,6 +23,7 @@ import { CodayService } from '../../core/services/coday.service'
 import { ConnectionStatus } from '../../core/services/event-stream.service'
 import { PreferencesService } from '../../services/preferences.service'
 import { TabTitleService } from '../../services/tab-title.service'
+import { ThreadStateService } from '../../core/services/thread-state.service'
 
 /**
  * ThreadComponent - Dedicated component for displaying and interacting with a conversation thread
@@ -68,11 +80,12 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   private subscriptions: any[] = []
 
   // Modern Angular dependency injection
-  private codayService = inject(CodayService)
-  private preferencesService = inject(PreferencesService)
-  private titleService = inject(TabTitleService)
-  private elementRef = inject(ElementRef)
-  private router = inject(Router)
+  private readonly codayService = inject(CodayService)
+  private readonly preferencesService = inject(PreferencesService)
+  private readonly titleService = inject(TabTitleService)
+  private readonly elementRef = inject(ElementRef)
+  private readonly router = inject(Router)
+  private readonly threadState = inject(ThreadStateService)
 
   ngOnInit(): void {
     console.log('[THREAD] Initializing with project:', this.projectName, 'thread:', this.threadId)
@@ -92,15 +105,15 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
 
   ngOnChanges(changes: SimpleChanges): void {
     console.log('[THREAD] ngOnChanges called', changes)
-    
+
     // Detect when threadId changes (user navigating to different thread)
     if (changes['threadId']) {
       console.log('[THREAD] threadId changed:', {
         firstChange: changes['threadId'].firstChange,
         previousValue: changes['threadId'].previousValue,
-        currentValue: changes['threadId'].currentValue
+        currentValue: changes['threadId'].currentValue,
       })
-      
+
       if (!changes['threadId'].firstChange) {
         console.log('[THREAD] Reconnecting to new thread')
         // Reconnect to the new thread
@@ -233,7 +246,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   }
 
   onStopRequested(): void {
-    this.codayService.stop()
+    this.threadState.stop()
   }
 
   onInputHeightChanged(height: number): void {

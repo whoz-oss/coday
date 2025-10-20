@@ -1,6 +1,7 @@
 import express from 'express'
 import { debugLog } from './log'
 import { ThreadService2 } from './services/thread.service2'
+import { ThreadCodayManager } from './thread-coday-manager'
 
 /**
  * Thread Management REST API Routes
@@ -25,11 +26,13 @@ import { ThreadService2 } from './services/thread.service2'
  * Register thread management routes on the Express app
  * @param app - Express application instance
  * @param threadService - ThreadService2 instance for thread operations
+ * @param threadCodayManager - ThreadCodayManager instance for runtime operations
  * @param getUsernameFn - Function to extract username from request
  */
 export function registerThreadRoutes(
   app: express.Application,
   threadService: ThreadService2,
+  threadCodayManager: ThreadCodayManager,
   getUsernameFn: (req: express.Request) => string
 ): void {
   /**
@@ -207,6 +210,38 @@ export function registerThreadRoutes(
       console.error('Error updating thread:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       res.status(500).json({ error: `Failed to update thread: ${errorMessage}` })
+    }
+  })
+
+  /**
+   * POST /api/projects/:projectName/threads/:threadId/stop
+   * Stop the current run for a thread
+   */
+  app.post('/api/projects/:projectName/threads/:threadId/stop', (req: express.Request, res: express.Response) => {
+    try {
+      const { projectName, threadId } = req.params
+      if (!projectName || !threadId) {
+        res.status(400).json({ error: 'Project name and thread ID are required' })
+        return
+      }
+
+      const username = getUsernameFn(req)
+      if (!username) {
+        res.status(401).json({ error: 'Authentication required' })
+        return
+      }
+
+      debugLog('THREAD', `POST stop thread: ${threadId} in project: ${projectName}`)
+      threadCodayManager.stop(threadId)
+
+      res.status(200).json({
+        success: true,
+        message: 'Stop signal sent successfully',
+      })
+    } catch (error) {
+      console.error('Error stopping thread:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: `Failed to stop thread: ${errorMessage}` })
     }
   })
 

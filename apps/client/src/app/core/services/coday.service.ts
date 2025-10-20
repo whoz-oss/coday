@@ -108,16 +108,6 @@ export class CodayService implements OnDestroy {
   }
 
   /**
-   * Stop the Coday service
-   */
-  stop(): void {
-    this.codayApi.stopExecution().subscribe({
-      next: () => console.log('[CODAY] Stop signal sent'),
-      error: (error) => console.error('[CODAY] Error stopping:', error),
-    })
-  }
-
-  /**
    * Reset messages when changing project or thread context
    */
   resetMessages(): void {

@@ -85,4 +85,24 @@ export class ThreadStateService {
   clearSelection(): void {
     this.selectedThreadIdSubject.next(null)
   }
+
+  /**
+   * Stop the current execution for the selected thread
+   * Requires both a project and a thread to be selected
+   */
+  stop(): void {
+    const projectName = this.projectStateService.getSelectedProjectId()
+    const threadId = this.selectedThreadIdSubject.value
+
+    if (!projectName || !threadId) {
+      console.error('[THREAD_STATE] Cannot stop: no project or thread selected')
+      return
+    }
+
+    console.log('[THREAD_STATE] Stopping thread:', threadId, 'in project:', projectName)
+    this.threadApi.stopThread(projectName, threadId).subscribe({
+      next: (response) => console.log('[THREAD_STATE] Stop signal sent:', response.message),
+      error: (error) => console.error('[THREAD_STATE] Error stopping thread:', error),
+    })
+  }
 }
