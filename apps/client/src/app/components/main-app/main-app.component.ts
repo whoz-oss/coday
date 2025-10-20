@@ -7,6 +7,7 @@ import { animate, style, transition, trigger } from '@angular/animations'
 import { ChatTextareaComponent } from '../chat-textarea/chat-textarea.component'
 import { ThreadComponent } from '../thread/thread.component'
 import { WelcomeMessageComponent } from '../welcome-message/welcome-message.component'
+import { SidenavComponent } from '../sidenav/sidenav.component'
 
 import { CodayService } from '../../core/services/coday.service'
 import { TabTitleService } from '../../services/tab-title.service'
@@ -17,7 +18,7 @@ import { Router } from '@angular/router'
 @Component({
   selector: 'app-main',
   standalone: true,
-  imports: [ChatTextareaComponent, ThreadComponent, WelcomeMessageComponent],
+  imports: [ChatTextareaComponent, ThreadComponent, WelcomeMessageComponent, SidenavComponent],
   templateUrl: './main-app.component.html',
   styleUrl: './main-app.component.scss',
   animations: [

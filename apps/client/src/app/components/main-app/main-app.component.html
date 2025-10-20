@@ -1,31 +1,33 @@
-<div class="app">
-  @if (threadId) {
-    <!-- Thread view - Full conversation management -->
-    <app-thread [projectName]="projectName" [threadId]="threadId"> </app-thread>
-  } @else {
-    <!-- Welcome view - For implicit thread creation -->
+<app-sidenav>
+  <div class="app">
+    @if (threadId) {
+      <!-- Thread view - Full conversation management -->
+      <app-thread [projectName]="projectName" [threadId]="threadId"> </app-thread>
+    } @else {
+      <!-- Welcome view - For implicit thread creation -->
 
-    <!-- Welcome Section -->
-    <div class="welcome-section">
-      <app-welcome-message></app-welcome-message>
-    </div>
+      <!-- Welcome Section -->
+      <div class="welcome-section">
+        <app-welcome-message></app-welcome-message>
+      </div>
 
-    <!-- Input Section for first message -->
-    <div class="input-section" #inputSection>
-      <div class="input-center">
-        <div class="input-glass">
-          <app-chat-textarea
-            [isDisabled]="isSessionInitializing"
-            [isSessionInitializing]="isSessionInitializing"
-            [showWelcome]="true"
-            [isThinking]="false"
-            [isStarting]="isStartingFirstMessage"
-            (messageSubmitted)="onMessageSubmitted($event)"
-            (voiceRecordingToggled)="onVoiceToggled($event)"
-            (heightChanged)="onInputHeightChanged($event)"
-          ></app-chat-textarea>
+      <!-- Input Section for first message -->
+      <div class="input-section" #inputSection>
+        <div class="input-center">
+          <div class="input-glass">
+            <app-chat-textarea
+              [isDisabled]="isSessionInitializing"
+              [isSessionInitializing]="isSessionInitializing"
+              [showWelcome]="true"
+              [isThinking]="false"
+              [isStarting]="isStartingFirstMessage"
+              (messageSubmitted)="onMessageSubmitted($event)"
+              (voiceRecordingToggled)="onVoiceToggled($event)"
+              (heightChanged)="onInputHeightChanged($event)"
+            ></app-chat-textarea>
+          </div>
         </div>
       </div>
-    </div>
-  }
-</div>
+    }
+  </div>
+</app-sidenav>

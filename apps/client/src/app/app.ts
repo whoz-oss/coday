@@ -1,10 +1,9 @@
 import { Component, inject, OnInit } from '@angular/core'
 import { RouterModule } from '@angular/router'
-import { SidenavComponent } from './components/sidenav/sidenav.component'
 import { ThemeService } from './core/services/theme.service'
 
 @Component({
-  imports: [RouterModule, SidenavComponent],
+  imports: [RouterModule],
   selector: 'app-root',
   templateUrl: './app.html',
   styleUrl: './app.scss',
