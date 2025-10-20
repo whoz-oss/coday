@@ -15,10 +15,11 @@ import { AnswerEvent } from '@coday/coday-events'
  * - Events automatically propagated via SSE to connected clients
  *
  * Endpoints:
- * - GET    /api/projects/:projectName/threads/:threadId/messages           - List messages
- * - POST   /api/projects/:projectName/threads/:threadId/messages           - Add message
- * - GET    /api/projects/:projectName/threads/:threadId/messages/:eventId  - Get message
- * - DELETE /api/projects/:projectName/threads/:threadId/messages/:eventId  - Delete message (truncate)
+ * - GET    /api/projects/:projectName/threads/:threadId/messages                  - List messages
+ * - POST   /api/projects/:projectName/threads/:threadId/messages                  - Add message
+ * - GET    /api/projects/:projectName/threads/:threadId/messages/:eventId         - Get message
+ * - GET    /api/projects/:projectName/threads/:threadId/messages/:eventId/formatted - Get formatted message (temporary)
+ * - DELETE /api/projects/:projectName/threads/:threadId/messages/:eventId         - Delete message (truncate)
  *
  * Authentication:
  * - Username extracted from x-forwarded-email header (set by auth proxy)
@@ -201,6 +202,94 @@ export function registerMessageRoutes(
         console.error('Error retrieving message:', error)
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         res.status(500).json({ error: `Failed to retrieve message: ${errorMessage}` })
+      }
+    }
+  )
+
+  /**
+   * GET /api/projects/:projectName/threads/:threadId/messages/:eventId/formatted
+   * Get formatted message for display (temporary endpoint)
+   * 
+   * This endpoint formats tool_request and tool_response events as human-readable text.
+   * It's a temporary solution until the frontend can display these events properly.
+   * 
+   * TODO: Remove this endpoint once frontend has proper event display components
+   */
+  app.get(
+    '/api/projects/:projectName/threads/:threadId/messages/:eventId/formatted',
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { projectName, threadId, eventId: rawEventId } = req.params
+        if (!projectName || !threadId || !rawEventId) {
+          res.status(400).send('Project name, thread ID, and event ID are required')
+          return
+        }
+
+        // Decode eventId in case it was URL encoded
+        const eventId = decodeURIComponent(rawEventId)
+
+        const username = getUsernameFn(req)
+        if (!username) {
+          res.status(401).send('Authentication required')
+          return
+        }
+
+        debugLog('MESSAGE', `GET formatted message: ${eventId} from thread: ${threadId} in project: ${projectName}`)
+
+        // Get the thread instance
+        const instance = threadCodayManager.get(threadId)
+        if (!instance?.coday) {
+          res.status(404).send('Thread not found or not active')
+          return
+        }
+
+        // Verify thread ownership
+        if (instance.username !== username) {
+          res.status(403).send('Access denied: thread belongs to another user')
+          return
+        }
+
+        // Get AiThread
+        const aiThread = instance.coday.context?.aiThread
+        if (!aiThread) {
+          res.status(500).send('Thread not properly initialized')
+          return
+        }
+
+        // Get message by eventId
+        const event = aiThread.getEventById(eventId)
+
+        if (!event) {
+          res.status(404).send(`Message '${eventId}' not found in thread '${threadId}'`)
+          return
+        }
+
+        // Set content type to plain text for easy viewing
+        res.setHeader('Content-Type', 'text/plain')
+
+        // Format and return the event details
+        let output = ''
+
+        if (event.type === 'tool_request') {
+          output = `Tool Request: ${(event as any).name}\n\nArguments:\n${JSON.stringify(JSON.parse((event as any).args), null, 2)}`
+        } else if (event.type === 'tool_response') {
+          try {
+            // Try to parse as JSON for pretty printing
+            const parsedOutput = JSON.parse((event as any).output)
+            output = `Tool Response:\n\n${JSON.stringify(parsedOutput, null, 2)}`
+          } catch (e) {
+            // If not valid JSON, return as is
+            output = `Tool Response:\n\n${(event as any).output}`
+          }
+        } else {
+          output = JSON.stringify(event, null, 2)
+        }
+
+        res.status(200).send(output)
+      } catch (error) {
+        console.error('Error retrieving formatted message:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).send(`Failed to retrieve formatted message: ${errorMessage}`)
       }
     }
   )

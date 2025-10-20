@@ -58,4 +58,19 @@ export class MessageApiService {
   deleteMessage(projectName: string, threadId: string, eventId: string): Observable<any> {
     return this.http.delete(`/api/projects/${projectName}/threads/${threadId}/messages/${encodeURIComponent(eventId)}`)
   }
+
+  /**
+   * Get formatted message for display (temporary endpoint)
+   * TODO: Remove once frontend has proper event display components
+   * @param projectName Project name
+   * @param threadId Thread ID
+   * @param eventId Event timestamp ID
+   * @returns Observable of formatted text
+   */
+  getFormattedMessage(projectName: string, threadId: string, eventId: string): Observable<string> {
+    return this.http.get(
+      `/api/projects/${projectName}/threads/${threadId}/messages/${encodeURIComponent(eventId)}/formatted`,
+      { responseType: 'text' }
+    )
+  }
 }
