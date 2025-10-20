@@ -37,25 +37,8 @@
         (keydown.space)="navigateToHome(); $event.preventDefault(); $event.stopPropagation()"
       />
       <div class="header-title-section">
-        @if (canShowProjectSelector()) {
-          <!-- Native select when projects are available -->
-          <div class="select-wrapper">
-            <select
-              class="project-select"
-              [(ngModel)]="selectedProjectName"
-              (change)="onProjectChange($event)"
-              [title]="'Select project'"
-            >
-              @for (project of projects(); track project.name) {
-                <option [value]="project.name">{{ project.name }}</option>
-              }
-            </select>
-            <mat-icon class="select-arrow">expand_more</mat-icon>
-          </div>
-        } @else {
-          <!-- Static title when no projects available -->
-          <h2 class="sidenav-title">{{ selectedProjectName() }}</h2>
-        }
+        <!-- Project name display -->
+        <h2 class="sidenav-title">{{ selectedProjectName() }}</h2>
       </div>
       <button mat-icon-button (click)="close()" class="close-btn">
         <mat-icon>close</mat-icon>

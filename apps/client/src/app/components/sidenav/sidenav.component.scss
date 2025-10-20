@@ -185,64 +185,6 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-
-    .select-wrapper {
-      flex: 1;
-      position: relative;
-      display: flex;
-      align-items: center;
-      min-width: 0;
-
-      .project-select {
-        flex: 1;
-        min-width: 0; // Allow select to shrink
-        padding: 0.5rem 2.5rem 0.5rem 0.75rem;
-        font-size: 1.25rem;
-        font-weight: 600;
-        color: var(--color-text);
-        background: transparent;
-        border: 1px solid transparent;
-        border-radius: 8px;
-        cursor: pointer;
-        transition: all 0.2s;
-        outline: none;
-        font-family: inherit;
-
-        // Remove default select arrow in some browsers
-        appearance: none;
-        -webkit-appearance: none;
-        -moz-appearance: none;
-
-        &:hover {
-          background-color: var(--color-bg-hover);
-          border-color: var(--glass-border);
-        }
-
-        &:focus {
-          background-color: var(--color-bg-hover);
-          border-color: var(--color-primary);
-        }
-
-        // Style options
-        option {
-          background: var(--color-bg-secondary);
-          color: var(--color-text);
-          padding: 0.5rem;
-        }
-      }
-
-      .select-arrow {
-        position: absolute;
-        right: 0.5rem;
-        top: 50%;
-        transform: translateY(-50%);
-        pointer-events: none;
-        color: var(--color-text-secondary);
-        font-size: 20px;
-        width: 20px;
-        height: 20px;
-      }
-    }
   }
 
   .close-btn {

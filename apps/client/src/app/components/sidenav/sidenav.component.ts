@@ -41,7 +41,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
   isUserConfigOpen = false
   isProjectConfigOpen = false
   isWebhooksOpen = false
-  isProjectSelectorExpanded = false
 
   // Role-based access control
   isAdmin = false
@@ -295,37 +294,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
     return []
   }
 
-  /**
-   * Toggle project selector dropdown
-   */
-  toggleProjectSelector(): void {
-    // Don't toggle if there's no project or can't switch projects
-    if (!this.canShowProjectSelector()) {
-      return
-    }
-    this.isProjectSelectorExpanded = !this.isProjectSelectorExpanded
-  }
 
-  /**
-   * Check if we can show the project selector
-   */
-  canShowProjectSelector(): boolean {
-    const projectList = this.projects()
-    return !!(this.canCreateProject() && projectList && projectList.length > 0)
-  }
-
-  /**
-   * Handle project selection from native select
-   */
-  onProjectChange(event: Event): void {
-    const selectElement = event.target as HTMLSelectElement
-    const projectName = selectElement.value
-
-    if (projectName && projectName !== this.selectedProjectName()) {
-      console.log('[SIDENAV] Selecting project:', projectName)
-      this.projectStateService.selectProject(projectName)
-    }
-  }
 
   /**
    * Toggle section expansion (accordion behavior - closes others)
