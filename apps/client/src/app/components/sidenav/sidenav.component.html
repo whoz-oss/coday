@@ -23,7 +23,19 @@
   <mat-sidenav mode="push" position="start" [opened]="isOpen" (closed)="close()" class="app-sidenav">
     <!-- Sidenav Header with Project Selector -->
     <div class="sidenav-header">
-      <img [attr.src]="'CODAY-Logo.png'" alt="coday" class="sidenav-logo" />
+      <img 
+        [attr.src]="'CODAY-Logo.png'" 
+        alt="coday" 
+        [class.sidenav-logo]="true"
+        [class.clickable]="!forcedProject()"
+        [class.disabled]="forcedProject()"
+        (click)="navigateToHome(); $event.stopPropagation()"
+        [title]="forcedProject() ? 'Project selection disabled' : 'Go to project selection'"
+        [attr.role]="forcedProject() ? null : 'button'"
+        [attr.tabindex]="forcedProject() ? null : '0'"
+        (keydown.enter)="navigateToHome(); $event.preventDefault(); $event.stopPropagation()"
+        (keydown.space)="navigateToHome(); $event.preventDefault(); $event.stopPropagation()"
+      />
       <div class="header-title-section">
         @if (canShowProjectSelector()) {
           <!-- Native select when projects are available -->

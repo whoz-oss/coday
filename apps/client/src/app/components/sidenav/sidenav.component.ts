@@ -1,4 +1,4 @@
-import { Component, inject, OnDestroy, OnInit, ViewChild, ElementRef } from '@angular/core'
+import { Component, ElementRef, inject, OnDestroy, OnInit, ViewChild } from '@angular/core'
 import { Router } from '@angular/router'
 import { FormsModule } from '@angular/forms'
 import { Subject } from 'rxjs'
@@ -78,6 +78,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
   projects = toSignal(this.projectStateService.projectList$)
   canCreateProject = toSignal(this.projectStateService.forcedProject$.pipe(map((value) => !value)))
   selectedProjectName = toSignal(this.projectStateService.selectedProject$.pipe(map((project) => project?.name)))
+  forcedProject = toSignal(this.projectStateService.forcedProject$)
 
   private readonly router = inject(Router)
   private readonly preferences = inject(PreferencesService)
@@ -339,6 +340,27 @@ export class SidenavComponent implements OnInit, OnDestroy {
 
     // Toggle the clicked section
     this.expandedSections[section] = !wasExpanded
+  }
+
+  /**
+   * Navigate to home (project selection)
+   * Only allowed if no forced project
+   */
+  navigateToHome(): void {
+    // Don't allow navigation if there's a forced project
+    if (this.forcedProject()) {
+      console.log('[SIDENAV] Cannot navigate to home - forced project active')
+      return
+    }
+
+    console.log('[SIDENAV] Navigating to home (project selection)')
+    // Clear project selection first to avoid auto-redirect
+    this.projectStateService.clearSelection()
+    // Use setTimeout to ensure clearSelection is processed before navigation
+    // Then navigate to home
+    this.router.navigate(['/'])
+    // Close sidenav after navigation
+    this.close()
   }
 
   /**

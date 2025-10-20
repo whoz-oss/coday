@@ -32,10 +32,12 @@ export class ProjectSelectionComponent {
 
   constructor() {
     // setup re-direction to the selected project as soon as selection comes
+    // Only redirect if we're still on the project selection page
     this.projectStateService.selectedProject$
       .pipe(
         takeUntilDestroyed(),
         filter((selection) => !!selection),
+        filter(() => this.router.url === '/'), // Only redirect if we're on home page
         take(1)
       )
       .subscribe((selection) => {
