@@ -95,7 +95,7 @@ if (process.env.BUILD_ENV === 'development') {
     : path.resolve(__dirname, '../coday-client/browser')
 
   debugLog('INIT', `Production mode: serving static files from ${clientPath}`)
-  if (process.env.CODAY_CLIENT_PATHH) {
+  if (process.env.CODAY_CLIENT_PATH) {
     debugLog('INIT', 'Using client path from CODAY_CLIENT_PATH environment variable')
   }
 

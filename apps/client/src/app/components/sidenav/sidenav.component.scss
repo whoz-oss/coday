@@ -99,15 +99,15 @@
   }
 }
 
-// Sidenav drawer
+// Sidenav drawer - MUST be flex container
 .app-sidenav {
   width: 310px;
+  height: 100%;
   background: var(--glass-bg);
   backdrop-filter: var(--glass-backdrop-blur);
   -webkit-backdrop-filter: var(--glass-backdrop-blur);
   border-radius: 0;
-  overflow-y: auto !important;
-  overflow-x: hidden;
+  overflow: hidden; // NO scroll on sidenav itself
   display: flex;
   flex-direction: column;
 
@@ -136,7 +136,7 @@
   align-items: center;
   gap: 1rem;
   padding: 1.5rem 1rem 0.5rem;
-  position: relative;
+  flex-shrink: 0; // Don't shrink header
 
   .close-btn {
     color: var(--color-text-secondary);
@@ -231,6 +231,7 @@
 // New Thread Section - Always Visible
 .new-thread-section {
   padding: 1rem 1rem 0.5rem 1rem;
+  flex-shrink: 0; // Don't shrink this section
 }
 
 .new-thread-link {
@@ -306,29 +307,14 @@
   }
 }
 
-// Sections container
+// Sections container - takes remaining space
 .sidenav-sections {
+  flex: 1;
+  min-height: 0; // CRITICAL for flexbox
+  overflow: hidden; // NO scroll here
   display: flex;
   flex-direction: column;
-  flex: 1;
-  overflow-y: auto;
   padding: 0;
-  position: relative;
-
-  // Gradient shadow at bottom to indicate scrollable content
-  &::after {
-    content: '';
-    position: sticky;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 60px;
-    background: linear-gradient(to bottom, transparent 0%, var(--glass-bg) 100%);
-    pointer-events: none;
-    opacity: 1;
-    transition: opacity 0.3s ease;
-    z-index: 10;
-  }
 
   // Custom scrollbar
   &::-webkit-scrollbar {
@@ -367,9 +353,16 @@
 
 // Section container
 .section-container {
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
+  flex-shrink: 0; // Other sections don't shrink
+  
+  // First section-container (threads) takes remaining space
+  &:first-child {
+    flex: 1; // Grow to fill space
+    min-height: 0; // CRITICAL
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
 }
 
 // Section toggle button (styled as a link with arrow)
@@ -491,34 +484,30 @@
 // Section content
 .section-content {
   $section-content-top-bottom-padding: 0.5rem;
-  display: flex;
-  flex-direction: column;
   padding: $section-content-top-bottom-padding 0;
   animation: slideDown 0.2s ease;
-  max-height: calc(100vh - 300px);
-  overflow-y: auto;
-  overflow-x: hidden;
   border-bottom: 1px solid var(--color-border);
-  position: relative;
-
-  // Gradient shadow at bottom to indicate scrollable content
-  &::after {
-    content: '';
-    position: sticky;
-    flex-shrink: 0;
-    bottom: -#{$section-content-top-bottom-padding};
-    left: 0;
-    right: 0;
-    height: 40px;
-    background: linear-gradient(to bottom, transparent 0%, var(--glass-bg) 100%);
-    pointer-events: none;
-    opacity: 1;
-    transition: opacity 0.3s ease;
-    z-index: 1;
-  }
-
+  
+  // Threads section - scrollable
   &.threads {
     padding-top: 0;
+    flex: 1; // Take remaining space in parent
+    min-height: 0; // CRITICAL
+    overflow-y: auto; // Scroll HERE
+    overflow-x: hidden;
+
+    // Gradient shadow at bottom
+    &::after {
+      content: '';
+      position: sticky;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 40px;
+      background: linear-gradient(to bottom, transparent 0%, var(--glass-bg) 100%);
+      pointer-events: none;
+      z-index: 1;
+    }
   }
 }
 
@@ -705,6 +694,10 @@
 .sidenav-project-selector,
 .sidenav-thread-selector {
   width: 100%;
+  // Thread selector needs to respect parent's height constraint
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 // Error notification

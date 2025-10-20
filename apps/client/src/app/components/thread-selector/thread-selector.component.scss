@@ -2,14 +2,22 @@
   display: flex;
   flex-direction: column;
   width: 100%;
+  min-height: 0; // Allow shrinking in flex parent
+  
+  // When inside sidenav, the thread-list should fill available space
+  :host-context(.sidenav-thread-selector) & {
+    flex: 1;
+    min-height: 0;
+  }
 }
 
 .thread-list {
   display: flex;
   flex-direction: column;
   gap: 0;
-  max-height: none; // Allow natural height, sidenav handles scrolling
-  overflow: visible; // No internal scroll, let sidenav scroll
+  // When inside sidenav, let the parent (.section-content.threads) handle scrolling
+  max-height: none;
+  overflow: visible;
 }
 
 .thread-group {
