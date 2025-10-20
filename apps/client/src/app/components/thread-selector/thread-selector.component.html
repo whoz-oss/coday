@@ -30,6 +30,8 @@
 
       @if (!threads()?.length) {
         <div class="thread-empty">No existing threads</div>
+      } @else if (searchQuery && getGroupedThreads().length === 0) {
+        <div class="thread-empty">No threads matching "{{ searchQuery }}"</div>
       }
     </div>
   } @else {

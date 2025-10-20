@@ -48,8 +48,19 @@ export class ThreadSelectorComponent {
    * Group threads by date categories
    */
   getGroupedThreads(): Array<{ label: string; threads: Array<{ id: string; name: string; modifiedDate: string }> }> {
-    const threadsToGroup = this.threads()
+    let threadsToGroup = this.threads()
     if (!threadsToGroup?.length) {
+      return []
+    }
+
+    // Apply search filter if searchQuery is provided
+    if (this.searchQuery && this.searchQuery.trim()) {
+      const query = this.searchQuery.toLowerCase().trim()
+      threadsToGroup = threadsToGroup.filter((thread) => thread.name.toLowerCase().includes(query))
+    }
+
+    // If no threads after filtering, return empty
+    if (!threadsToGroup.length) {
       return []
     }
 
