@@ -1,6 +1,12 @@
 import express from 'express'
 import {debugLog} from './log'
 import {WebhookService, Webhook} from '@coday/service/webhook.service'
+import {ThreadCodayManager} from './thread-coday-manager'
+import {ThreadService2} from './services/thread.service2'
+import {CodayOptions} from '@coday/options'
+import {CodayLogger} from '@coday/service/coday-logger'
+import {CodayEvent, MessageEvent} from '@coday/coday-events'
+import {filter} from 'rxjs'
 
 /**
  * Webhook Management REST API Routes
@@ -27,11 +33,19 @@ import {WebhookService, Webhook} from '@coday/service/webhook.service'
  * @param app - Express application instance
  * @param webhookService - Webhook service instance for CRUD operations
  * @param getUsernameFn - Function to extract username from request (for createdBy field)
+ * @param threadService - Thread service for creating threads
+ * @param threadCodayManager - Thread Coday manager for webhook execution
+ * @param codayOptions - Coday options for webhook execution
+ * @param logger - Logger instance for webhook execution
  */
 export function registerWebhookRoutes(
   app: express.Application,
   webhookService: WebhookService,
-  getUsernameFn: (req: express.Request) => string
+  getUsernameFn: (req: express.Request) => string,
+  threadService: ThreadService2,
+  threadCodayManager: ThreadCodayManager,
+  codayOptions: CodayOptions,
+  logger: CodayLogger
 ): void {
 
   /**
@@ -212,6 +226,237 @@ export function registerWebhookRoutes(
       console.error('Error deleting webhook:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       res.status(500).json({error: `Failed to delete webhook: ${errorMessage}`})
+    }
+  })
+
+  /**
+   * POST /api/webhooks/:uuid/execute
+   * Execute Webhook - UUID-based Programmatic AI Agent Interaction
+   *
+   * This endpoint enables external systems to trigger Coday AI agent interactions remotely
+   * using pre-configured webhook definitions identified by UUID.
+   *
+   * URL Parameters:
+   * - uuid: string (required) - The UUID of the configured webhook
+   *
+   * Request Body:
+   * - title: string (optional) - Title for the saved conversation thread
+   * - prompts: string[] (required for 'free' type) - Array of prompts to execute
+   * - awaitFinalAnswer: boolean (optional, default: false) - Whether to wait for completion
+   * - [key: string]: any (for 'template' type) - Values to replace placeholders in template commands
+   *
+   * Response Modes:
+   * - Async (awaitFinalAnswer: false): Returns immediately with threadId for fire-and-forget operations
+   * - Sync (awaitFinalAnswer: true): Waits for all prompts to complete and returns final result
+   *
+   * Use Cases:
+   * - CI/CD pipeline integration for automated code analysis
+   * - External system integration for batch processing
+   * - Scheduled tasks and monitoring workflows
+   * - API-driven AI agent interactions with pre-configured templates
+   */
+  app.post('/api/webhooks/:uuid/execute', async (req: express.Request, res: express.Response) => {
+    let threadId: string | null = null
+
+    try {
+      // Extract UUID from URL parameters
+      const {uuid} = req.params
+      if (!uuid) {
+        debugLog('WEBHOOK', 'Missing UUID in request')
+        res.status(400).send({error: 'Missing webhook UUID in URL'})
+        return
+      }
+
+      // Load webhook configuration
+      const webhook = await webhookService.get(uuid)
+      if (!webhook) {
+        debugLog('WEBHOOK', `Webhook not found for UUID: ${uuid}`)
+        res.status(404).send({error: `Webhook with UUID '${uuid}' not found`})
+        return
+      }
+
+      // Extract request body fields
+      const {title, prompts: bodyPrompts, awaitFinalAnswer, ...placeholderValues} = req.body
+
+      // Use webhook configuration
+      const project = webhook.project
+
+      // Use username that initiated the webhook call
+      const username = getUsernameFn(req)
+
+      // Determine prompts based on webhook command type
+      let prompts: string[]
+      if (webhook.commandType === 'free') {
+        // For 'free' type, use prompts from request body
+        if (!bodyPrompts || !Array.isArray(bodyPrompts) || bodyPrompts.length === 0) {
+          res.status(422).send({error: 'Missing or invalid prompts array for free command type'})
+          return
+        }
+        prompts = bodyPrompts
+      } else if (webhook.commandType === 'template') {
+        // For 'template' type, use webhook commands with placeholder replacement
+        if (!webhook.commands || webhook.commands.length === 0) {
+          res.status(422).send({error: 'Webhook has no template commands configured'})
+          return
+        }
+
+        // Replace placeholders in template commands
+        prompts = webhook.commands.map((command) => {
+          let processedCommand = command
+          // Simple string replacement for placeholders like {{key}}
+          Object.entries(placeholderValues).forEach(([key, value]) => {
+            const placeholder = `{{${key}}}`
+            processedCommand = processedCommand.replace(new RegExp(placeholder, 'g'), String(value))
+          })
+          return processedCommand
+        })
+      } else {
+        res.status(500).send({error: `Unknown webhook command type: ${webhook.commandType}`})
+        return
+      }
+
+      if (!project) {
+        res.status(422).send({error: 'Webhook project not configured'})
+        return
+      }
+
+      if (!username) {
+        res.status(422).send({error: 'Webhook createdBy not configured'})
+        return
+      }
+
+      // Create a new thread for the webhook
+      const thread = await threadService.createThread(project, username, title)
+      threadId = thread.id
+
+      // Configure one-shot Coday instance with automatic prompts
+      const oneShotOptions: CodayOptions = {
+        ...codayOptions,
+        oneshot: true, // Creates isolated instance that terminates after processing
+        project, // Target project for the AI agent interaction
+        thread: threadId, // Use the newly created thread
+        prompts: prompts, // User prompts
+      }
+
+      debugLog('WEBHOOK', `Creating webhook instance with ${prompts.length} prompts:`, prompts)
+
+      // Create a thread-based Coday instance for this webhook (without SSE connection)
+      const instance = threadCodayManager.createWithoutConnection(threadId, project, username, oneShotOptions)
+
+      // IMPORTANT: Prepare Coday without starting run() to subscribe to events first
+      // Because interactor.events is a Subject (not ReplaySubject), we must subscribe BEFORE run() emits events
+      instance.prepareCoday()
+      const interactor = instance.coday!.interactor
+
+      // Log successful webhook initiation
+      const logData = {
+        project,
+        title: title ?? 'Untitled',
+        username,
+        clientId: threadId, // Use threadId as clientId for log correlation
+        promptCount: prompts.length,
+        awaitFinalAnswer: !!awaitFinalAnswer,
+        webhookName: webhook.name,
+        webhookUuid: webhook.uuid,
+      }
+      logger.logWebhook(logData)
+
+      if (awaitFinalAnswer) {
+        // Synchronous mode: wait for completion
+        // Collect all assistant messages during the run
+        const assistantMessages: MessageEvent[] = []
+        const subscription = interactor.events
+          .pipe(
+            filter((event: CodayEvent) => {
+              debugLog(
+                'WEBHOOK',
+                `Received event type: ${event.type}, role: ${event instanceof MessageEvent ? event.role : 'N/A'}`
+              )
+              return event instanceof MessageEvent && event.role === 'assistant' && !!event.name
+            })
+          )
+          .subscribe((event) => {
+            assistantMessages.push(event as MessageEvent)
+          })
+
+        // Now start Coday run and wait for it to complete
+        instance
+          .coday!.run()
+          .catch((error) => {
+            console.error('Error during webhook Coday run:', error)
+          })
+          .then(() => {
+            subscription.unsubscribe()
+            const lastEvent = assistantMessages[assistantMessages.length - 1]
+            return lastEvent
+          })
+          .then((lastEvent) => {
+            // Cleanup the thread instance after completion
+            threadCodayManager.cleanup(threadId!).catch((error) => {
+              console.error('Error cleaning up webhook thread:', error)
+            })
+            res.status(200).send({threadId, lastEvent})
+          })
+          .catch((error) => {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+            logger.logWebhookError({
+              error: `Webhook completion failed: ${errorMessage}`,
+              username,
+              project,
+              clientId: threadId,
+            })
+            console.error('Error waiting for webhook completion:', error)
+
+            // Cleanup on error
+            if (threadId) {
+              threadCodayManager.cleanup(threadId).catch((cleanupError) => {
+                console.error('Error cleaning up webhook thread after error:', cleanupError)
+              })
+            }
+
+            if (!res.headersSent) {
+              res.status(500).send({error: 'Webhook processing failed'})
+            }
+          })
+      } else {
+        // Asynchronous mode: return immediately with thread ID
+        // Start Coday run in background
+        instance.coday!.run().catch((error) => {
+          console.error('Error during webhook Coday run:', error)
+        })
+
+        // Schedule cleanup after a reasonable timeout (e.g., 5 minutes)
+        setTimeout(
+          () => {
+            if (threadId) {
+              threadCodayManager.cleanup(threadId).catch((error) => {
+                console.error('Error cleaning up webhook thread after timeout:', error)
+              })
+            }
+          },
+          5 * 60 * 1000
+        ) // 5 minutes
+
+        res.status(201).send({threadId})
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      logger.logWebhookError({
+        error: `Webhook request failed: ${errorMessage}`,
+        username: null,
+        project: null,
+        clientId: threadId,
+      })
+      console.error('Unexpected error in webhook endpoint:', error)
+
+      // Cleanup on error
+      if (threadId) {
+        threadCodayManager.cleanup(threadId).catch((cleanupError) => {
+          console.error('Error cleaning up webhook thread after error:', cleanupError)
+        })
+      }
+
+      res.status(500).send({error: 'Internal server error'})
     }
   })
 }
