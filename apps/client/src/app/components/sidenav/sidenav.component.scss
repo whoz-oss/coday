@@ -138,6 +138,12 @@
   padding: 1.5rem 1rem 0.5rem;
   position: relative;
 
+  .close-btn {
+    color: var(--color-text-secondary);
+    flex-shrink: 0;
+    order: -1; // Place at the start
+  }
+
   .sidenav-logo {
     width: 40px;
     height: 40px;

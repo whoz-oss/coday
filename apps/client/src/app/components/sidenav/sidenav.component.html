@@ -23,6 +23,9 @@
   <mat-sidenav mode="push" position="start" [opened]="isOpen" (closed)="close()" class="app-sidenav">
     <!-- Sidenav Header with Project Selector -->
     <div class="sidenav-header">
+      <button mat-icon-button (click)="close()" class="close-btn" title="Close menu">
+        <mat-icon>close</mat-icon>
+      </button>
       <img 
         [attr.src]="'CODAY-Logo.png'" 
         alt="coday" 
@@ -40,9 +43,6 @@
         <!-- Project name display -->
         <h2 class="sidenav-title">{{ selectedProjectName() }}</h2>
       </div>
-      <button mat-icon-button (click)="close()" class="close-btn">
-        <mat-icon>close</mat-icon>
-      </button>
     </div>
 
     <!-- New Thread Link - Always Visible -->
