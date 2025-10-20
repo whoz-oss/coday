@@ -3,9 +3,7 @@ import path from 'path'
 import { ServerClientManager } from './server-client'
 import { ThreadCodayManager } from './thread-coday-manager'
 
-import { AnswerEvent, ImageContent } from '@coday/coday-events'
-// eslint-disable-next-line @nx/enforce-module-boundaries
-import { processImageBuffer } from '../../../libs/function/image-processor'
+import { AnswerEvent } from '@coday/coday-events'
 import { CodayOptions, parseCodayOptions } from '@coday/options'
 import * as os from 'node:os'
 import { debugLog } from './log'
@@ -151,59 +149,6 @@ registerMessageRoutes(app, threadCodayManager, getUsername)
 
 // Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null
-
-// POST endpoint for file uploads
-app.post('/api/files/upload', async (req: express.Request, res: express.Response) => {
-  try {
-    const { clientId, content, mimeType, filename } = req.body
-    // Validate required fields
-    if (!clientId || !content || !mimeType || !filename) {
-      res.status(400).json({ error: 'Missing required fields: clientId, content, mimeType, filename' })
-      return
-    }
-
-    debugLog('UPLOAD', `clientId: ${clientId}, uploading: ${filename}`)
-
-    const client = clientManager.get(clientId)
-    if (!client) {
-      res.status(404).json({ error: 'Client not found' })
-      return
-    }
-
-    // Process the image
-    const buffer = Buffer.from(content, 'base64')
-    const processed = await processImageBuffer(buffer, mimeType)
-
-    // Create ImageContent
-    const imageContent: ImageContent = {
-      type: 'image',
-      content: processed.content,
-      mimeType: processed.mimeType,
-      width: processed.width,
-      height: processed.height,
-      source: `${filename} (${(processed.processedSize / 1024).toFixed(1)} KB)`,
-    }
-
-    // Upload to thread via Coday
-    if (!client.coday) {
-      console.log('No Coday instance available')
-      res.status(400).json({ error: 'No active session available' })
-      return
-    }
-    client.coday?.upload([imageContent])
-
-    client.updateLastConnection()
-
-    res.json({
-      success: true,
-      processedSize: processed.processedSize,
-      dimensions: { width: processed.width, height: processed.height },
-    })
-  } catch (error) {
-    console.error('Error processing file upload:', error)
-    res.status(400).json({ error: error instanceof Error ? error.message : 'Upload failed' })
-  }
-})
 
 // POST endpoint for sending messages to a specific thread (new architecture)
 app.post('/api/projects/:projectName/threads/:threadId/message', (req: express.Request, res: express.Response) => {

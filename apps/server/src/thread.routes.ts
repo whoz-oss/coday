@@ -2,6 +2,8 @@ import express from 'express'
 import { debugLog } from './log'
 import { ThreadService2 } from './services/thread.service2'
 import { ThreadCodayManager } from './thread-coday-manager'
+import { ImageContent } from '@coday/coday-events'
+import { processImageBuffer } from '../../../libs/function/image-processor'
 
 /**
  * Thread Management REST API Routes
@@ -11,11 +13,13 @@ import { ThreadCodayManager } from './thread-coday-manager'
  * natural relationship.
  *
  * Endpoints:
- * - GET    /api/projects/:projectName/threads              - List threads
- * - POST   /api/projects/:projectName/threads              - Create thread
- * - GET    /api/projects/:projectName/threads/:threadId    - Get thread
- * - PUT    /api/projects/:projectName/threads/:threadId    - Update thread
- * - DELETE /api/projects/:projectName/threads/:threadId    - Delete thread
+ * - GET    /api/projects/:projectName/threads                     - List threads
+ * - POST   /api/projects/:projectName/threads                     - Create thread
+ * - GET    /api/projects/:projectName/threads/:threadId           - Get thread
+ * - PUT    /api/projects/:projectName/threads/:threadId           - Update thread
+ * - DELETE /api/projects/:projectName/threads/:threadId           - Delete thread
+ * - POST   /api/projects/:projectName/threads/:threadId/stop      - Stop thread execution
+ * - POST   /api/projects/:projectName/threads/:threadId/upload    - Upload file to thread
  *
  * Authentication:
  * - Username extracted from x-forwarded-email header (set by auth proxy)
@@ -275,16 +279,7 @@ export function registerThreadRoutes(
         return
       }
 
-      debugLog(
-        'THREAD',
-        `DELETE
-      thread:
-      ${threadId}
-      from
-      project
-      :
-      ${projectName}`
-      )
+      debugLog('THREAD', `DELETE thread: ${threadId} from project: ${projectName}`)
       const deleted = await threadService.deleteThread(projectName, threadId)
 
       if (deleted) {
@@ -301,4 +296,83 @@ export function registerThreadRoutes(
       res.status(500).json({ error: `Failed to delete thread: ${errorMessage}` })
     }
   })
+
+  /**
+   * POST /api/projects/:projectName/threads/:threadId/upload
+   * Upload a file (image) to a thread
+   *
+   * Body: {
+   *   content: string (base64),
+   *   mimeType: string,
+   *   filename: string
+   * }
+   */
+  app.post(
+    '/api/projects/:projectName/threads/:threadId/upload',
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { projectName, threadId } = req.params
+        const { content, mimeType, filename } = req.body
+
+        // Validate required fields
+        if (!projectName || !threadId) {
+          res.status(400).json({ error: 'Project name and thread ID are required' })
+          return
+        }
+
+        if (!content || !mimeType || !filename) {
+          res.status(400).json({ error: 'Missing required fields: content, mimeType, filename' })
+          return
+        }
+
+        const username = getUsernameFn(req)
+        if (!username) {
+          res.status(401).json({ error: 'Authentication required' })
+          return
+        }
+
+        debugLog('UPLOAD', `threadId: ${threadId}, project: ${projectName}, uploading: ${filename}`)
+
+        // Get the thread instance
+        const instance = threadCodayManager.get(threadId)
+        if (!instance?.coday) {
+          res.status(404).json({ error: 'Thread not found or not active' })
+          return
+        }
+
+        // Verify thread ownership
+        if (instance.username !== username) {
+          res.status(403).json({ error: 'Access denied: thread belongs to another user' })
+          return
+        }
+
+        // Process the image
+        const buffer = Buffer.from(content, 'base64')
+        const processed = await processImageBuffer(buffer, mimeType)
+
+        // Create ImageContent
+        const imageContent: ImageContent = {
+          type: 'image',
+          content: processed.content,
+          mimeType: processed.mimeType,
+          width: processed.width,
+          height: processed.height,
+          source: `${filename} (${(processed.processedSize / 1024).toFixed(1)} KB)`,
+        }
+
+        // Upload to thread via Coday
+        instance.coday.upload([imageContent])
+
+        res.status(200).json({
+          success: true,
+          processedSize: processed.processedSize,
+          dimensions: { width: processed.width, height: processed.height },
+        })
+      } catch (error) {
+        console.error('Error processing file upload:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Upload failed'
+        res.status(400).json({ error: errorMessage })
+      }
+    }
+  )
 }

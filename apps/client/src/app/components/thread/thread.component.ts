@@ -24,6 +24,7 @@ import { ConnectionStatus } from '../../core/services/event-stream.service'
 import { PreferencesService } from '../../services/preferences.service'
 import { TabTitleService } from '../../services/tab-title.service'
 import { ThreadStateService } from '../../core/services/thread-state.service'
+import { ImageUploadService } from '../../services/image-upload.service'
 
 /**
  * ThreadComponent - Dedicated component for displaying and interacting with a conversation thread
@@ -86,6 +87,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   private readonly elementRef = inject(ElementRef)
   private readonly router = inject(Router)
   private readonly threadState = inject(ThreadStateService)
+  private readonly imageUploadService = inject(ImageUploadService)
 
   ngOnInit(): void {
     console.log('[THREAD] Initializing with project:', this.projectName, 'thread:', this.threadId)
@@ -280,14 +282,77 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
     }
   }
 
-  async onDrop(event: DragEvent): Promise<void> {
+  onDrop(event: DragEvent): void {
     event.preventDefault()
     this.isDragOver = false
 
     console.log('[THREAD] Files dropped:', event.dataTransfer?.files?.length || 0)
 
-    // TODO: Implement image upload for thread-based architecture
-    this.showUploadError('Image upload not yet implemented in thread component')
+    const files = event.dataTransfer?.files
+    if (!files || files.length === 0) {
+      console.log('[THREAD] No files in drop event')
+      return
+    }
+
+    // Filter image files
+    const imageFiles = this.imageUploadService.filterImageFiles(files)
+    console.log('[THREAD] Image files to upload:', imageFiles.length)
+
+    if (imageFiles.length === 0) {
+      this.showUploadError('No supported image files found. Supported formats: PNG, JPEG, GIF, WebP')
+      return
+    }
+
+    // Upload each image file sequentially
+    this.uploadFilesSequentially(imageFiles, 0)
+  }
+
+  /**
+   * Upload files sequentially (one after another)
+   */
+  private uploadFilesSequentially(files: File[], index: number): void {
+    if (index >= files.length) {
+      return // All files uploaded
+    }
+
+    const file = files[index]
+    if (!file) {
+      console.error('[THREAD] File at index', index, 'is undefined')
+      return
+    }
+
+    console.log('[THREAD] Uploading file:', file.name)
+    this.uploadStatus = { message: `Uploading ${file.name}...`, isError: false }
+
+    this.imageUploadService.uploadImage(file, this.projectName, this.threadId)
+      .subscribe({
+        next: (result) => {
+          if (result.success) {
+            console.log('[THREAD] Upload successful:', file.name)
+            this.uploadStatus = {
+              message: `✓ ${file.name} uploaded (${(result.processedSize! / 1024).toFixed(1)} KB)`,
+              isError: false,
+            }
+            // Auto-hide success message after 3 seconds
+            setTimeout(() => {
+              if (!this.uploadStatus.isError) {
+                this.uploadStatus = { message: '', isError: false }
+              }
+            }, 3000)
+            // Upload next file
+            this.uploadFilesSequentially(files, index + 1)
+          } else {
+            console.error('[THREAD] Upload failed:', file.name, result.error)
+            this.showUploadError(`Failed to upload ${file.name}: ${result.error}`)
+            // Stop on error
+          }
+        },
+        error: (error) => {
+          console.error('[THREAD] Upload error:', file.name, error)
+          this.showUploadError(`Failed to upload ${file.name}: ${error.message || 'Unknown error'}`)
+          // Stop on error
+        }
+      })
   }
 
   private showUploadError(message: string): void {
