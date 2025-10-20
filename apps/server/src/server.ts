@@ -3,7 +3,7 @@ import path from 'path'
 import { ServerClientManager } from './server-client'
 import { ThreadCodayManager } from './thread-coday-manager'
 
-import { CodayOptions, parseCodayOptions } from '@coday/options'
+import { parseCodayOptions } from '@coday/options'
 import * as os from 'node:os'
 import { debugLog } from './log'
 import { CodayLogger } from '@coday/service/coday-logger'
@@ -141,119 +141,13 @@ registerWebhookRoutes(app, webhookService, getUsername, threadService, threadCod
 registerProjectRoutes(app, projectService, codayOptions.project)
 
 // Register thread management routes
-registerThreadRoutes(app, threadService, threadCodayManager, getUsername)
+registerThreadRoutes(app, threadService, threadCodayManager, getUsername, codayOptions)
 
 // Register message management routes
 registerMessageRoutes(app, threadCodayManager, getUsername)
 
 // Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null
-
-/**
- * New SSE endpoint for thread-based event streaming
- * GET /api/projects/:projectName/threads/:threadId/event-stream
- *
- * This endpoint provides Server-Sent Events for a specific thread.
- * The Coday instance is indexed by threadId, allowing multiple users
- * to potentially connect to the same thread in the future.
- *
- * Authentication: Username extracted from x-forwarded-email header
- * Validation: Thread must exist and belong to the authenticated user
- */
-app.get(
-  '/api/projects/:projectName/threads/:threadId/event-stream',
-  async (req: express.Request, res: express.Response) => {
-    const projectName = req.params['projectName']
-    const threadId = req.params['threadId']
-    const username = getUsername(req)
-
-    // Validate required parameters
-    if (!projectName || !threadId) {
-      res.status(400).send('Project name and thread ID are required')
-      return
-    }
-
-    debugLog('THREAD_SSE', `New connection request for thread ${threadId} in project ${projectName}`)
-
-    // Validate authentication
-    // TODO: factorize
-    if (!username) {
-      debugLog('THREAD_SSE', 'Rejected: No username provided')
-      res.status(401).send('Authentication required')
-      return
-    }
-
-    // Setup SSE headers
-    res.setHeader('Content-Type', 'text/event-stream')
-    res.setHeader('Cache-Control', 'no-cache')
-    res.setHeader('Connection', 'keep-alive')
-
-    // Create options with project and thread pre-selected
-    const threadOptions: CodayOptions = {
-      ...codayOptions,
-      project: projectName,
-      thread: threadId,
-    }
-
-    // Get or create thread-based Coday instance
-    const instance = threadCodayManager.getOrCreate(threadId, projectName, username, threadOptions, res)
-
-    // Handle client disconnect
-    req.on('close', () => {
-      debugLog('THREAD_SSE', `Client disconnected from thread ${threadId}`)
-      threadCodayManager.removeConnection(threadId, res)
-    })
-
-    // Start Coday if it's a new instance
-    if (instance.startCoday()) {
-      debugLog('THREAD_SSE', `New Coday instance started for thread ${threadId}`)
-    } else {
-      debugLog('THREAD_SSE', `Reconnected to existing Coday instance for thread ${threadId}`)
-    }
-  }
-)
-
-// Implement SSE for Heartbeat (LEGACY - kept for backward compatibility)
-app.get('/events', (req: express.Request, res: express.Response) => {
-  const clientId = req.query.clientId as string
-
-  debugLog('SSE', `New connection request for client ${clientId}`)
-
-  // handle username header coming from auth (or local frontend) or local in noAuth
-  const usernameHeaderValue = getUsername(req)
-  debugLog('SSE', `Connection started, clientId: ${clientId}, username: ${usernameHeaderValue}`)
-  if (!usernameHeaderValue || typeof usernameHeaderValue !== 'string') {
-    debugLog('SSE', 'Rejected: No username provided')
-    res.status(400).send(`Invalid or missing request headers '${EMAIL_HEADER}'.`)
-    return
-  }
-  const username = usernameHeaderValue as string
-
-  // handle clientId, identifying the browser session
-  if (!clientId) {
-    debugLog('SSE', 'Rejected: No client ID provided')
-    res.status(400).send('Client ID is required')
-    return
-  }
-
-  res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Cache-Control', 'no-cache')
-  res.setHeader('Connection', 'keep-alive')
-
-  const client = clientManager.getOrCreate(clientId, res, codayOptions, username)
-  // Handle client disconnect
-  req.on('close', () => {
-    debugLog('SSE', `Client ${clientId} disconnected`)
-    client.terminate()
-  })
-
-  // Start Coday if it's a new client
-  if (client.startCoday()) {
-    debugLog('SSE', `New Coday instance started for client ${clientId}`)
-  } else {
-    debugLog('SSE', `Existing Coday instance reused for client ${clientId}`)
-  }
-})
 
 // Error handling middleware
 app.use((err: any, _: express.Request, res: express.Response, __: express.NextFunction) => {

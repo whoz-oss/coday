@@ -4,6 +4,7 @@ import { ThreadService2 } from './services/thread.service2'
 import { ThreadCodayManager } from './thread-coday-manager'
 import { ImageContent } from '@coday/coday-events'
 import { processImageBuffer } from '../../../libs/function/image-processor'
+import { CodayOptions } from '@coday/options'
 
 /**
  * Thread Management REST API Routes
@@ -13,13 +14,14 @@ import { processImageBuffer } from '../../../libs/function/image-processor'
  * natural relationship.
  *
  * Endpoints:
- * - GET    /api/projects/:projectName/threads                     - List threads
- * - POST   /api/projects/:projectName/threads                     - Create thread
- * - GET    /api/projects/:projectName/threads/:threadId           - Get thread
- * - PUT    /api/projects/:projectName/threads/:threadId           - Update thread
- * - DELETE /api/projects/:projectName/threads/:threadId           - Delete thread
- * - POST   /api/projects/:projectName/threads/:threadId/stop      - Stop thread execution
- * - POST   /api/projects/:projectName/threads/:threadId/upload    - Upload file to thread
+ * - GET    /api/projects/:projectName/threads                            - List threads
+ * - POST   /api/projects/:projectName/threads                            - Create thread
+ * - GET    /api/projects/:projectName/threads/:threadId                  - Get thread
+ * - PUT    /api/projects/:projectName/threads/:threadId                  - Update thread
+ * - DELETE /api/projects/:projectName/threads/:threadId                  - Delete thread
+ * - POST   /api/projects/:projectName/threads/:threadId/stop             - Stop thread execution
+ * - POST   /api/projects/:projectName/threads/:threadId/upload           - Upload file to thread
+ * - GET    /api/projects/:projectName/threads/:threadId/event-stream     - SSE connection for thread events
  *
  * Authentication:
  * - Username extracted from x-forwarded-email header (set by auth proxy)
@@ -32,12 +34,14 @@ import { processImageBuffer } from '../../../libs/function/image-processor'
  * @param threadService - ThreadService2 instance for thread operations
  * @param threadCodayManager - ThreadCodayManager instance for runtime operations
  * @param getUsernameFn - Function to extract username from request
+ * @param codayOptions - Coday options for thread instances
  */
 export function registerThreadRoutes(
   app: express.Application,
   threadService: ThreadService2,
   threadCodayManager: ThreadCodayManager,
-  getUsernameFn: (req: express.Request) => string
+  getUsernameFn: (req: express.Request) => string,
+  codayOptions: CodayOptions
 ): void {
   /**
    * GET /api/projects/:projectName/threads
@@ -372,6 +376,70 @@ export function registerThreadRoutes(
         console.error('Error processing file upload:', error)
         const errorMessage = error instanceof Error ? error.message : 'Upload failed'
         res.status(400).json({ error: errorMessage })
+      }
+    }
+  )
+
+  /**
+   * GET /api/projects/:projectName/threads/:threadId/event-stream
+   * Server-Sent Events (SSE) endpoint for thread event streaming
+   *
+   * This endpoint provides real-time event streaming for a specific thread.
+   * The Coday instance is indexed by threadId, allowing multiple users
+   * to potentially connect to the same thread in the future.
+   *
+   * Authentication: Username extracted from x-forwarded-email header
+   * Validation: Thread must exist and belong to the authenticated user
+   *
+   * TODO: Add heartbeat mechanism for SSE connections
+   */
+  app.get(
+    '/api/projects/:projectName/threads/:threadId/event-stream',
+    async (req: express.Request, res: express.Response) => {
+      const { projectName, threadId } = req.params
+      const username = getUsernameFn(req)
+
+      // Validate required parameters
+      if (!projectName || !threadId) {
+        res.status(400).send('Project name and thread ID are required')
+        return
+      }
+
+      debugLog('THREAD_SSE', `New connection request for thread ${threadId} in project ${projectName}`)
+
+      // Validate authentication
+      if (!username) {
+        debugLog('THREAD_SSE', 'Rejected: No username provided')
+        res.status(401).send('Authentication required')
+        return
+      }
+
+      // Setup SSE headers
+      res.setHeader('Content-Type', 'text/event-stream')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.setHeader('Connection', 'keep-alive')
+
+      // Create options with project and thread pre-selected
+      const threadOptions: CodayOptions = {
+        ...codayOptions,
+        project: projectName,
+        thread: threadId,
+      }
+
+      // Get or create thread-based Coday instance
+      const instance = threadCodayManager.getOrCreate(threadId, projectName, username, threadOptions, res)
+
+      // Handle client disconnect
+      req.on('close', () => {
+        debugLog('THREAD_SSE', `Client disconnected from thread ${threadId}`)
+        threadCodayManager.removeConnection(threadId, res)
+      })
+
+      // Start Coday if it's a new instance
+      if (instance.startCoday()) {
+        debugLog('THREAD_SSE', `New Coday instance started for thread ${threadId}`)
+      } else {
+        debugLog('THREAD_SSE', `Reconnected to existing Coday instance for thread ${threadId}`)
       }
     }
   )
