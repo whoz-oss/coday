@@ -49,28 +49,6 @@
   width: 100%;
 }
 
-.welcome-title {
-  font-size: clamp(2.5rem, 6vw, 4rem);
-  font-weight: 700;
-  background: linear-gradient(
-    90deg,
-    var(--color-primary, #3b82f6) 0%,
-    var(--color-accent, #8b5cf6) 50%,
-    var(--color-primary, #3b82f6) 100%
-  );
-  background-size: 200% auto;
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: gradientShift 3s ease-in-out infinite;
-  margin: 0;
-  padding: 0;
-  line-height: 1.2;
-  transition: opacity 0.5s ease-in-out;
-  display: inline-block;
-  min-height: 1.2em;
-}
-
 @keyframes fadeInUp {
   from {
     opacity: 0;
@@ -79,18 +57,6 @@
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes gradientShift {
-  0% {
-    background-position: 0% center;
-  }
-  50% {
-    background-position: 100% center;
-  }
-  100% {
-    background-position: 0% center;
   }
 }
 

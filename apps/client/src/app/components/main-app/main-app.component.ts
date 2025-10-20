@@ -6,6 +6,7 @@ import { animate, style, transition, trigger } from '@angular/animations'
 
 import { ChatTextareaComponent } from '../chat-textarea/chat-textarea.component'
 import { ThreadComponent } from '../thread/thread.component'
+import { WelcomeMessageComponent } from '../welcome-message/welcome-message.component'
 
 import { CodayService } from '../../core/services/coday.service'
 import { TabTitleService } from '../../services/tab-title.service'
@@ -16,7 +17,7 @@ import { Router } from '@angular/router'
 @Component({
   selector: 'app-main',
   standalone: true,
-  imports: [ChatTextareaComponent, ThreadComponent],
+  imports: [ChatTextareaComponent, ThreadComponent, WelcomeMessageComponent],
   templateUrl: './main-app.component.html',
   styleUrl: './main-app.component.scss',
   animations: [
@@ -44,25 +45,6 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // Input height management for welcome view
   inputSectionHeight: number = 80 // Default height
-
-  // Welcome message rotation
-  welcomeMessages = [
-    'Welcome to Coday', // English
-    'Bienvenue sur Coday', // French
-    'Bienvenido a Coday', // Spanish
-    'Willkommen bei Coday', // German
-    'Benvenuto su Coday', // Italian
-    'Bem-vindo ao Coday', // Portuguese
-    'Welkom bij Coday', // Dutch
-    'Добро пожаловать в Coday', // Russian
-    'Coday へようこそ', // Japanese
-    '欢迎来到 Coday', // Chinese
-    'Coday 에 오신 것을 환영합니다', // Korean
-    'مرحبًا بك في Coday', // Arabic
-  ]
-  currentWelcomeIndex = 0
-  currentWelcomeMessage = this.welcomeMessages[0]
-  private welcomeRotationInterval?: number
 
   // Modern Angular dependency injection
   private codayService = inject(CodayService)
@@ -110,9 +92,6 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
    * Initialize the welcome view when no thread is selected
    */
   private initializeWelcomeView(): void {
-    // Start welcome message rotation
-    this.startWelcomeRotation()
-
     // Connect services (to avoid circular dependency)
     this.codayService.setTabTitleService(this.titleService)
   }
@@ -129,23 +108,6 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     // Cleanup print handlers
     window.removeEventListener('beforeprint', this.handleBeforePrint)
     window.removeEventListener('afterprint', this.handleAfterPrint)
-
-    // Cleanup welcome rotation
-    this.stopWelcomeRotation()
-  }
-
-  private startWelcomeRotation(): void {
-    this.welcomeRotationInterval = window.setInterval(() => {
-      this.currentWelcomeIndex = (this.currentWelcomeIndex + 1) % this.welcomeMessages.length
-      this.currentWelcomeMessage = this.welcomeMessages[this.currentWelcomeIndex]
-    }, 3000)
-  }
-
-  private stopWelcomeRotation(): void {
-    if (this.welcomeRotationInterval) {
-      clearInterval(this.welcomeRotationInterval)
-      this.welcomeRotationInterval = undefined
-    }
   }
 
   /**
@@ -153,9 +115,6 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
    */
   onMessageSubmitted(message: string): void {
     console.log('[MAIN-APP] First message submitted from welcome view:', message)
-
-    // Stop welcome rotation
-    this.stopWelcomeRotation()
 
     // Show starting state
     this.isStartingFirstMessage = true

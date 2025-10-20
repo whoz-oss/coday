@@ -1,10 +1,11 @@
-import { Component, inject } from '@angular/core'
+import { Component, computed, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { Router } from '@angular/router'
 import { filter, take } from 'rxjs'
-import { ProjectInfo } from '../../core/services/project-api.service'
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
+import { ChoiceSelectComponent, ChoiceOption } from '../choice-select/choice-select.component'
+import { WelcomeMessageComponent } from '../welcome-message/welcome-message.component'
 
 /**
  * Component for selecting a project from available projects.
@@ -16,7 +17,7 @@ import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 @Component({
   selector: 'app-project-selection',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, ChoiceSelectComponent, WelcomeMessageComponent],
   templateUrl: './project-selection.component.html',
   styleUrl: './project-selection.component.scss',
 })
@@ -29,6 +30,17 @@ export class ProjectSelectionComponent {
   private readonly router = inject(Router)
   private readonly projectStateService = inject(ProjectStateService)
   projects = toSignal(this.projectStateService.projectList$)
+
+  // Transform projects to choice options
+  projectOptions = computed<ChoiceOption[]>(() => {
+    const projectList = this.projects()
+    if (!projectList) return []
+    
+    return projectList.map(project => ({
+      value: project.name,
+      label: project.name
+    }))
+  })
 
   constructor() {
     // setup re-direction to the selected project as soon as selection comes
@@ -52,12 +64,5 @@ export class ProjectSelectionComponent {
    */
   selectProject(projectName: string): void {
     this.projectStateService.selectProject(projectName)
-  }
-
-  /**
-   * Track by function for project list
-   */
-  trackByName(_index: number, project: ProjectInfo): string {
-    return project.name
   }
 }
