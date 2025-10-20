@@ -3,7 +3,6 @@ import path from 'path'
 import { ServerClientManager } from './server-client'
 import { ThreadCodayManager } from './thread-coday-manager'
 
-import { AnswerEvent } from '@coday/coday-events'
 import { CodayOptions, parseCodayOptions } from '@coday/options'
 import * as os from 'node:os'
 import { debugLog } from './log'
@@ -149,35 +148,6 @@ registerMessageRoutes(app, threadCodayManager, getUsername)
 
 // Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null
-
-// POST endpoint for sending messages to a specific thread (new architecture)
-app.post('/api/projects/:projectName/threads/:threadId/message', (req: express.Request, res: express.Response) => {
-  try {
-    const projectName = req.params['projectName']
-    const threadId = req.params['threadId']
-    const payload = req.body
-
-    if (!projectName || !threadId) {
-      res.status(400).send('Project name and thread ID are required')
-      return
-    }
-
-    debugLog('MESSAGE', `threadId: ${threadId}, project: ${projectName}, received message`)
-
-    const instance = threadCodayManager.get(threadId)
-    if (!instance?.coday) {
-      res.status(404).send('Thread not found or not connected')
-      return
-    }
-
-    instance.coday.interactor.sendEvent(new AnswerEvent(payload))
-
-    res.status(200).send('Message received successfully!')
-  } catch (error) {
-    console.error('Error processing AnswerEvent:', error)
-    res.status(400).send('Invalid event data!')
-  }
-})
 
 // GET endpoint for retrieving full event details
 app.get('/api/event/:eventId', (req: express.Request, res: express.Response) => {

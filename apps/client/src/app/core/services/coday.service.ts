@@ -19,7 +19,6 @@ import {
   InviteEventDefault,
 } from '@coday/coday-events'
 
-import { CodayApiService } from './coday-api.service'
 import { EventStreamService } from './event-stream.service'
 import { MessageApiService } from './message-api.service'
 import { ProjectStateService } from './project-state.service'
@@ -32,19 +31,19 @@ import { ChoiceOption } from '../../components/choice-select/choice-select.compo
   providedIn: 'root',
 })
 export class CodayService implements OnDestroy {
-  private destroy$ = new Subject<void>()
+  private readonly destroy$ = new Subject<void>()
 
   // Current project and thread for API calls
   private currentProject: string | null = null
   private currentThread: string | null = null
 
   // State subjects
-  private messagesSubject = new BehaviorSubject<ChatMessage[]>([])
-  private isThinkingSubject = new BehaviorSubject<boolean>(false)
-  private currentChoiceSubject = new BehaviorSubject<{ options: ChoiceOption[]; label: string } | null>(null)
-  private projectTitleSubject = new BehaviorSubject<string>('Coday')
-  private currentInviteEventSubject = new BehaviorSubject<InviteEvent | null>(null)
-  private messageToRestoreSubject = new BehaviorSubject<string>('')
+  private readonly messagesSubject = new BehaviorSubject<ChatMessage[]>([])
+  private readonly isThinkingSubject = new BehaviorSubject<boolean>(false)
+  private readonly currentChoiceSubject = new BehaviorSubject<{ options: ChoiceOption[]; label: string } | null>(null)
+  private readonly projectTitleSubject = new BehaviorSubject<string>('Coday')
+  private readonly currentInviteEventSubject = new BehaviorSubject<InviteEvent | null>(null)
+  private readonly messageToRestoreSubject = new BehaviorSubject<string>('')
 
   // Store original events for proper response building
   private currentChoiceEvent: ChoiceEvent | null = null
@@ -67,11 +66,10 @@ export class CodayService implements OnDestroy {
   private tabTitleService: any = null
 
   // Modern Angular dependency injection
-  private codayApi = inject(CodayApiService)
-  private eventStream = inject(EventStreamService)
-  private messageApi = inject(MessageApiService)
-  private projectState = inject(ProjectStateService)
-  private threadState = inject(ThreadStateService)
+  private readonly eventStream = inject(EventStreamService)
+  private readonly messageApi = inject(MessageApiService)
+  private readonly projectState = inject(ProjectStateService)
+  private readonly threadState = inject(ThreadStateService)
 
   constructor() {
     // Initialize connection status observable after eventStream is available
@@ -84,14 +82,6 @@ export class CodayService implements OnDestroy {
    */
   setTabTitleService(tabTitleService: any): void {
     this.tabTitleService = tabTitleService
-  }
-
-  /**
-   * Start the Coday service (legacy - deprecated)
-   * @deprecated Use connectToThread instead
-   */
-  start(): void {
-    this.eventStream.connect()
   }
 
   /**
@@ -125,6 +115,11 @@ export class CodayService implements OnDestroy {
    * Send a message
    */
   sendMessage(message: string): void {
+    if (!this.currentProject || !this.currentThread) {
+      console.error('[CODAY] Cannot send message: no project or thread selected')
+      return
+    }
+
     const currentInviteEvent = this.currentInviteEventSubject.value
 
     if (currentInviteEvent) {
@@ -134,20 +129,16 @@ export class CodayService implements OnDestroy {
       // Clear the current invite event immediately after using it
       this.currentInviteEventSubject.next(null)
 
-      this.codayApi
-        .sendEvent(answerEvent, this.currentProject || undefined, this.currentThread || undefined)
-        .subscribe({
-          error: (error) => console.error('[CODAY] Send error:', error),
-        })
+      this.messageApi.sendMessage(this.currentProject, this.currentThread, answerEvent).subscribe({
+        error: (error) => console.error('[CODAY] Send error:', error),
+      })
     } else {
       // Fallback to basic AnswerEvent if no invite event stored
       const answerEvent = new AnswerEvent({ answer: message })
 
-      this.codayApi
-        .sendEvent(answerEvent, this.currentProject || undefined, this.currentThread || undefined)
-        .subscribe({
-          error: (error) => console.error('[CODAY] Send error:', error),
-        })
+      this.messageApi.sendMessage(this.currentProject, this.currentThread, answerEvent).subscribe({
+        error: (error) => console.error('[CODAY] Send error:', error),
+      })
     }
   }
 
@@ -155,6 +146,11 @@ export class CodayService implements OnDestroy {
    * Send a choice selection
    */
   sendChoice(choice: string): void {
+    if (!this.currentProject || !this.currentThread) {
+      console.error('[CODAY] Cannot send choice: no project or thread selected')
+      return
+    }
+
     if (this.currentChoiceEvent) {
       // Use the original ChoiceEvent to build proper answer with parentKey
       const answerEvent = this.currentChoiceEvent.buildAnswer(choice)
@@ -164,14 +160,12 @@ export class CodayService implements OnDestroy {
       this.currentChoiceSubject.next(null)
       // Clear the current choice event to prevent reuse
       this.currentChoiceEvent = null
-      this.codayApi
-        .sendEvent(answerEvent, this.currentProject || undefined, this.currentThread || undefined)
-        .subscribe({
-          next: () => {},
-          error: (error) => {
-            console.error('[CODAY-CHOICE] Choice error:', error)
-          },
-        })
+      this.messageApi.sendMessage(this.currentProject, this.currentThread, answerEvent).subscribe({
+        next: () => {},
+        error: (error) => {
+          console.error('[CODAY-CHOICE] Choice error:', error)
+        },
+      })
     } else {
       console.error('[CODAY-CHOICE] No choice event available for choice:', choice)
     }
@@ -212,13 +206,6 @@ export class CodayService implements OnDestroy {
         }
       })
     )
-  }
-
-  /**
-   * Get current messages
-   */
-  getCurrentMessages(): ChatMessage[] {
-    return this.messagesSubject.value
   }
 
   /**
@@ -298,7 +285,7 @@ export class CodayService implements OnDestroy {
     const message: ChatMessage = {
       id: event.timestamp,
       role: event.speaker ? 'assistant' : 'system',
-      speaker: event.speaker || 'System',
+      speaker: event.speaker ?? 'System',
       content: [{ type: 'text', content: event.text }], // Convertir en contenu riche
       timestamp: new Date(),
       type: event.speaker ? 'text' : 'technical',

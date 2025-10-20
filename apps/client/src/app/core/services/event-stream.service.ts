@@ -1,7 +1,6 @@
 import { Injectable, NgZone, OnDestroy, inject } from '@angular/core'
 import { Subject, BehaviorSubject } from 'rxjs'
 import { CodayEvent, buildCodayEvent, ErrorEvent } from '@coday/coday-events'
-import { CodayApiService } from './coday-api.service'
 
 export interface ConnectionStatus {
   connected: boolean
@@ -14,8 +13,8 @@ export interface ConnectionStatus {
 })
 export class EventStreamService implements OnDestroy {
   private eventSource: EventSource | null = null
-  private eventsSubject = new Subject<CodayEvent>()
-  private connectionStatusSubject = new BehaviorSubject<ConnectionStatus>({
+  private readonly eventsSubject = new Subject<CodayEvent>()
+  private readonly connectionStatusSubject = new BehaviorSubject<ConnectionStatus>({
     connected: false,
     reconnectAttempts: 0,
     maxAttempts: 3,
@@ -30,25 +29,7 @@ export class EventStreamService implements OnDestroy {
   connectionStatus$ = this.connectionStatusSubject.asObservable()
 
   // Modern Angular dependency injection
-  private codayApi = inject(CodayApiService)
-  private ngZone = inject(NgZone)
-
-  /**
-   * Start the SSE connection (legacy)
-   * @deprecated Use connectToThread instead
-   */
-  connect(): void {
-    console.log('[SSE] Setting up new EventSource (legacy)')
-
-    if (this.eventSource) {
-      console.log('[SSE] Closing existing EventSource')
-      this.eventSource.close()
-    }
-
-    const url = this.codayApi.getEventsUrl()
-    this.eventSource = new EventSource(url)
-    this.setupEventHandlers()
-  }
+  private readonly ngZone = inject(NgZone)
 
   /**
    * Connect to a specific thread's event stream (new architecture)
@@ -75,7 +56,7 @@ export class EventStreamService implements OnDestroy {
   private setupEventHandlers(): void {
     if (!this.eventSource) return
 
-    this.eventSource!.onmessage = (event) => {
+    this.eventSource.onmessage = (event) => {
       // NgZone is needed because SSE events come from outside Angular's zone
       this.ngZone.run(() => {
         console.log('[SSE] Message received:', event.data.substring(0, 100))
@@ -99,7 +80,7 @@ export class EventStreamService implements OnDestroy {
       })
     }
 
-    this.eventSource!.onopen = () => {
+    this.eventSource.onopen = () => {
       this.ngZone.run(() => {
         console.log('[SSE] Connection established')
         this.reconnectAttempts = 0
@@ -107,7 +88,7 @@ export class EventStreamService implements OnDestroy {
       })
     }
 
-    this.eventSource!.onerror = (error) => {
+    this.eventSource.onerror = (error) => {
       this.ngZone.run(() => {
         console.log('[SSE] EventSource error:', error)
 
@@ -129,9 +110,6 @@ export class EventStreamService implements OnDestroy {
 
             setTimeout(() => {
               this.reconnectAttempts++
-              // Note: For thread-based connections, we would need to store project/thread
-              // to reconnect properly. For now, this reconnect uses the legacy method.
-              // TODO: Store connection parameters for proper reconnection
               console.warn('[SSE] Reconnection may not work properly with thread-based connections')
             }, this.RECONNECT_DELAY)
           } else {
@@ -157,13 +135,6 @@ export class EventStreamService implements OnDestroy {
       this.eventSource = null
       this.updateConnectionStatus(false, 0)
     }
-  }
-
-  /**
-   * Check if currently connected
-   */
-  isConnected(): boolean {
-    return this.connectionStatusSubject.value.connected
   }
 
   /**
