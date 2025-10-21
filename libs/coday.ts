@@ -4,7 +4,6 @@ import { RunStatus, ThreadMessage } from './ai-thread/ai-thread.types'
 import { AiHandler, ConfigHandler } from './handler'
 import { HandlerLooper } from './handler-looper'
 import { AiClientProvider } from './integration/ai/ai-client-provider'
-import { keywords } from './keywords'
 import { CommandContext, Interactor } from './model'
 import {
   InviteEventDefault,
@@ -122,15 +121,9 @@ export class Coday {
         }
 
         let userCommand = await this.initCommand()
-        if ((!userCommand && this.options.oneshot) || userCommand === keywords.exit) {
+        if (!userCommand && this.options.oneshot) {
           // default case: no initial prompt (or empty) and not interactive = get out
           break
-        }
-
-        if (userCommand === keywords.reset) {
-          this.context = null
-          this.services.project.resetProjectSelection()
-          continue
         }
 
         const thread = this.context?.aiThread

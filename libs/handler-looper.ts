@@ -12,7 +12,6 @@ import {
   RunBashHandler,
 } from './handler'
 import { StatsHandler } from './handler/stats/stats.handler'
-import { keywords } from './keywords'
 import { RunStatus } from './ai-thread/ai-thread.types'
 import { CodayServices } from './coday-services'
 
@@ -95,8 +94,6 @@ export class HandlerLooper {
               .map((h) => this.formatHelp(h.commandWord, h.description))
               .sort(),
             this.formatHelp('[any other text]', 'defaults to asking the AI with the current context.'),
-            this.formatHelp(keywords.reset, "resets Coday's context."),
-            this.formatHelp(keywords.exit, 'quits the program.'),
           ]
           // Keep this as displayText since help output is explicitly for the user
           this.interactor.displayText(handlerHelpMessages.join('\n'))
