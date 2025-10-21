@@ -1,5 +1,5 @@
 import { Observable, of, Subject } from 'rxjs'
-import { CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
+import { CodayEvent, ErrorEvent, MessageEvent, SummaryEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 import { Agent } from './agent'
 import { AiThread } from '../ai-thread/ai-thread'
 import { RunStatus, ThreadMessage } from '../ai-thread/ai-thread.types'
@@ -143,8 +143,8 @@ export abstract class AiClient {
     this.activeThinkingIntervals.delete(interval)
   }
 
-  private getCompactor(model: string, maxChars: number): (messages: ThreadMessage[]) => Promise<ThreadMessage> {
-    return async (messages: ThreadMessage[]): Promise<ThreadMessage> => {
+  private getCompactor(model: string, maxChars: number): (messages: ThreadMessage[]) => Promise<SummaryEvent> {
+    return async (messages: ThreadMessage[]): Promise<SummaryEvent> => {
       // Build the initial transcript
       const fullTranscript = messages
         // without the tool request and response, hypothesis is we can do without and simply the "text"
@@ -152,7 +152,6 @@ export abstract class AiClient {
         .map((m) => ` - ${m.role}: ${m.getTextContent()}`)
         .join('\n')
 
-      const firstUserMessage = messages.find((m) => m instanceof MessageEvent && m.role === 'user')
       const summaryBudget = Math.floor(maxChars / 20)
 
       // Calculate safe transcript size
@@ -207,12 +206,8 @@ It can be summarized as:
         )
       }
 
-      // then make summary the first message
-      return new MessageEvent({
-        role: 'user',
-        name: firstUserMessage ? (firstUserMessage as MessageEvent).name : 'user',
-        content: [{type: 'text', content: summary}],
-      })
+      // Return SummaryEvent
+      return new SummaryEvent({ summary })
     }
   }
 
