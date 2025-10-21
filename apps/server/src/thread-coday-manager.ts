@@ -10,6 +10,7 @@ import { MemoryService } from '@coday/service/memory.service'
 import { McpConfigService } from '@coday/service/mcp-config.service'
 import { CodayLogger } from '@coday/service/coday-logger'
 import { WebhookService } from '@coday/service/webhook.service'
+import { HeartBeatEvent } from '@coday/coday-events'
 import { debugLog } from './log'
 
 /**
@@ -18,7 +19,16 @@ import { debugLog } from './log'
  */
 class ThreadCodayInstance {
   private readonly connections: Set<Response> = new Set()
+  private lastActivity: number = Date.now()
+  private disconnectTimeout?: NodeJS.Timeout
+  private inactivityTimeout?: NodeJS.Timeout
+  private isOneshot: boolean = false
   coday?: Coday
+
+  // Timeouts configuration
+  static readonly DISCONNECT_TIMEOUT = 5 * 60 * 1000 // 5 minutes after last connection closed
+  static readonly INTERACTIVE_TIMEOUT = 8 * 60 * 60 * 1000 // 8 hours for interactive sessions
+  static readonly ONESHOT_TIMEOUT = 30 * 60 * 1000 // 30 minutes for oneshot (webhook) sessions
 
   constructor(
     public readonly threadId: string,
@@ -26,8 +36,12 @@ class ThreadCodayInstance {
     public readonly username: string,
     private readonly options: CodayOptions,
     private readonly logger: CodayLogger,
-    private readonly webhookService: WebhookService
-  ) {}
+    private readonly webhookService: WebhookService,
+    private readonly onTimeout: (threadId: string) => void
+  ) {
+    // Start inactivity timeout
+    this.resetInactivityTimeout()
+  }
 
   /**
    * Add an SSE connection to this thread instance
@@ -40,7 +54,16 @@ class ThreadCodayInstance {
     }
 
     this.connections.add(response)
+    this.updateActivity()
+    this.isOneshot = false // Mark as interactive session
     debugLog('THREAD_CODAY', `Added SSE connection to thread ${this.threadId} (total: ${this.connections.size})`)
+
+    // Clear disconnect timeout if reconnecting
+    if (this.disconnectTimeout) {
+      clearTimeout(this.disconnectTimeout)
+      this.disconnectTimeout = undefined
+      debugLog('THREAD_CODAY', `Cleared disconnect timeout for thread ${this.threadId}`)
+    }
 
     // If Coday is already running, replay the thread history for this new connection
     if (this.coday) {
@@ -91,6 +114,18 @@ class ThreadCodayInstance {
       'THREAD_CODAY',
       `Removed SSE connection from thread ${this.threadId} (remaining: ${this.connections.size})`
     )
+
+    // If no more connections, start disconnect timeout
+    if (this.connections.size === 0 && !this.disconnectTimeout) {
+      debugLog(
+        'THREAD_CODAY',
+        `No connections remaining for thread ${this.threadId}, starting disconnect timeout`
+      )
+      this.disconnectTimeout = setTimeout(() => {
+        debugLog('THREAD_CODAY', `Disconnect timeout reached for thread ${this.threadId}`)
+        this.onTimeout(this.threadId)
+      }, ThreadCodayInstance.DISCONNECT_TIMEOUT)
+    }
   }
 
   /**
@@ -101,11 +136,57 @@ class ThreadCodayInstance {
   }
 
   /**
+   * Update last activity timestamp and reset inactivity timeout
+   */
+  private updateActivity(): void {
+    this.lastActivity = Date.now()
+    this.resetInactivityTimeout()
+  }
+
+  /**
+   * Reset the inactivity timeout based on session type
+   */
+  private resetInactivityTimeout(): void {
+    if (this.inactivityTimeout) {
+      clearTimeout(this.inactivityTimeout)
+    }
+
+    const timeout = this.isOneshot 
+      ? ThreadCodayInstance.ONESHOT_TIMEOUT 
+      : ThreadCodayInstance.INTERACTIVE_TIMEOUT
+
+    this.inactivityTimeout = setTimeout(() => {
+      const inactiveTime = Date.now() - this.lastActivity
+      debugLog(
+        'THREAD_CODAY',
+        `Inactivity timeout reached for thread ${this.threadId} after ${Math.round(inactiveTime / 1000)}s`
+      )
+      this.onTimeout(this.threadId)
+    }, timeout)
+  }
+
+  /**
+   * Mark this instance as oneshot (webhook without SSE)
+   */
+  markAsOneshot(): void {
+    this.isOneshot = true
+    this.resetInactivityTimeout()
+  }
+
+  /**
+   * Get time since last activity in milliseconds
+   */
+  getInactiveTime(): number {
+    return Date.now() - this.lastActivity
+  }
+
+  /**
    * Prepare the Coday instance without starting the run
    * Useful for webhooks where we need to subscribe to events before starting
    * @returns true if new instance was created, false if already exists
    */
   prepareCoday(): boolean {
+    this.updateActivity()
     if (this.coday) {
       debugLog('THREAD_CODAY', `Coday already running for thread ${this.threadId}`)
       return false
@@ -147,6 +228,7 @@ class ThreadCodayInstance {
    * @returns true if new instance was created and started, false if already running
    */
   startCoday(): boolean {
+    this.updateActivity()
     const wasCreated = this.prepareCoday()
     
     if (!this.coday) {
@@ -166,6 +248,22 @@ class ThreadCodayInstance {
       })
 
     return wasCreated
+  }
+
+  /**
+   * Send heartbeat to all connected SSE clients
+   */
+  sendHeartbeat(): void {
+    if (this.connections.size === 0) {
+      return
+    }
+
+    try {
+      const heartBeatEvent = new HeartBeatEvent({})
+      this.broadcastEvent(heartBeatEvent)
+    } catch (error) {
+      debugLog('THREAD_CODAY', `Error sending heartbeat for thread ${this.threadId}:`, error)
+    }
   }
 
   /**
@@ -204,6 +302,16 @@ class ThreadCodayInstance {
   async cleanup(): Promise<void> {
     debugLog('THREAD_CODAY', `Cleaning up thread ${this.threadId}`)
 
+    // Clear all timeouts
+    if (this.disconnectTimeout) {
+      clearTimeout(this.disconnectTimeout)
+      this.disconnectTimeout = undefined
+    }
+    if (this.inactivityTimeout) {
+      clearTimeout(this.inactivityTimeout)
+      this.inactivityTimeout = undefined
+    }
+
     // Close all SSE connections
     for (const connection of this.connections) {
       try {
@@ -228,11 +336,42 @@ class ThreadCodayInstance {
  */
 export class ThreadCodayManager {
   private readonly instances: Map<string, ThreadCodayInstance> = new Map()
+  private readonly heartbeatInterval: NodeJS.Timeout
+
+  static readonly HEARTBEAT_INTERVAL = 30_000 // 30 seconds
 
   constructor(
     private readonly logger: CodayLogger,
     private readonly webhookService: WebhookService
-  ) {}
+  ) {
+    // Start global heartbeat mechanism
+    this.heartbeatInterval = setInterval(() => this.sendHeartbeats(), ThreadCodayManager.HEARTBEAT_INTERVAL)
+    debugLog('THREAD_CODAY_MANAGER', 'Heartbeat mechanism started')
+  }
+
+  /**
+   * Send heartbeats to all active instances with SSE connections
+   */
+  private sendHeartbeats(): void {
+    let activeConnections = 0
+    for (const instance of this.instances.values()) {
+      if (instance.connectionCount > 0) {
+        instance.sendHeartbeat()
+        activeConnections += instance.connectionCount
+      }
+    }
+    if (activeConnections > 0) {
+      debugLog('THREAD_CODAY_MANAGER', `Sent heartbeat to ${activeConnections} active SSE connections`)
+    }
+  }
+
+  /**
+   * Handle instance timeout (called by ThreadCodayInstance)
+   */
+  private handleInstanceTimeout = async (threadId: string): Promise<void> => {
+    debugLog('THREAD_CODAY_MANAGER', `Handling timeout for thread ${threadId}`)
+    await this.cleanup(threadId)
+  }
 
   /**
    * Get or create a Coday instance for a specific thread
@@ -254,7 +393,15 @@ export class ThreadCodayManager {
 
     if (!instance) {
       debugLog('THREAD_CODAY', `Creating new instance for thread ${threadId}`)
-      instance = new ThreadCodayInstance(threadId, projectName, username, options, this.logger, this.webhookService)
+      instance = new ThreadCodayInstance(
+        threadId, 
+        projectName, 
+        username, 
+        options, 
+        this.logger, 
+        this.webhookService,
+        this.handleInstanceTimeout
+      )
       this.instances.set(threadId, instance)
     } else {
       debugLog('THREAD_CODAY', `Reusing existing instance for thread ${threadId}`)
@@ -285,7 +432,16 @@ export class ThreadCodayManager {
 
     if (!instance) {
       debugLog('THREAD_CODAY', `Creating new instance for thread ${threadId} (no SSE connection)`)
-      instance = new ThreadCodayInstance(threadId, projectName, username, options, this.logger, this.webhookService)
+      instance = new ThreadCodayInstance(
+        threadId, 
+        projectName, 
+        username, 
+        options, 
+        this.logger, 
+        this.webhookService,
+        this.handleInstanceTimeout
+      )
+      instance.markAsOneshot() // Mark as oneshot for shorter timeout
       this.instances.set(threadId, instance)
     } else {
       debugLog('THREAD_CODAY', `Reusing existing instance for thread ${threadId}`)
@@ -349,20 +505,49 @@ export class ThreadCodayManager {
   }
 
   /**
+   * Get statistics about managed instances
+   */
+  getStats(): { total: number; withConnections: number; oneshot: number } {
+    let withConnections = 0
+    let oneshot = 0
+    
+    for (const instance of this.instances.values()) {
+      if (instance.connectionCount > 0) {
+        withConnections++
+      }
+      if (instance['isOneshot']) {
+        oneshot++
+      }
+    }
+
+    return {
+      total: this.instances.size,
+      withConnections,
+      oneshot
+    }
+  }
+
+  /**
    * Shutdown all thread instances
    * Used during graceful server shutdown
    */
   async shutdown(): Promise<void> {
-    debugLog('THREAD_CODAY', `Shutting down ${this.instances.size} thread instances`)
+    debugLog('THREAD_CODAY_MANAGER', `Shutting down ${this.instances.size} thread instances`)
+
+    // Clear heartbeat interval
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval)
+      debugLog('THREAD_CODAY_MANAGER', 'Heartbeat mechanism stopped')
+    }
 
     const cleanupPromises: Promise<void>[] = []
     for (const [threadId, instance] of this.instances.entries()) {
-      debugLog('THREAD_CODAY', `Cleaning up thread ${threadId}`)
+      debugLog('THREAD_CODAY_MANAGER', `Cleaning up thread ${threadId}`)
       cleanupPromises.push(instance.cleanup())
     }
 
     await Promise.all(cleanupPromises)
     this.instances.clear()
-    debugLog('THREAD_CODAY', 'All thread instances cleaned up')
+    debugLog('THREAD_CODAY_MANAGER', 'All thread instances cleaned up')
   }
 }

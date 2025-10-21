@@ -1,6 +1,5 @@
 import express from 'express'
 import path from 'path'
-import { ServerClientManager } from './server-client'
 import { ThreadCodayManager } from './thread-coday-manager'
 
 import { parseCodayOptions } from '@coday/options'
@@ -99,10 +98,7 @@ if (process.env.BUILD_ENV === 'development') {
   app.use(express.static(clientPath))
 }
 
-// Initialize the client manager with usage logger and webhook service
-const clientManager = new ServerClientManager(logger, webhookService)
-
-// Initialize the thread-based Coday manager for new SSE architecture
+// Initialize the thread-based Coday manager for SSE architecture
 const threadCodayManager = new ThreadCodayManager(logger, webhookService)
 
 // Initialize config service registry for REST API endpoints
@@ -155,9 +151,6 @@ app.use((err: any, _: express.Request, res: express.Response, __: express.NextFu
   res.status(500).send('Something went wrong!')
 })
 
-// Start cleanup interval for expired clients with reference for cleanup
-const clientCleanupInterval = setInterval(() => clientManager.cleanupExpired(), 60000) // Check every minute
-
 // Use PORT_PROMISE to listen on the available port
 PORT_PROMISE.then(async (PORT) => {
   app.listen(PORT, () => {
@@ -197,19 +190,11 @@ async function gracefulShutdown(signal: string) {
   console.log(`Received ${signal}, shutting down gracefully...`)
 
   try {
-    // Stop accepting new connections and clear intervals
-    console.log('Stopping client cleanup interval...')
-    clearInterval(clientCleanupInterval)
-
     // Stop thread cleanup service
     if (cleanupService) {
       console.log('Stopping thread cleanup service...')
       await cleanupService.stop()
     }
-
-    // Cleanup client manager resources
-    console.log('Cleaning up client connections...')
-    clientManager.shutdown()
 
     // Cleanup thread-based Coday instances
     console.log('Cleaning up thread Coday instances...')
