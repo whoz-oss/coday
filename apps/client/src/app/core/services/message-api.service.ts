@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core'
+import { inject, Injectable } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
 import { Observable } from 'rxjs'
 
@@ -10,7 +10,7 @@ import { Observable } from 'rxjs'
   providedIn: 'root',
 })
 export class MessageApiService {
-  constructor(private readonly http: HttpClient) {}
+  private readonly http = inject(HttpClient)
 
   /**
    * Get all messages from a thread

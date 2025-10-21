@@ -87,7 +87,7 @@ describe('FileAiThreadRepository', () => {
       expect(retrieved).toBeNull()
     })
 
-    it('should preserve original file when saving with new name', async () => {
+    it('should update file content when saving with new name', async () => {
       // Create and save initial thread
       const thread = new AiThread({
         id: 'test-id',
@@ -99,30 +99,24 @@ describe('FileAiThreadRepository', () => {
       })
       await repo.save(thread)
 
-      // Get the original file name
+      // Get the original file name (should be test-id.yml)
       const originalFiles = await fs.readdir(tmpDir)
-      const originalFile = originalFiles[0]!
+      expect(originalFiles).toHaveLength(1)
+      expect(originalFiles[0]).toBe('test-id.yml')
 
       // Save same thread with new name
       thread.name = 'New Name'
       await repo.save(thread)
 
-      // Check both files exist
+      // Should still have only one file with same name (id-based)
       const files = await fs.readdir(tmpDir)
-      expect(files).toContain(originalFile)
-      expect(files.some((f) => f.startsWith('new-name'))).toBe(true)
-      expect(files).toHaveLength(2)
+      expect(files).toHaveLength(1)
+      expect(files[0]).toBe('test-id.yml')
 
-      // Both should contain same thread data (except name)
-      const originalContent = yaml.parse(await fs.readFile(path.join(tmpDir, originalFile), 'utf-8'))
-      const newFileContent = yaml.parse(
-        await fs.readFile(path.join(tmpDir, files.find((f) => f.startsWith('new-name'))!), 'utf-8')
-      )
-
-      expect(originalContent.id).toBe('test-id')
-      expect(newFileContent.id).toBe('test-id')
-      expect(originalContent.name).toBe('Original Name')
-      expect(newFileContent.name).toBe('New Name')
+      // File should contain updated name
+      const fileContent = yaml.parse(await fs.readFile(path.join(tmpDir, files[0]!), 'utf-8'))
+      expect(fileContent.id).toBe('test-id')
+      expect(fileContent.name).toBe('New Name')
     })
 
     it('should list all valid threads', async () => {
@@ -178,9 +172,9 @@ describe('FileAiThreadRepository', () => {
   })
 
   describe('name handling', () => {
-    it('should sanitize thread names for file paths', async () => {
+    it('should use thread id for filename regardless of special characters in name', async () => {
       const thread = new AiThread({
-        id: 'test-id',
+        id: 'test-id-123',
         username,
         name: 'Test & Special @ Characters!',
         summary: 'Test Summary',
@@ -190,10 +184,10 @@ describe('FileAiThreadRepository', () => {
 
       await repo.save(thread)
 
-      // Check if file exists with sanitized name
+      // Check if file exists with id-based name (no sanitization needed)
       const files = await fs.readdir(tmpDir)
-      const sanitizedFiles = files.filter((f) => f.startsWith('test-special-characters'))
-      expect(sanitizedFiles).toHaveLength(1)
+      expect(files).toHaveLength(1)
+      expect(files[0]).toBe('test-id-123.yml')
     })
 
     it('should handle name collisions with different ids', async () => {
@@ -208,7 +202,7 @@ describe('FileAiThreadRepository', () => {
       })
       await repo.save(thread1)
 
-      // Save second thread
+      // Save second thread with same name but different id
       const thread2 = new AiThread({
         id: 'id-2',
         username,
@@ -228,10 +222,10 @@ describe('FileAiThreadRepository', () => {
       expect(savedThread1?.id).toBe('id-1')
       expect(savedThread2?.id).toBe('id-2')
 
-      // Files should follow the name-id pattern
+      // Files should follow the id-only pattern (no name collision possible)
       const files = await fs.readdir(tmpDir)
-      expect(files).toContain('same-name-id-1.yml')
-      expect(files).toContain('same-name-id-2.yml')
+      expect(files).toContain('id-1.yml')
+      expect(files).toContain('id-2.yml')
       expect(files).toHaveLength(2)
     })
   })

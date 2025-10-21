@@ -15,7 +15,14 @@ export default {
   coveragePathIgnorePatterns: ['/node_modules/', '/__tests__/', '/dist/'],
 
   // FORCE IGNORE PROBLEMATIC DIRECTORIES
-  modulePathIgnorePatterns: ['<rootDir>/dist/', '<rootDir>/.nx/'],
+  modulePathIgnorePatterns: ['<rootDir>/dist/', '<rootDir>/.nx/', '<rootDir>/libs/coday-events/dist/'],
+
+  // Module name mapping
+  moduleNameMapper: {
+    '^@coday/coday-events$': '<rootDir>/libs/coday-events/src/index.ts',
+    '^@coday/service/(.*)$': '<rootDir>/libs/service/$1',
+    '^@coday/utils/(.*)$': '<rootDir>/libs/utils/$1',
+  },
 
   testPathIgnorePatterns: [
     '/node_modules/',
@@ -24,9 +31,6 @@ export default {
     '.e2e-spec.(ts|js)$',
     '/apps/client-e2e/',
     '/apps/client/src/',
-    '/libs/ai-thread/ai-thread.test.ts',
-    '/libs/ai-thread/ai-thread.helpers.test.ts',
-    '/libs/ai-thread/repository/file-ai-thread.repository.test.ts',
   ],
 
   // Useful for debugging

@@ -3,7 +3,7 @@ import { debugLog } from './log'
 import { ThreadService2 } from './services/thread.service2'
 import { ThreadCodayManager } from './thread-coday-manager'
 import { ImageContent } from '@coday/coday-events'
-import { processImageBuffer } from '../../../libs/function/image-processor'
+import { processImageBuffer } from '@coday/function/image-processor'
 import { CodayOptions } from '@coday/options'
 
 /**

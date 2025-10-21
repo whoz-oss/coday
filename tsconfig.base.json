@@ -21,6 +21,7 @@
       "@coday/ai-thread/*": ["libs/ai-thread/*"],
       "@coday/coday-events": ["libs/coday-events/src/index.ts"],
       "@coday/core": ["libs/coday.ts"],
+      "@coday/function/*": ["libs/function/*"],
       "@coday/model/*": ["libs/model/*"],
       "@coday/options": ["libs/options.ts"],
       "@coday/repository/*": ["libs/repository/*"],

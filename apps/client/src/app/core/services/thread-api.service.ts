@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core'
+import { inject, Injectable } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
 import { Observable } from 'rxjs'
 import { ThreadSummary } from '@coday/ai-thread/ai-thread.types'
@@ -60,7 +60,7 @@ export interface ThreadUpdateResponse {
   providedIn: 'root',
 })
 export class ThreadApiService {
-  constructor(private readonly http: HttpClient) {}
+  private readonly http = inject(HttpClient)
 
   /**
    * Build base URL for a project's threads
