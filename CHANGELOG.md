@@ -1,3 +1,13 @@
+## 0.32.1 (2025-10-21)
+
+### 🩹 Fixes
+
+- allow atlassian tool to load mcp ([a73dac0](https://github.com/whoz-oss/coday/commit/a73dac0))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.32.0 (2025-10-19)
 
 ### 🚀 Features
