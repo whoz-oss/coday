@@ -117,10 +117,7 @@ class ThreadCodayInstance {
 
     // If no more connections, start disconnect timeout
     if (this.connections.size === 0 && !this.disconnectTimeout) {
-      debugLog(
-        'THREAD_CODAY',
-        `No connections remaining for thread ${this.threadId}, starting disconnect timeout`
-      )
+      debugLog('THREAD_CODAY', `No connections remaining for thread ${this.threadId}, starting disconnect timeout`)
       this.disconnectTimeout = setTimeout(() => {
         debugLog('THREAD_CODAY', `Disconnect timeout reached for thread ${this.threadId}`)
         this.onTimeout(this.threadId)
@@ -151,9 +148,7 @@ class ThreadCodayInstance {
       clearTimeout(this.inactivityTimeout)
     }
 
-    const timeout = this.isOneshot 
-      ? ThreadCodayInstance.ONESHOT_TIMEOUT 
-      : ThreadCodayInstance.INTERACTIVE_TIMEOUT
+    const timeout = this.isOneshot ? ThreadCodayInstance.ONESHOT_TIMEOUT : ThreadCodayInstance.INTERACTIVE_TIMEOUT
 
     this.inactivityTimeout = setTimeout(() => {
       const inactiveTime = Date.now() - this.lastActivity
@@ -230,7 +225,7 @@ class ThreadCodayInstance {
   startCoday(): boolean {
     this.updateActivity()
     const wasCreated = this.prepareCoday()
-    
+
     if (!this.coday) {
       return false
     }
@@ -353,15 +348,10 @@ export class ThreadCodayManager {
    * Send heartbeats to all active instances with SSE connections
    */
   private sendHeartbeats(): void {
-    let activeConnections = 0
     for (const instance of this.instances.values()) {
       if (instance.connectionCount > 0) {
         instance.sendHeartbeat()
-        activeConnections += instance.connectionCount
       }
-    }
-    if (activeConnections > 0) {
-      debugLog('THREAD_CODAY_MANAGER', `Sent heartbeat to ${activeConnections} active SSE connections`)
     }
   }
 
@@ -394,11 +384,11 @@ export class ThreadCodayManager {
     if (!instance) {
       debugLog('THREAD_CODAY', `Creating new instance for thread ${threadId}`)
       instance = new ThreadCodayInstance(
-        threadId, 
-        projectName, 
-        username, 
-        options, 
-        this.logger, 
+        threadId,
+        projectName,
+        username,
+        options,
+        this.logger,
         this.webhookService,
         this.handleInstanceTimeout
       )
@@ -433,11 +423,11 @@ export class ThreadCodayManager {
     if (!instance) {
       debugLog('THREAD_CODAY', `Creating new instance for thread ${threadId} (no SSE connection)`)
       instance = new ThreadCodayInstance(
-        threadId, 
-        projectName, 
-        username, 
-        options, 
-        this.logger, 
+        threadId,
+        projectName,
+        username,
+        options,
+        this.logger,
         this.webhookService,
         this.handleInstanceTimeout
       )
@@ -510,7 +500,7 @@ export class ThreadCodayManager {
   getStats(): { total: number; withConnections: number; oneshot: number } {
     let withConnections = 0
     let oneshot = 0
-    
+
     for (const instance of this.instances.values()) {
       if (instance.connectionCount > 0) {
         withConnections++
@@ -523,7 +513,7 @@ export class ThreadCodayManager {
     return {
       total: this.instances.size,
       withConnections,
-      oneshot
+      oneshot,
     }
   }
 
