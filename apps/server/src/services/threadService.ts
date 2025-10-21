@@ -12,7 +12,7 @@ import { ThreadSummary } from '@coday/ai-thread/ai-thread.types'
  * to session state or observables. It creates thread repositories on-demand
  * based on the project context.
  */
-export class ThreadService2 {
+export class ThreadService {
   /**
    * Cache of thread repositories by project name.
    * Avoids recreating repository instances for each operation.
@@ -30,7 +30,7 @@ export class ThreadService2 {
    * @returns Cached thread repository instance
    * @throws Error if project doesn't exist
    */
-  private getThreadRepository(projectName: string): ThreadRepository {
+  getThreadRepository(projectName: string): ThreadRepository {
     // Check cache first
     const cached = this.repositoryCache.get(projectName)
     if (cached) {

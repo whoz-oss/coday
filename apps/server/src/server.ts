@@ -17,7 +17,7 @@ import { registerProjectRoutes } from './project.routes'
 import { registerThreadRoutes } from './thread.routes'
 import { registerMessageRoutes } from './message.routes'
 import { ProjectService2 } from './services/project.service2'
-import { ThreadService2 } from './services/thread.service2'
+import { ThreadService } from './services/threadService'
 import { ProjectFileRepository } from '@coday/repository/project-file.repository'
 
 const app = express()
@@ -97,21 +97,20 @@ if (process.env.BUILD_ENV === 'development') {
   // Serve static files from the Angular build output
   app.use(express.static(clientPath))
 }
-
-// Initialize the thread-based Coday manager for SSE architecture
-const threadCodayManager = new ThreadCodayManager(logger, webhookService)
-
-// Initialize config service registry for REST API endpoints
-const configInteractor = new ServerInteractor('config-api')
-const configRegistry = new ConfigServiceRegistry(configPath, configInteractor)
-
 // Initialize project service for REST API endpoints
 const projectRepository = new ProjectFileRepository(configPath)
 const projectService = new ProjectService2(projectRepository, codayOptions.project)
 
 // Initialize thread service for REST API endpoints
 const projectsDir = path.join(configPath, 'projects')
-const threadService = new ThreadService2(projectRepository, projectsDir)
+const threadService = new ThreadService(projectRepository, projectsDir)
+
+// Initialize the thread-based Coday manager for SSE architecture
+const threadCodayManager = new ThreadCodayManager(logger, webhookService, threadService)
+
+// Initialize config service registry for REST API endpoints
+const configInteractor = new ServerInteractor('config-api')
+const configRegistry = new ConfigServiceRegistry(configPath, configInteractor)
 
 /**
  * Extract username for authentication and logging purposes

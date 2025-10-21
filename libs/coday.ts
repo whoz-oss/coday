@@ -1,7 +1,6 @@
 import { AiThread } from './ai-thread/ai-thread'
-import { AiThreadService } from './ai-thread/ai-thread.service'
+import { ThreadStateService } from '@coday/ai-thread/thread-state.service'
 import { RunStatus, ThreadMessage } from './ai-thread/ai-thread.types'
-import { AiThreadRepositoryFactory } from './ai-thread/repository/ai-thread.repository.factory'
 import { AiHandler, ConfigHandler } from './handler'
 import { HandlerLooper } from './handler-looper'
 import { AiClientProvider } from './integration/ai/ai-client-provider'
@@ -29,22 +28,23 @@ export class Coday {
   aiHandler: AiHandler | undefined
   maxIterations: number
   initialPrompts: string[] = []
-  aiThreadService: AiThreadService
+  aiThreadService: ThreadStateService
   private killed: boolean = false
   private aiClientProvider: AiClientProvider
 
   constructor(
     public readonly interactor: Interactor,
-    private options: CodayOptions,
-    private services: CodayServices
+    private readonly options: CodayOptions,
+    private readonly services: CodayServices
   ) {
     this.interactor.debugLevelEnabled = options.debug
     this.interactor.debug('Coday started with debug')
     this.configHandler = new ConfigHandler(interactor, this.services)
     this.maxIterations = MAX_ITERATIONS
-    this.aiThreadService = new AiThreadService(
-      new AiThreadRepositoryFactory(this.services.project),
+    this.aiThreadService = new ThreadStateService(
       services.user,
+      services.thread.getThreadRepository(options.project!),
+      options.project!,
       interactor
     )
     this.aiThreadService.activeThread.subscribe((aiThread) => {
@@ -278,15 +278,13 @@ export class Coday {
   }
 
   private async initThread(): Promise<void> {
-    if (!this.context?.aiThread) {
-      // If threadId provided in options, select that specific thread
-      if (this.options.thread) {
-        await this.aiThreadService.select(this.options.thread)
-      } else {
-        // Default behavior: select most recent or create new
-        await this.aiThreadService.select()
-      }
+    if (this.context?.aiThread) {
+      return
     }
+    if (!this.options.thread) {
+      throw Error('No thread given, cannot start Coday instance')
+    }
+    await this.aiThreadService.select(this.options.thread)
   }
 
   private async initCommand(): Promise<string | undefined> {

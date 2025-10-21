@@ -12,6 +12,7 @@ import { CodayLogger } from '@coday/service/coday-logger'
 import { WebhookService } from '@coday/service/webhook.service'
 import { HeartBeatEvent } from '@coday/coday-events'
 import { debugLog } from './log'
+import { ThreadService } from './services/threadService'
 
 /**
  * Represents a Coday instance associated with a specific thread.
@@ -37,6 +38,7 @@ class ThreadCodayInstance {
     private readonly options: CodayOptions,
     private readonly logger: CodayLogger,
     private readonly webhookService: WebhookService,
+    private readonly threadService: ThreadService,
     private readonly onTimeout: (threadId: string) => void
   ) {
     // Start inactivity timeout
@@ -211,6 +213,7 @@ class ThreadCodayInstance {
       integrationConfig,
       memory,
       mcp,
+      thread: this.threadService,
       logger: this.logger,
       webhook: this.webhookService,
     })
@@ -337,7 +340,8 @@ export class ThreadCodayManager {
 
   constructor(
     private readonly logger: CodayLogger,
-    private readonly webhookService: WebhookService
+    private readonly webhookService: WebhookService,
+    private readonly threadService: ThreadService
   ) {
     // Start global heartbeat mechanism
     this.heartbeatInterval = setInterval(() => this.sendHeartbeats(), ThreadCodayManager.HEARTBEAT_INTERVAL)
@@ -390,6 +394,7 @@ export class ThreadCodayManager {
         options,
         this.logger,
         this.webhookService,
+        this.threadService,
         this.handleInstanceTimeout
       )
       this.instances.set(threadId, instance)
@@ -429,6 +434,7 @@ export class ThreadCodayManager {
         options,
         this.logger,
         this.webhookService,
+        this.threadService,
         this.handleInstanceTimeout
       )
       instance.markAsOneshot() // Mark as oneshot for shorter timeout

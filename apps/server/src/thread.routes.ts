@@ -1,6 +1,6 @@
 import express from 'express'
 import { debugLog } from './log'
-import { ThreadService2 } from './services/thread.service2'
+import { ThreadService } from './services/threadService'
 import { ThreadCodayManager } from './thread-coday-manager'
 import { ImageContent } from '@coday/coday-events'
 import { processImageBuffer } from '@coday/function/image-processor'
@@ -38,7 +38,7 @@ import { CodayOptions } from '@coday/options'
  */
 export function registerThreadRoutes(
   app: express.Application,
-  threadService: ThreadService2,
+  threadService: ThreadService,
   threadCodayManager: ThreadCodayManager,
   getUsernameFn: (req: express.Request) => string,
   codayOptions: CodayOptions
@@ -283,7 +283,16 @@ export function registerThreadRoutes(
         return
       }
 
-      debugLog('THREAD', `DELETE thread: ${threadId} from project: ${projectName}`)
+      debugLog(
+        'THREAD',
+        `DELETE
+      thread:
+      ${threadId}
+      from
+      project
+      :
+      ${projectName}`
+      )
       const deleted = await threadService.deleteThread(projectName, threadId)
 
       if (deleted) {

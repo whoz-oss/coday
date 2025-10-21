@@ -4,19 +4,16 @@
  * while handling complex internal state and transitions.
  */
 
-import { BehaviorSubject, catchError, firstValueFrom, Observable, of, timeout } from 'rxjs'
+import { BehaviorSubject, Observable } from 'rxjs'
 import { AiThread } from './ai-thread'
-import { AiThreadRepository } from './ai-thread.repository'
-import { AiThreadRepositoryFactory } from './repository/ai-thread.repository.factory'
-import { filter } from 'rxjs/operators'
-import { ThreadSummary } from './ai-thread.types'
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import { UserService } from '../service/user.service'
 import { Killable } from '@coday/model/killable'
 import { ThreadSelectedEvent } from '@coday/coday-events'
 import { Interactor } from '@coday/model/interactor'
+import { ThreadRepository } from '@coday/repository/thread.repository'
 
-export class AiThreadService implements Killable {
+export class ThreadStateService implements Killable {
   private readonly activeThread$ = new BehaviorSubject<AiThread | null>(null)
   private isKilled = false
 
@@ -29,39 +26,17 @@ export class AiThreadService implements Killable {
   readonly username: string
 
   constructor(
-    private readonly repositoryFactory: AiThreadRepositoryFactory,
     userService: UserService,
+    private readonly threadRepository: ThreadRepository,
+    private readonly projectId: string,
     private readonly interactor?: Interactor
   ) {
-    // Reset active thread when repository changes
-    this.repositoryFactory.repository.pipe(filter((repository) => !!repository)).subscribe(() => {
-      this.activeThread$.next(null)
-    })
     this.username = userService.username
   }
 
   async kill(): Promise<void> {
     this.isKilled = true
     this.activeThread$.complete()
-  }
-
-  /**
-   * Get current repository instance asynchronously.
-   * Waits for a valid repository to be available.
-   * Used internally to ensure we always work with the latest valid repository.
-   */
-  private async getRepository(): Promise<AiThreadRepository> {
-    // Use firstValueFrom to get the first valid repository
-    return await firstValueFrom(
-      this.repositoryFactory.repository.pipe(
-        filter((repo): repo is AiThreadRepository => repo !== null),
-        timeout(10000),
-        catchError((error) => {
-          this.interactor?.warn(`Could not get thread repository: ${error}`)
-          throw new Error(`Could not get thread repository: ${error}`)
-        })
-      )
-    )
   }
 
   async create(name?: string): Promise<AiThread> {
@@ -80,51 +55,14 @@ export class AiThreadService implements Killable {
    * Select a thread for use, or create a default one if none exists.
    * This is the main entry point for thread management.
    *
-   * @param threadId Optional ID of thread to select
+   * @param threadId ID of thread to select
    * @returns Selected or created thread
    */
-  async select(threadId?: string): Promise<AiThread> {
-    const repository = await this.getRepository()
-
-    if (threadId) {
-      const thread = await repository.getById(threadId)
-      if (!thread) {
-        throw new Error(`Thread ${threadId} not found`)
-      }
-      this.activeThread$.next(thread)
-
-      // Emit ThreadSelectedEvent
-      if (this.interactor) {
-        this.interactor.sendEvent(
-          new ThreadSelectedEvent({
-            threadId: thread.id,
-            threadName: thread.name,
-          })
-        )
-      }
-
-      return thread
-    }
-
-    // No ID provided, get last used or create new
-    const threads = await repository.listThreadsByUsername(this.username)
-    if (threads.length === 0) {
-      return await this.create()
-    }
-
-    // Select most recent thread
-    const mostRecent = threads.reduce((latest, current) => {
-      if (!latest || current.modifiedDate > latest.modifiedDate) {
-        return current
-      }
-      return latest
-    })
-
-    const thread = await repository.getById(mostRecent.id)
+  async select(threadId: string): Promise<AiThread> {
+    const thread = await this.threadRepository.getById(this.projectId, threadId)
     if (!thread) {
-      throw new Error('Failed to load most recent thread')
+      throw new Error(`Thread ${threadId} not found`)
     }
-
     this.activeThread$.next(thread)
 
     // Emit ThreadSelectedEvent
@@ -135,7 +73,6 @@ export class AiThreadService implements Killable {
           threadName: thread.name,
         })
       )
-      this.interactor.displayText(`Selected thread '${thread.name}'`)
     }
 
     return thread
@@ -154,13 +91,11 @@ export class AiThreadService implements Killable {
       return
     }
 
-    const repository = await this.getRepository()
-
     // If renaming, update the name
     if (newName) {
       thread.name = newName
     }
-    const saved = await repository.save(thread)
+    const saved = await this.threadRepository.save(this.projectId, thread)
 
     // TODO: Post-processing
     // - Summarization
@@ -187,8 +122,7 @@ export class AiThreadService implements Killable {
       if (newName) {
         thread.name = newName
       }
-      const repository = await this.getRepository()
-      await repository.save(thread)
+      await this.threadRepository.save(this.projectId, thread)
     } catch (error) {
       // Gracefully handle errors during autosave (e.g., service killed during operation)
       console.log('Autosave failed (service may have been killed):', error instanceof Error ? error.message : error)
@@ -216,50 +150,10 @@ export class AiThreadService implements Killable {
   }
 
   /**
-   * Delete a thread permanently
-   */
-  async delete(threadId: string): Promise<void> {
-    const repository = await this.getRepository()
-    const success = await repository.delete(threadId)
-    if (!success) {
-      throw new Error(`Failed to delete thread ${threadId}`)
-    }
-
-    // If active thread was deleted, redo
-    if (this.activeThread$.value?.id === threadId) {
-      await this.select()
-    }
-  }
-
-  /**
    * Get currently active thread synchronously.
    * @returns The current thread or null if none is active
    */
   getCurrentThread(): AiThread | null {
     return this.activeThread$.value
-  }
-
-  /**
-   * List all available threads.
-   * Returns an Observable that will emit once with the list of threads
-   * or error if repository is not available.
-   */
-  list(): Observable<ThreadSummary[]> {
-    // Convert Promise to Observable for consistency
-    return new Observable<ThreadSummary[]>((subscriber) => {
-      this.getRepository()
-        .then((repository) => repository.listThreadsByUsername(this.username))
-        .then((threads) => {
-          subscriber.next(threads)
-          subscriber.complete()
-        })
-        .catch((error) => subscriber.error(error))
-    }).pipe(
-      timeout(10000),
-      catchError((error: any) => {
-        this.interactor?.warn(`Could not list threads in time : ${error.message}`)
-        return of([])
-      })
-    )
   }
 }
