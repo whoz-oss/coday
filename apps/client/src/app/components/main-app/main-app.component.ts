@@ -64,21 +64,21 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     this.setupPrintHandlers()
 
     // Subscribe to route parameter changes to detect thread navigation
-    this.route.params.pipe(takeUntil(this.destroy$)).subscribe(params => {
+    this.route.params.pipe(takeUntil(this.destroy$)).subscribe((params) => {
       const newProjectName = params['projectName']
       const newThreadId = params['threadId'] || null
-      
-      console.log('[MAIN-APP] Route params updated:', { 
-        project: newProjectName, 
+
+      console.log('[MAIN-APP] Route params updated:', {
+        project: newProjectName,
         thread: newThreadId,
         previousProject: this.projectName,
-        previousThread: this.threadId
+        previousThread: this.threadId,
       })
 
       // Update properties - this will trigger change detection in ThreadComponent
       this.projectName = newProjectName
       this.threadId = newThreadId
-      
+
       // If no thread, initialize welcome view
       if (!this.threadId) {
         console.log('[MAIN-APP] No thread selected - showing welcome view')
@@ -117,7 +117,8 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   onMessageSubmitted(message: string): void {
     console.log('[MAIN-APP] First message submitted from welcome view:', message)
 
-    // Show starting state
+    // Immediately disable textarea and show starting state
+    this.isSessionInitializing = true
     this.isStartingFirstMessage = true
 
     // Create thread WITHOUT a name - the backend will auto-generate a name from the first message
@@ -129,9 +130,14 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
         this.router.navigate(['project', this.projectName, 'thread', response.thread.id], {
           state: { firstMessage: message },
         })
+
+        // Note: We don't reset isSessionInitializing here because we're navigating away
+        // The ThreadComponent will take over and show its own thinking state
       },
       error: (error) => {
         console.error('[MAIN-APP] Failed to create thread:', error)
+        // Reset states on error to allow user to try again
+        this.isSessionInitializing = false
         this.isStartingFirstMessage = false
         // TODO: Show error message to user
         alert('Failed to create conversation: ' + (error.message || 'Unknown error'))

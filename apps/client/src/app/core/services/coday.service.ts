@@ -118,6 +118,12 @@ export class CodayService implements OnDestroy {
       return
     }
 
+    // Immediately set thinking state to true to disable textarea
+    // This prevents users from sending multiple messages before server responds
+    console.log('[CODAY] Setting thinking state to true (message sent)')
+    this.isThinkingSubject.next(true)
+    this.tabTitleService?.setSystemActive()
+
     const currentInviteEvent = this.currentInviteEventSubject.value
 
     if (currentInviteEvent) {
@@ -128,14 +134,22 @@ export class CodayService implements OnDestroy {
       this.currentInviteEventSubject.next(null)
 
       this.messageApi.sendMessage(this.currentProject, this.currentThread, answerEvent).subscribe({
-        error: (error) => console.error('[CODAY] Send error:', error),
+        error: (error) => {
+          console.error('[CODAY] Send error:', error)
+          // Reset thinking state on error
+          this.stopThinking()
+        },
       })
     } else {
       // Fallback to basic AnswerEvent if no invite event stored
       const answerEvent = new AnswerEvent({ answer: message })
 
       this.messageApi.sendMessage(this.currentProject, this.currentThread, answerEvent).subscribe({
-        error: (error) => console.error('[CODAY] Send error:', error),
+        error: (error) => {
+          console.error('[CODAY] Send error:', error)
+          // Reset thinking state on error
+          this.stopThinking()
+        },
       })
     }
   }
@@ -150,6 +164,11 @@ export class CodayService implements OnDestroy {
     }
 
     if (this.currentChoiceEvent) {
+      // Immediately set thinking state to true to prevent further interactions
+      console.log('[CODAY] Setting thinking state to true (choice sent)')
+      this.isThinkingSubject.next(true)
+      this.tabTitleService?.setSystemActive()
+
       // Use the original ChoiceEvent to build proper answer with parentKey
       const answerEvent = this.currentChoiceEvent.buildAnswer(choice)
 
@@ -162,6 +181,8 @@ export class CodayService implements OnDestroy {
         next: () => {},
         error: (error) => {
           console.error('[CODAY-CHOICE] Choice error:', error)
+          // Reset thinking state on error
+          this.stopThinking()
         },
       })
     } else {
@@ -218,6 +239,16 @@ export class CodayService implements OnDestroy {
    */
   getCurrentInviteEvent(): InviteEvent | null {
     return this.currentInviteEventSubject.value
+  }
+
+  /**
+   * Set thinking state for pending first message
+   * This prevents UI from showing agent selection while waiting for InviteEvent
+   */
+  setThinkingForPendingMessage(): void {
+    console.log('[CODAY] Setting thinking state for pending first message')
+    this.isThinkingSubject.next(true)
+    this.tabTitleService?.setSystemActive()
   }
 
   /**

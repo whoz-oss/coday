@@ -19,7 +19,7 @@
       [placeholder]="getPlaceholder()"
       (keydown)="onKeyDown($event)"
       (input)="onInput()"
-      [disabled]="isDisabled || isThinking"
+      [disabled]="isDisabled || isThinking || isLocallyDisabled"
       (focus)="isFocused = true"
       (blur)="isFocused = false"
     ></textarea>
@@ -33,9 +33,9 @@
           class="send-btn"
           mat-icon-button
           (click)="sendMessage()"
-          [disabled]="isDisabled || !message.trim()"
-          [class.hidden]="isDisabled || !message.trim()"
-          [class.active]="!!message.trim() && !isDisabled"
+          [disabled]="isDisabled || !message.trim() || isLocallyDisabled"
+          [class.hidden]="isDisabled || !message.trim() || isLocallyDisabled"
+          [class.active]="!!message.trim() && !isDisabled && !isLocallyDisabled"
           [title]="getSendButtonTooltip()"
           type="button"
         >

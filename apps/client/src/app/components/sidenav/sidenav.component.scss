@@ -311,7 +311,8 @@
 .sidenav-sections {
   flex: 1;
   min-height: 0; // CRITICAL for flexbox
-  overflow: hidden; // NO scroll here
+  overflow-y: auto; // Allow scrolling when needed
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   padding: 0;
@@ -353,15 +354,45 @@
 
 // Section container
 .section-container {
-  flex-shrink: 0; // Other sections don't shrink
-  
-  // First section-container (threads) takes remaining space
-  &:first-child {
-    flex: 1; // Grow to fill space
-    min-height: 0; // CRITICAL
-    display: flex;
-    flex-direction: column;
+  flex-shrink: 0; // Don't shrink by default
+  display: flex;
+  flex-direction: column;
+
+  // When expanded, take maximum available space
+  &.expanded {
+    flex: 1;
+    min-height: 0;
+
     overflow: hidden;
+
+    // Ensure section content can grow
+    .section-content {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      max-height: calc(100vh - 309px);
+
+      // Remove border-bottom when expanded to fill space
+      border-bottom: none;
+
+      position: relative;
+
+      // Gradient shadow at bottom to indicate scrollable content
+      &::after {
+        content: '';
+        position: sticky;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        background: linear-gradient(to bottom, transparent 0%, var(--glass-bg) 100%);
+        pointer-events: none;
+        opacity: 1;
+        transition: opacity 0.3s ease;
+        z-index: 10;
+        flex-shrink: 0;
+      }
+    }
   }
 }
 
@@ -487,27 +518,12 @@
   padding: $section-content-top-bottom-padding 0;
   animation: slideDown 0.2s ease;
   border-bottom: 1px solid var(--color-border);
-  
+  display: flex;
+  flex-direction: column;
+
   // Threads section - scrollable
   &.threads {
-    padding-top: 0;
-    flex: 1; // Take remaining space in parent
-    min-height: 0; // CRITICAL
-    overflow-y: auto; // Scroll HERE
-    overflow-x: hidden;
-
-    // Gradient shadow at bottom
-    &::after {
-      content: '';
-      position: sticky;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      height: 40px;
-      background: linear-gradient(to bottom, transparent 0%, var(--glass-bg) 100%);
-      pointer-events: none;
-      z-index: 1;
-    }
+    padding: 0;
   }
 }
 
@@ -688,16 +704,6 @@
   .preference-content {
     padding: 0 1rem;
   }
-}
-
-// Project and Thread selectors in sidenav
-.sidenav-project-selector,
-.sidenav-thread-selector {
-  width: 100%;
-  // Thread selector needs to respect parent's height constraint
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
 }
 
 // Error notification
