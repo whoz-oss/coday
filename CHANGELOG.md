@@ -1,3 +1,13 @@
+## 0.34.2 (2025-10-22)
+
+### 🩹 Fixes
+
+- unselect current thread when starting new thread ([fec8cf4](https://github.com/whoz-oss/coday/commit/fec8cf4))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.34.1 (2025-10-22)
 
 ### 🩹 Fixes
