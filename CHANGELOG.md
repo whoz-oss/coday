@@ -1,3 +1,13 @@
+## 0.34.1 (2025-10-22)
+
+### 🩹 Fixes
+
+- server url ([a5ec969](https://github.com/whoz-oss/coday/commit/a5ec969))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.34.0 (2025-10-22)
 
 ### 🚀 Features
