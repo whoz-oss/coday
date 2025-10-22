@@ -1,5 +1,15 @@
 import { inject, Injectable } from '@angular/core'
-import { BehaviorSubject, combineLatest, distinctUntilChanged, of, shareReplay, switchMap } from 'rxjs'
+import {
+  BehaviorSubject,
+  combineLatest,
+  distinctUntilChanged,
+  of,
+  shareReplay,
+  Subject,
+  switchMap,
+  startWith,
+  catchError,
+} from 'rxjs'
 import { map, tap } from 'rxjs/operators'
 import { ThreadApiService } from './thread-api.service'
 import { ProjectStateService } from './project-state.service'
@@ -15,9 +25,15 @@ import { ProjectStateService } from './project-state.service'
 export class ThreadStateService {
   private readonly selectedThreadIdSubject = new BehaviorSubject<string | null>(null)
   private readonly isLoadingSubject = new BehaviorSubject<boolean>(false)
+  private readonly isLoadingThreadListSubject = new BehaviorSubject<boolean>(false)
+  private readonly refreshThreadListSubject = new Subject<void>()
+  private readonly threadListSubject = new BehaviorSubject<any[]>([])
+  private hasLoadedOncePerProject = new Map<string, boolean>()
+  private currentProjectName: string | null | undefined = null
 
   // Public observables
   isLoading$ = this.isLoadingSubject.asObservable()
+  isLoadingThreadList$ = this.isLoadingThreadListSubject.asObservable()
 
   // Inject API service
   private readonly threadApi = inject(ThreadApiService)
@@ -28,16 +44,64 @@ export class ThreadStateService {
     distinctUntilChanged()
   )
 
-  threadList$ = this.projectName$.pipe(
-    switchMap((projectName) => {
-      if (!projectName) {
-        return of([])
-      } else {
-        return this.threadApi.listThreads(projectName)
-      }
-    }),
-    shareReplay({ bufferSize: 1, refCount: true })
-  )
+  constructor() {
+    // Set up the thread list fetching logic
+    combineLatest([this.projectName$, this.refreshThreadListSubject.asObservable().pipe(startWith(undefined))])
+      .pipe(
+        tap(([projectName]) => {
+          // Clear thread list only when switching projects
+          if (projectName !== this.currentProjectName) {
+            console.log('[THREAD_STATE] Project changed, clearing thread list')
+            this.threadListSubject.next([])
+            this.currentProjectName = projectName
+          }
+
+          // Only show loading spinner if there's a project selected
+          // and it's the first load for this specific project
+          if (projectName) {
+            const hasLoaded = this.hasLoadedOncePerProject.get(projectName)
+            if (!hasLoaded) {
+              console.log('[THREAD_STATE] Initial load for project', projectName, '- showing spinner')
+              this.isLoadingThreadListSubject.next(true)
+            } else {
+              console.log('[THREAD_STATE] Refreshing thread list for project', projectName, '(no spinner)')
+            }
+          } else {
+            // No project selected, ensure loading is false
+            console.log('[THREAD_STATE] No project selected, hiding spinner')
+            this.isLoadingThreadListSubject.next(false)
+          }
+        }),
+        switchMap(([projectName]) => {
+          if (!projectName) {
+            console.log('[THREAD_STATE] No project selected, returning empty list')
+            return of({ threads: [], projectName: null })
+          } else {
+            console.log('[THREAD_STATE] Fetching threads for project:', projectName)
+            return this.threadApi.listThreads(projectName).pipe(
+              map((threads) => ({ threads, projectName })),
+              catchError((error) => {
+                console.error('[THREAD_STATE] Error loading thread list:', error)
+                return of({ threads: [], projectName })
+              })
+            )
+          }
+        }),
+        tap(({ threads, projectName }) => {
+          console.log('[THREAD_STATE] Thread list loaded:', threads.length, 'threads for project', projectName)
+          if (projectName) {
+            this.hasLoadedOncePerProject.set(projectName, true)
+          }
+          this.isLoadingThreadListSubject.next(false)
+          // Update the thread list subject with new data
+          this.threadListSubject.next(threads)
+        })
+      )
+      .subscribe()
+  }
+
+  // Public observable that always has the latest thread list
+  threadList$ = this.threadListSubject.asObservable()
 
   selectedThread$ = combineLatest([this.projectName$, this.selectedThreadIdSubject.pipe(distinctUntilChanged())]).pipe(
     tap(([projectName, threadId]) => {
@@ -52,7 +116,7 @@ export class ThreadStateService {
 
         this.isLoadingSubject.next(true)
         return this.threadApi.getThread(projectName, threadId).pipe(
-          tap(thread => {
+          tap((thread) => {
             console.log('🐼 loaded thread:', thread?.id)
           }),
           // shareReplay at this level: shares the result for THIS specific threadId
@@ -104,5 +168,14 @@ export class ThreadStateService {
       next: (response) => console.log('[THREAD_STATE] Stop signal sent:', response.message),
       error: (error) => console.error('[THREAD_STATE] Error stopping thread:', error),
     })
+  }
+
+  /**
+   * Refresh the thread list
+   * This should be called when a thread is updated (e.g., renamed) to refresh the list
+   */
+  refreshThreadList(): void {
+    console.log('[THREAD_STATE] Manually refreshing thread list')
+    this.refreshThreadListSubject.next()
   }
 }

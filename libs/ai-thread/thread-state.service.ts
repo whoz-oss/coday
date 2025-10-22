@@ -11,6 +11,7 @@ import { UserService } from '../service/user.service'
 import { Killable } from '@coday/model/killable'
 import { Interactor } from '@coday/model/interactor'
 import { ThreadRepository } from '@coday/repository/thread.repository'
+import { ThreadUpdateEvent } from '@coday/coday-events'
 
 export class ThreadStateService implements Killable {
   private readonly activeThread$ = new BehaviorSubject<AiThread | null>(null)
@@ -108,10 +109,22 @@ export class ThreadStateService implements Killable {
     }
 
     try {
+      const nameChanged = newName && thread.name !== newName
       if (newName) {
         thread.name = newName
       }
       await this.threadRepository.save(this.projectId, thread)
+
+      // Emit thread update event whenever we save (for modifiedDate updates)
+      // This ensures the thread list is refreshed when messages are added
+      if (this.interactor) {
+        this.interactor.sendEvent(
+          new ThreadUpdateEvent({
+            threadId: thread.id,
+            name: nameChanged ? newName : undefined,
+          })
+        )
+      }
     } catch (error) {
       // Gracefully handle errors during autosave (e.g., service killed during operation)
       console.log('Autosave failed (service may have been killed):', error instanceof Error ? error.message : error)

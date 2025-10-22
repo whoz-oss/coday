@@ -173,6 +173,15 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
       }
     })
 
+    // Listen for thread update events to refresh the thread list
+    this.codayService.threadUpdateEvent$.pipe(takeUntil(this.destroy$)).subscribe((updateEvent) => {
+      if (updateEvent) {
+        console.log('[THREAD] Thread update event received:', updateEvent)
+        // Refresh the thread list to show the updated name
+        this.threadState.refreshThreadList()
+      }
+    })
+
     // Reset messages when switching threads
     this.codayService.resetMessages()
 

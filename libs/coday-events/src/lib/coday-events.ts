@@ -279,6 +279,18 @@ export class MessageEvent extends CodayEvent {
   }
 }
 
+export class ThreadUpdateEvent extends CodayEvent {
+  threadId: string
+  name?: string
+  static override type = 'thread_update'
+
+  constructor(event: Partial<ThreadUpdateEvent>) {
+    super(event, ThreadUpdateEvent.type)
+    this.threadId = event.threadId!
+    this.name = event.name
+  }
+}
+
 // Exposing a map of event types to their corresponding classes
 const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [MessageEvent.type]: MessageEvent,
@@ -292,6 +304,7 @@ const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [TextEvent.type]: TextEvent,
   [ThinkingEvent.type]: ThinkingEvent,
   [WarnEvent.type]: WarnEvent,
+  [ThreadUpdateEvent.type]: ThreadUpdateEvent,
 }
 
 export function buildCodayEvent(data: any): CodayEvent | undefined {

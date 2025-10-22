@@ -311,11 +311,11 @@
 .sidenav-sections {
   flex: 1;
   min-height: 0; // CRITICAL for flexbox
-  overflow-y: auto; // Allow scrolling when needed
-  overflow-x: hidden;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   padding: 0;
+  max-height: calc(100vh - 120px);
 
   // Custom scrollbar
   &::-webkit-scrollbar {
@@ -370,7 +370,6 @@
       flex: 1;
       overflow-y: auto;
       overflow-x: hidden;
-      max-height: calc(100vh - 309px);
 
       // Remove border-bottom when expanded to fill space
       border-bottom: none;
@@ -515,7 +514,7 @@
 // Section content
 .section-content {
   $section-content-top-bottom-padding: 0.5rem;
-  padding: $section-content-top-bottom-padding 0;
+  padding: $section-content-top-bottom-padding 0 0;
   animation: slideDown 0.2s ease;
   border-bottom: 1px solid var(--color-border);
   display: flex;

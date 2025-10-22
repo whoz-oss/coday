@@ -5,6 +5,7 @@ import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 import { MatInputModule } from '@angular/material/input'
 import { MatFormFieldModule } from '@angular/material/form-field'
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
 import { SessionState } from '@coday/model/session-state'
 import { ThreadStateService } from '../../core/services/thread-state.service'
 import { toSignal } from '@angular/core/rxjs-interop'
@@ -14,7 +15,15 @@ import { Router } from '@angular/router'
 @Component({
   selector: 'app-thread-selector',
   standalone: true,
-  imports: [CommonModule, FormsModule, MatIconModule, MatButtonModule, MatInputModule, MatFormFieldModule],
+  imports: [
+    CommonModule,
+    FormsModule,
+    MatIconModule,
+    MatButtonModule,
+    MatInputModule,
+    MatFormFieldModule,
+    MatProgressSpinnerModule,
+  ],
   templateUrl: './thread-selector.component.html',
   styleUrl: './thread-selector.component.scss',
 })
@@ -33,6 +42,7 @@ export class ThreadSelectorComponent {
   currentThread = toSignal(this.threadStateService.selectedThread$)
   currentProject = toSignal(this.projectStateService.selectedProject$)
   threads = toSignal(this.threadStateService.threadList$)
+  isLoadingThreadList = toSignal(this.threadStateService.isLoadingThreadList$)
 
   /**
    * Select a thread

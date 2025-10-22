@@ -181,8 +181,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
           this.projectConfigJson = JSON.stringify(config, null, 2)
           this.isLoadingProjectConfig = false
           this.isProjectConfigOpen = true
-          // Close sidenav after successfully opening the modal
-          this.close()
         },
         error: (error) => {
           console.error('[SIDENAV] Error loading project config:', error)
@@ -282,8 +280,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
    */
   openWebhooks(): void {
     this.isWebhooksOpen = true
-    // Close sidenav after opening the modal
-    this.close()
   }
 
   /**
@@ -326,8 +322,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
     // Use setTimeout to ensure clearSelection is processed before navigation
     // Then navigate to home
     this.router.navigate(['/'])
-    // Close sidenav after navigation
-    this.close()
   }
 
   /**
@@ -344,9 +338,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
     console.log('[SIDENAV] Navigating to welcome view for new thread')
     // Navigate to project route without threadId to show welcome view
     this.router.navigate(['project', projectName])
-
-    // Close sidenav after navigation
-    this.close()
   }
 
   /**

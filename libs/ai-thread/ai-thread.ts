@@ -334,6 +334,9 @@ export class AiThread {
         })
       )
     }
+
+    // Update modified date whenever a user message is added
+    this.modifiedDate = new Date().toISOString()
   }
 
   /**
@@ -360,6 +363,9 @@ export class AiThread {
         })
       )
     }
+
+    // Update modified date whenever an agent message is added
+    this.modifiedDate = new Date().toISOString()
   }
 
   /**
