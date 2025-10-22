@@ -1,3 +1,13 @@
+## 0.33.1 (2025-10-22)
+
+### 🩹 Fixes
+
+- small ui fixes in sidenav & thinking mode ([0ffeb4f](https://github.com/whoz-oss/coday/commit/0ffeb4f))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.33.0 (2025-10-22)
 
 ### 🚀 Features
