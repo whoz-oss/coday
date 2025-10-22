@@ -96,18 +96,6 @@ if (process.env.BUILD_ENV === 'development') {
 
   // Serve static files from the Angular build output
   app.use(express.static(clientPath))
-
-  // Fallback to index.html for client-side routing (must be after API routes)
-  // This ensures that any non-API route that doesn't match a static file
-  // will serve the Angular app, allowing client-side routing to handle it
-  app.get('*', (req, res, next) => {
-    // Don't interfere with API routes
-    if (req.path.startsWith('/api') || req.path.startsWith('/events')) {
-      next()
-    } else {
-      res.sendFile(path.join(clientPath, 'index.html'))
-    }
-  })
 }
 // Initialize project service for REST API endpoints
 const projectRepository = new ProjectFileRepository(configPath)
