@@ -198,6 +198,11 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
     if (firstMessage) {
       console.log('[THREAD] First message pending:', firstMessage.substring(0, 50) + '...')
       this.pendingFirstMessage = firstMessage
+
+      // Immediately set thinking state to prevent showing agent selection or other UI
+      // This will be maintained until the actual ThinkingEvent arrives from the server
+      this.codayService.setThinkingForPendingMessage()
+
       this.subscribeToFirstInvite()
     } else {
       console.log('[THREAD] No first message found in navigation state')
@@ -324,35 +329,34 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
     console.log('[THREAD] Uploading file:', file.name)
     this.uploadStatus = { message: `Uploading ${file.name}...`, isError: false }
 
-    this.imageUploadService.uploadImage(file, this.projectName, this.threadId)
-      .subscribe({
-        next: (result) => {
-          if (result.success) {
-            console.log('[THREAD] Upload successful:', file.name)
-            this.uploadStatus = {
-              message: `✓ ${file.name} uploaded (${(result.processedSize! / 1024).toFixed(1)} KB)`,
-              isError: false,
-            }
-            // Auto-hide success message after 3 seconds
-            setTimeout(() => {
-              if (!this.uploadStatus.isError) {
-                this.uploadStatus = { message: '', isError: false }
-              }
-            }, 3000)
-            // Upload next file
-            this.uploadFilesSequentially(files, index + 1)
-          } else {
-            console.error('[THREAD] Upload failed:', file.name, result.error)
-            this.showUploadError(`Failed to upload ${file.name}: ${result.error}`)
-            // Stop on error
+    this.imageUploadService.uploadImage(file, this.projectName, this.threadId).subscribe({
+      next: (result) => {
+        if (result.success) {
+          console.log('[THREAD] Upload successful:', file.name)
+          this.uploadStatus = {
+            message: `✓ ${file.name} uploaded (${(result.processedSize! / 1024).toFixed(1)} KB)`,
+            isError: false,
           }
-        },
-        error: (error) => {
-          console.error('[THREAD] Upload error:', file.name, error)
-          this.showUploadError(`Failed to upload ${file.name}: ${error.message || 'Unknown error'}`)
+          // Auto-hide success message after 3 seconds
+          setTimeout(() => {
+            if (!this.uploadStatus.isError) {
+              this.uploadStatus = { message: '', isError: false }
+            }
+          }, 3000)
+          // Upload next file
+          this.uploadFilesSequentially(files, index + 1)
+        } else {
+          console.error('[THREAD] Upload failed:', file.name, result.error)
+          this.showUploadError(`Failed to upload ${file.name}: ${result.error}`)
           // Stop on error
         }
-      })
+      },
+      error: (error) => {
+        console.error('[THREAD] Upload error:', file.name, error)
+        this.showUploadError(`Failed to upload ${file.name}: ${error.message || 'Unknown error'}`)
+        // Stop on error
+      },
+    })
   }
 
   private showUploadError(message: string): void {

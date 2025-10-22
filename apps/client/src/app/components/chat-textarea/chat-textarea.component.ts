@@ -38,6 +38,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
   // Internal state for stopping
   isStopping: boolean = false
+  // Local flag to immediately disable textarea when message is sent
+  isLocallyDisabled: boolean = false
   @Output() messageSubmitted = new EventEmitter<string>()
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
   @Output() heightChanged = new EventEmitter<number>()
@@ -115,6 +117,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
         this.stopThinkingAnimation()
         // Reset stopping state when thinking ends
         this.isStopping = false
+        // Reset local disable flag when thinking ends
+        this.isLocallyDisabled = false
         // Autofocus textarea when thinking mode ends
         // Use requestAnimationFrame + timeout to ensure disabled attribute is removed
         if (changes['isThinking'].previousValue) {
@@ -130,6 +134,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     if (changes['isSessionInitializing']) {
       if (!changes['isSessionInitializing'].currentValue && changes['isSessionInitializing'].previousValue) {
         console.log('[CHAT-TEXTAREA] Session initialization completed, scheduling focus')
+        // Reset local disable flag when session initialization ends
+        this.isLocallyDisabled = false
         requestAnimationFrame(() => {
           setTimeout(() => this.focusTextarea(), 100)
         })
@@ -196,7 +202,10 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   }
 
   sendMessage() {
-    if (!this.isDisabled) {
+    if (!this.isDisabled && !this.isLocallyDisabled && this.message.trim()) {
+      // Immediately set local disable flag to prevent any further input
+      this.isLocallyDisabled = true
+
       this.messageSubmitted.emit(this.message.trim())
       this.message = ''
 
