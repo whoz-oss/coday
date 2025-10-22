@@ -12,6 +12,7 @@ import {
   MessageEvent,
   TextEvent,
   ThinkingEvent,
+  ThreadUpdateEvent,
   ToolRequestEvent,
   ToolResponseEvent,
   WarnEvent,
@@ -42,6 +43,7 @@ export class CodayService implements OnDestroy {
   private readonly projectTitleSubject = new BehaviorSubject<string>('Coday')
   private readonly currentInviteEventSubject = new BehaviorSubject<InviteEvent | null>(null)
   private readonly messageToRestoreSubject = new BehaviorSubject<string>('')
+  private readonly threadUpdateEventSubject = new BehaviorSubject<ThreadUpdateEvent | null>(null)
 
   // Store original events for proper response building
   private currentChoiceEvent: ChoiceEvent | null = null
@@ -56,6 +58,7 @@ export class CodayService implements OnDestroy {
   projectTitle$ = this.projectTitleSubject.asObservable()
   currentInviteEvent$ = this.currentInviteEventSubject.asObservable()
   messageToRestore$ = this.messageToRestoreSubject.asObservable()
+  threadUpdateEvent$ = this.threadUpdateEventSubject.asObservable()
 
   // Connection status will be initialized in constructor
   connectionStatus$!: typeof this.eventStream.connectionStatus$
@@ -288,9 +291,16 @@ export class CodayService implements OnDestroy {
       this.handleHeartBeatEvent(event)
     } else if (event instanceof InviteEvent) {
       this.handleInviteEvent(event)
+    } else if (event instanceof ThreadUpdateEvent) {
+      this.handleThreadUpdateEvent(event)
     } else {
       console.warn('[CODAY] Unhandled event type:', event.type)
     }
+  }
+
+  private handleThreadUpdateEvent(event: ThreadUpdateEvent): void {
+    console.log('[CODAY] Thread update event received:', event)
+    this.threadUpdateEventSubject.next(event)
   }
 
   private handleMessageEvent(event: MessageEvent): void {
@@ -569,6 +579,7 @@ export class CodayService implements OnDestroy {
     this.destroy$.complete()
     this.currentInviteEventSubject.complete()
     this.messageToRestoreSubject.complete()
+    this.threadUpdateEventSubject.complete()
     this.eventStream.disconnect()
   }
 }

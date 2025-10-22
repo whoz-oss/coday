@@ -6,6 +6,7 @@ import { PreferencesService } from '../../services/preferences.service'
 import { VoiceSynthesisService, VoiceInfo } from '../../services/voice-synthesis.service'
 import { ThemeService, ThemeMode } from '../../core/services/theme.service'
 import { MatIcon } from '@angular/material/icon'
+import { MatSlideToggle } from '@angular/material/slide-toggle'
 
 interface VoiceLanguageOption {
   code: string
@@ -16,7 +17,7 @@ interface VoiceLanguageOption {
 @Component({
   selector: 'app-options-panel',
   standalone: true,
-  imports: [FormsModule, MatIcon],
+  imports: [FormsModule, MatIcon, MatSlideToggle],
   templateUrl: './options-panel.component.html',
   styleUrl: './options-panel.component.scss',
 })
@@ -27,7 +28,8 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   selectedVoiceLanguage = 'en-US'
   useEnterToSend = false
   printTechnicalMessages = false
-  hideTechnicalMessages = false
+  showTechnicalMessages = true
+  showWarningMessages = true
 
   voiceAnnounceEnabled = false
   voiceMode: 'speech' | 'notification' = 'speech'
@@ -64,7 +66,8 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
     this.selectedVoiceLanguage = this.preferencesService.getVoiceLanguage()
     this.useEnterToSend = this.preferencesService.getEnterToSend()
     this.printTechnicalMessages = this.preferencesService.getPrintTechnicalMessages()
-    this.hideTechnicalMessages = this.preferencesService.getHideTechnicalMessages()
+    this.showTechnicalMessages = !this.preferencesService.getHideTechnicalMessages()
+    this.showWarningMessages = !this.preferencesService.getHideWarningMessages()
     this.voiceAnnounceEnabled = this.preferencesService.getVoiceAnnounceEnabled()
     this.voiceMode = this.preferencesService.getVoiceMode()
     this.voiceReadFullText = this.preferencesService.getVoiceReadFullText()
@@ -93,7 +96,11 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
       })
 
     this.preferencesService.hideTechnicalMessages$.pipe(takeUntil(this.destroy$)).subscribe((hideTechnicalMessages) => {
-      this.hideTechnicalMessages = hideTechnicalMessages
+      this.showTechnicalMessages = !hideTechnicalMessages
+    })
+
+    this.preferencesService.hideWarningMessages$.pipe(takeUntil(this.destroy$)).subscribe((hideWarningMessages) => {
+      this.showWarningMessages = !hideWarningMessages
     })
 
     this.preferencesService.voiceAnnounceEnabled$.pipe(takeUntil(this.destroy$)).subscribe((enabled) => {
@@ -150,9 +157,16 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
     this.preferencesService.setPrintTechnicalMessages(this.printTechnicalMessages)
   }
 
-  onHideTechnicalMessagesChange(): void {
-    console.log('[OPTIONS] Hide technical messages changed to:', this.hideTechnicalMessages)
-    this.preferencesService.setHideTechnicalMessages(this.hideTechnicalMessages)
+  onShowTechnicalMessagesChange(): void {
+    const hideValue = !this.showTechnicalMessages
+    console.log('[OPTIONS] Show technical messages changed to:', this.showTechnicalMessages, '(hide:', hideValue, ')')
+    this.preferencesService.setHideTechnicalMessages(hideValue)
+  }
+
+  onShowWarningMessagesChange(): void {
+    const hideValue = !this.showWarningMessages
+    console.log('[OPTIONS] Show warning messages changed to:', this.showWarningMessages, '(hide:', hideValue, ')')
+    this.preferencesService.setHideWarningMessages(hideValue)
   }
 
   onVoiceAnnounceEnabledChange(): void {

@@ -37,6 +37,7 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
 
   renderedContent: SafeHtml = ''
   shouldHideTechnical = false
+  shouldHideWarning = false
 
   // Modern Angular dependency injection
   private sanitizer = inject(DomSanitizer)
@@ -50,6 +51,7 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
       [this.message.role]: true,
       [this.message.type]: true,
       'hidden-technical': this.shouldHideTechnical && this.message.type === 'technical',
+      'hidden-warning': this.shouldHideWarning && this.message.type === 'warning',
     }
   }
 
@@ -61,8 +63,14 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
       this.shouldHideTechnical = hide
     })
 
-    // Initialize with current value
+    // Subscribe to hide warning messages preference
+    this.preferencesService.hideWarningMessages$.pipe(takeUntil(this.destroy$)).subscribe((hide) => {
+      this.shouldHideWarning = hide
+    })
+
+    // Initialize with current values
     this.shouldHideTechnical = this.preferencesService.getHideTechnicalMessages()
+    this.shouldHideWarning = this.preferencesService.getHideWarningMessages()
   }
 
   ngOnDestroy(): void {
@@ -119,7 +127,7 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
     // Get project and thread from state services
     const projectName = this.projectState.getSelectedProjectId()
     const threadId = this.threadState.getSelectedThreadId()
-    
+
     if (!projectName || !threadId) return null
 
     return `/api/projects/${projectName}/threads/${threadId}/messages/${encodeURIComponent(this.message.eventId)}/formatted`

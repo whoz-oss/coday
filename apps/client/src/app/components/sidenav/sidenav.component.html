@@ -54,7 +54,7 @@
     </div>
 
     <!-- Expansion Panels Container -->
-    <div class="sidenav-sections" [class.has-footer]="true">
+    <div class="sidenav-sections" [class.has-footer]="true" [class.is-admin]="isAdmin">
       <!-- Threads Section - Expanded by default -->
       <div class="section-container" [class.expanded]="expandedSections['threads']">
         @if (isThreadSearchActive && expandedSections['threads']) {
@@ -141,59 +141,59 @@
             </div>
           </div>
         }
+      </div>
 
-        <div class="section-container">
-          <button class="section-toggle" (click)="openUserConfig(); $event.stopPropagation()" type="button">
-            <mat-icon class="section-icon">settings</mat-icon>
-            <span class="section-label">User Configuration</span>
-          </button>
-        </div>
+      <div class="section-container">
+        <button class="section-toggle" (click)="openUserConfig(); $event.stopPropagation()" type="button">
+          <mat-icon class="section-icon">settings</mat-icon>
+          <span class="section-label">User Configuration</span>
+        </button>
+      </div>
 
-        <div class="section-container">
-          <a
-            href="https://github.com/whoz-oss/coday"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="section-toggle contribute-btn"
-            title="Contribute on GitHub"
-          >
-            <img [attr.src]="'CODAY-Logo.png'" alt="Coday" class="contribute-logo" />
-            <span class="section-label">Contribute on GitHub</span>
-          </a>
-        </div>
+      <div class="section-container">
+        <a
+          href="https://github.com/whoz-oss/coday"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="section-toggle contribute-btn"
+          title="Contribute on GitHub"
+        >
+          <img [attr.src]="'CODAY-Logo.png'" alt="Coday" class="contribute-logo" />
+          <span class="section-label">Contribute on GitHub</span>
+        </a>
+      </div>
 
-        <!-- Admin only -->
-        @if (isAdmin) {
-          <!-- Project Config -->
-          @if (selectedProjectName()) {
-            <div class="section-container">
-              <button class="section-toggle" (click)="openProjectConfig(); $event.stopPropagation()" type="button">
-                <mat-icon class="section-icon">settings_applications</mat-icon>
-                <span class="section-label">Project Configuration</span>
-              </button>
-            </div>
-          } @else {
-            <div class="section-container">
-              <button
-                class="section-toggle"
-                (click)="openProjectConfig(); $event.stopPropagation()"
-                type="button"
-                disabled
-              >
-                <mat-icon class="section-icon">settings_applications</mat-icon>
-                <span class="section-label">Project config (No project)</span>
-              </button>
-            </div>
-          }
-          <!-- Webhooks - Admin only -->
+      <!-- Admin only -->
+      @if (isAdmin) {
+        <!-- Project Config -->
+        @if (selectedProjectName()) {
           <div class="section-container">
-            <button class="section-toggle" (click)="openWebhooks(); $event.stopPropagation()" type="button">
-              <mat-icon class="section-icon">webhook</mat-icon>
-              <span class="section-label">Webhooks</span>
+            <button class="section-toggle" (click)="openProjectConfig(); $event.stopPropagation()" type="button">
+              <mat-icon class="section-icon">settings_applications</mat-icon>
+              <span class="section-label">Project Configuration</span>
+            </button>
+          </div>
+        } @else {
+          <div class="section-container">
+            <button
+              class="section-toggle"
+              (click)="openProjectConfig(); $event.stopPropagation()"
+              type="button"
+              disabled
+            >
+              <mat-icon class="section-icon">settings_applications</mat-icon>
+              <span class="section-label">Project config (No project)</span>
             </button>
           </div>
         }
-      </div>
+        <!-- Webhooks - Admin only -->
+        <div class="section-container">
+          <button class="section-toggle" (click)="openWebhooks(); $event.stopPropagation()" type="button">
+            <mat-icon class="section-icon">webhook</mat-icon>
+            <span class="section-label">Webhooks</span>
+          </button>
+        </div>
+      }
     </div>
   </mat-sidenav>
 

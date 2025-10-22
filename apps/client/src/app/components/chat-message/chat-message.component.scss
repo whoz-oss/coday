@@ -77,6 +77,11 @@
     display: none !important;
   }
 
+  // Hide warning messages when preference is enabled
+  &.hidden-warning {
+    display: none !important;
+  }
+
   // Error messages
   &.error {
     padding: 1rem 1.25rem;

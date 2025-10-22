@@ -35,10 +35,10 @@ export class ProjectSelectionComponent {
   projectOptions = computed<ChoiceOption[]>(() => {
     const projectList = this.projects()
     if (!projectList) return []
-    
-    return projectList.map(project => ({
+
+    return projectList.map((project) => ({
       value: project.name,
-      label: project.name
+      label: project.name,
     }))
   })
 
@@ -49,7 +49,11 @@ export class ProjectSelectionComponent {
       .pipe(
         takeUntilDestroyed(),
         filter((selection) => !!selection),
-        filter(() => this.router.url === '/'), // Only redirect if we're on home page
+        filter(() => {
+          // Check only the path, ignoring query parameters
+          const path = this.router.url.split('?')[0]
+          return path === '/'
+        }),
         take(1)
       )
       .subscribe((selection) => {

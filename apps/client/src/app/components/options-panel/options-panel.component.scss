@@ -24,6 +24,22 @@
   font-size: 0.875rem;
 }
 
+.toggle-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+
+  .option-label {
+    margin-bottom: 0;
+    flex: 1;
+  }
+
+  mat-slide-toggle {
+    flex-shrink: 0;
+  }
+}
+
 .option-select {
   width: 100%;
   padding: 0.5rem;
