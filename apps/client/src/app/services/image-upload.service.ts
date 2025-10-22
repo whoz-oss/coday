@@ -1,4 +1,6 @@
-import { Injectable } from '@angular/core'
+import { inject, Injectable } from '@angular/core'
+import { HttpClient } from '@angular/common/http'
+import { Observable, catchError, map, of } from 'rxjs'
 
 export interface ImageUploadResult {
   success: boolean
@@ -7,10 +9,17 @@ export interface ImageUploadResult {
   error?: string
 }
 
+export interface ImageUploadResponse {
+  success: boolean
+  processedSize: number
+  dimensions: { width: number; height: number }
+}
+
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class ImageUploadService {
+  private readonly http = inject(HttpClient)
   private readonly maxFileSize = 5 * 1024 * 1024 // 5MB
   private readonly supportedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
 
@@ -21,7 +30,7 @@ export class ImageUploadService {
     if (!this.supportedTypes.includes(file.type)) {
       throw new Error(`Unsupported file type: ${file.type}`)
     }
-    
+
     if (file.size > this.maxFileSize) {
       throw new Error(`File too large: ${(file.size / 1024 / 1024).toFixed(1)}MB exceeds 5MB limit`)
     }
@@ -52,54 +61,81 @@ export class ImageUploadService {
   }
 
   /**
-   * Uploads an image file to the server
+   * Build upload URL for a thread
    */
-  async uploadImage(file: File, clientId: string): Promise<ImageUploadResult> {
+  private getUploadUrl(projectName: string, threadId: string): string {
+    return `/api/projects/${projectName}/threads/${threadId}/upload`
+  }
+
+  /**
+   * Uploads an image file to the server
+   * Returns an Observable that emits ImageUploadResult
+   */
+  uploadImage(file: File, projectName: string, threadId: string): Observable<ImageUploadResult> {
     console.log('[IMAGE-UPLOAD] uploadImage - file:', file.name, file.type, file.size)
-    console.log('[IMAGE-UPLOAD] uploadImage - clientId:', clientId)
-    
+    console.log('[IMAGE-UPLOAD] uploadImage - project:', projectName, 'thread:', threadId)
+
+    // Validate file synchronously
     try {
       console.log('[IMAGE-UPLOAD] Validating file...')
       this.validateFile(file)
-      
-      console.log('[IMAGE-UPLOAD] Converting to base64...')
-      const content = await this.fileToBase64(file)
-      console.log('[IMAGE-UPLOAD] Base64 length:', content.length)
-      
-      console.log('[IMAGE-UPLOAD] Sending upload request...')
-      const response = await fetch(`/api/files/upload`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clientId,
-          content,
-          mimeType: file.type,
-          filename: file.name
-        })
-      })
-      
-      console.log('[IMAGE-UPLOAD] Response status:', response.status)
-      
-      if (!response.ok) {
-        const error = await response.json()
-        console.log('[IMAGE-UPLOAD] Upload error response:', error)
-        throw new Error(error.error || 'Upload failed')
-      }
-
-      const result = await response.json()
-      console.log('[IMAGE-UPLOAD] Upload success result:', result)
-      return {
-        success: true,
-        processedSize: result.processedSize,
-        dimensions: result.dimensions
-      }
     } catch (error) {
-      console.log('[IMAGE-UPLOAD] Upload failed:', error)
-      return {
+      console.log('[IMAGE-UPLOAD] Validation failed:', error)
+      return of({
         success: false,
-        error: error instanceof Error ? error.message : 'Upload failed'
-      }
+        error: error instanceof Error ? error.message : 'Validation failed',
+      })
     }
+
+    // Convert file to base64 and upload
+    return new Observable<ImageUploadResult>((observer) => {
+      console.log('[IMAGE-UPLOAD] Converting to base64...')
+      this.fileToBase64(file)
+        .then((content) => {
+          console.log('[IMAGE-UPLOAD] Base64 length:', content.length)
+          console.log('[IMAGE-UPLOAD] Sending upload request...')
+
+          this.http
+            .post<ImageUploadResponse>(this.getUploadUrl(projectName, threadId), {
+              content,
+              mimeType: file.type,
+              filename: file.name,
+            })
+            .pipe(
+              map((response) => {
+                console.log('[IMAGE-UPLOAD] Upload success result:', response)
+                return {
+                  success: true,
+                  processedSize: response.processedSize,
+                  dimensions: response.dimensions,
+                } as ImageUploadResult
+              }),
+              catchError((error) => {
+                console.log('[IMAGE-UPLOAD] Upload failed:', error)
+                const errorMessage = error.error?.error || error.message || 'Upload failed'
+                return of({
+                  success: false,
+                  error: errorMessage,
+                } as ImageUploadResult)
+              })
+            )
+            .subscribe({
+              next: (result) => {
+                observer.next(result)
+                observer.complete()
+              },
+              error: (error) => observer.error(error),
+            })
+        })
+        .catch((error) => {
+          console.log('[IMAGE-UPLOAD] Base64 conversion failed:', error)
+          observer.next({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to read file',
+          })
+          observer.complete()
+        })
+    })
   }
 
   /**
@@ -111,18 +147,21 @@ export class ImageUploadService {
       console.log('[IMAGE-UPLOAD] hasImageFiles - no dataTransfer')
       return false
     }
-    
+
     console.log('[IMAGE-UPLOAD] hasImageFiles - types:', Array.from(dataTransfer.types))
     // Check if we have files
     if (!Array.from(dataTransfer.types).includes('Files')) {
       console.log('[IMAGE-UPLOAD] hasImageFiles - no Files type')
       return false
     }
-    
+
     // Check if any of the files are images
     const files = Array.from(dataTransfer.files || [])
-    console.log('[IMAGE-UPLOAD] hasImageFiles - files:', files.map(f => ({ name: f.name, type: f.type })))
-    const hasImages = files.some(file => this.supportedTypes.includes(file.type))
+    console.log(
+      '[IMAGE-UPLOAD] hasImageFiles - files:',
+      files.map((f) => ({ name: f.name, type: f.type }))
+    )
+    const hasImages = files.some((file) => this.supportedTypes.includes(file.type))
     console.log('[IMAGE-UPLOAD] hasImageFiles - result:', hasImages)
     return hasImages
   }
@@ -132,6 +171,6 @@ export class ImageUploadService {
    */
   filterImageFiles(files: FileList | File[]): File[] {
     const fileArray = Array.from(files)
-    return fileArray.filter(file => this.supportedTypes.includes(file.type))
+    return fileArray.filter((file) => this.supportedTypes.includes(file.type))
   }
 }

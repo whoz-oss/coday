@@ -37,6 +37,9 @@ export class AiThread {
 
   username: string
 
+  /** Project identifier this thread belongs to */
+  projectId: string
+
   /** Name or title or very short sentence about the content of the thread */
   name: string
 
@@ -78,6 +81,7 @@ export class AiThread {
   constructor(thread: ThreadSerialized) {
     this.id = thread.id
     this.username = thread.username
+    this.projectId = thread.projectId ?? ''
     this.name = thread.name ?? ''
     this.summary = thread.summary ?? ''
     this.createdDate = thread.createdDate ?? new Date().toISOString()
@@ -116,7 +120,7 @@ export class AiThread {
     if (!this.messages || !Array.isArray(this.messages)) {
       this.messages = []
     }
-    
+
     if (!maxChars) {
       const cleanedMessages = this.cleanToolRequestResponseConsistency([...this.messages])
       return { messages: cleanedMessages, compacted: false }
@@ -124,14 +128,14 @@ export class AiThread {
 
     // Filter oversized tool responses before partitioning (truncate those >50% of budget)
     const maxSingleMessageSize = Math.floor(maxChars * 0.5)
-    const filteredMessages = this.messages.map(msg => {
+    const filteredMessages = this.messages.map((msg) => {
       if (msg instanceof ToolResponseEvent && msg.length > maxSingleMessageSize) {
         const truncateAt = Math.floor(maxChars * 0.15)
         const output = msg.getTextOutput()
         const truncated = `[... truncated ${msg.length - truncateAt} chars]\n` + output.slice(-truncateAt)
         return new ToolResponseEvent({
           ...msg,
-          output: truncated
+          output: truncated,
         })
       }
       return msg
@@ -183,7 +187,7 @@ export class AiThread {
   /**
    * Cleans tool request-response consistency to prevent API errors.
    * Removes orphaned tool requests/responses that would cause Anthropic API 400 errors.
-   * 
+   *
    * @param messages Array of messages to clean
    * @returns Cleaned array of messages
    * @private
@@ -192,7 +196,7 @@ export class AiThread {
     const cleanedMessages: ThreadMessage[] = []
     const toolRequestIds = new Set<string>()
     const toolResponseIds = new Set<string>()
-    
+
     // First pass: collect all tool request and response IDs
     for (const message of messages) {
       if (message instanceof ToolRequestEvent && message.toolRequestId) {
@@ -201,11 +205,11 @@ export class AiThread {
         toolResponseIds.add(message.toolRequestId)
       }
     }
-    
+
     // Second pass: filter messages based on consistency rules
     for (const message of messages) {
       let shouldKeep = true
-      
+
       if (message instanceof ToolRequestEvent) {
         // Rule 1: Remove toolRequest without corresponding toolResponse
         if (message.toolRequestId && !toolResponseIds.has(message.toolRequestId)) {
@@ -224,12 +228,12 @@ export class AiThread {
           shouldKeep = false
         }
       }
-      
+
       if (shouldKeep) {
         cleanedMessages.push(message)
       }
     }
-    
+
     return cleanedMessages
   }
 
@@ -380,6 +384,7 @@ export class AiThread {
     const forkedThread = new AiThread({
       id: this.id, // Reuse parent thread ID as we don't save this
       username: this.username,
+      projectId: this.projectId,
       name: agentName ? `${this.name} - Delegated to ${agentName}` : `${this.name} - Forked`,
       summary: this.summary,
       createdDate: this.createdDate,
@@ -447,10 +452,10 @@ export class AiThread {
   /**
    * Truncates the thread at a specific user message, removing that message and all subsequent messages.
    * This provides a "rewind" functionality allowing users to retry from an earlier point in the conversation.
-   * 
+   *
    * @param eventId The timestamp ID of the user message to delete
    * @returns true if truncation was successful, false otherwise
-   * 
+   *
    * Validation rules:
    * - Only user messages (MessageEvent with role='user') can be deleted
    * - Cannot delete the first message in the thread (index 0)
@@ -476,10 +481,10 @@ export class AiThread {
 
     // Truncate the messages array at the specified index
     this.messages = this.messages.slice(0, index)
-    
+
     // Update modification timestamp
     this.modifiedDate = new Date().toISOString()
-    
+
     return true
   }
 

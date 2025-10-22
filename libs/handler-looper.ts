@@ -2,7 +2,6 @@ import { CommandContext, CommandHandler, Interactor, ProjectDescription, PromptC
 import {
   AddQueryHandler,
   AiHandler,
-  AiThreadHandler,
   CodayPromptChains,
   ConfigHandler,
   DebugHandler,
@@ -13,8 +12,6 @@ import {
   RunBashHandler,
 } from './handler'
 import { StatsHandler } from './handler/stats/stats.handler'
-import { AiThreadService } from './ai-thread/ai-thread.service'
-import { keywords } from './keywords'
 import { RunStatus } from './ai-thread/ai-thread.types'
 import { CodayServices } from './coday-services'
 
@@ -30,7 +27,6 @@ export class HandlerLooper {
   constructor(
     private interactor: Interactor,
     private aiHandler: AiHandler,
-    private aiThreadService: AiThreadService,
     private configHandler: ConfigHandler,
     private services: CodayServices // unused temporarily...
   ) {}
@@ -43,7 +39,6 @@ export class HandlerLooper {
         this.configHandler,
         new RunBashHandler(this.interactor),
         new DebugHandler(this.interactor),
-        new AiThreadHandler(this.interactor, this.aiThreadService, this.services.agent!),
         queryHandler,
         memoryHandler,
         new FileMapHandler(this.interactor),
@@ -99,8 +94,6 @@ export class HandlerLooper {
               .map((h) => this.formatHelp(h.commandWord, h.description))
               .sort(),
             this.formatHelp('[any other text]', 'defaults to asking the AI with the current context.'),
-            this.formatHelp(keywords.reset, "resets Coday's context."),
-            this.formatHelp(keywords.exit, 'quits the program.'),
           ]
           // Keep this as displayText since help output is explicitly for the user
           this.interactor.displayText(handlerHelpMessages.join('\n'))

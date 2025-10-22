@@ -26,7 +26,6 @@ export class ConfigHandler extends NestedHandler {
 
     this.selectProjectHandler = new SelectProjectHandler(this.interactor, this.services)
     this.handlers = [
-      this.selectProjectHandler,
       new IntegrationHandler(this.interactor, this.services),
       new AiConfigHandler(this.interactor, this.services),
       new DefaultAgentHandler(this.interactor, this.services),

@@ -2,7 +2,7 @@ import { AiClient, AiProviderConfig, CommandContext, Interactor } from '../../mo
 import { OpenaiClient } from '../../handler/openai.client'
 import { AnthropicClient } from '../../handler/anthropic.client'
 import { UserService } from '../../service/user.service'
-import { ProjectService } from '../../service/project.service'
+import { ProjectStateService } from '@coday/service/project-state.service'
 import { GoogleClient } from '../../handler/google.client'
 import { CodayLogger } from '../../service/coday-logger'
 
@@ -36,7 +36,7 @@ export class AiClientProvider {
   constructor(
     private readonly interactor: Interactor,
     private userService: UserService,
-    private projectService: ProjectService,
+    private projectService: ProjectStateService,
     private logger: CodayLogger
   ) {}
 
@@ -145,8 +145,9 @@ export class AiClientProvider {
 
   private getApiKey(aiProviderConfig: AiProviderConfig): string | undefined {
     const envVar = ENV_VARS[aiProviderConfig.name]
-    const envKey =
-      envVar ? process.env[envVar] || process.env[`${aiProviderConfig.name.toUpperCase()}_API_KEY`] : undefined
+    const envKey = envVar
+      ? process.env[envVar] || process.env[`${aiProviderConfig.name.toUpperCase()}_API_KEY`]
+      : undefined
     return envKey || aiProviderConfig.apiKey
   }
 

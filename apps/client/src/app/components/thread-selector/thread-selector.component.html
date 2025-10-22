@@ -7,7 +7,7 @@
   aria-label="Thread selector"
 >
   <!-- Thread list (always visible in sidenav) -->
-  @if (canShowDropdown()) {
+  @if (currentProject()?.name) {
     <div class="thread-list" role="menu" aria-label="Thread selection">
       <!-- Grouped threads -->
       @for (group of getGroupedThreads(); track group.label) {
@@ -16,7 +16,7 @@
           @for (thread of group.threads; track thread.id) {
             <button
               class="thread-item"
-              [class.current]="thread.id === threads?.current"
+              [class.current]="thread.id === currentThread()?.id"
               [title]="thread.name"
               (click)="selectThread(thread.id)"
               type="button"
@@ -28,13 +28,15 @@
         </div>
       }
 
-      @if (!hasThreadsAvailable()) {
+      @if (!threads()?.length) {
         <div class="thread-empty">No existing threads</div>
+      } @else if (searchQuery && getGroupedThreads().length === 0) {
+        <div class="thread-empty">No threads matching "{{ searchQuery }}"</div>
       }
     </div>
   } @else {
     <div class="thread-disabled">
-      @if (!hasProjectSelected()) {
+      @if (!currentProject()?.name) {
         <span class="disabled-text">No project selected</span>
       } @else {
         <span class="disabled-text">Loading...</span>

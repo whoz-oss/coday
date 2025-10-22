@@ -1,0 +1,37 @@
+<div class="project-selection">
+  <!-- Centered container for welcome + choice -->
+  <div class="centered-content">
+    <!-- Welcome Section -->
+    <div class="welcome-section">
+      <app-welcome-message></app-welcome-message>
+    </div>
+
+    <!-- Choice Selection Section -->
+    <div class="choice-section">
+      <div class="choice-glass">
+        @if (isLoading) {
+          <div class="loading-container">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">Loading projects...</p>
+          </div>
+        } @else if (error) {
+          <div class="error-container">
+            <p class="error-text">{{ error }}</p>
+          </div>
+        } @else if (projects() && projects()!.length > 0) {
+          <app-choice-select
+            [options]="projectOptions()"
+            [labelHtml]="'Select a project to continue'"
+            [isVisible]="true"
+            (choiceSelected)="selectProject($event)"
+          ></app-choice-select>
+        } @else {
+          <div class="no-projects-container">
+            <p class="no-projects-text">No projects available.</p>
+            <p class="no-projects-hint">Contact your administrator to create a project.</p>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+</div>

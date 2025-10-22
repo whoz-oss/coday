@@ -58,7 +58,7 @@
     box-shadow: none;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    margin: 0.5rem 0;
+    margin: 0; // Reduced vertical spacing for technical messages
     font-family: 'SF Mono', Monaco, Menlo, monospace;
     font-size: 0.85rem;
     color: var(--color-text-secondary);

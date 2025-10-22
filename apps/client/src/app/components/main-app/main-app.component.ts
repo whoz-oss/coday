@@ -1,25 +1,24 @@
-import { AfterViewInit, Component, ElementRef, HostListener, inject, OnDestroy, OnInit, ViewChild } from '@angular/core'
+import { AfterViewInit, Component, ElementRef, inject, OnDestroy, OnInit, ViewChild } from '@angular/core'
+import { ActivatedRoute } from '@angular/router'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
 import { animate, style, transition, trigger } from '@angular/animations'
 
-import { ChatHistoryComponent } from '../chat-history/chat-history.component'
-import { ChatMessage } from '../chat-message/chat-message.component'
 import { ChatTextareaComponent } from '../chat-textarea/chat-textarea.component'
-import { ChoiceOption, ChoiceSelectComponent } from '../choice-select/choice-select.component'
+import { ThreadComponent } from '../thread/thread.component'
+import { WelcomeMessageComponent } from '../welcome-message/welcome-message.component'
+import { SidenavComponent } from '../sidenav/sidenav.component'
 
 import { CodayService } from '../../core/services/coday.service'
-import { CodayApiService } from '../../core/services/coday-api.service'
-import { ConnectionStatus } from '../../core/services/event-stream.service'
-import { SessionStateService } from '../../core/services/session-state.service'
-import { ImageUploadService } from '../../services/image-upload.service'
 import { TabTitleService } from '../../services/tab-title.service'
 import { PreferencesService } from '../../services/preferences.service'
+import { ThreadApiService } from '../../core/services/thread-api.service'
+import { Router } from '@angular/router'
 
 @Component({
   selector: 'app-main',
   standalone: true,
-  imports: [ChatHistoryComponent, ChatTextareaComponent, ChoiceSelectComponent],
+  imports: [ChatTextareaComponent, ThreadComponent, WelcomeMessageComponent, SidenavComponent],
   templateUrl: './main-app.component.html',
   styleUrl: './main-app.component.scss',
   animations: [
@@ -37,138 +36,65 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
 
   @ViewChild('inputSection') inputSection!: ElementRef<HTMLElement>
 
-  // State from services
-  messages: ChatMessage[] = []
-  isThinking: boolean = false
+  // Route parameters
+  projectName: string = ''
+  threadId: string | null = null
+
+  // State for welcome view (when no thread selected)
+  isSessionInitializing: boolean = false
   isStartingFirstMessage: boolean = false
-  currentChoice: { options: ChoiceOption[]; label: string } | null = null
-  connectionStatus: ConnectionStatus | null = null
-  isConnected: boolean = false
-  isSessionInitializing: boolean = true
-  userHasSentMessage: boolean = false
-  showConnectionStatus: boolean = false
-  private hasEverConnected: boolean = false
 
-  // Input height management
+  // Input height management for welcome view
   inputSectionHeight: number = 80 // Default height
-
-  // Upload status
-  uploadStatus: { message: string; isError: boolean } = { message: '', isError: false }
-  clientId: string
-
-  // Drag and drop state
-  isDragOver: boolean = false
-
-  // Welcome message rotation
-  welcomeMessages = [
-    'Welcome to Coday', // English
-    'Bienvenue sur Coday', // French
-    'Bienvenido a Coday', // Spanish
-    'Willkommen bei Coday', // German
-    'Benvenuto su Coday', // Italian
-    'Bem-vindo ao Coday', // Portuguese
-    'Welkom bij Coday', // Dutch
-    'Добро пожаловать в Coday', // Russian
-    'Coday へようこそ', // Japanese
-    '欢迎来到 Coday', // Chinese
-    'Coday 에 오신 것을 환영합니다', // Korean
-    'مرحبًا بك في Coday', // Arabic
-  ]
-  currentWelcomeIndex = 0
-  currentWelcomeMessage = this.welcomeMessages[0]
-  private welcomeRotationInterval?: number
 
   // Modern Angular dependency injection
   private codayService = inject(CodayService)
-  private codayApiService = inject(CodayApiService)
-  private sessionStateService = inject(SessionStateService) // Injection to initialize the service
-  private imageUploadService = inject(ImageUploadService)
-  private titleService = inject(TabTitleService) // Renamed to avoid conflicts
+  private titleService = inject(TabTitleService)
   private preferencesService = inject(PreferencesService)
+  private route = inject(ActivatedRoute)
+  private router = inject(Router)
+  private threadApiService = inject(ThreadApiService)
 
   constructor() {
-    this.clientId = this.codayApiService.getClientId()
-    console.log('[MAIN-APP] Constructor - clientId:', this.clientId)
-    console.log('[MAIN-APP] SessionStateService injected and will initialize:', !!this.sessionStateService)
+    console.log('[MAIN-APP] Using new thread-based architecture (no clientId needed)')
   }
 
   ngOnInit(): void {
-    // Setup print event listeners
+    // Setup print event listeners (for welcome view)
     this.setupPrintHandlers()
 
-    // Start welcome message rotation
-    this.startWelcomeRotation()
+    // Subscribe to route parameter changes to detect thread navigation
+    this.route.params.pipe(takeUntil(this.destroy$)).subscribe(params => {
+      const newProjectName = params['projectName']
+      const newThreadId = params['threadId'] || null
+      
+      console.log('[MAIN-APP] Route params updated:', { 
+        project: newProjectName, 
+        thread: newThreadId,
+        previousProject: this.projectName,
+        previousThread: this.threadId
+      })
 
-    this.codayService.messages$.pipe(takeUntil(this.destroy$)).subscribe((messages) => {
-      console.log('[MAIN-APP] Messages updated:', messages.length)
-      this.messages = messages
-
-      // If we have messages (e.g., from thread replay), hide welcome message
-      if (messages.length > 0 && messages.some((message) => message.role === 'user') && !this.userHasSentMessage) {
-        console.log('[MAIN-APP] Messages loaded from thread, hiding welcome message')
-        this.userHasSentMessage = true
-        this.stopWelcomeRotation()
-      }
-
-      // If messages are cleared (e.g., project change), reset welcome state
-      if (messages.length === 0 && this.userHasSentMessage) {
-        console.log('[MAIN-APP] Messages cleared, showing welcome message again')
-        this.userHasSentMessage = false
-        this.startWelcomeRotation()
-      }
-    })
-
-    this.codayService.isThinking$.pipe(takeUntil(this.destroy$)).subscribe((isThinking) => {
-      this.isThinking = isThinking
-      // When backend thinking starts, clear the "Starting..." state
-      if (isThinking) {
-        this.isStartingFirstMessage = false
+      // Update properties - this will trigger change detection in ThreadComponent
+      this.projectName = newProjectName
+      this.threadId = newThreadId
+      
+      // If no thread, initialize welcome view
+      if (!this.threadId) {
+        console.log('[MAIN-APP] No thread selected - showing welcome view')
+        this.initializeWelcomeView()
+      } else {
+        console.log('[MAIN-APP] Thread selected - ThreadComponent will display')
       }
     })
+  }
 
-    this.codayService.currentChoice$.pipe(takeUntil(this.destroy$)).subscribe((choice) => {
-      this.currentChoice = choice
-    })
-
-    this.sessionStateService.isInitializing$.pipe(takeUntil(this.destroy$)).subscribe((isInitializing) => {
-      console.log('[MAIN-APP] Session initialization state changed:', isInitializing)
-      this.isSessionInitializing = isInitializing
-    })
-
-    this.codayService.connectionStatus$.pipe(takeUntil(this.destroy$)).subscribe((status) => {
-      this.connectionStatus = status
-      this.isConnected = status.connected
-
-      // Track if we've ever successfully connected
-      if (status.connected && !this.hasEverConnected) {
-        this.hasEverConnected = true
-        // Once connected, allow showing disconnection messages immediately
-        this.showConnectionStatus = true
-      }
-
-      // If not connected and we've never connected before,
-      // wait a bit before showing the status (to avoid flash on startup)
-      if (!status.connected && !this.hasEverConnected) {
-        setTimeout(() => {
-          // Only show if still not connected after delay
-          if (!this.isConnected && !this.hasEverConnected) {
-            this.showConnectionStatus = true
-          }
-        }, 2000) // 2 second delay before showing initial connection issues
-      } else if (!status.connected && this.hasEverConnected) {
-        // If we were connected and lost connection, show immediately
-        this.showConnectionStatus = true
-      } else if (status.connected) {
-        // Hide the status message when connected
-        this.showConnectionStatus = true // Keep true so it can show if disconnected later
-      }
-    })
-
+  /**
+   * Initialize the welcome view when no thread is selected
+   */
+  private initializeWelcomeView(): void {
     // Connect services (to avoid circular dependency)
     this.codayService.setTabTitleService(this.titleService)
-
-    // Start the Coday service
-    this.codayService.start()
   }
 
   ngAfterViewInit(): void {
@@ -183,61 +109,39 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     // Cleanup print handlers
     window.removeEventListener('beforeprint', this.handleBeforePrint)
     window.removeEventListener('afterprint', this.handleAfterPrint)
-
-    // Cleanup welcome rotation
-    this.stopWelcomeRotation()
   }
 
-  private startWelcomeRotation(): void {
-    // Only start if user hasn't sent a message yet
-    if (!this.userHasSentMessage) {
-      this.welcomeRotationInterval = window.setInterval(() => {
-        this.currentWelcomeIndex = (this.currentWelcomeIndex + 1) % this.welcomeMessages.length
-        this.currentWelcomeMessage = this.welcomeMessages[this.currentWelcomeIndex]
-      }, 3000)
-    }
-  }
-
-  private stopWelcomeRotation(): void {
-    if (this.welcomeRotationInterval) {
-      clearInterval(this.welcomeRotationInterval)
-      this.welcomeRotationInterval = undefined
-    }
-  }
-
+  /**
+   * Handle message submission from welcome view (implicit thread creation)
+   */
   onMessageSubmitted(message: string): void {
-    console.log('[MAIN-APP] Sending message:', message)
+    console.log('[MAIN-APP] First message submitted from welcome view:', message)
 
-    // Mark that user has sent their first message
-    if (!this.userHasSentMessage) {
-      this.userHasSentMessage = true
-      this.stopWelcomeRotation()
-      this.isStartingFirstMessage = true
-    }
+    // Show starting state
+    this.isStartingFirstMessage = true
 
-    // Immediately put textarea in thinking mode for every message
-    // The backend ThinkingEvent will take over when it arrives
-    this.isThinking = true
+    // Create thread WITHOUT a name - the backend will auto-generate a name from the first message
+    this.threadApiService.createThread(this.projectName).subscribe({
+      next: (response) => {
+        console.log('[MAIN-APP] Thread created:', response.thread.id)
 
-    this.codayService.sendMessage(message)
+        // Navigate to the new thread with the first message in state
+        this.router.navigate(['project', this.projectName, 'thread', response.thread.id], {
+          state: { firstMessage: message },
+        })
+      },
+      error: (error) => {
+        console.error('[MAIN-APP] Failed to create thread:', error)
+        this.isStartingFirstMessage = false
+        // TODO: Show error message to user
+        alert('Failed to create conversation: ' + (error.message || 'Unknown error'))
+      },
+    })
   }
 
   onVoiceToggled(isRecording: boolean): void {
-    console.log('[VOICE] Recording:', isRecording)
-    // TODO: Implement speech-to-text
-  }
-
-  onChoiceSelected(choice: string): void {
-    console.log('choosing selected', choice)
-    this.codayService.sendChoice(choice)
-  }
-
-  onCopyMessage(message: ChatMessage): void {
-    console.log('[COPY] Message copied:', message.id)
-  }
-
-  onStopRequested(): void {
-    this.codayService.stop()
+    console.log('[VOICE] Recording in welcome view:', isRecording)
+    // TODO: Implement speech-to-text for welcome view
   }
 
   onInputHeightChanged(height: number): void {
@@ -255,93 +159,8 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
-  // Drag and Drop Event Handlers for the entire application
-  @HostListener('dragenter', ['$event'])
-  onDragEnter(event: DragEvent): void {
-    event.preventDefault()
-    if (this.imageUploadService.hasImageFiles(event.dataTransfer)) {
-      console.log('[MAIN-APP] Image files detected - showing drag overlay')
-      this.isDragOver = true
-    }
-  }
-
-  @HostListener('dragover', ['$event'])
-  onDragOver(event: DragEvent): void {
-    event.preventDefault()
-    if (this.imageUploadService.hasImageFiles(event.dataTransfer)) {
-      event.dataTransfer!.dropEffect = 'copy'
-    }
-  }
-
-  @HostListener('dragleave', ['$event'])
-  onDragLeave(event: DragEvent): void {
-    // Only remove drag-over state if we're leaving the document body
-    if (event.target === document.body || !document.body.contains(event.relatedTarget as Node)) {
-      console.log('[MAIN-APP] Leaving application area - hiding drag overlay')
-      this.isDragOver = false
-    }
-  }
-
-  @HostListener('drop', ['$event'])
-  async onDrop(event: DragEvent): Promise<void> {
-    event.preventDefault()
-    this.isDragOver = false
-
-    console.log('[MAIN-APP] Files dropped:', event.dataTransfer?.files?.length || 0)
-
-    if (!this.clientId) {
-      this.showUploadError('No client ID available for upload')
-      return
-    }
-
-    const files = this.imageUploadService.filterImageFiles(event.dataTransfer?.files || [])
-
-    if (files.length === 0) {
-      this.showUploadError('No valid image files found')
-      return
-    }
-
-    console.log('[MAIN-APP] Uploading', files.length, 'image(s)')
-
-    // Upload each image file
-    for (const file of files) {
-      try {
-        this.showUploadStatus(`Uploading ${file.name}...`)
-        const result = await this.imageUploadService.uploadImage(file, this.clientId)
-
-        if (result.success) {
-          this.showUploadSuccess(`${file.name} uploaded successfully`)
-        } else {
-          this.showUploadError(`Failed to upload ${file.name}: ${result.error}`)
-        }
-      } catch (error) {
-        console.error('[MAIN-APP] Upload error:', error)
-        this.showUploadError(
-          `Failed to upload ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`
-        )
-      }
-    }
-  }
-
-  private showUploadStatus(message: string): void {
-    this.uploadStatus = { message, isError: false }
-  }
-
-  private showUploadSuccess(message: string): void {
-    this.uploadStatus = { message: `✅ ${message}`, isError: false }
-    // Auto-hide success message after 3 seconds
-    setTimeout(() => {
-      this.uploadStatus = { message: '', isError: false }
-    }, 3000)
-  }
-
-  private showUploadError(message: string): void {
-    this.uploadStatus = { message, isError: true }
-    // Auto-hide error message after 5 seconds
-    setTimeout(() => {
-      this.uploadStatus = { message: '', isError: false }
-    }, 5000)
-  }
+  // Note: Drag and drop is now handled by ThreadComponent when a thread is active
+  // Welcome view doesn't support drag and drop for now
 
   // Print handling
   private setupPrintHandlers(): void {

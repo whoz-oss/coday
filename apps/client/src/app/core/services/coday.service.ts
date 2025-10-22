@@ -1,26 +1,26 @@
-import { Injectable, OnDestroy, inject } from '@angular/core'
-import { Subject, BehaviorSubject, Observable } from 'rxjs'
+import { inject, Injectable, OnDestroy } from '@angular/core'
+import { BehaviorSubject, Observable, Subject } from 'rxjs'
 import { takeUntil, tap } from 'rxjs/operators'
 import {
-  CodayEvent,
-  MessageEvent,
-  TextEvent,
   AnswerEvent,
-  ErrorEvent,
-  WarnEvent,
-  ThinkingEvent,
-  ToolRequestEvent,
-  ToolResponseEvent,
   ChoiceEvent,
-  ProjectSelectedEvent,
-  ThreadSelectedEvent,
+  CodayEvent,
+  ErrorEvent,
   HeartBeatEvent,
   InviteEvent,
   InviteEventDefault,
+  MessageEvent,
+  TextEvent,
+  ThinkingEvent,
+  ToolRequestEvent,
+  ToolResponseEvent,
+  WarnEvent,
 } from '@coday/coday-events'
 
-import { CodayApiService } from './coday-api.service'
 import { EventStreamService } from './event-stream.service'
+import { MessageApiService } from './message-api.service'
+import { ProjectStateService } from './project-state.service'
+import { ThreadStateService } from './thread-state.service'
 
 import { ChatMessage } from '../../components/chat-message/chat-message.component'
 import { ChoiceOption } from '../../components/choice-select/choice-select.component'
@@ -29,15 +29,19 @@ import { ChoiceOption } from '../../components/choice-select/choice-select.compo
   providedIn: 'root',
 })
 export class CodayService implements OnDestroy {
-  private destroy$ = new Subject<void>()
+  private readonly destroy$ = new Subject<void>()
+
+  // Current project and thread for API calls
+  private currentProject: string | null = null
+  private currentThread: string | null = null
 
   // State subjects
-  private messagesSubject = new BehaviorSubject<ChatMessage[]>([])
-  private isThinkingSubject = new BehaviorSubject<boolean>(false)
-  private currentChoiceSubject = new BehaviorSubject<{ options: ChoiceOption[]; label: string } | null>(null)
-  private projectTitleSubject = new BehaviorSubject<string>('Coday')
-  private currentInviteEventSubject = new BehaviorSubject<InviteEvent | null>(null)
-  private messageToRestoreSubject = new BehaviorSubject<string>('')
+  private readonly messagesSubject = new BehaviorSubject<ChatMessage[]>([])
+  private readonly isThinkingSubject = new BehaviorSubject<boolean>(false)
+  private readonly currentChoiceSubject = new BehaviorSubject<{ options: ChoiceOption[]; label: string } | null>(null)
+  private readonly projectTitleSubject = new BehaviorSubject<string>('Coday')
+  private readonly currentInviteEventSubject = new BehaviorSubject<InviteEvent | null>(null)
+  private readonly messageToRestoreSubject = new BehaviorSubject<string>('')
 
   // Store original events for proper response building
   private currentChoiceEvent: ChoiceEvent | null = null
@@ -60,8 +64,10 @@ export class CodayService implements OnDestroy {
   private tabTitleService: any = null
 
   // Modern Angular dependency injection
-  private codayApi = inject(CodayApiService)
-  private eventStream = inject(EventStreamService)
+  private readonly eventStream = inject(EventStreamService)
+  private readonly messageApi = inject(MessageApiService)
+  private readonly projectState = inject(ProjectStateService)
+  private readonly threadState = inject(ThreadStateService)
 
   constructor() {
     // Initialize connection status observable after eventStream is available
@@ -77,20 +83,16 @@ export class CodayService implements OnDestroy {
   }
 
   /**
-   * Start the Coday service
+   * Connect to a specific thread's event stream
+   * @param projectName Project name
+   * @param threadId Thread identifier
    */
-  start(): void {
-    this.eventStream.connect()
-  }
-
-  /**
-   * Stop the Coday service
-   */
-  stop(): void {
-    this.codayApi.stopExecution().subscribe({
-      next: () => console.log('[CODAY] Stop signal sent'),
-      error: (error) => console.error('[CODAY] Error stopping:', error),
-    })
+  connectToThread(projectName: string, threadId: string): void {
+    console.log('[CODAY] Connecting to thread:', projectName, threadId)
+    // Store current project and thread for API calls
+    this.currentProject = projectName
+    this.currentThread = threadId
+    this.eventStream.connectToThread(projectName, threadId)
   }
 
   /**
@@ -111,6 +113,11 @@ export class CodayService implements OnDestroy {
    * Send a message
    */
   sendMessage(message: string): void {
+    if (!this.currentProject || !this.currentThread) {
+      console.error('[CODAY] Cannot send message: no project or thread selected')
+      return
+    }
+
     const currentInviteEvent = this.currentInviteEventSubject.value
 
     if (currentInviteEvent) {
@@ -120,14 +127,14 @@ export class CodayService implements OnDestroy {
       // Clear the current invite event immediately after using it
       this.currentInviteEventSubject.next(null)
 
-      this.codayApi.sendEvent(answerEvent).subscribe({
+      this.messageApi.sendMessage(this.currentProject, this.currentThread, answerEvent).subscribe({
         error: (error) => console.error('[CODAY] Send error:', error),
       })
     } else {
       // Fallback to basic AnswerEvent if no invite event stored
       const answerEvent = new AnswerEvent({ answer: message })
 
-      this.codayApi.sendEvent(answerEvent).subscribe({
+      this.messageApi.sendMessage(this.currentProject, this.currentThread, answerEvent).subscribe({
         error: (error) => console.error('[CODAY] Send error:', error),
       })
     }
@@ -137,6 +144,11 @@ export class CodayService implements OnDestroy {
    * Send a choice selection
    */
   sendChoice(choice: string): void {
+    if (!this.currentProject || !this.currentThread) {
+      console.error('[CODAY] Cannot send choice: no project or thread selected')
+      return
+    }
+
     if (this.currentChoiceEvent) {
       // Use the original ChoiceEvent to build proper answer with parentKey
       const answerEvent = this.currentChoiceEvent.buildAnswer(choice)
@@ -146,7 +158,7 @@ export class CodayService implements OnDestroy {
       this.currentChoiceSubject.next(null)
       // Clear the current choice event to prevent reuse
       this.currentChoiceEvent = null
-      this.codayApi.sendEvent(answerEvent).subscribe({
+      this.messageApi.sendMessage(this.currentProject, this.currentThread, answerEvent).subscribe({
         next: () => {},
         error: (error) => {
           console.error('[CODAY-CHOICE] Choice error:', error)
@@ -163,11 +175,19 @@ export class CodayService implements OnDestroy {
   deleteMessage(messageId: string): Observable<{ success: boolean; message?: string; error?: string }> {
     console.log('[CODAY] Deleting message:', messageId)
 
+    // Get current project and thread from state services
+    const projectName = this.projectState.getSelectedProjectId()
+    const threadId = this.threadState.getSelectedThreadId()
+
+    if (!projectName || !threadId) {
+      throw new Error('Cannot delete message: no project or thread selected')
+    }
+
     // Extract text content from the message before deleting it
     const messageToDelete = this.messagesSubject.value.find((msg) => msg.id === messageId)
     const textContent = this.extractTextContentFromMessage(messageToDelete)
 
-    return this.codayApi.deleteMessage(messageId).pipe(
+    return this.messageApi.deleteMessage(projectName, threadId, messageId).pipe(
       tap((response: { success: boolean; message?: string; error?: string }) => {
         if (response.success) {
           console.log('[CODAY] Message deleted successfully, updating local messages')
@@ -184,13 +204,6 @@ export class CodayService implements OnDestroy {
         }
       })
     )
-  }
-
-  /**
-   * Get current messages
-   */
-  getCurrentMessages(): ChatMessage[] {
-    return this.messagesSubject.value
   }
 
   /**
@@ -240,10 +253,6 @@ export class CodayService implements OnDestroy {
       this.handleToolResponseEvent(event)
     } else if (event instanceof ChoiceEvent) {
       this.handleChoiceEvent(event)
-    } else if (event instanceof ProjectSelectedEvent) {
-      this.handleProjectSelectedEvent(event)
-    } else if (event instanceof ThreadSelectedEvent) {
-      this.handleThreadSelectedEvent(event)
     } else if (event instanceof HeartBeatEvent) {
       this.handleHeartBeatEvent(event)
     } else if (event instanceof InviteEvent) {
@@ -270,7 +279,7 @@ export class CodayService implements OnDestroy {
     const message: ChatMessage = {
       id: event.timestamp,
       role: event.speaker ? 'assistant' : 'system',
-      speaker: event.speaker || 'System',
+      speaker: event.speaker ?? 'System',
       content: [{ type: 'text', content: event.text }], // Convertir en contenu riche
       timestamp: new Date(),
       type: event.speaker ? 'text' : 'technical',
@@ -391,24 +400,6 @@ export class CodayService implements OnDestroy {
     this.currentChoiceSubject.next({ options, label })
   }
 
-  private handleProjectSelectedEvent(event: ProjectSelectedEvent): void {
-    console.log('[CODAY] Project selected:', event.projectName)
-
-    // Reset messages when changing project
-    this.resetMessages()
-
-    // Update project title
-    this.projectTitleSubject.next(event.projectName || 'Coday')
-  }
-
-  private handleThreadSelectedEvent(event: ThreadSelectedEvent): void {
-    console.log('[CODAY] Thread selected:', event.threadId, event.threadName)
-
-    // Don't reset messages here - the backend will replay the thread's messages
-    // The replay happens through the activeThread subscription in coday.ts
-    // which calls replayThread() and sends all the thread's messages
-  }
-
   private handleHeartBeatEvent(_event: HeartBeatEvent): void {
     // HeartBeat events are just for connection keep-alive, no action needed
   }
@@ -445,6 +436,9 @@ export class CodayService implements OnDestroy {
       console.log('[CODAY] Invite already displayed in last message, skipping duplicate')
     }
 
+    // ALWAYS update the currentInviteEventSubject, even if we didn't display the message
+    // This is critical for components waiting for the invite (e.g., ThreadComponent with pending first message)
+    console.log('[CODAY] Setting current invite event')
     this.currentInviteEventSubject.next(event)
 
     this.tabTitleService?.setSystemInactive()

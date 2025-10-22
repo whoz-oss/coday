@@ -85,10 +85,28 @@
   color: var(--color-text);
   resize: none;
   min-height: 36px;
-  max-height: 180px;
+  max-height: 70vh; // 50% de la hauteur de l'écran
   overflow-y: auto;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
   line-height: 1.5;
+  
+  // Smooth scrollbar styling
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 4px;
+    
+    &:hover {
+      background: var(--color-text-secondary);
+    }
+  }
 }
 
 .message-input:focus {
