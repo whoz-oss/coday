@@ -1,3 +1,13 @@
+## 0.34.0 (2025-10-22)
+
+### 🚀 Features
+
+- sidenav with one scrollbar only, various improvements on threads and project opening ([1f35b93](https://github.com/whoz-oss/coday/commit/1f35b93))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.33.1 (2025-10-22)
 
 ### 🩹 Fixes
