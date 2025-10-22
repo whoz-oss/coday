@@ -9,7 +9,6 @@ import { AiThread } from './ai-thread'
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import { UserService } from '../service/user.service'
 import { Killable } from '@coday/model/killable'
-import { ThreadSelectedEvent } from '@coday/coday-events'
 import { Interactor } from '@coday/model/interactor'
 import { ThreadRepository } from '@coday/repository/thread.repository'
 
@@ -64,16 +63,6 @@ export class ThreadStateService implements Killable {
       throw new Error(`Thread ${threadId} not found`)
     }
     this.activeThread$.next(thread)
-
-    // Emit ThreadSelectedEvent
-    if (this.interactor) {
-      this.interactor.sendEvent(
-        new ThreadSelectedEvent({
-          threadId: thread.id,
-          threadName: thread.name,
-        })
-      )
-    }
 
     return thread
   }

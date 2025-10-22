@@ -1,5 +1,5 @@
 import { ConcreteIntegrations, IntegrationConfig, IntegrationLocalConfig, Integrations, Interactor } from '../model'
-import { ProjectService } from './project.service'
+import { ProjectStateService } from './project-state.service'
 import { UserService } from './user.service'
 
 const API_KEY_SUFFIX = '_API_KEY'
@@ -10,7 +10,7 @@ export class IntegrationService {
   userIntegrations: IntegrationLocalConfig = {}
 
   constructor(
-    private projectService: ProjectService,
+    private projectService: ProjectStateService,
     private userService: UserService,
     private interactor?: Interactor
   ) {
@@ -27,13 +27,14 @@ export class IntegrationService {
       this.projectIntegrations = selectedProject.config.integration || {}
 
       // User Integrations
-      this.userIntegrations = selectedProject.name && this.userService.config.projects
-        ? this.userService.config.projects[selectedProject.name]?.integration || {}
-        : {}
+      this.userIntegrations =
+        selectedProject.name && this.userService.config.projects
+          ? this.userService.config.projects[selectedProject.name]?.integration || {}
+          : {}
 
       // Merge the integrations
       this.integrations = { ...this.projectIntegrations }
-      
+
       // Safely merge user integrations
       Object.keys(this.userIntegrations).forEach((key) => {
         const userIntegration = this.userIntegrations[key]!

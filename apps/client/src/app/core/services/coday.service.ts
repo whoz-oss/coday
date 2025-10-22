@@ -1,22 +1,20 @@
-import { Injectable, OnDestroy, inject } from '@angular/core'
-import { Subject, BehaviorSubject, Observable } from 'rxjs'
+import { inject, Injectable, OnDestroy } from '@angular/core'
+import { BehaviorSubject, Observable, Subject } from 'rxjs'
 import { takeUntil, tap } from 'rxjs/operators'
 import {
-  CodayEvent,
-  MessageEvent,
-  TextEvent,
   AnswerEvent,
-  ErrorEvent,
-  WarnEvent,
-  ThinkingEvent,
-  ToolRequestEvent,
-  ToolResponseEvent,
   ChoiceEvent,
-  ProjectSelectedEvent,
-  ThreadSelectedEvent,
+  CodayEvent,
+  ErrorEvent,
   HeartBeatEvent,
   InviteEvent,
   InviteEventDefault,
+  MessageEvent,
+  TextEvent,
+  ThinkingEvent,
+  ToolRequestEvent,
+  ToolResponseEvent,
+  WarnEvent,
 } from '@coday/coday-events'
 
 import { EventStreamService } from './event-stream.service'
@@ -255,10 +253,6 @@ export class CodayService implements OnDestroy {
       this.handleToolResponseEvent(event)
     } else if (event instanceof ChoiceEvent) {
       this.handleChoiceEvent(event)
-    } else if (event instanceof ProjectSelectedEvent) {
-      this.handleProjectSelectedEvent(event)
-    } else if (event instanceof ThreadSelectedEvent) {
-      this.handleThreadSelectedEvent(event)
     } else if (event instanceof HeartBeatEvent) {
       this.handleHeartBeatEvent(event)
     } else if (event instanceof InviteEvent) {
@@ -404,24 +398,6 @@ export class CodayService implements OnDestroy {
     const label = event.optionalQuestion ? `${event.optionalQuestion} ${event.invite}` : event.invite
 
     this.currentChoiceSubject.next({ options, label })
-  }
-
-  private handleProjectSelectedEvent(event: ProjectSelectedEvent): void {
-    console.log('[CODAY] Project selected:', event.projectName)
-
-    // Reset messages when changing project
-    this.resetMessages()
-
-    // Update project title
-    this.projectTitleSubject.next(event.projectName || 'Coday')
-  }
-
-  private handleThreadSelectedEvent(event: ThreadSelectedEvent): void {
-    console.log('[CODAY] Thread selected:', event.threadId, event.threadName)
-
-    // Don't reset messages here - the backend will replay the thread's messages
-    // The replay happens through the activeThread subscription in coday.ts
-    // which calls replayThread() and sends all the thread's messages
   }
 
   private handleHeartBeatEvent(_event: HeartBeatEvent): void {

@@ -10,7 +10,7 @@ import { ConfigMaskingService } from '@coday/service/config-masking.service'
  * to session state or observables. It delegates all persistence operations
  * to the ProjectRepository interface.
  */
-export class ProjectService2 {
+export class ProjectService {
   private readonly maskingService = new ConfigMaskingService()
 
   constructor(

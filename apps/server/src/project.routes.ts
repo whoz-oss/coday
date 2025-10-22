@@ -1,6 +1,6 @@
 import express from 'express'
 import { debugLog } from './log'
-import { ProjectService2 } from './services/project.service2'
+import { ProjectService } from './services/project.service'
 import { ProjectLocalConfig } from '@coday/model/project-local-config'
 
 /**
@@ -26,7 +26,7 @@ import { ProjectLocalConfig } from '@coday/model/project-local-config'
  */
 export function registerProjectRoutes(
   app: express.Application,
-  projectService: ProjectService2,
+  projectService: ProjectService,
   forcedProject: string | undefined | null
 ): void {
   /**

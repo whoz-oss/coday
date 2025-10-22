@@ -81,7 +81,7 @@ export class ThreadFileRepository implements ThreadRepository {
     try {
       const threadsDir = this.getThreadsDir(projectId)
       const newFormat = `${threadId}.yml`
-      
+
       // Check if new format exists
       try {
         await fs.access(path.join(threadsDir, newFormat))
@@ -89,7 +89,7 @@ export class ThreadFileRepository implements ThreadRepository {
       } catch {
         // New format doesn't exist, check legacy format
       }
-      
+
       // Check legacy format {name}-{id}.yml for backward compatibility
       const files = await fs.readdir(threadsDir)
       const threadFile = files.find((file) => file.endsWith(`-${threadId}.yml`))
@@ -209,11 +209,11 @@ export class ThreadFileRepository implements ThreadRepository {
                 id: data.id,
                 username: data.username,
                 projectId: threadProjectId,
-                name: data.name || 'untitled',
-                summary: data.summary || '',
-                createdDate: data.createdDate || '',
-                modifiedDate: data.modifiedDate || '',
-                price: data.price || 0,
+                name: data.name ?? '...',
+                summary: data.summary ?? '',
+                createdDate: data.createdDate ?? '',
+                modifiedDate: data.modifiedDate ?? '',
+                price: data.price ?? 0,
               } as ThreadSummary
             })
         )

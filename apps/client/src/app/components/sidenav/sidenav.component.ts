@@ -16,6 +16,7 @@ import { JsonEditorComponent } from '../json-editor/json-editor.component'
 import { WebhookManagerComponent } from '../webhook-manager/webhook-manager.component'
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { toSignal } from '@angular/core/rxjs-interop'
+import { ProjectApiService } from '../../core/services/project-api.service'
 
 @Component({
   selector: 'app-sidenav',
@@ -72,15 +73,14 @@ export class SidenavComponent implements OnInit, OnDestroy {
 
   // Modern Angular dependency injection
   private readonly configApi = inject(ConfigApiService)
-
   private readonly projectStateService = inject(ProjectStateService)
-  projects = toSignal(this.projectStateService.projectList$)
-  canCreateProject = toSignal(this.projectStateService.forcedProject$.pipe(map((value) => !value)))
-  selectedProjectName = toSignal(this.projectStateService.selectedProject$.pipe(map((project) => project?.name)))
-  forcedProject = toSignal(this.projectStateService.forcedProject$)
-
+  private readonly projectApi = inject(ProjectApiService)
   private readonly router = inject(Router)
   private readonly preferences = inject(PreferencesService)
+
+  projects = toSignal(this.projectStateService.projectList$)
+  selectedProjectName = toSignal(this.projectStateService.selectedProject$.pipe(map((project) => project?.name)))
+  forcedProject = toSignal(this.projectStateService.forcedProject$)
 
   ngOnInit(): void {
     // Load saved sidenav state from preferences
@@ -172,7 +172,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
     this.configSuccessMessage = ''
     this.configErrorMessage = ''
 
-    this.configApi
+    this.projectApi
       .getProjectConfig(projectName)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
@@ -236,7 +236,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
     this.isSavingProjectConfig = true
     this.configErrorMessage = ''
 
-    this.configApi
+    this.projectApi
       .updateProjectConfig(projectName, parsedConfig)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
@@ -293,8 +293,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
     // TODO: Get from session state when project list is available
     return []
   }
-
-
 
   /**
    * Toggle section expansion (accordion behavior - closes others)

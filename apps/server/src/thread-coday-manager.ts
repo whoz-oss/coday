@@ -3,7 +3,7 @@ import { Coday } from '@coday/core'
 import { ServerInteractor } from '@coday/model/server-interactor'
 import { CodayOptions } from '@coday/options'
 import { UserService } from '@coday/service/user.service'
-import { ProjectService } from '@coday/service/project.service'
+import { ProjectStateService } from '@coday/service/project-state.service'
 import { IntegrationService } from '@coday/service/integration.service'
 import { IntegrationConfigService } from '@coday/service/integration-config.service'
 import { MemoryService } from '@coday/service/memory.service'
@@ -12,7 +12,8 @@ import { CodayLogger } from '@coday/service/coday-logger'
 import { WebhookService } from '@coday/service/webhook.service'
 import { HeartBeatEvent } from '@coday/coday-events'
 import { debugLog } from './log'
-import { ThreadService } from './services/threadService'
+import { ThreadService } from './services/thread.service'
+import { ProjectService } from './services/project.service'
 
 /**
  * Represents a Coday instance associated with a specific thread.
@@ -38,6 +39,7 @@ class ThreadCodayInstance {
     private readonly options: CodayOptions,
     private readonly logger: CodayLogger,
     private readonly webhookService: WebhookService,
+    private readonly projectService: ProjectService,
     private readonly threadService: ThreadService,
     private readonly onTimeout: (threadId: string) => void
   ) {
@@ -194,7 +196,7 @@ class ThreadCodayInstance {
     // Create services for this Coday instance
     const interactor = new ServerInteractor(this.threadId)
     const user = new UserService(this.options.configDir, this.username, interactor)
-    const project = new ProjectService(interactor, this.options.configDir)
+    const project = new ProjectStateService(interactor, this.projectService, this.options.configDir)
     const integration = new IntegrationService(project, user)
     const integrationConfig = new IntegrationConfigService(user, project, interactor)
     const memory = new MemoryService(project, user)
@@ -341,6 +343,7 @@ export class ThreadCodayManager {
   constructor(
     private readonly logger: CodayLogger,
     private readonly webhookService: WebhookService,
+    private readonly projectService: ProjectService,
     private readonly threadService: ThreadService
   ) {
     // Start global heartbeat mechanism
@@ -394,6 +397,7 @@ export class ThreadCodayManager {
         options,
         this.logger,
         this.webhookService,
+        this.projectService,
         this.threadService,
         this.handleInstanceTimeout
       )
@@ -434,6 +438,7 @@ export class ThreadCodayManager {
         options,
         this.logger,
         this.webhookService,
+        this.projectService,
         this.threadService,
         this.handleInstanceTimeout
       )

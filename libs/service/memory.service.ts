@@ -1,12 +1,12 @@
-import {Memory, MemoryLevel} from '../model/memory'
+import { Memory, MemoryLevel } from '../model/memory'
 import * as path from 'node:path'
-import {existsSync, writeFileSync} from 'node:fs'
+import { existsSync, writeFileSync } from 'node:fs'
 import * as yaml from 'yaml'
-import {readYamlFile} from './read-yaml-file'
-import {writeYamlFile} from './write-yaml-file'
-import {UserService} from './user.service'
-import {ProjectService} from './project.service'
-import {distinctUntilChanged} from 'rxjs'
+import { readYamlFile } from './read-yaml-file'
+import { writeYamlFile } from './write-yaml-file'
+import { UserService } from './user.service'
+import { ProjectStateService } from './project-state.service'
+import { distinctUntilChanged } from 'rxjs'
 
 /**
  * Name of the memories file, could be in different folders depending on the level
@@ -18,7 +18,7 @@ export class MemoryService {
   private userMemoriesPath: string | undefined
   private projectMemoriesPath: string | undefined
 
-  constructor(projectService: ProjectService, userService: UserService) {
+  constructor(projectService: ProjectStateService, userService: UserService) {
     this.userMemoriesPath = path.join(userService.userConfigPath, MEMORY_FILE_NAME)
     projectService.selectedProject$.pipe(distinctUntilChanged()).subscribe((selectedProject) => {
       this.projectMemoriesPath = selectedProject?.configPath

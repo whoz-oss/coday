@@ -241,7 +241,7 @@ export class Coday {
       return
     }
 
-    this.context = await this.configHandler.selectProjectHandler.selectProject(this.options.project)
+    this.context = await this.configHandler.selectProjectHandler.selectProject(this.options.project!)
 
     if (this.context) {
       this.context.oneshot = this.options.oneshot
