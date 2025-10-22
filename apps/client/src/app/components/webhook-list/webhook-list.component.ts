@@ -50,7 +50,7 @@ export class WebhookListComponent {
   }
   
   onCopyUrl(webhook: Webhook): void {
-    const url = `${window.location.origin}/api/webhook/${webhook.uuid}`
+    const url = `${window.location.origin}/api/webhooks/${webhook.uuid}/execute`
     navigator.clipboard.writeText(url).then(() => {
       this.copyUrl.emit(url)
     }).catch(err => {

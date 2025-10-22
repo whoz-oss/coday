@@ -1,5 +1,5 @@
 <!-- Floating Action Button to toggle sidenav -->
-@if (hasProject() && !isOpen) {
+@if (!isOpen) {
   <button mat-icon-button class="sidenav-toggle-btn" (click)="toggle()" title="Menu" type="button">
     <mat-icon>menu</mat-icon>
   </button>
@@ -23,49 +23,35 @@
   <mat-sidenav mode="push" position="start" [opened]="isOpen" (closed)="close()" class="app-sidenav">
     <!-- Sidenav Header with Project Selector -->
     <div class="sidenav-header">
-      <img [attr.src]="'CODAY-Logo.png'" alt="coday" class="sidenav-logo" />
-      <div class="header-title-section">
-        @if (canShowProjectSelector()) {
-          <!-- Native select when projects are available -->
-          <div class="select-wrapper">
-            <select
-              class="project-select"
-              [(ngModel)]="selectedProjectName"
-              (change)="onProjectChange($event)"
-              [title]="'Select project'"
-            >
-              @for (project of getProjectList(); track project.name) {
-                <option [value]="project.name">{{ project.name }}</option>
-              }
-            </select>
-            <mat-icon class="select-arrow">expand_more</mat-icon>
-          </div>
-        } @else {
-          <!-- Static title when project is selected but can't switch -->
-          <h2 class="sidenav-title">{{ getProjectDisplayName() }}</h2>
-        }
-      </div>
-      <button mat-icon-button (click)="close()" class="close-btn">
-        <mat-icon>close</mat-icon>
+      <button mat-icon-button (click)="close()" class="close-btn" title="Close menu">
+        <mat-icon>chevron_left</mat-icon>
       </button>
+      <img 
+        [attr.src]="'CODAY-Logo.png'" 
+        alt="coday" 
+        [class.sidenav-logo]="true"
+        [class.clickable]="!forcedProject()"
+        [class.disabled]="forcedProject()"
+        (click)="navigateToHome(); $event.stopPropagation()"
+        [title]="forcedProject() ? 'Project selection disabled' : 'Go to project selection'"
+        [attr.role]="forcedProject() ? null : 'button'"
+        [attr.tabindex]="forcedProject() ? null : '0'"
+        (keydown.enter)="navigateToHome(); $event.preventDefault(); $event.stopPropagation()"
+        (keydown.space)="navigateToHome(); $event.preventDefault(); $event.stopPropagation()"
+      />
+      <div class="header-title-section">
+        <!-- Project name display -->
+        <h2 class="sidenav-title">{{ selectedProjectName() }}</h2>
+      </div>
     </div>
-    @if (!hasProject()) {
-      <!-- Loading State -->
-      <div class="loading-section">
-        <div class="loading-content">
-          <mat-progress-bar mode="indeterminate" color="primary"></mat-progress-bar>
-          <p class="loading-text">Loading project...</p>
-        </div>
-      </div>
-    }
-    @if (hasProject()) {
-      <!-- New Thread Link - Always Visible -->
-      <div class="new-thread-section">
-        <a class="new-thread-link" (click)="createNewThread()" role="button" tabindex="0">
-          <mat-icon fontSet="material-icons-outlined">play_circle</mat-icon>
-          <span class="new-thread-text">Start a new thread</span>
-        </a>
-      </div>
+
+    <!-- New Thread Link - Always Visible -->
+    <div class="new-thread-section">
+      <a class="new-thread-link" (click)="createNewThread()" role="button" tabindex="0">
+        <mat-icon fontSet="material-icons-outlined">play_circle</mat-icon>
+        <span class="new-thread-text">Start a new thread</span>
+      </a>
+    </div>
 
       <!-- Expansion Panels Container -->
       <div class="sidenav-sections" [class.has-footer]="true">
@@ -179,7 +165,7 @@
           <!-- Admin only -->
           @if (isAdmin) {
             <!-- Project Config -->
-            @if (hasProject()) {
+            @if (selectedProjectName()) {
               <div class="section-container">
                 <button class="section-toggle" (click)="openProjectConfig(); $event.stopPropagation()" type="button">
                   <mat-icon class="section-icon">settings_applications</mat-icon>
@@ -209,7 +195,7 @@
           }
         </div>
       </div>
-    }
+
   </mat-sidenav>
 
   <mat-sidenav-content>
@@ -240,10 +226,10 @@
   (closeEditor)="onUserConfigCancel()"
 ></app-json-editor>
 
-@if (hasProject()) {
+@if (selectedProjectName()) {
   <app-json-editor
     [configType]="'project'"
-    [projectName]="getCurrentProjectName()!"
+    [projectName]="selectedProjectName()!"
     [isOpen]="isProjectConfigOpen"
     [initialContent]="projectConfigJson"
     [isLoading]="isLoadingProjectConfig"

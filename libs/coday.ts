@@ -1,11 +1,9 @@
 import { AiThread } from './ai-thread/ai-thread'
-import { AiThreadService } from './ai-thread/ai-thread.service'
+import { ThreadStateService } from '@coday/ai-thread/thread-state.service'
 import { RunStatus, ThreadMessage } from './ai-thread/ai-thread.types'
-import { AiThreadRepositoryFactory } from './ai-thread/repository/ai-thread.repository.factory'
 import { AiHandler, ConfigHandler } from './handler'
 import { HandlerLooper } from './handler-looper'
 import { AiClientProvider } from './integration/ai/ai-client-provider'
-import { keywords } from './keywords'
 import { CommandContext, Interactor } from './model'
 import {
   InviteEventDefault,
@@ -29,22 +27,23 @@ export class Coday {
   aiHandler: AiHandler | undefined
   maxIterations: number
   initialPrompts: string[] = []
-  aiThreadService: AiThreadService
+  aiThreadService: ThreadStateService
   private killed: boolean = false
   private aiClientProvider: AiClientProvider
 
   constructor(
-    private interactor: Interactor,
-    private options: CodayOptions,
-    private services: CodayServices
+    public readonly interactor: Interactor,
+    private readonly options: CodayOptions,
+    private readonly services: CodayServices
   ) {
     this.interactor.debugLevelEnabled = options.debug
     this.interactor.debug('Coday started with debug')
     this.configHandler = new ConfigHandler(interactor, this.services)
     this.maxIterations = MAX_ITERATIONS
-    this.aiThreadService = new AiThreadService(
-      new AiThreadRepositoryFactory(this.services.project),
+    this.aiThreadService = new ThreadStateService(
       services.user,
+      services.thread.getThreadRepository(options.project!),
+      options.project!,
       interactor
     )
     this.aiThreadService.activeThread.subscribe((aiThread) => {
@@ -105,16 +104,9 @@ export class Coday {
     this.interactor.sendEvent(messageEvent)
   }
 
-  /**
-   * Get the services instance (for internal use)
-   * @returns CodayServices instance
-   */
-  getServices(): CodayServices {
-    return this.services
-  }
-
   async run(): Promise<void> {
     this.initialPrompts = this.options.prompts ? [...this.options.prompts] : []
+    this.interactor.debug(`[CODAY] Starting run with ${this.initialPrompts.length} initial prompts`)
     // Main loop to keep waiting for user input
     try {
       do {
@@ -129,15 +121,9 @@ export class Coday {
         }
 
         let userCommand = await this.initCommand()
-        if ((!userCommand && this.options.oneshot) || userCommand === keywords.exit) {
+        if (!userCommand && this.options.oneshot) {
           // default case: no initial prompt (or empty) and not interactive = get out
           break
-        }
-
-        if (userCommand === keywords.reset) {
-          this.context = null
-          this.services.project.resetProjectSelection()
-          continue
         }
 
         const thread = this.context?.aiThread
@@ -255,7 +241,7 @@ export class Coday {
       return
     }
 
-    this.context = await this.configHandler.selectProjectHandler.selectProject(this.options.project)
+    this.context = await this.configHandler.selectProjectHandler.selectProject(this.options.project!)
 
     if (this.context) {
       this.context.oneshot = this.options.oneshot
@@ -277,13 +263,7 @@ export class Coday {
         this.options.agentFolders
       )
       this.aiHandler = new AiHandler(this.interactor, this.services.agent, this.aiThreadService)
-      this.handlerLooper = new HandlerLooper(
-        this.interactor,
-        this.aiHandler,
-        this.aiThreadService,
-        this.configHandler,
-        this.services
-      )
+      this.handlerLooper = new HandlerLooper(this.interactor, this.aiHandler, this.configHandler, this.services)
       this.aiClientProvider.init(this.context)
       this.handlerLooper.init(this.context.project)
       await this.services.agent.initialize(this.context)
@@ -291,23 +271,35 @@ export class Coday {
   }
 
   private async initThread(): Promise<void> {
-    if (!this.context?.aiThread) {
-      await this.aiThreadService.create()
+    if (this.context?.aiThread) {
+      return
     }
+    if (!this.options.thread) {
+      throw Error('No thread given, cannot start Coday instance')
+    }
+    await this.aiThreadService.select(this.options.thread)
   }
 
   private async initCommand(): Promise<string | undefined> {
     let userCommand: string | undefined
+    this.interactor.debug(
+      `[CODAY] initCommand: ${this.initialPrompts.length} prompts available, oneshot=${this.options.oneshot}`
+    )
     if (this.initialPrompts.length) {
       // if initial prompt(s), set the first as userCommand and add the others to the queue
       userCommand = this.initialPrompts.shift()!
+      this.interactor.debug(`[CODAY] Using initial prompt: ${userCommand}`)
       if (this.initialPrompts.length) {
+        this.interactor.debug(`[CODAY] Adding ${this.initialPrompts.length} remaining prompts to queue`)
         this.context?.addCommands(...this.initialPrompts)
         this.initialPrompts = [] // clear the prompts as consumed, will not be re-used even on context reset
       }
     } else if (!this.options.oneshot) {
       // allow user input
+      this.interactor.debug(`[CODAY] No initial prompts, waiting for user input`)
       userCommand = await this.interactor.promptText(InviteEventDefault)
+    } else {
+      this.interactor.debug(`[CODAY] No initial prompts and oneshot mode, exiting`)
     }
     return userCommand
   }

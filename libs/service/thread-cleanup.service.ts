@@ -15,8 +15,8 @@ const BATCH_SIZE = 100
 
 // Retention periods based on user message count
 const RETENTION_RULES = {
-  SHORT_THREADS: 7,   // 3 or fewer user messages: 7 days
-  LONG_THREADS: 30    // 4 or more user messages: 30 days
+  SHORT_THREADS: 7, // 3 or fewer user messages: 7 days
+  LONG_THREADS: 30, // 4 or more user messages: 30 days
 }
 
 export class ThreadCleanupService {
@@ -72,12 +72,12 @@ export class ThreadCleanupService {
       clearTimeout(this.initialTimer)
       this.initialTimer = null
     }
-    
+
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer)
       this.cleanupTimer = null
     }
-    
+
     this.isRunning = false
     this.log('Thread cleanup service stopped (all timers cleared)')
   }
@@ -85,6 +85,7 @@ export class ThreadCleanupService {
   /**
    * Performs cleanup of expired threads
    */
+  // TODO: do not remove starred threads
   private async performCleanup(): Promise<void> {
     const startTime = Date.now()
     let totalScanned = 0
@@ -214,13 +215,15 @@ export class ThreadCleanupService {
         if (this.shouldDeleteThread(threadData)) {
           const userMessageCount = this.countUserMessages(threadData.messages || [])
           const daysSinceModified = this.getDaysSinceModified(threadData.modifiedDate)
-          
+
           await fs.unlink(filePath)
           deleted++
-          
+
           // Audit trail logging
           this.logger.logThreadCleanup(projectName, file)
-          console.log(`ThreadCleanup: Deleted thread ${threadData.id || file} (${userMessageCount} user messages, ${daysSinceModified} days old)`)
+          console.log(
+            `ThreadCleanup: Deleted thread ${threadData.id || file} (${userMessageCount} user messages, ${daysSinceModified} days old)`
+          )
         }
       })
     )
@@ -238,11 +241,9 @@ export class ThreadCleanupService {
 
     // Count user messages
     const userMessageCount = this.countUserMessages(threadData.messages || [])
-    
+
     // Determine retention period: 7 days for short threads, 30 days for longer ones
-    const retentionDays = userMessageCount <= 3 
-      ? RETENTION_RULES.SHORT_THREADS 
-      : RETENTION_RULES.LONG_THREADS
+    const retentionDays = userMessageCount <= 3 ? RETENTION_RULES.SHORT_THREADS : RETENTION_RULES.LONG_THREADS
 
     // Check if thread has exceeded its retention period
     const daysSinceModified = this.getDaysSinceModified(threadData.modifiedDate)
@@ -253,9 +254,7 @@ export class ThreadCleanupService {
    * Counts user messages in thread data
    */
   private countUserMessages(messages: any[]): number {
-    return messages.filter(msg => 
-      msg && msg.type === 'message' && msg.role === 'user'
-    ).length
+    return messages.filter((msg) => msg && msg.type === 'message' && msg.role === 'user').length
   }
 
   /**

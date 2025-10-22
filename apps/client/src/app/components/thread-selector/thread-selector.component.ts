@@ -1,15 +1,15 @@
-import { Component, inject, OnDestroy, OnInit, Input, Output, EventEmitter } from '@angular/core'
+import { Component, EventEmitter, inject, Input, Output } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
-import { Subject } from 'rxjs'
-import { takeUntil } from 'rxjs/operators'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 import { MatInputModule } from '@angular/material/input'
 import { MatFormFieldModule } from '@angular/material/form-field'
-import { SessionStateService } from '../../core/services/session-state.service'
-import { CodayService } from '../../core/services/coday.service'
 import { SessionState } from '@coday/model/session-state'
+import { ThreadStateService } from '../../core/services/thread-state.service'
+import { toSignal } from '@angular/core/rxjs-interop'
+import { ProjectStateService } from '../../core/services/project-state.service'
+import { Router } from '@angular/router'
 
 @Component({
   selector: 'app-thread-selector',
@@ -18,118 +18,49 @@ import { SessionState } from '@coday/model/session-state'
   templateUrl: './thread-selector.component.html',
   styleUrl: './thread-selector.component.scss',
 })
-export class ThreadSelectorComponent implements OnInit, OnDestroy {
-  private destroy$ = new Subject<void>()
-
+export class ThreadSelectorComponent {
   // State from SessionStateService
-  threads: SessionState['threads'] | null = null
   projects: SessionState['projects'] | null = null
-
   // Search functionality
   @Input() searchMode = false
   @Input() searchQuery = ''
   @Output() searchModeChange = new EventEmitter<boolean>()
 
-  // Modern Angular dependency injection
-  private sessionState = inject(SessionStateService)
-  private codayService = inject(CodayService)
+  private readonly projectStateService = inject(ProjectStateService)
+  private readonly threadStateService = inject(ThreadStateService)
+  private readonly router = inject(Router)
 
-  ngOnInit(): void {
-    // Subscribe to threads state
-    this.sessionState
-      .getThreads$()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((threads) => {
-        console.log('[THREAD-SELECTOR] Threads updated:', threads)
-        this.threads = threads
-      })
-
-    // Subscribe to projects state (to know if we have a project selected)
-    this.sessionState
-      .getProjects$()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((projects) => {
-        console.log('[THREAD-SELECTOR] Projects updated:', projects)
-        this.projects = projects
-      })
-  }
-
-  ngOnDestroy(): void {
-    this.destroy$.next()
-    this.destroy$.complete()
-  }
+  currentThread = toSignal(this.threadStateService.selectedThread$)
+  currentProject = toSignal(this.projectStateService.selectedProject$)
+  threads = toSignal(this.threadStateService.threadList$)
 
   /**
    * Select a thread
    */
   selectThread(threadId: string): void {
-    console.log('[THREAD-SELECTOR] Selecting thread:', threadId)
+    this.threadStateService.selectThread(threadId)
 
-    // Use the thread select command with ID
-    this.codayService.sendMessage(`thread select ${threadId}`)
-  }
-
-  /**
-   * Create a new thread
-   */
-  createNewThread(): void {
-    console.log('[THREAD-SELECTOR] Creating new thread')
-
-    // Use thread new command to create a new thread
-    this.codayService.sendMessage('thread new')
-  }
-
-  /**
-   * Check if we can show the dropdown
-   */
-  canShowDropdown(): boolean {
-    // Need a project selected and either threads available or ability to create
-    return this.hasProjectSelected() && this.isThreadManagementAvailable()
-  }
-
-  /**
-   * Check if thread management is available
-   */
-  isThreadManagementAvailable(): boolean {
-    // Always true if project selected (can always create threads)
-    return this.hasProjectSelected()
-  }
-
-  /**
-   * Check if a project is selected
-   */
-  hasProjectSelected(): boolean {
-    return !!this.projects?.current
-  }
-
-  /**
-   * Get available threads
-   */
-  getAvailableThreads(): Array<{ id: string; name: string; modifiedDate: string }> {
-    if (!this.threads?.list) {
-      return []
-    }
-
-    let threads = [...this.threads.list]
-
-    // Filter by search query if in search mode
-    if (this.searchMode && this.searchQuery.trim()) {
-      const query = this.searchQuery.toLowerCase().trim()
-      threads = threads.filter((thread) => thread.name.toLowerCase().includes(query))
-    }
-
-    // Sort by modified date (most recent first)
-    return threads.sort((a, b) => {
-      return new Date(b.modifiedDate).getTime() - new Date(a.modifiedDate).getTime()
-    })
+    // navigate to `/project/:projectName/thread/:threadId
+    this.router.navigate(['/project', this.currentProject()?.name, 'thread', threadId])
   }
 
   /**
    * Group threads by date categories
    */
   getGroupedThreads(): Array<{ label: string; threads: Array<{ id: string; name: string; modifiedDate: string }> }> {
-    const threads = this.getAvailableThreads()
-    if (threads.length === 0) {
+    let threadsToGroup = this.threads()
+    if (!threadsToGroup?.length) {
+      return []
+    }
+
+    // Apply search filter if searchQuery is provided
+    if (this.searchQuery && this.searchQuery.trim()) {
+      const query = this.searchQuery.toLowerCase().trim()
+      threadsToGroup = threadsToGroup.filter((thread) => thread.name.toLowerCase().includes(query))
+    }
+
+    // If no threads after filtering, return empty
+    if (!threadsToGroup.length) {
       return []
     }
 
@@ -137,7 +68,7 @@ export class ThreadSelectorComponent implements OnInit, OnDestroy {
     const now = new Date()
     now.setHours(0, 0, 0, 0)
 
-    for (const thread of threads) {
+    for (const thread of threadsToGroup) {
       const threadDate = new Date(thread.modifiedDate)
       threadDate.setHours(0, 0, 0, 0)
       const diffMs = now.getTime() - threadDate.getTime()
@@ -172,25 +103,6 @@ export class ThreadSelectorComponent implements OnInit, OnDestroy {
         label,
         threads: groups.get(label)!,
       }))
-  }
-
-  /**
-   * Check if we have threads available
-   */
-  hasThreadsAvailable(): boolean {
-    return !!(this.threads?.list && this.threads.list.length > 0)
-  }
-
-  /**
-   * Get current thread name for display
-   */
-  getCurrentThreadName(): string | null {
-    if (!this.threads?.current || !this.threads?.list) {
-      return null
-    }
-
-    const currentThread = this.threads.list.find((t) => t.id === this.threads!.current)
-    return currentThread ? currentThread.name : null
   }
 
   /**

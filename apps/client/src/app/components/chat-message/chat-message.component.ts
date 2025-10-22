@@ -6,6 +6,8 @@ import { MessageContextMenuComponent, MenuAction } from '../message-context-menu
 import { NgClass } from '@angular/common'
 import { NotificationService } from '../../services/notification.service'
 import { PreferencesService } from '../../services/preferences.service'
+import { ProjectStateService } from '../../core/services/project-state.service'
+import { ThreadStateService } from '../../core/services/thread-state.service'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
 
@@ -40,6 +42,8 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   private sanitizer = inject(DomSanitizer)
   private notificationService = inject(NotificationService)
   private preferencesService = inject(PreferencesService)
+  private projectState = inject(ProjectStateService)
+  private threadState = inject(ThreadStateService)
 
   get messageClasses() {
     return {
@@ -112,12 +116,13 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   get eventLink(): string | null {
     if (!this.message.eventId) return null
 
-    // Get clientId from URL
-    const params = new URLSearchParams(window.location.search)
-    const clientId = params.get('clientId')
-    if (!clientId) return null
+    // Get project and thread from state services
+    const projectName = this.projectState.getSelectedProjectId()
+    const threadId = this.threadState.getSelectedThreadId()
+    
+    if (!projectName || !threadId) return null
 
-    return `/api/event/${this.message.eventId}?clientId=${clientId}`
+    return `/api/projects/${projectName}/threads/${threadId}/messages/${encodeURIComponent(this.message.eventId)}/formatted`
   }
 
   private async renderMarkdown() {

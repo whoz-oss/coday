@@ -1,6 +1,6 @@
 import { Interactor } from '../model/interactor'
 import { UserService } from './user.service'
-import { ProjectService } from './project.service'
+import { ProjectStateService } from './project-state.service'
 import { McpServerConfig } from '../model/mcp-server-config'
 import { ConfigLevel, ConfigLevelValidator } from '../model/config-level'
 import { CommandContext } from '../model'
@@ -28,7 +28,7 @@ export class McpConfigService {
 
   constructor(
     private userService: UserService,
-    private projectService: ProjectService,
+    private projectService: ProjectStateService,
     private interactor: Interactor
   ) {}
 

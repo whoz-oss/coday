@@ -17,38 +17,6 @@
   transition: all 0.3s ease;
   position: relative;
   justify-content: center;
-
-  &.drag-over {
-    &::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      border: 3px dashed var(--color-primary);
-      border-radius: 16px;
-      background: var(--glass-bg);
-      backdrop-filter: var(--glass-backdrop-blur);
-      -webkit-backdrop-filter: var(--glass-backdrop-blur);
-      pointer-events: none;
-      z-index: 100;
-    }
-  }
-}
-
-.connection-status {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1001;
-  padding: 0.75rem 1rem;
-  text-align: center;
-  font-size: 0.9rem;
-  background: var(--color-error);
-  color: var(--color-text-inverse);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 }
 
 .chat-wrapper {
@@ -81,30 +49,6 @@
   width: 100%;
 }
 
-.welcome-title {
-  font-size: clamp(2.5rem, 6vw, 4rem);
-  font-weight: 700;
-  background: linear-gradient(
-    90deg,
-    var(--color-primary, #3b82f6) 0%,
-    var(--color-accent, #8b5cf6) 50%,
-    var(--color-primary, #3b82f6) 100%
-  );
-  background-size: 200% auto;
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: gradientShift 3s ease-in-out infinite;
-  margin: 0;
-  padding: 0;
-  line-height: 1.2;
-  transition: opacity 0.5s ease-in-out;
-
-  /* Ensure text changes smoothly */
-  display: inline-block;
-  min-height: 1.2em;
-}
-
 @keyframes fadeInUp {
   from {
     opacity: 0;
@@ -113,18 +57,6 @@
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes gradientShift {
-  0% {
-    background-position: 0% center;
-  }
-  50% {
-    background-position: 100% center;
-  }
-  100% {
-    background-position: 0% center;
   }
 }
 
@@ -177,7 +109,15 @@
   }
 }
 
-/* Dark mode support */
+.input-glass app-chat-textarea {
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
+  display: flex;
+}
+
+// Dark mode support
 :host-context(body.dark),
 :root[data-theme='dark'] .input-glass {
   background: rgba(36, 40, 48, 0.45);
@@ -225,63 +165,35 @@
 
 // Responsive
 @media (max-width: 768px) {
-  .chat-wrapper {
-    padding: 0.75rem 1rem;
+  .welcome-section {
+    padding: 1.5rem 1rem;
   }
 
   .input-section {
-    padding: 0.75rem;
-
-    > app-chat-textarea {
-      max-width: none;
-    }
+    padding: 1.5rem 0.75rem 1rem;
   }
 
-  .choice-overlay {
-    padding: 0.75rem;
+  .input-center {
+    padding: 0 0.5rem;
   }
 }
 
-// Print styles - Override component styles for printing
+// Print styles
 @media print {
   :host {
     display: block !important;
     height: auto !important;
-    max-height: none !important;
     overflow: visible !important;
-    position: static !important;
   }
 
   .app {
     height: auto !important;
-    max-height: none !important;
-    min-height: auto !important;
     overflow: visible !important;
     display: block !important;
-    flex-direction: column !important;
-    position: static !important;
-  }
-
-  .chat-wrapper {
-    flex: none !important;
-    height: auto !important;
-    max-height: none !important;
-    min-height: auto !important;
-    overflow: visible !important;
-    overflow-y: visible !important;
-    overflow-x: visible !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    position: static !important;
   }
 
   .input-section,
   .welcome-section {
-    display: none !important;
-  }
-
-  .connection-status,
-  .upload-status {
     display: none !important;
   }
 }

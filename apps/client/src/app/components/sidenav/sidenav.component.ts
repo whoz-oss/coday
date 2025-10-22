@@ -1,21 +1,22 @@
-import { Component, inject, OnDestroy, OnInit, ViewChild, ElementRef } from '@angular/core'
+import { Component, ElementRef, inject, OnDestroy, OnInit, ViewChild } from '@angular/core'
+import { Router } from '@angular/router'
 import { FormsModule } from '@angular/forms'
 import { Subject } from 'rxjs'
-import { takeUntil } from 'rxjs/operators'
+import { map, takeUntil } from 'rxjs/operators'
 import { MatSidenavModule } from '@angular/material/sidenav'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 import { MatDividerModule } from '@angular/material/divider'
 import { MatProgressBarModule } from '@angular/material/progress-bar'
-import { SessionStateService } from '../../core/services/session-state.service'
 import { ConfigApiService } from '../../core/services/config-api.service'
-import { CodayService } from '../../core/services/coday.service'
 import { PreferencesService } from '../../services/preferences.service'
 import { OptionsPanelComponent } from '../options-panel'
 import { ThreadSelectorComponent } from '../thread-selector/thread-selector.component'
 import { JsonEditorComponent } from '../json-editor/json-editor.component'
 import { WebhookManagerComponent } from '../webhook-manager/webhook-manager.component'
-import { SessionState } from '@coday/model/session-state'
+import { ProjectStateService } from '../../core/services/project-state.service'
+import { toSignal } from '@angular/core/rxjs-interop'
+import { ProjectApiService } from '../../core/services/project-api.service'
 
 @Component({
   selector: 'app-sidenav',
@@ -41,11 +42,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
   isUserConfigOpen = false
   isProjectConfigOpen = false
   isWebhooksOpen = false
-  isProjectSelectorExpanded = false
-
-  // Project state
-  projects: SessionState['projects'] | null = null
-  selectedProjectName: string = ''
 
   // Role-based access control
   isAdmin = false
@@ -76,29 +72,21 @@ export class SidenavComponent implements OnInit, OnDestroy {
   @ViewChild('threadSearchInput') threadSearchInput?: ElementRef<HTMLInputElement>
 
   // Modern Angular dependency injection
-  private readonly sessionState = inject(SessionStateService)
   private readonly configApi = inject(ConfigApiService)
-  private readonly codayService = inject(CodayService)
+  private readonly projectStateService = inject(ProjectStateService)
+  private readonly projectApi = inject(ProjectApiService)
+  private readonly router = inject(Router)
   private readonly preferences = inject(PreferencesService)
+
+  projects = toSignal(this.projectStateService.projectList$)
+  selectedProjectName = toSignal(this.projectStateService.selectedProject$.pipe(map((project) => project?.name)))
+  forcedProject = toSignal(this.projectStateService.forcedProject$)
 
   ngOnInit(): void {
     // Load saved sidenav state from preferences
     const savedState = this.preferences.getPreference<boolean>('sidenavOpen', true)
     this.isOpen = savedState ?? true
     console.log('[SIDENAV] Loaded sidenav state from preferences:', this.isOpen)
-
-    // Log session state for debugging (ensures sessionState is used)
-    console.log('[SIDENAV] SessionState service injected:', !!this.sessionState)
-
-    // Subscribe to projects state
-    this.sessionState
-      .getProjects$()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((projects) => {
-        console.log('[SIDENAV] Projects updated:', projects)
-        this.projects = projects
-        this.selectedProjectName = projects?.current || ''
-      })
 
     // Load user config to check roles
     this.configApi
@@ -173,7 +161,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
    * Open project configuration editor
    */
   openProjectConfig(): void {
-    const projectName = this.getCurrentProjectName()
+    const projectName = this.selectedProjectName()
     if (!projectName) {
       console.error('[SIDENAV] No project selected')
       this.configErrorMessage = 'No project selected. Please select a project first.'
@@ -184,7 +172,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
     this.configSuccessMessage = ''
     this.configErrorMessage = ''
 
-    this.configApi
+    this.projectApi
       .getProjectConfig(projectName)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
@@ -202,20 +190,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
           this.configErrorMessage = error?.error?.error || 'Failed to load project configuration'
         },
       })
-  }
-
-  /**
-   * Check if a project is currently selected
-   */
-  hasProject(): boolean {
-    return this.sessionState.hasProjectSelected()
-  }
-
-  /**
-   * Get current project name
-   */
-  getCurrentProjectName(): string | null {
-    return this.sessionState.getCurrentProject()
   }
 
   /**
@@ -252,7 +226,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
    * Handle project config save
    */
   onProjectConfigSave(parsedConfig: any): void {
-    const projectName = this.getCurrentProjectName()
+    const projectName = this.selectedProjectName()
     if (!projectName) {
       console.error('[SIDENAV] No project selected')
       this.configErrorMessage = 'No project selected. Cannot save configuration.'
@@ -262,7 +236,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
     this.isSavingProjectConfig = true
     this.configErrorMessage = ''
 
-    this.configApi
+    this.projectApi
       .updateProjectConfig(projectName, parsedConfig)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
@@ -321,52 +295,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Toggle project selector dropdown
-   */
-  toggleProjectSelector(): void {
-    // Don't toggle if there's no project or can't switch projects
-    if (!this.canShowProjectSelector()) {
-      return
-    }
-    this.isProjectSelectorExpanded = !this.isProjectSelectorExpanded
-  }
-
-  /**
-   * Check if we can show the project selector
-   */
-  canShowProjectSelector(): boolean {
-    return !!(this.projects?.canCreate && this.projects?.list && this.projects.list.length > 0)
-  }
-
-  /**
-   * Handle project selection from native select
-   */
-  onProjectChange(event: Event): void {
-    const selectElement = event.target as HTMLSelectElement
-    const projectName = selectElement.value
-
-    if (projectName && projectName !== this.projects?.current) {
-      console.log('[SIDENAV] Selecting project:', projectName)
-      this.codayService.sendMessage(`config select-project ${projectName}`)
-    }
-  }
-
-  /**
-   * Get the project name to display in the header
-   */
-  getProjectDisplayName(): string {
-    const projectName = this.sessionState.getCurrentProject()
-    return projectName || 'Coday'
-  }
-
-  /**
-   * Get available project names for the select dropdown
-   */
-  getProjectList(): Array<{ name: string }> {
-    return this.projects?.list || []
-  }
-
-  /**
    * Toggle section expansion (accordion behavior - closes others)
    */
   toggleSection(section: string): void {
@@ -382,11 +310,43 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Create a new thread
+   * Navigate to home (project selection)
+   * Only allowed if no forced project
+   */
+  navigateToHome(): void {
+    // Don't allow navigation if there's a forced project
+    if (this.forcedProject()) {
+      console.log('[SIDENAV] Cannot navigate to home - forced project active')
+      return
+    }
+
+    console.log('[SIDENAV] Navigating to home (project selection)')
+    // Clear project selection first to avoid auto-redirect
+    this.projectStateService.clearSelection()
+    // Use setTimeout to ensure clearSelection is processed before navigation
+    // Then navigate to home
+    this.router.navigate(['/'])
+    // Close sidenav after navigation
+    this.close()
+  }
+
+  /**
+   * Create a new thread - Navigate to welcome view
    */
   createNewThread(): void {
-    console.log('[SIDENAV] Creating new thread')
-    this.codayService.sendMessage('thread new')
+    const projectName = this.selectedProjectName()
+    if (!projectName) {
+      console.error('[SIDENAV] No project selected, cannot create new thread')
+      this.configErrorMessage = 'Please select a project first'
+      return
+    }
+
+    console.log('[SIDENAV] Navigating to welcome view for new thread')
+    // Navigate to project route without threadId to show welcome view
+    this.router.navigate(['project', projectName])
+
+    // Close sidenav after navigation
+    this.close()
   }
 
   /**

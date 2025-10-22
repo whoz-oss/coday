@@ -24,6 +24,7 @@ export interface CodayOptions {
   oneshot: boolean
   debug: boolean
   project?: string
+  thread?: string
   prompts: string[]
   fileReadOnly: boolean
   configDir?: string

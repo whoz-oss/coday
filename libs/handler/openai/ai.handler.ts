@@ -4,7 +4,7 @@ import { lastValueFrom, Observable } from 'rxjs'
 import { CodayEvent } from '@coday/coday-events'
 import { AgentService } from '../../agent'
 import { parseAgentCommand } from './parseAgentCommand'
-import { AiThreadService } from '../../ai-thread/ai-thread.service'
+import { ThreadStateService } from '@coday/ai-thread/thread-state.service'
 import { AiThread } from '../../ai-thread/ai-thread'
 import { generateThreadName } from '../generate-thread-name'
 
@@ -12,7 +12,7 @@ export class AiHandler extends CommandHandler implements Killable {
   constructor(
     private interactor: Interactor,
     private agentService: AgentService,
-    private threadService: AiThreadService
+    private threadService: ThreadStateService
   ) {
     super({
       commandWord: keywords.assistantPrefix,
@@ -124,7 +124,7 @@ export class AiHandler extends CommandHandler implements Killable {
     })
     try {
       await lastValueFrom(events)
-    } catch (error:any) {
+    } catch (error: any) {
       this.interactor.error(`Could not run agent ${agent.name} : ${error.message}`)
     } finally {
       // Always perform final autosave, even if there was an error
@@ -142,16 +142,13 @@ export class AiHandler extends CommandHandler implements Killable {
    * Auto-save thread after each message and rename if needed
    */
   private async checkAndAutoSave(thread: AiThread, agent: Agent): Promise<void> {
-
     if (thread.getUserMessageCount() === 0) {
       // no autosave
       return
     }
 
     // Check if we should rename the thread (at 3 messages and still has default name)
-    if (
-      !thread.name
-    ) {
+    if (!thread.name) {
       try {
         // Generate thread name using the agent's AI client
         const threadName = await generateThreadName(thread, agent)
