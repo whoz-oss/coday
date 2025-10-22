@@ -17,6 +17,7 @@ import { WebhookManagerComponent } from '../webhook-manager/webhook-manager.comp
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { ProjectApiService } from '../../core/services/project-api.service'
+import { ThreadStateService } from '../../core/services/thread-state.service'
 
 @Component({
   selector: 'app-sidenav',
@@ -77,6 +78,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
   private readonly projectApi = inject(ProjectApiService)
   private readonly router = inject(Router)
   private readonly preferences = inject(PreferencesService)
+  private readonly threadStateService = inject(ThreadStateService)
 
   projects = toSignal(this.projectStateService.projectList$)
   selectedProjectName = toSignal(this.projectStateService.selectedProject$.pipe(map((project) => project?.name)))
@@ -336,6 +338,8 @@ export class SidenavComponent implements OnInit, OnDestroy {
     }
 
     console.log('[SIDENAV] Navigating to welcome view for new thread')
+    // Clear the selected thread so the sidenav doesn't show any thread as selected
+    this.threadStateService.clearSelection()
     // Navigate to project route without threadId to show welcome view
     this.router.navigate(['project', projectName])
   }
