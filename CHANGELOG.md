@@ -1,3 +1,13 @@
+## 0.33.0 (2025-10-22)
+
+### 🚀 Features
+
+- rewrite internal Coday API around project/thread ([#279](https://github.com/whoz-oss/coday/pull/279))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.32.1 (2025-10-21)
 
 ### 🩹 Fixes
