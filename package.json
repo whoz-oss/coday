@@ -7,12 +7,14 @@
   "scripts": {
     "client": "nx run client:serve",
     "coday": "npx --yes @whoz-oss/coday-web --local --no_auth",
+    "desktop": "nx run desktop:serve",
     "husky-setup": "husky",
     "lint": "nx run-many --target=lint",
     "postinstall": "pnpm husky-setup",
     "server": "nx run server:serve",
     "test": "nx run-many --target=test",
-    "web": "npx --yes @whoz-oss/coday-web --no_auth"
+    "web": "npx --yes @whoz-oss/coday-web --no_auth",
+    "web:dev": "nx run-many --target=serve --projects=client,server --parallel=2"
   },
   "lint-staged": {
     "!(*nx|*project).json": [
@@ -95,6 +97,8 @@
     "@types/sharp": "0.32.0",
     "@typescript-eslint/utils": "8.46.1",
     "angular-eslint": "20.4.0",
+    "electron": "38.3.0",
+    "electron-builder": "26.0.12",
     "esbuild": "0.25.10",
     "eslint": "9.37.0",
     "eslint-config-prettier": "10.1.8",

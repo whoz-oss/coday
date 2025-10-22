@@ -12,7 +12,7 @@ This project is an agentic framework leveraging existing LLMs to let you define 
 
 - **Multi-Agent Support**: Define and configure custom AI agents for your projects
 - **Multiple LLM Providers**: Support for OpenAI, Anthropic, and other AI providers
-- **Web & Terminal Interfaces**: Choose between browser-based or command-line interaction
+- **Web, Desktop & Terminal Interfaces**: Choose between browser-based, native desktop app, or command-line interaction
 - **Project-Based Configuration**: Scope agents and settings to specific projects
 - **Webhook Integration**: Trigger AI agent interactions programmatically from external systems
 - **Memory Management**: Persistent conversation history and context
@@ -21,6 +21,7 @@ This project is an agentic framework leveraging existing LLMs to let you define 
 There are several ways to use Coday:
 
 - as a dev-dep of a code project: uses the published npm package to run locally
+- as a desktop app: uses the Electron-based desktop application (coming soon)
 - as a contributor through a clone of this repo
 - as a non-dev through a deployed instance (details coming soon...⏳)
 
@@ -78,14 +79,33 @@ When in the context of a code project, use the npm package to run locally throug
     pnpm install --frozen-lockfile
     ```
 4. Run one of the targets:
-   - in the terminal:
+   - **Development mode (recommended for contributors)** - runs with live reload:
    ```sh
-   pnpm run nx reset && pnpm start
+   pnpm web:dev
    ```
-   - in the browser:
+   This starts both the Angular dev server (port 4200) and Express server (port 4100) with automatic reloading on code changes.
+
+   - Terminal interface:
    ```sh
-   pnpm run nx reset && pnpm web --no_auth
+   pnpm start
    ```
+   
+   - Production mode (tests published package behavior):
+   ```sh
+   pnpm web
+   ```
+   
+   - Desktop app:
+   ```sh
+   pnpm desktop
+   ```
+
+   - Individual services (for debugging):
+   ```sh
+   pnpm client  # Angular dev server only (port 4200)
+   pnpm server  # Express server only (port 4100)
+   ```
+
 5. Setup the first coday project
 
 

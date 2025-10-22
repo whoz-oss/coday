@@ -1,0 +1,59 @@
+{
+  "name": "@whoz-oss/coday-desktop",
+  "version": "0.32.0",
+  "description": "Coday Desktop - Electron-based desktop application",
+  "repository": "https://github.com/whoz-oss/coday",
+  "license": "MIT",
+  "author": "vincent.audibert@whoz.com",
+  "main": "dist/main.js",
+  "scripts": {
+    "start": "electron dist/main.js"
+  },
+  "devDependencies": {
+    "electron": "38.3.0",
+    "electron-builder": "26.0.12"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "build": {
+    "appId": "com.whoz.coday",
+    "directories": {
+      "buildResources": "assets",
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*"
+    ],
+    "icon": "assets/icon.jpg",
+    "linux": {
+      "category": "Development",
+      "icon": "assets/icon.jpg",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "entitlements": "macos/entitlements.mac.plist",
+      "entitlementsInherit": "macos/entitlements.mac.plist",
+      "gatekeeperAssess": false,
+      "hardenedRuntime": true,
+      "icon": "assets/icon.jpg",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "productName": "Coday",
+    "win": {
+      "icon": "assets/icon.jpg",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    }
+  }
+}
