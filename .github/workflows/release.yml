@@ -104,3 +104,96 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
         run: |
           npx nx release --yes
+          # Capture the new version for desktop build
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+  # Job 3: Build and upload desktop app
+  desktop-release:
+    runs-on: macos-latest
+    needs: release
+    if: needs.release.outputs.new_version != ''
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Import Code Signing Certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          # Create a temporary keychain
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+          # Decode certificate from base64
+          echo "$MACOS_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/certificate.p12
+
+          # Create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Import certificate to keychain
+          security import $RUNNER_TEMP/certificate.p12 \
+            -k "$KEYCHAIN_PATH" \
+            -P "$MACOS_CERT_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/productsign
+
+          # Set keychain for codesign to use
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Verify certificate is available
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Build and Sign Desktop App
+        env:
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          npx nx run desktop:package-dist
+
+      - name: Cleanup Keychain
+        if: always()
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          if [ -f "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH"
+          fi
+          rm -f $RUNNER_TEMP/certificate.p12
+
+      - name: Upload DMG to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          VERSION="${{ needs.release.outputs.new_version }}"
+          TAG="release/${VERSION}"
+          DMG_PATH=$(find apps/desktop/release -name "*.dmg" -type f)
+
+          if [ -z "$DMG_PATH" ]; then
+            echo "Error: DMG file not found"
+            exit 1
+          fi
+
+          echo "Uploading $DMG_PATH to release $TAG"
+          gh release upload "$TAG" "$DMG_PATH" --clobber

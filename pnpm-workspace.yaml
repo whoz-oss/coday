@@ -1,13 +1,13 @@
-#minimumReleaseAge: 14400 # 10 days
-
 ignoredBuiltDependencies:
   - '@parcel/watcher'
+  - electron-winstaller
   - lmdb
   - msgpackr-extract
   - unrs-resolver
 
 onlyBuiltDependencies:
   - '@swc/core'
+  - electron
   - esbuild
   - nx
   - sharp

@@ -47,5 +47,6 @@ Thumbs.db
 
 # Electron build output
 dist/electron
+apps/desktop/release
 
 .angular

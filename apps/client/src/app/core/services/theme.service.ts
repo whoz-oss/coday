@@ -5,7 +5,7 @@ import { PreferencesService } from '../../services/preferences.service'
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class ThemeService {
   private currentThemeSubject = new BehaviorSubject<ThemeMode>('light')
@@ -13,7 +13,7 @@ export class ThemeService {
 
   // Modern Angular dependency injection
   private preferences = inject(PreferencesService)
-  
+
   constructor() {
     console.log('[THEME] Initializing theme service')
     this.initializeTheme()
@@ -21,9 +21,20 @@ export class ThemeService {
   }
 
   private initializeTheme(): void {
+    // Check if running in desktop app - preferences will be loaded asynchronously
+    // For now, apply default theme and let the preference service update it
     const savedTheme = this.preferences.getPreference<ThemeMode>('theme', 'light') ?? 'light'
     console.log('[THEME] Loaded saved theme:', savedTheme)
     this.applyTheme(savedTheme)
+
+    // Subscribe to theme preference changes (useful for desktop app async loading)
+    setTimeout(() => {
+      const currentTheme = this.preferences.getPreference<ThemeMode>('theme', 'light') ?? 'light'
+      if (currentTheme !== savedTheme) {
+        console.log('[THEME] Theme updated after async load:', currentTheme)
+        this.applyTheme(currentTheme)
+      }
+    }, 100)
   }
 
   setTheme(theme: ThemeMode): void {

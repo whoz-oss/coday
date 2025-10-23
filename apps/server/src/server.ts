@@ -141,6 +141,26 @@ registerThreadRoutes(app, threadService, threadCodayManager, getUsername, codayO
 // Register message management routes
 registerMessageRoutes(app, threadCodayManager, getUsername)
 
+// Catch-all route for Angular client-side routing (MUST be after all API routes)
+// In production mode, serve index.html for any non-API routes
+// This allows Angular router to handle routes on page refresh
+if (process.env.BUILD_ENV !== 'development') {
+  const clientPath = process.env.CODAY_CLIENT_PATH
+    ? path.resolve(process.env.CODAY_CLIENT_PATH)
+    : path.resolve(__dirname, '../coday-client/browser')
+
+  // Use a middleware instead of route pattern to catch all remaining requests
+  app.use((req, res, _) => {
+    // API routes should have been handled above, but double-check to avoid masking real 404s
+    if (req.path.startsWith('/api') || req.path.startsWith('/events')) {
+      res.status(404).send('Not found')
+      return
+    }
+    debugLog('ROUTER', `Serving index.html for client route: ${req.path}`)
+    res.sendFile(path.join(clientPath, 'index.html'))
+  })
+}
+
 // Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null
 

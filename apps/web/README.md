@@ -1,124 +1,157 @@
-# Coday Web
+# Coday Web Package
 
-A lightweight runtime orchestrator for the Coday web interface.
+This package provides the web interface launcher for Coday, bundling both the client (Angular app) and server components into a single executable package.
 
 ## Architecture
 
-This package is a **thin wrapper** that coordinates the client and server packages at runtime. It does not bundle or build anything - it simply resolves the installed packages and starts the server with the correct client path.
+The web package acts as a thin orchestration layer:
 
-### How It Works
+```
+┌─────────────────────────────────────────┐
+│         coday-web (index.js)            │
+│  ┌───────────────────────────────────┐  │
+│  │ 1. Resolve client package path   │  │
+│  │ 2. Set CODAY_CLIENT_PATH env var │  │
+│  │ 3. Import and run server         │  │
+│  └───────────────────────────────────┘  │
+└─────────────────────────────────────────┘
+                    │
+        ┌───────────┴───────────┐
+        ▼                       ▼
+┌──────────────┐        ┌──────────────┐
+│ coday-server │        │ coday-client │
+│  (Express)   │───────▶│  (Angular)   │
+└──────────────┘        └──────────────┘
+```
 
-1. **Runtime Resolution**: When executed, `index.js` resolves the location of `@whoz-oss/coday-client` in node_modules
-2. **Environment Configuration**: Sets `CODAY_CLIENT_PATH` environment variable pointing to the client's browser build
-3. **Server Delegation**: Imports and executes `@whoz-oss/coday-server` which serves the client files
+## Usage Modes
 
-### Dependencies
+### Production Mode (Published Package)
 
-- `@whoz-oss/coday-client` - Angular application (static files)
-- `@whoz-oss/coday-server` - Express server with API endpoints
-
-## Usage
-
-### Via NPX (Recommended)
+Use the published npm package via npx:
 
 ```bash
+# Using the published package
+pnpm web
+
+# Or directly with npx
 npx @whoz-oss/coday-web --no_auth
 ```
 
-### Local Development
+In production mode:
+- The web launcher resolves the client package from node_modules
+- Server serves pre-built static files from the client package
+- Single process handles both server and client
 
-From the monorepo root:
+### Development Mode (Local Sources)
 
-```bash
-pnpm web:local
-```
-
-### Installed Globally
-
-```bash
-npm install -g @whoz-oss/coday-web
-coday-web --no_auth
-```
-
-## Command-Line Arguments
-
-All arguments are passed through to the server:
-
-- `--no_auth` - Disable authentication (use local username)
-- `--local` - Use local configuration
-- `--port=<number>` - Specify port (default: 3000)
-- `--config_dir=<path>` - Custom config directory
-
-## Development Notes
-
-### No Build Step
-
-Unlike traditional applications, this package requires **no build step**. The `index.js` file is the entry point and runs directly with Node.js.
-
-### Package Structure
-
-```
-apps/web/
-├── index.js          # Runtime launcher (executable)
-├── package.json      # Package metadata and dependencies
-├── project.json      # NX project configuration (minimal)
-└── README.md         # This file
-```
-
-### Testing Locally
-
-1. Ensure client and server are built:
-   ```bash
-   pnpm nx run client:build
-   pnpm nx run server:build
-   ```
-
-2. Run the web launcher:
-   ```bash
-   node apps/web/index.js --no_auth
-   ```
-
-3. The launcher will:
-   - Find the client build in `apps/client/dist/browser`
-   - Set the environment variable
-   - Start the server from `apps/server/dist/server.js`
-
-### Publishing
-
-The package is published as-is (no dist directory):
+For development with live reload and local sources:
 
 ```bash
-pnpm nx run web:nx-release-publish
+# Start both client and server in development mode
+pnpm web:dev
 ```
 
-This publishes the source directory containing:
-- `index.js` (marked as executable via package.json bin field)
-- `package.json` (with dependencies on client and server)
+This command:
+- Starts the Angular dev server on port 4200 (with HMR)
+- Starts the Express server on port 4100 (with tsx watch)
+- Server proxies non-API requests to Angular dev server
+- Changes to client or server code trigger automatic reloads
+
+**How it works in dev mode:**
+1. Client runs with Angular CLI dev server (localhost:4200)
+2. Server runs with tsx watch (localhost:4100)
+3. Server detects `BUILD_ENV=development` and proxies to Angular
+4. API routes (e.g., `/api/*`) are handled by the server
+5. All other routes are proxied to Angular for client-side routing
+
+## Development Workflow
+
+### Running Individual Services
+
+You can also run services separately for debugging:
+
+```bash
+# Run only the client (Angular dev server)
+pnpm client
+
+# Run only the server (Express with tsx watch)
+pnpm server
+```
+
+### Building for Production
+
+The web package depends on built client and server packages:
+
+```bash
+# Build all packages
+pnpm nx run-many --target=build --projects=client,server,web
+
+# Or build everything
+pnpm nx run-many --target=build --all
+```
+
+### Testing Changes
+
+When making changes to the web launcher:
+
+1. Modify `apps/web/index.js`
+2. Test with local server: `node apps/web/index.js --no_auth`
+3. Verify client resolution works correctly
+4. Check that server starts and serves the client
+
+## Environment Variables
+
+- `CODAY_CLIENT_PATH`: Set by the web launcher to tell server where client files are
+- `BUILD_ENV`: Set to `development` by server's serve target for dev mode
+- `PORT`: Override default server port (default: 3000 production, 4100 dev)
+
+## Package Dependencies
+
+```json
+{
+  "@whoz-oss/coday-client": "workspace:*",
+  "@whoz-oss/coday-server": "workspace:*"
+}
+```
+
+These use workspace protocol in development and resolve to specific versions when published.
 
 ## Troubleshooting
 
 ### "Could not resolve @whoz-oss/coday-client package"
 
-Ensure dependencies are installed:
+This means the client package isn't built or installed:
+
+```bash
+# In development
+pnpm install
+pnpm nx run client:build
+
+# Or use the web:dev command which doesn't require builds
+pnpm web:dev
+```
+
+### "Failed to start server"
+
+Check that all dependencies are installed:
+
 ```bash
 pnpm install
 ```
 
-### "Client package found but browser directory is missing"
+### Development mode not proxying correctly
 
-The client package must be built and include a `browser/` directory with `index.html`. Check the client build output.
+Ensure both services are running:
+1. Angular dev server should be on port 4200
+2. Express server should be on port 4100
+3. Access the app via http://localhost:4100
 
-### Server fails to start
+## Quick Reference
 
-Check that:
-1. The server package is installed
-2. Port 3000 (or specified port) is available
-3. You have necessary permissions
-
-## Architecture Benefits
-
-✅ **Simple**: No build complexity, just runtime coordination  
-✅ **Maintainable**: Single source of truth for client and server  
-✅ **Flexible**: Works with workspace protocol (dev) or published packages (prod)  
-✅ **Debuggable**: Clear separation of concerns, easy to trace issues  
-✅ **Standard**: Uses normal npm package resolution
+| Command | Mode | Ports | Use Case |
+|---------|------|-------|----------|
+| `pnpm web` | Production | 3000 | Testing published package |
+| `pnpm web:dev` | Development | 4100→4200 | Active development |
+| `pnpm client` | Development | 4200 | Client-only work |
+| `pnpm server` | Development | 4100 | Server-only work |
