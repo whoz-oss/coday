@@ -96,12 +96,6 @@
         ],
         "cwd": "{projectRoot}"
       }
-    },
-    "nx-release-publish": {
-      "dependsOn": ["build-all"],
-      "options": {
-        "packageRoot": "{projectRoot}"
-      }
     }
   }
 }
