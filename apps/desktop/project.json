@@ -59,9 +59,12 @@
     },
     "build-all": {
       "executor": "nx:run-commands",
-      "dependsOn": ["build", "build-preload"],
       "options": {
         "commands": [
+          "rm -rf apps/desktop/dist",
+          "mkdir -p apps/desktop/dist",
+          "nx run desktop:build",
+          "nx run desktop:build-preload",
           "cp apps/desktop/src/loader.html apps/desktop/dist/loader.html",
           "cp apps/desktop/assets/icon.png apps/desktop/dist/icon.png",
           "echo Desktop app built successfully"
