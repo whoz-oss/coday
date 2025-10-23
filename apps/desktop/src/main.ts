@@ -1,5 +1,5 @@
 import type { BrowserWindow as BrowserWindowType, App, IpcMainInvokeEvent } from 'electron'
-import type { ChildProcess } from 'child_process'
+import { execSync, type ChildProcess } from 'child_process'
 
 const { app, BrowserWindow, dialog, ipcMain } = require('electron') as {
   app: App
@@ -193,6 +193,13 @@ async function startCodayServer(): Promise<void> {
 
     // Set up environment
     const env = { ...process.env }
+    try {
+      const userPath = execSync('/usr/bin/env echo $PATH', { shell: '/bin/zsh' }).toString().trim()
+      env['PATH'] = `${userPath}:/usr/local/bin:/opt/homebrew/bin:${process.env['PATH']}`
+    } catch {
+      env['PATH'] = '/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'
+    }
+
     env['NO_AUTH'] = 'true'
 
     // Start the server

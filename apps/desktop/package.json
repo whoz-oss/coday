@@ -42,9 +42,9 @@
       "gatekeeperAssess": false,
       "hardenedRuntime": true,
       "icon": "assets/icon.jpg",
+      "identity": "BIZNET.IO (7DPGXLTDQS)",
       "target": [
-        "dmg",
-        "zip"
+        "dmg"
       ]
     },
     "productName": "Coday",
