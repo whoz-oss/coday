@@ -135,59 +135,51 @@ async function startCodayServer(): Promise<void> {
     // Determine if we're in development or production
     const isDev = process.env['NODE_ENV'] === 'development' || !app.isPackaged
 
-    let command: string
-    let args: string[]
-
     if (isDev) {
-      // Development: use npx to run the web package from workspace
-      console.log('Development mode: checking for npx')
+      // Development: connect to local server on port 4100
+      console.log('Development mode: connecting to local server on port 4100')
+      serverUrl = 'http://localhost:4100'
 
-      const npxPath = findNpxExecutable()
-      if (!npxPath) {
-        const error = new Error(
-          'npx not found. Please ensure Node.js and npm are properly installed.\n\n' +
-            'You can install Node.js from https://nodejs.org/ or use a package manager like Homebrew.\n\n' +
-            'After installation, verify with: npx --version'
-        )
-        ;(error as any).userFacing = true
-        throw error
-      }
-
-      command = npxPath
-      args = ['--yes', '@whoz-oss/coday-web', '--no_auth']
-    } else {
-      // Production: find node and run the installed package
-      console.log('Production mode: finding node executable')
-
-      const nodePath = findNodeExecutable()
-
-      if (!nodePath) {
-        const error = new Error(
-          'Node.js not found. Please install Node.js from https://nodejs.org/ or use a package manager like Homebrew.'
-        )
-        ;(error as any).userFacing = true
-        throw error
-      }
-
-      console.log('Using node at:', nodePath)
-
-      // Check for npx
-      const npxPath = findNpxExecutable()
-
-      if (!npxPath) {
-        const error = new Error(
-          'npx not found. Please ensure Node.js and npm are properly installed.\n\n' +
-            'You can install Node.js from https://nodejs.org/ or use a package manager like Homebrew.\n\n' +
-            'After installation, verify with: npx --version'
-        )
-        ;(error as any).userFacing = true
-        throw error
-      }
-
-      console.log('Found npx at:', npxPath)
-      command = npxPath
-      args = ['--yes', '@whoz-oss/coday-web', '--no_auth']
+      // Wait a bit to ensure the server is ready, then resolve
+      return new Promise<void>((resolve) => {
+        setTimeout(() => {
+          console.log('Using development server at:', serverUrl)
+          resolve()
+        }, 500)
+      })
     }
+
+    // Production: find node and run the installed package
+    console.log('Production mode: finding node executable')
+
+    const nodePath = findNodeExecutable()
+
+    if (!nodePath) {
+      const error = new Error(
+        'Node.js not found. Please install Node.js from https://nodejs.org/ or use a package manager like Homebrew.'
+      )
+      ;(error as any).userFacing = true
+      throw error
+    }
+
+    console.log('Using node at:', nodePath)
+
+    // Check for npx
+    const npxPath = findNpxExecutable()
+
+    if (!npxPath) {
+      const error = new Error(
+        'npx not found. Please ensure Node.js and npm are properly installed.\n\n' +
+          'You can install Node.js from https://nodejs.org/ or use a package manager like Homebrew.\n\n' +
+          'After installation, verify with: npx --version'
+      )
+      ;(error as any).userFacing = true
+      throw error
+    }
+
+    console.log('Found npx at:', npxPath)
+    const command = npxPath
+    const args = ['--yes', '@whoz-oss/coday-web', '--no_auth']
 
     console.log('Spawning:', command, args.join(' '))
 
@@ -206,7 +198,7 @@ async function startCodayServer(): Promise<void> {
     serverProcess = spawn(command, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env,
-      shell: isDev, // Only use shell in development
+      shell: false,
     })
 
     return new Promise<void>((resolve, reject) => {
@@ -258,12 +250,6 @@ async function startCodayServer(): Promise<void> {
           error.userFacing = true
           reject(error)
         }
-        if (!serverProcess) {
-          console.error('Server process does not exists')
-          const error: any = new Error('Failed to find server process.')
-          error.userFacing = true
-          reject(error)
-        }
         if (!serverReady) {
           console.error('Server start timeout reached - could not detect server URL')
           const error: any = new Error(
@@ -272,7 +258,7 @@ async function startCodayServer(): Promise<void> {
           error.userFacing = true
           reject(error)
         }
-      }, 10000) // 30 seconds timeout for npx to download and start
+      }, 10000) // 10 seconds timeout for npx to download and start
     })
   } catch (error) {
     throw error
