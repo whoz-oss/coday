@@ -1,3 +1,13 @@
+## 0.35.1 (2025-10-26)
+
+### 🩹 Fixes
+
+- desktop release version management ([744f619](https://github.com/whoz-oss/coday/commit/744f619))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.35.0 (2025-10-26)
 
 ### 🚀 Features
