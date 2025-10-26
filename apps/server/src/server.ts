@@ -1,5 +1,6 @@
 import express from 'express'
 import path from 'path'
+import fs from 'fs'
 import { ThreadCodayManager } from './thread-coday-manager'
 
 import { parseCodayOptions } from '@coday/options'
@@ -94,6 +95,20 @@ if (process.env.BUILD_ENV === 'development') {
     debugLog('INIT', 'Using client path from CODAY_CLIENT_PATH environment variable')
   }
 
+  // Verify client path exists
+  if (!fs.existsSync(clientPath)) {
+    console.error(`ERROR: Client path does not exist: ${clientPath}`)
+    console.error('Please build the client first with: pnpm nx run client:build')
+  } else {
+    const indexPath = path.join(clientPath, 'index.html')
+    if (!fs.existsSync(indexPath)) {
+      console.error(`ERROR: index.html not found at: ${indexPath}`)
+      console.error('Client build may be incomplete. Try rebuilding with: pnpm nx run client:build')
+    } else {
+      debugLog('INIT', `Verified index.html exists at ${indexPath}`)
+    }
+  }
+
   // Serve static files from the Angular build output
   app.use(express.static(clientPath))
 }
@@ -150,14 +165,20 @@ if (process.env.BUILD_ENV !== 'development') {
     : path.resolve(__dirname, '../coday-client/browser')
 
   // Use a middleware instead of route pattern to catch all remaining requests
-  app.use((req, res, _) => {
+  app.use((req, res, next) => {
     // API routes should have been handled above, but double-check to avoid masking real 404s
     if (req.path.startsWith('/api') || req.path.startsWith('/events')) {
       res.status(404).send('Not found')
       return
     }
     debugLog('ROUTER', `Serving index.html for client route: ${req.path}`)
-    res.sendFile(path.join(clientPath, 'index.html'))
+    const indexPath = path.join(clientPath, 'index.html')
+    res.sendFile(indexPath, (err) => {
+      if (err) {
+        debugLog('ERROR', `Failed to serve index.html from ${indexPath}:`, err)
+        next(err)
+      }
+    })
   })
 }
 
@@ -165,9 +186,20 @@ if (process.env.BUILD_ENV !== 'development') {
 let cleanupService: ThreadCleanupService | null = null
 
 // Error handling middleware
-app.use((err: any, _: express.Request, res: express.Response, __: express.NextFunction) => {
+app.use((err: any, req: express.Request, res: express.Response, _: express.NextFunction) => {
+  debugLog('ERROR', `Request error on ${req.method} ${req.path}:`, err.message)
   console.error(err.stack)
-  res.status(500).send('Something went wrong!')
+
+  // Provide more detailed error in development
+  if (process.env.BUILD_ENV === 'development') {
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: err.message,
+      stack: err.stack,
+    })
+  } else {
+    res.status(500).send('Something went wrong!')
+  }
 })
 
 // Use PORT_PROMISE to listen on the available port
