@@ -18,6 +18,47 @@ let serverUrl: string | null | undefined = null
 // Storage file path
 const STORAGE_FILE = join(app.getPath('userData'), 'preferences.json')
 
+// Log file path for packaged app
+const LOG_FILE = join(app.getPath('userData'), 'coday-desktop.log')
+
+/**
+ * Enhanced logging that writes to both console and log file
+ */
+function log(level: 'INFO' | 'ERROR' | 'WARN', ...args: any[]): void {
+  const timestamp = new Date().toISOString()
+  const message = args.map((arg) => (typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg))).join(' ')
+  const logLine = `[${timestamp}] [${level}] ${message}\n`
+
+  // Always write to console
+  if (level === 'ERROR') {
+    console.error(...args)
+  } else if (level === 'WARN') {
+    console.warn(...args)
+  } else {
+    console.log(...args)
+  }
+
+  // Write to log file in packaged app
+  if (app.isPackaged) {
+    try {
+      fs.appendFileSync(LOG_FILE, logLine, 'utf8')
+    } catch (error) {
+      console.error('Failed to write to log file:', error)
+    }
+  }
+}
+
+// Initialize log file
+if (app.isPackaged) {
+  try {
+    const logHeader = `\n\n${'='.repeat(80)}\nCoday Desktop Log - Started at ${new Date().toISOString()}\n${'='.repeat(80)}\n`
+    fs.appendFileSync(LOG_FILE, logHeader, 'utf8')
+    log('INFO', 'Log file initialized at:', LOG_FILE)
+  } catch (error) {
+    console.error('Failed to initialize log file:', error)
+  }
+}
+
 /**
  * Find node executable by checking common installation locations
  */
@@ -129,28 +170,28 @@ function findNpxExecutable(): string | null {
  */
 async function startCodayServer(): Promise<void> {
   try {
-    console.log('Starting Coday server...')
-    console.log('App packaged:', app.isPackaged)
+    log('INFO', 'Starting Coday server...')
+    log('INFO', 'App packaged:', app.isPackaged)
 
     // Determine if we're in development or production
     const isDev = process.env['NODE_ENV'] === 'development' || !app.isPackaged
 
     if (isDev) {
       // Development: connect to local server on port 4100
-      console.log('Development mode: connecting to local server on port 4100')
+      log('INFO', 'Development mode: connecting to local server on port 4100')
       serverUrl = 'http://localhost:4100'
 
       // Wait a bit to ensure the server is ready, then resolve
       return new Promise<void>((resolve) => {
         setTimeout(() => {
-          console.log('Using development server at:', serverUrl)
+          log('INFO', 'Using development server at:', serverUrl)
           resolve()
         }, 500)
       })
     }
 
     // Production: find node and run the installed package
-    console.log('Production mode: finding node executable')
+    log('INFO', 'Production mode: finding node executable')
 
     const nodePath = findNodeExecutable()
 
@@ -162,7 +203,7 @@ async function startCodayServer(): Promise<void> {
       throw error
     }
 
-    console.log('Using node at:', nodePath)
+    log('INFO', 'Using node at:', nodePath)
 
     // Check for npx
     const npxPath = findNpxExecutable()
@@ -177,11 +218,11 @@ async function startCodayServer(): Promise<void> {
       throw error
     }
 
-    console.log('Found npx at:', npxPath)
+    log('INFO', 'Found npx at:', npxPath)
     const command = npxPath
     const args = ['--yes', '@whoz-oss/coday-web', '--no_auth']
 
-    console.log('Spawning:', command, args.join(' '))
+    log('INFO', 'Spawning:', command, args.join(' '))
 
     // Set up environment
     const env = { ...process.env }
@@ -207,13 +248,13 @@ async function startCodayServer(): Promise<void> {
       if (serverProcess!.stdout) {
         serverProcess!.stdout.on('data', (data: Buffer) => {
           const output = data.toString()
-          console.log('[Server]:', output)
+          log('INFO', '[Server]:', output)
 
           // Look for "Server is running on http://localhost:xxxx"
           const serverUrlMatch = output.match(/Server is running on (http:\/\/localhost:\d+)/)
           if (serverUrlMatch) {
             serverUrl = serverUrlMatch[1]
-            console.log('Detected server URL:', serverUrl)
+            log('INFO', 'Detected server URL:', serverUrl)
 
             if (!serverReady) {
               serverReady = true
@@ -226,32 +267,32 @@ async function startCodayServer(): Promise<void> {
 
       if (serverProcess!.stderr) {
         serverProcess!.stderr.on('data', (data: Buffer) => {
-          console.error('[Server Error]:', data.toString())
+          log('ERROR', '[Server Error]:', data.toString())
         })
       }
 
       serverProcess!.on('error', (error: Error) => {
-        console.error('Failed to start server:', error)
+        log('ERROR', 'Failed to start server:', error)
         const wrappedError: any = new Error(`Failed to start Coday server: ${error.message}`)
         wrappedError.userFacing = true
         reject(wrappedError)
       })
 
       serverProcess!.on('exit', (code: number | null) => {
-        console.log('Server process exited with code:', code)
+        log('INFO', 'Server process exited with code:', code)
         serverProcess = null
       })
 
       // Fallback timeout in case we don't detect server ready message
       setTimeout(() => {
         if (!serverProcess) {
-          console.error('Server process does not exists')
+          log('ERROR', 'Server process does not exists')
           const error: any = new Error('Failed to find server process.')
           error.userFacing = true
           reject(error)
         }
         if (!serverReady) {
-          console.error('Server start timeout reached - could not detect server URL')
+          log('ERROR', 'Server start timeout reached - could not detect server URL')
           const error: any = new Error(
             'Failed to start server: timeout waiting for server URL. The server may be taking too long to start.'
           )
@@ -270,7 +311,7 @@ async function startCodayServer(): Promise<void> {
  */
 function stopCodayServer(): void {
   if (serverProcess) {
-    console.log('Stopping Coday server...')
+    log('INFO', 'Stopping Coday server...')
     serverProcess.kill()
     serverProcess = null
   }
@@ -306,7 +347,7 @@ function createLoadingWindow(): BrowserWindowType {
  */
 function createWindow(): void {
   if (!serverUrl) {
-    console.error('Cannot create window: server URL not initialized')
+    log('ERROR', 'Cannot create window: server URL not initialized')
     return
   }
 
@@ -324,6 +365,38 @@ function createWindow(): void {
     },
     title: 'Coday Desktop',
     show: false, // Don't show until ready
+  })
+
+  // Prevent navigation away from the Coday server
+  // This fixes the reload issue where Cmd+R would show "Something went wrong"
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    // Allow navigation within the same origin (server URL)
+    if (!url.startsWith(serverUrl!)) {
+      log('WARN', 'Blocked navigation to external URL:', url)
+      event.preventDefault()
+    }
+  })
+
+  // Handle failed loads by reloading the correct URL
+  mainWindow.webContents.on('did-fail-load', (_, errorCode, errorDescription, validatedURL) => {
+    log('ERROR', 'Failed to load:', validatedURL, 'Error:', errorCode, errorDescription)
+    // Reload the main server URL if load fails
+    if (mainWindow && serverUrl) {
+      log('INFO', 'Reloading server URL:', serverUrl)
+      void mainWindow.loadURL(serverUrl)
+    }
+  })
+
+  // Intercept reload attempts to ensure we reload the root URL
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    // Cmd+R or F5 reload
+    if ((input.meta && input.key.toLowerCase() === 'r') || input.key === 'F5') {
+      if (input.type === 'keyDown' && mainWindow && serverUrl) {
+        event.preventDefault()
+        log('INFO', 'Intercepted reload, reloading root URL:', serverUrl)
+        void mainWindow.loadURL(serverUrl)
+      }
+    }
   })
 
   // Load the Coday web interface
@@ -367,7 +440,7 @@ function setupStorageHandlers(): void {
       const storage = JSON.parse(data)
       return storage[key] ?? null
     } catch (error) {
-      console.error('Failed to read storage:', error)
+      log('ERROR', 'Failed to read storage:', error)
       return null
     }
   })
@@ -386,7 +459,7 @@ function setupStorageHandlers(): void {
       fs.writeFileSync(STORAGE_FILE, JSON.stringify(storage, null, 2), 'utf8')
       return true
     } catch (error) {
-      console.error('Failed to write storage:', error)
+      log('ERROR', 'Failed to write storage:', error)
       return false
     }
   })
@@ -404,7 +477,7 @@ function setupStorageHandlers(): void {
       fs.writeFileSync(STORAGE_FILE, JSON.stringify(storage, null, 2), 'utf8')
       return true
     } catch (error) {
-      console.error('Failed to remove from storage:', error)
+      log('ERROR', 'Failed to remove from storage:', error)
       return false
     }
   })
@@ -417,12 +490,23 @@ function setupStorageHandlers(): void {
       }
       return true
     } catch (error) {
-      console.error('Failed to clear storage:', error)
+      log('ERROR', 'Failed to clear storage:', error)
       return false
     }
   })
 
-  console.log('Storage handlers initialized')
+  // Add handler to get log file path
+  ipcMain.handle('logs:getPath', (): string => {
+    return LOG_FILE
+  })
+
+  // Add handler to open logs folder
+  ipcMain.handle('logs:openFolder', (): void => {
+    const { shell } = require('electron') as typeof import('electron')
+    shell.showItemInFolder(LOG_FILE)
+  })
+
+  log('INFO', 'Storage handlers initialized')
 }
 
 /**
@@ -432,7 +516,7 @@ async function initialize(): Promise<void> {
   let loadingWindow: BrowserWindowType | null = null
 
   try {
-    console.log('Initializing Coday Desktop...')
+    log('INFO', 'Initializing Coday Desktop...')
 
     // Setup storage handlers
     setupStorageHandlers()
@@ -456,7 +540,7 @@ async function initialize(): Promise<void> {
       })
     }
   } catch (error) {
-    console.error('Failed to initialize application:', error)
+    log('ERROR', 'Failed to initialize application:', error)
     if (loadingWindow) {
       loadingWindow.close()
     }
@@ -500,7 +584,7 @@ app.on('before-quit', () => {
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error: Error) => {
-  console.error('Uncaught exception:', error)
+  log('ERROR', 'Uncaught exception:', error)
   showErrorDialog(
     'Coday Desktop - Fatal Error',
     `A fatal error occurred:\n\n${error.message}\n\nThe application will now close.`

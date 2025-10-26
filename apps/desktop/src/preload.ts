@@ -23,13 +23,19 @@ interface CodayDesktopStorageAPI {
   clear(): Promise<boolean>
 }
 
+interface CodayDesktopLogsAPI {
+  getPath(): Promise<string>
+  openFolder(): Promise<void>
+}
+
 interface CodayDesktopAPI {
   platform: NodeJS.Platform
   version: string
   storage: CodayDesktopStorageAPI
+  logs: CodayDesktopLogsAPI
 }
 
-// Expose app version, platform info, and storage API
+// Expose app version, platform info, storage API, and logs API
 contextBridge.exposeInMainWorld('codayDesktop', {
   platform: process.platform,
   version: process.env['npm_package_version'] ?? 'unknown',
@@ -39,6 +45,10 @@ contextBridge.exposeInMainWorld('codayDesktop', {
     remove: (key: string) => ipcRenderer.invoke('storage:remove', key),
     clear: () => ipcRenderer.invoke('storage:clear'),
   } as CodayDesktopStorageAPI,
+  logs: {
+    getPath: () => ipcRenderer.invoke('logs:getPath'),
+    openFolder: () => ipcRenderer.invoke('logs:openFolder'),
+  } as CodayDesktopLogsAPI,
 } as CodayDesktopAPI)
 
 console.log('Coday Desktop preload script loaded')

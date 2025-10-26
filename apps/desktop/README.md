@@ -50,11 +50,14 @@ The desktop app consists of:
    - Starts the Coday web server as a child process on the selected port
    - Creates and manages the browser window
    - Handles cleanup on application exit
+   - Comprehensive logging to file for troubleshooting
+   - Intercepts reload attempts to prevent navigation errors
 
 2. **Preload Script** (`src/preload.ts`):
    - Runs in privileged context before web content loads
-   - Can expose safe APIs to the renderer via contextBridge
-   - Currently minimal but extensible for future needs
+   - Exposes safe APIs to the renderer via contextBridge
+   - Provides storage API for persistent preferences
+   - Provides logs API for accessing log files
 
 3. **Dependencies**:
    - `@whoz-oss/coday-web`: The bundled web interface and server
@@ -79,10 +82,56 @@ The desktop app automatically finds an available port to avoid conflicts:
 - If the port is in use, automatically tries the next port
 - Both server and client are configured to use the same port
 
+## Logging
+
+The desktop app includes comprehensive logging to help troubleshoot issues:
+
+- **Log Location**:
+  - macOS: `~/Library/Application Support/Coday/coday-desktop.log`
+  - Linux: `~/.config/Coday/coday-desktop.log`
+  - Windows: `%APPDATA%\Coday\coday-desktop.log`
+
+- **What's Logged**: Startup, server output, navigation events, errors, and shutdown
+
+See [LOGGING.md](./LOGGING.md) for detailed information.
+
+## Reload Behavior
+
+The desktop app handles page reloads (Cmd+R / F5) specially:
+- Intercepts reload attempts to always reload from the root URL
+- Prevents "Something went wrong" errors from appearing
+- Automatically recovers from failed page loads
+- Blocks navigation away from the Coday server
+
+This ensures a smooth experience even when reloading from deep routes.
+
 ## Environment Variables
 
 - `NODE_ENV=development`: Enables DevTools
 - `PORT`: Server port (set automatically by the desktop app)
+
+## Troubleshooting
+
+### App Won't Start
+
+1. Check the log file for error messages
+2. Ensure Node.js is installed and accessible
+3. Verify npx is available: `npx --version`
+
+### "Something Went Wrong" Error
+
+This should no longer occur with the reload fix. If you see this:
+1. Check the logs for details
+2. Try quitting and restarting the app
+
+### Server Issues
+
+The logs will show:
+- Node.js and npx paths being used
+- Server startup output
+- Any server errors
+
+Use `tail -f ~/Library/Application\ Support/Coday/coday-desktop.log` to easily access and monitor logs.
 
 ## Future Enhancements
 
