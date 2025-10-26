@@ -1,3 +1,13 @@
+## 0.35.5 (2025-10-26)
+
+### 🩹 Fixes
+
+- production routing #2 ([#2](https://github.com/whoz-oss/coday/issues/2))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.35.4 (2025-10-26)
 
 ### 🩹 Fixes
