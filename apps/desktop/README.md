@@ -95,6 +95,16 @@ The desktop app includes comprehensive logging to help troubleshoot issues:
 
 See [LOGGING.md](./LOGGING.md) for detailed information.
 
+## Window Lifecycle (macOS)
+
+The desktop app follows standard macOS behavior for window management:
+- **Closing the window** (Cmd+W or red X) hides it instead of destroying it
+- **Clicking the dock icon** shows the hidden window instantly
+- **Quitting the app** (Cmd+Q) properly stops the server and exits
+- **Server health checks** ensure the server is running when recreating windows
+
+This provides a native macOS experience and prevents the "blank page" issue when reopening.
+
 ## Reload Behavior
 
 The desktop app handles page reloads (Cmd+R / F5) specially:
