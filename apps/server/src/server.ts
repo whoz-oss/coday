@@ -160,9 +160,13 @@ registerMessageRoutes(app, threadCodayManager, getUsername)
 // In production mode, serve index.html for any non-API routes
 // This allows Angular router to handle routes on page refresh
 if (process.env.BUILD_ENV !== 'development') {
+  // Reuse the clientPath that was already resolved and verified at startup
   const clientPath = process.env.CODAY_CLIENT_PATH
     ? path.resolve(process.env.CODAY_CLIENT_PATH)
     : path.resolve(__dirname, '../coday-client/browser')
+
+  const indexPath = path.resolve(clientPath, 'index.html')
+  debugLog('INIT', `Catch-all route will serve: ${indexPath}`)
 
   // Use a middleware instead of route pattern to catch all remaining requests
   app.use((req, res, next) => {
@@ -172,11 +176,15 @@ if (process.env.BUILD_ENV !== 'development') {
       return
     }
     debugLog('ROUTER', `Serving index.html for client route: ${req.path}`)
-    const indexPath = path.join(clientPath, 'index.html')
-    res.sendFile(indexPath, (err) => {
+
+    // Read and send the file manually to avoid Express sendFile issues in bundled code
+    fs.readFile(indexPath, 'utf8', (err, data) => {
       if (err) {
-        debugLog('ERROR', `Failed to serve index.html from ${indexPath}:`, err)
+        debugLog('ERROR', `Failed to read index.html from ${indexPath}:`, err)
+        debugLog('ERROR', `File exists check: ${fs.existsSync(indexPath)}`)
         next(err)
+      } else {
+        res.type('html').send(data)
       }
     })
   })
