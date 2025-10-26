@@ -1,0 +1,104 @@
+{
+  "name": "desktop",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "{projectRoot}",
+  "tags": ["desktop-bundle"],
+  "targets": {
+    "build": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "assets": [
+          {
+            "glob": "**/*",
+            "input": "{projectRoot}/assets",
+            "output": "."
+          },
+          {
+            "glob": "loader.html",
+            "input": "{projectRoot}/src",
+            "output": "."
+          }
+        ],
+        "deleteOutputPath": false,
+        "external": ["electron"],
+        "format": ["cjs"],
+        "main": "{projectRoot}/src/main.ts",
+        "outputFileName": "main.js",
+        "outputPath": "{projectRoot}/dist",
+        "platform": "node",
+        "thirdParty": true,
+        "tsConfig": "{projectRoot}/tsconfig.app.json",
+        "esbuildOptions": {
+          "outExtension": {
+            ".js": ".js"
+          }
+        }
+      }
+    },
+    "build-preload": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "deleteOutputPath": false,
+        "external": ["electron"],
+        "format": ["cjs"],
+        "main": "{projectRoot}/src/preload.ts",
+        "outputFileName": "preload.js",
+        "outputPath": "{projectRoot}/dist",
+        "platform": "node",
+        "thirdParty": true,
+        "tsConfig": "{projectRoot}/tsconfig.app.json",
+        "esbuildOptions": {
+          "outExtension": {
+            ".js": ".js"
+          }
+        }
+      }
+    },
+    "build-all": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "rm -rf apps/desktop/dist",
+          "mkdir -p apps/desktop/dist",
+          "nx run desktop:build",
+          "nx run desktop:build-preload",
+          "cp apps/desktop/src/loader.html apps/desktop/dist/loader.html",
+          "cp apps/desktop/assets/icon.png apps/desktop/dist/icon.png",
+          "echo Desktop app built successfully"
+        ],
+        "parallel": false
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build-all"],
+      "options": {
+        "commands": ["electron apps/desktop/dist/main.js"],
+        "parallel": false
+      }
+    },
+    "package": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build-all"],
+      "options": {
+        "commands": [
+          "electron-builder --dir"
+        ],
+        "cwd": "{projectRoot}"
+      }
+    },
+    "package-dist": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build-all"],
+      "options": {
+        "commands": [
+          "electron-builder"
+        ],
+        "cwd": "{projectRoot}"
+      }
+    }
+  }
+}

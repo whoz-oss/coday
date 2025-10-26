@@ -58,7 +58,7 @@ export class ProjectSelectionComponent {
       )
       .subscribe((selection) => {
         console.log(`🐼 navigate to ${selection.name}`)
-        this.router.navigate(['/project', selection.name])
+        this.router.navigate(['project', selection.name])
       })
   }
 
