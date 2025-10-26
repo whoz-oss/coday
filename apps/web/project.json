@@ -14,6 +14,16 @@
         "cwd": "{projectRoot}"
       }
     },
+    "serve:dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "nx run client:serve",
+          "nx run server:serve"
+        ],
+        "parallel": true
+      }
+    },
     "nx-release-publish": {
       "dependsOn": [],
       "options": {

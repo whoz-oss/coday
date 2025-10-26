@@ -51,7 +51,7 @@ export class ThreadSelectorComponent {
     this.threadStateService.selectThread(threadId)
 
     // navigate to `/project/:projectName/thread/:threadId
-    this.router.navigate(['/project', this.currentProject()?.name, 'thread', threadId])
+    this.router.navigate(['project', this.currentProject()?.name, 'thread', threadId])
   }
 
   /**

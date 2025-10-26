@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUncheckedIndexedAccess": true,
+    "outDir": "../../dist/out-tsc",
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2021",
+    "types": ["node"]
+  },
+  "exclude": ["jest.config.ts", "src/**/*.spec.ts", "src/**/*.test.ts", "node_modules", "tmp"],
+  "extends": "../../tsconfig.base.json",
+  "files": [],
+  "include": ["src/**/*.ts"]
+}
