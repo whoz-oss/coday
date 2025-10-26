@@ -1,3 +1,13 @@
+## 0.35.0 (2025-10-26)
+
+### 🚀 Features
+
+- add electron ([#283](https://github.com/whoz-oss/coday/pull/283))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.34.2 (2025-10-22)
 
 ### 🩹 Fixes
