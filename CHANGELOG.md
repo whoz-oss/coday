@@ -1,3 +1,13 @@
+## 0.35.4 (2025-10-26)
+
+### 🩹 Fixes
+
+- production routing ([609acc6](https://github.com/whoz-oss/coday/commit/609acc6))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.35.3 (2025-10-26)
 
 ### 🩹 Fixes
