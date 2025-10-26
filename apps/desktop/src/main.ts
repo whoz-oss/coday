@@ -2,7 +2,7 @@ import type { BrowserWindow as BrowserWindowType, App, IpcMainInvokeEvent } from
 import { execSync, type ChildProcess } from 'child_process'
 
 const { app, BrowserWindow, dialog, ipcMain } = require('electron') as {
-  app: App
+  app: App & { isQuitting?: boolean }
   BrowserWindow: typeof import('electron').BrowserWindow
   dialog: typeof import('electron').dialog
   ipcMain: typeof import('electron').ipcMain
@@ -343,6 +343,41 @@ function createLoadingWindow(): BrowserWindowType {
 }
 
 /**
+ * Check if server is still responsive
+ */
+async function isServerResponsive(): Promise<boolean> {
+  if (!serverUrl) return false
+
+  try {
+    const http = require('http') as typeof import('http')
+    const url = new URL(serverUrl)
+
+    return new Promise<boolean>((resolve) => {
+      const req = http.get(
+        {
+          hostname: url.hostname,
+          port: url.port,
+          path: '/api/health',
+          timeout: 2000,
+        },
+        (res) => {
+          resolve(res.statusCode === 200 || res.statusCode === 404) // 404 is ok, means server is up
+        }
+      )
+
+      req.on('error', () => resolve(false))
+      req.on('timeout', () => {
+        req.destroy()
+        resolve(false)
+      })
+    })
+  } catch (error) {
+    log('ERROR', 'Error checking server responsiveness:', error)
+    return false
+  }
+}
+
+/**
  * Create the main Electron window
  */
 function createWindow(): void {
@@ -350,6 +385,8 @@ function createWindow(): void {
     log('ERROR', 'Cannot create window: server URL not initialized')
     return
   }
+
+  log('INFO', 'Creating main window with server URL:', serverUrl)
 
   const iconPath = join(__dirname, 'icon.png')
 
@@ -415,7 +452,18 @@ function createWindow(): void {
   }
 
   mainWindow.on('closed', () => {
+    log('INFO', 'Main window closed')
     mainWindow = null
+  })
+
+  // On macOS, prevent the window from actually closing, just hide it
+  // This prevents the need to recreate the window and avoids the blank page issue
+  mainWindow.on('close', (event) => {
+    if (process.platform === 'darwin' && !app.isQuitting) {
+      event.preventDefault()
+      mainWindow?.hide()
+      log('INFO', 'Window hidden (not closed) on macOS')
+    }
   })
 }
 
@@ -566,19 +614,47 @@ async function initialize(): Promise<void> {
 void app.whenReady().then(() => void initialize())
 
 app.on('window-all-closed', () => {
-  stopCodayServer()
+  // On macOS, don't quit when all windows are closed
   if (process.platform !== 'darwin') {
+    stopCodayServer()
     app.quit()
   }
 })
 
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow()
+app.on('activate', async () => {
+  log('INFO', 'App activated')
+
+  // On macOS, show the window if it exists but is hidden
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore()
+    }
+    mainWindow.show()
+    log('INFO', 'Showing existing window')
+  } else if (serverUrl && serverProcess) {
+    // Window was destroyed but server is still running, check if server is responsive
+    log('INFO', 'Checking if server is still responsive...')
+    const isResponsive = await isServerResponsive()
+
+    if (isResponsive) {
+      log('INFO', 'Server is responsive, recreating window')
+      createWindow()
+    } else {
+      log('WARN', 'Server not responsive, reinitializing')
+      stopCodayServer()
+      serverUrl = null
+      void initialize()
+    }
+  } else {
+    // No window and no server, need to reinitialize
+    log('INFO', 'No window or server, reinitializing')
+    void initialize()
   }
 })
 
 app.on('before-quit', () => {
+  log('INFO', 'App quitting, stopping server')
+  app.isQuitting = true
   stopCodayServer()
 })
 
