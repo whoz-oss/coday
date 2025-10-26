@@ -104,8 +104,8 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
         run: |
           npx nx release --yes
-          # Capture the new version for desktop build
-          NEW_VERSION=$(node -p "require('./package.json').version")
+          # Capture the new version for desktop build from client package.json
+          NEW_VERSION=$(node -p "require('./apps/client/package.json').version")
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
   # Job 3: Build and upload desktop app
