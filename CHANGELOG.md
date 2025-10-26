@@ -1,3 +1,13 @@
+## 0.35.2 (2025-10-26)
+
+### 🩹 Fixes
+
+- tentative desktop routing fix ([be31243](https://github.com/whoz-oss/coday/commit/be31243))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.35.1 (2025-10-26)
 
 ### 🩹 Fixes
