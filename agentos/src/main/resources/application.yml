@@ -6,3 +6,12 @@ spring:
       api-key: ${OPENAI_API_KEY}
     anthropic:
       api-key: ${ANTHROPIC_API_KEY}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+    jmx:
+      exposure:
+        include: "*"
