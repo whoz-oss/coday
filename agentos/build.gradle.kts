@@ -28,9 +28,11 @@ dependencies {
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("org.springframework.ai:spring-ai-starter-model-anthropic")
 	implementation("org.springframework.ai:spring-ai-starter-model-openai")
+	implementation("org.springframework.ai:spring-ai-starter-mcp-client")
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
 	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+	developmentOnly("org.springframework.boot:spring-boot-devtools")
 }
 
 dependencyManagement {
