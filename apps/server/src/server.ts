@@ -114,7 +114,7 @@ if (process.env.BUILD_ENV === 'development') {
 }
 // Initialize project service for REST API endpoints
 const projectRepository = new ProjectFileRepository(configPath)
-const projectService = new ProjectService(projectRepository, codayOptions.project)
+const projectService = new ProjectService(projectRepository, codayOptions.project, codayOptions.forcedProject)
 
 // Initialize thread service for REST API endpoints
 const projectsDir = path.join(configPath, 'projects')
@@ -148,7 +148,7 @@ registerConfigRoutes(app, configRegistry, getUsername)
 registerWebhookRoutes(app, webhookService, getUsername, threadService, threadCodayManager, codayOptions, logger)
 
 // Register project management routes
-registerProjectRoutes(app, projectService, codayOptions.project)
+registerProjectRoutes(app, projectService)
 
 // Register thread management routes
 registerThreadRoutes(app, threadService, threadCodayManager, getUsername, codayOptions)

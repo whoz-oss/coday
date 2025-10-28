@@ -12,6 +12,7 @@ export interface Argv {
   debug?: boolean
   fileReadOnly?: boolean
   local?: boolean
+  multi?: boolean
   agentFolders?: string[]
   log?: boolean
   log_folder?: string
@@ -32,6 +33,7 @@ export interface CodayOptions {
   agentFolders: string[]
   noLog: boolean
   logFolder?: string
+  forcedProject: boolean // true if --local is used
 }
 
 /**
@@ -60,7 +62,11 @@ export function parseCodayOptions(): CodayOptions {
     })
     .option('local', {
       type: 'boolean',
-      description: 'Use current directory name as project name',
+      description: 'Use current directory as sole project (restricted mode)',
+    })
+    .option('multi', {
+      type: 'boolean',
+      description: 'Multi-project mode: show project list without default selection',
     })
     .option('fileReadOnly', {
       type: 'boolean',
@@ -89,7 +95,9 @@ export function parseCodayOptions(): CodayOptions {
       description: 'Sets debug right at startup',
     })
     .help().argv as Argv
-  let projectName: string | undefined = argv.coday_project || (argv._[0] as string)
+  let projectName: string | undefined
+  let forcedProject = false
+
   const prompts: string[] = (argv.prompt || argv._.slice(1)) as string[]
   const oneshot: boolean = !!argv.oneshot
   const fileReadOnly: boolean = !!argv.fileReadOnly
@@ -99,10 +107,22 @@ export function parseCodayOptions(): CodayOptions {
   const noLog: boolean = !argv.log // Inverted: log=false means noLog=true
   const logFolder: string | undefined = argv.log_folder
 
-  // If --local is set, use current directory name as project
+  // Determine project selection mode
   if (argv.local) {
+    // --local: force current directory as ONLY project (restricted mode)
     projectName = path.basename(process.cwd())
-    console.log(`Using current directory name as project: ${projectName}`)
+    forcedProject = true
+    console.log(`Local mode: restricting to project '${projectName}'`)
+  } else if (argv.multi) {
+    // --multi: traditional mode, no default project
+    projectName = argv.coday_project || (argv._[0] as string)
+    forcedProject = false
+    console.log('Multi-project mode: no default project selection')
+  } else {
+    // Default behavior: use current directory as default project
+    projectName = path.basename(process.cwd())
+    forcedProject = false
+    console.log(`Default mode: using '${projectName}' as default project`)
   }
 
   return {
@@ -116,5 +136,6 @@ export function parseCodayOptions(): CodayOptions {
     agentFolders: (argv.agentFolders || []) as string[],
     noLog,
     logFolder,
+    forcedProject,
   }
 }

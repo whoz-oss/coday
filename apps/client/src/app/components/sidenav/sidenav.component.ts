@@ -319,10 +319,8 @@ export class SidenavComponent implements OnInit, OnDestroy {
     }
 
     console.log('[SIDENAV] Navigating to home (project selection)')
-    // Clear project selection first to avoid auto-redirect
+    // Clear project selection and navigate to home
     this.projectStateService.clearSelection()
-    // Use setTimeout to ensure clearSelection is processed before navigation
-    // Then navigate to home
     this.router.navigate(['/'])
   }
 

@@ -10,11 +10,12 @@ export interface ProjectInfo {
 }
 
 /**
- * Project list response
+ * Project list response with context metadata
  */
 export interface ProjectListResponse {
   projects: ProjectInfo[]
-  forcedProject?: string | null
+  defaultProject?: string | null // Project selected by default (PWD in default mode)
+  forcedProject?: string | null // Only set if --local mode (restricted)
 }
 
 /**

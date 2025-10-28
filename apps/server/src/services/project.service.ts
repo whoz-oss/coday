@@ -15,18 +15,39 @@ export class ProjectService {
 
   constructor(
     private readonly repository: ProjectRepository,
-    private readonly forcedProject: string | undefined | null
+    private readonly defaultProject: string | undefined | null,
+    private readonly isForcedMode: boolean
   ) {}
 
   /**
    * List all available projects
+   * In forced mode (--local), only the forced project is returned
    * @returns Array of project objects with name
    */
   listProjects(): Array<{ name: string }> {
-    return this.repository
-      .listProjects()
-      .filter((projectName) => !this.forcedProject || projectName === this.forcedProject)
-      .map((name: string) => ({ name }))
+    const allProjects = this.repository.listProjects()
+
+    if (this.isForcedMode && this.defaultProject) {
+      // --local mode: only show the forced project
+      return allProjects.filter((name) => name === this.defaultProject).map((name) => ({ name }))
+    }
+
+    // Default or --multi mode: show all projects
+    return allProjects.map((name) => ({ name }))
+  }
+
+  /**
+   * Get the default project (if any)
+   */
+  getDefaultProject(): string | null {
+    return this.defaultProject || null
+  }
+
+  /**
+   * Check if we're in forced project mode
+   */
+  getForcedMode(): boolean {
+    return this.isForcedMode
   }
 
   /**
@@ -138,8 +159,8 @@ export class ProjectService {
   }
 
   private checkAgainstForced(name: string): void {
-    if (this.forcedProject && this.forcedProject !== name) {
-      throw Error(`Project selection outside of ${name} not allowed`)
+    if (this.isForcedMode && this.defaultProject && this.defaultProject !== name) {
+      throw Error(`Project selection outside of ${this.defaultProject} not allowed`)
     }
   }
 }
