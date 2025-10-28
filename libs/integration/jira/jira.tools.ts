@@ -4,6 +4,7 @@ import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 import { searchJiraIssuesWithAI } from './search-jira-issues'
 import { addJiraComment } from './add-jira-comment'
+import { addJiraInternalNote } from './add-jira-internal-note'
 import { retrieveJiraIssue } from './retrieve-jira-issue'
 import { countJiraIssues } from './count-jira-issues'
 import { createJiraIssue } from './create-jira-issue'
@@ -148,26 +149,44 @@ export class JiraTools extends AssistantToolFactory {
     const addCommentFunction: FunctionTool<{
       ticketId: string
       comment: string
-      internal?: boolean
     }> = {
       type: 'function',
       function: {
         name: 'addJiraComment',
-        description: 'Add a comment to a Jira ticket.',
+        description:
+          'Add a public comment to a Jira ticket. The comment will be visible to customers. For internal notes, use addJiraInternalNote instead.',
         parameters: {
           type: 'object',
           properties: {
             ticketId: { type: 'string', description: 'Jira ticket ID' },
             comment: { type: 'string', description: 'Comment text to add to the ticket' },
-            internal: { 
-              type: 'boolean', 
-              description: 'Whether the comment should be an internal note (note visible by the customer). Default: true'
-            },
           },
         },
         parse: JSON.parse,
-        function: ({ ticketId, comment, internal = false }) =>
-          addJiraComment(ticketId, comment, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor, internal),
+        function: ({ ticketId, comment }) =>
+          addJiraComment(ticketId, comment, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor),
+      },
+    }
+
+    const addInternalNoteFunction: FunctionTool<{
+      ticketId: string
+      note: string
+    }> = {
+      type: 'function',
+      function: {
+        name: 'addJiraInternalNote',
+        description:
+          'Add an internal note to a Jira ticket. Internal notes are only visible to agents and not to customers.',
+        parameters: {
+          type: 'object',
+          properties: {
+            ticketId: { type: 'string', description: 'Jira ticket ID' },
+            note: { type: 'string', description: 'Internal note text to add to the ticket' },
+          },
+        },
+        parse: JSON.parse,
+        function: ({ ticketId, note }) =>
+          addJiraInternalNote(ticketId, note, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor),
       },
     }
 
@@ -223,7 +242,8 @@ export class JiraTools extends AssistantToolFactory {
       type: 'function',
       function: {
         name: 'createJiraIssue',
-        description: 'Create a new Jira issue/ticket without asking for more information from the user, directly call the function to create the ticket',
+        description:
+          'Create a new Jira issue/ticket without asking for more information from the user, directly call the function to create the ticket',
         parameters: {
           type: 'object',
           properties: {
@@ -239,15 +259,23 @@ export class JiraTools extends AssistantToolFactory {
                 reporter: { type: 'string', description: 'User ID of the reporter' },
                 priority: { type: 'string', description: 'Priority of the issue (e.g., "High", "Medium", "Low")' },
                 labels: { type: 'array', items: { type: 'string' }, description: 'Labels to attach to the issue' },
-                components: { type: 'array', items: { type: 'string' }, description: 'Components to associate with the issue' },
-                fixVersions: { type: 'array', items: { type: 'string' }, description: 'Fix versions to associate with the issue' },
+                components: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Components to associate with the issue',
+                },
+                fixVersions: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Fix versions to associate with the issue',
+                },
                 duedate: { type: 'string', description: 'Due date in YYYY-MM-DD format' },
-                parent: { 
-                  type: 'object', 
+                parent: {
+                  type: 'object',
                   properties: {
-                    key: { type: 'string', description: 'The issue key of the parent' }
+                    key: { type: 'string', description: 'The issue key of the parent' },
                   },
-                  description: 'Parent issue for this issue (directly establishes parent-child relationship)'
+                  description: 'Parent issue for this issue (directly establishes parent-child relationship)',
                 },
                 linkedIssues: {
                   type: 'array',
@@ -255,14 +283,21 @@ export class JiraTools extends AssistantToolFactory {
                     type: 'object',
                     properties: {
                       key: { type: 'string', description: 'The key of the issue to link' },
-                      linkType: { type: 'string', description: 'The type of link to create (default: "is part of" for epics, "relates to" for other issue types)' },
-                      isEpicLink: { type: 'boolean', description: 'Whether to use Epic Link field if available (default: true for epics)' }
-                    }
+                      linkType: {
+                        type: 'string',
+                        description:
+                          'The type of link to create (default: "is part of" for epics, "relates to" for other issue types)',
+                      },
+                      isEpicLink: {
+                        type: 'boolean',
+                        description: 'Whether to use Epic Link field if available (default: true for epics)',
+                      },
+                    },
                   },
-                  description: 'Issues to link to this issue after creation (especially useful for epics)'
-                }
-              }
-            }
+                  description: 'Issues to link to this issue after creation (especially useful for epics)',
+                },
+              },
+            },
           },
         },
         parse: JSON.parse,
@@ -271,30 +306,32 @@ export class JiraTools extends AssistantToolFactory {
             // Check if this is a retry with a previous partial request
             if (request.error && request.partialRequest) {
               // Extract the partial request and error message
-              const partialRequest = request.partialRequest;
-              const previousError = request.error || 'Previous attempt failed';
+              const partialRequest = request.partialRequest
+              const previousError = request.error || 'Previous attempt failed'
 
-              this.interactor.displayText(`Retrying Jira issue creation with saved information. Previous error: ${previousError}`);
+              this.interactor.displayText(
+                `Retrying Jira issue creation with saved information. Previous error: ${previousError}`
+              )
 
               // Use the partial request for the retry
-              return await createJiraIssue(partialRequest, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor);
+              return await createJiraIssue(partialRequest, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor)
             }
 
             // Normal flow - create the issue with the provided request
-            return await createJiraIssue(request, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor);
+            return await createJiraIssue(request, jiraBaseUrl, jiraApiToken, jiraUsername, this.interactor)
           } catch (error) {
-            this.interactor.error(`Error in createJiraIssue function: ${error}`);
-            throw error;
+            this.interactor.error(`Error in createJiraIssue function: ${error}`)
+            throw error
           }
         },
       },
     }
 
     const linkIssuesFunction: FunctionTool<{
-      inwardIssueKey: string,
-      outwardIssueKey: string,
-      linkType: string,
-      comment?: string,
+      inwardIssueKey: string
+      outwardIssueKey: string
+      linkType: string
+      comment?: string
       isEpicLink?: boolean
     }> = {
       type: 'function',
@@ -304,12 +341,25 @@ export class JiraTools extends AssistantToolFactory {
         parameters: {
           type: 'object',
           properties: {
-            inwardIssueKey: { type: 'string', description: 'The issue key that is the source of the link (inward issue)' },
-            outwardIssueKey: { type: 'string', description: 'The issue key that is the target of the link (outward issue)' },
-            linkType: { type: 'string', description: 'The type of link to create between issues (e.g., "relates to", "blocks", "is blocked by")' },
+            inwardIssueKey: {
+              type: 'string',
+              description: 'The issue key that is the source of the link (inward issue)',
+            },
+            outwardIssueKey: {
+              type: 'string',
+              description: 'The issue key that is the target of the link (outward issue)',
+            },
+            linkType: {
+              type: 'string',
+              description: 'The type of link to create between issues (e.g., "relates to", "blocks", "is blocked by")',
+            },
             comment: { type: 'string', description: 'Optional comment to add when creating the link' },
-            isEpicLink: { type: 'boolean', description: 'Set to true to create an Epic-Issue relationship. This will attempt to use the Epic Link field if available, falling back to standard issue linking if not.' }
-          }
+            isEpicLink: {
+              type: 'boolean',
+              description:
+                'Set to true to create an Epic-Issue relationship. This will attempt to use the Epic Link field if available, falling back to standard issue linking if not.',
+            },
+          },
         },
         parse: JSON.parse,
         function: ({ inwardIssueKey, outwardIssueKey, linkType, comment, isEpicLink }) =>
@@ -319,13 +369,14 @@ export class JiraTools extends AssistantToolFactory {
             jiraApiToken,
             jiraUsername,
             this.interactor
-          )
-      }
+          ),
+      },
     }
 
     result.push(retrieveJiraTicketFunction)
     result.push(searchJiraIssuesFunction)
     result.push(addCommentFunction)
+    result.push(addInternalNoteFunction)
     result.push(countJiraIssuesFunction)
     result.push(createIssueFunction)
     result.push(linkIssuesFunction)
