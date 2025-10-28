@@ -1,128 +1,131 @@
 .choice-form {
   width: 100%;
-  max-width: 600px; // Augmenté de 400px à 600px (+50%)
-  margin: 0 auto;
-  padding: 1.5rem;
-  background: var(--color-input-bg, #ffffff);
-  border: 1px solid var(--color-border, #e2e8f0);
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
 .choice-label {
   display: block;
-  margin-bottom: 1rem;
   font-weight: 500;
-  color: var(--color-text, #374151);
+  color: var(--color-text);
   font-size: 1rem;
-}
+  line-height: 1.5;
 
-.choice-select {
-  width: 100%;
-  padding: 0.75rem;
-  border: 1px solid var(--color-border, #e2e8f0);
-  border-radius: 6px;
-  background: var(--color-input-bg, #ffffff);
-  color: var(--color-text, #374151);
-  font-size: 1rem;
-  font-family: inherit;
-  cursor: pointer;
-  transition: border-color 0.2s ease;
-  
-  &:focus {
-    outline: none;
-    border-color: var(--color-primary, #7064fb);
-    box-shadow: 0 0 0 2px rgba(112, 100, 251, 0.1);
-  }
-  
-  &:hover {
-    border-color: var(--color-primary, #7064fb);
-  }
-  
-  option:disabled {
-    color: var(--color-text-secondary, #9ca3af);
-    font-style: italic;
+  // Markdown content styling
+  ::ng-deep {
+    p {
+      margin: 0 0 0.5rem 0;
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+
+    code {
+      background: var(--color-code-bg);
+      padding: 0.2em 0.4em;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+
+    strong {
+      font-weight: 600;
+    }
   }
 }
 
 .select-button-row {
   display: flex;
-  gap: 0.75rem;
-  align-items: stretch;
-  margin-top: 1rem;
+  align-items: center;
+  gap: 0.5rem;
+  background: transparent;
+  border: 2px solid var(--color-border);
+  border-radius: 12px;
+  padding: 0.5rem;
+  transition: all 0.2s ease;
+
+  &.focused {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+  }
 }
 
 .choice-select-inline {
   flex: 1;
-  padding: 0.75rem;
-  border: 1px solid var(--color-border, #e2e8f0);
-  border-radius: 6px;
-  background: var(--color-input-bg, #ffffff);
-  color: var(--color-text, #374151);
+  border: none;
+  outline: none;
+  background: transparent;
   font-size: 1rem;
-  font-family: inherit;
+  padding: 0.5rem;
+  color: var(--color-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
   cursor: pointer;
-  transition: border-color 0.2s ease;
-  max-width: 450px;
-  
+  line-height: 1.5;
+
+  // Remove default arrow
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+
+  // Custom arrow
+  background-image: url('data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23666"><path d="M7 10l5 5 5-5z"/></svg>');
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 24px 24px;
+  padding-right: 2.5rem;
+
   &:focus {
     outline: none;
-    border-color: var(--color-primary, #7064fb);
-    box-shadow: 0 0 0 2px rgba(112, 100, 251, 0.1);
   }
-  
-  &:hover {
-    border-color: var(--color-primary, #7064fb);
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
-  
+
   option:disabled {
-    color: var(--color-text-secondary, #9ca3af);
+    color: var(--color-text-secondary);
     font-style: italic;
   }
 }
 
 .submit-btn {
-  background: var(--color-primary, #7064fb);
+  flex-shrink: 0;
+  background: var(--color-primary);
   color: white;
-  padding: 0.75rem 1.5rem;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 500;
-  font-size: 1rem;
   transition: all 0.2s ease;
-  white-space: nowrap;
-  
+
   &:hover:not(:disabled) {
-    background: var(--color-primary-hover, #5a4df5);
+    background: var(--color-primary-hover);
+    transform: scale(1.05);
   }
-  
+
   &:disabled {
-    background: var(--color-text-secondary, #9ca3af);
+    background: var(--color-text-secondary);
     cursor: not-allowed;
-    opacity: 0.6;
-  }
-  
-  &:focus {
-    outline: none;
-    box-shadow: 0 0 0 2px rgba(112, 100, 251, 0.3);
+    opacity: 0.5;
   }
 }
 
-// Responsive : sur mobile, layout vertical
+// Responsive
 @media (max-width: 480px) {
   .choice-form {
-    max-width: none;
-    margin: 0 1rem;
-    padding: 1rem;
-  }
-  
-  .select-button-row {
-    flex-direction: column;
     gap: 0.75rem;
   }
-  
+
+  .choice-label {
+    font-size: 0.95rem;
+  }
+
+  .choice-select-inline {
+    font-size: 0.95rem;
+  }
+}
+
+// Print styles
+@media print {
   .submit-btn {
-    width: 100%;
+    display: none !important;
   }
 }

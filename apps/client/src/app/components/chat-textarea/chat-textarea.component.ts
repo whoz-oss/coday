@@ -1,32 +1,55 @@
-import { Component, Output, EventEmitter, Input, OnInit, OnDestroy, AfterViewInit, ViewChild, ElementRef, inject } from '@angular/core'
-import { CommonModule } from '@angular/common'
+import {
+  AfterViewInit,
+  Component,
+  ElementRef,
+  EventEmitter,
+  inject,
+  Input,
+  OnChanges,
+  OnDestroy,
+  OnInit,
+  Output,
+  SimpleChanges,
+  ViewChild,
+} from '@angular/core'
 import { FormsModule } from '@angular/forms'
-import { Subscription, BehaviorSubject, Observable } from 'rxjs'
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
-import { marked } from 'marked'
+import { Subscription } from 'rxjs'
 import { PreferencesService } from '../../services/preferences.service'
 import { CodayService } from '../../core/services/coday.service'
+import { MatIconButton } from '@angular/material/button'
+import { MatIcon } from '@angular/material/icon'
 
 @Component({
   selector: 'app-chat-textarea',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [FormsModule, MatIconButton, MatIcon],
   templateUrl: './chat-textarea.component.html',
-  styleUrl: './chat-textarea.component.scss'
+  styleUrl: './chat-textarea.component.scss',
 })
-export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
+export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, OnChanges {
   // Constants for textarea sizing
   private static readonly MIN_TEXTAREA_LINES = 2
   private static readonly MAX_TEXTAREA_LINES = 15
   @Input() isDisabled: boolean = false
+  @Input() showWelcome: boolean = false
+  @Input() isThinking: boolean = false
+  @Input() isStarting: boolean = false
+  @Input() isSessionInitializing: boolean = false
+
+  // Internal state for stopping
+  isStopping: boolean = false
+  // Local flag to immediately disable textarea when message is sent
+  isLocallyDisabled: boolean = false
   @Output() messageSubmitted = new EventEmitter<string>()
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
   @Output() heightChanged = new EventEmitter<number>()
+  @Output() stopRequested = new EventEmitter<void>()
 
   @ViewChild('messageInput', { static: true }) messageInput!: ElementRef<HTMLTextAreaElement>
 
   message: string = ''
   isRecording: boolean = false
+  isFocused: boolean = false
 
   // Voice recognition properties
   private recognition: any = null
@@ -36,19 +59,21 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   // Enter behavior preference
   private useEnterToSend: boolean = false
 
-  // Invite properties
+  // Invite properties (kept minimal for default value handling)
   currentInvite: string = ''
-  private renderedInviteSubject = new BehaviorSubject<SafeHtml>('')
-  renderedInvite$: Observable<SafeHtml> = this.renderedInviteSubject.asObservable()
-  showInvite: boolean = false
 
   // Subscriptions management
   private subscriptions: Subscription[] = []
 
+  // Thinking animation
+  private thinkingPhrases: string[] = ['Processing request...', 'Thinking...', 'Working on it...']
+  currentThinkingPhrase: string = 'Processing request...'
+  private thinkingPhraseIndex: number = 0
+  private thinkingInterval: number | null = null
+
   // Modern Angular dependency injection
   private preferencesService = inject(PreferencesService)
   private codayService = inject(CodayService)
-  private sanitizer = inject(DomSanitizer)
 
   ngOnInit(): void {
     this.initializeVoiceInput()
@@ -57,22 +82,16 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
     this.useEnterToSend = this.preferencesService.getEnterToSend()
 
     // Listen to voice language changes
-    this.subscriptions.push(
-      this.preferencesService.voiceLanguage$.subscribe(
-        () => this.updateRecognitionLanguage()
-      )
-    )
+    this.subscriptions.push(this.preferencesService.voiceLanguage$.subscribe(() => this.updateRecognitionLanguage()))
 
     // Listen to Enter key behavior changes
     this.subscriptions.push(
-      this.preferencesService.enterToSend$.subscribe(
-        (useEnterToSend) => {
-          this.useEnterToSend = useEnterToSend
-        }
-      )
+      this.preferencesService.enterToSend$.subscribe((useEnterToSend) => {
+        this.useEnterToSend = useEnterToSend
+      })
     )
 
-    // Subscribe to InviteEvent changes
+    // Subscribe to InviteEvent changes for default value handling
     this.subscribeToInviteEvents()
 
     // Subscribe to message restoration after deletion
@@ -82,15 +101,76 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   ngAfterViewInit(): void {
     // Set initial height after view initialization
     this.adjustTextareaHeight()
+
+    // Autofocus textarea on initial load if not disabled
+    // Use requestAnimationFrame to ensure DOM is ready
+    requestAnimationFrame(() => {
+      setTimeout(() => this.focusTextarea(), 200)
+    })
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['isThinking']) {
+      if (changes['isThinking'].currentValue) {
+        this.startThinkingAnimation()
+      } else {
+        this.stopThinkingAnimation()
+        // Reset stopping state when thinking ends
+        this.isStopping = false
+        // Reset local disable flag when thinking ends
+        this.isLocallyDisabled = false
+        // Autofocus textarea when thinking mode ends
+        // Use requestAnimationFrame + timeout to ensure disabled attribute is removed
+        if (changes['isThinking'].previousValue) {
+          console.log('[CHAT-TEXTAREA] Thinking ended, scheduling focus')
+          requestAnimationFrame(() => {
+            setTimeout(() => this.focusTextarea(), 100)
+          })
+        }
+      }
+    }
+
+    // Autofocus when session initialization completes
+    if (changes['isSessionInitializing']) {
+      if (!changes['isSessionInitializing'].currentValue && changes['isSessionInitializing'].previousValue) {
+        console.log('[CHAT-TEXTAREA] Session initialization completed, scheduling focus')
+        // Reset local disable flag when session initialization ends
+        this.isLocallyDisabled = false
+        requestAnimationFrame(() => {
+          setTimeout(() => this.focusTextarea(), 100)
+        })
+      }
+    }
+
+    // Restart animation when transitioning from Starting to normal thinking
+    // Only restart if we're still at the first phrase (index 0)
+    if (
+      changes['isStarting'] &&
+      !changes['isStarting'].currentValue &&
+      changes['isStarting'].previousValue &&
+      this.isThinking
+    ) {
+      if (this.thinkingPhraseIndex === 0) {
+        console.log('[CHAT-TEXTAREA] Transitioning from Starting to Thinking at index 0 - restarting animation')
+        this.stopThinkingAnimation()
+        this.startThinkingAnimation()
+      } else {
+        console.log(
+          '[CHAT-TEXTAREA] Transitioning from Starting to Thinking at index',
+          this.thinkingPhraseIndex,
+          '- continuing without restart'
+        )
+      }
+    }
   }
 
   ngOnDestroy(): void {
     // Clean up all subscriptions
-    this.subscriptions.forEach(sub => sub.unsubscribe())
+    this.subscriptions.forEach((sub) => sub.unsubscribe())
     this.subscriptions = []
 
     this.clearPendingLineBreaks()
-    this.renderedInviteSubject.complete()
+    this.stopThinkingAnimation()
   }
 
   onKeyDown(event: KeyboardEvent) {
@@ -122,16 +202,21 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   sendMessage() {
-    if (!this.isDisabled) {
+    if (!this.isDisabled && !this.isLocallyDisabled && this.message.trim()) {
+      // Immediately set local disable flag to prevent any further input
+      this.isLocallyDisabled = true
+
       this.messageSubmitted.emit(this.message.trim())
       this.message = ''
-
-      // Hide invite after sending (will be replaced by next server invite)
-      this.showInvite = false
 
       // Reset height after clearing message
       setTimeout(() => this.adjustTextareaHeight(), 0)
     }
+  }
+
+  onStopClick() {
+    this.isStopping = true
+    this.stopRequested.emit()
   }
 
   toggleVoiceRecording() {
@@ -374,8 +459,14 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
     const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.5
 
     // Define min and max heights in pixels using constants
-    const minHeight = lineHeight * ChatTextareaComponent.MIN_TEXTAREA_LINES + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
-    const maxHeight = lineHeight * ChatTextareaComponent.MAX_TEXTAREA_LINES + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+    const minHeight =
+      lineHeight * ChatTextareaComponent.MIN_TEXTAREA_LINES +
+      parseFloat(style.paddingTop) +
+      parseFloat(style.paddingBottom)
+    const maxHeight =
+      lineHeight * ChatTextareaComponent.MAX_TEXTAREA_LINES +
+      parseFloat(style.paddingTop) +
+      parseFloat(style.paddingBottom)
 
     // Reset height to auto to get the actual scroll height
     textarea.style.height = 'auto'
@@ -424,17 +515,67 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   /**
+   * Get placeholder text for textarea
+   * Uses invite text if available, otherwise shows default messages
+   */
+  getPlaceholder(): string {
+    if (this.isSessionInitializing) {
+      return 'Initializing session...'
+    } else if (this.isThinking) {
+      // Show "Stopping..." if stop button was clicked
+      if (this.isStopping) {
+        return 'Stopping...'
+      }
+      // Show "Starting..." for first message, then rotate phrases
+      return this.isStarting ? 'Processing request...' : this.currentThinkingPhrase
+    } else if (this.showWelcome) {
+      return 'How can I help you today?'
+    } else if (this.currentInvite) {
+      return 'Type your message here...'
+    } else {
+      return 'Type your prompt here'
+    }
+  }
+
+  /**
+   * Start the thinking phrase animation
+   */
+  private startThinkingAnimation(): void {
+    this.thinkingPhraseIndex = 0
+    this.currentThinkingPhrase = this.thinkingPhrases[0] || 'Thinking...'
+
+    this.thinkingInterval = window.setInterval(() => {
+      // Move to next phrase only if not at the last one
+      if (this.thinkingPhraseIndex < this.thinkingPhrases.length - 1) {
+        this.thinkingPhraseIndex++
+        this.currentThinkingPhrase = this.thinkingPhrases[this.thinkingPhraseIndex] || 'Thinking...'
+      }
+      // If we're at the last phrase, stay there (no change)
+    }, 2000) // Change phrase every 2 seconds
+  }
+
+  /**
+   * Stop the thinking phrase animation
+   */
+  private stopThinkingAnimation(): void {
+    if (this.thinkingInterval) {
+      clearInterval(this.thinkingInterval)
+      this.thinkingInterval = null
+    }
+    this.thinkingPhraseIndex = 0
+    this.currentThinkingPhrase = 'Thinking...'
+  }
+
+  /**
    * Subscribe to InviteEvent changes in CodayService
    */
   private subscribeToInviteEvents(): void {
     this.subscriptions.push(
-      this.codayService.currentInviteEvent$.subscribe(inviteEvent => {
+      this.codayService.currentInviteEvent$.subscribe((inviteEvent) => {
         if (inviteEvent) {
           this.handleInviteEvent(inviteEvent.invite, inviteEvent.defaultValue)
         } else {
-          this.showInvite = false
           this.currentInvite = ''
-          this.renderedInviteSubject.next(this.sanitizer.bypassSecurityTrustHtml(''))
         }
       })
     )
@@ -445,10 +586,6 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
    */
   private handleInviteEvent(invite: string, defaultValue?: string): void {
     this.currentInvite = invite
-    this.showInvite = true
-
-    // Render invite markdown asynchronously
-    this.renderInviteMarkdown(invite)
 
     // Set default value if provided
     if (defaultValue) {
@@ -463,24 +600,11 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   /**
-   * Render invite markdown
-   */
-  private async renderInviteMarkdown(invite: string): Promise<void> {
-    try {
-      const html = await marked.parse(invite)
-      this.renderedInviteSubject.next(this.sanitizer.bypassSecurityTrustHtml(html))
-    } catch (error) {
-      console.error('[CHAT-TEXTAREA] Error parsing invite markdown:', error)
-      this.renderedInviteSubject.next(this.sanitizer.bypassSecurityTrustHtml(invite))
-    }
-  }
-
-  /**
    * Subscribe to message restoration after deletion
    */
   private subscribeToMessageRestore(): void {
     this.subscriptions.push(
-      this.codayService.messageToRestore$.subscribe(content => {
+      this.codayService.messageToRestore$.subscribe((content) => {
         if (content.trim()) {
           console.log('[CHAT-TEXTAREA] Restoring message content:', content.substring(0, 50) + '...')
           this.restoreMessageContent(content)
@@ -513,5 +637,24 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit {
     setTimeout(() => this.adjustTextareaHeight(), 10)
   }
 
+  /**
+   * Focus the textarea
+   */
+  private focusTextarea(): void {
+    const element = this.messageInput?.nativeElement
+    console.log('[CHAT-TEXTAREA] focusTextarea called', {
+      hasElement: !!element,
+      isDisabled: this.isDisabled,
+      isThinking: this.isThinking,
+      elementDisabled: element?.disabled,
+      isSessionInitializing: this.isSessionInitializing,
+    })
 
+    if (element && !element.disabled) {
+      element.focus()
+      console.log('[CHAT-TEXTAREA] Textarea focused successfully')
+    } else {
+      console.log('[CHAT-TEXTAREA] Focus blocked - element disabled or not available')
+    }
+  }
 }

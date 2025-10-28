@@ -19,6 +19,7 @@ export type ThreadMessage = MessageEvent | ToolRequestEvent | ToolResponseEvent 
 export type ThreadSerialized = {
   id: string
   username: string
+  projectId?: string
   messages?: any[]
   name?: string
   summary?: string
@@ -30,6 +31,7 @@ export type ThreadSerialized = {
 export interface ThreadSummary {
   id: string
   username: string
+  projectId: string
   name: string
   summary: string
   createdDate: string
@@ -51,7 +53,7 @@ export enum RunStatus {
 export class ThreadRepositoryError extends Error {
   constructor(
     message: string,
-    public cause?: Error
+    public override cause?: Error
   ) {
     super(message)
     this.name = 'ThreadRepositoryError'

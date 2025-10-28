@@ -95,6 +95,8 @@ export class InviteEvent extends QuestionEvent {
   }
 }
 
+export const InviteEventDefault = 'InviteEventDefault'
+
 export class AnswerEvent extends CodayEvent {
   answer: string
   invite: string | undefined
@@ -234,28 +236,6 @@ export class ToolResponseEvent extends CodayEvent {
   }
 }
 
-export class ProjectSelectedEvent extends CodayEvent {
-  projectName: string
-  static override type = 'project_selected'
-
-  constructor(event: Partial<ProjectSelectedEvent>) {
-    super(event, ProjectSelectedEvent.type)
-    this.projectName = event.projectName!
-  }
-}
-
-export class ThreadSelectedEvent extends CodayEvent {
-  threadId: string
-  threadName: string
-  static override type = 'thread_selected'
-
-  constructor(event: Partial<ThreadSelectedEvent>) {
-    super(event, ThreadSelectedEvent.type)
-    this.threadId = event.threadId!
-    this.threadName = event.threadName!
-  }
-}
-
 export class ThinkingEvent extends CodayEvent {
   static override type = 'thinking'
   static debounce = 5000
@@ -311,7 +291,22 @@ export class MessageEvent extends CodayEvent {
   }
 
   getTextContent(): string {
-    return this.content.filter(c => c.type === 'text').map(c => c.content).join('\n')
+    return this.content
+      .filter((c) => c.type === 'text')
+      .map((c) => c.content)
+      .join('\n')
+  }
+}
+
+export class ThreadUpdateEvent extends CodayEvent {
+  threadId: string
+  name?: string
+  static override type = 'thread_update'
+
+  constructor(event: Partial<ThreadUpdateEvent>) {
+    super(event, ThreadUpdateEvent.type)
+    this.threadId = event.threadId!
+    this.name = event.name
   }
 }
 
@@ -323,13 +318,12 @@ const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [ErrorEvent.type]: ErrorEvent,
   [HeartBeatEvent.type]: HeartBeatEvent,
   [InviteEvent.type]: InviteEvent,
-  [ProjectSelectedEvent.type]: ProjectSelectedEvent,
-  [ThreadSelectedEvent.type]: ThreadSelectedEvent,
   [ToolRequestEvent.type]: ToolRequestEvent,
   [ToolResponseEvent.type]: ToolResponseEvent,
   [TextEvent.type]: TextEvent,
   [ThinkingEvent.type]: ThinkingEvent,
   [WarnEvent.type]: WarnEvent,
+  [ThreadUpdateEvent.type]: ThreadUpdateEvent,
   [SummaryEvent.type]: SummaryEvent,
 }
 

@@ -1,6 +1,6 @@
 import { AiModel, AiProviderConfig, CommandContext } from '../model'
 import { UserService } from './user.service'
-import { ProjectService } from './project.service'
+import { ProjectStateService } from './project-state.service'
 import { ConfigLevel, ConfigLevelValidator } from '../model/config-level'
 
 /**
@@ -31,7 +31,7 @@ export class AiConfigService {
 
   constructor(
     private userService: UserService,
-    private projectService: ProjectService
+    private projectService: ProjectStateService
   ) {}
 
   /**

@@ -1,36 +1,22 @@
 :host {
-  display: block;
+  display: flex;
   height: 100vh;
+  width: 100%;
   overflow: hidden;
+  justify-content: center;
 }
 
 .app {
+  width: 100%;
+  max-width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--color-bg, #f8f8f2);
-  color: var(--color-text, #282a36);
-  transition: all 0.2s ease;
-  
-  &.drag-over {
-    border: 3px dashed var(--color-primary, #007acc);
-    background-color: var(--color-bg-secondary, #f1f1f1);
-    opacity: 0.9;
-  }
-}
-
-.connection-status {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1001;
-  padding: 0.5rem 1rem;
-  text-align: center;
-  font-size: 0.9rem;
-  background: var(--color-error, #ff5555);
-  color: var(--color-text-inverse, #ffffff);
-  border-bottom: 1px solid var(--color-border, #aeaeae);
+  background: var(--color-bg);
+  color: var(--color-text);
+  transition: all 0.3s ease;
+  position: relative;
+  justify-content: center;
 }
 
 .chat-wrapper {
@@ -38,61 +24,112 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  background: var(--color-input-bg, #ffffff);
-  padding: 1rem 2rem;
-  
-  // Custom scrollbar
-  &::-webkit-scrollbar {
-    width: 12px;
+  background: transparent;
+  width: 100%;
+  padding: 2.5rem 0 1.5rem 0; // Only vertical, horizontal zero
+  display: flex;
+  justify-content: center;
+
+  .chat-center {
+    max-width: 760px;
+    width: 100%;
+    margin: 0;
+    padding: 0 1rem;
   }
-  
-  &::-webkit-scrollbar-track {
-    background: var(--color-bg-secondary, #f1f1f1);
-    border: 1px solid var(--color-border, #e5e7eb);
+}
+
+.welcome-section {
+  flex-shrink: 0;
+  text-align: center;
+  padding: 2rem 1rem;
+  animation: fadeInUp 0.8s ease-out;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
   }
-  
-  &::-webkit-scrollbar-thumb {
-    background: var(--color-text-secondary, #888);
-    border-radius: 6px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
-    
-    &:hover {
-      background: var(--color-text, #555);
-    }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
-  
-  // Firefox
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-text-secondary, #888) var(--color-bg-secondary, #f1f1f1);
 }
 
 .input-section {
   flex-shrink: 0;
-  position: relative; // Pour le choice-overlay
-  border-top: 1px solid var(--color-border, #e5e7eb);
-  background: var(--color-bg-secondary, #f8fafc);
-  padding: 1rem;
-  overflow-y: auto;
-  max-height: 90vh;
-  
-  // Center the content
+  position: relative;
+  border-top: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 2.5rem 0 2rem 0;
+  overflow-y: visible;
+  max-height: none;
+  width: 100%;
+  z-index: 10;
+  pointer-events: none; /* To ensure only the floating bar receives input */
   display: flex;
   justify-content: center;
-  align-items: center;
-  
-  // Maximum width for the textarea
-  > app-chat-textarea {
-    height: 100%;
+}
+
+.input-center {
+  max-width: 760px;
+  width: 100%;
+  margin: 0;
+  padding: 0 1rem;
+  display: flex;
+  justify-content: center;
+  align-items: end;
+  position: relative;
+  pointer-events: auto;
+}
+
+.input-glass {
+  background: none;
+  box-shadow: none;
+  width: 100%;
+  min-height: 64px;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  pointer-events: auto;
+  position: relative;
+  overflow: visible;
+
+  app-chat-textarea {
     width: 100%;
-    max-width: 900px;
+    min-width: 0;
+    flex: 1 1 auto;
+    align-self: stretch;
+    display: flex;
   }
 }
 
+.input-glass app-chat-textarea {
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-self: stretch;
+  display: flex;
+}
+
+// Dark mode support
+:host-context(body.dark),
+:root[data-theme='dark'] .input-glass {
+  background: rgba(36, 40, 48, 0.45);
+  border-color: rgba(180, 200, 255, 0.09);
+  box-shadow:
+    0 8px 32px 0 rgba(0, 0, 0, 0.17),
+    0 1.5px 8px 0 rgba(0, 0, 0, 0.07);
+}
+
 .choice-overlay {
-  padding: 1rem;
   z-index: 10;
-  
+  width: 100%;
   // Center the choice content
   display: flex;
   justify-content: center;
@@ -107,94 +144,56 @@
   z-index: 1000;
   display: flex;
   align-items: center;
-  padding: 8px 16px;
-  background: var(--color-bg-secondary, #f1f1f1);
-  border: 1px solid var(--color-border, #e5e7eb);
-  border-radius: 6px;
+  padding: 12px 20px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-backdrop-blur);
+  -webkit-backdrop-filter: var(--glass-backdrop-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
   font-size: 0.9em;
-  color: var(--color-text-secondary, #666);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  color: var(--color-text);
+  box-shadow: var(--glass-shadow);
   max-width: 300px;
   text-align: center;
-  
-  &.error {
-    background: #ffebee;
-    color: #c62828;
-    border-color: #ffcdd2;
-  }
-}
 
-// Dark theme
-[data-theme="dark"] .upload-status {
-  background: var(--color-bg-secondary, #2a2a2a);
-  color: var(--color-text-secondary, #ccc);
-  border-color: var(--color-border, #444);
-  
   &.error {
-    background: #4a2c2a;
-    color: #ef5350;
-    border-color: #6d4c41;
+    background: rgba(255, 59, 48, 0.15);
+    color: var(--color-error);
+    border-color: rgba(255, 59, 48, 0.3);
   }
 }
 
 // Responsive
 @media (max-width: 768px) {
-  .chat-wrapper {
-    padding: 0.75rem 1rem;
+  .welcome-section {
+    padding: 1.5rem 1rem;
   }
-  
+
   .input-section {
-    padding: 0.75rem;
-    
-    > app-chat-textarea {
-      max-width: none;
-    }
+    padding: 1.5rem 0.75rem 1rem;
   }
-  
-  .choice-overlay {
-    padding: 0.75rem;
+
+  .input-center {
+    padding: 0 0.5rem;
   }
 }
 
-// Print styles - Override component styles for printing
+// Print styles
 @media print {
   :host {
     display: block !important;
     height: auto !important;
-    max-height: none !important;
     overflow: visible !important;
-    position: static !important;
   }
-  
+
   .app {
     height: auto !important;
-    max-height: none !important;
-    min-height: auto !important;
     overflow: visible !important;
     display: block !important;
-    flex-direction: column !important;
-    position: static !important;
   }
-  
-  .chat-wrapper {
-    flex: none !important;
-    height: auto !important;
-    max-height: none !important;
-    min-height: auto !important;
-    overflow: visible !important;
-    overflow-y: visible !important;
-    overflow-x: visible !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    position: static !important;
-  }
-  
-  .input-section {
-    display: none !important;
-  }
-  
-  .connection-status,
-  .upload-status {
+
+  .input-section,
+  .welcome-section {
     display: none !important;
   }
 }

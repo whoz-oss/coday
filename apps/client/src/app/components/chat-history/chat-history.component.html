@@ -1,30 +1,22 @@
 <div class="chat-history">
-  <app-chat-message
-    *ngFor="let message of messages; trackBy: trackByMessageId; let i = index"
-    [message]="message"
-    [canDelete]="canDeleteMessage(i)"
-    (copyRequested)="onCopyMessage($event)"
-    (deleteRequested)="onDeleteMessage($event)"
-  ></app-chat-message>
-  
-  <div *ngIf="isThinking" class="thinking">
-    <div class="dots">
-      <span></span>
-      <span></span>
-      <span></span>
-    </div>
-    <button class="stop-btn" (click)="onStop()">
-      Stop
-    </button>
-  </div>
-  
+  @for (message of messages; track message.id; let i = $index) {
+    <app-chat-message
+      [message]="message"
+      [canDelete]="canDeleteMessage(i)"
+      (copyRequested)="onCopyMessage($event)"
+      (deleteRequested)="onDeleteMessage($event)"
+    ></app-chat-message>
+  }
+
+  <!-- Thinking Loader -->
+  @if (isThinking) {
+    <app-thinking-loader></app-thinking-loader>
+  }
+
   <!-- Go to Bottom Button -->
-  <button 
-    *ngIf="showGoToBottom" 
-    class="go-to-bottom-btn"
-    (click)="goToBottom()"
-    title="Go to bottom"
-  >
-    ↓
-  </button>
+  @if (showGoToBottom) {
+    <button class="go-to-bottom-btn" (click)="goToBottom()" title="Go to bottom">
+      <mat-icon fontSet="material-icons-outlined">arrow_downward</mat-icon>
+    </button>
+  }
 </div>

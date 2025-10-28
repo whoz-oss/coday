@@ -1,3 +1,349 @@
+## 0.35.5 (2025-10-26)
+
+### 🩹 Fixes
+
+- production routing #2 ([#2](https://github.com/whoz-oss/coday/issues/2))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.35.4 (2025-10-26)
+
+### 🩹 Fixes
+
+- production routing ([609acc6](https://github.com/whoz-oss/coday/commit/609acc6))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.35.3 (2025-10-26)
+
+### 🩹 Fixes
+
+- tentative desktop routing fix #2 ([#2](https://github.com/whoz-oss/coday/issues/2))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.35.2 (2025-10-26)
+
+### 🩹 Fixes
+
+- tentative desktop routing fix ([be31243](https://github.com/whoz-oss/coday/commit/be31243))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.35.1 (2025-10-26)
+
+### 🩹 Fixes
+
+- desktop release version management ([744f619](https://github.com/whoz-oss/coday/commit/744f619))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.35.0 (2025-10-26)
+
+### 🚀 Features
+
+- add electron ([#283](https://github.com/whoz-oss/coday/pull/283))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.34.2 (2025-10-22)
+
+### 🩹 Fixes
+
+- unselect current thread when starting new thread ([fec8cf4](https://github.com/whoz-oss/coday/commit/fec8cf4))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.34.1 (2025-10-22)
+
+### 🩹 Fixes
+
+- server url ([a5ec969](https://github.com/whoz-oss/coday/commit/a5ec969))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.34.0 (2025-10-22)
+
+### 🚀 Features
+
+- sidenav with one scrollbar only, various improvements on threads and project opening ([1f35b93](https://github.com/whoz-oss/coday/commit/1f35b93))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.33.1 (2025-10-22)
+
+### 🩹 Fixes
+
+- small ui fixes in sidenav & thinking mode ([0ffeb4f](https://github.com/whoz-oss/coday/commit/0ffeb4f))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.33.0 (2025-10-22)
+
+### 🚀 Features
+
+- rewrite internal Coday API around project/thread ([#279](https://github.com/whoz-oss/coday/pull/279))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.32.1 (2025-10-21)
+
+### 🩹 Fixes
+
+- allow atlassian tool to load mcp ([a73dac0](https://github.com/whoz-oss/coday/commit/a73dac0))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.32.0 (2025-10-19)
+
+### 🚀 Features
+
+- make coday-web only depends on its dependencies ([ffbaa0f](https://github.com/whoz-oss/coday/commit/ffbaa0f))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.31.0 (2025-10-19)
+
+### 🚀 Features
+
+- add thinking loader ([df91e03](https://github.com/whoz-oss/coday/commit/df91e03))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.30.0 (2025-10-19)
+
+### 🚀 Features
+
+- handle sidenav open/close preferences, add loader on sidenav when loading project ([91b0bbf](https://github.com/whoz-oss/coday/commit/91b0bbf))
+- add search in threads ([a55f394](https://github.com/whoz-oss/coday/commit/a55f394))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.29.5 (2025-10-18)
+
+### 🩹 Fixes
+
+- switch starting message to processing request ([649573b](https://github.com/whoz-oss/coday/commit/649573b))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.29.4 (2025-10-18)
+
+### 🩹 Fixes
+
+- release client and server for the first time ([1b8f834](https://github.com/whoz-oss/coday/commit/1b8f834))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.29.3 (2025-10-18)
+
+### 🩹 Fixes
+
+- release client and server for the first time ([4b809f1](https://github.com/whoz-oss/coday/commit/4b809f1))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.29.2 (2025-10-18)
+
+### 🩹 Fixes
+
+- release client and server for the first time ([49702aa](https://github.com/whoz-oss/coday/commit/49702aa))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.29.1 (2025-10-18)
+
+This was a version bump only, there were no code changes.
+
+## 0.29.0 (2025-10-18)
+
+This was a version bump only, there were no code changes.
+
+## 0.28.0 (2025-10-18)
+
+### 🚀 Features
+
+- separated packages for client, server & web ([fa2edad](https://github.com/whoz-oss/coday/commit/fa2edad))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.27.0 (2025-10-18)
+
+### 🚀 Features
+
+- ui improvements ([d873cec](https://github.com/whoz-oss/coday/commit/d873cec))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.26.0 (2025-10-17)
+
+### 🚀 Features
+
+- add package.json to client's project so it is detected for release process ([fd648bf](https://github.com/whoz-oss/coday/commit/fd648bf))
+
+### 🩹 Fixes
+
+- session state to block during initialization phase ([be6f73d](https://github.com/whoz-oss/coday/commit/be6f73d))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.25.8 (2025-10-17)
+
+### 🩹 Fixes
+
+- add username in the log for undefined thread ([4c45edc](https://github.com/whoz-oss/coday/commit/4c45edc))
+- tentative fix to temporarily remove atlassian from available mcp ([d378a9a](https://github.com/whoz-oss/coday/commit/d378a9a))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.25.7 (2025-10-17)
+
+### 🩹 Fixes
+
+- tentative fix for windows #3 ([#3](https://github.com/whoz-oss/coday/issues/3))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.25.6 (2025-10-17)
+
+### 🩹 Fixes
+
+- tentative fix for windows #2 ([#2](https://github.com/whoz-oss/coday/issues/2))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.25.5 (2025-10-17)
+
+### 🩹 Fixes
+
+- tentative fix for windows ([da95a4d](https://github.com/whoz-oss/coday/commit/da95a4d))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.25.4 (2025-10-17)
+
+### 🩹 Fixes
+
+- nx release ([4a11178](https://github.com/whoz-oss/coday/commit/4a11178))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.25.3 (2025-10-17)
+
+### 🩹 Fixes
+
+- release github workflow ([0590356](https://github.com/whoz-oss/coday/commit/0590356))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.25.2 (2025-10-17)
+
+### 🩹 Fixes
+
+- release github workflow ([41df6eb](https://github.com/whoz-oss/coday/commit/41df6eb))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.25.1 (2025-10-17)
+
+### 🩹 Fixes
+
+- release workflow ([b9ac822](https://github.com/whoz-oss/coday/commit/b9ac822))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.25.0 (2025-10-17)
+
+### 🚀 Features
+
+- change context actions design + fix release process ([80c7a65](https://github.com/whoz-oss/coday/commit/80c7a65))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.24.0 (2025-10-17)
+
+### 🚀 Features
+
+- release + welcome message ([244016e](https://github.com/whoz-oss/coday/commit/244016e))
+- thinking placeholder + hide technical messages ([18a600f](https://github.com/whoz-oss/coday/commit/18a600f))
+- thinking  phrases ([4960a1a](https://github.com/whoz-oss/coday/commit/4960a1a))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.23.0 (2025-10-17)
+
+### 🚀 Features
+
+- ui-glass ([#278](https://github.com/whoz-oss/coday/pull/278))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.22.0 (2025-10-15)
 
 ### 🚀 Features

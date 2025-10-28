@@ -1,6 +1,6 @@
 import { Interactor } from '../model/interactor'
 import { UserService } from './user.service'
-import { ProjectService } from './project.service'
+import { ProjectStateService } from './project-state.service'
 import { IntegrationConfig, IntegrationLocalConfig } from '../model'
 import { ConfigLevel, ConfigLevelValidator } from '../model/config-level'
 
@@ -12,9 +12,9 @@ const MASKED_VALUE = '********'
  */
 export class IntegrationConfigService {
   constructor(
-    private userService: UserService,
-    private projectService: ProjectService,
-    private interactor: Interactor
+    private readonly userService: UserService,
+    private readonly projectService: ProjectStateService,
+    private readonly interactor: Interactor
   ) {}
 
   /**
@@ -70,14 +70,13 @@ export class IntegrationConfigService {
       // Update the specific integration
       const updatedIntegrations = {
         ...currentIntegrations,
-        [name]: config
+        [name]: config,
       }
 
       // Save project configuration
       this.projectService.save({
-        integration: updatedIntegrations
+        integration: updatedIntegrations,
       })
-
     } else if (level === ConfigLevel.USER) {
       const project = this.projectService.selectedProject
       if (!project) {
@@ -121,9 +120,8 @@ export class IntegrationConfigService {
 
       // Save updated project configuration
       this.projectService.save({
-        integration: updatedIntegrations
+        integration: updatedIntegrations,
       })
-
     } else if (level === ConfigLevel.USER) {
       const project = this.projectService.selectedProject
       if (!project) {
@@ -208,7 +206,7 @@ export class IntegrationConfigService {
       masked[key] = {
         ...integration,
         // Mask API key if it exists
-        ...(integration.apiKey && { apiKey: MASKED_VALUE })
+        ...(integration.apiKey && { apiKey: MASKED_VALUE }),
       }
     })
 

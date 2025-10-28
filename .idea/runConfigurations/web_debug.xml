@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="web-debug" type="CompoundRunConfigurationType">
-    <toRun name="client" type="js.build_tools.npm" />
+    <toRun name="client-debug" type="js.build_tools.npm" />
     <toRun name="server" type="js.build_tools.npm" />
     <method v="2" />
   </configuration>

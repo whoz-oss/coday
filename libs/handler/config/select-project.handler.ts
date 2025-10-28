@@ -25,20 +25,8 @@ export class SelectProjectHandler extends CommandHandler {
     }
   }
 
-  async selectProject(projectName?: string): Promise<CommandContext | null> {
-    let selection = projectName
-    if (!selection) {
-      const names = this.services.project.projects
-      selection = await this.interactor.chooseOption([...names, 'new'], 'Selection: ', 'Choose or create a project')
-    }
-    if (selection === 'new') {
-      const projectName = await this.interactor.promptText('Project name')
-      const projectPath = await this.interactor.promptText('Project path, no trailing slash')
-      this.services.project.addProject(projectName, projectPath)
-      if (!this.services.project.selectedProject) return null
-      return buildFirstCommandContext(this.interactor, this.services)
-    }
-    this.services.project.selectProject(selection)
+  async selectProject(projectName: string): Promise<CommandContext | null> {
+    this.services.project.selectProject(projectName)
     if (!this.services.project.selectedProject) return null
     return buildFirstCommandContext(this.interactor, this.services)
   }

@@ -2,6 +2,8 @@ import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZoneChang
 import { provideRouter } from '@angular/router'
 import { provideHttpClient } from '@angular/common/http'
 import { provideAnimations } from '@angular/platform-browser/animations'
+import { MatSnackBarModule } from '@angular/material/snack-bar'
+import { importProvidersFrom } from '@angular/core'
 import { appRoutes } from './app.routes'
 
 export const appConfig: ApplicationConfig = {
@@ -11,5 +13,6 @@ export const appConfig: ApplicationConfig = {
     provideRouter(appRoutes),
     provideHttpClient(),
     provideAnimations(),
+    importProvidersFrom(MatSnackBarModule),
   ],
 }

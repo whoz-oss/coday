@@ -1,238 +1,120 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core'
+import { Component, EventEmitter, inject, Input, Output } from '@angular/core'
 import { CommonModule } from '@angular/common'
-import { Subject } from 'rxjs'
-import { takeUntil } from 'rxjs/operators'
-import { SessionStateService } from '../../core/services/session-state.service'
-import { CodayService } from '../../core/services/coday.service'
+import { FormsModule } from '@angular/forms'
+import { MatIconModule } from '@angular/material/icon'
+import { MatButtonModule } from '@angular/material/button'
+import { MatInputModule } from '@angular/material/input'
+import { MatFormFieldModule } from '@angular/material/form-field'
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
 import { SessionState } from '@coday/model/session-state'
+import { ThreadStateService } from '../../core/services/thread-state.service'
+import { toSignal } from '@angular/core/rxjs-interop'
+import { ProjectStateService } from '../../core/services/project-state.service'
+import { Router } from '@angular/router'
 
 @Component({
   selector: 'app-thread-selector',
   standalone: true,
-  imports: [CommonModule],
+  imports: [
+    CommonModule,
+    FormsModule,
+    MatIconModule,
+    MatButtonModule,
+    MatInputModule,
+    MatFormFieldModule,
+    MatProgressSpinnerModule,
+  ],
   templateUrl: './thread-selector.component.html',
-  styleUrl: './thread-selector.component.scss'
+  styleUrl: './thread-selector.component.scss',
 })
-export class ThreadSelectorComponent implements OnInit, OnDestroy {
-  private destroy$ = new Subject<void>()
-  
+export class ThreadSelectorComponent {
   // State from SessionStateService
-  threads: SessionState['threads'] | null = null
   projects: SessionState['projects'] | null = null
-  isExpanded = false
-  
-  // Modern Angular dependency injection
-  private sessionState = inject(SessionStateService)
-  private codayService = inject(CodayService)
-  
-  ngOnInit(): void {
-    // Subscribe to threads state
-    this.sessionState.getThreads$()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(threads => {
-        console.log('[THREAD-SELECTOR] Threads updated:', threads)
-        this.threads = threads
-      })
-    
-    // Subscribe to projects state (to know if we have a project selected)
-    this.sessionState.getProjects$()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(projects => {
-        console.log('[THREAD-SELECTOR] Projects updated:', projects)
-        this.projects = projects
-      })
-  }
-  
-  ngOnDestroy(): void {
-    this.destroy$.next()
-    this.destroy$.complete()
-  }
-  
-  /**
-   * Toggle the thread dropdown
-   */
-  toggleDropdown(): void {
-    if (this.canShowDropdown()) {
-      this.isExpanded = !this.isExpanded
-    }
-  }
-  
-  /**
-   * Close the dropdown
-   */
-  closeDropdown(): void {
-    this.isExpanded = false
-  }
-  
+  // Search functionality
+  @Input() searchMode = false
+  @Input() searchQuery = ''
+  @Output() searchModeChange = new EventEmitter<boolean>()
+
+  private readonly projectStateService = inject(ProjectStateService)
+  private readonly threadStateService = inject(ThreadStateService)
+  private readonly router = inject(Router)
+
+  currentThread = toSignal(this.threadStateService.selectedThread$)
+  currentProject = toSignal(this.projectStateService.selectedProject$)
+  threads = toSignal(this.threadStateService.threadList$)
+  isLoadingThreadList = toSignal(this.threadStateService.isLoadingThreadList$)
+
   /**
    * Select a thread
    */
   selectThread(threadId: string): void {
-    console.log('[THREAD-SELECTOR] Selecting thread:', threadId)
-    
-    // Use the thread select command with ID
-    this.codayService.sendMessage(`thread select ${threadId}`)
-    
-    // Close dropdown
-    this.closeDropdown()
+    this.threadStateService.selectThread(threadId)
+
+    // navigate to `/project/:projectName/thread/:threadId
+    this.router.navigate(['project', this.currentProject()?.name, 'thread', threadId])
   }
-  
+
   /**
-   * Create a new thread
+   * Group threads by date categories
    */
-  createNewThread(): void {
-    console.log('[THREAD-SELECTOR] Creating new thread')
-    
-    // Use thread new command to create a new thread
-    this.codayService.sendMessage('thread new')
-    
-    // Close dropdown
-    this.closeDropdown()
-  }
-  
-  /**
-   * Check if we can show the dropdown
-   */
-  canShowDropdown(): boolean {
-    // Need a project selected and either threads available or ability to create
-    return this.hasProjectSelected() && this.isThreadManagementAvailable()
-  }
-  
-  /**
-   * Check if thread management is available
-   */
-  isThreadManagementAvailable(): boolean {
-    // Always true if project selected (can always create threads)
-    return this.hasProjectSelected()
-  }
-  
-  /**
-   * Check if a project is selected
-   */
-  hasProjectSelected(): boolean {
-    return !!(this.projects?.current)
-  }
-  
-  /**
-   * Get display text for the current state
-   */
-  getDisplayText(): string {
-    if (!this.projects || !this.threads) {
-      return 'Loading...'
-    }
-    
-    if (!this.hasProjectSelected()) {
-      return 'No project selected'
-    }
-    
-    // Get current thread name if available
-    if (this.threads.current && this.threads.list) {
-      const currentThread = this.threads.list.find(t => t.id === this.threads!.current)
-      if (currentThread) {
-        return this.truncateText(currentThread.name, 25) // Truncate for display
-      }
-    }
-    
-    // Check if we have threads available
-    if (this.threads.list && this.threads.list.length > 0) {
-      return 'Select a thread'
-    }
-    
-    return 'New thread'
-  }
-  
-  /**
-   * Get tooltip text (full text for long names)
-   */
-  getTooltipText(): string {
-    if (!this.projects || !this.threads) {
-      return ''
-    }
-    
-    if (!this.hasProjectSelected()) {
-      return 'No project selected'
-    }
-    
-    // Show full thread name in tooltip if available
-    if (this.threads.current && this.threads.list) {
-      const currentThread = this.threads.list.find(t => t.id === this.threads!.current)
-      if (currentThread) {
-        return currentThread.name
-      }
-    }
-    
-    return ''
-  }
-  
-  /**
-   * Get the icon to display
-   */
-  getIcon(): string {
-    if (!this.projects || !this.threads) {
-      return '⏳'
-    }
-    
-    if (!this.hasProjectSelected()) {
-      return '' // No icon when no project
-    }
-    
-    if (this.threads.current) {
-      return '🧵' // Thread icon when thread is selected
-    }
-    
-    return '' // No icon when no thread selected but project available
-  }
-  
-  /**
-   * Check if the selector is in a clickable state
-   */
-  isClickable(): boolean {
-    return this.canShowDropdown()
-  }
-  
-  /**
-   * Get available threads
-   */
-  getAvailableThreads(): Array<{ id: string; name: string; modifiedDate: string }> {
-    if (!this.threads?.list) {
+  getGroupedThreads(): Array<{ label: string; threads: Array<{ id: string; name: string; modifiedDate: string }> }> {
+    let threadsToGroup = this.threads()
+    if (!threadsToGroup?.length) {
       return []
     }
-    
-    // Sort by modified date (most recent first)
-    return [...this.threads.list].sort((a, b) => {
-      return new Date(b.modifiedDate).getTime() - new Date(a.modifiedDate).getTime()
-    })
-  }
-  
-  /**
-   * Check if we have threads available
-   */
-  hasThreadsAvailable(): boolean {
-    return !!(this.threads?.list && this.threads.list.length > 0)
-  }
-  
-  /**
-   * Get current thread name for display
-   */
-  getCurrentThreadName(): string | null {
-    if (!this.threads?.current || !this.threads?.list) {
-      return null
+
+    // Apply search filter if searchQuery is provided
+    if (this.searchQuery && this.searchQuery.trim()) {
+      const query = this.searchQuery.toLowerCase().trim()
+      threadsToGroup = threadsToGroup.filter((thread) => thread.name.toLowerCase().includes(query))
     }
-    
-    const currentThread = this.threads.list.find(t => t.id === this.threads!.current)
-    return currentThread ? currentThread.name : null
-  }
-  
-  /**
-   * Truncate text for display
-   */
-  truncateText(text: string, maxLength: number): string {
-    if (text.length <= maxLength) {
-      return text
+
+    // If no threads after filtering, return empty
+    if (!threadsToGroup.length) {
+      return []
     }
-    return text.substring(0, maxLength) + '...'
+
+    const groups = new Map<string, Array<{ id: string; name: string; modifiedDate: string }>>()
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+
+    for (const thread of threadsToGroup) {
+      const threadDate = new Date(thread.modifiedDate)
+      threadDate.setHours(0, 0, 0, 0)
+      const diffMs = now.getTime() - threadDate.getTime()
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+      let groupLabel: string
+      if (diffDays === 0) {
+        groupLabel = 'Today'
+      } else if (diffDays === 1) {
+        groupLabel = 'Yesterday'
+      } else if (diffDays < 7) {
+        groupLabel = 'This Week'
+      } else if (diffDays < 30) {
+        groupLabel = 'This Month'
+      } else if (diffDays < 90) {
+        groupLabel = 'Last 3 Months'
+      } else {
+        groupLabel = 'Older'
+      }
+
+      if (!groups.has(groupLabel)) {
+        groups.set(groupLabel, [])
+      }
+      groups.get(groupLabel)!.push(thread)
+    }
+
+    // Convert to array and maintain order
+    const orderedLabels = ['Today', 'Yesterday', 'This Week', 'This Month', 'Last 3 Months', 'Older']
+    return orderedLabels
+      .filter((label) => groups.has(label))
+      .map((label) => ({
+        label,
+        threads: groups.get(label)!,
+      }))
   }
-  
+
   /**
    * Format date for display
    */
@@ -242,7 +124,7 @@ export class ThreadSelectorComponent implements OnInit, OnDestroy {
       const now = new Date()
       const diffMs = now.getTime() - date.getTime()
       const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-      
+
       if (diffDays === 0) {
         return 'Today'
       } else if (diffDays === 1) {
@@ -250,30 +132,13 @@ export class ThreadSelectorComponent implements OnInit, OnDestroy {
       } else if (diffDays < 7) {
         return `${diffDays} days ago`
       } else {
-        return date.toLocaleDateString('en-EN', { 
-          day: 'numeric', 
-          month: 'short' 
+        return date.toLocaleDateString('en-EN', {
+          day: 'numeric',
+          month: 'short',
         })
       }
     } catch (error) {
       return 'No date'
-    }
-  }
-  
-  /**
-   * Track by function for thread list
-   */
-  trackByThreadId(_index: number, thread: { id: string; name: string; modifiedDate: string }): string {
-    return thread.id
-  }
-  
-  /**
-   * Handle click outside to close dropdown
-   */
-  onDocumentClick(event: Event): void {
-    const target = event.target as HTMLElement
-    if (!target.closest('.thread-selector')) {
-      this.closeDropdown()
     }
   }
 }

@@ -1,74 +1,60 @@
-<div 
-  class="thread-selector" 
-  (click)="$event.stopPropagation()" 
-  (keydown)="$event.stopPropagation()" 
-  tabindex="0" 
-  role="application" 
-  aria-label="Thread selector">
-  <!-- Main selector button -->
-  <button 
-    class="selector-button"
-    [class.clickable]="isClickable()"
-    [class.expanded]="isExpanded"
-    [disabled]="!isClickable()"
-    [title]="getTooltipText()"
-    (click)="toggleDropdown()"
-    type="button"
-  >
-    <span class="selector-icon">{{ getIcon() }}</span>
-    <span class="selector-text">{{ getDisplayText() }}</span>
-
-  </button>
-  
-  <!-- Dropdown menu -->
-  <div 
-    *ngIf="isExpanded && canShowDropdown()" 
-    class="dropdown-menu"
-    role="menu"
-    aria-label="Thread selection"
-  >
-    <!-- New thread option (always first) -->
-    <button
-      class="dropdown-item new-thread-item"
-      (click)="createNewThread()"
-      type="button"
-      role="menuitem"
-    >
-      <span class="thread-icon">➕</span>
-      <span class="thread-name">New thread</span>
-    </button>
-    
-    <!-- Separator if we have existing threads -->
-    <div *ngIf="hasThreadsAvailable()" class="dropdown-separator"></div>
-    
-    <!-- Existing threads -->
-    <button
-      *ngFor="let thread of getAvailableThreads(); trackBy: trackByThreadId"
-      class="dropdown-item"
-      [class.current]="thread.id === threads?.current"
-      [title]="thread.name"
-      (click)="selectThread(thread.id)"
-      type="button"
-      role="menuitem"
-    >
-      <span class="thread-name">{{ thread.name }}</span>
-      <span class="thread-date">{{ formatDate(thread.modifiedDate) }}</span>
-      <span class="current-indicator" *ngIf="thread.id === threads?.current">✓</span>
-    </button>
-    
-    <div *ngIf="!hasThreadsAvailable()" class="dropdown-empty">
-      No existing threads
-    </div>
-  </div>
-</div>
-
-<!-- Backdrop to close dropdown -->
-<div 
-  *ngIf="isExpanded"
-  class="dropdown-backdrop"
-  (click)="closeDropdown()"
-  (keydown.escape)="closeDropdown()"
+<div
+  class="thread-selector"
+  (click)="$event.stopPropagation()"
+  (keydown)="$event.stopPropagation()"
   tabindex="0"
-  role="button"
-  aria-label="Close selection menu"
-></div>
+  role="application"
+  aria-label="Thread selector"
+>
+  <!-- Thread list (always visible in sidenav) -->
+  @if (currentProject()?.name) {
+    <div class="thread-list" role="menu" aria-label="Thread selection">
+      <!-- Loading state -->
+      @if (isLoadingThreadList()) {
+        <div class="thread-loading">
+          <span class="loading-spinner"></span>
+          <span class="loading-text">Loading threads...</span>
+        </div>
+      } @else {
+        <!-- Grouped threads -->
+        @for (group of getGroupedThreads(); track group.label) {
+          <div class="thread-group">
+            <div class="thread-group-header">{{ group.label }}</div>
+            @for (thread of group.threads; track thread.id) {
+              <button
+                class="thread-item"
+                [class.current]="thread.id === currentThread()?.id"
+                [title]="thread.name || 'Generating name...'"
+                (click)="selectThread(thread.id)"
+                type="button"
+                role="menuitem"
+              >
+                @if (thread.name) {
+                  <span class="thread-name">{{ thread.name }}</span>
+                } @else {
+                  <mat-spinner class="thread-name-spinner" [diameter]="16"></mat-spinner>
+                  <span class="thread-name thread-name-generating">Generating name...</span>
+                }
+              </button>
+            }
+          </div>
+        }
+
+        <!-- Empty states -->
+        @if (!threads()?.length && !searchQuery) {
+          <div class="thread-empty">No existing threads</div>
+        } @else if (searchQuery && getGroupedThreads().length === 0) {
+          <div class="thread-empty">No threads matching "{{ searchQuery }}"</div>
+        }
+      }
+    </div>
+  } @else {
+    <div class="thread-disabled">
+      @if (!currentProject()?.name) {
+        <span class="disabled-text">No project selected</span>
+      } @else {
+        <span class="disabled-text">Loading...</span>
+      }
+    </div>
+  }
+</div>

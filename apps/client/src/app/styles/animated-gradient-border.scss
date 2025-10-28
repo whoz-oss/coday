@@ -1,0 +1,82 @@
+/* Animated Gradient Border Mixin */
+/*
+ * Provides a reusable animated gradient border effect for any component
+ *
+ * Usage in component SCSS:
+ *   @use '../../../styles/animated-gradient-border.scss' as *;
+ *
+ *   .my-element {
+ *     @include animated-gradient-border;
+ *     border-radius: 16px; // The border will inherit this radius
+ *   }
+ *
+ * Available mixins:
+ *   - animated-gradient-border: Main mixin with animated gradient border
+ *   - animated-gradient-border-error: Changes gradient to use error color
+ *   - animated-gradient-border-no-animation: Disables the animation
+ *
+ * Features:
+ *   - 16px border-radius support (or any custom radius via border-radius property)
+ *   - Smooth 3s animation loop
+ *   - Background stays consistent, only border animates
+ *   - Uses CSS variables for theming (--color-primary, --color-accent, --color-error)
+ */
+
+@mixin animated-gradient-border {
+  position: relative;
+  background: var(--glass-bg, #1e1e1e) !important;
+  background-clip: padding-box;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -2px; /* Extend 2px beyond the element to create border space */
+    border-radius: inherit;
+    background-size: 200% 100%;
+    background: linear-gradient(
+      90deg,
+      var(--color-primary, #3b82f6) 0%,
+      var(--color-accent, #8b5cf6) 50%,
+      var(--color-primary, #3b82f6) 100%
+    );
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    padding: 1px; /* This creates the border width */
+    pointer-events: none;
+    z-index: -1;
+    animation: gradientBorderShift 3s ease-in-out infinite;
+  }
+}
+
+@mixin animated-gradient-border-error {
+  &::before {
+    background: linear-gradient(
+      90deg,
+      var(--color-primary, #3b82f6) 0%,
+      var(--color-error) 50%,
+      var(--color-primary, #3b82f6) 100%
+    );
+    background-size: 200% 100%;
+  }
+}
+
+@mixin animated-gradient-border-no-animation {
+  &::before {
+    animation: none;
+  }
+}
+
+/* Gradient border animation keyframes */
+@keyframes gradientBorderShift {
+  0% {
+    background-position: 0 0;
+  }
+  50% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}

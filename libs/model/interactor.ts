@@ -79,7 +79,7 @@ export abstract class Interactor {
     this.sendEvent(choiceEvent)
     try {
       return await firstValueFrom(answer)
-    } catch (error:any) {
+    } catch (error: any) {
       throw new Error(`No answer received over choice ${choiceEvent.timestamp} : ${error.message}`)
     }
   }
@@ -92,7 +92,8 @@ export abstract class Interactor {
     if (!this.debugLevelEnabled) {
       return
     }
-    const text = `DEBUG: ${log.toString()}`
+    const text = `${new Date().toISOString()} DEBUG: ${log.toString()}`
+    console.log(text)
     this.sendEvent(new TextEvent({ text }))
   }
 

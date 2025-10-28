@@ -1,44 +1,33 @@
-<div class="app">
-  <!-- Connection Status -->
-  <div *ngIf="connectionStatus && !connectionStatus.connected" class="connection-status">
-    ⚠️ Connection lost. Reconnecting... ({{ connectionStatus.reconnectAttempts }}/{{ connectionStatus.maxAttempts }})
+<app-sidenav>
+  <div class="app">
+    @if (threadId) {
+      <!-- Thread view - Full conversation management -->
+      <app-thread [projectName]="projectName" [threadId]="threadId"> </app-thread>
+    } @else {
+      <!-- Welcome view - For implicit thread creation -->
+
+      <!-- Welcome Section -->
+      <div class="welcome-section">
+        <app-welcome-message></app-welcome-message>
+      </div>
+
+      <!-- Input Section for first message -->
+      <div class="input-section" #inputSection>
+        <div class="input-center">
+          <div class="input-glass">
+            <app-chat-textarea
+              [isDisabled]="isSessionInitializing"
+              [isSessionInitializing]="isSessionInitializing"
+              [showWelcome]="true"
+              [isThinking]="false"
+              [isStarting]="isStartingFirstMessage"
+              (messageSubmitted)="onMessageSubmitted($event)"
+              (voiceRecordingToggled)="onVoiceToggled($event)"
+              (heightChanged)="onInputHeightChanged($event)"
+            ></app-chat-textarea>
+          </div>
+        </div>
+      </div>
+    }
   </div>
-  
-  <!-- Chat History - Scrollable area (now full height) -->
-  <div class="chat-wrapper">
-    <app-chat-history 
-      [messages]="messages"
-      [isThinking]="isThinking"
-      (copyRequested)="onCopyMessage($event)"
-      (stopRequested)="onStopRequested()"
-    ></app-chat-history>
-    
-    <!-- Upload Status Display -->
-    <div *ngIf="uploadStatus.message" 
-         class="upload-status" 
-         [class.error]="uploadStatus.isError">
-      {{ uploadStatus.message }}
-    </div>
-  </div>
-  
-  <!-- Input Section - In normal flow -->
-  <div class="input-section" #inputSection>
-    <app-chat-textarea 
-      *ngIf="!currentChoice"
-      [isDisabled]="!isConnected"
-      (messageSubmitted)="onMessageSubmitted($event)"
-      (voiceRecordingToggled)="onVoiceToggled($event)"
-      (heightChanged)="onInputHeightChanged($event)"
-    ></app-chat-textarea>
-    
-    <!-- Choice Select - Overlay on top of input-section -->
-    <app-choice-select
-      *ngIf="currentChoice"
-      [options]="currentChoice.options"
-      [labelHtml]="currentChoice.label"
-      [isVisible]="!!currentChoice"
-      (choiceSelected)="onChoiceSelected($event)"
-      class="choice-overlay"
-    ></app-choice-select>
-  </div>
-</div>
+</app-sidenav>

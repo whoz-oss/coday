@@ -86,6 +86,7 @@ describe('CodayLogger', () => {
       const entry2 = JSON.parse(lines[1]!)
 
       expect(entry1).toEqual({
+        type: 'AGENT_USAGE',
         timestamp: expect.any(String),
         username: 'test-user',
         agent: 'Dev',
@@ -94,6 +95,7 @@ describe('CodayLogger', () => {
       })
 
       expect(entry2).toEqual({
+        type: 'AGENT_USAGE',
         timestamp: expect.any(String),
         username: 'test-user',
         agent: 'Sway',
@@ -137,6 +139,9 @@ describe('CodayLogger', () => {
       for (let i = 0; i < 105; i++) {
         await logger.logAgentUsage('test-user', 'Dev', 'gpt-4o', 0.01)
       }
+
+      // Wait a bit for async flush to complete
+      await new Promise((resolve) => setTimeout(resolve, 100))
 
       // File should exist immediately due to buffer size limit
       const files = await fs.readdir(testLogDir)

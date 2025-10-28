@@ -110,10 +110,12 @@ commands:                                     # Commands array (for template typ
 ### Endpoint URL
 
 ```
-POST /api/webhook/{uuid}
+POST /api/webhooks/{uuid}/execute
 ```
 
 Where `{uuid}` is the UUID v4 identifier of the configured webhook.
+
+**Note**: The endpoint follows REST conventions with plural resource names (`/api/webhooks/`) and the action as a sub-resource (`/execute`).
 
 ### Authentication
 
@@ -203,7 +205,7 @@ commandType: "free"
 
 **API Request:**
 ```bash
-curl -X POST "https://coday.company.com/api/webhook/abc123-def456-..." \
+curl -X POST "https://coday.company.com/api/webhooks/abc123-def456-.../execute" \
   -H "Content-Type: application/json" \
   -H "x-forwarded-email: analyst@company.com" \
   -d '{
@@ -240,7 +242,7 @@ commands:
 
 **API Request:**
 ```bash
-curl -X POST "https://coday.company.com/api/webhook/def456-ghi789-..." \
+curl -X POST "https://coday.company.com/api/webhooks/def456-ghi789-.../execute" \
   -H "Content-Type: application/json" \
   -H "x-forwarded-email: support@company.com" \
   -d '{
@@ -292,7 +294,7 @@ config webhook add
 **Jira Automation Rule:**
 ```json
 {
-  "url": "https://coday.company.com/api/webhook/your-webhook-uuid",
+  "url": "https://coday.company.com/api/webhooks/your-webhook-uuid/execute",
   "method": "POST",
   "headers": {
     "Content-Type": "application/json"
@@ -325,7 +327,7 @@ config webhook add
 ```
 
 **GitLab Webhook Configuration:**
-- URL: `https://coday.company.com/api/webhook/your-webhook-uuid`
+- URL: `https://coday.company.com/api/webhooks/your-webhook-uuid/execute`
 - Trigger: Merge Request events
 - Secret Token: (handled by your authentication proxy)
 
@@ -426,7 +428,7 @@ config webhook edit --uuid=your-uuid
 
 Test webhook manually using curl:
 ```bash
-curl -X POST "http://localhost:4100/api/webhook/your-uuid" \
+curl -X POST "http://localhost:4100/api/webhooks/your-uuid/execute" \
   -H "Content-Type: application/json" \
   -H "x-forwarded-email: your@email.com" \
   -d '{"prompts": ["test command"]}'

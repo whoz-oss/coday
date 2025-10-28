@@ -15,18 +15,110 @@ defaults:
     shell: bash
 
 jobs:
-  release:
+  # Job 1: Setup and determine if release is needed
+  check-release:
     runs-on: ubuntu-latest
     # Skip if this push was made by github-actions (prevents infinite loop)
     if: "!contains(github.event.head_commit.message, '[skip ci]') && github.actor != 'github-actions[bot]'"
-    permissions:
-      contents: write
-      id-token: write # needed for provenance data generation
-      pull-requests: write
-      packages: write
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      previous_tag: ${{ steps.previous_tag.outputs.previous_tag }}
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Get previous tag
+        id: previous_tag
+        run: |
+          # Get the latest release tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match="release/*" 2>/dev/null || echo "")
+          echo "previous_tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
+          if [ -n "$PREVIOUS_TAG" ]; then
+            echo "Previous tag: $PREVIOUS_TAG"
+          else
+            echo "No previous tag found"
+          fi
+
+      - name: Check if release needed
+        id: check
+        run: |
+          # Check if there are releasable commits since last tag
+          if [ -n "${{ steps.previous_tag.outputs.previous_tag }}" ]; then
+            COMMITS=$(git log ${{ steps.previous_tag.outputs.previous_tag }}..HEAD --oneline --grep="^feat\|^fix\|^BREAKING CHANGE" || echo "")
+          else
+            COMMITS=$(git log --oneline --grep="^feat\|^fix\|^BREAKING CHANGE" || echo "")
+          fi
+
+          if [ -n "$COMMITS" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "Found releasable commits"
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "No releasable commits found"
+          fi
+
+  # Job 2: Release (version, build, changelog, GitHub release, and npm publish)
+  release:
+    runs-on: ubuntu-latest
+    needs: check-release
+    if: needs.check-release.outputs.should_release == 'true'
+    permissions:
+      contents: write
+      id-token: write
+    outputs:
+      new_version: ${{ steps.release.outputs.new_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PAT }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          registry-url: 'https://${{ vars.NPM_REGISTRY }}'
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config pull.rebase true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run nx release (version, build, GitHub release, and publish)
+        id: release
+        env:
+          HUSKY: 0
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
+        run: |
+          npx nx release --yes
+          # Capture the new version for desktop build from client package.json
+          NEW_VERSION=$(node -p "require('./apps/client/package.json').version")
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+  # Job 3: Build and upload desktop app
+  desktop-release:
+    runs-on: macos-latest
+    needs: release
+    if: needs.release.outputs.new_version != ''
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
           fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
@@ -38,70 +130,70 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
 
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config pull.rebase true
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Fetch tags
-        run: git fetch --tags --force
-
-      - name: Run nx release
-        id: release
+      - name: Import Code Signing Certificate
         env:
-          HUSKY: 0
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
         run: |
-          # Run nx release and capture output
-          npx nx release --skip-publish 2>&1 | tee release-output.txt
+          # Create a temporary keychain
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
 
-          # Extract the new version from the output
-          NEW_VERSION=$(grep -oP 'release/\K[0-9]+\.[0-9]+\.[0-9]+' release-output.txt | head -1)
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          # Decode certificate from base64
+          echo "$MACOS_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/certificate.p12
 
-          # Check if there were any changes
-          if grep -q "No changes were detected" release-output.txt; then
-            echo "no_changes=true" >> $GITHUB_OUTPUT
-          else
-            echo "no_changes=false" >> $GITHUB_OUTPUT
+          # Create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Import certificate to keychain
+          security import $RUNNER_TEMP/certificate.p12 \
+            -k "$KEYCHAIN_PATH" \
+            -P "$MACOS_CERT_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/productsign
+
+          # Set keychain for codesign to use
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Verify certificate is available
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Build and Sign Desktop App
+        env:
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          npx nx run desktop:package-dist
+
+      - name: Cleanup Keychain
+        if: always()
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          if [ -f "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH"
+          fi
+          rm -f $RUNNER_TEMP/certificate.p12
+
+      - name: Upload DMG to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          VERSION="${{ needs.release.outputs.new_version }}"
+          TAG="release/${VERSION}"
+          DMG_PATH=$(find apps/desktop/release -name "*.dmg" -type f)
+
+          if [ -z "$DMG_PATH" ]; then
+            echo "Error: DMG file not found"
+            exit 1
           fi
 
-      - name: Check for remote changes
-        if: steps.release.outputs.no_changes != 'true'
-        run: |
-          git fetch origin master
-          LOCAL=$(git rev-parse HEAD)
-          REMOTE=$(git rev-parse origin/master)
-          if [ "$LOCAL" != "$REMOTE" ]; then
-            echo "Remote has new commits, rebasing..."
-            git rebase origin/master
-          fi
-
-      - name: Push changes and tags
-        if: steps.release.outputs.no_changes != 'true'
-        run: |
-          # Pull latest changes first to avoid non-fast-forward errors
-          git pull --rebase origin master
-          git push origin HEAD:master --follow-tags
-
-      - name: Publish release
-        run: |
-          npm config set //${{ vars.NPM_REGISTRY }}/:_authToken=${{ secrets.NPM_ACCESS_TOKEN }}
-          npx nx release publish --registry=https://${{ vars.NPM_REGISTRY }}
-          npm config delete //${{ vars.NPM_REGISTRY }}/:_authToken
-
-      - name: Create GitHub Release
-        if: steps.release.outputs.no_changes != 'true'
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: release/${{ steps.release.outputs.new_version }}
-          release_name: Release ${{ steps.release.outputs.new_version }}
-          body: |
-            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/master/CHANGELOG.md) for details.
-          draft: false
-          prerelease: false
+          echo "Uploading $DMG_PATH to release $TAG"
+          gh release upload "$TAG" "$DMG_PATH" --clobber

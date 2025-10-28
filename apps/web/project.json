@@ -1,0 +1,34 @@
+{
+  "name": "web",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "{projectRoot}",
+  "implicitDependencies": ["server", "client", "coday-events", "ai-thread"],
+  "tags": ["web-bundle"],
+  "targets": {
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["node index.js --no_auth"],
+        "parallel": false,
+        "cwd": "{projectRoot}"
+      }
+    },
+    "serve:dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "nx run client:serve",
+          "nx run server:serve"
+        ],
+        "parallel": true
+      }
+    },
+    "nx-release-publish": {
+      "dependsOn": [],
+      "options": {
+        "packageRoot": "{projectRoot}"
+      }
+    }
+  }
+}

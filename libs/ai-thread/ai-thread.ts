@@ -44,6 +44,9 @@ export class AiThread {
 
   username: string
 
+  /** Project identifier this thread belongs to */
+  projectId: string
+
   /** Name or title or very short sentence about the content of the thread */
   name: string
 
@@ -85,6 +88,7 @@ export class AiThread {
   constructor(thread: ThreadSerialized) {
     this.id = thread.id
     this.username = thread.username
+    this.projectId = thread.projectId ?? ''
     this.name = thread.name ?? ''
     this.summary = thread.summary ?? ''
     this.createdDate = thread.createdDate ?? new Date().toISOString()
@@ -370,6 +374,9 @@ export class AiThread {
         })
       )
     }
+
+    // Update modified date whenever a user message is added
+    this.modifiedDate = new Date().toISOString()
   }
 
   /**
@@ -396,6 +403,9 @@ export class AiThread {
         })
       )
     }
+
+    // Update modified date whenever an agent message is added
+    this.modifiedDate = new Date().toISOString()
   }
 
   /**
@@ -420,6 +430,7 @@ export class AiThread {
     const forkedThread = new AiThread({
       id: this.id, // Reuse parent thread ID as we don't save this
       username: this.username,
+      projectId: this.projectId,
       name: agentName ? `${this.name} - Delegated to ${agentName}` : `${this.name} - Forked`,
       summary: this.summary,
       createdDate: this.createdDate,

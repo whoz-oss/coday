@@ -1,0 +1,20 @@
+{
+  "name": "@whoz-oss/coday-web",
+  "version": "0.35.5",
+  "repository": "https://github.com/whoz-oss/coday",
+  "type": "module",
+  "bin": {
+    "coday-web": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "dependencies": {
+    "@whoz-oss/coday-client": "0.35.5",
+    "@whoz-oss/coday-server": "0.35.5"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

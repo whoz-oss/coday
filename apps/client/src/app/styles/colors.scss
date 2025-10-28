@@ -1,71 +1,93 @@
 /**
  * Coday Color Variables
- * 
+ *
  * A simplified theme system with essential color variables.
  * Default theme is light, with dark theme available via data-theme="dark".
  */
 
 :root {
-  /* Light Theme (Default) */
+  /* Light Theme (Default) - Apple Glass Aesthetic */
 
   /* Base Colors */
-  --color-bg: #f8f8f2;
-  --color-bg-secondary: #f1f1eb;
-  --color-text: #282a36;
-  --color-text-secondary: #6272a4;
+  --color-bg: linear-gradient(135deg, #f0f4ff 0%, #e8ecf9 100%);
+  --color-bg-solid: #f0f4ff;
+  --color-bg-secondary: rgba(255, 255, 255, 0.7);
+  --color-text: #1d1d1f;
+  --color-text-secondary: #6e6e73;
   --color-text-inverse: #ffffff;
 
   /* Interactive Elements */
-  --color-primary: #7064fb;
-  --color-primary-hover: #ff79c6;
-  --color-link: #3498db;
-  --color-border: #aeaeae;
-  --color-input-bg: #ffffff;
+  --color-primary: #007aff;
+  --color-primary-hover: #0051d5;
+  --color-accent: #8b5cf6;
+  --color-link: #007aff;
+  --color-border: rgba(0, 0, 0, 0.1);
+  --color-border-light: rgba(40, 40, 40, 0.08);
+  --color-input-bg: rgba(255, 255, 255, 0.8);
 
   /* Status Colors */
-  --color-success: #50fa7b;
-  --color-error: #ff5555;
-  --color-warning: #ffb86c;
-  --color-info: #8be9fd;
+  --color-success: #34c759;
+  --color-error: #ff3b30;
+  --color-warning: #ff9500;
+  --color-info: #5ac8fa;
 
-  /* Application-Specific */
-  --color-message-user: #e2dee2;
-  --color-message-ai: #e8ecf6;
-  --color-code-bg: #f1f1f1;
-  --color-code-text: #d63384;
-  --color-bg-hover: #f1f3f4;
+  /* Application-Specific - Glass morphism */
+  --color-message-user: rgba(0, 122, 255, 0.1);
+  --color-message-ai: rgba(255, 255, 255, 0.8);
+  --color-code-bg: rgba(142, 142, 147, 0.12);
+  --color-code-text: #ff375f;
+  --color-bg-hover: rgba(0, 0, 0, 0.04);
+
+  /* Glass Effect Variables */
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.18);
+  --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+  --glass-backdrop-blur: blur(20px);
 
   /* Utility Colors */
-  --color-shadow: rgba(0, 0, 0, 0.1);
-  --color-overlay: rgba(0, 0, 0, 0.3);
+  --color-shadow: rgba(0, 0, 0, 0.08);
+  --color-overlay: rgba(0, 0, 0, 0.4);
 }
 
-/* Dark Theme */
-[data-theme="dark"] {
+/* Dark Theme - Apple Glass Aesthetic */
+[data-theme='dark'] {
   /* Base Colors */
-  --color-bg: #333339;
-  --color-bg-secondary: #44475a;
-  --color-text: #f8f8f2;
-  --color-text-secondary: #8192c5;
+  --color-bg: linear-gradient(135deg, #1c1c1e 0%, #2c2c2e 100%);
+  --color-bg-solid: #1c1c1e;
+  --color-bg-secondary: rgba(44, 44, 46, 0.72);
+  --color-text: #f5f5f7;
+  --color-text-secondary: #98989d;
   --color-text-inverse: #ffffff;
 
   /* Interactive Elements */
-  --color-primary: #b47eff;
-  --color-primary-hover: #ff79c6;
-  --color-link: #61afef;
-  --color-border: #6272a4;
-  --color-input-bg: #282a36;
+  --color-primary: #0a84ff;
+  --color-primary-hover: #409cff;
+  --color-accent: #a78bfa;
+  --color-link: #0a84ff;
+  --color-border: rgba(255, 255, 255, 0.15);
+  --color-border-light: rgba(255, 255, 255, 0.05);
+  --color-input-bg: rgba(44, 44, 46, 0.8);
 
-  /* Status Colors remain the same for consistency */
+  /* Status Colors */
+  --color-success: #32d74b;
+  --color-error: #ff453a;
+  --color-warning: #ff9f0a;
+  --color-info: #64d2ff;
 
-  /* Application-Specific */
-  --color-message-user: #6a5b7e;
-  --color-message-ai: #677088;
-  --color-code-bg: #1e1f29;
-  --color-code-text: #ff79c6;
-  --color-bg-hover: #565761;
+  /* Application-Specific - Glass morphism */
+  --color-message-user: rgba(10, 132, 255, 0.15);
+  --color-message-ai: rgba(58, 58, 60, 0.72);
+  --color-code-bg: rgba(142, 142, 147, 0.24);
+  --color-code-text: #ff375f;
+  --color-bg-hover: rgba(255, 255, 255, 0.08);
+
+  /* Glass Effect Variables */
+  --glass-bg: rgba(40, 42, 44);
+  --glass-border: rgba(255, 255, 255, 0.18);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  --glass-backdrop-blur: blur(20px);
 
   /* Utility Colors */
-  --color-shadow: rgba(0, 0, 0, 0.3);
-  --color-overlay: rgba(0, 0, 0, 0.7);
+  --color-shadow: rgba(0, 0, 0, 0.5);
+  --color-overlay: rgba(0, 0, 0, 0.8);
 }

@@ -1,0 +1,154 @@
+.project-selection {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  background: var(--color-bg);
+  padding: 2rem;
+}
+
+// Centered container for welcome + choice
+.centered-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3rem;
+  width: 100%;
+  max-width: 800px;
+  animation: fadeIn 0.6s ease-out;
+}
+
+// Welcome Section
+.welcome-section {
+  animation: slideUp 0.8s ease-out;
+}
+
+// Choice Section
+.choice-section {
+  width: 100%;
+  animation: slideUp 0.8s ease-out 0.2s both;
+}
+
+.choice-glass {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+
+  &:hover {
+    box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
+  }
+}
+
+// Loading state
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 2rem;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.loading-text {
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+// Error state
+.error-container {
+  padding: 2rem;
+  text-align: center;
+}
+
+.error-text {
+  color: var(--color-error);
+  margin: 0;
+}
+
+// No projects state
+.no-projects-container {
+  padding: 2rem;
+  text-align: center;
+}
+
+.no-projects-text {
+  color: var(--color-text);
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+}
+
+.no-projects-hint {
+  color: var(--color-text-secondary);
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+// Animations
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// Responsive
+@media (max-width: 768px) {
+  .project-selection {
+    padding: 1.5rem;
+  }
+
+  .centered-content {
+    gap: 2rem;
+  }
+
+  .choice-glass {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .project-selection {
+    padding: 1rem;
+  }
+
+  .centered-content {
+    gap: 1.5rem;
+  }
+
+  .choice-glass {
+    padding: 0.75rem;
+  }
+}
