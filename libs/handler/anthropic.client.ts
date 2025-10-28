@@ -107,7 +107,7 @@ export class AnthropicClient extends AiClient {
 
     // Recalculate budget on each iteration to account for growing thread
     const initialContextCharLength = agent.systemInstructions.length + agent.tools.charLength + 20
-    const charBudget = Math.max(model.contextWindow * this.charsPerToken - initialContextCharLength, 10000)
+    let charBudget = Math.max(model.contextWindow * this.charsPerToken - initialContextCharLength, 10000)
 
     // API call with localized error handling
     let response: Anthropic.Messages.Message
@@ -117,8 +117,45 @@ export class AnthropicClient extends AiClient {
       response = result.data
       httpResponse = result.response
     } catch (error: any) {
+      // Handle "prompt is too long" errors with aggressive compaction
+      if (error.status === 400 && error.error?.error?.message?.includes('prompt is too long')) {
+        this.interactor.displayText('⚠️ Context window exceeded. Forcing aggressive compaction...')
+
+        // Extract the actual token count from error message if available
+        const match = error.error.error.message.match(/(\d+) tokens > (\d+) maximum/)
+        if (match) {
+          const actualTokens = parseInt(match[1])
+          const maxTokens = parseInt(match[2])
+          const overshoot = actualTokens - maxTokens
+
+          // Reduce budget by overshoot + 20% safety margin
+          const reductionChars = Math.ceil(overshoot * this.charsPerToken * 1.2)
+          charBudget = Math.max(charBudget - reductionChars, 5000)
+
+          this.interactor.debug(
+            `Token overshoot: ${overshoot} tokens (${reductionChars} chars). ` +
+              `Reduced budget to ${charBudget} chars.`
+          )
+        } else {
+          // Fallback: reduce budget by 30% if we can't parse the error
+          charBudget = Math.floor(charBudget * 0.7)
+          this.interactor.debug(`Reduced budget by 30% to ${charBudget} chars.`)
+        }
+
+        // Force cache marker update to ensure fresh compaction
+        try {
+          const result = await this.makeApiCall(client, model, agent, thread, charBudget, true)
+          response = result.data
+          httpResponse = result.response
+          this.interactor.displayText('✅ Successfully recovered with compacted context')
+        } catch (retryError: any) {
+          // If still failing after compaction, propagate the error
+          this.handleError(retryError, subscriber, this.name)
+          return
+        }
+      }
       // Handle 429 rate limit errors with retry
-      if (error.status === 429 && error.headers) {
+      else if (error.status === 429 && error.headers) {
         const retryAfter = parseInt(error.headers['retry-after'] ?? '60')
         this.interactor.displayText(`⏳ Rate limit hit. Waiting ${retryAfter} seconds before retry...`)
 
@@ -454,16 +491,23 @@ export class AnthropicClient extends AiClient {
   /**
    * Make the actual API call to Anthropic
    * Extracted to avoid code duplication between initial call and retry
+   * @param client
+   * @param model
+   * @param agent
+   * @param thread
+   * @param charBudget
+   * @param forceUpdateCache When true, forces cache marker recalculation for aggressive compaction
    */
   private async makeApiCall(
     client: Anthropic,
     model: AiModel,
     agent: Agent,
     thread: AiThread,
-    charBudget: number
+    charBudget: number,
+    forceUpdateCache: boolean = false
   ): Promise<{ data: Anthropic.Messages.Message; response: Response }> {
     const data = await this.getMessages(thread, charBudget, model.name)
-    const messages = this.toClaudeMessage(data.messages, thread)
+    const messages = this.toClaudeMessage(data.messages, thread, forceUpdateCache)
     return await client.messages
       .create({
         model: model.name,

@@ -1,5 +1,12 @@
 import { Observable, of, Subject } from 'rxjs'
-import { CodayEvent, ErrorEvent, MessageEvent, SummaryEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
+import {
+  CodayEvent,
+  ErrorEvent,
+  MessageEvent,
+  SummaryEvent,
+  ToolRequestEvent,
+  ToolResponseEvent,
+} from '@coday/coday-events'
 import { Agent } from './agent'
 import { AiThread } from '../ai-thread/ai-thread'
 import { RunStatus, ThreadMessage } from '../ai-thread/ai-thread.types'
@@ -145,12 +152,19 @@ export abstract class AiClient {
 
   private getCompactor(model: string, maxChars: number): (messages: ThreadMessage[]) => Promise<SummaryEvent> {
     return async (messages: ThreadMessage[]): Promise<SummaryEvent> => {
+      this.interactor.debug(`🗜️ Starting compaction for ${messages.length} messages (budget: ${maxChars} chars)`)
+
       // Build the initial transcript
       const fullTranscript = messages
         // without the tool request and response, hypothesis is we can do without and simply the "text"
         .filter((m) => m instanceof MessageEvent)
         .map((m) => ` - ${m.role}: ${m.getTextContent()}`)
         .join('\n')
+
+      this.interactor.debug(
+        `📝 Built transcript from ${messages.filter((m) => m instanceof MessageEvent).length} messages ` +
+          `(${fullTranscript.length} chars)`
+      )
 
       const summaryBudget = Math.floor(maxChars / 20)
 
@@ -159,6 +173,11 @@ export abstract class AiClient {
       const promptTemplateOverhead = 150
       const safetyMargin = 0.2
       const maxTranscriptChars = Math.floor((maxChars - promptTemplateOverhead - summaryBudget) * (1 - safetyMargin))
+
+      this.interactor.debug(
+        `📊 Compaction budget: summary=${summaryBudget} chars, ` +
+          `max transcript=${maxTranscriptChars} chars (overhead=${promptTemplateOverhead}, margin=${Math.round(safetyMargin * 100)}%)`
+      )
 
       // Limit transcript size to prevent context window overflow
       let transcript = fullTranscript
@@ -170,8 +189,8 @@ export abstract class AiClient {
         wasTruncated = true
 
         this.interactor.debug(
-          `Transcript truncated: ${fullTranscript.length} → ${transcript.length} chars ` +
-            `(limit: ${maxTranscriptChars}, budget: ${maxChars})`
+          `✂️ Transcript truncated: ${fullTranscript.length} → ${transcript.length} chars ` +
+            `(removed ${fullTranscript.length - transcript.length} chars from beginning)`
         )
       }
 
@@ -181,6 +200,8 @@ export abstract class AiClient {
 It can be summarized as:
 <summary>
 `
+
+      this.interactor.debug(`🤖 Calling completion API for summary (model: ${model}, max tokens: ${summaryBudget})`)
 
       let summary: string
       try {
@@ -192,7 +213,7 @@ It can be summarized as:
 
         const truncatedInfo = wasTruncated ? ' (from truncated transcript)' : ''
         this.interactor.debug(
-          `Compacted ${messages.length} messages into ${summary.length} chars summary${truncatedInfo}.`
+          `✅ Compaction successful: ${messages.length} messages → ${summary.length} chars summary${truncatedInfo}`
         )
       } catch (e) {
         summary = '...previous conversation truncated'
@@ -200,9 +221,9 @@ It can be summarized as:
 
         const errorDetails = e instanceof Error ? e.message : 'Unknown error'
         this.interactor.warn(
-          `Could not compact conversation (${errorDetails}). ` +
-            `Transcript size: ${transcript.length} chars, Budget: ${maxChars} chars. ` +
-            'Falling back to simple truncation.'
+          `❌ Compaction failed (${errorDetails}). ` +
+            `Transcript: ${transcript.length} chars, Budget: ${maxChars} chars. ` +
+            'Using fallback truncation message.'
         )
       }
 
@@ -371,10 +392,7 @@ It can be summarized as:
    * @param isLastUserMessage Whether this is the last user message in the thread
    * @returns Enhanced content with date/time if applicable, otherwise original content
    */
-  protected enhanceWithCurrentDateTime(
-    content: MessageContent[],
-    isLastUserMessage: boolean
-  ): MessageContent[] {
+  protected enhanceWithCurrentDateTime(content: MessageContent[], isLastUserMessage: boolean): MessageContent[] {
     if (!isLastUserMessage) return content
 
     const now = new Date()
