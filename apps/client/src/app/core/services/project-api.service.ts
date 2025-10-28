@@ -66,4 +66,13 @@ export class ProjectApiService {
   updateProjectConfig(projectName: string, config: any): Observable<{ success: boolean; message: string }> {
     return this.http.put<{ success: boolean; message: string }>(`${this.baseUrl}/${projectName}/config`, config)
   }
+
+  /**
+   * Create a new project
+   * @param name Project name
+   * @param path Project path
+   */
+  createProject(name: string, path: string): Observable<{ success: boolean; message: string }> {
+    return this.http.post<{ success: boolean; message: string }>(this.baseUrl, { name, path })
+  }
 }

@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core'
 import { BehaviorSubject, combineLatest, of, shareReplay, switchMap, take } from 'rxjs'
-import { map } from 'rxjs/operators'
+import { map, tap } from 'rxjs/operators'
 import { ProjectApiService } from './project-api.service'
 
 /**
@@ -14,13 +14,19 @@ import { ProjectApiService } from './project-api.service'
 export class ProjectStateService {
   private readonly selectedProjectIdSubject = new BehaviorSubject<string | null>(null)
   private readonly isLoadingSubject = new BehaviorSubject<boolean>(false)
+  private readonly refreshTriggerSubject = new BehaviorSubject<void>(undefined)
+
   // Public observables
   isLoading$ = this.isLoadingSubject.asObservable()
 
   // Inject API service
   private readonly projectApi = inject(ProjectApiService)
 
-  private readonly projectListCall = this.projectApi.listProjects().pipe(shareReplay({ bufferSize: 1, refCount: true }))
+  private readonly projectListCall = this.refreshTriggerSubject.pipe(
+    switchMap(() => this.projectApi.listProjects()),
+    shareReplay({ bufferSize: 1, refCount: true })
+  )
+
   projectList$ = this.projectListCall.pipe(map((response) => response.projects))
   forcedProject$ = this.projectListCall.pipe(map((response) => response.forcedProject))
 
@@ -62,5 +68,23 @@ export class ProjectStateService {
   clearSelection(): void {
     console.log('[PROJECT-STATE] Clearing project selection')
     this.selectedProjectIdSubject.next(null)
+  }
+
+  /**
+   * Create a new project
+   * @param name Project name
+   * @param path Project path
+   * @returns Observable with success result
+   */
+  createProject(name: string, path: string) {
+    this.isLoadingSubject.next(true)
+
+    return this.projectApi.createProject(name, path).pipe(
+      tap(() => {
+        this.isLoadingSubject.next(false)
+        // Trigger project list refresh
+        this.refreshTriggerSubject.next()
+      })
+    )
   }
 }

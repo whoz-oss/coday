@@ -9,7 +9,14 @@
     <!-- Choice Selection Section -->
     <div class="choice-section">
       <div class="choice-glass">
-        @if (isLoading) {
+        @if (showCreateForm) {
+          <!-- Project creation form -->
+          <app-project-create
+            [isCreating]="isCreating"
+            (create)="onCreateProject($event)"
+            (cancel)="closeCreateForm()"
+          ></app-project-create>
+        } @else if (isLoading) {
           <div class="loading-container">
             <div class="loading-spinner"></div>
             <p class="loading-text">Loading projects...</p>
@@ -19,16 +26,25 @@
             <p class="error-text">{{ error }}</p>
           </div>
         } @else if (projects() && projects()!.length > 0) {
+          <!-- Project selection list -->
           <app-choice-select
             [options]="projectOptions()"
             [labelHtml]="'Select a project to continue'"
             [isVisible]="true"
             (choiceSelected)="selectProject($event)"
           ></app-choice-select>
+
+          <!-- Create button (visible only if no forced project) -->
+          @if (showCreateButton()) {
+            <div class="create-action">
+              <button class="create-project-btn" (click)="openCreateForm()">➕ Create New Project</button>
+            </div>
+          }
         } @else {
+          <!-- No projects available -->
           <div class="no-projects-container">
             <p class="no-projects-text">No projects available.</p>
-            <p class="no-projects-hint">Contact your administrator to create a project.</p>
+            <button class="create-project-btn" (click)="openCreateForm()">➕ Create Your First Project</button>
           </div>
         }
       </div>

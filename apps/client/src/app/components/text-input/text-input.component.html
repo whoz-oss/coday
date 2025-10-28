@@ -1,0 +1,18 @@
+<div class="text-input-container">
+  @if (label) {
+    <label class="text-input-label">{{ label }}</label>
+  }
+  <input
+    #inputElement
+    type="text"
+    class="text-input-field"
+    [(ngModel)]="inputValue"
+    (ngModelChange)="onValueChange($event)"
+    [placeholder]="placeholder"
+    [disabled]="isDisabled"
+    (keydown.enter)="onEnter()"
+  />
+  @if (hint) {
+    <small class="text-input-hint">{{ hint }}</small>
+  }
+</div>
