@@ -5,6 +5,14 @@
   width: 100%;
 }
 
+.text-input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  cursor: text;
+}
+
 .text-input-label {
   font-size: 0.95rem;
   font-weight: 500;

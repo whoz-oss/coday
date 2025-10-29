@@ -14,7 +14,7 @@
           <app-project-create
             [isCreating]="isCreating"
             (create)="onCreateProject($event)"
-            (cancel)="closeCreateForm()"
+            (cancelled)="closeCreateForm()"
           ></app-project-create>
         } @else if (isLoading) {
           <div class="loading-container">

@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, Output, ViewChild, AfterViewInit } from '@angular/core'
+import { Component, EventEmitter, Input, Output, ViewChild } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { TextInputComponent } from '../text-input/text-input.component'
 
@@ -13,10 +13,10 @@ import { TextInputComponent } from '../text-input/text-input.component'
   templateUrl: './project-create.component.html',
   styleUrl: './project-create.component.scss',
 })
-export class ProjectCreateComponent implements AfterViewInit {
+export class ProjectCreateComponent {
   @Input() isCreating: boolean = false
   @Output() create = new EventEmitter<{ name: string; path: string }>()
-  @Output() cancel = new EventEmitter<void>()
+  @Output() cancelled = new EventEmitter<void>()
 
   @ViewChild('nameInput') nameInput!: TextInputComponent
   @ViewChild('pathInput') pathInput!: TextInputComponent
@@ -24,10 +24,6 @@ export class ProjectCreateComponent implements AfterViewInit {
   projectName: string = ''
   projectPath: string = ''
   errorMessage: string = ''
-
-  ngAfterViewInit(): void {
-    // Name input will auto-focus via its autoFocus property
-  }
 
   isValid(): boolean {
     return this.projectName.trim() !== '' && this.projectPath.trim() !== ''
@@ -53,6 +49,6 @@ export class ProjectCreateComponent implements AfterViewInit {
   }
 
   onCancel(): void {
-    this.cancel.emit()
+    this.cancelled.emit()
   }
 }
