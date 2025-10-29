@@ -1,3 +1,13 @@
+## 0.36.0 (2025-10-29)
+
+### 🚀 Features
+
+- #149 summary events ([#260](https://github.com/whoz-oss/coday/pull/260), [#149](https://github.com/whoz-oss/coday/issues/149))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.35.5 (2025-10-26)
 
 ### 🩹 Fixes
