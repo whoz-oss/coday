@@ -114,7 +114,27 @@ if (process.env.BUILD_ENV === 'development') {
 }
 // Initialize project service for REST API endpoints
 const projectRepository = new ProjectFileRepository(configPath)
-const projectService = new ProjectService(projectRepository, codayOptions.project, codayOptions.forcedProject)
+
+// Resolve the actual project ID (with hash) if we're in default mode
+let resolvedProjectName = codayOptions.project
+if (resolvedProjectName && !codayOptions.forcedProject) {
+  // In default mode, the project might be a volatile project that needs to be resolved
+  // Generate the project ID that would be created for the current directory
+  const cwd = process.cwd()
+  const volatileProjectId = ProjectService.generateProjectId(cwd)
+
+  // Check if this volatile project already exists
+  if (projectRepository.exists(volatileProjectId)) {
+    debugLog('INIT', `Using existing volatile project: ${volatileProjectId}`)
+    resolvedProjectName = volatileProjectId
+  } else if (!projectRepository.exists(resolvedProjectName)) {
+    // Project doesn't exist with simple name, will be created as volatile
+    debugLog('INIT', `Will use volatile project ID: ${volatileProjectId}`)
+    resolvedProjectName = volatileProjectId
+  }
+}
+
+const projectService = new ProjectService(projectRepository, resolvedProjectName, codayOptions.forcedProject)
 
 // Initialize thread service for REST API endpoints
 const projectsDir = path.join(configPath, 'projects')

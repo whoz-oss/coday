@@ -63,7 +63,7 @@ export class ProjectService {
   /**
    * Get project details including configuration
    * If project doesn't exist and we're in default mode, creates a volatile project
-   * @param name Project name
+   * @param name Project name (can be simple name or full volatile ID)
    * @returns Project object with name and config, or null if not found
    */
   getProject(name: string): {
@@ -73,22 +73,31 @@ export class ProjectService {
     this.checkAgainstForced(name)
     let config = this.repository.getConfig(name)
 
-    // If project doesn't exist and we have a default project, create volatile
-    if (!config && this.defaultProject === name && !this.isForcedMode) {
-      const cwd = process.cwd()
-      const volatileId = this.getOrCreateVolatileProject(cwd)
+    // If project exists, return it directly
+    if (config) {
+      return { name, config }
+    }
 
-      // Use the volatile project instead
-      config = this.repository.getConfig(volatileId)
-      if (config) {
-        return { name: volatileId, config }
+    // If project doesn't exist and we're in default mode (not forced), try to create volatile
+    // This handles the case where a simple name is passed but the project doesn't exist yet
+    if (!this.isForcedMode && this.defaultProject) {
+      // Check if the requested name matches the default project (could be simple name or volatile ID)
+      const cwd = process.cwd()
+      const volatileId = ProjectService.generateProjectId(cwd)
+
+      // If the requested name is either the simple basename or the full volatile ID
+      const basename = path.basename(cwd)
+      if (name === basename || name === volatileId || name === this.defaultProject) {
+        const createdId = this.getOrCreateVolatileProject(cwd)
+        config = this.repository.getConfig(createdId)
+        if (config) {
+          return { name: createdId, config }
+        }
       }
     }
 
-    if (!config) {
-      return null
-    }
-    return { name, config }
+    // Project not found and not eligible for volatile creation
+    return null
   }
 
   /**
@@ -196,7 +205,7 @@ export class ProjectService {
    * @returns Project ID (basename_hash format)
    */
   private getOrCreateVolatileProject(projectPath: string): string {
-    const projectId = this.generateProjectId(projectPath)
+    const projectId = ProjectService.generateProjectId(projectPath)
 
     if (this.repository.exists(projectId)) {
       console.log(`[PROJECT-SERVICE] Using existing volatile project: ${projectId}`)
@@ -229,7 +238,7 @@ export class ProjectService {
    * @param absolutePath Absolute path to the project directory
    * @returns Project ID
    */
-  private generateProjectId(absolutePath: string): string {
+  static generateProjectId(absolutePath: string): string {
     const basename = path.basename(absolutePath)
     const hash = crypto.createHash('sha256').update(absolutePath).digest('hex').substring(0, 8)
 
