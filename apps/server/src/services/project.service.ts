@@ -70,13 +70,18 @@ export class ProjectService {
     name: string
     config: ProjectLocalConfig
   } | null {
+    console.log(`[PROJECT-SERVICE] getProject('${name}') called`)
     this.checkAgainstForced(name)
     let config = this.repository.getConfig(name)
 
     // If project exists, return it directly
     if (config) {
+      console.log(`[PROJECT-SERVICE] getProject('${name}'): project found, returning directly`)
       return { name, config }
     }
+
+    console.log(`[PROJECT-SERVICE] getProject('${name}'): project not found, checking volatile creation eligibility`)
+    console.log(`[PROJECT-SERVICE] isForcedMode: ${this.isForcedMode}, defaultProject: ${this.defaultProject}`)
 
     // If project doesn't exist and we're in default mode (not forced), try to create volatile
     // This handles the case where a simple name is passed but the project doesn't exist yet
@@ -84,19 +89,38 @@ export class ProjectService {
       // Check if the requested name matches the default project (could be simple name or volatile ID)
       const cwd = process.cwd()
       const volatileId = ProjectService.generateProjectId(cwd)
+      const basename = path.basename(cwd)
+
+      console.log(`[PROJECT-SERVICE] getProject: cwd = ${cwd}`)
+      console.log(`[PROJECT-SERVICE] getProject: basename = ${basename}`)
+      console.log(`[PROJECT-SERVICE] getProject: volatileId = ${volatileId}`)
+      console.log(`[PROJECT-SERVICE] getProject: name matches basename? ${name === basename}`)
+      console.log(`[PROJECT-SERVICE] getProject: name matches volatileId? ${name === volatileId}`)
+      console.log(`[PROJECT-SERVICE] getProject: name matches defaultProject? ${name === this.defaultProject}`)
 
       // If the requested name is either the simple basename or the full volatile ID
-      const basename = path.basename(cwd)
       if (name === basename || name === volatileId || name === this.defaultProject) {
+        console.log(`[PROJECT-SERVICE] getProject('${name}'): eligible for volatile creation`)
         const createdId = this.getOrCreateVolatileProject(cwd)
+        console.log(`[PROJECT-SERVICE] getProject('${name}'): getOrCreateVolatileProject returned ${createdId}`)
         config = this.repository.getConfig(createdId)
         if (config) {
+          console.log(
+            `[PROJECT-SERVICE] getProject('${name}'): volatile project config found, returning with name ${createdId}`
+          )
           return { name: createdId, config }
+        } else {
+          console.log(
+            `[PROJECT-SERVICE] getProject('${name}'): WARNING - volatile project created but config not found!`
+          )
         }
+      } else {
+        console.log(`[PROJECT-SERVICE] getProject('${name}'): NOT eligible for volatile creation (name mismatch)`)
       }
     }
 
     // Project not found and not eligible for volatile creation
+    console.log(`[PROJECT-SERVICE] getProject('${name}'): returning null`)
     return null
   }
 
@@ -206,6 +230,7 @@ export class ProjectService {
    */
   private getOrCreateVolatileProject(projectPath: string): string {
     const projectId = ProjectService.generateProjectId(projectPath)
+    console.log(`[PROJECT-SERVICE] getOrCreateVolatileProject('${projectPath}') - generated ID: ${projectId}`)
 
     // Check if project already exists
     if (this.repository.exists(projectId)) {
@@ -217,14 +242,23 @@ export class ProjectService {
     console.log(`[PROJECT-SERVICE] Creating volatile project: ${projectId} for ${projectPath}`)
 
     // Create the project (returns false if already exists, which shouldn't happen here)
-    this.repository.createProject(projectId, projectPath)
+    const created = this.repository.createProject(projectId, projectPath)
+    console.log(`[PROJECT-SERVICE] repository.createProject returned: ${created}`)
+
+    // Verify creation
+    const existsAfterCreation = this.repository.exists(projectId)
+    console.log(`[PROJECT-SERVICE] Project exists after creation: ${existsAfterCreation}`)
 
     // Enrich config with volatile metadata
     const config = this.repository.getConfig(projectId)
     if (config) {
+      console.log(`[PROJECT-SERVICE] Enriching config with volatile metadata`)
       config.volatile = true
       config.createdAt = Date.now()
       this.repository.saveConfig(projectId, config)
+      console.log(`[PROJECT-SERVICE] Volatile metadata saved`)
+    } else {
+      console.log(`[PROJECT-SERVICE] WARNING: Could not get config after creation!`)
     }
 
     return projectId

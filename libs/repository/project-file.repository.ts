@@ -40,19 +40,25 @@ export class ProjectFileRepository implements ProjectRepository {
   }
 
   exists(name: string): boolean {
-    return this.getProjectInfo(name) !== null
+    const result = this.getProjectInfo(name) !== null
+    console.log(`[PROJECT-REPO] exists('${name}'): ${result}`)
+    return result
   }
 
   getConfig(name: string): ProjectLocalConfig | null {
+    console.log(`[PROJECT-REPO] getConfig('${name}') called`)
     const projectInfo = this.getProjectInfo(name)
     if (!projectInfo) {
+      console.log(`[PROJECT-REPO] getConfig('${name}'): project info not found`)
       return null
     }
 
     const configFile = path.join(projectInfo.configPath, ProjectFileRepository.PROJECT_FILENAME)
+    console.log(`[PROJECT-REPO] getConfig('${name}'): reading from ${configFile}`)
     let rawConfig = readYamlFile(configFile)
 
     if (!rawConfig) {
+      console.log(`[PROJECT-REPO] getConfig('${name}'): failed to read config file`)
       return null
     }
 
@@ -78,12 +84,16 @@ export class ProjectFileRepository implements ProjectRepository {
   }
 
   createProject(name: string, projectPath: string): boolean {
+    console.log(`[PROJECT-REPO] createProject('${name}', '${projectPath}') called`)
     const configPath = path.join(this.projectsConfigPath, name)
+    console.log(`[PROJECT-REPO] createProject: configPath = ${configPath}`)
 
     if (existsSync(configPath)) {
+      console.log(`[PROJECT-REPO] createProject('${name}'): directory already exists, returning false`)
       return false
     }
 
+    console.log(`[PROJECT-REPO] createProject('${name}'): creating directory`)
     mkdirSync(configPath, { recursive: true })
 
     const configFile = path.join(configPath, ProjectFileRepository.PROJECT_FILENAME)
@@ -95,7 +105,9 @@ export class ProjectFileRepository implements ProjectRepository {
       agents: [],
     }
 
+    console.log(`[PROJECT-REPO] createProject('${name}'): writing config to ${configFile}`)
     writeYamlFile(configFile, defaultConfig)
+    console.log(`[PROJECT-REPO] createProject('${name}'): success`)
     return true
   }
 
