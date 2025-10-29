@@ -207,18 +207,17 @@ export class ProjectService {
   private getOrCreateVolatileProject(projectPath: string): string {
     const projectId = ProjectService.generateProjectId(projectPath)
 
+    // Check if project already exists
     if (this.repository.exists(projectId)) {
       console.log(`[PROJECT-SERVICE] Using existing volatile project: ${projectId}`)
       return projectId
     }
 
+    // Project doesn't exist, create it
     console.log(`[PROJECT-SERVICE] Creating volatile project: ${projectId} for ${projectPath}`)
 
-    // Create the project
-    const created = this.repository.createProject(projectId, projectPath)
-    if (!created) {
-      throw new Error(`Failed to create volatile project ${projectId}`)
-    }
+    // Create the project (returns false if already exists, which shouldn't happen here)
+    this.repository.createProject(projectId, projectPath)
 
     // Enrich config with volatile metadata
     const config = this.repository.getConfig(projectId)
