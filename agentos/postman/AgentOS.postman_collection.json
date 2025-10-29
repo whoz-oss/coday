@@ -1,0 +1,272 @@
+{
+  "info": {
+    "description": "Collection for testing AgentOS Agent Service",
+    "name": "AgentOS API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "item": [
+        {
+          "name": "Get All Agents",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents"],
+              "raw": "{{baseUrl}}/api/agents"
+            }
+          }
+        },
+        {
+          "name": "Get Agent by ID",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "code-reviewer"],
+              "raw": "{{baseUrl}}/api/agents/code-reviewer"
+            }
+          }
+        },
+        {
+          "name": "Query Agents (POST)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contextTypes\": [\"CODE_REVIEW\"],\n  \"maxResults\": 5\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "query"],
+              "raw": "{{baseUrl}}/api/agents/query"
+            }
+          }
+        },
+        {
+          "name": "Query Agents by Context (GET)",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "by-context"],
+              "query": [
+                {
+                  "key": "contextTypes",
+                  "value": "CODE_REVIEW"
+                },
+                {
+                  "key": "maxResults",
+                  "value": "3"
+                }
+              ],
+              "raw": "{{baseUrl}}/api/agents/by-context?contextTypes=CODE_REVIEW&maxResults=3"
+            }
+          }
+        },
+        {
+          "name": "Register New Agent",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"custom-agent\",\n  \"name\": \"Custom Agent\",\n  \"description\": \"A custom agent for testing\",\n  \"version\": \"1.0.0\",\n  \"capabilities\": [\"custom-capability\"],\n  \"requiredContext\": [\"GENERAL\"],\n  \"tags\": [\"custom\", \"test\"],\n  \"priority\": 5,\n  \"status\": \"ACTIVE\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents"],
+              "raw": "{{baseUrl}}/api/agents"
+            }
+          }
+        },
+        {
+          "name": "Update Agent",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"custom-agent\",\n  \"name\": \"Updated Custom Agent\",\n  \"description\": \"An updated custom agent\",\n  \"version\": \"1.1.0\",\n  \"capabilities\": [\"custom-capability\", \"new-capability\"],\n  \"requiredContext\": [\"GENERAL\"],\n  \"tags\": [\"custom\", \"updated\"],\n  \"priority\": 6,\n  \"status\": \"ACTIVE\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "custom-agent"],
+              "raw": "{{baseUrl}}/api/agents/custom-agent"
+            }
+          }
+        },
+        {
+          "name": "Delete Agent",
+          "request": {
+            "header": [],
+            "method": "DELETE",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "custom-agent"],
+              "raw": "{{baseUrl}}/api/agents/custom-agent"
+            }
+          }
+        }
+      ],
+      "name": "Agents"
+    },
+    {
+      "item": [
+        {
+          "name": "Get Context Types",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "context-types"],
+              "raw": "{{baseUrl}}/api/agents/context-types"
+            }
+          }
+        },
+        {
+          "name": "Get Agent Statuses",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "statuses"],
+              "raw": "{{baseUrl}}/api/agents/statuses"
+            }
+          }
+        }
+      ],
+      "name": "Metadata"
+    },
+    {
+      "item": [
+        {
+          "name": "Find Security Agents",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tags\": [\"security\"],\n  \"minPriority\": 8\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "query"],
+              "raw": "{{baseUrl}}/api/agents/query"
+            }
+          }
+        },
+        {
+          "name": "Find Testing Agents",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contextTypes\": [\"TESTING\"],\n  \"capabilities\": [\"test-generation\"]\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "query"],
+              "raw": "{{baseUrl}}/api/agents/query"
+            }
+          }
+        },
+        {
+          "name": "Find High Priority Agents",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"minPriority\": 9,\n  \"excludeStatuses\": [\"INACTIVE\", \"DEPRECATED\"]\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "query"],
+              "raw": "{{baseUrl}}/api/agents/query"
+            }
+          }
+        },
+        {
+          "name": "Find DevOps Agents",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contextTypes\": [\"DEVOPS\", \"DEPLOYMENT\"],\n  \"maxResults\": 3\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "query"],
+              "raw": "{{baseUrl}}/api/agents/query"
+            }
+          }
+        }
+      ],
+      "name": "Query Examples"
+    },
+    {
+      "name": "Health Check",
+      "request": {
+        "header": [],
+        "method": "GET",
+        "url": {
+          "host": ["{{baseUrl}}"],
+          "path": ["actuator", "health"],
+          "raw": "{{baseUrl}}/actuator/health"
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "type": "string",
+      "value": "http://localhost:8080"
+    }
+  ]
+}
