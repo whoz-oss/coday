@@ -8,7 +8,7 @@ import { CodayLogger } from '../../service/coday-logger'
 
 /**
  * Environment variable names for each provider.
- * These can override (but not enable) configured providers.
+ * Used for both overriding configured providers and auto-detection.
  */
 const ENV_VARS: Record<string, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
@@ -35,9 +35,9 @@ export class AiClientProvider {
 
   constructor(
     private readonly interactor: Interactor,
-    private userService: UserService,
-    private projectService: ProjectStateService,
-    private logger: CodayLogger
+    private readonly userService: UserService,
+    private readonly projectService: ProjectStateService,
+    private readonly logger: CodayLogger
   ) {}
 
   init(context: CommandContext): void {
@@ -46,10 +46,22 @@ export class AiClientProvider {
     const aiCodayYaml = context.project.ai || []
     const projectYaml = this.projectService.selectedProject?.config?.ai || []
     const userYaml = this.userService.config.ai || []
+
+    // Auto-detect providers from environment variables
+    const autoDetectedConfigs = this.detectProvidersFromEnvironment()
+
+    // Track which providers were explicitly configured (not auto-detected)
+    const explicitProviderNames = new Set([
+      ...aiCodayYaml.map((c) => c.name.toLowerCase()),
+      ...projectYaml.map((c) => c.name.toLowerCase()),
+      ...userYaml.map((c) => c.name.toLowerCase()),
+    ])
+
     this.aiProviderConfigs = []
 
     // merge all ai definitions one over the others, order is important !
-    for (const aiDef of [...aiCodayYaml, ...projectYaml, ...userYaml]) {
+    // Auto-detected configs go first (lowest priority), then explicit configs
+    for (const aiDef of [...autoDetectedConfigs, ...aiCodayYaml, ...projectYaml, ...userYaml]) {
       const i = this.aiProviderConfigs.findIndex((a) => a.name === aiDef.name)
       if (i === -1) {
         // definition of a new provider, add it
@@ -78,6 +90,12 @@ export class AiClientProvider {
     this.aiClients = this.aiProviderConfigs.map((config) => this.createClient(config)).filter((client) => !!client)
 
     // ... and log the result
+    // Only show "auto-detected" label for providers that have NO explicit configuration
+    const autoDetectedOnlyProviders = autoDetectedConfigs
+      .filter((c) => !explicitProviderNames.has(c.name.toLowerCase()))
+      .map((c) => c.name.toLowerCase())
+    const autoDetectedProvidersSet = new Set(autoDetectedOnlyProviders)
+
     const clientLog =
       `AI providers (models listed as: name (alias)):` +
       '\n' +
@@ -86,7 +104,9 @@ export class AiClientProvider {
           const client = this.aiClients.find((c) => c.name.toLowerCase() === config.name.toLowerCase())
           const isSuccess = !!client
           const prefix = isSuccess ? '✅' : '❌'
-          let line = ` - ${prefix} ${config.name}`
+          const isAutoDetectedOnly = autoDetectedProvidersSet.has(config.name.toLowerCase())
+          const autoDetectLabel = isAutoDetectedOnly ? ' (auto-detected)' : ''
+          let line = ` - ${prefix} ${config.name}${autoDetectLabel}`
           if (isSuccess && Array.isArray(client.models) && client.models.length > 0) {
             // Build one-line model list: name (alias) if alias, otherwise just name
             const modelsStr = client.models
@@ -149,6 +169,36 @@ export class AiClientProvider {
       ? process.env[envVar] || process.env[`${aiProviderConfig.name.toUpperCase()}_API_KEY`]
       : undefined
     return envKey || aiProviderConfig.apiKey
+  }
+
+  /**
+   * Detects AI providers from environment variables.
+   * Creates minimal configurations for providers that have API keys set
+   * but are not explicitly configured.
+   *
+   * Note: Default models are defined in each client implementation
+   * (AnthropicClient, GoogleClient, OpenaiClient) and will be merged
+   * during client creation.
+   *
+   * @returns Array of auto-detected provider configurations
+   */
+  private detectProvidersFromEnvironment(): AiProviderConfig[] {
+    const detected: AiProviderConfig[] = []
+
+    for (const [providerName, envVarName] of Object.entries(ENV_VARS)) {
+      const apiKey = process.env[envVarName]
+      if (apiKey) {
+        // Create a minimal configuration - client will provide default models
+        const defaultConfig: AiProviderConfig = {
+          name: providerName,
+          apiKey,
+        }
+        detected.push(defaultConfig)
+        this.interactor.debug(`🔍 Auto-detected ${providerName} provider from ${envVarName} environment variable`)
+      }
+    }
+
+    return detected
   }
 
   /**
