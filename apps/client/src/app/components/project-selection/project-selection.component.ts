@@ -36,13 +36,21 @@ export class ProjectSelectionComponent {
   forcedProject = toSignal(this.projectStateService.forcedProject$)
 
   // Transform projects to choice options
+  // Non-volatile projects first, then volatile projects at the bottom
   projectOptions = computed<ChoiceOption[]>(() => {
     const projectList = this.projects()
     if (!projectList) return []
 
-    return projectList.map((project) => ({
+    // Separate volatile and non-volatile projects
+    const nonVolatile = projectList.filter((p) => !p.volatile)
+    const volatile = projectList.filter((p) => p.volatile)
+
+    // Combine: non-volatile first, then volatile
+    const sorted = [...nonVolatile, ...volatile]
+
+    return sorted.map((project) => ({
       value: project.name,
-      label: project.name,
+      label: project.volatile ? `${project.name} 🔸temp` : project.name,
     }))
   })
 

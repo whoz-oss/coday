@@ -1,6 +1,8 @@
 import { ProjectRepository } from '@coday/repository/project.repository'
 import { ProjectLocalConfig } from '@coday/model/project-local-config'
 import { ConfigMaskingService } from '@coday/service/config-masking.service'
+import * as crypto from 'crypto'
+import * as path from 'path'
 
 /**
  * Server-side project management service.
@@ -20,20 +22,28 @@ export class ProjectService {
   ) {}
 
   /**
-   * List all available projects
+   * List all available projects with volatile flag
    * In forced mode (--local), only the forced project is returned
-   * @returns Array of project objects with name
+   * @returns Array of project objects with name and volatile flag
    */
-  listProjects(): Array<{ name: string }> {
+  listProjects(): Array<{ name: string; volatile?: boolean }> {
     const allProjects = this.repository.listProjects()
 
     if (this.isForcedMode && this.defaultProject) {
       // --local mode: only show the forced project
-      return allProjects.filter((name) => name === this.defaultProject).map((name) => ({ name }))
+      return allProjects
+        .filter((name) => name === this.defaultProject)
+        .map((name) => {
+          const config = this.repository.getConfig(name)
+          return { name, volatile: config?.volatile }
+        })
     }
 
-    // Default or --multi mode: show all projects
-    return allProjects.map((name) => ({ name }))
+    // Default or --multi mode: show all projects with volatile flag
+    return allProjects.map((name) => {
+      const config = this.repository.getConfig(name)
+      return { name, volatile: config?.volatile }
+    })
   }
 
   /**
@@ -52,6 +62,7 @@ export class ProjectService {
 
   /**
    * Get project details including configuration
+   * If project doesn't exist and we're in default mode, creates a volatile project
    * @param name Project name
    * @returns Project object with name and config, or null if not found
    */
@@ -60,7 +71,20 @@ export class ProjectService {
     config: ProjectLocalConfig
   } | null {
     this.checkAgainstForced(name)
-    const config = this.repository.getConfig(name)
+    let config = this.repository.getConfig(name)
+
+    // If project doesn't exist and we have a default project, create volatile
+    if (!config && this.defaultProject === name && !this.isForcedMode) {
+      const cwd = process.cwd()
+      const volatileId = this.getOrCreateVolatileProject(cwd)
+
+      // Use the volatile project instead
+      config = this.repository.getConfig(volatileId)
+      if (config) {
+        return { name: volatileId, config }
+      }
+    }
+
     if (!config) {
       return null
     }
@@ -162,5 +186,53 @@ export class ProjectService {
     if (this.isForcedMode && this.defaultProject && this.defaultProject !== name) {
       throw Error(`Project selection outside of ${this.defaultProject} not allowed`)
     }
+  }
+
+  /**
+   * Get or create a volatile project for the given path
+   * Volatile projects are auto-generated when Coday is started in a directory
+   * without an existing project configuration
+   * @param projectPath Absolute path to the project directory
+   * @returns Project ID (basename_hash format)
+   */
+  private getOrCreateVolatileProject(projectPath: string): string {
+    const projectId = this.generateProjectId(projectPath)
+
+    if (this.repository.exists(projectId)) {
+      console.log(`[PROJECT-SERVICE] Using existing volatile project: ${projectId}`)
+      return projectId
+    }
+
+    console.log(`[PROJECT-SERVICE] Creating volatile project: ${projectId} for ${projectPath}`)
+
+    // Create the project
+    const created = this.repository.createProject(projectId, projectPath)
+    if (!created) {
+      throw new Error(`Failed to create volatile project ${projectId}`)
+    }
+
+    // Enrich config with volatile metadata
+    const config = this.repository.getConfig(projectId)
+    if (config) {
+      config.volatile = true
+      config.createdAt = Date.now()
+      this.repository.saveConfig(projectId, config)
+    }
+
+    return projectId
+  }
+
+  /**
+   * Generate a stable project ID from an absolute path
+   * Format: {basename}_{hash}
+   * Example: coday_a1b2c3d4
+   * @param absolutePath Absolute path to the project directory
+   * @returns Project ID
+   */
+  private generateProjectId(absolutePath: string): string {
+    const basename = path.basename(absolutePath)
+    const hash = crypto.createHash('sha256').update(absolutePath).digest('hex').substring(0, 8)
+
+    return `${basename}_${hash}`
   }
 }

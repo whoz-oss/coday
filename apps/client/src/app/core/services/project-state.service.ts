@@ -42,6 +42,13 @@ export class ProjectStateService {
 
       return this.projectApi.getProject(targetProject)
     }),
+    tap((project) => {
+      // Update selected project ID if backend returned a different name (volatile project)
+      if (project && project.name !== this.selectedProjectIdSubject.value) {
+        console.log('[PROJECT-STATE] Backend returned different project name:', project.name)
+        this.selectedProjectIdSubject.next(project.name)
+      }
+    }),
     shareReplay({ bufferSize: 1, refCount: true })
   )
 

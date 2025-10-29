@@ -81,7 +81,11 @@ export class SidenavComponent implements OnInit, OnDestroy {
   private readonly threadStateService = inject(ThreadStateService)
 
   projects = toSignal(this.projectStateService.projectList$)
+  selectedProject = toSignal(this.projectStateService.selectedProject$)
   selectedProjectName = toSignal(this.projectStateService.selectedProject$.pipe(map((project) => project?.name)))
+  isProjectVolatile = toSignal(
+    this.projectStateService.selectedProject$.pipe(map((project) => project?.config?.volatile || false))
+  )
   forcedProject = toSignal(this.projectStateService.forcedProject$)
 
   ngOnInit(): void {

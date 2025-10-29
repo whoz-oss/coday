@@ -7,6 +7,7 @@ import { Observable } from 'rxjs'
  */
 export interface ProjectInfo {
   name: string
+  volatile?: boolean
 }
 
 /**
