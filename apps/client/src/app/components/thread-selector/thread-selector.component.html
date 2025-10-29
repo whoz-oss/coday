@@ -22,18 +22,7 @@
             <div class="thread-group-header">{{ group.label }}</div>
             @for (thread of group.threads; track thread.id) {
               <div class="thread-item-wrapper" [class.current]="thread.id === currentThread()?.id">
-                <!-- Star button (left) -->
-                <button
-                  class="action-button star-button"
-                  [class.starred]="isStarred(thread)"
-                  [title]="isStarred(thread) ? 'Unstar thread' : 'Star thread'"
-                  (click)="toggleStar($event, thread)"
-                  type="button"
-                >
-                  <mat-icon>{{ isStarred(thread) ? 'star' : 'star_outline' }}</mat-icon>
-                </button>
-
-                <!-- Thread name (center, clickable) -->
+                <!-- Thread name (clickable) -->
                 <button
                   class="thread-item"
                   [title]="thread.name || 'Generating name...'"
@@ -49,15 +38,27 @@
                   }
                 </button>
 
-                <!-- Delete button (right) -->
-                <button
-                  class="action-button delete-button"
-                  title="Delete thread"
-                  (click)="deleteThread($event, thread)"
-                  type="button"
-                >
-                  <mat-icon>delete</mat-icon>
-                </button>
+                <!-- Action buttons (right, absolutely positioned) -->
+                <div class="action-buttons">
+                  <button
+                    class="action-button star-button"
+                    [class.starred]="isStarred(thread)"
+                    [title]="isStarred(thread) ? 'Unstar thread' : 'Star thread'"
+                    (click)="toggleStar($event, thread)"
+                    type="button"
+                  >
+                    <mat-icon>{{ isStarred(thread) ? 'star' : 'star_outline' }}</mat-icon>
+                  </button>
+
+                  <button
+                    class="action-button delete-button"
+                    title="Delete thread"
+                    (click)="deleteThread($event, thread)"
+                    type="button"
+                  >
+                    <mat-icon>delete</mat-icon>
+                  </button>
+                </div>
               </div>
             }
           </div>
