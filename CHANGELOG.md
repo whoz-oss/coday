@@ -1,3 +1,13 @@
+## 0.38.0 (2025-10-29)
+
+### 🚀 Features
+
+- volatile project and auto-detect LLM api keys ([#288](https://github.com/whoz-oss/coday/pull/288), [#264](https://github.com/whoz-oss/coday/issues/264))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.37.0 (2025-10-29)
 
 ### 🚀 Features
