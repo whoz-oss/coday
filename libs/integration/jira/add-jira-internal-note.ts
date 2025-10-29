@@ -1,12 +1,12 @@
 import { Interactor } from '../../model'
 
 /**
- * Add a public comment to a Jira ticket using the Jira REST API
- * For internal notes (not visible to customers), use addJiraInternalNote instead
+ * Add an internal note to a Jira ticket using the Jira REST API
+ * Internal notes are only visible to agents and not to customers
  */
-export async function addJiraComment(
+export async function addJiraInternalNote(
   ticketId: string,
-  comment: string,
+  note: string,
   jiraBaseUrl: string,
   jiraApiToken: string,
   jiraUsername: string,
@@ -23,18 +23,26 @@ export async function addJiraComment(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        body: comment,
+        body: note,
+        properties: [
+          {
+            key: 'sd.public.comment',
+            value: {
+              internal: true,
+            },
+          },
+        ],
       }),
     })
 
     if (!response.ok) {
       const error = await response.text()
-      throw new Error(`Failed to add comment to Jira ticket ${ticketId}: ${error}`)
+      throw new Error(`Failed to add internal note to Jira ticket ${ticketId}: ${error}`)
     }
 
-    interactor.displayText(`Successfully added comment to Jira ticket ${ticketId}`)
+    interactor.displayText(`Successfully added internal note to Jira ticket ${ticketId}`)
   } catch (error) {
-    interactor.error(`Error adding comment to Jira ticket ${ticketId}: ${error}`)
+    interactor.error(`Error adding internal note to Jira ticket ${ticketId}: ${error}`)
     throw error
   }
 }
