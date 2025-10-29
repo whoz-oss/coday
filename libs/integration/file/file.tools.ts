@@ -7,7 +7,7 @@ import { CommandContext, Interactor } from '../../model'
 import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 import { readFileUnifiedAsMessageContent } from '../../function/read-file-unified'
-import { resolveFilePath, prefixSearchResults } from './resolve-file-path'
+import { resolveFilePath, prefixSearchResults, FILE_PREFIXES } from './resolve-file-path'
 import { FileEvent } from '@coday/coday-events'
 import { unlinkSync } from 'node:fs'
 import * as pathModule from 'path'
@@ -30,9 +30,9 @@ import * as pathModule from 'path'
  *
  * File Path Prefixes:
  * - "project://" - Project source files (the codebase being worked on)
- * - "thread://" - Conversation workspace files (files uploaded by user or created during this specific conversation)
+ * - "exchange://" - Conversation workspace files (files uploaded by user or created during this specific conversation)
  *
- * The thread workspace is isolated per conversation and serves as a temporary exchange space
+ * The exchange workspace is isolated per conversation and serves as a temporary exchange space
  * for documents, reports, and other files specific to the current conversation context.
  *
  * Key Features:
@@ -73,8 +73,8 @@ export class FileTools extends AssistantToolFactory {
         try {
           unlinkSync(resolved.absolutePath)
 
-          // Emit FileEvent for thread files
-          if (resolved.scope === 'thread') {
+          // Emit FileEvent for exchange files
+          if (resolved.scope === 'exchange') {
             const event = new FileEvent({
               filename: resolved.relativePath,
               operation: 'deleted',
@@ -94,13 +94,13 @@ export class FileTools extends AssistantToolFactory {
         function: {
           name: 'removeFile',
           description:
-            'Remove a file. File path must start with "project://" (for project files) or "thread://" (for conversation files).',
+            'Remove a file. File path must start with "project://" (for project files) or "exchange://" (for files shared with the user).',
           parameters: {
             type: 'object',
             properties: {
               path: {
                 type: 'string',
-                description: 'File path with prefix (e.g., "project://temp/old.txt" or "thread://draft.md")',
+                description: 'File path with prefix (e.g., "project://temp/old.txt" or "exchange://draft.md")',
               },
             },
           },
@@ -129,8 +129,8 @@ export class FileTools extends AssistantToolFactory {
           content,
         })
 
-        // Emit FileEvent for thread files
-        if (resolved.scope === 'thread') {
+        // Emit FileEvent for exchange files
+        if (resolved.scope === 'exchange') {
           const fileSize = Buffer.from(content).length
           const event = new FileEvent({
             filename: resolved.relativePath,
@@ -150,13 +150,13 @@ export class FileTools extends AssistantToolFactory {
           description:
             'Write the content of a file. IMPORTANT: the whole file is written, do not write it partially. ' +
             'Prefer this tool for first writes or really full edits. For partial edits, use `writeFileChunk` tool. ' +
-            'File path must start with "project://" (for project files) or "thread://" (for conversation files).',
+            'File path must start with "project://" (for project files) or "exchange://" (for files shared with the user).',
           parameters: {
             type: 'object',
             properties: {
               path: {
                 type: 'string',
-                description: 'File path with prefix (e.g., "project://output/report.md" or "thread://analysis.md")',
+                description: 'File path with prefix (e.g., "project://output/report.md" or "exchange://analysis.md")',
               },
               content: { type: 'string', description: 'content of the file to write' },
             },
@@ -188,8 +188,8 @@ export class FileTools extends AssistantToolFactory {
           replacements,
         })
 
-        // Emit FileEvent for thread files
-        if (resolved.scope === 'thread') {
+        // Emit FileEvent for exchange files
+        if (resolved.scope === 'exchange') {
           const event = new FileEvent({
             filename: resolved.relativePath,
             operation: 'updated',
@@ -209,13 +209,13 @@ export class FileTools extends AssistantToolFactory {
           name: 'writeFileChunk',
           description:
             'Replace specified parts of an existing file with new parts. The function reads the entire file content, performs the replacements, and writes the modified content back to the file. ' +
-            'Useful for handling large files efficiently. File path must start with "project://" or "thread://".',
+            'Useful for handling large files efficiently. File path must start with "project://" or "exchange://".',
           parameters: {
             type: 'object',
             properties: {
               path: {
                 type: 'string',
-                description: 'File path with prefix (e.g., "project://src/main.ts" or "thread://report.md")',
+                description: 'File path with prefix (e.g., "project://src/main.ts" or "exchange://report.md")',
               },
               replacements: {
                 type: 'array',
@@ -244,20 +244,20 @@ export class FileTools extends AssistantToolFactory {
     const searchProjectFile = async ({ text, path }: { text: string; path?: string }) => {
       const results: string[] = []
 
-      // Search in thread files if available
-      if (context.threadFilesRoot && (!path || path.startsWith('thread://'))) {
-        const threadPath = path?.replace('thread://', '')
-        const threadResults = await findFilesByName({
+      // Search in exchange workspace if available
+      if (context.threadFilesRoot && (!path || path.startsWith(FILE_PREFIXES.EXCHANGE))) {
+        const exchangePath = path?.replace(FILE_PREFIXES.EXCHANGE, '')
+        const exchangeResults = await findFilesByName({
           text,
-          path: threadPath,
+          path: exchangePath,
           root: context.threadFilesRoot,
           limit: 50,
         })
-        results.push(...prefixSearchResults(threadResults, 'thread'))
+        results.push(...prefixSearchResults(exchangeResults, 'exchange'))
       }
 
-      // Search in project (unless path explicitly starts with thread://)
-      if (!path || !path.startsWith('thread://')) {
+      // Search in project (unless path explicitly starts with exchange://)
+      if (!path?.startsWith(FILE_PREFIXES.EXCHANGE)) {
         const projectPath = path?.replace('project://', '')
         const projectResults = await findFilesByName({
           text,
@@ -276,7 +276,7 @@ export class FileTools extends AssistantToolFactory {
       function: {
         name: 'searchProjectFile',
         description:
-          'Search for files by name in both project and conversation files. Returns paths with "project://" or "thread://" prefix. ' +
+          'Search for files by name in both project and conversation files. Returns paths with "project://" or "exchange://" prefix. ' +
           'Prefer this over `searchFilesByText` when searching by filename.',
         parameters: {
           type: 'object',
@@ -285,7 +285,7 @@ export class FileTools extends AssistantToolFactory {
             path: {
               type: 'string',
               description:
-                'Optional path to start search from. Can use "project://" or "thread://" prefix to search only in that space.',
+                'Optional path to start search from. Can use "project://" or "exchange://" prefix to search only in that space.',
             },
           },
         },
@@ -299,14 +299,14 @@ export class FileTools extends AssistantToolFactory {
       // Require explicit prefix for root-level listing
       if (!relPath || relPath === '.' || relPath === '/') {
         throw new Error(
-          'Path must start with "project://" or "thread://" prefix. ' +
-            'Use "project://" to list project files or "thread://" to list conversation files.'
+          'Path must start with "project://" or "exchange://" prefix. ' +
+            'Use "project://" to list project files or "exchange://" to list files shared with the users.'
         )
       }
 
       const resolved = resolveFilePath(relPath, context)
 
-      // For listing the root of a space (thread:// or project://), use the resolved path directly
+      // For listing the root of a space (exchange:// or project://), use the resolved path directly
       // Otherwise, use the parent directory
       if (!resolved.relativePath || resolved.relativePath === '' || resolved.relativePath === '.') {
         // Listing the root of the space
@@ -326,13 +326,13 @@ export class FileTools extends AssistantToolFactory {
         name: 'listFilesAndDirectories',
         description:
           'List directories and files in a folder (similar to ls command). Directories end with a slash. ' +
-          'Path must start with "project://" or "thread://" prefix.',
+          'Path must start with "project://" or "exchange://" prefix.',
         parameters: {
           type: 'object',
           properties: {
             relPath: {
               type: 'string',
-              description: 'Path with prefix (e.g., "project://src" or "thread://")',
+              description: 'Path with prefix (e.g., "project://src" or "exchange://")',
             },
           },
         },
@@ -353,29 +353,29 @@ export class FileTools extends AssistantToolFactory {
     }) => {
       const resultLines: string[] = []
 
-      // Search in thread files if available
-      if (context.threadFilesRoot && (!path || path.startsWith('thread://'))) {
-        const threadPath = path?.replace('thread://', '')
-        const threadResultsRaw = await findFilesByText({
+      // Search in exchange workspace if available
+      if (context.threadFilesRoot && (!path || path.startsWith(FILE_PREFIXES.EXCHANGE))) {
+        const exchangePath = path?.replace(FILE_PREFIXES.EXCHANGE, '')
+        const exchangeResultsRaw = await findFilesByText({
           text,
-          path: threadPath,
+          path: exchangePath,
           root: context.threadFilesRoot,
           interactor: this.interactor,
           fileTypes,
         })
 
-        if (threadResultsRaw && threadResultsRaw !== 'No match found') {
-          const threadFiles = threadResultsRaw
+        if (exchangeResultsRaw && exchangeResultsRaw !== 'No match found') {
+          const exchangeFiles = exchangeResultsRaw
             .trim()
             .split('\n')
             .filter((f) => f)
-          resultLines.push(...prefixSearchResults(threadFiles, 'thread'))
+          resultLines.push(...prefixSearchResults(exchangeFiles, 'exchange'))
         }
       }
 
-      // Search in project (unless path explicitly starts with thread://)
-      if (!path || !path.startsWith('thread://')) {
-        const projectPath = path?.replace('project://', '')
+      // Search in project (unless path explicitly starts with exchange://)
+      if (!path?.startsWith(FILE_PREFIXES.EXCHANGE)) {
+        const projectPath = path?.replace(FILE_PREFIXES.PROJECT, '')
         const projectResultsRaw = await findFilesByText({
           text,
           path: projectPath,
@@ -405,7 +405,7 @@ export class FileTools extends AssistantToolFactory {
       function: {
         name: 'searchFilesByText',
         description:
-          'Search for files containing text in both project and conversation files. Returns paths with "project://" or "thread://" prefix. ' +
+          'Search for files containing text in both project and conversation files. Returns paths with "project://" or "exchange://" prefix. ' +
           'This function is slow, restrict scope by giving a path and fileTypes if possible, to avoid a timeout. If searching for a filename, prefer `searchProjectFile`.',
         parameters: {
           type: 'object',
@@ -414,7 +414,7 @@ export class FileTools extends AssistantToolFactory {
             path: {
               type: 'string',
               description:
-                'Optional path to start search from. Can use "project://" or "thread://" prefix to search only in that space.',
+                'Optional path to start search from. Can use "project://" or "exchange://" prefix to search only in that space.',
             },
             fileTypes: {
               type: 'array',
@@ -446,14 +446,14 @@ export class FileTools extends AssistantToolFactory {
         name: 'readFile',
         description:
           'Read content from any file type. Supports text files, PDFs, and image files (PNG, JPEG, GIF, WebP). ' +
-          'File path must start with "project://" (for project files) or "thread://" (for conversation files). ' +
+          'File path must start with "project://" (for project files) or "exchange://" (for files shared with the user). ' +
           'Use searchProjectFile or searchFilesByText to find files across both spaces.',
         parameters: {
           type: 'object',
           properties: {
             filePath: {
               type: 'string',
-              description: 'File path with prefix (e.g., "project://src/main.ts" or "thread://document.pdf")',
+              description: 'File path with prefix (e.g., "project://src/main.ts" or "exchange://document.pdf")',
             },
           },
         },

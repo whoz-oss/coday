@@ -53,12 +53,10 @@ export class ThreadFileService {
    * @returns Array of file metadata
    */
   async listFiles(projectName: string, threadId: string): Promise<FileMetadata[]> {
-    const filesDir = this.getThreadFilesDir(projectName, threadId)
+    // Ensure directory exists
+    await this.ensureThreadFilesDir(projectName, threadId)
 
-    // Return empty array if directory doesn't exist
-    if (!fs.existsSync(filesDir)) {
-      return []
-    }
+    const filesDir = this.getThreadFilesDir(projectName, threadId)
 
     const files = await fsPromises.readdir(filesDir)
     const fileStats = await Promise.all(
@@ -103,6 +101,9 @@ export class ThreadFileService {
    * @throws Error if file doesn't exist
    */
   async getFile(projectName: string, threadId: string, filename: string): Promise<Buffer> {
+    // Ensure directory exists (in case of race conditions)
+    await this.ensureThreadFilesDir(projectName, threadId)
+
     const filesDir = this.getThreadFilesDir(projectName, threadId)
     const filePath = path.join(filesDir, filename)
 
@@ -129,7 +130,10 @@ export class ThreadFileService {
    * @returns Absolute file path
    * @throws Error if file doesn't exist or path is invalid
    */
-  getFilePath(projectName: string, threadId: string, filename: string): string {
+  async getFilePath(projectName: string, threadId: string, filename: string): Promise<string> {
+    // Ensure directory exists (in case of race conditions)
+    await this.ensureThreadFilesDir(projectName, threadId)
+
     const filesDir = this.getThreadFilesDir(projectName, threadId)
     const filePath = path.join(filesDir, filename)
 
@@ -177,6 +181,9 @@ export class ThreadFileService {
    * @throws Error if file doesn't exist or path is invalid
    */
   async deleteFile(projectName: string, threadId: string, filename: string): Promise<void> {
+    // Ensure directory exists (in case of race conditions)
+    await this.ensureThreadFilesDir(projectName, threadId)
+
     const filesDir = this.getThreadFilesDir(projectName, threadId)
     const filePath = path.join(filesDir, filename)
 

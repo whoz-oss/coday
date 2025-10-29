@@ -7,7 +7,6 @@ import { ImageContent } from '@coday/coday-events'
 import { processImageBuffer } from '@coday/function/image-processor'
 import { CodayOptions } from '@coday/options'
 import { MAX_FILE_SIZE, isFileExtensionAllowed, getAllowedExtensionsString } from '@coday/model/file-config'
-import * as path from 'path'
 
 /**
  * Thread Management REST API Routes
@@ -606,26 +605,9 @@ export function registerThreadRoutes(
         }
 
         // Get file path using ThreadFileService (with security checks)
-        const filePath = threadFileService.getFilePath(projectName, threadId, filename)
+        const filePath = await threadFileService.getFilePath(projectName, threadId, filename)
 
-        // Determine content type from extension
-        const ext = path.extname(filename).toLowerCase()
-        const contentTypeMap: Record<string, string> = {
-          '.pdf': 'application/pdf',
-          '.txt': 'text/plain',
-          '.md': 'text/markdown',
-          '.json': 'application/json',
-          '.xml': 'application/xml',
-          '.csv': 'text/csv',
-          '.html': 'text/html',
-          '.css': 'text/css',
-          '.js': 'application/javascript',
-          '.ts': 'application/typescript',
-        }
-        const contentType = contentTypeMap[ext] || 'application/octet-stream'
-
-        // Send file
-        res.setHeader('Content-Type', contentType)
+        // Send file (Express automatically sets Content-Type based on extension)
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
         res.sendFile(filePath)
       } catch (error) {
