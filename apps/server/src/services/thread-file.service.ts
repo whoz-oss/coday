@@ -35,6 +35,18 @@ export class ThreadFileService {
   }
 
   /**
+   * Ensure the thread files directory exists (create if needed)
+   * @param projectName Project name
+   * @param threadId Thread identifier
+   */
+  async ensureThreadFilesDir(projectName: string, threadId: string): Promise<void> {
+    const filesDir = this.getThreadFilesDir(projectName, threadId)
+    if (!fs.existsSync(filesDir)) {
+      await fsPromises.mkdir(filesDir, { recursive: true })
+    }
+  }
+
+  /**
    * List all files in a thread's workspace
    * @param projectName Project name
    * @param threadId Thread identifier

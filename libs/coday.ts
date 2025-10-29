@@ -17,7 +17,6 @@ import { CodayOptions } from './options'
 import { CodayServices } from './coday-services'
 import { AiConfigService } from './service/ai-config.service'
 import * as path from 'path'
-import * as os from 'os'
 
 const MAX_ITERATIONS = 100
 
@@ -253,9 +252,8 @@ export class Coday {
       if (this.options.thread && this.options.project) {
         // Thread files are stored in the config directory, not the project directory
         // Path: ~/.coday/projects/{projectName}/threads/{threadId}-files
-        const configDir = this.options.configDir || path.join(os.homedir(), '.coday')
         this.context.threadFilesRoot = path.join(
-          configDir,
+          this.options.configDir,
           'projects',
           this.options.project,
           'threads',
@@ -263,15 +261,7 @@ export class Coday {
         )
 
         this.interactor.debug(`[CODAY] Thread files root: ${this.context.threadFilesRoot}`)
-
-        // Create the directory if it doesn't exist
-        const fs = await import('fs')
-        if (!fs.existsSync(this.context.threadFilesRoot)) {
-          fs.mkdirSync(this.context.threadFilesRoot, { recursive: true })
-          this.interactor.debug(`[CODAY] Created thread files directory: ${this.context.threadFilesRoot}`)
-        } else {
-          this.interactor.debug(`[CODAY] Thread files directory already exists: ${this.context.threadFilesRoot}`)
-        }
+        // Note: Directory creation is handled lazily by ThreadFileService on first use
       }
 
       // Create and store the aiConfig service (late init)

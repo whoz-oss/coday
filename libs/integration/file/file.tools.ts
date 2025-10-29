@@ -28,6 +28,13 @@ import * as pathModule from 'path'
  *    - Performing partial file edits (chunk replacements)
  *    - Removing files
  *
+ * File Path Prefixes:
+ * - "project://" - Project source files (the codebase being worked on)
+ * - "thread://" - Conversation workspace files (files uploaded by user or created during this specific conversation)
+ *
+ * The thread workspace is isolated per conversation and serves as a temporary exchange space
+ * for documents, reports, and other files specific to the current conversation context.
+ *
  * Key Features:
  * - Respects read-only mode by conditionally adding write/delete tools
  * - Provides flexible file search capabilities
