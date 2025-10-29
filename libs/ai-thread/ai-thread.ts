@@ -4,7 +4,14 @@
  * and ensuring proper message sequencing.
  */
 
-import { buildCodayEvent, MessageContent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
+import {
+  buildCodayEvent,
+  MessageContent,
+  MessageEvent,
+  SummaryEvent,
+  ToolRequestEvent,
+  ToolResponseEvent,
+} from '@coday/coday-events'
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import { ToolCall, ToolResponse } from '../integration/tool-call'
 import { EmptyUsage, RunStatus, ThreadMessage, ThreadSerialized, Usage } from './ai-thread.types'
@@ -13,7 +20,7 @@ import { partition } from './ai-thread.helpers'
 /**
  * Allowed message types for filtering when building thread history
  */
-const THREAD_MESSAGE_TYPES = [MessageEvent.type, ToolRequestEvent.type, ToolResponseEvent.type]
+const THREAD_MESSAGE_TYPES = [MessageEvent.type, ToolRequestEvent.type, ToolResponseEvent.type, SummaryEvent.type]
 
 /**
  * AiThread manages the state and interactions of a conversation thread between users and AI agents.
@@ -102,16 +109,15 @@ export class AiThread {
   }
 
   /**
-   * Returns a partition of the messages regarding the charBudget.
-   * `messages` contains the last messages that fit under the charBudget.
-   * `overflow` contains the first messages that make the conversation overflow the charBudget.
-   * Both are chronolically ordered.
+   * Returns messages for AI processing, stopping at the first SummaryEvent encountered backward.
+   * This ensures AI sees summaries instead of old detailed messages.
    * @param maxChars Maximum character limit for the returned messages
-   * @returns an object with truncated messages and those that overflow
+   * @param compactor Function to create summaries when needed
+   * @returns messages for AI context and compaction status
    */
   async getMessages(
     maxChars: number | undefined,
-    compactor: undefined | ((msgs: ThreadMessage[]) => Promise<ThreadMessage>)
+    compactor: undefined | ((msgs: ThreadMessage[]) => Promise<SummaryEvent>)
   ): Promise<{
     messages: ThreadMessage[]
     compacted: boolean
@@ -122,13 +128,18 @@ export class AiThread {
     }
 
     if (!maxChars) {
-      const cleanedMessages = this.cleanToolRequestResponseConsistency([...this.messages])
+      // No budget limit: return all messages up to first summary going backward
+      const messagesForAI = this.getMessagesUpToFirstSummary()
+      const cleanedMessages = this.cleanToolRequestResponseConsistency(messagesForAI)
       return { messages: cleanedMessages, compacted: false }
     }
 
+    // Get messages up to first summary (chronological order)
+    const relevantMessages = this.getMessagesUpToFirstSummary()
+
     // Filter oversized tool responses before partitioning (truncate those >50% of budget)
     const maxSingleMessageSize = Math.floor(maxChars * 0.5)
-    const filteredMessages = this.messages.map((msg) => {
+    const filteredMessages = relevantMessages.map((msg) => {
       if (msg instanceof ToolResponseEvent && msg.length > maxSingleMessageSize) {
         const truncateAt = Math.floor(maxChars * 0.15)
         const output = msg.getTextOutput()
@@ -141,47 +152,76 @@ export class AiThread {
       return msg
     })
 
-    // from the end (hence the toReversed), take all messages that fit into the charbudget
+    // From the end, take all messages that fit into the budget
     let { messages, overflow } = partition(filteredMessages.toReversed(), maxChars)
-    messages = this.cleanToolRequestResponseConsistency(messages.toReversed())
-    overflow = this.cleanToolRequestResponseConsistency(overflow.toReversed())
+    messages = messages.toReversed()
+    overflow = overflow.toReversed()
 
-    if (!compactor) {
-      // Apply tool request-response consistency cleaning before returning
-      // IMPORTANT: apply compaction to the thread to avoid re-doing it all over for every LLM call.
-      this.messages = this.cleanToolRequestResponseConsistency(messages) // forget about the overflow part
-      return { messages: this.messages, compacted: true }
+    if (!compactor || overflow.length === 0) {
+      // No compaction needed or no compactor provided
+      const cleaned = this.cleanToolRequestResponseConsistency(messages)
+      return { messages: cleaned, compacted: overflow.length > 0 }
     }
 
-    // time to compact, with the same charBudget
-    // overflow itself can be larger than the charBudget, so need to iteratively summarize
-    let summary: ThreadMessage | undefined
+    // Create summary for overflow messages
+    let summaryEvent: SummaryEvent
     try {
-      while (overflow.length) {
-        const overflowPartition = partition(overflow, maxChars)
-        summary = await compactor(overflowPartition.messages)
-        overflow = overflowPartition.overflow.length ? [summary, ...overflowPartition.overflow] : []
+      summaryEvent = await compactor(overflow)
+
+      // Insert summary event chronologically after the last overflowed message
+      const lastOverflowMsg = overflow[overflow.length - 1]
+      if (lastOverflowMsg) {
+        const lastOverflowIndex = this.messages.indexOf(lastOverflowMsg)
+        if (lastOverflowIndex !== -1) {
+          // Insert right after the last summarized message
+          this.messages.splice(lastOverflowIndex + 1, 0, summaryEvent)
+        }
       }
     } catch (error) {
-      // If compaction fails completely, just truncate instead of losing everything
+      // If compaction fails, just truncate
       console.error('[AiThread] Compaction failed, keeping recent messages only:', error)
-      summary = undefined
+      const cleaned = this.cleanToolRequestResponseConsistency(messages)
+      return { messages: cleaned, compacted: true }
     }
 
-    // Apply tool request-response consistency cleaning before returning
+    // Return summary + recent messages for AI
     const cleanedMessages = this.cleanToolRequestResponseConsistency(messages)
-
-    /*
-     * IMPORTANT: apply compaction to the thread to avoid re-doing it all over for every LLM call.
-     * This might happen if a small model is taking part in the current thread and that is a questionable decision.
-     * Smaller models should have delegation instead of being selected or redirected to.
-     */
-    this.messages = summary ? [summary, ...cleanedMessages] : cleanedMessages
-
     return {
-      messages: cleanedMessages,
+      messages: [summaryEvent, ...cleanedMessages],
       compacted: true,
     }
+  }
+
+  /**
+   * Returns all messages including originals, for UI rendering and export.
+   * This is the complete history without any summarization filtering.
+   * @returns all thread messages
+   */
+  getAllMessages(): ThreadMessage[] {
+    return this.cleanToolRequestResponseConsistency([...this.messages])
+  }
+
+  /**
+   * Gets messages from the thread going backward until hitting a SummaryEvent.
+   * Returns messages in chronological order (oldest first).
+   * @private
+   */
+  private getMessagesUpToFirstSummary(): ThreadMessage[] {
+    // Go backward through messages
+    const reversed = [...this.messages].reverse()
+    const result: ThreadMessage[] = []
+
+    for (const msg of reversed) {
+      // If we hit a summary, include it and stop
+      if (msg instanceof SummaryEvent) {
+        result.push(msg)
+        break
+      }
+      result.push(msg)
+    }
+
+    // Return in chronological order (oldest first)
+    return result.reverse()
   }
 
   /**
@@ -522,7 +562,7 @@ export class AiThread {
   /**
    * Adds tool execution requests to the thread.
    * Validates each tool call for required fields before adding.
-   * @param agentName - The name of the AI agent making the tool calls
+   * @param _agentName - The name of the AI agent making the tool calls
    * @param toolCalls - Array of tool calls to process
    */
   addToolCalls(_agentName: string, toolCalls: ToolCall[]): void {
@@ -544,7 +584,7 @@ export class AiThread {
    * when a new response is added. This ensures that only the latest execution of a tool
    * with specific arguments is kept in the thread.
    *
-   * @param username - The name of the user/system processing the tool responses
+   * @param _username - The name of the user/system processing the tool responses
    * @param responses - Array of tool responses to process
    */
   addToolResponses(_username: string, responses: ToolResponse[]): void {
