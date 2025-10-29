@@ -1,3 +1,13 @@
+## 0.37.0 (2025-10-29)
+
+### 🚀 Features
+
+- star threads to highlight and preserve ([#289](https://github.com/whoz-oss/coday/pull/289))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.36.0 (2025-10-29)
 
 ### 🚀 Features
