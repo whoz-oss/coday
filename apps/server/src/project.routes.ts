@@ -22,22 +22,25 @@ import { ProjectLocalConfig } from '@coday/model/project-local-config'
  * Register project management routes on the Express app
  * @param app - Express application instance
  * @param projectService - ProjectService2 instance for project operations
- * @param forcedProject - the name of the only project to consider for this instance
  */
-export function registerProjectRoutes(
-  app: express.Application,
-  projectService: ProjectService,
-  forcedProject: string | undefined | null
-): void {
+export function registerProjectRoutes(app: express.Application, projectService: ProjectService): void {
   /**
    * GET /api/projects
-   * List all available projects
+   * List all available projects with context metadata
+   * Returns: { projects, defaultProject, forcedProject }
    */
   app.get('/api/projects', (_req: express.Request, res: express.Response) => {
     try {
       debugLog('PROJECT', 'GET all projects')
       const projects = projectService.listProjects()
-      res.status(200).json({ projects, forcedProject })
+      const defaultProject = projectService.getDefaultProject()
+      const isForcedMode = projectService.getForcedMode()
+
+      res.status(200).json({
+        projects,
+        defaultProject,
+        forcedProject: isForcedMode ? defaultProject : null,
+      })
     } catch (error) {
       console.error('Error listing projects:', error)
       res.status(500).json({ error: 'Failed to list projects' })

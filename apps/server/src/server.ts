@@ -115,7 +115,38 @@ if (process.env.BUILD_ENV === 'development') {
 }
 // Initialize project service for REST API endpoints
 const projectRepository = new ProjectFileRepository(configPath)
-const projectService = new ProjectService(projectRepository, codayOptions.project)
+
+// Resolve the actual project ID (with hash) if we're in default mode
+let resolvedProjectName = codayOptions.project
+if (resolvedProjectName && !codayOptions.forcedProject) {
+  // In default mode, check for existing project first
+  const cwd = process.cwd()
+  const basename = path.basename(cwd)
+
+  // First, check if a non-volatile project exists with the simple name and matches the path
+  if (projectRepository.exists(basename)) {
+    const config = projectRepository.getConfig(basename)
+    if (config && config.path === cwd && !config.volatile) {
+      debugLog('INIT', `Default mode: found existing non-volatile project '${basename}' for current directory`)
+      resolvedProjectName = basename
+    } else {
+      // Project exists but path doesn't match or is volatile, use volatile ID
+      const volatileProjectId = ProjectService.generateProjectId(cwd)
+      debugLog(
+        'INIT',
+        `Default mode: existing project '${basename}' doesn't match path, using volatile ID ${volatileProjectId}`
+      )
+      resolvedProjectName = volatileProjectId
+    }
+  } else {
+    // No project with simple name, use volatile ID
+    const volatileProjectId = ProjectService.generateProjectId(cwd)
+    debugLog('INIT', `Default mode: no existing project found, using volatile ID ${volatileProjectId}`)
+    resolvedProjectName = volatileProjectId
+  }
+}
+
+const projectService = new ProjectService(projectRepository, resolvedProjectName, codayOptions.forcedProject)
 
 // Initialize thread service for REST API endpoints
 const projectsDir = path.join(configPath, 'projects')
@@ -152,7 +183,7 @@ registerConfigRoutes(app, configRegistry, getUsername)
 registerWebhookRoutes(app, webhookService, getUsername, threadService, threadCodayManager, codayOptions, logger)
 
 // Register project management routes
-registerProjectRoutes(app, projectService, codayOptions.project)
+registerProjectRoutes(app, projectService)
 
 // Register thread management routes
 registerThreadRoutes(app, threadService, threadCodayManager, getUsername, codayOptions)
