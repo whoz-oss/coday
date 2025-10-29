@@ -247,6 +247,19 @@ export class Coday {
       this.context.oneshot = this.options.oneshot
       this.context.fileReadOnly = this.options.fileReadOnly
 
+      // Set thread files root if thread is selected
+      if (this.options.thread && this.options.project) {
+        const path = require('path')
+        const codayDir = path.join(this.context.project.root, '.coday')
+        this.context.threadFilesRoot = path.join(
+          codayDir,
+          'projects',
+          this.options.project,
+          'threads',
+          `${this.options.thread}-files`
+        )
+      }
+
       // Create and store the aiConfig service (late init)
       this.services.aiConfig = new AiConfigService(this.services.user, this.services.project)
       this.services.aiConfig.initialize(this.context)

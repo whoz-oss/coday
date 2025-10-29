@@ -310,6 +310,31 @@ export class ThreadUpdateEvent extends CodayEvent {
   }
 }
 
+export class FileUpdatedEvent extends CodayEvent {
+  filename: string
+  operation: 'created' | 'updated' | 'deleted'
+  size?: number
+  mimeType?: string
+  static override type = 'file_updated'
+
+  constructor(event: Partial<FileUpdatedEvent>) {
+    super(event, FileUpdatedEvent.type)
+    this.filename = event.filename!
+    this.operation = event.operation!
+    this.size = event.size
+    this.mimeType = event.mimeType
+  }
+
+  /**
+   * Renders the file update as a single line string
+   */
+  toSingleLineString(): string {
+    const icon = this.operation === 'created' ? '📄' : this.operation === 'updated' ? '📝' : '🗑️'
+    const sizeStr = this.size ? ` (${(this.size / 1024).toFixed(1)} KB)` : ''
+    return `${icon} ${this.operation}: ${this.filename}${sizeStr}`
+  }
+}
+
 // Exposing a map of event types to their corresponding classes
 const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [MessageEvent.type]: MessageEvent,
@@ -325,6 +350,7 @@ const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [WarnEvent.type]: WarnEvent,
   [ThreadUpdateEvent.type]: ThreadUpdateEvent,
   [SummaryEvent.type]: SummaryEvent,
+  [FileUpdatedEvent.type]: FileUpdatedEvent,
 }
 
 export function buildCodayEvent(data: any): CodayEvent | undefined {

@@ -1,13 +1,16 @@
-import { writeFileByPath } from './write-file-by-path'
-import { writeFileChunk } from './write-file-chunk'
 import { findFilesByName } from '../../function/find-files-by-name'
 import { listFilesAndDirectories } from './list-files-and-directories'
 import { findFilesByText } from './find-files-by-text'
 import { CommandContext, Interactor } from '../../model'
 import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
-import { unlinkFile } from './unlink-file'
 import { readFileUnifiedAsMessageContent } from '../../function/read-file-unified'
+import { resolveFilePath, prefixSearchResults } from './resolve-file-path'
+import { writeFileAbsolute } from './write-file-absolute'
+import { writeFileChunkAbsolute } from './write-file-chunk-absolute'
+import { FileUpdatedEvent } from '@coday/coday-events'
+import { unlinkSync } from 'node:fs'
+import * as path from 'path'
 
 /**
  * FileTools: A comprehensive file manipulation tool factory for Coday
@@ -53,18 +56,45 @@ export class FileTools extends AssistantToolFactory {
     // Only add write/delete tools if not in read-only mode
     if (!context.fileReadOnly) {
       const removeFile = ({ path }: { path: string }) => {
-        return unlinkFile(path, this.interactor)
+        const resolved = resolveFilePath(path, context)
+
+        // Check permissions for project files
+        if (resolved.scope === 'project' && context.fileReadOnly) {
+          throw new Error('Cannot delete project files in read-only mode')
+        }
+
+        try {
+          unlinkSync(resolved.absolutePath)
+
+          // Emit FileUpdatedEvent for thread files
+          if (resolved.scope === 'thread') {
+            const event = new FileUpdatedEvent({
+              filename: resolved.relativePath,
+              operation: 'deleted',
+            })
+            this.interactor.sendEvent(event)
+          }
+
+          return 'File deleted successfully'
+        } catch (error) {
+          this.interactor.error(`Error deleting file ${resolved.absolutePath}`)
+          return `Error deleting file: ${error}`
+        }
       }
 
       const removeFileFunction: FunctionTool<{ path: string }> = {
         type: 'function',
         function: {
           name: 'removeFile',
-          description: 'Remove the file at the given path in the project.',
+          description:
+            'Remove a file. File path must start with "project://" (for project files) or "thread://" (for conversation files).',
           parameters: {
             type: 'object',
             properties: {
-              path: { type: 'string', description: 'file path relative to the project root' },
+              path: {
+                type: 'string',
+                description: 'File path with prefix (e.g., "project://temp/old.txt" or "thread://draft.md")',
+              },
             },
           },
           parse: JSON.parse,
@@ -77,7 +107,33 @@ export class FileTools extends AssistantToolFactory {
     // Only add write tools if not in read-only mode
     if (!context.fileReadOnly) {
       const writeProjectFile = ({ path, content }: { path: string; content: string }) => {
-        return writeFileByPath({ relPath: path, root: context.project.root, interactor: this.interactor, content })
+        const resolved = resolveFilePath(path, context)
+
+        // Check permissions for project files
+        if (resolved.scope === 'project' && context.fileReadOnly) {
+          throw new Error('Cannot write to project files in read-only mode')
+        }
+
+        // Skip size check for thread files
+        const result = writeFileAbsolute({
+          absolutePath: resolved.absolutePath,
+          interactor: this.interactor,
+          content,
+          skipSizeCheck: resolved.scope === 'thread',
+        })
+
+        // Emit FileUpdatedEvent for thread files
+        if (resolved.scope === 'thread') {
+          const fileSize = Buffer.from(content).length
+          const event = new FileUpdatedEvent({
+            filename: resolved.relativePath,
+            operation: 'created', // Could be 'updated' if file exists, but we'll keep it simple
+            size: fileSize,
+          })
+          this.interactor.sendEvent(event)
+        }
+
+        return result
       }
 
       const writeProjectFileFunction: FunctionTool<{ path: string; content: string }> = {
@@ -85,11 +141,16 @@ export class FileTools extends AssistantToolFactory {
         function: {
           name: 'writeProjectFile',
           description:
-            'write the content of the file at the given path in the project. IMPORTANT: the whole file is written, do not write it partially. Prefer this tool for first writes or really full edits. For partial edits, use `writeFileChunk` tool.',
+            'Write the content of a file. IMPORTANT: the whole file is written, do not write it partially. ' +
+            'Prefer this tool for first writes or really full edits. For partial edits, use `writeFileChunk` tool. ' +
+            'File path must start with "project://" (for project files) or "thread://" (for conversation files).',
           parameters: {
             type: 'object',
             properties: {
-              path: { type: 'string', description: 'file path relative to the project root' },
+              path: {
+                type: 'string',
+                description: 'File path with prefix (e.g., "project://output/report.md" or "thread://analysis.md")',
+              },
               content: { type: 'string', description: 'content of the file to write' },
             },
           },
@@ -106,7 +167,29 @@ export class FileTools extends AssistantToolFactory {
         path: string
         replacements: { oldPart: string; newPart: string }[]
       }) => {
-        return writeFileChunk({ relPath: path, root: context.project.root, interactor: this.interactor, replacements })
+        const resolved = resolveFilePath(path, context)
+
+        // Check permissions for project files
+        if (resolved.scope === 'project' && context.fileReadOnly) {
+          throw new Error('Cannot write to project files in read-only mode')
+        }
+
+        const result = writeFileChunkAbsolute({
+          absolutePath: resolved.absolutePath,
+          interactor: this.interactor,
+          replacements,
+        })
+
+        // Emit FileUpdatedEvent for thread files
+        if (resolved.scope === 'thread') {
+          const event = new FileUpdatedEvent({
+            filename: resolved.relativePath,
+            operation: 'updated',
+          })
+          this.interactor.sendEvent(event)
+        }
+
+        return result
       }
 
       const writeFileChunkTool: FunctionTool<{
@@ -117,11 +200,15 @@ export class FileTools extends AssistantToolFactory {
         function: {
           name: 'writeFileChunk',
           description:
-            'Replace specified parts of an existing file with new parts. The function reads the entire file content, performs the replacements, and writes the modified content back to the file. Useful for handling large files efficiently.',
+            'Replace specified parts of an existing file with new parts. The function reads the entire file content, performs the replacements, and writes the modified content back to the file. ' +
+            'Useful for handling large files efficiently. File path must start with "project://" or "thread://".',
           parameters: {
             type: 'object',
             properties: {
-              path: { type: 'string', description: 'File path relative to the project root' },
+              path: {
+                type: 'string',
+                description: 'File path with prefix (e.g., "project://src/main.ts" or "thread://report.md")',
+              },
               replacements: {
                 type: 'array',
                 items: {
@@ -146,8 +233,34 @@ export class FileTools extends AssistantToolFactory {
       result.push(writeFileChunkTool)
     }
 
-    const searchProjectFile = ({ text, path }: { text: string; path?: string }) => {
-      return findFilesByName({ text, path, root: context.project.root, limit: 100 })
+    const searchProjectFile = async ({ text, path }: { text: string; path?: string }) => {
+      const results: string[] = []
+
+      // Search in thread files if available
+      if (context.threadFilesRoot && (!path || path.startsWith('thread://'))) {
+        const threadPath = path?.replace('thread://', '')
+        const threadResults = await findFilesByName({
+          text,
+          path: threadPath,
+          root: context.threadFilesRoot,
+          limit: 50,
+        })
+        results.push(...prefixSearchResults(threadResults, 'thread'))
+      }
+
+      // Search in project (unless path explicitly starts with thread://)
+      if (!path || !path.startsWith('thread://')) {
+        const projectPath = path?.replace('project://', '')
+        const projectResults = await findFilesByName({
+          text,
+          path: projectPath,
+          root: context.project.root,
+          limit: 50,
+        })
+        results.push(...prefixSearchResults(projectResults, 'project'))
+      }
+
+      return results.slice(0, 100) // Limit total results
     }
 
     const searchProjectFileFunction: FunctionTool<{ text: string; path?: string }> = {
@@ -155,14 +268,16 @@ export class FileTools extends AssistantToolFactory {
       function: {
         name: 'searchProjectFile',
         description:
-          'search in the project for files entirely or partially named with the given text. The output is a list of paths relative to the project root. Prefer it over `searchFilesByText` when you are apparently dealing with a file name.',
+          'Search for files by name in both project and conversation files. Returns paths with "project://" or "thread://" prefix. ' +
+          'Prefer this over `searchFilesByText` when searching by filename.',
         parameters: {
           type: 'object',
           properties: {
             text: { type: 'string', description: 'Part of the name, or full name of files to search for.' },
             path: {
               type: 'string',
-              description: 'optional file path relative to the project root from which to start the search',
+              description:
+                'Optional path to start search from. Can use "project://" or "thread://" prefix to search only in that space.',
             },
           },
         },
@@ -173,7 +288,16 @@ export class FileTools extends AssistantToolFactory {
     result.push(searchProjectFileFunction)
 
     const listProjectFilesAndDirectories = ({ relPath }: { relPath: string }) => {
-        return listFilesAndDirectories({ relPath, root: context.project.root})
+      // Require explicit prefix for root-level listing
+      if (!relPath || relPath === '.' || relPath === '/') {
+        throw new Error(
+          'Path must start with "project://" or "thread://" prefix. ' +
+            'Use "project://" to list project files or "thread://" to list conversation files.'
+        )
+      }
+
+      const resolved = resolveFilePath(relPath, context)
+      return listFilesAndDirectories({ relPath: resolved.relativePath, root: path.dirname(resolved.absolutePath) })
     }
 
     const listProjectFilesAndDirectoriesFunction: FunctionTool<{ relPath: string }> = {
@@ -181,11 +305,15 @@ export class FileTools extends AssistantToolFactory {
       function: {
         name: 'listFilesAndDirectories',
         description:
-          'list the directories and files in a folder (similar to the ls Unix command). Directories end with a slash.',
+          'List directories and files in a folder (similar to ls command). Directories end with a slash. ' +
+          'Path must start with "project://" or "thread://" prefix.',
         parameters: {
           type: 'object',
           properties: {
-            relPath: { type: 'string', description: 'path relative to the project root' },
+            relPath: {
+              type: 'string',
+              description: 'Path with prefix (e.g., "project://src" or "thread://")',
+            },
           },
         },
         parse: JSON.parse,
@@ -194,14 +322,58 @@ export class FileTools extends AssistantToolFactory {
     }
     result.push(listProjectFilesAndDirectoriesFunction)
 
-    const searchFilesByText = ({ text, path, fileTypes }: { text: string; path?: string; fileTypes?: string[] }) => {
-      return findFilesByText({
-        text,
-        path,
-        root: context.project.root,
-        interactor: this.interactor,
-        fileTypes,
-      })
+    const searchFilesByText = async ({
+      text,
+      path,
+      fileTypes,
+    }: {
+      text: string
+      path?: string
+      fileTypes?: string[]
+    }) => {
+      const resultLines: string[] = []
+
+      // Search in thread files if available
+      if (context.threadFilesRoot && (!path || path.startsWith('thread://'))) {
+        const threadPath = path?.replace('thread://', '')
+        const threadResultsRaw = await findFilesByText({
+          text,
+          path: threadPath,
+          root: context.threadFilesRoot,
+          interactor: this.interactor,
+          fileTypes,
+        })
+
+        if (threadResultsRaw && threadResultsRaw !== 'No match found') {
+          const threadFiles = threadResultsRaw
+            .trim()
+            .split('\n')
+            .filter((f) => f)
+          resultLines.push(...prefixSearchResults(threadFiles, 'thread'))
+        }
+      }
+
+      // Search in project (unless path explicitly starts with thread://)
+      if (!path || !path.startsWith('thread://')) {
+        const projectPath = path?.replace('project://', '')
+        const projectResultsRaw = await findFilesByText({
+          text,
+          path: projectPath,
+          root: context.project.root,
+          interactor: this.interactor,
+          fileTypes,
+        })
+
+        if (projectResultsRaw && projectResultsRaw !== 'No match found') {
+          const projectFiles = projectResultsRaw
+            .trim()
+            .split('\n')
+            .filter((f) => f)
+          resultLines.push(...prefixSearchResults(projectFiles, 'project'))
+        }
+      }
+
+      return resultLines.length > 0 ? resultLines.join('\n') : 'No match found'
     }
 
     const searchFilesByTextFunction: FunctionTool<{
@@ -213,14 +385,16 @@ export class FileTools extends AssistantToolFactory {
       function: {
         name: 'searchFilesByText',
         description:
-          'Search in the project for files containing the given text in the content. The output is a list of paths relative to the project root. This function is slow, restrict scope by giving a path and fileTypes if possible, to avoid a timeout. If searching for a filename, prefer `searchProjectFile`.',
+          'Search for files containing text in both project and conversation files. Returns paths with "project://" or "thread://" prefix. ' +
+          'This function is slow, restrict scope by giving a path and fileTypes if possible, to avoid a timeout. If searching for a filename, prefer `searchProjectFile`.',
         parameters: {
           type: 'object',
           properties: {
             text: { type: 'string', description: 'text to search for inside files' },
             path: {
               type: 'string',
-              description: 'optional file path relative to the project root from which to start the search',
+              description:
+                'Optional path to start search from. Can use "project://" or "thread://" prefix to search only in that space.',
             },
             fileTypes: {
               type: 'array',
@@ -238,9 +412,10 @@ export class FileTools extends AssistantToolFactory {
 
     // Unified file reader tool - handles all file types automatically including images
     const readFileUnified = async ({ filePath }: { filePath: string }) => {
+      const resolved = resolveFilePath(filePath, context)
+
       return readFileUnifiedAsMessageContent({
-        relPath: filePath,
-        root: context.project.root,
+        absolutePath: resolved.absolutePath,
         interactor: this.interactor,
       })
     }
@@ -250,11 +425,16 @@ export class FileTools extends AssistantToolFactory {
       function: {
         name: 'readFile',
         description:
-          'Read content from any file type. Supports text files, PDFs, and image files (PNG, JPEG, GIF, WebP). Automatically detects file type and uses appropriate reader. For images, returns both description and image content.',
+          'Read content from any file type. Supports text files, PDFs, and image files (PNG, JPEG, GIF, WebP). ' +
+          'File path must start with "project://" (for project files) or "thread://" (for conversation files). ' +
+          'Use searchProjectFile or searchFilesByText to find files across both spaces.',
         parameters: {
           type: 'object',
           properties: {
-            filePath: { type: 'string', description: 'File path relative to the project root' },
+            filePath: {
+              type: 'string',
+              description: 'File path with prefix (e.g., "project://src/main.ts" or "thread://document.pdf")',
+            },
           },
         },
         parse: JSON.parse,

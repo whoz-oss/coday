@@ -186,7 +186,7 @@ registerWebhookRoutes(app, webhookService, getUsername, threadService, threadCod
 registerProjectRoutes(app, projectService)
 
 // Register thread management routes
-registerThreadRoutes(app, threadService, threadCodayManager, getUsername, codayOptions)
+registerThreadRoutes(app, threadService, threadCodayManager, getUsername, codayOptions, projectsDir)
 
 // Register message management routes
 registerMessageRoutes(app, threadCodayManager, getUsername)

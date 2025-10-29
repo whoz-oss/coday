@@ -13,6 +13,11 @@ interface FileReaderInput {
   interactor?: Interactor
 }
 
+interface FileReaderAbsoluteInput {
+  absolutePath: string
+  interactor?: Interactor
+}
+
 // Create wrapper functions that match the FileReaderInput interface
 const readPdfWrapper = (input: FileReaderInput): Promise<FileContent> => {
   return readPdfFile({
@@ -31,15 +36,15 @@ const readImageFile = async (input: FileReaderInput): Promise<ImageContent> => {
   try {
     const buffer = await fs.readFile(fullPath)
     const originalMimeType = getMimeTypeFromExtension(extension)
-    
+
     // Process the image with resizing and compression
     const processedImage = await processImageBuffer(buffer, originalMimeType)
-    
+
     // Generate source description with processing info
     const originalSizeKB = (processedImage.originalSize / 1024).toFixed(1)
     const finalSizeKB = (processedImage.processedSize / 1024).toFixed(1)
     const processingDesc = getProcessingDescription(processedImage)
-    
+
     let sourceDesc = `${fileName} (${finalSizeKB} KB`
     if (processedImage.originalSize !== processedImage.processedSize) {
       sourceDesc += `, was ${originalSizeKB} KB`
@@ -113,8 +118,20 @@ export const readFileUnifiedAsString = async (input: FileReaderInput): Promise<s
 }
 
 // New helper that returns MessageContent for rich content tools
-export const readFileUnifiedAsMessageContent = async (input: FileReaderInput): Promise<string | MessageContent> => {
-  const result = await readFileUnified(input)
+export const readFileUnifiedAsMessageContent = async (
+  input: FileReaderInput | FileReaderAbsoluteInput
+): Promise<string | MessageContent> => {
+  // Convert absolute path to relPath + root if needed
+  const fileReaderInput: FileReaderInput =
+    'absolutePath' in input
+      ? {
+          relPath: path.basename(input.absolutePath),
+          root: path.dirname(input.absolutePath),
+          interactor: input.interactor,
+        }
+      : input
+
+  const result = await readFileUnified(fileReaderInput)
 
   if (result.type === 'error') {
     return result.content as string
@@ -122,7 +139,7 @@ export const readFileUnifiedAsMessageContent = async (input: FileReaderInput): P
   if (result.type === 'text') {
     return {
       type: 'text',
-      content: typeof result.content === 'string' ? result.content: result.content.toString(),
+      content: typeof result.content === 'string' ? result.content : result.content.toString(),
     }
   }
   if (result.type === 'image') {

@@ -5,6 +5,10 @@ import { ThreadCodayManager } from './thread-coday-manager'
 import { ImageContent } from '@coday/coday-events'
 import { processImageBuffer } from '@coday/function/image-processor'
 import { CodayOptions } from '@coday/options'
+import { MAX_FILE_SIZE, isFileExtensionAllowed, getAllowedExtensionsString } from '@coday/model/file-config'
+import * as path from 'path'
+import * as fs from 'fs'
+import * as fsPromises from 'fs/promises'
 
 /**
  * Thread Management REST API Routes
@@ -31,19 +35,32 @@ import { CodayOptions } from '@coday/options'
  */
 
 /**
+ * Get the thread files directory path for a given project and thread
+ * @param projectsDir - Base projects directory (e.g., /path/.coday/projects)
+ * @param projectName - Project name
+ * @param threadId - Thread ID
+ * @returns Absolute path to the thread files directory
+ */
+function getThreadFilesDir(projectsDir: string, projectName: string, threadId: string): string {
+  return path.join(projectsDir, projectName, 'threads', `${threadId}-files`)
+}
+
+/**
  * Register thread management routes on the Express app
  * @param app - Express application instance
  * @param threadService - ThreadService2 instance for thread operations
  * @param threadCodayManager - ThreadCodayManager instance for runtime operations
  * @param getUsernameFn - Function to extract username from request
  * @param codayOptions - Coday options for thread instances
+ * @param projectsDir - Base projects directory path
  */
 export function registerThreadRoutes(
   app: express.Application,
   threadService: ThreadService,
   threadCodayManager: ThreadCodayManager,
   getUsernameFn: (req: express.Request) => string,
-  codayOptions: CodayOptions
+  codayOptions: CodayOptions,
+  projectsDir: string
 ): void {
   /**
    * GET /api/projects/:projectName/threads
@@ -403,7 +420,10 @@ export function registerThreadRoutes(
 
   /**
    * POST /api/projects/:projectName/threads/:threadId/upload
-   * Upload a file (image) to a thread
+   * Upload a file to a thread
+   *
+   * For images: processed and added to conversation directly
+   * For other files: saved to thread files directory with a notification message
    *
    * Body: {
    *   content: string (base64),
@@ -450,32 +470,283 @@ export function registerThreadRoutes(
           return
         }
 
-        // Process the image
         const buffer = Buffer.from(content, 'base64')
-        const processed = await processImageBuffer(buffer, mimeType)
 
-        // Create ImageContent
-        const imageContent: ImageContent = {
-          type: 'image',
-          content: processed.content,
-          mimeType: processed.mimeType,
-          width: processed.width,
-          height: processed.height,
-          source: `${filename} (${(processed.processedSize / 1024).toFixed(1)} KB)`,
+        // Check file size
+        if (buffer.length > MAX_FILE_SIZE) {
+          res.status(400).json({
+            error: `File too large: ${(buffer.length / 1024 / 1024).toFixed(2)} MB exceeds maximum of ${MAX_FILE_SIZE / 1024 / 1024} MB`,
+          })
+          return
         }
 
-        // Upload to thread via Coday
-        instance.coday.upload([imageContent])
+        // Check if it's an image
+        const isImage = mimeType.startsWith('image/')
 
-        res.status(200).json({
-          success: true,
-          processedSize: processed.processedSize,
-          dimensions: { width: processed.width, height: processed.height },
-        })
+        if (isImage) {
+          // Process and add image to conversation directly (existing behavior)
+          const processed = await processImageBuffer(buffer, mimeType)
+
+          const imageContent: ImageContent = {
+            type: 'image',
+            content: processed.content,
+            mimeType: processed.mimeType,
+            width: processed.width,
+            height: processed.height,
+            source: `${filename} (${(processed.processedSize / 1024).toFixed(1)} KB)`,
+          }
+
+          instance.coday.upload([imageContent])
+
+          res.status(200).json({
+            success: true,
+            type: 'image',
+            processedSize: processed.processedSize,
+            dimensions: { width: processed.width, height: processed.height },
+          })
+        } else {
+          // For non-image files: check extension and save to thread files
+          if (!isFileExtensionAllowed(filename)) {
+            res.status(400).json({
+              error: `File type not allowed. Allowed extensions: ${getAllowedExtensionsString()}`,
+            })
+            return
+          }
+
+          // Save file to thread files directory
+          const filesDir = getThreadFilesDir(projectsDir, projectName, threadId)
+          await fsPromises.mkdir(filesDir, { recursive: true })
+
+          const filePath = path.join(filesDir, filename)
+          await fsPromises.writeFile(filePath, buffer)
+
+          // Add a short notification message to the conversation
+          const fileSizeKB = (buffer.length / 1024).toFixed(1)
+          const textContent = {
+            type: 'text' as const,
+            content: `📎 Document uploaded: ${filename} (${fileSizeKB} KB)`,
+          }
+          instance.coday.upload([textContent])
+
+          debugLog('UPLOAD', `File saved: ${filePath}`)
+
+          res.status(200).json({
+            success: true,
+            type: 'file',
+            filename,
+            size: buffer.length,
+            path: `thread://${filename}`,
+          })
+        }
       } catch (error) {
         console.error('Error processing file upload:', error)
         const errorMessage = error instanceof Error ? error.message : 'Upload failed'
         res.status(400).json({ error: errorMessage })
+      }
+    }
+  )
+
+  /**
+   * GET /api/projects/:projectName/threads/:threadId/files
+   * List all files in the thread workspace
+   */
+  app.get('/api/projects/:projectName/threads/:threadId/files', async (req: express.Request, res: express.Response) => {
+    try {
+      const { projectName, threadId } = req.params
+
+      if (!projectName || !threadId) {
+        res.status(400).json({ error: 'Project name and thread ID are required' })
+        return
+      }
+
+      const username = getUsernameFn(req)
+      if (!username) {
+        res.status(401).json({ error: 'Authentication required' })
+        return
+      }
+
+      // Verify thread exists and user owns it
+      const thread = await threadService.getThread(projectName, threadId)
+      if (!thread) {
+        res.status(404).json({ error: `Thread '${threadId}' not found in project '${projectName}'` })
+        return
+      }
+
+      if (thread.username !== username) {
+        res.status(403).json({ error: 'Access denied: thread belongs to another user' })
+        return
+      }
+
+      const filesDir = getThreadFilesDir(projectsDir, projectName, threadId)
+
+      // Check if directory exists
+      if (!fs.existsSync(filesDir)) {
+        res.status(200).json({ files: [] })
+        return
+      }
+
+      // Read directory and get file stats
+      const files = await fsPromises.readdir(filesDir)
+      const fileStats = await Promise.all(
+        files.map(async (filename) => {
+          const filePath = path.join(filesDir, filename)
+          const stats = await fsPromises.stat(filePath)
+          return {
+            filename,
+            size: stats.size,
+            createdAt: stats.birthtime.toISOString(),
+            modifiedAt: stats.mtime.toISOString(),
+          }
+        })
+      )
+
+      res.status(200).json({ files: fileStats })
+    } catch (error) {
+      console.error('Error listing files:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: `Failed to list files: ${errorMessage}` })
+    }
+  })
+
+  /**
+   * GET /api/projects/:projectName/threads/:threadId/files/:filename
+   * Download a specific file from the thread workspace
+   */
+  app.get(
+    '/api/projects/:projectName/threads/:threadId/files/:filename',
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { projectName, threadId, filename } = req.params
+
+        if (!projectName || !threadId || !filename) {
+          res.status(400).json({ error: 'Project name, thread ID, and filename are required' })
+          return
+        }
+
+        const username = getUsernameFn(req)
+        if (!username) {
+          res.status(401).json({ error: 'Authentication required' })
+          return
+        }
+
+        // Verify thread exists and user owns it
+        const thread = await threadService.getThread(projectName, threadId)
+        if (!thread) {
+          res.status(404).json({ error: `Thread '${threadId}' not found in project '${projectName}'` })
+          return
+        }
+
+        if (thread.username !== username) {
+          res.status(403).json({ error: 'Access denied: thread belongs to another user' })
+          return
+        }
+
+        const filesDir = getThreadFilesDir(projectsDir, projectName, threadId)
+        const filePath = path.join(filesDir, filename)
+
+        // Security: Ensure the resolved path is within the files directory
+        const resolvedPath = path.resolve(filePath)
+        const resolvedFilesDir = path.resolve(filesDir)
+        if (!resolvedPath.startsWith(resolvedFilesDir)) {
+          res.status(403).json({ error: 'Access denied: invalid file path' })
+          return
+        }
+
+        // Check if file exists
+        if (!fs.existsSync(filePath)) {
+          res.status(404).json({ error: `File '${filename}' not found` })
+          return
+        }
+
+        // Determine content type from extension
+        const ext = path.extname(filename).toLowerCase()
+        const contentTypeMap: Record<string, string> = {
+          '.pdf': 'application/pdf',
+          '.txt': 'text/plain',
+          '.md': 'text/markdown',
+          '.json': 'application/json',
+          '.xml': 'application/xml',
+          '.csv': 'text/csv',
+          '.html': 'text/html',
+          '.css': 'text/css',
+          '.js': 'application/javascript',
+          '.ts': 'application/typescript',
+        }
+        const contentType = contentTypeMap[ext] || 'application/octet-stream'
+
+        // Send file
+        res.setHeader('Content-Type', contentType)
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+        res.sendFile(filePath)
+      } catch (error) {
+        console.error('Error downloading file:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: `Failed to download file: ${errorMessage}` })
+      }
+    }
+  )
+
+  /**
+   * DELETE /api/projects/:projectName/threads/:threadId/files/:filename
+   * Delete a specific file from the thread workspace
+   */
+  app.delete(
+    '/api/projects/:projectName/threads/:threadId/files/:filename',
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { projectName, threadId, filename } = req.params
+
+        if (!projectName || !threadId || !filename) {
+          res.status(400).json({ error: 'Project name, thread ID, and filename are required' })
+          return
+        }
+
+        const username = getUsernameFn(req)
+        if (!username) {
+          res.status(401).json({ error: 'Authentication required' })
+          return
+        }
+
+        // Verify thread exists and user owns it
+        const thread = await threadService.getThread(projectName, threadId)
+        if (!thread) {
+          res.status(404).json({ error: `Thread '${threadId}' not found in project '${projectName}'` })
+          return
+        }
+
+        if (thread.username !== username) {
+          res.status(403).json({ error: 'Access denied: thread belongs to another user' })
+          return
+        }
+
+        const filesDir = getThreadFilesDir(projectsDir, projectName, threadId)
+        const filePath = path.join(filesDir, filename)
+
+        // Security: Ensure the resolved path is within the files directory
+        const resolvedPath = path.resolve(filePath)
+        const resolvedFilesDir = path.resolve(filesDir)
+        if (!resolvedPath.startsWith(resolvedFilesDir)) {
+          res.status(403).json({ error: 'Access denied: invalid file path' })
+          return
+        }
+
+        // Check if file exists
+        if (!fs.existsSync(filePath)) {
+          res.status(404).json({ error: `File '${filename}' not found` })
+          return
+        }
+
+        // Delete file
+        await fsPromises.unlink(filePath)
+
+        res.status(200).json({
+          success: true,
+          message: `File '${filename}' deleted successfully`,
+        })
+      } catch (error) {
+        console.error('Error deleting file:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: `Failed to delete file: ${errorMessage}` })
       }
     }
   )
