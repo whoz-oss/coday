@@ -45,36 +45,119 @@
   z-index: 1;
 }
 
+.thread-item-wrapper {
+  display: flex;
+  align-items: center;
+  position: relative;
+  width: 100%;
+  border-radius: 0;
+  min-width: 0; // Important for flex truncation
+
+  &:hover {
+    background: var(--color-bg-hover);
+
+    .star-button:not(.starred) {
+      opacity: 1;
+    }
+
+    .delete-button {
+      opacity: 1;
+    }
+  }
+
+  &.current {
+    background: var(--color-primary-light);
+
+    .thread-item {
+      color: var(--color-primary-text);
+      font-weight: 600;
+    }
+  }
+}
+
 .thread-item {
   display: flex;
   align-items: center;
-  width: 100%;
-  padding: 0.7rem 1rem; // Use full width padding
+  flex: 1;
+  min-width: 0; // Important for text truncation
+  padding: 0.7rem 0.5rem;
   background: transparent;
   border: none;
   color: var(--color-text);
   text-align: left;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: none;
   gap: 0;
-  border-radius: 0; // Remove border radius for full width feel
-
-  &:hover {
-    background: var(--color-bg-hover);
-  }
+  border-radius: 0;
 
   &:active {
     transform: scale(0.98);
   }
 
-  &.current {
-    background: var(--color-primary-light);
-    color: var(--color-primary-text);
-    font-weight: 600;
-  }
-
   &.new-thread-item {
     margin-bottom: 0.25rem;
+  }
+}
+
+.action-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0; // Prevent buttons from shrinking
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    color: var(--color-text-secondary);
+  }
+
+  &:hover {
+    background: var(--color-bg-hover-secondary, rgba(0, 0, 0, 0.1));
+
+    mat-icon {
+      color: var(--color-text);
+    }
+  }
+
+  &.star-button {
+    margin-left: 0.25rem;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+
+    &.starred {
+      opacity: 1; // Always visible when starred
+
+      mat-icon {
+        color: #fbbf24; // Gold color for starred
+      }
+    }
+
+    &:hover mat-icon {
+      color: #fbbf24;
+    }
+  }
+
+  &.delete-button {
+    margin-right: 0.25rem;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.1);
+
+      mat-icon {
+        color: #ef4444; // Red color for delete
+      }
+    }
   }
 }
 
@@ -145,13 +228,13 @@
 
 @keyframes gradientShift {
   0% {
-    background-position: 0% center;
+    background-position: 0 center;
   }
   50% {
     background-position: 100% center;
   }
   100% {
-    background-position: 0% center;
+    background-position: 0 center;
   }
 }
 

@@ -53,6 +53,9 @@ export class AiThread {
   /** Summary of the whole thread, to be used for cross-thread research */
   summary: string
 
+  /** List of usernames who starred this thread */
+  starring: string[] = []
+
   createdDate: string
   modifiedDate: string
   runStatus: RunStatus = RunStatus.STOPPED
@@ -91,6 +94,7 @@ export class AiThread {
     this.projectId = thread.projectId ?? ''
     this.name = thread.name ?? ''
     this.summary = thread.summary ?? ''
+    this.starring = thread.starring ?? []
     this.createdDate = thread.createdDate ?? new Date().toISOString()
     this.modifiedDate = thread.modifiedDate ?? this.createdDate
     this.price = thread.price ?? 0

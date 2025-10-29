@@ -84,8 +84,8 @@ export class ThreadCleanupService {
 
   /**
    * Performs cleanup of expired threads
+   * Starred threads (with starring.length > 0) are excluded from cleanup
    */
-  // TODO: do not remove starred threads
   private async performCleanup(): Promise<void> {
     const startTime = Date.now()
     let totalScanned = 0
@@ -209,6 +209,11 @@ export class ThreadCleanupService {
 
         if (!threadData || !threadData.modifiedDate) {
           return // Skip invalid files
+        }
+
+        // Skip starred threads (protected from cleanup)
+        if (threadData.starring && Array.isArray(threadData.starring) && threadData.starring.length > 0) {
+          return // Skip starred threads
         }
 
         // Check if thread should be deleted

@@ -11,7 +11,7 @@ const messageEventToMessageContent: Migration = {
       migrated.messages = []
       return migrated
     }
-    
+
     migrated.messages = migrated.messages.map((message: any) => {
       if (message.type !== 'message') {
         return message
@@ -34,4 +34,17 @@ const messageEventToMessageContent: Migration = {
   },
 }
 
-export const aiThreadMigrations: Migration[] = [messageEventToMessageContent]
+const addStarringField: Migration = {
+  version: 2,
+  description: 'Add starring field to threads for favorite functionality',
+  migrate: (aiThread: any) => {
+    const migrated = { ...aiThread }
+    // Initialize starring as empty array if not present
+    if (!migrated.starring) {
+      migrated.starring = []
+    }
+    return migrated
+  },
+}
+
+export const aiThreadMigrations: Migration[] = [messageEventToMessageContent, addStarringField]

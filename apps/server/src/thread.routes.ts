@@ -19,6 +19,8 @@ import { CodayOptions } from '@coday/options'
  * - GET    /api/projects/:projectName/threads/:threadId                  - Get thread
  * - PUT    /api/projects/:projectName/threads/:threadId                  - Update thread
  * - DELETE /api/projects/:projectName/threads/:threadId                  - Delete thread
+ * - POST   /api/projects/:projectName/threads/:threadId/star             - Star thread (add current user to starring list)
+ * - DELETE /api/projects/:projectName/threads/:threadId/star             - Unstar thread (remove current user from starring list)
  * - POST   /api/projects/:projectName/threads/:threadId/stop             - Stop thread execution
  * - POST   /api/projects/:projectName/threads/:threadId/upload           - Upload file to thread
  * - GET    /api/projects/:projectName/threads/:threadId/event-stream     - SSE connection for thread events
@@ -170,7 +172,7 @@ export function registerThreadRoutes(
 
   /**
    * PUT /api/projects/:projectName/threads/:threadId
-   * Update a thread (currently supports renaming)
+   * Update a thread (rename)
    *
    * Body: { name?: string }
    */
@@ -220,6 +222,95 @@ export function registerThreadRoutes(
       res.status(500).json({ error: `Failed to update thread: ${errorMessage}` })
     }
   })
+
+  /**
+   * POST /api/projects/:projectName/threads/:threadId/star
+   * Star a thread (add current user to starring list)
+   */
+  app.post('/api/projects/:projectName/threads/:threadId/star', async (req: express.Request, res: express.Response) => {
+    try {
+      const { projectName, threadId } = req.params
+      if (!projectName || !threadId) {
+        res.status(400).json({ error: 'Project name and thread ID are required' })
+        return
+      }
+
+      const username = getUsernameFn(req)
+      if (!username) {
+        res.status(401).json({ error: 'Authentication required' })
+        return
+      }
+
+      // Verify thread exists and user owns it (or has access)
+      const existingThread = await threadService.getThread(projectName, threadId)
+      if (!existingThread) {
+        res.status(404).json({ error: `Thread '${threadId}' not found in project '${projectName}'` })
+        return
+      }
+
+      debugLog('THREAD', `POST star thread: ${threadId} in project: ${projectName} by user: ${username}`)
+      const updatedThread = await threadService.starThread(projectName, threadId, username)
+
+      res.status(200).json({
+        success: true,
+        thread: {
+          id: updatedThread.id,
+          starring: updatedThread.starring,
+          modifiedDate: updatedThread.modifiedDate,
+        },
+      })
+    } catch (error) {
+      console.error('Error starring thread:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: `Failed to star thread: ${errorMessage}` })
+    }
+  })
+
+  /**
+   * DELETE /api/projects/:projectName/threads/:threadId/star
+   * Unstar a thread (remove current user from starring list)
+   */
+  app.delete(
+    '/api/projects/:projectName/threads/:threadId/star',
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { projectName, threadId } = req.params
+        if (!projectName || !threadId) {
+          res.status(400).json({ error: 'Project name and thread ID are required' })
+          return
+        }
+
+        const username = getUsernameFn(req)
+        if (!username) {
+          res.status(401).json({ error: 'Authentication required' })
+          return
+        }
+
+        // Verify thread exists and user owns it (or has access)
+        const existingThread = await threadService.getThread(projectName, threadId)
+        if (!existingThread) {
+          res.status(404).json({ error: `Thread '${threadId}' not found in project '${projectName}'` })
+          return
+        }
+
+        debugLog('THREAD', `DELETE unstar thread: ${threadId} in project: ${projectName} by user: ${username}`)
+        const updatedThread = await threadService.unstarThread(projectName, threadId, username)
+
+        res.status(200).json({
+          success: true,
+          thread: {
+            id: updatedThread.id,
+            starring: updatedThread.starring,
+            modifiedDate: updatedThread.modifiedDate,
+          },
+        })
+      } catch (error) {
+        console.error('Error unstarring thread:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: `Failed to unstar thread: ${errorMessage}` })
+      }
+    }
+  )
 
   /**
    * POST /api/projects/:projectName/threads/:threadId/stop
