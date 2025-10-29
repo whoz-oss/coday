@@ -25,6 +25,7 @@ export type ThreadSerialized = {
   createdDate?: string
   modifiedDate?: string
   price?: number // Total accumulated price for the thread
+  starring?: string[] // List of usernames who starred this thread
 }
 
 export interface ThreadSummary {
@@ -36,6 +37,7 @@ export interface ThreadSummary {
   createdDate: string
   modifiedDate: string
   price: number
+  starring: string[] // List of usernames who starred this thread
 }
 
 /**

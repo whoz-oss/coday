@@ -105,7 +105,7 @@ export class ThreadService {
   }
 
   /**
-   * Update a thread (typically to rename it)
+   * Update a thread (rename)
    * @param projectName Project name
    * @param threadId Thread identifier
    * @param updates Partial thread updates
@@ -124,6 +124,52 @@ export class ThreadService {
     if (updates.name !== undefined) {
       thread.name = updates.name
     }
+
+    return await repository.save(projectName, thread)
+  }
+
+  /**
+   * Star a thread (add username to starring list)
+   * @param projectName Project name
+   * @param threadId Thread identifier
+   * @param username Username to add to starring list
+   * @returns Updated thread
+   * @throws Error if thread doesn't exist
+   */
+  async starThread(projectName: string, threadId: string, username: string): Promise<AiThread> {
+    const repository = this.getThreadRepository(projectName)
+
+    const thread = await repository.getById(projectName, threadId)
+    if (!thread) {
+      throw new Error(`Thread '${threadId}' not found in project '${projectName}'`)
+    }
+
+    // Add username to starring list if not already present
+    if (!thread.starring.includes(username)) {
+      thread.starring.push(username)
+    }
+
+    return await repository.save(projectName, thread)
+  }
+
+  /**
+   * Unstar a thread (remove username from starring list)
+   * @param projectName Project name
+   * @param threadId Thread identifier
+   * @param username Username to remove from starring list
+   * @returns Updated thread
+   * @throws Error if thread doesn't exist
+   */
+  async unstarThread(projectName: string, threadId: string, username: string): Promise<AiThread> {
+    const repository = this.getThreadRepository(projectName)
+
+    const thread = await repository.getById(projectName, threadId)
+    if (!thread) {
+      throw new Error(`Thread '${threadId}' not found in project '${projectName}'`)
+    }
+
+    // Remove username from starring list
+    thread.starring = thread.starring.filter((u) => u !== username)
 
     return await repository.save(projectName, thread)
   }
