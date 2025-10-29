@@ -1,3 +1,13 @@
+## 0.38.1 (2025-10-29)
+
+### 🩹 Fixes
+
+- thread icons ([#290](https://github.com/whoz-oss/coday/pull/290))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.38.0 (2025-10-29)
 
 ### 🚀 Features
