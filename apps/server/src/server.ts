@@ -118,13 +118,31 @@ const projectRepository = new ProjectFileRepository(configPath)
 // Resolve the actual project ID (with hash) if we're in default mode
 let resolvedProjectName = codayOptions.project
 if (resolvedProjectName && !codayOptions.forcedProject) {
-  // In default mode, always use the volatile project ID for the current directory
-  // This ensures we reference the project by its stable hash-based ID
+  // In default mode, check for existing project first
   const cwd = process.cwd()
-  const volatileProjectId = ProjectService.generateProjectId(cwd)
+  const basename = path.basename(cwd)
 
-  debugLog('INIT', `Default mode: using volatile project ID ${volatileProjectId} for current directory`)
-  resolvedProjectName = volatileProjectId
+  // First, check if a non-volatile project exists with the simple name and matches the path
+  if (projectRepository.exists(basename)) {
+    const config = projectRepository.getConfig(basename)
+    if (config && config.path === cwd && !config.volatile) {
+      debugLog('INIT', `Default mode: found existing non-volatile project '${basename}' for current directory`)
+      resolvedProjectName = basename
+    } else {
+      // Project exists but path doesn't match or is volatile, use volatile ID
+      const volatileProjectId = ProjectService.generateProjectId(cwd)
+      debugLog(
+        'INIT',
+        `Default mode: existing project '${basename}' doesn't match path, using volatile ID ${volatileProjectId}`
+      )
+      resolvedProjectName = volatileProjectId
+    }
+  } else {
+    // No project with simple name, use volatile ID
+    const volatileProjectId = ProjectService.generateProjectId(cwd)
+    debugLog('INIT', `Default mode: no existing project found, using volatile ID ${volatileProjectId}`)
+    resolvedProjectName = volatileProjectId
+  }
 }
 
 const projectService = new ProjectService(projectRepository, resolvedProjectName, codayOptions.forcedProject)
