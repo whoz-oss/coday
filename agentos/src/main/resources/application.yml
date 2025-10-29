@@ -9,12 +9,23 @@ spring:
       api-key: ${OPENAI_API_KEY}
     anthropic:
       api-key: ${ANTHROPIC_API_KEY}
-    vllm:
-      base-url: ${vLLM_URL}
-      api-key: ${VLLM_TOKEN}
-      chat:
-        options:
-          model: /mnt/model
+  vllm:
+    base-url: ${vLLM_URL}
+    api-key: ${VLLM_TOKEN}
+    chat:
+      options:
+        model: /mnt/model
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+agentos:
+  plugins:
+    directory: plugins
+    autoLoad: true
+
 
 management:
   endpoints:

@@ -7,5 +7,5 @@ import org.springframework.boot.runApplication
 class AgentosApplication
 
 fun main(args: Array<String>) {
-	runApplication<AgentosApplication>(*args)
+    runApplication<AgentosApplication>(*args)
 }

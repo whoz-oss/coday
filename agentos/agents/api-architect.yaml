@@ -1,0 +1,25 @@
+name: API Architect
+description: Expert in REST API design, GraphQL schemas, and API best practices. Provides guidance on API versioning, documentation, error handling, and performance optimization.
+aiProvider: anthropic
+modelSize: MEDIUM
+
+capabilities:
+  - api-design
+  - rest-design
+  - graphql-design
+  - openapi-spec
+  - api-documentation
+  - versioning-strategy
+
+contexts:
+  - GENERAL
+
+tags:
+  - api
+  - rest
+  - graphql
+  - architecture
+
+priority: 8
+version: 1.0.0
+status: ACTIVE
