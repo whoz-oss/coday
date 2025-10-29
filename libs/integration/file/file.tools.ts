@@ -1,3 +1,5 @@
+import { writeFileByPath } from './write-file-by-path'
+import { writeFileChunk } from './write-file-chunk'
 import { findFilesByName } from '../../function/find-files-by-name'
 import { listFilesAndDirectories } from './list-files-and-directories'
 import { findFilesByText } from './find-files-by-text'
@@ -6,11 +8,9 @@ import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 import { readFileUnifiedAsMessageContent } from '../../function/read-file-unified'
 import { resolveFilePath, prefixSearchResults } from './resolve-file-path'
-import { writeFileAbsolute } from './write-file-absolute'
-import { writeFileChunkAbsolute } from './write-file-chunk-absolute'
-import { FileUpdatedEvent } from '@coday/coday-events'
+import { FileEvent } from '@coday/coday-events'
 import { unlinkSync } from 'node:fs'
-import * as path from 'path'
+import * as pathModule from 'path'
 
 /**
  * FileTools: A comprehensive file manipulation tool factory for Coday
@@ -66,9 +66,9 @@ export class FileTools extends AssistantToolFactory {
         try {
           unlinkSync(resolved.absolutePath)
 
-          // Emit FileUpdatedEvent for thread files
+          // Emit FileEvent for thread files
           if (resolved.scope === 'thread') {
-            const event = new FileUpdatedEvent({
+            const event = new FileEvent({
               filename: resolved.relativePath,
               operation: 'deleted',
             })
@@ -114,18 +114,18 @@ export class FileTools extends AssistantToolFactory {
           throw new Error('Cannot write to project files in read-only mode')
         }
 
-        // Skip size check for thread files
-        const result = writeFileAbsolute({
-          absolutePath: resolved.absolutePath,
+        // Use writeFileByPath with root as dirname and relPath as basename
+        const result = writeFileByPath({
+          relPath: pathModule.basename(resolved.absolutePath),
+          root: pathModule.dirname(resolved.absolutePath),
           interactor: this.interactor,
           content,
-          skipSizeCheck: resolved.scope === 'thread',
         })
 
-        // Emit FileUpdatedEvent for thread files
+        // Emit FileEvent for thread files
         if (resolved.scope === 'thread') {
           const fileSize = Buffer.from(content).length
-          const event = new FileUpdatedEvent({
+          const event = new FileEvent({
             filename: resolved.relativePath,
             operation: 'created', // Could be 'updated' if file exists, but we'll keep it simple
             size: fileSize,
@@ -174,15 +174,16 @@ export class FileTools extends AssistantToolFactory {
           throw new Error('Cannot write to project files in read-only mode')
         }
 
-        const result = writeFileChunkAbsolute({
-          absolutePath: resolved.absolutePath,
+        const result = writeFileChunk({
+          relPath: pathModule.basename(resolved.absolutePath),
+          root: pathModule.dirname(resolved.absolutePath),
           interactor: this.interactor,
           replacements,
         })
 
-        // Emit FileUpdatedEvent for thread files
+        // Emit FileEvent for thread files
         if (resolved.scope === 'thread') {
-          const event = new FileUpdatedEvent({
+          const event = new FileEvent({
             filename: resolved.relativePath,
             operation: 'updated',
           })
@@ -297,7 +298,19 @@ export class FileTools extends AssistantToolFactory {
       }
 
       const resolved = resolveFilePath(relPath, context)
-      return listFilesAndDirectories({ relPath: resolved.relativePath, root: path.dirname(resolved.absolutePath) })
+
+      // For listing the root of a space (thread:// or project://), use the resolved path directly
+      // Otherwise, use the parent directory
+      if (!resolved.relativePath || resolved.relativePath === '' || resolved.relativePath === '.') {
+        // Listing the root of the space
+        return listFilesAndDirectories({ relPath: '.', root: resolved.absolutePath })
+      } else {
+        // Listing a subdirectory
+        return listFilesAndDirectories({
+          relPath: resolved.relativePath,
+          root: pathModule.dirname(resolved.absolutePath),
+        })
+      }
     }
 
     const listProjectFilesAndDirectoriesFunction: FunctionTool<{ relPath: string }> = {

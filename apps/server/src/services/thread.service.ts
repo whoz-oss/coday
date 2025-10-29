@@ -3,9 +3,7 @@ import { ThreadFileRepository } from '@coday/repository/thread-file.repository'
 import { ProjectRepository } from '@coday/repository/project.repository'
 import { AiThread } from '@coday/ai-thread/ai-thread'
 import { ThreadSummary } from '@coday/ai-thread/ai-thread.types'
-import * as path from 'path'
-import * as fs from 'fs'
-import * as fsPromises from 'fs/promises'
+import { ThreadFileService } from './thread-file.service'
 
 /**
  * Server-side thread management service.
@@ -24,7 +22,8 @@ export class ThreadService {
 
   constructor(
     private readonly projectRepository: ProjectRepository,
-    private readonly projectsDir: string
+    private readonly projectsDir: string,
+    private readonly threadFileService: ThreadFileService
   ) {}
 
   /**
@@ -189,29 +188,10 @@ export class ThreadService {
 
     if (deleted) {
       // Also delete the thread files directory if it exists
-      await this.deleteThreadFiles(projectName, threadId)
+      await this.threadFileService.deleteThreadFiles(projectName, threadId)
     }
 
     return deleted
-  }
-
-  /**
-   * Delete the thread files directory
-   * @param projectName Project name
-   * @param threadId Thread identifier
-   */
-  private async deleteThreadFiles(projectName: string, threadId: string): Promise<void> {
-    try {
-      const filesDir = path.join(this.projectsDir, projectName, 'threads', `${threadId}-files`)
-
-      if (fs.existsSync(filesDir)) {
-        await fsPromises.rm(filesDir, { recursive: true, force: true })
-        console.log(`Deleted thread files directory: ${filesDir}`)
-      }
-    } catch (error) {
-      console.error(`Error deleting thread files for ${threadId}:`, error)
-      // Don't throw - file cleanup failure shouldn't prevent thread deletion
-    }
   }
 
   /**

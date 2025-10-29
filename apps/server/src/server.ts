@@ -20,6 +20,7 @@ import { registerMessageRoutes } from './message.routes'
 import { registerUserRoutes } from './user.routes'
 import { ProjectService } from './services/project.service'
 import { ThreadService } from './services/thread.service'
+import { ThreadFileService } from './services/thread-file.service'
 import { ProjectFileRepository } from '@coday/repository/project-file.repository'
 
 const app = express()
@@ -148,9 +149,12 @@ if (resolvedProjectName && !codayOptions.forcedProject) {
 
 const projectService = new ProjectService(projectRepository, resolvedProjectName, codayOptions.forcedProject)
 
-// Initialize thread service for REST API endpoints
+// Initialize thread file service for REST API endpoints
 const projectsDir = path.join(configPath, 'projects')
-const threadService = new ThreadService(projectRepository, projectsDir)
+const threadFileService = new ThreadFileService(projectsDir)
+
+// Initialize thread service for REST API endpoints
+const threadService = new ThreadService(projectRepository, projectsDir, threadFileService)
 
 // Initialize the thread-based Coday manager for SSE architecture
 const threadCodayManager = new ThreadCodayManager(logger, webhookService, projectService, threadService)
@@ -186,7 +190,7 @@ registerWebhookRoutes(app, webhookService, getUsername, threadService, threadCod
 registerProjectRoutes(app, projectService)
 
 // Register thread management routes
-registerThreadRoutes(app, threadService, threadCodayManager, getUsername, codayOptions, projectsDir)
+registerThreadRoutes(app, threadService, threadFileService, threadCodayManager, getUsername, codayOptions)
 
 // Register message management routes
 registerMessageRoutes(app, threadCodayManager, getUsername)

@@ -1,14 +1,13 @@
 import express from 'express'
 import { debugLog } from './log'
 import { ThreadService } from './services/thread.service'
+import { ThreadFileService } from './services/thread-file.service'
 import { ThreadCodayManager } from './thread-coday-manager'
 import { ImageContent } from '@coday/coday-events'
 import { processImageBuffer } from '@coday/function/image-processor'
 import { CodayOptions } from '@coday/options'
 import { MAX_FILE_SIZE, isFileExtensionAllowed, getAllowedExtensionsString } from '@coday/model/file-config'
 import * as path from 'path'
-import * as fs from 'fs'
-import * as fsPromises from 'fs/promises'
 
 /**
  * Thread Management REST API Routes
@@ -35,32 +34,21 @@ import * as fsPromises from 'fs/promises'
  */
 
 /**
- * Get the thread files directory path for a given project and thread
- * @param projectsDir - Base projects directory (e.g., /path/.coday/projects)
- * @param projectName - Project name
- * @param threadId - Thread ID
- * @returns Absolute path to the thread files directory
- */
-function getThreadFilesDir(projectsDir: string, projectName: string, threadId: string): string {
-  return path.join(projectsDir, projectName, 'threads', `${threadId}-files`)
-}
-
-/**
  * Register thread management routes on the Express app
  * @param app - Express application instance
- * @param threadService - ThreadService2 instance for thread operations
+ * @param threadService - ThreadService instance for thread operations
+ * @param threadFileService - ThreadFileService instance for file operations
  * @param threadCodayManager - ThreadCodayManager instance for runtime operations
  * @param getUsernameFn - Function to extract username from request
  * @param codayOptions - Coday options for thread instances
- * @param projectsDir - Base projects directory path
  */
 export function registerThreadRoutes(
   app: express.Application,
   threadService: ThreadService,
+  threadFileService: ThreadFileService,
   threadCodayManager: ThreadCodayManager,
   getUsernameFn: (req: express.Request) => string,
-  codayOptions: CodayOptions,
-  projectsDir: string
+  codayOptions: CodayOptions
 ): void {
   /**
    * GET /api/projects/:projectName/threads
@@ -513,12 +501,8 @@ export function registerThreadRoutes(
             return
           }
 
-          // Save file to thread files directory
-          const filesDir = getThreadFilesDir(projectsDir, projectName, threadId)
-          await fsPromises.mkdir(filesDir, { recursive: true })
-
-          const filePath = path.join(filesDir, filename)
-          await fsPromises.writeFile(filePath, buffer)
+          // Save file using ThreadFileService
+          await threadFileService.saveFile(projectName, threadId, filename, buffer)
 
           // Add a short notification message to the conversation
           const fileSizeKB = (buffer.length / 1024).toFixed(1)
@@ -528,7 +512,7 @@ export function registerThreadRoutes(
           }
           instance.coday.upload([textContent])
 
-          debugLog('UPLOAD', `File saved: ${filePath}`)
+          debugLog('UPLOAD', `File saved to thread workspace: ${filename}`)
 
           res.status(200).json({
             success: true,
@@ -577,30 +561,10 @@ export function registerThreadRoutes(
         return
       }
 
-      const filesDir = getThreadFilesDir(projectsDir, projectName, threadId)
+      // List files using ThreadFileService
+      const files = await threadFileService.listFiles(projectName, threadId)
 
-      // Check if directory exists
-      if (!fs.existsSync(filesDir)) {
-        res.status(200).json({ files: [] })
-        return
-      }
-
-      // Read directory and get file stats
-      const files = await fsPromises.readdir(filesDir)
-      const fileStats = await Promise.all(
-        files.map(async (filename) => {
-          const filePath = path.join(filesDir, filename)
-          const stats = await fsPromises.stat(filePath)
-          return {
-            filename,
-            size: stats.size,
-            createdAt: stats.birthtime.toISOString(),
-            modifiedAt: stats.mtime.toISOString(),
-          }
-        })
-      )
-
-      res.status(200).json({ files: fileStats })
+      res.status(200).json({ files })
     } catch (error) {
       console.error('Error listing files:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -641,22 +605,8 @@ export function registerThreadRoutes(
           return
         }
 
-        const filesDir = getThreadFilesDir(projectsDir, projectName, threadId)
-        const filePath = path.join(filesDir, filename)
-
-        // Security: Ensure the resolved path is within the files directory
-        const resolvedPath = path.resolve(filePath)
-        const resolvedFilesDir = path.resolve(filesDir)
-        if (!resolvedPath.startsWith(resolvedFilesDir)) {
-          res.status(403).json({ error: 'Access denied: invalid file path' })
-          return
-        }
-
-        // Check if file exists
-        if (!fs.existsSync(filePath)) {
-          res.status(404).json({ error: `File '${filename}' not found` })
-          return
-        }
+        // Get file path using ThreadFileService (with security checks)
+        const filePath = threadFileService.getFilePath(projectName, threadId, filename)
 
         // Determine content type from extension
         const ext = path.extname(filename).toLowerCase()
@@ -719,25 +669,8 @@ export function registerThreadRoutes(
           return
         }
 
-        const filesDir = getThreadFilesDir(projectsDir, projectName, threadId)
-        const filePath = path.join(filesDir, filename)
-
-        // Security: Ensure the resolved path is within the files directory
-        const resolvedPath = path.resolve(filePath)
-        const resolvedFilesDir = path.resolve(filesDir)
-        if (!resolvedPath.startsWith(resolvedFilesDir)) {
-          res.status(403).json({ error: 'Access denied: invalid file path' })
-          return
-        }
-
-        // Check if file exists
-        if (!fs.existsSync(filePath)) {
-          res.status(404).json({ error: `File '${filename}' not found` })
-          return
-        }
-
-        // Delete file
-        await fsPromises.unlink(filePath)
+        // Delete file using ThreadFileService (with security checks)
+        await threadFileService.deleteFile(projectName, threadId, filename)
 
         res.status(200).json({
           success: true,
