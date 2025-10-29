@@ -6,14 +6,14 @@
   "type": "module",
   "scripts": {
     "client": "nx run client:serve",
-    "coday": "npx --yes @whoz-oss/coday-web --no_auth",
+    "coday": "npx --yes @whoz-oss/coday-web",
     "desktop": "nx run desktop:serve",
     "husky-setup": "husky",
     "lint": "nx run-many --target=lint",
     "postinstall": "pnpm husky-setup",
     "server": "nx run server:serve",
     "test": "nx run-many --target=test",
-    "web": "npx --yes @whoz-oss/coday-web --no_auth",
+    "web": "npx --yes @whoz-oss/coday-web",
     "web:dev": "nx run-many --target=serve --projects=client,server --parallel=2"
   },
   "lint-staged": {
