@@ -1,4 +1,4 @@
-import { Component, EventEmitter, inject, Input, Output } from '@angular/core'
+import { Component, EventEmitter, inject, Input, OnInit, Output } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MatIconModule } from '@angular/material/icon'
@@ -6,11 +6,14 @@ import { MatButtonModule } from '@angular/material/button'
 import { MatInputModule } from '@angular/material/input'
 import { MatFormFieldModule } from '@angular/material/form-field'
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
+
 import { SessionState } from '@coday/model/session-state'
 import { ThreadStateService } from '../../core/services/thread-state.service'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { Router } from '@angular/router'
+import { ThreadApiService } from '../../core/services/thread-api.service'
+import { UserService } from '../../core/services/user.service'
 
 @Component({
   selector: 'app-thread-selector',
@@ -27,7 +30,7 @@ import { Router } from '@angular/router'
   templateUrl: './thread-selector.component.html',
   styleUrl: './thread-selector.component.scss',
 })
-export class ThreadSelectorComponent {
+export class ThreadSelectorComponent implements OnInit {
   // State from SessionStateService
   projects: SessionState['projects'] | null = null
   // Search functionality
@@ -37,12 +40,24 @@ export class ThreadSelectorComponent {
 
   private readonly projectStateService = inject(ProjectStateService)
   private readonly threadStateService = inject(ThreadStateService)
+  private readonly threadApiService = inject(ThreadApiService)
+  private readonly userService = inject(UserService)
   private readonly router = inject(Router)
 
   currentThread = toSignal(this.threadStateService.selectedThread$)
   currentProject = toSignal(this.projectStateService.selectedProject$)
   threads = toSignal(this.threadStateService.threadList$)
   isLoadingThreadList = toSignal(this.threadStateService.isLoadingThreadList$)
+  username = toSignal(this.userService.username$)
+
+  ngOnInit(): void {
+    // Load current user on component initialization
+    this.userService.fetchCurrentUser().subscribe({
+      error: (error) => {
+        console.error('[THREAD-SELECTOR] Failed to load current user:', error)
+      },
+    })
+  }
 
   /**
    * Select a thread
@@ -55,9 +70,12 @@ export class ThreadSelectorComponent {
   }
 
   /**
-   * Group threads by date categories
+   * Group threads by date categories, with starred threads in a separate section
    */
-  getGroupedThreads(): Array<{ label: string; threads: Array<{ id: string; name: string; modifiedDate: string }> }> {
+  getGroupedThreads(): Array<{
+    label: string
+    threads: Array<{ id: string; name: string; modifiedDate: string; starring: string[] }>
+  }> {
     let threadsToGroup = this.threads()
     if (!threadsToGroup?.length) {
       return []
@@ -74,11 +92,25 @@ export class ThreadSelectorComponent {
       return []
     }
 
-    const groups = new Map<string, Array<{ id: string; name: string; modifiedDate: string }>>()
+    const currentUsername = this.username()
+    if (!currentUsername) {
+      return []
+    }
+
+    // Separate starred and non-starred threads
+    const starredThreads = threadsToGroup.filter(
+      (thread) => thread.starring && thread.starring.includes(currentUsername)
+    )
+    const nonStarredThreads = threadsToGroup.filter(
+      (thread) => !thread.starring || !thread.starring.includes(currentUsername)
+    )
+
+    const groups = new Map<string, Array<{ id: string; name: string; modifiedDate: string; starring: string[] }>>()
     const now = new Date()
     now.setHours(0, 0, 0, 0)
 
-    for (const thread of threadsToGroup) {
+    // Group non-starred threads by date
+    for (const thread of nonStarredThreads) {
       const threadDate = new Date(thread.modifiedDate)
       threadDate.setHours(0, 0, 0, 0)
       const diffMs = now.getTime() - threadDate.getTime()
@@ -105,14 +137,102 @@ export class ThreadSelectorComponent {
       groups.get(groupLabel)!.push(thread)
     }
 
-    // Convert to array and maintain order
+    // Build result array with starred section first
+    const result: Array<{
+      label: string
+      threads: Array<{ id: string; name: string; modifiedDate: string; starring: string[] }>
+    }> = []
+
+    // Add starred section if there are starred threads
+    if (starredThreads.length > 0) {
+      // Sort starred threads by modification date (newest first)
+      const sortedStarred = [...starredThreads].sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
+      result.push({
+        label: 'Starred',
+        threads: sortedStarred,
+      })
+    }
+
+    // Add date-grouped sections
     const orderedLabels = ['Today', 'Yesterday', 'This Week', 'This Month', 'Last 3 Months', 'Older']
-    return orderedLabels
+    orderedLabels
       .filter((label) => groups.has(label))
-      .map((label) => ({
-        label,
-        threads: groups.get(label)!,
-      }))
+      .forEach((label) => {
+        result.push({
+          label,
+          threads: groups.get(label)!,
+        })
+      })
+
+    return result
+  }
+
+  /**
+   * Check if a thread is starred by the current user
+   */
+  isStarred(thread: { starring: string[] }): boolean {
+    const currentUsername = this.username()
+    return !!currentUsername && thread.starring && thread.starring.includes(currentUsername)
+  }
+
+  /**
+   * Toggle star status for a thread
+   */
+  toggleStar(event: Event, thread: { id: string; starring: string[] }): void {
+    event.stopPropagation()
+    const projectName = this.currentProject()?.name
+    const currentUsername = this.username()
+
+    if (!projectName || !currentUsername) {
+      return
+    }
+
+    const isStarred = thread.starring && thread.starring.includes(currentUsername)
+    const operation = isStarred
+      ? this.threadApiService.unstarThread(projectName, thread.id)
+      : this.threadApiService.starThread(projectName, thread.id)
+
+    operation.subscribe({
+      next: () => {
+        this.threadStateService.refreshThreadList()
+      },
+      error: (error) => {
+        console.error('Error toggling star:', error)
+      },
+    })
+  }
+
+  /**
+   * Delete a thread with confirmation
+   */
+  deleteThread(event: Event, thread: { id: string; name: string }): void {
+    event.stopPropagation()
+    const projectName = this.currentProject()?.name
+
+    if (!projectName) {
+      return
+    }
+
+    // Simple confirmation using native dialog
+    const confirmed = confirm(`Are you sure you want to delete the thread "${thread.name}"?`)
+    if (!confirmed) {
+      return
+    }
+
+    this.threadApiService.deleteThread(projectName, thread.id).subscribe({
+      next: () => {
+        // If we're deleting the current thread, clear selection
+        if (this.currentThread()?.id === thread.id) {
+          this.threadStateService.clearSelection()
+          this.router.navigate(['project', projectName])
+        }
+        this.threadStateService.refreshThreadList()
+      },
+      error: (error) => {
+        console.error('Error deleting thread:', error)
+        alert('Failed to delete thread. Please try again.')
+      },
+    })
   }
 
   /**

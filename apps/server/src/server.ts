@@ -17,6 +17,7 @@ import { registerWebhookRoutes } from './webhook.routes'
 import { registerProjectRoutes } from './project.routes'
 import { registerThreadRoutes } from './thread.routes'
 import { registerMessageRoutes } from './message.routes'
+import { registerUserRoutes } from './user.routes'
 import { ProjectService } from './services/project.service'
 import { ThreadService } from './services/thread.service'
 import { ProjectFileRepository } from '@coday/repository/project-file.repository'
@@ -140,6 +141,9 @@ const configRegistry = new ConfigServiceRegistry(configPath, configInteractor)
 function getUsername(req: express.Request): string {
   return codayOptions.noAuth ? os.userInfo().username : (req.headers[EMAIL_HEADER] as string)
 }
+
+// Register user information routes
+registerUserRoutes(app, getUsername)
 
 // Register configuration management routes
 registerConfigRoutes(app, configRegistry, getUsername)
