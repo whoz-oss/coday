@@ -7,14 +7,16 @@ import { Observable } from 'rxjs'
  */
 export interface ProjectInfo {
   name: string
+  volatile?: boolean
 }
 
 /**
- * Project list response
+ * Project list response with context metadata
  */
 export interface ProjectListResponse {
   projects: ProjectInfo[]
-  forcedProject?: string | null
+  defaultProject?: string | null // Project selected by default (PWD in default mode)
+  forcedProject?: string | null // Only set if --local mode (restricted)
 }
 
 /**
@@ -65,5 +67,14 @@ export class ProjectApiService {
    */
   updateProjectConfig(projectName: string, config: any): Observable<{ success: boolean; message: string }> {
     return this.http.put<{ success: boolean; message: string }>(`${this.baseUrl}/${projectName}/config`, config)
+  }
+
+  /**
+   * Create a new project
+   * @param name Project name
+   * @param path Project path
+   */
+  createProject(name: string, path: string): Observable<{ success: boolean; message: string }> {
+    return this.http.post<{ success: boolean; message: string }>(this.baseUrl, { name, path })
   }
 }
