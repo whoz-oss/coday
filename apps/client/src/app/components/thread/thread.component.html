@@ -15,11 +15,7 @@
           class="file-drawer-toggle-btn"
           (click)="toggleFileDrawer()"
           [class.has-files]="fileCount > 0"
-          [matBadge]="fileCount"
-          [matBadgeHidden]="fileCount === 0"
-          matBadgeColor="primary"
-          matBadgeSize="small"
-          title="Files Exchange"
+          title="Files Exchange{{ fileCount > 0 ? ' (' + fileCount + ' file' + (fileCount > 1 ? 's' : '') + ')' : '' }}"
           type="button"
         >
           <mat-icon>folder_open</mat-icon>

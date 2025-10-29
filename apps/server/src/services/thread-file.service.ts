@@ -8,8 +8,7 @@ import * as fsPromises from 'fs/promises'
 export interface FileMetadata {
   filename: string
   size: number
-  createdAt: string
-  modifiedAt: string
+  lastModified: string // Changed from modifiedAt to match frontend expectation
 }
 
 /**
@@ -66,8 +65,7 @@ export class ThreadFileService {
         return {
           filename,
           size: stats.size,
-          createdAt: stats.birthtime.toISOString(),
-          modifiedAt: stats.mtime.toISOString(),
+          lastModified: stats.mtime.toISOString(), // Use lastModified to match frontend
         }
       })
     )

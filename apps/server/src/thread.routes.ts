@@ -1,4 +1,5 @@
 import express from 'express'
+import { existsSync, readFileSync } from 'fs'
 import { debugLog } from './log'
 import { ThreadService } from './services/thread.service'
 import { ThreadFileService } from './services/thread-file.service'
@@ -604,12 +605,34 @@ export function registerThreadRoutes(
           return
         }
 
-        // Get file path using ThreadFileService (with security checks)
-        const filePath = await threadFileService.getFilePath(projectName, threadId, filename)
+        // Decode filename from URL (Express already does this, but be explicit)
+        const decodedFilename = decodeURIComponent(filename)
 
-        // Send file (Express automatically sets Content-Type based on extension)
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
-        res.sendFile(filePath)
+        // Get file path using ThreadFileService (with security checks)
+        const filePath = await threadFileService.getFilePath(projectName, threadId, decodedFilename)
+
+        // Verify file exists before sending
+        if (!existsSync(filePath)) {
+          res.status(404).json({ error: `File '${decodedFilename}' not found` })
+          return
+        }
+
+        // Use RFC 5987 encoding for filename with special characters
+        const encodedFilename = encodeURIComponent(decodedFilename)
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${decodedFilename.replace(/"/g, '\\"')}"; filename*=UTF-8''${encodedFilename}`
+        )
+
+        // Read file and send directly (more reliable than sendFile)
+        try {
+          const fileBuffer = readFileSync(filePath)
+          res.send(fileBuffer)
+        } catch (readError) {
+          res
+            .status(500)
+            .json({ error: `Failed to read file: ${readError instanceof Error ? readError.message : 'Unknown error'}` })
+        }
       } catch (error) {
         console.error('Error downloading file:', error)
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
