@@ -245,6 +245,25 @@ export class ThinkingEvent extends CodayEvent {
   }
 }
 
+export class SummaryEvent extends CodayEvent {
+  summary: string
+  static override type = 'summary'
+
+  constructor(event: Partial<SummaryEvent>) {
+    super(event, SummaryEvent.type)
+    this.summary = event.summary!
+    this.length = this.summary.length
+  }
+
+  /**
+   * Renders the summary as a single line string
+   */
+  toSingleLineString(maxLength: number = 80): string {
+    const truncated = truncateText(this.summary, maxLength)
+    return `📋 Summary: ${truncated}`
+  }
+}
+
 export class MessageEvent extends CodayEvent {
   role: 'user' | 'assistant'
   name: string
@@ -305,6 +324,7 @@ const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [ThinkingEvent.type]: ThinkingEvent,
   [WarnEvent.type]: WarnEvent,
   [ThreadUpdateEvent.type]: ThreadUpdateEvent,
+  [SummaryEvent.type]: SummaryEvent,
 }
 
 export function buildCodayEvent(data: any): CodayEvent | undefined {
