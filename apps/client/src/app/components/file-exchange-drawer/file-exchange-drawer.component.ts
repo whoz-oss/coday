@@ -22,7 +22,7 @@ import type { FileInfo } from '../../core/services/file-exchange-api.service'
 export class FileExchangeDrawerComponent {
   @Output() closeDrawer = new EventEmitter<void>()
 
-  private fileExchangeState = inject(FileExchangeStateService)
+  private readonly fileExchangeState = inject(FileExchangeStateService)
 
   // Connect to state service
   files = this.fileExchangeState.files

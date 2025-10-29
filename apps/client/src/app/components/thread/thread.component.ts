@@ -69,7 +69,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   @Input({ required: true }) projectName!: string
   @Input({ required: true }) threadId!: string
 
-  private destroy$ = new Subject<void>()
+  private readonly destroy$ = new Subject<void>()
 
   @ViewChild('inputSection') inputSection!: ElementRef<HTMLElement>
 
@@ -496,7 +496,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
     window.addEventListener('afterprint', this.handleAfterPrint)
   }
 
-  private handleBeforePrint = (): void => {
+  private readonly handleBeforePrint = (): void => {
     console.log('[PRINT] Before print event triggered')
     const printTechnicalMessages = this.preferencesService.getPrintTechnicalMessages()
     console.log('[PRINT] Print technical messages:', printTechnicalMessages)
@@ -508,7 +508,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
     }
   }
 
-  private handleAfterPrint = (): void => {
+  private readonly handleAfterPrint = (): void => {
     console.log('[PRINT] After print event triggered')
     // Clean up the class after printing
     document.body.classList.remove('print-include-technical')

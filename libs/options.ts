@@ -97,7 +97,7 @@ export function parseCodayOptions(): CodayOptions {
     })
     .help().argv as Argv
   let projectName: string | undefined
-  let forcedProject = false
+  let forcedProject: boolean
 
   const prompts: string[] = (argv.prompt || argv._.slice(1)) as string[]
   const oneshot: boolean = !!argv.oneshot

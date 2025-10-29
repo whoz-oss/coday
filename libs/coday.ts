@@ -30,7 +30,7 @@ export class Coday {
   initialPrompts: string[] = []
   aiThreadService: ThreadStateService
   private killed: boolean = false
-  private aiClientProvider: AiClientProvider
+  private readonly aiClientProvider: AiClientProvider
 
   constructor(
     public readonly interactor: Interactor,
@@ -225,10 +225,11 @@ export class Coday {
 
     // Send messages directly - no conversion needed
     for (const message of sortedMessages) {
-      if (message instanceof MessageEvent) {
-        // Send MessageEvent directly - frontend now handles rich content
-        this.interactor.sendEvent(message)
-      } else if (message instanceof ToolRequestEvent || message instanceof ToolResponseEvent) {
+      if (
+        message instanceof MessageEvent ||
+        message instanceof ToolRequestEvent ||
+        message instanceof ToolResponseEvent
+      ) {
         this.interactor.sendEvent(message)
       }
     }

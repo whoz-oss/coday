@@ -700,7 +700,6 @@ export function registerThreadRoutes(
    * Authentication: Username extracted from x-forwarded-email header
    * Validation: Thread must exist and belong to the authenticated user
    *
-   * TODO: Add heartbeat mechanism for SSE connections
    */
   app.get(
     '/api/projects/:projectName/threads/:threadId/event-stream',
