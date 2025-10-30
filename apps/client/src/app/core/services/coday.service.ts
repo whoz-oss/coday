@@ -120,35 +120,37 @@ export class CodayService implements OnDestroy {
   /**
    * Load messages in bulk (e.g., from history endpoint)
    * Deduplicates messages based on their IDs
+   * Replaces existing messages with newer versions if IDs match
    * @param messages Messages to load
    */
   loadMessages(messages: ChatMessage[]): void {
     console.log('[CODAY] Loading messages in bulk:', messages.length)
 
     const currentMessages = this.messagesSubject.value
-    const existingIds = new Set(currentMessages.map((msg) => msg.id))
+    const existingMessagesMap = new Map(currentMessages.map((msg) => [msg.id, msg]))
 
-    // Filter out messages that already exist
-    const newMessages = messages.filter((msg) => {
-      if (existingIds.has(msg.id)) {
-        console.log('[CODAY] Skipping duplicate message during bulk load:', msg.id)
-        return false
+    let replacedCount = 0
+    let newCount = 0
+
+    // Process incoming messages: replace existing or add new
+    messages.forEach((msg) => {
+      if (existingMessagesMap.has(msg.id)) {
+        console.log('[CODAY] Replacing existing message with newer version during bulk load:', msg.id)
+        replacedCount++
+      } else {
+        newCount++
       }
-      return true
+      // Always set (either replace or add new)
+      existingMessagesMap.set(msg.id, msg)
     })
 
-    if (newMessages.length === 0) {
-      console.log('[CODAY] No new messages to load (all duplicates)')
-      return
-    }
-
-    // Merge and sort by timestamp (ID) to maintain chronological order
-    const mergedMessages = [...currentMessages, ...newMessages].sort((a, b) => a.id.localeCompare(b.id))
+    // Convert map back to array and sort by timestamp (ID) to maintain chronological order
+    const mergedMessages = Array.from(existingMessagesMap.values()).sort((a, b) => a.id.localeCompare(b.id))
 
     console.log('[CODAY] Loaded messages:', {
       requested: messages.length,
-      new: newMessages.length,
-      duplicates: messages.length - newMessages.length,
+      new: newCount,
+      replaced: replacedCount,
       total: mergedMessages.length,
     })
 
@@ -536,7 +538,8 @@ export class CodayService implements OnDestroy {
 
   /**
    * Add a message to the history with deduplication
-   * Prevents duplicate messages based on message ID (timestamp)
+   * If a message with the same ID exists, replaces it with the newer version
+   * (messages may be updated/modified, so keep the most recent version)
    */
   private addMessage(message: ChatMessage): void {
     const currentMessages = this.messagesSubject.value
@@ -545,12 +548,17 @@ export class CodayService implements OnDestroy {
     const existingIndex = currentMessages.findIndex((msg) => msg.id === message.id)
 
     if (existingIndex !== -1) {
-      console.log('[CODAY] Message already exists, skipping duplicate:', {
+      console.log('[CODAY] Message already exists, replacing with newer version:', {
         id: message.id,
         role: message.role,
         speaker: message.speaker,
         contentPreview: message.content[0]?.content?.substring(0, 50) || '(no content)',
       })
+
+      // Replace the existing message with the new version
+      const newMessages = [...currentMessages]
+      newMessages[existingIndex] = message
+      this.messagesSubject.next(newMessages)
       return
     }
 
