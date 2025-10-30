@@ -1,6 +1,6 @@
 import { inject, Injectable, OnDestroy } from '@angular/core'
 import { BehaviorSubject, Observable, Subject } from 'rxjs'
-import { takeUntil, tap } from 'rxjs/operators'
+import { takeUntil, tap, map } from 'rxjs/operators'
 import {
   AnswerEvent,
   ChoiceEvent,
@@ -88,6 +88,52 @@ export class CodayService implements OnDestroy {
    */
   setTabTitleService(tabTitleService: any): void {
     this.tabTitleService = tabTitleService
+  }
+
+  /**
+   * Load thread history from API
+   * Should be called before connecting to SSE
+   * @param projectName Project name
+   * @param threadId Thread identifier
+   * @returns Observable that completes when history is loaded
+   */
+  loadThreadHistory(projectName: string, threadId: string): Observable<void> {
+    console.log('[CODAY] Loading thread history:', projectName, threadId)
+
+    return this.messageApi.getMessages(projectName, threadId).pipe(
+      tap((response) => {
+        console.log('[CODAY] Thread history loaded:', {
+          messageCount: response.messages.length,
+          threadName: response.threadInfo.name,
+        })
+
+        // Convert backend messages to ChatMessage format
+        const chatMessages: ChatMessage[] = response.messages.map((msg) => ({
+          id: msg.timestamp,
+          role: msg.role || 'system',
+          speaker: msg.name || msg.speaker || 'System',
+          content: msg.content || [{ type: 'text', content: msg.text || '' }],
+          timestamp: new Date(msg.timestamp),
+          type: this.inferMessageType(msg),
+          eventId: msg.timestamp,
+        }))
+
+        // Load messages with deduplication
+        this.loadMessages(chatMessages)
+      }),
+      map(() => void 0)
+    )
+  }
+
+  /**
+   * Infer message type from backend message
+   */
+  private inferMessageType(msg: any): 'text' | 'error' | 'warning' | 'technical' {
+    if (msg.type === 'error') return 'error'
+    if (msg.type === 'warn') return 'warning'
+    if (msg.type === 'tool_request' || msg.type === 'tool_response') return 'technical'
+    if (msg.role === 'system') return 'technical'
+    return 'text'
   }
 
   /**
