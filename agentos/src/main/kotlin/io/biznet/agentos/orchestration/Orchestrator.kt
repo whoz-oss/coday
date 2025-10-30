@@ -5,7 +5,7 @@ import io.biznet.agentos.orchestration.substep.parameter.InsideParameter
 import io.biznet.agentos.orchestration.substep.parameter.InsideParameterContext
 import io.biznet.agentos.thought.Case
 import io.biznet.agentos.thought.Step
-import io.biznet.agentos.thought.Chanel
+import io.biznet.agentos.thought.Channel
 import io.biznet.agentos.tool.Parameter
 import io.biznet.agentos.tool.Tool
 import io.biznet.agentos.tool.answer.AnswerParameter
@@ -19,14 +19,14 @@ class Orchestrator(
     val tools: List<Tool<out Parameter, out InsideParameter>>,
 ) {
     val functionalities = tools.map { it.functionality }
-    val conversations: MutableMap<UUID, Chanel> = mutableMapOf()
+    val conversations: MutableMap<UUID, Channel> = mutableMapOf()
 
     fun orchestrate(
         chatClient: ChatClient,
         message: String,
         conversationId: UUID,
     ): String {
-        val chanel =
+        val channel =
             conversations[conversationId]?.also { thought ->
                 if(thought.cases.last().steps.last().toolChoice.toolName == "Answer") {
                     thought.cases.add(Case(message))
@@ -39,22 +39,22 @@ class Orchestrator(
                 }
             }
                 ?: run {
-                    Chanel.initThought(message).also { conversations[conversationId] = it }
+                    Channel.initThought(message).also { conversations[conversationId] = it }
                 }
 
-        getNextStep(chanel, chatClient)
+        getNextStep(channel, chatClient)
 
-        while (chanel.cases
+        while (channel.cases
                 .lastOrNull()
                 ?.steps
                 ?.lastOrNull()
                 ?.toolChoice
                 ?.toolName != "Answer"
         ) {
-            getNextStep(chanel, chatClient)
+            getNextStep(channel, chatClient)
         }
 
-        return (chanel.cases
+        return (channel.cases
             .lastOrNull()
             ?.steps
             ?.lastOrNull()?.parameter?.responseEntity!!.entity as AnswerParameter).answer
@@ -63,24 +63,24 @@ class Orchestrator(
     fun hasId(id: UUID): Boolean = conversations.contains(id)
 
     private fun getNextStep(
-        chanel: Chanel,
+        channel: Channel,
         chatClient: ChatClient,
     ): Step {
         val intention =
             intentionGenerator.generateIntention(
-                chanel = chanel,
+                channel = channel,
                 chatClient = chatClient,
                 tools = functionalities,
             )
         println("Intention:")
         println(intention.chatResponse.result.output)
 
-        val toolGeneration = intentionGenerator.getToolName(chanel, intention, chatClient, functionalities)
+        val toolGeneration = intentionGenerator.getToolName(channel, intention, chatClient, functionalities)
 
         val tool = tools.first { it.functionality.name == toolGeneration.toolName }
         println("Tool:" + toolGeneration.toolName)
 
-        val parameter = tool.generateParameter(chanel, intention, toolGeneration, chatClient)
+        val parameter = tool.generateParameter(channel, intention, toolGeneration, chatClient)
 
         @Suppress("UNCHECKED_CAST")
         val response =
@@ -97,7 +97,7 @@ class Orchestrator(
                 toolResponse = response.response,
             )
 
-        chanel.cases.last().steps.add(step)
+        channel.cases.last().steps.add(step)
 
         return step
     }

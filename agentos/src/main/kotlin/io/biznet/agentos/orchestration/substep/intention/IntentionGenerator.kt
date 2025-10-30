@@ -1,7 +1,7 @@
 package io.biznet.agentos.orchestration.substep.intention
 
 import io.biznet.agentos.thought.Intention
-import io.biznet.agentos.thought.Chanel
+import io.biznet.agentos.thought.Channel
 import io.biznet.agentos.thought.ToolChoiceGeneration
 import io.biznet.agentos.tool.Functionality
 import org.springframework.ai.chat.client.ChatClient
@@ -16,11 +16,11 @@ import org.springframework.stereotype.Service
 @Service
 class IntentionGenerator {
     fun generateIntention(
-        chanel: Chanel,
+        channel: Channel,
         chatClient: ChatClient,
         tools: List<Functionality>,
     ): Intention {
-        val userMessage = if(chanel.cases.last().steps.isEmpty()) {
+        val userMessage = if(channel.cases.last().steps.isEmpty()) {
             UserMessage(
                 """
 Knowing the following available tools:
@@ -28,7 +28,7 @@ ${tools.joinToString("\n") { "* $it" }}
 
 Here is my new query:
 <request>
-${chanel.cases.last().message}
+${channel.cases.last().message}
 </request>
 
 make a concise explanation of what is the next logic step to take (and so which tool to call now to complete the step to achieve a satisfactory answer to the request request)
@@ -47,12 +47,12 @@ And based on all those previous steps make a concise explanation of what is the 
 
         return Intention(
             userMessage,
-            chatClient.prompt(Prompt(chanel.getMessages() + userMessage)).call().chatResponse()!!,
+            chatClient.prompt(Prompt(channel.getMessages() + userMessage)).call().chatResponse()!!,
         )
     }
 
     fun getToolName(
-        chanel: Chanel,
+        channel: Channel,
         intention: Intention,
         chatClient: ChatClient,
         tools: List<Functionality>,
@@ -64,7 +64,7 @@ And based on all those previous steps make a concise explanation of what is the 
 
         return chatClient
             .prompt(
-                Prompt(chanel.getMessages() + intention.getMessages() + user),
+                Prompt(channel.getMessages() + intention.getMessages() + user),
             ).call()
             .responseEntity(ToolChoice::class.java)
             .let { responseEntity ->
