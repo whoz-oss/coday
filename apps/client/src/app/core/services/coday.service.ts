@@ -304,13 +304,6 @@ export class CodayService implements OnDestroy {
    * Handle incoming Coday events
    */
   private handleEvent(event: CodayEvent): void {
-    // Log all incoming events for debugging duplication issues
-    console.log('[CODAY-EVENT] Received:', {
-      type: event.type,
-      timestamp: event.timestamp,
-      currentMessageCount: this.messagesSubject.value.length,
-    })
-
     if (event instanceof MessageEvent) {
       this.handleMessageEvent(event)
     } else if (event instanceof TextChunkEvent) {
@@ -565,12 +558,6 @@ export class CodayService implements OnDestroy {
     // Add the new message
     const newMessages = [...currentMessages, message]
     this.messagesSubject.next(newMessages)
-
-    console.log('[CODAY] Message added:', {
-      id: message.id,
-      role: message.role,
-      totalMessages: newMessages.length,
-    })
   }
 
   /**
