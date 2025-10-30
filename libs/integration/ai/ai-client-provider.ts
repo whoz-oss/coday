@@ -166,9 +166,9 @@ export class AiClientProvider {
   private getApiKey(aiProviderConfig: AiProviderConfig): string | undefined {
     const envVar = ENV_VARS[aiProviderConfig.name]
     const envKey = envVar
-      ? process.env[envVar] || process.env[`${aiProviderConfig.name.toUpperCase()}_API_KEY`]
+      ? (process.env[envVar] ?? process.env[`${aiProviderConfig.name.toUpperCase()}_API_KEY`])
       : undefined
-    return envKey || aiProviderConfig.apiKey
+    return envKey ?? aiProviderConfig.apiKey
   }
 
   /**
@@ -218,9 +218,9 @@ export class AiClientProvider {
     const config = { ...aiProviderConfig, apiKey }
     switch (aiProviderConfig.name.toLowerCase()) {
       case 'anthropic':
-        return new AnthropicClient(this.interactor, aiProviderConfig, this.logger)
+        return new AnthropicClient(this.interactor, config, this.logger)
       case 'google':
-        return new GoogleClient(this.interactor, aiProviderConfig, this.logger)
+        return new GoogleClient(this.interactor, config, this.logger)
       default:
         return new OpenaiClient(this.interactor, config, this.logger)
     }
