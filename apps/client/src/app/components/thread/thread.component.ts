@@ -127,7 +127,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   /**
    * Initialize or reinitialize the thread connection
    */
-  private initializeThreadConnection(): void {
+  private async initializeThreadConnection(): Promise<void> {
     console.log('[THREAD] Initializing connection for thread:', this.threadId)
 
     // Subscribe to conversation state
@@ -188,7 +188,17 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
     // Connect services (to avoid circular dependency)
     this.codayService.setTabTitleService(this.titleService)
 
-    // Connect to the thread's event stream
+    // Load thread history first, then connect to SSE
+    console.log('[THREAD] Loading thread history before connecting to event stream')
+    try {
+      await this.codayService.loadThreadHistory(this.projectName, this.threadId).toPromise()
+      console.log('[THREAD] History loaded, now connecting to event stream')
+    } catch (error) {
+      console.error('[THREAD] Failed to load history:', error)
+      // Continue anyway to connect to SSE
+    }
+
+    // Connect to the thread's event stream for real-time updates
     console.log('[THREAD] Connecting to thread event stream')
     this.codayService.connectToThread(this.projectName, this.threadId)
 
