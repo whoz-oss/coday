@@ -179,6 +179,21 @@ body {
     }
   }
 
+  /* External link icon styling */
+  .external-link-icon {
+    display: inline-block;
+    margin-left: 0.25rem;
+    font-size: 0.85em;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+    vertical-align: super;
+    line-height: 0;
+  }
+
+  a:hover .external-link-icon {
+    opacity: 1;
+  }
+
   hr {
     border: none;
     border-top: 1px solid var(--color-border, #e5e7eb);
