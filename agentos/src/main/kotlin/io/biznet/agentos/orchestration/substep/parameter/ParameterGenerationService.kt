@@ -11,7 +11,7 @@ import org.springframework.stereotype.Service
 @Service
 class ParameterGenerationService {
     fun <T : Parameter> generate(
-        chanel: Chanel,
+        channel: Channel,
         intention: Intention,
         toolGeneration: ToolChoiceGeneration,
         functionality: Functionality,
@@ -25,7 +25,7 @@ class ParameterGenerationService {
             val response =
                 chatClient
                     .prompt(
-                        Prompt(chanel.getMessages() + intention.getMessages() + toolGeneration.getMessages() + user),
+                        Prompt(channel.getMessages() + intention.getMessages() + toolGeneration.getMessages() + user),
                     ).call()
                     .responseEntity(clazz)
 

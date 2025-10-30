@@ -5,7 +5,7 @@ import io.biznet.agentos.orchestration.substep.parameter.InsideParameterContext
 import io.biznet.agentos.orchestration.substep.parameter.ParameterGenerator
 import io.biznet.agentos.thought.Intention
 import io.biznet.agentos.thought.ParameterGeneration
-import io.biznet.agentos.thought.Chanel
+import io.biznet.agentos.thought.Channel
 import io.biznet.agentos.thought.ToolChoiceGeneration
 import org.springframework.ai.chat.client.ChatClient
 import java.lang.reflect.ParameterizedType
@@ -24,13 +24,13 @@ interface Tool<T : Parameter, I : InsideParameter> {
     ): ExecutionResult
 
     fun generateParameter(
-        chanel: Chanel,
+        channel: Channel,
         intention: Intention,
         toolGeneration: ToolChoiceGeneration,
         chatClient: ChatClient,
     ): ParameterGeneration =
         parameterGenerator.generate(
-            chanel = chanel,
+            channel = channel,
             intention = intention,
             toolGeneration = toolGeneration,
             functionality = functionality,
