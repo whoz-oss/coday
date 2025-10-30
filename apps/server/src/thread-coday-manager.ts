@@ -57,19 +57,10 @@ class ThreadCodayInstance {
       return
     }
 
-    // Track if this is a reconnection (instance already has Coday running)
-    const isReconnection = this.coday !== undefined
-    const wasDisconnected = this.connections.size === 0
-
     this.connections.add(response)
     this.updateActivity()
     this.isOneshot = false // Mark as interactive session
-    debugLog('THREAD_CODAY', `Added SSE connection to thread ${this.threadId}`, {
-      totalConnections: this.connections.size,
-      isReconnection,
-      wasDisconnected,
-      codayRunning: !!this.coday,
-    })
+    debugLog('THREAD_CODAY', `Added SSE connection to thread ${this.threadId} (total: ${this.connections.size})`)
 
     // Clear disconnect timeout if reconnecting
     if (this.disconnectTimeout) {
@@ -78,15 +69,10 @@ class ThreadCodayInstance {
       debugLog('THREAD_CODAY', `Cleared disconnect timeout for thread ${this.threadId}`)
     }
 
-    // Only replay if this is a reconnection to an existing instance
-    // Don't replay on first connection (Coday will send events as it processes)
-    if (this.coday && isReconnection && wasDisconnected) {
-      debugLog('THREAD_CODAY', `Replaying thread history for reconnection to ${this.threadId}`)
+    // If Coday is already running, replay the thread history for this new connection
+    if (this.coday) {
+      debugLog('THREAD_CODAY', `Replaying thread history for new connection to ${this.threadId}`)
       this.replayThreadHistory(response)
-    } else if (this.coday && !isReconnection) {
-      debugLog('THREAD_CODAY', `Skipping replay for first connection to ${this.threadId} (Coday will send events)`)
-    } else if (!this.coday) {
-      debugLog('THREAD_CODAY', `No Coday instance yet for ${this.threadId}, will start fresh`)
     }
   }
 
@@ -108,28 +94,15 @@ class ThreadCodayInstance {
       // Get all messages from the thread (it's async)
       const result = await thread.getMessages(undefined, undefined)
       const messages = result.messages
-      debugLog('THREAD_CODAY', `Replaying ${messages.length} messages for thread ${this.threadId}`, {
-        connectionCount: this.connections.size,
-        threadId: this.threadId,
-        messageCount: messages.length,
-        firstMessageTimestamp: messages[0]?.timestamp,
-        lastMessageTimestamp: messages[messages.length - 1]?.timestamp,
-      })
+      debugLog('THREAD_CODAY', `Replaying ${messages.length} messages for thread ${this.threadId}`)
 
       // Send each message to the new connection
-      let sentCount = 0
       for (const message of messages) {
         const data = `data: ${JSON.stringify(message)}\n\n`
         if (!response.writableEnded) {
           response.write(data)
-          sentCount++
-        } else {
-          debugLog('THREAD_CODAY', `Response ended during replay at message ${sentCount}/${messages.length}`)
-          break
         }
       }
-
-      debugLog('THREAD_CODAY', `Replay completed: sent ${sentCount}/${messages.length} messages`)
     } catch (error) {
       debugLog('THREAD_CODAY', `Error replaying thread history:`, error)
     }
