@@ -15,6 +15,9 @@
           class="file-drawer-toggle-btn"
           (click)="toggleFileDrawer()"
           [class.has-files]="fileCount > 0"
+          [matBadge]="fileCount > 0 ? fileCount : null"
+          matBadgeSize="small"
+          matBadgeColor="primary"
           title="Files Exchange{{ fileCount > 0 ? ' (' + fileCount + ' file' + (fileCount > 1 ? 's' : '') + ')' : '' }}"
           type="button"
         >
@@ -96,7 +99,7 @@
   </mat-drawer-content>
 
   <!-- File Exchange Drawer (right side) -->
-  <mat-drawer mode="over" position="end" [opened]="isFileDrawerOpen" (closed)="closeFileDrawer()">
+  <mat-drawer mode="side" position="end" [opened]="isFileDrawerOpen" (closed)="closeFileDrawer()">
     <app-file-exchange-drawer (closeDrawer)="closeFileDrawer()"></app-file-exchange-drawer>
   </mat-drawer>
 </mat-drawer-container>

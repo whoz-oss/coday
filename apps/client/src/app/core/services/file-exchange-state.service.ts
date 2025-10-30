@@ -85,11 +85,13 @@ export class FileExchangeStateService {
     this.fileApi.listFiles(projectName, threadId).subscribe({
       next: (files) => {
         console.log('[FILE_EXCHANGE_STATE] Files loaded:', files.length)
-        // Convert lastModified strings to Date objects
-        const processedFiles = files.map((file) => ({
-          ...file,
-          lastModified: new Date(file.lastModified),
-        }))
+        // Convert lastModified strings to Date objects and sort by most recent first
+        const processedFiles = files
+          .map((file) => ({
+            ...file,
+            lastModified: new Date(file.lastModified),
+          }))
+          .sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime())
         this.filesSignal.set(processedFiles)
         this.isLoadingSignal.set(false)
       },
@@ -201,7 +203,7 @@ export class FileExchangeStateService {
 
   /**
    * Subscribe to FileEvent from EventStreamService
-   * Automatically refresh file list when FileEvent is received
+   * Update file list incrementally based on the event operation
    */
   private subscribeToFileEvents(): void {
     this.eventStream.events$
@@ -211,8 +213,50 @@ export class FileExchangeStateService {
       )
       .subscribe((fileEvent) => {
         console.log('[FILE_EXCHANGE_STATE] FileEvent received:', fileEvent)
-        // Refresh file list when any file event occurs
-        this.refreshFileList()
+        this.handleFileEvent(fileEvent as FileEvent)
       })
+  }
+
+  /**
+   * Handle file event incrementally without full refresh
+   */
+  private handleFileEvent(event: FileEvent): void {
+    const currentFiles = this.filesSignal()
+
+    switch (event.operation) {
+      case 'created': {
+        // Add new file at the beginning (most recent)
+        const newFile: FileInfo = {
+          filename: event.filename,
+          size: event.size || 0,
+          lastModified: new Date(event.timestamp),
+        }
+        console.log('[FILE_EXCHANGE_STATE] Adding new file:', newFile.filename)
+        this.filesSignal.set([newFile, ...currentFiles])
+        break
+      }
+
+      case 'updated': {
+        // Update existing file and move it to the top
+        const updatedFiles = currentFiles.filter((f) => f.filename !== event.filename)
+        const existingFile = currentFiles.find((f) => f.filename === event.filename)
+        const updatedFile: FileInfo = {
+          filename: event.filename,
+          size: event.size || existingFile?.size || 0,
+          lastModified: new Date(event.timestamp),
+        }
+        console.log('[FILE_EXCHANGE_STATE] Updating file:', updatedFile.filename)
+        this.filesSignal.set([updatedFile, ...updatedFiles])
+        break
+      }
+
+      case 'deleted': {
+        // Remove file from list
+        console.log('[FILE_EXCHANGE_STATE] Removing file:', event.filename)
+        const filteredFiles = currentFiles.filter((f) => f.filename !== event.filename)
+        this.filesSignal.set(filteredFiles)
+        break
+      }
+    }
   }
 }

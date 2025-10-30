@@ -32,10 +32,25 @@
     animation: pulse-subtle 3s infinite;
   }
 
-  // Badge positioning
+  // Badge styling - subtle and discrete
   ::ng-deep .mat-badge-content {
-    right: 8px;
-    top: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+    right: 4px;
+    top: 4px;
+    background-color: var(--color-primary);
+    color: white;
+  }
+
+  // Smaller badge on hover for subtlety
+  &:not(:hover) ::ng-deep .mat-badge-content {
+    font-size: 9px;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
   }
 }
 

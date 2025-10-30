@@ -2,7 +2,9 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--color-background);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-backdrop-blur);
+  -webkit-backdrop-filter: var(--glass-backdrop-blur);
   color: var(--color-text);
 }
 
