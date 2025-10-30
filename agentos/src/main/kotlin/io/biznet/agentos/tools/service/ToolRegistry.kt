@@ -10,8 +10,8 @@ class ToolRegistry {
     fun findTools(): List<StandardTool> = listOf(
         MCPTool(
             "github", version = "1.0",
-            description = "github operations",
-            inputSchema = "no",
+            description = "get github user info",
+            inputSchema = "",
         ),
         InternalTool(
             "delegateToAgent", version = "2.0",
