@@ -8,11 +8,41 @@ Duplication de messages lors du replay de thread, notamment lors de :
 - Rechargement de page
 - Instance Coday qui vit longtemps
 
-## Phase 1 : Déduplication côté client ✅
+## Phase 1 : Déduplication côté client avec stratégie de remplacement ✅
+
+### Stratégie de déduplication
+
+Plutôt que de simplement **ignorer** les messages dupliqués, nous avons implémenté une stratégie de **remplacement** :
+
+**Principe** : Quand un message avec le même ID arrive, on remplace l'ancien par le nouveau.
+
+**Rationale** :
+- Les événements peuvent être modifiés entre deux envois
+- Exemple : Un `SummaryEvent` qui remplace plusieurs messages
+- Exemple : Des métadonnées mises à jour sur un message
+- **La version la plus récente est toujours la plus correcte**
+
+**Comportement** :
+```typescript
+// Si message existe déjà
+if (existingIndex !== -1) {
+  // Remplacer l'ancien par le nouveau
+  newMessages[existingIndex] = message
+}
+// Sinon, ajouter normalement
+else {
+  newMessages.push(message)
+}
+```
+
+Cette approche garantit que :
+- Aucun doublon visible dans l'UI
+- Les messages sont toujours dans leur version la plus récente
+- Les modifications d'événements sont correctement reflétées
 
 ### Changements implémentés
 
-#### 1. Méthode `addMessage()` avec déduplication
+#### 1. Méthode `addMessage()` avec déduplication et remplacement
 
 **Fichier** : `apps/client/src/app/core/services/coday.service.ts`
 
@@ -34,12 +64,17 @@ private addMessage(message: ChatMessage): void {
   const existingIndex = currentMessages.findIndex(msg => msg.id === message.id)
   
   if (existingIndex !== -1) {
-    console.log('[CODAY] Message already exists, skipping duplicate:', {
+    console.log('[CODAY] Message already exists, replacing with newer version:', {
       id: message.id,
       role: message.role,
       speaker: message.speaker,
       contentPreview: message.content[0]?.content?.substring(0, 50) || '(no content)'
     })
+    
+    // Replace the existing message with the new version
+    const newMessages = [...currentMessages]
+    newMessages[existingIndex] = message
+    this.messagesSubject.next(newMessages)
     return
   }
   
@@ -57,10 +92,12 @@ private addMessage(message: ChatMessage): void {
 
 **Bénéfices** :
 - Protection universelle contre toutes les sources de duplication
+- **Remplacement automatique** : Si un message existe déjà, il est remplacé par la version la plus récente
+- Gère les cas où un événement est modifié (ex: SummaryEvent, métadonnées mises à jour)
 - Logs détaillés pour le debugging
 - Basé sur l'ID unique (timestamp) de chaque message
 
-#### 2. Nouvelle méthode `loadMessages()` pour chargement bulk
+#### 2. Nouvelle méthode `loadMessages()` pour chargement bulk avec remplacement
 
 **Fichier** : `apps/client/src/app/core/services/coday.service.ts`
 
@@ -68,37 +105,39 @@ private addMessage(message: ChatMessage): void {
 /**
  * Load messages in bulk (e.g., from history endpoint)
  * Deduplicates messages based on their IDs
+ * Replaces existing messages with newer versions if IDs match
  * @param messages Messages to load
  */
 loadMessages(messages: ChatMessage[]): void {
   console.log('[CODAY] Loading messages in bulk:', messages.length)
   
   const currentMessages = this.messagesSubject.value
-  const existingIds = new Set(currentMessages.map(msg => msg.id))
+  const existingMessagesMap = new Map(currentMessages.map(msg => [msg.id, msg]))
   
-  // Filter out messages that already exist
-  const newMessages = messages.filter(msg => {
-    if (existingIds.has(msg.id)) {
-      console.log('[CODAY] Skipping duplicate message during bulk load:', msg.id)
-      return false
+  let replacedCount = 0
+  let newCount = 0
+  
+  // Process incoming messages: replace existing or add new
+  messages.forEach(msg => {
+    if (existingMessagesMap.has(msg.id)) {
+      console.log('[CODAY] Replacing existing message with newer version during bulk load:', msg.id)
+      replacedCount++
+    } else {
+      newCount++
     }
-    return true
+    // Always set (either replace or add new)
+    existingMessagesMap.set(msg.id, msg)
   })
   
-  if (newMessages.length === 0) {
-    console.log('[CODAY] No new messages to load (all duplicates)')
-    return
-  }
-  
-  // Merge and sort by timestamp (ID) to maintain chronological order
-  const mergedMessages = [...currentMessages, ...newMessages].sort((a, b) => 
+  // Convert map back to array and sort by timestamp (ID) to maintain chronological order
+  const mergedMessages = Array.from(existingMessagesMap.values()).sort((a, b) => 
     a.id.localeCompare(b.id)
   )
   
   console.log('[CODAY] Loaded messages:', {
     requested: messages.length,
-    new: newMessages.length,
-    duplicates: messages.length - newMessages.length,
+    new: newCount,
+    replaced: replacedCount,
     total: mergedMessages.length
   })
   
@@ -108,7 +147,9 @@ loadMessages(messages: ChatMessage[]): void {
 
 **Bénéfices** :
 - Chargement efficace de l'historique complet
-- Déduplication automatique
+- **Déduplication avec remplacement** : Les messages existants sont remplacés par leurs versions les plus récentes
+- Gère les SummaryEvent insérés au milieu de la chronologie
+- Utilise une Map pour une performance O(1) sur les lookups
 - Tri chronologique préservé
 - Prêt pour le futur endpoint GET /messages
 
@@ -222,10 +263,10 @@ addConnection(response: Response): void {
 [CODAY] Message added: { id: '123...', role: 'user', totalMessages: 6 }
 ```
 
-### Logs de duplication détectée (bon signe !)
+### Logs de duplication détectée avec remplacement (bon signe !)
 ```
 [CODAY-EVENT] Received: { type: 'message', timestamp: '123...', currentMessageCount: 6 }
-[CODAY] Message already exists, skipping duplicate: { id: '123...', role: 'user', ... }
+[CODAY] Message already exists, replacing with newer version: { id: '123...', role: 'user', ... }
 ```
 
 ### Logs de replay
