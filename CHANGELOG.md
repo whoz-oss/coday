@@ -1,3 +1,19 @@
+## 0.38.2 (2025-10-30)
+
+### 🚀 Features
+
+- **jira:** create dedicated function for adding internal notes ([209d912](https://github.com/whoz-oss/coday/commit/209d912))
+- **jira:** create dedicated function for adding internal notes ([#286](https://github.com/whoz-oss/coday/pull/286))
+
+### 🩹 Fixes
+
+- anthropic and gemini client default creation on the fly ([#291](https://github.com/whoz-oss/coday/pull/291), [#265](https://github.com/whoz-oss/coday/issues/265))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+- vincent-audibert-whoz
+
 ## 0.38.1 (2025-10-29)
 
 ### 🩹 Fixes
