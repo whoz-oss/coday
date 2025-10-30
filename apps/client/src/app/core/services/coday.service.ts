@@ -118,6 +118,44 @@ export class CodayService implements OnDestroy {
   }
 
   /**
+   * Load messages in bulk (e.g., from history endpoint)
+   * Deduplicates messages based on their IDs
+   * @param messages Messages to load
+   */
+  loadMessages(messages: ChatMessage[]): void {
+    console.log('[CODAY] Loading messages in bulk:', messages.length)
+
+    const currentMessages = this.messagesSubject.value
+    const existingIds = new Set(currentMessages.map((msg) => msg.id))
+
+    // Filter out messages that already exist
+    const newMessages = messages.filter((msg) => {
+      if (existingIds.has(msg.id)) {
+        console.log('[CODAY] Skipping duplicate message during bulk load:', msg.id)
+        return false
+      }
+      return true
+    })
+
+    if (newMessages.length === 0) {
+      console.log('[CODAY] No new messages to load (all duplicates)')
+      return
+    }
+
+    // Merge and sort by timestamp (ID) to maintain chronological order
+    const mergedMessages = [...currentMessages, ...newMessages].sort((a, b) => a.id.localeCompare(b.id))
+
+    console.log('[CODAY] Loaded messages:', {
+      requested: messages.length,
+      new: newMessages.length,
+      duplicates: messages.length - newMessages.length,
+      total: mergedMessages.length,
+    })
+
+    this.messagesSubject.next(mergedMessages)
+  }
+
+  /**
    * Send a message
    */
   sendMessage(message: string): void {
@@ -264,6 +302,13 @@ export class CodayService implements OnDestroy {
    * Handle incoming Coday events
    */
   private handleEvent(event: CodayEvent): void {
+    // Log all incoming events for debugging duplication issues
+    console.log('[CODAY-EVENT] Received:', {
+      type: event.type,
+      timestamp: event.timestamp,
+      currentMessageCount: this.messagesSubject.value.length,
+    })
+
     if (event instanceof MessageEvent) {
       this.handleMessageEvent(event)
     } else if (event instanceof TextChunkEvent) {
@@ -490,13 +535,34 @@ export class CodayService implements OnDestroy {
   }
 
   /**
-   * Add a message to the history
+   * Add a message to the history with deduplication
+   * Prevents duplicate messages based on message ID (timestamp)
    */
   private addMessage(message: ChatMessage): void {
     const currentMessages = this.messagesSubject.value
-    const newMessages = [...currentMessages, message]
 
+    // Check if message with this ID already exists
+    const existingIndex = currentMessages.findIndex((msg) => msg.id === message.id)
+
+    if (existingIndex !== -1) {
+      console.log('[CODAY] Message already exists, skipping duplicate:', {
+        id: message.id,
+        role: message.role,
+        speaker: message.speaker,
+        contentPreview: message.content[0]?.content?.substring(0, 50) || '(no content)',
+      })
+      return
+    }
+
+    // Add the new message
+    const newMessages = [...currentMessages, message]
     this.messagesSubject.next(newMessages)
+
+    console.log('[CODAY] Message added:', {
+      id: message.id,
+      role: message.role,
+      totalMessages: newMessages.length,
+    })
   }
 
   /**
