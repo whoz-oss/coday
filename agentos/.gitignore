@@ -38,3 +38,12 @@ out/
 
 ### Kotlin ###
 .kotlin
+
+### AgentOS ###
+# Plugin JARs copied by scripts
+plugins/*.jar
+!plugins/.gitkeep
+
+# Agent YAML files (may be user-specific)
+agents/*.yaml
+!agents/.gitkeep
