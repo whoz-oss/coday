@@ -50,7 +50,9 @@ export class Coday {
     this.aiThreadService.activeThread.subscribe((aiThread) => {
       if (!this.context || !aiThread) return
       this.context.aiThread = aiThread
-      this.replayThread(aiThread)
+      // REPLAY REMOVED: Client now loads history via GET /messages
+      // Only display thread selection confirmation
+      this.interactor.displayText(`Selected thread '${aiThread.name}'`)
     })
     this.aiClientProvider = new AiClientProvider(
       this.interactor,
@@ -58,24 +60,6 @@ export class Coday {
       this.services.project,
       this.services.logger
     )
-  }
-
-  /**
-   * Replay the current thread's messages.
-   * Useful for reconnection scenarios.
-   */
-  replay(): void {
-    const thread = this.aiThreadService.getCurrentThread()
-    if (!thread) {
-      console.log('No active thread to replay')
-      return
-    }
-    this.replayThread(thread)
-
-    // After replay, if not oneshot and thread is not running, re-emit last invite
-    if (!this.options.oneshot && thread.runStatus !== RunStatus.RUNNING) {
-      this.interactor.replayLastInvite()
-    }
   }
 
   /**
@@ -210,32 +194,6 @@ export class Coday {
 
     this.handlerLooper?.kill()
     this.interactor.kill()
-  }
-
-  /**
-   * Replay messages from an AiThread through the interactor
-   */
-  private async replayThread(aiThread: AiThread): Promise<void> {
-    const messages: ThreadMessage[] = (await aiThread.getMessages(undefined, undefined)).messages
-    if (!messages?.length) return
-    // Sort messages by timestamp to maintain chronological order
-    const sortedMessages = [...messages].sort(
-      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-    )
-
-    // Send messages directly - no conversion needed
-    for (const message of sortedMessages) {
-      if (
-        message instanceof MessageEvent ||
-        message instanceof ToolRequestEvent ||
-        message instanceof ToolResponseEvent
-      ) {
-        this.interactor.sendEvent(message)
-      }
-    }
-
-    // Always emit the thread selection message last
-    this.interactor.displayText(`Selected thread '${aiThread.name}'`)
   }
 
   private async initContext(): Promise<void> {
