@@ -1,6 +1,6 @@
 {
   "name": "@whoz-oss/coday-client",
-  "version": "0.38.2",
+  "version": "0.39.0",
   "repository": "https://github.com/whoz-oss/coday",
   "type": "module",
   "publishConfig": {
