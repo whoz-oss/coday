@@ -33,11 +33,13 @@ import { AnswerEvent } from '@coday/coday-events'
  * Register message management routes on the Express app
  * @param app - Express application instance
  * @param threadCodayManager - ThreadCodayManager instance for accessing Coday instances
+ * @param threadService - ThreadService instance for accessing thread data
  * @param getUsernameFn - Function to extract username from request
  */
 export function registerMessageRoutes(
   app: express.Application,
   threadCodayManager: ThreadCodayManager,
+  threadService: any,
   getUsernameFn: (req: express.Request) => string
 ): void {
   /**
@@ -62,23 +64,16 @@ export function registerMessageRoutes(
 
         debugLog('MESSAGE', `GET messages for thread: ${threadId} in project: ${projectName}`)
 
-        // Get the thread instance
-        const instance = threadCodayManager.get(threadId)
-        if (!instance?.coday) {
-          res.status(404).json({ error: `Thread '${threadId}' not found or not active` })
+        // Load thread directly from ThreadService (no need for active Coday instance)
+        const aiThread = await threadService.getThread(projectName, threadId)
+        if (!aiThread) {
+          res.status(404).json({ error: `Thread '${threadId}' not found in project '${projectName}'` })
           return
         }
 
         // Verify thread ownership
-        if (instance.username !== username) {
+        if (aiThread.username !== username) {
           res.status(403).json({ error: 'Access denied: thread belongs to another user' })
-          return
-        }
-
-        // Get messages from AiThread
-        const aiThread = instance.coday.context?.aiThread
-        if (!aiThread) {
-          res.status(500).json({ error: 'Thread not properly initialized' })
           return
         }
 
