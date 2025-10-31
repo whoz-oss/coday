@@ -1,3 +1,13 @@
+## 0.40.1 (2025-10-31)
+
+### 🩹 Fixes
+
+- manage coday_project option over others ([#296](https://github.com/whoz-oss/coday/pull/296))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.40.0 (2025-10-31)
 
 ### 🚀 Features
