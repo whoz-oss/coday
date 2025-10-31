@@ -7,7 +7,7 @@ import { hideBin } from 'yargs/helpers'
 export interface Argv {
   coday_project?: string
   coday_config_dir?: string
-  no_auth?: boolean
+  auth?: boolean
   prompt?: string[]
   oneshot?: boolean
   debug?: boolean
@@ -30,7 +30,7 @@ export interface CodayOptions {
   prompts: string[]
   fileReadOnly: boolean
   configDir: string // Always defined with default value
-  noAuth: boolean
+  auth: boolean
   agentFolders: string[]
   noLog: boolean
   logFolder?: string
@@ -57,9 +57,9 @@ export function parseCodayOptions(): CodayOptions {
       type: 'boolean',
       description: 'Run in one-shot mode (non-interactive)',
     })
-    .option('no auth', {
+    .option('auth', {
       type: 'boolean',
-      description: 'Disables web auth check',
+      description: 'Enables web auth check (expects x-forwarded-email header from auth proxy)',
     })
     .option('local', {
       type: 'boolean',
@@ -107,7 +107,7 @@ export function parseCodayOptions(): CodayOptions {
   const defaultConfigDir = path.join(os.homedir(), '.coday')
   const configDir: string = argv.coday_config_dir || defaultConfigDir
 
-  const noAuth: boolean = !!argv.no_auth
+  const auth: boolean = !!argv.auth
   const debug: boolean = !!argv.debug
   const noLog: boolean = !argv.log // Inverted: log=false means noLog=true
   const logFolder: string | undefined = argv.log_folder
@@ -137,7 +137,7 @@ export function parseCodayOptions(): CodayOptions {
     prompts,
     fileReadOnly,
     configDir,
-    noAuth,
+    auth,
     agentFolders: (argv.agentFolders || []) as string[],
     noLog,
     logFolder,
