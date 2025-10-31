@@ -1,6 +1,5 @@
 import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, inject } from '@angular/core'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
-import { marked } from 'marked'
 import { MessageContent } from '@coday/coday-events'
 import { MessageContextMenuComponent, MenuAction } from '../message-context-menu/message-context-menu.component'
 import { NgClass } from '@angular/common'
@@ -8,6 +7,7 @@ import { NotificationService } from '../../services/notification.service'
 import { PreferencesService } from '../../services/preferences.service'
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { ThreadStateService } from '../../core/services/thread-state.service'
+import { MarkdownService } from '../../services/markdown.service'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
 
@@ -45,6 +45,7 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   private preferencesService = inject(PreferencesService)
   private projectState = inject(ProjectStateService)
   private threadState = inject(ThreadStateService)
+  private markdownService = inject(MarkdownService)
 
   get messageClasses() {
     return {
@@ -151,8 +152,8 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
 
     for (const item of content) {
       if (item.type === 'text') {
-        // Parse markdown for text content
-        const html = await marked.parse(item.content)
+        // Parse markdown for text content using MarkdownService
+        const html = await this.markdownService.parse(item.content)
         htmlParts.push(`<div class="text-part">${html}</div>`)
       } else if (item.type === 'image') {
         // Create image element
