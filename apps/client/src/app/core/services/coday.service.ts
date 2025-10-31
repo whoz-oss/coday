@@ -107,16 +107,8 @@ export class CodayService implements OnDestroy {
           threadName: response.threadInfo.name,
         })
 
-        // Convert backend messages to ChatMessage format
-        const chatMessages: ChatMessage[] = response.messages.map((msg) => ({
-          id: msg.timestamp,
-          role: msg.role || 'system',
-          speaker: msg.name || msg.speaker || 'System',
-          content: msg.content || [{ type: 'text', content: msg.text || '' }],
-          timestamp: new Date(msg.timestamp),
-          type: this.inferMessageType(msg),
-          eventId: msg.timestamp,
-        }))
+        // Convert backend messages to ChatMessage format using proper conversion
+        const chatMessages: ChatMessage[] = response.messages.map((msg) => this.convertBackendMessageToChatMessage(msg))
 
         // Load messages with deduplication
         this.loadMessages(chatMessages)
@@ -134,6 +126,51 @@ export class CodayService implements OnDestroy {
     if (msg.type === 'tool_request' || msg.type === 'tool_response') return 'technical'
     if (msg.role === 'system') return 'technical'
     return 'text'
+  }
+
+  /**
+   * Convert backend message to ChatMessage format
+   * Handles tool_request and tool_response events with proper text rendering
+   */
+  private convertBackendMessageToChatMessage(msg: any): ChatMessage {
+    // Handle tool_request events
+    if (msg.type === 'tool_request') {
+      const toolRequestEvent = new ToolRequestEvent(msg)
+      return {
+        id: msg.timestamp,
+        role: 'system',
+        speaker: 'System',
+        content: [{ type: 'text', content: toolRequestEvent.toSingleLineString() }],
+        timestamp: new Date(msg.timestamp),
+        type: 'technical',
+        eventId: msg.timestamp,
+      }
+    }
+
+    // Handle tool_response events
+    if (msg.type === 'tool_response') {
+      const toolResponseEvent = new ToolResponseEvent(msg)
+      return {
+        id: msg.timestamp,
+        role: 'system',
+        speaker: 'System',
+        content: [{ type: 'text', content: toolResponseEvent.toSingleLineString() }],
+        timestamp: new Date(msg.timestamp),
+        type: 'technical',
+        eventId: msg.timestamp,
+      }
+    }
+
+    // Handle regular messages
+    return {
+      id: msg.timestamp,
+      role: msg.role || 'system',
+      speaker: msg.name || msg.speaker || 'System',
+      content: msg.content || [{ type: 'text', content: msg.text || '' }],
+      timestamp: new Date(msg.timestamp),
+      type: this.inferMessageType(msg),
+      eventId: msg.timestamp,
+    }
   }
 
   /**
