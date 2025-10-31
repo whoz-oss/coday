@@ -1,3 +1,13 @@
+## 0.41.0 (2025-10-31)
+
+### 🚀 Features
+
+- #282 open external links in new tab with icon and aria-label ([#294](https://github.com/whoz-oss/coday/pull/294), [#282](https://github.com/whoz-oss/coday/issues/282))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.40.1 (2025-10-31)
 
 ### 🩹 Fixes
