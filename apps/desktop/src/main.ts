@@ -220,7 +220,7 @@ async function startCodayServer(): Promise<void> {
 
     log('INFO', 'Found npx at:', npxPath)
     const command = npxPath
-    const args = ['--yes', '@whoz-oss/coday-web', '--no_auth']
+    const args = ['--yes', '@whoz-oss/coday-web']
 
     log('INFO', 'Spawning:', command, args.join(' '))
 
@@ -232,8 +232,6 @@ async function startCodayServer(): Promise<void> {
     } catch {
       env['PATH'] = '/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'
     }
-
-    env['NO_AUTH'] = 'true'
 
     // Start the server
     serverProcess = spawn(command, args, {

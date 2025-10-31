@@ -166,13 +166,13 @@ const configRegistry = new ConfigServiceRegistry(codayOptions.configDir, configI
  *
  * In authenticated mode, extracts username from the x-forwarded-email header
  * (typically set by reverse proxy or authentication middleware).
- * In no-auth mode, uses the local system username for development/testing.
+ * In non-authenticated mode (default), uses the local system username for development/testing.
  *
  * @param req - Express request object containing headers
  * @returns Username string for logging and thread ownership
  */
 function getUsername(req: express.Request): string {
-  return codayOptions.noAuth ? os.userInfo().username : (req.headers[EMAIL_HEADER] as string)
+  return codayOptions.auth ? (req.headers[EMAIL_HEADER] as string) : os.userInfo().username
 }
 
 // Register user information routes
