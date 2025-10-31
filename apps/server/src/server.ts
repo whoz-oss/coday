@@ -228,7 +228,7 @@ registerProjectRoutes(app, projectService)
 registerThreadRoutes(app, threadService, threadFileService, threadCodayManager, getUsername, codayOptions)
 
 // Register message management routes
-registerMessageRoutes(app, threadCodayManager, threadService, codayOptions, getUsername)
+registerMessageRoutes(app, threadCodayManager, threadService, getUsername)
 
 // Register agent management routes
 registerAgentRoutes(

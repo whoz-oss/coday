@@ -34,14 +34,12 @@ import { AnswerEvent } from '@coday/coday-events'
  * @param app - Express application instance
  * @param threadCodayManager - ThreadCodayManager instance for accessing Coday instances
  * @param threadService - ThreadService instance for accessing thread data
- * @param codayOptions - Base Coday options for creating instances
  * @param getUsernameFn - Function to extract username from request
  */
 export function registerMessageRoutes(
   app: express.Application,
   threadCodayManager: ThreadCodayManager,
   threadService: any,
-  codayOptions: any,
   getUsernameFn: (req: express.Request) => string
 ): void {
   /**
@@ -77,20 +75,6 @@ export function registerMessageRoutes(
         if (aiThread.username !== username) {
           res.status(403).json({ error: 'Access denied: thread belongs to another user' })
           return
-        }
-
-        // Pre-create Coday instance (without SSE connection) to prepare for incoming SSE
-        // This allows the instance to be ready when SSE connects, avoiding cold start
-        const threadOptions = {
-          ...codayOptions,
-          project: projectName,
-          thread: threadId,
-        }
-        const instance = threadCodayManager.createWithoutConnection(threadId, projectName, username, threadOptions)
-
-        // Start Coday if it's a new instance (prepares context, agents, etc.)
-        if (instance.prepareCoday()) {
-          debugLog('MESSAGE', `Pre-created Coday instance for thread ${threadId}`)
         }
 
         // Get ALL messages without filtering (for history loading)
