@@ -1,3 +1,13 @@
+## 0.41.1 (2025-10-31)
+
+### 🩹 Fixes
+
+- #297 prevent server from running with system/service usernames ([#298](https://github.com/whoz-oss/coday/pull/298), [#297](https://github.com/whoz-oss/coday/issues/297))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.41.0 (2025-10-31)
 
 ### 🚀 Features
