@@ -8,11 +8,12 @@ import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 import { MatDividerModule } from '@angular/material/divider'
 import { MatProgressBarModule } from '@angular/material/progress-bar'
+import { MatDialog } from '@angular/material/dialog'
 import { ConfigApiService } from '../../core/services/config-api.service'
 import { PreferencesService } from '../../services/preferences.service'
 import { OptionsPanelComponent } from '../options-panel'
 import { ThreadSelectorComponent } from '../thread-selector/thread-selector.component'
-import { JsonEditorComponent } from '../json-editor/json-editor.component'
+import { JsonEditorComponent, JsonEditorData } from '../json-editor/json-editor.component'
 import { WebhookManagerComponent } from '../webhook-manager/webhook-manager.component'
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { toSignal } from '@angular/core/rxjs-interop'
@@ -31,8 +32,6 @@ import { ThreadStateService } from '../../core/services/thread-state.service'
     MatProgressBarModule,
     OptionsPanelComponent,
     ThreadSelectorComponent,
-    JsonEditorComponent,
-    WebhookManagerComponent,
   ],
   templateUrl: './sidenav.component.html',
   styleUrl: './sidenav.component.scss',
@@ -40,23 +39,11 @@ import { ThreadStateService } from '../../core/services/thread-state.service'
 export class SidenavComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>()
   isOpen = true
-  isUserConfigOpen = false
-  isProjectConfigOpen = false
-  isWebhooksOpen = false
 
   // Role-based access control
   isAdmin = false
 
-  // Configuration data
-  userConfigJson = ''
-  projectConfigJson = ''
-  isLoadingUserConfig = false
-  isLoadingProjectConfig = false
-  isSavingUserConfig = false
-  isSavingProjectConfig = false
-
   // User feedback messages
-  configSuccessMessage = ''
   configErrorMessage = ''
 
   // Section expansion state
@@ -73,6 +60,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
   @ViewChild('threadSearchInput') threadSearchInput?: ElementRef<HTMLInputElement>
 
   // Modern Angular dependency injection
+  private readonly dialog = inject(MatDialog)
   private readonly configApi = inject(ConfigApiService)
   private readonly projectStateService = inject(ProjectStateService)
   private readonly projectApi = inject(ProjectApiService)
@@ -139,8 +127,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
    */
   openUserConfig(): void {
     console.log('[SIDENAV] openUserConfig called')
-    this.isLoadingUserConfig = true
-    this.configSuccessMessage = ''
     this.configErrorMessage = ''
 
     this.configApi
@@ -148,17 +134,42 @@ export class SidenavComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (config) => {
-          console.log('[SIDENAV] User config loaded, opening modal')
-          // Format JSON with 2-space indentation
-          this.userConfigJson = JSON.stringify(config, null, 2)
-          this.isLoadingUserConfig = false
-          this.isUserConfigOpen = true
-          console.log('[SIDENAV] isUserConfigOpen set to:', this.isUserConfigOpen)
+          console.log('[SIDENAV] User config loaded, opening dialog')
+          const dialogRef = this.dialog.open<JsonEditorComponent, JsonEditorData, any>(JsonEditorComponent, {
+            data: {
+              configType: 'user',
+              initialContent: JSON.stringify(config, null, 2),
+            },
+          })
+
+          dialogRef.afterClosed().subscribe((result) => {
+            if (result) {
+              this.saveUserConfig(result)
+            }
+          })
         },
         error: (error) => {
           console.error('[SIDENAV] Error loading user config:', error)
-          this.isLoadingUserConfig = false
           this.configErrorMessage = error?.error?.error || 'Failed to load user configuration'
+        },
+      })
+  }
+
+  /**
+   * Save user configuration
+   */
+  private saveUserConfig(parsedConfig: any): void {
+    this.configApi
+      .updateUserConfig(parsedConfig)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (_) => {
+          console.log('[SIDENAV] User config saved successfully')
+          // Could show a success notification here
+        },
+        error: (error) => {
+          console.error('[SIDENAV] Error saving user config:', error)
+          this.configErrorMessage = error?.error?.error || 'Failed to save user configuration'
         },
       })
   }
@@ -174,8 +185,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
       return
     }
 
-    this.isLoadingProjectConfig = true
-    this.configSuccessMessage = ''
     this.configErrorMessage = ''
 
     this.projectApi
@@ -183,117 +192,53 @@ export class SidenavComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (config) => {
-          // Format JSON with 2-space indentation
-          this.projectConfigJson = JSON.stringify(config, null, 2)
-          this.isLoadingProjectConfig = false
-          this.isProjectConfigOpen = true
+          console.log('[SIDENAV] Project config loaded, opening dialog')
+          const dialogRef = this.dialog.open<JsonEditorComponent, JsonEditorData, any>(JsonEditorComponent, {
+            data: {
+              configType: 'project',
+              projectName,
+              initialContent: JSON.stringify(config, null, 2),
+            },
+          })
+
+          dialogRef.afterClosed().subscribe((result) => {
+            if (result) {
+              this.saveProjectConfig(projectName, result)
+            }
+          })
         },
         error: (error) => {
           console.error('[SIDENAV] Error loading project config:', error)
-          this.isLoadingProjectConfig = false
           this.configErrorMessage = error?.error?.error || 'Failed to load project configuration'
         },
       })
   }
 
   /**
-   * Handle user config save
+   * Save project configuration
    */
-  onUserConfigSave(parsedConfig: any): void {
-    this.isSavingUserConfig = true
-    this.configErrorMessage = ''
-
-    this.configApi
-      .updateUserConfig(parsedConfig)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: (response) => {
-          console.log('[SIDENAV] User config saved successfully')
-          this.isSavingUserConfig = false
-          this.configSuccessMessage = response.message ?? 'Configuration saved successfully'
-
-          // Close modal after short delay
-          setTimeout(() => {
-            this.isUserConfigOpen = false
-            this.configSuccessMessage = ''
-          }, 1500)
-        },
-        error: (error) => {
-          console.error('[SIDENAV] Error saving user config:', error)
-          this.isSavingUserConfig = false
-          this.configErrorMessage = error?.error?.error || 'Failed to save user configuration'
-        },
-      })
-  }
-
-  /**
-   * Handle project config save
-   */
-  onProjectConfigSave(parsedConfig: any): void {
-    const projectName = this.selectedProjectName()
-    if (!projectName) {
-      console.error('[SIDENAV] No project selected')
-      this.configErrorMessage = 'No project selected. Cannot save configuration.'
-      return
-    }
-
-    this.isSavingProjectConfig = true
-    this.configErrorMessage = ''
-
+  private saveProjectConfig(projectName: string, parsedConfig: any): void {
     this.projectApi
       .updateProjectConfig(projectName, parsedConfig)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
-        next: (response) => {
+        next: (_) => {
           console.log('[SIDENAV] Project config saved successfully')
-          this.isSavingProjectConfig = false
-          this.configSuccessMessage = response.message ?? 'Configuration saved successfully'
-
-          // Close modal after short delay
-          setTimeout(() => {
-            this.isProjectConfigOpen = false
-            this.configSuccessMessage = ''
-          }, 1500)
+          // Could show a success notification here
         },
         error: (error) => {
           console.error('[SIDENAV] Error saving project config:', error)
-          this.isSavingProjectConfig = false
           this.configErrorMessage = error?.error?.error || 'Failed to save project configuration'
         },
       })
   }
 
   /**
-   * Handle user config cancel
-   */
-  onUserConfigCancel(): void {
-    this.isUserConfigOpen = false
-    this.configSuccessMessage = ''
-    this.configErrorMessage = ''
-  }
-
-  /**
-   * Handle project config cancel
-   */
-  onProjectConfigCancel(): void {
-    this.isProjectConfigOpen = false
-    this.configSuccessMessage = ''
-    this.configErrorMessage = ''
-  }
-
-  /**
-   * Open webhook manager
+   * Open webhook manager dialog
    */
   openWebhooks(): void {
-    this.isWebhooksOpen = true
-  }
-
-  /**
-   * Get available projects for webhook form
-   */
-  getAvailableProjects(): string[] {
-    // TODO: Get from session state when project list is available
-    return []
+    console.log('[SIDENAV] Opening webhook manager dialog')
+    this.dialog.open(WebhookManagerComponent)
   }
 
   /**

@@ -1,49 +1,16 @@
 // Go to bottom button
 .go-to-bottom-btn {
-  position: fixed;
-  bottom: 120px; // Above the input area
-  right: 2rem;
-  z-index: 1000;
-
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  border: none;
-
-  background: var(--color-primary, #007acc);
-  color: var(--color-text-inverse, #ffffff);
-
-  font-size: 1.2rem;
-  font-weight: bold;
-
-  cursor: pointer;
-
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  transition: all 0.2s ease;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  &:hover {
-    background: var(--color-primary-hover, #005a9e);
-    transform: scale(1.05);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
-  }
-
-  &:active {
-    transform: scale(0.95);
-  }
+  position: fixed !important;
+  bottom: 120px !important;
+  right: 2rem !important;
+  z-index: 1000 !important;
 }
 
 // Responsive for mobile
 @media (max-width: 768px) {
   .go-to-bottom-btn {
-    right: 1rem;
-    bottom: 100px;
-    width: 40px;
-    height: 40px;
-    font-size: 1rem;
+    right: 1rem !important;
+    bottom: 100px !important;
   }
 }
 

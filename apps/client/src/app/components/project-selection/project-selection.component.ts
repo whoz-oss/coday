@@ -7,6 +7,7 @@ import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { ChoiceSelectComponent, ChoiceOption } from '../choice-select/choice-select.component'
 import { WelcomeMessageComponent } from '../welcome-message/welcome-message.component'
 import { ProjectCreateComponent } from '../project-create/project-create.component'
+import { MatButton } from '@angular/material/button'
 
 /**
  * Component for selecting a project from available projects.
@@ -18,7 +19,7 @@ import { ProjectCreateComponent } from '../project-create/project-create.compone
 @Component({
   selector: 'app-project-selection',
   standalone: true,
-  imports: [CommonModule, ChoiceSelectComponent, WelcomeMessageComponent, ProjectCreateComponent],
+  imports: [CommonModule, ChoiceSelectComponent, WelcomeMessageComponent, ProjectCreateComponent, MatButton],
   templateUrl: './project-selection.component.html',
   styleUrl: './project-selection.component.scss',
 })
@@ -36,7 +37,7 @@ export class ProjectSelectionComponent {
   forcedProject = toSignal(this.projectStateService.forcedProject$)
 
   // Transform projects to choice options
-  // Non-volatile projects first, then volatile projects at the bottom
+  // Non-volatile projects first, then volatile projects at the bottom, then "New project..." option
   projectOptions = computed<ChoiceOption[]>(() => {
     const projectList = this.projects()
     if (!projectList) return []
@@ -48,10 +49,20 @@ export class ProjectSelectionComponent {
     // Combine: non-volatile first, then volatile
     const sorted = [...nonVolatile, ...volatile]
 
-    return sorted.map((project) => ({
+    const options: ChoiceOption[] = sorted.map((project) => ({
       value: project.name,
       label: project.volatile ? `${project.name} 🔸temp` : project.name,
     }))
+
+    // Add separator and "New project..." option at the end
+    if (projectList.length > 0) {
+      options.push(
+        { value: '__separator__', label: '──────────────────────', disabled: true },
+        { value: '__new_project__', label: 'New project...' }
+      )
+    }
+
+    return options
   })
 
   // Computed to determine if create button should be shown
@@ -85,6 +96,17 @@ export class ProjectSelectionComponent {
    * @param projectName Project name to select
    */
   selectProject(projectName: string): void {
+    // Handle special "New project..." option
+    if (projectName === '__new_project__') {
+      this.openCreateForm()
+      return
+    }
+
+    // Ignore separator selection
+    if (projectName === '__separator__') {
+      return
+    }
+
     this.projectStateService.selectProject(projectName)
   }
 

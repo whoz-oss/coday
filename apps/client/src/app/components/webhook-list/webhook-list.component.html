@@ -2,8 +2,9 @@
   <!-- Header with Create Button -->
   <div class="list-header">
     <h2>Webhooks</h2>
-    <button class="btn-create" (click)="onCreateClick()" [disabled]="isLoading">
-      ➕ New Webhook
+    <button matButton="filled" color="primary" (click)="onCreateClick()" [disabled]="isLoading">
+      <mat-icon>add</mat-icon>
+      New Webhook
     </button>
   </div>
 
@@ -49,8 +50,11 @@
               <td class="name-cell">{{ webhook.name }}</td>
               <td class="project-cell">{{ webhook.project }}</td>
               <td class="type-cell">
-                <span class="type-badge" [class.type-free]="webhook.commandType === 'free'" 
-                      [class.type-template]="webhook.commandType === 'template'">
+                <span
+                  class="type-badge"
+                  [class.type-free]="webhook.commandType === 'free'"
+                  [class.type-template]="webhook.commandType === 'template'"
+                >
                   {{ getCommandTypeLabel(webhook.commandType) }}
                 </span>
               </td>
@@ -61,14 +65,14 @@
                 </div>
               </td>
               <td class="actions-cell">
-                <button class="btn-action btn-copy" (click)="onCopyUrl(webhook)" title="Copy webhook URL">
-                  📋
+                <button mat-icon-button (click)="onCopyUrl(webhook)" title="Copy webhook URL">
+                  <mat-icon>content_copy</mat-icon>
                 </button>
-                <button class="btn-action btn-edit" (click)="onEditClick(webhook)" title="Edit webhook">
-                  ✏️
+                <button mat-icon-button (click)="onEditClick(webhook)" title="Edit webhook">
+                  <mat-icon>edit</mat-icon>
                 </button>
-                <button class="btn-action btn-delete" (click)="onDeleteClick(webhook)" title="Delete webhook">
-                  🗑️
+                <button mat-icon-button color="warn" (click)="onDeleteClick(webhook)" title="Delete webhook">
+                  <mat-icon>delete</mat-icon>
                 </button>
               </td>
             </tr>

@@ -25,8 +25,8 @@ import { ThemeService } from '../../core/services/theme.service'
       </mat-radio-group>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
-      <button mat-button (click)="apply()">Apply</button>
-      <button mat-button (click)="close()">Cancel</button>
+      <button matButton (click)="apply()">Apply</button>
+      <button matButton (click)="close()">Cancel</button>
     </mat-dialog-actions>
   `,
 })

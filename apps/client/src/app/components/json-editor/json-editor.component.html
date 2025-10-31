@@ -1,51 +1,25 @@
-@if (isOpen) {
-  <div class="json-editor-overlay" (click)="onCancel()" (keyup.escape)="onCancel()" tabindex="0" role="dialog" aria-modal="true" aria-label="JSON Editor">
-    <div class="json-editor-modal" (click)="$event.stopPropagation()" (keydown.enter)="$event.stopPropagation()" tabindex="-1">
-    <!-- Header -->
-    <div class="editor-header">
-      <h2>{{ getTitle() }}</h2>
-      <button class="close-btn" (click)="onCancel()" title="Close">✕</button>
-    </div>
+<div mat-dialog-title>
+  {{ title }}
+  <button mat-icon-button (click)="onCancel()" title="Close" class="close-button">
+    <mat-icon>close</mat-icon>
+  </button>
+</div>
 
-      <!-- Loading State -->
-      @if (isLoading) {
-        <div class="loading-state">
-          <div class="spinner"></div>
-          <p>Loading configuration...</p>
-        </div>
-      }
+<mat-dialog-content>
+  <textarea
+    [(ngModel)]="jsonContent"
+    class="json-textarea"
+    spellcheck="false"
+    placeholder="Enter JSON configuration..."
+  ></textarea>
 
-      <!-- Editor Content -->
-      @if (!isLoading) {
-        <div class="editor-content">
-      <textarea
-        [(ngModel)]="jsonContent"
-        class="json-textarea"
-        spellcheck="false"
-        placeholder="Enter JSON configuration..."
-      ></textarea>
+  <!-- Messages -->
+  @if (errorMessage) {
+    <div class="error-message">❌ {{ errorMessage }}</div>
+  }
+</mat-dialog-content>
 
-          <!-- Messages -->
-          <div class="messages">
-            @if (errorMessage) {
-              <div class="error-message">
-                ❌ {{ errorMessage }}
-              </div>
-            }
-            <!-- Success message removed - handled by parent component -->
-          </div>
-
-          <!-- Actions -->
-          <div class="editor-actions">
-            <button class="btn btn-secondary" (click)="onCancel()" [disabled]="isSaving">
-              Cancel
-            </button>
-            <button class="btn btn-primary" (click)="onSave()" [disabled]="isSaving">
-              {{ isSaving ? 'Saving...' : 'Save' }}
-            </button>
-          </div>
-        </div>
-      }
-    </div>
-  </div>
-}
+<mat-dialog-actions align="end">
+  <button matButton (click)="onCancel()">Cancel</button>
+  <button matButton="filled" color="primary" (click)="onSave()">Save</button>
+</mat-dialog-actions>

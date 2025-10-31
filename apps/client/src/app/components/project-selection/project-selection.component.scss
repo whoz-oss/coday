@@ -87,7 +87,7 @@
 
 .no-projects-text {
   color: var(--color-text);
-  margin: 0 0 0.5rem 0;
+  margin: 0 0 1rem 0;
   font-size: 1.1rem;
 }
 
@@ -104,29 +104,6 @@
   border-top: 1px solid var(--color-border);
   display: flex;
   justify-content: center;
-}
-
-.create-project-btn {
-  padding: 0.75rem 1.5rem;
-  font-size: 1rem;
-  font-weight: 500;
-  color: var(--color-primary);
-  background: transparent;
-  border: 2px solid var(--color-primary);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-
-  &:hover {
-    background: var(--color-primary);
-    color: white;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  }
-
-  &:active {
-    transform: translateY(0);
-  }
 }
 
 // Animations
@@ -187,11 +164,5 @@
   .create-action {
     margin-top: 1rem;
     padding-top: 1rem;
-  }
-
-  .create-project-btn {
-    width: 100%;
-    padding: 0.65rem 1.25rem;
-    font-size: 0.95rem;
   }
 }

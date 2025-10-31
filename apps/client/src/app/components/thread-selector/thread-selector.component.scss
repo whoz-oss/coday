@@ -77,22 +77,28 @@
   align-items: center;
   flex: 1;
   min-width: 0; // Important for text truncation
-  padding: 0.7rem 1rem;
+  padding: 0.75rem 1rem;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
   background: transparent;
   border: none;
+  border-radius: 0;
   color: var(--color-text);
   text-align: left;
-  cursor: pointer;
-  transition: none;
-  gap: 0;
-  border-radius: 0;
-
-  &:active {
-    transform: scale(0.98);
-  }
+  justify-content: flex-start;
 
   &.new-thread-item {
     margin-bottom: 0.25rem;
+  }
+
+  &:hover {
+    color: var(--color-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
   }
 }
 
@@ -105,53 +111,48 @@
 }
 
 .action-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s ease;
+  border-radius: 4px !important; // Square corners like mini FAB
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+
+  // Override Material's rounded corners
+  ::ng-deep .mat-mdc-button-persistent-ripple {
+    border-radius: 4px !important;
+  }
+
+  &:hover {
+    background: var(--color-bg-hover) !important;
+  }
 
   mat-icon {
     font-size: 18px;
     width: 18px;
     height: 18px;
-    color: var(--color-text-secondary);
-  }
-
-  &:hover {
-    background: var(--color-bg-hover-secondary, rgba(0, 0, 0, 0.1));
-
-    mat-icon {
-      color: var(--color-text);
-    }
   }
 
   &.star-button {
+    mat-icon {
+      transition: color 0.2s ease;
+    }
+
     &.starred {
       mat-icon {
         color: #fbbf24; // Gold color for starred
       }
     }
 
-    &:hover mat-icon {
-      color: #fbbf24;
+    &:not(.starred) {
+      &:hover mat-icon {
+        color: #fbbf24;
+      }
     }
   }
 
   &.delete-button {
-    &:hover {
-      background: rgba(239, 68, 68, 0.1);
-
-      mat-icon {
-        color: #ef4444; // Red color for delete
-      }
+    &:hover mat-icon {
+      color: #ef4444; // Red color for delete
     }
   }
 }
@@ -168,6 +169,7 @@
   font-size: 0.875rem;
   font-weight: 400;
   padding: 0 1rem;
+  min-width: 0; // Allow shrinking
 
   &:hover:not(.new-thread-link) {
     color: var(--color-primary-hover, var(--color-primary));

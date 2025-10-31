@@ -147,52 +147,9 @@
   margin: 0 0.5rem 0 0.08rem;
 }
 
-.voice-btn:hover:not(.recording),
-.send-btn:hover:not(:disabled) {
-  background: var(--color-bg-hover);
-}
-
 .voice-btn.recording {
-  background: rgba(255, 59, 48, 0.14);
   color: var(--color-error);
-}
-
-.send-btn {
-  background: var(--color-primary);
-}
-
-.stop-btn {
-  transition:
-    background 0.18s,
-    transform 0.12s;
-
-  &:hover {
-    opacity: 0.85;
-    transform: scale(1.05);
-  }
-
-  &:active {
-    transform: scale(0.95);
-  }
-}
-
-.voice-btn {
-  transition:
-    background 0.18s,
-    box-shadow 0.18s,
-    transform 0.12s,
-    opacity 0.5s;
-  position: relative;
-
-  &.recording {
-    background: rgba(255, 59, 48, 0.07);
-    color: var(--color-error);
-    animation: pulse 1.5s infinite;
-
-    &:hover {
-      background: rgba(255, 59, 48, 0.11);
-    }
-  }
+  animation: pulse 1.5s infinite;
 }
 
 .send-btn {
@@ -205,7 +162,6 @@
   position: relative;
 
   &.active {
-    background: transparent;
     opacity: 1;
   }
 
@@ -257,18 +213,6 @@
   }
   50% {
     opacity: 0.5;
-  }
-}
-
-@keyframes sendButtonGradientShift {
-  0% {
-    background-position: 0% center;
-  }
-  50% {
-    background-position: 50% 10%;
-  }
-  100% {
-    background-position: 0% center;
   }
 }
 

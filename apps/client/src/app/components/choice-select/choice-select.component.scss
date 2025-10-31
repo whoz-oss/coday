@@ -68,13 +68,6 @@
   -moz-appearance: none;
   appearance: none;
 
-  // Custom arrow
-  background-image: url('data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23666"><path d="M7 10l5 5 5-5z"/></svg>');
-  background-repeat: no-repeat;
-  background-position: right 0.5rem center;
-  background-size: 24px 24px;
-  padding-right: 2.5rem;
-
   &:focus {
     outline: none;
   }
@@ -88,24 +81,18 @@
     color: var(--color-text-secondary);
     font-style: italic;
   }
+
+  // Styling for separator
+  option[value='__separator__'] {
+    color: var(--color-border);
+    font-size: 0.8rem;
+    text-align: center;
+    cursor: default;
+  }
 }
 
 .submit-btn {
   flex-shrink: 0;
-  background: var(--color-primary);
-  color: white;
-  transition: all 0.2s ease;
-
-  &:hover:not(:disabled) {
-    background: var(--color-primary-hover);
-    transform: scale(1.05);
-  }
-
-  &:disabled {
-    background: var(--color-text-secondary);
-    cursor: not-allowed;
-    opacity: 0.5;
-  }
 }
 
 // Responsive

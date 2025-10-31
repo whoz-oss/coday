@@ -37,47 +37,6 @@
   margin-top: 0.5rem;
 }
 
-.cancel-btn,
-.create-btn {
-  padding: 0.75rem 1.5rem;
-  font-size: 1rem;
-  font-weight: 500;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-}
-
-.cancel-btn {
-  background: var(--color-surface);
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
-
-  &:hover:not(:disabled) {
-    background: var(--color-bg-hover);
-  }
-}
-
-.create-btn {
-  background: var(--color-primary);
-  color: white;
-
-  &:hover:not(:disabled) {
-    background: var(--color-primary-hover);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-  }
-
-  &:active:not(:disabled) {
-    transform: translateY(0);
-  }
-}
-
 // Animation
 @keyframes slideIn {
   from {
@@ -104,10 +63,6 @@
   .form-actions {
     flex-direction: column-reverse;
     gap: 0.75rem;
-
-    button {
-      width: 100%;
-    }
   }
 }
 
@@ -119,11 +74,5 @@
 
   .create-title {
     font-size: 1.2rem;
-  }
-
-  .cancel-btn,
-  .create-btn {
-    padding: 0.65rem 1.25rem;
-    font-size: 0.95rem;
   }
 }

@@ -18,13 +18,19 @@
       >
         <option value="" disabled>-- Select an option --</option>
         @for (option of options; track option.value) {
-          <option [value]="option.value">
+          <option [value]="option.value" [disabled]="option.disabled || option.value === '__separator__'">
             {{ option.label }}
           </option>
         }
       </select>
 
-      <button type="submit" class="submit-btn" mat-icon-button [disabled]="!selectedValue" title="Submit selection">
+      <button
+        type="submit"
+        class="submit-btn"
+        mat-icon-button
+        [disabled]="!selectedValue || selectedValue === '__separator__'"
+        title="Submit selection"
+      >
         <mat-icon>send</mat-icon>
       </button>
     </div>

@@ -19,13 +19,13 @@ import { MatButtonModule } from '@angular/material/button'
       <button mat-stroked-button color="warn" (click)="confirmDelete()">Delete</button>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
-      <button mat-button (click)="close()">Close</button>
+      <button matButton (click)="close()">Close</button>
     </mat-dialog-actions>
     @if (isDeleteConfirm) {
       <div class="delete-confirm">
         <p>Are you sure you want to delete this thread?</p>
-        <button mat-raised-button color="warn" (click)="doDelete()">Delete</button>
-        <button mat-button (click)="isDeleteConfirm = false">Cancel</button>
+        <button matButton="filled" color="warn" (click)="doDelete()">Delete</button>
+        <button matButton (click)="isDeleteConfirm = false">Cancel</button>
       </div>
     }
   `,
