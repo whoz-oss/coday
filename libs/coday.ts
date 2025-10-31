@@ -16,6 +16,7 @@ import { AgentService } from './agent'
 import { CodayOptions } from './options'
 import { CodayServices } from './coday-services'
 import { AiConfigService } from './service/ai-config.service'
+import * as path from 'path'
 
 const MAX_ITERATIONS = 100
 
@@ -29,7 +30,7 @@ export class Coday {
   initialPrompts: string[] = []
   aiThreadService: ThreadStateService
   private killed: boolean = false
-  private aiClientProvider: AiClientProvider
+  private readonly aiClientProvider: AiClientProvider
 
   constructor(
     public readonly interactor: Interactor,
@@ -224,10 +225,11 @@ export class Coday {
 
     // Send messages directly - no conversion needed
     for (const message of sortedMessages) {
-      if (message instanceof MessageEvent) {
-        // Send MessageEvent directly - frontend now handles rich content
-        this.interactor.sendEvent(message)
-      } else if (message instanceof ToolRequestEvent || message instanceof ToolResponseEvent) {
+      if (
+        message instanceof MessageEvent ||
+        message instanceof ToolRequestEvent ||
+        message instanceof ToolResponseEvent
+      ) {
         this.interactor.sendEvent(message)
       }
     }
@@ -246,6 +248,22 @@ export class Coday {
     if (this.context) {
       this.context.oneshot = this.options.oneshot
       this.context.fileReadOnly = this.options.fileReadOnly
+
+      // Set thread files root if thread is selected
+      if (this.options.thread && this.options.project) {
+        // Thread files are stored in the config directory, not the project directory
+        // Path: ~/.coday/projects/{projectName}/threads/{threadId}-files
+        this.context.threadFilesRoot = path.join(
+          this.options.configDir,
+          'projects',
+          this.options.project,
+          'threads',
+          `${this.options.thread}-files`
+        )
+
+        this.interactor.debug(`[CODAY] Thread files root: ${this.context.threadFilesRoot}`)
+        // Note: Directory creation is handled lazily by ThreadFileService on first use
+      }
 
       // Create and store the aiConfig service (late init)
       this.services.aiConfig = new AiConfigService(this.services.user, this.services.project)

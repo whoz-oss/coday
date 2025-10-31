@@ -20,6 +20,7 @@ import { registerMessageRoutes } from './message.routes'
 import { registerUserRoutes } from './user.routes'
 import { ProjectService } from './services/project.service'
 import { ThreadService } from './services/thread.service'
+import { ThreadFileService } from './services/thread-file.service'
 import { ProjectFileRepository } from '@coday/repository/project-file.repository'
 
 const app = express()
@@ -47,9 +48,7 @@ debugLog(
 )
 
 // Create single webhook service instance for all clients
-const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
-const configPath = codayOptions.configDir ?? defaultConfigPath
-const webhookService = new WebhookService(configPath)
+const webhookService = new WebhookService(codayOptions.configDir)
 debugLog('INIT', 'Webhook service initialized')
 // Middleware to parse JSON bodies with increased limit for image uploads
 app.use(express.json({ limit: '20mb' }))
@@ -114,7 +113,7 @@ if (process.env.BUILD_ENV === 'development') {
   app.use(express.static(clientPath))
 }
 // Initialize project service for REST API endpoints
-const projectRepository = new ProjectFileRepository(configPath)
+const projectRepository = new ProjectFileRepository(codayOptions.configDir)
 
 // Resolve the actual project ID (with hash) if we're in default mode
 let resolvedProjectName = codayOptions.project
@@ -148,16 +147,19 @@ if (resolvedProjectName && !codayOptions.forcedProject) {
 
 const projectService = new ProjectService(projectRepository, resolvedProjectName, codayOptions.forcedProject)
 
+// Initialize thread file service for REST API endpoints
+const projectsDir = path.join(codayOptions.configDir, 'projects')
+const threadFileService = new ThreadFileService(projectsDir)
+
 // Initialize thread service for REST API endpoints
-const projectsDir = path.join(configPath, 'projects')
-const threadService = new ThreadService(projectRepository, projectsDir)
+const threadService = new ThreadService(projectRepository, projectsDir, threadFileService)
 
 // Initialize the thread-based Coday manager for SSE architecture
 const threadCodayManager = new ThreadCodayManager(logger, webhookService, projectService, threadService)
 
 // Initialize config service registry for REST API endpoints
 const configInteractor = new ServerInteractor('config-api')
-const configRegistry = new ConfigServiceRegistry(configPath, configInteractor)
+const configRegistry = new ConfigServiceRegistry(codayOptions.configDir, configInteractor)
 
 /**
  * Extract username for authentication and logging purposes
@@ -186,7 +188,7 @@ registerWebhookRoutes(app, webhookService, getUsername, threadService, threadCod
 registerProjectRoutes(app, projectService)
 
 // Register thread management routes
-registerThreadRoutes(app, threadService, threadCodayManager, getUsername, codayOptions)
+registerThreadRoutes(app, threadService, threadFileService, threadCodayManager, getUsername, codayOptions)
 
 // Register message management routes
 registerMessageRoutes(app, threadCodayManager, getUsername)
@@ -255,10 +257,7 @@ PORT_PROMISE.then(async (PORT) => {
   try {
     debugLog('CLEANUP', 'Starting thread cleanup service...')
 
-    // Construire le chemin vers les projets (même logique que ProjectService)
-    const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
-    const configPath = codayOptions.configDir ?? defaultConfigPath
-    const projectsConfigPath = path.join(configPath, 'projects')
+    const projectsConfigPath = path.join(codayOptions.configDir, 'projects')
 
     cleanupService = new ThreadCleanupService(projectsConfigPath, logger)
     await cleanupService.start()

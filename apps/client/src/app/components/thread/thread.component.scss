@@ -1,10 +1,92 @@
 .thread-container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
   width: 100%;
   position: relative;
-  background: var(--color-background);
+  background: transparent; // Background is now on file-drawer-container
+}
+
+// Floating file drawer toggle button (top-right)
+.file-drawer-toggle-btn {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 100;
+  width: 56px;
+  height: 56px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-backdrop-blur);
+  color: var(--color-primary);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  transition: all 0.2s ease;
+
+  &:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    background: var(--color-bg-hover);
+  }
+
+  &.has-files {
+    animation: pulse-subtle 3s infinite;
+  }
+
+  // Badge styling - subtle and discrete
+  ::ng-deep .mat-badge-content {
+    font-size: 10px;
+    font-weight: 600;
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+    right: 4px;
+    top: 4px;
+    background-color: var(--color-primary);
+    color: white;
+  }
+
+  // Smaller badge on hover for subtlety
+  &:not(:hover) ::ng-deep .mat-badge-content {
+    font-size: 9px;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+  }
+}
+
+@keyframes pulse-subtle {
+  0%,
+  100% {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+  50% {
+    box-shadow: 0 4px 16px rgba(var(--color-primary-rgb, 25, 118, 210), 0.3);
+  }
+}
+
+// File drawer container (Material sidenav) - wraps entire component
+.file-drawer-container {
+  height: 100vh;
+  width: 100%;
+  background: var(--color-bg); // Preserve gradient background
+
+  ::ng-deep .mat-drawer-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    background: transparent; // Let parent background show through
+  }
+
+  ::ng-deep .mat-drawer {
+    width: 360px;
+    max-width: 90vw;
+    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+  }
+
+  ::ng-deep .mat-drawer-backdrop {
+    display: none; // No backdrop since hasBackdrop is false
+  }
 }
 
 // Connection status banner
@@ -124,6 +206,12 @@
   font-weight: 500;
 }
 
+.drag-hint {
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+  opacity: 0.8;
+}
+
 // Responsive adjustments
 @media (max-width: 768px) {
   .chat-center,
@@ -138,13 +226,27 @@
   .drag-icon {
     font-size: 3rem;
   }
+
+  // Mobile: full width drawer
+  .file-drawer-container ::ng-deep .mat-drawer {
+    width: 100vw;
+    max-width: 100vw;
+  }
+
+  // Mobile: adjust button position
+  .file-drawer-toggle-btn {
+    top: 12px;
+    right: 12px;
+  }
 }
 
 // Print styles
 @media print {
   .connection-status,
   .input-section,
-  .drag-overlay {
+  .drag-overlay,
+  .file-drawer-toggle-btn,
+  .file-drawer-container {
     display: none !important;
   }
 
