@@ -165,6 +165,9 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
    * Initialize or reinitialize the thread connection
    */
   private async initializeThreadConnection(): Promise<void> {
+    // Reset messages when switching threads
+    this.codayService.resetMessages()
+
     console.log('[THREAD] Initializing connection for thread:', this.threadId)
 
     // Initialize file exchange state for this thread
@@ -225,9 +228,6 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
         this.threadState.refreshThreadList()
       }
     })
-
-    // Reset messages when switching threads
-    this.codayService.resetMessages()
 
     // Connect services (to avoid circular dependency)
     this.codayService.setTabTitleService(this.titleService)
