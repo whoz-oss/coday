@@ -1,6 +1,6 @@
 <!-- Floating Action Button to toggle sidenav -->
 @if (!isOpen) {
-  <button mat-fab class="sidenav-toggle-btn" (click)="toggle()" title="Menu" type="button">
+  <button mat-icon-button class="sidenav-toggle-btn" (click)="toggle()" title="Menu" type="button">
     <mat-icon>menu</mat-icon>
   </button>
 
@@ -20,7 +20,14 @@
 
 <!-- Material Sidenav Container -->
 <mat-sidenav-container class="sidenav-container" [hasBackdrop]="false">
-  <mat-sidenav mode="push" position="start" [opened]="isOpen" (closed)="close()" class="app-sidenav">
+  <mat-sidenav
+    mode="push"
+    position="start"
+    [opened]="isOpen"
+    [disableClose]="true"
+    (closed)="close()"
+    class="app-sidenav"
+  >
     <!-- Sidenav Header with Project Selector -->
     <div class="sidenav-header">
       <button mat-icon-button (click)="close()" title="Close menu">

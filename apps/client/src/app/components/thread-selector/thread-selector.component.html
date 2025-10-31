@@ -27,6 +27,8 @@
                   class="thread-item"
                   [title]="thread.name || 'Generating name...'"
                   (click)="selectThread(thread.id); $event.preventDefault()"
+                  (keydown.enter)="selectThread(thread.id); $event.preventDefault()"
+                  (keydown.space)="selectThread(thread.id); $event.preventDefault()"
                   role="menuitem"
                   tabindex="0"
                 >

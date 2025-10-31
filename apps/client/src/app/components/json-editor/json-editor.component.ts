@@ -1,14 +1,14 @@
-import { Component, inject, Inject } from '@angular/core'
+import { Component, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MatIcon } from '@angular/material/icon'
 import { MatButton, MatIconButton } from '@angular/material/button'
 import {
   MAT_DIALOG_DATA,
+  MatDialogActions,
+  MatDialogContent,
   MatDialogRef,
   MatDialogTitle,
-  MatDialogContent,
-  MatDialogActions,
 } from '@angular/material/dialog'
 
 export type ConfigType = 'user' | 'project'
@@ -42,14 +42,15 @@ export interface JsonEditorData {
 })
 export class JsonEditorComponent {
   private dialogRef = inject(MatDialogRef<JsonEditorComponent>)
+  public data: JsonEditorData = inject(MAT_DIALOG_DATA)
 
   jsonContent: string
   errorMessage = ''
   title: string
 
-  constructor(@Inject(MAT_DIALOG_DATA) public data: JsonEditorData) {
-    this.jsonContent = data.initialContent
-    this.title = data.title || this.getDefaultTitle(data.configType, data.projectName)
+  constructor() {
+    this.jsonContent = this.data.initialContent
+    this.title = this.data.title || this.getDefaultTitle(this.data.configType, this.data.projectName)
   }
 
   /**
