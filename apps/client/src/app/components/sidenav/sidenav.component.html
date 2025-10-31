@@ -1,6 +1,6 @@
 <!-- Floating Action Button to toggle sidenav -->
 @if (!isOpen) {
-  <button mat-icon-button class="sidenav-toggle-btn" (click)="toggle()" title="Menu" type="button">
+  <button mat-fab class="sidenav-toggle-btn" (click)="toggle()" title="Menu" type="button">
     <mat-icon>menu</mat-icon>
   </button>
 
@@ -23,7 +23,7 @@
   <mat-sidenav mode="push" position="start" [opened]="isOpen" (closed)="close()" class="app-sidenav">
     <!-- Sidenav Header with Project Selector -->
     <div class="sidenav-header">
-      <button mat-icon-button (click)="close()" class="close-btn" title="Close menu">
+      <button mat-icon-button (click)="close()" title="Close menu">
         <mat-icon>chevron_left</mat-icon>
       </button>
       <img
@@ -47,7 +47,7 @@
 
     <!-- New Thread Link - Always Visible -->
     <div class="new-thread-section">
-      <a class="new-thread-link" (click)="createNewThread()" role="button" tabindex="0">
+      <a class="new-thread-link" (click)="createNewThread(); $event.preventDefault()" role="button" tabindex="0">
         <mat-icon fontSet="material-icons-outlined">play_circle</mat-icon>
         <span class="new-thread-text">Start a new thread</span>
       </a>
@@ -81,11 +81,12 @@
           </div>
         } @else {
           <!-- Normal mode: show section toggle -->
-          <button
+          <a
             class="section-toggle"
             [class.active]="expandedSections['threads']"
-            (click)="toggleSection('threads')"
-            type="button"
+            (click)="toggleSection('threads'); $event.preventDefault()"
+            role="button"
+            tabindex="0"
           >
             @if (expandedSections['threads']) {
               <mat-icon class="arrow-icon expanded">keyboard_arrow_up</mat-icon>
@@ -104,7 +105,7 @@
                 <mat-icon>search</mat-icon>
               </button>
             }
-          </button>
+          </a>
         }
         @if (expandedSections['threads']) {
           <div class="section-content threads">
@@ -120,11 +121,12 @@
 
       <!-- Configuration Section -->
       <div class="section-container" [class.expanded]="expandedSections['config']">
-        <button
+        <a
           class="section-toggle"
           [class.active]="expandedSections['config']"
-          (click)="toggleSection('config')"
-          type="button"
+          (click)="toggleSection('config'); $event.preventDefault()"
+          role="button"
+          tabindex="0"
         >
           @if (expandedSections['config']) {
             <mat-icon class="arrow-icon expanded">keyboard_arrow_up</mat-icon>
@@ -132,7 +134,7 @@
             <mat-icon class="section-icon">tune</mat-icon>
           }
           <span class="section-label">Preferences</span>
-        </button>
+        </a>
         @if (expandedSections['config']) {
           <div class="section-content">
             <!-- Options -->
@@ -144,10 +146,15 @@
       </div>
 
       <div class="section-container">
-        <button class="section-toggle" (click)="openUserConfig(); $event.stopPropagation()" type="button">
+        <a
+          class="section-toggle"
+          (click)="openUserConfig(); $event.preventDefault(); $event.stopPropagation()"
+          role="button"
+          tabindex="0"
+        >
           <mat-icon class="section-icon">settings</mat-icon>
           <span class="section-label">User Configuration</span>
-        </button>
+        </a>
       </div>
 
       <div class="section-container">
@@ -168,30 +175,35 @@
         <!-- Project Config -->
         @if (selectedProjectName()) {
           <div class="section-container">
-            <button class="section-toggle" (click)="openProjectConfig(); $event.stopPropagation()" type="button">
+            <a
+              class="section-toggle"
+              (click)="openProjectConfig(); $event.preventDefault(); $event.stopPropagation()"
+              role="button"
+              tabindex="0"
+            >
               <mat-icon class="section-icon">settings_applications</mat-icon>
               <span class="section-label">Project Configuration</span>
-            </button>
+            </a>
           </div>
         } @else {
           <div class="section-container">
-            <button
-              class="section-toggle"
-              (click)="openProjectConfig(); $event.stopPropagation()"
-              type="button"
-              disabled
-            >
+            <a class="section-toggle disabled" role="button" tabindex="-1" aria-disabled="true">
               <mat-icon class="section-icon">settings_applications</mat-icon>
               <span class="section-label">Project config (No project)</span>
-            </button>
+            </a>
           </div>
         }
         <!-- Webhooks - Admin only -->
         <div class="section-container">
-          <button class="section-toggle" (click)="openWebhooks(); $event.stopPropagation()" type="button">
+          <a
+            class="section-toggle"
+            (click)="openWebhooks(); $event.preventDefault(); $event.stopPropagation()"
+            role="button"
+            tabindex="0"
+          >
             <mat-icon class="section-icon">webhook</mat-icon>
             <span class="section-label">Webhooks</span>
-          </button>
+          </a>
         </div>
       }
     </div>
@@ -208,40 +220,8 @@
   <div class="error-notification" role="alert">
     <mat-icon class="error-icon">warning</mat-icon>
     <span class="error-text">{{ configErrorMessage }}</span>
-    <button class="error-close" (click)="configErrorMessage = ''" aria-label="Close error message" mat-icon-button>
+    <button mat-icon-button class="error-close" (click)="configErrorMessage = ''" aria-label="Close error message">
       <mat-icon>close</mat-icon>
     </button>
   </div>
 }
-
-<!-- JSON Editor Modals -->
-<app-json-editor
-  [configType]="'user'"
-  [isOpen]="isUserConfigOpen"
-  [initialContent]="userConfigJson"
-  [isLoading]="isLoadingUserConfig"
-  [isSaving]="isSavingUserConfig"
-  (save)="onUserConfigSave($event)"
-  (closeEditor)="onUserConfigCancel()"
-></app-json-editor>
-
-@if (selectedProjectName()) {
-  <app-json-editor
-    [configType]="'project'"
-    [projectName]="selectedProjectName()!"
-    [isOpen]="isProjectConfigOpen"
-    [initialContent]="projectConfigJson"
-    [isLoading]="isLoadingProjectConfig"
-    [isSaving]="isSavingProjectConfig"
-    (save)="onProjectConfigSave($event)"
-    (closeEditor)="onProjectConfigCancel()"
-  ></app-json-editor>
-}
-
-<!-- Webhook Manager Modal -->
-<app-webhook-manager
-  [isOpen]="isWebhooksOpen"
-  [availableProjects]="getAvailableProjects()"
-  (isOpenChange)="isWebhooksOpen = $event"
-  (closeModal)="isWebhooksOpen = false"
-></app-webhook-manager>

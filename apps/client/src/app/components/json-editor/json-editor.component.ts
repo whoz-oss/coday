@@ -1,64 +1,69 @@
-import { Component, Input, Output, EventEmitter, OnChanges } from '@angular/core'
+import { Component, inject, Inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
+import { MatIcon } from '@angular/material/icon'
+import { MatButton, MatIconButton } from '@angular/material/button'
+import {
+  MAT_DIALOG_DATA,
+  MatDialogRef,
+  MatDialogTitle,
+  MatDialogContent,
+  MatDialogActions,
+} from '@angular/material/dialog'
 
 export type ConfigType = 'user' | 'project'
 
+export interface JsonEditorData {
+  configType: ConfigType
+  projectName?: string
+  initialContent: string
+  title?: string
+}
+
 /**
- * Pure presentation component for JSON editing
- * Does not handle API calls - parent component is responsible for data loading/saving
- * 
- * TODO: Migrate to Angular Signals in future iteration:
- * - Replace @Input() with input() signal inputs
- * - Replace @Output() with output() signal outputs
- * - See: https://angular.dev/guide/signals/inputs
+ * JSON Editor Dialog Component
+ * Opened via MatDialog service with configuration data
  */
 @Component({
   selector: 'app-json-editor',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [
+    CommonModule,
+    FormsModule,
+    MatIcon,
+    MatIconButton,
+    MatButton,
+    MatDialogTitle,
+    MatDialogContent,
+    MatDialogActions,
+  ],
   templateUrl: './json-editor.component.html',
-  styleUrl: './json-editor.component.scss'
+  styleUrl: './json-editor.component.scss',
 })
-export class JsonEditorComponent implements OnChanges {
-  // TODO: Migrate to signal inputs when ready
-  // configType = input<ConfigType>('user')
-  // projectName = input<string | undefined>()
-  // isOpen = input(false)
-  // initialContent = input('')
-  // isLoading = input(false)
-  // isSaving = input(false)
-  
-  @Input() configType: ConfigType = 'user'
-  @Input() projectName?: string
-  @Input() isOpen = false
-  @Input() initialContent = ''
-  @Input() isLoading = false
-  @Input() isSaving = false
-  
-  // TODO: Migrate to signal outputs when ready
-  // isOpenChange = output<boolean>()
-  // save = output<any>()
-  // closeEditor = output<void>()
-  
-  @Output() isOpenChange = new EventEmitter<boolean>()
-  @Output() save = new EventEmitter<any>()
-  @Output() closeEditor = new EventEmitter<void>()
+export class JsonEditorComponent {
+  private dialogRef = inject(MatDialogRef<JsonEditorComponent>)
 
-  jsonContent = ''
+  jsonContent: string
   errorMessage = ''
+  title: string
 
-  /**
-   * Update local content when initialContent changes
-   */
-  ngOnChanges(): void {
-    if (this.initialContent) {
-      this.jsonContent = this.initialContent
-    }
+  constructor(@Inject(MAT_DIALOG_DATA) public data: JsonEditorData) {
+    this.jsonContent = data.initialContent
+    this.title = data.title || this.getDefaultTitle(data.configType, data.projectName)
   }
 
   /**
-   * Validate and emit parsed JSON
+   * Get default title based on config type
+   */
+  private getDefaultTitle(configType: ConfigType, projectName?: string): string {
+    if (configType === 'user') {
+      return 'User Configuration'
+    }
+    return `Project Configuration: ${projectName || 'Unknown'}`
+  }
+
+  /**
+   * Validate and return parsed JSON
    */
   onSave(): void {
     this.errorMessage = ''
@@ -72,25 +77,14 @@ export class JsonEditorComponent implements OnChanges {
       return
     }
 
-    // Emit parsed JSON object
-    this.save.emit(parsedConfig)
+    // Close dialog and return parsed JSON
+    this.dialogRef.close(parsedConfig)
   }
 
   /**
-   * Cancel and close editor
+   * Cancel and close dialog
    */
   onCancel(): void {
-    this.errorMessage = ''
-    this.closeEditor.emit()
-  }
-
-  /**
-   * Get title based on config type
-   */
-  getTitle(): string {
-    if (this.configType === 'user') {
-      return 'User Configuration'
-    }
-    return `Project Configuration: ${this.projectName || 'Unknown'}`
+    this.dialogRef.close()
   }
 }

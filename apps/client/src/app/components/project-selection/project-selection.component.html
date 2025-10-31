@@ -33,18 +33,11 @@
             [isVisible]="true"
             (choiceSelected)="selectProject($event)"
           ></app-choice-select>
-
-          <!-- Create button (visible only if no forced project) -->
-          @if (showCreateButton()) {
-            <div class="create-action">
-              <button class="create-project-btn" (click)="openCreateForm()">➕ Create New Project</button>
-            </div>
-          }
         } @else {
           <!-- No projects available -->
           <div class="no-projects-container">
             <p class="no-projects-text">No projects available.</p>
-            <button class="create-project-btn" (click)="openCreateForm()">➕ Create Your First Project</button>
+            <button matButton="filled" color="primary" (click)="openCreateForm()">Create your first project</button>
           </div>
         }
       </div>

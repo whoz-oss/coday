@@ -1,70 +1,48 @@
-<!-- Modal Backdrop and Container -->
-@if (isOpen) {
-<div class="modal-backdrop-wrapper" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-  <button 
-    class="modal-backdrop" 
-    (click)="onCloseClick()"
-    aria-label="Close modal"
-    type="button"
-  ></button>
-  <div class="modal-container">
-    <!-- Modal Header -->
-    <div class="modal-header">
-      @if (currentView === 'form') {
-        <button 
-          class="btn-back" 
-          (click)="onFormCancel()"
-          title="Back to list"
-        >
-          ← Back
-        </button>
-      }
-      <h1 class="modal-title" id="modal-title">
-        {{ currentView === 'list' ? 'Webhook Management' : (editingWebhook ? 'Edit Webhook' : 'Create Webhook') }}
-      </h1>
-      <button class="btn-close" (click)="onCloseClick()" title="Close">✕</button>
-    </div>
-    
-    <!-- Success Message -->
-    @if (successMessage) {
-      <div class="success-message">
-        ✅ {{ successMessage }}
-      </div>
-    }
-    
-    <!-- Error Message (global) -->
-    @if (errorMessage && currentView === 'list') {
-      <div class="error-message">
-        ❌ {{ errorMessage }}
-      </div>
-    }
-    
-    <!-- Modal Body -->
-    <div class="modal-body">
-      <!-- List View -->
-      @if (currentView === 'list') {
-        <app-webhook-list
-          [webhooks]="webhooks"
-          [isLoading]="isLoading"
-          [errorMessage]="errorMessage"
-          (create)="onCreateClick()"
-          (edit)="onEditClick($event)"
-          (deleteWebhook)="onDeleteClick($event)"
-          (copyUrl)="onCopyUrl($event)"
-        ></app-webhook-list>
-      }
-      
-      <!-- Form View -->
-      @if (currentView === 'form') {
-        <app-webhook-form
-          [webhook]="editingWebhook"
-          [isSaving]="isSaving"
-          [availableProjects]="availableProjects"
-          (save)="onFormSave($event)"
-          (cancelForm)="onFormCancel()"
-        ></app-webhook-form>
-      }
-    </div>
-  </div>
-</div>
-}
+<h2 mat-dialog-title class="dialog-header">
+  @if (currentView === 'form') {
+    <button matButton (click)="onFormCancel()" title="Back to list" class="back-button">
+      <mat-icon>arrow_back</mat-icon>
+      Back
+    </button>
+  }
+  <span class="dialog-title">{{ getTitle() }}</span>
+  <button mat-icon-button (click)="onCloseClick()" title="Close" class="close-button">
+    <mat-icon>close</mat-icon>
+  </button>
+</h2>
+
+<mat-dialog-content>
+  <!-- Success Message -->
+  @if (successMessage) {
+    <div class="success-message">✅ {{ successMessage }}</div>
+  }
+
+  <!-- Error Message (global) -->
+  @if (errorMessage && currentView === 'list') {
+    <div class="error-message">❌ {{ errorMessage }}</div>
+  }
+
+  <!-- List View -->
+  @if (currentView === 'list') {
+    <app-webhook-list
+      [webhooks]="webhooks"
+      [isLoading]="isLoading"
+      [errorMessage]="errorMessage"
+      (create)="onCreateClick()"
+      (edit)="onEditClick($event)"
+      (deleteWebhook)="onDeleteClick($event)"
+      (copyUrl)="onCopyUrl($event)"
+    ></app-webhook-list>
+  }
+
+  <!-- Form View -->
+  @if (currentView === 'form') {
+    <app-webhook-form
+      [webhook]="editingWebhook"
+      [isSaving]="isSaving"
+      [availableProjects]="[]"
+      (save)="onFormSave($event)"
+      (cancelForm)="onFormCancel()"
+    ></app-webhook-form>
+  }
+</mat-dialog-content>
