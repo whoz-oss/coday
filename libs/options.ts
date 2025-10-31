@@ -113,14 +113,19 @@ export function parseCodayOptions(): CodayOptions {
   const logFolder: string | undefined = argv.log_folder
 
   // Determine project selection mode
-  if (argv.local) {
+  if (argv.coday_project) {
+    // Project direct selection has precedence on all other
+    projectName = argv.coday_project
+    forcedProject = true
+    console.log(`Project mode: restricting to project '${projectName}'`)
+  } else if (argv.local) {
     // --local: force current directory as ONLY project (restricted mode)
     projectName = path.basename(process.cwd())
     forcedProject = true
     console.log(`Local mode: restricting to project '${projectName}'`)
   } else if (argv.multi) {
     // --multi: traditional mode, no default project
-    projectName = argv.coday_project || (argv._[0] as string)
+    projectName = ''
     forcedProject = false
     console.log('Multi-project mode: no default project selection')
   } else {
