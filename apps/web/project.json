@@ -9,7 +9,7 @@
     "serve": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": ["node index.js --no_auth"],
+        "commands": ["node index.js"],
         "parallel": false,
         "cwd": "{projectRoot}"
       }

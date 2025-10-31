@@ -1,4 +1,5 @@
 import * as path from 'path'
+import * as os from 'os'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
 
@@ -6,7 +7,7 @@ import { hideBin } from 'yargs/helpers'
 export interface Argv {
   coday_project?: string
   coday_config_dir?: string
-  no_auth?: boolean
+  auth?: boolean
   prompt?: string[]
   oneshot?: boolean
   debug?: boolean
@@ -28,8 +29,8 @@ export interface CodayOptions {
   thread?: string
   prompts: string[]
   fileReadOnly: boolean
-  configDir?: string
-  noAuth: boolean
+  configDir: string // Always defined with default value
+  auth: boolean
   agentFolders: string[]
   noLog: boolean
   logFolder?: string
@@ -56,9 +57,9 @@ export function parseCodayOptions(): CodayOptions {
       type: 'boolean',
       description: 'Run in one-shot mode (non-interactive)',
     })
-    .option('no auth', {
+    .option('auth', {
       type: 'boolean',
-      description: 'Disables web auth check',
+      description: 'Enables web auth check (expects x-forwarded-email header from auth proxy)',
     })
     .option('local', {
       type: 'boolean',
@@ -96,26 +97,35 @@ export function parseCodayOptions(): CodayOptions {
     })
     .help().argv as Argv
   let projectName: string | undefined
-  let forcedProject = false
+  let forcedProject: boolean
 
   const prompts: string[] = (argv.prompt || argv._.slice(1)) as string[]
   const oneshot: boolean = !!argv.oneshot
   const fileReadOnly: boolean = !!argv.fileReadOnly
-  const configDir: string | undefined = argv.coday_config_dir
-  const noAuth: boolean = !!argv.no_auth
+
+  // Set configDir with default value
+  const defaultConfigDir = path.join(os.homedir(), '.coday')
+  const configDir: string = argv.coday_config_dir || defaultConfigDir
+
+  const auth: boolean = !!argv.auth
   const debug: boolean = !!argv.debug
   const noLog: boolean = !argv.log // Inverted: log=false means noLog=true
   const logFolder: string | undefined = argv.log_folder
 
   // Determine project selection mode
-  if (argv.local) {
+  if (argv.coday_project) {
+    // Project direct selection has precedence on all other
+    projectName = argv.coday_project
+    forcedProject = true
+    console.log(`Project mode: restricting to project '${projectName}'`)
+  } else if (argv.local) {
     // --local: force current directory as ONLY project (restricted mode)
     projectName = path.basename(process.cwd())
     forcedProject = true
     console.log(`Local mode: restricting to project '${projectName}'`)
   } else if (argv.multi) {
     // --multi: traditional mode, no default project
-    projectName = argv.coday_project || (argv._[0] as string)
+    projectName = ''
     forcedProject = false
     console.log('Multi-project mode: no default project selection')
   } else {
@@ -132,7 +142,7 @@ export function parseCodayOptions(): CodayOptions {
     prompts,
     fileReadOnly,
     configDir,
-    noAuth,
+    auth,
     agentFolders: (argv.agentFolders || []) as string[],
     noLog,
     logFolder,

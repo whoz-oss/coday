@@ -1,3 +1,69 @@
+## 0.41.1 (2025-10-31)
+
+### 🩹 Fixes
+
+- #297 prevent server from running with system/service usernames ([#298](https://github.com/whoz-oss/coday/pull/298), [#297](https://github.com/whoz-oss/coday/issues/297))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.41.0 (2025-10-31)
+
+### 🚀 Features
+
+- #282 open external links in new tab with icon and aria-label ([#294](https://github.com/whoz-oss/coday/pull/294), [#282](https://github.com/whoz-oss/coday/issues/282))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.40.1 (2025-10-31)
+
+### 🩹 Fixes
+
+- manage coday_project option over others ([#296](https://github.com/whoz-oss/coday/pull/296))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.40.0 (2025-10-31)
+
+### 🚀 Features
+
+- #264 invert auth option from --no_auth to --auth ([#292](https://github.com/whoz-oss/coday/pull/292), [#264](https://github.com/whoz-oss/coday/issues/264))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.39.0 (2025-10-31)
+
+### 🚀 Features
+
+- #143 file upload download per thread ([#293](https://github.com/whoz-oss/coday/pull/293), [#143](https://github.com/whoz-oss/coday/issues/143))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.38.2 (2025-10-30)
+
+### 🚀 Features
+
+- **jira:** create dedicated function for adding internal notes ([209d912](https://github.com/whoz-oss/coday/commit/209d912))
+- **jira:** create dedicated function for adding internal notes ([#286](https://github.com/whoz-oss/coday/pull/286))
+
+### 🩹 Fixes
+
+- anthropic and gemini client default creation on the fly ([#291](https://github.com/whoz-oss/coday/pull/291), [#265](https://github.com/whoz-oss/coday/issues/265))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+- vincent-audibert-whoz
+
 ## 0.38.1 (2025-10-29)
 
 ### 🩹 Fixes
