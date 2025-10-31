@@ -162,6 +162,28 @@ const configInteractor = new ServerInteractor('config-api')
 const configRegistry = new ConfigServiceRegistry(codayOptions.configDir, configInteractor)
 
 /**
+ * System and service account usernames that are forbidden for security reasons.
+ * These accounts are commonly used in containers, CI/CD, and system services
+ * and should never be used for multi-user applications as they would create
+ * a shared account for all users.
+ */
+const FORBIDDEN_USERNAMES = [
+  'root', // Unix/Linux superuser
+  'admin', // Common administrative account
+  'administrator', // Windows administrator
+  'system', // Windows system account
+  'daemon', // Unix daemon account
+  'nobody', // Unix unprivileged account
+  'node', // Common Node.js container user
+  'app', // Generic application user
+  'service', // Generic service account
+  'docker', // Docker-related accounts
+  'www-data', // Web server user (nginx, apache)
+  'nginx', // Nginx user
+  'apache', // Apache user
+] as const
+
+/**
  * Extract username for authentication and logging purposes
  *
  * In authenticated mode, extracts username from the x-forwarded-email header
@@ -170,9 +192,22 @@ const configRegistry = new ConfigServiceRegistry(codayOptions.configDir, configI
  *
  * @param req - Express request object containing headers
  * @returns Username string for logging and thread ownership
+ * @throws Error if username is a system/service account (security protection)
  */
 function getUsername(req: express.Request): string {
-  return codayOptions.auth ? (req.headers[EMAIL_HEADER] as string) : os.userInfo().username
+  const username = codayOptions.auth ? (req.headers[EMAIL_HEADER] as string) : os.userInfo().username
+
+  // Security check: prevent running as system/service accounts
+  if (FORBIDDEN_USERNAMES.includes(username.toLowerCase() as any)) {
+    throw new Error(
+      `Security error: Cannot run with username "${username}". ` +
+        'This appears to be a system or service account. ' +
+        'When running locally, ensure you are running as a regular user account. ' +
+        'When running in production, ensure authentication is properly configured with --auth flag.'
+    )
+  }
+
+  return username
 }
 
 // Register user information routes
