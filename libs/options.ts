@@ -1,4 +1,5 @@
 import * as path from 'path'
+import * as os from 'os'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
 
@@ -28,7 +29,7 @@ export interface CodayOptions {
   thread?: string
   prompts: string[]
   fileReadOnly: boolean
-  configDir?: string
+  configDir: string // Always defined with default value
   noAuth: boolean
   agentFolders: string[]
   noLog: boolean
@@ -96,12 +97,16 @@ export function parseCodayOptions(): CodayOptions {
     })
     .help().argv as Argv
   let projectName: string | undefined
-  let forcedProject = false
+  let forcedProject: boolean
 
   const prompts: string[] = (argv.prompt || argv._.slice(1)) as string[]
   const oneshot: boolean = !!argv.oneshot
   const fileReadOnly: boolean = !!argv.fileReadOnly
-  const configDir: string | undefined = argv.coday_config_dir
+
+  // Set configDir with default value
+  const defaultConfigDir = path.join(os.homedir(), '.coday')
+  const configDir: string = argv.coday_config_dir || defaultConfigDir
+
   const noAuth: boolean = !!argv.no_auth
   const debug: boolean = !!argv.debug
   const noLog: boolean = !argv.log // Inverted: log=false means noLog=true

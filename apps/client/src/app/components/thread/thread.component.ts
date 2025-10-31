@@ -18,6 +18,11 @@ import { ChatHistoryComponent } from '../chat-history/chat-history.component'
 import { ChatMessage } from '../chat-message/chat-message.component'
 import { ChatTextareaComponent } from '../chat-textarea/chat-textarea.component'
 import { ChoiceOption, ChoiceSelectComponent } from '../choice-select/choice-select.component'
+import { FileExchangeDrawerComponent } from '../file-exchange-drawer/file-exchange-drawer.component'
+import { MatSidenavModule } from '@angular/material/sidenav'
+import { MatIconModule } from '@angular/material/icon'
+import { MatButtonModule } from '@angular/material/button'
+import { MatBadgeModule } from '@angular/material/badge'
 
 import { CodayService } from '../../core/services/coday.service'
 import { ConnectionStatus } from '../../core/services/event-stream.service'
@@ -25,6 +30,7 @@ import { PreferencesService } from '../../services/preferences.service'
 import { TabTitleService } from '../../services/tab-title.service'
 import { ThreadStateService } from '../../core/services/thread-state.service'
 import { ImageUploadService } from '../../services/image-upload.service'
+import { FileExchangeStateService } from '../../core/services/file-exchange-state.service'
 
 /**
  * ThreadComponent - Dedicated component for displaying and interacting with a conversation thread
@@ -45,7 +51,16 @@ import { ImageUploadService } from '../../services/image-upload.service'
 @Component({
   selector: 'app-thread',
   standalone: true,
-  imports: [ChatHistoryComponent, ChatTextareaComponent, ChoiceSelectComponent],
+  imports: [
+    ChatHistoryComponent,
+    ChatTextareaComponent,
+    ChoiceSelectComponent,
+    FileExchangeDrawerComponent,
+    MatSidenavModule,
+    MatIconModule,
+    MatButtonModule,
+    MatBadgeModule,
+  ],
   templateUrl: './thread.component.html',
   styleUrl: './thread.component.scss',
 })
@@ -54,7 +69,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   @Input({ required: true }) projectName!: string
   @Input({ required: true }) threadId!: string
 
-  private destroy$ = new Subject<void>()
+  private readonly destroy$ = new Subject<void>()
 
   @ViewChild('inputSection') inputSection!: ElementRef<HTMLElement>
 
@@ -76,6 +91,14 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   // Drag and drop state
   isDragOver: boolean = false
 
+  // File exchange drawer state
+  isFileDrawerOpen: boolean = false
+
+  // Connect to file exchange state for file count
+  get fileCount(): number {
+    return this.fileExchangeState.fileCount()
+  }
+
   // First message from implicit thread creation
   private pendingFirstMessage: string | null = null
   private subscriptions: any[] = []
@@ -88,6 +111,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   private readonly router = inject(Router)
   private readonly threadState = inject(ThreadStateService)
   private readonly imageUploadService = inject(ImageUploadService)
+  private readonly fileExchangeState = inject(FileExchangeStateService)
 
   ngOnInit(): void {
     console.log('[THREAD] Initializing with project:', this.projectName, 'thread:', this.threadId)
@@ -129,6 +153,9 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
    */
   private initializeThreadConnection(): void {
     console.log('[THREAD] Initializing connection for thread:', this.threadId)
+
+    // Initialize file exchange state for this thread
+    this.fileExchangeState.initializeForThread(this.projectName, this.threadId)
 
     // Subscribe to conversation state
     this.codayService.messages$.pipe(takeUntil(this.destroy$)).subscribe((messages) => {
@@ -233,6 +260,9 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
     this.destroy$.next()
     this.destroy$.complete()
 
+    // Clear file exchange state
+    this.fileExchangeState.clear()
+
     // Clean up subscriptions
     this.subscriptions.forEach((sub) => sub.unsubscribe())
     this.subscriptions = []
@@ -268,6 +298,17 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   onInputHeightChanged(height: number): void {
     console.log('[THREAD] Input height changed:', height)
     this.inputSectionHeight = height
+  }
+
+  // File drawer methods
+  toggleFileDrawer(): void {
+    console.log('[THREAD] Toggling file drawer')
+    this.isFileDrawerOpen = !this.isFileDrawerOpen
+  }
+
+  closeFileDrawer(): void {
+    console.log('[THREAD] Closing file drawer')
+    this.isFileDrawerOpen = false
   }
 
   // Drag and Drop Event Handlers for image uploads
@@ -308,17 +349,26 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
       return
     }
 
-    // Filter image files
+    // Separate images from other files
     const imageFiles = this.imageUploadService.filterImageFiles(files)
-    console.log('[THREAD] Image files to upload:', imageFiles.length)
+    const otherFiles = Array.from(files).filter((file) => !file.type.startsWith('image/'))
 
-    if (imageFiles.length === 0) {
-      this.showUploadError('No supported image files found. Supported formats: PNG, JPEG, GIF, WebP')
-      return
+    console.log('[THREAD] Image files:', imageFiles.length, 'Other files:', otherFiles.length)
+
+    // Upload images (existing behavior - added to conversation)
+    if (imageFiles.length > 0) {
+      this.uploadFilesSequentially(imageFiles, 0)
     }
 
-    // Upload each image file sequentially
-    this.uploadFilesSequentially(imageFiles, 0)
+    // Upload other files to exchange space
+    if (otherFiles.length > 0) {
+      this.uploadFilesToExchangeSpace(otherFiles)
+    }
+
+    // Show error if no valid files
+    if (imageFiles.length === 0 && otherFiles.length === 0) {
+      this.showUploadError('No supported files found')
+    }
   }
 
   /**
@@ -377,6 +427,40 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   }
 
   /**
+   * Upload non-image files to the exchange space
+   */
+  private async uploadFilesToExchangeSpace(files: File[]): Promise<void> {
+    for (const file of files) {
+      console.log('[THREAD] Uploading to exchange space:', file.name)
+      this.uploadStatus = { message: `Uploading ${file.name}...`, isError: false }
+
+      const result = await this.fileExchangeState.uploadFile(file)
+
+      if (result.success) {
+        console.log('[THREAD] Upload to exchange space successful:', file.name)
+        this.uploadStatus = {
+          message: `✓ ${file.name} uploaded to exchange space`,
+          isError: false,
+        }
+
+        // Note: Backend already adds a message to the conversation,
+        // so we don't need to send one here
+
+        // Auto-hide success message after 3 seconds
+        setTimeout(() => {
+          if (!this.uploadStatus.isError) {
+            this.uploadStatus = { message: '', isError: false }
+          }
+        }, 3000)
+      } else {
+        console.error('[THREAD] Upload to exchange space failed:', file.name, result.error)
+        this.showUploadError(`Failed to upload ${file.name}: ${result.error}`)
+        break // Stop on error
+      }
+    }
+  }
+
+  /**
    * Subscribe to the first InviteEvent to send the pending first message
    */
   private subscribeToFirstInvite(): void {
@@ -412,7 +496,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
     window.addEventListener('afterprint', this.handleAfterPrint)
   }
 
-  private handleBeforePrint = (): void => {
+  private readonly handleBeforePrint = (): void => {
     console.log('[PRINT] Before print event triggered')
     const printTechnicalMessages = this.preferencesService.getPrintTechnicalMessages()
     console.log('[PRINT] Print technical messages:', printTechnicalMessages)
@@ -424,7 +508,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
     }
   }
 
-  private handleAfterPrint = (): void => {
+  private readonly handleAfterPrint = (): void => {
     console.log('[PRINT] After print event triggered')
     // Clean up the class after printing
     document.body.classList.remove('print-include-technical')

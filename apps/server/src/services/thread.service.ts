@@ -3,6 +3,7 @@ import { ThreadFileRepository } from '@coday/repository/thread-file.repository'
 import { ProjectRepository } from '@coday/repository/project.repository'
 import { AiThread } from '@coday/ai-thread/ai-thread'
 import { ThreadSummary } from '@coday/ai-thread/ai-thread.types'
+import { ThreadFileService } from './thread-file.service'
 
 /**
  * Server-side thread management service.
@@ -21,7 +22,8 @@ export class ThreadService {
 
   constructor(
     private readonly projectRepository: ProjectRepository,
-    private readonly projectsDir: string
+    private readonly projectsDir: string,
+    private readonly threadFileService: ThreadFileService
   ) {}
 
   /**
@@ -175,14 +177,21 @@ export class ThreadService {
   }
 
   /**
-   * Delete a thread
+   * Delete a thread and its associated files directory
    * @param projectName Project name
    * @param threadId Thread identifier
    * @returns true if deleted, false if not found
    */
   async deleteThread(projectName: string, threadId: string): Promise<boolean> {
     const repository = this.getThreadRepository(projectName)
-    return await repository.delete(projectName, threadId)
+    const deleted = await repository.delete(projectName, threadId)
+
+    if (deleted) {
+      // Also delete the thread files directory if it exists
+      await this.threadFileService.deleteThreadFiles(projectName, threadId)
+    }
+
+    return deleted
   }
 
   /**

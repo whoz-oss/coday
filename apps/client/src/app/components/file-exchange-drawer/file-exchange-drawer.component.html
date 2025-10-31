@@ -1,0 +1,56 @@
+<div class="file-drawer-container">
+  <!-- Header -->
+  <div class="drawer-header">
+    <div class="header-left">
+      <h3 class="drawer-title">Exchange</h3>
+      <span class="file-count">({{ files().length }})</span>
+    </div>
+    <button mat-icon-button class="close-btn" (click)="close()" title="Close" type="button">
+      <mat-icon>chevron_right</mat-icon>
+    </button>
+  </div>
+
+  <!-- File list -->
+  <div class="file-list">
+    @if (isLoading()) {
+      <div class="file-loading">
+        <span class="loading-spinner"></span>
+        <span class="loading-text">Loading files...</span>
+      </div>
+    } @else {
+      @if (files().length === 0) {
+        <div class="file-empty">
+          <mat-icon class="empty-icon">folder_open</mat-icon>
+          <p class="empty-text">No files in exchange space</p>
+          <p class="empty-hint">Upload files to share with the agent</p>
+        </div>
+      } @else {
+        @for (file of files(); track file.filename) {
+          <div class="file-item">
+            <div class="file-info">
+              <mat-icon class="file-icon">{{ getFileIcon(file.filename) }}</mat-icon>
+              <div class="file-details">
+                <span class="file-name" [title]="file.filename">{{ file.filename }}</span>
+                <span class="file-meta">{{ formatSize(file.size) }} • {{ formatDate(file.lastModified) }}</span>
+              </div>
+            </div>
+            <div class="file-actions">
+              <button
+                mat-icon-button
+                class="action-btn download-btn"
+                (click)="download(file)"
+                title="Download"
+                type="button"
+              >
+                <mat-icon>download</mat-icon>
+              </button>
+              <button mat-icon-button class="action-btn delete-btn" (click)="delete(file)" title="Delete" type="button">
+                <mat-icon>delete</mat-icon>
+              </button>
+            </div>
+          </div>
+        }
+      }
+    }
+  </div>
+</div>
