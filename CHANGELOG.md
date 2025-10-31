@@ -1,3 +1,13 @@
+## 0.40.0 (2025-10-31)
+
+### 🚀 Features
+
+- #264 invert auth option from --no_auth to --auth ([#292](https://github.com/whoz-oss/coday/pull/292), [#264](https://github.com/whoz-oss/coday/issues/264))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.39.0 (2025-10-31)
 
 ### 🚀 Features
