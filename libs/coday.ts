@@ -1,17 +1,10 @@
-import { AiThread } from './ai-thread/ai-thread'
 import { ThreadStateService } from '@coday/ai-thread/thread-state.service'
-import { RunStatus, ThreadMessage } from './ai-thread/ai-thread.types'
+import { RunStatus } from './ai-thread/ai-thread.types'
 import { AiHandler, ConfigHandler } from './handler'
 import { HandlerLooper } from './handler-looper'
 import { AiClientProvider } from './integration/ai/ai-client-provider'
 import { CommandContext, Interactor } from './model'
-import {
-  InviteEventDefault,
-  MessageContent,
-  MessageEvent,
-  ToolRequestEvent,
-  ToolResponseEvent,
-} from '@coday/coday-events'
+import { InviteEventDefault, MessageContent, MessageEvent } from '@coday/coday-events'
 import { AgentService } from './agent'
 import { CodayOptions } from './options'
 import { CodayServices } from './coday-services'
