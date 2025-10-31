@@ -1,3 +1,13 @@
+## 0.39.0 (2025-10-31)
+
+### 🚀 Features
+
+- #143 file upload download per thread ([#293](https://github.com/whoz-oss/coday/pull/293), [#143](https://github.com/whoz-oss/coday/issues/143))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.38.2 (2025-10-30)
 
 ### 🚀 Features
