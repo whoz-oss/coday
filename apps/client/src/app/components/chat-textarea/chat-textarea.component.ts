@@ -179,7 +179,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
         // Mode: Enter to send, Shift+Enter for new line
         if (!event.shiftKey && !event.metaKey && !event.ctrlKey) {
           event.preventDefault()
-          this.sendMessage()
+          // Allow sending via keyboard even with empty message
+          this.sendMessage(true)
         }
         // Shift+Enter: allow default behavior (new line)
       } else {
@@ -189,7 +190,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
         if (correctModifier && !event.shiftKey) {
           event.preventDefault()
-          this.sendMessage()
+          // Allow sending via keyboard even with empty message
+          this.sendMessage(true)
         }
         // Simple Enter: allow default behavior (new line)
       }
@@ -201,12 +203,18 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     this.adjustTextareaHeight()
   }
 
-  sendMessage() {
-    if (!this.isDisabled && !this.isLocallyDisabled && this.message.trim()) {
+  sendMessage(allowEmpty: boolean = false) {
+    // Allow sending empty messages only via keyboard shortcut (allowEmpty=true)
+    // Button click always requires non-empty message (allowEmpty=false, default)
+    const messageToSend = this.message.trim()
+    const canSend = !this.isDisabled && !this.isLocallyDisabled && (allowEmpty || messageToSend)
+
+    if (canSend) {
       // Immediately set local disable flag to prevent any further input
       this.isLocallyDisabled = true
 
-      this.messageSubmitted.emit(this.message.trim())
+      // Send the trimmed message (can be empty string if allowEmpty=true)
+      this.messageSubmitted.emit(messageToSend)
       this.message = ''
 
       // Reset height after clearing message

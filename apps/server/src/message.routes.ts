@@ -82,10 +82,18 @@ export function registerMessageRoutes(
           return
         }
 
-        const result = await aiThread.getMessages(undefined, undefined)
-        const messages = result.messages
+        // Get ALL messages without filtering (for history loading)
+        const messages = aiThread.getAllMessages()
 
-        res.status(200).json(messages)
+        res.status(200).json({
+          messages,
+          threadInfo: {
+            id: aiThread.id,
+            name: aiThread.name,
+            messageCount: messages.length,
+            modifiedDate: aiThread.modifiedDate,
+          },
+        })
       } catch (error) {
         console.error('Error listing messages:', error)
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
