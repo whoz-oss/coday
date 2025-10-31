@@ -128,6 +128,18 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
 
     // Initialize the thread connection
     this.initializeThreadConnection()
+
+    // Listen for thread changes from ThreadStateService
+    // This handles cases where user selects a different thread from the list
+    this.threadState.selectedThread$.pipe(takeUntil(this.destroy$)).subscribe((thread) => {
+      if (thread && thread.id !== this.threadId) {
+        console.log('[THREAD] Thread changed via service:', thread.id)
+        // Update local threadId
+        this.threadId = thread.id
+        // Reinitialize connection with new thread
+        this.initializeThreadConnection()
+      }
+    })
   }
 
   ngOnChanges(changes: SimpleChanges): void {
