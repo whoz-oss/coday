@@ -181,6 +181,7 @@ const FORBIDDEN_USERNAMES = [
   'www-data', // Web server user (nginx, apache)
   'nginx', // Nginx user
   'apache', // Apache user
+  'ansible', // Ansible user
 ] as const
 
 /**
