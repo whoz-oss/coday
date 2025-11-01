@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="apps/client/public/CODAY-Logo.png" alt="Coday Logo" width="100"/>
+<img src="apps/client/public/CODAY-Logo.png" alt="Coday Logo" width="200"/>
 
 # Coday
 
-**A lightweight agentic framework for AI-assisted development**
+**A lightweight agentic framework**
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
@@ -96,203 +96,47 @@ This command will:
 - [Architecture](doc/ARCHITECTURE.md) (technical)
 - [Development Workflow](doc/DEV_WORKFLOW.md) (contributors)
 
-**📚 [Complete Documentation Index](docs/README.md)**
-
 ## Configuration Example
 
 Create a `coday.yaml` in your project root:
 
 ```yaml
-version: 1
-name: my-project
-path: /path/to/project
-
 description: |
   Brief description of your project for AI context.
 
 ai:
-  defaultProvider: anthropic
-  defaultModel: claude-3-5-sonnet-20241022
+  - name: anthropic
+    apiKey: sk-**ABCD
+  - name: openai
+    apiKey: sk-**EFGH    
 
 agents:
   - name: backend-expert
-    role: backend specialist
-    systemInstructions: |
+    description: backend specialist
+    instructions: |
       You specialize in backend development.
       Focus on API design, database optimization, and performance.
 ```
 
 **📖 See [Project Configuration](docs/04-configuration/project-config.md) for complete guide.**
 
-## Development
-
-### Running in Development Mode
-
-For contributors working on Coday itself:
-
-```bash
-# Clone repository
-git clone https://github.com/whoz-oss/coday.git
-cd coday
-pnpm install
-
-# Web interface with live reload
-pnpm web:dev
-
-# Desktop app
-pnpm desktop
-
-# Run tests
-pnpm test
-
-# Lint code
-pnpm lint
-```
-
 ### Contributing
 
 We welcome contributions! Please see:
 - [Development Workflow](doc/DEV_WORKFLOW.md) - Contribution guidelines
-- [Handler Design](doc/HANDLER_DESIGN.md) - Command handler patterns
 - [Architecture](doc/ARCHITECTURE.md) - System architecture
 
 ### Release Process
 
 Releases are automated via GitHub Actions based on conventional commits. See [Automated Release Process](doc/AUTOMATED_RELEASE.md) for details.
 
-## Examples
-
-### Basic Conversation
-
-```
-You: Can you explain the authentication flow in this project?
-Agent: [Analyzes code and explains the JWT-based authentication system]
-
-You: Add rate limiting to the login endpoint
-Agent: [Implements rate limiting with Redis, following project patterns]
-```
-
-### Multi-Agent Collaboration
-
-```
-You: @sway Implement user registration
-Sway: [Implements feature]
-
-You: @archay Review the architecture
-Archay: [Reviews and suggests improvements]
-
-You: @sway Apply the feedback
-Sway: [Refines implementation]
-```
-
-**📖 More patterns**: [Working with Agents](docs/03-using-coday/working-with-agents.md)
-
-## Common Commands
-
-In the Coday web interface:
-
-```bash
-# Configuration
-config ai list              # List AI providers
-config ai add               # Add AI provider
-config mcp list             # List MCP integrations
-
-# Memory
-memory list                 # Show stored memories
-memory add "fact"           # Store important fact
-
-# Help
-help                        # Show available commands
-```
-
 ## Supported AI Providers
 
 - ✅ OpenAI (GPT-4, GPT-4o, etc.)
 - ✅ Anthropic (Claude 3.5 Sonnet, etc.)
 - ✅ Any OpenAI-compatible API
-- ✅ Custom providers via configuration
-
-**📖 Setup guide**: [AI Configuration](docs/04-configuration/user-config.md)
-
-## MCP Integration
-
-Extend Coday with Model Context Protocol servers:
-
-```yaml
-mcp:
-  servers:
-    - id: filesystem
-      name: Filesystem Access
-      command: npx
-      args:
-        - "@modelcontextprotocol/server-filesystem"
-        - "/path/to/project"
-```
-
-**📖 Full guide**: [MCP Integrations](docs/04-configuration/mcp-integrations.md)
-
-## Troubleshooting
-
-### Common Issues
-
-**Coday not starting?**
-- Ensure Node.js 22+ is installed: `node --version`
-- Check port 3000 is available
-- Try clearing npx cache: `npx clear-npx-cache`
-
-**Agent not responding?**
-- Check API key configuration
-- Verify network connection
-- Review rate limits
-
-**Configuration not loading?**
-- Verify YAML syntax
-- Check file location (project root)
-- Ensure `version: 1` is present
-
-**📖 Complete troubleshooting**: [Troubleshooting Guide](docs/troubleshooting.md)
-
-## Project Structure
-
-```
-coday/
-├── apps/
-│   ├── client/          # Angular web interface
-│   ├── server/          # Express backend
-│   └── desktop/         # Electron wrapper
-├── libs/                # Shared libraries
-├── docs/                # User documentation
-└── doc/                 # Technical documentation
-```
-
-## Why npx?
-
-Using `npx --yes @whoz-oss/coday-web` means:
-- ✅ No installation required
-- ✅ Always latest version
-- ✅ No global dependencies
-- ✅ Works anywhere npm is installed
-- ✅ Simple one-command launch
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
-## Links
-
-- **Repository**: https://github.com/whoz-oss/coday
-- **Issues**: https://github.com/whoz-oss/coday/issues
-- **Documentation**: [docs/README.md](docs/README.md)
-- **npm Package**: `@whoz-oss/coday-web`
-
-## Acknowledgments
-
-Coday is developed and maintained by [Whoz](https://github.com/whoz-oss) with contributions from the open-source community.
-
----
-
-<div align="center">
-
-**Ready to start?** → `npx --yes @whoz-oss/coday-web`
-
-</div>
