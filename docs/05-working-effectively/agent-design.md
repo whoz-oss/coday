@@ -212,6 +212,176 @@ agents:
 
 ## Advanced Design Techniques
 
+### Hierarchical Agent Delegation
+
+One of the most powerful patterns in agent design is creating hierarchies where coordinating agents delegate specialized tasks to subordinate agents. This mirrors real-world team structures and enables sophisticated multi-agent workflows.
+
+#### The DELEGATE Integration
+
+Coday provides a built-in `DELEGATE` integration that allows agents to delegate tasks to other agents:
+
+```yaml
+name: architect
+role: System architect
+integrations:
+  DELEGATE:
+    - developer
+    - reviewer
+    - tester
+systemInstructions: |
+  You are a system architect who coordinates implementation work.
+  
+  You can delegate tasks to specialized agents:
+  - developer: For implementation work
+  - reviewer: For code review
+  - tester: For writing tests
+  
+  When breaking down architectural work, delegate specific tasks
+  to the appropriate specialist agent.
+```
+
+#### How Delegation Works
+
+**Technical Flow:**
+1. Coordinating agent calls `delegate` tool with task description and target agent name
+2. Coday creates a forked thread containing the conversation history for context
+3. Target agent receives the task with full context
+4. Target agent completes the work and returns results
+5. Results merge back into the main thread
+6. Coordinating agent continues with the results
+
+**Key Properties:**
+- **Context preservation**: Delegated agent sees full conversation history
+- **Isolated execution**: Work happens in a forked thread
+- **Result integration**: Completed work merges back seamlessly
+- **Stack depth control**: Prevents infinite delegation loops
+
+#### Example: Archay Architecture Agent
+
+The Archay agent demonstrates sophisticated delegation patterns:
+
+```yaml
+name: Archay
+description: Expert Software Architecture agent, coordinates a team
+integrations:
+  DELEGATE:
+    - Sway      # Implementation specialist
+    - Octopuss  # GitHub operations specialist
+
+systemInstructions: |
+  You are Archay, a thoughtful software architecture agent.
+  
+  Collaboration with specialized agents is central to your effectiveness.
+  You orchestrate architectural implementation by delegating to:
+  
+  **Sway** - For implementation work:
+  - Request Sway to analyze existing patterns before decisions
+  - Engage in multi-step collaborations:
+    1. Ask Sway to research optimal approaches
+    2. Use insights to define architecture
+    3. Delegate implementation back to Sway
+  
+  **Octopuss** - For GitHub operations:
+  - Delegate creation of issues and pull requests
+  - Provide detailed context for GitHub operations
+  - Let Octopuss handle repository management
+  
+  This coordination leverages each agent's strengths while
+  maintaining architectural coherence.
+```
+
+#### Delegation Patterns
+
+**1. Sequential Delegation (Pipeline)**
+
+```yaml
+# Coordinator agent
+systemInstructions: |
+  When implementing a new feature:
+  
+  1. Delegate to @planner: "Analyze requirements and create implementation plan"
+  2. Review the plan yourself
+  3. Delegate to @developer: "Implement according to this plan: [plan]"
+  4. Delegate to @tester: "Write tests for this implementation"
+  5. Delegate to @reviewer: "Review the implementation and tests"
+```
+
+**2. Parallel Consultation**
+
+```yaml
+systemInstructions: |
+  When making architectural decisions:
+  
+  1. Delegate to @backend: "How would you implement this on the backend?"
+  2. Delegate to @frontend: "How would you implement this on the frontend?"
+  3. Synthesize both perspectives into coherent architecture
+  4. Delegate implementation to each specialist
+```
+
+**3. Iterative Refinement**
+
+```yaml
+systemInstructions: |
+  When refactoring code:
+  
+  1. Delegate to @analyzer: "Analyze current code and identify issues"
+  2. Review analysis and define refactoring strategy
+  3. Delegate to @refactorer: "Refactor according to strategy"
+  4. Delegate to @reviewer: "Review the refactoring"
+  5. If issues found, delegate back to @refactorer with feedback
+  6. Repeat until satisfactory
+```
+
+**4. Research and Implementation**
+
+```yaml
+systemInstructions: |
+  When implementing new patterns:
+  
+  1. Delegate to @researcher: "Research best practices for [pattern]"
+  2. Evaluate research findings
+  3. Delegate to @implementer: "Implement [pattern] following these guidelines: [guidelines]"
+  4. Delegate to @documenter: "Document this new pattern"
+```
+
+#### Benefits of Hierarchical Delegation
+
+**Specialization:**
+- Each agent focuses on what it does best
+- Deep expertise in narrow domains
+- Consistent behavior within domain
+
+**Scalability:**
+- Complex tasks broken into manageable pieces
+- Parallel work possible
+- Easy to add new specialist agents
+
+**Maintainability:**
+- Clear responsibilities per agent
+- Changes isolated to appropriate agents
+- Coordination logic separate from implementation
+
+**Quality:**
+- Multiple perspectives on same problem
+- Built-in review processes
+- Specialized quality checks
+
+#### When to Use Delegation
+
+**Use delegation when:**
+- Task complexity exceeds single agent's optimal scope
+- Multiple specialized perspectives needed
+- Work naturally decomposes into subtasks
+- You want different agents for different project phases
+
+**Don't use delegation when:**
+- Task is simple and focused
+- Single agent has all necessary expertise
+- Overhead outweighs benefits
+- Real-time interaction needed (delegation has latency)
+
+**Note**: Delegation is one way agents collaborate. Another powerful approach is giving agents the right tools to work autonomously. See [Agent Tooling](./agent-tooling.md) for strategies on tool integration and self-verification capabilities.
+
 ### Layered Instructions
 
 Use project description + agent instructions for layering:
@@ -264,33 +434,6 @@ systemInstructions: |
   - Make small, incremental changes
   - Keep tests passing throughout
   - Improve tests alongside code
-```
-
-### Personality and Tone
-
-Agents can have different communication styles:
-
-```yaml
-# Concise and direct
-systemInstructions: |
-  Communication style:
-  - Be concise and direct
-  - Focus on facts and solutions
-  - Minimize explanations unless asked
-
-# Detailed and educational  
-systemInstructions: |
-  Communication style:
-  - Explain your reasoning
-  - Provide context and background
-  - Help the user learn, not just solve
-
-# Cautious and thorough
-systemInstructions: |
-  Communication style:
-  - Highlight potential issues
-  - Suggest alternatives
-  - Ask clarifying questions when uncertain
 ```
 
 ## Agent Composition
@@ -443,5 +586,6 @@ systemInstructions: |
 ## Next Steps
 
 - [Agent Configuration](../04-configuration/agents.md): Technical details of agent configuration
+- [Agent Tooling](./agent-tooling.md): Give agents the tools they need to work autonomously
 - [Prompting Strategies](./prompting-strategies.md): Work effectively with your agents
 - [Iterative Workflows](./iterative-workflows.md): Use agents in iterative processes

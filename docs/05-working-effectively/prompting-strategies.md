@@ -2,6 +2,188 @@
 
 How you communicate with agents significantly impacts the quality of responses. This guide covers effective prompting techniques for working with Coday agents.
 
+## The Foundation: Providing Context Efficiently
+
+Before diving into prompting techniques, it's essential to address a practical bottleneck: **your ability to provide context quickly and accurately**. The quality of agent responses depends heavily on the information you provide, but typing detailed context can be slow and error-prone.
+
+### Input Methods
+
+**Speech-to-Text Integration**
+- Coday includes built-in voice input capabilities
+- Alternatively, use your OS accessibility features (dictation)
+- Significantly faster than typing for explanatory context
+- Particularly effective for describing problems, goals, and workflows
+
+**Copy-Paste for Precision**
+- Variable names, method names, class names, service names
+- File paths and error messages
+- Configuration values and API endpoints
+- Eliminates typos that could mislead the agent
+
+**Keyboard Proficiency**
+- If typing is your primary input method, consider improving typing skills
+- Touch typing enables faster, more detailed prompts
+- Reduces cognitive load when formulating complex requests
+
+### Critical Data to Provide Accurately
+
+**Identifiers** (always copy-paste):
+- `UserAuthenticationService` not "user auth service"
+- `processPaymentTransaction()` not "the payment method"
+- `src/api/v2/handlers/webhook.ts` not "the webhook file"
+
+**Why This Matters**
+
+Ambiguous or incorrect identifiers force the agent to guess, leading to:
+- Solutions for the wrong component
+- Hallucinated method names or APIs
+- Time wasted on clarification rounds
+
+Invest in efficient input methods early—it pays dividends throughout your work with AI agents.
+
+## Understanding LLM Psychology
+
+Large Language Models are trained to provide confident, immediate answers. This creates specific behavioral patterns that affect how you should interact with them.
+
+### The "Answer Immediately" Pressure
+
+**What's Happening:**
+LLMs are optimized to generate responses that *appear* correct on first attempt. This creates an internal pressure to:
+- Provide a complete answer immediately
+- Fill gaps with plausible-sounding information (hallucination)
+- Commit to a solution path early, then rationalize it
+
+**Implications for Prompting:**
+
+**❌ High-Pressure Prompts:**
+```
+Implement the complete authentication system with all edge cases handled.
+It must be production-ready.
+```
+This amplifies the pressure to appear comprehensive, increasing hallucination risk.
+
+**✅ Exploratory Prompts:**
+```
+What are the key components we'd need for an authentication system?
+Let's discuss the options before implementing.
+```
+This allows the agent to explore without committing prematurely.
+
+### When to Be Directive vs. Open
+
+**Be Directive When:**
+- Requirements are crystal clear
+- Following established patterns
+- Making simple, well-defined changes
+- Time is critical and scope is narrow
+
+```
+Add input validation to the email field: must match email regex,
+max 255 characters, trim whitespace. Use the validator from utils/validation.ts
+```
+
+**Be Open When:**
+- Exploring solutions to complex problems
+- Architectural decisions with trade-offs
+- Uncertain about best approach
+- Learning about existing code
+
+```
+We need to handle file uploads up to 100MB. What are our options?
+Consider trade-offs between memory usage, processing time, and complexity.
+```
+
+### Breaking the Hallucination Loop
+
+**The Problem:**
+Once an LLM commits to an incorrect path, it tends to defend and elaborate on that path rather than backtrack.
+
+**Prevention Strategy:**
+
+1. **Start with Questions:**
+```
+"What information do you need to solve this?"
+"What are the potential approaches?"
+"What are the risks with each approach?"
+```
+
+2. **Validate Before Implementation:**
+```
+"Before implementing, let's verify: does the User model actually have a 'preferences' field?
+Check the schema first."
+```
+
+3. **Invite Course Correction:**
+```
+"If any of these assumptions are wrong, let me know before proceeding:
+- We're using PostgreSQL
+- The users table has a 'metadata' JSON column
+- We want to avoid migrations for now"
+```
+
+4. **Break Into Stages:**
+```
+Stage 1: "Analyze the current authentication flow"
+Stage 2: "Identify where rate limiting should be added"
+Stage 3: "Propose an implementation approach"
+Stage 4: "Implement the solution"
+```
+
+### Multi-Turn Conversations vs. Mega-Prompts
+
+**Mega-Prompt Approach** (Higher Risk):
+```
+Implement a complete user management system with authentication,
+authorization, profile management, password reset, email verification,
+rate limiting, and audit logging. Use best practices.
+```
+
+Problems:
+- Agent must make many assumptions
+- Errors compound across components
+- Difficult to course-correct mid-implementation
+- High cognitive load on the agent
+
+**Multi-Turn Approach** (Lower Risk):
+```
+Turn 1: "Let's design a user management system. What are the core components?"
+Turn 2: "Good. Let's start with authentication. What's the flow?"
+Turn 3: "I prefer JWT. How should we handle refresh tokens?"
+Turn 4: "That works. Now implement the login endpoint following that design."
+```
+
+Benefits:
+- Validate assumptions at each stage
+- Catch errors early
+- Build shared understanding
+- Reduce hallucination risk
+- Agent has clear, focused tasks
+
+### Embracing Suggestions and Options
+
+**Fixed Mindset:**
+```
+"Implement it using Redis for caching."
+```
+
+**Growth Mindset:**
+```
+"I was thinking Redis for caching, but I'm open to alternatives.
+What would you recommend considering we already use PostgreSQL?"
+```
+
+The agent might reveal:
+- PostgreSQL has adequate caching for your scale
+- You'd need to manage another service (Redis)
+- Simpler solution with query optimization
+
+**Key Principle:**
+LLMs have broad knowledge but lack your specific context. Collaboration works best:
+- You provide context and constraints
+- Agent provides options and trade-offs
+- You make informed decisions
+- Agent implements with precision
+
 ## Core Principles
 
 ### 1. Be Specific

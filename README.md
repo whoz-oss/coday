@@ -89,6 +89,7 @@ This command will:
 - [Detecting Hallucinations](docs/05-working-effectively/detecting-hallucinations.md)
 - [Iterative Workflows](docs/05-working-effectively/iterative-workflows.md)
 - [Agent Design](docs/05-working-effectively/agent-design.md)
+- [Agent Tooling](docs/05-working-effectively/agent-tooling.md)
 
 ### 🆘 Help
 - [Troubleshooting](docs/troubleshooting.md)
