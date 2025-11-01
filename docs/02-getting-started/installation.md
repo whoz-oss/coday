@@ -1,44 +1,62 @@
 # Installation
 
-This guide walks you through installing Coday and setting up your environment.
+This guide walks you through installing and launching Coday for the first time.
 
 ## Prerequisites
 
 - **Node.js**: Version 22 or higher
 - **npm**: Comes with Node.js (no additional installation needed)
+- **ripgrep**: Fast text search utility (`brew install ripgrep` on macOS)
+- **AI Provider API Key**: At least one of:
+  - `ANTHROPIC_API_KEY` environment variable
+  - `OPENAI_API_KEY` environment variable
 
-## Installation
+## Setting Up API Keys
 
-### Standard Installation (Recommended)
+The recommended approach is to set environment variables before launching Coday:
 
-No installation needed! Simply run:
+```bash
+# For Anthropic (Claude)
+export ANTHROPIC_API_KEY="your-api-key-here"
+
+# For OpenAI (GPT)
+export OPENAI_API_KEY="your-api-key-here"
+```
+
+To make these permanent, add them to your shell configuration file (`~/.zshrc`, `~/.bashrc`, etc.):
+
+```bash
+echo 'export ANTHROPIC_API_KEY="your-api-key-here"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+**Alternative**: You can also configure API keys through the Coday web interface after launch (see [User Configuration](../04-configuration/user-config.md)).
+
+## Launching Coday
+
+No installation needed! Simply run from any directory:
 
 ```bash
 npx --yes @whoz-oss/coday-web
 ```
 
-This will:
+This command will:
 1. Download the latest version (if needed)
-2. Start the web server
-3. Open your browser automatically
+2. Start the web server on an available port (typically 3000-3010)
+3. Display the URL in your terminal
 
-The first time you run it, you'll need to:
+**Open your browser** and navigate to the URL shown in the terminal (usually `http://localhost:3000`).
 
-### 1. Configure AI Provider
+## First Launch
 
-You'll need an API key from at least one AI provider (OpenAI, Anthropic, etc.). Configuration can be done through:
-- The web interface (recommended for first-time setup)
-- Configuration commands (see [User Configuration](../04-configuration/user-config.md))
+When you first open Coday in your browser, the interface will be ready to use. Coday automatically creates a project based on the directory where you ran the command.
 
-The setup wizard will guide you through this on first launch.
+You can optionally:
+- Create additional projects from the interface
+- Select different project directories
+- Configure custom agents and settings
 
-### 2. Select or Create a Project
-
-Coday works with existing code projects. You'll need to:
-- Point Coday to an existing project directory, or
-- Create a new project directory
-
-The setup wizard will guide you through this process.
+See [First Conversation](./first-conversation.md) to start using Coday.
 
 ## Alternative: Development Installation
 
@@ -56,16 +74,8 @@ pnpm install
 pnpm web:dev
 ```
 
-## Verify Installation
+## Next Steps
 
-To verify everything is working:
-
-```bash
-npx --yes @whoz-oss/coday-web
-```
-
-If your browser opens with the Coday interface, you're ready to proceed to [Launching Coday](./launching.md).
-
-## Troubleshooting
-
-If you encounter issues during installation, see the [Troubleshooting](../troubleshooting.md) guide.
+- **[First Conversation](./first-conversation.md)** - Start your first conversation with an agent
+- **[Interface Basics](../03-using-coday/interface-basics.md)** - Learn the web interface
+- **[Configuration](../04-configuration/configuration-levels.md)** - Customize Coday for your needs
