@@ -1,14 +1,35 @@
-# Mental Model
+# Introduction to Coday
 
-Before diving into using Coday, it's important to understand how to think about working with AI agents in this framework.
+Coday is a lightweight agentic framework designed to help developers work with AI agents on existing, scoped projects. It provides as much autonomy as desired through contextual understanding and tool integration, while remaining agnostic to AI providers and deployment environments.
 
-## Conversation as the Interface
+## Core Philosophy
+
+Coday runs locally and interfaces with various AI APIs (OpenAI, Anthropic, etc.) and tools to provide a comprehensive assistance experience, from simple queries to fully autonomous work capabilities. The framework emphasizes:
+
+- **Conversation-first**: Natural dialogue with AI agents through a modern web interface
+- **Project-scoped**: Works within the context of your existing codebase
+- **Provider-agnostic**: Switch between AI providers (OpenAI, Anthropic, etc.) without changing your workflow
+- **Extensible**: Native tools and MCP (Model Context Protocol) integrations
+
+## Key Features
+
+- **Web Interface**: Modern browser-based interface with rich formatting and features
+- **Configurable Agents**: Define custom agents with specific roles, prompts, and tools
+- **Three-level Configuration**: User, Project, and Coday-level settings
+- **Memory System**: Agents can remember important information across conversations
+- **Tool Integration**: Built-in tools plus MCP protocol support for extensibility
+
+## How to Think About Coday
+
+Before diving into usage, understanding the mental model will help you work more effectively with AI agents.
+
+### Conversation as the Interface
 
 Unlike traditional development tools with menus and buttons, Coday is fundamentally **conversation-based**. You interact with agents through natural language, explaining what you want, asking questions, and iterating on solutions together.
 
 ![conversation_1.png](../images/conversation_1.png)
 
-## Agents as Specialized Collaborators
+### Agents as Specialized Collaborators
 
 Think of agents not as generic chatbots, but as specialized team members:
 - Each agent has a specific role (e.g., software developer, architect, product manager)
@@ -16,7 +37,7 @@ Think of agents not as generic chatbots, but as specialized team members:
 - Different agents may approach the same problem differently based on their configuration
 - Agents can be organized in a hierarchy to tackle more complex tasks
 
-## Context is Everything
+### Context is Everything
 
 Agents operate within the context of:
 - **Your project**: Code, structure, configuration
@@ -28,7 +49,7 @@ The more relevant context an agent has, the better its responses.
 
 ![presentation.png](../images/presentation.png)
 
-## Iterative Collaboration
+### Iterative Collaboration
 
 Working with Coday is iterative:
 1. You describe what you want
@@ -38,7 +59,7 @@ Working with Coday is iterative:
 
 This is not about getting perfect answers on the first try—it's about guiding the agent toward the right solution through dialogue.
 
-## Autonomy vs Control
+### Autonomy vs Control
 
 Coday offers a spectrum from full control to full autonomy:
 - **Guided**: You review every step before execution
@@ -49,4 +70,4 @@ You choose the level based on the task complexity and your comfort level.
 
 ## Next Steps
 
-Now that you understand how to think about Coday, you're ready to [get started](../02-getting-started/installation.md).
+Ready to get started? Head to [Installation](../02-getting-started/installation.md) to set up Coday on your machine.

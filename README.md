@@ -66,8 +66,7 @@ This command will:
 ## Documentation
 
 ### 🚀 Getting Started
-- [What is Coday?](docs/01-introduction/what-is-coday.md)
-- [Mental Model](docs/01-introduction/mental-model.md)
+- [Introduction](docs/01-introduction/introduction.md) - What is Coday and how to think about it
 - [Installation](docs/02-getting-started/installation.md)
 - [Launching Coday](docs/02-getting-started/launching.md)
 - [First Conversation](docs/02-getting-started/first-conversation.md)
