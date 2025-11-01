@@ -2,10 +2,26 @@
 
 As conversations grow, managing context and narrative becomes important. This guide covers techniques for keeping conversations focused and effective.
 
+## Understanding Threads
+
+In Coday, conversations are organized into **threads**. Each thread is an independent conversation with:
+- Its own message history
+- Separate context
+- Independent narrative flow
+
+Threads appear in the sidebar, organized by time:
+- **STARRED** - Important threads you've marked
+- **TODAY** - Today's conversations
+- **YESTERDAY** - Previous day
+- **THIS WEEK** - Recent threads
+- Older threads by date
+
+![Thread Navigation](../images/sidenav_threads.png)
+
 ## Understanding Conversation State
 
-Every conversation has:
-- **Message history**: All previous exchanges
+Every conversation (thread) has:
+- **Message history**: All previous exchanges in this thread
 - **Context window**: The amount of history the AI can "see" (limited by model)
 - **Narrative thread**: The logical flow of the discussion
 
@@ -18,10 +34,11 @@ Consider intervention when:
 - The agent seems to have forgotten earlier decisions
 - You're starting a significantly different task
 - The agent is repeating itself or seems confused
+- The thread has become too long or complex
 
 ## Conversation Management Techniques
 
-### Continuing the Current Thread
+### 1. Continuing the Current Thread
 
 **Best for**: Related follow-ups, iterative refinement
 
@@ -35,11 +52,36 @@ You: Now add logging for failed attempts
 Agent: [Adds logging, aware of previous changes...]
 ```
 
-### Guiding the Narrative
+**When to use**: 
+- Sequential tasks that build on each other
+- Iterative refinement of a solution
+- Related questions about the same topic
+
+### 2. Starting a New Thread
+
+**Best for**: Unrelated tasks, fresh start
+
+Click **"Start a new thread"** in the sidebar when:
+- Beginning an unrelated task
+- The current thread is too long and losing focus
+- You want a clean slate without previous context
+- Switching to a completely different topic
+
+**Benefits**:
+- Clean context for new tasks
+- Easier to find specific conversations later
+- Prevents context pollution
+- Keeps threads focused and manageable
+
+**Example scenarios**:
+- Current thread: "Implementing authentication"
+- New thread: "Adding email notifications" (unrelated feature)
+
+### 3. Guiding the Narrative
 
 **Best for**: Refocusing without losing context
 
-Explicitly redirect the conversation:
+Explicitly redirect the conversation within the same thread:
 
 ```
 You: Let's step back. We've implemented the login feature, but before moving on, 
@@ -48,25 +90,80 @@ You: Let's step back. We've implemented the login feature, but before moving on,
 
 This keeps history but reframes the current focus.
 
-### Truncating the Thread
+**Techniques**:
+- Summarize what's been done
+- Explicitly state the new direction
+- Reference previous decisions before pivoting
+- Use transitional phrases ("Now let's...", "Before moving on...")
+
+### 4. Truncating the Thread
 
 **Best for**: Removing irrelevant or incorrect paths
 
-Delete messages that led down unproductive paths. In the web interface, use the delete button on specific messages. This removes that message and all subsequent ones, allowing you to restart from a better point.
+Delete messages that led down unproductive paths. In the web interface:
+1. Hover over the message where things went wrong
+2. Click the delete button (🗑️)
+3. Confirm the deletion
+
+This removes that message and all subsequent ones, allowing you to restart from a better point.
 
 **Use cases**:
 - The agent misunderstood and went in the wrong direction
 - You explored an approach that didn't work out
-- Earlier messages contain outdated information
+- Earlier messages contain outdated or incorrect information
+- The conversation went in circles
 
-### Resetting the Conversation
+**Example**:
+```
+Message 5: "Let's try approach A"
+Message 6-10: [Agent explores approach A, doesn't work]
+→ Delete from message 5
+Message 5 (new): "Let's try approach B instead"
+```
 
-**Best for**: Starting fresh on a new task
+### 5. Using Memories
 
-Start a new thread when:
-- Beginning an unrelated task
-- The conversation is too long and losing focus
-- You want a clean slate without previous context
+**Best for**: Preserving important context across threads
+
+Store critical information in memories so it persists:
+
+```
+memory add "We decided to use JWT tokens with 24h expiration for authentication"
+```
+
+Memories are accessible to agents across all threads and even after truncation. See [Context and Memory](../05-working-effectively/context-and-memory.md) for details.
+
+## Thread Organization
+
+### Starring Important Threads
+
+Mark threads you want to keep accessible:
+1. Open the thread
+2. Click the star icon
+3. Find it later in the **STARRED** section
+
+**Star threads that**:
+- Contain important decisions
+- You reference frequently
+- Document complex implementations
+- Serve as examples or templates
+
+### Searching Threads
+
+Use the search icon (🔍) in the sidebar to find threads by:
+- Thread title
+- Message content
+- Date range
+- Agent used
+
+### Naming Threads
+
+Give threads descriptive names to find them easily later. The first message often becomes the thread title, so start with a clear summary:
+
+```
+✅ Good: "Implement OAuth2 authentication with Google"
+❌ Poor: "Hey, can you help me?"
+```
 
 ## Best Practices
 
@@ -78,6 +175,8 @@ You: To summarize: we've decided on JWT tokens for auth, implemented the login
      endpoint, and added rate limiting. Now let's tackle session management.
 ```
 
+This helps both you and the agent stay aligned.
+
 ### Detect When to Truncate
 
 Signs you should truncate:
@@ -85,6 +184,9 @@ Signs you should truncate:
 - Responses become generic or repetitive
 - Agent asks questions already answered
 - The conversation has gone in circles
+- You realize you went down the wrong path
+
+**Don't wait too long** - truncate early to avoid wasting time.
 
 ### Strategic Checkpoints
 
@@ -98,17 +200,72 @@ You: Perfect. Now for the next phase...
 
 This creates a reference point you can return to if needed.
 
-## Managing Agent Memory
+### Thread vs Memory
 
-Agents can store important information in memories (see [Context and Memory](../05-working-effectively/context-and-memory.md)). This helps maintain continuity across conversations and even after resets.
+**Use threads for**:
+- Specific tasks or features
+- Exploratory conversations
+- Temporary context
+
+**Use memories for**:
+- Architectural decisions
+- Project conventions
+- Important patterns
+- Long-term knowledge
+
+## Managing Long Projects
+
+For complex projects spanning multiple sessions:
+
+1. **Create a main planning thread**: Document overall architecture and decisions
+2. **Star it** for easy access
+3. **Create feature-specific threads**: One thread per major feature
+4. **Use memories**: Store cross-cutting decisions
+5. **Reference previous threads**: "As we discussed in the authentication thread..."
+
+## Common Patterns
+
+### Exploration → Implementation
+```
+Thread 1: "Explore authentication options"
+→ Research, discuss approaches
+→ Make decision, store in memory
+
+Thread 2: "Implement JWT authentication"
+→ Implementation based on decision
+→ Reference memory from previous thread
+```
+
+### Review → Refactor
+```
+Same thread:
+1. Initial implementation
+2. Review and feedback
+3. Refactor based on feedback
+→ Keep in one thread for full context
+```
+
+### Debug → Fix
+```
+Thread 1: "Login endpoint returning 500"
+→ Debugging, exploring causes
+→ Identify root cause
+
+Thread 2: "Fix authentication validation"
+→ Clean implementation of fix
+→ Reference findings from debug thread
+```
 
 ## Tips
 
 1. **Don't over-manage**: Let conversations flow naturally when they're productive
 2. **Truncate early**: Better to cut a wrong path short than let it continue
 3. **Document decisions**: Explicitly state conclusions before moving on
-4. **Use memories**: Store important facts that should persist across conversations
-5. **Reset guilt-free**: Starting fresh is often faster than trying to fix a derailed conversation
+4. **Use memories**: Store important facts that should persist
+5. **Reset guilt-free**: Starting fresh is often faster than fixing a derailed conversation
+6. **Star liberally**: Better to have too many starred threads than lose important ones
+7. **Search often**: Don't recreate work - find and reference previous threads
+8. **One topic per thread**: Resist the urge to add unrelated tasks to active threads
 
 ## Next Steps
 
