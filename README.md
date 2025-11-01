@@ -93,8 +93,8 @@ This command will:
 
 ### 🆘 Help
 - [Troubleshooting](docs/troubleshooting.md)
-- [Architecture](doc/ARCHITECTURE.md) (technical)
-- [Development Workflow](doc/DEV_WORKFLOW.md) (contributors)
+- [Architecture](docs/to-rework/ARCHITECTURE.md) (technical)
+- [Development Workflow](docs/to-rework/DEV_WORKFLOW.md) (contributors)
 
 ## Configuration Example
 
@@ -123,12 +123,12 @@ agents:
 ### Contributing
 
 We welcome contributions! Please see:
-- [Development Workflow](doc/DEV_WORKFLOW.md) - Contribution guidelines
-- [Architecture](doc/ARCHITECTURE.md) - System architecture
+- [Development Workflow](docs/to-rework/DEV_WORKFLOW.md) - Contribution guidelines
+- [Architecture](docs/to-rework/ARCHITECTURE.md) - System architecture
 
 ### Release Process
 
-Releases are automated via GitHub Actions based on conventional commits. See [Automated Release Process](doc/AUTOMATED_RELEASE.md) for details.
+Releases are automated via GitHub Actions based on conventional commits. See [Automated Release Process](docs/to-rework/AUTOMATED_RELEASE.md) for details.
 
 ## Supported AI Providers
 
