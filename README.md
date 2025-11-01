@@ -2,174 +2,297 @@
 
 <img src="apps/client/public/CODAY-Logo.png" alt="Coday Logo" width="100"/>
 
-</div>
-
 # Coday
 
-This project is an agentic framework leveraging existing LLMs to let you define your agents on your projects.
+**A lightweight agentic framework for AI-assisted development**
 
-## Features
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
 
-- **Multi-Agent Support**: Define and configure custom AI agents for your projects
-- **Multiple LLM Providers**: Support for OpenAI, Anthropic, and other AI providers
-- **Web, Desktop & Terminal Interfaces**: Choose between browser-based, native desktop app, or command-line interaction
-- **Project-Based Configuration**: Scope agents and settings to specific projects
-- **Webhook Integration**: Trigger AI agent interactions programmatically from external systems
-- **Memory Management**: Persistent conversation history and context
-- **Tool Integration**: Extensible tool system for file operations, code analysis, and more
+[Documentation](docs/README.md) • [Getting Started](docs/02-getting-started/installation.md) • [Configuration](docs/04-configuration/configuration-levels.md) • [GitHub](https://github.com/whoz-oss/coday)
 
-There are several ways to use Coday:
+</div>
 
-- as a dev-dep of a code project: uses the published npm package to run locally
-- as a desktop app: uses the Electron-based desktop application (coming soon)
-- as a contributor through a clone of this repo
-- as a non-dev through a deployed instance (details coming soon...⏳)
+---
 
-## Use as dev-dep
+## What is Coday?
 
-When in the context of a code project, use the npm package to run locally through the web interface.
+Coday is a **conversation-based agentic framework** that helps developers work with AI agents on existing projects. It provides natural language interaction with AI through a web interface, supporting multiple AI providers (OpenAI, Anthropic, etc.) and extensive customization.
 
-1. Check dependencies
-    - node.js (v14.x or later)
-    - npm (v6.x or later)
-    - tsx (v4)
-    - [ripgrep](https://github.com/BurntSushi/ripgrep) (important for file search)
+### Key Features
 
-2. Add npm package
+✨ **Web Interface** - Modern browser-based interface with rich formatting  
+🤖 **Custom Agents** - Define specialized agents for your project's needs  
+🔌 **Provider Agnostic** - OpenAI, Anthropic, or any compatible AI provider  
+🛠️ **Extensible Tools** - Built-in tools plus MCP (Model Context Protocol) integrations  
+💾 **Memory System** - Persistent context and knowledge across conversations  
+📁 **Project-Scoped** - Configuration and context tied to your codebase  
+🎯 **Webhook Support** - Programmatic API for external integrations
 
-    ```sh
-    pnpm add --dev @whoz-oss/coday-web@latest
-    ```
+## Quick Start
 
-    ```sh
-    npm install @whoz-oss/coday-web@latest --save-dev
-    ```
+### Prerequisites
 
-2. Add start script in `package.json`
+- Node.js 22+ 
+- npm (comes with Node.js)
+- ripgrep (to install through `brew install ripgrep`)
+- (have `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY` as env vars)
 
-    ```json
-    {
-      "scripts": {
-        "coday": "npx @whoz-oss/coday-web --no_auth"
-      }
-    }
-    ```
-3. Add the run config in your IDE (up to you)
-4. Run the script, open `http://localhost:300x` (link in terminal) and setup the first Coday project
+That's it!
 
-## Use through repo clone
+### Launch Coday
 
-1. Check dependencies
-   - Node.js (v14.x or later)
-   - npm (v6.x or later)
-   - [ripgrep](https://github.com/BurntSushi/ripgrep)
-   - git
-   - pnpm
-2. Clone the repo
-   ```sh
-   # through ssh
-   git clone git@github.com:whoz-oss/coday.git
+```bash
+  npx --yes @whoz-oss/coday-web
+```
 
-   # through http
-   git clone https://github.com/whoz-oss/coday.git
-    ```
-3. Install packages
+This command will:
+1. Download the latest version (if needed)
+2. Start the web server
+3. Open your browser at `http://localhost:3000`
+4. Run from the directory you were at
 
-    ```sh
-    pnpm install --frozen-lockfile
-    ```
-4. Run one of the targets:
-   - **Development mode (recommended for contributors)** - runs with live reload:
-   ```sh
-   pnpm web:dev
-   ```
-   This starts both the Angular dev server (port 4200) and Express server (port 4100) with automatic reloading on code changes.
+**📖 For detailed setup instructions**, see [Installation Guide](docs/02-getting-started/installation.md).
 
-   - Terminal interface:
-   ```sh
-   pnpm start
-   ```
-   
-   - Production mode (tests published package behavior):
-   ```sh
-   pnpm web
-   ```
-   
-   - Desktop app:
-   ```sh
-   pnpm desktop
-   ```
+## First Steps
 
-   - Individual services (for debugging):
-   ```sh
-   pnpm client  # Angular dev server only (port 4200)
-   pnpm server  # Express server only (port 4100)
-   ```
+1. **Launch Coday** - Run `npx --yes @whoz-oss/coday-web`
+2. **Create/Select Project** - Point Coday to your project directory
+3. **Configure AI Provider** - Add your OpenAI or Anthropic API key
+4. **Start Conversation** - Type your first message to an agent
 
-5. Setup the first coday project
-
-
-## Coday project setup
-
-Coday is project-agnostic, when starting it, you have to select an existing project or create one.
-
-When starting for the first time, you will be asked to define the first project with :
-   - the name of the project
-   - the complete path to the directory containing the project
-
-Then you have to define the first AI provider:
-
-   - `config ai`: shows available AI configuration commands
-   - `config ai list`: list the current AI providers and configs
-   - `config ai add`: add a new AI provider (user level by default)
-   - `reset` to reload cleanly the Coday config
-
-[More on AI configuration](doc/AI_CONFIGURATION.md)
-
-From there, you can select the project and ask `Hello` to get an answer.
-
-## 🛟 HELP ? 🛑 EXIT ?
-
-To get the list of available commands, type nothing or `h` or `help`. Usually, complex commands repeat the pattern, ex: `config` shows the help text for the config command.
-
-To exit in the terminal, type ... `exit`. Or `Ctrl + C`. `:q` does not work 😝.
-
-On the browser, just close the tab.
-
-## Setting integrations
-
-Configure integrations via `config integration`.
-
-[More on integrations](doc/INTEGRATIONS.md)
-
-## Configuration
-
-Directly edit `coday.yaml` for all project-specific configurations.
-
-See Coday's own `coday.yaml` file for reference, examples and documentation.
+**📖 Complete walkthrough**: [Your First Conversation](docs/02-getting-started/first-conversation.md)
 
 ## Documentation
 
-- [AI Configuration](doc/AI_CONFIGURATION.md) - Configure AI providers and models
-- [Integrations](doc/INTEGRATIONS.md) - Set up external service integrations
-- [Webhooks](doc/WEBHOOKS.md) - Programmatic API for triggering AI agent interactions
-- [Project Configuration](doc/PROJECT_CONFIGURATION.md) - Project-specific settings and options
-- [Architecture](doc/ARCHITECTURE.md) - System architecture and request flow
-- [Handler Design](doc/HANDLER_DESIGN.md) - Command handler patterns and implementation
+### 🚀 Getting Started
+- [What is Coday?](docs/01-introduction/what-is-coday.md)
+- [Mental Model](docs/01-introduction/mental-model.md)
+- [Installation](docs/02-getting-started/installation.md)
+- [Launching Coday](docs/02-getting-started/launching.md)
+- [First Conversation](docs/02-getting-started/first-conversation.md)
+
+### 💻 Using Coday
+- [Interface Basics](docs/03-using-coday/interface-basics.md)
+- [Working with Agents](docs/03-using-coday/working-with-agents.md)
+- [Conversation Management](docs/03-using-coday/conversation-management.md)
+
+### ⚙️ Configuration
+- [Configuration Levels](docs/04-configuration/configuration-levels.md)
+- [User Configuration](docs/04-configuration/user-config.md)
+- [Project Configuration](docs/04-configuration/project-config.md)
+- [Agent Configuration](docs/04-configuration/agents.md)
+- [MCP Integrations](docs/04-configuration/mcp-integrations.md)
+
+### 🎯 Working Effectively
+- [Prompting Strategies](docs/05-working-effectively/prompting-strategies.md)
+- [Context and Memory](docs/05-working-effectively/context-and-memory.md)
+- [Detecting Hallucinations](docs/05-working-effectively/detecting-hallucinations.md)
+- [Iterative Workflows](docs/05-working-effectively/iterative-workflows.md)
+- [Agent Design](docs/05-working-effectively/agent-design.md)
+
+### 🆘 Help
+- [Troubleshooting](docs/troubleshooting.md)
+- [Architecture](doc/ARCHITECTURE.md) (technical)
+- [Development Workflow](doc/DEV_WORKFLOW.md) (contributors)
+
+**📚 [Complete Documentation Index](docs/README.md)**
+
+## Configuration Example
+
+Create a `coday.yaml` in your project root:
+
+```yaml
+version: 1
+name: my-project
+path: /path/to/project
+
+description: |
+  Brief description of your project for AI context.
+
+ai:
+  defaultProvider: anthropic
+  defaultModel: claude-3-5-sonnet-20241022
+
+agents:
+  - name: backend-expert
+    role: backend specialist
+    systemInstructions: |
+      You specialize in backend development.
+      Focus on API design, database optimization, and performance.
+```
+
+**📖 See [Project Configuration](docs/04-configuration/project-config.md) for complete guide.**
 
 ## Development
 
+### Running in Development Mode
+
+For contributors working on Coday itself:
+
+```bash
+# Clone repository
+git clone https://github.com/whoz-oss/coday.git
+cd coday
+pnpm install
+
+# Web interface with live reload
+pnpm web:dev
+
+# Desktop app
+pnpm desktop
+
+# Run tests
+pnpm test
+
+# Lint code
+pnpm lint
+```
+
 ### Contributing
 
-See [Development Workflow](doc/DEV_WORKFLOW.md) for contribution guidelines.
+We welcome contributions! Please see:
+- [Development Workflow](doc/DEV_WORKFLOW.md) - Contribution guidelines
+- [Handler Design](doc/HANDLER_DESIGN.md) - Command handler patterns
+- [Architecture](doc/ARCHITECTURE.md) - System architecture
 
 ### Release Process
 
-Releases are fully automated via GitHub Actions. Every push to the master branch triggers:
+Releases are automated via GitHub Actions based on conventional commits. See [Automated Release Process](doc/AUTOMATED_RELEASE.md) for details.
 
-1. Version bumping based on conventional commits
-2. Changelog generation
-3. npm package publishing
-4. GitHub release creation
+## Examples
 
-For details, see [Automated Release Process](doc/AUTOMATED_RELEASE.md).
+### Basic Conversation
+
+```
+You: Can you explain the authentication flow in this project?
+Agent: [Analyzes code and explains the JWT-based authentication system]
+
+You: Add rate limiting to the login endpoint
+Agent: [Implements rate limiting with Redis, following project patterns]
+```
+
+### Multi-Agent Collaboration
+
+```
+You: @sway Implement user registration
+Sway: [Implements feature]
+
+You: @archay Review the architecture
+Archay: [Reviews and suggests improvements]
+
+You: @sway Apply the feedback
+Sway: [Refines implementation]
+```
+
+**📖 More patterns**: [Working with Agents](docs/03-using-coday/working-with-agents.md)
+
+## Common Commands
+
+In the Coday web interface:
+
+```bash
+# Configuration
+config ai list              # List AI providers
+config ai add               # Add AI provider
+config mcp list             # List MCP integrations
+
+# Memory
+memory list                 # Show stored memories
+memory add "fact"           # Store important fact
+
+# Help
+help                        # Show available commands
+```
+
+## Supported AI Providers
+
+- ✅ OpenAI (GPT-4, GPT-4o, etc.)
+- ✅ Anthropic (Claude 3.5 Sonnet, etc.)
+- ✅ Any OpenAI-compatible API
+- ✅ Custom providers via configuration
+
+**📖 Setup guide**: [AI Configuration](docs/04-configuration/user-config.md)
+
+## MCP Integration
+
+Extend Coday with Model Context Protocol servers:
+
+```yaml
+mcp:
+  servers:
+    - id: filesystem
+      name: Filesystem Access
+      command: npx
+      args:
+        - "@modelcontextprotocol/server-filesystem"
+        - "/path/to/project"
+```
+
+**📖 Full guide**: [MCP Integrations](docs/04-configuration/mcp-integrations.md)
+
+## Troubleshooting
+
+### Common Issues
+
+**Coday not starting?**
+- Ensure Node.js 22+ is installed: `node --version`
+- Check port 3000 is available
+- Try clearing npx cache: `npx clear-npx-cache`
+
+**Agent not responding?**
+- Check API key configuration
+- Verify network connection
+- Review rate limits
+
+**Configuration not loading?**
+- Verify YAML syntax
+- Check file location (project root)
+- Ensure `version: 1` is present
+
+**📖 Complete troubleshooting**: [Troubleshooting Guide](docs/troubleshooting.md)
+
+## Project Structure
+
+```
+coday/
+├── apps/
+│   ├── client/          # Angular web interface
+│   ├── server/          # Express backend
+│   └── desktop/         # Electron wrapper
+├── libs/                # Shared libraries
+├── docs/                # User documentation
+└── doc/                 # Technical documentation
+```
+
+## Why npx?
+
+Using `npx --yes @whoz-oss/coday-web` means:
+- ✅ No installation required
+- ✅ Always latest version
+- ✅ No global dependencies
+- ✅ Works anywhere npm is installed
+- ✅ Simple one-command launch
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## Links
+
+- **Repository**: https://github.com/whoz-oss/coday
+- **Issues**: https://github.com/whoz-oss/coday/issues
+- **Documentation**: [docs/README.md](docs/README.md)
+- **npm Package**: `@whoz-oss/coday-web`
+
+## Acknowledgments
+
+Coday is developed and maintained by [Whoz](https://github.com/whoz-oss) with contributions from the open-source community.
+
+---
+
+<div align="center">
+
+**Ready to start?** → `npx --yes @whoz-oss/coday-web`
+
+</div>
