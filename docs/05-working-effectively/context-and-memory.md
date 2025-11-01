@@ -18,7 +18,7 @@ Context is everything the agent "knows" when processing your message:
 
 AI models have a limited context window—the amount of text they can process at once. For example:
 - GPT-4: ~128,000 tokens (~100,000 words)
-- Claude 3.5 Sonnet: ~200,000 tokens (~150,000 words)
+- Claude 4.5 Sonnet: ~200,000 tokens (~150,000 words)
 
 As conversations grow, older messages may fall outside this window.
 
@@ -67,7 +67,8 @@ Signs the agent has lost context:
 **Solutions:**
 1. **Remind the agent**: Re-state key decisions
 2. **Truncate and restart**: Remove off-track messages and restart from a good point
-3. **Use memory**: Store important facts for future reference
+3. **Prepare for a new thread**: Ask for a summary of the past relevant part, to seed a new thread
+3. **Use memory**: drop the objective and work with the agent in understanding why off-track, make him memorize what was missing
 
 ## Using Memory
 
@@ -97,115 +98,20 @@ Store information that is:
 
 ### How Memory Works
 
-Agents can store memories during conversations. By default, Coday asks for confirmation before saving:
-
-```
-Agent: I'd like to remember that we use PostgreSQL with TypeORM
-       for database access. Should I save this to memory?
-
-You: Yes
-```
-
-You can configure auto-save in `coday.yaml`:
-
-```yaml
-memory:
-  enabled: true
-  autoSave: true
-  confirmBeforeSaving: false
-```
+Agents can store memories during conversations by using the dedicated tool. Upon adding or editing a memory, the user has the opportunity to check, edit or deny the memory edit.
 
 ### Viewing and Managing Memories
 
 ```bash
-# List all memories
-memory list
+# List project memories of agent Dev
+memory list --project --agent=Dev
 
-# Add a memory manually
-memory add "We use Prettier for code formatting with 2-space indents"
+# List user memories
+memory list --user
 
 # Remove a memory
-memory delete <memory-id>
-
-# Clear all memories (careful!)
-memory clear
+memory delete # will prompt user for which memory
 ```
-
-### Memory Best Practices
-
-**1. Be Specific and Concise**
-
-**❌ Vague:**
-```
-We use modern web technologies
-```
-
-**✅ Specific:**
-```
-Frontend stack: React 18, TypeScript 5, Vite, TailwindCSS
-```
-
-**2. Include Rationale**
-
-**❌ Decision only:**
-```
-Use Redis for caching
-```
-
-**✅ With rationale:**
-```
-Use Redis for caching. Chose Redis over Memcached because we need
-data persistence across restarts and pub/sub for cache invalidation.
-```
-
-**3. Update When Changed**
-
-Memories can become outdated. Regularly review and update them:
-
-```bash
-memory list  # Review current memories
-memory delete <outdated-memory-id>
-memory add "Updated approach: ..."
-```
-
-**4. Organize by Category**
-
-Use clear prefixes or tags:
-
-```
-[Architecture] Microservices with event-driven communication
-[Database] PostgreSQL 15 with read replicas for scaling
-[API] REST API following OpenAPI 3.0 specification
-[Testing] Jest for unit tests, Playwright for E2E
-```
-
-## Context Strategies by Task Type
-
-### Short Tasks (< 10 messages)
-
-- Rely on conversation history
-- No special context management needed
-- Memory not usually necessary
-
-### Medium Tasks (10-50 messages)
-
-- Periodic summarization
-- Store key decisions in memory
-- Use explicit references to earlier decisions
-- Consider truncating dead-end paths
-
-### Long Tasks (> 50 messages)
-
-- Aggressive summarization
-- Extensive use of memory
-- Consider splitting into multiple threads
-- Start new threads with context summaries
-
-### Cross-Session Work
-
-- Heavy reliance on memory
-- Start new sessions with: "Recap what we know about X"
-- Explicitly reference memories: "Based on our architectural decision to use microservices..."
 
 ## Advanced Techniques
 
@@ -256,14 +162,13 @@ Agent: [Automatically follows conventions from memory]
 
 ### Agent Ignoring Context
 
-- Verify context is within the window (check message count)
 - Re-state critical information explicitly
 - Consider if memory would help
 - Check if agent's system instructions conflict
 
 ### Memory Not Being Used
 
-- Verify memory is enabled in configuration
+- Verify memory is enabled in agent integrations
 - Check memories are relevant to current task
 - Explicitly reference memories: "Based on our decision to..."
 - Consider if memory content is too vague

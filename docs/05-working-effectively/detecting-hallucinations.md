@@ -14,61 +14,10 @@ Hallucinations occur when an agent:
 
 ## Common Types of Hallucinations
 
-### 1. Invented Code References
-
-**Hallucination:**
-```
-The authenticate() function in src/auth/validator.ts handles this
-```
-
-**Reality:**
-- File doesn't exist
-- Function doesn't exist
-- Function exists but does something different
-
-**Detection**: Verify file paths and function names mentioned by the agent.
-
-### 2. Fabricated API Details
-
-**Hallucination:**
-```
-The library provides a validateEmail() method that checks format and MX records
-```
-
-**Reality:**
-- Method doesn't exist
-- Method exists but doesn't have those features
-- Entirely different API
-
-**Detection**: Check actual library documentation.
-
-### 3. Misremembered Decisions
-
-**Hallucination:**
-```
-As we decided earlier, we're using MongoDB for this project
-```
-
-**Reality:**
-- You decided on PostgreSQL
-- No database decision was made yet
-- Different project context
-
-**Detection**: Review conversation history or project documentation.
-
-### 4. Confident Uncertainty
-
-**Hallucination:**
-```
-This will definitely fix the performance issue. The query will be 10x faster.
-```
-
-**Reality:**
-- No way to be certain without testing
-- Optimization might not work
-- Different bottleneck exists
-
-**Detection**: Be skeptical of absolute claims about performance, behavior, or outcomes.
+1. Invented Code References
+2. Fabricated API Details
+3. Misremembered Decisions
+4. Confident Uncertainty
 
 ## Warning Signs
 

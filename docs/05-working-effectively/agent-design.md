@@ -6,10 +6,9 @@ Designing effective agents is both an art and a science. This guide covers princ
 
 ### Agents as Tools, Not Magic
 
-Agents are sophisticated tools, not sentient beings. Design them like you'd design any tool:
+Agents are sophisticated tools, not (yet) sentient beings. Design them like you'd design any tool:
 - **Clear purpose**: What problem does this agent solve?
 - **Appropriate scope**: Not too narrow, not too broad
-- **Consistent behavior**: Predictable within their domain
 - **Clear limitations**: What they don't do
 
 ### Specialization vs. Generalization
