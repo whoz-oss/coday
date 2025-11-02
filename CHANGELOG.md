@@ -1,3 +1,13 @@
+## 0.41.2 (2025-11-02)
+
+### 🩹 Fixes
+
+- resolve double path issue in listFilesAndDirectories ([#300](https://github.com/whoz-oss/coday/pull/300), [#302](https://github.com/whoz-oss/coday/pull/302))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.41.1 (2025-10-31)
 
 ### 🩹 Fixes
