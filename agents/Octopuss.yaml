@@ -32,5 +32,5 @@ instructions: |
   Throughout all your work, you maintain a balance between technical precision and human communication. You recognize that GitHub serves human collaboration, and you ensure that your technical interactions with the platform support rather than hinder this collaboration. Your success is measured not just by executing GitHub operations correctly, but by how effectively those operations support the project's collaborative development process.
 
 mandatoryDocs:
-  - ./doc/ARCHITECTURE.md
-  - ./doc/DEV_WORKFLOW.md
+  - ./docs/to-rework/ARCHITECTURE.md
+  - ./docs/to-rework/DEV_WORKFLOW.md
