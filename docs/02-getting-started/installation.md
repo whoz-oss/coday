@@ -16,18 +16,18 @@ This guide walks you through installing and launching Coday for the first time.
 The recommended approach is to set environment variables before launching Coday:
 
 ```bash
-# For Anthropic (Claude)
-export ANTHROPIC_API_KEY="your-api-key-here"
+  # For Anthropic (Claude)
+  export ANTHROPIC_API_KEY="your-api-key-here"
 
-# For OpenAI (GPT)
-export OPENAI_API_KEY="your-api-key-here"
+  # For OpenAI (GPT)
+  export OPENAI_API_KEY="your-api-key-here"
 ```
 
 To make these permanent, add them to your shell configuration file (`~/.zshrc`, `~/.bashrc`, etc.):
 
 ```bash
-echo 'export ANTHROPIC_API_KEY="your-api-key-here"' >> ~/.zshrc
-source ~/.zshrc
+  echo 'export ANTHROPIC_API_KEY="your-api-key-here"' >> ~/.zshrc
+  source ~/.zshrc
 ```
 
 **Alternative**: You can also configure API keys through the Coday web interface after launch (see [User Configuration](../04-configuration/user-config.md)).
@@ -37,7 +37,7 @@ source ~/.zshrc
 No installation needed! Simply run from any directory:
 
 ```bash
-npx --yes @whoz-oss/coday-web
+  npx --yes @whoz-oss/coday-web
 ```
 
 This command will:
@@ -46,6 +46,13 @@ This command will:
 3. Display the URL in your terminal
 
 **Open your browser** and navigate to the URL shown in the terminal (usually `http://localhost:3000`).
+
+You can have an alias too in your shell configuration
+
+```bash
+  # in ~/.zshrc or other
+  alias coday='npx --yes @whoz-oss/coday-web'
+```
 
 ## First Launch
 
@@ -63,15 +70,15 @@ See [First Conversation](./first-conversation.md) to start using Coday.
 For contributors or those who want to run from source:
 
 ```bash
-# Clone the repository
-git clone https://github.com/whoz-oss/coday.git
-cd coday
-
-# Install dependencies
-pnpm install
-
-# Run in development mode
-pnpm web:dev
+  # Clone the repository
+  git clone https://github.com/whoz-oss/coday.git
+  cd coday
+  
+  # Install dependencies
+  pnpm install
+  
+  # Run in development mode
+  pnpm web:dev
 ```
 
 ## Next Steps

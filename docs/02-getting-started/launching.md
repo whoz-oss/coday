@@ -7,7 +7,7 @@ Coday provides a modern web interface for interacting with AI agents. This is th
 From any directory:
 
 ```bash
-npx --yes @whoz-oss/coday-web
+  npx --yes @whoz-oss/coday-web
 ```
 
 This will:
@@ -20,7 +20,7 @@ Open your browser and navigate to the displayed URL (usually `http://localhost:3
 ## Command Line Options
 
 ```bash
-npx --yes @whoz-oss/coday-web [options]
+  npx --yes @whoz-oss/coday-web [options]
 ```
 
 ### Project Selection Options

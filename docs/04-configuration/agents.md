@@ -9,10 +9,10 @@ An agent consists of:
 ```yaml
 agents:
   - name: agent-name              # Unique identifier
-    role: human-readable role     # Description of agent's purpose
+    description: human-readable role     # Description of agent's purpose
     provider: anthropic           # AI provider (anthropic, openai, etc.)
     model: claude-3-5-sonnet      # Specific model to use
-    systemInstructions: |         # Core prompt defining behavior
+    instructions: |         # Core prompt defining behavior
       You are a specialized agent...
     tools:                        # Available tools (optional)
       - read_file
@@ -41,8 +41,8 @@ Add to your `coday.yaml`:
 ```yaml
 agents:
   - name: backend-expert
-    role: backend specialist
-    systemInstructions: |
+    description: backend specialist
+    instructions: |
       You are an expert in backend development for this project.
       
       Key responsibilities:
@@ -63,10 +63,10 @@ agents:
 ```yaml
 agents:
   - name: testing-specialist
-    role: test automation expert
+    description: test automation expert
     provider: openai
     model: gpt-4o
-    systemInstructions: |
+    instructions: |
       You specialize in writing and maintaining tests for this project.
       
       Testing strategy:
@@ -99,8 +99,8 @@ agents:
 ### Required Properties
 
 - **name**: Unique identifier (lowercase, hyphens allowed)
-- **role**: Human-readable description
-- **systemInstructions**: The prompt that defines agent behavior
+- **description**: Human-readable description
+- **instructions**: The prompt that defines agent behavior
 
 ### Optional Properties
 
@@ -117,7 +117,7 @@ agents:
 
 Good system instructions include:
 
-1. **Role definition**: Who the agent is
+1. **description**: Who the agent is
 2. **Responsibilities**: What the agent does
 3. **Context**: Project-specific information
 4. **Guidelines**: How the agent should behave
@@ -126,7 +126,7 @@ Good system instructions include:
 ### Example Template
 
 ```yaml
-systemInstructions: |
+instructions: |
   # Role
   You are a [role] for this project.
   
@@ -176,8 +176,8 @@ Limit tools for safety or focus:
 ```yaml
 agents:
   - name: readonly-analyst
-    role: code analyst
-    systemInstructions: |
+    description: code analyst
+    instructions: |
       You analyze code but never modify it.
     tools:
       - read_file
@@ -197,7 +197,7 @@ tools:
 
 agents:
   - name: devops
-    role: deployment specialist
+    description: deployment specialist
     tools:
       - read_file
       - custom_deploy
@@ -210,13 +210,13 @@ agents:
 ```yaml
 agents:
   - name: frontend
-    role: frontend specialist
-    systemInstructions: |
+    description: frontend specialist
+    instructions: |
       Focus on React, CSS, and user experience...
   
   - name: backend
-    role: backend specialist
-    systemInstructions: |
+    description: backend specialist
+    instructions: |
       Focus on APIs, databases, and server logic...
 ```
 
@@ -225,13 +225,13 @@ agents:
 ```yaml
 agents:
   - name: reviewer
-    role: code reviewer
-    systemInstructions: |
+    description: code reviewer
+    instructions: |
       Review code for quality, security, and best practices...
   
   - name: implementer
-    role: feature implementer
-    systemInstructions: |
+    description: feature implementer
+    instructions: |
       Implement features based on requirements...
 ```
 
@@ -240,13 +240,13 @@ agents:
 ```yaml
 agents:
   - name: architect
-    role: system architect
-    systemInstructions: |
+    description: system architect
+    instructions: |
       Think about system design, scalability, maintainability...
   
   - name: pragmatist
-    role: pragmatic developer
-    systemInstructions: |
+    description: pragmatic developer
+    instructions: |
       Focus on getting things done, practical solutions...
 ```
 
@@ -266,8 +266,8 @@ After creating a custom agent:
 ```yaml
 agents:
   - name: onboarding
-    role: project guide
-    systemInstructions: |
+    description: project guide
+    instructions: |
       You help new team members understand this project.
       
       Start with:
@@ -284,8 +284,8 @@ agents:
 ```yaml
 agents:
   - name: security
-    role: security specialist
-    systemInstructions: |
+    description: security specialist
+    instructions: |
       You focus exclusively on security concerns.
       
       Review code for:

@@ -88,8 +88,10 @@ projects:
     
     # Project-specific integrations (GitHub tokens, etc.)
     integration:
-      github:
-        token: ghp_...
+      jira:
+        apiUrl: https://acme.atlassian.net/
+        username: john.doe@email.com
+        apiKey: sk_****
     
     # Project-specific MCP overrides
     mcp:

@@ -37,19 +37,19 @@ Design agents around roles in your team:
 agents:
   - name: developer
     role: Software developer
-    systemInstructions: |
+    instructions: |
       You implement features, fix bugs, and write tests.
       Focus on clean, maintainable code.
   
   - name: reviewer
     role: Code reviewer
-    systemInstructions: |
+    instructions: |
       You review code for quality, security, and best practices.
       Be thorough but constructive.
   
   - name: architect
     role: System architect
-    systemInstructions: |
+    instructions: |
       You focus on system design, scalability, and architectural decisions.
       Think long-term and consider trade-offs.
 ```
@@ -64,19 +64,19 @@ Design agents around technical domains:
 agents:
   - name: frontend
     role: Frontend specialist
-    systemInstructions: |
+    instructions: |
       You specialize in React, TypeScript, CSS, and browser APIs.
       Focus on user experience and performance.
   
   - name: backend
     role: Backend specialist
-    systemInstructions: |
+    instructions: |
       You specialize in Node.js, databases, APIs, and server architecture.
       Focus on reliability and scalability.
   
   - name: database
     role: Database specialist
-    systemInstructions: |
+    instructions: |
       You specialize in SQL, database design, query optimization, and migrations.
       Focus on data integrity and performance.
 ```
@@ -91,19 +91,19 @@ Design agents around specific tasks:
 agents:
   - name: tester
     role: Test writer
-    systemInstructions: |
+    instructions: |
       You write comprehensive tests: unit, integration, and E2E.
       Ensure edge cases and error conditions are covered.
   
   - name: debugger
     role: Debug specialist
-    systemInstructions: |
+    instructions: |
       You help identify and fix bugs.
       Use systematic debugging approaches and verify fixes.
   
   - name: refactorer
     role: Code refactoring specialist
-    systemInstructions: |
+    instructions: |
       You improve code structure without changing behavior.
       Focus on readability, maintainability, and reducing complexity.
 ```
@@ -118,20 +118,20 @@ Design agents with different mindsets:
 agents:
   - name: pragmatist
     role: Pragmatic developer
-    systemInstructions: |
+    instructions: |
       You focus on getting things done with practical solutions.
       Prefer simple, working code over perfect architecture.
       "Perfect is the enemy of good."
   
   - name: perfectionist
     role: Quality-focused developer
-    systemInstructions: |
+    instructions: |
       You focus on code quality, best practices, and long-term maintainability.
       Don't compromise on quality for speed.
   
   - name: innovator
     role: Innovative developer
-    systemInstructions: |
+    instructions: |
       You explore new approaches and technologies.
       Think outside the box and challenge assumptions.
 ```
@@ -143,7 +143,7 @@ agents:
 ### Anatomy of Good Instructions
 
 ```yaml
-systemInstructions: |
+instructions: |
   # 1. Identity and Role
   You are a [role] for this project.
   
@@ -179,7 +179,7 @@ systemInstructions: |
 agents:
   - name: db
     role: Database specialist
-    systemInstructions: |
+    instructions: |
       You are a PostgreSQL database specialist for this project.
       
       This project uses PostgreSQL 15 with TypeORM for our Node.js backend.
@@ -228,7 +228,7 @@ integrations:
     - developer
     - reviewer
     - tester
-systemInstructions: |
+instructions: |
   You are a system architect who coordinates implementation work.
   
   You can delegate tasks to specialized agents:
@@ -268,7 +268,7 @@ integrations:
     - Sway      # Implementation specialist
     - Octopuss  # GitHub operations specialist
 
-systemInstructions: |
+instructions: |
   You are Archay, a thoughtful software architecture agent.
   
   Collaboration with specialized agents is central to your effectiveness.
@@ -296,7 +296,7 @@ systemInstructions: |
 
 ```yaml
 # Coordinator agent
-systemInstructions: |
+instructions: |
   When implementing a new feature:
   
   1. Delegate to @planner: "Analyze requirements and create implementation plan"
@@ -309,7 +309,7 @@ systemInstructions: |
 **2. Parallel Consultation**
 
 ```yaml
-systemInstructions: |
+instructions: |
   When making architectural decisions:
   
   1. Delegate to @backend: "How would you implement this on the backend?"
@@ -321,7 +321,7 @@ systemInstructions: |
 **3. Iterative Refinement**
 
 ```yaml
-systemInstructions: |
+instructions: |
   When refactoring code:
   
   1. Delegate to @analyzer: "Analyze current code and identify issues"
@@ -335,7 +335,7 @@ systemInstructions: |
 **4. Research and Implementation**
 
 ```yaml
-systemInstructions: |
+instructions: |
   When implementing new patterns:
   
   1. Delegate to @researcher: "Research best practices for [pattern]"
@@ -396,7 +396,7 @@ description: |
 agents:
   - name: orders-service
     role: Orders service developer
-    systemInstructions: |
+    instructions: |
       You work specifically on the orders service.
       
       This service handles:
@@ -414,7 +414,7 @@ The agent gets both general project context and specific instructions.
 Specify behavior for different scenarios:
 
 ```yaml
-systemInstructions: |
+instructions: |
   You are a backend developer.
   
   When implementing new features:
@@ -447,14 +447,14 @@ agents:
   # Implementation agent
   - name: dev
     role: Developer
-    systemInstructions: |
+    instructions: |
       You implement features quickly and pragmatically.
       Focus on getting working code.
   
   # Review agent
   - name: reviewer
     role: Code reviewer
-    systemInstructions: |
+    instructions: |
       You review implementations for quality and best practices.
       Be thorough and constructive.
 ```
@@ -479,14 +479,14 @@ Design agents for smooth handoffs:
 agents:
   - name: planner
     role: Feature planner
-    systemInstructions: |
+    instructions: |
       You analyze requirements and create implementation plans.
       Break features into tasks and identify dependencies.
       Provide detailed plans for other agents to implement.
   
   - name: implementer
     role: Feature implementer
-    systemInstructions: |
+    instructions: |
       You implement features based on plans.
       Follow the plan closely and ask questions if unclear.
       Focus on clean, working code.
@@ -509,11 +509,11 @@ Refine agents based on usage:
 
 ```yaml
 # Initial version
-systemInstructions: |
+instructions: |
   You are a testing specialist.
 
 # After observing it suggests unit tests when E2E tests needed
-systemInstructions: |
+instructions: |
   You are a testing specialist.
   
   For API endpoints, prefer integration tests over unit tests.
@@ -521,7 +521,7 @@ systemInstructions: |
   Unit tests for complex business logic only.
 
 # After observing it writes verbose tests
-systemInstructions: |
+instructions: |
   You are a testing specialist.
   
   Keep tests concise and focused.
@@ -534,7 +534,7 @@ systemInstructions: |
 ### ❌ Too Generic
 
 ```yaml
-systemInstructions: |
+instructions: |
   You are a helpful assistant that writes code.
 ```
 
@@ -543,7 +543,7 @@ systemInstructions: |
 ### ❌ Too Prescriptive
 
 ```yaml
-systemInstructions: |
+instructions: |
   Always follow these 47 detailed steps:
   1. [Step 1 with 3 sub-steps]
   2. [Step 2 with 5 sub-steps]
@@ -555,7 +555,7 @@ systemInstructions: |
 ### ❌ Conflicting Instructions
 
 ```yaml
-systemInstructions: |
+instructions: |
   Be concise.
   Provide detailed explanations.
   Keep responses short.
@@ -567,7 +567,7 @@ systemInstructions: |
 ### ❌ No Project Context
 
 ```yaml
-systemInstructions: |
+instructions: |
   You write React components.
 ```
 

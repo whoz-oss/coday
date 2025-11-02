@@ -60,7 +60,7 @@ agents:
     role: backend specialist
     provider: anthropic
     model: claude-3-5-sonnet-20241022
-    systemInstructions: |
+    instructions: |
       You specialize in backend development for this project.
 
 # MCP server configurations (optional)
@@ -147,7 +147,7 @@ agents:
     role: code review specialist
     provider: anthropic
     model: claude-3-5-sonnet-20241022
-    systemInstructions: |
+    instructions: |
       You are a code reviewer for this project.
       Focus on code quality, best practices, and potential bugs.
     tools:
