@@ -306,18 +306,10 @@ export class FileTools extends AssistantToolFactory {
 
       const resolved = resolveFilePath(relPath, context)
 
-      // For listing the root of a space (exchange:// or project://), use the resolved path directly
-      // Otherwise, use the parent directory
-      if (!resolved.relativePath || resolved.relativePath === '' || resolved.relativePath === '.') {
-        // Listing the root of the space
-        return listFilesAndDirectories({ relPath: '.', root: resolved.absolutePath })
-      } else {
-        // Listing a subdirectory
-        return listFilesAndDirectories({
-          relPath: resolved.relativePath,
-          root: pathModule.dirname(resolved.absolutePath),
-        })
-      }
+      // Use the resolved absolute path directly
+      // The resolved.absolutePath already contains the full path to the directory to list
+      // We pass '.' as relPath to listFilesAndDirectories to list the contents of that directory
+      return listFilesAndDirectories({ relPath: '.', root: resolved.absolutePath })
     }
 
     const listProjectFilesAndDirectoriesFunction: FunctionTool<{ relPath: string }> = {
