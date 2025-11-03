@@ -12,6 +12,29 @@ const turndownService = new TurndownService({
 // Remove unnecessary elements that add noise
 turndownService.remove(['script', 'style', 'nav', 'footer'])
 
+/**
+ * Convert HTML to Markdown with timeout protection against ReDoS (CVE-2025-9670)
+ * @param html - HTML content to convert
+ * @param timeoutMs - Maximum time allowed for conversion (default: 2000ms)
+ * @returns Markdown string or error message
+ */
+async function convertHtmlToMarkdown(html: string, timeoutMs: number = 2000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`HTML to Markdown conversion timed out after ${timeoutMs}ms (possible ReDoS attack)`))
+    }, timeoutMs)
+
+    try {
+      const markdown = turndownService.turndown(html)
+      clearTimeout(timer)
+      resolve(markdown)
+    } catch (error) {
+      clearTimeout(timer)
+      reject(error)
+    }
+  })
+}
+
 export async function retrieveConfluencePage(
   pageId: string,
   confluenceBaseUrl: string,
@@ -38,8 +61,23 @@ export async function retrieveConfluencePage(
       return `No content found for Confluence page ${pageId}`
     }
 
-    // Convert HTML to Markdown
-    const markdownContent = turndownService.turndown(htmlContent)
+    // Convert HTML to Markdown with timeout protection (CVE-2025-9670 mitigation)
+    let markdownContent: string
+    try {
+      markdownContent = await convertHtmlToMarkdown(htmlContent, 2000)
+    } catch (error: any) {
+      interactor.warn(`HTML conversion failed or timed out: ${error.message}`)
+      // Fallback: return sanitized HTML or plain text
+      const plainText = htmlContent
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+      return `# Confluence Page ${pageId} (conversion failed)
+
+**Note:** HTML to Markdown conversion failed. Showing plain text instead.
+
+${plainText.substring(0, 10000)}...`
+    }
 
     // Add page metadata as header
     const pageTitle = response.data.title || 'Untitled'
@@ -52,7 +90,10 @@ export async function retrieveConfluencePage(
 ---
 
 ${markdownContent}`
-    interactor.debug(`formatted confluence output from ${htmlContent?.length} to ${result.length}`)
+
+    interactor.debug(
+      `✓ Successfully converted Confluence page to Markdown, from ${htmlContent?.length} to ${result.length} chars.`
+    )
     return result
   } catch (error: any) {
     interactor.warn(`Failed to retrieve Confluence page`)
