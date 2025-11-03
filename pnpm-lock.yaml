@@ -90,6 +90,9 @@ importers:
       tslib:
         specifier: 2.8.1
         version: 2.8.1
+      turndown:
+        specifier: 7.2.2
+        version: 7.2.2
       yaml:
         specifier: 2.8.1
         version: 2.8.1
@@ -205,6 +208,9 @@ importers:
       '@types/sharp':
         specifier: 0.32.0
         version: 0.32.0
+      '@types/turndown':
+        specifier: 5.0.5
+        version: 5.0.5
       '@typescript-eslint/utils':
         specifier: 8.46.1
         version: 8.46.1(eslint@9.37.0(jiti@2.6.1))(typescript@5.9.3)
@@ -2434,6 +2440,9 @@ packages:
     resolution: {integrity: sha512-9QOtNffcOF/c1seMCDnjckb3R9WHcG34tky+FHpNKKCW0wc/scYLwMtO+ptyGUfMW0/b/n4qRiALlaFHc9Oj7Q==}
     engines: {node: '>= 10.0.0'}
 
+  '@mixmark-io/domino@2.2.0':
+    resolution: {integrity: sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw==}
+
   '@modelcontextprotocol/sdk@1.17.3':
     resolution: {integrity: sha512-JPwUKWSsbzx+DLFznf/QZ32Qa+ptfbUlHhRLrBQBAFu9iI1iYvizM4p+zhhRDceSsPutXp4z+R/HPVphlIiclg==}
     engines: {node: '>=18'}
@@ -3766,6 +3775,9 @@ packages:
 
   '@types/tough-cookie@4.0.5':
     resolution: {integrity: sha512-/Ad8+nIOV7Rl++6f1BdKxFSMgmoqEoYbHRpPcx3JEfv8VRsQe9Z4mCXeJBzxs7mbHY/XOZZuXlRNfhpVPbs6ZA==}
+
+  '@types/turndown@5.0.5':
+    resolution: {integrity: sha512-TL2IgGgc7B5j78rIccBtlYAnkuv8nUQqhQc+DSYV5j9Be9XOcm/SKOVRuA47xAVI3680Tk9B1d8flK2GWT2+4w==}
 
   '@types/verror@1.10.11':
     resolution: {integrity: sha512-RlDm9K7+o5stv0Co8i8ZRGxDbrTxhJtgjqjFyVh/tXQyl/rYtTKlnTvZ88oSTeYREWurwx20Js4kTuKCsFkUtg==}
@@ -9461,6 +9473,9 @@ packages:
     resolution: {integrity: sha512-3T3T04WzowbwV2FDiGXBbr81t64g1MUGGJRgT4x5o97N+8ArdhVCAF9IxFrxuSJmM3E5Asn7nKHkao0ibcZXAg==}
     engines: {node: ^18.17.0 || >=20.5.0}
 
+  turndown@7.2.2:
+    resolution: {integrity: sha512-1F7db8BiExOKxjSMU2b7if62D/XOyQyZbPKq/nUwopfgnHlqXHqQ0lvfUTeUIr1lZJzOPFn43dODyMSIfvWRKQ==}
+
   type-check@0.4.0:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
     engines: {node: '>= 0.8.0'}
@@ -12378,6 +12393,8 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@mixmark-io/domino@2.2.0': {}
+
   '@modelcontextprotocol/sdk@1.17.3':
     dependencies:
       ajv: 6.12.6
@@ -14176,6 +14193,8 @@ snapshots:
   '@types/stack-utils@2.0.3': {}
 
   '@types/tough-cookie@4.0.5': {}
+
+  '@types/turndown@5.0.5': {}
 
   '@types/verror@1.10.11':
     optional: true
@@ -20876,6 +20895,10 @@ snapshots:
       make-fetch-happen: 14.0.3
     transitivePeerDependencies:
       - supports-color
+
+  turndown@7.2.2:
+    dependencies:
+      '@mixmark-io/domino': 2.2.0
 
   type-check@0.4.0:
     dependencies:
