@@ -1,3 +1,13 @@
+## 0.41.4 (2025-11-04)
+
+### 🩹 Fixes
+
+- handle raw confluence output with turndown + light bump in max tokens of Anthropic ([#305](https://github.com/whoz-oss/coday/pull/305), [#287](https://github.com/whoz-oss/coday/issues/287))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.41.3 (2025-11-04)
 
 ### 🩹 Fixes
