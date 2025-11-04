@@ -1,6 +1,6 @@
 {
   "name": "@whoz-oss/coday-server",
-  "version": "0.41.3",
+  "version": "0.41.4",
   "repository": "https://github.com/whoz-oss/coday",
   "type": "module",
   "main": "server/server.js",
