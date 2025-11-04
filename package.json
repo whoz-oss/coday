@@ -55,6 +55,7 @@
     "rxjs": "7.8.2",
     "sharp": "0.34.4",
     "tslib": "2.8.1",
+    "turndown": "7.2.2",
     "yaml": "2.8.1",
     "yargs": "18.0.0",
     "zone.js": "0.15.1"
@@ -95,6 +96,7 @@
     "@types/jest": "30.0.0",
     "@types/node": "24.7.2",
     "@types/sharp": "0.32.0",
+    "@types/turndown": "5.0.5",
     "@typescript-eslint/utils": "8.46.1",
     "angular-eslint": "20.4.0",
     "electron": "38.3.0",
