@@ -11,13 +11,11 @@
       <!-- Floating File Exchange Button (top-right) - hidden when drawer open -->
       @if (!isFileDrawerOpen) {
         <button
-          mat-icon-button
+          matFab
           class="file-drawer-toggle-btn"
           (click)="toggleFileDrawer()"
           [class.has-files]="fileCount > 0"
           [matBadge]="fileCount > 0 ? fileCount : null"
-          matBadgeSize="small"
-          matBadgeColor="primary"
           title="Files Exchange{{ fileCount > 0 ? ' (' + fileCount + ' file' + (fileCount > 1 ? 's' : '') + ')' : '' }}"
           type="button"
         >
