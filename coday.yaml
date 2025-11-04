@@ -52,6 +52,10 @@ scripts:
     description: |
       Runs the test for the client app.
     command: nx run client:test
+  build-angular-production:
+    description: |
+      Runs the build of the angular app in production setting
+    command: nx run client:build-angular:production
 
 # The prompts section allows you to define custom sequences of commands, known as prompt chains,
 # that the system can execute in order. Each prompt chain is identified by a unique key and
