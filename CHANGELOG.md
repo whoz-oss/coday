@@ -1,3 +1,13 @@
+## 0.41.3 (2025-11-04)
+
+### 🩹 Fixes
+
+- allow send empty for rare cases ([#303](https://github.com/whoz-oss/coday/pull/303))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.41.2 (2025-11-02)
 
 ### 🩹 Fixes
