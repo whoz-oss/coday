@@ -20,7 +20,7 @@ html {
 
   @include mat.theme(
     (
-      color: mat.$violet-palette,
+      color: mat.$azure-palette,
       typography: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
       density: 0,
     )
@@ -242,10 +242,6 @@ app-main {
   z-index: 10000;
 }
 
-.cdk-global-overlay-wrapper {
-  justify-content: left !important;
-}
-
 /* Material Design Snackbar Styles - Light Mode (default) */
 .mat-mdc-snackbar-surface {
   z-index: 10000;
@@ -261,6 +257,19 @@ app-main {
     --mdc-snackbar-supporting-text-color: var(--color-error);
 
     @include animated-gradient-border.animated-gradient-border-error;
+  }
+}
+
+/* Material Dialog Styles */
+.mat-mdc-dialog-container {
+  --mdc-dialog-container-color: var(--color-bg);
+  --mdc-dialog-supporting-text-color: var(--color-text);
+}
+
+/* Default dialog size */
+.cdk-overlay-pane {
+  .mat-mdc-dialog-container {
+    height: 80vh;
   }
 }
 
@@ -285,4 +294,10 @@ app-main {
       --mdc-snackbar-supporting-text-color: var(--color-primary, #3b82f6);
     }
   }
+}
+
+/* Global Material Slide Toggle - Compact Size */
+mat-slide-toggle {
+  transform: scale(0.75);
+  transform-origin: right center;
 }

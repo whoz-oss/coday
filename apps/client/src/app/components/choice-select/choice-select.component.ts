@@ -22,6 +22,7 @@ import { MarkdownService } from '../../services/markdown.service'
 export interface ChoiceOption {
   value: string
   label: string
+  disabled?: boolean
 }
 
 @Component({
@@ -94,12 +95,12 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
   }
 
   onSubmit() {
-    if (this.selectedValue) {
+    if (this.selectedValue && this.selectedValue !== '__separator__') {
       console.log('[CHOICE-SELECT] Choice selected:', this.selectedValue)
       this.choiceSelected.emit(this.selectedValue)
       this.selectedValue = '' // Reset for next use
     } else {
-      console.warn('[CHOICE-SELECT] No choice selected')
+      console.warn('[CHOICE-SELECT] No choice selected or separator selected')
     }
   }
 

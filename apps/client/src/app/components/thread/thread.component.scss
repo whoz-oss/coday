@@ -7,50 +7,15 @@
   background: transparent; // Background is now on file-drawer-container
 }
 
-// Floating file drawer toggle button (top-right)
+// Floating file drawer toggle button (top-right) - Material FAB
 .file-drawer-toggle-btn {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 100;
-  width: 56px;
-  height: 56px;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-backdrop-blur);
-  color: var(--color-primary);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow);
-  transition: all 0.2s ease;
-
-  &:hover {
-    transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    background: var(--color-bg-hover);
-  }
+  position: fixed !important;
+  top: 1rem !important;
+  right: 1rem !important;
+  z-index: 100 !important;
 
   &.has-files {
     animation: pulse-subtle 3s infinite;
-  }
-
-  // Badge styling - subtle and discrete
-  ::ng-deep .mat-badge-content {
-    font-size: 10px;
-    font-weight: 600;
-    width: 18px;
-    height: 18px;
-    line-height: 18px;
-    right: 4px;
-    top: 4px;
-    background-color: var(--color-primary);
-    color: white;
-  }
-
-  // Smaller badge on hover for subtlety
-  &:not(:hover) ::ng-deep .mat-badge-content {
-    font-size: 9px;
-    width: 16px;
-    height: 16px;
-    line-height: 16px;
   }
 }
 
@@ -233,10 +198,10 @@
     max-width: 100vw;
   }
 
-  // Mobile: adjust button position
+  // Mobile: adjust FAB button position
   .file-drawer-toggle-btn {
-    top: 12px;
-    right: 12px;
+    top: 0.75rem !important;
+    right: 0.75rem !important;
   }
 }
 

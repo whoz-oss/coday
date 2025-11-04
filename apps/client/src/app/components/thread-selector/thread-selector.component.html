@@ -23,12 +23,14 @@
             @for (thread of group.threads; track thread.id) {
               <div class="thread-item-wrapper" [class.current]="thread.id === currentThread()?.id">
                 <!-- Thread name (clickable) -->
-                <button
+                <a
                   class="thread-item"
                   [title]="thread.name || 'Generating name...'"
-                  (click)="selectThread(thread.id)"
-                  type="button"
+                  (click)="selectThread(thread.id); $event.preventDefault()"
+                  (keydown.enter)="selectThread(thread.id); $event.preventDefault()"
+                  (keydown.space)="selectThread(thread.id); $event.preventDefault()"
                   role="menuitem"
+                  tabindex="0"
                 >
                   @if (thread.name) {
                     <span class="thread-name">{{ thread.name }}</span>
@@ -36,11 +38,12 @@
                     <mat-spinner class="thread-name-spinner" [diameter]="16"></mat-spinner>
                     <span class="thread-name thread-name-generating">Generating name...</span>
                   }
-                </button>
+                </a>
 
                 <!-- Action buttons (right, absolutely positioned) -->
                 <div class="action-buttons">
                   <button
+                    mat-icon-button
                     class="action-button star-button"
                     [class.starred]="isStarred(thread)"
                     [title]="isStarred(thread) ? 'Unstar thread' : 'Star thread'"
@@ -51,6 +54,7 @@
                   </button>
 
                   <button
+                    mat-icon-button
                     class="action-button delete-button"
                     title="Delete thread"
                     (click)="deleteThread($event, thread)"
