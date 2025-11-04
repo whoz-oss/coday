@@ -27,7 +27,7 @@ The easiest way to configure user settings:
 ### Via Command Line
 
 ```bash
-# Configure AI providers interactively
+# Configure AI providers
 config ai add
 config ai edit <provider-name>
 
@@ -147,7 +147,7 @@ This bio is used by agents to better understand your preferences and communicati
 
 ### MCP (Model Context Protocol) Servers
 
-Configure tools that agents can use:
+MCP servers provide external tools like GitHub integration, databases, or custom tools:
 
 ```yaml
 mcp:
@@ -157,17 +157,13 @@ mcp:
       command: npx
       args: ["@modelcontextprotocol/server-filesystem", "/workspace"]
       enabled: true
-      debug: false
-      allowedTools: ["read_file", "write_file"]
-      env:
-        API_KEY: "..."
 ```
 
-See [MCP Configuration](./mcp-config.md) for detailed documentation.
+See [MCP Integrations](./mcp-integrations.md) for complete MCP configuration guide.
 
 ### Project-Specific Configuration
 
-Override settings for specific projects:
+You can override settings for specific projects in your user config:
 
 ```yaml
 projects:
@@ -179,28 +175,22 @@ projects:
     bio: |
       For this project, focus on performance optimization.
     
-    # Project-specific integrations
+    # Built-in integrations (GitLab, JIRA, Confluence)
     integration:
-      github:
-        token: ghp_...
-        owner: my-org
-        repo: my-repo
+      GITLAB:
+        apiUrl: https://gitlab.com/api/v4
+        apiKey: glpat-...
     
-    # Project-specific MCP servers
+    # MCP servers (GitHub, databases, etc.)
     mcp:
       servers:
-        - id: project-tools
-          name: Project-Specific Tools
-          command: node
-          args: ["./tools/server.js"]
-          enabled: true
+        - id: github
+          name: GitHub Integration
+          command: npx
+          args: ["@modelcontextprotocol/server-github"]
+          env:
+            GITHUB_TOKEN: "ghp_..."
 ```
-
-**Project Configuration Options**:
-- `defaultAgent`: Preferred agent name for this project
-- `bio`: Project-specific bio that supplements your user bio
-- `integration`: Project-specific integration configurations (GitHub, etc.)
-- `mcp`: Project-specific MCP server configurations
 
 ## Common Tasks
 
@@ -219,17 +209,36 @@ ai:
     apiKey: sk-ant-...
 ```
 
-### Configuring GitHub Integration
+### Configuring GitLab Integration
 
 ```yaml
 projects:
   my-project:
     integration:
-      github:
-        token: ghp_...
-        owner: my-org
-        repo: my-repo
+      GITLAB:
+        apiUrl: https://gitlab.com/api/v4
+        apiKey: glpat-...
 ```
+
+### Configuring GitHub Integration
+
+GitHub uses MCP (Model Context Protocol), not the built-in integration system:
+
+```yaml
+projects:
+  my-project:
+    mcp:
+      servers:
+        - id: github
+          name: GitHub Integration
+          command: npx
+          args: ["@modelcontextprotocol/server-github"]
+          env:
+            GITHUB_TOKEN: "ghp_..."
+          enabled: true
+```
+
+See [MCP Integrations](./mcp-integrations.md) for more details.
 
 ### Adding MCP Servers
 

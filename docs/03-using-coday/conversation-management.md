@@ -221,7 +221,6 @@ For complex projects spanning multiple sessions:
 2. **Star it** for easy access
 3. **Create feature-specific threads**: One thread per major feature
 4. **Use memories**: Store cross-cutting decisions
-5. **Reference previous threads**: "As we discussed in the authentication thread..."
 
 ## Common Patterns
 
@@ -263,7 +262,7 @@ Thread 2: "Fix authentication validation"
 3. **Document decisions**: Explicitly state conclusions before moving on
 4. **Use memories**: Store important facts that should persist
 5. **Reset guilt-free**: Starting fresh is often faster than fixing a derailed conversation
-6. **Star liberally**: Better to have too many starred threads than lose important ones
+6. **Star generously**: It's better to star more threads than to lose track of important ones
 7. **Search often**: Don't recreate work - find and reference previous threads
 8. **One topic per thread**: Resist the urge to add unrelated tasks to active threads
 

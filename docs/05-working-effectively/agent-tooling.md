@@ -384,7 +384,8 @@ Quick to add, immediately useful.
 
 ## Next Steps
 
-- [Agent Configuration](../04-configuration/agents.md): Define agents with tool access
+- [Agent Design](./agent-design.md): Learn how to design and create custom agents
+- [Agent Configuration](../04-configuration/agents.md): Technical details of agent configuration
 - [MCP Integrations](../04-configuration/mcp-integrations.md): Configure external tool servers
 - [Working with Agents](../03-using-coday/working-with-agents.md): Understand agent behavior
 
