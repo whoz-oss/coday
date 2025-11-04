@@ -1,3 +1,13 @@
+## 0.41.5 (2025-11-04)
+
+### 🩹 Fixes
+
+- bump angular build thresholds ([#308](https://github.com/whoz-oss/coday/pull/308))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.41.4 (2025-11-04)
 
 ### 🩹 Fixes
