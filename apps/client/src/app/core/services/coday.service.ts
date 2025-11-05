@@ -337,6 +337,13 @@ export class CodayService implements OnDestroy {
   private handleTextChunkEvent(event: TextChunkEvent): void {
     // Accumulate chunks
     this.accumulatedChunks += event.chunk
+    console.log(
+      '[CODAY-CHUNK] Received chunk:',
+      event.chunk,
+      '| Total accumulated:',
+      this.accumulatedChunks.length,
+      'chars'
+    )
 
     // If no streaming message exists yet, create one
     if (!this.streamingMessageId) {
@@ -350,9 +357,20 @@ export class CodayService implements OnDestroy {
         type: 'text',
       }
       this.addMessage(streamingMessage)
-      console.log('[CODAY] Created streaming message:', this.streamingMessageId)
+      console.log(
+        '[CODAY-CHUNK] Created streaming message:',
+        this.streamingMessageId,
+        '| Content:',
+        this.accumulatedChunks
+      )
     } else {
       // Update existing streaming message
+      console.log(
+        '[CODAY-CHUNK] Updating streaming message:',
+        this.streamingMessageId,
+        '| New content:',
+        this.accumulatedChunks
+      )
       this.updateStreamingMessage(this.accumulatedChunks)
     }
   }
@@ -540,15 +558,20 @@ export class CodayService implements OnDestroy {
    * Update the streaming message with accumulated chunks
    */
   private updateStreamingMessage(text: string): void {
-    if (!this.streamingMessageId) return
+    if (!this.streamingMessageId) {
+      console.warn('[CODAY-UPDATE] No streaming message ID')
+      return
+    }
 
     const currentMessages = this.messagesSubject.value
     const messageIndex = currentMessages.findIndex((msg) => msg.id === this.streamingMessageId)
 
     if (messageIndex === -1) {
-      console.warn('[CODAY] Streaming message not found:', this.streamingMessageId)
+      console.warn('[CODAY-UPDATE] Streaming message not found:', this.streamingMessageId)
       return
     }
+
+    console.log('[CODAY-UPDATE] Found message at index:', messageIndex, '| Updating with:', text.length, 'chars')
 
     // Create a completely new array with a new message object
     // This ensures Angular's change detection picks up the update
@@ -564,7 +587,10 @@ export class CodayService implements OnDestroy {
         ...currentMessages.slice(messageIndex + 1),
       ]
 
+      console.log('[CODAY-UPDATE] Emitting updated messages array, message count:', updatedMessages.length)
       this.messagesSubject.next(updatedMessages)
+    } else {
+      console.warn('[CODAY-UPDATE] Existing message is undefined')
     }
   }
 
