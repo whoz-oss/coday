@@ -156,15 +156,6 @@ Use the search icon (🔍) in the sidebar to find threads by:
 - Date range
 - Agent used
 
-### Naming Threads
-
-Give threads descriptive names to find them easily later. The first message often becomes the thread title, so start with a clear summary:
-
-```
-✅ Good: "Implement OAuth2 authentication with Google"
-❌ Poor: "Hey, can you help me?"
-```
-
 ## Best Practices
 
 ### Keep Context Relevant
