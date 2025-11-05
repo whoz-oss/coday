@@ -56,6 +56,7 @@ export class CodayService implements OnDestroy {
   // Text chunk accumulation for streaming
   private streamingMessageId: string | null = null
   private accumulatedChunks: string = ''
+  private streamingUpdateCount: number = 0
 
   // Public observables
   messages$ = this.messagesSubject.asObservable()
@@ -348,8 +349,9 @@ export class CodayService implements OnDestroy {
     // If no streaming message exists yet, create one
     if (!this.streamingMessageId) {
       this.streamingMessageId = `streaming-${Date.now()}`
+      this.streamingUpdateCount = 1 // Initialize counter
       const streamingMessage: ChatMessage = {
-        id: this.streamingMessageId,
+        id: `${this.streamingMessageId}-${this.streamingUpdateCount}`,
         role: 'assistant',
         speaker: 'Assistant',
         content: [{ type: 'text', content: this.accumulatedChunks }],
@@ -564,7 +566,8 @@ export class CodayService implements OnDestroy {
     }
 
     const currentMessages = this.messagesSubject.value
-    const messageIndex = currentMessages.findIndex((msg) => msg.id === this.streamingMessageId)
+    // Find message by prefix since we change the ID on each update
+    const messageIndex = currentMessages.findIndex((msg) => msg.id.startsWith(this.streamingMessageId!))
 
     if (messageIndex === -1) {
       console.warn('[CODAY-UPDATE] Streaming message not found:', this.streamingMessageId)
@@ -574,20 +577,27 @@ export class CodayService implements OnDestroy {
     console.log('[CODAY-UPDATE] Found message at index:', messageIndex, '| Updating with:', text.length, 'chars')
 
     // Create a completely new array with a new message object
-    // This ensures Angular's change detection picks up the update
+    // IMPORTANT: Change the ID to force Angular's trackBy to detect the change
     const existingMessage = currentMessages[messageIndex]
     if (existingMessage) {
+      this.streamingUpdateCount++
       const updatedContent: MessageContent[] = [{ type: 'text', content: text }]
       const updatedMessages = [
         ...currentMessages.slice(0, messageIndex),
         {
           ...existingMessage,
+          id: `${this.streamingMessageId}-${this.streamingUpdateCount}`, // New ID forces trackBy update
           content: updatedContent,
         },
         ...currentMessages.slice(messageIndex + 1),
       ]
 
-      console.log('[CODAY-UPDATE] Emitting updated messages array, message count:', updatedMessages.length)
+      console.log(
+        '[CODAY-UPDATE] Emitting updated messages array, message count:',
+        updatedMessages.length,
+        '| Update:',
+        this.streamingUpdateCount
+      )
       this.messagesSubject.next(updatedMessages)
     } else {
       console.warn('[CODAY-UPDATE] Existing message is undefined')
@@ -601,7 +611,8 @@ export class CodayService implements OnDestroy {
     if (!this.streamingMessageId) return
 
     const currentMessages = this.messagesSubject.value
-    const messageIndex = currentMessages.findIndex((msg) => msg.id === this.streamingMessageId)
+    // Find message by prefix since we change the ID on each update
+    const messageIndex = currentMessages.findIndex((msg) => msg.id.startsWith(this.streamingMessageId!))
 
     if (messageIndex === -1) {
       console.warn('[CODAY] Streaming message not found for replacement:', this.streamingMessageId)
