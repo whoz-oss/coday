@@ -570,7 +570,7 @@ export class AnthropicClient extends AiClient {
       ] as unknown as Array<Anthropic.TextBlockParam>,
       tools: this.getClaudeTools(agent.tools),
       temperature: agent.definition.temperature ?? 0.8,
-      max_tokens: 10000,
+      max_tokens: 8192,
     })
 
     // Emit text chunks as they arrive for progressive display

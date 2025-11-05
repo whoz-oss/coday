@@ -96,6 +96,12 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
       }
     }
 
+    // Auto-scroll during streaming if in tracking mode
+    // This ensures the streaming text stays visible as it grows
+    if (this.streamingText && this.isTracking) {
+      this.scrollToBottom()
+    }
+
     // Ensure scroll container is found
     if (!this.scrollContainer) {
       this.findScrollContainer()
