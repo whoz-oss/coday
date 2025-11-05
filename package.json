@@ -43,6 +43,7 @@
     "@inquirer/prompts": "7.9.0",
     "@modelcontextprotocol/sdk": "1.20.0",
     "@types/yargs": "17.0.33",
+    "@vscode/ripgrep": "1.15.9",
     "axios": "1.12.2",
     "chalk": "5.6.2",
     "eslint-plugin-import": "2.32.0",
