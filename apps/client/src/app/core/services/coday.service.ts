@@ -10,6 +10,7 @@ import {
   InviteEvent,
   InviteEventDefault,
   MessageEvent,
+  TextChunkEvent,
   TextEvent,
   ThinkingEvent,
   ThreadUpdateEvent,
@@ -50,6 +51,10 @@ export class CodayService implements OnDestroy {
 
   // Thinking state management
   private thinkingTimeout: ReturnType<typeof setTimeout> | null = null
+
+  // Text chunk accumulation for streaming
+  private streamingMessageId: string | null = null
+  private accumulatedChunks: string = ''
 
   // Public observables
   messages$ = this.messagesSubject.asObservable()
@@ -109,6 +114,8 @@ export class CodayService implements OnDestroy {
     this.currentChoiceSubject.next(null)
     this.currentInviteEventSubject.next(null)
     this.currentChoiceEvent = null
+    this.streamingMessageId = null
+    this.accumulatedChunks = ''
     this.stopThinking()
   }
 
@@ -271,6 +278,8 @@ export class CodayService implements OnDestroy {
   private handleEvent(event: CodayEvent): void {
     if (event instanceof MessageEvent) {
       this.handleMessageEvent(event)
+    } else if (event instanceof TextChunkEvent) {
+      this.handleTextChunkEvent(event)
     } else if (event instanceof TextEvent) {
       this.handleTextEvent(event)
     } else if (event instanceof AnswerEvent) {
@@ -304,16 +313,48 @@ export class CodayService implements OnDestroy {
   }
 
   private handleMessageEvent(event: MessageEvent): void {
-    const message: ChatMessage = {
-      id: event.timestamp,
-      role: event.role,
-      speaker: event.name,
-      content: event.content, // Directement le contenu riche
-      timestamp: new Date(),
-      type: 'text',
-    }
+    // If we have a streaming message in progress, replace it with the final message
+    if (this.streamingMessageId && event.role === 'assistant') {
+      console.log('[CODAY] Replacing streaming message with final MessageEvent')
+      this.replaceStreamingMessage(event)
+      this.streamingMessageId = null
+      this.accumulatedChunks = ''
+    } else {
+      // Normal message handling (not streaming)
+      const message: ChatMessage = {
+        id: event.timestamp,
+        role: event.role,
+        speaker: event.name,
+        content: event.content, // Directement le contenu riche
+        timestamp: new Date(),
+        type: 'text',
+      }
 
-    this.addMessage(message)
+      this.addMessage(message)
+    }
+  }
+
+  private handleTextChunkEvent(event: TextChunkEvent): void {
+    // Accumulate chunks
+    this.accumulatedChunks += event.chunk
+
+    // If no streaming message exists yet, create one
+    if (!this.streamingMessageId) {
+      this.streamingMessageId = `streaming-${Date.now()}`
+      const streamingMessage: ChatMessage = {
+        id: this.streamingMessageId,
+        role: 'assistant',
+        speaker: 'Assistant',
+        content: [{ type: 'text', content: this.accumulatedChunks }],
+        timestamp: new Date(),
+        type: 'text',
+      }
+      this.addMessage(streamingMessage)
+      console.log('[CODAY] Created streaming message:', this.streamingMessageId)
+    } else {
+      // Update existing streaming message
+      this.updateStreamingMessage(this.accumulatedChunks)
+    }
   }
 
   private handleTextEvent(event: TextEvent): void {
@@ -493,6 +534,63 @@ export class CodayService implements OnDestroy {
     const newMessages = [...currentMessages, message]
 
     this.messagesSubject.next(newMessages)
+  }
+
+  /**
+   * Update the streaming message with accumulated chunks
+   */
+  private updateStreamingMessage(text: string): void {
+    if (!this.streamingMessageId) return
+
+    const currentMessages = this.messagesSubject.value
+    const messageIndex = currentMessages.findIndex((msg) => msg.id === this.streamingMessageId)
+
+    if (messageIndex === -1) {
+      console.warn('[CODAY] Streaming message not found:', this.streamingMessageId)
+      return
+    }
+
+    // Update the message content with accumulated text
+    const updatedMessages = [...currentMessages]
+    const existingMessage = updatedMessages[messageIndex]
+    if (existingMessage) {
+      updatedMessages[messageIndex] = {
+        ...existingMessage,
+        content: [{ type: 'text', content: text }],
+      }
+    }
+
+    this.messagesSubject.next(updatedMessages)
+  }
+
+  /**
+   * Replace the streaming message with the final MessageEvent
+   */
+  private replaceStreamingMessage(event: MessageEvent): void {
+    if (!this.streamingMessageId) return
+
+    const currentMessages = this.messagesSubject.value
+    const messageIndex = currentMessages.findIndex((msg) => msg.id === this.streamingMessageId)
+
+    if (messageIndex === -1) {
+      console.warn('[CODAY] Streaming message not found for replacement:', this.streamingMessageId)
+      return
+    }
+
+    // Replace with final message (with proper ID and rich content)
+    const finalMessage: ChatMessage = {
+      id: event.timestamp,
+      role: event.role,
+      speaker: event.name,
+      content: event.content,
+      timestamp: new Date(),
+      type: 'text',
+    }
+
+    const updatedMessages = [...currentMessages]
+    updatedMessages[messageIndex] = finalMessage
+
+    this.messagesSubject.next(updatedMessages)
   }
 
   /**
