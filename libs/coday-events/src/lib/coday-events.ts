@@ -121,6 +121,17 @@ export class TextEvent extends CodayEvent {
   }
 }
 
+export class TextChunkEvent extends CodayEvent {
+  chunk: string
+  static override type = 'text_chunk'
+
+  constructor(event: Partial<TextChunkEvent>) {
+    super(event, TextChunkEvent.type)
+    this.chunk = event.chunk!!
+    this.length = this.chunk.length
+  }
+}
+
 export class WarnEvent extends CodayEvent {
   warning: string
   static override type = 'warn'
@@ -346,6 +357,7 @@ const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [ToolRequestEvent.type]: ToolRequestEvent,
   [ToolResponseEvent.type]: ToolResponseEvent,
   [TextEvent.type]: TextEvent,
+  [TextChunkEvent.type]: TextChunkEvent,
   [ThinkingEvent.type]: ThinkingEvent,
   [WarnEvent.type]: WarnEvent,
   [ThreadUpdateEvent.type]: ThreadUpdateEvent,

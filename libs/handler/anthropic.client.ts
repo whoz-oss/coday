@@ -6,6 +6,7 @@ import {
   ErrorEvent,
   MessageEvent,
   SummaryEvent,
+  TextChunkEvent,
   ToolRequestEvent,
   ToolResponseEvent,
 } from '@coday/coday-events'
@@ -109,11 +110,11 @@ export class AnthropicClient extends AiClient {
     const initialContextCharLength = agent.systemInstructions.length + agent.tools.charLength + 20
     let charBudget = Math.max(model.contextWindow * this.charsPerToken - initialContextCharLength, 10000)
 
-    // API call with localized error handling
+    // API call with streaming using SDK helper
     let response: Anthropic.Messages.Message
-    let httpResponse: Response
+    let httpResponse: Response | undefined
     try {
-      const result = await this.makeApiCall(client, model, agent, thread, charBudget)
+      const result = await this.streamApiCall(client, model, agent, thread, charBudget, subscriber)
       response = result.data
       httpResponse = result.response
     } catch (error: any) {
@@ -144,7 +145,7 @@ export class AnthropicClient extends AiClient {
 
         // Force cache marker update to ensure fresh compaction
         try {
-          const result = await this.makeApiCall(client, model, agent, thread, charBudget, true)
+          const result = await this.streamApiCall(client, model, agent, thread, charBudget, subscriber, true)
           response = result.data
           httpResponse = result.response
           this.interactor.displayText('✅ Successfully recovered with compacted context')
@@ -177,7 +178,7 @@ export class AnthropicClient extends AiClient {
         this.interactor.displayText(`🔄 Retrying request...`)
 
         try {
-          const retryResult = await this.makeApiCall(client, model, agent, thread, charBudget)
+          const retryResult = await this.streamApiCall(client, model, agent, thread, charBudget, subscriber)
           response = retryResult.data
           httpResponse = retryResult.response
         } catch (retryError: any) {
@@ -192,8 +193,11 @@ export class AnthropicClient extends AiClient {
       }
     }
 
-    // Update rate limits from successful response headers
-    this.updateRateLimitsFromHeaders(httpResponse?.headers)
+    // Update rate limits from successful response headers (if available)
+    // Note: streaming doesn't provide HTTP response, so rate limits won't be updated
+    if (httpResponse) {
+      this.updateRateLimitsFromHeaders(httpResponse.headers)
+    }
 
     this.updateUsage(response?.usage, agent, thread)
 
@@ -489,6 +493,8 @@ export class AnthropicClient extends AiClient {
   }
 
   /**
+   * @deprecated Replaced by streamApiCall for better UX with progressive text display
+   * Kept for reference and potential fallback
    * Make the actual API call to Anthropic
    * Extracted to avoid code duplication between initial call and retry
    * @param client
@@ -498,6 +504,8 @@ export class AnthropicClient extends AiClient {
    * @param charBudget
    * @param forceUpdateCache When true, forces cache marker recalculation for aggressive compaction
    */
+  // @ts-ignore - Deprecated method kept for reference
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private async makeApiCall(
     client: Anthropic,
     model: AiModel,
@@ -524,6 +532,60 @@ export class AnthropicClient extends AiClient {
         max_tokens: 10000,
       })
       .withResponse()
+  }
+
+  /**
+   * Make the API call using streaming for progressive text display
+   * Uses Anthropic SDK's .stream() helper for simplified streaming
+   * @param client
+   * @param model
+   * @param agent
+   * @param thread
+   * @param charBudget
+   * @param subscriber Subject to emit TextChunkEvent for progressive display
+   * @param forceUpdateCache When true, forces cache marker recalculation for aggressive compaction
+   */
+  private async streamApiCall(
+    client: Anthropic,
+    model: AiModel,
+    agent: Agent,
+    thread: AiThread,
+    charBudget: number,
+    subscriber: Subject<CodayEvent>,
+    forceUpdateCache: boolean = false
+  ): Promise<{ data: Anthropic.Messages.Message; response: Response | undefined }> {
+    const data = await this.getMessages(thread, charBudget, model.name)
+    const messages = this.toClaudeMessage(data.messages, thread, forceUpdateCache)
+
+    // Use the streaming helper from the SDK
+    const stream = client.messages.stream({
+      model: model.name,
+      messages,
+      system: [
+        {
+          text: agent.systemInstructions,
+          type: 'text',
+          cache_control: { type: 'ephemeral' },
+        },
+      ] as unknown as Array<Anthropic.TextBlockParam>,
+      tools: this.getClaudeTools(agent.tools),
+      temperature: agent.definition.temperature ?? 0.8,
+      max_tokens: 10000,
+    })
+
+    // Emit text chunks as they arrive for progressive display
+    stream.on('text', (text) => {
+      subscriber.next(new TextChunkEvent({ chunk: text }))
+    })
+
+    // Wait for the complete message
+    const message = await stream.finalMessage()
+
+    // Return in the same format as makeApiCall for compatibility
+    return {
+      data: message,
+      response: undefined, // Stream helper doesn't expose raw HTTP response
+    }
   }
 
   private getHeader = (headers: Headers | Record<string, string> | undefined, key: string): string | null => {
