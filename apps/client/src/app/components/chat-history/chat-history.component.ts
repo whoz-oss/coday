@@ -8,6 +8,8 @@ import {
   HostListener,
   OnInit,
   OnDestroy,
+  OnChanges,
+  SimpleChanges,
   inject,
 } from '@angular/core'
 import { ChatMessageComponent, ChatMessage } from '../chat-message/chat-message.component'
@@ -27,7 +29,7 @@ import { MatFabButton } from '@angular/material/button'
   templateUrl: './chat-history.component.html',
   styleUrl: './chat-history.component.scss',
 })
-export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy {
+export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy, OnChanges {
   @Input() messages: ChatMessage[] = []
   @Input() streamingText: string = ''
   @Input() isThinking: boolean = false
@@ -76,6 +78,14 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     window.removeEventListener('blur', this.handleWindowBlur)
   }
 
+  ngOnChanges(changes: SimpleChanges) {
+    // Auto-scroll during streaming ONLY if streamingText changed and we're tracking
+    if (changes['streamingText'] && this.streamingText && this.isTracking) {
+      // Small delay to ensure DOM is updated
+      setTimeout(() => this.scrollToBottom(), 0)
+    }
+  }
+
   ngAfterViewChecked() {
     // Check if we need to scroll after each view update
     if (this.messages.length !== this.lastMessageCount) {
@@ -94,12 +104,6 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
       if (this.isTracking) {
         this.scrollToBottom()
       }
-    }
-
-    // Auto-scroll during streaming if in tracking mode
-    // This ensures the streaming text stays visible as it grows
-    if (this.streamingText && this.isTracking) {
-      this.scrollToBottom()
     }
 
     // Ensure scroll container is found
