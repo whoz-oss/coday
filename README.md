@@ -33,7 +33,6 @@ When in the context of a code project, use the npm package to run locally throug
     - node.js (v14.x or later)
     - npm (v6.x or later)
     - tsx (v4)
-    - ~~[ripgrep](https://github.com/BurntSushi/ripgrep)~~ (now bundled with the package)
 
 2. Add npm package
 
