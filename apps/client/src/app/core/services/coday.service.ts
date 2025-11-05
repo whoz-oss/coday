@@ -9,6 +9,7 @@ import {
   HeartBeatEvent,
   InviteEvent,
   InviteEventDefault,
+  MessageContent,
   MessageEvent,
   TextChunkEvent,
   TextEvent,
@@ -60,7 +61,6 @@ export class CodayService implements OnDestroy {
   messages$ = this.messagesSubject.asObservable()
   isThinking$ = this.isThinkingSubject.asObservable()
   currentChoice$ = this.currentChoiceSubject.asObservable()
-  projectTitle$ = this.projectTitleSubject.asObservable()
   currentInviteEvent$ = this.currentInviteEventSubject.asObservable()
   messageToRestore$ = this.messageToRestoreSubject.asObservable()
   threadUpdateEvent$ = this.threadUpdateEventSubject.asObservable()
@@ -550,17 +550,22 @@ export class CodayService implements OnDestroy {
       return
     }
 
-    // Update the message content with accumulated text
-    const updatedMessages = [...currentMessages]
-    const existingMessage = updatedMessages[messageIndex]
+    // Create a completely new array with a new message object
+    // This ensures Angular's change detection picks up the update
+    const existingMessage = currentMessages[messageIndex]
     if (existingMessage) {
-      updatedMessages[messageIndex] = {
-        ...existingMessage,
-        content: [{ type: 'text', content: text }],
-      }
-    }
+      const updatedContent: MessageContent[] = [{ type: 'text', content: text }]
+      const updatedMessages = [
+        ...currentMessages.slice(0, messageIndex),
+        {
+          ...existingMessage,
+          content: updatedContent,
+        },
+        ...currentMessages.slice(messageIndex + 1),
+      ]
 
-    this.messagesSubject.next(updatedMessages)
+      this.messagesSubject.next(updatedMessages)
+    }
   }
 
   /**
