@@ -493,48 +493,6 @@ export class AnthropicClient extends AiClient {
   }
 
   /**
-   * @deprecated Replaced by streamApiCall for better UX with progressive text display
-   * Kept for reference and potential fallback
-   * Make the actual API call to Anthropic
-   * Extracted to avoid code duplication between initial call and retry
-   * @param client
-   * @param model
-   * @param agent
-   * @param thread
-   * @param charBudget
-   * @param forceUpdateCache When true, forces cache marker recalculation for aggressive compaction
-   */
-  // @ts-ignore - Deprecated method kept for reference
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  private async makeApiCall(
-    client: Anthropic,
-    model: AiModel,
-    agent: Agent,
-    thread: AiThread,
-    charBudget: number,
-    forceUpdateCache: boolean = false
-  ): Promise<{ data: Anthropic.Messages.Message; response: Response }> {
-    const data = await this.getMessages(thread, charBudget, model.name)
-    const messages = this.toClaudeMessage(data.messages, thread, forceUpdateCache)
-    return await client.messages
-      .create({
-        model: model.name,
-        messages,
-        system: [
-          {
-            text: agent.systemInstructions,
-            type: 'text',
-            cache_control: { type: 'ephemeral' },
-          },
-        ] as unknown as Array<Anthropic.TextBlockParam>,
-        tools: this.getClaudeTools(agent.tools),
-        temperature: agent.definition.temperature ?? 0.8,
-        max_tokens: 8192,
-      })
-      .withResponse()
-  }
-
-  /**
    * Make the API call using streaming for progressive text display
    * Uses Anthropic SDK's .stream() helper for simplified streaming
    * @param client
