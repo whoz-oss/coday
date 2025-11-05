@@ -29,6 +29,7 @@ import { MatFabButton } from '@angular/material/button'
 })
 export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy {
   @Input() messages: ChatMessage[] = []
+  @Input() streamingText: string = ''
   @Input() isThinking: boolean = false
   @Output() copyRequested = new EventEmitter<ChatMessage>()
   @Output() stopRequested = new EventEmitter<void>()

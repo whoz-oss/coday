@@ -9,7 +9,6 @@ import {
   HeartBeatEvent,
   InviteEvent,
   InviteEventDefault,
-  MessageContent,
   MessageEvent,
   TextChunkEvent,
   TextEvent,
@@ -53,13 +52,13 @@ export class CodayService implements OnDestroy {
   // Thinking state management
   private thinkingTimeout: ReturnType<typeof setTimeout> | null = null
 
-  // Text chunk accumulation for streaming
-  private streamingMessageId: string | null = null
+  // Text chunk accumulation for streaming (separate from messages)
   private accumulatedChunks: string = ''
-  private streamingUpdateCount: number = 0
+  private readonly streamingTextSubject = new BehaviorSubject<string>('')
 
   // Public observables
   messages$ = this.messagesSubject.asObservable()
+  streamingText$ = this.streamingTextSubject.asObservable()
   isThinking$ = this.isThinkingSubject.asObservable()
   currentChoice$ = this.currentChoiceSubject.asObservable()
   currentInviteEvent$ = this.currentInviteEventSubject.asObservable()
@@ -113,8 +112,8 @@ export class CodayService implements OnDestroy {
     this.currentChoiceSubject.next(null)
     this.currentInviteEventSubject.next(null)
     this.currentChoiceEvent = null
-    this.streamingMessageId = null
     this.accumulatedChunks = ''
+    this.streamingTextSubject.next('')
     this.stopThinking()
   }
 
@@ -301,47 +300,29 @@ export class CodayService implements OnDestroy {
   }
 
   private handleMessageEvent(event: MessageEvent): void {
-    // If we have a streaming message in progress, replace it with the final message
-    if (this.streamingMessageId && event.role === 'assistant') {
-      this.replaceStreamingMessage(event)
-      this.streamingMessageId = null
+    // Reset streaming state if assistant message (final message replaces streaming)
+    if (event.role === 'assistant' && this.accumulatedChunks) {
       this.accumulatedChunks = ''
-    } else {
-      // Normal message handling (not streaming)
-      const message: ChatMessage = {
-        id: event.timestamp,
-        role: event.role,
-        speaker: event.name,
-        content: event.content, // Directement le contenu riche
-        timestamp: new Date(),
-        type: 'text',
-      }
-
-      this.addMessage(message)
+      this.streamingTextSubject.next('')
     }
+
+    // Add message normally
+    const message: ChatMessage = {
+      id: event.timestamp,
+      role: event.role,
+      speaker: event.name,
+      content: event.content,
+      timestamp: new Date(),
+      type: 'text',
+    }
+
+    this.addMessage(message)
   }
 
   private handleTextChunkEvent(event: TextChunkEvent): void {
-    // Accumulate chunks
+    // Accumulate chunks and emit as separate streaming state
     this.accumulatedChunks += event.chunk
-
-    // If no streaming message exists yet, create one
-    if (!this.streamingMessageId) {
-      this.streamingMessageId = `streaming-${Date.now()}`
-      this.streamingUpdateCount = 1
-      const streamingMessage: ChatMessage = {
-        id: `${this.streamingMessageId}-${this.streamingUpdateCount}`,
-        role: 'assistant',
-        speaker: 'Assistant',
-        content: [{ type: 'text', content: this.accumulatedChunks }],
-        timestamp: new Date(),
-        type: 'text',
-      }
-      this.addMessage(streamingMessage)
-    } else {
-      // Update existing streaming message
-      this.updateStreamingMessage(this.accumulatedChunks)
-    }
+    this.streamingTextSubject.next(this.accumulatedChunks)
   }
 
   private handleTextEvent(event: TextEvent): void {
@@ -519,69 +500,6 @@ export class CodayService implements OnDestroy {
   }
 
   /**
-   * Update the streaming message with accumulated chunks
-   */
-  private updateStreamingMessage(text: string): void {
-    if (!this.streamingMessageId) return
-
-    const currentMessages = this.messagesSubject.value
-    // Find message by prefix since we change the ID on each update
-    const messageIndex = currentMessages.findIndex((msg) => msg.id.startsWith(this.streamingMessageId!))
-
-    if (messageIndex === -1) return
-
-    // Create a completely new array with a new message object
-    // IMPORTANT: Change the ID to force Angular's trackBy to detect the change
-    const existingMessage = currentMessages[messageIndex]
-    if (existingMessage) {
-      this.streamingUpdateCount++
-      const updatedContent: MessageContent[] = [{ type: 'text', content: text }]
-      const updatedMessages = [
-        ...currentMessages.slice(0, messageIndex),
-        {
-          ...existingMessage,
-          id: `${this.streamingMessageId}-${this.streamingUpdateCount}`, // New ID forces trackBy update
-          content: updatedContent,
-        },
-        ...currentMessages.slice(messageIndex + 1),
-      ]
-
-      this.messagesSubject.next(updatedMessages)
-    }
-  }
-
-  /**
-   * Replace the streaming message with the final MessageEvent
-   */
-  private replaceStreamingMessage(event: MessageEvent): void {
-    if (!this.streamingMessageId) return
-
-    const currentMessages = this.messagesSubject.value
-    // Find message by prefix since we change the ID on each update
-    const messageIndex = currentMessages.findIndex((msg) => msg.id.startsWith(this.streamingMessageId!))
-
-    if (messageIndex === -1) {
-      console.warn('[CODAY] Streaming message not found for replacement:', this.streamingMessageId)
-      return
-    }
-
-    // Replace with final message (with proper ID and rich content)
-    const finalMessage: ChatMessage = {
-      id: event.timestamp,
-      role: event.role,
-      speaker: event.name,
-      content: event.content,
-      timestamp: new Date(),
-      type: 'text',
-    }
-
-    const updatedMessages = [...currentMessages]
-    updatedMessages[messageIndex] = finalMessage
-
-    this.messagesSubject.next(updatedMessages)
-  }
-
-  /**
    * Remove messages from the specified message index onwards
    * Used for local message deletion after successful truncation
    * @param messageId The ID of the message that was deleted (and all following messages)
@@ -656,6 +574,7 @@ export class CodayService implements OnDestroy {
     this.currentInviteEventSubject.complete()
     this.messageToRestoreSubject.complete()
     this.threadUpdateEventSubject.complete()
+    this.streamingTextSubject.complete()
     this.eventStream.disconnect()
   }
 }

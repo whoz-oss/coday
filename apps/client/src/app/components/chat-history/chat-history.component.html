@@ -8,6 +8,18 @@
     ></app-chat-message>
   }
 
+  <!-- Streaming Message (separate from persisted messages) -->
+  @if (streamingText) {
+    <div class="streaming-message message assistant">
+      <div class="message-header">
+        <div class="speaker">Assistant</div>
+      </div>
+      <div class="content markdown-content">
+        {{ streamingText }}
+      </div>
+    </div>
+  }
+
   <!-- Thinking Loader -->
   @if (isThinking) {
     <app-thinking-loader></app-thinking-loader>
