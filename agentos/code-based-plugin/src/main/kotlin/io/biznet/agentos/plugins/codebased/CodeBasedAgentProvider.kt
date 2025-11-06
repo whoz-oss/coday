@@ -3,7 +3,7 @@ package io.biznet.agentos.plugins.codebased
 import io.biznet.agentos.agents.domain.Agent
 import io.biznet.agentos.agents.domain.AgentStatus
 import io.biznet.agentos.agents.domain.ContextType
-import io.biznet.agentos.plugins.AgentPlugin
+import io.biznet.agentos.api.AgentPlugin
 import org.pf4j.Extension
 
 /**

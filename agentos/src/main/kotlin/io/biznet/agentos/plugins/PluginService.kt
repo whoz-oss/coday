@@ -1,6 +1,7 @@
 package io.biznet.agentos.plugins
 
 import io.biznet.agentos.agents.domain.Agent
+import io.biznet.agentos.api.AgentPlugin
 import org.pf4j.PluginManager
 import org.pf4j.PluginState
 import org.slf4j.LoggerFactory
