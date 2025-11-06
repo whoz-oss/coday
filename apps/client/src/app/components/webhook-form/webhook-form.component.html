@@ -114,8 +114,8 @@
 
     <!-- Action Buttons -->
     <div class="form-actions">
-      <button type="button" class="btn-cancel" (click)="onCancel()" [disabled]="isSaving">Cancel</button>
-      <button type="submit" class="btn-save" [disabled]="isSaving">
+      <button matButton type="button" (click)="onCancel()" [disabled]="isSaving">Cancel</button>
+      <button matButton="filled" color="primary" type="submit" [disabled]="isSaving">
         {{ isSaving ? 'Saving...' : 'Save Webhook' }}
       </button>
     </div>

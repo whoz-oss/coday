@@ -66,14 +66,14 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   private subscriptions: Subscription[] = []
 
   // Thinking animation
-  private thinkingPhrases: string[] = ['Processing request...', 'Thinking...', 'Working on it...']
+  private readonly thinkingPhrases: string[] = ['Processing request...', 'Thinking...', 'Working on it...']
   currentThinkingPhrase: string = 'Processing request...'
   private thinkingPhraseIndex: number = 0
   private thinkingInterval: number | null = null
 
   // Modern Angular dependency injection
-  private preferencesService = inject(PreferencesService)
-  private codayService = inject(CodayService)
+  private readonly preferencesService = inject(PreferencesService)
+  private readonly codayService = inject(CodayService)
 
   ngOnInit(): void {
     this.initializeVoiceInput()
@@ -179,7 +179,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
         // Mode: Enter to send, Shift+Enter for new line
         if (!event.shiftKey && !event.metaKey && !event.ctrlKey) {
           event.preventDefault()
-          this.sendMessage()
+          // Allow sending via keyboard even with empty message
+          this.sendMessage(true)
         }
         // Shift+Enter: allow default behavior (new line)
       } else {
@@ -189,7 +190,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
         if (correctModifier && !event.shiftKey) {
           event.preventDefault()
-          this.sendMessage()
+          // Allow sending via keyboard even with empty message
+          this.sendMessage(true)
         }
         // Simple Enter: allow default behavior (new line)
       }
@@ -201,12 +203,18 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     this.adjustTextareaHeight()
   }
 
-  sendMessage() {
-    if (!this.isDisabled && !this.isLocallyDisabled && this.message.trim()) {
+  sendMessage(allowEmpty: boolean = false) {
+    // Allow sending empty messages only via keyboard shortcut (allowEmpty=true)
+    // Button click always requires non-empty message (allowEmpty=false, default)
+    const messageToSend = this.message.trim()
+    const canSend = !this.isDisabled && !this.isLocallyDisabled && (allowEmpty || messageToSend)
+
+    if (canSend) {
       // Immediately set local disable flag to prevent any further input
       this.isLocallyDisabled = true
 
-      this.messageSubmitted.emit(this.message.trim())
+      // Send the trimmed message (can be empty string if allowEmpty=true)
+      this.messageSubmitted.emit(messageToSend)
       this.message = ''
 
       // Reset height after clearing message
@@ -217,12 +225,6 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   onStopClick() {
     this.isStopping = true
     this.stopRequested.emit()
-  }
-
-  toggleVoiceRecording() {
-    // This method is called by simple button click
-    // But we now use push-to-talk mode with mousedown/mouseup events
-    console.log('Toggle voice recording called - using push-to-talk mode instead')
   }
 
   // Methods for push-to-talk mode
@@ -267,7 +269,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
   private initializeVoiceInput(): void {
     // Check if Speech Recognition is available
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    const SpeechRecognition = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
     console.log('[SPEECH] speechRecognition', SpeechRecognition)
     if (!SpeechRecognition) {
       console.warn('[SPEECH] Speech Recognition API not available')
@@ -410,8 +412,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
   private appendToTextarea(text: string): void {
     const currentValue = this.message
-    const newValue = currentValue ? `${currentValue}${text}` : text
-    this.message = newValue
+    this.message = currentValue ? `${currentValue}${text}` : text
 
     // Focus textarea and place cursor at end
     if (this.messageInput?.nativeElement) {
@@ -485,7 +486,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     textarea.style.height = `${newHeight}px`
 
     // Emit height change to parent
-    const containerHeight = textarea.parentElement?.offsetHeight || newHeight + 32
+    const containerHeight = textarea.parentElement?.offsetHeight ?? newHeight + 32
     this.heightChanged.emit(containerHeight)
   }
 
@@ -542,13 +543,13 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
    */
   private startThinkingAnimation(): void {
     this.thinkingPhraseIndex = 0
-    this.currentThinkingPhrase = this.thinkingPhrases[0] || 'Thinking...'
+    this.currentThinkingPhrase = this.thinkingPhrases[0] ?? 'Thinking...'
 
     this.thinkingInterval = window.setInterval(() => {
       // Move to next phrase only if not at the last one
       if (this.thinkingPhraseIndex < this.thinkingPhrases.length - 1) {
         this.thinkingPhraseIndex++
-        this.currentThinkingPhrase = this.thinkingPhrases[this.thinkingPhraseIndex] || 'Thinking...'
+        this.currentThinkingPhrase = this.thinkingPhrases[this.thinkingPhraseIndex] ?? 'Thinking...'
       }
       // If we're at the last phrase, stay there (no change)
     }, 2000) // Change phrase every 2 seconds

@@ -50,6 +50,12 @@ export class ThreadSelectorComponent implements OnInit {
   isLoadingThreadList = toSignal(this.threadStateService.isLoadingThreadList$)
   username = toSignal(this.userService.username$)
 
+  // Editing state
+  editingThreadId: string | null = null
+  editingThreadName: string = ''
+  isRenamingThread: boolean = false
+  renameErrorMessage: string = ''
+
   ngOnInit(): void {
     // Load current user on component initialization
     this.userService.fetchCurrentUser().subscribe({
@@ -260,5 +266,101 @@ export class ThreadSelectorComponent implements OnInit {
     } catch (error) {
       return 'No date'
     }
+  }
+
+  /**
+   * Start editing a thread name
+   */
+  startEditingThreadName(event: Event, thread: { id: string; name: string }): void {
+    event.stopPropagation()
+    this.editingThreadId = thread.id
+    this.editingThreadName = thread.name || ''
+    this.renameErrorMessage = ''
+
+    // Focus the input after Angular renders it
+    setTimeout(() => {
+      const input = document.querySelector('.thread-name-input') as HTMLInputElement
+      if (input) {
+        input.focus()
+        input.select()
+      }
+    }, 0)
+  }
+
+  /**
+   * Cancel editing
+   */
+  cancelEditingThreadName(): void {
+    this.editingThreadId = null
+    this.editingThreadName = ''
+    this.renameErrorMessage = ''
+  }
+
+  /**
+   * Save the edited thread name
+   */
+  saveThreadName(event?: Event): void {
+    if (event) {
+      event.stopPropagation()
+    }
+
+    if (!this.editingThreadId) return
+
+    const newName = this.editingThreadName.trim()
+
+    // Validate name
+    if (!newName) {
+      this.renameErrorMessage = 'Thread name cannot be empty'
+      return
+    }
+
+    if (newName.length > 200) {
+      this.renameErrorMessage = 'Thread name is too long (max 200 characters)'
+      return
+    }
+
+    const threadId = this.editingThreadId
+    this.isRenamingThread = true
+    this.renameErrorMessage = ''
+
+    this.threadStateService.renameThread(threadId, newName).subscribe({
+      next: () => {
+        console.log('[THREAD-SELECTOR] Thread renamed successfully')
+        this.cancelEditingThreadName()
+        this.isRenamingThread = false
+      },
+      error: (error) => {
+        console.error('[THREAD-SELECTOR] Error renaming thread:', error)
+        this.renameErrorMessage = error.message || 'Failed to rename thread'
+        this.isRenamingThread = false
+      },
+    })
+  }
+
+  /**
+   * Handle keyboard events during editing
+   */
+  onEditKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      event.stopPropagation()
+      this.saveThreadName()
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      this.cancelEditingThreadName()
+    }
+  }
+
+  /**
+   * Handle blur event (save on blur)
+   */
+  onEditBlur(): void {
+    // Small delay to allow click events on buttons to fire first
+    setTimeout(() => {
+      if (this.editingThreadId && !this.isRenamingThread) {
+        this.saveThreadName()
+      }
+    }, 200)
   }
 }

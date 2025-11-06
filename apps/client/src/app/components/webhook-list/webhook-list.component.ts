@@ -1,6 +1,8 @@
 import { Component, Input, Output, EventEmitter } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { Webhook } from '../../core/services/webhook-api.service'
+import { MatIcon } from '@angular/material/icon'
+import { MatButton, MatIconButton } from '@angular/material/button'
 
 /**
  * Dumb/Presentation Component for displaying webhook list
@@ -15,7 +17,7 @@ import { Webhook } from '../../core/services/webhook-api.service'
 @Component({
   selector: 'app-webhook-list',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, MatIcon, MatButton, MatIconButton],
   templateUrl: './webhook-list.component.html',
   styleUrl: './webhook-list.component.scss',
 })

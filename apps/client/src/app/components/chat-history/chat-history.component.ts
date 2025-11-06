@@ -18,11 +18,12 @@ import { CodayService } from '../../core/services/coday.service'
 import { Subject } from 'rxjs'
 import { MatIcon } from '@angular/material/icon'
 import { ThinkingLoaderComponent } from '../thinking-loader/thinking-loader.component'
+import { MatFabButton } from '@angular/material/button'
 
 @Component({
   selector: 'app-chat-history',
   standalone: true,
-  imports: [ChatMessageComponent, MatIcon, ThinkingLoaderComponent],
+  imports: [ChatMessageComponent, MatIcon, ThinkingLoaderComponent, MatFabButton],
   templateUrl: './chat-history.component.html',
   styleUrl: './chat-history.component.scss',
 })

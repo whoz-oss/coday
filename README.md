@@ -35,7 +35,6 @@ Coday is a **conversation-based agentic framework** that helps developers work w
 
 - Node.js 22+ 
 - npm (comes with Node.js)
-- ripgrep (to install through `brew install ripgrep`)
 - (have `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY` as env vars)
 
 That's it!

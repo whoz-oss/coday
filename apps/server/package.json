@@ -1,6 +1,6 @@
 {
   "name": "@whoz-oss/coday-server",
-  "version": "0.41.1",
+  "version": "0.42.1",
   "repository": "https://github.com/whoz-oss/coday",
   "type": "module",
   "main": "server/server.js",
@@ -8,6 +8,7 @@
     "coday-server": "./bin.js"
   },
   "dependencies": {
+    "@vscode/ripgrep": "1.15.9",
     "sharp": "0.34.4"
   },
   "publishConfig": {

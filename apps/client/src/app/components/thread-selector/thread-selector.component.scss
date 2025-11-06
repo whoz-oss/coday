@@ -77,22 +77,28 @@
   align-items: center;
   flex: 1;
   min-width: 0; // Important for text truncation
-  padding: 0.7rem 1rem;
+  padding: 0.75rem 1rem;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
   background: transparent;
   border: none;
+  border-radius: 0;
   color: var(--color-text);
   text-align: left;
-  cursor: pointer;
-  transition: none;
-  gap: 0;
-  border-radius: 0;
-
-  &:active {
-    transform: scale(0.98);
-  }
+  justify-content: flex-start;
 
   &.new-thread-item {
     margin-bottom: 0.25rem;
+  }
+
+  &:hover {
+    color: var(--color-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
   }
 }
 
@@ -104,54 +110,71 @@
   margin-right: 0.5rem;
 }
 
-.action-button {
+// Show action buttons on hover or for current thread
+.thread-item-wrapper:hover .action-buttons,
+.thread-item-wrapper.current .action-buttons {
   display: flex;
-  align-items: center;
-  justify-content: center;
+}
+
+.action-button {
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s ease;
+  border-radius: 4px !important; // Square corners like mini FAB
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+
+  // Override Material's rounded corners
+  ::ng-deep .mat-mdc-button-persistent-ripple {
+    border-radius: 4px !important;
+  }
+
+  &:hover {
+    background: var(--color-bg-hover) !important;
+  }
 
   mat-icon {
     font-size: 18px;
     width: 18px;
     height: 18px;
-    color: var(--color-text-secondary);
   }
 
-  &:hover {
-    background: var(--color-bg-hover-secondary, rgba(0, 0, 0, 0.1));
-
+  &.edit-button {
     mat-icon {
-      color: var(--color-text);
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+
+    &:hover {
+      background-color: var(--color-primary-hover) !important;
+
+      mat-icon {
+        color: var(--color-primary);
+      }
     }
   }
 
   &.star-button {
+    mat-icon {
+      transition: color 0.2s ease;
+    }
+
     &.starred {
       mat-icon {
         color: #fbbf24; // Gold color for starred
       }
     }
 
-    &:hover mat-icon {
-      color: #fbbf24;
+    &:not(.starred) {
+      &:hover mat-icon {
+        color: #fbbf24;
+      }
     }
   }
 
   &.delete-button {
-    &:hover {
-      background: rgba(239, 68, 68, 0.1);
-
-      mat-icon {
-        color: #ef4444; // Red color for delete
-      }
+    &:hover mat-icon {
+      color: #ef4444; // Red color for delete
     }
   }
 }
@@ -168,6 +191,7 @@
   font-size: 0.875rem;
   font-weight: 400;
   padding: 0 1rem;
+  min-width: 0; // Allow shrinking
 
   &:hover:not(.new-thread-link) {
     color: var(--color-primary-hover, var(--color-primary));
@@ -257,6 +281,43 @@
     color: var(--color-text-muted);
     font-style: italic;
   }
+}
+
+// Thread name editing styles
+.thread-name-edit-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0 0.5rem;
+}
+
+.thread-name-input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font-size: 0.9rem;
+  font-family: inherit;
+
+  &:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.rename-error {
+  color: var(--color-error);
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+  padding-left: 0.5rem;
 }
 
 .thread-name-spinner {

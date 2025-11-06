@@ -1,3 +1,63 @@
+## 0.42.1 (2025-11-06)
+
+### 🩹 Fixes
+
+- add missing server dep ([#319](https://github.com/whoz-oss/coday/pull/319))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.42.0 (2025-11-06)
+
+### 🚀 Features
+
+- enable thread rename in thread list ([#318](https://github.com/whoz-oss/coday/pull/318))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.41.5 (2025-11-04)
+
+### 🩹 Fixes
+
+- bump angular build thresholds ([#308](https://github.com/whoz-oss/coday/pull/308))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.41.4 (2025-11-04)
+
+### 🩹 Fixes
+
+- handle raw confluence output with turndown + light bump in max tokens of Anthropic ([#305](https://github.com/whoz-oss/coday/pull/305), [#287](https://github.com/whoz-oss/coday/issues/287))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.41.3 (2025-11-04)
+
+### 🩹 Fixes
+
+- allow send empty for rare cases ([#303](https://github.com/whoz-oss/coday/pull/303))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.41.2 (2025-11-02)
+
+### 🩹 Fixes
+
+- resolve double path issue in listFilesAndDirectories ([#300](https://github.com/whoz-oss/coday/pull/300), [#302](https://github.com/whoz-oss/coday/pull/302))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.41.1 (2025-10-31)
 
 ### 🩹 Fixes
