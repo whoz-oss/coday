@@ -22,26 +22,59 @@
             <div class="thread-group-header">{{ group.label }}</div>
             @for (thread of group.threads; track thread.id) {
               <div class="thread-item-wrapper" [class.current]="thread.id === currentThread()?.id">
-                <!-- Thread name (clickable) -->
-                <a
-                  class="thread-item"
-                  [title]="thread.name || 'Generating name...'"
-                  (click)="selectThread(thread.id); $event.preventDefault()"
-                  (keydown.enter)="selectThread(thread.id); $event.preventDefault()"
-                  (keydown.space)="selectThread(thread.id); $event.preventDefault()"
-                  role="menuitem"
-                  tabindex="0"
-                >
-                  @if (thread.name) {
-                    <span class="thread-name">{{ thread.name }}</span>
-                  } @else {
-                    <mat-spinner class="thread-name-spinner" [diameter]="16"></mat-spinner>
-                    <span class="thread-name thread-name-generating">Generating name...</span>
-                  }
-                </a>
+                <!-- Thread name (clickable or editable) -->
+                @if (editingThreadId === thread.id) {
+                  <!-- Edit mode -->
+                  <div class="thread-name-edit-wrapper">
+                    <input
+                      type="text"
+                      class="thread-name-input"
+                      [(ngModel)]="editingThreadName"
+                      [disabled]="isRenamingThread"
+                      (keydown)="onEditKeydown($event)"
+                      (blur)="onEditBlur()"
+                      (click)="$event.stopPropagation()"
+                      maxlength="200"
+                    />
+                    @if (renameErrorMessage) {
+                      <div class="rename-error">{{ renameErrorMessage }}</div>
+                    }
+                  </div>
+                } @else {
+                  <!-- View mode -->
+                  <a
+                    class="thread-item"
+                    [title]="thread.name || 'Generating name...'"
+                    (click)="selectThread(thread.id); $event.preventDefault()"
+                    (keydown.enter)="selectThread(thread.id); $event.preventDefault()"
+                    (keydown.space)="selectThread(thread.id); $event.preventDefault()"
+                    role="menuitem"
+                    tabindex="0"
+                  >
+                    @if (thread.name) {
+                      <span class="thread-name">{{ thread.name }}</span>
+                    } @else {
+                      <mat-spinner class="thread-name-spinner" [diameter]="16"></mat-spinner>
+                      <span class="thread-name thread-name-generating">Generating name...</span>
+                    }
+                  </a>
+                }
 
                 <!-- Action buttons (right, absolutely positioned) -->
                 <div class="action-buttons">
+                  <!-- Edit button (only show in view mode and when thread has a name) -->
+                  @if (editingThreadId !== thread.id && thread.name) {
+                    <button
+                      mat-icon-button
+                      class="action-button edit-button"
+                      title="Rename thread"
+                      (click)="startEditingThreadName($event, thread)"
+                      type="button"
+                    >
+                      <mat-icon>edit</mat-icon>
+                    </button>
+                  }
+
                   <button
                     mat-icon-button
                     class="action-button star-button"

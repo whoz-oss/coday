@@ -1,3 +1,13 @@
+## 0.42.0 (2025-11-06)
+
+### 🚀 Features
+
+- enable thread rename in thread list ([#318](https://github.com/whoz-oss/coday/pull/318))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.41.5 (2025-11-04)
 
 ### 🩹 Fixes

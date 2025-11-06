@@ -33,7 +33,6 @@ When in the context of a code project, use the npm package to run locally throug
     - node.js (v14.x or later)
     - npm (v6.x or later)
     - tsx (v4)
-    - [ripgrep](https://github.com/BurntSushi/ripgrep) (important for file search)
 
 2. Add npm package
 
@@ -62,7 +61,6 @@ When in the context of a code project, use the npm package to run locally throug
 1. Check dependencies
    - Node.js (v14.x or later)
    - npm (v6.x or later)
-   - [ripgrep](https://github.com/BurntSushi/ripgrep)
    - git
    - pnpm
 2. Clone the repo
