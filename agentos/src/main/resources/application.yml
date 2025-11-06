@@ -23,7 +23,7 @@ spring:
 
 agentos:
   plugins:
-    directory: plugins
+    directory: agentos/plugins
     autoLoad: true
 
 

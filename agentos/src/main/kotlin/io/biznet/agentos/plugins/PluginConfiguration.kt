@@ -1,9 +1,10 @@
 package io.biznet.agentos.plugins
 
-import org.pf4j.DefaultPluginManager
 import org.pf4j.PluginManager
+import org.pf4j.spring.SpringPluginManager
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.context.ApplicationContext
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import java.nio.file.Files
@@ -24,7 +25,7 @@ class PluginConfiguration {
     private var autoLoad: Boolean = true
 
     @Bean
-    fun pluginManager(): PluginManager {
+    fun pluginManager(applicationContext: ApplicationContext): PluginManager {
         val pluginsPath = Paths.get(pluginsDirectory).toAbsolutePath()
 
         logger.info("Working directory: ${System.getProperty("user.dir")}")
@@ -47,10 +48,14 @@ class PluginConfiguration {
             }
         }
 
-        logger.info("Initializing plugin manager with directory: $pluginsPath")
+        logger.info("Initializing Spring plugin manager with directory: $pluginsPath")
 
-        // Use JarPluginManager which expects JAR files directly in plugins directory
-        val pluginManager = DefaultPluginManager(pluginsPath)
+        // Use SpringPluginManager to enable Spring support in plugins
+        // This allows plugins to use @Configuration, @Bean, @Autowired, etc.
+        val pluginManager = SpringPluginManager(pluginsPath)
+        pluginManager.applicationContext = applicationContext
+        
+        logger.info("Spring plugin manager initialized with application context")
 
         // Extension finder is protected, can't access directly
 
@@ -71,17 +76,11 @@ class PluginConfiguration {
             }
         }
 
-        if (autoLoad) {
-            logger.info("Auto-loading plugins...")
-            pluginManager.loadPlugins()
-            pluginManager.startPlugins()
-
-            val loadedPlugins = pluginManager.plugins
-            logger.info("Loaded ${loadedPlugins.size} plugin(s)")
-            loadedPlugins.forEach { plugin ->
-                logger.info("  - ${plugin.pluginId} v${plugin.descriptor.version} (${plugin.pluginState})")
-            }
-        }
+        // Don't call loadPlugins/startPlugins manually!
+        // SpringPluginManager has @PostConstruct init() method that will do this
+        // and also process Spring configurations in plugins
+        
+        logger.info("SpringPluginManager will auto-initialize via @PostConstruct")
 
         return pluginManager
     }
