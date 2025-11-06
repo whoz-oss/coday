@@ -41,7 +41,7 @@
             "js": "import { createRequire as __createRequire } from 'module';import { dirname as __dirname_func } from 'path';import { fileURLToPath as __fileURLToPath } from 'url';const require = __createRequire(import.meta.url);const __filename = __fileURLToPath(import.meta.url);const __dirname = __dirname_func(__filename);"
           }
         },
-        "external": ["sharp"],
+        "external": ["sharp", "@vscode/ripgrep"],
         "format": ["esm"],
         "main": "apps/server/src/server.ts",
         "outputFileName": "server.js",
