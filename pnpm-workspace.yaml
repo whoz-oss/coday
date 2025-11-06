@@ -7,6 +7,7 @@ ignoredBuiltDependencies:
 
 onlyBuiltDependencies:
   - '@swc/core'
+  - '@vscode/ripgrep'
   - electron
   - esbuild
   - nx
