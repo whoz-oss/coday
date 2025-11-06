@@ -1,3 +1,13 @@
+## 0.42.1 (2025-11-06)
+
+### 🩹 Fixes
+
+- add missing server dep ([#319](https://github.com/whoz-oss/coday/pull/319))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.42.0 (2025-11-06)
 
 ### 🚀 Features
