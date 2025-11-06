@@ -1,3 +1,13 @@
+## 0.43.0 (2025-11-06)
+
+### 🚀 Features
+
+- #307 Add streaming API support for Anthropic client ([#311](https://github.com/whoz-oss/coday/pull/311), [#307](https://github.com/whoz-oss/coday/issues/307))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.42.1 (2025-11-06)
 
 ### 🩹 Fixes
