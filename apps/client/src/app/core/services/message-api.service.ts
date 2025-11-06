@@ -16,10 +16,29 @@ export class MessageApiService {
    * Get all messages from a thread
    * @param projectName Project name
    * @param threadId Thread ID
-   * @returns Observable of messages array
+   * @returns Observable with messages and thread info
    */
-  getMessages(projectName: string, threadId: string): Observable<any[]> {
-    return this.http.get<any[]>(`/api/projects/${projectName}/threads/${threadId}/messages`)
+  getMessages(
+    projectName: string,
+    threadId: string
+  ): Observable<{
+    messages: any[]
+    threadInfo: {
+      id: string
+      name: string
+      messageCount: number
+      modifiedDate: string
+    }
+  }> {
+    return this.http.get<{
+      messages: any[]
+      threadInfo: {
+        id: string
+        name: string
+        messageCount: number
+        modifiedDate: string
+      }
+    }>(`/api/projects/${projectName}/threads/${threadId}/messages`)
   }
 
   /**
