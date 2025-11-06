@@ -1,3 +1,27 @@
+// Streaming message style (matches ChatMessageComponent assistant style)
+.streaming-message {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  max-width: 75%;
+  width: fit-content;
+  min-width: 100px;
+  word-wrap: break-word;
+
+  &.assistant {
+    background-color: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    margin-left: 0;
+    margin-right: auto;
+    border-bottom-left-radius: 4px;
+  }
+
+  .content {
+    color: var(--color-text);
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+}
+
 // Go to bottom button
 .go-to-bottom-btn {
   position: fixed !important;

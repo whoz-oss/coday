@@ -37,6 +37,7 @@
         <div class="chat-center">
           <app-chat-history
             [messages]="messages"
+            [streamingText]="streamingText"
             [isThinking]="isThinking"
             (copyRequested)="onCopyMessage($event)"
             (stopRequested)="onStopRequested()"
