@@ -17,7 +17,7 @@ description: |
 mandatoryDocs:
 
 optionalDocs:
-  - path: ./doc/PROJECT_CONFIGURATION.md
+  - path: ./docs/to-rework/PROJECT_CONFIGURATION.md
     description: How the project configuration works
 
 # Scripts are AssistantTools declared to openai on each call (for now), so always available.
@@ -273,7 +273,7 @@ agents:
       - ./product/02-domain-model.md
       - ./product/03-stakeholder-views.md
       - ./product/04-guidelines.md
-      - ./doc/INTEGRATIONS.md
+      - ./docs/to-rework/INTEGRATIONS.md
     integrations:
       GIT-PLATFORM:
       FETCH:

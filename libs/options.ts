@@ -39,6 +39,10 @@ export interface CodayOptions {
 
 /**
  * Parse command line arguments and return Coday options
+ *
+ * For complete documentation of all command line options, see:
+ * docs/02-getting-started/launching.md
+ *
  * @returns CodayOptions object
  */
 export function parseCodayOptions(): CodayOptions {
