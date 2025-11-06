@@ -1,3 +1,13 @@
+## 0.43.1 (2025-11-06)
+
+### 🩹 Fixes
+
+- #281 convert Windows paths to file:// URLs for ESM imports ([#321](https://github.com/whoz-oss/coday/pull/321), [#281](https://github.com/whoz-oss/coday/issues/281))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.43.0 (2025-11-06)
 
 ### 🚀 Features
