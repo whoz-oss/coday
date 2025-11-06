@@ -75,6 +75,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
 
   // State from services
   messages: ChatMessage[] = []
+  streamingText: string = ''
   isThinking: boolean = false
   currentChoice: { options: ChoiceOption[]; label: string } | null = null
   connectionStatus: ConnectionStatus | null = null
@@ -161,6 +162,10 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
     this.codayService.messages$.pipe(takeUntil(this.destroy$)).subscribe((messages) => {
       console.log('[THREAD] Messages updated:', messages.length)
       this.messages = messages
+    })
+
+    this.codayService.streamingText$.pipe(takeUntil(this.destroy$)).subscribe((streamingText) => {
+      this.streamingText = streamingText
     })
 
     this.codayService.isThinking$.pipe(takeUntil(this.destroy$)).subscribe((isThinking) => {
