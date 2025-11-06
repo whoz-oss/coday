@@ -8,6 +8,7 @@
     "coday-server": "./bin.js"
   },
   "dependencies": {
+    "@vscode/ripgrep": "1.15.9",
     "sharp": "0.34.4"
   },
   "publishConfig": {
