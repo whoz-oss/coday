@@ -18,6 +18,9 @@ import { PreferencesService } from '../../services/preferences.service'
 import { CodayService } from '../../core/services/coday.service'
 import { MatIconButton } from '@angular/material/button'
 import { MatIcon } from '@angular/material/icon'
+import { AgentApiService, AgentAutocomplete } from '../../core/services/agent-api.service'
+import { ProjectStateService } from '../../core/services/project-state.service'
+import { debounceTime } from 'rxjs/operators'
 
 @Component({
   selector: 'app-chat-textarea',
@@ -77,15 +80,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   autocompleteItems: Array<{ name: string; description: string }> = []
   selectedAutocompleteIndex = 0
 
-  // Mock data for autocomplete (will be replaced by API calls later)
-  private readonly MOCK_AGENTS = [
-    { name: 'archay', description: 'Expert Software Architecture agent, coordinates team' },
-    { name: 'sway', description: 'Software Agent - bridges user needs and code implementation' },
-    { name: 'octopuss', description: 'GitHub integration specialist with repository management' },
-    { name: 'pm', description: 'Product Manager agent, vision and roadmap' },
-    { name: 'coday', description: 'Default agent with neutral character' },
-  ]
-
+  // Mock data for commands (agents will come from API)
   private readonly MOCK_COMMANDS = [
     { name: 'config', description: 'Manage configuration settings' },
     { name: 'help', description: 'Show help information' },
@@ -96,6 +91,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   // Modern Angular dependency injection
   private readonly preferencesService = inject(PreferencesService)
   private readonly codayService = inject(CodayService)
+  private readonly agentApiService = inject(AgentApiService)
+  private readonly projectStateService = inject(ProjectStateService)
 
   ngOnInit(): void {
     this.initializeVoiceInput()
@@ -748,11 +745,30 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
    */
   private showAgentAutocomplete(query: string): void {
     this.autocompleteTrigger = '@'
-    this.autocompleteItems = this.MOCK_AGENTS.filter((agent) =>
-      agent.name.toLowerCase().startsWith(query.toLowerCase())
-    )
-    this.autocompleteVisible = this.autocompleteItems.length > 0
-    this.selectedAutocompleteIndex = 0
+
+    // Get current project name
+    const projectName = this.projectStateService.getSelectedProjectId()
+    if (!projectName) {
+      console.warn('[AUTOCOMPLETE] No project selected, cannot load agents')
+      this.hideAutocomplete()
+      return
+    }
+
+    // Call API to get agents
+    this.agentApiService
+      .getAgentsAutocomplete(projectName, query)
+      .pipe(debounceTime(150)) // Debounce API calls
+      .subscribe({
+        next: (agents: AgentAutocomplete[]) => {
+          this.autocompleteItems = agents
+          this.autocompleteVisible = agents.length > 0
+          this.selectedAutocompleteIndex = 0
+        },
+        error: (error) => {
+          console.error('[AUTOCOMPLETE] Error loading agents:', error)
+          this.hideAutocomplete()
+        },
+      })
   }
 
   /**
