@@ -1,7 +1,7 @@
 import express from 'express'
 import { debugLog } from './log'
 import { AgentService } from '@coday/agent/agent.service'
-import { CommandContext } from '@coday/model'
+import { CommandContext } from '@coday/model/command-context'
 import { ProjectService } from './services/project.service'
 import { ServerInteractor } from '@coday/model/server-interactor'
 import { UserService } from '@coday/service/user.service'
@@ -99,8 +99,11 @@ export function registerAgentRoutes(
         webhook: webhookService,
       }
 
+      // Select the project in the state service
+      projectState.selectProject(project)
+
       // Create temporary AiClientProvider and AgentService
-      const aiClientProvider = new AiClientProvider(interactor, services)
+      const aiClientProvider = new AiClientProvider(interactor, user, projectState, logger)
       const agentService = new AgentService(
         interactor,
         aiClientProvider,
@@ -109,14 +112,9 @@ export function registerAgentRoutes(
         options.agentFolders
       )
 
-      // Select the project in the state service
-      projectState.selectProject(project)
-
-      // Create a minimal command context
-      const context: CommandContext = {
-        project: projectData.config,
-        oneshot: true,
-      } as CommandContext
+      // Create a command context
+      const context = new CommandContext(projectData.config, username)
+      context.oneshot = true
 
       // Initialize and get agent summaries
       await agentService.initialize(context)
