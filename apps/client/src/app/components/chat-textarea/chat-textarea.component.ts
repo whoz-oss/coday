@@ -732,7 +732,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
    * Note: Commands with / are disabled for now
    */
   private checkForAutocomplete(): void {
-    const text = this.message.trim()
+    // Don't trim here - we need to detect trailing spaces
+    const text = this.message
 
     // Check if starts with @ (agents)
     if (text.startsWith('@')) {
