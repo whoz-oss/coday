@@ -24,6 +24,12 @@
   gap: 0.5rem;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .drawer-title {
   margin: 0;
   font-size: 1.25rem;
@@ -34,6 +40,14 @@
 .file-count {
   font-size: 0.9rem;
   color: var(--color-text-secondary);
+}
+
+.download-all-btn {
+  color: var(--color-primary);
+
+  &:hover {
+    background: var(--color-bg-hover);
+  }
 }
 
 .close-btn {
