@@ -5,9 +5,22 @@
       <h3 class="drawer-title">Exchange</h3>
       <span class="file-count">({{ files().length }})</span>
     </div>
-    <button mat-icon-button class="close-btn" (click)="close()" title="Close" type="button">
-      <mat-icon>chevron_right</mat-icon>
-    </button>
+    <div class="header-actions">
+      @if (files().length > 0) {
+        <button
+          mat-icon-button
+          class="download-all-btn"
+          (click)="downloadAll()"
+          title="Download all files"
+          type="button"
+        >
+          <mat-icon>download_for_offline</mat-icon>
+        </button>
+      }
+      <button mat-icon-button class="close-btn" (click)="close()" title="Close" type="button">
+        <mat-icon>chevron_right</mat-icon>
+      </button>
+    </div>
   </div>
 
   <!-- File list -->
