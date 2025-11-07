@@ -3,6 +3,7 @@ import {
   Component,
   ElementRef,
   EventEmitter,
+  HostListener,
   inject,
   Input,
   OnChanges,
@@ -18,11 +19,14 @@ import { PreferencesService } from '../../services/preferences.service'
 import { CodayService } from '../../core/services/coday.service'
 import { MatIconButton } from '@angular/material/button'
 import { MatIcon } from '@angular/material/icon'
+import { AgentApiService, AgentAutocomplete } from '../../core/services/agent-api.service'
+import { ProjectStateService } from '../../core/services/project-state.service'
+import { HighlightPipe } from '../../pipes/highlight.pipe'
 
 @Component({
   selector: 'app-chat-textarea',
   standalone: true,
-  imports: [FormsModule, MatIconButton, MatIcon],
+  imports: [FormsModule, MatIconButton, MatIcon, HighlightPipe],
   templateUrl: './chat-textarea.component.html',
   styleUrl: './chat-textarea.component.scss',
 })
@@ -71,9 +75,17 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   private thinkingPhraseIndex: number = 0
   private thinkingInterval: number | null = null
 
+  // Autocomplete state
+  autocompleteVisible = false
+  autocompleteTrigger: '@' | '/' | null = null
+  autocompleteItems: Array<{ name: string; description: string }> = []
+  selectedAutocompleteIndex = 0
+
   // Modern Angular dependency injection
   private readonly preferencesService = inject(PreferencesService)
   private readonly codayService = inject(CodayService)
+  private readonly agentApiService = inject(AgentApiService)
+  private readonly projectStateService = inject(ProjectStateService)
 
   ngOnInit(): void {
     this.initializeVoiceInput()
@@ -174,6 +186,43 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   }
 
   onKeyDown(event: KeyboardEvent) {
+    // Handle autocomplete navigation if visible
+    if (this.autocompleteVisible) {
+      switch (event.key) {
+        case 'ArrowDown':
+          event.preventDefault()
+          this.selectedAutocompleteIndex = Math.min(
+            this.selectedAutocompleteIndex + 1,
+            this.autocompleteItems.length - 1
+          )
+          this.scrollSelectedItemIntoView()
+          return
+
+        case 'ArrowUp':
+          event.preventDefault()
+          this.selectedAutocompleteIndex = Math.max(this.selectedAutocompleteIndex - 1, 0)
+          this.scrollSelectedItemIntoView()
+          return
+
+        case 'Tab':
+        case 'Enter':
+          // If we haven't typed a space after the trigger yet, complete the item
+          if (!this.message.includes(' ')) {
+            event.preventDefault()
+            this.selectAutocompleteItem()
+            return
+          }
+          // Otherwise, let Enter send the message normally (fall through)
+          break
+
+        case 'Escape':
+          event.preventDefault()
+          this.hideAutocomplete()
+          return
+      }
+    }
+
+    // Normal Enter key handling for sending messages
     if (event.key === 'Enter') {
       if (this.useEnterToSend) {
         // Mode: Enter to send, Shift+Enter for new line
@@ -201,6 +250,26 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   onInput() {
     // Adjust textarea height when content changes
     this.adjustTextareaHeight()
+
+    // Check for autocomplete triggers
+    this.checkForAutocomplete()
+  }
+
+  /**
+   * Handle clicks outside the autocomplete popup to close it
+   */
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    if (!this.autocompleteVisible) return
+
+    const target = event.target as HTMLElement
+    const popup = document.querySelector('.autocomplete-popup')
+    const textarea = this.messageInput?.nativeElement
+
+    // Close if click is outside both popup and textarea
+    if (popup && !popup.contains(target) && textarea && !textarea.contains(target)) {
+      this.hideAutocomplete()
+    }
   }
 
   sendMessage(allowEmpty: boolean = false) {
@@ -531,10 +600,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
       return this.isStarting ? 'Processing request...' : this.currentThinkingPhrase
     } else if (this.showWelcome) {
       return 'How can I help you today?'
-    } else if (this.currentInvite) {
-      return 'Type your message here...'
     } else {
-      return 'Type your prompt here'
+      return `Select an agent with '@' (optional), type your message here...`
     }
   }
 
@@ -657,5 +724,139 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     } else {
       console.log('[CHAT-TEXTAREA] Focus blocked - element disabled or not available')
     }
+  }
+
+  /**
+   * Check if the message starts with @ and show autocomplete
+   * Note: Commands with / are disabled for now
+   */
+  private checkForAutocomplete(): void {
+    // Don't trim here - we need to detect trailing spaces
+    const text = this.message
+
+    // Check if starts with @ (agents)
+    if (text.startsWith('@')) {
+      const afterTrigger = text.substring(1)
+      // If there's a space after @, close the autocomplete
+      if (afterTrigger.includes(' ')) {
+        this.hideAutocomplete()
+        return
+      }
+      this.showAgentAutocomplete(afterTrigger)
+      return
+    }
+
+    // Commands with / are disabled for now
+    // if (text.startsWith('/')) {
+    //   const afterTrigger = text.substring(1)
+    //   if (afterTrigger.includes(' ')) {
+    //     this.hideAutocomplete()
+    //     return
+    //   }
+    //   const query = afterTrigger
+    //   this.showCommandAutocomplete(query)
+    //   return
+    // }
+
+    // No trigger found, hide autocomplete
+    this.hideAutocomplete()
+  }
+
+  /**
+   * Show agent autocomplete filtered by query
+   * Filtering is done client-side from cached agent list
+   */
+  private showAgentAutocomplete(query: string): void {
+    this.autocompleteTrigger = '@'
+
+    // Get current project name
+    const projectName = this.projectStateService.getSelectedProjectId()
+    if (!projectName) {
+      console.warn('[AUTOCOMPLETE] No project selected, cannot load agents')
+      this.hideAutocomplete()
+      return
+    }
+
+    // Get filtered agents (uses cache if available)
+    this.agentApiService.getAgentsAutocomplete(projectName, query).subscribe({
+      next: (agents: AgentAutocomplete[]) => {
+        this.autocompleteItems = agents
+        this.autocompleteVisible = agents.length > 0
+        this.selectedAutocompleteIndex = 0
+      },
+      error: (error) => {
+        console.error('[AUTOCOMPLETE] Error loading agents:', error)
+        this.hideAutocomplete()
+      },
+    })
+  }
+
+  /**
+   * Hide the autocomplete popup
+   */
+  private hideAutocomplete(): void {
+    this.autocompleteVisible = false
+    this.autocompleteItems = []
+    this.selectedAutocompleteIndex = 0
+  }
+
+  /**
+   * Select the currently highlighted autocomplete item
+   */
+  private selectAutocompleteItem(): void {
+    const item = this.autocompleteItems[this.selectedAutocompleteIndex]
+    if (!item) return
+
+    // Replace @query or /query with @name or /name + space
+    this.message = `${this.autocompleteTrigger}${item.name} `
+
+    this.hideAutocomplete()
+
+    // Keep focus on textarea
+    setTimeout(() => {
+      if (this.messageInput?.nativeElement) {
+        this.messageInput.nativeElement.focus()
+        // Place cursor at end
+        const length = this.message.length
+        this.messageInput.nativeElement.setSelectionRange(length, length)
+      }
+    }, 0)
+  }
+
+  /**
+   * Select an autocomplete item by clicking on it
+   */
+  selectAutocompleteItemByClick(index: number): void {
+    this.selectedAutocompleteIndex = index
+    this.selectAutocompleteItem()
+  }
+
+  /**
+   * Get the current query being typed (for display in header)
+   */
+  getAutocompleteQuery(): string {
+    return this.message.substring(1).split(' ')[0] ?? ''
+  }
+
+  /**
+   * Scroll the selected autocomplete item into view
+   * Called after keyboard navigation to ensure selected item is visible
+   */
+  private scrollSelectedItemIntoView(): void {
+    // Use setTimeout to ensure DOM is updated before scrolling
+    setTimeout(() => {
+      const popup = document.querySelector('.autocomplete-popup')
+      if (!popup) return
+
+      const selectedItem = popup.querySelector('.autocomplete-item.selected')
+      if (!selectedItem) return
+
+      // Scroll the selected item into view within the popup
+      selectedItem.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'nearest',
+      })
+    }, 0)
   }
 }

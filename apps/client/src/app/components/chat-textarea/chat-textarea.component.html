@@ -5,6 +5,32 @@
       Recording... Release to stop
     </div>
   }
+
+  <!-- Autocomplete popup - appears above textarea -->
+  @if (autocompleteVisible) {
+    <div class="autocomplete-popup">
+      @for (item of autocompleteItems; track item.name; let i = $index) {
+        <div
+          class="autocomplete-item"
+          [class.selected]="i === selectedAutocompleteIndex"
+          role="option"
+          [attr.aria-selected]="i === selectedAutocompleteIndex"
+          tabindex="0"
+          (click)="selectAutocompleteItemByClick(i)"
+          (keydown.enter)="selectAutocompleteItemByClick(i)"
+          (keydown.space)="selectAutocompleteItemByClick(i)"
+          (mouseenter)="selectedAutocompleteIndex = i"
+        >
+          <div
+            class="item-name"
+            [innerHTML]="autocompleteTrigger + item.name | highlight: getAutocompleteQuery()"
+          ></div>
+          <div class="item-description" [innerHTML]="item.description | highlight: getAutocompleteQuery()"></div>
+        </div>
+      }
+    </div>
+  }
+
   <!-- Input row: textarea + voice + send, all inside rounded box -->
   <div
     class="input-row grouped-input"
