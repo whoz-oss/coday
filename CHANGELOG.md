@@ -1,3 +1,19 @@
+## 0.44.0 (2025-11-07)
+
+### 🚀 Features
+
+- #317 Agent autocomplete with @ trigger ([#328](https://github.com/whoz-oss/coday/pull/328), [#317](https://github.com/whoz-oss/coday/issues/317))
+- #322 add download all files button in exchange drawer ([#323](https://github.com/whoz-oss/coday/pull/323), [#322](https://github.com/whoz-oss/coday/issues/322))
+
+### 🩹 Fixes
+
+- #324 uniform streaming message style with assistant message ([#326](https://github.com/whoz-oss/coday/pull/326), [#324](https://github.com/whoz-oss/coday/issues/324))
+- #320 correct text color in dark mode when OS is in light mode ([#325](https://github.com/whoz-oss/coday/pull/325), [#320](https://github.com/whoz-oss/coday/issues/320))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.43.1 (2025-11-06)
 
 ### 🩹 Fixes
