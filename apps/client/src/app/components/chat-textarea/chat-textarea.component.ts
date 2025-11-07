@@ -3,6 +3,7 @@ import {
   Component,
   ElementRef,
   EventEmitter,
+  HostListener,
   inject,
   Input,
   OnChanges,
@@ -260,6 +261,23 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
     // Check for autocomplete triggers
     this.checkForAutocomplete()
+  }
+
+  /**
+   * Handle clicks outside the autocomplete popup to close it
+   */
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    if (!this.autocompleteVisible) return
+
+    const target = event.target as HTMLElement
+    const popup = document.querySelector('.autocomplete-popup')
+    const textarea = this.messageInput?.nativeElement
+
+    // Close if click is outside both popup and textarea
+    if (popup && !popup.contains(target) && textarea && !textarea.contains(target)) {
+      this.hideAutocomplete()
+    }
   }
 
   sendMessage(allowEmpty: boolean = false) {
@@ -726,14 +744,26 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
     // Check if starts with @ (agents)
     if (text.startsWith('@')) {
-      const query = text.substring(1).split(' ')[0] ?? '' // Everything after @ until first space
+      const afterTrigger = text.substring(1)
+      // If there's a space after @, close the autocomplete
+      if (afterTrigger.includes(' ')) {
+        this.hideAutocomplete()
+        return
+      }
+      const query = afterTrigger
       this.showAgentAutocomplete(query)
       return
     }
 
     // Check if starts with / (commands)
     if (text.startsWith('/')) {
-      const query = text.substring(1).split(' ')[0] ?? '' // Everything after / until first space
+      const afterTrigger = text.substring(1)
+      // If there's a space after /, close the autocomplete
+      if (afterTrigger.includes(' ')) {
+        this.hideAutocomplete()
+        return
+      }
+      const query = afterTrigger
       this.showCommandAutocomplete(query)
       return
     }
