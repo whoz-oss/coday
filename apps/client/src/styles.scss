@@ -14,8 +14,10 @@
 }
 
 html {
+  color-scheme: light;
+
   &[data-theme='dark'] {
-    color-scheme: light dark;
+    color-scheme: dark;
   }
 
   @include mat.theme(
