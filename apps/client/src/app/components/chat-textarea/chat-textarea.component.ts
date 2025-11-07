@@ -202,11 +202,13 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
             this.selectedAutocompleteIndex + 1,
             this.autocompleteItems.length - 1
           )
+          this.scrollSelectedItemIntoView()
           return
 
         case 'ArrowUp':
           event.preventDefault()
           this.selectedAutocompleteIndex = Math.max(this.selectedAutocompleteIndex - 1, 0)
+          this.scrollSelectedItemIntoView()
           return
 
         case 'Tab':
@@ -826,5 +828,27 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
    */
   getAutocompleteQuery(): string {
     return this.message.substring(1).split(' ')[0] ?? ''
+  }
+
+  /**
+   * Scroll the selected autocomplete item into view
+   * Called after keyboard navigation to ensure selected item is visible
+   */
+  private scrollSelectedItemIntoView(): void {
+    // Use setTimeout to ensure DOM is updated before scrolling
+    setTimeout(() => {
+      const popup = document.querySelector('.autocomplete-popup')
+      if (!popup) return
+
+      const selectedItem = popup.querySelector('.autocomplete-item.selected')
+      if (!selectedItem) return
+
+      // Scroll the selected item into view within the popup
+      selectedItem.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'nearest',
+      })
+    }, 0)
   }
 }

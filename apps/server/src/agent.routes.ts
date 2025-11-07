@@ -119,8 +119,15 @@ export function registerAgentRoutes(
         bio: user.config.bio,
       })
 
-      // Create a command context with the real project description
-      const context = new CommandContext(projectDescription, username)
+      // Create a Project object (ProjectDescription + root + name)
+      const projectObj = {
+        ...projectDescription,
+        root: projectData.config.path,
+        name: project,
+      }
+
+      // Create a command context with the full project object
+      const context = new CommandContext(projectObj, username)
       context.oneshot = true
 
       // Initialize and get agent summaries
