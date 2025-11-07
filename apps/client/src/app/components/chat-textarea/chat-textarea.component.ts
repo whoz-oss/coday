@@ -737,7 +737,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   }
 
   /**
-   * Check if the message starts with @ or / and show autocomplete
+   * Check if the message starts with @ and show autocomplete
+   * Note: Commands with / are disabled for now
    */
   private checkForAutocomplete(): void {
     const text = this.message.trim()
@@ -755,18 +756,17 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
       return
     }
 
-    // Check if starts with / (commands)
-    if (text.startsWith('/')) {
-      const afterTrigger = text.substring(1)
-      // If there's a space after /, close the autocomplete
-      if (afterTrigger.includes(' ')) {
-        this.hideAutocomplete()
-        return
-      }
-      const query = afterTrigger
-      this.showCommandAutocomplete(query)
-      return
-    }
+    // Commands with / are disabled for now
+    // if (text.startsWith('/')) {
+    //   const afterTrigger = text.substring(1)
+    //   if (afterTrigger.includes(' ')) {
+    //     this.hideAutocomplete()
+    //     return
+    //   }
+    //   const query = afterTrigger
+    //   this.showCommandAutocomplete(query)
+    //   return
+    // }
 
     // No trigger found, hide autocomplete
     this.hideAutocomplete()

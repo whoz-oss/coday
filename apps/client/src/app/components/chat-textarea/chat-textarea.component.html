@@ -9,9 +9,6 @@
   <!-- Autocomplete popup - appears above textarea -->
   @if (autocompleteVisible) {
     <div class="autocomplete-popup">
-      <div class="autocomplete-header">
-        {{ autocompleteTrigger === '@' ? 'Agents' : 'Commands' }} matching "{{ getAutocompleteQuery() }}"
-      </div>
       @for (item of autocompleteItems; track item.name; let i = $index) {
         <div
           class="autocomplete-item"

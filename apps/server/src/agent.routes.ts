@@ -142,9 +142,17 @@ export function registerAgentRoutes(
       debugLog('AGENT', `Agent names: ${allAgents.map((a) => a.name).join(', ')}`)
 
       // Filter by query if provided
+      // Search in both name and description for better results
       const filteredAgents =
         query && typeof query === 'string'
-          ? allAgents.filter((agent: AgentSummary) => agent.name.toLowerCase().startsWith(query.toLowerCase()))
+          ? allAgents.filter((agent: AgentSummary) => {
+              const lowerQuery = query.toLowerCase()
+              const lowerName = agent.name.toLowerCase()
+              const lowerDescription = agent.description?.toLowerCase() || ''
+
+              // Match if query is found in name or description
+              return lowerName.includes(lowerQuery) || lowerDescription.includes(lowerQuery)
+            })
           : allAgents
 
       debugLog('AGENT', `Filtered agents (query="${query}"): ${filteredAgents.length}`)
