@@ -136,6 +136,27 @@ export class FileExchangeStateService {
   }
 
   /**
+   * Download all files from the exchange space
+   * Files are downloaded sequentially with a small delay to avoid overwhelming the browser
+   */
+  downloadAllFiles(): void {
+    const files = this.filesSignal()
+    if (files.length === 0) {
+      console.warn('[FILE_EXCHANGE_STATE] No files to download')
+      return
+    }
+
+    console.log('[FILE_EXCHANGE_STATE] Downloading all files:', files.length)
+
+    // Download files sequentially with small delay between each
+    files.forEach((file, index) => {
+      setTimeout(() => {
+        this.downloadFile(file.filename)
+      }, index * 300) // 300ms delay between downloads
+    })
+  }
+
+  /**
    * Download a file from the exchange space
    *
    * @param filename - Name of the file to download

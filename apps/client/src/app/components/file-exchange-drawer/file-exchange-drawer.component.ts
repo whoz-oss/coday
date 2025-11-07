@@ -32,6 +32,11 @@ export class FileExchangeDrawerComponent {
     this.closeDrawer.emit()
   }
 
+  downloadAll(): void {
+    console.log('[FILE_DRAWER] Download all files')
+    this.fileExchangeState.downloadAllFiles()
+  }
+
   download(file: FileInfo): void {
     console.log('[FILE_DRAWER] Download file:', file.filename)
     this.fileExchangeState.downloadFile(file.filename)
