@@ -71,6 +71,28 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   private thinkingPhraseIndex: number = 0
   private thinkingInterval: number | null = null
 
+  // Autocomplete state
+  autocompleteVisible = false
+  autocompleteTrigger: '@' | '/' | null = null
+  autocompleteItems: Array<{ name: string; description: string }> = []
+  selectedAutocompleteIndex = 0
+
+  // Mock data for autocomplete (will be replaced by API calls later)
+  private readonly MOCK_AGENTS = [
+    { name: 'archay', description: 'Expert Software Architecture agent, coordinates team' },
+    { name: 'sway', description: 'Software Agent - bridges user needs and code implementation' },
+    { name: 'octopuss', description: 'GitHub integration specialist with repository management' },
+    { name: 'pm', description: 'Product Manager agent, vision and roadmap' },
+    { name: 'coday', description: 'Default agent with neutral character' },
+  ]
+
+  private readonly MOCK_COMMANDS = [
+    { name: 'config', description: 'Manage configuration settings' },
+    { name: 'help', description: 'Show help information' },
+    { name: 'clear', description: 'Clear the conversation history' },
+    { name: 'exit', description: 'Exit the application' },
+  ]
+
   // Modern Angular dependency injection
   private readonly preferencesService = inject(PreferencesService)
   private readonly codayService = inject(CodayService)
@@ -174,6 +196,41 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   }
 
   onKeyDown(event: KeyboardEvent) {
+    // Handle autocomplete navigation if visible
+    if (this.autocompleteVisible) {
+      switch (event.key) {
+        case 'ArrowDown':
+          event.preventDefault()
+          this.selectedAutocompleteIndex = Math.min(
+            this.selectedAutocompleteIndex + 1,
+            this.autocompleteItems.length - 1
+          )
+          return
+
+        case 'ArrowUp':
+          event.preventDefault()
+          this.selectedAutocompleteIndex = Math.max(this.selectedAutocompleteIndex - 1, 0)
+          return
+
+        case 'Tab':
+        case 'Enter':
+          // If we haven't typed a space after the trigger yet, complete the item
+          if (!this.message.includes(' ')) {
+            event.preventDefault()
+            this.selectAutocompleteItem()
+            return
+          }
+          // Otherwise, let Enter send the message normally (fall through)
+          break
+
+        case 'Escape':
+          event.preventDefault()
+          this.hideAutocomplete()
+          return
+      }
+    }
+
+    // Normal Enter key handling for sending messages
     if (event.key === 'Enter') {
       if (this.useEnterToSend) {
         // Mode: Enter to send, Shift+Enter for new line
@@ -201,6 +258,9 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   onInput() {
     // Adjust textarea height when content changes
     this.adjustTextareaHeight()
+
+    // Check for autocomplete triggers
+    this.checkForAutocomplete()
   }
 
   sendMessage(allowEmpty: boolean = false) {
@@ -657,5 +717,98 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     } else {
       console.log('[CHAT-TEXTAREA] Focus blocked - element disabled or not available')
     }
+  }
+
+  /**
+   * Check if the message starts with @ or / and show autocomplete
+   */
+  private checkForAutocomplete(): void {
+    const text = this.message.trim()
+
+    // Check if starts with @ (agents)
+    if (text.startsWith('@')) {
+      const query = text.substring(1).split(' ')[0] ?? '' // Everything after @ until first space
+      this.showAgentAutocomplete(query)
+      return
+    }
+
+    // Check if starts with / (commands)
+    if (text.startsWith('/')) {
+      const query = text.substring(1).split(' ')[0] ?? '' // Everything after / until first space
+      this.showCommandAutocomplete(query)
+      return
+    }
+
+    // No trigger found, hide autocomplete
+    this.hideAutocomplete()
+  }
+
+  /**
+   * Show agent autocomplete filtered by query
+   */
+  private showAgentAutocomplete(query: string): void {
+    this.autocompleteTrigger = '@'
+    this.autocompleteItems = this.MOCK_AGENTS.filter((agent) =>
+      agent.name.toLowerCase().startsWith(query.toLowerCase())
+    )
+    this.autocompleteVisible = this.autocompleteItems.length > 0
+    this.selectedAutocompleteIndex = 0
+  }
+
+  /**
+   * Show command autocomplete filtered by query
+   */
+  private showCommandAutocomplete(query: string): void {
+    this.autocompleteTrigger = '/'
+    this.autocompleteItems = this.MOCK_COMMANDS.filter((cmd) => cmd.name.toLowerCase().startsWith(query.toLowerCase()))
+    this.autocompleteVisible = this.autocompleteItems.length > 0
+    this.selectedAutocompleteIndex = 0
+  }
+
+  /**
+   * Hide the autocomplete popup
+   */
+  private hideAutocomplete(): void {
+    this.autocompleteVisible = false
+    this.autocompleteItems = []
+    this.selectedAutocompleteIndex = 0
+  }
+
+  /**
+   * Select the currently highlighted autocomplete item
+   */
+  private selectAutocompleteItem(): void {
+    const item = this.autocompleteItems[this.selectedAutocompleteIndex]
+    if (!item) return
+
+    // Replace @query or /query with @name or /name + space
+    this.message = `${this.autocompleteTrigger}${item.name} `
+
+    this.hideAutocomplete()
+
+    // Keep focus on textarea
+    setTimeout(() => {
+      if (this.messageInput?.nativeElement) {
+        this.messageInput.nativeElement.focus()
+        // Place cursor at end
+        const length = this.message.length
+        this.messageInput.nativeElement.setSelectionRange(length, length)
+      }
+    }, 0)
+  }
+
+  /**
+   * Select an autocomplete item by clicking on it
+   */
+  selectAutocompleteItemByClick(index: number): void {
+    this.selectedAutocompleteIndex = index
+    this.selectAutocompleteItem()
+  }
+
+  /**
+   * Get the current query being typed (for display in header)
+   */
+  getAutocompleteQuery(): string {
+    return this.message.substring(1).split(' ')[0] ?? ''
   }
 }

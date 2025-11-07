@@ -216,13 +216,91 @@
   }
 }
 
+// Autocomplete popup styles
+.autocomplete-popup {
+  position: absolute;
+  bottom: 100%; // Position above the textarea
+  left: 0;
+  right: 0;
+  margin-bottom: 0.5rem;
+
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-backdrop-blur);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--color-border);
+
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 100;
+
+  // Smooth scrollbar
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 4px;
+
+    &:hover {
+      background: var(--color-text-secondary);
+    }
+  }
+
+  .autocomplete-header {
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-secondary);
+    border-radius: 12px 12px 0 0;
+  }
+
+  .autocomplete-item {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    border-left: 3px solid transparent;
+
+    &:hover,
+    &.selected {
+      background: var(--color-bg-hover);
+    }
+
+    &.selected {
+      border-left-color: var(--color-primary);
+    }
+
+    .item-name {
+      font-weight: 600;
+      color: var(--color-text);
+      margin-bottom: 0.25rem;
+      font-family: 'SF Mono', 'Monaco', 'Menlo', 'Cascadia Code', 'Consolas', monospace;
+      font-size: 0.95rem;
+    }
+
+    .item-description {
+      font-size: 0.85rem;
+      color: var(--color-text-secondary);
+      line-height: 1.3;
+    }
+  }
+}
+
 // Print styles
 @media print {
   .thinking-progress,
   .stop-btn,
   .voice-btn,
   .send-btn,
-  .recording-indicator {
+  .recording-indicator,
+  .autocomplete-popup {
     display: none !important;
   }
 }
