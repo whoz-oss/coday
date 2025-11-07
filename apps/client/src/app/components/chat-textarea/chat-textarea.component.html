@@ -13,7 +13,12 @@
         <div
           class="autocomplete-item"
           [class.selected]="i === selectedAutocompleteIndex"
+          role="option"
+          [attr.aria-selected]="i === selectedAutocompleteIndex"
+          tabindex="0"
           (click)="selectAutocompleteItemByClick(i)"
+          (keydown.enter)="selectAutocompleteItemByClick(i)"
+          (keydown.space)="selectAutocompleteItemByClick(i)"
           (mouseenter)="selectedAutocompleteIndex = i"
         >
           <div class="item-name">{{ autocompleteTrigger }}{{ item.name }}</div>
