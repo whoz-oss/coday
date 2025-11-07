@@ -599,10 +599,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
       return this.isStarting ? 'Processing request...' : this.currentThinkingPhrase
     } else if (this.showWelcome) {
       return 'How can I help you today?'
-    } else if (this.currentInvite) {
-      return 'Type your message here...'
     } else {
-      return 'Type your prompt here'
+      return `Select an agent with '@' (optional), type your message here...`
     }
   }
 
@@ -743,8 +741,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
         this.hideAutocomplete()
         return
       }
-      const query = afterTrigger
-      this.showAgentAutocomplete(query)
+      this.showAgentAutocomplete(afterTrigger)
       return
     }
 
