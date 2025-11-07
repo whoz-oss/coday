@@ -21,11 +21,12 @@ import { MatIconButton } from '@angular/material/button'
 import { MatIcon } from '@angular/material/icon'
 import { AgentApiService, AgentAutocomplete } from '../../core/services/agent-api.service'
 import { ProjectStateService } from '../../core/services/project-state.service'
+import { HighlightPipe } from '../../pipes/highlight.pipe'
 
 @Component({
   selector: 'app-chat-textarea',
   standalone: true,
-  imports: [FormsModule, MatIconButton, MatIcon],
+  imports: [FormsModule, MatIconButton, MatIcon, HighlightPipe],
   templateUrl: './chat-textarea.component.html',
   styleUrl: './chat-textarea.component.scss',
 })
