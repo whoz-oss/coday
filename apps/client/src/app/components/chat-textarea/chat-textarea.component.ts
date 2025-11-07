@@ -21,7 +21,6 @@ import { MatIconButton } from '@angular/material/button'
 import { MatIcon } from '@angular/material/icon'
 import { AgentApiService, AgentAutocomplete } from '../../core/services/agent-api.service'
 import { ProjectStateService } from '../../core/services/project-state.service'
-import { debounceTime } from 'rxjs/operators'
 
 @Component({
   selector: 'app-chat-textarea',
@@ -80,14 +79,6 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   autocompleteTrigger: '@' | '/' | null = null
   autocompleteItems: Array<{ name: string; description: string }> = []
   selectedAutocompleteIndex = 0
-
-  // Mock data for commands (agents will come from API)
-  private readonly MOCK_COMMANDS = [
-    { name: 'config', description: 'Manage configuration settings' },
-    { name: 'help', description: 'Show help information' },
-    { name: 'clear', description: 'Clear the conversation history' },
-    { name: 'exit', description: 'Exit the application' },
-  ]
 
   // Modern Angular dependency injection
   private readonly preferencesService = inject(PreferencesService)
@@ -774,6 +765,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
   /**
    * Show agent autocomplete filtered by query
+   * Filtering is done client-side from cached agent list
    */
   private showAgentAutocomplete(query: string): void {
     this.autocompleteTrigger = '@'
@@ -786,31 +778,18 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
       return
     }
 
-    // Call API to get agents
-    this.agentApiService
-      .getAgentsAutocomplete(projectName, query)
-      .pipe(debounceTime(150)) // Debounce API calls
-      .subscribe({
-        next: (agents: AgentAutocomplete[]) => {
-          this.autocompleteItems = agents
-          this.autocompleteVisible = agents.length > 0
-          this.selectedAutocompleteIndex = 0
-        },
-        error: (error) => {
-          console.error('[AUTOCOMPLETE] Error loading agents:', error)
-          this.hideAutocomplete()
-        },
-      })
-  }
-
-  /**
-   * Show command autocomplete filtered by query
-   */
-  private showCommandAutocomplete(query: string): void {
-    this.autocompleteTrigger = '/'
-    this.autocompleteItems = this.MOCK_COMMANDS.filter((cmd) => cmd.name.toLowerCase().startsWith(query.toLowerCase()))
-    this.autocompleteVisible = this.autocompleteItems.length > 0
-    this.selectedAutocompleteIndex = 0
+    // Get filtered agents (uses cache if available)
+    this.agentApiService.getAgentsAutocomplete(projectName, query).subscribe({
+      next: (agents: AgentAutocomplete[]) => {
+        this.autocompleteItems = agents
+        this.autocompleteVisible = agents.length > 0
+        this.selectedAutocompleteIndex = 0
+      },
+      error: (error) => {
+        console.error('[AUTOCOMPLETE] Error loading agents:', error)
+        this.hideAutocomplete()
+      },
+    })
   }
 
   /**

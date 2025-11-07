@@ -1,6 +1,7 @@
 import { inject, Injectable } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
-import { Observable } from 'rxjs'
+import { Observable, of } from 'rxjs'
+import { map, tap } from 'rxjs/operators'
 
 /**
  * Agent for autocomplete
@@ -12,6 +13,7 @@ export interface AgentAutocomplete {
 
 /**
  * Service for agent-related API calls
+ * Caches agent list per project and filters client-side for performance
  */
 @Injectable({
   providedIn: 'root',
@@ -19,18 +21,66 @@ export interface AgentAutocomplete {
 export class AgentApiService {
   private readonly http = inject(HttpClient)
 
+  // Cache: Map<projectName, agents[]>
+  private agentsCache = new Map<string, AgentAutocomplete[]>()
+
   /**
-   * Get agents matching query for autocomplete
+   * Get all agents for a project (cached)
    * @param projectName Project name
-   * @param query Query string to filter agents (optional)
-   * @returns Observable of agent autocomplete items
+   * @returns Observable of all agents
    */
-  getAgentsAutocomplete(projectName: string, query?: string): Observable<AgentAutocomplete[]> {
-    const params: any = { project: projectName }
-    if (query) {
-      params.query = query
+  getAgents(projectName: string): Observable<AgentAutocomplete[]> {
+    // Return from cache if available
+    const cached = this.agentsCache.get(projectName)
+    if (cached) {
+      return of(cached)
     }
 
-    return this.http.get<AgentAutocomplete[]>('/api/agents/autocomplete', { params })
+    // Fetch from API and cache
+    return this.http.get<AgentAutocomplete[]>(`/api/projects/${projectName}/agents`).pipe(
+      tap((agents) => {
+        this.agentsCache.set(projectName, agents)
+      })
+    )
+  }
+
+  /**
+   * Get agents matching query for autocomplete (client-side filtering)
+   * @param projectName Project name
+   * @param query Query string to filter agents
+   * @returns Observable of filtered agent autocomplete items
+   */
+  getAgentsAutocomplete(projectName: string, query: string): Observable<AgentAutocomplete[]> {
+    return this.getAgents(projectName).pipe(
+      map((agents) => {
+        if (!query) {
+          return agents
+        }
+
+        const lowerQuery = query.toLowerCase()
+        return agents.filter((agent) => {
+          const lowerName = agent.name.toLowerCase()
+          const lowerDescription = agent.description?.toLowerCase() || ''
+
+          // Match if query is found in name or description
+          return lowerName.includes(lowerQuery) || lowerDescription.includes(lowerQuery)
+        })
+      })
+    )
+  }
+
+  /**
+   * Clear cache for a specific project (useful when project config changes)
+   * @param projectName Project name
+   */
+  clearCache(projectName: string): void {
+    this.agentsCache.delete(projectName)
+  }
+
+  /**
+   * Clear all cache
+   */
+  clearAllCache(): void {
+    this.agentsCache.clear()
   }
 }

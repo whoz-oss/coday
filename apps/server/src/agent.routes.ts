@@ -22,11 +22,10 @@ import { loadOrInitProjectDescription } from '@coday/service/load-or-init-projec
 /**
  * Agent Management REST API Routes
  *
- * This module provides REST endpoints for agent-related operations,
- * particularly for autocomplete functionality in the UI.
+ * This module provides REST endpoints for agent-related operations.
  *
  * Endpoints:
- * - GET /api/agents/autocomplete?query=ag - Get agents matching query for autocomplete
+ * - GET /api/projects/:projectName/agents - List all agents for a project
  */
 
 /**
@@ -51,31 +50,27 @@ export function registerAgentRoutes(
   options: CodayOptions
 ): void {
   /**
-   * GET /api/agents/autocomplete
-   * Get list of agents matching query for autocomplete
-   *
-   * Query params:
-   * - query: string (optional) - Filter agents by name prefix
-   * - project: string (required) - Project name
+   * GET /api/projects/:projectName/agents
+   * List all agents for a project
    *
    * Returns: Array<{ name: string, description: string }>
    */
-  app.get('/api/agents/autocomplete', async (req: express.Request, res: express.Response) => {
+  app.get('/api/projects/:projectName/agents', async (req: express.Request, res: express.Response) => {
     try {
       const username = getUsernameFn(req)
-      const { query = '', project } = req.query
+      const { projectName } = req.params
 
-      if (!project || typeof project !== 'string') {
+      if (!projectName) {
         res.status(400).json({ error: 'Project name is required' })
         return
       }
 
-      debugLog('AGENT', `GET autocomplete: query="${query}", project="${project}", user="${username}"`)
+      debugLog('AGENT', `GET agents list: project="${projectName}", user="${username}"`)
 
       // Get project from ProjectService
-      const projectData = projectService.getProject(project)
+      const projectData = projectService.getProject(projectName)
       if (!projectData) {
-        res.status(404).json({ error: `Project '${project}' not found` })
+        res.status(404).json({ error: `Project '${projectName}' not found` })
         return
       }
 
@@ -101,7 +96,7 @@ export function registerAgentRoutes(
       }
 
       // Select the project in the state service
-      projectState.selectProject(project)
+      projectState.selectProject(projectName)
 
       // Create temporary AiClientProvider and AgentService
       const aiClientProvider = new AiClientProvider(interactor, user, projectState, logger)
@@ -123,7 +118,7 @@ export function registerAgentRoutes(
       const projectObj = {
         ...projectDescription,
         root: projectData.config.path,
-        name: project,
+        name: projectName,
       }
 
       // Create a command context with the full project object
@@ -141,27 +136,10 @@ export function registerAgentRoutes(
       debugLog('AGENT', `Total agents loaded: ${allAgents.length}`)
       debugLog('AGENT', `Agent names: ${allAgents.map((a) => a.name).join(', ')}`)
 
-      // Filter by query if provided
-      // Search in both name and description for better results
-      const filteredAgents =
-        query && typeof query === 'string'
-          ? allAgents.filter((agent: AgentSummary) => {
-              const lowerQuery = query.toLowerCase()
-              const lowerName = agent.name.toLowerCase()
-              const lowerDescription = agent.description?.toLowerCase() || ''
-
-              // Match if query is found in name or description
-              return lowerName.includes(lowerQuery) || lowerDescription.includes(lowerQuery)
-            })
-          : allAgents
-
-      debugLog('AGENT', `Filtered agents (query="${query}"): ${filteredAgents.length}`)
-      debugLog('AGENT', `Filtered agent names: ${filteredAgents.map((a) => a.name).join(', ')}`)
-
       // Cleanup
       await agentService.kill()
 
-      res.status(200).json(filteredAgents)
+      res.status(200).json(allAgents)
     } catch (error) {
       console.error('Error in agent autocomplete:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
