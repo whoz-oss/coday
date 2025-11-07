@@ -16,7 +16,6 @@ import { CodayLogger } from '@coday/service/coday-logger'
 import { WebhookService } from '@coday/service/webhook.service'
 import { ThreadService } from './services/thread.service'
 import { CodayOptions } from '@coday/options'
-import { AgentSummary } from '@coday/model'
 import { loadOrInitProjectDescription } from '@coday/service/load-or-init-project-description'
 
 /**
