@@ -17,6 +17,7 @@ import { WebhookService } from '@coday/service/webhook.service'
 import { ThreadService } from './services/thread.service'
 import { CodayOptions } from '@coday/options'
 import { AgentSummary } from '@coday/model'
+import { loadOrInitProjectDescription } from '@coday/service/load-or-init-project-description'
 
 /**
  * Agent Management REST API Routes
@@ -112,13 +113,26 @@ export function registerAgentRoutes(
         options.agentFolders
       )
 
-      // Create a command context
-      const context = new CommandContext(projectData.config, username)
+      // Load the real project description from coday.yaml
+      const projectDescription = await loadOrInitProjectDescription(projectData.config.path, interactor, {
+        username,
+        bio: user.config.bio,
+      })
+
+      // Create a command context with the real project description
+      const context = new CommandContext(projectDescription, username)
       context.oneshot = true
 
       // Initialize and get agent summaries
+      debugLog('AGENT', `Initializing AgentService with projectPath: ${projectData.config.path}`)
+      debugLog('AGENT', `Project config agents: ${projectData.config.agents?.length || 0}`)
+      debugLog('AGENT', `AgentFolders from options: ${JSON.stringify(options.agentFolders)}`)
+
       await agentService.initialize(context)
       const allAgents = agentService.listAgentSummaries()
+
+      debugLog('AGENT', `Total agents loaded: ${allAgents.length}`)
+      debugLog('AGENT', `Agent names: ${allAgents.map((a) => a.name).join(', ')}`)
 
       // Filter by query if provided
       const filteredAgents =
@@ -126,7 +140,8 @@ export function registerAgentRoutes(
           ? allAgents.filter((agent: AgentSummary) => agent.name.toLowerCase().startsWith(query.toLowerCase()))
           : allAgents
 
-      debugLog('AGENT', `Found ${filteredAgents.length} agents matching "${query}"`)
+      debugLog('AGENT', `Filtered agents (query="${query}"): ${filteredAgents.length}`)
+      debugLog('AGENT', `Filtered agent names: ${filteredAgents.map((a) => a.name).join(', ')}`)
 
       // Cleanup
       await agentService.kill()
