@@ -18,6 +18,7 @@ import { registerProjectRoutes } from './project.routes'
 import { registerThreadRoutes } from './thread.routes'
 import { registerMessageRoutes } from './message.routes'
 import { registerUserRoutes } from './user.routes'
+import { registerAgentRoutes } from './agent.routes'
 import { ProjectService } from './services/project.service'
 import { ThreadService } from './services/thread.service'
 import { ThreadFileService } from './services/thread-file.service'
@@ -228,6 +229,18 @@ registerThreadRoutes(app, threadService, threadFileService, threadCodayManager, 
 
 // Register message management routes
 registerMessageRoutes(app, threadCodayManager, getUsername)
+
+// Register agent management routes
+registerAgentRoutes(
+  app,
+  projectService,
+  getUsername,
+  codayOptions.configDir,
+  logger,
+  webhookService,
+  threadService,
+  codayOptions
+)
 
 // Catch-all route for Angular client-side routing (MUST be after all API routes)
 // In production mode, serve index.html for any non-API routes
