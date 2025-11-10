@@ -44,9 +44,28 @@
   }
 
   ::ng-deep .mat-drawer {
-    width: 360px;
+    width: 360px; // Default width for file list
     max-width: 90vw;
     box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+    transition: width 0.3s ease; // Smooth transition when width changes
+
+    // Wider drawer when viewing content
+    &.viewer-mode {
+      width: 50vw;
+      min-width: 600px;
+      max-width: 800px;
+
+      @media (max-width: 1200px) {
+        width: 60vw;
+        min-width: 500px;
+      }
+
+      @media (max-width: 768px) {
+        width: 100vw;
+        min-width: auto;
+        max-width: 100vw;
+      }
+    }
   }
 
   ::ng-deep .mat-drawer-backdrop {
