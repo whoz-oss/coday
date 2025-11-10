@@ -1,25 +1,33 @@
-import { Component, Output, EventEmitter, inject } from '@angular/core'
+import { Component, Output, EventEmitter, Input, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 
 import { FileExchangeStateService } from '../../core/services/file-exchange-state.service'
 import type { FileInfo } from '../../core/services/file-exchange-api.service'
+import { ContentViewerComponent } from '../content-viewer/content-viewer.component'
+
+type ViewerState = 'list' | 'content'
 
 /**
  * FileExchangeDrawerComponent - Displays files in the thread's exchange space
  *
- * Shows a list of files with download and delete actions.
+ * Two-state system:
+ * - 'list': Shows file list with actions (download, delete, view)
+ * - 'content': Shows file content viewer with back navigation
+ *
  * This is the content component displayed inside the Material drawer.
  */
 @Component({
   selector: 'app-file-exchange-drawer',
   standalone: true,
-  imports: [CommonModule, MatIconModule, MatButtonModule],
+  imports: [CommonModule, MatIconModule, MatButtonModule, ContentViewerComponent],
   templateUrl: './file-exchange-drawer.component.html',
   styleUrl: './file-exchange-drawer.component.scss',
 })
 export class FileExchangeDrawerComponent {
+  @Input({ required: true }) projectName!: string
+  @Input({ required: true }) threadId!: string
   @Output() closeDrawer = new EventEmitter<void>()
 
   private readonly fileExchangeState = inject(FileExchangeStateService)
@@ -28,8 +36,35 @@ export class FileExchangeDrawerComponent {
   files = this.fileExchangeState.files
   isLoading = this.fileExchangeState.isLoading
 
+  // Viewer state management
+  viewerState: ViewerState = 'list'
+  currentFile: FileInfo | null = null
+
   close(): void {
-    this.closeDrawer.emit()
+    // If in content view, go back to list
+    if (this.viewerState === 'content') {
+      this.backToList()
+    } else {
+      this.closeDrawer.emit()
+    }
+  }
+
+  /**
+   * View file content
+   */
+  viewFile(file: FileInfo): void {
+    console.log('[FILE_DRAWER] View file:', file.filename)
+    this.currentFile = file
+    this.viewerState = 'content'
+  }
+
+  /**
+   * Back to file list
+   */
+  backToList(): void {
+    console.log('[FILE_DRAWER] Back to list')
+    this.viewerState = 'list'
+    this.currentFile = null
   }
 
   downloadAll(): void {

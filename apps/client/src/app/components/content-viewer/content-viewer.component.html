@@ -1,0 +1,49 @@
+<div class="viewer-container">
+  <!-- Header -->
+  <div class="viewer-header">
+    <button mat-icon-button (click)="onBack()" title="Back to file list" type="button">
+      <mat-icon>arrow_back</mat-icon>
+    </button>
+
+    <div class="header-info">
+      <span class="filename">{{ file.filename }}</span>
+      <span class="file-size">{{ formatSize(file.size) }}</span>
+    </div>
+
+    <div class="header-actions">
+      @if (fileContent && !isLoading && !error) {
+        <button mat-icon-button (click)="download()" title="Download" type="button">
+          <mat-icon>download</mat-icon>
+        </button>
+      }
+      <button mat-icon-button (click)="onClose()" title="Close drawer" type="button">
+        <mat-icon>close</mat-icon>
+      </button>
+    </div>
+  </div>
+
+  <!-- Content Area -->
+  <div class="viewer-content">
+    @if (isLoading) {
+      <div class="loading-state">
+        <mat-spinner diameter="48"></mat-spinner>
+        <p>Loading file content...</p>
+      </div>
+    }
+
+    @if (error) {
+      <div class="error-state">
+        <mat-icon class="error-icon">error_outline</mat-icon>
+        <p class="error-message">{{ error }}</p>
+        <button mat-raised-button color="primary" (click)="download()" type="button">
+          <mat-icon>download</mat-icon>
+          Download instead
+        </button>
+      </div>
+    }
+
+    @if (fileContent && !isLoading && !error) {
+      <app-content-renderer [content]="fileContent.content" [format]="fileContent.format" />
+    }
+  </div>
+</div>
