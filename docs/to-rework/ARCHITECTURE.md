@@ -6,39 +6,35 @@ Coday is a web-based AI agent system built with Angular frontend and Express bac
 
 ```mermaid
 graph TB
-    subgraph "Client Layer"
-        WebClient[Web Client - Angular<br/>apps/client]
-    end
-    
-    subgraph "Server Layer"
-        WebServer[Express Server<br/>apps/server]
-        RestAPI[REST API Routes]
-        SSE[SSE Endpoints]
-        ThreadManager[ThreadCodayManager]
-    end
-    
     subgraph "Core Runtime"
         Coday[Coday Runtime<br/>libs/coday.ts]
         HandlerLooper
         Agents[Agent System]
     end
+    subgraph "Server Layer"
+        WebServer[Express Server<br/>apps/server]
+        ThreadManager[ThreadCodayManager]
+        API[REST API Routes / SSE]
+    end
+    subgraph "Client Layer"
+        WebClient[Web Client - Angular<br/>apps/client]
+    end
     
-    WebClient -->|REST API| RestAPI
-    WebClient -->|SSE Connection| SSE
-    RestAPI --> ThreadManager
-    SSE --> ThreadManager
+    API -->|SSE| WebClient
     ThreadManager -->|manages| Coday
+    WebClient -->|http| API
+    API -->|calls| ThreadManager
+    ThreadManager -->|events| API 
     Coday --> HandlerLooper
     HandlerLooper --> Agents
     Agents -->|emits events| Coday
-    Coday -->|events| SSE
-    SSE -->|events| WebClient
+    Coday -->|events| ThreadManager
 ```
 
 ### Architecture Layers
 
 **Web Client** (`apps/client`)
-- Angular 18 application with TypeScript
+- Angular application with TypeScript
 - REST API for commands (CRUD operations)
 - SSE for real-time event streaming
 - Service layer architecture (API + State services)
@@ -564,24 +560,24 @@ Each conversation thread has its own isolated runtime:
 **Project Structure** (`~/.coday/projects/:projectName/`):
 ```
 project-name/
-├── coday.yml              # Project configuration
+├── project.yml          # Project configuration
 ├── threads/
-│   ├── thread-id-1.json   # Thread metadata + messages
-│   ├── thread-id-2.json
-│   └── files/
-│       ├── thread-id-1/   # Thread-specific files
-│       └── thread-id-2/
+│   ├── thread-id-1.yml  # Thread metadata + messages
+│   ├── thread-id-2.yml
+│   └── thread-id-2/
+│       ├── file-1/      # Thread-specific files
+│       └── file-2/
 ```
 
 **Thread Storage**:
-- JSON files with thread metadata and message history
-- File attachments in separate `files/` subdirectory
+- YML files with thread metadata and message history
+- File attachments in separate subdirectory named as per the thread
 - Automatic save on message addition
 - Lazy loading on thread access
 
 **Configuration Storage**:
-- User config: `~/.coday/user.yml`
-- Project config: `~/.coday/projects/:name/coday.yml`
+- User config: `~/.coday/users/:username/user.yml`
+- Project config: `~/.coday/projects/:projectname/project.yml`
 - Three-level hierarchy: CODAY → PROJECT → USER
 
 ## Security Considerations
