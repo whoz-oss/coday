@@ -6,6 +6,7 @@ import { MatButtonModule } from '@angular/material/button'
 import { FileExchangeStateService } from '../../core/services/file-exchange-state.service'
 import type { FileInfo } from '../../core/services/file-exchange-api.service'
 import { ContentViewerComponent } from '../content-viewer/content-viewer.component'
+import { ContentViewerService } from '../../core/services/content-viewer.service'
 
 type ViewerState = 'list' | 'content'
 
@@ -31,6 +32,7 @@ export class FileExchangeDrawerComponent {
   @Output() closeDrawer = new EventEmitter<void>()
 
   private readonly fileExchangeState = inject(FileExchangeStateService)
+  private readonly contentViewerService = inject(ContentViewerService)
 
   // Connect to state service
   files = this.fileExchangeState.files
@@ -149,5 +151,12 @@ export class FileExchangeDrawerComponent {
 
     // Fallback to date string
     return date.toLocaleDateString()
+  }
+
+  /**
+   * Check if a file can be viewed (text-based formats and within size limit)
+   */
+  canViewFile(file: FileInfo): boolean {
+    return this.contentViewerService.isFormatViewable(file.filename) && this.contentViewerService.isViewable(file.size)
   }
 }
