@@ -1,9 +1,9 @@
-import { Component, Input, OnChanges, SimpleChanges } from '@angular/core'
+import { Component, Input, OnChanges, SimpleChanges, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
-import { marked } from 'marked'
 
 import type { ContentFormat } from '../../core/services/content-viewer.service'
+import { MarkdownService } from '../../services/markdown.service'
 
 /**
  * ContentRendererComponent - Renders file content based on format
@@ -72,7 +72,8 @@ export class ContentRendererComponent implements OnChanges {
 
   renderedContent: SafeHtml = ''
 
-  constructor(private sanitizer: DomSanitizer) {}
+  private readonly sanitizer = inject(DomSanitizer)
+  private readonly markdownService = inject(MarkdownService)
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['content'] || changes['format']) {
@@ -89,9 +90,9 @@ export class ContentRendererComponent implements OnChanges {
     // YAML and text are displayed as-is
   }
 
-  private renderMarkdown(): void {
+  private async renderMarkdown(): Promise<void> {
     try {
-      const html = marked.parse(this.content) as string
+      const html = await this.markdownService.parse(this.content)
       this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(html)
     } catch (error) {
       console.error('[CONTENT_RENDERER] Error rendering markdown:', error)

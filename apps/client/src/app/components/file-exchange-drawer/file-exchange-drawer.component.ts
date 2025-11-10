@@ -29,6 +29,7 @@ export class FileExchangeDrawerComponent {
   @Input({ required: true }) projectName!: string
   @Input({ required: true }) threadId!: string
   @Output() closeDrawer = new EventEmitter<void>()
+  @Output() viewerStateChanged = new EventEmitter<boolean>()
 
   private readonly fileExchangeState = inject(FileExchangeStateService)
 
@@ -56,6 +57,7 @@ export class FileExchangeDrawerComponent {
     console.log('[FILE_DRAWER] View file:', file.filename)
     this.currentFile = file
     this.viewerState = 'content'
+    this.viewerStateChanged.emit(true)
   }
 
   /**
@@ -65,6 +67,7 @@ export class FileExchangeDrawerComponent {
     console.log('[FILE_DRAWER] Back to list')
     this.viewerState = 'list'
     this.currentFile = null
+    this.viewerStateChanged.emit(false)
   }
 
   downloadAll(): void {

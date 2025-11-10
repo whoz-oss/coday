@@ -55,10 +55,10 @@ export class ContentViewerService {
   }
 
   /**
-   * Load file content from exchange space
+   * Load file content from thread files
    */
   loadFileContent(projectName: string, threadId: string, filename: string): Observable<FileContent> {
-    const url = `/api/projects/${projectName}/threads/${threadId}/exchange/${encodeURIComponent(filename)}`
+    const url = `/api/projects/${projectName}/threads/${threadId}/files/${encodeURIComponent(filename)}`
 
     return this.http
       .get(url, {

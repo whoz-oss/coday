@@ -94,6 +94,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
 
   // File exchange drawer state
   isFileDrawerOpen: boolean = false
+  isViewerMode: boolean = false
 
   // Connect to file exchange state for file count
   get fileCount(): number {
@@ -314,6 +315,12 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   closeFileDrawer(): void {
     console.log('[THREAD] Closing file drawer')
     this.isFileDrawerOpen = false
+    this.isViewerMode = false
+  }
+
+  onViewerStateChanged(isViewerMode: boolean): void {
+    console.log('[THREAD] Viewer mode changed:', isViewerMode)
+    this.isViewerMode = isViewerMode
   }
 
   // Drag and Drop Event Handlers for image uploads
