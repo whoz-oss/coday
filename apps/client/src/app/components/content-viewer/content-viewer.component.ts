@@ -34,7 +34,7 @@ export class ContentViewerComponent implements OnInit, OnDestroy {
   @Input({ required: true }) projectName!: string
   @Input({ required: true }) threadId!: string
 
-  @Output() close = new EventEmitter<void>()
+  @Output() closeViewer = new EventEmitter<void>()
 
   private readonly contentService = inject(ContentViewerService)
   private readonly eventStream = inject(EventStreamService)
@@ -78,7 +78,7 @@ export class ContentViewerComponent implements OnInit, OnDestroy {
   }
 
   onClose(): void {
-    this.close.emit()
+    this.closeViewer.emit()
   }
 
   download(): void {

@@ -89,5 +89,10 @@
 }
 
 @if (viewerState === 'content' && currentFile) {
-  <app-content-viewer [file]="currentFile" [projectName]="projectName" [threadId]="threadId" (close)="backToList()" />
+  <app-content-viewer
+    [file]="currentFile"
+    [projectName]="projectName"
+    [threadId]="threadId"
+    (closeViewer)="backToList()"
+  />
 }
