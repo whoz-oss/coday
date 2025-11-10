@@ -7,7 +7,6 @@ Coday follows a hybrid architecture with multiple client interfaces (terminal, w
 ```mermaid
 graph TB
     subgraph "Client Layer"
-        Terminal[Terminal CLI]
         WebLegacy[Web Client - Legacy<br/>apps/web/client]
         WebAngular[Web Client - Angular<br/>apps/client]
     end
@@ -24,7 +23,6 @@ graph TB
         Agents[Agent System]
     end
     
-    Terminal -->|stdio| Coday
     WebLegacy -->|SSE| WebServer
     WebAngular -->|REST + SSE| WebServer
     WebServer --> RestAPI
@@ -36,11 +34,6 @@ graph TB
 ```
 
 ### Client Interfaces
-
-**Terminal CLI** (`apps/terminal`)
-- Direct connection to Coday runtime via stdio
-- Synchronous request/response model
-- Used for command-line workflows
 
 **Web Client - Legacy** (`apps/web/client`)
 - Manual JavaScript/HTML/CSS implementation
@@ -75,7 +68,6 @@ For detailed information about backend handler design patterns and implementatio
 ```mermaid
 graph LR
     subgraph "User Interfaces"
-        Terminal[Terminal UI]
         Browser[Browser UI]
         WebServer[Web Server]
     end
@@ -94,7 +86,6 @@ graph LR
     end
 
     ProjectConfig[Project coday.yml]
-    Terminal --> Interactor
     Browser --> WebServer
     WebServer --> Interactor
     Interactor --> HandlerLooper
@@ -324,11 +315,6 @@ export const projectStateGuard: CanActivateFn = (route) => {
 Guards execute before component activation, ensuring state consistency for deep links.
 
 ## Data Flow Patterns
-
-### Terminal Client
-```
-User Input → Coday Runtime → Handler → Agent → Tool → Response
-```
 
 ### Web Client (Angular)
 ```
