@@ -51,17 +51,12 @@ export class ContentViewerComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroy$.next()
     this.destroy$.complete()
-
-    // Clean up blob URL if exists
-    if (this.fileContent?.blobUrl) {
-      URL.revokeObjectURL(this.fileContent.blobUrl)
-    }
   }
 
   private loadContent(): void {
     // Check file size before loading
     if (!this.contentService.isViewable(this.file.size)) {
-      this.error = `File too large to view (${this.contentService.formatSize(this.file.size)}). Maximum size: 2 MB.`
+      this.error = `File too large to view (${this.contentService.formatSize(this.file.size)}). Maximum size: 20 MB.`
       return
     }
 
