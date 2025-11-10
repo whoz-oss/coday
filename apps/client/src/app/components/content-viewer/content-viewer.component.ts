@@ -51,6 +51,11 @@ export class ContentViewerComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroy$.next()
     this.destroy$.complete()
+
+    // Clean up blob URL if exists
+    if (this.fileContent?.blobUrl) {
+      URL.revokeObjectURL(this.fileContent.blobUrl)
+    }
   }
 
   private loadContent(): void {
