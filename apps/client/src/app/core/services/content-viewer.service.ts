@@ -40,9 +40,35 @@ export class ContentViewerService {
    * Check if a file format is viewable (text-based formats only)
    */
   isFormatViewable(filename: string): boolean {
-    const format = this.detectFormat(filename)
-    // Only text-based formats are viewable
-    return ['markdown', 'json', 'yaml', 'text', 'html'].includes(format)
+    const ext = filename.split('.').pop()?.toLowerCase()
+
+    // Explicitly list non-viewable binary formats
+    const binaryExtensions = [
+      'pdf',
+      'png',
+      'jpg',
+      'jpeg',
+      'gif',
+      'webp',
+      'zip',
+      'tar',
+      'gz',
+      'exe',
+      'bin',
+      'doc',
+      'docx',
+      'xls',
+      'xlsx',
+      'ppt',
+      'pptx',
+    ]
+
+    if (ext && binaryExtensions.includes(ext)) {
+      return false
+    }
+
+    // All other formats are considered viewable as text
+    return true
   }
 
   /**
