@@ -39,11 +39,7 @@
     }
 
     @if (fileContent && !isLoading && !error) {
-      <app-content-renderer
-        [content]="fileContent.content"
-        [format]="fileContent.format"
-        [blobUrl]="fileContent.blobUrl"
-      />
+      <app-content-renderer [content]="fileContent.content" [format]="fileContent.format" />
     }
   </div>
 </div>

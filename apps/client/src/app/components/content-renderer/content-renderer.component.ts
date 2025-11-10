@@ -1,6 +1,6 @@
 import { Component, Input, OnChanges, SimpleChanges, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
-import { DomSanitizer, SafeHtml, SafeResourceUrl } from '@angular/platform-browser'
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 
 import type { ContentFormat } from '../../core/services/content-viewer.service'
 import { MarkdownService } from '../../services/markdown.service'
@@ -24,22 +24,6 @@ import { MarkdownService } from '../../services/markdown.service'
         <div class="markdown-content" [innerHTML]="renderedContent"></div>
       } @else if (format === 'html') {
         <iframe class="html-viewer" [srcdoc]="content" sandbox="allow-same-origin"></iframe>
-      } @else if (format === 'pdf') {
-        <div class="pdf-viewer">
-          @if (safeBlobUrl) {
-            <object [data]="safeBlobUrl" type="application/pdf" width="100%" height="100%">
-              <div class="pdf-fallback" style="display: block;">
-                <p>PDF viewer not supported in your browser</p>
-                <p>The PDF cannot be displayed inline.</p>
-              </div>
-            </object>
-          }
-          @if (!safeBlobUrl) {
-            <div class="pdf-fallback" style="display: block;">
-              <p>PDF viewer not supported in your browser</p>
-            </div>
-          }
-        </div>
       } @else {
         <pre class="code-content">{{ content }}</pre>
       }
@@ -91,50 +75,14 @@ import { MarkdownService } from '../../services/markdown.service'
         border-radius: 8px;
         background: white;
       }
-
-      /* PDF viewer */
-      .pdf-viewer {
-        width: 100%;
-        height: 100%;
-        min-height: 600px;
-        position: relative;
-        background: var(--color-bg-secondary);
-      }
-
-      .pdf-viewer object {
-        display: block;
-        width: 100%;
-        height: 100%;
-        min-height: 600px;
-      }
-
-      .pdf-fallback {
-        display: none;
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        text-align: center;
-        padding: 2rem;
-        background: var(--color-bg);
-        border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      }
-
-      /* Show fallback if embed fails to load */
-      .pdf-viewer embed:not([src]) ~ .pdf-fallback {
-        display: block;
-      }
     `,
   ],
 })
 export class ContentRendererComponent implements OnChanges {
   @Input({ required: true }) content: string = ''
   @Input({ required: true }) format: ContentFormat = 'text'
-  @Input() blobUrl?: string // For binary formats like PDF
 
   renderedContent: SafeHtml = ''
-  safeBlobUrl: SafeResourceUrl | null = null
 
   private readonly sanitizer = inject(DomSanitizer)
   private readonly markdownService = inject(MarkdownService)
@@ -142,10 +90,6 @@ export class ContentRendererComponent implements OnChanges {
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['content'] || changes['format']) {
       this.renderContent()
-    }
-    if (changes['blobUrl'] && this.blobUrl) {
-      // Sanitize blob URL for Angular security
-      this.safeBlobUrl = this.sanitizer.bypassSecurityTrustResourceUrl(this.blobUrl)
     }
   }
 

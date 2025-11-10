@@ -3,14 +3,13 @@ import { HttpClient } from '@angular/common/http'
 import { Observable, throwError } from 'rxjs'
 import { catchError, map } from 'rxjs/operators'
 
-export type ContentFormat = 'markdown' | 'json' | 'yaml' | 'text' | 'html' | 'pdf'
+export type ContentFormat = 'markdown' | 'json' | 'yaml' | 'text' | 'html'
 
 export interface FileContent {
   content: string
   format: ContentFormat
   filename: string
   size: number
-  blobUrl?: string // For binary formats like PDF
 }
 
 /**
@@ -53,8 +52,6 @@ export class ContentViewerService {
       case 'html':
       case 'htm':
         return 'html'
-      case 'pdf':
-        return 'pdf'
       default:
         return 'text'
     }
@@ -67,34 +64,6 @@ export class ContentViewerService {
     const url = `/api/projects/${projectName}/threads/${threadId}/files/${encodeURIComponent(filename)}`
     const format = this.detectFormat(filename)
 
-    // For PDF, we need blob response
-    if (format === 'pdf') {
-      return this.http
-        .get(url, {
-          responseType: 'blob',
-          observe: 'response',
-        })
-        .pipe(
-          map((response) => {
-            const blob = response.body!
-            const blobUrl = URL.createObjectURL(blob)
-
-            return {
-              content: '', // No text content for PDF
-              format,
-              filename,
-              size: blob.size,
-              blobUrl,
-            }
-          }),
-          catchError((error) => {
-            console.error('[CONTENT_VIEWER] Error loading file:', filename, error)
-            return throwError(() => new Error(`Failed to load file: ${error.message || 'Unknown error'}`))
-          })
-        )
-    }
-
-    // For text-based formats (including HTML)
     return this.http
       .get(url, {
         responseType: 'text',
