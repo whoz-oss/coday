@@ -1,10 +1,6 @@
 <div class="viewer-container">
   <!-- Header -->
   <div class="viewer-header">
-    <button mat-icon-button (click)="onBack()" title="Back to file list" type="button">
-      <mat-icon>arrow_back</mat-icon>
-    </button>
-
     <div class="header-info">
       <span class="filename">{{ file.filename }}</span>
       <span class="file-size">{{ formatSize(file.size) }}</span>
@@ -16,7 +12,7 @@
           <mat-icon>download</mat-icon>
         </button>
       }
-      <button mat-icon-button (click)="onClose()" title="Close drawer" type="button">
+      <button mat-icon-button (click)="onClose()" title="Close" type="button">
         <mat-icon>close</mat-icon>
       </button>
     </div>
