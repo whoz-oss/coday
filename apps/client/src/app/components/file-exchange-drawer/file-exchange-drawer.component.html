@@ -50,9 +50,17 @@
                 </div>
               </div>
               <div class="file-actions">
-                <button mat-icon-button class="action-btn view-btn" (click)="viewFile(file)" title="View" type="button">
-                  <mat-icon>visibility</mat-icon>
-                </button>
+                @if (canViewFile(file)) {
+                  <button
+                    mat-icon-button
+                    class="action-btn view-btn"
+                    (click)="viewFile(file)"
+                    title="View"
+                    type="button"
+                  >
+                    <mat-icon>visibility</mat-icon>
+                  </button>
+                }
                 <button
                   mat-icon-button
                   class="action-btn download-btn"

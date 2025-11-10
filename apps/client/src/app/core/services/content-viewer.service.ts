@@ -37,6 +37,15 @@ export class ContentViewerService {
   }
 
   /**
+   * Check if a file format is viewable (text-based formats only)
+   */
+  isFormatViewable(filename: string): boolean {
+    const format = this.detectFormat(filename)
+    // Only text-based formats are viewable
+    return ['markdown', 'json', 'yaml', 'text', 'html'].includes(format)
+  }
+
+  /**
    * Detect content format based on file extension
    */
   detectFormat(filename: string): ContentFormat {
