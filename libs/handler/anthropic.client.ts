@@ -26,9 +26,11 @@ interface RateLimitInfo {
 
 const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
   {
-    name: 'claude-sonnet-4-5-20250929',
+    name: 'claude-sonnet-4-5',
     alias: 'BIG',
     contextWindow: 200000,
+    temperature: 0.8,
+    maxOutputTokens: 64000,
     price: {
       inputMTokens: 3,
       cacheWrite: 3.75,
@@ -37,14 +39,16 @@ const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
     },
   },
   {
-    name: 'claude-3-5-haiku-latest',
+    name: 'claude-haiku-4-5',
     alias: 'SMALL',
     contextWindow: 200000,
+    temperature: 0.8,
+    maxOutputTokens: 64000,
     price: {
-      inputMTokens: 0.8,
-      cacheWrite: 1,
-      cacheRead: 0.08,
-      outputMTokens: 4,
+      inputMTokens: 1,
+      cacheWrite: 1.25,
+      cacheRead: 0.1,
+      outputMTokens: 5,
     },
   },
 ]
@@ -527,8 +531,8 @@ export class AnthropicClient extends AiClient {
         },
       ] as unknown as Array<Anthropic.TextBlockParam>,
       tools: this.getClaudeTools(agent.tools),
-      temperature: agent.definition.temperature ?? 0.8,
-      max_tokens: 8192,
+      temperature: agent.definition.temperature ?? model.temperature ?? 0.8,
+      max_tokens: agent.definition.maxOutputTokens ?? model.maxOutputTokens ?? 8192,
     })
 
     // Emit text chunks as they arrive for progressive display
