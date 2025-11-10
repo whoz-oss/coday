@@ -27,8 +27,8 @@ export interface FileContent {
 export class ContentViewerService {
   private readonly http = inject(HttpClient)
 
-  // Maximum viewable file size: 2 MB
-  private readonly MAX_FILE_SIZE = 2 * 1024 * 1024
+  // Maximum viewable file size: 20 MB
+  private readonly MAX_FILE_SIZE = 20 * 1024 * 1024
 
   /**
    * Check if a file is viewable based on size limit
