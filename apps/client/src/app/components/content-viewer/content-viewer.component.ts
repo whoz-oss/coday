@@ -1,12 +1,16 @@
-import { Component, Input, Output, EventEmitter, OnInit, inject } from '@angular/core'
+import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
+import { Subject } from 'rxjs'
+import { takeUntil, filter } from 'rxjs/operators'
 
 import { ContentRendererComponent } from '../content-renderer/content-renderer.component'
 import { ContentViewerService, type FileContent } from '../../core/services/content-viewer.service'
 import type { FileInfo } from '../../core/services/file-exchange-api.service'
+import { EventStreamService } from '../../core/services/event-stream.service'
+import { FileEvent } from '@coday/coday-events'
 
 /**
  * ContentViewerComponent - Displays file content with appropriate rendering
@@ -24,15 +28,16 @@ import type { FileInfo } from '../../core/services/file-exchange-api.service'
   templateUrl: './content-viewer.component.html',
   styleUrl: './content-viewer.component.scss',
 })
-export class ContentViewerComponent implements OnInit {
+export class ContentViewerComponent implements OnInit, OnDestroy {
+  private readonly destroy$ = new Subject<void>()
   @Input({ required: true }) file!: FileInfo
   @Input({ required: true }) projectName!: string
   @Input({ required: true }) threadId!: string
 
-  @Output() back = new EventEmitter<void>()
   @Output() close = new EventEmitter<void>()
 
   private readonly contentService = inject(ContentViewerService)
+  private readonly eventStream = inject(EventStreamService)
 
   fileContent: FileContent | null = null
   isLoading = false
@@ -40,6 +45,12 @@ export class ContentViewerComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadContent()
+    this.subscribeToFileEvents()
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next()
+    this.destroy$.complete()
   }
 
   private loadContent(): void {
@@ -66,10 +77,6 @@ export class ContentViewerComponent implements OnInit {
     })
   }
 
-  onBack(): void {
-    this.back.emit()
-  }
-
   onClose(): void {
     this.close.emit()
   }
@@ -87,5 +94,27 @@ export class ContentViewerComponent implements OnInit {
 
   formatSize(bytes: number): string {
     return this.contentService.formatSize(bytes)
+  }
+
+  /**
+   * Subscribe to FileEvent to reload content when the current file is updated
+   */
+  private subscribeToFileEvents(): void {
+    this.eventStream.events$
+      .pipe(
+        filter((event) => event instanceof FileEvent),
+        filter((event: FileEvent) => event.filename === this.file.filename),
+        filter((event: FileEvent) => event.operation === 'updated'),
+        takeUntil(this.destroy$)
+      )
+      .subscribe((event: FileEvent) => {
+        console.log('[CONTENT_VIEWER] File updated event received, reloading:', event.filename)
+        // Update file size if provided
+        if (event.size) {
+          this.file.size = event.size
+        }
+        // Reload content
+        this.loadContent()
+      })
   }
 }
