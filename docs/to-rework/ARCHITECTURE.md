@@ -1,20 +1,20 @@
 # Architecture Overview
 
-Coday follows a hybrid architecture with multiple client interfaces (terminal, web) connecting to a shared backend runtime.
+Coday is a web-based AI agent system built with Angular frontend and Express backend, connected through REST API and Server-Sent Events (SSE).
 
 ## System Architecture
 
 ```mermaid
 graph TB
     subgraph "Client Layer"
-        WebLegacy[Web Client - Legacy<br/>apps/web/client]
-        WebAngular[Web Client - Angular<br/>apps/client]
+        WebClient[Web Client - Angular<br/>apps/client]
     end
     
     subgraph "Server Layer"
         WebServer[Express Server<br/>apps/server]
-        RestAPI[REST API]
-        SSE[Server-Sent Events]
+        RestAPI[REST API Routes]
+        SSE[SSE Endpoints]
+        ThreadManager[ThreadCodayManager]
     end
     
     subgraph "Core Runtime"
@@ -23,146 +23,259 @@ graph TB
         Agents[Agent System]
     end
     
-    WebLegacy -->|SSE| WebServer
-    WebAngular -->|REST + SSE| WebServer
-    WebServer --> RestAPI
-    WebServer --> SSE
-    RestAPI --> Coday
-    SSE --> Coday
+    WebClient -->|REST API| RestAPI
+    WebClient -->|SSE Connection| SSE
+    RestAPI --> ThreadManager
+    SSE --> ThreadManager
+    ThreadManager -->|manages| Coday
     Coday --> HandlerLooper
     HandlerLooper --> Agents
+    Agents -->|emits events| Coday
+    Coday -->|events| SSE
+    SSE -->|events| WebClient
 ```
 
-### Client Interfaces
+### Architecture Layers
 
-**Web Client - Legacy** (`apps/web/client`)
-- Manual JavaScript/HTML/CSS implementation
-- SSE (Server-Sent Events) for real-time updates
-- Being gradually replaced by Angular client
-
-**Web Client - Angular** (`apps/client`)
-- Modern Angular 18 application
-- REST API for CRUD operations
-- SSE for event streaming (messages, tool calls)
+**Web Client** (`apps/client`)
+- Angular 18 application with TypeScript
+- REST API for commands (CRUD operations)
+- SSE for real-time event streaming
 - Service layer architecture (API + State services)
-- Currently in active development
 
-### Server Layer
+**Server Layer** (`apps/server`)
+- Express.js HTTP server
+- REST API routes for resource management
+- SSE endpoints for event streaming
+- ThreadCodayManager for runtime lifecycle
+- Authentication via proxy headers
 
-The Express server (`apps/server`) provides:
-- **REST API**: Thread, project, file, and configuration management
-- **SSE Endpoints**: Real-time event streaming per thread
-- **Thread-based Coday instances**: Each thread has its own Coday runtime instance
-- **Authentication**: Username extraction from headers (proxy-based auth)
+**Core Runtime** (`libs/`)
+- Coday runtime with handler system
+- Agent orchestration and AI provider integration
+- Tool execution and event emission
+- Thread-based conversation management
 
-## Request Flow
+## Server Architecture (Express Backend)
 
-The user request flows through Coday's components:
-
-1. The User Interface components connect to an `Interactor` that exposes downstream interactions with the user
-2. The `HandlerLooper` identifies the correct handler to take the user request among several ones. The last one being the `AiHandler` that directs the request to an agent
-3. The selected `Agent` has through its supporting `AiClient` a loop of its own so the agent can come to a final answer after possibly many intermediate messages and tool calls (that can be nested agent calls)
-
-For detailed information about backend handler design patterns and implementation guidelines, see [Handler Design](HANDLER_DESIGN.md).
+The Express server (`apps/server`) provides the bridge between web clients and Coday runtime instances.
 
 ```mermaid
-graph LR
-    subgraph "User Interfaces"
-        Browser[Browser UI]
-        WebServer[Web Server]
+graph TB
+    subgraph "HTTP Layer"
+        Routes[Route Modules<br/>*.routes.ts]
     end
-
-    subgraph "Coday Runtime (coday.ts)"
-        Interactor
-        HandlerLooper
-        AiHandler
-        CustomHandlers[Custom Handlers]
-        OtherHandlers[Other Handlers]
+    
+    subgraph "Service Layer"
+        ProjectService[ProjectService]
+        ThreadService[ThreadService]
+        ThreadFileService[ThreadFileService]
+        WebhookService[WebhookService]
     end
-
-    subgraph "Agents"
-        AgentA[Agent A]
-        AgentB[Agent B]
+    
+    subgraph "Runtime Management"
+        ThreadCodayManager[ThreadCodayManager]
+        CodayInstances[Coday Instances<br/>per thread]
     end
-
-    ProjectConfig[Project coday.yml]
-    Browser --> WebServer
-    WebServer --> Interactor
-    Interactor --> HandlerLooper
-    HandlerLooper --> AiHandler
-    HandlerLooper --> OtherHandlers
-    HandlerLooper --> CustomHandlers
-   ProjectConfig -->|defines prompt chains| CustomHandlers
-    CustomHandlers -.-> AiHandler
-    AiHandler -->|selects| AgentA
-
+    
+    Routes -->|use| ProjectService
+    Routes -->|use| ThreadService
+    Routes -->|use| ThreadFileService
+    Routes -->|use| WebhookService
+    Routes -->|manage| ThreadCodayManager
+    ThreadCodayManager -->|creates/manages| CodayInstances
 ```
 
-## Agent Operation
+### Route Organization Pattern
 
-An AI agent processes a request using various data sources and tools:
+Server routes are organized by domain entity, following REST conventions:
 
-```mermaid
-graph RL
-    AiHandler[AI Handler]
+**Route Modules** (`apps/server/src/*.routes.ts`)
+- `project.routes.ts` - Project CRUD and listing
+- `thread.routes.ts` - Thread CRUD, file operations, SSE
+- `message.routes.ts` - Message operations (delete, truncate)
+- `config.routes.ts` - User and project configuration
+- `webhook.routes.ts` - Webhook CRUD and triggering
 
-    subgraph thread["AI Thread"]
-        direction TB
-        History[Thread History<br/><small>Messages & Tool Executions</small>]
-    end
-
-    subgraph config["Project coday.yml"]
-        direction TB
-        ProjectDesc[Project Description]
-        Files[Linked Files]
-        Memory[Memories]
-        CustomTools[Custom Tools]
-    end
-
-    Context[Initial Context]
-
-    subgraph agent["Agent"]
-        direction TB
-        AiClient[AI Provider<br/><small>Anthropic/Openai/other...</small>]
-        Tools[Tools<br/><small>run locally</small>]
-    end
-
-    AiHandler -->|adds UserMessage| History
-    History -->|outputs messages| AiHandler
-    ProjectDesc --> Context
-    Files --> Context
-    Memory --> Context
-    CustomTools -->|added to defaults| Tools
-    Context --> AiClient
-    History -->|input of| AiClient
-    AiClient -->|calls| Tools
-    Tools -->|ToolResponse| History
-    AiClient -->|AgentMessage| History
+**Pattern**:
+```typescript
+export function registerThreadRoutes(
+  app: express.Application,
+  threadService: ThreadService,
+  threadFileService: ThreadFileService,
+  threadCodayManager: ThreadCodayManager,
+  getUsernameFn: (req) => string,
+  codayOptions: CodayOptions
+): void {
+  // Define routes
+  app.get('/api/projects/:projectName/threads', async (req, res) => { /* ... */ })
+  app.post('/api/projects/:projectName/threads', async (req, res) => { /* ... */ })
+  // ... more routes
+}
 ```
 
-The agent operation demonstrates how requests are processed within an agent:
+### Service Layer Pattern
 
-1. Context Building:
-   - Project configuration provides description, files, and memories
-   - These form the initial context for the AI provider
-   - Custom tools are added to the default toolset
+Services encapsulate business logic and data persistence:
 
-2. Message Processing:
-   - AI Handler adds user messages to the thread history
-   - Thread history provides full context to the AI provider
-   - AI provider can generate messages and use tools
-   - Tool responses and agent messages are recorded in history
-   - History outputs messages back to the AI Handler
+**Service Responsibilities**:
+- Data validation and sanitization
+- File system operations (project/thread storage)
+- Thread metadata management (name, dates, starring)
+- User-specific data filtering
+- Error handling and logging
 
-3. Tool Execution:
-   - Tools run locally in the system
-   - Each tool execution is recorded in history
-   - AI provider can make multiple tool calls
-   - Results influence further agent responses
+**Example - ThreadService**:
+```typescript
+class ThreadService {
+  async listThreads(projectName: string, username: string): Promise<ThreadInfo[]>
+  async createThread(projectName: string, username: string, name?: string): Promise<Thread>
+  async getThread(projectName: string, threadId: string): Promise<Thread | null>
+  async updateThread(projectName: string, threadId: string, updates: Partial<Thread>): Promise<Thread>
+  async deleteThread(projectName: string, threadId: string): Promise<boolean>
+  async starThread(projectName: string, threadId: string, username: string): Promise<Thread>
+  async unstarThread(projectName: string, threadId: string, username: string): Promise<Thread>
+}
+```
+
+### ThreadCodayManager Pattern
+
+**Purpose**: Manages lifecycle of thread-specific Coday runtime instances.
+
+**Key Responsibilities**:
+- Create Coday instance per thread (lazy initialization)
+- Manage SSE connections (multiple clients can connect to same thread)
+- Handle instance timeouts and cleanup
+- Send heartbeat events to keep connections alive
+- Coordinate between REST API calls and runtime instances
+
+**Instance Lifecycle**:
+```typescript
+class ThreadCodayManager {
+  // Get or create instance for thread
+  getOrCreate(threadId, projectName, username, options, sseResponse): ThreadCodayInstance
+  
+  // Create without SSE (for webhooks)
+  createWithoutConnection(threadId, projectName, username, options): ThreadCodayInstance
+  
+  // Get existing instance
+  get(threadId): ThreadCodayInstance | null
+  
+  // Stop execution
+  stop(threadId): void
+  
+  // Cleanup and shutdown
+  async shutdown(): Promise<void>
+}
+```
+
+**Timeout Management**:
+- **Disconnect timeout** (5 min): Window for client reconnection
+- **Interactive inactivity** (8 hours): Long-idle session cleanup
+- **Oneshot inactivity** (30 min): Webhook session cleanup
+
+**Heartbeat Mechanism**:
+- Global 30-second interval
+- Sends HeartBeatEvent to all instances with active SSE connections
+- Keeps connections alive through proxies/load balancers
+
+### REST API Patterns
+
+**Resource Hierarchy**:
+```
+/api/projects/:projectName
+  /threads
+  /threads/:threadId
+  /threads/:threadId/files
+  /threads/:threadId/files/:filename
+  /threads/:threadId/stop
+  /threads/:threadId/star
+  /threads/:threadId/event-stream (SSE)
+```
+
+**Standard CRUD**:
+- `GET` - List or retrieve resource
+- `POST` - Create resource or trigger action
+- `PUT` - Update resource
+- `DELETE` - Remove resource
+
+**Authentication**:
+- Username extracted from `x-forwarded-email` header (set by auth proxy)
+- `getUsernameFn(req)` provides username to all routes
+- Services filter data by username for multi-tenancy
+
+**Validation**:
+- Path parameters validated (projectName, threadId, filename)
+- Request body validated (required fields, types)
+- File operations include security checks (path traversal prevention)
+- Error responses with appropriate HTTP status codes
+
+### SSE (Server-Sent Events) Pattern
+
+**Endpoint**: `GET /api/projects/:projectName/threads/:threadId/event-stream`
+
+**Connection Flow**:
+```typescript
+app.get('/api/.../event-stream', async (req, res) => {
+  // 1. Validate authentication and parameters
+  // 2. Setup SSE headers
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  
+  // 3. Get or create thread instance
+  const instance = threadCodayManager.getOrCreate(threadId, projectName, username, options, res)
+  
+  // 4. Handle client disconnect
+  req.on('close', () => {
+    threadCodayManager.removeConnection(threadId, res)
+  })
+  
+  // 5. Start Coday if new instance
+  instance.startCoday()
+})
+```
+
+**Event Emission**:
+- Coday runtime emits CodayEvents (MessageEvent, ToolRequestEvent, etc.)
+- ThreadCodayManager broadcasts events to all connected SSE clients
+- Events formatted as SSE protocol: `data: ${JSON.stringify(event)}\n\n`
+
+**Event Types**:
+- `MessageEvent` - User and assistant messages
+- `ToolRequestEvent` / `ToolResponseEvent` - Tool usage
+- `ThinkingEvent` - Processing indicator
+- `FileEvent` - File operations (created, updated, deleted)
+- `InviteEvent` / `ChoiceEvent` - User input requests
+- `HeartBeatEvent` - Keep-alive signal
+
+### File Operations Pattern
+
+**ThreadFileService** manages thread-specific file storage:
+
+```typescript
+class ThreadFileService {
+  async saveFile(projectName, threadId, filename, buffer): Promise<void>
+  async listFiles(projectName, threadId): Promise<FileInfo[]>
+  async getFilePath(projectName, threadId, filename): Promise<string>
+  async deleteFile(projectName, threadId, filename): Promise<void>
+}
+```
+
+**Security**:
+- Path traversal prevention (filename validation)
+- File size limits (20 MB)
+- Allowed extensions check
+- User ownership verification via thread service
+
+**Integration with Runtime**:
+- Upload endpoint saves file + sends notification message to Coday
+- Agent uses `readFile` tool to access files
+- FileEvent emitted on file operations for real-time UI updates
 
 ## Frontend Architecture (Angular Client)
 
-The new Angular client (`apps/client`) follows a layered service architecture:
+The Angular client (`apps/client`) follows a layered service architecture:
 
 ```mermaid
 graph TB
@@ -268,6 +381,7 @@ GET /api/projects/:projectName/threads/:threadId/event-stream
 // - ThinkingEvent (processing indicator)
 // - FileEvent (file operations)
 // - InviteEvent / ChoiceEvent (user input requests)
+// - HeartBeatEvent (keep-alive)
 ```
 
 Components subscribe to `EventStreamService.events$` to react to real-time updates.
@@ -314,22 +428,221 @@ export const projectStateGuard: CanActivateFn = (route) => {
 
 Guards execute before component activation, ensuring state consistency for deep links.
 
-## Data Flow Patterns
+## Request Flow
 
-### Web Client (Angular)
+User interactions flow through the system in this sequence:
+
+### User Action Flow
 ```
-User Action → Component → State Service → API Service → REST Endpoint → Coday Runtime
-                                                                              ↓
-Component ← EventStreamService ← SSE ← Events ← Agent/Tools ← Coday Runtime
+1. User Action (UI)
+   ↓
+2. Angular Component
+   ↓
+3. State Service (validation, business logic)
+   ↓
+4. API Service (HTTP call)
+   ↓
+5. Express Route (REST endpoint)
+   ↓
+6. Service Layer (data operations)
+   ↓
+7. ThreadCodayManager (runtime coordination)
+   ↓
+8. Coday Runtime (handler selection)
+   ↓
+9. Agent (AI processing, tool calls)
 ```
 
-### Thread-based Architecture
+### Event Flow (Real-Time Updates)
+```
+1. Agent/Tool (generates event)
+   ↓
+2. Coday Runtime (emits CodayEvent)
+   ↓
+3. ThreadCodayManager (broadcasts to SSE connections)
+   ↓
+4. SSE Endpoint (sends to clients)
+   ↓
+5. EventStreamService (parses events)
+   ↓
+6. Angular Components (subscribe and react)
+   ↓
+7. UI Update (display changes)
+```
 
-Each conversation thread has:
-- Unique thread ID
-- Dedicated Coday runtime instance (via ThreadCodayManager)
-- Isolated file exchange space
-- Independent message history
-- Separate SSE connection
+## Agent Operation
 
-Multiple users can connect to the same thread (future capability), with each maintaining their own SSE connection to the shared Coday instance.
+An AI agent processes a request using various data sources and tools:
+
+```mermaid
+graph RL
+    AiHandler[AI Handler]
+
+    subgraph thread["AI Thread"]
+        direction TB
+        History[Thread History<br/><small>Messages & Tool Executions</small>]
+    end
+
+    subgraph config["Project coday.yml"]
+        direction TB
+        ProjectDesc[Project Description]
+        Files[Linked Files]
+        Memory[Memories]
+        CustomTools[Custom Tools]
+    end
+
+    Context[Initial Context]
+
+    subgraph agent["Agent"]
+        direction TB
+        AiClient[AI Provider<br/><small>Anthropic/Openai/other...</small>]
+        Tools[Tools<br/><small>run locally</small>]
+    end
+
+    AiHandler -->|adds UserMessage| History
+    History -->|outputs messages| AiHandler
+    ProjectDesc --> Context
+    Files --> Context
+    Memory --> Context
+    CustomTools -->|added to defaults| Tools
+    Context --> AiClient
+    History -->|input of| AiClient
+    AiClient -->|calls| Tools
+    Tools -->|ToolResponse| History
+    AiClient -->|AgentMessage| History
+```
+
+The agent operation demonstrates how requests are processed within an agent:
+
+1. **Context Building**:
+   - Project configuration provides description, files, and memories
+   - These form the initial context for the AI provider
+   - Custom tools are added to the default toolset
+
+2. **Message Processing**:
+   - AI Handler adds user messages to the thread history
+   - Thread history provides full context to the AI provider
+   - AI provider can generate messages and use tools
+   - Tool responses and agent messages are recorded in history
+   - History outputs messages back to the AI Handler
+
+3. **Tool Execution**:
+   - Tools run locally in the system
+   - Each tool execution is recorded in history
+   - AI provider can make multiple tool calls
+   - Results influence further agent responses
+
+For detailed information about handler design patterns and implementation guidelines, see [Handler Design](HANDLER_DESIGN.md).
+
+## Thread-Based Architecture
+
+Each conversation thread has its own isolated runtime:
+
+**Thread Components**:
+- **Unique thread ID**: UUID-based identifier
+- **Dedicated Coday instance**: Via ThreadCodayManager
+- **Isolated file exchange space**: Thread-specific directory
+- **Independent message history**: AiThread with full context
+- **Separate SSE connections**: Multiple clients can connect
+
+**Benefits**:
+- **Isolation**: Threads don't interfere with each other
+- **Scalability**: Multiple threads can run concurrently
+- **Reconnection**: Clients can reconnect to existing threads
+- **Collaboration**: Multiple users can join same thread (future)
+
+**Lifecycle**:
+1. Thread created via REST API (`POST /threads`)
+2. Client connects via SSE (`GET /threads/:id/event-stream`)
+3. ThreadCodayManager creates or retrieves Coday instance
+4. User interactions trigger agent processing
+5. Events stream back to connected clients
+6. Thread persists until timeout or deletion
+
+## Data Persistence
+
+**Project Structure** (`~/.coday/projects/:projectName/`):
+```
+project-name/
+├── coday.yml              # Project configuration
+├── threads/
+│   ├── thread-id-1.json   # Thread metadata + messages
+│   ├── thread-id-2.json
+│   └── files/
+│       ├── thread-id-1/   # Thread-specific files
+│       └── thread-id-2/
+```
+
+**Thread Storage**:
+- JSON files with thread metadata and message history
+- File attachments in separate `files/` subdirectory
+- Automatic save on message addition
+- Lazy loading on thread access
+
+**Configuration Storage**:
+- User config: `~/.coday/user.yml`
+- Project config: `~/.coday/projects/:name/coday.yml`
+- Three-level hierarchy: CODAY → PROJECT → USER
+
+## Security Considerations
+
+**Authentication**:
+- Proxy-based authentication (x-forwarded-email header)
+- No authentication in development mode (uses system username)
+- Username-based data isolation
+
+**File Operations**:
+- Path traversal prevention
+- Filename sanitization
+- File size limits (20 MB)
+- Extension whitelist
+- User ownership verification
+
+**API Security**:
+- Input validation on all endpoints
+- Error messages without sensitive details
+- Proper HTTP status codes
+- CORS configuration for web client
+
+## Performance Optimizations
+
+**Agent System**:
+- Lazy loading of agents (only created on first use)
+- Agent definition caching
+- Tool pre-initialization in parallel
+
+**AI Provider Caching** (Anthropic):
+- Mobile cache marker strategy (70/40 thresholds)
+- Tool definition caching
+- System instruction caching
+- Automatic cache invalidation
+
+**Rate Limiting**:
+- Proactive throttling based on remaining capacity
+- Automatic retry with exponential backoff
+- Age-based decay to prevent permanent throttling
+
+**Thread Management**:
+- Automatic cleanup of idle threads
+- Heartbeat mechanism for connection health
+- Graceful shutdown on system sleep/wake
+
+## Error Handling
+
+**Backend**:
+- Try-catch blocks around all async operations
+- Proper error logging with context
+- HTTP error responses with appropriate status codes
+- Graceful degradation on service failures
+
+**Frontend**:
+- RxJS catchError operators in all API calls
+- User-friendly error messages
+- Automatic reconnection for SSE
+- Loading and error states in UI
+
+**System Resilience**:
+- Sleep mode support (proper signal handling)
+- RxJS EmptyError handling for system interruptions
+- Connection timeout recovery
+- Defensive programming for data validation
