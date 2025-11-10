@@ -1,6 +1,6 @@
 import { Component, Input, OnChanges, SimpleChanges, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
+import { DomSanitizer, SafeHtml, SafeResourceUrl } from '@angular/platform-browser'
 
 import type { ContentFormat } from '../../core/services/content-viewer.service'
 import { MarkdownService } from '../../services/markdown.service'
@@ -26,10 +26,14 @@ import { MarkdownService } from '../../services/markdown.service'
         <iframe class="html-viewer" [srcdoc]="content" sandbox="allow-same-origin"></iframe>
       } @else if (format === 'pdf') {
         <div class="pdf-viewer">
-          <embed [src]="blobUrl" type="application/pdf" width="100%" height="100%" />
-          <div class="pdf-fallback">
-            <p>PDF viewer not supported in your browser</p>
-          </div>
+          @if (safeBlobUrl) {
+            <embed [src]="safeBlobUrl" type="application/pdf" width="100%" height="100%" />
+          }
+          @if (!safeBlobUrl) {
+            <div class="pdf-fallback" style="display: block;">
+              <p>PDF viewer not supported in your browser</p>
+            </div>
+          }
         </div>
       } @else {
         <pre class="code-content">{{ content }}</pre>
@@ -126,6 +130,7 @@ export class ContentRendererComponent implements OnChanges {
   @Input() blobUrl?: string // For binary formats like PDF
 
   renderedContent: SafeHtml = ''
+  safeBlobUrl: SafeResourceUrl | null = null
 
   private readonly sanitizer = inject(DomSanitizer)
   private readonly markdownService = inject(MarkdownService)
@@ -133,6 +138,10 @@ export class ContentRendererComponent implements OnChanges {
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['content'] || changes['format']) {
       this.renderContent()
+    }
+    if (changes['blobUrl'] && this.blobUrl) {
+      // Sanitize blob URL for Angular security
+      this.safeBlobUrl = this.sanitizer.bypassSecurityTrustResourceUrl(this.blobUrl)
     }
   }
 
