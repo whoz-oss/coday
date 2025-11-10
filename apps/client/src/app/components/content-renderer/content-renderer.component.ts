@@ -27,7 +27,12 @@ import { MarkdownService } from '../../services/markdown.service'
       } @else if (format === 'pdf') {
         <div class="pdf-viewer">
           @if (safeBlobUrl) {
-            <embed [src]="safeBlobUrl" type="application/pdf" width="100%" height="100%" />
+            <object [data]="safeBlobUrl" type="application/pdf" width="100%" height="100%">
+              <div class="pdf-fallback" style="display: block;">
+                <p>PDF viewer not supported in your browser</p>
+                <p>The PDF cannot be displayed inline.</p>
+              </div>
+            </object>
           }
           @if (!safeBlobUrl) {
             <div class="pdf-fallback" style="display: block;">
@@ -96,12 +101,11 @@ import { MarkdownService } from '../../services/markdown.service'
         background: var(--color-bg-secondary);
       }
 
-      .pdf-viewer embed {
-        position: absolute;
-        top: 0;
-        left: 0;
+      .pdf-viewer object {
+        display: block;
         width: 100%;
         height: 100%;
+        min-height: 600px;
       }
 
       .pdf-fallback {
