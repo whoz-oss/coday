@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http'
 import { Observable, throwError } from 'rxjs'
 import { catchError, map } from 'rxjs/operators'
 
-export type ContentFormat = 'markdown' | 'json' | 'yaml' | 'text'
+export type ContentFormat = 'markdown' | 'json' | 'yaml' | 'text' | 'html'
 
 export interface FileContent {
   content: string
@@ -26,14 +26,49 @@ export interface FileContent {
 export class ContentViewerService {
   private readonly http = inject(HttpClient)
 
-  // Maximum viewable file size: 2 MB
-  private readonly MAX_FILE_SIZE = 2 * 1024 * 1024
+  // Maximum viewable file size: 20 MB
+  private readonly MAX_FILE_SIZE = 20 * 1024 * 1024
 
   /**
    * Check if a file is viewable based on size limit
    */
   isViewable(fileSize: number): boolean {
     return fileSize <= this.MAX_FILE_SIZE
+  }
+
+  /**
+   * Check if a file format is viewable (text-based formats only)
+   */
+  isFormatViewable(filename: string): boolean {
+    const ext = filename.split('.').pop()?.toLowerCase()
+
+    // Explicitly list non-viewable binary formats
+    const binaryExtensions = [
+      'pdf',
+      'png',
+      'jpg',
+      'jpeg',
+      'gif',
+      'webp',
+      'zip',
+      'tar',
+      'gz',
+      'exe',
+      'bin',
+      'doc',
+      'docx',
+      'xls',
+      'xlsx',
+      'ppt',
+      'pptx',
+    ]
+
+    if (ext && binaryExtensions.includes(ext)) {
+      return false
+    }
+
+    // All other formats are considered viewable as text
+    return true
   }
 
   /**
@@ -49,6 +84,9 @@ export class ContentViewerService {
       case 'yaml':
       case 'yml':
         return 'yaml'
+      case 'html':
+      case 'htm':
+        return 'html'
       default:
         return 'text'
     }
@@ -59,11 +97,12 @@ export class ContentViewerService {
    */
   loadFileContent(projectName: string, threadId: string, filename: string): Observable<FileContent> {
     const url = `/api/projects/${projectName}/threads/${threadId}/files/${encodeURIComponent(filename)}`
+    const format = this.detectFormat(filename)
 
     return this.http
       .get(url, {
-        responseType: 'text', // Get raw text content
-        observe: 'response', // Get full response to access headers
+        responseType: 'text',
+        observe: 'response',
       })
       .pipe(
         map((response) => {
@@ -72,7 +111,7 @@ export class ContentViewerService {
 
           return {
             content,
-            format: this.detectFormat(filename),
+            format,
             filename,
             size,
           }

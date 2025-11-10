@@ -67,6 +67,50 @@ Messages support full markdown:
 - Diagrams and mockups
 - Visual references
 
+### Exchange Space (File Sharing)
+
+The **Exchange Space** provides a dedicated area for sharing files with the agent during conversations.
+
+**Access**: Click the **📁 folder icon** in the thread header to open the file drawer.
+
+#### File List
+- View all files shared in the current thread
+- See file name, size, and last modified date
+- Download all files at once with the **download all** button
+
+#### Supported Actions
+- **👁️ View** - Display file content inline (text-based files only)
+- **⬇️ Download** - Download file to your computer
+- **🗑️ Delete** - Remove file from exchange space
+
+#### Uploading Files
+Drag and drop files into the exchange space or use the upload button to share:
+- Documents (`.txt`, `.md`, `.json`, `.yaml`)
+- Code files
+- Configuration files
+- Any text-based content up to 20 MB
+
+**Note**: Images are handled differently - drop them directly in the chat input to include them in your message.
+
+#### Viewing Files
+Click the **👁️ view icon** on supported file types to see content inline:
+- **Markdown** (`.md`) - Rendered with formatting
+- **JSON** (`.json`) - Formatted with proper indentation
+- **YAML** (`.yaml`, `.yml`) - Displayed in monospace
+- **HTML** (`.html`, `.htm`) - Rendered in a secure sandbox
+- **Text** - Plain text display
+
+Files larger than 20 MB or binary formats (PDFs, images) can only be downloaded.
+
+#### Use Cases
+- Share configuration files for the agent to analyze
+- Upload code snippets for review
+- Provide context documents (specs, requirements)
+- Exchange data files (JSON, YAML)
+- Share HTML previews or reports
+
+The agent can read files from the exchange space using the `readFile` tool, making it easy to reference shared content throughout the conversation.
+
 ### Voice Input
 
 Click the **🎤 microphone icon** to use speech-to-text:

@@ -34,7 +34,7 @@ export class ContentViewerComponent implements OnInit, OnDestroy {
   @Input({ required: true }) projectName!: string
   @Input({ required: true }) threadId!: string
 
-  @Output() close = new EventEmitter<void>()
+  @Output() closeViewer = new EventEmitter<void>()
 
   private readonly contentService = inject(ContentViewerService)
   private readonly eventStream = inject(EventStreamService)
@@ -56,7 +56,7 @@ export class ContentViewerComponent implements OnInit, OnDestroy {
   private loadContent(): void {
     // Check file size before loading
     if (!this.contentService.isViewable(this.file.size)) {
-      this.error = `File too large to view (${this.contentService.formatSize(this.file.size)}). Maximum size: 2 MB.`
+      this.error = `File too large to view (${this.contentService.formatSize(this.file.size)}). Maximum size: 20 MB.`
       return
     }
 
@@ -78,7 +78,7 @@ export class ContentViewerComponent implements OnInit, OnDestroy {
   }
 
   onClose(): void {
-    this.close.emit()
+    this.closeViewer.emit()
   }
 
   download(): void {

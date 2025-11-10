@@ -22,6 +22,8 @@ import { MarkdownService } from '../../services/markdown.service'
     <div class="content-renderer" [ngClass]="'format-' + format">
       @if (format === 'markdown') {
         <div class="markdown-content" [innerHTML]="renderedContent"></div>
+      } @else if (format === 'html') {
+        <iframe class="html-viewer" [srcdoc]="content" sandbox="allow-same-origin"></iframe>
       } @else {
         <pre class="code-content">{{ content }}</pre>
       }
@@ -62,6 +64,16 @@ import { MarkdownService } from '../../services/markdown.service'
 
       .format-text .code-content {
         color: var(--color-text);
+      }
+
+      /* HTML iframe viewer */
+      .html-viewer {
+        width: 100%;
+        height: 100%;
+        min-height: 400px;
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        background: white;
       }
     `,
   ],
