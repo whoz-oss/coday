@@ -102,7 +102,7 @@
     mode="side"
     position="end"
     [opened]="isFileDrawerOpen"
-    [class.viewer-mode]="isViewerMode"
+    [style.width]="drawerWidth"
     (closed)="closeFileDrawer()"
   >
     <app-file-exchange-drawer
