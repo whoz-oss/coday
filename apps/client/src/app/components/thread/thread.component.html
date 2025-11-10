@@ -98,18 +98,11 @@
   </mat-drawer-content>
 
   <!-- File Exchange Drawer (right side) -->
-  <mat-drawer
-    mode="side"
-    position="end"
-    [opened]="isFileDrawerOpen"
-    [style.width]="drawerWidth"
-    (closed)="closeFileDrawer()"
-  >
+  <mat-drawer mode="side" position="end" [opened]="isFileDrawerOpen" (closed)="closeFileDrawer()">
     <app-file-exchange-drawer
       [projectName]="projectName"
       [threadId]="threadId"
       (closeDrawer)="closeFileDrawer()"
-      (viewerStateChanged)="onViewerStateChanged($event)"
     ></app-file-exchange-drawer>
   </mat-drawer>
 </mat-drawer-container>

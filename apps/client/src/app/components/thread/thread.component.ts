@@ -94,23 +94,6 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
 
   // File exchange drawer state
   isFileDrawerOpen: boolean = false
-  isViewerMode: boolean = false
-
-  // Dynamic drawer width based on mode
-  get drawerWidth(): string {
-    if (!this.isViewerMode) {
-      return '360px' // List mode
-    }
-
-    // Viewer mode - responsive
-    if (window.innerWidth <= 768) {
-      return '100vw' // Mobile: full screen
-    } else if (window.innerWidth <= 1200) {
-      return 'max(60vw, 500px)' // Tablet: 60% with minimum
-    } else {
-      return 'clamp(600px, 50vw, 800px)' // Desktop: 50% with constraints
-    }
-  }
 
   // Connect to file exchange state for file count
   get fileCount(): number {
@@ -331,12 +314,6 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   closeFileDrawer(): void {
     console.log('[THREAD] Closing file drawer')
     this.isFileDrawerOpen = false
-    this.isViewerMode = false
-  }
-
-  onViewerStateChanged(isViewerMode: boolean): void {
-    console.log('[THREAD] Viewer mode changed:', isViewerMode)
-    this.isViewerMode = isViewerMode
   }
 
   // Drag and Drop Event Handlers for image uploads
