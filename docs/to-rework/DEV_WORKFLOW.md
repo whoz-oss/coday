@@ -36,6 +36,9 @@ build: #XXXX short description     # For build system changes
    # Compile the entire project
    pnpm nx run-many --target=build --all
 
+   # Run linter
+   pnpm lint
+
    # Verify fix works in both web and terminal interfaces
    pnpm start    # Test terminal interface
    pnpm web      # Test web interface
@@ -53,6 +56,9 @@ build: #XXXX short description     # For build system changes
    ```bash
    # Compile the entire project
    pnpm nx run-many --target=build --all
+
+   # Run linter
+   pnpm lint
 
    # Add automated tests if appropriate
    pnpm test
