@@ -27,6 +27,8 @@ const OPENAI_DEFAULT_MODELS: AiModel[] = [
     name: 'gpt-4.1-2025-04-14',
     contextWindow: 1000000,
     alias: 'BIG',
+    temperature: 0.8,
+    maxOutputTokens: 120000,
     price: {
       inputMTokens: 2,
       cacheRead: 0.5,
@@ -34,13 +36,15 @@ const OPENAI_DEFAULT_MODELS: AiModel[] = [
     },
   },
   {
-    name: 'gpt-4o-mini',
+    name: 'gpt-5-mini',
     alias: 'SMALL',
-    contextWindow: 128000,
+    contextWindow: 400000,
+    temperature: 1.0,
+    maxOutputTokens: 128000,
     price: {
-      inputMTokens: 0.15,
-      cacheRead: 0.075,
-      outputMTokens: 0.6,
+      inputMTokens: 0.25,
+      cacheRead: 0.025,
+      outputMTokens: 2.0,
     },
   },
 ]
@@ -196,8 +200,8 @@ export class OpenaiClient extends AiClient {
         model: model.name,
         messages: this.toOpenAiMessage(agent, data.messages),
         tools: this.truncateToolsIfNeeded(agent.tools.getTools()),
-        max_completion_tokens: undefined,
-        temperature: agent.definition.temperature ?? 0.8,
+        max_completion_tokens: agent.definition.maxOutputTokens ?? model.maxOutputTokens ?? undefined,
+        temperature: agent.definition.temperature ?? model.temperature ?? 0.8,
       })
 
       this.updateUsage(response.usage, agent, model, thread)
