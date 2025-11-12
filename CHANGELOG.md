@@ -1,3 +1,13 @@
+## 0.46.0 (2025-11-12)
+
+### 🚀 Features
+
+- #312 file content viewer with format-specific rendering ([#332](https://github.com/whoz-oss/coday/pull/332), [#312](https://github.com/whoz-oss/coday/issues/312))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.45.0 (2025-11-12)
 
 ### 🚀 Features
