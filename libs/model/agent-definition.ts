@@ -58,6 +58,12 @@ export interface AgentDefinition extends WithDocs {
   temperature?: number
 
   /**
+   * Maximum output tokens for this agent
+   * Overrides the model's default maxOutputTokens if specified
+   */
+  maxOutputTokens?: number
+
+  /**
    * List of integrations the agent can have access to.
    * Integrations need also to be configured in the project to be available.
    * Values are either:
@@ -78,7 +84,7 @@ You are Coday, an AI assistant designed for interactive usage by users through v
 When other agents are available, you should redirect the user request to the appropriate agent, given the topic.
 `,
   modelSize: ModelSize.BIG,
-  modelName: 'BIG'
+  modelName: 'BIG',
   // prepare future restriction of Coday agent
   // integrations: {
   //   FILES: [],
