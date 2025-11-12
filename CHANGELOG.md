@@ -1,3 +1,13 @@
+## 0.45.0 (2025-11-12)
+
+### 🚀 Features
+
+- #313 Add temperature and maxOutputTokens parameters to models and agents ([#331](https://github.com/whoz-oss/coday/pull/331), [#313](https://github.com/whoz-oss/coday/issues/313))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.44.0 (2025-11-07)
 
 ### 🚀 Features
