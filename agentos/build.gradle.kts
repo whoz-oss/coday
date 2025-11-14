@@ -24,6 +24,9 @@ extra["pf4jVersion"] = "3.13.0"
 extra["pf4jSpringVersion"] = "0.10.0"
 
 dependencies {
+    // Plugin API (published for external plugin developers)
+    api(project(":plugin-api"))
+    
     // PF4J Plugin Framework
     implementation("org.pf4j:pf4j:${property("pf4jVersion")}") {
         exclude(group = "org.slf4j", module = "slf4j-reload4j")
