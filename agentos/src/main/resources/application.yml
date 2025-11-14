@@ -25,6 +25,12 @@ agentos:
   plugins:
     directory: plugins
     autoLoad: true
+  mcp:
+    enabled: false
+    servers: []
+      # Examples:
+      # - "stdio:///usr/local/bin/mcp-server-github"
+      # - "stdio:///usr/local/bin/mcp-server-filesystem?arg=--root&arg=/workspace"
 
 
 management:
