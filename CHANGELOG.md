@@ -1,3 +1,14 @@
+## 0.46.1 (2025-11-17)
+
+### 🩹 Fixes
+
+- #335 increase number of stack depth of threads for delegation ([#335](https://github.com/whoz-oss/coday/issues/335))
+- #335 increase number of stack depth of threads for delegation ([#336](https://github.com/whoz-oss/coday/pull/336), [#335](https://github.com/whoz-oss/coday/issues/335))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+
 ## 0.46.0 (2025-11-12)
 
 ### 🚀 Features
