@@ -1,3 +1,14 @@
+## 0.47.0 (2025-11-18)
+
+### 🚀 Features
+
+- #337 switch create jira issue tool to jira v2 API that natively support Wiki Markup ([#337](https://github.com/whoz-oss/coday/issues/337))
+- #337 switch create jira issue tool to jira v2 API that natively… ([#338](https://github.com/whoz-oss/coday/pull/338), [#337](https://github.com/whoz-oss/coday/issues/337))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+
 ## 0.46.1 (2025-11-17)
 
 ### 🩹 Fixes
