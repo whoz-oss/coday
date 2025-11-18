@@ -201,27 +201,6 @@ function logErrorContext(ctx: CreateJiraIssueErrorContext, interactor: Interacto
 }
 
 /**
- * Format description field for Jira API
- */
-function formatDescription(description: string): any {
-  return {
-    type: 'doc',
-    version: 1,
-    content: [
-      {
-        type: 'paragraph',
-        content: [
-          {
-            type: 'text',
-            text: description,
-          },
-        ],
-      },
-    ],
-  }
-}
-
-/**
  * Function to retrieve the Jira user ID by username
  */
 async function getJiraUserIdByUsername(
@@ -234,7 +213,7 @@ async function getJiraUserIdByUsername(
 ): Promise<string | null> {
   try {
     log(`Retrieving Jira user ID for username: ${username}`, LogLevel.INFO, logLevel, interactor)
-    const url = `${jiraBaseUrl}/rest/api/3/user/search?query=${encodeURIComponent(username)}`
+    const url = `${jiraBaseUrl}/rest/api/2/user/search?query=${encodeURIComponent(username)}`
     const response = await axios.get(url, {
       auth: {
         username: jiraUsername,
@@ -335,7 +314,7 @@ export async function createJiraIssue(
 
       // Validate project exists
       try {
-        const url = `${jiraBaseUrl}/rest/api/3/project/${projectKey}`
+        const url = `${jiraBaseUrl}/rest/api/2/project/${projectKey}`
         await axios.get(url, {
           auth: {
             username: jiraUsername,
@@ -360,14 +339,27 @@ export async function createJiraIssue(
       // --- Stage 2: Issue type validation and metadata retrieval ---
       let issueTypes: Array<{ id: string; name: string }> = []
       try {
-        const url = `${jiraBaseUrl}/rest/api/3/issue/createmeta/${projectKey}/issuetypes`
+        const url = `${jiraBaseUrl}/rest/api/2/issue/createmeta?projectKeys=${projectKey}&expand=projects.issuetypes.fields`
         const response = await axios.get(url, {
           auth: {
             username: jiraUsername,
             password: jiraApiToken,
           },
         })
-        issueTypes = response.data.issueTypes.map((type: any) => ({ id: type.id, name: type.name }))
+        // API v2 returns data in projects array
+        const project = response.data.projects?.[0]
+        if (!project) {
+          context = {
+            error: `No project data found for ${projectKey}`,
+            suggestion: 'Ensure the project key is correct and API credentials are valid.',
+            partialRequest: finalRequest,
+            projectKey,
+          }
+          logErrorContext(context, interactor, logLevel)
+          retryCount++
+          continue
+        }
+        issueTypes = project.issuetypes.map((type: any) => ({ id: type.id, name: type.name }))
         log(`Loaded ${issueTypes.length} issue types for project ${projectKey}.`, LogLevel.DEBUG, logLevel, interactor)
       } catch (error: any) {
         context = {
@@ -444,14 +436,39 @@ export async function createJiraIssue(
 
       // Get metadata for selected issue type
       try {
-        const url = `${jiraBaseUrl}/rest/api/3/issue/createmeta/${projectKey}/issuetypes/${issueTypeId}`
+        const url = `${jiraBaseUrl}/rest/api/2/issue/createmeta?projectKeys=${projectKey}&issuetypeIds=${issueTypeId}&expand=projects.issuetypes.fields`
         const response = await axios.get(url, {
           auth: {
             username: jiraUsername,
             password: jiraApiToken,
           },
         })
-        metadata = response.data as IssueTypeMetadata
+        const project = response.data.projects?.[0]
+        const issueType = project?.issuetypes?.[0]
+        if (!issueType) {
+          context = {
+            error: `No metadata found for issue type ${issueTypeId}`,
+            suggestion: 'Check Jira permissions and API credentials.',
+            partialRequest: finalRequest,
+            projectKey,
+            issueTypeName,
+            issueTypeId,
+          }
+          logErrorContext(context, interactor, logLevel)
+          retryCount++
+          continue
+        }
+        // Convert v2 fields format (object) to our expected format (array)
+        const fieldsArray = Object.entries(issueType.fields || {}).map(([key, value]: [string, any]) => ({
+          ...value,
+          key,
+        }))
+        metadata = {
+          id: issueType.id,
+          name: issueType.name,
+          subtask: issueType.subtask,
+          fields: fieldsArray,
+        } as IssueTypeMetadata
         log(`Loaded metadata for issue type "${issueTypeName}".`, LogLevel.DEBUG, logLevel, interactor)
       } catch (error: any) {
         context = {
@@ -506,7 +523,6 @@ export async function createJiraIssue(
       for (const field of requiredFields) {
         let value: any
         if (field.schema.type === 'array') {
-
           value = await promptWithRetry(
             async () => {
               const input = await interactor.promptText(
@@ -645,38 +661,58 @@ export async function createJiraIssue(
       }
 
       // --- Stage 5: Submit to Jira API ---
-      const url = `${jiraBaseUrl}/rest/api/3/issue`
+      // Use API v2 to support Wiki Markup natively in description
+      const url = `${jiraBaseUrl}/rest/api/2/issue`
       const auth = Buffer.from(`${jiraUsername}:${jiraApiToken}`).toString('base64')
       const fields: Record<string, any> = {}
       // Add fields
       fields.issuetype = { id: issueTypeId }
       if (finalRequest.summary) fields.summary = finalRequest.summary
-      if (finalRequest.description) fields.description = formatDescription(finalRequest.description)
-      
+      if (finalRequest.description) fields.description = finalRequest.description
+
       // Handle parent relationship directly if specified
       if (finalRequest.parent && finalRequest.parent.key) {
-        log(`Setting parent relationship: Issue will be a child of ${finalRequest.parent.key}`, LogLevel.INFO, logLevel, interactor)
+        log(
+          `Setting parent relationship: Issue will be a child of ${finalRequest.parent.key}`,
+          LogLevel.INFO,
+          logLevel,
+          interactor
+        )
         try {
           // Validate that the parent issue exists
-          const parentCheckUrl = `${jiraBaseUrl}/rest/api/3/issue/${finalRequest.parent.key}?fields=issuetype`
+          const parentCheckUrl = `${jiraBaseUrl}/rest/api/2/issue/${finalRequest.parent.key}?fields=issuetype`
           const parentCheckResponse = await fetch(parentCheckUrl, {
             method: 'GET',
             headers: {
-              'Authorization': `Basic ${auth}`,
-              'Accept': 'application/json',
+              Authorization: `Basic ${auth}`,
+              Accept: 'application/json',
             },
           })
-          
+
           if (parentCheckResponse.ok) {
             // Parent exists, add it to fields
             fields.parent = { key: finalRequest.parent.key }
-            log(`Parent issue ${finalRequest.parent.key} verified and will be set during creation`, LogLevel.INFO, logLevel, interactor)
+            log(
+              `Parent issue ${finalRequest.parent.key} verified and will be set during creation`,
+              LogLevel.INFO,
+              logLevel,
+              interactor
+            )
           } else {
-            log(`Warning: Parent issue ${finalRequest.parent.key} not found or not accessible. Parent relationship will not be set.`, 
-                LogLevel.WARN, logLevel, interactor)
+            log(
+              `Warning: Parent issue ${finalRequest.parent.key} not found or not accessible. Parent relationship will not be set.`,
+              LogLevel.WARN,
+              logLevel,
+              interactor
+            )
           }
         } catch (parentError) {
-          log(`Error checking parent issue ${finalRequest.parent.key}: ${parentError}`, LogLevel.ERROR, logLevel, interactor)
+          log(
+            `Error checking parent issue ${finalRequest.parent.key}: ${parentError}`,
+            LogLevel.ERROR,
+            logLevel,
+            interactor
+          )
           log(`Will continue without setting parent relationship`, LogLevel.WARN, logLevel, interactor)
         }
       }
@@ -817,7 +853,12 @@ export async function createJiraIssue(
 
         // Process linked issues if any
         if (finalRequest.linkedIssues && finalRequest.linkedIssues.length > 0) {
-          log(`Processing ${finalRequest.linkedIssues.length} linked issues for ${issueKey}...`, LogLevel.INFO, logLevel, interactor)
+          log(
+            `Processing ${finalRequest.linkedIssues.length} linked issues for ${issueKey}...`,
+            LogLevel.INFO,
+            logLevel,
+            interactor
+          )
 
           // Import the linkJiraIssues function dynamically to avoid circular dependency
           const { linkJiraIssues } = await import('./link-jira-issues')
@@ -840,7 +881,7 @@ export async function createJiraIssue(
                   inwardIssueKey: issueKey,
                   outwardIssueKey: linkedIssue.key,
                   linkType,
-                  isEpicLink
+                  isEpicLink,
                 },
                 jiraBaseUrl,
                 jiraApiToken,
@@ -849,12 +890,27 @@ export async function createJiraIssue(
               )
 
               if (linkResult.success) {
-                log(`Successfully linked issue ${linkedIssue.key} to ${issueKey}: ${linkResult.message}`, LogLevel.INFO, logLevel, interactor)
+                log(
+                  `Successfully linked issue ${linkedIssue.key} to ${issueKey}: ${linkResult.message}`,
+                  LogLevel.INFO,
+                  logLevel,
+                  interactor
+                )
               } else {
-                log(`Failed to link issue ${linkedIssue.key} to ${issueKey}: ${linkResult.message}`, LogLevel.WARN, logLevel, interactor)
+                log(
+                  `Failed to link issue ${linkedIssue.key} to ${issueKey}: ${linkResult.message}`,
+                  LogLevel.WARN,
+                  logLevel,
+                  interactor
+                )
               }
             } catch (linkError) {
-              log(`Error linking issue ${linkedIssue.key} to ${issueKey}: ${linkError}`, LogLevel.ERROR, logLevel, interactor)
+              log(
+                `Error linking issue ${linkedIssue.key} to ${issueKey}: ${linkError}`,
+                LogLevel.ERROR,
+                logLevel,
+                interactor
+              )
             }
           }
         }
@@ -872,7 +928,6 @@ export async function createJiraIssue(
         }
         logErrorContext(context, interactor, logLevel)
         retryCount++
-        continue
       }
     } catch (err: any) {
       context = {
