@@ -1,13 +1,14 @@
 <!-- File Exchange Drawer Container - wraps entire thread -->
-<mat-drawer-container class="file-drawer-container" [hasBackdrop]="false">
+<mat-drawer-container
+  class="file-drawer-container"
+  [hasBackdrop]="false"
+  (dragenter)="onDragEnter($event)"
+  (dragover)="onDragOver($event)"
+  (dragleave)="onDragLeave($event)"
+  (drop)="onDrop($event)"
+>
   <mat-drawer-content>
-    <div
-      class="thread-container"
-      (dragenter)="onDragEnter($event)"
-      (dragover)="onDragOver($event)"
-      (dragleave)="onDragLeave($event)"
-      (drop)="onDrop($event)"
-    >
+    <div class="thread-container">
       <!-- Floating File Exchange Button (top-right) - hidden when drawer open -->
       @if (!isFileDrawerOpen) {
         <button
