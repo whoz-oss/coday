@@ -1,0 +1,39 @@
+<div class="project-create">
+  <h3 class="create-title">Create New Project</h3>
+
+  <div class="create-form">
+    <app-text-input
+      #nameInput
+      label="Project Name"
+      placeholder="my-project"
+      [value]="projectName"
+      (valueChange)="projectName = $event"
+      (enterPressed)="onNameEnter()"
+      [isDisabled]="isCreating"
+      [autoFocus]="true"
+    ></app-text-input>
+
+    <app-text-input
+      #pathInput
+      label="Project Path"
+      placeholder="/path/to/project"
+      hint="Absolute path to the project directory"
+      [value]="projectPath"
+      (valueChange)="projectPath = $event"
+      (enterPressed)="onCreate()"
+      [isDisabled]="isCreating"
+      [autoFocus]="false"
+    ></app-text-input>
+
+    @if (errorMessage) {
+      <div class="error-message">{{ errorMessage }}</div>
+    }
+  </div>
+
+  <div class="form-actions">
+    <button matButton (click)="onCancel()" [disabled]="isCreating">Cancel</button>
+    <button matButton="filled" (click)="onCreate()" [disabled]="!isValid() || isCreating">
+      {{ isCreating ? 'Creating...' : 'Create Project' }}
+    </button>
+  </div>
+</div>

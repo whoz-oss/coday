@@ -1,6 +1,13 @@
 import OpenAI from 'openai'
 import { Agent, AiClient, AiModel, AiProviderConfig, CompletionOptions, Interactor } from '../model'
-import { CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
+import {
+  CodayEvent,
+  ErrorEvent,
+  MessageEvent,
+  SummaryEvent,
+  ToolRequestEvent,
+  ToolResponseEvent,
+} from '@coday/coday-events'
 import { AiThread } from '../ai-thread/ai-thread'
 import { Observable, Subject } from 'rxjs'
 import { ThreadMessage } from '../ai-thread/ai-thread.types'
@@ -20,6 +27,8 @@ const OPENAI_DEFAULT_MODELS: AiModel[] = [
     name: 'gpt-4.1-2025-04-14',
     contextWindow: 1000000,
     alias: 'BIG',
+    temperature: 0.8,
+    maxOutputTokens: 120000,
     price: {
       inputMTokens: 2,
       cacheRead: 0.5,
@@ -27,13 +36,15 @@ const OPENAI_DEFAULT_MODELS: AiModel[] = [
     },
   },
   {
-    name: 'gpt-4o-mini',
+    name: 'gpt-5-mini',
     alias: 'SMALL',
-    contextWindow: 128000,
+    contextWindow: 400000,
+    temperature: 1.0,
+    maxOutputTokens: 128000,
     price: {
-      inputMTokens: 0.15,
-      cacheRead: 0.075,
-      outputMTokens: 0.6,
+      inputMTokens: 0.25,
+      cacheRead: 0.025,
+      outputMTokens: 2.0,
     },
   },
 ]
@@ -65,8 +76,8 @@ export class OpenaiClient extends AiClient {
 
     this.interactor.warn(
       `⚠️ OpenAI limits tools to ${OpenaiClient.MAX_TOOLS} maximum. Your agent has ${tools.length} tools. ` +
-      `Truncating to first ${OpenaiClient.MAX_TOOLS} tools. ` +
-      `Consider reducing your integrations or using a shorter tool list for better performance.`
+        `Truncating to first ${OpenaiClient.MAX_TOOLS} tools. ` +
+        `Consider reducing your integrations or using a shorter tool list for better performance.`
     )
 
     return tools.slice(0, OpenaiClient.MAX_TOOLS)
@@ -87,16 +98,18 @@ export class OpenaiClient extends AiClient {
 
     const outputSubject: Subject<CodayEvent> = new Subject()
     const thinking = this.startThinkingInterval()
-    this.processThread(openai, agent, model, thread, outputSubject).catch((reason) => {
-      outputSubject.next(new ErrorEvent({error: reason}))
-    }).finally(() => {
-      this.stopThinkingInterval(thinking)
-      this.showAgentAndUsage(agent, this.aiProviderConfig.name, model.name, thread)
-      // Log usage after the complete response cycle
-      const cost = thread.usage?.price || 0
-      this.logAgentUsage(agent, model.name, cost)
-      outputSubject.complete()
-    })
+    this.processThread(openai, agent, model, thread, outputSubject)
+      .catch((reason) => {
+        outputSubject.next(new ErrorEvent({ error: reason }))
+      })
+      .finally(() => {
+        this.stopThinkingInterval(thinking)
+        this.showAgentAndUsage(agent, this.aiProviderConfig.name, model.name, thread)
+        // Log usage after the complete response cycle
+        const cost = thread.usage?.price || 0
+        this.logAgentUsage(agent, model.name, cost)
+        outputSubject.complete()
+      })
     return outputSubject
   }
 
@@ -187,10 +200,10 @@ export class OpenaiClient extends AiClient {
         model: model.name,
         messages: this.toOpenAiMessage(agent, data.messages),
         tools: this.truncateToolsIfNeeded(agent.tools.getTools()),
-        max_completion_tokens: undefined,
-        temperature: agent.definition.temperature ?? 0.8,
+        max_completion_tokens: agent.definition.maxOutputTokens ?? model.maxOutputTokens ?? undefined,
+        temperature: agent.definition.temperature ?? model.temperature ?? 0.8,
       })
-      2
+
       this.updateUsage(response.usage, agent, model, thread)
 
       const firstChoice = response.choices[0]!
@@ -269,29 +282,39 @@ export class OpenaiClient extends AiClient {
     }
 
     const openaiMessages = messages.flatMap((msg, index): ChatCompletionMessageParam[] => {
+      // Handle SummaryEvent - just the summary text
+      if (msg instanceof SummaryEvent) {
+        return [
+          {
+            role: 'user' as const,
+            content: msg.summary,
+          },
+        ]
+      }
+
+      // Handle regular MessageEvent
       if (msg instanceof MessageEvent) {
         const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
         const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
 
         // Convert rich content to OpenAI format
-        const openaiContent: string | OpenAI.ChatCompletionContentPart[] =
-          content.map((c) => {
-                if (c.type === 'text') {
-                  return { type: 'text' as const, text: c.content }
-                }
-                if (c.type === 'image') {
-                  const image = {
-                    type: 'image_url' as const,
-                    image_url: {
-                      url: `data:${c.mimeType};base64,${c.content}`,
-                      detail: 'auto' as const, // Let OpenAI choose the appropriate detail level
-                    },
-                  }
-                  console.log(`got an image in message event`)
-                  return image
-                }
-                throw new Error(`Unknown content type: ${(c as any).type}`)
-              })
+        const openaiContent: string | OpenAI.ChatCompletionContentPart[] = content.map((c) => {
+          if (c.type === 'text') {
+            return { type: 'text' as const, text: c.content }
+          }
+          if (c.type === 'image') {
+            const image = {
+              type: 'image_url' as const,
+              image_url: {
+                url: `data:${c.mimeType};base64,${c.content}`,
+                detail: 'auto' as const, // Let OpenAI choose the appropriate detail level
+              },
+            }
+            console.log(`got an image in message event`)
+            return image
+          }
+          throw new Error(`Unknown content type: ${(c as any).type}`)
+        })
 
         if (msg.role === 'assistant') {
           return [
@@ -418,24 +441,37 @@ export class OpenaiClient extends AiClient {
   }
 
   private toAssistantMessage(m: ThreadMessage): MessageCreateParams {
+    // Handle SummaryEvent
+    if (m instanceof SummaryEvent) {
+      return {
+        role: 'user',
+        content: m.summary,
+      }
+    }
+
+    // Handle MessageEvent
     if (m instanceof MessageEvent) {
       // For assistant API, convert rich content to text representation
-      const content =
-        typeof m.content === 'string'
-          ? m.content
-          : m.content.filter(c => c.type === 'text').map(c => c.content).join('\n')
+      const content = m.content
+        .filter((c) => c.type === 'text')
+        .map((c) => c.content)
+        .join('\n')
 
       return {
         role: m.role,
         content,
       }
     }
+
+    // Handle ToolResponseEvent
     if (m instanceof ToolResponseEvent) {
       return {
         role: 'user',
         content: `Here is the result of : \n<toolRequestId>${m.toolRequestId}</toolRequestId>\n<output>${m.output}</output>`,
       }
     }
+
+    // Handle ToolRequestEvent
     return {
       role: 'assistant',
       content: `${m.name}: Can you provide me the result of this :\n<toolRequestId>${m.toolRequestId}</toolRequestId>\n<function>${m.name}</function>\n<args>${m.args}</args>`,

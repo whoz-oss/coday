@@ -8,6 +8,8 @@ import {
   HostListener,
   OnInit,
   OnDestroy,
+  OnChanges,
+  SimpleChanges,
   inject,
 } from '@angular/core'
 import { ChatMessageComponent, ChatMessage } from '../chat-message/chat-message.component'
@@ -18,16 +20,18 @@ import { CodayService } from '../../core/services/coday.service'
 import { Subject } from 'rxjs'
 import { MatIcon } from '@angular/material/icon'
 import { ThinkingLoaderComponent } from '../thinking-loader/thinking-loader.component'
+import { MatFabButton } from '@angular/material/button'
 
 @Component({
   selector: 'app-chat-history',
   standalone: true,
-  imports: [ChatMessageComponent, MatIcon, ThinkingLoaderComponent],
+  imports: [ChatMessageComponent, MatIcon, ThinkingLoaderComponent, MatFabButton],
   templateUrl: './chat-history.component.html',
   styleUrl: './chat-history.component.scss',
 })
-export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy {
+export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy, OnChanges {
   @Input() messages: ChatMessage[] = []
+  @Input() streamingText: string = ''
   @Input() isThinking: boolean = false
   @Output() copyRequested = new EventEmitter<ChatMessage>()
   @Output() stopRequested = new EventEmitter<void>()
@@ -72,6 +76,14 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     // Clean up focus listeners
     window.removeEventListener('focus', this.handleWindowFocus)
     window.removeEventListener('blur', this.handleWindowBlur)
+  }
+
+  ngOnChanges(changes: SimpleChanges) {
+    // Auto-scroll during streaming ONLY if streamingText changed and we're tracking
+    if (changes['streamingText'] && this.streamingText && this.isTracking) {
+      // Small delay to ensure DOM is updated
+      setTimeout(() => this.scrollToBottom(), 0)
+    }
   }
 
   ngAfterViewChecked() {

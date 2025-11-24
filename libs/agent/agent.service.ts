@@ -62,9 +62,10 @@ export class AgentService implements Killable {
 
     // Pre-initialize tools in parallel (fire-and-forget)
     this.interactor.debug('🛠️ Pre-initializing tools in parallel...')
-    this.toolbox.getTools({ context, integrations: undefined, agentName: 'pre-init' })
-    .then(_ => this.interactor.debug('🛠️ ...completed pre-initializing tools in parallel'))
-      .catch(error => this.interactor.debug(`Pre-initialization warning: ${error.message}`))
+    this.toolbox
+      .getTools({ context, integrations: undefined, agentName: 'pre-init' })
+      .then((_) => this.interactor.debug('🛠️ ...completed pre-initializing tools in parallel'))
+      .catch((error) => this.interactor.debug(`Pre-initialization warning: ${error.message}`))
 
     try {
       // Load from coday.yml agents section first
@@ -75,7 +76,9 @@ export class AgentService implements Killable {
         }
       }
       const codayYmlTime = performance.now() - codayYmlStart
-      this.interactor.debug(`📋 Loaded agent definitions from coday.yml: ${codayYmlTime.toFixed(2)}ms (${context.project.agents?.length || 0} agents)`)
+      this.interactor.debug(
+        `📋 Loaded agent definitions from coday.yml: ${codayYmlTime.toFixed(2)}ms (${context.project.agents?.length || 0} agents)`
+      )
 
       // Load from project local configuration
       const projectConfigStart = performance.now()
@@ -86,7 +89,9 @@ export class AgentService implements Killable {
         }
       }
       const projectConfigTime = performance.now() - projectConfigStart
-      this.interactor.debug(`⚙️ Loaded agent definitions from project local config: ${projectConfigTime.toFixed(2)}ms (${selectedProject?.config.agents?.length || 0} agents)`)
+      this.interactor.debug(
+        `⚙️ Loaded agent definitions from project local config: ${projectConfigTime.toFixed(2)}ms (${selectedProject?.config.agents?.length || 0} agents)`
+      )
 
       // Then load from files
       const filesStart = performance.now()
@@ -107,10 +112,8 @@ export class AgentService implements Killable {
     const totalTime = performance.now() - startTime
     this.interactor.debug(`🎯 Total agent definition loading time: ${totalTime.toFixed(2)}ms`)
 
-    const agentNames = this.listAgentSummaries().map((a) => `  - ${a.name} : ${a.description}`)
-    if (agentNames.length > 1) {
-      this.interactor.displayText(`Loaded agents (callable with '@[agent name]'):\n${agentNames.join('\n')}`)
-    }
+    // Agent list is now available via autocomplete in the UI
+    // No need to display it at initialization
   }
 
   /**
@@ -119,16 +122,16 @@ export class AgentService implements Killable {
    */
   async findByName(name: string, context: CommandContext): Promise<Agent | undefined> {
     await this.initialize(context)
-    
+
     const lowerName = name.toLowerCase()
-    
+
     // Check cache first
     if (this.agentCache.has(lowerName)) {
       return this.agentCache.get(lowerName)
     }
-    
+
     // Find definition and create agent on-demand
-    const entry = this.agentDefinitions.find(e => e.definition.name.toLowerCase() === lowerName)
+    const entry = this.agentDefinitions.find((e) => e.definition.name.toLowerCase() === lowerName)
     if (entry) {
       const agent = await this.tryAddAgent(entry, context)
       if (agent) {
@@ -136,7 +139,7 @@ export class AgentService implements Killable {
         return agent
       }
     }
-    
+
     return undefined
   }
 
@@ -172,7 +175,6 @@ export class AgentService implements Killable {
       this.interactor.error('Selection cancelled')
       return undefined
     }
-
   }
 
   /**
@@ -185,17 +187,17 @@ export class AgentService implements Killable {
     await this.initialize(context)
 
     const lowerNameStart = nameStart.toLowerCase()
-    const matchingEntries = this.agentDefinitions.filter(entry => 
+    const matchingEntries = this.agentDefinitions.filter((entry) =>
       entry.definition.name.toLowerCase().startsWith(lowerNameStart)
     )
-    
+
     const agents: Agent[] = []
     for (const entry of matchingEntries) {
       const lowerName = entry.definition.name.toLowerCase()
-      
+
       // Check cache first
       let agent = this.agentCache.get(lowerName)
-      
+
       // Create on-demand if not in cache
       if (!agent) {
         agent = await this.tryAddAgent(entry, context)
@@ -203,12 +205,12 @@ export class AgentService implements Killable {
           this.agentCache.set(lowerName, agent)
         }
       }
-      
+
       if (agent) {
         agents.push(agent)
       }
     }
-    
+
     return agents
   }
 
@@ -341,7 +343,7 @@ export class AgentService implements Killable {
         return
       }
       this.interactor.debug(`🏗️ Creating agent '${def.name}' on-demand...`)
-      
+
       const clientStart = performance.now()
       const aiClient = this.aiClientProvider.getClient(def.aiProvider, def.modelName)
       if (!aiClient) {
@@ -376,17 +378,19 @@ ${agentDocs}
             })
           )
         : undefined
-      
+
       const toolsStart = performance.now()
       const syncTools = await this.toolbox.getTools({ context, integrations, agentName: def.name })
       const toolsTime = performance.now() - toolsStart
 
       const toolset = new ToolSet([...syncTools])
       const agent = new Agent(def, aiClient, toolset)
-      
+
       const totalTime = performance.now() - agentStart
-      this.interactor.debug(`✨ Agent '${def.name}' created: ${totalTime.toFixed(2)}ms (client: ${clientTime.toFixed(2)}ms, docs: ${docsTime.toFixed(2)}ms, tools: ${toolsTime.toFixed(2)}ms)`)
-      
+      this.interactor.debug(
+        `✨ Agent '${def.name}' created: ${totalTime.toFixed(2)}ms (client: ${clientTime.toFixed(2)}ms, docs: ${docsTime.toFixed(2)}ms, tools: ${toolsTime.toFixed(2)}ms)`
+      )
+
       return agent
     } catch (error) {
       const errorMessage = `Failed to create agent ${def.name}`

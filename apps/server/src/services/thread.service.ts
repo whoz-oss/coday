@@ -3,6 +3,7 @@ import { ThreadFileRepository } from '@coday/repository/thread-file.repository'
 import { ProjectRepository } from '@coday/repository/project.repository'
 import { AiThread } from '@coday/ai-thread/ai-thread'
 import { ThreadSummary } from '@coday/ai-thread/ai-thread.types'
+import { ThreadFileService } from './thread-file.service'
 
 /**
  * Server-side thread management service.
@@ -21,7 +22,8 @@ export class ThreadService {
 
   constructor(
     private readonly projectRepository: ProjectRepository,
-    private readonly projectsDir: string
+    private readonly projectsDir: string,
+    private readonly threadFileService: ThreadFileService
   ) {}
 
   /**
@@ -105,7 +107,7 @@ export class ThreadService {
   }
 
   /**
-   * Update a thread (typically to rename it)
+   * Update a thread (rename)
    * @param projectName Project name
    * @param threadId Thread identifier
    * @param updates Partial thread updates
@@ -129,14 +131,67 @@ export class ThreadService {
   }
 
   /**
-   * Delete a thread
+   * Star a thread (add username to starring list)
+   * @param projectName Project name
+   * @param threadId Thread identifier
+   * @param username Username to add to starring list
+   * @returns Updated thread
+   * @throws Error if thread doesn't exist
+   */
+  async starThread(projectName: string, threadId: string, username: string): Promise<AiThread> {
+    const repository = this.getThreadRepository(projectName)
+
+    const thread = await repository.getById(projectName, threadId)
+    if (!thread) {
+      throw new Error(`Thread '${threadId}' not found in project '${projectName}'`)
+    }
+
+    // Add username to starring list if not already present
+    if (!thread.starring.includes(username)) {
+      thread.starring.push(username)
+    }
+
+    return await repository.save(projectName, thread)
+  }
+
+  /**
+   * Unstar a thread (remove username from starring list)
+   * @param projectName Project name
+   * @param threadId Thread identifier
+   * @param username Username to remove from starring list
+   * @returns Updated thread
+   * @throws Error if thread doesn't exist
+   */
+  async unstarThread(projectName: string, threadId: string, username: string): Promise<AiThread> {
+    const repository = this.getThreadRepository(projectName)
+
+    const thread = await repository.getById(projectName, threadId)
+    if (!thread) {
+      throw new Error(`Thread '${threadId}' not found in project '${projectName}'`)
+    }
+
+    // Remove username from starring list
+    thread.starring = thread.starring.filter((u) => u !== username)
+
+    return await repository.save(projectName, thread)
+  }
+
+  /**
+   * Delete a thread and its associated files directory
    * @param projectName Project name
    * @param threadId Thread identifier
    * @returns true if deleted, false if not found
    */
   async deleteThread(projectName: string, threadId: string): Promise<boolean> {
     const repository = this.getThreadRepository(projectName)
-    return await repository.delete(projectName, threadId)
+    const deleted = await repository.delete(projectName, threadId)
+
+    if (deleted) {
+      // Also delete the thread files directory if it exists
+      await this.threadFileService.deleteThreadFiles(projectName, threadId)
+    }
+
+    return deleted
   }
 
   /**

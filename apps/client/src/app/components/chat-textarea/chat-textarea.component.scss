@@ -89,20 +89,20 @@
   overflow-y: auto;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
   line-height: 1.5;
-  
+
   // Smooth scrollbar styling
   &::-webkit-scrollbar {
     width: 8px;
   }
-  
+
   &::-webkit-scrollbar-track {
     background: transparent;
   }
-  
+
   &::-webkit-scrollbar-thumb {
     background: var(--color-border);
     border-radius: 4px;
-    
+
     &:hover {
       background: var(--color-text-secondary);
     }
@@ -147,52 +147,9 @@
   margin: 0 0.5rem 0 0.08rem;
 }
 
-.voice-btn:hover:not(.recording),
-.send-btn:hover:not(:disabled) {
-  background: var(--color-bg-hover);
-}
-
 .voice-btn.recording {
-  background: rgba(255, 59, 48, 0.14);
   color: var(--color-error);
-}
-
-.send-btn {
-  background: var(--color-primary);
-}
-
-.stop-btn {
-  transition:
-    background 0.18s,
-    transform 0.12s;
-
-  &:hover {
-    opacity: 0.85;
-    transform: scale(1.05);
-  }
-
-  &:active {
-    transform: scale(0.95);
-  }
-}
-
-.voice-btn {
-  transition:
-    background 0.18s,
-    box-shadow 0.18s,
-    transform 0.12s,
-    opacity 0.5s;
-  position: relative;
-
-  &.recording {
-    background: rgba(255, 59, 48, 0.07);
-    color: var(--color-error);
-    animation: pulse 1.5s infinite;
-
-    &:hover {
-      background: rgba(255, 59, 48, 0.11);
-    }
-  }
+  animation: pulse 1.5s infinite;
 }
 
 .send-btn {
@@ -205,7 +162,6 @@
   position: relative;
 
   &.active {
-    background: transparent;
     opacity: 1;
   }
 
@@ -260,15 +216,87 @@
   }
 }
 
-@keyframes sendButtonGradientShift {
-  0% {
-    background-position: 0% center;
+// Autocomplete popup styles
+.autocomplete-popup {
+  position: absolute;
+  bottom: 100%; // Position above the textarea
+  left: 0;
+  right: 0;
+  margin-bottom: 0.5rem;
+
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-backdrop-blur);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--color-border);
+
+  max-height: 400px; // Increased from 300px
+  max-width: 500px; // Added max-width
+  overflow-y: auto;
+  z-index: 100;
+
+  // Smooth scrollbar
+  &::-webkit-scrollbar {
+    width: 8px;
   }
-  50% {
-    background-position: 50% 10%;
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
   }
-  100% {
-    background-position: 0% center;
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 4px;
+
+    &:hover {
+      background: var(--color-text-secondary);
+    }
+  }
+
+  .autocomplete-item {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    border-left: 3px solid transparent;
+
+    &:hover,
+    &.selected {
+      background: var(--color-bg-hover);
+    }
+
+    &.selected {
+      border-left-color: var(--color-primary);
+    }
+
+    .item-name {
+      font-weight: 600;
+      color: var(--color-text);
+      margin-bottom: 0.25rem;
+      font-family: 'SF Mono', 'Monaco', 'Menlo', 'Cascadia Code', 'Consolas', monospace;
+      font-size: 0.95rem;
+
+      // Highlight matched text
+      ::ng-deep strong {
+        font-weight: 700;
+        color: var(--color-primary);
+        background: var(--color-primary-light, rgba(99, 102, 241, 0.1));
+        padding: 0 2px;
+        border-radius: 2px;
+      }
+    }
+
+    .item-description {
+      font-size: 0.85rem;
+      color: var(--color-text-secondary);
+      line-height: 1.3;
+
+      // Highlight matched text
+      ::ng-deep strong {
+        font-weight: 700;
+        color: var(--color-primary);
+        background: var(--color-primary-light, rgba(99, 102, 241, 0.1));
+      }
+    }
   }
 }
 
@@ -278,7 +306,8 @@
   .stop-btn,
   .voice-btn,
   .send-btn,
-  .recording-indicator {
+  .recording-indicator,
+  .autocomplete-popup {
     display: none !important;
   }
 }

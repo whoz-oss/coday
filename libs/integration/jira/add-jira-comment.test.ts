@@ -28,8 +28,7 @@ describe('addJiraComment', () => {
       'https://company.atlassian.net',
       'api-token',
       'username',
-      mockInteractor,
-      false // Explicitly set internal to false for public comments
+      mockInteractor
     )
 
     expect(mockFetch).toHaveBeenCalledWith('https://company.atlassian.net/rest/api/2/issue/TEST-123/comment', {
@@ -46,42 +45,27 @@ describe('addJiraComment', () => {
     expect(mockInteractor.displayText).toHaveBeenCalledWith('Successfully added comment to Jira ticket TEST-123')
   })
 
-  it('should add an internal comment using sd.public.comment property', async () => {
+  it('should not include internal properties in public comments', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       text: jest.fn().mockResolvedValue('Success'),
     } as any)
 
     await addJiraComment(
-      'TEST-123',
-      'This is an internal comment',
+      'TEST-456',
+      'Public comment content',
       'https://company.atlassian.net',
       'api-token',
       'username',
-      mockInteractor,
-      true // internal = true
+      mockInteractor
     )
 
-    expect(mockFetch).toHaveBeenCalledWith('https://company.atlassian.net/rest/api/2/issue/TEST-123/comment', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Basic dXNlcm5hbWU6YXBpLXRva2Vu',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        body: 'This is an internal comment',
-        properties: [
-          {
-            key: 'sd.public.comment',
-            value: {
-              internal: true,
-            },
-          },
-        ],
-      }),
-    })
+    const callArgs = mockFetch.mock.calls[0]?.[1]
+    expect(callArgs).toBeDefined()
+    const body = JSON.parse(callArgs?.body as string)
 
-    expect(mockInteractor.displayText).toHaveBeenCalledWith('Successfully added comment to Jira ticket TEST-123')
+    expect(body.properties).toBeUndefined()
+    expect(body.body).toBe('Public comment content')
   })
 
   it('should handle API errors gracefully', async () => {

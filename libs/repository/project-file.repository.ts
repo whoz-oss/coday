@@ -79,14 +79,16 @@ export class ProjectFileRepository implements ProjectRepository {
 
   createProject(name: string, projectPath: string): boolean {
     const configPath = path.join(this.projectsConfigPath, name)
+    const configFile = path.join(configPath, ProjectFileRepository.PROJECT_FILENAME)
 
-    if (existsSync(configPath)) {
+    // Check if config file already exists (not just the directory)
+    if (existsSync(configFile)) {
       return false
     }
 
+    // Create directory if it doesn't exist (idempotent)
     mkdirSync(configPath, { recursive: true })
 
-    const configFile = path.join(configPath, ProjectFileRepository.PROJECT_FILENAME)
     const defaultConfig: ProjectLocalConfig = {
       version: 1,
       path: projectPath,

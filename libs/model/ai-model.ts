@@ -31,4 +31,16 @@ export interface AiModel {
     cacheRead?: number
     outputMTokens?: number
   }
+
+  /**
+   * Default temperature for this model (0 to 2)
+   * 0.2 is deterministic, 0.8 is creative, 1.5+ is experimental
+   */
+  temperature?: number
+
+  /**
+   * Maximum output tokens this model can generate
+   * Used to prevent exceeding model limits
+   */
+  maxOutputTokens?: number
 }

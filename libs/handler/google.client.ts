@@ -8,6 +8,8 @@ export class GoogleClient extends OpenaiClient {
       name: 'gemini-2.5-pro',
       contextWindow: 1000000,
       alias: 'BIG',
+      temperature: 0.8,
+      maxOutputTokens: 65000,
       price: {
         inputMTokens: 0.175,
         cacheRead: 0.0875,
@@ -18,6 +20,8 @@ export class GoogleClient extends OpenaiClient {
       name: 'gemini-2.5-flash',
       alias: 'SMALL',
       contextWindow: 1000000,
+      temperature: 0.8,
+      maxOutputTokens: 65000,
       price: {
         inputMTokens: 0.1,
         cacheRead: 0.025,

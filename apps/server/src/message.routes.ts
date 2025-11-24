@@ -209,10 +209,10 @@ export function registerMessageRoutes(
   /**
    * GET /api/projects/:projectName/threads/:threadId/messages/:eventId/formatted
    * Get formatted message for display (temporary endpoint)
-   * 
+   *
    * This endpoint formats tool_request and tool_response events as human-readable text.
    * It's a temporary solution until the frontend can display these events properly.
-   * 
+   *
    * TODO: Remove this endpoint once frontend has proper event display components
    */
   app.get(

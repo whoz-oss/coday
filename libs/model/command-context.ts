@@ -24,9 +24,15 @@ export class CommandContext {
   fileReadOnly: boolean = false
 
   /**
+   * Root directory for thread-specific files (conversation workspace)
+   * Format: .coday/projects/{projectName}/threads/{threadId}-files
+   */
+  threadFilesRoot?: string
+
+  /**
    * Depth of the stack of threads for delegation
    */
-  stackDepth: number = 1
+  stackDepth: number = 3
 
   /**
    * Garbage object for each handling implementation to add specific data

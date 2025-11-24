@@ -46,8 +46,8 @@ describe('AI Thread migrations', () => {
       // Apply migration
       const result = migrateData(aiThread, aiThreadMigrations)
 
-      // Check that version is set to 1 (the migration version)
-      expect(result.version).toBe(2)
+      // Check that version is set (2 migrations applied)
+      expect(result.version).toBe(3)
 
       // Check that message events are migrated
       expect(result.messages).toHaveLength(4)
@@ -106,7 +106,7 @@ describe('AI Thread migrations', () => {
       const result = migrateData(aiThread, aiThreadMigrations)
 
       // Check that version is set
-      expect(result.version).toBe(2)
+      expect(result.version).toBe(3)
 
       // Check that messages array is still empty
       expect(result.messages).toHaveLength(0)
@@ -126,7 +126,7 @@ describe('AI Thread migrations', () => {
 
       // Apply migration
       const result1 = migrateData(aiThreadWithoutMessages, aiThreadMigrations)
-      expect(result1.version).toBe(2)
+      expect(result1.version).toBe(3)
       expect(result1.messages).toEqual([])
 
       // Create a sample AI thread with null messages
@@ -143,7 +143,7 @@ describe('AI Thread migrations', () => {
 
       // Apply migration
       const result2 = migrateData(aiThreadWithNullMessages, aiThreadMigrations)
-      expect(result2.version).toBe(2)
+      expect(result2.version).toBe(3)
       expect(result2.messages).toEqual([])
 
       // Create a sample AI thread with non-array messages
@@ -160,7 +160,7 @@ describe('AI Thread migrations', () => {
 
       // Apply migration
       const result3 = migrateData(aiThreadWithInvalidMessages, aiThreadMigrations)
-      expect(result3.version).toBe(2)
+      expect(result3.version).toBe(3)
       expect(result3.messages).toEqual([])
     })
 
@@ -195,7 +195,7 @@ describe('AI Thread migrations', () => {
       const result = migrateData(aiThread, aiThreadMigrations)
 
       // Check that version is set
-      expect(result.version).toBe(2)
+      expect(result.version).toBe(3)
 
       // Check that tool events are unchanged
       expect(result.messages).toHaveLength(2)
@@ -250,7 +250,7 @@ describe('AI Thread migrations', () => {
       const result = migrateData(aiThread, aiThreadMigrations)
 
       // Check that version is set
-      expect(result.version).toBe(2)
+      expect(result.version).toBe(3)
 
       // Check that all messages are present
       expect(result.messages).toHaveLength(4)
@@ -330,6 +330,51 @@ describe('AI Thread migrations', () => {
           content: 'Test message with extra properties',
         },
       ])
+    })
+  })
+
+  describe('addStarringField migration', () => {
+    it('should add starring field as empty array when not present', () => {
+      // Create a sample AI thread without starring field
+      const aiThread = {
+        id: 'test-thread-id',
+        name: 'Test Thread',
+        username: 'test-user',
+        createdDate: '2024-01-01T00:00:00.000Z',
+        modifiedDate: '2024-01-01T00:00:00.000Z',
+        summary: 'Test summary',
+        price: 0,
+        messages: [],
+      }
+
+      // Apply migrations
+      const result = migrateData(aiThread, aiThreadMigrations)
+
+      // Check that starring field is added
+      expect(result.starring).toEqual([])
+      expect(result.version).toBe(3)
+    })
+
+    it('should preserve existing starring field', () => {
+      // Create a sample AI thread with existing starring field
+      const aiThread = {
+        id: 'test-thread-id',
+        name: 'Test Thread',
+        username: 'test-user',
+        createdDate: '2024-01-01T00:00:00.000Z',
+        modifiedDate: '2024-01-01T00:00:00.000Z',
+        summary: 'Test summary',
+        price: 0,
+        messages: [],
+        starring: ['user1@example.com', 'user2@example.com'],
+      }
+
+      // Apply migrations
+      const result = migrateData(aiThread, aiThreadMigrations)
+
+      // Check that starring field is preserved
+      expect(result.starring).toEqual(['user1@example.com', 'user2@example.com'])
+      expect(result.version).toBe(3)
     })
   })
 })

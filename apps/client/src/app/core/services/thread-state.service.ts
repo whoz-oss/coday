@@ -3,15 +3,17 @@ import {
   BehaviorSubject,
   combineLatest,
   distinctUntilChanged,
+  Observable,
   of,
   shareReplay,
   Subject,
   switchMap,
   startWith,
   catchError,
+  throwError,
 } from 'rxjs'
 import { map, tap } from 'rxjs/operators'
-import { ThreadApiService } from './thread-api.service'
+import { ThreadApiService, ThreadUpdateResponse } from './thread-api.service'
 import { ProjectStateService } from './project-state.service'
 
 /**
@@ -177,5 +179,40 @@ export class ThreadStateService {
   refreshThreadList(): void {
     console.log('[THREAD_STATE] Manually refreshing thread list')
     this.refreshThreadListSubject.next()
+  }
+
+  /**
+   * Rename a thread
+   * @param threadId Thread identifier
+   * @param newName New thread name
+   * @returns Observable that emits the update response
+   */
+  renameThread(threadId: string, newName: string): Observable<ThreadUpdateResponse> {
+    const projectName = this.projectStateService.getSelectedProjectId()
+
+    if (!projectName) {
+      console.error('[THREAD_STATE] Cannot rename thread: no project selected')
+      return throwError(() => new Error('No project selected'))
+    }
+
+    const trimmedName = newName.trim()
+    if (!trimmedName || trimmedName.length === 0) {
+      console.error('[THREAD_STATE] Cannot rename thread: name is empty after trimming')
+      return throwError(() => new Error('Thread name cannot be empty'))
+    }
+
+    console.log('[THREAD_STATE] Renaming thread:', threadId, 'to:', trimmedName)
+
+    return this.threadApi.updateThread(projectName, threadId, trimmedName).pipe(
+      tap((response) => {
+        console.log('[THREAD_STATE] Thread renamed successfully:', response)
+        // Refresh thread list to show updated name
+        this.refreshThreadList()
+      }),
+      catchError((error) => {
+        console.error('[THREAD_STATE] Error renaming thread:', error)
+        return throwError(() => error)
+      })
+    )
   }
 }

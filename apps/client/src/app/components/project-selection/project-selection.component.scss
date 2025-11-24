@@ -87,7 +87,7 @@
 
 .no-projects-text {
   color: var(--color-text);
-  margin: 0 0 0.5rem 0;
+  margin: 0 0 1rem 0;
   font-size: 1.1rem;
 }
 
@@ -95,6 +95,15 @@
   color: var(--color-text-secondary);
   margin: 0;
   font-size: 0.9rem;
+}
+
+// Create action section
+.create-action {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  justify-content: center;
 }
 
 // Animations
@@ -150,5 +159,10 @@
 
   .choice-glass {
     padding: 0.75rem;
+  }
+
+  .create-action {
+    margin-top: 1rem;
+    padding-top: 1rem;
   }
 }

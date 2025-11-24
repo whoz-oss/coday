@@ -40,7 +40,7 @@ export const threadStateGuard: CanActivateFn = async (route: ActivatedRouteSnaps
 
   console.log('[THREAD GUARD] Selecting thread:', threadId)
   threadState.selectThread(threadId)
-  
+
   try {
     const currentThreadId = await lastValueFrom(
       combineLatest([threadState.isLoading$, threadState.selectedThread$]).pipe(

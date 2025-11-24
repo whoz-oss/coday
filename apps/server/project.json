@@ -41,7 +41,7 @@
             "js": "import { createRequire as __createRequire } from 'module';import { dirname as __dirname_func } from 'path';import { fileURLToPath as __fileURLToPath } from 'url';const require = __createRequire(import.meta.url);const __filename = __fileURLToPath(import.meta.url);const __dirname = __dirname_func(__filename);"
           }
         },
-        "external": ["sharp"],
+        "external": ["sharp", "@vscode/ripgrep"],
         "format": ["esm"],
         "main": "apps/server/src/server.ts",
         "outputFileName": "server.js",
@@ -55,7 +55,7 @@
       "executor": "nx:run-commands",
       "dependsOn": ["server:build"],
       "options": {
-        "commands": ["node apps/server/dist/bin.js --no_auth"],
+        "commands": ["node apps/server/dist/bin.js"],
         "parallel": false
       }
     },
@@ -65,7 +65,7 @@
         "env": {
           "BUILD_ENV": "development"
         },
-        "commands": ["tsx watch apps/server/src/server.ts --no_auth"]
+        "commands": ["tsx watch apps/server/src/server.ts"]
       }
     },
     "nx-release-publish": {
