@@ -5,6 +5,7 @@ import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { ResourceTemplate, ToolInfo } from './types'
 import { ChildProcess, spawn } from 'child_process'
+import { MessageEvent, ImageContent } from '@coday/coday-events'
 
 const MCP_CONNECT_TIMEOUT = 15000 // in ms
 
@@ -416,6 +417,15 @@ export class McpToolsFactory extends AssistantToolFactory {
           )
 
           if (imageParts.length > 0) {
+            // Emit a MessageEvent to make the image visible to the user
+            const imageContent = imageParts[0] as ImageContent
+            const messageEvent = new MessageEvent({
+              role: 'assistant',
+              content: [imageContent],
+              name: toolName,
+            })
+            this.interactor.sendEvent(messageEvent)
+
             // Return the first image (most common case for screenshot tools)
             // Text description from MCP is typically just "Screenshot saved to..."
             return imageParts[0]
