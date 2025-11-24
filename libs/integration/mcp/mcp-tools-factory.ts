@@ -374,15 +374,61 @@ export class McpToolsFactory extends AssistantToolFactory {
 
         // MCP can return either a content array or a toolResult
         if (result && 'content' in result && Array.isArray(result.content)) {
-          // Process content array
-          return result.content.map((item: any) => {
+          // Process content array and detect images
+          const processedContent = result.content.map((item: any) => {
+            // Text content
             if (item.type === 'text') {
               return item.text
-            } else if (item.type === 'resource') {
+            }
+            // Image content - convert to Coday MessageContent format
+            if (item.type === 'image' && item.data) {
+              return {
+                type: 'image',
+                content: item.data, // base64 string
+                mimeType: item.mimeType || 'image/png',
+                // Add dimensions if available
+                ...(item.width && { width: item.width }),
+                ...(item.height && { height: item.height }),
+              }
+            }
+            // Resource content
+            if (item.type === 'resource') {
               return item.resource
             }
+            // Unknown - return as is (will be stringified by tool-set)
             return item
           })
+
+          // If we have a single item and it's a MessageContent (image or text), return it directly
+          if (processedContent.length === 1) {
+            const single = processedContent[0]
+            if (typeof single === 'object' && single !== null && 'type' in single) {
+              if (single.type === 'image' || single.type === 'text') {
+                return single
+              }
+            }
+          }
+
+          // If we have multiple items, prioritize images over text
+          // (text descriptions are often redundant when an image is present)
+          const imageParts = processedContent.filter(
+            (c) => typeof c === 'object' && c !== null && 'type' in c && c.type === 'image'
+          )
+
+          if (imageParts.length > 0) {
+            // Return the first image (most common case for screenshot tools)
+            // Text description from MCP is typically just "Screenshot saved to..."
+            return imageParts[0]
+          }
+
+          // Only text content or other types - join strings
+          const textParts = processedContent.filter((c) => typeof c === 'string')
+          if (textParts.length > 0) {
+            return textParts.join('\n')
+          }
+
+          // Fallback: return array as-is (will be stringified)
+          return processedContent
         } else if (result && 'toolResult' in result) {
           // Return direct tool result
           return result.toolResult
