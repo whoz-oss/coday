@@ -172,6 +172,16 @@ Check that:
 2. DevTools is disabled in `build.gradle.kts`
 3. Plugin was built with `clean jar`
 
+## Documentation
+
+**[AGENTOS.md](AGENTOS.md)** - Vue d'ensemble complète (architecture, concepts, intégration Whoz)
+
+### Documentation Détaillée
+
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Architecture système
+- **[docs/PLUGIN_SYSTEM.md](docs/PLUGIN_SYSTEM.md)** - Développement de plugins
+- **[docs/EXAMPLES.md](docs/EXAMPLES.md)** - Exemples d'utilisation
+
 ---
 
-**Built with Spring Boot 3.5 + Kotlin + PF4J**
+**Built with Spring Boot 3.5 + Kotlin + Spring AI + PF4J**
