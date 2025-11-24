@@ -1,3 +1,247 @@
+## 0.47.0 (2025-11-18)
+
+### 🚀 Features
+
+- #337 switch create jira issue tool to jira v2 API that natively support Wiki Markup ([#337](https://github.com/whoz-oss/coday/issues/337))
+- #337 switch create jira issue tool to jira v2 API that natively… ([#338](https://github.com/whoz-oss/coday/pull/338), [#337](https://github.com/whoz-oss/coday/issues/337))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+
+## 0.46.1 (2025-11-17)
+
+### 🩹 Fixes
+
+- #335 increase number of stack depth of threads for delegation ([#335](https://github.com/whoz-oss/coday/issues/335))
+- #335 increase number of stack depth of threads for delegation ([#336](https://github.com/whoz-oss/coday/pull/336), [#335](https://github.com/whoz-oss/coday/issues/335))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+
+## 0.46.0 (2025-11-12)
+
+### 🚀 Features
+
+- #312 file content viewer with format-specific rendering ([#332](https://github.com/whoz-oss/coday/pull/332), [#312](https://github.com/whoz-oss/coday/issues/312))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.45.0 (2025-11-12)
+
+### 🚀 Features
+
+- #313 Add temperature and maxOutputTokens parameters to models and agents ([#331](https://github.com/whoz-oss/coday/pull/331), [#313](https://github.com/whoz-oss/coday/issues/313))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.44.0 (2025-11-07)
+
+### 🚀 Features
+
+- #317 Agent autocomplete with @ trigger ([#328](https://github.com/whoz-oss/coday/pull/328), [#317](https://github.com/whoz-oss/coday/issues/317))
+- #322 add download all files button in exchange drawer ([#323](https://github.com/whoz-oss/coday/pull/323), [#322](https://github.com/whoz-oss/coday/issues/322))
+
+### 🩹 Fixes
+
+- #324 uniform streaming message style with assistant message ([#326](https://github.com/whoz-oss/coday/pull/326), [#324](https://github.com/whoz-oss/coday/issues/324))
+- #320 correct text color in dark mode when OS is in light mode ([#325](https://github.com/whoz-oss/coday/pull/325), [#320](https://github.com/whoz-oss/coday/issues/320))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.43.1 (2025-11-06)
+
+### 🩹 Fixes
+
+- #281 convert Windows paths to file:// URLs for ESM imports ([#321](https://github.com/whoz-oss/coday/pull/321), [#281](https://github.com/whoz-oss/coday/issues/281))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.43.0 (2025-11-06)
+
+### 🚀 Features
+
+- #307 Add streaming API support for Anthropic client ([#311](https://github.com/whoz-oss/coday/pull/311), [#307](https://github.com/whoz-oss/coday/issues/307))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.42.1 (2025-11-06)
+
+### 🩹 Fixes
+
+- add missing server dep ([#319](https://github.com/whoz-oss/coday/pull/319))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.42.0 (2025-11-06)
+
+### 🚀 Features
+
+- enable thread rename in thread list ([#318](https://github.com/whoz-oss/coday/pull/318))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.41.5 (2025-11-04)
+
+### 🩹 Fixes
+
+- bump angular build thresholds ([#308](https://github.com/whoz-oss/coday/pull/308))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.41.4 (2025-11-04)
+
+### 🩹 Fixes
+
+- handle raw confluence output with turndown + light bump in max tokens of Anthropic ([#305](https://github.com/whoz-oss/coday/pull/305), [#287](https://github.com/whoz-oss/coday/issues/287))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.41.3 (2025-11-04)
+
+### 🩹 Fixes
+
+- allow send empty for rare cases ([#303](https://github.com/whoz-oss/coday/pull/303))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.41.2 (2025-11-02)
+
+### 🩹 Fixes
+
+- resolve double path issue in listFilesAndDirectories ([#300](https://github.com/whoz-oss/coday/pull/300), [#302](https://github.com/whoz-oss/coday/pull/302))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.41.1 (2025-10-31)
+
+### 🩹 Fixes
+
+- #297 prevent server from running with system/service usernames ([#298](https://github.com/whoz-oss/coday/pull/298), [#297](https://github.com/whoz-oss/coday/issues/297))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.41.0 (2025-10-31)
+
+### 🚀 Features
+
+- #282 open external links in new tab with icon and aria-label ([#294](https://github.com/whoz-oss/coday/pull/294), [#282](https://github.com/whoz-oss/coday/issues/282))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.40.1 (2025-10-31)
+
+### 🩹 Fixes
+
+- manage coday_project option over others ([#296](https://github.com/whoz-oss/coday/pull/296))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.40.0 (2025-10-31)
+
+### 🚀 Features
+
+- #264 invert auth option from --no_auth to --auth ([#292](https://github.com/whoz-oss/coday/pull/292), [#264](https://github.com/whoz-oss/coday/issues/264))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.39.0 (2025-10-31)
+
+### 🚀 Features
+
+- #143 file upload download per thread ([#293](https://github.com/whoz-oss/coday/pull/293), [#143](https://github.com/whoz-oss/coday/issues/143))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.38.2 (2025-10-30)
+
+### 🚀 Features
+
+- **jira:** create dedicated function for adding internal notes ([209d912](https://github.com/whoz-oss/coday/commit/209d912))
+- **jira:** create dedicated function for adding internal notes ([#286](https://github.com/whoz-oss/coday/pull/286))
+
+### 🩹 Fixes
+
+- anthropic and gemini client default creation on the fly ([#291](https://github.com/whoz-oss/coday/pull/291), [#265](https://github.com/whoz-oss/coday/issues/265))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+- vincent-audibert-whoz
+
+## 0.38.1 (2025-10-29)
+
+### 🩹 Fixes
+
+- thread icons ([#290](https://github.com/whoz-oss/coday/pull/290))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.38.0 (2025-10-29)
+
+### 🚀 Features
+
+- volatile project and auto-detect LLM api keys ([#288](https://github.com/whoz-oss/coday/pull/288), [#264](https://github.com/whoz-oss/coday/issues/264))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.37.0 (2025-10-29)
+
+### 🚀 Features
+
+- star threads to highlight and preserve ([#289](https://github.com/whoz-oss/coday/pull/289))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.36.0 (2025-10-29)
+
+### 🚀 Features
+
+- #149 summary events ([#260](https://github.com/whoz-oss/coday/pull/260), [#149](https://github.com/whoz-oss/coday/issues/149))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.35.5 (2025-10-26)
 
 ### 🩹 Fixes

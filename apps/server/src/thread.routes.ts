@@ -1,10 +1,13 @@
 import express from 'express'
+import { existsSync, readFileSync } from 'fs'
 import { debugLog } from './log'
 import { ThreadService } from './services/thread.service'
+import { ThreadFileService } from './services/thread-file.service'
 import { ThreadCodayManager } from './thread-coday-manager'
 import { ImageContent } from '@coday/coday-events'
 import { processImageBuffer } from '@coday/function/image-processor'
 import { CodayOptions } from '@coday/options'
+import { MAX_FILE_SIZE, isFileExtensionAllowed, getAllowedExtensionsString } from '@coday/model/file-config'
 
 /**
  * Thread Management REST API Routes
@@ -19,6 +22,8 @@ import { CodayOptions } from '@coday/options'
  * - GET    /api/projects/:projectName/threads/:threadId                  - Get thread
  * - PUT    /api/projects/:projectName/threads/:threadId                  - Update thread
  * - DELETE /api/projects/:projectName/threads/:threadId                  - Delete thread
+ * - POST   /api/projects/:projectName/threads/:threadId/star             - Star thread (add current user to starring list)
+ * - DELETE /api/projects/:projectName/threads/:threadId/star             - Unstar thread (remove current user from starring list)
  * - POST   /api/projects/:projectName/threads/:threadId/stop             - Stop thread execution
  * - POST   /api/projects/:projectName/threads/:threadId/upload           - Upload file to thread
  * - GET    /api/projects/:projectName/threads/:threadId/event-stream     - SSE connection for thread events
@@ -31,7 +36,8 @@ import { CodayOptions } from '@coday/options'
 /**
  * Register thread management routes on the Express app
  * @param app - Express application instance
- * @param threadService - ThreadService2 instance for thread operations
+ * @param threadService - ThreadService instance for thread operations
+ * @param threadFileService - ThreadFileService instance for file operations
  * @param threadCodayManager - ThreadCodayManager instance for runtime operations
  * @param getUsernameFn - Function to extract username from request
  * @param codayOptions - Coday options for thread instances
@@ -39,6 +45,7 @@ import { CodayOptions } from '@coday/options'
 export function registerThreadRoutes(
   app: express.Application,
   threadService: ThreadService,
+  threadFileService: ThreadFileService,
   threadCodayManager: ThreadCodayManager,
   getUsernameFn: (req: express.Request) => string,
   codayOptions: CodayOptions
@@ -170,7 +177,7 @@ export function registerThreadRoutes(
 
   /**
    * PUT /api/projects/:projectName/threads/:threadId
-   * Update a thread (currently supports renaming)
+   * Update a thread (rename)
    *
    * Body: { name?: string }
    */
@@ -220,6 +227,95 @@ export function registerThreadRoutes(
       res.status(500).json({ error: `Failed to update thread: ${errorMessage}` })
     }
   })
+
+  /**
+   * POST /api/projects/:projectName/threads/:threadId/star
+   * Star a thread (add current user to starring list)
+   */
+  app.post('/api/projects/:projectName/threads/:threadId/star', async (req: express.Request, res: express.Response) => {
+    try {
+      const { projectName, threadId } = req.params
+      if (!projectName || !threadId) {
+        res.status(400).json({ error: 'Project name and thread ID are required' })
+        return
+      }
+
+      const username = getUsernameFn(req)
+      if (!username) {
+        res.status(401).json({ error: 'Authentication required' })
+        return
+      }
+
+      // Verify thread exists and user owns it (or has access)
+      const existingThread = await threadService.getThread(projectName, threadId)
+      if (!existingThread) {
+        res.status(404).json({ error: `Thread '${threadId}' not found in project '${projectName}'` })
+        return
+      }
+
+      debugLog('THREAD', `POST star thread: ${threadId} in project: ${projectName} by user: ${username}`)
+      const updatedThread = await threadService.starThread(projectName, threadId, username)
+
+      res.status(200).json({
+        success: true,
+        thread: {
+          id: updatedThread.id,
+          starring: updatedThread.starring,
+          modifiedDate: updatedThread.modifiedDate,
+        },
+      })
+    } catch (error) {
+      console.error('Error starring thread:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: `Failed to star thread: ${errorMessage}` })
+    }
+  })
+
+  /**
+   * DELETE /api/projects/:projectName/threads/:threadId/star
+   * Unstar a thread (remove current user from starring list)
+   */
+  app.delete(
+    '/api/projects/:projectName/threads/:threadId/star',
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { projectName, threadId } = req.params
+        if (!projectName || !threadId) {
+          res.status(400).json({ error: 'Project name and thread ID are required' })
+          return
+        }
+
+        const username = getUsernameFn(req)
+        if (!username) {
+          res.status(401).json({ error: 'Authentication required' })
+          return
+        }
+
+        // Verify thread exists and user owns it (or has access)
+        const existingThread = await threadService.getThread(projectName, threadId)
+        if (!existingThread) {
+          res.status(404).json({ error: `Thread '${threadId}' not found in project '${projectName}'` })
+          return
+        }
+
+        debugLog('THREAD', `DELETE unstar thread: ${threadId} in project: ${projectName} by user: ${username}`)
+        const updatedThread = await threadService.unstarThread(projectName, threadId, username)
+
+        res.status(200).json({
+          success: true,
+          thread: {
+            id: updatedThread.id,
+            starring: updatedThread.starring,
+            modifiedDate: updatedThread.modifiedDate,
+          },
+        })
+      } catch (error) {
+        console.error('Error unstarring thread:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: `Failed to unstar thread: ${errorMessage}` })
+      }
+    }
+  )
 
   /**
    * POST /api/projects/:projectName/threads/:threadId/stop
@@ -312,7 +408,10 @@ export function registerThreadRoutes(
 
   /**
    * POST /api/projects/:projectName/threads/:threadId/upload
-   * Upload a file (image) to a thread
+   * Upload a file to a thread
+   *
+   * For images: processed and added to conversation directly
+   * For other files: saved to thread files directory with a notification message
    *
    * Body: {
    *   content: string (base64),
@@ -359,32 +458,233 @@ export function registerThreadRoutes(
           return
         }
 
-        // Process the image
         const buffer = Buffer.from(content, 'base64')
-        const processed = await processImageBuffer(buffer, mimeType)
 
-        // Create ImageContent
-        const imageContent: ImageContent = {
-          type: 'image',
-          content: processed.content,
-          mimeType: processed.mimeType,
-          width: processed.width,
-          height: processed.height,
-          source: `${filename} (${(processed.processedSize / 1024).toFixed(1)} KB)`,
+        // Check file size
+        if (buffer.length > MAX_FILE_SIZE) {
+          res.status(400).json({
+            error: `File too large: ${(buffer.length / 1024 / 1024).toFixed(2)} MB exceeds maximum of ${MAX_FILE_SIZE / 1024 / 1024} MB`,
+          })
+          return
         }
 
-        // Upload to thread via Coday
-        instance.coday.upload([imageContent])
+        // Check if it's an image
+        const isImage = mimeType.startsWith('image/')
 
-        res.status(200).json({
-          success: true,
-          processedSize: processed.processedSize,
-          dimensions: { width: processed.width, height: processed.height },
-        })
+        if (isImage) {
+          // Process and add image to conversation directly (existing behavior)
+          const processed = await processImageBuffer(buffer, mimeType)
+
+          const imageContent: ImageContent = {
+            type: 'image',
+            content: processed.content,
+            mimeType: processed.mimeType,
+            width: processed.width,
+            height: processed.height,
+            source: `${filename} (${(processed.processedSize / 1024).toFixed(1)} KB)`,
+          }
+
+          instance.coday.upload([imageContent])
+
+          res.status(200).json({
+            success: true,
+            type: 'image',
+            processedSize: processed.processedSize,
+            dimensions: { width: processed.width, height: processed.height },
+          })
+        } else {
+          // For non-image files: check extension and save to thread files
+          if (!isFileExtensionAllowed(filename)) {
+            res.status(400).json({
+              error: `File type not allowed. Allowed extensions: ${getAllowedExtensionsString()}`,
+            })
+            return
+          }
+
+          // Save file using ThreadFileService
+          await threadFileService.saveFile(projectName, threadId, filename, buffer)
+
+          // Add a short notification message to the conversation
+          const fileSizeKB = (buffer.length / 1024).toFixed(1)
+          const textContent = {
+            type: 'text' as const,
+            content: `📎 Document uploaded: ${filename} (${fileSizeKB} KB)`,
+          }
+          instance.coday.upload([textContent])
+
+          debugLog('UPLOAD', `File saved to thread workspace: ${filename}`)
+
+          res.status(200).json({
+            success: true,
+            type: 'file',
+            filename,
+            size: buffer.length,
+            path: `thread://${filename}`,
+          })
+        }
       } catch (error) {
         console.error('Error processing file upload:', error)
         const errorMessage = error instanceof Error ? error.message : 'Upload failed'
         res.status(400).json({ error: errorMessage })
+      }
+    }
+  )
+
+  /**
+   * GET /api/projects/:projectName/threads/:threadId/files
+   * List all files in the thread workspace
+   */
+  app.get('/api/projects/:projectName/threads/:threadId/files', async (req: express.Request, res: express.Response) => {
+    try {
+      const { projectName, threadId } = req.params
+
+      if (!projectName || !threadId) {
+        res.status(400).json({ error: 'Project name and thread ID are required' })
+        return
+      }
+
+      const username = getUsernameFn(req)
+      if (!username) {
+        res.status(401).json({ error: 'Authentication required' })
+        return
+      }
+
+      // Verify thread exists and user owns it
+      const thread = await threadService.getThread(projectName, threadId)
+      if (!thread) {
+        res.status(404).json({ error: `Thread '${threadId}' not found in project '${projectName}'` })
+        return
+      }
+
+      if (thread.username !== username) {
+        res.status(403).json({ error: 'Access denied: thread belongs to another user' })
+        return
+      }
+
+      // List files using ThreadFileService
+      const files = await threadFileService.listFiles(projectName, threadId)
+
+      res.status(200).json({ files })
+    } catch (error) {
+      console.error('Error listing files:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: `Failed to list files: ${errorMessage}` })
+    }
+  })
+
+  /**
+   * GET /api/projects/:projectName/threads/:threadId/files/:filename
+   * Download a specific file from the thread workspace
+   */
+  app.get(
+    '/api/projects/:projectName/threads/:threadId/files/:filename',
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { projectName, threadId, filename } = req.params
+
+        if (!projectName || !threadId || !filename) {
+          res.status(400).json({ error: 'Project name, thread ID, and filename are required' })
+          return
+        }
+
+        const username = getUsernameFn(req)
+        if (!username) {
+          res.status(401).json({ error: 'Authentication required' })
+          return
+        }
+
+        // Verify thread exists and user owns it
+        const thread = await threadService.getThread(projectName, threadId)
+        if (!thread) {
+          res.status(404).json({ error: `Thread '${threadId}' not found in project '${projectName}'` })
+          return
+        }
+
+        if (thread.username !== username) {
+          res.status(403).json({ error: 'Access denied: thread belongs to another user' })
+          return
+        }
+
+        // Decode filename from URL (Express already does this, but be explicit)
+        const decodedFilename = decodeURIComponent(filename)
+
+        // Get file path using ThreadFileService (with security checks)
+        const filePath = await threadFileService.getFilePath(projectName, threadId, decodedFilename)
+
+        // Verify file exists before sending
+        if (!existsSync(filePath)) {
+          res.status(404).json({ error: `File '${decodedFilename}' not found` })
+          return
+        }
+
+        // Use RFC 5987 encoding for filename with special characters
+        const encodedFilename = encodeURIComponent(decodedFilename)
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${decodedFilename.replace(/"/g, '\\"')}"; filename*=UTF-8''${encodedFilename}`
+        )
+
+        // Read file and send directly (more reliable than sendFile)
+        try {
+          const fileBuffer = readFileSync(filePath)
+          res.send(fileBuffer)
+        } catch (readError) {
+          res
+            .status(500)
+            .json({ error: `Failed to read file: ${readError instanceof Error ? readError.message : 'Unknown error'}` })
+        }
+      } catch (error) {
+        console.error('Error downloading file:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: `Failed to download file: ${errorMessage}` })
+      }
+    }
+  )
+
+  /**
+   * DELETE /api/projects/:projectName/threads/:threadId/files/:filename
+   * Delete a specific file from the thread workspace
+   */
+  app.delete(
+    '/api/projects/:projectName/threads/:threadId/files/:filename',
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { projectName, threadId, filename } = req.params
+
+        if (!projectName || !threadId || !filename) {
+          res.status(400).json({ error: 'Project name, thread ID, and filename are required' })
+          return
+        }
+
+        const username = getUsernameFn(req)
+        if (!username) {
+          res.status(401).json({ error: 'Authentication required' })
+          return
+        }
+
+        // Verify thread exists and user owns it
+        const thread = await threadService.getThread(projectName, threadId)
+        if (!thread) {
+          res.status(404).json({ error: `Thread '${threadId}' not found in project '${projectName}'` })
+          return
+        }
+
+        if (thread.username !== username) {
+          res.status(403).json({ error: 'Access denied: thread belongs to another user' })
+          return
+        }
+
+        // Delete file using ThreadFileService (with security checks)
+        await threadFileService.deleteFile(projectName, threadId, filename)
+
+        res.status(200).json({
+          success: true,
+          message: `File '${filename}' deleted successfully`,
+        })
+      } catch (error) {
+        console.error('Error deleting file:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: `Failed to delete file: ${errorMessage}` })
       }
     }
   )
@@ -400,7 +700,6 @@ export function registerThreadRoutes(
    * Authentication: Username extracted from x-forwarded-email header
    * Validation: Thread must exist and belong to the authenticated user
    *
-   * TODO: Add heartbeat mechanism for SSE connections
    */
   app.get(
     '/api/projects/:projectName/threads/:threadId/event-stream',

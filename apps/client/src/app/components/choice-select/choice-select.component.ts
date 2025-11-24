@@ -13,15 +13,16 @@ import {
 } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
-import { marked } from 'marked'
 import { BehaviorSubject, Observable } from 'rxjs'
 import { AsyncPipe } from '@angular/common'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
+import { MarkdownService } from '../../services/markdown.service'
 
 export interface ChoiceOption {
   value: string
   label: string
+  disabled?: boolean
 }
 
 @Component({
@@ -57,6 +58,7 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
 
   // Modern Angular dependency injection
   private sanitizer = inject(DomSanitizer)
+  private markdownService = inject(MarkdownService)
 
   ngOnDestroy(): void {
     this.renderedLabelSubject.complete()
@@ -93,12 +95,12 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
   }
 
   onSubmit() {
-    if (this.selectedValue) {
+    if (this.selectedValue && this.selectedValue !== '__separator__') {
       console.log('[CHOICE-SELECT] Choice selected:', this.selectedValue)
       this.choiceSelected.emit(this.selectedValue)
       this.selectedValue = '' // Reset for next use
     } else {
-      console.warn('[CHOICE-SELECT] No choice selected')
+      console.warn('[CHOICE-SELECT] No choice selected or separator selected')
     }
   }
 
@@ -116,7 +118,7 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
     }
 
     try {
-      const html = await marked.parse(label)
+      const html = await this.markdownService.parse(label)
       this.renderedLabelSubject.next(this.sanitizer.bypassSecurityTrustHtml(html))
     } catch (error) {
       console.error('[CHOICE-SELECT] Error parsing label markdown:', error)

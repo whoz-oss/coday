@@ -1,7 +1,8 @@
-import {Interactor} from '../../model'
+import { Interactor } from '../../model'
 
 /**
- * Add a comment to a Jira ticket using the Jira REST API
+ * Add a public comment to a Jira ticket using the Jira REST API
+ * For internal notes (not visible to customers), use addJiraInternalNote instead
  */
 export async function addJiraComment(
   ticketId: string,
@@ -9,8 +10,7 @@ export async function addJiraComment(
   jiraBaseUrl: string,
   jiraApiToken: string,
   jiraUsername: string,
-  interactor: Interactor,
-  internal: boolean = true
+  interactor: Interactor
 ): Promise<void> {
   const url = `${jiraBaseUrl}/rest/api/2/issue/${ticketId}/comment`
   const auth = Buffer.from(`${jiraUsername}:${jiraApiToken}`).toString('base64')
@@ -24,16 +24,6 @@ export async function addJiraComment(
       },
       body: JSON.stringify({
         body: comment,
-        ...(internal && {
-          properties: [
-            {
-              key: 'sd.public.comment',
-              value: {
-                internal: true
-              }
-            }
-          ]
-        })
       }),
     })
 

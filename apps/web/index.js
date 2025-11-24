@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, resolve } from 'path';
 import { existsSync } from 'fs';
 import { createRequire } from 'module';
@@ -77,7 +77,9 @@ try {
   const serverMainPath = resolve(serverDir, 'server.js');
   
   // Import the server module
-  import(serverMainPath).catch((error) => {
+  // Convert Windows absolute path to file:// URL for ESM import
+  const serverModuleURL = pathToFileURL(serverMainPath).href;
+  import(serverModuleURL).catch((error) => {
     console.error('Failed to start server:', error);
     process.exit(1);
   });

@@ -107,6 +107,24 @@ export class ThreadApiService {
   }
 
   /**
+   * Star a thread (add current user to starring list)
+   * @param projectName Project name
+   * @param threadId Thread identifier
+   */
+  starThread(projectName: string, threadId: string): Observable<{ success: boolean; thread: any }> {
+    return this.http.post<{ success: boolean; thread: any }>(`${this.getBaseUrl(projectName)}/${threadId}/star`, {})
+  }
+
+  /**
+   * Unstar a thread (remove current user from starring list)
+   * @param projectName Project name
+   * @param threadId Thread identifier
+   */
+  unstarThread(projectName: string, threadId: string): Observable<{ success: boolean; thread: any }> {
+    return this.http.delete<{ success: boolean; thread: any }>(`${this.getBaseUrl(projectName)}/${threadId}/star`)
+  }
+
+  /**
    * Delete a thread
    * @param projectName Project name
    * @param threadId Thread identifier

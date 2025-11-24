@@ -17,8 +17,11 @@ import { registerWebhookRoutes } from './webhook.routes'
 import { registerProjectRoutes } from './project.routes'
 import { registerThreadRoutes } from './thread.routes'
 import { registerMessageRoutes } from './message.routes'
+import { registerUserRoutes } from './user.routes'
+import { registerAgentRoutes } from './agent.routes'
 import { ProjectService } from './services/project.service'
 import { ThreadService } from './services/thread.service'
+import { ThreadFileService } from './services/thread-file.service'
 import { ProjectFileRepository } from '@coday/repository/project-file.repository'
 
 const app = express()
@@ -46,9 +49,7 @@ debugLog(
 )
 
 // Create single webhook service instance for all clients
-const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
-const configPath = codayOptions.configDir ?? defaultConfigPath
-const webhookService = new WebhookService(configPath)
+const webhookService = new WebhookService(codayOptions.configDir)
 debugLog('INIT', 'Webhook service initialized')
 // Middleware to parse JSON bodies with increased limit for image uploads
 app.use(express.json({ limit: '20mb' }))
@@ -113,33 +114,106 @@ if (process.env.BUILD_ENV === 'development') {
   app.use(express.static(clientPath))
 }
 // Initialize project service for REST API endpoints
-const projectRepository = new ProjectFileRepository(configPath)
-const projectService = new ProjectService(projectRepository, codayOptions.project)
+const projectRepository = new ProjectFileRepository(codayOptions.configDir)
+
+// Resolve the actual project ID (with hash) if we're in default mode
+let resolvedProjectName = codayOptions.project
+if (resolvedProjectName && !codayOptions.forcedProject) {
+  // In default mode, check for existing project first
+  const cwd = process.cwd()
+  const basename = path.basename(cwd)
+
+  // First, check if a non-volatile project exists with the simple name and matches the path
+  if (projectRepository.exists(basename)) {
+    const config = projectRepository.getConfig(basename)
+    if (config && config.path === cwd && !config.volatile) {
+      debugLog('INIT', `Default mode: found existing non-volatile project '${basename}' for current directory`)
+      resolvedProjectName = basename
+    } else {
+      // Project exists but path doesn't match or is volatile, use volatile ID
+      const volatileProjectId = ProjectService.generateProjectId(cwd)
+      debugLog(
+        'INIT',
+        `Default mode: existing project '${basename}' doesn't match path, using volatile ID ${volatileProjectId}`
+      )
+      resolvedProjectName = volatileProjectId
+    }
+  } else {
+    // No project with simple name, use volatile ID
+    const volatileProjectId = ProjectService.generateProjectId(cwd)
+    debugLog('INIT', `Default mode: no existing project found, using volatile ID ${volatileProjectId}`)
+    resolvedProjectName = volatileProjectId
+  }
+}
+
+const projectService = new ProjectService(projectRepository, resolvedProjectName, codayOptions.forcedProject)
+
+// Initialize thread file service for REST API endpoints
+const projectsDir = path.join(codayOptions.configDir, 'projects')
+const threadFileService = new ThreadFileService(projectsDir)
 
 // Initialize thread service for REST API endpoints
-const projectsDir = path.join(configPath, 'projects')
-const threadService = new ThreadService(projectRepository, projectsDir)
+const threadService = new ThreadService(projectRepository, projectsDir, threadFileService)
 
 // Initialize the thread-based Coday manager for SSE architecture
 const threadCodayManager = new ThreadCodayManager(logger, webhookService, projectService, threadService)
 
 // Initialize config service registry for REST API endpoints
 const configInteractor = new ServerInteractor('config-api')
-const configRegistry = new ConfigServiceRegistry(configPath, configInteractor)
+const configRegistry = new ConfigServiceRegistry(codayOptions.configDir, configInteractor)
+
+/**
+ * System and service account usernames that are forbidden for security reasons.
+ * These accounts are commonly used in containers, CI/CD, and system services
+ * and should never be used for multi-user applications as they would create
+ * a shared account for all users.
+ */
+const FORBIDDEN_USERNAMES = [
+  'root', // Unix/Linux superuser
+  'admin', // Common administrative account
+  'administrator', // Windows administrator
+  'system', // Windows system account
+  'daemon', // Unix daemon account
+  'nobody', // Unix unprivileged account
+  'node', // Common Node.js container user
+  'app', // Generic application user
+  'service', // Generic service account
+  'docker', // Docker-related accounts
+  'www-data', // Web server user (nginx, apache)
+  'nginx', // Nginx user
+  'apache', // Apache user
+  'ansible', // Ansible user
+] as const
 
 /**
  * Extract username for authentication and logging purposes
  *
  * In authenticated mode, extracts username from the x-forwarded-email header
  * (typically set by reverse proxy or authentication middleware).
- * In no-auth mode, uses the local system username for development/testing.
+ * In non-authenticated mode (default), uses the local system username for development/testing.
  *
  * @param req - Express request object containing headers
  * @returns Username string for logging and thread ownership
+ * @throws Error if username is a system/service account (security protection)
  */
 function getUsername(req: express.Request): string {
-  return codayOptions.noAuth ? os.userInfo().username : (req.headers[EMAIL_HEADER] as string)
+  const username = codayOptions.auth ? (req.headers[EMAIL_HEADER] as string) : os.userInfo().username
+
+  // Security check: prevent running as system/service accounts
+  if (FORBIDDEN_USERNAMES.includes(username.toLowerCase() as any)) {
+    throw new Error(
+      `Security error: Cannot run with username "${username}". ` +
+        'This appears to be a system or service account. ' +
+        'When running locally, ensure you are running as a regular user account. ' +
+        'When running in production, ensure authentication is properly configured with --auth flag.'
+    )
+  }
+
+  return username
 }
+
+// Register user information routes
+registerUserRoutes(app, getUsername)
 
 // Register configuration management routes
 registerConfigRoutes(app, configRegistry, getUsername)
@@ -148,13 +222,25 @@ registerConfigRoutes(app, configRegistry, getUsername)
 registerWebhookRoutes(app, webhookService, getUsername, threadService, threadCodayManager, codayOptions, logger)
 
 // Register project management routes
-registerProjectRoutes(app, projectService, codayOptions.project)
+registerProjectRoutes(app, projectService)
 
 // Register thread management routes
-registerThreadRoutes(app, threadService, threadCodayManager, getUsername, codayOptions)
+registerThreadRoutes(app, threadService, threadFileService, threadCodayManager, getUsername, codayOptions)
 
 // Register message management routes
 registerMessageRoutes(app, threadCodayManager, getUsername)
+
+// Register agent management routes
+registerAgentRoutes(
+  app,
+  projectService,
+  getUsername,
+  codayOptions.configDir,
+  logger,
+  webhookService,
+  threadService,
+  codayOptions
+)
 
 // Catch-all route for Angular client-side routing (MUST be after all API routes)
 // In production mode, serve index.html for any non-API routes
@@ -220,10 +306,7 @@ PORT_PROMISE.then(async (PORT) => {
   try {
     debugLog('CLEANUP', 'Starting thread cleanup service...')
 
-    // Construire le chemin vers les projets (même logique que ProjectService)
-    const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
-    const configPath = codayOptions.configDir ?? defaultConfigPath
-    const projectsConfigPath = path.join(configPath, 'projects')
+    const projectsConfigPath = path.join(codayOptions.configDir, 'projects')
 
     cleanupService = new ThreadCleanupService(projectsConfigPath, logger)
     await cleanupService.start()

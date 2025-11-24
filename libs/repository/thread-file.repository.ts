@@ -214,6 +214,7 @@ export class ThreadFileRepository implements ThreadRepository {
                 createdDate: data.createdDate ?? '',
                 modifiedDate: data.modifiedDate ?? '',
                 price: data.price ?? 0,
+                starring: data.starring ?? [],
               } as ThreadSummary
             })
         )

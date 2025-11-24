@@ -121,6 +121,17 @@ export class TextEvent extends CodayEvent {
   }
 }
 
+export class TextChunkEvent extends CodayEvent {
+  chunk: string
+  static override type = 'text_chunk'
+
+  constructor(event: Partial<TextChunkEvent>) {
+    super(event, TextChunkEvent.type)
+    this.chunk = event.chunk!!
+    this.length = this.chunk.length
+  }
+}
+
 export class WarnEvent extends CodayEvent {
   warning: string
   static override type = 'warn'
@@ -245,6 +256,25 @@ export class ThinkingEvent extends CodayEvent {
   }
 }
 
+export class SummaryEvent extends CodayEvent {
+  summary: string
+  static override type = 'summary'
+
+  constructor(event: Partial<SummaryEvent>) {
+    super(event, SummaryEvent.type)
+    this.summary = event.summary!
+    this.length = this.summary.length
+  }
+
+  /**
+   * Renders the summary as a single line string
+   */
+  toSingleLineString(maxLength: number = 80): string {
+    const truncated = truncateText(this.summary, maxLength)
+    return `📋 Summary: ${truncated}`
+  }
+}
+
 export class MessageEvent extends CodayEvent {
   role: 'user' | 'assistant'
   name: string
@@ -291,6 +321,31 @@ export class ThreadUpdateEvent extends CodayEvent {
   }
 }
 
+export class FileEvent extends CodayEvent {
+  filename: string
+  operation: 'created' | 'updated' | 'deleted'
+  size?: number
+  mimeType?: string
+  static override type = 'file'
+
+  constructor(event: Partial<FileEvent>) {
+    super(event, FileEvent.type)
+    this.filename = event.filename!
+    this.operation = event.operation!
+    this.size = event.size
+    this.mimeType = event.mimeType
+  }
+
+  /**
+   * Renders the file event as a single line string
+   */
+  toSingleLineString(): string {
+    const icon = this.operation === 'created' ? '📄' : this.operation === 'updated' ? '📝' : '🗑️'
+    const sizeStr = this.size ? ` (${(this.size / 1024).toFixed(1)} KB)` : ''
+    return `${icon} ${this.operation}: ${this.filename}${sizeStr}`
+  }
+}
+
 // Exposing a map of event types to their corresponding classes
 const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [MessageEvent.type]: MessageEvent,
@@ -302,9 +357,12 @@ const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [ToolRequestEvent.type]: ToolRequestEvent,
   [ToolResponseEvent.type]: ToolResponseEvent,
   [TextEvent.type]: TextEvent,
+  [TextChunkEvent.type]: TextChunkEvent,
   [ThinkingEvent.type]: ThinkingEvent,
   [WarnEvent.type]: WarnEvent,
   [ThreadUpdateEvent.type]: ThreadUpdateEvent,
+  [SummaryEvent.type]: SummaryEvent,
+  [FileEvent.type]: FileEvent,
 }
 
 export function buildCodayEvent(data: any): CodayEvent | undefined {

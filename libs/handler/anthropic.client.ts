@@ -1,7 +1,15 @@
 import { Agent, AiClient, AiModel, AiProviderConfig, CompletionOptions, Interactor } from '../model'
 import Anthropic from '@anthropic-ai/sdk'
 import { ToolSet } from '../integration/tool-set'
-import {CodayEvent, ErrorEvent, MessageEvent, ToolRequestEvent, ToolResponseEvent} from '@coday/coday-events'
+import {
+  CodayEvent,
+  ErrorEvent,
+  MessageEvent,
+  SummaryEvent,
+  TextChunkEvent,
+  ToolRequestEvent,
+  ToolResponseEvent,
+} from '@coday/coday-events'
 import { Observable, of, Subject } from 'rxjs'
 import { AiThread } from '../ai-thread/ai-thread'
 import { ThreadMessage } from '../ai-thread/ai-thread.types'
@@ -18,9 +26,11 @@ interface RateLimitInfo {
 
 const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
   {
-    name: 'claude-sonnet-4-5-20250929',
+    name: 'claude-sonnet-4-5',
     alias: 'BIG',
     contextWindow: 200000,
+    temperature: 0.8,
+    maxOutputTokens: 64000,
     price: {
       inputMTokens: 3,
       cacheWrite: 3.75,
@@ -29,14 +39,16 @@ const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
     },
   },
   {
-    name: 'claude-3-5-haiku-latest',
+    name: 'claude-haiku-4-5',
     alias: 'SMALL',
     contextWindow: 200000,
+    temperature: 0.8,
+    maxOutputTokens: 64000,
     price: {
-      inputMTokens: 0.8,
-      cacheWrite: 1,
-      cacheRead: 0.08,
-      outputMTokens: 4,
+      inputMTokens: 1,
+      cacheWrite: 1.25,
+      cacheRead: 0.1,
+      outputMTokens: 5,
     },
   },
 ]
@@ -73,16 +85,18 @@ export class AnthropicClient extends AiClient {
     thread.resetUsageForRun()
     const outputSubject: Subject<CodayEvent> = new Subject()
     const thinking = this.startThinkingInterval()
-    this.processThread(anthropic, agent, model, thread, outputSubject).catch((reason) => {
-      outputSubject.next(new ErrorEvent({error: reason}))
-    }).finally(() => {
-      this.stopThinkingInterval(thinking)
-      this.showAgentAndUsage(agent, 'Anthropic', model.name, thread)
-      // Log usage after the complete response cycle
-      const cost = thread.usage?.price || 0
-      this.logAgentUsage(agent, model.name, cost)
-      outputSubject.complete()
-    })
+    this.processThread(anthropic, agent, model, thread, outputSubject)
+      .catch((reason) => {
+        outputSubject.next(new ErrorEvent({ error: reason }))
+      })
+      .finally(() => {
+        this.stopThinkingInterval(thinking)
+        this.showAgentAndUsage(agent, 'Anthropic', model.name, thread)
+        // Log usage after the complete response cycle
+        const cost = thread.usage?.price || 0
+        this.logAgentUsage(agent, model.name, cost)
+        outputSubject.complete()
+      })
     return outputSubject
   }
 
@@ -98,19 +112,56 @@ export class AnthropicClient extends AiClient {
 
     // Recalculate budget on each iteration to account for growing thread
     const initialContextCharLength = agent.systemInstructions.length + agent.tools.charLength + 20
-    const charBudget = Math.max(model.contextWindow * this.charsPerToken - initialContextCharLength, 10000)
+    let charBudget = Math.max(model.contextWindow * this.charsPerToken - initialContextCharLength, 10000)
 
-    // API call with localized error handling
+    // API call with streaming using SDK helper
     let response: Anthropic.Messages.Message
-    let httpResponse: Response
+    let httpResponse: Response | undefined
     try {
-      const result = await this.makeApiCall(client, model, agent, thread, charBudget)
+      const result = await this.streamApiCall(client, model, agent, thread, charBudget, subscriber)
       response = result.data
       httpResponse = result.response
     } catch (error: any) {
+      // Handle "prompt is too long" errors with aggressive compaction
+      if (error.status === 400 && error.error?.error?.message?.includes('prompt is too long')) {
+        this.interactor.displayText('⚠️ Context window exceeded. Forcing aggressive compaction...')
+
+        // Extract the actual token count from error message if available
+        const match = error.error.error.message.match(/(\d+) tokens > (\d+) maximum/)
+        if (match) {
+          const actualTokens = parseInt(match[1])
+          const maxTokens = parseInt(match[2])
+          const overshoot = actualTokens - maxTokens
+
+          // Reduce budget by overshoot + 20% safety margin
+          const reductionChars = Math.ceil(overshoot * this.charsPerToken * 1.2)
+          charBudget = Math.max(charBudget - reductionChars, 5000)
+
+          this.interactor.debug(
+            `Token overshoot: ${overshoot} tokens (${reductionChars} chars). ` +
+              `Reduced budget to ${charBudget} chars.`
+          )
+        } else {
+          // Fallback: reduce budget by 30% if we can't parse the error
+          charBudget = Math.floor(charBudget * 0.7)
+          this.interactor.debug(`Reduced budget by 30% to ${charBudget} chars.`)
+        }
+
+        // Force cache marker update to ensure fresh compaction
+        try {
+          const result = await this.streamApiCall(client, model, agent, thread, charBudget, subscriber, true)
+          response = result.data
+          httpResponse = result.response
+          this.interactor.displayText('✅ Successfully recovered with compacted context')
+        } catch (retryError: any) {
+          // If still failing after compaction, propagate the error
+          this.handleError(retryError, subscriber, this.name)
+          return
+        }
+      }
       // Handle 429 rate limit errors with retry
-      if (error.status === 429 && error.headers) {
-        const retryAfter = parseInt(error.headers['retry-after'] || '60')
+      else if (error.status === 429 && error.headers) {
+        const retryAfter = parseInt(error.headers['retry-after'] ?? '60')
         this.interactor.displayText(`⏳ Rate limit hit. Waiting ${retryAfter} seconds before retry...`)
 
         // Update rate limits from error headers
@@ -131,7 +182,7 @@ export class AnthropicClient extends AiClient {
         this.interactor.displayText(`🔄 Retrying request...`)
 
         try {
-          const retryResult = await this.makeApiCall(client, model, agent, thread, charBudget)
+          const retryResult = await this.streamApiCall(client, model, agent, thread, charBudget, subscriber)
           response = retryResult.data
           httpResponse = retryResult.response
         } catch (retryError: any) {
@@ -146,8 +197,11 @@ export class AnthropicClient extends AiClient {
       }
     }
 
-    // Update rate limits from successful response headers
-    this.updateRateLimitsFromHeaders(httpResponse?.headers)
+    // Update rate limits from successful response headers (if available)
+    // Note: streaming doesn't provide HTTP response, so rate limits won't be updated
+    if (httpResponse) {
+      this.updateRateLimitsFromHeaders(httpResponse.headers)
+    }
 
     this.updateUsage(response?.usage, agent, thread)
 
@@ -178,10 +232,10 @@ export class AnthropicClient extends AiClient {
 
   private updateUsage(usage: any, agent: Agent, thread: AiThread): void {
     const model = this.getModel(agent)
-    const input = (usage?.input_tokens || 0) * (model?.price?.inputMTokens || 0)
-    const output = (usage?.output_tokens || 0) * (model?.price?.outputMTokens || 0)
-    const cacheWrite = (usage?.cache_creation_input_tokens || 0) * (model?.price?.cacheWrite || 0)
-    const cacheRead = (usage?.cache_read_input_tokens || 0) * (model?.price?.cacheRead || 0)
+    const input = (usage?.input_tokens ?? 0) * (model?.price?.inputMTokens ?? 0)
+    const output = (usage?.output_tokens ?? 0) * (model?.price?.outputMTokens ?? 0)
+    const cacheWrite = (usage?.cache_creation_input_tokens ?? 0) * (model?.price?.cacheWrite ?? 0)
+    const cacheRead = (usage?.cache_read_input_tokens ?? 0) * (model?.price?.cacheRead ?? 0)
     const price = (input + output + cacheWrite + cacheRead) / 1_000_000
 
     thread.addUsage({
@@ -231,10 +285,24 @@ export class AnthropicClient extends AiClient {
       .map((msg, index) => {
         let claudeMessage: Anthropic.MessageParam | undefined
         const shouldAddCache = markerMessageId && msg.timestamp === markerMessageId
-        if (msg instanceof MessageEvent) {
+
+        // Handle SummaryEvent - just the summary text
+        if (msg instanceof SummaryEvent) {
+          claudeMessage = {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: msg.summary,
+                ...(shouldAddCache && { cache_control: { type: 'ephemeral' } }),
+              },
+            ],
+          }
+        }
+        // Handle regular MessageEvent
+        else if (msg instanceof MessageEvent) {
           const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
-          const message = msg as MessageEvent
-          const content = this.enhanceWithCurrentDateTime(message.content, isLastUserMessage)
+          const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
           const claudeContent: (Anthropic.ImageBlockParam | Anthropic.TextBlockParam)[] = content
             .map((c, index) => {
               let result: Anthropic.ImageBlockParam | Anthropic.TextBlockParam | undefined = undefined
@@ -429,34 +497,57 @@ export class AnthropicClient extends AiClient {
   }
 
   /**
-   * Make the actual API call to Anthropic
-   * Extracted to avoid code duplication between initial call and retry
+   * Make the API call using streaming for progressive text display
+   * Uses Anthropic SDK's .stream() helper for simplified streaming
+   * @param client
+   * @param model
+   * @param agent
+   * @param thread
+   * @param charBudget
+   * @param subscriber Subject to emit TextChunkEvent for progressive display
+   * @param forceUpdateCache When true, forces cache marker recalculation for aggressive compaction
    */
-  private async makeApiCall(
+  private async streamApiCall(
     client: Anthropic,
     model: AiModel,
     agent: Agent,
     thread: AiThread,
-    charBudget: number
-  ): Promise<{ data: Anthropic.Messages.Message; response: Response }> {
+    charBudget: number,
+    subscriber: Subject<CodayEvent>,
+    forceUpdateCache: boolean = false
+  ): Promise<{ data: Anthropic.Messages.Message; response: Response | undefined }> {
     const data = await this.getMessages(thread, charBudget, model.name)
-    const messages = this.toClaudeMessage(data.messages, thread)
-    return await client.messages
-      .create({
-        model: model.name,
-        messages,
-        system: [
-          {
-            text: agent.systemInstructions,
-            type: 'text',
-            cache_control: { type: 'ephemeral' },
-          },
-        ] as unknown as Array<Anthropic.TextBlockParam>,
-        tools: this.getClaudeTools(agent.tools),
-        temperature: agent.definition.temperature ?? 0.8,
-        max_tokens: 8192,
-      })
-      .withResponse()
+    const messages = this.toClaudeMessage(data.messages, thread, forceUpdateCache)
+
+    // Use the streaming helper from the SDK
+    const stream = client.messages.stream({
+      model: model.name,
+      messages,
+      system: [
+        {
+          text: agent.systemInstructions,
+          type: 'text',
+          cache_control: { type: 'ephemeral' },
+        },
+      ] as unknown as Array<Anthropic.TextBlockParam>,
+      tools: this.getClaudeTools(agent.tools),
+      temperature: agent.definition.temperature ?? model.temperature ?? 0.8,
+      max_tokens: agent.definition.maxOutputTokens ?? model.maxOutputTokens ?? 8192,
+    })
+
+    // Emit text chunks as they arrive for progressive display
+    stream.on('text', (text) => {
+      subscriber.next(new TextChunkEvent({ chunk: text }))
+    })
+
+    // Wait for the complete message
+    const message = await stream.finalMessage()
+
+    // Return in the same format as makeApiCall for compatibility
+    return {
+      data: message,
+      response: undefined, // Stream helper doesn't expose raw HTTP response
+    }
   }
 
   private getHeader = (headers: Headers | Record<string, string> | undefined, key: string): string | null => {
@@ -561,9 +652,9 @@ export class AnthropicClient extends AiClient {
    * Display which rate limit was hit
    */
   private displayRateLimitStatus(headers: any): void {
-    const inputRemaining = parseInt(headers['anthropic-ratelimit-input-tokens-remaining'] || '0')
-    const outputRemaining = parseInt(headers['anthropic-ratelimit-output-tokens-remaining'] || '0')
-    const requestsRemaining = parseInt(headers['anthropic-ratelimit-requests-remaining'] || '0')
+    const inputRemaining = parseInt(headers['anthropic-ratelimit-input-tokens-remaining'] ?? '0')
+    const outputRemaining = parseInt(headers['anthropic-ratelimit-output-tokens-remaining'] ?? '0')
+    const requestsRemaining = parseInt(headers['anthropic-ratelimit-requests-remaining'] ?? '0')
 
     let limitType = 'unknown'
     if (inputRemaining === 0) limitType = 'input tokens'
@@ -589,7 +680,7 @@ export class AnthropicClient extends AiClient {
     if (!anthropic) throw new Error('Anthropic client not ready')
 
     // Select model: options > SMALL alias > fallback
-    const modelName = options?.model || this.models.find((m) => m.alias === 'SMALL')?.name || 'claude-3-5-haiku-latest'
+    const modelName = options?.model ?? this.models.find((m) => m.alias === 'SMALL')?.name ?? 'claude-3-5-haiku-latest'
 
     try {
       const response = await anthropic.messages.create({
@@ -600,12 +691,10 @@ export class AnthropicClient extends AiClient {
         stop_sequences: options?.stopSequences,
       })
 
-      const text = response.content
+      return response.content
         .filter((block) => block.type === 'text')
         .map((block) => block.text.trim())
         .join(' ')
-
-      return text
     } catch (error: any) {
       console.error('Anthropic completion error:', error)
       throw new Error(`Anthropic completion failed: ${error.message}`)

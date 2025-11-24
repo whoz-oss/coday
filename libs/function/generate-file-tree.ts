@@ -1,4 +1,5 @@
 import { execSync } from 'child_process'
+import { rgPath } from '@vscode/ripgrep'
 import { Interactor } from '../model'
 
 const maxBuffer = 50 * 1024 * 1024
@@ -14,7 +15,8 @@ export function generateFileTree(
   try {
     // Execute ripgrep to get all file paths, respecting .gitignore
     interactor.displayText('Mapping project files...')
-    const output = execSync('rg --files', { cwd: rootPath, encoding: 'utf-8', timeout, maxBuffer })
+    // Use the ripgrep binary provided by @vscode/ripgrep package
+    const output = execSync(`"${rgPath}" --files`, { cwd: rootPath, encoding: 'utf-8', timeout, maxBuffer })
     const files = output.split('\n').filter(Boolean).sort()
     interactor.displayText(`... mapped ${files.length} files.`)
 
