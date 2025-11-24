@@ -400,41 +400,64 @@ export class McpToolsFactory extends AssistantToolFactory {
             return item
           })
 
-          // If we have a single item and it's a MessageContent (image or text), return it directly
-          if (processedContent.length === 1) {
-            const single = processedContent[0]
-            if (typeof single === 'object' && single !== null && 'type' in single) {
-              if (single.type === 'image' || single.type === 'text') {
-                return single
-              }
-            }
-          }
-
-          // If we have multiple items, prioritize images over text
-          // (text descriptions are often redundant when an image is present)
+          // Check for images in the content
           const imageParts = processedContent.filter(
             (c) => typeof c === 'object' && c !== null && 'type' in c && c.type === 'image'
           )
 
+          // If we have images, emit them as MessageEvents for user visibility
           if (imageParts.length > 0) {
-            // Emit a MessageEvent to make the image visible to the user
-            const imageContent = imageParts[0] as ImageContent
-            const messageEvent = new MessageEvent({
-              role: 'assistant',
-              content: [imageContent],
-              name: toolName,
-            })
-            this.interactor.sendEvent(messageEvent)
-
-            // Return the first image (most common case for screenshot tools)
-            // Text description from MCP is typically just "Screenshot saved to..."
-            return imageParts[0]
+            for (const imagePart of imageParts) {
+              const imageContent = imagePart as ImageContent
+              const messageEvent = new MessageEvent({
+                role: 'assistant',
+                content: [imageContent],
+                name: toolName,
+              })
+              this.interactor.sendEvent(messageEvent)
+            }
           }
 
-          // Only text content or other types - join strings
+          // Now return the complete content for the AI
+          // Single item optimization
+          if (processedContent.length === 1) {
+            const single = processedContent[0]
+            // Return MessageContent directly if it's properly typed
+            if (typeof single === 'object' && single !== null && 'type' in single) {
+              if (single.type === 'image') {
+                // Return image for AI to reference
+                return single
+              }
+              // For single text MessageContent, unwrap to string
+              if (single.type === 'text') {
+                return single.content
+              }
+            }
+            // Single string - return as-is
+            if (typeof single === 'string') {
+              return single
+            }
+          }
+
+          // Multiple items - combine intelligently
           const textParts = processedContent.filter((c) => typeof c === 'string')
-          if (textParts.length > 0) {
+          const hasImages = imageParts.length > 0
+
+          if (hasImages && textParts.length > 0) {
+            // Both images and text: return text description
+            // Images already emitted as MessageEvents for user visibility
+            // AI will have the context from the image in the conversation
             return textParts.join('\n')
+          }
+
+          if (textParts.length > 0) {
+            // Only text - join and return
+            return textParts.join('\n')
+          }
+
+          if (hasImages) {
+            // Only images - return first one for AI reference
+            return imageParts[0]
           }
 
           // Fallback: return array as-is (will be stringified)
