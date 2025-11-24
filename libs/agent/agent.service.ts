@@ -99,6 +99,12 @@ export class AgentService implements Killable {
       const filesTime = performance.now() - filesStart
       this.interactor.debug(`📁 Loaded agent definitions from files: ${filesTime.toFixed(2)}ms`)
 
+      // Generate virtual agents from available models
+      const virtualStart = performance.now()
+      this.generateVirtualAgentsFromModels()
+      const virtualTime = performance.now() - virtualStart
+      this.interactor.debug(`🤖 Generated virtual agents from models: ${virtualTime.toFixed(2)}ms`)
+
       // If no agent definitions were loaded, use Coday as backup
       if (this.agentDefinitions.length === 0) {
         this.addDefinition(CodayAgentDefinition, this.projectPath)
@@ -238,6 +244,33 @@ export class AgentService implements Killable {
         basePath,
       })
     }
+  }
+
+  /**
+   * Generate virtual agents from all available AI models.
+   * These agents provide direct access to models without custom instructions or tools restrictions.
+   * They are named exactly as the model name (e.g., 'gpt-4o', 'claude-sonnet-4.5').
+   */
+  private generateVirtualAgentsFromModels(): void {
+    const allModels = this.aiClientProvider.getAllModels()
+
+    for (const model of allModels) {
+      // Create a minimal AgentDefinition for each model
+      const virtualAgentDef: AgentDefinition = {
+        name: model.name,
+        description: `Direct access to ${model.name} model (${model.providerName})`,
+        instructions: '', // No custom instructions - will use project description, docs, and memories only
+        aiProvider: model.providerName,
+        modelName: model.name,
+        // No integrations specified = access to all tools
+      }
+
+      this.addDefinition(virtualAgentDef, this.projectPath)
+    }
+
+    this.interactor.debug(
+      `🤖 Generated ${allModels.length} virtual agents from available models: ${allModels.map((m) => m.name).join(', ')}`
+    )
   }
 
   /**
