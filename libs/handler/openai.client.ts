@@ -24,15 +24,27 @@ type AssistantThreadData = {
 
 const OPENAI_DEFAULT_MODELS: AiModel[] = [
   {
-    name: 'gpt-4.1-2025-04-14',
+    name: 'gpt-5.1',
     contextWindow: 1000000,
     alias: 'BIG',
     temperature: 0.8,
     maxOutputTokens: 120000,
     price: {
-      inputMTokens: 2,
-      cacheRead: 0.5,
-      outputMTokens: 8,
+      inputMTokens: 1.25,
+      cacheRead: 0.125,
+      outputMTokens: 10.0,
+    },
+  },
+  {
+    name: 'gpt-5-pro',
+    contextWindow: 1000000,
+    alias: 'BIGGEST',
+    temperature: 0.8,
+    maxOutputTokens: 120000,
+    price: {
+      inputMTokens: 15.0,
+      cacheRead: 0, // No cache pricing available
+      outputMTokens: 120.0,
     },
   },
   {
@@ -45,6 +57,17 @@ const OPENAI_DEFAULT_MODELS: AiModel[] = [
       inputMTokens: 0.25,
       cacheRead: 0.025,
       outputMTokens: 2.0,
+    },
+  },
+  {
+    name: 'gpt-5-nano',
+    contextWindow: 400000,
+    temperature: 1.0,
+    maxOutputTokens: 128000,
+    price: {
+      inputMTokens: 0.05,
+      cacheRead: 0.005,
+      outputMTokens: 0.4,
     },
   },
 ]
