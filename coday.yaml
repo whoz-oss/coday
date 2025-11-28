@@ -88,32 +88,7 @@ prompts:
 
 ai:
   - name: anthropic
-    models:
-      - name: claude-opus-4-20250514
-        alias: BIGGER
-        contextWindow: 200000
-        price:
-          inputMTokens: 15
-          cacheWrite: 18.75
-          cacheRead: 1.5
-          outputMTokens: 75
-
   - name: openai
-    models:
-      - name: o4-mini
-        alias: MINI-THINKER
-        contextWindow: 200000
-        price:
-          inputMTokens: 1.1
-          cacheRead: 0.55
-          outputMTokens: 4.4
-      - name: o3
-        alias: THINKER
-        contextWindow: 200000
-        price:
-          inputMTokens: 2
-          cacheRead: 0.5
-          outputMTokens: 8
   - name: google
   - name: mistral
     url: https://api.mistral.ai/v1
