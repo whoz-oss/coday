@@ -1,3 +1,13 @@
+## 0.48.1 (2025-11-28)
+
+### 🩹 Fixes
+
+- #347 playwright screenshot ([#348](https://github.com/whoz-oss/coday/pull/348), [#347](https://github.com/whoz-oss/coday/issues/347))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.48.0 (2025-11-28)
 
 ### 🚀 Features
