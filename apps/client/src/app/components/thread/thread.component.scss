@@ -1,3 +1,10 @@
+// Drag and drop wrapper - contains everything including drawer
+.drag-drop-wrapper {
+  height: 100vh;
+  width: 100%;
+  position: relative;
+}
+
 .thread-container {
   display: flex;
   flex-direction: column;
@@ -142,15 +149,15 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-// Drag and drop overlay
+// Drag and drop overlay - absolute to wrapper to cover drawer too
 .drag-overlay {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.7);
-  z-index: 9999;
+  z-index: 10000; // Above Material drawer (which is typically 1000-2000)
   display: flex;
   align-items: center;
   justify-content: center;
