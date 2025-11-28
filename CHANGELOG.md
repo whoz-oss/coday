@@ -1,3 +1,13 @@
+## 0.47.1 (2025-11-28)
+
+### 🩹 Fixes
+
+- #350 extend drag'n drop to file exchange drawer ([#351](https://github.com/whoz-oss/coday/pull/351), [#350](https://github.com/whoz-oss/coday/issues/350))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.47.0 (2025-11-18)
 
 ### 🚀 Features
