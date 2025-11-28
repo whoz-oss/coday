@@ -1,108 +1,113 @@
-<!-- File Exchange Drawer Container - wraps entire thread -->
-<mat-drawer-container class="file-drawer-container" [hasBackdrop]="false">
-  <mat-drawer-content>
-    <div
-      class="thread-container"
-      (dragenter)="onDragEnter($event)"
-      (dragover)="onDragOver($event)"
-      (dragleave)="onDragLeave($event)"
-      (drop)="onDrop($event)"
-    >
-      <!-- Floating File Exchange Button (top-right) - hidden when drawer open -->
-      @if (!isFileDrawerOpen) {
-        <button
-          matFab
-          class="file-drawer-toggle-btn"
-          (click)="toggleFileDrawer()"
-          [class.has-files]="fileCount > 0"
-          [matBadge]="fileCount > 0 ? fileCount : null"
-          title="Files Exchange{{ fileCount > 0 ? ' (' + fileCount + ' file' + (fileCount > 1 ? 's' : '') + ')' : '' }}"
-          type="button"
-        >
-          <mat-icon>folder_open</mat-icon>
-        </button>
-      }
+<!-- Drag and Drop Wrapper - wraps everything including drawer -->
+<div
+  class="drag-drop-wrapper"
+  (dragenter)="onDragEnter($event)"
+  (dragover)="onDragOver($event)"
+  (dragleave)="onDragLeave($event)"
+  (drop)="onDrop($event)"
+>
+  <!-- File Exchange Drawer Container - wraps entire thread -->
+  <mat-drawer-container class="file-drawer-container" [hasBackdrop]="false">
+    <mat-drawer-content>
+      <div class="thread-container">
+        <!-- Floating File Exchange Button (top-right) - hidden when drawer open -->
+        @if (!isFileDrawerOpen) {
+          <button
+            matFab
+            class="file-drawer-toggle-btn"
+            (click)="toggleFileDrawer()"
+            [class.has-files]="fileCount > 0"
+            [matBadge]="fileCount > 0 ? fileCount : null"
+            title="Files Exchange{{
+              fileCount > 0 ? ' (' + fileCount + ' file' + (fileCount > 1 ? 's' : '') + ')' : ''
+            }}"
+            type="button"
+          >
+            <mat-icon>folder_open</mat-icon>
+          </button>
+        }
 
-      <!-- Connection Status -->
-      @if (showConnectionStatus && connectionStatus && !connectionStatus.connected) {
-        <div class="connection-status">
-          ⚠️ Connection lost. Reconnecting... ({{ connectionStatus.reconnectAttempts }}/{{
-            connectionStatus.maxAttempts
-          }})
+        <!-- Connection Status -->
+        @if (showConnectionStatus && connectionStatus && !connectionStatus.connected) {
+          <div class="connection-status">
+            ⚠️ Connection lost. Reconnecting... ({{ connectionStatus.reconnectAttempts }}/{{
+              connectionStatus.maxAttempts
+            }})
+          </div>
+        }
+
+        <!-- Chat History - Scrollable area -->
+        <div class="chat-wrapper">
+          <div class="chat-center">
+            <app-chat-history
+              [messages]="messages"
+              [streamingText]="streamingText"
+              [isThinking]="isThinking"
+              (copyRequested)="onCopyMessage($event)"
+              (stopRequested)="onStopRequested()"
+            ></app-chat-history>
+
+            <!-- Upload Status Display -->
+            @if (uploadStatus.message) {
+              <div class="upload-status" [class.error]="uploadStatus.isError">
+                {{ uploadStatus.message }}
+              </div>
+            }
+          </div>
         </div>
-      }
 
-      <!-- Chat History - Scrollable area -->
-      <div class="chat-wrapper">
-        <div class="chat-center">
-          <app-chat-history
-            [messages]="messages"
-            [streamingText]="streamingText"
-            [isThinking]="isThinking"
-            (copyRequested)="onCopyMessage($event)"
-            (stopRequested)="onStopRequested()"
-          ></app-chat-history>
+        <!-- Input Section -->
+        <div class="input-section" #inputSection>
+          <div class="input-center">
+            <div class="input-glass">
+              @if (!currentChoice) {
+                <app-chat-textarea
+                  [isDisabled]="!isConnected"
+                  [isSessionInitializing]="false"
+                  [showWelcome]="false"
+                  [isThinking]="isThinking"
+                  [isStarting]="false"
+                  (messageSubmitted)="onMessageSubmitted($event)"
+                  (voiceRecordingToggled)="onVoiceToggled($event)"
+                  (heightChanged)="onInputHeightChanged($event)"
+                  (stopRequested)="onStopRequested()"
+                ></app-chat-textarea>
+              }
 
-          <!-- Upload Status Display -->
-          @if (uploadStatus.message) {
-            <div class="upload-status" [class.error]="uploadStatus.isError">
-              {{ uploadStatus.message }}
+              <!-- Choice Select - Overlay on top of input-section -->
+              @if (currentChoice) {
+                <app-choice-select
+                  [options]="currentChoice.options"
+                  [labelHtml]="currentChoice.label"
+                  [isVisible]="!!currentChoice"
+                  (choiceSelected)="onChoiceSelected($event)"
+                  class="choice-overlay"
+                ></app-choice-select>
+              }
             </div>
-          }
-        </div>
-      </div>
-
-      <!-- Input Section -->
-      <div class="input-section" #inputSection>
-        <div class="input-center">
-          <div class="input-glass">
-            @if (!currentChoice) {
-              <app-chat-textarea
-                [isDisabled]="!isConnected"
-                [isSessionInitializing]="false"
-                [showWelcome]="false"
-                [isThinking]="isThinking"
-                [isStarting]="false"
-                (messageSubmitted)="onMessageSubmitted($event)"
-                (voiceRecordingToggled)="onVoiceToggled($event)"
-                (heightChanged)="onInputHeightChanged($event)"
-                (stopRequested)="onStopRequested()"
-              ></app-chat-textarea>
-            }
-
-            <!-- Choice Select - Overlay on top of input-section -->
-            @if (currentChoice) {
-              <app-choice-select
-                [options]="currentChoice.options"
-                [labelHtml]="currentChoice.label"
-                [isVisible]="!!currentChoice"
-                (choiceSelected)="onChoiceSelected($event)"
-                class="choice-overlay"
-              ></app-choice-select>
-            }
           </div>
         </div>
       </div>
+    </mat-drawer-content>
 
-      <!-- Drag and Drop Overlay -->
-      @if (isDragOver) {
-        <div class="drag-overlay">
-          <div class="drag-overlay-content">
-            <div class="drag-icon">📎</div>
-            <div class="drag-text">Drop files here to upload</div>
-            <div class="drag-hint">Images will be added to conversation, other files to exchange space</div>
-          </div>
-        </div>
-      }
+    <!-- File Exchange Drawer (right side) -->
+    <mat-drawer mode="side" position="end" [opened]="isFileDrawerOpen" (closed)="closeFileDrawer()">
+      <app-file-exchange-drawer
+        [projectName]="projectName"
+        [threadId]="threadId"
+        (closeDrawer)="closeFileDrawer()"
+      ></app-file-exchange-drawer>
+    </mat-drawer>
+  </mat-drawer-container>
+
+  <!-- Drag and Drop Overlay - at wrapper level to cover drawer too -->
+  @if (isDragOver) {
+    <div class="drag-overlay">
+      <div class="drag-overlay-content">
+        <div class="drag-icon">📎</div>
+        <div class="drag-text">Drop files here to upload</div>
+        <div class="drag-hint">Images will be added to conversation, other files to exchange space</div>
+      </div>
     </div>
-  </mat-drawer-content>
-
-  <!-- File Exchange Drawer (right side) -->
-  <mat-drawer mode="side" position="end" [opened]="isFileDrawerOpen" (closed)="closeFileDrawer()">
-    <app-file-exchange-drawer
-      [projectName]="projectName"
-      [threadId]="threadId"
-      (closeDrawer)="closeFileDrawer()"
-    ></app-file-exchange-drawer>
-  </mat-drawer>
-</mat-drawer-container>
+  }
+</div>
