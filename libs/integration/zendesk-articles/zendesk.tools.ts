@@ -5,25 +5,25 @@ import { Interactor } from '../../model'
 import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 
-export class ZendeskArticlesTools extends AssistantToolFactory {
-  name = 'ZENDESK_ARTICLES'
+export class ZendeskTools extends AssistantToolFactory {
+  name = 'ZENDESK'
 
   constructor(
     interactor: Interactor,
-    private integrationService: IntegrationService
+    private readonly integrationService: IntegrationService
   ) {
     super(interactor)
   }
 
   protected async buildTools(): Promise<CodayTool[]> {
     const result: CodayTool[] = []
-    if (!this.integrationService.hasIntegration('ZENDESK_ARTICLES')) {
+    if (!this.integrationService.hasIntegration(this.name)) {
       return result
     }
 
-    const zendeskSubdomain = this.integrationService.getApiUrl('ZENDESK_ARTICLES')
-    const zendeskEmail = this.integrationService.getUsername('ZENDESK_ARTICLES')
-    const zendeskApiToken = this.integrationService.getApiKey('ZENDESK_ARTICLES')
+    const zendeskSubdomain = this.integrationService.getApiUrl(this.name)
+    const zendeskEmail = this.integrationService.getUsername(this.name)
+    const zendeskApiToken = this.integrationService.getApiKey(this.name)
     if (!(zendeskSubdomain && zendeskEmail && zendeskApiToken)) {
       return result
     }

@@ -49,7 +49,7 @@ Integration enables Confluence tools. All fields required:
 - Username: your email
 - API key: personal API token (same as Jira)
 
-### Zendesk Articles
+### Zendesk
 
 Integration enables Zendesk Help Center article search and retrieval. All fields required:
 
@@ -58,5 +58,5 @@ Integration enables Zendesk Help Center article search and retrieval. All fields
   mycompany
   ```
   For example, if your help center is at `https://mycompany.zendesk.com`, enter `mycompany`
-- Username: your Zendesk email address
-- API key: Zendesk API token (create in Admin Center -> Apps and integrations -> Zendesk API -> Add API token)
+- Username: your Zendesk email address associated to the API token
+- API key: Zendesk API token (create in Admin Center -> Apps and integrations -> Zendesk API -> Add API token) ⚠️ tied to the user.
