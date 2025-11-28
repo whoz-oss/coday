@@ -7,6 +7,7 @@ export const Integrations: Record<string, string[]> = {
   GIT: [],
   GITLAB: [],
   JIRA: [],
+  ZENDESK_ARTICLES: [],
 }
 
 export const ConcreteIntegrations: string[] = Object.keys(Integrations).filter((k) => Integrations[k]?.length === 0)
