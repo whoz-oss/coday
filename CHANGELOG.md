@@ -1,3 +1,13 @@
+## 0.49.0 (2025-11-28)
+
+### 🚀 Features
+
+- #345 Virtual agents from AI models for easy model selection ([#352](https://github.com/whoz-oss/coday/pull/352), [#345](https://github.com/whoz-oss/coday/issues/345))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.48.1 (2025-11-28)
 
 ### 🩹 Fixes
