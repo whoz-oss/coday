@@ -5,6 +5,7 @@ import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { ResourceTemplate, ToolInfo } from './types'
 import { ChildProcess, spawn } from 'child_process'
+import { MessageEvent, ImageContent } from '@coday/coday-events'
 
 const MCP_CONNECT_TIMEOUT = 15000 // in ms
 
@@ -374,15 +375,93 @@ export class McpToolsFactory extends AssistantToolFactory {
 
         // MCP can return either a content array or a toolResult
         if (result && 'content' in result && Array.isArray(result.content)) {
-          // Process content array
-          return result.content.map((item: any) => {
+          // Process content array and detect images
+          const processedContent = result.content.map((item: any) => {
+            // Text content
             if (item.type === 'text') {
               return item.text
-            } else if (item.type === 'resource') {
+            }
+            // Image content - convert to Coday MessageContent format
+            if (item.type === 'image' && item.data) {
+              return {
+                type: 'image',
+                content: item.data, // base64 string
+                mimeType: item.mimeType || 'image/png',
+                // Add dimensions if available
+                ...(item.width && { width: item.width }),
+                ...(item.height && { height: item.height }),
+              }
+            }
+            // Resource content
+            if (item.type === 'resource') {
               return item.resource
             }
+            // Unknown - return as is (will be stringified by tool-set)
             return item
           })
+
+          // Check for images in the content
+          const imageParts = processedContent.filter(
+            (c) => typeof c === 'object' && c !== null && 'type' in c && c.type === 'image'
+          )
+
+          // If we have images, emit them as MessageEvents for user visibility
+          if (imageParts.length > 0) {
+            for (const imagePart of imageParts) {
+              const imageContent = imagePart as ImageContent
+              const messageEvent = new MessageEvent({
+                role: 'assistant',
+                content: [imageContent],
+                name: toolName,
+              })
+              this.interactor.sendEvent(messageEvent)
+            }
+          }
+
+          // Now return the complete content for the AI
+          // Single item optimization
+          if (processedContent.length === 1) {
+            const single = processedContent[0]
+            // Return MessageContent directly if it's properly typed
+            if (typeof single === 'object' && single !== null && 'type' in single) {
+              if (single.type === 'image') {
+                // Return image for AI to reference
+                return single
+              }
+              // For single text MessageContent, unwrap to string
+              if (single.type === 'text') {
+                return single.content
+              }
+            }
+            // Single string - return as-is
+            if (typeof single === 'string') {
+              return single
+            }
+          }
+
+          // Multiple items - combine intelligently
+          const textParts = processedContent.filter((c) => typeof c === 'string')
+          const hasImages = imageParts.length > 0
+
+          if (hasImages && textParts.length > 0) {
+            // Both images and text: return text description
+            // Images already emitted as MessageEvents for user visibility
+            // AI will have the context from the image in the conversation
+            return textParts.join('\n')
+          }
+
+          if (textParts.length > 0) {
+            // Only text - join and return
+            return textParts.join('\n')
+          }
+
+          if (hasImages) {
+            // Only images - return first one for AI reference
+            return imageParts[0]
+          }
+
+          // Fallback: return array as-is (will be stringified)
+          return processedContent
         } else if (result && 'toolResult' in result) {
           // Return direct tool result
           return result.toolResult
