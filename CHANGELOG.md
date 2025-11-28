@@ -1,3 +1,13 @@
+## 0.48.0 (2025-11-28)
+
+### 🚀 Features
+
+- update default AI models to November 2024 releases ([#353](https://github.com/whoz-oss/coday/pull/353))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.47.1 (2025-11-28)
 
 ### 🩹 Fixes
