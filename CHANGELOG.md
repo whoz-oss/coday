@@ -1,3 +1,13 @@
+## 0.50.0 (2025-12-01)
+
+### 🚀 Features
+
+- #251 Zendesk integration ([#355](https://github.com/whoz-oss/coday/pull/355), [#251](https://github.com/whoz-oss/coday/issues/251))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.49.0 (2025-11-28)
 
 ### 🚀 Features
