@@ -592,8 +592,7 @@ export class OpenaiClient extends AiClient {
         model: modelName,
         messages: [{ role: 'user', content: prompt }],
         max_completion_tokens: options?.maxTokens ?? 100,
-        temperature: options?.temperature ?? 0.5,
-        stop: options?.stopSequences,
+        temperature: 1.0,
       })
 
       return response.choices[0]?.message?.content?.trim() || ''
