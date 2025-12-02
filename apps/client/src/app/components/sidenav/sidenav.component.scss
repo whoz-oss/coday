@@ -56,6 +56,26 @@ $sidenav-header-height: 122px;
   z-index: 1500 !important;
 }
 
+// Floating new thread button (simple icon below hamburger)
+.sidenav-new-thread-btn {
+  position: fixed !important;
+  top: 4.5rem !important; // Reduced space: 1rem (hamburger top) + 2.5rem (button + gap)
+  left: 1rem !important;
+  z-index: 1500 !important;
+
+  mat-icon {
+    color: var(--color-primary) !important;
+  }
+
+  &:disabled {
+    opacity: 0.5 !important;
+
+    mat-icon {
+      color: var(--color-text-secondary) !important;
+    }
+  }
+}
+
 // Floating logo button at bottom
 .sidenav-logo-btn {
   position: fixed !important;
