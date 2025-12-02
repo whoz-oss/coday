@@ -205,11 +205,19 @@ It can be summarized as:
 
       let summary: string
       try {
-        summary = await this.complete(prompt, {
+        const response = await this.complete(prompt, {
           model,
           maxTokens: summaryBudget,
-          stopSequences: ['</summary>'],
         })
+
+        // Extract content between <summary> tags
+        const match = response.match(/<summary>([\s\S]*?)<\/summary>/)
+        if (match && match[1]) {
+          summary = match[1].trim()
+        } else {
+          // Fallback: use the entire response if no tags found
+          summary = response.trim() || '...previous conversation truncated'
+        }
 
         const truncatedInfo = wasTruncated ? ' (from truncated transcript)' : ''
         this.interactor.debug(
