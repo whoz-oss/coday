@@ -584,8 +584,21 @@ export class OpenaiClient extends AiClient {
     const openai = this.isOpenaiReady()
     if (!openai) throw new Error('OpenAI client not ready')
 
-    // Select model: options > SMALL alias > fallback
-    const modelName = options?.model || this.models.find((m) => m.alias === 'SMALL')?.name || 'gpt-4o-mini'
+    // Select model: options > SMALL alias > fallback to gpt-4o-mini (real model that exists)
+    let modelName = options?.model || this.models.find((m) => m.alias === 'SMALL')?.name || 'gpt-4o-mini'
+
+    // Fallback mapping for GPT-5 models that don't exist yet to their GPT-4 equivalents
+    const modelFallbacks: Record<string, string> = {
+      'gpt-5.1': 'gpt-4o',
+      'gpt-5-pro': 'gpt-4o',
+      'gpt-5-mini': 'gpt-4o-mini',
+      'gpt-5-nano': 'gpt-4o-mini',
+    }
+
+    if (modelFallbacks[modelName]) {
+      this.interactor.debug(`⚠️ Model ${modelName} not available yet, using fallback ${modelFallbacks[modelName]}`)
+      modelName = modelFallbacks[modelName]
+    }
 
     try {
       const response = await openai.chat.completions.create({
