@@ -284,6 +284,7 @@ export class OpenaiClient extends AiClient {
       max_completion_tokens: agent.definition.maxOutputTokens ?? model.maxOutputTokens ?? undefined,
       temperature: agent.definition.temperature ?? model.temperature ?? 0.8,
       stream: true, // Enable streaming
+      stream_options: { include_usage: true }, // Include usage data in stream
     })
 
     // Accumulate response data to reconstruct full completion
