@@ -1,3 +1,14 @@
+## 0.51.0 (2025-12-02)
+
+### 🚀 Features
+
+- #361 add clean context mode for delegate tool ([#364](https://github.com/whoz-oss/coday/pull/364), [#361](https://github.com/whoz-oss/coday/issues/361))
+- #365 add new thread FAB button below hamburger menu ([#367](https://github.com/whoz-oss/coday/pull/367), [#365](https://github.com/whoz-oss/coday/issues/365))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.50.1 (2025-12-02)
 
 ### 🩹 Fixes
