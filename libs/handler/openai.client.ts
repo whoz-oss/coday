@@ -5,6 +5,7 @@ import {
   ErrorEvent,
   MessageEvent,
   SummaryEvent,
+  TextChunkEvent,
   ToolRequestEvent,
   ToolResponseEvent,
 } from '@coday/coday-events'
@@ -219,13 +220,15 @@ export class OpenaiClient extends AiClient {
 
       const data = await this.getMessages(thread, charBudget, model.name)
 
-      const response = await client.chat.completions.create({
-        model: model.name,
-        messages: this.toOpenAiMessage(agent, data.messages),
-        tools: this.truncateToolsIfNeeded(agent.tools.getTools()),
-        max_completion_tokens: agent.definition.maxOutputTokens ?? model.maxOutputTokens ?? undefined,
-        temperature: agent.definition.temperature ?? model.temperature ?? 0.8,
-      })
+      // Try streaming first, with fallback to non-streaming
+      let response: OpenAI.Chat.Completions.ChatCompletion
+      try {
+        response = await this.streamApiCall(client, model, agent, thread, data.messages, subscriber)
+      } catch (streamError: any) {
+        // If streaming fails, fallback to non-streaming
+        this.interactor.debug(`⚠️ Streaming failed (${streamError.message}), falling back to non-streaming mode...`)
+        response = await this.nonStreamApiCall(client, model, agent, data.messages)
+      }
 
       this.updateUsage(response.usage, agent, model, thread)
 
@@ -254,6 +257,133 @@ export class OpenaiClient extends AiClient {
     } catch (error: any) {
       this.handleError(error, subscriber, this.aiProviderConfig.name)
     }
+  }
+
+  /**
+   * Make the API call using streaming for progressive text display
+   * @param client OpenAI client
+   * @param model AI model configuration
+   * @param agent Current agent
+   * @param thread AI thread
+   * @param messages Thread messages
+   * @param subscriber Subject to emit TextChunkEvent for progressive display
+   * @returns Complete ChatCompletion response
+   */
+  private async streamApiCall(
+    client: OpenAI,
+    model: AiModel,
+    agent: Agent,
+    thread: AiThread,
+    messages: ThreadMessage[],
+    subscriber: Subject<CodayEvent>
+  ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+    const stream = await client.chat.completions.create({
+      model: model.name,
+      messages: this.toOpenAiMessage(agent, messages),
+      tools: this.truncateToolsIfNeeded(agent.tools.getTools()),
+      max_completion_tokens: agent.definition.maxOutputTokens ?? model.maxOutputTokens ?? undefined,
+      temperature: agent.definition.temperature ?? model.temperature ?? 0.8,
+      stream: true, // Enable streaming
+    })
+
+    // Accumulate response data to reconstruct full completion
+    let fullContent = ''
+    const toolCalls: OpenAI.Chat.Completions.ChatCompletionMessageToolCall[] = []
+    let finishReason: string | null = null
+    let usage: OpenAI.Completions.CompletionUsage | undefined
+
+    // Process stream chunks
+    for await (const chunk of stream) {
+      // Check for interruption
+      if (!this.shouldProceed(thread)) {
+        throw new Error('Stream interrupted by user')
+      }
+
+      const delta = chunk.choices[0]?.delta
+
+      // Emit text chunks progressively
+      if (delta?.content) {
+        fullContent += delta.content
+        subscriber.next(new TextChunkEvent({ chunk: delta.content }))
+      }
+
+      // Accumulate tool calls
+      if (delta?.tool_calls) {
+        for (const toolCallDelta of delta.tool_calls) {
+          const index = toolCallDelta.index
+          if (!toolCalls[index]) {
+            toolCalls[index] = {
+              id: toolCallDelta.id || '',
+              type: 'function',
+              function: { name: '', arguments: '' },
+            }
+          }
+          if (toolCallDelta.id) toolCalls[index].id = toolCallDelta.id
+          if (toolCallDelta.function?.name) {
+            toolCalls[index].function.name += toolCallDelta.function.name
+          }
+          if (toolCallDelta.function?.arguments) {
+            toolCalls[index].function.arguments += toolCallDelta.function.arguments
+          }
+        }
+      }
+
+      // Capture finish reason
+      if (chunk.choices[0]?.finish_reason) {
+        finishReason = chunk.choices[0].finish_reason
+      }
+
+      // Capture usage if available (usually in last chunk)
+      if (chunk.usage) {
+        usage = chunk.usage
+      }
+    }
+
+    // Reconstruct full completion response
+    const completion: OpenAI.Chat.Completions.ChatCompletion = {
+      id: 'chatcmpl-stream',
+      object: 'chat.completion',
+      created: Math.floor(Date.now() / 1000),
+      model: model.name,
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: fullContent || null,
+            tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+          },
+          finish_reason: (finishReason as any) || 'stop',
+        },
+      ],
+      usage,
+    }
+
+    return completion
+  }
+
+  /**
+   * Make the API call without streaming (fallback mode)
+   * @param client OpenAI client
+   * @param model AI model configuration
+   * @param agent Current agent
+   * @param messages Thread messages
+   * @returns Complete ChatCompletion response
+   */
+  private async nonStreamApiCall(
+    client: OpenAI,
+    model: AiModel,
+    agent: Agent,
+    messages: ThreadMessage[]
+  ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+    return await client.chat.completions.create({
+      model: model.name,
+      messages: this.toOpenAiMessage(agent, messages),
+      tools: this.truncateToolsIfNeeded(agent.tools.getTools()),
+      max_completion_tokens: agent.definition.maxOutputTokens ?? model.maxOutputTokens ?? undefined,
+      temperature: agent.definition.temperature ?? model.temperature ?? 0.8,
+      stream: false, // Explicitly disable streaming
+    })
   }
 
   private updateUsage(usage: any, _agent: Agent, model: AiModel, thread: AiThread): void {
