@@ -4,6 +4,18 @@
     <mat-icon>menu</mat-icon>
   </button>
 
+  <!-- Floating New Thread Button (below hamburger) -->
+  <button
+    mat-icon-button
+    class="sidenav-new-thread-btn"
+    (click)="createNewThread()"
+    title="Start a new thread"
+    type="button"
+    [disabled]="!selectedProjectName()"
+  >
+    <mat-icon fontSet="material-icons-outlined">play_circle</mat-icon>
+  </button>
+
   <!-- Floating Logo Button at Bottom -->
   @if (!isOpen) {
     <a
