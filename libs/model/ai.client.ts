@@ -37,8 +37,8 @@ export abstract class AiClient {
   protected username?: string
 
   // Timer management for proper cleanup
-  private activeThinkingIntervals: Set<NodeJS.Timeout> = new Set()
-  private activeDelays: Set<NodeJS.Timeout> = new Set()
+  private readonly activeThinkingIntervals: Set<NodeJS.Timeout> = new Set()
+  private readonly activeDelays: Set<NodeJS.Timeout> = new Set()
   private isShuttingDown = false
 
   protected constructor(
@@ -50,7 +50,7 @@ export abstract class AiClient {
   }
 
   protected mergeModels(models: AiModel[]): void {
-    const modelsByAliasOrName = new Map<string, AiModel>(models.map((m) => [m.alias || m.name, m]))
+    const modelsByAliasOrName = new Map<string, AiModel>(models.map((m) => [m.alias ?? m.name, m]))
     this.aiProviderConfig.models?.forEach((m) => modelsByAliasOrName.set(m.alias ?? m.name, m))
     this.models = Array.from(modelsByAliasOrName.values())
   }
@@ -154,6 +154,12 @@ export abstract class AiClient {
     return async (messages: ThreadMessage[]): Promise<SummaryEvent> => {
       this.interactor.debug(`🗜️ Starting compaction for ${messages.length} messages (budget: ${maxChars} chars)`)
 
+      // If budget is too small, return standard message
+      if (maxChars < 500) {
+        this.interactor.warn(`⚠️ Budget too small for compaction (${maxChars} chars). ` + 'Using truncation marker.')
+        return new SummaryEvent({ summary: '[Previous conversation truncated due to context window constraints]' })
+      }
+
       // Build the initial transcript
       const fullTranscript = messages
         // without the tool request and response, hypothesis is we can do without and simply the "text"
@@ -166,13 +172,16 @@ export abstract class AiClient {
           `(${fullTranscript.length} chars)`
       )
 
-      const summaryBudget = Math.floor(maxChars / 20)
+      const summaryBudget = Math.max(100, Math.floor(maxChars / 20))
 
       // Calculate safe transcript size
       // Account for: prompt template (~150 chars) + response budget + safety margin (20%)
       const promptTemplateOverhead = 150
       const safetyMargin = 0.2
-      const maxTranscriptChars = Math.floor((maxChars - promptTemplateOverhead - summaryBudget) * (1 - safetyMargin))
+      const maxTranscriptChars = Math.max(
+        0,
+        Math.floor((maxChars - promptTemplateOverhead - summaryBudget) * (1 - safetyMargin))
+      )
 
       this.interactor.debug(
         `📊 Compaction budget: summary=${summaryBudget} chars, ` +
@@ -224,14 +233,14 @@ It can be summarized as:
           `✅ Compaction successful: ${messages.length} messages → ${summary.length} chars summary${truncatedInfo}`
         )
       } catch (e) {
-        summary = '...previous conversation truncated'
+        summary = '[Previous conversation - compaction failed, recent messages available]'
         console.error('Compaction failed:', e)
 
         const errorDetails = e instanceof Error ? e.message : 'Unknown error'
         this.interactor.warn(
           `❌ Compaction failed (${errorDetails}). ` +
             `Transcript: ${transcript.length} chars, Budget: ${maxChars} chars. ` +
-            'Using fallback truncation message.'
+            'Using truncation marker.'
         )
       }
 
@@ -277,7 +286,7 @@ It can be summarized as:
       subscriber.next(messageEvent)
       return messageEvent.timestamp
     }
-    return
+    return undefined
   }
 
   protected async shouldProcessAgainAfterResponse(
