@@ -420,9 +420,10 @@ export class AiThread {
   /**
    * Fork a thread, optionally for a specific agent
    * @param agentName Optional name of the agent to delegate to
+   * @param cleanContext If true, create an empty thread without parent messages (default: false)
    * @returns Forked AiThread instance
    */
-  fork(agentName?: string | null): AiThread {
+  fork(agentName?: string | null, cleanContext: boolean = false): AiThread {
     // Check if a forked thread for this agent already exists
     const existingForkedThread = this.forkedThreads.get(agentName ?? null)
     if (existingForkedThread) {
@@ -436,11 +437,11 @@ export class AiThread {
       username: this.username,
       projectId: this.projectId,
       name: agentName ? `${this.name} - Delegated to ${agentName}` : `${this.name} - Forked`,
-      summary: this.summary,
+      summary: cleanContext ? '' : this.summary, // Empty summary in clean context mode
       createdDate: this.createdDate,
       modifiedDate: new Date().toISOString(),
       price: 0,
-      messages: [...this.messages], // Create a new array reference
+      messages: cleanContext ? [] : [...this.messages], // Empty messages in clean context mode
     })
 
     // Increment delegation depth (non-serializable)
