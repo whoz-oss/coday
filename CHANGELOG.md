@@ -1,3 +1,13 @@
+## 0.50.1 (2025-12-02)
+
+### 🩹 Fixes
+
+- #359 OpenAI thread auto-naming and compaction improvements ([#363](https://github.com/whoz-oss/coday/pull/363), [#359](https://github.com/whoz-oss/coday/issues/359))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.50.0 (2025-12-01)
 
 ### 🚀 Features
