@@ -8,8 +8,10 @@ sealed interface MessageContent {
     /**
      * Plain text content.
      */
-    data class Text(val content: String) : MessageContent
-    
+    data class Text(
+        val content: String,
+    ) : MessageContent
+
     /**
      * Image content (base64 encoded).
      */
@@ -17,6 +19,6 @@ sealed interface MessageContent {
         val content: String, // base64 encoded
         val mimeType: String,
         val width: Int? = null,
-        val height: Int? = null
+        val height: Int? = null,
     ) : MessageContent
 }
