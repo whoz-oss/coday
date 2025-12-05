@@ -140,6 +140,118 @@ class CaseTest {
         assertTrue(services.caseService.savedCases.all { it.status == CaseStatus.PENDING })
     }
 
+    @Test
+    fun `addUserMessage with answerToEventId should create AnswerEvent`() =
+        runBlocking {
+            // Arrange
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            val services = FakeCaseServices()
+
+            val questionEvent =
+                QuestionEvent(
+                    projectId = projectId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = "TestAgent",
+                    question = "Do you approve?",
+                    options = listOf("Yes", "No"),
+                )
+
+            // Save the question event first
+            val savedQuestion = services.eventService.save(questionEvent)
+
+            val case =
+                Case(
+                    id = caseId,
+                    projectId = projectId,
+                    agentService = services.agentService,
+                    caseService = services.caseService,
+                    caseEventService = services.eventService,
+                    inputEvents = listOf(savedQuestion),
+                )
+
+            val actor =
+                Actor(
+                    id = "user-1",
+                    displayName = "Test User",
+                    role = ActorRole.USER,
+                )
+
+            val content = listOf(MessageContent.Text("Yes"))
+
+            // Act
+            case.addUserMessage(actor, content, answerToEventId = savedQuestion.id)
+
+            // Assert
+            val savedAnswers =
+                services.eventService.savedEvents
+                    .filterIsInstance<AnswerEvent>()
+                    .filter { it.questionId == savedQuestion.id }
+
+            assertEquals(1, savedAnswers.size)
+            val answer = savedAnswers.first()
+            assertEquals(savedQuestion.id, answer.questionId)
+            assertEquals("Yes", answer.answer)
+            assertEquals(actor, answer.actor)
+        }
+
+    @Test
+    fun `addUserMessage should extract answer text from multiple content items`() =
+        runBlocking {
+            // Arrange
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            val services = FakeCaseServices()
+
+            val questionEvent =
+                QuestionEvent(
+                    projectId = projectId,
+                    caseId = caseId,
+                    agentId = agentId,
+                    agentName = "TestAgent",
+                    question = "What is your name?",
+                )
+
+            val savedQuestion = services.eventService.save(questionEvent)
+
+            val case =
+                Case(
+                    id = caseId,
+                    projectId = projectId,
+                    agentService = services.agentService,
+                    caseService = services.caseService,
+                    caseEventService = services.eventService,
+                    inputEvents = listOf(savedQuestion),
+                )
+
+            val actor =
+                Actor(
+                    id = "user-1",
+                    displayName = "Test User",
+                    role = ActorRole.USER,
+                )
+
+            // Multiple text content items
+            val content =
+                listOf(
+                    MessageContent.Text("My name is"),
+                    MessageContent.Text("John Doe"),
+                )
+
+            // Act
+            case.addUserMessage(actor, content, answerToEventId = savedQuestion.id)
+
+            // Assert
+            val savedAnswers =
+                services.eventService.savedEvents
+                    .filterIsInstance<AnswerEvent>()
+
+            assertEquals(1, savedAnswers.size)
+            val answer = savedAnswers.first()
+            assertEquals("My name is John Doe", answer.answer)
+        }
+
     // Note: The following tests for addUserMessage are skipped because addUserMessage() calls run()
     // which contains TODO() and would block. These tests will be enabled once run() is fully implemented.
 
@@ -370,10 +482,6 @@ class FakeCaseServices {
 
 class FakeAgentService : IAgentService {
     private val agents = mutableMapOf<String, IAgent>()
-
-    fun registerAgent(agent: IAgent) {
-        agents[agent.name] = agent
-    }
 
     override fun findAgentByName(namePart: String): IAgent =
         agents[namePart] ?: throw IllegalArgumentException("Agent not found: $namePart")
