@@ -1,10 +1,6 @@
 package io.biznet.agentos.orchestration
 
 import jdk.internal.joptsimple.internal.Messages.message
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import org.slf4j.LoggerFactory
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
@@ -30,54 +26,17 @@ class Case(
      * List sorted by timestamp of the events on the case. Sort order to keep.
      */
     inputEvents: List<CaseEvent> = emptyList(),
-) {
-    private val caseEvents = inputEvents.sortedBy { it.timestamp }.toMutableList()
+) : CaseEventEmitter by DefaultCaseEventEmitter() {
+    private val eventList = InMemoryCaseEventList(inputEvents)
 
     private val logger = LoggerFactory.getLogger(Case::class.java)
-
-    // Hot observable for case events
-    private val _events =
-        MutableSharedFlow<CaseEvent>(
-            replay = 0, // No replay - reconnection handled separately
-            extraBufferCapacity = 100, // Buffer for slow consumers
-            onBufferOverflow = BufferOverflow.DROP_OLDEST, // Never block the case
-        )
-
-    /**
-     * Observable flow of case events.
-     * This is a hot flow - events are emitted regardless of collectors.
-     */
-    val events: SharedFlow<CaseEvent> = _events.asSharedFlow()
 
     // Stop flag for graceful shutdown
     private val stopRequested = AtomicBoolean(false)
 
-    /**
-     * Emit an event to all collectors.
-     * Non-blocking - uses tryEmit to avoid suspending the case thread.
-     */
-    private fun emit(event: CaseEvent) {
-        logger.debug("[Case $id] Emitting event: ${event::class.simpleName}")
-        val emitted = _events.tryEmit(event)
-        if (!emitted) {
-            logger.warn("[Case $id] Event dropped due to buffer overflow: ${event::class.simpleName}")
-        }
-    }
-
     private fun storeAndEmitEvent(event: CaseEvent) {
-        // find the index at which to insert the event, starting by the end
-        // Events are sorted by timestamp (ascending order)
-        var insertIndex = caseEvents.size
-        for (i in caseEvents.lastIndex downTo 0) {
-            if (caseEvents[i].timestamp <= event.timestamp) {
-                insertIndex = i + 1
-                break
-            }
-            insertIndex = i
-        }
         val savedEvent = caseEventService.save(event)
-        caseEvents.add(insertIndex, savedEvent)
-        logger.debug("[Case $id] Event stored at index $insertIndex: ${event::class.simpleName}")
+        eventList.add(savedEvent)
         emit(savedEvent)
     }
 
@@ -198,7 +157,7 @@ class Case(
     }
 
     private fun runAgent(agent: IAgent) {
-        agent.run(caseEvents)
+        agent.run(eventList.getAll())
         TODO("handle the expected flow of CaseEvents")
     }
 
@@ -212,8 +171,9 @@ class Case(
      */
     private fun processNextStep() {
         // get through events by last one
-        for (i in caseEvents.lastIndex downTo 0) {
-            val event = caseEvents[i]
+        val events = eventList.getAll()
+        for (i in events.lastIndex downTo 0) {
+            val event = events[i]
             when (event) {
                 // if agent finished, just stop
                 is AgentFinishedEvent -> {
