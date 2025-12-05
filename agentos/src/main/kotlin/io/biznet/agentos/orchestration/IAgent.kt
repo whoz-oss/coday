@@ -1,10 +1,20 @@
 package io.biznet.agentos.orchestration
 
+import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 
 interface IAgent {
     val id: UUID
     val name: String
 
-    fun run(events: List<CaseEvent>)
+    /**
+     * Run the agent with the given case events.
+     * Returns a Flow of CaseEvents that are emitted during execution:
+     * - ThinkingEvent when processing
+     * - ToolRequestEvent when calling a tool
+     * - ToolResponseEvent when tool execution completes
+     * - MessageEvent for agent responses
+     * - AgentFinishedEvent when done
+     */
+    fun run(events: List<CaseEvent>): Flow<CaseEvent>
 }

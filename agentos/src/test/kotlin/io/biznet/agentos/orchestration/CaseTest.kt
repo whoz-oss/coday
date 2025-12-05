@@ -1,5 +1,6 @@
 package io.biznet.agentos.orchestration
 
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -16,53 +17,57 @@ class CaseTest {
     private val projectId = UUID.randomUUID()
 
     @Test
-    fun `stop should update status to STOPPING and set stop flag`() = runBlocking {
-        val services = FakeCaseServices()
-        val case = Case(
-            projectId = projectId,
-            agentService = services.agentService,
-            caseService = services.caseService,
-            caseEventService = services.eventService,
-        )
+    fun `stop should update status to STOPPING and set stop flag`() =
+        runBlocking {
+            val services = FakeCaseServices()
+            val case =
+                Case(
+                    projectId = projectId,
+                    agentService = services.agentService,
+                    caseService = services.caseService,
+                    caseEventService = services.eventService,
+                )
 
-        // Collect emitted events
-        val emittedEvents = mutableListOf<CaseEvent>()
-        val job = launch {
-            case.events.take(1).toList(emittedEvents)
+            // Collect emitted events
+            val emittedEvents = mutableListOf<CaseEvent>()
+            val job =
+                launch {
+                    case.events.take(1).toList(emittedEvents)
+                }
+
+            kotlinx.coroutines.delay(100)
+
+            // Act
+            case.stop()
+
+            job.join()
+
+            // Assert - Status event emitted
+            assertEquals(1, emittedEvents.size)
+            val statusEvent = emittedEvents[0] as CaseStatusEvent
+            assertEquals(CaseStatus.STOPPING, statusEvent.status)
+            assertEquals(case.id, statusEvent.caseId)
+            assertEquals(projectId, statusEvent.projectId)
+
+            // Assert - Case saved with new status
+            val savedCase = services.caseService.savedCases.last()
+            assertEquals(case.id, savedCase.id)
+            assertEquals(projectId, savedCase.projectId)
+            assertEquals(CaseStatus.STOPPING, savedCase.status)
         }
-
-        kotlinx.coroutines.delay(100)
-
-        // Act
-        case.stop()
-
-        job.join()
-
-        // Assert - Status event emitted
-        assertEquals(1, emittedEvents.size)
-        val statusEvent = emittedEvents[0] as CaseStatusEvent
-        assertEquals(CaseStatus.STOPPING, statusEvent.status)
-        assertEquals(case.id, statusEvent.caseId)
-        assertEquals(projectId, statusEvent.projectId)
-
-        // Assert - Case saved with new status
-        val savedCase = services.caseService.savedCases.last()
-        assertEquals(case.id, savedCase.id)
-        assertEquals(projectId, savedCase.projectId)
-        assertEquals(CaseStatus.STOPPING, savedCase.status)
-    }
 
     @Test
     fun `save should call caseService with correct CaseModel`() {
         val services = FakeCaseServices()
         val caseId = UUID.randomUUID()
-        val case = Case(
-            id = caseId,
-            projectId = projectId,
-            agentService = services.agentService,
-            caseService = services.caseService,
-            caseEventService = services.eventService,
-        )
+        val case =
+            Case(
+                id = caseId,
+                projectId = projectId,
+                agentService = services.agentService,
+                caseService = services.caseService,
+                caseEventService = services.eventService,
+            )
 
         // Act
         case.save()
@@ -76,49 +81,53 @@ class CaseTest {
     }
 
     @Test
-    fun `updateStatus via stop should emit CaseStatusEvent and save case`() = runBlocking {
-        val services = FakeCaseServices()
-        val case = Case(
-            projectId = projectId,
-            agentService = services.agentService,
-            caseService = services.caseService,
-            caseEventService = services.eventService,
-        )
+    fun `updateStatus via stop should emit CaseStatusEvent and save case`() =
+        runBlocking {
+            val services = FakeCaseServices()
+            val case =
+                Case(
+                    projectId = projectId,
+                    agentService = services.agentService,
+                    caseService = services.caseService,
+                    caseEventService = services.eventService,
+                )
 
-        // Collect emitted events
-        val emittedEvents = mutableListOf<CaseEvent>()
-        val job = launch {
-            case.events.take(1).toList(emittedEvents)
+            // Collect emitted events
+            val emittedEvents = mutableListOf<CaseEvent>()
+            val job =
+                launch {
+                    case.events.take(1).toList(emittedEvents)
+                }
+
+            kotlinx.coroutines.delay(100)
+
+            // Act - stop() triggers updateStatus(STOPPING)
+            case.stop()
+
+            job.join()
+
+            // Assert - Event emitted
+            assertEquals(1, emittedEvents.size)
+            assertTrue(emittedEvents[0] is CaseStatusEvent)
+            val statusEvent = emittedEvents[0] as CaseStatusEvent
+            assertEquals(CaseStatus.STOPPING, statusEvent.status)
+
+            // Assert - Case saved
+            assertTrue(services.caseService.savedCases.isNotEmpty())
+            val savedCase = services.caseService.savedCases.last()
+            assertEquals(CaseStatus.STOPPING, savedCase.status)
         }
-
-        kotlinx.coroutines.delay(100)
-
-        // Act - stop() triggers updateStatus(STOPPING)
-        case.stop()
-
-        job.join()
-
-        // Assert - Event emitted
-        assertEquals(1, emittedEvents.size)
-        assertTrue(emittedEvents[0] is CaseStatusEvent)
-        val statusEvent = emittedEvents[0] as CaseStatusEvent
-        assertEquals(CaseStatus.STOPPING, statusEvent.status)
-
-        // Assert - Case saved
-        assertTrue(services.caseService.savedCases.isNotEmpty())
-        val savedCase = services.caseService.savedCases.last()
-        assertEquals(CaseStatus.STOPPING, savedCase.status)
-    }
 
     @Test
     fun `save should persist case without emitting events`() {
         val services = FakeCaseServices()
-        val case = Case(
-            projectId = projectId,
-            agentService = services.agentService,
-            caseService = services.caseService,
-            caseEventService = services.eventService,
-        )
+        val case =
+            Case(
+                projectId = projectId,
+                agentService = services.agentService,
+                caseService = services.caseService,
+                caseEventService = services.eventService,
+            )
 
         // Act - Multiple saves
         case.save()
@@ -126,14 +135,14 @@ class CaseTest {
 
         // Assert - Multiple saves recorded
         assertEquals(2, services.caseService.savedCases.size)
-        
+
         // Assert - All saves have same status (PENDING, unchanged)
         assertTrue(services.caseService.savedCases.all { it.status == CaseStatus.PENDING })
     }
 
     // Note: The following tests for addUserMessage are skipped because addUserMessage() calls run()
     // which contains TODO() and would block. These tests will be enabled once run() is fully implemented.
-    
+
     /*
     @Test
     fun `addUserMessage should create and emit MessageEvent without agent mention`() = runBlocking {
@@ -169,7 +178,7 @@ class CaseTest {
 
         // Wait a bit for events to be emitted before run() loop
         kotlinx.coroutines.delay(500)
-        
+
         // Stop the case to exit run() loop
         case.stop()
 
@@ -178,7 +187,7 @@ class CaseTest {
         // Assert - MessageEvent was emitted
         val messageEvents = emittedEvents.filterIsInstance<MessageEvent>()
         assertTrue(messageEvents.isNotEmpty(), "Should have emitted at least one MessageEvent")
-        
+
         val messageEvent = messageEvents.first()
         assertEquals(actor, messageEvent.actor)
         assertEquals(content, messageEvent.content)
@@ -192,7 +201,7 @@ class CaseTest {
     @Test
     fun `detectAgentSelection should emit AgentSelectedEvent when agent is found`() = runBlocking {
         val services = FakeCaseServices()
-        
+
         // Register a test agent
         val testAgent = FakeAgent(
             id = UUID.randomUUID(),
@@ -235,7 +244,7 @@ class CaseTest {
         // Assert - AgentSelectedEvent was emitted
         val agentSelectedEvents = emittedEvents.filterIsInstance<AgentSelectedEvent>()
         assertTrue(agentSelectedEvents.isNotEmpty(), "Should have emitted AgentSelectedEvent")
-        
+
         val agentSelectedEvent = agentSelectedEvents.first()
         assertEquals(testAgent.id, agentSelectedEvent.agentId)
         assertEquals(testAgent.name, agentSelectedEvent.agentName)
@@ -286,7 +295,7 @@ class CaseTest {
         // Assert - WarnEvent was emitted
         val warnEvents = emittedEvents.filterIsInstance<WarnEvent>()
         assertTrue(warnEvents.isNotEmpty(), "Should have emitted WarnEvent")
-        
+
         val warnEvent = warnEvents.first()
         assertTrue(warnEvent.message.contains("UnknownAgent"))
         assertTrue(warnEvent.message.contains("not found"))
@@ -335,18 +344,18 @@ class CaseTest {
         // Assert - No AgentSelectedEvent or WarnEvent
         val agentSelectedEvents = emittedEvents.filterIsInstance<AgentSelectedEvent>()
         assertTrue(agentSelectedEvents.isEmpty(), "Should not emit AgentSelectedEvent")
-        
+
         val warnEvents = emittedEvents.filterIsInstance<WarnEvent>()
         assertTrue(warnEvents.isEmpty(), "Should not emit WarnEvent")
 
         // Assert - Only MessageEvent and StatusEvent
         val messageEvents = emittedEvents.filterIsInstance<MessageEvent>()
         assertTrue(messageEvents.isNotEmpty())
-        
+
         val statusEvents = emittedEvents.filterIsInstance<CaseStatusEvent>()
         assertTrue(statusEvents.isNotEmpty())
     }
-    */
+     */
 }
 
 /**
@@ -366,8 +375,17 @@ class FakeAgentService : IAgentService {
         agents[agent.name] = agent
     }
 
-    override fun findAgentByName(namePart: String): IAgent {
-        return agents[namePart] ?: throw IllegalArgumentException("Agent not found: $namePart")
+    override fun findAgentByName(namePart: String): IAgent =
+        agents[namePart] ?: throw IllegalArgumentException("Agent not found: $namePart")
+
+    override fun getDefaultAgent(): IAgent? = null
+
+    override suspend fun cleanup() {
+        // Fake cleanup - do nothing
+    }
+
+    override suspend fun kill() {
+        // Fake kill - do nothing
     }
 }
 
@@ -391,12 +409,21 @@ class FakeCaseEventService : ICaseEventService {
 
 class FakeAgent(
     override val id: UUID,
-    override val name: String
+    override val name: String,
 ) : IAgent {
     val runCallCount = mutableListOf<List<CaseEvent>>()
 
-    override fun run(events: List<CaseEvent>) {
-        runCallCount.add(events)
-        // Fake agent does nothing
-    }
+    override fun run(events: List<CaseEvent>) =
+        flow {
+            runCallCount.add(events)
+            // Fake agent emits a finished event
+            emit(
+                AgentFinishedEvent(
+                    projectId = events.firstOrNull()?.projectId ?: UUID.randomUUID(),
+                    caseId = events.firstOrNull()?.caseId ?: UUID.randomUUID(),
+                    agentId = id,
+                    agentName = name,
+                ),
+            )
+        }
 }

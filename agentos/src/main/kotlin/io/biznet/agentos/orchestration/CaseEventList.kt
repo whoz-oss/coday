@@ -1,6 +1,7 @@
 package io.biznet.agentos.orchestration
 
 import org.slf4j.LoggerFactory
+import java.util.UUID
 
 /**
  * Interface for maintaining an ordered list of case events in memory.
@@ -17,11 +18,18 @@ interface CaseEventList {
      * Get all events in the list (read-only view).
      */
     fun getAll(): List<CaseEvent>
+
+    /**
+     * Get an event by its ID.
+     * @return The event if found, null otherwise.
+     */
+    fun getById(id: UUID): CaseEvent?
 }
 
 /**
  * Default in-memory implementation of CaseEventList.
  * Maintains events sorted by timestamp for efficient chronological access.
+ * Also maintains an index by ID for O(1) lookups.
  * This is runtime state only - persistence is handled by ICaseEventService.
  */
 class InMemoryCaseEventList(
@@ -33,6 +41,11 @@ class InMemoryCaseEventList(
      * List sorted by timestamp of the events. Sort order must be maintained.
      */
     private val events = inputEvents.sortedBy { it.timestamp }.toMutableList()
+
+    /**
+     * Map of events by ID for O(1) lookups.
+     */
+    private val eventsById = inputEvents.associateBy { it.id }.toMutableMap()
 
     /**
      * Add an event to the list, maintaining chronological order.
@@ -51,6 +64,7 @@ class InMemoryCaseEventList(
             insertIndex = i
         }
         events.add(insertIndex, event)
+        eventsById[event.id] = event
         logger.debug("[Case ${event.caseId}] Event added at index $insertIndex: ${event::class.simpleName}")
     }
 
@@ -58,4 +72,10 @@ class InMemoryCaseEventList(
      * Get all events in the list (read-only view).
      */
     override fun getAll(): List<CaseEvent> = events.toList()
+
+    /**
+     * Get an event by its ID.
+     * @return The event if found, null otherwise.
+     */
+    override fun getById(id: UUID): CaseEvent? = eventsById[id]
 }
