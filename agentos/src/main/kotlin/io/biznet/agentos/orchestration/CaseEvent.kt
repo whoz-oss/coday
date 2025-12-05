@@ -20,6 +20,8 @@ enum class CaseEventType(
     AGENT_RUNNING("agent_running"),
     WARN("warning"),
     ERROR("error"),
+    QUESTION("question"),
+    ANSWER("answer"),
 }
 
 /**
@@ -149,4 +151,53 @@ data class ThinkingEvent(
     override val timestamp: Instant = Instant.now(),
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.THINKING
+}
+
+/**
+ * Emitted when an agent asks a question to the user via a tool.
+ * The user can respond asynchronously via an AnswerEvent.
+ */
+data class QuestionEvent(
+    override val id: UUID = UUID.randomUUID(),
+    override val projectId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    val agentId: UUID,
+    val agentName: String,
+    val question: String,
+    val options: List<String>? = null, // Optional choices for the user
+) : CaseEvent {
+    override val type: CaseEventType = CaseEventType.QUESTION
+
+    /**
+     * Create an AnswerEvent that references this question.
+     */
+    fun createAnswer(
+        actor: Actor,
+        answer: String,
+    ): AnswerEvent {
+        return AnswerEvent(
+            projectId = projectId,
+            caseId = caseId,
+            questionId = id,
+            actor = actor,
+            answer = answer,
+        )
+    }
+}
+
+/**
+ * Emitted when a user responds to a QuestionEvent.
+ * References the original question via questionId.
+ */
+data class AnswerEvent(
+    override val id: UUID = UUID.randomUUID(),
+    override val projectId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    val questionId: UUID,
+    val actor: Actor,
+    val answer: String,
+) : CaseEvent {
+    override val type: CaseEventType = CaseEventType.ANSWER
 }

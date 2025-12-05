@@ -130,6 +130,69 @@ class InMemoryCaseEventListTest {
         assertEquals(events1, events2)
     }
 
+    @Test
+    fun `getById should return event when it exists`() {
+        val eventList = InMemoryCaseEventList()
+        val event1 = createMessageEvent(timestamp = Instant.ofEpochMilli(1000))
+        val event2 = createMessageEvent(timestamp = Instant.ofEpochMilli(2000))
+        val event3 = createMessageEvent(timestamp = Instant.ofEpochMilli(3000))
+
+        eventList.add(event1)
+        eventList.add(event2)
+        eventList.add(event3)
+
+        // Should find each event by ID
+        assertEquals(event1, eventList.getById(event1.id))
+        assertEquals(event2, eventList.getById(event2.id))
+        assertEquals(event3, eventList.getById(event3.id))
+    }
+
+    @Test
+    fun `getById should return null when event does not exist`() {
+        val eventList = InMemoryCaseEventList()
+        val event = createMessageEvent(timestamp = Instant.ofEpochMilli(1000))
+
+        eventList.add(event)
+
+        // Should return null for non-existent ID
+        val nonExistentId = UUID.randomUUID()
+        assertEquals(null, eventList.getById(nonExistentId))
+    }
+
+    @Test
+    fun `getById should work with input events`() {
+        val event1 = createMessageEvent(timestamp = Instant.ofEpochMilli(1000))
+        val event2 = createMessageEvent(timestamp = Instant.ofEpochMilli(2000))
+
+        // Initialize with events
+        val eventList = InMemoryCaseEventList(listOf(event1, event2))
+
+        // Should find events that were passed in constructor
+        assertEquals(event1, eventList.getById(event1.id))
+        assertEquals(event2, eventList.getById(event2.id))
+    }
+
+    @Test
+    fun `getById should be O(1) efficient`() {
+        val eventList = InMemoryCaseEventList()
+        
+        // Add many events
+        val events = (1..1000).map { i ->
+            createMessageEvent(timestamp = Instant.ofEpochMilli(i.toLong()))
+        }
+        events.forEach { eventList.add(it) }
+
+        // Lookup should be fast even with many events
+        val targetEvent = events[500]
+        val startTime = System.nanoTime()
+        val foundEvent = eventList.getById(targetEvent.id)
+        val duration = System.nanoTime() - startTime
+
+        assertEquals(targetEvent, foundEvent)
+        // Should be very fast (less than 1ms even on slow machines)
+        assert(duration < 1_000_000) { "Lookup took ${duration}ns, expected < 1ms" }
+    }
+
     private fun createMessageEvent(timestamp: Instant): MessageEvent {
         return MessageEvent(
             projectId = projectId,
