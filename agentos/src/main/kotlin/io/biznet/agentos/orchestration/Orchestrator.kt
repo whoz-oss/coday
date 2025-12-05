@@ -4,8 +4,8 @@ import io.biznet.agentos.orchestration.substep.intention.IntentionGenerator
 import io.biznet.agentos.orchestration.substep.parameter.InsideParameter
 import io.biznet.agentos.orchestration.substep.parameter.InsideParameterContext
 import io.biznet.agentos.thought.Case
-import io.biznet.agentos.thought.Step
 import io.biznet.agentos.thought.Channel
+import io.biznet.agentos.thought.Step
 import io.biznet.agentos.tool.Parameter
 import io.biznet.agentos.tool.Tool
 import io.biznet.agentos.tool.answer.AnswerParameter
@@ -28,9 +28,19 @@ class Orchestrator(
     ): String {
         val channel =
             conversations[conversationId]?.also { thought ->
-                if(thought.cases.last().steps.last().toolChoice.toolName == "Answer") {
+                if (thought.cases
+                        .last()
+                        .steps
+                        .last()
+                        .toolChoice.toolName == "Answer"
+                ) {
                     thought.cases.add(Case(message))
-                } else if (thought.cases.last().steps.last().toolResponse == null) {
+                } else if (thought.cases
+                        .last()
+                        .steps
+                        .last()
+                        .toolResponse == null
+                ) {
                     thought.cases
                         .last()
                         .steps
@@ -54,10 +64,15 @@ class Orchestrator(
             getNextStep(channel, chatClient)
         }
 
-        return (channel.cases
-            .lastOrNull()
-            ?.steps
-            ?.lastOrNull()?.parameter?.responseEntity!!.entity as AnswerParameter).answer
+        return (
+            channel.cases
+                .lastOrNull()
+                ?.steps
+                ?.lastOrNull()
+                ?.parameter
+                ?.responseEntity!!
+                .entity as AnswerParameter
+        ).answer
     }
 
     fun hasId(id: UUID): Boolean = conversations.contains(id)
@@ -97,7 +112,10 @@ class Orchestrator(
                 toolResponse = response.response,
             )
 
-        channel.cases.last().steps.add(step)
+        channel.cases
+            .last()
+            .steps
+            .add(step)
 
         return step
     }
