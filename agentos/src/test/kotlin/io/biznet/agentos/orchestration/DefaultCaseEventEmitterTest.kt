@@ -9,11 +9,14 @@ import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.assertThrows
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
+@Timeout(value = 5, unit = TimeUnit.SECONDS)
 class DefaultCaseEventEmitterTest {
     private val projectId = UUID.randomUUID()
     private val caseId = UUID.randomUUID()

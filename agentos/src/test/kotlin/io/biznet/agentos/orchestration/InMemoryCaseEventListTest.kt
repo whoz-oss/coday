@@ -2,9 +2,12 @@ package io.biznet.agentos.orchestration
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
+@Timeout(value = 5, unit = TimeUnit.SECONDS)
 class InMemoryCaseEventListTest {
     private val projectId = UUID.randomUUID()
     private val caseId = UUID.randomUUID()
