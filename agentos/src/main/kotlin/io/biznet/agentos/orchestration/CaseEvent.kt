@@ -22,6 +22,8 @@ enum class CaseEventType(
     ERROR("error"),
     QUESTION("question"),
     ANSWER("answer"),
+    INTENTION_GENERATED("intention_generated"),
+    TOOL_SELECTED("tool_selected"),
 }
 
 /**
@@ -73,7 +75,6 @@ data class AgentSelectedEvent(
     override val type: CaseEventType = CaseEventType.AGENT_SELECTED
 }
 
-// todo: consider an AgentStatusEvent with SELECTED, FINISHED, ERROR ?
 data class AgentFinishedEvent(
     override val id: UUID = UUID.randomUUID(),
     override val projectId: UUID,
@@ -175,15 +176,14 @@ data class QuestionEvent(
     fun createAnswer(
         actor: Actor,
         answer: String,
-    ): AnswerEvent {
-        return AnswerEvent(
+    ): AnswerEvent =
+        AnswerEvent(
             projectId = projectId,
             caseId = caseId,
             questionId = id,
             actor = actor,
             answer = answer,
         )
-    }
 }
 
 /**
@@ -200,4 +200,34 @@ data class AnswerEvent(
     val answer: String,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.ANSWER
+}
+
+/**
+ * Emitted when an agent generates an intention for the next step.
+ * Used for observability and potential resumption of interrupted runs.
+ */
+data class IntentionGeneratedEvent(
+    override val id: UUID = UUID.randomUUID(),
+    override val projectId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    val agentId: UUID,
+    val intention: String,
+) : CaseEvent {
+    override val type: CaseEventType = CaseEventType.INTENTION_GENERATED
+}
+
+/**
+ * Emitted when an agent selects a tool to execute.
+ * Used for observability and debugging.
+ */
+data class ToolSelectedEvent(
+    override val id: UUID = UUID.randomUUID(),
+    override val projectId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    val agentId: UUID,
+    val toolName: String,
+) : CaseEvent {
+    override val type: CaseEventType = CaseEventType.TOOL_SELECTED
 }
