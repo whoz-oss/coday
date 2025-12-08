@@ -24,6 +24,7 @@ enum class CaseEventType(
     ANSWER("answer"),
     INTENTION_GENERATED("intention_generated"),
     TOOL_SELECTED("tool_selected"),
+    TEXT_CHUNK("text_chunk"),
 }
 
 /**
@@ -230,4 +231,18 @@ data class ToolSelectedEvent(
     val toolName: String,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.TOOL_SELECTED
+}
+
+/**
+ * Emitted during streaming text generation.
+ * Allows progressive display of agent responses.
+ */
+data class TextChunkEvent(
+    override val id: UUID = UUID.randomUUID(),
+    override val projectId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    val chunk: String,
+) : CaseEvent {
+    override val type: CaseEventType = CaseEventType.TEXT_CHUNK
 }
