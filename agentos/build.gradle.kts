@@ -46,6 +46,7 @@ dependencies {
     implementation("org.springframework.ai:spring-ai-starter-mcp-client")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+    testImplementation("io.mockk:mockk:1.13.8")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     // DevTools causes classloader issues with PF4J plugins
     // developmentOnly("org.springframework.boot:spring-boot-devtools")
