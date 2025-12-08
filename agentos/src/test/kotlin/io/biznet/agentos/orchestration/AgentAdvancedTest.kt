@@ -6,13 +6,16 @@ import io.mockk.mockk
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
-import java.util.*
+import java.util.UUID
+import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
+@Timeout(value = 5, unit = TimeUnit.SECONDS)
 class AgentAdvancedTest {
     @Test
     fun `should complete full orchestration loop with Answer tool`() =
