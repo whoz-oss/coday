@@ -30,7 +30,7 @@ data class EntityMetadata(
     val createdBy: String? = null,
     val modified: Instant = Instant.now(),
     val modifiedBy: String? = null,
-    val removed: Boolean = false,
+    var removed: Boolean = false,
 ) {
     fun markAsRemoved(): EntityMetadata = copy(removed = true)
 }

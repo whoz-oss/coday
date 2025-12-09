@@ -1,4 +1,4 @@
-package io.biznet.agentos.common
+package io.biznet.agentos.orchestration
 
 import org.slf4j.LoggerFactory
 import java.util.UUID
@@ -8,24 +8,23 @@ import java.util.concurrent.ConcurrentHashMap
  * Generic in-memory implementation of EntityRepository.
  *
  * Storage strategy:
- * - Entities are stored in a ConcurrentHashMap by entity ID for O(1) access
+ * - Entities are stored in a ConcurrentHashMap by entity ID (from metadata) for O(1) access
  * - A secondary index groups entities by parent ID for efficient parent lookups
  * - Entities are maintained in sorted order within each parent (using provided comparator)
+ * - Removed entities are excluded from queries
  *
  * Thread-safety:
  * - Uses ConcurrentHashMap for thread-safe access
- * - save() is synchronized to prevent race conditions during indexing
+ * - save() and deleteMany() are synchronized to prevent race conditions during indexing
  *
  * Type parameters:
- * @param T The entity type
+ * @param T The entity type (must implement Entity)
  * @param P The parent identifier type
  *
- * @param entityIdExtractor Function to extract the entity's ID
  * @param parentIdExtractor Function to extract the parent ID from the entity
  * @param comparator Comparator for ordering entities within a parent
  */
-abstract class InMemoryEntityRepository<T, P>(
-    private val entityIdExtractor: (T) -> UUID,
+abstract class InMemoryEntityRepository<T : Entity, P>(
     private val parentIdExtractor: (T) -> P,
     private val comparator: Comparator<T>,
 ) : EntityRepository<T, P> {
@@ -46,7 +45,7 @@ abstract class InMemoryEntityRepository<T, P>(
      */
     @Synchronized
     override fun save(entity: T): T {
-        val entityId = entityIdExtractor(entity)
+        val entityId = entity.metadata.id
         val parentId = parentIdExtractor(entity)
         val existing = entitiesById[entityId]
 
@@ -77,39 +76,44 @@ abstract class InMemoryEntityRepository<T, P>(
             parentEntityIds.add(insertIndex, entityId)
         }
 
-        logger.debug("[Parent $parentId] Entity saved: ${entity!!::class.simpleName} (id=$entityId)")
+        logger.debug("[Parent $parentId] Entity saved (id=$entityId)")
         return entity
     }
 
     /**
      * Find multiple entities by their IDs.
+     * Excludes removed entities.
      */
-    override fun findByIds(ids: Collection<UUID>): List<T> = ids.mapNotNull { entitiesById[it] }
+    override fun findByIds(ids: Collection<UUID>): List<T> =
+        ids
+            .mapNotNull { entitiesById[it] }
+            .filter { !it.metadata.removed }
 
     /**
      * Find all entities belonging to a parent, ordered by comparator.
+     * Excludes removed entities.
      */
     override fun findByParent(parentId: P): List<T> {
         val entityIds = entityIdsByParentId[parentId] ?: return emptyList()
-        return entityIds.mapNotNull { entitiesById[it] }
+        return entityIds
+            .mapNotNull { entitiesById[it] }
+            .filter { !it.metadata.removed }
     }
 
     /**
-     * Delete multiple entities by their IDs.
-     * Also removes them from the parent index.
+     * Soft delete multiple entities by their IDs.
+     * Marks entities as removed instead of physically deleting them.
      */
     @Synchronized
     override fun deleteMany(ids: Collection<UUID>): Int {
         var deletedCount = 0
 
         ids.forEach { id ->
-            val entity = entitiesById.remove(id)
-            if (entity != null) {
-                val parentId = parentIdExtractor(entity)
-                // Remove from parent index
-                entityIdsByParentId[parentId]?.remove(id)
+            val entity = entitiesById[id]
+            if (entity != null && !entity.metadata.removed) {
+                entity.metadata.removed = true
                 deletedCount++
-                logger.debug("[Parent $parentId] Entity deleted: ${entity::class.simpleName} (id=$id)")
+                logger.debug("Entity soft deleted (id=$id)")
             }
         }
 
