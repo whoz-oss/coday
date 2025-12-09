@@ -500,18 +500,44 @@ class FakeAgentService : IAgentService {
 class FakeCaseService : ICaseService {
     val savedCases = mutableListOf<CaseModel>()
 
-    override fun save(case: CaseModel): CaseModel {
-        savedCases.add(case)
-        return case
+    override fun save(entity: CaseModel): CaseModel {
+        savedCases.add(entity)
+        return entity
     }
+
+    override fun findByIds(ids: Collection<UUID>): List<CaseModel> = emptyList()
+    override fun findByParent(parentId: UUID): List<CaseModel> = emptyList()
+    override fun deleteMany(ids: Collection<UUID>): Int = 0
+    override fun createCaseInstance(projectId: UUID, initialEvents: List<CaseEvent>): Case =
+        throw NotImplementedError()
+    override fun getCaseInstance(caseId: UUID): Case? = null
+    override fun getActiveCasesByProject(projectId: UUID): List<Case> = emptyList()
+    override fun getAllActiveCases(): List<Case> = emptyList()
+    override fun getCaseEventStream(caseId: UUID) = null
+    override fun stopCase(caseId: UUID): Boolean = false
+    override fun killCase(caseId: UUID): Boolean = false
 }
 
 class FakeCaseEventService : ICaseEventService {
     val savedEvents = mutableListOf<CaseEvent>()
 
-    override fun save(event: CaseEvent): CaseEvent {
-        savedEvents.add(event)
-        return event
+    override fun save(entity: CaseEvent): CaseEvent {
+        savedEvents.add(entity)
+        return entity
+    }
+
+    override fun findByIds(ids: Collection<UUID>): List<CaseEvent> {
+        return savedEvents.filter { it.id in ids }
+    }
+
+    override fun findByParent(parentId: UUID): List<CaseEvent> {
+        return savedEvents.filter { it.caseId == parentId }.sortedBy { it.timestamp }
+    }
+
+    override fun deleteMany(ids: Collection<UUID>): Int {
+        val toRemove = savedEvents.filter { it.id in ids }
+        savedEvents.removeAll(toRemove)
+        return toRemove.size
     }
 }
 
