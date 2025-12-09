@@ -58,10 +58,14 @@ class AgentAdvancedTest {
             val tools = listOf(answerTool)
 
             // Create agent
+            val model = AgentModel(
+                name = "TestAgent",
+                description = "Test agent for advanced orchestration",
+            )
             val agent =
                 AgentAdvanced(
-                    id = agentId,
-                    name = "TestAgent",
+                    metadata = EntityMetadata(id = agentId),
+                    model = model,
                     chatClientBuilder = mockChatClientBuilder,
                     tools = tools,
                     agentService = mockAgentService,

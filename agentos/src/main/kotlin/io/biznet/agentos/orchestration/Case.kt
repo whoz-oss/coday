@@ -186,7 +186,7 @@ class Case(
                 AgentSelectedEvent(
                     projectId = projectId,
                     caseId = id,
-                    agentId = agent.id,
+                    agentId = agent.metadata.id,
                     agentName = agent.name,
                 )
             storeAndEmitEvent(agentSelectedEvent)
@@ -324,7 +324,7 @@ class Case(
                 AgentSelectedEvent(
                     projectId = projectId,
                     caseId = id,
-                    agentId = defaultAgent.id,
+                    agentId = defaultAgent.metadata.id,
                     agentName = defaultAgent.name,
                 )
             storeAndEmitEvent(agentSelectedEvent)

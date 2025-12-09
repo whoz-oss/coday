@@ -44,13 +44,17 @@ class AgentSimpleTest {
             val tools = emptyList<StandardTool<*>>()
 
             // Create agent
+            val model = AgentModel(
+                name = "SimpleAgent",
+                description = "A simple test agent",
+                instructions = "You are a helpful assistant.",
+            )
             val agent =
                 AgentSimple(
-                    id = agentId,
-                    name = "SimpleAgent",
+                    metadata = EntityMetadata(id = agentId),
+                    model = model,
                     chatClientBuilder = mockChatClientBuilder,
                     tools = tools,
-                    systemInstructions = "You are a helpful assistant.",
                 )
 
             // Initial user message
@@ -125,10 +129,14 @@ class AgentSimpleTest {
 
             val tools = emptyList<StandardTool<*>>()
 
+            val model = AgentModel(
+                name = "SimpleAgent",
+                description = "A simple test agent",
+            )
             val agent =
                 AgentSimple(
-                    id = agentId,
-                    name = "SimpleAgent",
+                    metadata = EntityMetadata(id = agentId),
+                    model = model,
                     chatClientBuilder = mockChatClientBuilder,
                     tools = tools,
                 )
@@ -196,10 +204,14 @@ class AgentSimpleTest {
 
             val tools = emptyList<StandardTool<*>>()
 
+            val model = AgentModel(
+                name = "SimpleAgent",
+                description = "A simple test agent",
+            )
             val agent =
                 AgentSimple(
-                    id = agentId,
-                    name = "SimpleAgent",
+                    metadata = EntityMetadata(id = agentId),
+                    model = model,
                     chatClientBuilder = mockChatClientBuilder,
                     tools = tools,
                 )
@@ -250,10 +262,14 @@ class AgentSimpleTest {
 
             val tools = emptyList<StandardTool<*>>()
 
+            val model = AgentModel(
+                name = "SimpleAgent",
+                description = "A simple test agent",
+            )
             val agent =
                 AgentSimple(
-                    id = agentId,
-                    name = "SimpleAgent",
+                    metadata = EntityMetadata(id = agentId),
+                    model = model,
                     chatClientBuilder = mockChatClientBuilder,
                     tools = tools,
                 )

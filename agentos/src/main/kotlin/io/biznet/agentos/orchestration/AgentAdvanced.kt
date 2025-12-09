@@ -23,13 +23,15 @@ import java.util.UUID
  * Each step emits events for observability and potential resumption.
  */
 class AgentAdvanced(
-    override val id: UUID,
-    override val name: String,
+    override val metadata: EntityMetadata,
+    private val model: AgentModel,
     private val chatClientBuilder: ChatClient.Builder,
     private val tools: List<StandardTool<*>>,
     private val agentService: IAgentService,
     private val maxIterations: Int = 20,
 ) : IAgent {
+    override val name: String get() = model.name
+    private val id get() = metadata.id
     override fun run(events: List<CaseEvent>): Flow<CaseEvent> =
         flow {
             val projectId = events.firstOrNull()?.projectId ?: throw IllegalArgumentException("No events provided")
