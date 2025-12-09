@@ -1,6 +1,5 @@
 package io.biznet.agentos.orchestration
 
-import io.biznet.agentos.common.InMemoryEntityRepository
 import org.springframework.stereotype.Repository
 import java.util.UUID
 
@@ -16,8 +15,9 @@ import java.util.UUID
  * For production, consider a persistent implementation (database, file system).
  */
 @Repository
-class InMemoryCaseEventRepository : InMemoryEntityRepository<CaseEvent, UUID>(
-    entityIdExtractor = { it.id },
-    parentIdExtractor = { it.caseId },
-    comparator = compareBy { it.timestamp }
-), CaseEventRepository
+class InMemoryCaseEventRepository :
+    InMemoryEntityRepository<CaseEvent, UUID>(
+        parentIdExtractor = { it.caseId },
+        comparator = compareBy { it.timestamp },
+    ),
+    CaseEventRepository

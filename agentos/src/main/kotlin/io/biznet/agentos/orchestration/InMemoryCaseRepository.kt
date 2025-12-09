@@ -1,6 +1,5 @@
 package io.biznet.agentos.orchestration
 
-import io.biznet.agentos.common.InMemoryEntityRepository
 import org.springframework.stereotype.Repository
 import java.util.UUID
 
@@ -8,7 +7,7 @@ import java.util.UUID
  * In-memory implementation of CaseRepository.
  *
  * Uses the generic InMemoryEntityRepository with:
- * - Entity ID: case.id
+ * - Entity ID: case.metadata.id (automatic via Entity interface)
  * - Parent ID: case.projectId
  * - Ordering: by ID (arbitrary but consistent)
  *
@@ -16,8 +15,9 @@ import java.util.UUID
  * For production, consider a persistent implementation (database, file system).
  */
 @Repository
-class InMemoryCaseRepository : InMemoryEntityRepository<CaseModel, UUID>(
-    entityIdExtractor = { it.id },
-    parentIdExtractor = { it.projectId },
-    comparator = compareBy { it.id }
-), CaseRepository
+class InMemoryCaseRepository :
+    InMemoryEntityRepository<CaseModel, UUID>(
+        parentIdExtractor = { it.projectId },
+        comparator = compareBy { it.metadata.id },
+    ),
+    CaseRepository
