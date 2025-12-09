@@ -45,6 +45,7 @@ class AgentSimpleTest {
 
             // Create agent
             val model = AgentModel(
+                id = agentId,
                 name = "SimpleAgent",
                 description = "A simple test agent",
                 instructions = "You are a helpful assistant.",
@@ -130,6 +131,7 @@ class AgentSimpleTest {
             val tools = emptyList<StandardTool<*>>()
 
             val model = AgentModel(
+                id = agentId,
                 name = "SimpleAgent",
                 description = "A simple test agent",
             )
@@ -205,6 +207,7 @@ class AgentSimpleTest {
             val tools = emptyList<StandardTool<*>>()
 
             val model = AgentModel(
+                id = agentId,
                 name = "SimpleAgent",
                 description = "A simple test agent",
             )
@@ -263,6 +266,7 @@ class AgentSimpleTest {
             val tools = emptyList<StandardTool<*>>()
 
             val model = AgentModel(
+                id = agentId,
                 name = "SimpleAgent",
                 description = "A simple test agent",
             )
