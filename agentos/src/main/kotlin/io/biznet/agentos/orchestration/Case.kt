@@ -2,7 +2,7 @@ package io.biznet.agentos.orchestration
 
 import kotlinx.coroutines.flow.catch
 import org.slf4j.LoggerFactory
-import java.util.*
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 // todo: study load-balancing and controller - service dissociation
@@ -97,7 +97,8 @@ class Case(
     fun save() {
         caseService.save(
             CaseModel(
-                id = id,
+                // fixme: this looses all other audit fields, not good
+                metadata = EntityMetadata(id = id),
                 projectId = projectId,
                 status = status,
             ),
@@ -108,7 +109,7 @@ class Case(
         val oldStatus = status
         status = newStatus
         save()
-        emit(CaseStatusEvent(caseId = id, projectId = projectId, status = status))
+        emit(CaseStatusEvent(metadata = EntityMetadata(), caseId = id, projectId = projectId, status = status))
         if (newStatus == CaseStatus.ERROR) {
             logger.error("Case $id status: $oldStatus -> $newStatus")
         } else {

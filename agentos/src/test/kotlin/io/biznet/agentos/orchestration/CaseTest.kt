@@ -483,6 +483,13 @@ class FakeCaseServices {
 class FakeAgentService : IAgentService {
     private val agents = mutableMapOf<String, IAgent>()
 
+    override fun save(entity: io.biznet.agentos.agents.domain.Agent) = entity
+    override fun findById(id: String) = null
+    override fun findByIds(ids: Collection<String>) = emptyList<io.biznet.agentos.agents.domain.Agent>()
+    override fun findAll() = emptyList<io.biznet.agentos.agents.domain.Agent>()
+    override fun deleteMany(ids: Collection<String>) = 0
+    override fun reloadPluginAgents() {}
+
     override fun findAgentByName(namePart: String): IAgent =
         agents[namePart] ?: throw IllegalArgumentException("Agent not found: $namePart")
 
