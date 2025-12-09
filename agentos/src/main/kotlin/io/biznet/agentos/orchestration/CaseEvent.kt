@@ -39,6 +39,13 @@ sealed interface CaseEvent : Entity {
     val caseId: UUID
     val timestamp: Instant
     val type: CaseEventType
+    
+    /**
+     * Convenience property for backward compatibility.
+     * Delegates to metadata.id.
+     */
+    val id: UUID
+        get() = metadata.id
 }
 
 /**
@@ -55,7 +62,7 @@ data class CaseStatusEvent(
 }
 
 data class WarnEvent(
-    override val id: UUID = UUID.randomUUID(),
+    override val metadata: EntityMetadata = EntityMetadata(),
     override val projectId: UUID,
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
@@ -68,7 +75,7 @@ data class WarnEvent(
  * Emitted when an agent is selected to process the case.
  */
 data class AgentSelectedEvent(
-    override val id: UUID = UUID.randomUUID(),
+    override val metadata: EntityMetadata = EntityMetadata(),
     override val projectId: UUID,
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
@@ -79,7 +86,7 @@ data class AgentSelectedEvent(
 }
 
 data class AgentFinishedEvent(
-    override val id: UUID = UUID.randomUUID(),
+    override val metadata: EntityMetadata = EntityMetadata(),
     override val projectId: UUID,
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
@@ -90,7 +97,7 @@ data class AgentFinishedEvent(
 }
 
 data class AgentRunningEvent(
-    override val id: UUID = UUID.randomUUID(),
+    override val metadata: EntityMetadata = EntityMetadata(),
     override val projectId: UUID,
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
@@ -104,7 +111,7 @@ data class AgentRunningEvent(
  * Emitted when a message is added to the context.
  */
 data class MessageEvent(
-    override val id: UUID = UUID.randomUUID(),
+    override val metadata: EntityMetadata = EntityMetadata(),
     override val projectId: UUID,
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
@@ -118,7 +125,7 @@ data class MessageEvent(
  * Emitted when a tool is requested.
  */
 data class ToolRequestEvent(
-    override val id: UUID = UUID.randomUUID(),
+    override val metadata: EntityMetadata = EntityMetadata(),
     override val projectId: UUID,
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
@@ -133,7 +140,7 @@ data class ToolRequestEvent(
  * Emitted when a tool execution completes.
  */
 data class ToolResponseEvent(
-    override val id: UUID = UUID.randomUUID(),
+    override val metadata: EntityMetadata = EntityMetadata(),
     override val projectId: UUID,
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
@@ -149,7 +156,7 @@ data class ToolResponseEvent(
  * Emitted to indicate the case is thinking/processing.
  */
 data class ThinkingEvent(
-    override val id: UUID = UUID.randomUUID(),
+    override val metadata: EntityMetadata = EntityMetadata(),
     override val projectId: UUID,
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
@@ -162,7 +169,7 @@ data class ThinkingEvent(
  * The user can respond asynchronously via an AnswerEvent.
  */
 data class QuestionEvent(
-    override val id: UUID = UUID.randomUUID(),
+    override val metadata: EntityMetadata = EntityMetadata(),
     override val projectId: UUID,
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
@@ -194,7 +201,7 @@ data class QuestionEvent(
  * References the original question via questionId.
  */
 data class AnswerEvent(
-    override val id: UUID = UUID.randomUUID(),
+    override val metadata: EntityMetadata = EntityMetadata(),
     override val projectId: UUID,
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
@@ -210,7 +217,7 @@ data class AnswerEvent(
  * Used for observability and potential resumption of interrupted runs.
  */
 data class IntentionGeneratedEvent(
-    override val id: UUID = UUID.randomUUID(),
+    override val metadata: EntityMetadata = EntityMetadata(),
     override val projectId: UUID,
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
@@ -225,7 +232,7 @@ data class IntentionGeneratedEvent(
  * Used for observability and debugging.
  */
 data class ToolSelectedEvent(
-    override val id: UUID = UUID.randomUUID(),
+    override val metadata: EntityMetadata = EntityMetadata(),
     override val projectId: UUID,
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
@@ -240,7 +247,7 @@ data class ToolSelectedEvent(
  * Allows progressive display of agent responses.
  */
 data class TextChunkEvent(
-    override val id: UUID = UUID.randomUUID(),
+    override val metadata: EntityMetadata = EntityMetadata(),
     override val projectId: UUID,
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),

@@ -1,4 +1,4 @@
-package io.biznet.agentos.common
+package io.biznet.agentos.orchestration
 
 import java.util.UUID
 
@@ -11,12 +11,13 @@ import java.util.UUID
  * - Storage-specific concerns (caching, indexing, etc.)
  *
  * This is a pure persistence abstraction with no business logic.
+ * All delete operations are soft deletes (set removed flag).
  *
  * Type parameters:
- * @param T The entity type managed by this repository
+ * @param T The entity type (must implement Entity)
  * @param P The parent identifier type (typically UUID for projectId, caseId, etc.)
  */
-interface EntityRepository<T, P> {
+interface EntityRepository<T : Entity, P> {
     /**
      * Save an entity (create if new, update if exists).
      *
@@ -28,13 +29,17 @@ interface EntityRepository<T, P> {
     /**
      * Find multiple entities by their identifiers.
      *
+     * Excludes removed entities by default.
+     *
      * @param ids Collection of unique identifiers
-     * @return List of found entities (may be smaller than input if some IDs don't exist)
+     * @return List of found entities (may be smaller than input if some IDs don't exist or are removed)
      */
     fun findByIds(ids: Collection<UUID>): List<T>
 
     /**
      * Find all entities belonging to a parent.
+     *
+     * Excludes removed entities by default.
      *
      * @param parentId The parent identifier
      * @return List of entities belonging to the parent
@@ -42,10 +47,11 @@ interface EntityRepository<T, P> {
     fun findByParent(parentId: P): List<T>
 
     /**
-     * Delete multiple entities by their identifiers.
+     * Soft delete multiple entities by their identifiers.
+     * Sets the removed flag to true instead of physically deleting.
      *
      * @param ids Collection of unique identifiers
-     * @return Number of entities actually deleted
+     * @return Number of entities actually marked as removed
      */
     fun deleteMany(ids: Collection<UUID>): Int
 }
