@@ -30,9 +30,11 @@ enum class CaseEventType(
 /**
  * Base interface for all case events.
  * Events are emitted during case execution to provide real-time updates.
+ *
+ * Implements Entity interface for standard CRUD operations.
+ * Event metadata is derived from event-specific fields for backward compatibility.
  */
-sealed interface CaseEvent {
-    val id: UUID
+sealed interface CaseEvent : Entity {
     val projectId: UUID
     val caseId: UUID
     val timestamp: Instant
@@ -43,7 +45,7 @@ sealed interface CaseEvent {
  * Emitted when the case status changes.
  */
 data class CaseStatusEvent(
-    override val id: UUID = UUID.randomUUID(),
+    override val metadata: EntityMetadata,
     override val projectId: UUID,
     override val caseId: UUID,
     override val timestamp: Instant = Instant.now(),
