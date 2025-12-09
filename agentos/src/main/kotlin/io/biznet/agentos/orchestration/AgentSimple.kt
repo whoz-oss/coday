@@ -7,12 +7,16 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.runBlocking
 import org.springframework.ai.chat.client.ChatClient
-import org.springframework.ai.chat.messages.*
+import org.springframework.ai.chat.messages.AssistantMessage
+import org.springframework.ai.chat.messages.Message
+import org.springframework.ai.chat.messages.SystemMessage
+import org.springframework.ai.chat.messages.ToolResponseMessage
+import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.tool.method.MethodToolCallback
 import org.springframework.ai.tool.support.ToolDefinitions
 import org.springframework.util.ReflectionUtils
-import java.util.*
+import java.util.UUID
 
 /**
  * Simple agent implementation with single LLM call.
@@ -28,12 +32,14 @@ import java.util.*
  * compared to AgentAdvanced.
  */
 class AgentSimple(
-    override val id: UUID,
-    override val name: String,
+    override val metadata: EntityMetadata,
+    private val model: AgentModel,
     private val chatClientBuilder: ChatClient.Builder,
     private val tools: List<StandardTool<*>>,
-    private val systemInstructions: String? = null,
 ) : IAgent {
+    override val name: String get() = model.name
+    private val id get() = metadata.id
+
     override fun run(events: List<CaseEvent>): Flow<CaseEvent> =
         flow {
             val projectId = events.firstOrNull()?.projectId ?: throw IllegalArgumentException("No events provided")
@@ -57,8 +63,8 @@ class AgentSimple(
 
                 // Add system instructions if provided
                 val allMessages =
-                    if (systemInstructions != null) {
-                        listOf(SystemMessage(systemInstructions)) + messages
+                    if (model.instructions != null) {
+                        listOf(SystemMessage(model.instructions)) + messages
                     } else {
                         messages
                     }

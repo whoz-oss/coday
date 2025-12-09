@@ -316,7 +316,7 @@ class CaseTest {
 
         // Register a test agent
         val testAgent = FakeAgent(
-            id = UUID.randomUUID(),
+            metadata = EntityMetadata(id = UUID.randomUUID()),
             name = "TestAgent"
         )
         services.agentService.registerAgent(testAgent)
@@ -483,13 +483,6 @@ class FakeCaseServices {
 class FakeAgentService : IAgentService {
     private val agents = mutableMapOf<String, IAgent>()
 
-    override fun save(entity: io.biznet.agentos.agents.domain.Agent) = entity
-    override fun findById(id: String) = null
-    override fun findByIds(ids: Collection<String>) = emptyList<io.biznet.agentos.agents.domain.Agent>()
-    override fun findAll() = emptyList<io.biznet.agentos.agents.domain.Agent>()
-    override fun deleteMany(ids: Collection<String>) = 0
-    override fun reloadPluginAgents() {}
-
     override fun findAgentByName(namePart: String): IAgent =
         agents[namePart] ?: throw IllegalArgumentException("Agent not found: $namePart")
 
@@ -501,6 +494,10 @@ class FakeAgentService : IAgentService {
 
     override suspend fun kill() {
         // Fake kill - do nothing
+    }
+
+    fun registerAgent(agent: IAgent) {
+        agents[agent.name] = agent
     }
 }
 
@@ -549,7 +546,7 @@ class FakeCaseEventService : ICaseEventService {
 }
 
 class FakeAgent(
-    override val id: UUID,
+    override val metadata: EntityMetadata,
     override val name: String,
 ) : IAgent {
     val runCallCount = mutableListOf<List<CaseEvent>>()
@@ -562,7 +559,7 @@ class FakeAgent(
                 AgentFinishedEvent(
                     projectId = events.firstOrNull()?.projectId ?: UUID.randomUUID(),
                     caseId = events.firstOrNull()?.caseId ?: UUID.randomUUID(),
-                    agentId = id,
+                    agentId = metadata.id,
                     agentName = name,
                 ),
             )

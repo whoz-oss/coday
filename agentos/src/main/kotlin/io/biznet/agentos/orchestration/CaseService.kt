@@ -1,28 +1,38 @@
-
 package io.biznet.agentos.orchestration
 
-import io.biznet.agentos.agents.service.AgentRegistry
 import jakarta.annotation.PreDestroy
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-// todo: focus on getting status of cases and prepare replay and observability (jmx)
-
 /**
  * Service responsible for managing the lifecycle of cases.
- * Handles case creation, execution threading, and SSE broadcasting.
+ *
+ * Responsibilities:
+ * - Persist case metadata via CaseRepository
+ * - Manage runtime Case instances
+ * - Handle case execution threading
+ * - Expose event streams for SSE broadcasting
+ * - Coordinate case lifecycle (create, start, stop, kill)
  */
 @Service
 class CaseService(
-    private val agentRegistry: AgentRegistry,
-) {
+    private val agentService: IAgentService,
+    private val caseRepository: CaseRepository,
+    private val caseEventService: ICaseEventService,
+) : ICaseService {
     private val logger = LoggerFactory.getLogger(CaseService::class.java)
 
     // Thread pool for executing cases
@@ -36,48 +46,130 @@ class CaseService(
     // Coroutine scope for flow collectors
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // Active cases indexed by ID
-    private val activeCases = ConcurrentHashMap<String, Case>()
+    // Active runtime case instances indexed by ID
+    private val activeCases = ConcurrentHashMap<UUID, Case>()
 
-    /**
-     * Get an active case by ID
-     * @param caseId The case identifier
-     * @return The case if active, null otherwise
-     */
-    fun getCase(caseId: String): Case? = activeCases[caseId]
+    // ========================================
+    // EntityService Implementation (Persistence)
+    // ========================================
 
-    /**
-     * Stop a running case
-     * @param caseId The case identifier
-     */
-    fun stopCase(caseId: String) {
+    override fun save(entity: CaseModel): CaseModel = caseRepository.save(entity)
+
+    override fun findByIds(ids: Collection<UUID>): List<CaseModel> = caseRepository.findByIds(ids)
+
+    override fun findByParent(parentId: UUID): List<CaseModel> = caseRepository.findByParent(parentId)
+
+    override fun deleteMany(ids: Collection<UUID>): Int {
+        // Stop any active runtime instances before deleting
+        ids.forEach { id ->
+            activeCases[id]?.let { case ->
+                logger.info("Stopping case $id before deletion")
+                case.stop()
+                activeCases.remove(id)
+            }
+        }
+        return caseRepository.deleteMany(ids)
+    }
+
+    // ========================================
+    // Runtime Instance Management
+    // ========================================
+
+    override fun createCaseInstance(
+        projectId: UUID,
+        initialEvents: List<CaseEvent>,
+    ): Case {
+        // Create persistence model
+        val caseModel =
+            CaseModel(
+                metadata = EntityMetadata(),
+                projectId = projectId,
+                status = CaseStatus.PENDING,
+            )
+        save(caseModel)
+
+        // Create runtime instance
+        val case =
+            Case(
+                id = caseModel.id,
+                projectId = projectId,
+                status = CaseStatus.PENDING,
+                agentService = agentService,
+                caseService = this,
+                caseEventService = caseEventService,
+                inputEvents = initialEvents,
+            )
+
+        activeCases[case.id] = case
+        logger.info("Case instance created: ${case.id} for project $projectId")
+
+        return case
+    }
+
+    override fun getCaseInstance(caseId: UUID): Case? = activeCases[caseId]
+
+    override fun getActiveCasesByProject(projectId: UUID): List<Case> = activeCases.values.filter { it.projectId == projectId }
+
+    override fun getAllActiveCases(): List<Case> = activeCases.values.toList()
+
+    // ========================================
+    // Event Stream Access
+    // ========================================
+
+    override fun getCaseEventStream(caseId: UUID): SharedFlow<CaseEvent>? = activeCases[caseId]?.events
+
+    // ========================================
+    // Execution Control
+    // ========================================
+
+    override fun stopCase(caseId: UUID): Boolean =
         activeCases[caseId]?.let { case ->
             logger.info("Stopping case: $caseId")
             case.stop()
-        } ?: logger.warn("Attempted to stop non-existent case: $caseId")
-    }
+            true
+        } ?: run {
+            logger.warn("Attempted to stop non-existent case: $caseId")
+            false
+        }
+
+    override fun killCase(caseId: UUID): Boolean =
+        activeCases[caseId]?.let { case ->
+            logger.info("Killing case: $caseId")
+            runBlocking {
+                case.kill()
+            }
+            activeCases.remove(caseId)
+            true
+        } ?: run {
+            logger.warn("Attempted to kill non-existent case: $caseId")
+            false
+        }
+
+    // ========================================
+    // Legacy/Helper Methods
+    // ========================================
 
     /**
      * Check if a case is currently running
      * @param caseId The case identifier
      * @return true if the case is active
      */
-    fun isCaseRunning(caseId: String): Boolean = activeCases.containsKey(caseId)
+    fun isCaseRunning(caseId: UUID): Boolean = activeCases.containsKey(caseId)
 
     /**
      * Get all active case IDs
      * @return Set of active case IDs
      */
-    fun getActiveCaseIds(): Set<String> = activeCases.keys.toSet()
+    fun getActiveCaseIds(): Set<UUID> = activeCases.keys.toSet()
 
     /**
-     * Create an SSE emitter for a case
-     * The emitter will receive all events from the case via SharedFlow
+     * Create an SSE emitter for a case.
+     * The emitter will receive all events from the case via SharedFlow.
      *
      * @param caseId The case identifier
      * @return A new SseEmitter instance
      */
-    fun createSseEmitter(caseId: String): SseEmitter {
+    fun createSseEmitter(caseId: UUID): SseEmitter {
         val emitter = SseEmitter(0L) // Infinite timeout
 
         val case =
@@ -89,11 +181,8 @@ class CaseService(
         // Collect events from the SharedFlow in a coroutine
         val collectorJob =
             scope.launch {
-                case.events
-                    .catch { error ->
-                        logger.error("Error in event stream for case $caseId", error)
-                        emitter.completeWithError(error)
-                    }.collect { event ->
+                try {
+                    case.events.collect { event ->
                         try {
                             emitter.send(
                                 SseEmitter
@@ -108,6 +197,10 @@ class CaseService(
                             throw e // Stop collecting
                         }
                     }
+                } catch (error: Exception) {
+                    logger.error("Error in event stream for case $caseId", error)
+                    emitter.completeWithError(error)
+                }
             }
 
         // Setup cleanup handlers

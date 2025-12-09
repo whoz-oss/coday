@@ -1,10 +1,8 @@
 package io.biznet.agentos.orchestration
 
 import kotlinx.coroutines.flow.Flow
-import java.util.UUID
 
-interface IAgent {
-    val id: UUID
+interface IAgent : Entity {
     val name: String
 
     /**
