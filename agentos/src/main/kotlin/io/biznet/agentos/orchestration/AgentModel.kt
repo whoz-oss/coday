@@ -1,5 +1,7 @@
 package io.biznet.agentos.orchestration
 
+import java.util.UUID
+
 /**
  * Data structure defining an agent's configuration.
  *
@@ -8,6 +10,7 @@ package io.biznet.agentos.orchestration
  * declaratively (e.g., from YAML/JSON) and shared between different implementations
  * (AgentSimple, AgentAdvanced).
  *
+ * @property id Unique identifier for the agent
  * @property name The agent's display name
  * @property description Description of the agent for users and other agents
  * @property instructions System instructions/prompt for the agent (optional)
@@ -17,6 +20,7 @@ package io.biznet.agentos.orchestration
  * @property maxOutputTokens Maximum number of output tokens (overrides model's default if specified)
  */
 data class AgentModel(
+    val id: UUID,
     val name: String,
     val description: String,
     val instructions: String? = null,

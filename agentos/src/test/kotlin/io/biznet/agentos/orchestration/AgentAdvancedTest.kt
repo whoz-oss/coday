@@ -59,6 +59,7 @@ class AgentAdvancedTest {
 
             // Create agent
             val model = AgentModel(
+                id = agentId,
                 name = "TestAgent",
                 description = "Test agent for advanced orchestration",
             )
