@@ -1,3 +1,13 @@
+## 0.51.1 (2025-12-10)
+
+### 🩹 Fixes
+
+- #372 MCP process cleanup with manual kill fallback ([#373](https://github.com/whoz-oss/coday/pull/373), [#372](https://github.com/whoz-oss/coday/issues/372))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.51.0 (2025-12-02)
 
 ### 🚀 Features
