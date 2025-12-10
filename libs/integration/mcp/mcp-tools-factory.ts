@@ -151,12 +151,7 @@ export class McpToolsFactory extends AssistantToolFactory {
         version: '1.0.0',
       },
       {
-        capabilities: {
-          // Add supported capabilities
-          // Note: These may need to be adjusted based on actual needs
-          toolInvocation: {},
-          resources: {},
-        },
+        capabilities: {},
       }
     )
 
