@@ -289,7 +289,8 @@ export class OpenaiClient extends AiClient {
 
     // Accumulate response data to reconstruct full completion
     let fullContent = ''
-    const toolCalls: OpenAI.Chat.Completions.ChatCompletionMessageToolCall[] = []
+    // Use a more flexible type for accumulating tool calls during streaming
+    const toolCalls: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }> = []
     let finishReason: string | null = null
     let usage: OpenAI.Completions.CompletionUsage | undefined
 
@@ -312,12 +313,10 @@ export class OpenaiClient extends AiClient {
       if (delta?.tool_calls) {
         for (const toolCallDelta of delta.tool_calls) {
           const index = toolCallDelta.index
-          if (!toolCalls[index]) {
-            toolCalls[index] = {
-              id: toolCallDelta.id || '',
-              type: 'function',
-              function: { name: '', arguments: '' },
-            }
+          toolCalls[index] ??= {
+            id: toolCallDelta.id || '',
+            type: 'function',
+            function: { name: '', arguments: '' },
           }
           if (toolCallDelta.id) toolCalls[index].id = toolCallDelta.id
           if (toolCallDelta.function?.name) {
@@ -352,8 +351,10 @@ export class OpenaiClient extends AiClient {
           message: {
             role: 'assistant',
             content: fullContent || null,
+            refusal: null, // Required field for ChatCompletionMessage
             tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
           },
+          logprobs: null, // Required field for Choice
           finish_reason: (finishReason as any) || 'stop',
         },
       ],
