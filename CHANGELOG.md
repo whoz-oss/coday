@@ -1,3 +1,13 @@
+## 0.52.0 (2025-12-10)
+
+### 🚀 Features
+
+- #366 implement streaming for OpenAI client ([#374](https://github.com/whoz-oss/coday/pull/374), [#366](https://github.com/whoz-oss/coday/issues/366))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.51.1 (2025-12-10)
 
 ### 🩹 Fixes
