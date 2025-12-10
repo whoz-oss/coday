@@ -28,6 +28,19 @@ export class McpToolsFactory extends AssistantToolFactory {
    */
   private inspectorProcess: ChildProcess | undefined
 
+  /**
+   * Reference to the transport for explicit cleanup
+   * @private
+   */
+  private transport: Transport | undefined
+
+  /**
+   * PID of the spawned MCP server process
+   * Used for manual cleanup if transport.close() fails
+   * @private
+   */
+  private serverProcessPid: number | null = null
+
   name: string = 'Not defined yet'
 
   private errorLogged: boolean = false
@@ -44,6 +57,24 @@ export class McpToolsFactory extends AssistantToolFactory {
     this.tools = []
     console.log(`Closing mcp client ${this.serverConfig.name}`)
 
+    // Kill inspector process first if it exists
+    if (this.inspectorProcess) {
+      console.log(`Stopping MCP Inspector process for ${this.serverConfig.name}`)
+      try {
+        this.inspectorProcess.kill('SIGTERM')
+        // Give it a moment to terminate gracefully
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        // Force kill if still alive
+        if (!this.inspectorProcess.killed) {
+          this.inspectorProcess.kill('SIGKILL')
+        }
+      } catch (error) {
+        console.log(`Error killing inspector process: ${error}`)
+      }
+      this.inspectorProcess = undefined
+    }
+
+    // Close the MCP client
     try {
       const client = await this.clientPromise
       await client?.close()
@@ -52,11 +83,17 @@ export class McpToolsFactory extends AssistantToolFactory {
       console.log(`MCP client ${this.serverConfig.name} was already failed/closed`)
     }
 
-    if (this.inspectorProcess) {
-      console.log(`Stopping MCP Inspector process for ${this.serverConfig.name}`)
-      this.inspectorProcess.kill()
-      this.inspectorProcess = undefined
+    // Explicitly close the transport to ensure child process cleanup
+    if (this.transport) {
+      try {
+        await this.transport.close()
+        console.log(`Transport closed for ${this.serverConfig.name}`)
+      } catch (error) {
+        console.log(`Error closing transport for ${this.serverConfig.name}: ${error}`)
+      }
+      this.transport = undefined
     }
+
     console.log(`Closed mcp client ${this.serverConfig.name}`)
   }
 
@@ -124,7 +161,6 @@ export class McpToolsFactory extends AssistantToolFactory {
     )
 
     // Create the appropriate transport based on the server configuration
-    let transport: Transport
 
     // For now, only support command-based stdio transport
     if (this.serverConfig.url) {
@@ -173,12 +209,19 @@ export class McpToolsFactory extends AssistantToolFactory {
         transportOptions.cwd = this.serverConfig.cwd
         console.log(`Using working directory: ${this.serverConfig.cwd}`)
       }
-      transport = new StdioClientTransport(transportOptions)
+      this.transport = new StdioClientTransport(transportOptions)
       console.log(`Starting MCP server ${this.serverConfig.name} with command: ${transportOptions.command}`)
 
       // Add error handling for transport to catch early failures
-      transport.onerror = (error) => {
+      this.transport.onerror = (error) => {
         console.error(`MCP server ${this.serverConfig.name} transport error:`, error)
+      }
+
+      // Store the process PID after connection for manual cleanup if needed
+      // Note: PID will be available after start() is called in connect()
+      this.transport.onclose = () => {
+        console.log(`MCP server ${this.serverConfig.name} transport closed`)
+        this.serverProcessPid = null
       }
     } else {
       throw new Error(
@@ -188,15 +231,26 @@ export class McpToolsFactory extends AssistantToolFactory {
     // Connect to the server with timeout and better error handling
     try {
       // Set a shorter timeout for MCP connections (default is 60s, we use MCP_CONNECT_TIMEOUT)
-      const connectPromise = instance.connect(transport)
+      const connectPromise = instance.connect(this.transport)
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error(`Connection timeout after ${MCP_CONNECT_TIMEOUT}ms`)), MCP_CONNECT_TIMEOUT)
       )
 
       await Promise.race([connectPromise, timeoutPromise])
-      console.log(`Successfully connected to MCP server ${this.serverConfig.name}`)
+
+      // Store the process PID for manual cleanup if needed
+      if (this.transport && 'pid' in this.transport) {
+        this.serverProcessPid = (this.transport as any).pid
+        console.log(`Successfully connected to MCP server ${this.serverConfig.name} (PID: ${this.serverProcessPid})`)
+      } else {
+        console.log(`Successfully connected to MCP server ${this.serverConfig.name}`)
+      }
+
       return instance
     } catch (error) {
+      // Cleanup on connection failure
+      await this.cleanupOnError()
+
       // Enhanced error reporting
       const errorMessage = error instanceof Error ? error.message : String(error)
       console.error(`Failed to connect to MCP server ${this.serverConfig.name}: ${errorMessage}`)
@@ -228,6 +282,65 @@ export class McpToolsFactory extends AssistantToolFactory {
       }
 
       throw new Error(`MCP server ${this.serverConfig.name} connection failed: ${errorMessage}`)
+    }
+  }
+
+  /**
+   * Cleanup resources when connection fails
+   * @private
+   */
+  private async cleanupOnError(): Promise<void> {
+    console.log(`Cleaning up failed MCP connection for ${this.serverConfig.name}`)
+
+    // Kill inspector process if it was started
+    if (this.inspectorProcess) {
+      try {
+        this.inspectorProcess.kill('SIGTERM')
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        if (!this.inspectorProcess.killed) {
+          this.inspectorProcess.kill('SIGKILL')
+        }
+      } catch (error) {
+        console.log(`Error killing inspector during cleanup: ${error}`)
+      }
+      this.inspectorProcess = undefined
+    }
+
+    // Close transport to cleanup child process
+    if (this.transport) {
+      try {
+        await this.transport.close()
+      } catch (error) {
+        console.log(`Error closing transport during cleanup: ${error}`)
+      }
+      this.transport = undefined
+    }
+
+    // Fallback: manually kill the process if it's still running
+    if (this.serverProcessPid) {
+      try {
+        // Check if process still exists
+        process.kill(this.serverProcessPid, 0)
+        // Process exists, kill it
+        console.log(`Force killing MCP server process ${this.serverProcessPid} for ${this.serverConfig.name}`)
+        process.kill(this.serverProcessPid, 'SIGTERM')
+        // Give it a moment to terminate gracefully
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        // Check if still alive and force kill
+        try {
+          process.kill(this.serverProcessPid, 0)
+          process.kill(this.serverProcessPid, 'SIGKILL')
+          console.log(`Force killed with SIGKILL: ${this.serverProcessPid}`)
+        } catch {
+          // Process already dead, good
+        }
+      } catch (error: any) {
+        // ESRCH means process doesn't exist, that's fine
+        if (error.code !== 'ESRCH') {
+          console.log(`Error killing MCP server process ${this.serverProcessPid}: ${error}`)
+        }
+      }
+      this.serverProcessPid = null
     }
   }
 
