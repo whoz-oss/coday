@@ -50,6 +50,15 @@ export class PreferencesService {
   private hideWarningMessagesSubject = new BehaviorSubject<boolean>(false)
   public hideWarningMessages$ = this.hideWarningMessagesSubject.asObservable()
 
+  private agentNotificationEnabledSubject = new BehaviorSubject<boolean>(false)
+  public agentNotificationEnabled$ = this.agentNotificationEnabledSubject.asObservable()
+
+  private notificationSoundEnabledSubject = new BehaviorSubject<boolean>(false)
+  public notificationSoundEnabled$ = this.notificationSoundEnabledSubject.asObservable()
+
+  private browserNotificationEnabledSubject = new BehaviorSubject<boolean>(false)
+  public browserNotificationEnabled$ = this.browserNotificationEnabledSubject.asObservable()
+
   constructor() {
     console.log('[PREFERENCES] Initializing preferences service')
 
@@ -108,6 +117,16 @@ export class PreferencesService {
     const storedHideWarningMessages = this.getPreferenceSync<boolean>('hideWarningMessages', false) ?? false
     this.hideWarningMessagesSubject.next(storedHideWarningMessages)
 
+    const storedAgentNotificationEnabled = this.getPreferenceSync<boolean>('agentNotificationEnabled', false) ?? false
+    this.agentNotificationEnabledSubject.next(storedAgentNotificationEnabled)
+
+    const storedNotificationSoundEnabled = this.getPreferenceSync<boolean>('notificationSoundEnabled', true) ?? true
+    this.notificationSoundEnabledSubject.next(storedNotificationSoundEnabled)
+
+    const storedBrowserNotificationEnabled =
+      this.getPreferenceSync<boolean>('browserNotificationEnabled', false) ?? false
+    this.browserNotificationEnabledSubject.next(storedBrowserNotificationEnabled)
+
     console.log('[PREFERENCES] All preferences initialized successfully')
   }
 
@@ -148,6 +167,18 @@ export class PreferencesService {
 
     const storedHideWarningMessages = (await this.getPreferenceAsync<boolean>('hideWarningMessages', false)) ?? false
     this.hideWarningMessagesSubject.next(storedHideWarningMessages)
+
+    const storedAgentNotificationEnabled =
+      (await this.getPreferenceAsync<boolean>('agentNotificationEnabled', false)) ?? false
+    this.agentNotificationEnabledSubject.next(storedAgentNotificationEnabled)
+
+    const storedNotificationSoundEnabled =
+      (await this.getPreferenceAsync<boolean>('notificationSoundEnabled', true)) ?? true
+    this.notificationSoundEnabledSubject.next(storedNotificationSoundEnabled)
+
+    const storedBrowserNotificationEnabled =
+      (await this.getPreferenceAsync<boolean>('browserNotificationEnabled', false)) ?? false
+    this.browserNotificationEnabledSubject.next(storedBrowserNotificationEnabled)
 
     console.log('[PREFERENCES] All preferences initialized successfully (async)')
   }
@@ -261,6 +292,15 @@ export class PreferencesService {
     if (key === 'hideWarningMessages') {
       this.hideWarningMessagesSubject.next(value as boolean)
     }
+    if (key === 'agentNotificationEnabled') {
+      this.agentNotificationEnabledSubject.next(value as boolean)
+    }
+    if (key === 'notificationSoundEnabled') {
+      this.notificationSoundEnabledSubject.next(value as boolean)
+    }
+    if (key === 'browserNotificationEnabled') {
+      this.browserNotificationEnabledSubject.next(value as boolean)
+    }
   }
 
   setVoiceLanguage(language: string): void {
@@ -362,5 +402,32 @@ export class PreferencesService {
 
   getHideWarningMessages(): boolean {
     return this.getPreference<boolean>('hideWarningMessages', false) ?? false
+  }
+
+  setAgentNotificationEnabled(enabled: boolean): void {
+    console.log('[PREFERENCES] Setting agent notification enabled to:', enabled)
+    this.setPreference('agentNotificationEnabled', enabled)
+  }
+
+  getAgentNotificationEnabled(): boolean {
+    return this.getPreference<boolean>('agentNotificationEnabled', false) ?? false
+  }
+
+  setNotificationSoundEnabled(enabled: boolean): void {
+    console.log('[PREFERENCES] Setting notification sound enabled to:', enabled)
+    this.setPreference('notificationSoundEnabled', enabled)
+  }
+
+  getNotificationSoundEnabled(): boolean {
+    return this.getPreference<boolean>('notificationSoundEnabled', true) ?? true
+  }
+
+  setBrowserNotificationEnabled(enabled: boolean): void {
+    console.log('[PREFERENCES] Setting browser notification enabled to:', enabled)
+    this.setPreference('browserNotificationEnabled', enabled)
+  }
+
+  getBrowserNotificationEnabled(): boolean {
+    return this.getPreference<boolean>('browserNotificationEnabled', false) ?? false
   }
 }

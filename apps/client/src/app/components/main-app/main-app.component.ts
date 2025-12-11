@@ -13,6 +13,7 @@ import { CodayService } from '../../core/services/coday.service'
 import { TabTitleService } from '../../services/tab-title.service'
 import { PreferencesService } from '../../services/preferences.service'
 import { ThreadApiService } from '../../core/services/thread-api.service'
+import { AgentNotificationService } from '../../services/agent-notification.service'
 import { Router } from '@angular/router'
 
 @Component({
@@ -54,12 +55,16 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   private route = inject(ActivatedRoute)
   private router = inject(Router)
   private threadApiService = inject(ThreadApiService)
+  private agentNotificationService = inject(AgentNotificationService)
 
   constructor() {
     console.log('[MAIN-APP] Using new thread-based architecture (no clientId needed)')
   }
 
   ngOnInit(): void {
+    // Setup agent notification service to monitor task completion
+    this.agentNotificationService.setup()
+
     // Setup print event listeners (for welcome view)
     this.setupPrintHandlers()
 
