@@ -181,7 +181,7 @@ export class ThreadFileRepository implements ThreadRepository {
     }
   }
 
-  async listByProject(projectId: string, username: string): Promise<ThreadSummary[]> {
+  async listByProject(projectId: string, username?: string): Promise<ThreadSummary[]> {
     try {
       const threadsDir = this.getThreadsDir(projectId)
 
@@ -220,7 +220,7 @@ export class ThreadFileRepository implements ThreadRepository {
         )
       )
         .filter((t): t is ThreadSummary => !!t)
-        .filter((t) => t.username === username)
+        .filter((t) => !username || t.username === username) // Filter by username only if provided
         // Sort by decreasing last modified date
         .sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
 

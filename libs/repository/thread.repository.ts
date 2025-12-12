@@ -25,12 +25,12 @@ export interface ThreadRepository {
   save(projectId: string, thread: AiThread): Promise<AiThread>
 
   /**
-   * List threads for a specific project and user
+   * List threads for a specific project, optionally filtered by user
    * @param projectId Project identifier
-   * @param username User identifier
+   * @param username Optional user identifier to filter threads
    * @returns Array of thread summaries without full message history
    */
-  listByProject(projectId: string, username: string): Promise<ThreadSummary[]>
+  listByProject(projectId: string, username?: string): Promise<ThreadSummary[]>
 
   /**
    * Delete a thread by its identifier within a project
