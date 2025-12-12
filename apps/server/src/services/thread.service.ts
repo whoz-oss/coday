@@ -6,12 +6,24 @@ import { ThreadSummary } from '@coday/ai-thread/ai-thread.types'
 import { ThreadFileService } from './thread-file.service'
 
 /**
+ * Cache entry for thread list with timestamp
+ */
+interface ThreadListCacheEntry {
+  data: ThreadSummary[]
+  timestamp: number
+}
+
+/**
  * Server-side thread management service.
  * Stateless service for managing threads independently of user sessions.
  *
  * This service provides a clean API for thread operations without coupling
  * to session state or observables. It creates thread repositories on-demand
  * based on the project context.
+ *
+ * Performance: Thread list cached in memory (4h TTL) to avoid repeated file I/O.
+ * Cache stores only ThreadSummary metadata, invalidated on all modifications.
+ * Issue #382
  */
 export class ThreadService {
   /**
@@ -19,6 +31,13 @@ export class ThreadService {
    * Avoids recreating repository instances for each operation.
    */
   private readonly repositoryCache = new Map<string, ThreadRepository>()
+
+  /**
+   * Thread list cache: key="projectName:username", TTL=4h
+   * Stores only ThreadSummary (no messages), invalidated on modifications
+   */
+  private readonly threadListCache = new Map<string, ThreadListCacheEntry>()
+  private readonly CACHE_TTL_MS = 4 * 60 * 60 * 1000 // 4 hours
 
   constructor(
     private readonly projectRepository: ProjectRepository,
@@ -64,14 +83,50 @@ export class ThreadService {
   }
 
   /**
-   * List all threads for a project and user
+   * List all threads for a project and user (cached)
    * @param projectName Project name
    * @param username User identifier
    * @returns Array of thread summaries
    */
   async listThreads(projectName: string, username: string): Promise<ThreadSummary[]> {
+    const cacheKey = `${projectName}:${username}`
+    const cached = this.threadListCache.get(cacheKey)
+
+    // Return cached data if still valid
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL_MS) {
+      return cached.data
+    }
+
+    // Fetch from repository
     const repository = this.getThreadRepository(projectName)
-    return await repository.listByProject(projectName, username)
+    const threads = await repository.listByProject(projectName, username)
+
+    // Cache the result (only metadata, not full thread content)
+    this.threadListCache.set(cacheKey, {
+      data: threads,
+      timestamp: Date.now(),
+    })
+
+    return threads
+  }
+
+  /**
+   * Invalidate thread list cache for a project
+   * @param projectName Project to invalidate
+   * @param username Optional: invalidate only for specific user
+   */
+  private invalidateThreadListCache(projectName: string, username?: string): void {
+    if (username) {
+      // Invalidate only for specific user
+      this.threadListCache.delete(`${projectName}:${username}`)
+    } else {
+      // Invalidate for all users of this project
+      for (const key of this.threadListCache.keys()) {
+        if (key.startsWith(`${projectName}:`)) {
+          this.threadListCache.delete(key)
+        }
+      }
+    }
   }
 
   /**
@@ -103,7 +158,12 @@ export class ThreadService {
       price: 0,
     })
 
-    return await repository.save(projectName, thread)
+    const savedThread = await repository.save(projectName, thread)
+
+    // Invalidate cache for this user only
+    this.invalidateThreadListCache(projectName, username)
+
+    return savedThread
   }
 
   /**
@@ -127,7 +187,12 @@ export class ThreadService {
       thread.name = updates.name
     }
 
-    return await repository.save(projectName, thread)
+    const updatedThread = await repository.save(projectName, thread)
+
+    // Invalidate cache for all users (name change visible to all)
+    this.invalidateThreadListCache(projectName)
+
+    return updatedThread
   }
 
   /**
@@ -151,7 +216,12 @@ export class ThreadService {
       thread.starring.push(username)
     }
 
-    return await repository.save(projectName, thread)
+    const updatedThread = await repository.save(projectName, thread)
+
+    // Invalidate cache for all users (starring visible to all)
+    this.invalidateThreadListCache(projectName)
+
+    return updatedThread
   }
 
   /**
@@ -173,7 +243,12 @@ export class ThreadService {
     // Remove username from starring list
     thread.starring = thread.starring.filter((u) => u !== username)
 
-    return await repository.save(projectName, thread)
+    const updatedThread = await repository.save(projectName, thread)
+
+    // Invalidate cache for all users (starring visible to all)
+    this.invalidateThreadListCache(projectName)
+
+    return updatedThread
   }
 
   /**
@@ -189,6 +264,9 @@ export class ThreadService {
     if (deleted) {
       // Also delete the thread files directory if it exists
       await this.threadFileService.deleteThreadFiles(projectName, threadId)
+
+      // Invalidate cache for all users
+      this.invalidateThreadListCache(projectName)
     }
 
     return deleted
