@@ -9,7 +9,7 @@ import { ThreadFileService } from './thread-file.service'
  * Cache entry for thread list with timestamp
  */
 interface ThreadListCacheEntry {
-  data: ThreadSummary[]
+  data: ThreadSummary[] // All threads for the project (not filtered by user)
   timestamp: number
 }
 
@@ -21,8 +21,9 @@ interface ThreadListCacheEntry {
  * to session state or observables. It creates thread repositories on-demand
  * based on the project context.
  *
- * Performance: Thread list cached in memory (4h TTL) to avoid repeated file I/O.
- * Cache stores only ThreadSummary metadata, invalidated on all modifications.
+ * Performance: Thread list cached per project (4h TTL) with incremental updates.
+ * Cache stores all threads for a project, filtering by user done in-memory.
+ * Updates modify cache entries instead of invalidating entire cache.
  * Issue #382
  */
 export class ThreadService {
@@ -33,8 +34,8 @@ export class ThreadService {
   private readonly repositoryCache = new Map<string, ThreadRepository>()
 
   /**
-   * Thread list cache: key="projectName:username", TTL=4h
-   * Stores only ThreadSummary (no messages), invalidated on modifications
+   * Thread list cache: key="projectName", value=all threads for project
+   * Shared across all users, filtered in-memory. Updated incrementally on modifications.
    */
   private readonly threadListCache = new Map<string, ThreadListCacheEntry>()
   private readonly CACHE_TTL_MS = 4 * 60 * 60 * 1000 // 4 hours
@@ -84,49 +85,64 @@ export class ThreadService {
 
   /**
    * List all threads for a project and user (cached)
+   * Cache stores all threads for project, filtering by user done in-memory.
    * @param projectName Project name
    * @param username User identifier
-   * @returns Array of thread summaries
+   * @returns Array of thread summaries for the user
    */
   async listThreads(projectName: string, username: string): Promise<ThreadSummary[]> {
-    const cacheKey = `${projectName}:${username}`
-    const cached = this.threadListCache.get(cacheKey)
+    const cached = this.threadListCache.get(projectName)
 
-    // Return cached data if still valid
+    // Return cached data if still valid, filtered by user
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL_MS) {
       return cached.data
+        .filter((t) => t.username === username)
+        .sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
     }
 
-    // Fetch from repository
+    // Fetch ALL threads for project from repository (no username filter)
     const repository = this.getThreadRepository(projectName)
-    const threads = await repository.listByProject(projectName, username)
+    const allThreads = await repository.listByProject(projectName)
 
-    // Cache the result (only metadata, not full thread content)
-    this.threadListCache.set(cacheKey, {
-      data: threads,
+    // Cache all threads for the project (only metadata, not full thread content)
+    this.threadListCache.set(projectName, {
+      data: allThreads,
       timestamp: Date.now(),
     })
 
-    return threads
+    // Return filtered and sorted for this user
+    return allThreads.filter((t) => t.username === username).sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
   }
 
   /**
-   * Invalidate thread list cache for a project
-   * @param projectName Project to invalidate
-   * @param username Optional: invalidate only for specific user
+   * Update a thread entry in the cache
+   * @param projectName Project name
+   * @param threadSummary Updated thread summary
    */
-  private invalidateThreadListCache(projectName: string, username?: string): void {
-    if (username) {
-      // Invalidate only for specific user
-      this.threadListCache.delete(`${projectName}:${username}`)
+  private updateThreadInCache(projectName: string, threadSummary: ThreadSummary): void {
+    const cached = this.threadListCache.get(projectName)
+    if (!cached) return
+
+    const index = cached.data.findIndex((t) => t.id === threadSummary.id)
+    if (index !== -1) {
+      // Update existing entry
+      cached.data[index] = threadSummary
     } else {
-      // Invalidate for all users of this project
-      for (const key of this.threadListCache.keys()) {
-        if (key.startsWith(`${projectName}:`)) {
-          this.threadListCache.delete(key)
-        }
-      }
+      // Add new entry
+      cached.data.push(threadSummary)
     }
+  }
+
+  /**
+   * Remove a thread entry from the cache
+   * @param projectName Project name
+   * @param threadId Thread ID to remove
+   */
+  private removeThreadFromCache(projectName: string, threadId: string): void {
+    const cached = this.threadListCache.get(projectName)
+    if (!cached) return
+
+    cached.data = cached.data.filter((t) => t.id !== threadId)
   }
 
   /**
@@ -160,8 +176,18 @@ export class ThreadService {
 
     const savedThread = await repository.save(projectName, thread)
 
-    // Invalidate cache for this user only
-    this.invalidateThreadListCache(projectName, username)
+    // Add to cache
+    this.updateThreadInCache(projectName, {
+      id: savedThread.id,
+      username: savedThread.username,
+      projectId: savedThread.projectId,
+      name: savedThread.name,
+      summary: savedThread.summary,
+      createdDate: savedThread.createdDate,
+      modifiedDate: savedThread.modifiedDate,
+      price: savedThread.price,
+      starring: savedThread.starring,
+    })
 
     return savedThread
   }
@@ -189,8 +215,18 @@ export class ThreadService {
 
     const updatedThread = await repository.save(projectName, thread)
 
-    // Invalidate cache for all users (name change visible to all)
-    this.invalidateThreadListCache(projectName)
+    // Update in cache
+    this.updateThreadInCache(projectName, {
+      id: updatedThread.id,
+      username: updatedThread.username,
+      projectId: updatedThread.projectId,
+      name: updatedThread.name,
+      summary: updatedThread.summary,
+      createdDate: updatedThread.createdDate,
+      modifiedDate: updatedThread.modifiedDate,
+      price: updatedThread.price,
+      starring: updatedThread.starring,
+    })
 
     return updatedThread
   }
@@ -218,8 +254,18 @@ export class ThreadService {
 
     const updatedThread = await repository.save(projectName, thread)
 
-    // Invalidate cache for all users (starring visible to all)
-    this.invalidateThreadListCache(projectName)
+    // Update in cache
+    this.updateThreadInCache(projectName, {
+      id: updatedThread.id,
+      username: updatedThread.username,
+      projectId: updatedThread.projectId,
+      name: updatedThread.name,
+      summary: updatedThread.summary,
+      createdDate: updatedThread.createdDate,
+      modifiedDate: updatedThread.modifiedDate,
+      price: updatedThread.price,
+      starring: updatedThread.starring,
+    })
 
     return updatedThread
   }
@@ -245,8 +291,18 @@ export class ThreadService {
 
     const updatedThread = await repository.save(projectName, thread)
 
-    // Invalidate cache for all users (starring visible to all)
-    this.invalidateThreadListCache(projectName)
+    // Update in cache
+    this.updateThreadInCache(projectName, {
+      id: updatedThread.id,
+      username: updatedThread.username,
+      projectId: updatedThread.projectId,
+      name: updatedThread.name,
+      summary: updatedThread.summary,
+      createdDate: updatedThread.createdDate,
+      modifiedDate: updatedThread.modifiedDate,
+      price: updatedThread.price,
+      starring: updatedThread.starring,
+    })
 
     return updatedThread
   }
@@ -265,8 +321,8 @@ export class ThreadService {
       // Also delete the thread files directory if it exists
       await this.threadFileService.deleteThreadFiles(projectName, threadId)
 
-      // Invalidate cache for all users
-      this.invalidateThreadListCache(projectName)
+      // Remove from cache
+      this.removeThreadFromCache(projectName, threadId)
     }
 
     return deleted
