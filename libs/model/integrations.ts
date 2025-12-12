@@ -7,6 +7,7 @@ export const Integrations: Record<string, string[]> = {
   GIT: [],
   GITLAB: [],
   JIRA: [],
+  SLACK: [],
   ZENDESK: [],
 }
 
