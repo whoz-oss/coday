@@ -21,6 +21,8 @@ import { Subject } from 'rxjs'
 import { MatIcon } from '@angular/material/icon'
 import { ThinkingLoaderComponent } from '../thinking-loader/thinking-loader.component'
 import { MatFabButton } from '@angular/material/button'
+import { MarkdownService } from '../../services/markdown.service'
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 
 @Component({
   selector: 'app-chat-history',
@@ -39,6 +41,9 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   private lastMessageCount = 0
   private destroy$ = new Subject<void>()
 
+  // Rendered streaming text (markdown converted to HTML)
+  renderedStreamingText: SafeHtml = ''
+
   // Scroll tracking state
   isTracking = true // Tracking mode active by default
   showGoToBottom = false // Go-to-bottom button visibility
@@ -56,6 +61,8 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   private voiceSynthesisService = inject(VoiceSynthesisService)
   private preferencesService = inject(PreferencesService)
   private codayService = inject(CodayService)
+  private markdownService = inject(MarkdownService)
+  private sanitizer = inject(DomSanitizer)
 
   ngOnInit() {
     // Find scrollable container on startup
@@ -80,9 +87,14 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
 
   ngOnChanges(changes: SimpleChanges) {
     // Auto-scroll during streaming ONLY if streamingText changed and we're tracking
-    if (changes['streamingText'] && this.streamingText && this.isTracking) {
-      // Small delay to ensure DOM is updated
-      setTimeout(() => this.scrollToBottom(), 0)
+    if (changes['streamingText']) {
+      // Render markdown for streaming text
+      this.renderStreamingText()
+
+      if (this.streamingText && this.isTracking) {
+        // Small delay to ensure DOM is updated
+        setTimeout(() => this.scrollToBottom(), 0)
+      }
     }
   }
 
@@ -536,5 +548,25 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     )
 
     return result.text || text // Fallback to full text if nothing extracted
+  }
+
+  /**
+   * Render streaming text as markdown
+   * Called once per streamingText update (accumulated chunks)
+   */
+  private async renderStreamingText(): Promise<void> {
+    if (!this.streamingText) {
+      this.renderedStreamingText = ''
+      return
+    }
+
+    try {
+      const html = await this.markdownService.parse(this.streamingText)
+      this.renderedStreamingText = this.sanitizer.bypassSecurityTrustHtml(html)
+    } catch (error) {
+      console.error('[CHAT-HISTORY] Error rendering streaming text markdown:', error)
+      // Fallback to plain text on error
+      this.renderedStreamingText = this.sanitizer.bypassSecurityTrustHtml(this.streamingText)
+    }
   }
 }
