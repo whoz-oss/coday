@@ -34,6 +34,7 @@ interface SlackMessage {
 interface SlackApiResponse {
   ok: boolean
   error?: string
+
   [key: string]: unknown
 }
 
@@ -81,11 +82,13 @@ export class SlackTools extends AssistantToolFactory {
   protected async buildTools(): Promise<CodayTool[]> {
     const result: CodayTool[] = []
     if (!this.integrationService.hasIntegration(this.name)) {
+      console.log('failed to have integration slack')
       return result
     }
 
     const botToken = this.integrationService.getApiKey(this.name)
     if (!botToken) {
+      console.log('no bot token')
       return result
     }
 
@@ -174,7 +177,7 @@ export class SlackTools extends AssistantToolFactory {
       function: {
         name: 'slack_list_channels',
         description:
-          'List Slack channels the bot has access to. The bot must be invited to channels to see them (except DMs). Returns channel ID, name, topic, and member count.',
+          'List Slack channels where the bot is a member. Only returns channels the bot has been invited to and can actually read/write. Returns channel ID, name, topic, and member count.',
         parameters: {
           type: 'object',
           properties: {
@@ -198,7 +201,8 @@ export class SlackTools extends AssistantToolFactory {
               exclude_archived: 'true',
             }
 
-            const response = await slackApiCall<SlackChannelsResponse>('conversations.list', apiParams)
+            // Use users.conversations to get only channels where bot is member
+            const response = await slackApiCall<SlackChannelsResponse>('users.conversations', apiParams)
 
             const channels = response.channels || []
             if (channels.length === 0) {
