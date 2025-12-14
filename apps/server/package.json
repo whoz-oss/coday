@@ -8,8 +8,39 @@
     "coday-server": "./bin.js"
   },
   "dependencies": {
-    "@vscode/ripgrep": "1.15.9",
-    "sharp": "0.34.4"
+    "@anthropic-ai/sdk": "catalog:",
+    "@esbuild-plugins/node-modules-polyfill": "catalog:",
+    "@google/generative-ai": "catalog:",
+    "@inquirer/prompts": "catalog:",
+    "@modelcontextprotocol/sdk": "catalog:",
+    "@types/express": "catalog:",
+    "@types/yargs": "catalog:",
+    "@vscode/ripgrep": "catalog:",
+    "axios": "catalog:",
+    "chalk": "catalog:",
+    "express": "catalog:",
+    "glob": "catalog:",
+    "marked": "catalog:",
+    "openai": "catalog:",
+    "os": "catalog:",
+    "pdf2json": "catalog:",
+    "sharp": "catalog:",
+    "tslib": "catalog:",
+    "turndown": "catalog:",
+    "yaml": "catalog:",
+    "yargs": "catalog:"
+  },
+  "devDependencies": {
+    "@esbuild-plugins/node-globals-polyfill": "catalog:dev",
+    "@img/sharp-darwin-arm64": "catalog:dev",
+    "@types/http-proxy-middleware": "catalog:dev",
+    "@types/node": "catalog:dev",
+    "@types/sharp": "catalog:dev",
+    "http-proxy-middleware": "catalog:dev",
+    "ts-jest": "catalog:dev",
+    "ts-loader": "catalog:dev",
+    "tsx": "catalog:dev",
+    "typescript": "catalog:dev"
   },
   "publishConfig": {
     "access": "public"
