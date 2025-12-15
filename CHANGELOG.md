@@ -1,3 +1,13 @@
+## 0.53.0 (2025-12-15)
+
+### 🚀 Features
+
+- #378 allow the user to be notified when the agent finished a task or requests input ([#378](https://github.com/whoz-oss/coday/issues/378))
+
+### ❤️ Thank You
+
+- Benoit Averty @BenoitAvertyWhoz
+
 ## 0.52.0 (2025-12-10)
 
 ### 🚀 Features
