@@ -32,7 +32,7 @@ export abstract class AiClient {
   protected apiKey: string | undefined
   protected abstract interactor: Interactor
   protected killed: boolean = false
-  protected thinkingInterval: number = 3000
+  protected thinkingInterval: number = 1000
   protected charsPerToken: number = 3 // should be 4, some margin baked in to avoid overshoot on tool call
   protected username?: string
 
