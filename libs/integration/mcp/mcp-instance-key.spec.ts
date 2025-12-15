@@ -48,8 +48,8 @@ describe('computeMcpConfigHash', () => {
     })
   })
 
-  describe('order independence', () => {
-    it('should produce same hash regardless of args order', () => {
+  describe('order sensitivity', () => {
+    it('should produce different hash for different args order (positional)', () => {
       const config1: McpServerConfig = {
         id: 'test',
         name: 'Test',
@@ -69,7 +69,8 @@ describe('computeMcpConfigHash', () => {
       const hash1 = computeMcpConfigHash(config1)
       const hash2 = computeMcpConfigHash(config2)
 
-      expect(hash1).toBe(hash2)
+      // Args order matters (positional arguments)
+      expect(hash1).not.toBe(hash2)
     })
 
     it('should produce same hash regardless of env var order', () => {
@@ -407,7 +408,7 @@ describe('computeMcpConfigHash', () => {
       expect(hash1).not.toBe(hash2)
     })
 
-    it('should handle playwright MCP with different configurations', () => {
+    it('should handle playwright MCP with different arg orders', () => {
       const config1: McpServerConfig = {
         id: 'pw1',
         name: 'Playwright 1',
@@ -427,7 +428,31 @@ describe('computeMcpConfigHash', () => {
       const hash1 = computeMcpConfigHash(config1)
       const hash2 = computeMcpConfigHash(config2)
 
-      // Same args but different order should produce same hash
+      // Args order matters - different order means different hash
+      expect(hash1).not.toBe(hash2)
+    })
+
+    it('should handle same args in same order', () => {
+      const config1: McpServerConfig = {
+        id: 'test1',
+        name: 'Test 1',
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-playwright'],
+        enabled: true,
+      }
+
+      const config2: McpServerConfig = {
+        id: 'test2',
+        name: 'Test 2',
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-playwright'], // Same order
+        enabled: true,
+      }
+
+      const hash1 = computeMcpConfigHash(config1)
+      const hash2 = computeMcpConfigHash(config2)
+
+      // Same args in same order should produce same hash
       expect(hash1).toBe(hash2)
     })
   })
