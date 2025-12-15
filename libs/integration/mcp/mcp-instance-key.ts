@@ -12,9 +12,9 @@ import { McpServerConfig } from '../../model/mcp-server-config'
  * - cwd (working directory)
  * - debug (affects inspector process)
  *
- * The hash is order-independent for arrays and objects:
- * - args are sorted alphabetically
- * - env keys are sorted alphabetically
+ * The hash is order-independent for environment variables only:
+ * - args preserve their order (positional arguments matter)
+ * - env keys are sorted alphabetically (order doesn't matter for env vars)
  *
  * Metadata fields are excluded from the hash:
  * - id, name (just labels)
@@ -43,9 +43,9 @@ export function computeMcpConfigHash(config: McpServerConfig): string {
     hashData.url = config.url
   }
 
-  // Arguments (sorted for order-independence)
+  // Arguments (preserve order - positional arguments matter)
   if (config.args && config.args.length > 0) {
-    hashData.args = [...config.args].sort()
+    hashData.args = config.args
   }
 
   // Environment variables (sorted by key for order-independence)
