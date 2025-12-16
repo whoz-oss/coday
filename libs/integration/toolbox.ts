@@ -15,18 +15,23 @@ import { CodayServices } from '../coday-services'
 import { AgentService } from '../agent'
 import { GetToolsInput } from './types'
 import { McpToolsFactory } from './mcp/mcp-tools-factory'
+import { McpServerConfig } from '@coday/model/mcp-server-config'
 import { Killable } from '@coday/model'
 
 export class Toolbox implements Killable {
   private readonly toolFactories: AssistantToolFactory[]
+  private readonly mcpConfigs: McpServerConfig[]
   private tools: CodayTool[] = []
 
   constructor(
     private readonly interactor: Interactor,
-    services: CodayServices,
+    private readonly services: CodayServices,
     agentService: AgentService
   ) {
-    const mcps = services.mcp.getMergedConfiguration().servers
+    // Store MCP configs for lazy initialization via pool
+    this.mcpConfigs = services.mcp.getMergedConfiguration().servers
+
+    // Create non-MCP tool factories immediately
     this.toolFactories = [
       new AiTools(interactor, agentService),
       new DelegateTools(interactor, agentService),
@@ -39,21 +44,50 @@ export class Toolbox implements Killable {
       new ZendeskTools(interactor, services.integration),
       new JiraTools(interactor, services.integration),
       new SlackTools(interactor, services.integration),
-      ...mcps.map((mcpConfig) => new McpToolsFactory(interactor, mcpConfig)),
     ]
   }
 
   async kill(): Promise<void> {
-    console.log(`Closing all toolFactories`)
+    console.log(`[TOOLBOX] Closing non-MCP tool factories`)
     await Promise.all(this.toolFactories.map((f) => f.kill()))
-    console.log(`Closed all toolFactories`)
+    console.log(`[TOOLBOX] Closed non-MCP tool factories`)
+
+    // Note: MCP factories are managed by the pool
+    // They will be released when ThreadCodayManager calls mcpPool.releaseThread()
   }
 
   async getTools(input: GetToolsInput): Promise<CodayTool[]> {
     const { context, integrations, agentName } = input
 
+    // Get threadId from context
+    const threadId = context.aiThread?.id
+    if (!threadId) {
+      this.interactor.warn('No thread ID in context, MCP tools will not be available')
+    }
+
+    // Get or create MCP factories via pool (lazy initialization)
+    const mcpFactories: AssistantToolFactory[] = []
+    if (threadId) {
+      for (const mcpConfig of this.mcpConfigs) {
+        try {
+          const factory = await this.services.mcpPool.getOrCreateFactory(
+            mcpConfig,
+            threadId,
+            () => new McpToolsFactory(mcpConfig)
+          )
+          mcpFactories.push(factory)
+        } catch (error) {
+          this.interactor.debug(`Error creating MCP factory for ${mcpConfig.name}: ${error}`)
+          // Continue with other factories
+        }
+      }
+    }
+
+    // Combine non-MCP and MCP factories
+    const allFactories = [...this.toolFactories, ...mcpFactories]
+
     // Filter factories based on integrations
-    const filteredFactories = this.toolFactories.filter((factory) => !integrations || integrations.has(factory.name))
+    const filteredFactories = allFactories.filter((factory) => !integrations || integrations.has(factory.name))
 
     try {
       // Process each filtered factory to get their tools
