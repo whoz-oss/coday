@@ -144,11 +144,10 @@ export class BasecampOAuth {
         }
       )
 
-      this.interactor.displayText(`Token exchange response status: ${response.status}`)
+      this.interactor.debug(`Token exchange response status: ${response.status}`)
 
       // Capturer le body avant de le passer à oauth4webapi
       const rawBody = await response.text()
-      this.interactor.displayText(`Raw response body: ${rawBody}`)
 
       // Recréer une Response avec le même body pour oauth4webapi
       response = new Response(rawBody, {
@@ -157,21 +156,23 @@ export class BasecampOAuth {
         headers: response.headers,
       })
 
-      // oauth4webapi valide strictement, mais on va gérer manuellement pour Basecamp
+      // oauth4webapi valide strictement, mais Basecamp ne retourne pas token_type
+      // On parse manuellement la réponse
       let result: any
       try {
         result = await oauth.processAuthorizationCodeResponse(this.as, this.client, response)
-        this.interactor.displayText('oauth4webapi validation succeeded')
+        this.interactor.debug('oauth4webapi validation succeeded')
       } catch (error: any) {
-        // Si oauth4webapi rejette, parser la réponse manuellement
-        this.interactor.warn(`oauth4webapi validation failed: ${error.message}`)
+        // Basecamp ne retourne pas token_type (non-conforme OAuth 2.0 strict)
+        // Parser manuellement sans afficher de warning
+        this.interactor.debug(`Using manual parsing for Basecamp response: ${error.message}`)
 
         if (!response.ok) {
-          throw new Error(`Token exchange failed: ${response.status} ${rawBody}`)
+          throw new Error(`Token exchange failed: ${response.status}`)
         }
 
         result = JSON.parse(rawBody)
-        this.interactor.displayText(`Manually parsed token response: ${JSON.stringify(result, null, 2)}`)
+        this.interactor.debug('Token response parsed successfully')
       }
 
       // Stocker les tokens (avec fallback pour token_type)
