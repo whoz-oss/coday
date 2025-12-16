@@ -10,6 +10,7 @@ import { MemoryTools } from './memory.tools'
 import { AssistantToolFactory, CodayTool } from './assistant-tool-factory'
 import { ConfluenceTools } from './confluence/confluence.tools'
 import { ZendeskTools } from './zendesk-articles/zendesk.tools'
+import { SlackTools } from './slack/slack.tools'
 import { CodayServices } from '../coday-services'
 import { AgentService } from '../agent'
 import { GetToolsInput } from './types'
@@ -37,6 +38,7 @@ export class Toolbox implements Killable {
       new ConfluenceTools(interactor, services.integration),
       new ZendeskTools(interactor, services.integration),
       new JiraTools(interactor, services.integration),
+      new SlackTools(interactor, services.integration),
       ...mcps.map((mcpConfig) => new McpToolsFactory(interactor, mcpConfig)),
     ]
   }
