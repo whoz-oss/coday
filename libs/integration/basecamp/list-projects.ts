@@ -2,7 +2,6 @@ import { BasecampOAuth } from './basecamp-oauth'
 
 export async function listBasecampProjects(oauth: BasecampOAuth): Promise<string> {
   try {
-    // S'assurer qu'on est authentifié
     if (!oauth.isAuthenticated()) {
       await oauth.authenticate()
     }

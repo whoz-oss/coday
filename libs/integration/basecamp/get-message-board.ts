@@ -2,7 +2,6 @@ import { BasecampOAuth } from './basecamp-oauth'
 
 export async function getBasecampMessageBoard(oauth: BasecampOAuth, projectId: number): Promise<string> {
   try {
-    // S'assurer qu'on est authentifié
     if (!oauth.isAuthenticated()) {
       await oauth.authenticate()
     }
@@ -10,7 +9,6 @@ export async function getBasecampMessageBoard(oauth: BasecampOAuth, projectId: n
     const accessToken = await oauth.getAccessToken()
     const baseUrl = oauth.getApiBaseUrl()
 
-    // Récupérer les détails du projet pour trouver le dock
     const projectResponse = await fetch(`${baseUrl}/projects/${projectId}.json`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -24,7 +22,6 @@ export async function getBasecampMessageBoard(oauth: BasecampOAuth, projectId: n
 
     const project = await projectResponse.json()
 
-    // Chercher le message board dans le dock
     const messageBoard = project.dock?.find((item: any) => item.name === 'message_board')
 
     if (!messageBoard) {

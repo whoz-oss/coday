@@ -22,9 +22,6 @@ export class BasecampTools extends AssistantToolFactory {
     super(interactor)
   }
 
-  /**
-   * Appelé par le système quand un OAuthCallbackEvent est reçu
-   */
   async handleOAuthCallback(event: OAuthCallbackEvent): Promise<void> {
     if (this.oauth) {
       await this.oauth.handleCallback(event)
@@ -43,25 +40,21 @@ export class BasecampTools extends AssistantToolFactory {
       return result
     }
 
-    // Pour OAuth, on utilise apiUrl comme clientId et apiKey comme clientSecret
-    const clientId = config.apiUrl
+    // For OAuth, username is the clientId of the app and apiKey its clientSecret (masked)
+    const clientId = config.username
     const clientSecret = config.apiKey
 
     if (!clientId || !clientSecret) {
-      this.interactor.displayText('Basecamp integration requires clientId (apiUrl) and clientSecret (apiKey)')
+      this.interactor.displayText('Basecamp integration requires clientId (username) and clientSecret (apiKey)')
       return result
     }
-    // Le redirect URI peut être configuré via oauth2.redirect_uri, sinon utiliser la valeur par défaut
-    // Note: En développement avec proxy, utiliser localhost:3001 (pas 4200)
+    // Note: for local dev, use localhost:3001
     const redirectUri = config.oauth2?.redirect_uri ?? 'http://localhost:3001/oauth/callback'
 
-    // Récupérer les services depuis le context
     const projectName = context.project.name
 
-    // Créer l'instance OAuth
     this.oauth = new BasecampOAuth(clientId, clientSecret, redirectUri, this.interactor, this.userService, projectName)
 
-    // Tool pour lister les projets
     const listProjectsTool: FunctionTool<Record<string, never>> = {
       type: 'function',
       function: {
@@ -79,7 +72,6 @@ export class BasecampTools extends AssistantToolFactory {
 
     result.push(listProjectsTool)
 
-    // Tool pour récupérer le message board ID d'un projet
     const getMessageBoardTool: FunctionTool<{ projectId: number }> = {
       type: 'function',
       function: {
@@ -94,7 +86,6 @@ export class BasecampTools extends AssistantToolFactory {
               description: 'The project ID (from listBasecampProjects)',
             },
           },
-          required: ['projectId'],
         },
         parse: JSON.parse,
         function: async ({ projectId }) => getBasecampMessageBoard(this.oauth!, projectId),
@@ -103,7 +94,6 @@ export class BasecampTools extends AssistantToolFactory {
 
     result.push(getMessageBoardTool)
 
-    // Tool pour lister les messages d'un message board
     const getMessagesTool: FunctionTool<{ projectId: number; messageBoardId: number }> = {
       type: 'function',
       function: {
@@ -122,7 +112,6 @@ export class BasecampTools extends AssistantToolFactory {
               description: 'The message board ID (from getBasecampMessageBoard)',
             },
           },
-          required: ['projectId', 'messageBoardId'],
         },
         parse: JSON.parse,
         function: async ({ projectId, messageBoardId }) => getBasecampMessages(this.oauth!, projectId, messageBoardId),
@@ -131,7 +120,6 @@ export class BasecampTools extends AssistantToolFactory {
 
     result.push(getMessagesTool)
 
-    // Tool pour récupérer un message complet
     const getMessageTool: FunctionTool<{ projectId: number; messageId: number }> = {
       type: 'function',
       function: {
@@ -150,7 +138,6 @@ export class BasecampTools extends AssistantToolFactory {
               description: 'The message ID (from getBasecampMessages)',
             },
           },
-          required: ['projectId', 'messageId'],
         },
         parse: JSON.parse,
         function: async ({ projectId, messageId }) => getBasecampMessage(this.oauth!, projectId, messageId),

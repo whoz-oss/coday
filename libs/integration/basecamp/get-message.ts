@@ -2,7 +2,6 @@ import { BasecampOAuth } from './basecamp-oauth'
 
 export async function getBasecampMessage(oauth: BasecampOAuth, projectId: number, messageId: number): Promise<string> {
   try {
-    // S'assurer qu'on est authentifié
     if (!oauth.isAuthenticated()) {
       await oauth.authenticate()
     }
@@ -23,13 +22,11 @@ export async function getBasecampMessage(oauth: BasecampOAuth, projectId: number
 
     const message = await response.json()
 
-    // Formater le message complet
     const creator = message.creator ? message.creator.name : 'Unknown'
     const createdAt = new Date(message.created_at).toLocaleString()
     const updatedAt = new Date(message.updated_at).toLocaleString()
     const commentsCount = message.comments_count || 0
 
-    // Nettoyer le contenu HTML basiquement
     const content = message.content ? message.content.replace(/<[^>]*>/g, '') : 'No content'
 
     let result = `# ${message.title}

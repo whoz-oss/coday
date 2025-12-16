@@ -6,7 +6,6 @@ export async function getBasecampMessages(
   messageBoardId: number
 ): Promise<string> {
   try {
-    // S'assurer qu'on est authentifié
     if (!oauth.isAuthenticated()) {
       await oauth.authenticate()
     }
@@ -31,14 +30,12 @@ export async function getBasecampMessages(
       return 'No messages found in this message board.'
     }
 
-    // Formater les messages pour affichage
     const messageList = messages
       .map((msg: any) => {
         const creator = msg.creator ? msg.creator.name : 'Unknown'
         const createdAt = new Date(msg.created_at).toLocaleString()
         const commentsCount = msg.comments_count || 0
 
-        // Extraire le contenu HTML et le nettoyer basiquement
         const contentPreview = msg.content ? msg.content.replace(/<[^>]*>/g, '').substring(0, 200) : 'No content'
 
         return `- **${msg.title}** (ID: ${msg.id})

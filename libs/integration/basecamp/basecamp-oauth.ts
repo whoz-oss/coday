@@ -22,12 +22,10 @@ export class BasecampOAuth {
   private client: oauth.Client
   private clientAuth: oauth.ClientAuth
 
-  // État
   private tokenData: TokenData | null = null
   private accounts: BasecampAccount[] = []
   private selectedAccountHref: string | null = null
 
-  // Flow OAuth en cours
   private pendingState: string | null = null
   private pendingCodeVerifier: string | null = null
   private pendingResolve: ((token: TokenData) => void) | null = null
@@ -42,7 +40,7 @@ export class BasecampOAuth {
     private projectName: string,
     private integrationName: string = 'BASECAMP'
   ) {
-    // Définir l'AuthorizationServer manuellement (Basecamp n'a pas de discovery)
+    // Basecamp has no discovery
     this.as = {
       issuer: 'https://launchpad.37signals.com',
       authorization_endpoint: 'https://launchpad.37signals.com/authorization/new',
@@ -86,16 +84,15 @@ export class BasecampOAuth {
       return this.tokenData!
     }
 
-    // Générer state et PKCE
+    // Generate state and PKCE
     const state = oauth.generateRandomState()
     const codeVerifier = oauth.generateRandomCodeVerifier()
     const codeChallenge = await oauth.calculatePKCECodeChallenge(codeVerifier)
 
-    // Stocker pour le callback
+    // Store for callback
     this.pendingState = state
     this.pendingCodeVerifier = codeVerifier
 
-    // Construire l'URL d'autorisation
     const authorizationUrl = new URL(this.as.authorization_endpoint!)
     authorizationUrl.searchParams.set('client_id', this.client.client_id)
     authorizationUrl.searchParams.set('redirect_uri', this.redirectUri)
@@ -105,7 +102,6 @@ export class BasecampOAuth {
     authorizationUrl.searchParams.set('code_challenge_method', 'S256')
     authorizationUrl.searchParams.set('type', 'web_server')
 
-    // Émettre l'event pour le frontend
     this.interactor.sendEvent(
       new OAuthRequestEvent({
         authUrl: authorizationUrl.toString(),
@@ -114,8 +110,8 @@ export class BasecampOAuth {
       })
     )
 
-    // Attendre le callback
-    // Note: Le timeout est géré côté frontend (détection fermeture popup)
+    // Await callback
+    // Note: timeout handled on frontend
     return new Promise((resolve, reject) => {
       this.pendingResolve = resolve
       this.pendingReject = reject
@@ -129,7 +125,7 @@ export class BasecampOAuth {
       return
     }
 
-    // Gérer les erreurs OAuth
+    // Handle OAuth errors
     if (event.error) {
       const errorMessage =
         event.error === 'access_denied'
@@ -140,7 +136,7 @@ export class BasecampOAuth {
 
       this.interactor.warn(errorMessage)
 
-      // Rejeter la Promise en attente
+      // Reject pending promise
       if (this.pendingReject) {
         this.pendingReject(new Error(errorMessage))
         this.pendingReject = null
@@ -159,15 +155,13 @@ export class BasecampOAuth {
     }
 
     try {
-      // Construire l'URL de callback avec le code
       const callbackUrl = new URL(this.redirectUri)
       callbackUrl.searchParams.set('code', event.code)
       callbackUrl.searchParams.set('state', event.state)
 
-      // Valider la réponse d'autorisation
       const params = oauth.validateAuthResponse(this.as, this.client, callbackUrl, this.pendingState)
 
-      // Échanger le code contre des tokens
+      // Exchange code against tokens
       let response = await oauth.authorizationCodeGrantRequest(
         this.as,
         this.client,
@@ -182,25 +176,24 @@ export class BasecampOAuth {
 
       this.interactor.debug(`Token exchange response status: ${response.status}`)
 
-      // Capturer le body avant de le passer à oauth4webapi
+      // Get body before oauth4webapi
       const rawBody = await response.text()
 
-      // Recréer une Response avec le même body pour oauth4webapi
+      // Build response with same body for oauth4webapi
       response = new Response(rawBody, {
         status: response.status,
         statusText: response.statusText,
         headers: response.headers,
       })
 
-      // oauth4webapi valide strictement, mais Basecamp ne retourne pas token_type
-      // On parse manuellement la réponse
+      // oauth4webapi validates strictly, but Basecamp does not return token_type
+      // parsing manually...
       let result: any
       try {
         result = await oauth.processAuthorizationCodeResponse(this.as, this.client, response)
         this.interactor.debug('oauth4webapi validation succeeded')
       } catch (error: any) {
-        // Basecamp ne retourne pas token_type (non-conforme OAuth 2.0 strict)
-        // Parser manuellement sans afficher de warning
+        // Basecamp does not retun token_type (non-conform OAuth 2.0 strict)
         this.interactor.debug(`Using manual parsing for Basecamp response: ${error.message}`)
 
         if (!response.ok) {
@@ -211,20 +204,18 @@ export class BasecampOAuth {
         this.interactor.debug('Token response parsed successfully')
       }
 
-      // Stocker les tokens
+      // Store tokens
       this.tokenData = {
         accessToken: result.access_token,
         refreshToken: result.refresh_token,
         expiresAt: Date.now() + (result.expires_in ?? 1209600) * 1000,
       }
 
-      // Récupérer les comptes disponibles AVANT de persister
+      // Get accounts BEFORE persisting
       await this.fetchAccounts()
 
-      // Persister dans UserService (avec account_href et account_name)
       this.saveTokensToStorage()
 
-      // Résoudre la Promise en attente
       if (this.pendingResolve) {
         this.pendingResolve(this.tokenData)
         this.pendingResolve = null
@@ -296,7 +287,7 @@ export class BasecampOAuth {
         expiresAt: Date.now() + (result.expires_in ?? 1209600) * 1000,
       }
 
-      // Persister les nouveaux tokens
+      // Persist new tokens
       this.saveTokensToStorage()
     } catch (error: any) {
       this.tokenData = null
@@ -310,11 +301,10 @@ export class BasecampOAuth {
    */
   private loadTokensFromStorage(): void {
     const userConfig = this.userService.config
-    const tokens = userConfig.projects?.[this.projectName]?.integration?.[this.integrationName]?.oauth2?.tokens
-    const accountHref =
-      userConfig.projects?.[this.projectName]?.integration?.[this.integrationName]?.oauth2?.account_href
-    const accountName =
-      userConfig.projects?.[this.projectName]?.integration?.[this.integrationName]?.oauth2?.account_name
+    const oauth2 = userConfig.projects?.[this.projectName]?.integration?.[this.integrationName]?.oauth2
+    const tokens = oauth2?.tokens
+    const accountHref = oauth2?.account_href
+    const accountName = oauth2?.account_name
 
     if (tokens) {
       this.tokenData = {
