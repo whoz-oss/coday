@@ -346,6 +346,34 @@ export class FileEvent extends CodayEvent {
   }
 }
 
+export class OAuthRequestEvent extends CodayEvent {
+  authUrl: string
+  state: string
+  integrationName: string
+  static override type = 'oauth_request'
+
+  constructor(event: Partial<OAuthRequestEvent>) {
+    super(event, OAuthRequestEvent.type)
+    this.authUrl = event.authUrl!
+    this.state = event.state!
+    this.integrationName = event.integrationName!
+  }
+}
+
+export class OAuthCallbackEvent extends CodayEvent {
+  code: string
+  state: string
+  integrationName: string
+  static override type = 'oauth_callback'
+
+  constructor(event: Partial<OAuthCallbackEvent>) {
+    super(event, OAuthCallbackEvent.type)
+    this.code = event.code!
+    this.state = event.state!
+    this.integrationName = event.integrationName!
+  }
+}
+
 // Exposing a map of event types to their corresponding classes
 const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [MessageEvent.type]: MessageEvent,
@@ -363,6 +391,8 @@ const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [ThreadUpdateEvent.type]: ThreadUpdateEvent,
   [SummaryEvent.type]: SummaryEvent,
   [FileEvent.type]: FileEvent,
+  [OAuthRequestEvent.type]: OAuthRequestEvent,
+  [OAuthCallbackEvent.type]: OAuthCallbackEvent,
 }
 
 export function buildCodayEvent(data: any): CodayEvent | undefined {

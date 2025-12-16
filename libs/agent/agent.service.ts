@@ -54,6 +54,11 @@ export class AgentService implements Killable {
    * - ~/.coday/[project]/agents/ folder
    */
   async initialize(context: CommandContext): Promise<void> {
+    // Store toolbox reference in context for OAuth callback routing
+    if (!context.data.toolbox) {
+      context.data.toolbox = this.toolbox
+    }
+
     // Already initialized if we have any definitions
     if (this.agentDefinitions.length > 0) return
 

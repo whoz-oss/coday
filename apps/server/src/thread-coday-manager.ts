@@ -10,10 +10,11 @@ import { MemoryService } from '@coday/service/memory.service'
 import { McpConfigService } from '@coday/service/mcp-config.service'
 import { CodayLogger } from '@coday/service/coday-logger'
 import { WebhookService } from '@coday/service/webhook.service'
-import { HeartBeatEvent } from '@coday/coday-events'
+import { HeartBeatEvent, OAuthCallbackEvent } from '@coday/coday-events'
 import { debugLog } from './log'
 import { ThreadService } from './services/thread.service'
 import { ProjectService } from './services/project.service'
+import { Toolbox } from '@coday/integration/toolbox'
 
 /**
  * Represents a Coday instance associated with a specific thread.
@@ -26,6 +27,7 @@ class ThreadCodayInstance {
   private inactivityTimeout?: NodeJS.Timeout
   private isOneshot: boolean = false
   coday?: Coday
+  toolbox?: Toolbox
 
   // Timeouts configuration
   static readonly DISCONNECT_TIMEOUT = 5 * 60 * 1000 // 5 minutes after last connection closed
@@ -220,6 +222,10 @@ class ThreadCodayInstance {
       webhook: this.webhookService,
     })
 
+    // Store toolbox reference for OAuth callback routing
+    // The toolbox will be created later during context initialization
+    // We'll access it through coday.handlerLooper when needed
+
     return true
   }
 
@@ -294,6 +300,43 @@ class ThreadCodayInstance {
    */
   stop(): void {
     this.coday?.stop()
+  }
+
+  /**
+   * Handle OAuth callback by routing to the appropriate integration
+   */
+  async handleOAuthCallback(event: OAuthCallbackEvent): Promise<void> {
+    if (!this.coday) {
+      debugLog('THREAD_CODAY', `Cannot handle OAuth callback: Coday not initialized for thread ${this.threadId}`)
+      return
+    }
+
+    // Access toolbox through handlerLooper -> aiHandler -> services
+    const handlerLooper = this.coday.handlerLooper
+    if (!handlerLooper) {
+      debugLog('THREAD_CODAY', `Cannot handle OAuth callback: HandlerLooper not initialized`)
+      return
+    }
+
+    // The handlerLooper has access to services through aiHandler
+    // We need to get the toolbox from there
+    const aiHandler = handlerLooper['aiHandler']
+    if (!aiHandler) {
+      debugLog('THREAD_CODAY', `Cannot handle OAuth callback: AiHandler not initialized`)
+      return
+    }
+
+    // Get toolbox from agent service
+    // The agent service creates toolbox for each agent
+    // We need a different approach - store toolbox reference when it's created
+    debugLog('THREAD_CODAY', `Attempting to route OAuth callback for ${event.integrationName}`)
+
+    // For now, we'll use a workaround: store toolbox in context.data
+    if (this.coday.context?.data?.toolbox) {
+      await this.coday.context.data.toolbox.handleOAuthCallback(event)
+    } else {
+      debugLog('THREAD_CODAY', `No toolbox found in context for OAuth callback routing`)
+    }
   }
 
   /**
