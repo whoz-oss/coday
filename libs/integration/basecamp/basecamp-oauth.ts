@@ -218,11 +218,11 @@ export class BasecampOAuth {
         expiresAt: Date.now() + (result.expires_in ?? 1209600) * 1000,
       }
 
-      // Persister dans UserService
-      this.saveTokensToStorage()
-
-      // Récupérer les comptes disponibles
+      // Récupérer les comptes disponibles AVANT de persister
       await this.fetchAccounts()
+
+      // Persister dans UserService (avec account_href et account_name)
+      this.saveTokensToStorage()
 
       // Résoudre la Promise en attente
       if (this.pendingResolve) {
