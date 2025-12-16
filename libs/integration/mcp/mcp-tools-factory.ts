@@ -45,6 +45,13 @@ export class McpToolsFactory extends AssistantToolFactory {
 
   private errorLogged: boolean = false
 
+  /**
+   * Timestamp of the last tool or resource call.
+   * Updated automatically on each tool/resource execution.
+   * Used for monitoring and debugging (not for TTL-based cleanup).
+   */
+  lastUsed: number = Date.now()
+
   constructor(
     interactor: Interactor,
     private serverConfig: McpServerConfig
@@ -394,6 +401,9 @@ export class McpToolsFactory extends AssistantToolFactory {
 
     const getResource = async (args: Record<string, any>) => {
       try {
+        // Update last used timestamp
+        this.lastUsed = Date.now()
+
         // Build the resource URI with parameters
         const uri = resource.uriTemplate.replace(/\{([^}]+)\}/g, (_match: string, param: string) => {
           return encodeURIComponent(args[param] || '')
@@ -466,8 +476,10 @@ export class McpToolsFactory extends AssistantToolFactory {
     const toolName = `${serverConfig.name}__${tool.name}`
 
     const callFunction = async (args: Record<string, any>) => {
-      // Log the function call with smart formatting
+      // Update last used timestamp
+      this.lastUsed = Date.now()
 
+      // Log the function call with smart formatting
       if (this.serverConfig.debug) {
         this.interactor.debug(`${toolName} input:\n\n` + '```json\n' + JSON.stringify(args) + '\n```')
       }

@@ -9,6 +9,7 @@ import { debugLog } from './log'
 import { CodayLogger } from '@coday/service/coday-logger'
 import { WebhookService } from '@coday/service/webhook.service'
 import { ThreadCleanupService } from '@coday/service/thread-cleanup.service'
+import { McpInstancePool } from '@coday/integration/mcp/mcp-instance-pool'
 import { findAvailablePort } from './find-available-port'
 import { ConfigServiceRegistry } from '@coday/service/config-service-registry'
 import { ServerInteractor } from '@coday/model/server-interactor'
@@ -155,8 +156,12 @@ const threadFileService = new ThreadFileService(projectsDir)
 // Initialize thread service for REST API endpoints
 const threadService = new ThreadService(projectRepository, projectsDir, threadFileService)
 
+// Initialize MCP instance pool for shared MCP instances
+const mcpPool = new McpInstancePool()
+debugLog('INIT', 'MCP instance pool initialized')
+
 // Initialize the thread-based Coday manager for SSE architecture
-const threadCodayManager = new ThreadCodayManager(logger, webhookService, projectService, threadService)
+const threadCodayManager = new ThreadCodayManager(logger, webhookService, projectService, threadService, mcpPool)
 
 // Initialize config service registry for REST API endpoints
 const configInteractor = new ServerInteractor('config-api')
