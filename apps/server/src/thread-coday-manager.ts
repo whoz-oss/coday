@@ -11,6 +11,7 @@ import { McpConfigService } from '@coday/service/mcp-config.service'
 import { CodayLogger } from '@coday/service/coday-logger'
 import { WebhookService } from '@coday/service/webhook.service'
 import { HeartBeatEvent } from '@coday/coday-events'
+import { McpInstancePool } from '@coday/integration/mcp/mcp-instance-pool'
 import { debugLog } from './log'
 import { ThreadService } from './services/thread.service'
 import { ProjectService } from './services/project.service'
@@ -41,6 +42,7 @@ class ThreadCodayInstance {
     private readonly webhookService: WebhookService,
     private readonly projectService: ProjectService,
     private readonly threadService: ThreadService,
+    private readonly mcpPool: McpInstancePool,
     private readonly onTimeout: (threadId: string) => void
   ) {
     // Start inactivity timeout
@@ -181,6 +183,7 @@ class ThreadCodayInstance {
       integrationConfig,
       memory,
       mcp,
+      mcpPool: this.mcpPool,
       thread: this.threadService,
       logger: this.logger,
       webhook: this.webhookService,
@@ -314,7 +317,8 @@ export class ThreadCodayManager {
     private readonly logger: CodayLogger,
     private readonly webhookService: WebhookService,
     private readonly projectService: ProjectService,
-    private readonly threadService: ThreadService
+    private readonly threadService: ThreadService,
+    private readonly mcpPool: McpInstancePool
   ) {
     // Start global heartbeat mechanism
     this.heartbeatInterval = setInterval(() => this.sendHeartbeats(), ThreadCodayManager.HEARTBEAT_INTERVAL)
@@ -369,6 +373,7 @@ export class ThreadCodayManager {
         this.webhookService,
         this.projectService,
         this.threadService,
+        this.mcpPool,
         this.handleInstanceTimeout
       )
       this.instances.set(threadId, instance)
@@ -410,6 +415,7 @@ export class ThreadCodayManager {
         this.webhookService,
         this.projectService,
         this.threadService,
+        this.mcpPool,
         this.handleInstanceTimeout
       )
       instance.markAsOneshot() // Mark as oneshot for shorter timeout
@@ -469,6 +475,9 @@ export class ThreadCodayManager {
   async cleanup(threadId: string): Promise<void> {
     const instance = this.instances.get(threadId)
     if (instance) {
+      // Release MCP instances used by this thread
+      await this.mcpPool.releaseThread(threadId)
+
       await instance.cleanup()
       this.instances.delete(threadId)
       debugLog('THREAD_CODAY', `Removed instance for thread ${threadId}`)
@@ -519,6 +528,10 @@ export class ThreadCodayManager {
 
     await Promise.all(cleanupPromises)
     this.instances.clear()
+
+    // Shutdown MCP instance pool
+    await this.mcpPool.shutdown()
+
     debugLog('THREAD_CODAY_MANAGER', 'All thread instances cleaned up')
   }
 }
