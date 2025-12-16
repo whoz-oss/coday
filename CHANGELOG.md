@@ -1,3 +1,13 @@
+## 0.54.0 (2025-12-16)
+
+### 🚀 Features
+
+- #309 Add Plan Mode with plan and execute-plan prompt chains ([#316](https://github.com/whoz-oss/coday/pull/316), [#309](https://github.com/whoz-oss/coday/issues/309))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.53.1 (2025-12-16)
 
 ### 🩹 Fixes
