@@ -47,20 +47,24 @@ export class OAuthService {
         // Vérifier si le state est toujours pending (pas de callback reçu)
         if (this.pendingStates.has(state)) {
           console.warn('[OAuth Service] OAuth cancelled - popup closed without completing authentication')
+
+          // Récupérer integrationName AVANT de delete
+          const integrationName = this.pendingStates.get(state)
           this.pendingStates.delete(state)
 
-          // Envoyer un message d'erreur visible pour l'utilisateur
+          // Envoyer un OAuthCallbackEvent avec erreur user_cancelled
           const projectName = this.projectState.getSelectedProjectId()
           const threadId = this.threadState.getSelectedThreadId()
 
-          if (projectName && threadId) {
-            // Envoyer un AnswerEvent pour signifier l'annulation
-            const cancelEvent = {
-              type: 'answer',
-              answer: '[OAuth authentication cancelled by user]',
-            }
+          if (projectName && threadId && integrationName) {
+            const cancelCallbackEvent = new OAuthCallbackEvent({
+              state,
+              integrationName,
+              error: 'user_cancelled',
+              errorDescription: 'User closed the popup without completing authentication',
+            })
 
-            this.messageApi.sendMessage(projectName, threadId, cancelEvent).subscribe({
+            this.messageApi.sendMessage(projectName, threadId, cancelCallbackEvent).subscribe({
               next: () => console.log('[OAuth Service] Cancellation sent to backend'),
               error: (err) => console.error('[OAuth Service] Failed to send cancellation:', err),
             })
@@ -102,7 +106,43 @@ export class OAuthService {
       return
     }
 
-    const { code, state } = event.data || {}
+    const { code, state, error, errorDescription } = event.data || {}
+
+    // Gérer les erreurs OAuth (ex: access_denied)
+    if (error) {
+      console.log('[OAuth Service] OAuth error received:', error, errorDescription)
+
+      const integrationName = this.pendingStates.get(state)
+      if (integrationName) {
+        this.pendingStates.delete(state)
+
+        // Arrêter le monitoring de la popup
+        if (this.popupCheckInterval) {
+          clearInterval(this.popupCheckInterval)
+          this.popupCheckInterval = null
+        }
+
+        // Envoyer un OAuthCallbackEvent avec l'erreur
+        const projectName = this.projectState.getSelectedProjectId()
+        const threadId = this.threadState.getSelectedThreadId()
+
+        if (projectName && threadId) {
+          const errorCallbackEvent = new OAuthCallbackEvent({
+            state,
+            integrationName,
+            error,
+            errorDescription,
+          })
+
+          this.messageApi.sendMessage(projectName, threadId, errorCallbackEvent).subscribe({
+            next: () => console.log('[OAuth Service] Error callback sent to backend'),
+            error: (err) => console.error('[OAuth Service] Failed to send error callback:', err),
+          })
+        }
+      }
+      return
+    }
+
     if (!code || !state) {
       console.warn('[OAuth Service] Message missing code or state:', event.data)
       return

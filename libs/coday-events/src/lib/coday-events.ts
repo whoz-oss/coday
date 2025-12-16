@@ -361,16 +361,20 @@ export class OAuthRequestEvent extends CodayEvent {
 }
 
 export class OAuthCallbackEvent extends CodayEvent {
-  code: string
+  code?: string
   state: string
   integrationName: string
+  error?: string
+  errorDescription?: string
   static override type = 'oauth_callback'
 
   constructor(event: Partial<OAuthCallbackEvent>) {
     super(event, OAuthCallbackEvent.type)
-    this.code = event.code!
+    this.code = event.code
     this.state = event.state!
     this.integrationName = event.integrationName!
+    this.error = event.error
+    this.errorDescription = event.errorDescription
   }
 }
 

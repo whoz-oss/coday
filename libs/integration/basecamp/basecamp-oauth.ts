@@ -29,6 +29,7 @@ export class BasecampOAuth {
   private pendingState: string | null = null
   private pendingCodeVerifier: string | null = null
   private pendingResolve: ((token: TokenData) => void) | null = null
+  private pendingReject: ((error: Error) => void) | null = null
 
   constructor(
     clientId: string, // Pas de 'private' car utilisé immédiatement
@@ -106,8 +107,9 @@ export class BasecampOAuth {
 
     // Attendre le callback
     // Note: Le timeout est géré côté frontend (détection fermeture popup)
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       this.pendingResolve = resolve
+      this.pendingReject = reject
     })
   }
 
@@ -117,8 +119,33 @@ export class BasecampOAuth {
       this.interactor.error('Invalid OAuth state')
       return
     }
-    if (!this.pendingCodeVerifier || !this.pendingState) {
-      this.interactor.error('No pending OAuth flow')
+
+    // Gérer les erreurs OAuth
+    if (event.error) {
+      const errorMessage =
+        event.error === 'access_denied'
+          ? 'OAuth authentication denied by user'
+          : event.error === 'user_cancelled'
+            ? 'OAuth authentication cancelled by user'
+            : `OAuth error: ${event.error}${event.errorDescription ? ' - ' + event.errorDescription : ''}`
+
+      this.interactor.warn(errorMessage)
+
+      // Rejeter la Promise en attente
+      if (this.pendingReject) {
+        this.pendingReject(new Error(errorMessage))
+        this.pendingReject = null
+      }
+
+      // Cleanup
+      this.pendingResolve = null
+      this.pendingState = null
+      this.pendingCodeVerifier = null
+      return
+    }
+
+    if (!event.code || !this.pendingCodeVerifier || !this.pendingState) {
+      this.interactor.error('No pending OAuth flow or missing code')
       return
     }
 
