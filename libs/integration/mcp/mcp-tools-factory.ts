@@ -5,6 +5,7 @@ import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { ResourceTemplate, ToolInfo } from './types'
 import { ChildProcess, spawn } from 'child_process'
+import { ServerInteractor } from '@coday/model/server-interactor'
 
 const MCP_CONNECT_TIMEOUT = 15000 // in ms
 
@@ -51,8 +52,8 @@ export class McpToolsFactory extends AssistantToolFactory {
    */
   lastUsed: number = Date.now()
 
-  constructor(private serverConfig: McpServerConfig) {
-    super()
+  constructor(private readonly serverConfig: McpServerConfig) {
+    super(new ServerInteractor('not used'))
     this.name = serverConfig.name
   }
 
