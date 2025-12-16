@@ -1,11 +1,10 @@
 import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
-import { CommandContext, Interactor, McpServerConfig } from '../../model'
+import { CommandContext, McpServerConfig } from '../../model'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { ResourceTemplate, ToolInfo } from './types'
 import { ChildProcess, spawn } from 'child_process'
-import { MessageEvent, ImageContent } from '@coday/coday-events'
 
 const MCP_CONNECT_TIMEOUT = 15000 // in ms
 
@@ -52,11 +51,8 @@ export class McpToolsFactory extends AssistantToolFactory {
    */
   lastUsed: number = Date.now()
 
-  constructor(
-    interactor: Interactor,
-    private serverConfig: McpServerConfig
-  ) {
-    super(interactor)
+  constructor(private serverConfig: McpServerConfig) {
+    super()
     this.name = serverConfig.name
   }
 
@@ -112,7 +108,7 @@ export class McpToolsFactory extends AssistantToolFactory {
 
     // if server is not enabled, no tools to return
     if (!this.serverConfig.enabled) {
-      this.interactor.debug(`MCP server ${this.serverConfig.name} is disabled, skipping`)
+      console.debug(`[MCP] Server ${this.serverConfig.name} is disabled, skipping`)
       return []
     }
 
@@ -139,10 +135,8 @@ export class McpToolsFactory extends AssistantToolFactory {
       // Only log the error once per factory instance
       if (!this.errorLogged) {
         this.errorLogged = true
-        console.error(`MCP server ${this.serverConfig.name} failed to initialize: ${errorMessage}`)
-        this.interactor.warn(
-          `MCP server '${this.serverConfig.name}' is unavailable and will be skipped: ${errorMessage}`
-        )
+        console.error(`[MCP] Server ${this.serverConfig.name} failed to initialize: ${errorMessage}`)
+        console.warn(`[MCP] Server '${this.serverConfig.name}' is unavailable and will be skipped: ${errorMessage}`)
       }
 
       // Return empty tools array to allow other tools to work
@@ -361,10 +355,10 @@ export class McpToolsFactory extends AssistantToolFactory {
       // Method not found errors (-32601) are expected for MCP servers that don't implement resource templates
       // Only warn if it's not a method not found error
       if (err instanceof Error && !err.message.includes('-32601: Method not found')) {
-        this.interactor.warn(`Error listing resource templates from MCP server ${this.serverConfig.name}: ${err}`)
+        console.warn(`[MCP] Error listing resource templates from server ${this.serverConfig.name}: ${err}`)
       } else {
-        this.interactor.debug(
-          `MCP server ${this.serverConfig.name} doesn't support resource templates, continuing with tools only.`
+        console.debug(
+          `[MCP] Server ${this.serverConfig.name} doesn't support resource templates, continuing with tools only.`
         )
       }
     }
@@ -378,12 +372,12 @@ export class McpToolsFactory extends AssistantToolFactory {
         }
       }
     } catch (err) {
-      this.interactor.warn(`Error listing tools from MCP server ${this.serverConfig.name}: ${err}`)
+      console.warn(`[MCP] Error listing tools from server ${this.serverConfig.name}: ${err}`)
     }
 
     if (this.serverConfig.debug) {
       const toolNames = results.map((t) => `- ${t.function.name}\n`).join()
-      this.interactor.debug(`MCP ${this.serverConfig.name}:\n${toolNames}`)
+      console.debug(`[MCP] ${this.serverConfig.name}:\n${toolNames}`)
     }
 
     return results
@@ -437,7 +431,7 @@ export class McpToolsFactory extends AssistantToolFactory {
           return content
         })
       } catch (error) {
-        this.interactor.error(`Error retrieving resource ${resource.name}: ${error}`)
+        console.error(`[MCP] Error retrieving resource ${resource.name}: ${error}`)
         throw new Error(`Failed to retrieve resource: ${error}`)
       }
     }
@@ -481,7 +475,7 @@ export class McpToolsFactory extends AssistantToolFactory {
 
       // Log the function call with smart formatting
       if (this.serverConfig.debug) {
-        this.interactor.debug(`${toolName} input:\n\n` + '```json\n' + JSON.stringify(args) + '\n```')
+        console.debug(`[MCP] ${toolName} input:\n\n` + '```json\n' + JSON.stringify(args) + '\n```')
       }
       try {
         // Call the tool function
@@ -490,18 +484,20 @@ export class McpToolsFactory extends AssistantToolFactory {
           arguments: args,
         })
         if (this.serverConfig.debug) {
-          this.interactor.debug('MCP tool output:\n\n```json\n' + JSON.stringify(result) + '\n```')
+          console.debug('[MCP] Tool output:\n\n```json\n' + JSON.stringify(result) + '\n```')
         }
 
         // MCP can return either a content array or a toolResult
         if (result && 'content' in result && Array.isArray(result.content)) {
-          // Process content array and detect images
+          // Process content array
           const processedContent = result.content.map((item: any) => {
             // Text content
             if (item.type === 'text') {
               return item.text
             }
             // Image content - convert to Coday MessageContent format
+            // Note: Images will be stringified by tool-set for now
+            // Future: implement proper image handling via alternative mechanism
             if (item.type === 'image' && item.data) {
               return {
                 type: 'image',
@@ -520,67 +516,12 @@ export class McpToolsFactory extends AssistantToolFactory {
             return item
           })
 
-          // Check for images in the content
-          const imageParts = processedContent.filter(
-            (c) => typeof c === 'object' && c !== null && 'type' in c && c.type === 'image'
-          )
-
-          // If we have images, emit them as MessageEvents for user visibility
-          if (imageParts.length > 0) {
-            for (const imagePart of imageParts) {
-              const imageContent = imagePart as ImageContent
-              const messageEvent = new MessageEvent({
-                role: 'assistant',
-                content: [imageContent],
-                name: toolName,
-              })
-              this.interactor.sendEvent(messageEvent)
-            }
-          }
-
-          // Now return the complete content for the AI
           // Single item optimization
           if (processedContent.length === 1) {
-            const single = processedContent[0]
-            // Return MessageContent directly if it's properly typed
-            if (typeof single === 'object' && single !== null && 'type' in single) {
-              if (single.type === 'image') {
-                // Return image for AI to reference
-                return single
-              }
-              // For single text MessageContent, unwrap to string
-              if (single.type === 'text') {
-                return single.content
-              }
-            }
-            // Single string - return as-is
-            if (typeof single === 'string') {
-              return single
-            }
+            return processedContent[0]
           }
 
-          // Multiple items - combine intelligently
-          const textParts = processedContent.filter((c) => typeof c === 'string')
-          const hasImages = imageParts.length > 0
-
-          if (hasImages && textParts.length > 0) {
-            // Both images and text: return text description
-            // Images already emitted as MessageEvents for user visibility
-            // AI will have the context from the image in the conversation
-            return textParts.join('\n')
-          }
-
-          if (textParts.length > 0) {
-            // Only text - join and return
-            return textParts.join('\n')
-          }
-
-          if (hasImages) {
-            // Only images - return first one for AI reference
-            return imageParts[0]
-          }
-
-          // Fallback: return array as-is (will be stringified)
+          // Multiple items - return array (will be stringified by tool-set)
           return processedContent
         } else if (result && 'toolResult' in result) {
           // Return direct tool result
@@ -589,7 +530,7 @@ export class McpToolsFactory extends AssistantToolFactory {
 
         return result
       } catch (error) {
-        this.interactor.error(`Error calling function ${tool.name}: ${error}`)
+        console.error(`[MCP] Error calling function ${tool.name}: ${error}`)
         throw new Error(`Failed to call function: ${error}`)
       }
     }
