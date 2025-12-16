@@ -35,7 +35,7 @@ export class Coday {
   constructor(
     public readonly interactor: Interactor,
     private readonly options: CodayOptions,
-    private readonly services: CodayServices
+    public readonly services: CodayServices
   ) {
     this.interactor.debugLevelEnabled = options.debug
     this.interactor.debug('Coday started with debug')

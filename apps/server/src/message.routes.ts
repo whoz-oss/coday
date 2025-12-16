@@ -142,16 +142,16 @@ export function registerMessageRoutes(
         // Handle OAuth callback events specially
         if (payload.type === 'oauth_callback') {
           const oauthEvent = buildCodayEvent(payload) as OAuthCallbackEvent
-          if (oauthEvent && instance.coday.context?.data?.toolbox) {
+          if (oauthEvent && instance.coday.services.agent) {
             debugLog('MESSAGE', `Routing OAuth callback for ${oauthEvent.integrationName}`)
-            const toolbox = instance.coday.context.data.toolbox
+            const toolbox = instance.coday.services.agent.toolbox
             if (toolbox && 'handleOAuthCallback' in toolbox) {
               await toolbox.handleOAuthCallback(oauthEvent)
               res.status(200).send('OAuth callback handled successfully!')
               return
             }
           } else {
-            debugLog('MESSAGE', `No toolbox available for OAuth callback routing`)
+            debugLog('MESSAGE', `No agent service available for OAuth callback routing`)
           }
         }
 
