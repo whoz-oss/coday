@@ -1,6 +1,8 @@
 import * as oauth from 'oauth4webapi'
 import { Interactor } from '../../model'
 import { OAuthRequestEvent, OAuthCallbackEvent } from '@coday/coday-events'
+import { UserService } from '../../service/user.service'
+import { OAuth2Tokens } from '../../model/integration-config'
 
 export interface BasecampAccount {
   id: number
@@ -32,10 +34,13 @@ export class BasecampOAuth {
   private pendingReject: ((error: Error) => void) | null = null
 
   constructor(
-    clientId: string, // Pas de 'private' car utilisé immédiatement
-    clientSecret: string, // Pas de 'private' car utilisé immédiatement
+    clientId: string,
+    clientSecret: string,
     private redirectUri: string,
-    private interactor: Interactor
+    private interactor: Interactor,
+    private userService: UserService,
+    private projectName: string,
+    private integrationName: string = 'BASECAMP'
   ) {
     // Définir l'AuthorizationServer manuellement (Basecamp n'a pas de discovery)
     this.as = {
@@ -49,6 +54,10 @@ export class BasecampOAuth {
   }
 
   isAuthenticated(): boolean {
+    if (!this.tokenData) {
+      // Try to load from UserService
+      this.loadTokensFromStorage()
+    }
     if (!this.tokenData) return false
     return this.tokenData.expiresAt > Date.now() + 5 * 60 * 1000
   }
@@ -202,12 +211,15 @@ export class BasecampOAuth {
         this.interactor.debug('Token response parsed successfully')
       }
 
-      // Stocker les tokens (avec fallback pour token_type)
+      // Stocker les tokens
       this.tokenData = {
         accessToken: result.access_token,
         refreshToken: result.refresh_token,
         expiresAt: Date.now() + (result.expires_in ?? 1209600) * 1000,
       }
+
+      // Persister dans UserService
+      this.saveTokensToStorage()
 
       // Récupérer les comptes disponibles
       await this.fetchAccounts()
@@ -283,9 +295,99 @@ export class BasecampOAuth {
         refreshToken: result.refresh_token ?? this.tokenData.refreshToken,
         expiresAt: Date.now() + (result.expires_in ?? 1209600) * 1000,
       }
+
+      // Persister les nouveaux tokens
+      this.saveTokensToStorage()
     } catch (error: any) {
       this.tokenData = null
+      this.clearTokensFromStorage()
       throw new Error(`Token refresh failed: ${error.message}`)
+    }
+  }
+
+  /**
+   * Load tokens from UserService storage
+   */
+  private loadTokensFromStorage(): void {
+    const userConfig = this.userService.config
+    const tokens = userConfig.projects?.[this.projectName]?.integration?.[this.integrationName]?.oauth2?.tokens
+    const accountHref =
+      userConfig.projects?.[this.projectName]?.integration?.[this.integrationName]?.oauth2?.account_href
+    const accountName =
+      userConfig.projects?.[this.projectName]?.integration?.[this.integrationName]?.oauth2?.account_name
+
+    if (tokens) {
+      this.tokenData = {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresAt: tokens.expires_at,
+      }
+
+      if (accountHref) {
+        this.selectedAccountHref = accountHref
+      }
+
+      this.interactor.debug(`Loaded OAuth tokens from storage for ${this.integrationName}`)
+      if (accountName) {
+        this.interactor.displayText(`Using stored Basecamp account: ${accountName}`)
+      }
+    }
+  }
+
+  /**
+   * Save tokens to UserService storage
+   */
+  private saveTokensToStorage(): void {
+    if (!this.tokenData) return
+
+    const userConfig = this.userService.config
+
+    // Ensure structure exists
+    if (!userConfig.projects) userConfig.projects = {}
+    if (!userConfig.projects[this.projectName]) userConfig.projects[this.projectName] = { integration: {} }
+    if (!userConfig.projects[this.projectName]!.integration) userConfig.projects[this.projectName]!.integration = {}
+    if (!userConfig.projects[this.projectName]!.integration![this.integrationName]) {
+      userConfig.projects[this.projectName]!.integration![this.integrationName] = {}
+    }
+    if (!userConfig.projects[this.projectName]!.integration![this.integrationName]!.oauth2) {
+      userConfig.projects[this.projectName]!.integration![this.integrationName]!.oauth2 = {} as any
+    }
+
+    // Save tokens and account info
+    const oauth2Config = userConfig.projects[this.projectName]!.integration![this.integrationName]!.oauth2!
+    oauth2Config.tokens = {
+      access_token: this.tokenData.accessToken,
+      refresh_token: this.tokenData.refreshToken,
+      expires_at: this.tokenData.expiresAt,
+    } as OAuth2Tokens
+
+    if (this.selectedAccountHref) {
+      oauth2Config.account_href = this.selectedAccountHref
+    }
+
+    const selectedAccount = this.accounts.find((a) => a.href === this.selectedAccountHref)
+    if (selectedAccount) {
+      oauth2Config.account_name = selectedAccount.name
+    }
+
+    // Persist to disk
+    this.userService.save()
+    this.interactor.debug(`Saved OAuth tokens to storage for ${this.integrationName}`)
+  }
+
+  /**
+   * Clear tokens from UserService storage
+   */
+  private clearTokensFromStorage(): void {
+    const userConfig = this.userService.config
+    const oauth2Config = userConfig.projects?.[this.projectName]?.integration?.[this.integrationName]?.oauth2
+
+    if (oauth2Config) {
+      delete oauth2Config.tokens
+      delete oauth2Config.account_href
+      delete oauth2Config.account_name
+      this.userService.save()
+      this.interactor.debug(`Cleared OAuth tokens from storage for ${this.integrationName}`)
     }
   }
 }

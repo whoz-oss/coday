@@ -41,7 +41,7 @@ export class Toolbox implements Killable {
       new ZendeskTools(interactor, services.integration),
       new JiraTools(interactor, services.integration),
       new SlackTools(interactor, services.integration),
-      new BasecampTools(interactor, services.integration),
+      new BasecampTools(interactor, services.integration, services.user),
       ...mcps.map((mcpConfig) => new McpToolsFactory(interactor, mcpConfig)),
     ]
   }

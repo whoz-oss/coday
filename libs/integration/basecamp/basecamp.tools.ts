@@ -1,10 +1,11 @@
 import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
-import { Interactor } from '../../model'
+import { CommandContext, Interactor } from '../../model'
 import { IntegrationService } from '../../service/integration.service'
 import { BasecampOAuth } from './basecamp-oauth'
 import { listBasecampProjects } from './list-projects'
 import { OAuthCallbackEvent } from '@coday/coday-events'
+import { UserService } from '@coday/service/user.service'
 
 export class BasecampTools extends AssistantToolFactory {
   name = 'BASECAMP'
@@ -12,7 +13,8 @@ export class BasecampTools extends AssistantToolFactory {
 
   constructor(
     interactor: Interactor,
-    private readonly integrationService: IntegrationService
+    private readonly integrationService: IntegrationService,
+    private readonly userService: UserService
   ) {
     super(interactor)
   }
@@ -26,16 +28,17 @@ export class BasecampTools extends AssistantToolFactory {
     }
   }
 
-  protected async buildTools(): Promise<CodayTool[]> {
+  protected async buildTools(context: CommandContext): Promise<CodayTool[]> {
     const result: CodayTool[] = []
 
     if (!this.integrationService.hasIntegration(this.name)) {
-      console.log('no basecamp')
       return result
     }
 
     const config = this.integrationService.getIntegration(this.name)
-    if (!config) return result
+    if (!config) {
+      return result
+    }
 
     // Pour OAuth, on utilise apiUrl comme clientId et apiKey comme clientSecret
     const clientId = config.apiUrl
@@ -45,13 +48,15 @@ export class BasecampTools extends AssistantToolFactory {
       this.interactor.displayText('Basecamp integration requires clientId (apiUrl) and clientSecret (apiKey)')
       return result
     }
-
-    // Le redirect URI peut être configuré via config.username, sinon utiliser la valeur par défaut
+    // Le redirect URI peut être configuré via oauth2.redirect_uri, sinon utiliser la valeur par défaut
     // Note: En développement avec proxy, utiliser localhost:3001 (pas 4200)
-    const redirectUri = config.username || 'http://localhost:3001/oauth/callback'
+    const redirectUri = config.oauth2?.redirect_uri ?? 'http://localhost:3001/oauth/callback'
+
+    // Récupérer les services depuis le context
+    const projectName = context.project.name
 
     // Créer l'instance OAuth
-    this.oauth = new BasecampOAuth(clientId, clientSecret, redirectUri, this.interactor)
+    this.oauth = new BasecampOAuth(clientId, clientSecret, redirectUri, this.interactor, this.userService, projectName)
 
     // Tool pour lister les projets
     const listProjectsTool: FunctionTool<Record<string, never>> = {
