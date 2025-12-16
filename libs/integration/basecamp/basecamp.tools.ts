@@ -4,6 +4,9 @@ import { CommandContext, Interactor } from '../../model'
 import { IntegrationService } from '../../service/integration.service'
 import { BasecampOAuth } from './basecamp-oauth'
 import { listBasecampProjects } from './list-projects'
+import { getBasecampMessageBoard } from './get-message-board'
+import { getBasecampMessages } from './get-messages'
+import { getBasecampMessage } from './get-message'
 import { OAuthCallbackEvent } from '@coday/coday-events'
 import { UserService } from '@coday/service/user.service'
 
@@ -75,6 +78,86 @@ export class BasecampTools extends AssistantToolFactory {
     }
 
     result.push(listProjectsTool)
+
+    // Tool pour récupérer le message board ID d'un projet
+    const getMessageBoardTool: FunctionTool<{ projectId: number }> = {
+      type: 'function',
+      function: {
+        name: 'getBasecampMessageBoard',
+        description:
+          'Get the message board ID for a Basecamp project. You need this ID to retrieve messages from the project.',
+        parameters: {
+          type: 'object',
+          properties: {
+            projectId: {
+              type: 'number',
+              description: 'The project ID (from listBasecampProjects)',
+            },
+          },
+          required: ['projectId'],
+        },
+        parse: JSON.parse,
+        function: async ({ projectId }) => getBasecampMessageBoard(this.oauth!, projectId),
+      },
+    }
+
+    result.push(getMessageBoardTool)
+
+    // Tool pour lister les messages d'un message board
+    const getMessagesTool: FunctionTool<{ projectId: number; messageBoardId: number }> = {
+      type: 'function',
+      function: {
+        name: 'getBasecampMessages',
+        description:
+          'List all messages in a Basecamp message board. Returns a summary of each message with title, author, date, and preview.',
+        parameters: {
+          type: 'object',
+          properties: {
+            projectId: {
+              type: 'number',
+              description: 'The project ID (from listBasecampProjects)',
+            },
+            messageBoardId: {
+              type: 'number',
+              description: 'The message board ID (from getBasecampMessageBoard)',
+            },
+          },
+          required: ['projectId', 'messageBoardId'],
+        },
+        parse: JSON.parse,
+        function: async ({ projectId, messageBoardId }) => getBasecampMessages(this.oauth!, projectId, messageBoardId),
+      },
+    }
+
+    result.push(getMessagesTool)
+
+    // Tool pour récupérer un message complet
+    const getMessageTool: FunctionTool<{ projectId: number; messageId: number }> = {
+      type: 'function',
+      function: {
+        name: 'getBasecampMessage',
+        description:
+          'Get the full content of a specific Basecamp message, including title, author, date, and complete text content.',
+        parameters: {
+          type: 'object',
+          properties: {
+            projectId: {
+              type: 'number',
+              description: 'The project ID (from listBasecampProjects)',
+            },
+            messageId: {
+              type: 'number',
+              description: 'The message ID (from getBasecampMessages)',
+            },
+          },
+          required: ['projectId', 'messageId'],
+        },
+        parse: JSON.parse,
+        function: async ({ projectId, messageId }) => getBasecampMessage(this.oauth!, projectId, messageId),
+      },
+    }
+
+    result.push(getMessageTool)
 
     return result
   }
