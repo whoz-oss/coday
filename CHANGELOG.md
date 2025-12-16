@@ -1,3 +1,13 @@
+## 0.55.0 (2025-12-16)
+
+### 🚀 Features
+
+- issue 381 slack integration ([#384](https://github.com/whoz-oss/coday/pull/384), [#381](https://github.com/whoz-oss/coday/issues/381))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.54.0 (2025-12-16)
 
 ### 🚀 Features
