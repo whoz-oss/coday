@@ -61,7 +61,7 @@ export class McpInstancePool {
 
     if (!instance) {
       // Create new instance
-      console.debug(
+      console.log(
         `[MCP_POOL] Creating new MCP instance for ${config.name} (hash: ${hash.substring(0, 8)}) for thread ${threadId}`
       )
       const mcpFactory = factoryCreator()
@@ -74,7 +74,7 @@ export class McpInstancePool {
       }
       this.instances.set(hash, instance)
     } else {
-      console.debug(
+      console.log(
         `[MCP_POOL] Reusing existing MCP instance for ${config.name} (${instance.activeThreads.size} active threads) for thread ${threadId}`
       )
     }

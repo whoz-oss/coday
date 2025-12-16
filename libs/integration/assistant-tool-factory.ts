@@ -16,7 +16,7 @@ export abstract class AssistantToolFactory implements Killable {
     return
   }
 
-  protected constructor(protected interactor: Interactor) {}
+  protected constructor(protected interactor?: Interactor) {}
 
   protected abstract buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]>
 
