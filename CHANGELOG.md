@@ -1,3 +1,15 @@
+## 0.53.1 (2025-12-16)
+
+### 🩹 Fixes
+
+- avoid excessive notifications of agent completion #378 ([#378](https://github.com/whoz-oss/coday/issues/378))
+- avoid excessive notifications of agent completion #378 ([#392](https://github.com/whoz-oss/coday/pull/392), [#378](https://github.com/whoz-oss/coday/issues/378))
+
+### ❤️ Thank You
+
+- Benoit Averty @BenoitAvertyWhoz
+- BenoitAvertyWhoz @BenoitAvertyWhoz
+
 ## 0.53.0 (2025-12-15)
 
 ### 🚀 Features
