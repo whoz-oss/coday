@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core'
+import { Component, OnInit, inject } from '@angular/core'
 import { ActivatedRoute } from '@angular/router'
 
 @Component({
@@ -7,7 +7,7 @@ import { ActivatedRoute } from '@angular/router'
   template: `<p>Authentication in progress...</p>`,
 })
 export class OAuthCallbackComponent implements OnInit {
-  constructor(private route: ActivatedRoute) {}
+  private route = inject(ActivatedRoute)
 
   ngOnInit(): void {
     console.log('[OAuth Callback] Component initialized')
