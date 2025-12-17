@@ -31,7 +31,8 @@
       "outputs": ["{projectRoot}/build/test-results", "{projectRoot}/build/reports"],
       "options": {
         "command": "./gradlew :agentos-sdk:test",
-        "cwd": "agentos"
+        "cwd": "agentos",
+        "passWithNoTests": null
       }
     },
     "publish": {
