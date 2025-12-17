@@ -37,6 +37,11 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   voiceVolume = 80
   voiceRate = 120
 
+  agentNotificationEnabled = false
+  notificationSoundEnabled = true
+  browserNotificationEnabled = false
+  browserNotificationDenied = false
+
   availableVoices: VoiceInfo[] = []
   selectedVoiceId: string | null = null
   loadingVoices = false
@@ -74,6 +79,9 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
     this.voiceVolume = Math.round(this.preferencesService.getVoiceVolume() * 100)
     this.voiceRate = Math.round(this.preferencesService.getVoiceRate() * 100)
     this.selectedVoiceId = this.preferencesService.getSelectedVoice()
+    this.agentNotificationEnabled = this.preferencesService.getAgentNotificationEnabled()
+    this.notificationSoundEnabled = this.preferencesService.getNotificationSoundEnabled()
+    this.browserNotificationEnabled = this.preferencesService.getBrowserNotificationEnabled()
 
     this.loadAvailableVoices()
 
@@ -129,6 +137,20 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
 
     this.preferencesService.voiceLanguage$.pipe(takeUntil(this.destroy$)).subscribe(() => {
       this.loadAvailableVoices()
+    })
+
+    this.preferencesService.agentNotificationEnabled$.pipe(takeUntil(this.destroy$)).subscribe((enabled) => {
+      this.agentNotificationEnabled = enabled
+    })
+
+    this.preferencesService.notificationSoundEnabled$.pipe(takeUntil(this.destroy$)).subscribe((enabled) => {
+      this.notificationSoundEnabled = enabled
+    })
+
+    this.preferencesService.browserNotificationEnabled$.pipe(takeUntil(this.destroy$)).subscribe((enabled) => {
+      this.browserNotificationEnabled = enabled
+      // Check permission status whenever the preference changes
+      this.checkNotificationPermission()
     })
   }
 
@@ -217,5 +239,30 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   testVoice(): void {
     console.log('[OPTIONS] Testing voice with current settings')
     this.voiceSynthesisService.testSelectedVoice()
+  }
+
+  onAgentNotificationEnabledChange(): void {
+    console.log('[OPTIONS] Agent notification enabled changed to:', this.agentNotificationEnabled)
+    this.preferencesService.setAgentNotificationEnabled(this.agentNotificationEnabled)
+  }
+
+  onNotificationSoundEnabledChange(): void {
+    console.log('[OPTIONS] Notification sound enabled changed to:', this.notificationSoundEnabled)
+    this.preferencesService.setNotificationSoundEnabled(this.notificationSoundEnabled)
+  }
+
+  onBrowserNotificationEnabledChange(): void {
+    console.log('[OPTIONS] Browser notification enabled changed to:', this.browserNotificationEnabled)
+    this.preferencesService.setBrowserNotificationEnabled(this.browserNotificationEnabled)
+  }
+
+  /**
+   * Check the current notification permission status
+   */
+  private checkNotificationPermission(): void {
+    if ('Notification' in window) {
+      this.browserNotificationDenied = Notification.permission === 'denied'
+      console.log('[OPTIONS] Notification permission status:', Notification.permission)
+    }
   }
 }

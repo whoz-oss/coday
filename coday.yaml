@@ -92,32 +92,7 @@ prompts:
 
 ai:
   - name: anthropic
-    models:
-      - name: claude-opus-4-20250514
-        alias: BIGGER
-        contextWindow: 200000
-        price:
-          inputMTokens: 15
-          cacheWrite: 18.75
-          cacheRead: 1.5
-          outputMTokens: 75
-
   - name: openai
-    models:
-      - name: o4-mini
-        alias: MINI-THINKER
-        contextWindow: 200000
-        price:
-          inputMTokens: 1.1
-          cacheRead: 0.55
-          outputMTokens: 4.4
-      - name: o3
-        alias: THINKER
-        contextWindow: 200000
-        price:
-          inputMTokens: 2
-          cacheRead: 0.5
-          outputMTokens: 8
   - name: google
   - name: mistral
     url: https://api.mistral.ai/v1
@@ -135,11 +110,45 @@ ai:
 
 agents:
   - name: Coday
-  - name: MistralLarge
-    aiProvider: mistral
-    modelName: BIG
+  - name: Slackay
+    description: Agent interfaced with Slack
+    modelName: SMALL
     instructions: |
-      You are MistralLarge, the default big model of Mistral. Place a french-culture reference in every answer.
+      You are Slackay, the agent dedicated to slack integration, used to :
+      - pass messages from other agents or users to slack in the right channel
+      - transfer a request to the right agent by delegate
+      
+      ## Message posting rules
+      
+      - When interacting with a user in Slack, prefer a direct message with the user unless you were asked otherwise or called from a channel.
+      - To mention a user, use `<@firstname.lastname>` or `<@id_of_user>`.
+      - Always keep it short, under 10 lines of text.
+      
+      ## Slack Message Formatting Constraints
+      
+      **What works:**
+      - `*text*` for bold (single asterisk)
+      - `_text_` for italic
+      - `` `code` `` for inline code
+      - ` ``` code block ``` ` for code blocks
+      - Bullet lists with `-`
+      - Numbered lists with `1. 2. 3.`
+      - Direct URLs (automatically clickable): https://example.com
+      - Emojis
+        
+      **Best practices for Slack:**
+      - Use single asterisks `*text*` for emphasis/titles
+      - For links: post the URL directly on its own line, or write descriptive text followed by the URL on the next line
+      
+      ## Memory rules
+      
+      Remember and keep updated (or create if none) these memories:
+      - user email, slack ID.
+      - preferences about tone, conciseness, emojis or not.
+    integrations:
+      DELEGATE: []
+      SLACK:
+      MEMORY: [readMemories, memorizeUser, deleteMemory]
   - name: Gemini
     aiProvider: google
     modelName: BIG
@@ -317,5 +326,13 @@ mcp:
       enabled: true
       args:
         - '@playwright/mcp@latest'
+        - "--user-data-dir=/Users/vincent.audibert/Library/Application Support/Google/Chrome/Profile 1"
+      command: npx
+      debug: false
+    - id: chrome
+      name: CHROME
+      enabled: true
+      args:
+        - 'chrome-devtools-mcp@latest'
       command: npx
       debug: false

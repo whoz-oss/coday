@@ -10,26 +10,32 @@ export async function generateThreadName(thread: AiThread, agent: Agent): Promis
     .map((msg) => (msg as MessageEvent).getTextContent())
     .join('\n\n')
 
-  const prompt = `Here are the messages a user sent in a conversation with an AI:\n\n${messages}\n\nGenerate a title for this conversation between the conversation-name tags, and without introduction nor line jumps.\n<conversation-name>`
+  const prompt = `Here are the messages a user sent in a conversation with an AI:\n\n<messages>${messages}</messages>\n\nGenerate a short title for this conversation between <conversation-name></conversation-name> tags, and without introduction nor line jumps.\n`
 
   try {
-    // Use the agent's AI client to generate the name
-    const title = await agent.getAiClient().complete(prompt, {
-      maxTokens: 30,
-      temperature: 0.7,
-      stopSequences: ['</conversation-name>'],
+    // Use the agent's AI client to generate the name (without stopSequences)
+    const response = await agent.getAiClient().complete(prompt, {
+      maxTokens: 300,
+      temperature: 1.0,
     })
 
-    // Clean up the title
-    return title
-      .trim()
-      .replace(/^["']|["']$/g, '')
-      .replace(/\.$/, '')
-      .replace('conversation-name', '')
-      .replace(/<>/g, '') // Remove orphaned angle brackets from duplicate tags
-      .replace(/^<|>$/g, '') // Remove leading/trailing angle brackets
-      .trim()
+    // Extract content between <conversation-name> tags
+    const match = response.match(/<conversation-name>([\s\S]*?)<\/conversation-name>/)
+    if (match && match[1]) {
+      const title = match[1].trim()
+
+      // Clean up the title
+      return title
+        .replace(/^["']|["']$/g, '') // Remove surrounding quotes
+        .replace(/\.$/, '') // Remove trailing period
+        .trim()
+    }
+
+    // Fallback: if no tags found, return trimmed response or date-based name
+    const fallbackTitle = response.trim()
+    return fallbackTitle || `Thread ${new Date().toISOString().split('T')[0]}`
   } catch (error) {
+    console.error('Error generating thread name:', error)
     // Fallback to date-based name
     return `Thread ${new Date().toISOString().split('T')[0]}`
   }

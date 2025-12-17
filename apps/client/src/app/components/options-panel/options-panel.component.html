@@ -95,6 +95,58 @@
     </div>
   </div>
 
+  <!-- Notifications Group -->
+  <div class="option-section">
+    <div class="section-title">
+      <mat-icon>notifications</mat-icon>
+      <span>Notifications</span>
+    </div>
+
+    <div class="option-group">
+      <div class="toggle-option">
+        <span class="option-label">Notify when the agent answers or requests input</span>
+        <mat-slide-toggle
+          [(ngModel)]="agentNotificationEnabled"
+          (change)="onAgentNotificationEnabledChange()"
+          color="primary"
+        ></mat-slide-toggle>
+      </div>
+    </div>
+
+    <div class="option-group">
+      <div class="toggle-option">
+        <span class="option-label">Notification sound</span>
+        <mat-slide-toggle
+          [(ngModel)]="notificationSoundEnabled"
+          (change)="onNotificationSoundEnabledChange()"
+          [disabled]="!agentNotificationEnabled"
+          color="primary"
+        ></mat-slide-toggle>
+      </div>
+    </div>
+
+    <div class="option-group">
+      <div class="toggle-option">
+        <span class="option-label">Browser notification</span>
+        <mat-slide-toggle
+          [(ngModel)]="browserNotificationEnabled"
+          (change)="onBrowserNotificationEnabledChange()"
+          [disabled]="!agentNotificationEnabled || browserNotificationDenied"
+          color="primary"
+        ></mat-slide-toggle>
+      </div>
+      @if (browserNotificationDenied) {
+        <div class="notification-error">
+          <mat-icon class="error-icon">warning</mat-icon>
+          <span class="error-message">
+            Browser notifications have been blocked. To enable them, please reset the site permissions in your browser
+            settings.
+          </span>
+        </div>
+      }
+    </div>
+  </div>
+
   <!-- Voice & Speech Group -->
   <div class="option-section">
     <div class="section-title">
