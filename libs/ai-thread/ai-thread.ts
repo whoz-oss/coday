@@ -13,7 +13,7 @@ import {
   ToolResponseEvent,
 } from '@coday/coday-events'
 // eslint-disable-next-line @nx/enforce-module-boundaries
-import { ToolCall, ToolResponse } from '../integration/tool-call'
+import { ToolCall, ToolResponse } from '@coday/integration/tool-call'
 import { EmptyUsage, RunStatus, ThreadMessage, ThreadSerialized, Usage } from './ai-thread.types'
 import { partition } from './ai-thread.helpers'
 

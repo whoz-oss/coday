@@ -1,6 +1,6 @@
-import { CommandContext, CommandHandler, Interactor } from '../../model'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
 import { CodayServices } from '../../coday-services'
-import { ConfigLevel } from '../../model/config-level'
+import { ConfigLevel } from '@coday/model/config-level'
 
 /**
  * Handler for listing all AI provider configurations.

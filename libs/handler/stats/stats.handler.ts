@@ -1,4 +1,4 @@
-import { Interactor, NestedHandler } from '../../model'
+import { Interactor, NestedHandler } from '@coday/model'
 import { CodayServices } from '../../coday-services'
 import { StatsAgentsHandler } from './stats-agents.handler'
 import { StatsWebhooksHandler } from './stats-webhooks.handler'
@@ -19,7 +19,7 @@ export class StatsHandler extends NestedHandler {
 
     this.handlers = [
       new StatsAgentsHandler(this.interactor, this.services),
-      new StatsWebhooksHandler(this.interactor, this.services)
+      new StatsWebhooksHandler(this.interactor, this.services),
     ]
   }
 }

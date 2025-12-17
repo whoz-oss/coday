@@ -1,7 +1,7 @@
-import { CommandContext } from '../../model/command-context'
-import { Interactor } from '../../model/interactor'
+import { CommandContext } from '@coday/model/command-context'
+import { Interactor } from '@coday/model/interactor'
 import { buildFirstCommandContext } from './select-project'
-import { CommandHandler } from '../../model/command.handler'
+import { CommandHandler } from '@coday/model/command.handler'
 import { CodayServices } from '../../coday-services'
 
 export class SelectProjectHandler extends CommandHandler {

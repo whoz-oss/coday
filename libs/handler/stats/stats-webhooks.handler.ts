@@ -1,4 +1,4 @@
-import { CommandContext, CommandHandler, Interactor } from '../../model'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
 import { CodayServices } from '../../coday-services'
 import { parseArgs } from '../parse-args'
 
@@ -93,7 +93,7 @@ export class StatsWebhooksHandler extends CommandHandler {
         const webhookKey = log.webhookUuid || log.webhookName || 'Unknown'
         const webhookName = log.webhookName || 'Unknown'
         const webhookUuid = log.webhookUuid || 'Unknown'
-        
+
         const existing = webhookStatsMap.get(webhookKey) || {
           webhookName,
           webhookUuid,
@@ -101,7 +101,7 @@ export class StatsWebhooksHandler extends CommandHandler {
           successCount: 0,
           errorCount: 0,
           projects: new Set<string>(),
-          lastUsed: new Date(log.timestamp)
+          lastUsed: new Date(log.timestamp),
         }
 
         // Update stats based on log type
@@ -186,7 +186,7 @@ Summary:
 - Total calls: ${stats.reduce((sum, stat) => sum + stat.calls, 0)}
 - Total successful calls: ${stats.reduce((sum, stat) => sum + stat.successCount, 0)}
 - Total failed calls: ${stats.reduce((sum, stat) => sum + stat.errorCount, 0)}
-- Unique projects used: ${new Set(stats.flatMap(stat => Array.from(stat.projects))).size}`
+- Unique projects used: ${new Set(stats.flatMap((stat) => Array.from(stat.projects))).size}`
 
     return header + '\n' + rows.join('\n') + footer
   }

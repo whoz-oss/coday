@@ -1,7 +1,7 @@
-import { CommandContext, CommandHandler, Interactor } from '../../model'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
 import { CodayServices } from '../../coday-services'
 import { parseArgs } from '../parse-args'
-import { Webhook } from '../../service/webhook.service'
+import { Webhook } from '@coday/service/webhook.service'
 
 /**
  * Handler for editing an existing webhook configuration.
@@ -26,30 +26,25 @@ export class WebhookEditHandler extends CommandHandler {
     }
 
     // Parse arguments to get uuid
-    const args = parseArgs(this.getSubCommand(command), [
-      { key: 'uuid' }
-    ])
+    const args = parseArgs(this.getSubCommand(command), [{ key: 'uuid' }])
 
     let uuid = args.uuid as string
-    
+
     // If no uuid provided, show list and let user select
     if (!uuid) {
       try {
         const webhooks = await this.services.webhook.list()
-        
+
         if (webhooks.length === 0) {
           this.interactor.displayText('No webhooks available to edit')
           return context
         }
 
-        const webhookOptions = webhooks.map(w => `${w.name} (${w.uuid})`)
-        const chosen = await this.interactor.chooseOption(
-          webhookOptions,
-          'Select webhook to edit:'
-        )
-        
+        const webhookOptions = webhooks.map((w) => `${w.name} (${w.uuid})`)
+        const chosen = await this.interactor.chooseOption(webhookOptions, 'Select webhook to edit:')
+
         if (!chosen) return context
-        
+
         // Extract UUID from selection
         const match = chosen.match(/\(([^)]+)\)$/)
         uuid = match ? match[1]! : ''
@@ -77,10 +72,7 @@ export class WebhookEditHandler extends CommandHandler {
       const editWebhook: Partial<Webhook> = { ...webhook }
 
       // Edit name (required)
-      editWebhook.name = await this.interactor.promptText(
-        'Webhook name (required):',
-        webhook.name
-      )
+      editWebhook.name = await this.interactor.promptText('Webhook name (required):', webhook.name)
 
       if (!editWebhook.name?.trim()) {
         this.interactor.error('Webhook name is required')
@@ -132,22 +124,22 @@ export class WebhookEditHandler extends CommandHandler {
       if (commandsText.trim()) {
         editWebhook.commands = commandsText
           .split('\n')
-          .map(cmd => cmd.trim())
-          .filter(cmd => cmd.length > 0)
+          .map((cmd) => cmd.trim())
+          .filter((cmd) => cmd.length > 0)
       } else {
         editWebhook.commands = []
       }
 
       // Save the updated webhook
       const updatedWebhook = await this.services.webhook.update(uuid, editWebhook)
-      
+
       if (!updatedWebhook) {
         this.interactor.error('Failed to update webhook')
         return context
       }
 
       this.interactor.displayText(`✅ Webhook '${updatedWebhook.name}' updated successfully`)
-      
+
       // Show summary of changes
       const summary = `
 **Updated webhook details:**
@@ -158,7 +150,6 @@ export class WebhookEditHandler extends CommandHandler {
 - Commands: ${updatedWebhook.commands?.length || 0} command${updatedWebhook.commands?.length === 1 ? '' : 's'}
 `
       this.interactor.displayText(summary)
-
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       this.interactor.error(`Failed to edit webhook: ${errorMessage}`)

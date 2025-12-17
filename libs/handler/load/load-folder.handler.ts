@@ -1,5 +1,5 @@
-import { CommandContext, CommandHandler, Interactor } from '../../model'
-import { listFilesAndDirectories } from '../../integration/file/list-files-and-directories'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
+import { listFilesAndDirectories } from '@coday/integration/file/list-files-and-directories'
 
 export class LoadFolderHandler extends CommandHandler {
   constructor(private interactor: Interactor) {

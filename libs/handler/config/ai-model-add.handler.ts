@@ -1,9 +1,9 @@
-import { CommandContext, CommandHandler } from '../../model'
-import { Interactor } from '../../model/interactor'
+import { CommandContext, CommandHandler } from '@coday/model'
+import { Interactor } from '@coday/model/interactor'
 import { CodayServices } from '../../coday-services'
 import { AiModelEditHandler } from './ai-model-edit.handler'
-import { ConfigLevel } from '../../model/config-level'
-import { AiModel } from '../../model/ai-model'
+import { ConfigLevel } from '@coday/model/config-level'
+import { AiModel } from '@coday/model/ai-model'
 import { parseArgs } from '../parse-args'
 
 /**
@@ -19,7 +19,8 @@ export class AiModelAddHandler extends CommandHandler {
   ) {
     super({
       commandWord: 'add',
-      description: 'Add a new model to an AI provider configuration. Use --provider=name, --model=name (optional), --project/-p for project level.',
+      description:
+        'Add a new model to an AI provider configuration. Use --provider=name, --model=name (optional), --project/-p for project level.',
     })
   }
 
@@ -34,7 +35,7 @@ export class AiModelAddHandler extends CommandHandler {
     const args = parseArgs(subCommand, [
       { key: 'provider' },
       { key: 'model', alias: 'm' },
-      { key: 'project', alias: 'p' }
+      { key: 'project', alias: 'p' },
     ])
     const isProject = !!args.project
     const level = isProject ? ConfigLevel.PROJECT : ConfigLevel.USER
@@ -48,9 +49,7 @@ export class AiModelAddHandler extends CommandHandler {
       return context
     }
     const providerNames = providers.map((p) => p.name)
-    let provider = providerName
-      ? providers.find((p) => p.name === providerName)
-      : undefined
+    let provider = providerName ? providers.find((p) => p.name === providerName) : undefined
     if (!provider) {
       // If not matched, prompt interactively
       const chosen = await this.interactor.chooseOption(

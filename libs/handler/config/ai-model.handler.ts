@@ -1,4 +1,4 @@
-import { NestedHandler, Interactor } from '../../model'
+import { NestedHandler, Interactor } from '@coday/model'
 import { CodayServices } from '../../coday-services'
 import { AiModelListHandler } from './ai-model-list.handler'
 import { AiModelAddHandler } from './ai-model-add.handler'
@@ -21,7 +21,7 @@ export class AiModelHandler extends NestedHandler {
       new AiModelListHandler(interactor, services),
       new AiModelAddHandler(interactor, services, new AiModelEditHandler(interactor, services)),
       new AiModelEditHandler(interactor, services),
-      new AiModelDeleteHandler(interactor, services)
+      new AiModelDeleteHandler(interactor, services),
     ]
   }
 }

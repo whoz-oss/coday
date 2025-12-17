@@ -10,8 +10,9 @@
     "start": "electron dist/main.js"
   },
   "devDependencies": {
-    "electron": "38.3.0",
-    "electron-builder": "26.0.12"
+    "electron": "catalog:dev",
+    "electron-builder": "catalog:dev",
+    "typescript": "catalog:dev"
   },
   "publishConfig": {
     "access": "public"

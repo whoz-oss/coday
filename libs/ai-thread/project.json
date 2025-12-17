@@ -3,5 +3,17 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "library",
   "sourceRoot": "libs/ai-thread",
-  "tags": ["scope:libs", "type:feature"]
+  "tags": ["scope:libs", "type:service"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "{projectRoot}/dist",
+        "main": "libs/ai-thread/index.ts",
+        "tsConfig": "libs/ai-thread/tsconfig.lib.json",
+        "assets": ["libs/ai-thread/*.md"]
+      }
+    }
+  }
 }

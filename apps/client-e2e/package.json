@@ -1,0 +1,9 @@
+{
+  "name": "@whoz-oss/coday-client-e2e",
+  "version": "0.51.0",
+  "private": true,
+  "devDependencies": {
+    "@playwright/test": "catalog:dev",
+    "typescript": "catalog:dev"
+  }
+}

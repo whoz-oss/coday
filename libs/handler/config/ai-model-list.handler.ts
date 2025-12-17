@@ -1,6 +1,6 @@
-import { CommandContext, CommandHandler, Interactor } from '../../model'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
 import { CodayServices } from '../../coday-services'
-import { ConfigLevel } from '../../model/config-level'
+import { ConfigLevel } from '@coday/model/config-level'
 import { parseArgs } from '../parse-args'
 
 /**
@@ -13,17 +13,15 @@ export class AiModelListHandler extends CommandHandler {
   ) {
     super({
       commandWord: 'list',
-      description: 'List models for AI provider configurations. Use --provider=name (optional), --project/-p for project level.',
+      description:
+        'List models for AI provider configurations. Use --provider=name (optional), --project/-p for project level.',
     })
   }
 
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
     // Parse arguments
     const subCommand = this.getSubCommand(command)
-    const args = parseArgs(subCommand, [
-      { key: 'provider' },
-      { key: 'project', alias: 'p' }
-    ])
+    const args = parseArgs(subCommand, [{ key: 'provider' }, { key: 'project', alias: 'p' }])
     const isProject = !!args.project
     const providerName = typeof args.provider === 'string' ? args.provider : undefined
 
@@ -31,10 +29,8 @@ export class AiModelListHandler extends CommandHandler {
       // Show only project level
       const level = ConfigLevel.PROJECT
       const providers = this.services.aiConfig?.getProviders(level) || []
-      let filteredProviders = providerName
-        ? providers.filter((p) => p.name === providerName)
-        : providers
-      
+      let filteredProviders = providerName ? providers.filter((p) => p.name === providerName) : providers
+
       this.displayProviders(`PROJECT level models:`, filteredProviders)
     } else {
       // Show all levels (original behavior)
@@ -42,9 +38,9 @@ export class AiModelListHandler extends CommandHandler {
       const codayProviders = this.services.aiConfig?.getProviders(ConfigLevel.CODAY) || []
       const projectProviders = this.services.aiConfig?.getProviders(ConfigLevel.PROJECT) || []
       const userProviders = this.services.aiConfig?.getProviders(ConfigLevel.USER) || []
-      
+
       // Filter by provider if specified
-      const filterByProvider = (providers: any[]) => 
+      const filterByProvider = (providers: any[]) =>
         providerName ? providers.filter((p) => p.name === providerName) : providers
 
       let out = ''

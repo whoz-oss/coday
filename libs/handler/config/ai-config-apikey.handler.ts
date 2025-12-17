@@ -1,9 +1,9 @@
-import { CommandContext, CommandHandler } from '../../model'
+import { CommandContext, CommandHandler } from '@coday/model'
 import { parseArgs } from '../parse-args'
-import { Interactor } from '../../model/interactor'
+import { Interactor } from '@coday/model/interactor'
 import { CodayServices } from '../../coday-services'
-import { ConfigLevel } from '../../model/config-level'
-import { AiProviderConfig } from '../../model/ai-provider-config'
+import { ConfigLevel } from '@coday/model/config-level'
+import { AiProviderConfig } from '@coday/model/ai-provider-config'
 
 /**
  * Handler for setting only the API key of an existing AI provider.
@@ -17,7 +17,8 @@ export class AiConfigApikeyHandler extends CommandHandler {
   ) {
     super({
       commandWord: 'apikey',
-      description: 'Set or update the API key for an existing AI provider. User level is default, use --project/-p for project level.',
+      description:
+        'Set or update the API key for an existing AI provider. User level is default, use --project/-p for project level.',
     })
   }
 

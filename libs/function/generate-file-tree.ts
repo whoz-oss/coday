@@ -1,6 +1,6 @@
 import { execSync } from 'child_process'
 import { rgPath } from '@vscode/ripgrep'
-import { Interactor } from '../model'
+import { Interactor } from '@coday/model'
 
 const maxBuffer = 50 * 1024 * 1024
 

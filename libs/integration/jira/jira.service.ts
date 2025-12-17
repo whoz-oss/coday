@@ -1,19 +1,19 @@
-import { IntegrationService } from '../../service/integration.service'
-import { Interactor } from '../../model'
-import {ActiveFieldMapping, createJiraFieldMapping} from './jira-field-mapper'
+import { IntegrationService } from '@coday/service/integration.service'
+import { Interactor } from '@coday/model'
+import { ActiveFieldMapping, createJiraFieldMapping } from './jira-field-mapper'
 import { FieldMappingDescription } from './jira'
 
 /**
  * Service responsible for Jira field mapping initialization
  */
 export class JiraService {
-  private jiraFieldMappingDescription: FieldMappingDescription | null = null;
-  private jiraFieldMapping: ActiveFieldMapping[] | null = null;
-  private initialized: boolean = false;
+  private jiraFieldMappingDescription: FieldMappingDescription | null = null
+  private jiraFieldMapping: ActiveFieldMapping[] | null = null
+  private initialized: boolean = false
 
   constructor(
-      private interactor: Interactor,
-      private integrationService: IntegrationService
+    private interactor: Interactor,
+    private integrationService: IntegrationService
   ) {}
 
   /**
@@ -23,45 +23,45 @@ export class JiraService {
   public async init(maxResults: number = 50): Promise<{ success: boolean; message: string }> {
     // If already initialized, return immediately
     if (this.initialized) {
-      return { success: true, message: 'Jira field mapping already initialized' };
+      return { success: true, message: 'Jira field mapping already initialized' }
     }
 
     try {
       // Check if Jira integration is available
       if (!this.integrationService.hasIntegration('JIRA')) {
-        return { success: false, message: 'Jira integration not available' };
+        return { success: false, message: 'Jira integration not available' }
       }
 
       // Get Jira credentials
-      const jiraBaseUrl = this.integrationService.getApiUrl('JIRA');
-      const jiraUsername = this.integrationService.getUsername('JIRA');
-      const jiraApiToken = this.integrationService.getApiKey('JIRA');
+      const jiraBaseUrl = this.integrationService.getApiUrl('JIRA')
+      const jiraUsername = this.integrationService.getUsername('JIRA')
+      const jiraApiToken = this.integrationService.getApiKey('JIRA')
 
       // Validate credentials
       if (!(jiraBaseUrl && jiraUsername && jiraApiToken)) {
-        return { success: false, message: 'Jira credentials not properly configured' };
+        return { success: false, message: 'Jira credentials not properly configured' }
       }
 
       // Create Jira field mapping
       const { description, mappings } = await createJiraFieldMapping(
-          jiraBaseUrl,
-          jiraApiToken,
-          jiraUsername,
-          this.interactor,
-          maxResults
-      );
+        jiraBaseUrl,
+        jiraApiToken,
+        jiraUsername,
+        this.interactor,
+        maxResults
+      )
 
       // Store mapping data
-      this.jiraFieldMappingDescription = description;
+      this.jiraFieldMappingDescription = description
       this.jiraFieldMapping = mappings
-      this.initialized = true;
+      this.initialized = true
 
-      return { success: true, message: 'Jira field mapping initialized successfully' };
+      return { success: true, message: 'Jira field mapping initialized successfully' }
     } catch (error) {
       return {
         success: false,
-        message: `Failed to initialize Jira field mapping: ${error}. Please try again or contact support.`
-      };
+        message: `Failed to initialize Jira field mapping: ${error}. Please try again or contact support.`,
+      }
     }
   }
 
@@ -71,21 +71,21 @@ export class JiraService {
    * @returns Object containing initialization status and field mapping data if newly initialized
    */
   public async ensureInitialized(maxResults: number = 50): Promise<{
-    isNewlyInitialized: boolean;
-    fieldMappingInfo?: FieldMappingDescription | null;
-    fieldMapping?: ActiveFieldMapping[] | null;
-    success: boolean;
-    message: string;
+    isNewlyInitialized: boolean
+    fieldMappingInfo?: FieldMappingDescription | null
+    fieldMapping?: ActiveFieldMapping[] | null
+    success: boolean
+    message: string
   }> {
     if (!this.initialized) {
-      const initResult = await this.init(maxResults);
+      const initResult = await this.init(maxResults)
 
       if (!initResult.success) {
         return {
           isNewlyInitialized: false,
           success: false,
-          message: initResult.message
-        };
+          message: initResult.message,
+        }
       }
 
       return {
@@ -93,8 +93,9 @@ export class JiraService {
         fieldMappingInfo: this.jiraFieldMappingDescription || null,
         fieldMapping: this.jiraFieldMapping || null,
         success: true,
-        message: "Jira service initialized. Field mapping information is now available. Please use the field mapping information above to refine your JQL query and try again."
-      };
+        message:
+          'Jira service initialized. Field mapping information is now available. Please use the field mapping information above to refine your JQL query and try again.',
+      }
     }
 
     return {
@@ -102,7 +103,7 @@ export class JiraService {
       fieldMappingInfo: this.jiraFieldMappingDescription || null,
       fieldMapping: this.jiraFieldMapping || null,
       success: true,
-      message: "Jira service was already initialized."
-    };
+      message: 'Jira service was already initialized.',
+    }
   }
 }

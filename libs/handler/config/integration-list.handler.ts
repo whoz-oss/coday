@@ -1,7 +1,7 @@
-import { CommandContext, CommandHandler, Interactor } from '../../model'
-import { IntegrationConfigService } from '../../service/integration-config.service'
-import { IntegrationConfig, IntegrationLocalConfig } from '../../model'
-import { ConfigLevel } from '../../model/config-level'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
+import { IntegrationConfigService } from '@coday/service/integration-config.service'
+import { IntegrationConfig, IntegrationLocalConfig } from '@coday/model'
+import { ConfigLevel } from '@coday/model/config-level'
 import { parseArgs } from '../parse-args'
 
 export class IntegrationListHandler extends CommandHandler {
@@ -63,15 +63,15 @@ export class IntegrationListHandler extends CommandHandler {
   private formatSingleIntegration(name: string, config: IntegrationConfig): string {
     const lines: string[] = []
     lines.push(`**${name}:**`)
-    
+
     if (config.apiUrl) {
       lines.push(`  - API URL: \`${config.apiUrl}\``)
     }
-    
+
     if (config.username) {
       lines.push(`  - Username: \`${config.username}\``)
     }
-    
+
     // API Key - show "Set" or "Not set"
     const apiKeyStatus = config.apiKey ? 'Set' : 'Not set'
     lines.push(`  - API Key: ${apiKeyStatus}`)

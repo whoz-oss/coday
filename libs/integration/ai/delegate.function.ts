@@ -1,6 +1,6 @@
-import { Agent, CommandContext, Interactor } from '../../model'
-import { AgentService } from '../../agent'
-import { AiThread } from '../../ai-thread/ai-thread'
+import { Agent, CommandContext, Interactor } from '@coday/model'
+import { AgentService } from '@coday/agent'
+import { AiThread } from '@coday/ai-thread/ai-thread'
 import { filter, lastValueFrom, Observable, tap } from 'rxjs'
 import { CodayEvent, MessageEvent } from '@coday/coday-events'
 

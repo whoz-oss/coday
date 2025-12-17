@@ -1,4 +1,4 @@
-import { ProjectLocalConfig } from '../model/project-local-config'
+import { ProjectLocalConfig } from '@coday/model/project-local-config'
 
 /**
  * Project information including metadata

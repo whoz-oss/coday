@@ -1,4 +1,4 @@
-import { CommandContext, CommandHandler, Interactor } from '../../model'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
 import { CodayServices } from '../../coday-services'
 import { parseArgs } from '../parse-args'
 
@@ -25,34 +25,29 @@ export class WebhookDeleteHandler extends CommandHandler {
 
     try {
       // Parse arguments to get uuid
-      const args = parseArgs(this.getSubCommand(command), [
-        { key: 'uuid' }
-      ])
+      const args = parseArgs(this.getSubCommand(command), [{ key: 'uuid' }])
 
       let uuid = args.uuid as string
 
       // If no uuid provided, show list of webhooks to select from
       if (!uuid) {
         const webhooks = await this.services.webhook.list()
-        
+
         if (webhooks.length === 0) {
           this.interactor.displayText('No webhooks found to delete.')
           return context
         }
 
-        const webhookOptions = webhooks.map(w => `${w.name} (${w.uuid}) - Project: ${w.project}`)
+        const webhookOptions = webhooks.map((w) => `${w.name} (${w.uuid}) - Project: ${w.project}`)
         const options = [...webhookOptions, 'Cancel']
-        
-        const chosen = await this.interactor.chooseOption(
-          options,
-          'Select webhook to delete:'
-        )
-        
+
+        const chosen = await this.interactor.chooseOption(options, 'Select webhook to delete:')
+
         if (!chosen || chosen === 'Cancel') {
           this.interactor.displayText('Webhook deletion cancelled.')
           return context
         }
-        
+
         // Extract UUID from selection
         const match = chosen.match(/\(([^)]+)\)/)
         uuid = match ? match[1]! : ''
@@ -83,13 +78,12 @@ export class WebhookDeleteHandler extends CommandHandler {
 
       // Delete the webhook
       const deleted = await this.services.webhook.delete(uuid)
-      
+
       if (deleted) {
         this.interactor.displayText(`✅ Webhook '${webhook.name}' deleted successfully`)
       } else {
         this.interactor.error('Failed to delete webhook')
       }
-
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       this.interactor.error(`Failed to delete webhook: ${errorMessage}`)

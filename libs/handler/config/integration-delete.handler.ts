@@ -1,6 +1,6 @@
-import { CommandContext, CommandHandler, Interactor } from '../../model'
-import { IntegrationConfigService } from '../../service/integration-config.service'
-import { ConfigLevel } from '../../model/config-level'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
+import { IntegrationConfigService } from '@coday/service/integration-config.service'
+import { ConfigLevel } from '@coday/model/config-level'
 import { parseArgs } from '../parse-args'
 
 export class IntegrationDeleteHandler extends CommandHandler {
@@ -26,9 +26,7 @@ export class IntegrationDeleteHandler extends CommandHandler {
     const allIntegrations = this.service.getIntegrations(level)
     const integrationNames = Object.keys(allIntegrations)
 
-    const matching = searchTerm
-      ? integrationNames.filter(name => name.includes(searchTerm))
-      : integrationNames
+    const matching = searchTerm ? integrationNames.filter((name) => name.includes(searchTerm)) : integrationNames
 
     if (matching.length === 0) {
       const levelName = isProjectLevel ? 'project' : 'user'
@@ -47,10 +45,7 @@ export class IntegrationDeleteHandler extends CommandHandler {
 
     // If multiple integrations match, choose one
     if (matching.length > 1) {
-      integrationName = await this.interactor.chooseOption(
-        matching.sort(),
-        'Select the integration to delete:'
-      )
+      integrationName = await this.interactor.chooseOption(matching.sort(), 'Select the integration to delete:')
     } else {
       // Single integration match
       integrationName = matching[0]
@@ -64,7 +59,7 @@ export class IntegrationDeleteHandler extends CommandHandler {
 
     // Get the configuration details for confirmation
     const integrationConfig = allIntegrations[integrationName]
-    
+
     // Confirm removal
     const levelName = isProjectLevel ? 'project' : 'user'
     const confirmMessage = `

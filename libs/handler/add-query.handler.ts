@@ -1,5 +1,5 @@
 import { keywords } from '../keywords'
-import { CommandContext, CommandHandler, Interactor } from '../model'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
 
 export class AddQueryHandler extends CommandHandler {
   constructor(private interactor: Interactor) {

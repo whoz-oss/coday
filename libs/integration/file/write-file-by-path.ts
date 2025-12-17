@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
-import { Interactor } from '../../model/interactor'
+import { Interactor } from '@coday/model/interactor'
 import * as path from 'path'
 
 const SIZE_THRESHOLD_KB = 18

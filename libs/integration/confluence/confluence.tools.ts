@@ -1,7 +1,7 @@
 import { retrieveConfluencePage } from './retrieve-confluence-page'
 import { searchConfluencePages } from './search-confluence-pages'
-import { IntegrationService } from '../../service/integration.service'
-import { Interactor } from '../../model'
+import { IntegrationService } from '@coday/service/integration.service'
+import { Interactor } from '@coday/model'
 import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 

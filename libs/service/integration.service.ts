@@ -1,4 +1,4 @@
-import { ConcreteIntegrations, IntegrationConfig, IntegrationLocalConfig, Integrations, Interactor } from '../model'
+import { ConcreteIntegrations, IntegrationConfig, IntegrationLocalConfig, Integrations, Interactor } from '@coday/model'
 import { ProjectStateService } from './project-state.service'
 import { UserService } from './user.service'
 

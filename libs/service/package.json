@@ -1,0 +1,16 @@
+{
+  "name": "@coday/service",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "rxjs": "catalog:",
+    "tslib": "catalog:",
+    "yaml": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:dev"
+  }
+}

@@ -1,9 +1,9 @@
 {
-  "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "../../dist/out-tsc",
-    "types": ["node"]
+    "types": ["jest", "node"]
   },
+  "extends": "./tsconfig.json",
   "include": [
     "libs/**/*.test.ts",
     "libs/**/*.spec.ts",

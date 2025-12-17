@@ -1,7 +1,7 @@
-import { CommandContext, CommandHandler, Interactor } from '../../model'
-import { IntegrationConfigService } from '../../service/integration-config.service'
-import { IntegrationConfig, ConcreteIntegrations } from '../../model'
-import { ConfigLevel } from '../../model/config-level'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
+import { IntegrationConfigService } from '@coday/service/integration-config.service'
+import { IntegrationConfig, ConcreteIntegrations } from '@coday/model'
+import { ConfigLevel } from '@coday/model/config-level'
 import { parseArgs } from '../parse-args'
 import { IntegrationEditHandler } from './integration-edit.handler'
 
@@ -34,10 +34,12 @@ export class IntegrationAddHandler extends CommandHandler {
     const existingIntegrations = Object.keys(mergedConfig)
 
     // Show available integrations to add
-    const availableToAdd = ConcreteIntegrations.filter(integration => !existingIntegrations.includes(integration))
+    const availableToAdd = ConcreteIntegrations.filter((integration) => !existingIntegrations.includes(integration))
 
     if (availableToAdd.length === 0) {
-      this.interactor.displayText(`All available integrations (${ConcreteIntegrations.join(', ')}) are already configured.`)
+      this.interactor.displayText(
+        `All available integrations (${ConcreteIntegrations.join(', ')}) are already configured.`
+      )
       return context
     }
 
@@ -45,7 +47,7 @@ export class IntegrationAddHandler extends CommandHandler {
     const selectedIntegration = await this.interactor.chooseOption(
       availableToAdd.sort(),
       'Select integration to add:',
-      `Available integrations to configure:\n\n${availableToAdd.map(name => `- **${name}**`).join('\n')}\n\nChoose an integration:`
+      `Available integrations to configure:\n\n${availableToAdd.map((name) => `- **${name}**`).join('\n')}\n\nChoose an integration:`
     )
 
     if (!selectedIntegration) {

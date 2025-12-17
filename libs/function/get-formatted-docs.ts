@@ -1,8 +1,8 @@
-import { WithDocs } from '../model/with-docs'
+import { WithDocs } from '@coday/model/with-docs'
 import * as path from 'node:path'
-import { Interactor } from '../model'
+import { Interactor } from '@coday/model'
 import { existsSync } from 'node:fs'
-import { FileContent } from '../model/file-content'
+import { FileContent } from '@coday/model/file-content'
 import { readFileUnified } from './read-file-unified'
 
 export async function getFormattedDocs(

@@ -1,8 +1,8 @@
-import { CommandHandler, CommandContext } from '../../model'
+import { CommandHandler, CommandContext } from '@coday/model'
 import { parseArgs } from '../parse-args'
-import { Interactor } from '../../model/interactor'
+import { Interactor } from '@coday/model/interactor'
 import { CodayServices } from '../../coday-services'
-import { ConfigLevel } from '../../model/config-level'
+import { ConfigLevel } from '@coday/model/config-level'
 
 /**
  * Handler for deleting an AI provider configuration and all its models.
@@ -14,7 +14,8 @@ export class AiConfigDeleteHandler extends CommandHandler {
   ) {
     super({
       commandWord: 'delete',
-      description: 'Delete an AI provider configuration and all its models. User level is default, use --project/-p for project level.',
+      description:
+        'Delete an AI provider configuration and all its models. User level is default, use --project/-p for project level.',
     })
   }
 
@@ -32,9 +33,7 @@ export class AiConfigDeleteHandler extends CommandHandler {
     // Get providers at this level
     const providers = this.services.aiConfig.getProviders(level)
     if (!providers.length) {
-      this.interactor.displayText(
-        `No AI providers found at ${level} level. Nothing to delete.`
-      )
+      this.interactor.displayText(`No AI providers found at ${level} level. Nothing to delete.`)
       return context
     }
 
@@ -48,10 +47,10 @@ export class AiConfigDeleteHandler extends CommandHandler {
 
     // Confirm deletion (using chooseOption yes/no)
     const confirmChoice = await this.interactor.chooseOption(
-      ["yes", "no"],
+      ['yes', 'no'],
       `Are you sure you want to delete provider '${chosenName}' and all its models from ${level} config? This cannot be undone.`
     )
-    if (confirmChoice !== "yes") {
+    if (confirmChoice !== 'yes') {
       this.interactor.displayText('Delete operation cancelled.')
       return context
     }

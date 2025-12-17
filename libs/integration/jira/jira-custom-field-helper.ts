@@ -1,4 +1,4 @@
-import { Interactor } from '../../model'
+import { Interactor } from '@coday/model'
 import {
   JiraCustomField,
   retrieveAllJiraFields,
@@ -127,7 +127,9 @@ export class JiraCustomFieldHelper {
       // If value is a string, try to match to an option
       if (typeof value === 'string') {
         // Try to find a match by name (case insensitive)
-        const matchByName = options.find((opt: any) => (opt.name || opt.value || '').toLowerCase() === value.toLowerCase())
+        const matchByName = options.find(
+          (opt: any) => (opt.name || opt.value || '').toLowerCase() === value.toLowerCase()
+        )
 
         if (matchByName) {
           return { id: matchByName.id }

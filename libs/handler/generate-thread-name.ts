@@ -1,5 +1,5 @@
-import { AiThread } from '../ai-thread/ai-thread'
-import { Agent } from '../model'
+import { AiThread } from '@coday/ai-thread/ai-thread'
+import { Agent } from '@coday/model'
 import { MessageEvent } from '@coday/coday-events'
 
 export async function generateThreadName(thread: AiThread, agent: Agent): Promise<string> {

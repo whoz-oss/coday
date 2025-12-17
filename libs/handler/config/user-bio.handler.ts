@@ -1,5 +1,5 @@
-import { CommandContext, CommandHandler } from '../../model'
-import { Interactor } from '../../model/interactor'
+import { CommandContext, CommandHandler } from '@coday/model'
+import { Interactor } from '@coday/model/interactor'
 import { CodayServices } from '../../coday-services'
 import { parseArgs } from '../parse-args'
 
@@ -10,7 +10,7 @@ export class UserBioHandler extends CommandHandler {
   ) {
     super({
       commandWord: 'bio',
-      description: `Edit user bio information for agent context.\n    --user: Set your bio across ALL projects\n    --project: Set your bio for THIS project only (personal, not shared)\n    Default: --project (most common use case)\n    Example: \`config bio --user\`, \`config bio --project\`.\n    Shorthand syntax: \`config bio -u\`, \`config bio -p\`.`
+      description: `Edit user bio information for agent context.\n    --user: Set your bio across ALL projects\n    --project: Set your bio for THIS project only (personal, not shared)\n    Default: --project (most common use case)\n    Example: \`config bio --user\`, \`config bio --project\`.\n    Shorthand syntax: \`config bio -u\`, \`config bio -p\`.`,
     })
   }
 
@@ -23,7 +23,7 @@ export class UserBioHandler extends CommandHandler {
 
     // Bio defaults to PROJECT level (unlike memory) - users typically want project-specific context
     const isUserLevel = args.user && !args.project
-    
+
     if (isUserLevel) {
       return this.handleBio('USER', undefined, context)
     } else {
@@ -36,14 +36,16 @@ export class UserBioHandler extends CommandHandler {
     }
   }
 
-  private async handleBio(level: 'USER' | 'PROJECT', projectName: string | undefined, context: CommandContext): Promise<CommandContext> {
+  private async handleBio(
+    level: 'USER' | 'PROJECT',
+    projectName: string | undefined,
+    context: CommandContext
+  ): Promise<CommandContext> {
     const isUserLevel = level === 'USER'
-    
+
     // Get current bio
-    const currentBio = isUserLevel 
-      ? this.services.user.getBio()
-      : this.services.user.getProjectBio(projectName!)
-    
+    const currentBio = isUserLevel ? this.services.user.getBio() : this.services.user.getProjectBio(projectName!)
+
     // Build prompt message
     let promptMessage: string
     if (isUserLevel) {
@@ -55,7 +57,7 @@ export class UserBioHandler extends CommandHandler {
         promptMessage += `\n\nNote: Your global bio will also be included:\n"${userBio}"`
       }
     }
-    
+
     // Get new bio from user
     const newBio = await this.interactor.promptText(promptMessage, currentBio || '')
 
@@ -66,7 +68,7 @@ export class UserBioHandler extends CommandHandler {
       } else {
         this.services.user.setProjectBio(projectName!, newBio)
       }
-      
+
       // Provide feedback
       const levelLabel = isUserLevel ? 'USER-level' : `PROJECT-level for "${projectName}"`
       if (newBio.trim()) {

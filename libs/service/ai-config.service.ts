@@ -1,7 +1,7 @@
-import { AiModel, AiProviderConfig, CommandContext } from '../model'
+import { AiModel, AiProviderConfig, CommandContext } from '@coday/model'
 import { UserService } from './user.service'
 import { ProjectStateService } from './project-state.service'
-import { ConfigLevel, ConfigLevelValidator } from '../model/config-level'
+import { ConfigLevel, ConfigLevelValidator } from '@coday/model/config-level'
 
 /**
  * Represents the combined AI configuration from all levels

@@ -1,5 +1,5 @@
-import { AiThread } from '../ai-thread/ai-thread'
-import { ThreadSummary } from '../ai-thread/ai-thread.types'
+import { AiThread } from '@coday/ai-thread/ai-thread'
+import { ThreadSummary } from '@coday/ai-thread/ai-thread.types'
 
 /**
  * Repository interface for thread persistence operations.

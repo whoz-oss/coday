@@ -1,4 +1,4 @@
-import { CommandContext, CommandHandler, Interactor } from '../model'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
 import { AiHandler } from './openai/ai.handler'
 
 /**

@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { Interactor } from '../../model'
+import { Interactor } from '@coday/model'
 import { AutocompleteDataResponse } from './jira'
 
 export async function retrieveAutocompleteData(

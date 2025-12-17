@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { Interactor } from '../../model'
+import { Interactor } from '@coday/model'
 
 export async function getMergeRequest(
   mergeRequestId: string,

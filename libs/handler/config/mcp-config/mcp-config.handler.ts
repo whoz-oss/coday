@@ -1,9 +1,9 @@
-import {Interactor, NestedHandler} from '../../../model'
-import {CodayServices} from '../../../coday-services'
-import {McpListHandler} from './mcp-list.handler'
-import {McpEditHandler} from './mcp-edit.handler'
-import {McpAddHandler} from './mcp-add.handler'
-import {McpDeleteHandler} from './mcp-delete.handler'
+import { Interactor, NestedHandler } from '../@coday/model'
+import { CodayServices } from '../../../coday-services'
+import { McpListHandler } from './mcp-list.handler'
+import { McpEditHandler } from './mcp-edit.handler'
+import { McpAddHandler } from './mcp-add.handler'
+import { McpDeleteHandler } from './mcp-delete.handler'
 
 /**
  * Handler for MCP server configuration commands
