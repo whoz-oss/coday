@@ -1,0 +1,55 @@
+spring:
+  application:
+    name: agentos-service
+  
+  # Spring AI configuration (using environment variables)
+  ai:
+    anthropic:
+      api-key: ${SPRING_AI_ANTHROPIC_API_KEY:}
+    openai:
+      api-key: ${SPRING_AI_OPENAI_API_KEY:}
+
+server:
+  port: ${SERVER_PORT:8123}
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+# PF4J configuration
+pf4j:
+  pluginsDir: ${PLUGINS_DIR:/app/plugins}
+  systemMode: deployment
+
+logging:
+  level:
+    root: ${LOGGING_LEVEL_ROOT:INFO}
+    io.biznet.agentos: ${LOGGING_LEVEL_IO_BIZNET_AGENTOS:DEBUG}
+    org.pf4j: INFO
+    org.springframework.boot: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: /app/logs/agentos-service.log
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 7

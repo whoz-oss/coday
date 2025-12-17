@@ -1,0 +1,40 @@
+{
+  "name": "agentos-service",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "agentos/agentos-service/src",
+  "targets": {
+    "build": {
+      "executor": "@nx/gradle:gradle",
+      "options": {
+        "task": ":agentos-service:build"
+      },
+      "dependsOn": [
+        {
+          "target": "build",
+          "projects": ["agentos-sdk"]
+        }
+      ]
+    },
+    "test": {
+      "executor": "@nx/gradle:gradle",
+      "options": {
+        "task": ":agentos-service:test"
+      }
+    },
+    "bootRun": {
+      "executor": "@nx/gradle:gradle",
+      "options": {
+        "task": ":agentos-service:bootRun"
+      }
+    },
+    "bootJar": {
+      "executor": "@nx/gradle:gradle",
+      "options": {
+        "task": ":agentos-service:bootJar"
+      },
+      "dependsOn": ["build"]
+    }
+  },
+  "tags": ["type:app", "platform:jvm", "scope:service"]
+}
