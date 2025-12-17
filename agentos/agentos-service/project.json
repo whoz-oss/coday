@@ -5,9 +5,18 @@
   "sourceRoot": "agentos/agentos-service/src",
   "targets": {
     "build": {
-      "executor": "@nx/gradle:gradle",
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "{projectRoot}/build.gradle.kts",
+        "{workspaceRoot}/agentos/gradle.properties",
+        "{workspaceRoot}/agentos/settings.gradle.kts"
+      ],
+      "outputs": ["{projectRoot}/build"],
       "options": {
-        "task": ":agentos-service:build"
+        "command": "./gradlew :agentos-service:build",
+        "cwd": "agentos"
       },
       "dependsOn": [
         {
@@ -17,21 +26,41 @@
       ]
     },
     "test": {
-      "executor": "@nx/gradle:gradle",
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "{projectRoot}/build.gradle.kts",
+        "{workspaceRoot}/agentos/gradle.properties",
+        "{workspaceRoot}/agentos/settings.gradle.kts"
+      ],
+      "outputs": ["{projectRoot}/build/test-results", "{projectRoot}/build/reports"],
       "options": {
-        "task": ":agentos-service:test"
+        "command": "./gradlew :agentos-service:test",
+        "cwd": "agentos"
       }
     },
     "bootRun": {
-      "executor": "@nx/gradle:gradle",
+      "executor": "nx:run-commands",
+      "cache": false,
       "options": {
-        "task": ":agentos-service:bootRun"
+        "command": "./gradlew :agentos-service:bootRun",
+        "cwd": "agentos"
       }
     },
     "bootJar": {
-      "executor": "@nx/gradle:gradle",
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "{projectRoot}/build.gradle.kts",
+        "{workspaceRoot}/agentos/gradle.properties",
+        "{workspaceRoot}/agentos/settings.gradle.kts"
+      ],
+      "outputs": ["{projectRoot}/build/libs"],
       "options": {
-        "task": ":agentos-service:bootJar"
+        "command": "./gradlew :agentos-service:bootJar",
+        "cwd": "agentos"
       },
       "dependsOn": ["build"]
     }
