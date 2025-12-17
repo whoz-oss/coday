@@ -1,0 +1,28 @@
+{
+  "name": "agentos-sdk",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "agentos/agentos-sdk/src",
+  "targets": {
+    "build": {
+      "executor": "@nx/gradle:gradle",
+      "options": {
+        "task": ":agentos-sdk:build"
+      }
+    },
+    "test": {
+      "executor": "@nx/gradle:gradle",
+      "options": {
+        "task": ":agentos-sdk:test"
+      }
+    },
+    "publish": {
+      "executor": "@nx/gradle:gradle",
+      "options": {
+        "task": ":agentos-sdk:publish"
+      },
+      "dependsOn": ["build"]
+    }
+  },
+  "tags": ["type:lib", "platform:jvm", "scope:sdk"]
+}
