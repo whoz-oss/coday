@@ -1,3 +1,13 @@
+## 0.55.1 (2025-12-17)
+
+### 🩹 Fixes
+
+- #382 thread list cache with incremental updates ([#386](https://github.com/whoz-oss/coday/pull/386), [#382](https://github.com/whoz-oss/coday/issues/382))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.55.0 (2025-12-16)
 
 ### 🚀 Features
