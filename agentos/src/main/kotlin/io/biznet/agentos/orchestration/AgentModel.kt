@@ -14,7 +14,7 @@ import java.util.UUID
  * @property name The agent's display name
  * @property description Description of the agent for users and other agents
  * @property instructions System instructions/prompt for the agent (optional)
- * @property aiProvider The AI provider to use (e.g., "openai", "anthropic")
+ * @property provider The AI provider to use (null = use default from configuration)
  * @property modelName Explicit model name or alias (e.g., "gpt-4", "claude-3-opus")
  * @property temperature Temperature parameter for LLM (0.0 to 2.0, where 0.2 is deterministic, 0.8 is creative)
  * @property maxOutputTokens Maximum number of output tokens (overrides model's default if specified)
@@ -24,7 +24,7 @@ data class AgentModel(
     val name: String,
     val description: String,
     val instructions: String? = null,
-    val aiProvider: String? = null,
+    val provider: AiProvider? = null,
     val modelName: String? = null,
     val temperature: Double? = null,
     val maxOutputTokens: Int? = null,

@@ -34,7 +34,7 @@ import java.util.UUID
 class AgentSimple(
     override val metadata: EntityMetadata,
     private val model: AgentModel,
-    private val chatClientBuilder: ChatClient.Builder,
+    private val chatClient: ChatClient,
     private val tools: List<StandardTool<*>>,
 ) : IAgent {
     override val name: String get() = model.name
@@ -70,9 +70,6 @@ class AgentSimple(
                     }
 
                 emit(ThinkingEvent(projectId = projectId, caseId = caseId))
-
-                // Build ChatClient with tools
-                val chatClient = chatClientBuilder.build()
 
                 // Convert StandardTool to ToolCallback with event emission
                 val toolCallbacks =

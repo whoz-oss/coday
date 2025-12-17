@@ -29,10 +29,6 @@ class AgentSimpleTest {
             // Mock ChatClient with streaming support
             val mockChatClient = mockk<ChatClient>(relaxed = true)
 
-            // Mock ChatClient.Builder
-            val mockChatClientBuilder = mockk<ChatClient.Builder>()
-            every { mockChatClientBuilder.build() } returns mockChatClient
-
             // Mock streaming response
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             val flux = Flux.just("Hello! ", "I can help you ", "with that.")
@@ -54,7 +50,7 @@ class AgentSimpleTest {
                 AgentSimple(
                     metadata = EntityMetadata(id = agentId),
                     model = model,
-                    chatClientBuilder = mockChatClientBuilder,
+                    chatClient = mockChatClient,
                     tools = tools,
                 )
 
@@ -118,8 +114,6 @@ class AgentSimpleTest {
 
             // Mock ChatClient
             val mockChatClient = mockk<ChatClient>(relaxed = true)
-            val mockChatClientBuilder = mockk<ChatClient.Builder>()
-            every { mockChatClientBuilder.build() } returns mockChatClient
 
             // Mock streaming response
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
@@ -139,7 +133,7 @@ class AgentSimpleTest {
                 AgentSimple(
                     metadata = EntityMetadata(id = agentId),
                     model = model,
-                    chatClientBuilder = mockChatClientBuilder,
+                    chatClient = mockChatClient,
                     tools = tools,
                 )
 
@@ -194,8 +188,6 @@ class AgentSimpleTest {
 
             // Mock ChatClient that throws exception
             val mockChatClient = mockk<ChatClient>(relaxed = true)
-            val mockChatClientBuilder = mockk<ChatClient.Builder>()
-            every { mockChatClientBuilder.build() } returns mockChatClient
 
             // Mock streaming that throws error
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
@@ -215,7 +207,7 @@ class AgentSimpleTest {
                 AgentSimple(
                     metadata = EntityMetadata(id = agentId),
                     model = model,
-                    chatClientBuilder = mockChatClientBuilder,
+                    chatClient = mockChatClient,
                     tools = tools,
                 )
 
@@ -253,8 +245,6 @@ class AgentSimpleTest {
             val otherAgentId = UUID.randomUUID()
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
-            val mockChatClientBuilder = mockk<ChatClient.Builder>()
-            every { mockChatClientBuilder.build() } returns mockChatClient
 
             // Mock streaming response
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
@@ -274,7 +264,7 @@ class AgentSimpleTest {
                 AgentSimple(
                     metadata = EntityMetadata(id = agentId),
                     model = model,
-                    chatClientBuilder = mockChatClientBuilder,
+                    chatClient = mockChatClient,
                     tools = tools,
                 )
 

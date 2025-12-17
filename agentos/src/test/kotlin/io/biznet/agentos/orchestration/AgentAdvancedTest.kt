@@ -28,10 +28,6 @@ class AgentAdvancedTest {
             // Mock ChatClient with relaxed mocking
             val mockChatClient = mockk<ChatClient>(relaxed = true)
 
-            // Mock ChatClient.Builder
-            val mockChatClientBuilder = mockk<ChatClient.Builder>()
-            every { mockChatClientBuilder.build() } returns mockChatClient
-
             // Create a response counter to return different values
             var callCount = 0
             every {
@@ -67,7 +63,7 @@ class AgentAdvancedTest {
                 AgentAdvanced(
                     metadata = EntityMetadata(id = agentId),
                     model = model,
-                    chatClientBuilder = mockChatClientBuilder,
+                    chatClient = mockChatClient,
                     tools = tools,
                     agentService = mockAgentService,
                     maxIterations = 5,
