@@ -322,9 +322,13 @@ class ThreadCodayInstance {
     }
     this.connections.clear()
 
-    // Kill Coday instance
+    // Kill Coday instance (this will trigger cleanup of agents and MCP servers)
     if (this.coday) {
-      await this.coday.kill()
+      try {
+        await this.coday.kill()
+      } catch (error) {
+        debugLog('THREAD_CODAY', `Error during Coday kill:`, error)
+      }
       this.coday = undefined
     }
   }

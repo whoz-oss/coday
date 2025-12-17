@@ -39,6 +39,19 @@ const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
     },
   },
   {
+    name: 'claude-opus-4-5',
+    alias: 'BIGGEST',
+    contextWindow: 200000,
+    temperature: 0.8,
+    maxOutputTokens: 64000,
+    price: {
+      inputMTokens: 15,
+      cacheWrite: 18.75,
+      cacheRead: 1.5,
+      outputMTokens: 75,
+    },
+  },
+  {
     name: 'claude-haiku-4-5',
     alias: 'SMALL',
     contextWindow: 200000,
