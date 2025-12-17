@@ -40,6 +40,12 @@ export class ThreadService {
   private readonly threadListCache = new Map<string, ThreadListCacheEntry>()
   private readonly CACHE_TTL_MS = 4 * 60 * 60 * 1000 // 4 hours
 
+  /**
+   * Loading promises to prevent concurrent cache misses (race condition fix)
+   * When multiple requests arrive simultaneously for expired cache, only first one loads from disk
+   */
+  private readonly loadingPromises = new Map<string, Promise<ThreadSummary[]>>()
+
   constructor(
     private readonly projectRepository: ProjectRepository,
     private readonly projectsDir: string,
@@ -86,6 +92,7 @@ export class ThreadService {
   /**
    * List all threads for a project and user (cached)
    * Cache stores all threads for project, filtering by user done in-memory.
+   * Race condition safe: concurrent requests will await the same loading promise.
    * @param projectName Project name
    * @param username User identifier
    * @returns Array of thread summaries for the user
@@ -100,7 +107,43 @@ export class ThreadService {
         .sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
     }
 
-    // Fetch ALL threads for project from repository (no username filter)
+    // Check if loading is already in progress (race condition prevention)
+    const existingPromise = this.loadingPromises.get(projectName)
+    if (existingPromise) {
+      // Wait for the ongoing load to complete
+      await existingPromise
+      // Recursively call to return filtered cached data
+      return this.listThreads(projectName, username)
+    }
+
+    // Start loading - create promise and store it
+    const loadingPromise = this.loadThreadListFromDisk(projectName)
+    this.loadingPromises.set(projectName, loadingPromise)
+
+    try {
+      // Wait for loading to complete
+      const allThreads = await loadingPromise
+      // Return filtered and sorted for this user
+      return allThreads
+        .filter((t) => t.username === username)
+        .sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
+    } catch (error) {
+      // On error, invalidate cache to allow retry on next request
+      this.threadListCache.delete(projectName)
+      // Propagate error to caller (route handler will handle HTTP response)
+      throw error
+    } finally {
+      // Always clean up loading promise (success or error)
+      this.loadingPromises.delete(projectName)
+    }
+  }
+
+  /**
+   * Load thread list from disk and update cache
+   * @param projectName Project name
+   * @returns All threads for the project
+   */
+  private async loadThreadListFromDisk(projectName: string): Promise<ThreadSummary[]> {
     const repository = this.getThreadRepository(projectName)
     const allThreads = await repository.listByProject(projectName)
 
@@ -110,8 +153,7 @@ export class ThreadService {
       timestamp: Date.now(),
     })
 
-    // Return filtered and sorted for this user
-    return allThreads.filter((t) => t.username === username).sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
+    return allThreads
   }
 
   /**
