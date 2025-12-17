@@ -5,21 +5,41 @@
   "sourceRoot": "agentos/agentos-sdk/src",
   "targets": {
     "build": {
-      "executor": "@nx/gradle:gradle",
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "{projectRoot}/build.gradle.kts",
+        "{workspaceRoot}/agentos/gradle.properties",
+        "{workspaceRoot}/agentos/settings.gradle.kts"
+      ],
+      "outputs": ["{projectRoot}/build"],
       "options": {
-        "task": ":agentos-sdk:build"
+        "command": "./gradlew :agentos-sdk:build",
+        "cwd": "agentos"
       }
     },
     "test": {
-      "executor": "@nx/gradle:gradle",
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "{projectRoot}/build.gradle.kts",
+        "{workspaceRoot}/agentos/gradle.properties",
+        "{workspaceRoot}/agentos/settings.gradle.kts"
+      ],
+      "outputs": ["{projectRoot}/build/test-results", "{projectRoot}/build/reports"],
       "options": {
-        "task": ":agentos-sdk:test"
+        "command": "./gradlew :agentos-sdk:test",
+        "cwd": "agentos"
       }
     },
     "publish": {
-      "executor": "@nx/gradle:gradle",
+      "executor": "nx:run-commands",
+      "cache": false,
       "options": {
-        "task": ":agentos-sdk:publish"
+        "command": "./gradlew :agentos-sdk:publish",
+        "cwd": "agentos"
       },
       "dependsOn": ["build"]
     }

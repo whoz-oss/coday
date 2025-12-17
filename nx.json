@@ -59,13 +59,6 @@
       }
     },
     {
-      "plugin": "@nx/gradle",
-      "options": {
-        "buildTargetName": "build",
-        "testTargetName": "test"
-      }
-    },
-    {
       "plugin": "@nx/playwright/plugin",
       "options": {
         "targetName": "e2e"
