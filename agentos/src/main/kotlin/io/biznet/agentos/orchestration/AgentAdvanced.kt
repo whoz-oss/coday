@@ -25,7 +25,7 @@ import java.util.UUID
 class AgentAdvanced(
     override val metadata: EntityMetadata,
     private val model: AgentModel,
-    private val chatClientBuilder: ChatClient.Builder,
+    private val chatClient: ChatClient,
     private val tools: List<StandardTool<*>>,
     private val agentService: IAgentService,
     private val maxIterations: Int = 20,
@@ -151,7 +151,6 @@ Based on all previous steps, make a concise explanation of what is the next logi
                 """.trimIndent()
             }
 
-        val chatClient = chatClientBuilder.build()
         val intention =
             chatClient
                 .prompt(Prompt(messages + UserMessage(intentionPrompt)))
@@ -187,7 +186,6 @@ Which tool should be used from: $toolNames
 Respond with just the tool name.
             """.trimIndent()
 
-        val chatClient = chatClientBuilder.build()
         val toolName =
             chatClient
                 .prompt(Prompt(messages + UserMessage(intentionEvent.intention) + UserMessage(selectionPrompt)))
@@ -230,7 +228,6 @@ Intention: ${intentionEvent.intention}
 Generate the JSON parameters for this tool call.
             """.trimIndent()
 
-        val chatClient = chatClientBuilder.build()
         val parameters =
             chatClient
                 .prompt(Prompt(messages + UserMessage(intentionEvent.intention) + UserMessage(parametersPrompt)))
