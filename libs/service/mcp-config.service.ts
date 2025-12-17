@@ -1,9 +1,9 @@
-import { Interactor } from '../model/interactor'
+import { Interactor } from '@coday/model/interactor'
 import { UserService } from './user.service'
 import { ProjectStateService } from './project-state.service'
-import { McpServerConfig } from '../model/mcp-server-config'
-import { ConfigLevel, ConfigLevelValidator } from '../model/config-level'
-import { CommandContext } from '../model'
+import { McpServerConfig } from '@coday/model/mcp-server-config'
+import { ConfigLevel, ConfigLevelValidator } from '@coday/model/config-level'
+import { CommandContext } from '@coday/model'
 import { mergeMcpConfigs } from './mcp-config-merger'
 
 /**

@@ -1,4 +1,4 @@
-import { CommandContext, CommandHandler, Interactor } from '../../model'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
 import { CodayServices } from '../../coday-services'
 
 /**
@@ -36,9 +36,10 @@ export class WebhookListHandler extends CommandHandler {
 
       webhooks.forEach((webhook, index) => {
         const createdAtFormatted = webhook.createdAt.toLocaleString()
-        const commandsInfo = webhook.commands && webhook.commands.length > 0 
-          ? `${webhook.commands.length} command${webhook.commands.length === 1 ? '' : 's'}` 
-          : 'no commands'
+        const commandsInfo =
+          webhook.commands && webhook.commands.length > 0
+            ? `${webhook.commands.length} command${webhook.commands.length === 1 ? '' : 's'}`
+            : 'no commands'
 
         output += `${index + 1}. **${webhook.name}**\n`
         output += `   UUID: \`${webhook.uuid}\`\n`

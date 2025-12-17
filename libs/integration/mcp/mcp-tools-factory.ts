@@ -1,5 +1,5 @@
 import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
-import { CommandContext, Interactor, McpServerConfig } from '../../model'
+import { CommandContext, Interactor, McpServerConfig } from '@coday/model'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'

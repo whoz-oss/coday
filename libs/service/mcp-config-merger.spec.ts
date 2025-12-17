@@ -1,4 +1,4 @@
-import { McpServerConfig } from '../model/mcp-server-config'
+import { McpServerConfig } from '@coday/model/mcp-server-config'
 import { mergeMcpConfigs } from './mcp-config-merger'
 
 describe('McpConfigMerger', () => {
@@ -276,38 +276,38 @@ describe('McpConfigMerger', () => {
     })
 
     it('should apply safe defaults for new servers', () => {
-        const codayServers: McpServerConfig[] = []
-        const projectServers: McpServerConfig[] = []
-        const userServers: McpServerConfig[] = [
-          {
-            id: 'minimal',
-            name: 'Minimal Server',
-            command: 'minimal-command',
-            // No enabled, debug, args, env specified
-          },
-        ]
-
-        const result = mergeMcpConfigs(codayServers, projectServers, userServers)
-
-        expect(result[0]).toEqual({
+      const codayServers: McpServerConfig[] = []
+      const projectServers: McpServerConfig[] = []
+      const userServers: McpServerConfig[] = [
+        {
           id: 'minimal',
           name: 'Minimal Server',
           command: 'minimal-command',
-          enabled: true, // Default
-          debug: false, // Default
-          args: [], // Default
-          env: {
-            // Default whitelist vars are always included
-            PATH: '/usr/local/bin:/usr/bin:/bin',
-            HOME: '/home/testuser',
-            USER: 'testuser',
-            SHELL: '/bin/bash',
-            TMPDIR: '/tmp',
-            TERM: 'xterm-256color',
-            LANG: 'en_US.UTF-8',
-            COLORTERM: 'truecolor',
-          },
-        })
+          // No enabled, debug, args, env specified
+        },
+      ]
+
+      const result = mergeMcpConfigs(codayServers, projectServers, userServers)
+
+      expect(result[0]).toEqual({
+        id: 'minimal',
+        name: 'Minimal Server',
+        command: 'minimal-command',
+        enabled: true, // Default
+        debug: false, // Default
+        args: [], // Default
+        env: {
+          // Default whitelist vars are always included
+          PATH: '/usr/local/bin:/usr/bin:/bin',
+          HOME: '/home/testuser',
+          USER: 'testuser',
+          SHELL: '/bin/bash',
+          TMPDIR: '/tmp',
+          TERM: 'xterm-256color',
+          LANG: 'en_US.UTF-8',
+          COLORTERM: 'truecolor',
+        },
+      })
     })
 
     it('should handle empty arrays correctly', () => {
@@ -316,165 +316,165 @@ describe('McpConfigMerger', () => {
     })
 
     it('should preserve environment variables from all levels with proper override', () => {
-        const codayServers: McpServerConfig[] = [
-          {
-            id: 'test',
-            name: 'Test Server',
-            command: 'test',
-            enabled: true,
-            env: {
-              BASE_VAR: 'base-value',
-              SHARED_VAR: 'coday-value',
-            },
+      const codayServers: McpServerConfig[] = [
+        {
+          id: 'test',
+          name: 'Test Server',
+          command: 'test',
+          enabled: true,
+          env: {
+            BASE_VAR: 'base-value',
+            SHARED_VAR: 'coday-value',
           },
-        ]
+        },
+      ]
 
-        const projectServers: McpServerConfig[] = [
-          {
-            id: 'test',
-            name: 'Test Server',
-            env: {
-              PROJECT_VAR: 'project-value',
-              SHARED_VAR: 'project-value',
-            },
+      const projectServers: McpServerConfig[] = [
+        {
+          id: 'test',
+          name: 'Test Server',
+          env: {
+            PROJECT_VAR: 'project-value',
+            SHARED_VAR: 'project-value',
           },
-        ]
+        },
+      ]
 
-        const userServers: McpServerConfig[] = [
-          {
-            id: 'test',
-            name: 'Test Server',
-            env: {
-              USER_VAR: 'user-value',
-              SHARED_VAR: 'user-value',
-            },
+      const userServers: McpServerConfig[] = [
+        {
+          id: 'test',
+          name: 'Test Server',
+          env: {
+            USER_VAR: 'user-value',
+            SHARED_VAR: 'user-value',
           },
-        ]
+        },
+      ]
 
-        const result = mergeMcpConfigs(codayServers, projectServers, userServers)
+      const result = mergeMcpConfigs(codayServers, projectServers, userServers)
 
-        expect(result[0]?.env).toEqual({
-          // Default whitelist vars
-          PATH: '/usr/local/bin:/usr/bin:/bin',
-          HOME: '/home/testuser',
-          USER: 'testuser',
-          SHELL: '/bin/bash',
-          TMPDIR: '/tmp',
-          TERM: 'xterm-256color',
-          LANG: 'en_US.UTF-8',
-          COLORTERM: 'truecolor',
-          // Custom vars from config
-          BASE_VAR: 'base-value', // From CODAY
-          PROJECT_VAR: 'project-value', // From PROJECT
-          USER_VAR: 'user-value', // From USER
-          SHARED_VAR: 'user-value', // USER overrides PROJECT overrides CODAY
-        })
+      expect(result[0]?.env).toEqual({
+        // Default whitelist vars
+        PATH: '/usr/local/bin:/usr/bin:/bin',
+        HOME: '/home/testuser',
+        USER: 'testuser',
+        SHELL: '/bin/bash',
+        TMPDIR: '/tmp',
+        TERM: 'xterm-256color',
+        LANG: 'en_US.UTF-8',
+        COLORTERM: 'truecolor',
+        // Custom vars from config
+        BASE_VAR: 'base-value', // From CODAY
+        PROJECT_VAR: 'project-value', // From PROJECT
+        USER_VAR: 'user-value', // From USER
+        SHARED_VAR: 'user-value', // USER overrides PROJECT overrides CODAY
+      })
     })
 
     it('should fall back to process.env for variables listed in envVarNames when not set', () => {
       // Add test-specific env var
       process.env.GITHUB_PERSONAL_ACCESS_TOKEN = 'env-token-value'
-        const codayServers: McpServerConfig[] = [
-          {
-            id: 'github',
-            name: 'GIT-PLATFORM',
-            command: 'docker',
-            enabled: true,
-            whiteListedHostEnvVarNames: ['GITHUB_PERSONAL_ACCESS_TOKEN'],
-            // No env specified
-          },
-        ]
+      const codayServers: McpServerConfig[] = [
+        {
+          id: 'github',
+          name: 'GIT-PLATFORM',
+          command: 'docker',
+          enabled: true,
+          whiteListedHostEnvVarNames: ['GITHUB_PERSONAL_ACCESS_TOKEN'],
+          // No env specified
+        },
+      ]
 
-        const result = mergeMcpConfigs(codayServers, [], [])
+      const result = mergeMcpConfigs(codayServers, [], [])
 
-        expect(result[0]?.env).toEqual({
-          // Default whitelist vars
-          PATH: '/usr/local/bin:/usr/bin:/bin',
-          HOME: '/home/testuser',
-          USER: 'testuser',
-          SHELL: '/bin/bash',
-          TMPDIR: '/tmp',
-          TERM: 'xterm-256color',
-          LANG: 'en_US.UTF-8',
-          COLORTERM: 'truecolor',
-          // Variable from envVarNames
-          GITHUB_PERSONAL_ACCESS_TOKEN: 'env-token-value',
-        })
+      expect(result[0]?.env).toEqual({
+        // Default whitelist vars
+        PATH: '/usr/local/bin:/usr/bin:/bin',
+        HOME: '/home/testuser',
+        USER: 'testuser',
+        SHELL: '/bin/bash',
+        TMPDIR: '/tmp',
+        TERM: 'xterm-256color',
+        LANG: 'en_US.UTF-8',
+        COLORTERM: 'truecolor',
+        // Variable from envVarNames
+        GITHUB_PERSONAL_ACCESS_TOKEN: 'env-token-value',
+      })
     })
 
     it('should not override GITHUB_PERSONAL_ACCESS_TOKEN if explicitly set in config', () => {
       // Add test-specific env var
       process.env.GITHUB_PERSONAL_ACCESS_TOKEN = 'env-token-value'
-        const codayServers: McpServerConfig[] = [
-          {
-            id: 'github',
-            name: 'GIT-PLATFORM',
-            command: 'docker',
-            enabled: true,
-            whiteListedHostEnvVarNames: ['GITHUB_PERSONAL_ACCESS_TOKEN'],
-            env: {
-              GITHUB_PERSONAL_ACCESS_TOKEN: 'config-token-value',
-            },
+      const codayServers: McpServerConfig[] = [
+        {
+          id: 'github',
+          name: 'GIT-PLATFORM',
+          command: 'docker',
+          enabled: true,
+          whiteListedHostEnvVarNames: ['GITHUB_PERSONAL_ACCESS_TOKEN'],
+          env: {
+            GITHUB_PERSONAL_ACCESS_TOKEN: 'config-token-value',
           },
-        ]
+        },
+      ]
 
-        const result = mergeMcpConfigs(codayServers, [], [])
+      const result = mergeMcpConfigs(codayServers, [], [])
 
-        expect(result[0]?.env).toEqual({
-          // Default whitelist vars
-          PATH: '/usr/local/bin:/usr/bin:/bin',
-          HOME: '/home/testuser',
-          USER: 'testuser',
-          SHELL: '/bin/bash',
-          TMPDIR: '/tmp',
-          TERM: 'xterm-256color',
-          LANG: 'en_US.UTF-8',
-          COLORTERM: 'truecolor',
-          // Config value overrides envVarNames
-          GITHUB_PERSONAL_ACCESS_TOKEN: 'config-token-value',
-        })
+      expect(result[0]?.env).toEqual({
+        // Default whitelist vars
+        PATH: '/usr/local/bin:/usr/bin:/bin',
+        HOME: '/home/testuser',
+        USER: 'testuser',
+        SHELL: '/bin/bash',
+        TMPDIR: '/tmp',
+        TERM: 'xterm-256color',
+        LANG: 'en_US.UTF-8',
+        COLORTERM: 'truecolor',
+        // Config value overrides envVarNames
+        GITHUB_PERSONAL_ACCESS_TOKEN: 'config-token-value',
+      })
     })
 
     it('should apply env fallback when merging multiple levels', () => {
       // Add test-specific env var
       process.env.GITHUB_PERSONAL_ACCESS_TOKEN = 'env-token-value'
-        const codayServers: McpServerConfig[] = [
-          {
-            id: 'github',
-            name: 'GIT-PLATFORM',
-            command: 'docker',
-            enabled: true,
-            args: ['-e', 'GITHUB_PERSONAL_ACCESS_TOKEN'],
-            whiteListedHostEnvVarNames: ['GITHUB_PERSONAL_ACCESS_TOKEN'],
+      const codayServers: McpServerConfig[] = [
+        {
+          id: 'github',
+          name: 'GIT-PLATFORM',
+          command: 'docker',
+          enabled: true,
+          args: ['-e', 'GITHUB_PERSONAL_ACCESS_TOKEN'],
+          whiteListedHostEnvVarNames: ['GITHUB_PERSONAL_ACCESS_TOKEN'],
+        },
+      ]
+
+      const projectServers: McpServerConfig[] = [
+        {
+          id: 'github',
+          name: 'GIT-PLATFORM',
+          env: {
+            OTHER_VAR: 'other-value',
           },
-        ]
+        },
+      ]
 
-        const projectServers: McpServerConfig[] = [
-          {
-            id: 'github',
-            name: 'GIT-PLATFORM',
-            env: {
-              OTHER_VAR: 'other-value',
-            },
-          },
-        ]
+      const result = mergeMcpConfigs(codayServers, projectServers, [])
 
-        const result = mergeMcpConfigs(codayServers, projectServers, [])
-
-        expect(result[0]?.env).toEqual({
-          // Default whitelist vars
-          PATH: '/usr/local/bin:/usr/bin:/bin',
-          HOME: '/home/testuser',
-          USER: 'testuser',
-          SHELL: '/bin/bash',
-          TMPDIR: '/tmp',
-          TERM: 'xterm-256color',
-          LANG: 'en_US.UTF-8',
-          COLORTERM: 'truecolor',
-          // Variables from config and envVarNames
-          GITHUB_PERSONAL_ACCESS_TOKEN: 'env-token-value',
-          OTHER_VAR: 'other-value',
-        })
+      expect(result[0]?.env).toEqual({
+        // Default whitelist vars
+        PATH: '/usr/local/bin:/usr/bin:/bin',
+        HOME: '/home/testuser',
+        USER: 'testuser',
+        SHELL: '/bin/bash',
+        TMPDIR: '/tmp',
+        TERM: 'xterm-256color',
+        LANG: 'en_US.UTF-8',
+        COLORTERM: 'truecolor',
+        // Variables from config and envVarNames
+        GITHUB_PERSONAL_ACCESS_TOKEN: 'env-token-value',
+        OTHER_VAR: 'other-value',
+      })
     })
 
     it('should not fall back to process.env for variables not listed in envVarNames', () => {
@@ -550,34 +550,34 @@ describe('McpConfigMerger', () => {
       process.env.GITHUB_PERSONAL_ACCESS_TOKEN = 'github-token'
       process.env.API_KEY = 'api-key-value'
       process.env.SECRET_TOKEN = 'secret-value'
-        const codayServers: McpServerConfig[] = [
-          {
-            id: 'test',
-            name: 'Test Server',
-            command: 'test',
-            enabled: true,
-            whiteListedHostEnvVarNames: ['GITHUB_PERSONAL_ACCESS_TOKEN', 'API_KEY', 'SECRET_TOKEN'],
-            // No env specified
-          },
-        ]
+      const codayServers: McpServerConfig[] = [
+        {
+          id: 'test',
+          name: 'Test Server',
+          command: 'test',
+          enabled: true,
+          whiteListedHostEnvVarNames: ['GITHUB_PERSONAL_ACCESS_TOKEN', 'API_KEY', 'SECRET_TOKEN'],
+          // No env specified
+        },
+      ]
 
-        const result = mergeMcpConfigs(codayServers, [], [])
+      const result = mergeMcpConfigs(codayServers, [], [])
 
-        expect(result[0]?.env).toEqual({
-          // Default whitelist vars
-          PATH: '/usr/local/bin:/usr/bin:/bin',
-          HOME: '/home/testuser',
-          USER: 'testuser',
-          SHELL: '/bin/bash',
-          TMPDIR: '/tmp',
-          TERM: 'xterm-256color',
-          LANG: 'en_US.UTF-8',
-          COLORTERM: 'truecolor',
-          // Variables from envVarNames
-          GITHUB_PERSONAL_ACCESS_TOKEN: 'github-token',
-          API_KEY: 'api-key-value',
-          SECRET_TOKEN: 'secret-value',
-        })
+      expect(result[0]?.env).toEqual({
+        // Default whitelist vars
+        PATH: '/usr/local/bin:/usr/bin:/bin',
+        HOME: '/home/testuser',
+        USER: 'testuser',
+        SHELL: '/bin/bash',
+        TMPDIR: '/tmp',
+        TERM: 'xterm-256color',
+        LANG: 'en_US.UTF-8',
+        COLORTERM: 'truecolor',
+        // Variables from envVarNames
+        GITHUB_PERSONAL_ACCESS_TOKEN: 'github-token',
+        API_KEY: 'api-key-value',
+        SECRET_TOKEN: 'secret-value',
+      })
     })
   })
 })

@@ -1,4 +1,4 @@
-import { CommandContext } from '../model'
+import { CommandContext } from '@coday/model'
 
 export interface FunctionDefinition<T> {
   name: string

@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { Interactor } from '../../model'
+import { Interactor } from '@coday/model'
 import * as path from 'path'
 
 // Type definition for input parameters of the writeFileChunk function

@@ -1,4 +1,4 @@
-import { Interactor } from '../../model'
+import { Interactor } from '@coday/model'
 
 /**
  * Interface for the Jira issue link request
@@ -85,30 +85,31 @@ export async function linkJiraIssues(
     const auth = Buffer.from(`${actualJiraUsername}:${actualJiraApiToken}`).toString('base64')
 
     // Check if this is an epic link or parent-child relationship
-    const isEpicLink = typeof requestOrInwardIssueKey === 'object' && requestOrInwardIssueKey.isEpicLink === true ||
-                        linkType.toLowerCase() === 'epic-issue' ||
-                        linkType.toLowerCase() === 'epic' ||
-                        linkType.toLowerCase() === 'is epic of' ||
-                        linkType.toLowerCase() === 'is part of epic';
+    const isEpicLink =
+      (typeof requestOrInwardIssueKey === 'object' && requestOrInwardIssueKey.isEpicLink === true) ||
+      linkType.toLowerCase() === 'epic-issue' ||
+      linkType.toLowerCase() === 'epic' ||
+      linkType.toLowerCase() === 'is epic of' ||
+      linkType.toLowerCase() === 'is part of epic'
 
     const isParentChildRelationship =
-                        linkType.toLowerCase() === 'parent' ||
-                        linkType.toLowerCase() === 'child' ||
-                        linkType.toLowerCase() === 'parent-child' ||
-                        linkType.toLowerCase() === 'child-parent' ||
-                        linkType.toLowerCase() === 'has parent' ||
-                        linkType.toLowerCase() === 'has child' ||
-                        linkType.toLowerCase() === 'is parent of' ||
-                        linkType.toLowerCase() === 'is child of' ||
-                        linkType.toLowerCase() === 'subtask' ||
-                        linkType.toLowerCase() === 'is subtask of';
+      linkType.toLowerCase() === 'parent' ||
+      linkType.toLowerCase() === 'child' ||
+      linkType.toLowerCase() === 'parent-child' ||
+      linkType.toLowerCase() === 'child-parent' ||
+      linkType.toLowerCase() === 'has parent' ||
+      linkType.toLowerCase() === 'has child' ||
+      linkType.toLowerCase() === 'is parent of' ||
+      linkType.toLowerCase() === 'is child of' ||
+      linkType.toLowerCase() === 'subtask' ||
+      linkType.toLowerCase() === 'is subtask of'
 
     // Log the type of linking we're performing
-    let linkingMethod = 'standard issue linking';
+    let linkingMethod = 'standard issue linking'
     if (isEpicLink || isParentChildRelationship) {
-      linkingMethod = 'Parent-Child relationship (Jira V3 API)';
+      linkingMethod = 'Parent-Child relationship (Jira V3 API)'
     }
-    actualInteractor.displayText(`Linking issues ${inwardIssueKey} and ${outwardIssueKey} using ${linkingMethod}.`);
+    actualInteractor.displayText(`Linking issues ${inwardIssueKey} and ${outwardIssueKey} using ${linkingMethod}.`)
 
     // Handle parent-child relationship (including epics) using Jira V3 API
     if (isEpicLink || isParentChildRelationship) {
@@ -116,161 +117,163 @@ export async function linkJiraIssues(
         // Determine which issue is the parent and which is the child
         // By convention, we assume inwardIssueKey is the child and outwardIssueKey is the parent
         // unless the linkType specifically indicates otherwise
-        let childKey = inwardIssueKey;
-        let parentKey = outwardIssueKey;
+        let childKey = inwardIssueKey
+        let parentKey = outwardIssueKey
 
         // If the relationship is specified as 'child', 'has parent', etc., keep the default
         // If specified as 'parent', 'has child', etc., reverse the roles
-        if (linkType.toLowerCase() === 'parent' ||
-            linkType.toLowerCase() === 'has child' ||
-            linkType.toLowerCase() === 'child-parent' ||
-            linkType.toLowerCase() === 'is parent of') {
-          childKey = outwardIssueKey;
-          parentKey = inwardIssueKey;
+        if (
+          linkType.toLowerCase() === 'parent' ||
+          linkType.toLowerCase() === 'has child' ||
+          linkType.toLowerCase() === 'child-parent' ||
+          linkType.toLowerCase() === 'is parent of'
+        ) {
+          childKey = outwardIssueKey
+          parentKey = inwardIssueKey
         }
-        
+
         // For epic links, the epic is always the parent
         if (isEpicLink) {
           // Check if inwardIssueKey is an epic
           const epicCheckResponse = await fetch(`${jiraBaseUrl}/rest/api/3/issue/${inwardIssueKey}?fields=issuetype`, {
             method: 'GET',
             headers: {
-              'Authorization': `Basic ${auth}`,
-              'Accept': 'application/json',
+              Authorization: `Basic ${auth}`,
+              Accept: 'application/json',
             },
-          });
+          })
 
           if (epicCheckResponse.ok) {
-            const epicData = await epicCheckResponse.json();
-            const isInwardEpic = epicData.fields?.issuetype?.name?.toLowerCase() === 'epic';
-            
+            const epicData = await epicCheckResponse.json()
+            const isInwardEpic = epicData.fields?.issuetype?.name?.toLowerCase() === 'epic'
+
             if (isInwardEpic) {
               // If inwardIssueKey is an epic, it's the parent
-              childKey = outwardIssueKey;
-              parentKey = inwardIssueKey;
+              childKey = outwardIssueKey
+              parentKey = inwardIssueKey
             } else {
               // Check if outwardIssueKey is an epic
-              const outwardEpicCheckResponse = await fetch(`${jiraBaseUrl}/rest/api/3/issue/${outwardIssueKey}?fields=issuetype`, {
-                method: 'GET',
-                headers: {
-                  'Authorization': `Basic ${auth}`,
-                  'Accept': 'application/json',
-                },
-              });
-              
+              const outwardEpicCheckResponse = await fetch(
+                `${jiraBaseUrl}/rest/api/3/issue/${outwardIssueKey}?fields=issuetype`,
+                {
+                  method: 'GET',
+                  headers: {
+                    Authorization: `Basic ${auth}`,
+                    Accept: 'application/json',
+                  },
+                }
+              )
+
               if (outwardEpicCheckResponse.ok) {
-                const outwardEpicData = await outwardEpicCheckResponse.json();
-                const isOutwardEpic = outwardEpicData.fields?.issuetype?.name?.toLowerCase() === 'epic';
-                
+                const outwardEpicData = await outwardEpicCheckResponse.json()
+                const isOutwardEpic = outwardEpicData.fields?.issuetype?.name?.toLowerCase() === 'epic'
+
                 if (isOutwardEpic) {
                   // If outwardIssueKey is an epic, it's the parent
-                  childKey = inwardIssueKey;
-                  parentKey = outwardIssueKey;
+                  childKey = inwardIssueKey
+                  parentKey = outwardIssueKey
                 }
               }
             }
           }
         }
 
-        actualInteractor.displayText(`Setting parent-child relationship: ${childKey} will be a child of ${parentKey}`);
+        actualInteractor.displayText(`Setting parent-child relationship: ${childKey} will be a child of ${parentKey}`)
 
         // First, verify both issues exist
         const [childExists, parentExists] = await Promise.all([
           fetch(`${jiraBaseUrl}/rest/api/3/issue/${childKey}?fields=issuetype`, {
             method: 'GET',
             headers: {
-              'Authorization': `Basic ${auth}`,
-              'Accept': 'application/json',
+              Authorization: `Basic ${auth}`,
+              Accept: 'application/json',
             },
           }),
           fetch(`${jiraBaseUrl}/rest/api/3/issue/${parentKey}?fields=issuetype`, {
             method: 'GET',
             headers: {
-              'Authorization': `Basic ${auth}`,
-              'Accept': 'application/json',
+              Authorization: `Basic ${auth}`,
+              Accept: 'application/json',
             },
-          })
-        ]);
+          }),
+        ])
 
         if (!childExists.ok) {
           return {
             success: false,
             message: `Child issue ${childKey} not found or not accessible. Status: ${childExists.status}`,
-          };
+          }
         }
 
         if (!parentExists.ok) {
           return {
             success: false,
             message: `Parent issue ${parentKey} not found or not accessible. Status: ${parentExists.status}`,
-          };
+          }
         }
 
         // Get issue types to check if they support parent-child relationship
-        const [childData, parentData] = await Promise.all([
-          childExists.json(),
-          parentExists.json()
-        ]);
+        const [childData, parentData] = await Promise.all([childExists.json(), parentExists.json()])
 
-        const childType = childData.fields?.issuetype?.name?.toLowerCase();
-        const parentType = parentData.fields?.issuetype?.name?.toLowerCase();
+        const childType = childData.fields?.issuetype?.name?.toLowerCase()
+        const parentType = parentData.fields?.issuetype?.name?.toLowerCase()
 
-        actualInteractor.displayText(`Child issue type: ${childType}, Parent issue type: ${parentType}`);
+        actualInteractor.displayText(`Child issue type: ${childType}, Parent issue type: ${parentType}`)
 
         // Use the Jira V3 API to set the parent-child relationship using the standardized 'parent' field
         const parentChildResponse = await fetch(`${jiraBaseUrl}/rest/api/3/issue/${childKey}`, {
           method: 'PUT',
           headers: {
-            'Authorization': `Basic ${auth}`,
+            Authorization: `Basic ${auth}`,
             'Content-Type': 'application/json',
-            'Accept': 'application/json',
+            Accept: 'application/json',
           },
           body: JSON.stringify({
             fields: {
               parent: {
-                key: parentKey
-              }
-            }
+                key: parentKey,
+              },
+            },
           }),
-        });
+        })
 
         if (parentChildResponse.status === 204 || parentChildResponse.status === 200) {
           // If comment is provided, add it separately
           if (comment) {
-            await addComment(childKey, comment, jiraBaseUrl, auth, actualInteractor);
+            await addComment(childKey, comment, jiraBaseUrl, auth, actualInteractor)
           }
 
           return {
             success: true,
             message: `Successfully set parent-child relationship: ${childKey} is now a child of ${parentKey}`,
-          };
+          }
         } else {
           // Try to get detailed error information
-          let errorMessage = 'Unknown error';
+          let errorMessage = 'Unknown error'
           try {
-            const errorData = await parentChildResponse.json();
+            const errorData = await parentChildResponse.json()
             if (errorData.errors && Object.keys(errorData.errors).length > 0) {
               // Extract specific field errors
               const fieldErrors = Object.entries(errorData.errors)
                 .map(([field, error]) => `${field}: ${error}`)
-                .join(', ');
-              errorMessage = `Field errors: ${fieldErrors}`;
+                .join(', ')
+              errorMessage = `Field errors: ${fieldErrors}`
             } else if (errorData.errorMessages && errorData.errorMessages.length > 0) {
-              errorMessage = errorData.errorMessages.join(', ');
+              errorMessage = errorData.errorMessages.join(', ')
             } else {
-              errorMessage = JSON.stringify(errorData);
+              errorMessage = JSON.stringify(errorData)
             }
           } catch (parseError) {
-            errorMessage = `Status ${parentChildResponse.status}, couldn't parse error response`;
+            errorMessage = `Status ${parentChildResponse.status}, couldn't parse error response`
           }
 
           // Provide detailed error information
-          actualInteractor.displayText(`Parent-child update failed: ${errorMessage}`);
-          actualInteractor.displayText(`Will try standard issue linking as fallback.`);
+          actualInteractor.displayText(`Parent-child update failed: ${errorMessage}`)
+          actualInteractor.displayText(`Will try standard issue linking as fallback.`)
         }
       } catch (parentChildError) {
-        actualInteractor.displayText(`Error during parent-child relationship setup: ${parentChildError}`);
-        actualInteractor.displayText(`Will try standard issue linking as fallback.`);
+        actualInteractor.displayText(`Error during parent-child relationship setup: ${parentChildError}`)
+        actualInteractor.displayText(`Will try standard issue linking as fallback.`)
       }
     }
 
@@ -300,9 +303,9 @@ export async function linkJiraIssues(
     const response = await fetch(`${jiraBaseUrl}/rest/api/2/issueLink`, {
       method: 'POST',
       headers: {
-        'Authorization': `Basic ${auth}`,
+        Authorization: `Basic ${auth}`,
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       body: JSON.stringify(payload),
     })
@@ -343,23 +346,23 @@ async function addComment(
     const response = await fetch(`${jiraBaseUrl}/rest/api/2/issue/${issueKey}/comment`, {
       method: 'POST',
       headers: {
-        'Authorization': `Basic ${auth}`,
+        Authorization: `Basic ${auth}`,
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       body: JSON.stringify({
-        body: comment
+        body: comment,
       }),
-    });
+    })
 
     if (response.status === 201) {
-      return true;
+      return true
     } else {
-      interactor.displayText(`Failed to add comment to issue ${issueKey}. Status: ${response.status}`);
-      return false;
+      interactor.displayText(`Failed to add comment to issue ${issueKey}. Status: ${response.status}`)
+      return false
     }
   } catch (error) {
-    interactor.error(`Error adding comment to issue ${issueKey}: ${error}`);
-    return false;
+    interactor.error(`Error adding comment to issue ${issueKey}: ${error}`)
+    return false
   }
 }

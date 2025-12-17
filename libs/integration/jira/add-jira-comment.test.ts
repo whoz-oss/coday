@@ -1,5 +1,5 @@
 import { addJiraComment } from './add-jira-comment'
-import { Interactor } from '../../model'
+import { Interactor } from '@coday/model'
 
 // Mock fetch globally
 global.fetch = jest.fn()

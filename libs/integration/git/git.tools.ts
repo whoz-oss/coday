@@ -1,5 +1,5 @@
-import { IntegrationService } from '../../service/integration.service'
-import { CommandContext, Interactor } from '../../model'
+import { IntegrationService } from '@coday/service/integration.service'
+import { CommandContext, Interactor } from '@coday/model'
 import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 import { git } from './git'

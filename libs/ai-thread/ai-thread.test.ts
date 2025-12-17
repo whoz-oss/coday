@@ -1,6 +1,6 @@
 import { MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
 // eslint-disable-next-line @nx/enforce-module-boundaries
-import { ToolCall, ToolResponse } from '../integration/tool-call'
+import { ToolCall, ToolResponse } from '@coday/integration/tool-call'
 import { AiThread } from './ai-thread'
 
 const createToolCall = (name: string, args: string, id?: string): ToolCall => ({

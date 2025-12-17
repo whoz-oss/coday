@@ -1,7 +1,7 @@
-import { CommandContext, CommandHandler } from '../../model'
-import { Interactor } from '../../model/interactor'
+import { CommandContext, CommandHandler } from '@coday/model'
+import { Interactor } from '@coday/model/interactor'
 import { CodayServices } from '../../coday-services'
-import { ConfigLevel } from '../../model/config-level'
+import { ConfigLevel } from '@coday/model/config-level'
 import { parseArgs } from '../parse-args'
 
 /**
@@ -14,7 +14,8 @@ export class AiModelDeleteHandler extends CommandHandler {
   ) {
     super({
       commandWord: 'delete',
-      description: 'Delete a model from an AI provider configuration. Use --provider=name, --model=name, --project/-p for project level.',
+      description:
+        'Delete a model from an AI provider configuration. Use --provider=name, --model=name, --project/-p for project level.',
     })
   }
 
@@ -29,7 +30,7 @@ export class AiModelDeleteHandler extends CommandHandler {
     const args = parseArgs(subCommand, [
       { key: 'provider' },
       { key: 'model', alias: 'm' },
-      { key: 'project', alias: 'p' }
+      { key: 'project', alias: 'p' },
     ])
     const isProject = !!args.project
     const level = isProject ? ConfigLevel.PROJECT : ConfigLevel.USER
@@ -43,9 +44,7 @@ export class AiModelDeleteHandler extends CommandHandler {
       return context
     }
     const providerNames = providers.map((p) => p.name)
-    let provider = providerName
-      ? providers.find((p) => p.name === providerName)
-      : undefined
+    let provider = providerName ? providers.find((p) => p.name === providerName) : undefined
     if (!provider) {
       // Prompt if not matched
       const chosen = await this.interactor.chooseOption(
@@ -67,9 +66,7 @@ export class AiModelDeleteHandler extends CommandHandler {
       return context
     }
     const modelNames = models.map((m) => m.name)
-    let model = modelName
-      ? models.find((m) => m.name === modelName)
-      : undefined
+    let model = modelName ? models.find((m) => m.name === modelName) : undefined
     if (!model) {
       // Prompt if not matched
       const chosen = await this.interactor.chooseOption(

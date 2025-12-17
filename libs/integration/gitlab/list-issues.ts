@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { IntegrationConfig, Interactor } from '../../model'
+import { IntegrationConfig, Interactor } from '@coday/model'
 
 type ListIssuesInput = {
   criteria: string

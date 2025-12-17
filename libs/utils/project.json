@@ -1,0 +1,19 @@
+{
+  "name": "utils",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/utils",
+  "tags": ["scope:libs", "type:utils"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "{projectRoot}/dist",
+        "main": "libs/utils/index.ts",
+        "tsConfig": "libs/utils/tsconfig.lib.json",
+        "assets": ["libs/utils/*.md"]
+      }
+    }
+  }
+}

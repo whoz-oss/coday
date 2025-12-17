@@ -1,7 +1,7 @@
-import { CommandContext, CommandHandler, Interactor } from '../../../model'
-import { McpConfigService } from '../../../service/mcp-config.service'
-import { McpServerConfig } from '../../../model/mcp-server-config'
-import { ConfigLevel } from '../../../model/config-level'
+import { CommandContext, CommandHandler, Interactor } from '../@coday/model'
+import { McpConfigService } from '../@coday/service/mcp-config.service'
+import { McpServerConfig } from '../@coday/model/mcp-server-config'
+import { ConfigLevel } from '../@coday/model/config-level'
 import { parseArgs } from '../../parse-args'
 import { cleanServerConfig, formatMcpConfig, getMcpConfigNameAndId, sanitizeMcpServerConfig } from './helpers'
 
@@ -180,8 +180,8 @@ ${formatMcpConfig(updatedSanitized)}
 
     // Check if this is a newly created config (from add handler delegation)
     // If the config has minimal content (empty command and empty args), it's likely newly created
-    const isNewlyCreated = !config.command && (!config.args || config.args.length === 0) && 
-                          (!config.url) && (!config.cwd) && (!config.env)
+    const isNewlyCreated =
+      !config.command && (!config.args || config.args.length === 0) && !config.url && !config.cwd && !config.env
 
     if (isNewlyCreated) {
       // For newly created configs, ID and name are fixed - show them but don't edit

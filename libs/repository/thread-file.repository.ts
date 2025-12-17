@@ -2,11 +2,11 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import yaml from 'yaml'
 import { ThreadRepository } from './thread.repository'
-import { AiThread } from '../ai-thread/ai-thread'
-import { ThreadSummary, ThreadRepositoryError } from '../ai-thread/ai-thread.types'
-import { aiThreadMigrations } from '../ai-thread/ai-thread.migrations'
-import { migrateData } from '../utils/data-migration'
-import { writeYamlFile } from '../service/write-yaml-file'
+import { AiThread } from '@coday/ai-thread/ai-thread'
+import { ThreadSummary, ThreadRepositoryError } from '@coday/ai-thread/ai-thread.types'
+import { aiThreadMigrations } from '@coday/ai-thread/ai-thread.migrations'
+import { migrateData } from '@coday/utils/data-migration'
+import { writeYamlFile } from '@coday/service/write-yaml-file'
 
 /**
  * Helper function to safely read YAML file content

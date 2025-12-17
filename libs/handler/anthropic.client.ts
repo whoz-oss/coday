@@ -1,6 +1,6 @@
-import { Agent, AiClient, AiModel, AiProviderConfig, CompletionOptions, Interactor } from '../model'
+import { Agent, AiClient, AiModel, AiProviderConfig, CompletionOptions, Interactor } from '@coday/model'
 import Anthropic from '@anthropic-ai/sdk'
-import { ToolSet } from '../integration/tool-set'
+import { ToolSet } from '@coday/integration/tool-set'
 import {
   CodayEvent,
   ErrorEvent,
@@ -11,9 +11,9 @@ import {
   ToolResponseEvent,
 } from '@coday/coday-events'
 import { Observable, of, Subject } from 'rxjs'
-import { AiThread } from '../ai-thread/ai-thread'
-import { ThreadMessage } from '../ai-thread/ai-thread.types'
-import { CodayLogger } from '../service/coday-logger'
+import { AiThread } from '@coday/ai-thread/ai-thread'
+import { ThreadMessage } from '@coday/ai-thread/ai-thread.types'
+import { CodayLogger } from '@coday/service/coday-logger'
 
 interface RateLimitInfo {
   inputTokensRemaining: number

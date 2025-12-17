@@ -1,7 +1,7 @@
-import { CommandContext, CommandHandler, IntegrationLocalConfig, Interactor } from '../../model'
-import { IntegrationConfigService } from '../../service/integration-config.service'
-import { IntegrationConfig, ConcreteIntegrations } from '../../model'
-import { ConfigLevel } from '../../model/config-level'
+import { CommandContext, CommandHandler, IntegrationLocalConfig, Interactor } from '@coday/model'
+import { IntegrationConfigService } from '@coday/service/integration-config.service'
+import { IntegrationConfig, ConcreteIntegrations } from '@coday/model'
+import { ConfigLevel } from '@coday/model/config-level'
 import { parseArgs } from '../parse-args'
 
 const MASKED_VALUE = '********'
@@ -31,10 +31,12 @@ export class IntegrationEditHandler extends CommandHandler {
     let selectedIntegration: string | undefined
     if (!integrationName || !ConcreteIntegrations.includes(integrationName)) {
       const availableIntegrations = this.getAvailableIntegrations(targetLevel)
-      
+
       if (availableIntegrations.length === 0) {
         const levelName = isProjectLevel ? 'project' : 'user'
-        this.interactor.displayText(`No integrations found at ${levelName} level. Use 'config integration add' to create one.`)
+        this.interactor.displayText(
+          `No integrations found at ${levelName} level. Use 'config integration add' to create one.`
+        )
         return context
       }
 
@@ -89,7 +91,7 @@ export class IntegrationEditHandler extends CommandHandler {
     // Lower level integrations (cloning allowed - only from PROJECT to USER)
     if (targetLevel === ConfigLevel.USER) {
       const projectIntegrations = this.service.getIntegrations(ConfigLevel.PROJECT)
-      Object.keys(projectIntegrations).forEach(name => {
+      Object.keys(projectIntegrations).forEach((name) => {
         if (!available.includes(name)) {
           available.push(name)
         }
@@ -107,10 +109,7 @@ export class IntegrationEditHandler extends CommandHandler {
       return availableIntegrations[0]
     }
 
-    const selectedOption = await this.interactor.chooseOption(
-      availableIntegrations,
-      'Select integration to edit:'
-    )
+    const selectedOption = await this.interactor.chooseOption(availableIntegrations, 'Select integration to edit:')
 
     return selectedOption
   }
@@ -167,10 +166,7 @@ export class IntegrationEditHandler extends CommandHandler {
   /**
    * Show configuration context
    */
-  private showConfigurationContext(
-    integrationName: string,
-    targetLevel: ConfigLevel
-  ): void {
+  private showConfigurationContext(integrationName: string, targetLevel: ConfigLevel): void {
     const levelName = targetLevel.toLowerCase()
     const contextMessage = `
 # Editing Integration Configuration
@@ -200,32 +196,34 @@ The following shows current values at different levels:
     // Get context values
     const projectConfig = this.service.getIntegrations(ConfigLevel.PROJECT)
     const userConfig = this.service.getIntegrations(ConfigLevel.USER)
-    
+
     // Build context display
     const contextLines: string[] = []
     contextLines.push(`## ${propertyName}`)
     contextLines.push('')
-    
+
     // Show values at each level
     const projectValue = Object.values(projectConfig)[0]?.[propertyName as keyof IntegrationConfig]
     const userValue = Object.values(userConfig)[0]?.[propertyName as keyof IntegrationConfig]
-    
+
     contextLines.push(`- **PROJECT:** ${projectValue ? `\`${projectValue}\`` : '*[not set]*'}`)
-    
+
     const marker = targetLevel === ConfigLevel.USER ? ' **← editing this level**' : ''
     contextLines.push(`- **USER:** ${userValue ? `\`${userValue}\`` : '*[not set]*'}${marker}`)
-    
+
     if (targetLevel === ConfigLevel.PROJECT) {
-      contextLines.push(`- **PROJECT:** ${currentValue ? `\`${currentValue}\`` : '*[not set]*'} **← editing this level**`)
+      contextLines.push(
+        `- **PROJECT:** ${currentValue ? `\`${currentValue}\`` : '*[not set]*'} **← editing this level**`
+      )
     }
-    
+
     contextLines.push(`- **MERGED:** ${mergedValue ? `\`${mergedValue}\`` : '*[not set]*'}`)
     contextLines.push('')
     contextLines.push(`Enter ${propertyName.toLowerCase()}:`)
 
     const prompt = contextLines.join('\n')
     const result = await this.interactor.promptText(prompt, currentValue || '')
-    
+
     return result.trim() || undefined
   }
 
@@ -240,28 +238,28 @@ The following shows current values at different levels:
     // Get context values (masked)
     const projectConfig = this.service.getIntegrations(ConfigLevel.PROJECT)
     const userConfig = this.service.getIntegrations(ConfigLevel.USER)
-    
+
     // Build context display
     const contextLines: string[] = []
     contextLines.push(`## API Key`)
     contextLines.push('')
-    
+
     // Show masked values at each level
     const projectHasKey = Object.values(projectConfig)[0]?.apiKey
     const userHasKey = Object.values(userConfig)[0]?.apiKey
-    
+
     contextLines.push(`- **PROJECT:** ${projectHasKey ? '`Set (masked)`' : '*[not set]*'}`)
-    
+
     const marker = targetLevel === ConfigLevel.USER ? ' **← editing this level**' : ''
     contextLines.push(`- **USER:** ${userHasKey ? '`Set (masked)`' : '*[not set]*'}${marker}`)
-    
+
     if (targetLevel === ConfigLevel.PROJECT) {
       contextLines.push(`- **PROJECT:** ${currentApiKey ? '`Set (masked)`' : '*[not set]*'} **← editing this level**`)
     }
-    
+
     contextLines.push(`- **MERGED:** ${mergedApiKey ? '`Set (masked)`' : '*[not set]*'}`)
     contextLines.push('')
-    
+
     // Special prompt for API key
     if (currentApiKey) {
       contextLines.push(`Current API key is masked for security.`)

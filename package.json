@@ -26,6 +26,9 @@
     "*.scss": "prettier --write",
     "*.ts": "prettier --write"
   },
+  "dependencies": {
+    "yargs": "catalog:"
+  },
   "devDependencies": {
     "@commitlint/cli": "catalog:dev",
     "@commitlint/config-conventional": "catalog:dev",

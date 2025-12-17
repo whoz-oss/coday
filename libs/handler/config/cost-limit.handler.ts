@@ -1,13 +1,11 @@
-import { CommandContext, CommandHandler, Interactor } from '../../model'
-import { EmptyUsage } from '../../ai-thread/ai-thread.types'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
+import { EmptyUsage } from '@coday/ai-thread/ai-thread.types'
 
 export class CostLimitHandler extends CommandHandler {
-  constructor(
-    private interactor: Interactor,
-  ) {
+  constructor(private interactor: Interactor) {
     super({
       commandWord: 'cost',
-      description: 'Configure the cost limit threshold for AI operations'
+      description: 'Configure the cost limit threshold for AI operations',
     })
   }
 
@@ -27,7 +25,6 @@ export class CostLimitHandler extends CommandHandler {
       this.interactor.error('Invalid cost limit. Please enter a positive number or 0.')
       return context
     }
-
 
     // Update current thread if it exists
     if (context.aiThread) {
