@@ -1,9 +1,9 @@
-import { AiProviderType, CommandContext, CommandHandler } from '../../model'
+import { AiProviderType, CommandContext, CommandHandler } from '@coday/model'
 import { parseArgs } from '../parse-args'
-import { Interactor } from '../../model/interactor'
+import { Interactor } from '@coday/model/interactor'
 import { CodayServices } from '../../coday-services'
-import { ConfigLevel } from '../../model/config-level'
-import { AiProviderConfig } from '../../model/ai-provider-config'
+import { ConfigLevel } from '@coday/model/config-level'
+import { AiProviderConfig } from '@coday/model/ai-provider-config'
 
 /**
  * Handler for editing an existing AI provider configuration (not models).
@@ -17,7 +17,8 @@ export class AiConfigEditHandler extends CommandHandler {
   ) {
     super({
       commandWord: 'edit',
-      description: 'Edit an existing AI provider configuration (excluding models). User level is default, use --project/-p for project level.',
+      description:
+        'Edit an existing AI provider configuration (excluding models). User level is default, use --project/-p for project level.',
     })
   }
 

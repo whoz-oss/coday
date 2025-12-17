@@ -1,11 +1,11 @@
 import { keywords } from '../../keywords'
-import { Agent, CommandContext, CommandHandler, Interactor, Killable } from '../../model'
+import { Agent, CommandContext, CommandHandler, Interactor, Killable } from '@coday/model'
 import { lastValueFrom, Observable } from 'rxjs'
 import { CodayEvent } from '@coday/coday-events'
-import { AgentService } from '../../agent'
+import { AgentService } from '@coday/agent'
 import { parseAgentCommand } from './parseAgentCommand'
 import { ThreadStateService } from '@coday/ai-thread/thread-state.service'
-import { AiThread } from '../../ai-thread/ai-thread'
+import { AiThread } from '@coday/ai-thread/ai-thread'
 import { generateThreadName } from '../generate-thread-name'
 
 export class AiHandler extends CommandHandler implements Killable {

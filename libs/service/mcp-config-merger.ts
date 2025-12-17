@@ -1,4 +1,4 @@
-import { McpServerConfig } from '../model/mcp-server-config'
+import { McpServerConfig } from '@coday/model/mcp-server-config'
 
 /**
  * Merge MCP servers from multiple configuration levels
@@ -114,26 +114,26 @@ function applyServerDefaults(server: McpServerConfig): McpServerConfig {
  */
 const DEFAULT_INHERITED_ENV_VARS = [
   // Execution environment - essential for running commands
-  'PATH',           // Command search path (essential)
-  'HOME',           // User's home directory
-  'USER',           // Current username
-  'TMPDIR',         // Temp directory (Unix/Linux/Mac)
-  'TEMP',           // Temp directory (Windows)
-  'TMP',            // Alternative temp directory (Windows)
-  
+  'PATH', // Command search path (essential)
+  'HOME', // User's home directory
+  'USER', // Current username
+  'TMPDIR', // Temp directory (Unix/Linux/Mac)
+  'TEMP', // Temp directory (Windows)
+  'TMP', // Alternative temp directory (Windows)
+
   // Locale and encoding - important for text processing
-  'LANG',           // Language/locale settings
-  'LC_ALL',         // Locale override
-  'LC_CTYPE',       // Character encoding
-  
+  'LANG', // Language/locale settings
+  'LC_ALL', // Locale override
+  'LC_CTYPE', // Character encoding
+
   // Terminal settings - useful for CLI tools
-  'TERM',           // Terminal type
-  'COLORTERM',      // Color support indicator
-  
+  'TERM', // Terminal type
+  'COLORTERM', // Color support indicator
+
   // Shell and platform detection
-  'SHELL',          // User's default shell (Unix/Linux/Mac)
-  'OS',             // Operating system (Windows)
-  
+  'SHELL', // User's default shell (Unix/Linux/Mac)
+  'OS', // Operating system (Windows)
+
   // Note: Security-sensitive variables (tokens, keys, passwords, secrets)
   // are NOT included and must be explicitly whitelisted via whiteListedHostEnvVarNames
 ]

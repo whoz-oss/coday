@@ -1,6 +1,6 @@
-import { CommandContext, CommandHandler, Interactor } from '../../model'
-import { MemoryService } from '../../service/memory.service'
-import { MemoryLevel, Memory } from '../../model/memory'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
+import { MemoryService } from '@coday/service/memory.service'
+import { MemoryLevel, Memory } from '@coday/model/memory'
 import { parseArgs } from '../parse-args'
 
 export class MemoryListHandler extends CommandHandler {
@@ -28,16 +28,16 @@ export class MemoryListHandler extends CommandHandler {
     ])
 
     const agent: string | undefined = typeof args.agent === 'string' ? args.agent : undefined
-    
+
     // Collect memories based on specified levels
     let allMemories: Memory[] = []
-    
+
     if (args.project || (!args.project && !args.user)) {
       // Get PROJECT memories if --project flag is set OR if neither flag is set
       const projectMemories = this.memoryService.listMemories(MemoryLevel.PROJECT, agent)
       allMemories = allMemories.concat(projectMemories)
     }
-    
+
     if (args.user || (!args.project && !args.user)) {
       // Get USER memories if --user flag is set OR if neither flag is set
       const userMemories = this.memoryService.listMemories(MemoryLevel.USER, agent)
@@ -52,16 +52,15 @@ export class MemoryListHandler extends CommandHandler {
     const showFullDetails = allMemories.length <= 20
 
     // Build output string
-    const levelFilter = args.project && !args.user 
-      ? ` at level '${MemoryLevel.PROJECT}'` 
-      : !args.project && args.user 
-        ? ` at level '${MemoryLevel.USER}'` 
-        : '';
+    const levelFilter =
+      args.project && !args.user
+        ? ` at level '${MemoryLevel.PROJECT}'`
+        : !args.project && args.user
+          ? ` at level '${MemoryLevel.USER}'`
+          : ''
 
     let outputText =
-      `Found ${allMemories.length} memories` +
-      `${agent ? ` for agent '${agent}'` : ''}` +
-      `${levelFilter}:\n\n`
+      `Found ${allMemories.length} memories` + `${agent ? ` for agent '${agent}'` : ''}` + `${levelFilter}:\n\n`
 
     allMemories.forEach((memory, index) => {
       const headerPrefix = `${index + 1}. [${memory.level}${memory.agentName ? ` - ${memory.agentName}` : ''}] ${memory.title}`

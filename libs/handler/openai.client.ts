@@ -1,5 +1,5 @@
 import OpenAI from 'openai'
-import { Agent, AiClient, AiModel, AiProviderConfig, CompletionOptions, Interactor } from '../model'
+import { Agent, AiClient, AiModel, AiProviderConfig, CompletionOptions, Interactor } from '@coday/model'
 import {
   CodayEvent,
   ErrorEvent,
@@ -9,14 +9,14 @@ import {
   ToolRequestEvent,
   ToolResponseEvent,
 } from '@coday/coday-events'
-import { AiThread } from '../ai-thread/ai-thread'
+import { AiThread } from '@coday/ai-thread/ai-thread'
 import { Observable, Subject } from 'rxjs'
-import { ThreadMessage } from '../ai-thread/ai-thread.types'
+import { ThreadMessage } from '@coday/ai-thread/ai-thread.types'
 import { ChatCompletionMessageParam, ChatCompletionSystemMessageParam } from 'openai/resources/chat/completions'
 import { MessageCreateParams } from 'openai/resources/beta/threads/messages'
 import { AssistantStream } from 'openai/lib/AssistantStream'
 import { RunSubmitToolOutputsParams } from 'openai/resources/beta/threads/runs/runs'
-import { CodayLogger } from '../service/coday-logger'
+import { CodayLogger } from '@coday/service/coday-logger'
 
 type AssistantThreadData = {
   threadId?: string

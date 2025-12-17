@@ -1,4 +1,4 @@
-import { Interactor } from '../../model'
+import { Interactor } from '@coday/model'
 
 export interface Jira {
   expand: string
@@ -249,7 +249,7 @@ export interface CreateJiraIssueRequest {
   description?: string
   issuetype?: string
   assignee?: string
-  reporter?: { id?: string, name?: string }
+  reporter?: { id?: string; name?: string }
   priority?: string
   labels?: string[]
   components?: string[]
@@ -257,13 +257,13 @@ export interface CreateJiraIssueRequest {
   duedate?: string
   // Direct parent relationship - can be set during issue creation
   parent?: {
-    key: string; // The issue key of the parent
+    key: string // The issue key of the parent
   }
   // Issues to link to this issue (especially useful for epics)
   linkedIssues?: {
-    key: string;
-    linkType?: string; // Default is "is part of" for epics
-    isEpicLink?: boolean; // Set to true to create Epic-Issue relationship
+    key: string
+    linkType?: string // Default is "is part of" for epics
+    isEpicLink?: boolean // Set to true to create Epic-Issue relationship
   }[]
   // For retry mechanism
   error?: string

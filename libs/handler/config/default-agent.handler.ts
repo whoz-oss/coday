@@ -1,4 +1,4 @@
-import { CommandContext, CommandHandler, Interactor } from '../../model'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
 import { CodayServices } from '../../coday-services'
 
 export class DefaultAgentHandler extends CommandHandler {
@@ -8,7 +8,7 @@ export class DefaultAgentHandler extends CommandHandler {
   ) {
     super({
       commandWord: 'default-agent',
-      description: 'Set the default agent for the current project'
+      description: 'Set the default agent for the current project',
     })
   }
 
@@ -30,10 +30,10 @@ export class DefaultAgentHandler extends CommandHandler {
 
     // Initialize agents to get the list
     await this.services.agent.initialize(context)
-    
+
     // Get the list of available agents
     const availableAgents = this.services.agent.listAgentSummaries()
-    
+
     if (availableAgents.length === 0) {
       this.interactor.error('No agents available.')
       return context
@@ -42,41 +42,41 @@ export class DefaultAgentHandler extends CommandHandler {
     // Add "None" option to clear the default agent setting
     const options = [
       { name: 'None (use Coday)', value: '' },
-      ...availableAgents.map(agent => ({ 
-        name: `${agent.name}${agent.name.toLowerCase() === 'coday' ? ' (default)' : ''}`, 
-        value: agent.name 
-      }))
+      ...availableAgents.map((agent) => ({
+        name: `${agent.name}${agent.name.toLowerCase() === 'coday' ? ' (default)' : ''}`,
+        value: agent.name,
+      })),
     ]
 
     // Get the current default agent if any
     const userConfig = this.services.user.config
     const currentDefault = userConfig.projects?.[projectName]?.defaultAgent || ''
-    
+
     // Mark the current default in the options list
-    const displayOptions = options.map(opt => ({
+    const displayOptions = options.map((opt) => ({
       ...opt,
-      name: opt.value === currentDefault ? `${opt.name} (current)` : opt.name
+      name: opt.value === currentDefault ? `${opt.name} (current)` : opt.name,
     }))
 
     try {
       // Let the user select an agent
       const selection = await this.interactor.chooseOption(
-        displayOptions.map(o => o.name),
+        displayOptions.map((o) => o.name),
         'Select the default agent for this project:'
       )
 
       // Find the selected option
-      const selectedOption = displayOptions.find(o => o.name === selection)
+      const selectedOption = displayOptions.find((o) => o.name === selection)
       const selectedAgentName = selectedOption?.value || ''
 
       // Update the user config
       if (!userConfig.projects) {
         userConfig.projects = {}
       }
-      
+
       if (!userConfig.projects[projectName]) {
         userConfig.projects[projectName] = {
-          integration: {}
+          integration: {},
         }
       }
 
@@ -91,7 +91,6 @@ export class DefaultAgentHandler extends CommandHandler {
 
       // Save the updated config
       this.services.user.save()
-      
     } catch (error) {
       this.interactor.error('Selection cancelled or failed.')
     }

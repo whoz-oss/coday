@@ -1,4 +1,4 @@
-import { CommandContext, CommandHandler, PromptChain } from '../model'
+import { CommandContext, CommandHandler, PromptChain } from '@coday/model'
 
 const PROMPT_KEYWORD = 'PROMPT'
 

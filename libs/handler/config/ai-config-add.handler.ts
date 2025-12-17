@@ -1,10 +1,10 @@
-import { CommandHandler, CommandContext } from '../../model'
+import { CommandHandler, CommandContext } from '@coday/model'
 import { parseArgs } from '../parse-args' // import parseArgs
-import { Interactor } from '../../model/interactor'
+import { Interactor } from '@coday/model/interactor'
 import { CodayServices } from '../../coday-services'
 import { AiConfigEditHandler } from './ai-config-edit.handler'
-import { ConfigLevel } from '../../model/config-level'
-import { AiProviderConfig } from '../../model/ai-provider-config'
+import { ConfigLevel } from '@coday/model/config-level'
+import { AiProviderConfig } from '@coday/model/ai-provider-config'
 
 /**
  * Handler for adding a new AI provider configuration.
@@ -15,11 +15,12 @@ export class AiConfigAddHandler extends CommandHandler {
   constructor(
     private interactor: Interactor,
     private services: CodayServices,
-    private editHandler: AiConfigEditHandler,
+    private editHandler: AiConfigEditHandler
   ) {
     super({
       commandWord: 'add',
-      description: 'Add a new AI provider configuration and edit it. User level is default, use --project/-p for project level.',
+      description:
+        'Add a new AI provider configuration and edit it. User level is default, use --project/-p for project level.',
     })
   }
 
@@ -53,11 +54,13 @@ export class AiConfigAddHandler extends CommandHandler {
     const defaultConfig: AiProviderConfig = {
       name: newProviderName,
       type: 'openai', // Default type
-      models: [{ 
-        name: 'SMALL', 
-        alias: 'default',
-        contextWindow: 32000
-      }]
+      models: [
+        {
+          name: 'SMALL',
+          alias: 'default',
+          contextWindow: 32000,
+        },
+      ],
     }
 
     // Save the default config at the specified level

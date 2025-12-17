@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { Interactor } from '../../model'
+import { Interactor } from '@coday/model'
 
 /**
  * Interfaces for Jira field data structures
@@ -49,14 +49,14 @@ export async function retrieveAllJiraFields(
 ): Promise<JiraCustomField[]> {
   try {
     interactor.displayText('Retrieving all Jira fields...')
-    
+
     const response = await axios.get(`${jiraBaseUrl}/rest/api/3/field`, {
       auth: {
         username: jiraUsername,
         password: jiraApiToken,
       },
     })
-    
+
     interactor.displayText(`Successfully retrieved ${response.data.length} Jira fields`)
     return response.data as JiraCustomField[]
   } catch (error) {
@@ -79,12 +79,12 @@ export function findJiraFieldByName(
   interactor: Interactor
 ): JiraCustomField | null {
   const field = fields.find((field) => field.name === fieldName)
-  
+
   if (!field) {
     interactor.warn(`Could not find a field named "${fieldName}" in Jira`)
     return null
   }
-  
+
   interactor.displayText(`Found field "${fieldName}" with ID: ${field.id}`)
   return field
 }
@@ -107,19 +107,19 @@ export async function retrieveFieldContexts(
 ): Promise<JiraFieldContext[]> {
   try {
     interactor.displayText(`Retrieving contexts for field ID: ${fieldId}...`)
-    
+
     const response = await axios.get(`${jiraBaseUrl}/rest/api/3/field/${fieldId}/context`, {
       auth: {
         username: jiraUsername,
         password: jiraApiToken,
       },
     })
-    
+
     if (!response.data.values || response.data.values.length === 0) {
       interactor.warn(`No contexts found for field (${fieldId})`)
       return []
     }
-    
+
     interactor.displayText(`Found ${response.data.values.length} context(s) for field ID: ${fieldId}`)
     return response.data.values as JiraFieldContext[]
   } catch (error) {
@@ -149,19 +149,19 @@ export async function retrieveFieldOptions(
 ): Promise<JiraFieldOption[]> {
   try {
     interactor.displayText(`Retrieving options for field ID: ${fieldId} in context ID: ${contextId}...`)
-    
+
     const response = await axios.get(`${jiraBaseUrl}/rest/api/3/field/${fieldId}/context/${contextId}/option`, {
       auth: {
         username: jiraUsername,
         password: jiraApiToken,
       },
     })
-    
+
     if (!response.data.values || response.data.values.length === 0) {
       interactor.warn(`No options found for field (${fieldId}) in context (${contextId})`)
       return []
     }
-    
+
     interactor.displayText(`Found ${response.data.values.length} option(s) for field ID: ${fieldId}`)
     return response.data.values as JiraFieldOption[]
   } catch (error) {
@@ -187,39 +187,32 @@ export async function retrieveCustomFieldInfo(
   jiraUsername: string,
   interactor: Interactor
 ): Promise<{
-  fieldId: string | null;
-  field: JiraCustomField | null;
-  contexts: JiraFieldContext[];
-  options: JiraFieldOption[];
+  fieldId: string | null
+  field: JiraCustomField | null
+  contexts: JiraFieldContext[]
+  options: JiraFieldOption[]
 }> {
   try {
     // Step 1: Retrieve all fields
     const allFields = await retrieveAllJiraFields(jiraBaseUrl, jiraApiToken, jiraUsername, interactor)
-    
+
     // Step 2: Find the specific field
     const field = findJiraFieldByName(fieldName, allFields, interactor)
     if (!field) {
       return { fieldId: null, field: null, contexts: [], options: [] }
     }
-    
+
     // Step 3: Get contexts for the field
     const contexts = await retrieveFieldContexts(field.id, jiraBaseUrl, jiraApiToken, jiraUsername, interactor)
     if (contexts.length === 0) {
       return { fieldId: field.id, field, contexts: [], options: [] }
     }
-    
+
     // Step 4: Get options for the first context
     // Note: We're using the first context by default, but this could be parameterized if needed
     const contextId = contexts[0]!.id
-    const options = await retrieveFieldOptions(
-      field.id,
-      contextId,
-      jiraBaseUrl,
-      jiraApiToken,
-      jiraUsername,
-      interactor
-    )
-    
+    const options = await retrieveFieldOptions(field.id, contextId, jiraBaseUrl, jiraApiToken, jiraUsername, interactor)
+
     return {
       fieldId: field.id,
       field,

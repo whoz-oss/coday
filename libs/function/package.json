@@ -1,0 +1,22 @@
+{
+  "name": "@coday/function",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "@coday/events": "workspace:*",
+    "@coday/integration": "workspace:*",
+    "@coday/model": "workspace:*",
+    "@coday/utils": "workspace:*",
+    "@vscode/ripgrep": "catalog:",
+    "glob": "catalog:",
+    "pdf2json": "catalog:",
+    "sharp": "catalog:",
+    "tslib": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:dev"
+  }
+}

@@ -1,5 +1,5 @@
-import { CommandContext, CommandHandler, Interactor } from '../model'
-import { generateFileTree } from '../function/generate-file-tree'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
+import { generateFileTree } from '@coday/function/generate-file-tree'
 import * as path from 'path'
 
 export class FileMapHandler extends CommandHandler {
@@ -24,7 +24,7 @@ export class FileMapHandler extends CommandHandler {
 
     const chunkCount = fileTreeChunks.length
     for (let i = 0; i < chunkCount; i++) {
-      context.aiThread?.addUserMessage(context.username, { type: 'text', content: fileTreeChunks[i]!} )
+      context.aiThread?.addUserMessage(context.username, { type: 'text', content: fileTreeChunks[i]! })
       this.interactor.debug(`Sent chunk ${i + 1} of ${chunkCount}`)
     }
 

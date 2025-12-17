@@ -8,12 +8,12 @@ import {
   ToolResponseEvent,
 } from '@coday/coday-events'
 import { Agent } from './agent'
-import { AiThread } from '../ai-thread/ai-thread'
-import { RunStatus, ThreadMessage } from '../ai-thread/ai-thread.types'
+import { AiThread } from '@coday/ai-thread/ai-thread'
+import { RunStatus, ThreadMessage } from '@coday/ai-thread/ai-thread.types'
 import { Interactor } from './interactor'
 import { AiModel } from './ai-model'
 import { AiProviderConfig } from './ai-provider-config'
-import { CodayLogger } from '../service/coday-logger'
+import { CodayLogger } from '@coday/service/coday-logger'
 import { MessageContent, TextContent } from '../coday-events'
 
 export interface CompletionOptions {

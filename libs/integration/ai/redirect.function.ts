@@ -1,5 +1,5 @@
-import { CommandContext } from '../../model'
-import { AgentService } from '../../agent'
+import { CommandContext } from '@coday/model'
+import { AgentService } from '@coday/agent'
 
 type RedirectInput = {
   context: CommandContext

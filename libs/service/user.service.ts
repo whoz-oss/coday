@@ -1,14 +1,14 @@
 import * as path from 'node:path'
-import {existsSync, mkdirSync} from 'fs'
-import {readYamlFile} from './read-yaml-file'
-import {writeYamlFile} from './write-yaml-file'
-import {DEFAULT_USER_CONFIG, UserConfig} from '../model/user-config'
-import {UserData} from '../model/user-data'
-import {IntegrationLocalConfig, Interactor} from '../model'
+import { existsSync, mkdirSync } from 'fs'
+import { readYamlFile } from './read-yaml-file'
+import { writeYamlFile } from './write-yaml-file'
+import { DEFAULT_USER_CONFIG, UserConfig } from '@coday/model/user-config'
+import { UserData } from '@coday/model/user-data'
+import { IntegrationLocalConfig, Interactor } from '@coday/model'
 import * as os from 'node:os'
-import {migrateData} from '../utils/data-migration'
-import {userConfigMigrations} from './migration/user-config-migrations'
-import {ConfigMaskingService} from './config-masking.service'
+import { migrateData } from '@coday/utils/data-migration'
+import { userConfigMigrations } from './migration/user-config-migrations'
+import { ConfigMaskingService } from './config-masking.service'
 
 const usersFolder = 'users'
 const USER_FILENAME = 'user.yaml'
@@ -33,13 +33,13 @@ export class UserService {
     this.userConfigPath = path.join(usersPath, this.sanitizedUsername)
 
     // Ensure the user's directory exists
-    mkdirSync(this.userConfigPath, {recursive: true})
+    mkdirSync(this.userConfigPath, { recursive: true })
 
     // Load user configuration
     const filePath = path.join(this.userConfigPath, USER_FILENAME)
     if (!existsSync(filePath)) {
       // Add version to default config
-      const defaultConfig = {...DEFAULT_USER_CONFIG, version: 1}
+      const defaultConfig = { ...DEFAULT_USER_CONFIG, version: 1 }
       writeYamlFile(filePath, defaultConfig)
     }
 
@@ -75,12 +75,12 @@ export class UserService {
    */
   public setProjectIntegration(projectName: string, integrations: IntegrationLocalConfig) {
     // Ensure projects object exists
-    this.config.projects ??= {};
+    this.config.projects ??= {}
 
     // Create/update project-specific user integrations
     this.config.projects[projectName] ??= {
       integration: {},
-    };
+    }
 
     this.config.projects[projectName].integration = {
       ...this.config.projects[projectName].integration,
@@ -107,8 +107,8 @@ export class UserService {
 
   // Project-level bio methods
   public setProjectBio(projectName: string, bio: string): void {
-    this.config.projects ??= {};
-    this.config.projects[projectName] ??= {integration: {}};
+    this.config.projects ??= {}
+    this.config.projects[projectName] ??= { integration: {} }
     this.config.projects[projectName].bio = bio?.trim() || undefined
     this.save()
   }

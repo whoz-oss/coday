@@ -1,4 +1,4 @@
-import { McpServerConfig, McpServerConfigArgs } from '../../../model/mcp-server-config'
+import { McpServerConfig, McpServerConfigArgs } from '../@coday/model/mcp-server-config'
 
 export function formatMcpConfig(config: McpServerConfig): string {
   const json = JSON.stringify(config, undefined, 2)

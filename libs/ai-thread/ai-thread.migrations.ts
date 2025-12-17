@@ -1,5 +1,5 @@
 // eslint-disable-next-line @nx/enforce-module-boundaries
-import { Migration } from '../utils/data-migration'
+import { Migration } from '@coday/utils/data-migration'
 
 const messageEventToMessageContent: Migration = {
   version: 1,

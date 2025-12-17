@@ -1,4 +1,4 @@
-import { Interactor, NestedHandler } from '../../model'
+import { Interactor, NestedHandler } from '@coday/model'
 import { CodayServices } from '../../coday-services'
 import { IntegrationListHandler } from './integration-list.handler'
 import { IntegrationAddHandler } from './integration-add.handler'

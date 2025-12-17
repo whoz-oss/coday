@@ -1,4 +1,4 @@
-import { Interactor, NestedHandler } from '../../model'
+import { Interactor, NestedHandler } from '@coday/model'
 import { CodayServices } from '../../coday-services'
 import { AiConfigListHandler } from './ai-config-list.handler'
 import { AiConfigAddHandler } from './ai-config-add.handler'

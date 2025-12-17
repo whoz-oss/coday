@@ -1,8 +1,8 @@
 import { AiClientProvider } from './ai-client-provider'
-import { Interactor, CommandContext } from '../../model'
-import { UserService } from '../../service/user.service'
+import { Interactor, CommandContext } from '@coday/model'
+import { UserService } from '@coday/service/user.service'
 import { ProjectStateService } from '@coday/service/project-state.service'
-import { CodayLogger } from '../../service/coday-logger'
+import { CodayLogger } from '@coday/service/coday-logger'
 
 describe('AiClientProvider - Auto-detection', () => {
   let provider: AiClientProvider

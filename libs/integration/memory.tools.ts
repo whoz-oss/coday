@@ -1,8 +1,8 @@
-import { MemoryService } from '../service/memory.service'
-import { CommandContext, Interactor } from '../model'
+import { MemoryService } from '@coday/service/memory.service'
+import { CommandContext, Interactor } from '@coday/model'
 import { AssistantToolFactory, CodayTool } from './assistant-tool-factory'
 import { FunctionTool } from './types'
-import { MemoryLevel } from '../model/memory'
+import { MemoryLevel } from '@coday/model/memory'
 
 export class MemoryTools extends AssistantToolFactory {
   name = 'MEMORY'

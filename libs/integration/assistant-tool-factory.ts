@@ -1,4 +1,4 @@
-import { CommandContext, Interactor, Killable } from '../model'
+import { CommandContext, Interactor, Killable } from '@coday/model'
 import { FunctionTool } from './types'
 
 export type CodayTool = FunctionTool<any>

@@ -54,6 +54,9 @@ catalogs:
     '@types/express':
       specifier: 5.0.3
       version: 5.0.3
+    '@types/turndown':
+      specifier: 5.0.5
+      version: 5.0.5
     '@types/yargs':
       specifier: 17.0.33
       version: 17.0.33
@@ -312,6 +315,10 @@ catalogs:
 importers:
 
   .:
+    dependencies:
+      yargs:
+        specifier: 'catalog:'
+        version: 18.0.0
     devDependencies:
       '@commitlint/cli':
         specifier: catalog:dev
@@ -584,6 +591,9 @@ importers:
       '@types/express':
         specifier: 'catalog:'
         version: 5.0.3
+      '@types/turndown':
+        specifier: 'catalog:'
+        version: 5.0.5
       '@types/yargs':
         specifier: 'catalog:'
         version: 17.0.33
@@ -612,6 +622,9 @@ importers:
       pdf2json:
         specifier: 'catalog:'
         version: 4.0.0
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
       sharp:
         specifier: 'catalog:'
         version: 0.34.4
@@ -668,7 +681,151 @@ importers:
         specifier: 0.52.0
         version: 0.52.0
 
+  libs/agent:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+      yaml:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/ai-thread:
+    dependencies:
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/coday-events:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/function:
+    dependencies:
+      '@coday/integration':
+        specifier: workspace:*
+        version: link:../integration
+      '@vscode/ripgrep':
+        specifier: 'catalog:'
+        version: 1.15.9
+      glob:
+        specifier: 'catalog:'
+        version: 11.1.0
+      pdf2json:
+        specifier: 'catalog:'
+        version: 4.0.0
+      sharp:
+        specifier: 'catalog:'
+        version: 0.34.4
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/handler:
+    dependencies:
+      '@anthropic-ai/sdk':
+        specifier: 'catalog:'
+        version: 0.65.0(zod@3.25.76)
+      openai:
+        specifier: 'catalog:'
+        version: 6.10.0(ws@8.18.3)(zod@3.25.76)
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integration:
+    dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: 'catalog:'
+        version: 1.23.1(zod@3.25.76)
+      axios:
+        specifier: 'catalog:'
+        version: 1.12.2
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+      turndown:
+        specifier: 'catalog:'
+        version: 7.2.2
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/model:
+    dependencies:
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/repository:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+      yaml:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/service:
+    dependencies:
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+      yaml:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/utils:
     dependencies:
       tslib:
         specifier: 'catalog:'
@@ -4326,6 +4483,9 @@ packages:
 
   '@types/tough-cookie@4.0.5':
     resolution: {integrity: sha512-/Ad8+nIOV7Rl++6f1BdKxFSMgmoqEoYbHRpPcx3JEfv8VRsQe9Z4mCXeJBzxs7mbHY/XOZZuXlRNfhpVPbs6ZA==}
+
+  '@types/turndown@5.0.5':
+    resolution: {integrity: sha512-TL2IgGgc7B5j78rIccBtlYAnkuv8nUQqhQc+DSYV5j9Be9XOcm/SKOVRuA47xAVI3680Tk9B1d8flK2GWT2+4w==}
 
   '@types/verror@1.10.11':
     resolution: {integrity: sha512-RlDm9K7+o5stv0Co8i8ZRGxDbrTxhJtgjqjFyVh/tXQyl/rYtTKlnTvZ88oSTeYREWurwx20Js4kTuKCsFkUtg==}
@@ -13894,7 +14054,7 @@ snapshots:
 
   '@npmcli/fs@4.0.0':
     dependencies:
-      semver: 7.7.2
+      semver: 7.7.3
 
   '@npmcli/git@6.0.3':
     dependencies:
@@ -13904,7 +14064,7 @@ snapshots:
       npm-pick-manifest: 10.0.0
       proc-log: 5.0.0
       promise-retry: 2.0.1
-      semver: 7.7.2
+      semver: 7.7.3
       which: 5.0.0
 
   '@npmcli/installed-package-contents@3.0.0':
@@ -13926,7 +14086,7 @@ snapshots:
       hosted-git-info: 8.1.0
       json-parse-even-better-errors: 4.0.0
       proc-log: 5.0.0
-      semver: 7.7.2
+      semver: 7.7.3
       validate-npm-package-license: 3.0.4
 
   '@npmcli/promise-spawn@8.0.3':
@@ -15158,6 +15318,8 @@ snapshots:
   '@types/stack-utils@2.0.3': {}
 
   '@types/tough-cookie@4.0.5': {}
+
+  '@types/turndown@5.0.5': {}
 
   '@types/verror@1.10.11':
     optional: true
@@ -19954,7 +20116,7 @@ snapshots:
       make-fetch-happen: 14.0.3
       nopt: 8.1.0
       proc-log: 5.0.0
-      semver: 7.7.2
+      semver: 7.7.3
       tar: 7.5.2
       tinyglobby: 0.2.15
       which: 5.0.0
@@ -20015,7 +20177,7 @@ snapshots:
 
   npm-install-checks@7.1.2:
     dependencies:
-      semver: 7.7.2
+      semver: 7.7.3
 
   npm-normalize-package-bin@4.0.0: {}
 
@@ -20030,7 +20192,7 @@ snapshots:
     dependencies:
       hosted-git-info: 8.1.0
       proc-log: 5.0.0
-      semver: 7.7.2
+      semver: 7.7.3
       validate-npm-package-name: 6.0.2
 
   npm-package-arg@13.0.0:
@@ -20050,7 +20212,7 @@ snapshots:
       npm-install-checks: 7.1.2
       npm-normalize-package-bin: 4.0.0
       npm-package-arg: 12.0.2
-      semver: 7.7.2
+      semver: 7.7.3
 
   npm-registry-fetch@18.0.2:
     dependencies:

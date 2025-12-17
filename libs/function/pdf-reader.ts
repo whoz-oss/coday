@@ -1,7 +1,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import { Interactor } from '../model'
-import { FileContent } from '../model/file-content'
+import { Interactor } from '@coday/model'
+import { FileContent } from '@coday/model/file-content'
 import PDFParser from 'pdf2json'
 
 export async function readPdfFile({

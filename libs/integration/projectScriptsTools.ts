@@ -1,5 +1,5 @@
-import { runBash } from '../function/run-bash'
-import { CommandContext, Interactor, Scripts } from '../model'
+import { runBash } from '@coday/function/run-bash'
+import { CommandContext, Interactor, Scripts } from '@coday/model'
 import { AssistantToolFactory, CodayTool } from './assistant-tool-factory'
 import { FunctionTool } from './types'
 
