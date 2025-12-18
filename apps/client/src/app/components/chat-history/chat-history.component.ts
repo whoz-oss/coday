@@ -190,11 +190,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     }
 
     // Cannot delete while thinking
-    if (this.isThinking) {
-      return false
-    }
-
-    return true
+    return !this.isThinking
   }
 
   /**
@@ -290,7 +286,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     const scrollDelta = Math.abs(currentScrollTop - this.lastScrollTop)
 
     // Ignore micro-scrolls
-    if (scrollDelta < 5) {
+    if (scrollDelta < 1) {
       this.lastScrollTop = currentScrollTop
       return
     }
