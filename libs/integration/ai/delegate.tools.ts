@@ -45,6 +45,9 @@ export class DelegateTools extends AssistantToolFactory {
     // Build the tool description only with allowed agents
     const agentListText = agentSummaries.map((a) => `  - ${a.name} : ${a.description}`).join('\n')
 
+    // Check if clean context mode is enabled
+    const cleanContextMode = process.env.CODAY_DELEGATE_CLEAN_CONTEXT === 'true'
+
     // Wrap delegate function to enforce allow-list at call time
     const delegate = delegateFunction({
       context,
@@ -68,7 +71,26 @@ export class DelegateTools extends AssistantToolFactory {
       type: 'function',
       function: {
         name: 'delegate',
-        description: `Delegate the completion of a task to another available agent among:
+        description: cleanContextMode
+          ? `Delegate the completion of a task to another available agent among:
+${agentListText || '(No allowed agents for delegation)'}
+
+⚠️ CLEAN CONTEXT MODE ACTIVE: The delegated agent will start with a COMPLETELY EMPTY thread.
+It will NOT see ANY previous messages, context, or history from this conversation.
+
+YOU MUST provide an EXHAUSTIVE and SELF-CONTAINED task description including:
+- Complete background and context of the situation
+- All relevant information discussed so far in this conversation
+- Precise requirements and constraints
+- Expected deliverables and definition of done
+- Any code, data, file paths, or references needed
+- ALL actions the agent should perform (git operations, file management, etc.)
+
+IMPORTANT: This is a full delegation - the selected agent will have access to its own set of tools and capabilities to complete the entire task. The agent should perform ALL actions required.
+
+These agents are LLM-based, so you should assess in return if the task was correctly executed, and call again the agent if not sufficient or need to adapt. Agents can be called again and will maintain their own isolated context across calls.
+`
+          : `Delegate the completion of a task to another available agent among:
 ${agentListText || '(No allowed agents for delegation)'}
 
 IMPORTANT: This is a full delegation - the selected agent will have access to its own set of tools and capabilities to complete the entire task. Do not split the task between yourself and the delegated agent. The agent should perform ALL actions required, including using any tools it has access to (git operations, file management, etc.).

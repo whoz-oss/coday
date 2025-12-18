@@ -129,6 +129,9 @@ export function registerAgentRoutes(
       debugLog('AGENT', `Project config agents: ${projectData.config.agents?.length || 0}`)
       debugLog('AGENT', `AgentFolders from options: ${JSON.stringify(options.agentFolders)}`)
 
+      // Initialize AI client provider before agent service
+      aiClientProvider.init(context)
+
       await agentService.initialize(context)
       const allAgents = agentService.listAgentSummaries()
 

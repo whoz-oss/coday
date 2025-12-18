@@ -5,27 +5,27 @@ import { CodayLogger } from '../service/coday-logger'
 export class GoogleClient extends OpenaiClient {
   models = [
     {
-      name: 'gemini-2.5-pro',
-      contextWindow: 1000000,
+      name: 'gemini-3-pro-preview',
+      contextWindow: 1048576,
       alias: 'BIG',
       temperature: 0.8,
-      maxOutputTokens: 65000,
+      maxOutputTokens: 65536,
       price: {
-        inputMTokens: 0.175,
-        cacheRead: 0.0875,
-        outputMTokens: 0.525,
+        inputMTokens: 2.0,
+        cacheRead: 0.2,
+        outputMTokens: 12.0,
       },
     },
     {
       name: 'gemini-2.5-flash',
       alias: 'SMALL',
-      contextWindow: 1000000,
+      contextWindow: 1048576,
       temperature: 0.8,
-      maxOutputTokens: 65000,
+      maxOutputTokens: 65536,
       price: {
-        inputMTokens: 0.1,
-        cacheRead: 0.025,
-        outputMTokens: 0.4,
+        inputMTokens: 0.3,
+        cacheRead: 0.03,
+        outputMTokens: 2.5,
       },
     },
   ]

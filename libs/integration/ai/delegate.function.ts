@@ -25,7 +25,11 @@ export function delegateFunction(input: DelegateInput) {
         return `Agent ${agentName} not found.`
       }
 
-      const forkedThread: AiThread = context.aiThread!.fork(agentName ? agent.name : undefined)
+      // Check if clean context mode is enabled via environment variable
+      const cleanContextMode = process.env.CODAY_DELEGATE_CLEAN_CONTEXT === 'true'
+      interactor.debug(`Delegate clean context mode: ${cleanContextMode}`)
+
+      const forkedThread: AiThread = context.aiThread!.fork(agentName ? agent.name : undefined, cleanContextMode)
       const formattedTask: string = `You were delegated a task to try to complete the best you can.
 The parent conversation (all previous messages) is there for context, but your current focus should be on this precise task:
 
