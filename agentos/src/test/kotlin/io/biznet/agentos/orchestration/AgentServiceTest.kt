@@ -1,5 +1,6 @@
 package io.biznet.agentos.orchestration
 
+import io.biznet.agentos.chatclient.ChatClientProvider
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.Test
@@ -15,8 +16,8 @@ class AgentServiceTest {
     fun `should find default agent`() {
         // Given
         val mockChatClientProvider = mockk<ChatClientProvider>()
-        every { mockChatClientProvider.getChatClient() } returns mockk<ChatClient>()
-        val agentService = AgentService(mockChatClientProvider)
+        every { mockChatClientProvider.getChatClient(any()) } returns mockk<ChatClient>()
+        val agentService = AgentService(mockChatClientProvider, "anthropic")
 
         // When
         val defaultAgent = agentService.getDefaultAgent()
@@ -30,8 +31,8 @@ class AgentServiceTest {
     fun `should find agent by exact name`() {
         // Given
         val mockChatClientProvider = mockk<ChatClientProvider>()
-        every { mockChatClientProvider.getChatClient() } returns mockk<ChatClient>()
-        val agentService = AgentService(mockChatClientProvider)
+        every { mockChatClientProvider.getChatClient(any()) } returns mockk<ChatClient>()
+        val agentService = AgentService(mockChatClientProvider, "anthropic")
 
         // When
         val agent = agentService.findAgentByName("General Purpose Agent")
@@ -45,8 +46,8 @@ class AgentServiceTest {
     fun `should find agent by partial name`() {
         // Given
         val mockChatClientProvider = mockk<ChatClientProvider>()
-        every { mockChatClientProvider.getChatClient() } returns mockk<ChatClient>()
-        val agentService = AgentService(mockChatClientProvider)
+        every { mockChatClientProvider.getChatClient(any()) } returns mockk<ChatClient>()
+        val agentService = AgentService(mockChatClientProvider, "anthropic")
 
         // When
         val agent = agentService.findAgentByName("General")
@@ -60,8 +61,8 @@ class AgentServiceTest {
     fun `should throw exception for unknown agent`() {
         // Given
         val mockChatClientProvider = mockk<ChatClientProvider>()
-        every { mockChatClientProvider.getChatClient() } returns mockk<ChatClient>()
-        val agentService = AgentService(mockChatClientProvider)
+        every { mockChatClientProvider.getChatClient(any()) } returns mockk<ChatClient>()
+        val agentService = AgentService(mockChatClientProvider, "anthropic")
 
         // When/Then
         try {

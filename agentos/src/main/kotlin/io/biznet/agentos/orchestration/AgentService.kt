@@ -1,6 +1,12 @@
 package io.biznet.agentos.orchestration
 
+import io.biznet.agentos.chatclient.ChatClientProvider
+import io.biznet.agentos.provider.ModelConfig
 import org.slf4j.LoggerFactory
+import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.chat.model.ChatModel
+import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -13,6 +19,8 @@ import java.util.UUID
 @Service
 class AgentService(
     private val chatClientProvider: ChatClientProvider,
+    @Qualifier("anthropicChatModel") private val chatModel: ChatModel, // Use Anthropic for POC
+    @Value("\${agentos.default-provider:anthropic}") private val defaultProviderId: String,
 ) : IAgentService {
     private val logger = LoggerFactory.getLogger(AgentService::class.java)
 
@@ -24,9 +32,24 @@ class AgentService(
         listOf(
             AgentModel(
                 id = UUID.nameUUIDFromBytes("general-purpose".toByteArray()),
-                name = "General Purpose Agent",
-                description = "Default agent without any particular purpose, should delegate specific tasks to other agents",
-                instructions = "You are a helpful AI assistant. When specialized tasks are needed, suggest delegating to appropriate specialized agents.",
+                name = "AgentOS General Assistant",
+                description = "Default agent running on AgentOS - Kotlin/Spring AI orchestration layer",
+                instructions = """
+                    You are an AI assistant running on AgentOS, a Kotlin-based orchestration system powered by Spring AI.
+                    
+                    AgentOS is a proof-of-concept that demonstrates:
+                    - Agent orchestration with Kotlin coroutines
+                    - Multi-turn conversations with context management
+                    - Integration with Coday's TypeScript frontend via REST/SSE
+                    - Streaming responses for real-time user experience
+                    
+                    When you introduce yourself or are asked about your environment, mention that you're running on AgentOS (Kotlin/Spring Boot backend) 
+                    and communicating with Coday's web interface. Be enthusiastic about this POC!
+                    
+                    For specialized tasks, you can suggest delegating to other agents when the plugin system is fully implemented.
+                    
+                    Be helpful, clear, and occasionally mention the cool tech stack you're running on! 🚀
+                """.trimIndent(),
                 provider = null, // Will use default provider from configuration
             ),
         )
@@ -78,10 +101,15 @@ class AgentService(
      * Future: Could use factory pattern based on agent configuration.
      */
     private fun createAgentInstance(model: AgentModel): IAgent {
+        logger.info("[AgentService] Creating agent instance for: ${model.name}")
+        
         // TODO: Load tools based on agent model
         val tools = emptyList<io.biznet.agentos.tools.domain.StandardTool<*>>()
 
-        val chatClient = chatClientProvider.getChatClient()
+        // POC: Use the injected ChatModel (auto-configured by Spring AI)
+        logger.info("[AgentService] Creating ChatClient from injected ChatModel")
+        val chatClient = ChatClient.builder(chatModel).build()
+        logger.info("[AgentService] ChatClient created successfully")
 
         return AgentSimple(
             metadata = EntityMetadata(id = model.id),

@@ -6,12 +6,12 @@ spring:
       client:
         enabled: false
     openai:
-      api-key: ${OPENAI_API_KEY}
+      api-key: ${OPENAI_API_KEY:dummy}
     anthropic:
-      api-key: ${ANTHROPIC_API_KEY}
+      api-key: ${ANTHROPIC_API_KEY:dummy}
     vllm:
-      base-url: ${VLLM_URL}
-      api-key: ${VLLM_TOKEN}
+      base-url: ${VLLM_URL:http://localhost:8000}
+      api-key: ${VLLM_TOKEN:dummy}
       chat:
         options:
           model: /mnt/model
@@ -41,3 +41,8 @@ management:
     jmx:
       exposure:
         include: "*"
+
+logging:
+  level:
+    org.springframework.web: DEBUG
+    io.biznet.agentos: DEBUG

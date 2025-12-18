@@ -4,18 +4,66 @@ import io.biznet.agentos.agents.domain.Agent
 import io.biznet.agentos.agents.domain.AgentContext
 import io.biznet.agentos.agents.domain.AgentStatus
 import io.biznet.agentos.agents.domain.ContextType
-import io.biznet.agentos.plugins.PluginService
+import io.biznet.agentos.plugins.AgentDiscoveryService
+import io.mockk.every
+import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
 class AgentRegistryTest {
     private lateinit var registry: AgentRegistry
-    private lateinit var pluginService: PluginService
+    private lateinit var agentDiscoveryService: AgentDiscoveryService
 
     @BeforeEach
     fun setup() {
-        registry = AgentRegistry(pluginService)
+        agentDiscoveryService = mockk<AgentDiscoveryService>()
+        
+        // Mock discovery to return some test agents that match test expectations
+        val testAgents = listOf(
+            Agent(
+                id = "code-review-agent",
+                name = "Code Review Agent",
+                description = "Agent for code reviews",
+                version = "1.0.0",
+                capabilities = listOf("code-review"),
+                requiredContext = setOf(ContextType.CODE_REVIEW),
+                priority = 8
+            ),
+            Agent(
+                id = "test-gen-agent",
+                name = "Test Generation Agent",
+                description = "Agent for generating tests",
+                version = "1.0.0",
+                capabilities = listOf("test-generation"),
+                requiredContext = setOf(ContextType.GENERAL),
+                priority = 7
+            ),
+            Agent(
+                id = "security-agent",
+                name = "Security Agent",
+                description = "Agent for security analysis",
+                version = "1.0.0",
+                capabilities = listOf("security"),
+                requiredContext = setOf(ContextType.GENERAL),
+                tags = setOf("security"),
+                priority = 10
+            ),
+            Agent(
+                id = "low-priority-agent",
+                name = "Low Priority Agent",
+                description = "Agent with low priority",
+                version = "1.0.0",
+                capabilities = listOf("general"),
+                requiredContext = setOf(ContextType.GENERAL),
+                priority = 3
+            )
+        )
+        
+        every { agentDiscoveryService.discoverAgents() } returns testAgents
+        registry = AgentRegistry(agentDiscoveryService)
+        // Manually call initialize since @PostConstruct doesn't run in unit tests
+        registry.initialize()
     }
 
     @Test

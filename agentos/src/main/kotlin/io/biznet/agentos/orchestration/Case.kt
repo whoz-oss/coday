@@ -42,14 +42,19 @@ class Case(
     private var iterationCount = 0
 
     private fun storeAndEmitEvent(event: CaseEvent) {
+        logger.trace("[Case $id] storeAndEmitEvent - event type: ${event::class.simpleName}, event caseId: ${event.caseId}")
         if (id == event.caseId) {
             // do only store here the events of this case.
             // Sub-case events that bubble up are expected to be saved by their case instance
+            logger.debug("[Case $id] Saving event: ${event::class.simpleName}")
             val savedEvent = caseEventService.save(event)
             eventList.add(savedEvent)
+            logger.debug("[Case $id] Emitting event to flow: ${event::class.simpleName}")
             emit(savedEvent)
+            logger.trace("[Case $id] Event emitted successfully")
         } else {
             // let the event bubble up.
+            logger.debug("[Case $id] Bubbling up event from different case: ${event.caseId}")
             emit(event)
         }
     }
@@ -122,6 +127,10 @@ class Case(
         content: List<MessageContent>,
         answerToEventId: UUID? = null,
     ) {
+        logger.info(
+            "[Case $id] addUserMessage called - actor: ${actor.displayName}, content size: ${content.size}, answerTo: $answerToEventId",
+        )
+        logger.debug("[Case $id] Current status: $status")
         // If this is an answer to a question, create an AnswerEvent
         if (answerToEventId != null) {
             val questionEvent = eventList.getById(answerToEventId)
@@ -152,6 +161,7 @@ class Case(
         }
 
         // Regular message flow
+        logger.debug("[Case $id] Creating MessageEvent")
         val userMessageEvent =
             MessageEvent(
                 caseId = id,
@@ -159,8 +169,11 @@ class Case(
                 actor = actor,
                 content = content,
             )
+        logger.debug("[Case $id] Storing and emitting MessageEvent")
         storeAndEmitEvent(userMessageEvent)
+        logger.debug("[Case $id] Detecting agent selection")
         detectAgentSelection(content)
+        logger.info("[Case $id] Starting case run()")
         run()
     }
 
@@ -209,20 +222,34 @@ class Case(
      * It should be called in a dedicated thread by the CaseService.
      */
     suspend fun run() {
+        logger.info("[Case $id] run() called - current status: $status")
+
         // Case is already running, do nothing
         if (status == CaseStatus.RUNNING) {
+            logger.warn("[Case $id] Already running, skipping run()")
             return
         }
+
+        logger.info("[Case $id] Starting case execution")
+
+        // Reset stop flags when restarting
+        stopRequested.set(false)
+        killRequested.set(false)
 
         updateStatus(CaseStatus.RUNNING)
         iterationCount = 0
 
         try {
+            logger.debug("[Case $id] Entering main processing loop")
             // Main processing loop
             while (!stopRequested.get() && !killRequested.get() && iterationCount < maxIterations) {
+                logger.debug("[Case $id] Processing iteration $iterationCount")
                 processNextStep()
                 iterationCount++
             }
+            logger.info(
+                "[Case $id] Exited main loop - iterations: $iterationCount, stopRequested: ${stopRequested.get()}, killRequested: ${killRequested.get()}",
+            )
 
             if (iterationCount >= maxIterations) {
                 logger.error("[Case $id] Maximum iterations ($maxIterations) reached")
@@ -274,19 +301,34 @@ class Case(
      * tool calls should be emitted and seen in the case, but handled and built in the agent.run()
      */
     private suspend fun processNextStep() {
-        // get through events by last one
         val events = eventList.getAll()
+        logger.debug("[Case $id] processNextStep - total events: ${events.size}")
+
+        // Find the last user message to know where to start looking for agent events
+        val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER }
+        logger.debug("[Case $id] Last user message at index: $lastUserMessageIndex")
+
+        // get through events by last one, but only after the last user message
         for (i in events.lastIndex downTo 0) {
             val event = events[i]
+            logger.trace("[Case $id] Checking event $i: ${event::class.simpleName}")
+
+            // Skip AgentFinishedEvent if it's before the last user message (old conversation)
+            if (event is AgentFinishedEvent && i < lastUserMessageIndex) {
+                logger.debug("[Case $id] Skipping old AgentFinishedEvent at index $i (before last user message)")
+                continue
+            }
+
             when (event) {
                 // if agent finished, just stop
                 is AgentFinishedEvent -> {
-                    logger.info("[Case $id] Agent finished, stopping case")
+                    logger.info("[Case $id] Found AgentFinishedEvent, stopping case")
                     stopRequested.set(true)
                     return
                 }
                 // if agent running, make it run
                 is AgentRunningEvent -> {
+                    logger.info("[Case $id] Found AgentRunningEvent for agent: ${event.agentName}")
                     val agent = agentService.findAgentByName(event.agentName)
                     runAgent(agent)
                     return
@@ -294,6 +336,7 @@ class Case(
 
                 // if agent selected, make it run
                 is AgentSelectedEvent -> {
+                    logger.info("[Case $id] Found AgentSelectedEvent for agent: ${event.agentName}, transitioning to running")
                     val agentRunningEvent =
                         AgentRunningEvent(
                             projectId = projectId,
@@ -312,14 +355,16 @@ class Case(
             }
         }
 
+        logger.debug("[Case $id] No relevant events found, selecting default agent")
+
         selectDefaultAgent()
     }
 
     private fun selectDefaultAgent() {
-        logger.debug("[Case $id] No agent selected, trying default agent")
+        logger.info("[Case $id] Selecting default agent")
         val defaultAgent = agentService.getDefaultAgent()
         if (defaultAgent != null) {
-            logger.info("[Case $id] Using default agent: ${defaultAgent.name}")
+            logger.info("[Case $id] Default agent found: ${defaultAgent.name} (id: ${defaultAgent.metadata.id})")
             val agentSelectedEvent =
                 AgentSelectedEvent(
                     projectId = projectId,
@@ -327,9 +372,11 @@ class Case(
                     agentId = defaultAgent.metadata.id,
                     agentName = defaultAgent.name,
                 )
+            logger.debug("[Case $id] Emitting AgentSelectedEvent")
             storeAndEmitEvent(agentSelectedEvent)
+            logger.info("[Case $id] AgentSelectedEvent emitted for ${defaultAgent.name}")
         } else {
-            logger.warn("[Case $id] No default agent configured, stopping")
+            logger.error("[Case $id] No default agent configured, stopping case")
             stopRequested.set(true)
         }
     }

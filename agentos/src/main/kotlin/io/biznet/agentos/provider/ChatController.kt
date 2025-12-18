@@ -30,4 +30,3 @@ class AiController(
 
 
 data class Query(val message: String, val modelConfig: ModelConfig)
-data class ModelConfig(val providerId: String, val apiKey: String?, val model: String?)

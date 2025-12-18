@@ -79,6 +79,8 @@ class CaseService(
         projectId: UUID,
         initialEvents: List<CaseEvent>,
     ): Case {
+        logger.info("[CaseService] Creating case instance for project $projectId with ${initialEvents.size} initial events")
+        
         // Create persistence model
         val caseModel =
             CaseModel(
@@ -87,6 +89,7 @@ class CaseService(
                 status = CaseStatus.PENDING,
             )
         save(caseModel)
+        logger.debug("[CaseService] Persistence model saved with id: ${caseModel.id}")
 
         // Create runtime instance
         val case =
@@ -101,12 +104,21 @@ class CaseService(
             )
 
         activeCases[case.id] = case
-        logger.info("Case instance created: ${case.id} for project $projectId")
+        logger.info("[CaseService] Case instance created and registered: ${case.id} for project $projectId")
+        logger.debug("[CaseService] Total active cases: ${activeCases.size}")
 
         return case
     }
 
-    override fun getCaseInstance(caseId: UUID): Case? = activeCases[caseId]
+    override fun getCaseInstance(caseId: UUID): Case? {
+        val case = activeCases[caseId]
+        if (case == null) {
+            logger.warn("[CaseService] Case instance not found: $caseId (active cases: ${activeCases.keys})")
+        } else {
+            logger.debug("[CaseService] Retrieved case instance: $caseId")
+        }
+        return case
+    }
 
     override fun getActiveCasesByProject(projectId: UUID): List<Case> = activeCases.values.filter { it.projectId == projectId }
 
@@ -116,7 +128,15 @@ class CaseService(
     // Event Stream Access
     // ========================================
 
-    override fun getCaseEventStream(caseId: UUID): SharedFlow<CaseEvent>? = activeCases[caseId]?.events
+    override fun getCaseEventStream(caseId: UUID): SharedFlow<CaseEvent>? {
+        val case = activeCases[caseId]
+        if (case == null) {
+            logger.warn("[CaseService] Cannot get event stream - case not found: $caseId")
+        } else {
+            logger.debug("[CaseService] Event stream retrieved for case: $caseId")
+        }
+        return case?.events
+    }
 
     // ========================================
     // Execution Control
