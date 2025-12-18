@@ -128,7 +128,7 @@ export class AgentOSThreadInstance implements IThreadInstance {
 
       // Send initial InviteEvent immediately to unblock frontend
       const inviteEvent = new InviteEvent({
-        invite: 'How can I help you?',
+        invite: '',
       })
       this.broadcastEvent(inviteEvent)
       debugLog('AGENTOS_THREAD', `Sent initial InviteEvent for thread ${this.threadId}`)
@@ -177,24 +177,20 @@ export class AgentOSThreadInstance implements IThreadInstance {
         let buffer = ''
         response.data.on('data', (chunk: Buffer) => {
           const chunkStr = chunk.toString()
-          debugLog('AGENTOS_SSE_RAW', `Received ${chunk.length} bytes: ${chunkStr}`)
+          // Reduce logging verbosity (comment out for debugging)
+          // debugLog('AGENTOS_SSE_RAW', `Received ${chunk.length} bytes`)
           buffer += chunkStr
 
           const messages = buffer.split('\n\n')
           buffer = messages.pop() || ''
 
-          debugLog(
-            'AGENTOS_SSE_PARSE',
-            `Split into ${messages.length} messages, buffer remaining: ${buffer.length} chars`
-          )
+          // Reduce logging verbosity (uncomment for debugging)
+          // debugLog('AGENTOS_SSE_PARSE', `Split into ${messages.length} messages`)
 
           for (const message of messages) {
             if (!message.trim()) {
-              debugLog('AGENTOS_SSE_PARSE', 'Skipping empty message')
               continue
             }
-
-            debugLog('AGENTOS_SSE_PARSE', `Processing message: ${message}`)
 
             const lines = message.split('\n')
             let eventType = 'message'
@@ -212,13 +208,9 @@ export class AgentOSThreadInstance implements IThreadInstance {
             }
 
             if (data) {
-              debugLog(
-                'AGENTOS_SSE_PARSE',
-                `Parsed event - type: ${eventType}, id: ${eventId}, data length: ${data.length}`
-              )
+              // Reduce logging verbosity (uncomment for debugging)
+              // debugLog('AGENTOS_SSE_PARSE', `Parsed event - type: ${eventType}`)
               this.handleAgentOSEvent(eventType, eventId, data)
-            } else {
-              debugLog('AGENTOS_SSE_PARSE', 'No data found in message')
             }
           }
         })
@@ -345,7 +337,7 @@ export class AgentOSThreadInstance implements IThreadInstance {
             timestamp: eventId,
             chunk: chunk,
           }
-          debugLog('AGENTOS_EVENT', `Mapped text_chunk - length: ${chunk.length}`)
+          // Don't log every chunk (too verbose)
           break
 
         default:
