@@ -1,4 +1,4 @@
-package io.biznet.agentos.plugins.filesystem
+package io.biznet.agentos.plugins.filesystem.agent
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
@@ -6,7 +6,7 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.biznet.agentos.agents.domain.Agent
 import io.biznet.agentos.agents.domain.AgentStatus
 import io.biznet.agentos.agents.domain.ContextType
-import io.biznet.agentos.api.AgentPlugin
+import io.biznet.agentos.api.agent.AgentPlugin
 import org.pf4j.Extension
 import org.slf4j.LoggerFactory
 import java.io.File

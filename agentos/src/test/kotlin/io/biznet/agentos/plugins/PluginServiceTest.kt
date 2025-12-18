@@ -3,7 +3,7 @@ package io.biznet.agentos.plugins
 import io.biznet.agentos.agents.domain.Agent
 import io.biznet.agentos.agents.domain.AgentStatus
 import io.biznet.agentos.agents.domain.ContextType
-import io.biznet.agentos.api.AgentPlugin
+import io.biznet.agentos.api.agent.AgentPlugin
 import org.junit.jupiter.api.Test
 import org.pf4j.DefaultPluginManager
 import kotlin.test.assertNotNull
@@ -28,15 +28,6 @@ class PluginServiceTest {
 
         val plugins = pluginService.getLoadedPlugins()
         assertTrue(plugins.isEmpty())
-    }
-
-    @Test
-    fun `should get empty agents from plugins initially`() {
-        val pluginManager = DefaultPluginManager()
-        val pluginService = PluginService(pluginManager)
-
-        val agents = pluginService.getAgentsFromPlugins()
-        assertTrue(agents.isEmpty())
     }
 }
 

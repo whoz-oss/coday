@@ -4,7 +4,7 @@ import io.biznet.agentos.agents.domain.Agent
 import io.biznet.agentos.agents.domain.AgentContext
 import io.biznet.agentos.agents.domain.AgentQueryResponse
 import io.biznet.agentos.agents.domain.ContextType
-import io.biznet.agentos.plugins.PluginService
+import io.biznet.agentos.plugins.AgentDiscoveryService
 import jakarta.annotation.PostConstruct
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service
  */
 @Service
 class AgentRegistry(
-    private val pluginService: PluginService,
+    private val agentDiscoveryService: AgentDiscoveryService,
 ) {
     private val logger = LoggerFactory.getLogger(AgentRegistry::class.java)
     private val agents = mutableMapOf<String, Agent>()
@@ -130,7 +130,7 @@ class AgentRegistry(
     fun loadAgentsFromPlugins() {
         logger.info("Loading agents from plugins...")
         try {
-            val pluginAgents = pluginService.getAgentsFromPlugins()
+            val pluginAgents = agentDiscoveryService.discoverAgents()
             pluginAgents.forEach { agent ->
                 registerAgent(agent)
                 logger.debug("Registered agent '${agent.id}' from plugin")

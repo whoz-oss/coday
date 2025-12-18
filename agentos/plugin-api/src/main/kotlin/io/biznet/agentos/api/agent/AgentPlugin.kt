@@ -1,4 +1,4 @@
-package io.biznet.agentos.api
+package io.biznet.agentos.api.agent
 
 import org.pf4j.ExtensionPoint
 
