@@ -1,4 +1,4 @@
-package io.biznet.agentos.api
+package io.biznet.agentos.api.agent
 
 /**
  * Represents an AI agent in the AgentOS orchestrator.

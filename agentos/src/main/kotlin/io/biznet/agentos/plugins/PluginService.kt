@@ -1,7 +1,6 @@
 package io.biznet.agentos.plugins
 
-import io.biznet.agentos.agents.domain.Agent
-import io.biznet.agentos.api.AgentPlugin
+import io.biznet.agentos.api.agent.AgentPlugin
 import org.pf4j.PluginManager
 import org.pf4j.PluginState
 import org.slf4j.LoggerFactory
@@ -9,7 +8,7 @@ import org.springframework.stereotype.Service
 import java.nio.file.Path
 
 /**
- * Service for managing plugins and extracting agents from them
+ * Service for managing the lifecycle of plugins (loading, starting, stopping, unloading).
  */
 @Service
 class PluginService(
@@ -18,62 +17,13 @@ class PluginService(
     private val logger = LoggerFactory.getLogger(PluginService::class.java)
 
     /**
-     * Get all agents from all loaded plugins
-     */
-    fun getAgentsFromPlugins(): List<Agent> {
-        logger.info("Searching for AgentPlugin extensions...")
-        logger.info("Total plugins loaded: ${pluginManager.plugins.size}")
-        logger.info("PluginManager type: ${pluginManager.javaClass.name}")
-
-        pluginManager.plugins.forEach { plugin ->
-            logger.info("  Plugin: ${plugin.pluginId} - State: ${plugin.pluginState}")
-            logger.info("    Path: ${plugin.pluginPath}")
-            logger.info("    ClassLoader: ${plugin.pluginClassLoader.javaClass.name}")
-
-            // Try to get extensions for this specific plugin
-            try {
-                val pluginExtensions = pluginManager.getExtensions(AgentPlugin::class.java, plugin.pluginId)
-                logger.info("    Extensions found for ${plugin.pluginId}: ${pluginExtensions.size}")
-            } catch (e: Exception) {
-                logger.warn("    Error getting extensions for ${plugin.pluginId}: ${e.message}")
-            }
-        }
-
-        val extensions = pluginManager.getExtensions(AgentPlugin::class.java)
-        logger.info("Found ${extensions.size} AgentPlugin extension(s) total")
-
-        if (extensions.isEmpty()) {
-            logger.warn("No AgentPlugin extensions found! Check:")
-            logger.warn("  1. Does plugin JAR contain @Extension annotated class?")
-            logger.warn("  2. Does @Extension class implement AgentPlugin interface?")
-            logger.warn("  3. Is plugin state STARTED?")
-            logger.warn("  4. Check plugin classloader for AgentPlugin interface")
-        }
-
-        val agents = mutableListOf<Agent>()
-
-        extensions.forEach { plugin ->
-            try {
-                logger.debug("Loading agents from plugin: ${plugin.getPluginId()}")
-                val pluginAgents = plugin.getAgents()
-                agents.addAll(pluginAgents)
-                logger.info("Loaded ${pluginAgents.size} agent(s) from plugin '${plugin.getPluginId()}'")
-            } catch (e: Exception) {
-                logger.error("Failed to load agents from plugin '${plugin.getPluginId()}': ${e.message}", e)
-            }
-        }
-
-        return agents
-    }
-
-    /**
      * Get all loaded plugins with their metadata
      */
     fun getLoadedPlugins(): List<PluginInfo> =
         pluginManager.plugins.map { wrapper ->
             val descriptor = wrapper.descriptor
-            val extensions = pluginManager.getExtensions(AgentPlugin::class.java, wrapper.pluginId)
-            val agentCount = extensions.sumOf { it.getAgents().size }
+            val agentExtensions = pluginManager.getExtensions(AgentPlugin::class.java, wrapper.pluginId)
+            val agentCount = agentExtensions.sumOf { it.getAgents().size }
 
             PluginInfo(
                 id = wrapper.pluginId,

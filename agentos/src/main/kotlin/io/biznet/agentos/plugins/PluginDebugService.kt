@@ -1,6 +1,6 @@
 package io.biznet.agentos.plugins
 
-import io.biznet.agentos.api.AgentPlugin
+import io.biznet.agentos.api.agent.AgentPlugin
 import org.pf4j.PluginManager
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service

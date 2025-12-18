@@ -1,6 +1,4 @@
-package io.biznet.agentos.plugins.filesystem
-
-import com.fasterxml.jackson.annotation.JsonProperty
+package io.biznet.agentos.plugins.filesystem.agent
 
 /**
  * YAML model for agent configuration files
