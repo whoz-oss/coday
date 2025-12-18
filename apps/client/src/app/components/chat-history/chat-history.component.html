@@ -11,9 +11,7 @@
   <!-- Streaming Message (separate from persisted messages) -->
   @if (streamingText) {
     <div class="streaming-message message assistant">
-      <div class="content markdown-content">
-        {{ streamingText }}
-      </div>
+      <div class="content markdown-content" [innerHTML]="renderedStreamingText"></div>
     </div>
   }
 
