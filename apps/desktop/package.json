@@ -1,6 +1,6 @@
 {
   "name": "@whoz-oss/coday-desktop",
-  "version": "0.55.1",
+  "version": "0.55.2",
   "description": "Coday Desktop - Electron-based desktop application",
   "repository": "https://github.com/whoz-oss/coday",
   "license": "MIT",

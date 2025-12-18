@@ -1,3 +1,13 @@
+## 0.55.2 (2025-12-18)
+
+### 🩹 Fixes
+
+- #383 render streaming text as markdown ([#387](https://github.com/whoz-oss/coday/pull/387), [#383](https://github.com/whoz-oss/coday/issues/383))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.55.1 (2025-12-17)
 
 ### 🩹 Fixes
