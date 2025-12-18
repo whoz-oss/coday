@@ -44,6 +44,10 @@ scripts:
     # should be pnpm test, but current non-nx code architecture prevents it to be useful
     command: npx jest PARAMETERS
     parametersDescription: the test file path or pattern to run specific tests (e.g., "parseAgentCommand.test.ts" or "--testNamePattern=specific test name")
+  test-agentos:
+    description: run tests for AgentOS (Kotlin/Spring Boot) - can specify a test class name or run all tests
+    command: cd agentos && ./gradlew test PARAMETERS
+    parametersDescription: optional test filter like "--tests InMemoryCaseEventListTest" or "--tests *Case*" to run specific tests, leave empty to run all tests
   lint-project:
     description: |
       Runs the lint for the app.
