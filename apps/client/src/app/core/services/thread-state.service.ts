@@ -173,6 +173,23 @@ export class ThreadStateService {
   }
 
   /**
+   * Update a thread's name locally in the thread list (optimistic update)
+   * @param threadId Thread identifier
+   * @param newName New thread name
+   */
+  updateThreadNameLocally(threadId: string, newName: string): void {
+    const currentList = this.threadListSubject.value
+    const updatedList = currentList.map((thread) => {
+      if (thread.id === threadId) {
+        console.log('[THREAD_STATE] Updating thread name locally:', threadId, '->', newName)
+        return { ...thread, name: newName }
+      }
+      return thread
+    })
+    this.threadListSubject.next(updatedList)
+  }
+
+  /**
    * Refresh the thread list
    * This should be called when a thread is updated (e.g., renamed) to refresh the list
    */
