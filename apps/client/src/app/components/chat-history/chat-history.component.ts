@@ -51,6 +51,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   private lastScrollTop = 0
   private readonly NEAR_BOTTOM_THRESHOLD = 100 // pixels
   private scrollCheckTimeout: any
+  private isProgrammaticScroll = false // Flag to distinguish programmatic vs user scroll
 
   // Message freshness threshold for automatic announcement (5 minutes)
   private readonly MESSAGE_FRESHNESS_THRESHOLD = 5 * 60 * 1000 // in milliseconds
@@ -131,7 +132,8 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
       }
 
       if (this.scrollContainer) {
-        // Note: Programmatic scroll
+        // Mark this as programmatic scroll to avoid false positive in handleScroll
+        this.isProgrammaticScroll = true
 
         // Small delay to ensure DOM is updated
         setTimeout(() => {
@@ -141,6 +143,11 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
               behavior: 'smooth',
             })
           }
+
+          // Reset flag after scroll completes (smooth animation takes ~500ms)
+          setTimeout(() => {
+            this.isProgrammaticScroll = false
+          }, 600)
         }, 50)
       }
     } catch (err) {
@@ -280,43 +287,35 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     if (!this.scrollContainer) return
 
     const currentScrollTop = this.scrollContainer.scrollTop
-    const scrollDirection = currentScrollTop > this.lastScrollTop ? 'down' : 'up'
     const scrollDelta = Math.abs(currentScrollTop - this.lastScrollTop)
 
-    // Ignore micro-scrolls (might be programmatic scroll)
+    // Ignore micro-scrolls
     if (scrollDelta < 5) {
       this.lastScrollTop = currentScrollTop
       return
     }
 
-    console.log(
-      '[CHAT-HISTORY] Scroll direction:',
-      scrollDirection,
-      'delta:',
-      scrollDelta,
-      'position:',
-      currentScrollTop
-    )
+    // If this is a programmatic scroll, ignore it
+    if (this.isProgrammaticScroll) {
+      this.lastScrollTop = currentScrollTop
+      return
+    }
 
-    // Note: We could detect user vs programmatic scroll here if needed
+    console.log('[CHAT-HISTORY] User scroll detected - disabling auto-scroll')
 
-    // If user scrolls up significantly, exit tracking mode
-    if (scrollDirection === 'up' && this.isTracking && scrollDelta > 10) {
-      console.log('[CHAT-HISTORY] User scrolled up significantly - exiting tracking mode')
+    // ANY user scroll disables auto-scroll immediately
+    if (this.isTracking) {
       this.isTracking = false
       this.showGoToBottom = true
     }
 
-    // Check if we're near the bottom
-    this.checkScrollPosition()
-
-    this.lastScrollTop = currentScrollTop
-
-    // Debounce to avoid too frequent calls
+    // Check position with debounce to avoid immediate re-activation
     clearTimeout(this.scrollCheckTimeout)
     this.scrollCheckTimeout = setTimeout(() => {
-      // Can be used for future optimizations
-    }, 150)
+      this.checkScrollPosition()
+    }, 500) // Wait 500ms after scroll stops
+
+    this.lastScrollTop = currentScrollTop
   }
 
   /**
@@ -331,7 +330,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
 
     // If near bottom and not tracking, reactivate tracking
     if (isNearBottom && !this.isTracking) {
-      console.log('[CHAT-HISTORY] Near bottom - entering tracking mode')
+      console.log('[CHAT-HISTORY] Near bottom - re-enabling auto-scroll')
       this.isTracking = true
       this.showGoToBottom = false
 
@@ -349,7 +348,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
    * Go to bottom of conversation (triggered by button)
    */
   goToBottom(): void {
-    console.log('[CHAT-HISTORY] Go to bottom clicked')
+    console.log('[CHAT-HISTORY] Go to bottom clicked - re-enabling auto-scroll')
     this.scrollToBottom()
     this.isTracking = true
     this.showGoToBottom = false
