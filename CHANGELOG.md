@@ -1,3 +1,13 @@
+## 0.55.4 (2025-12-18)
+
+### 🩹 Fixes
+
+- #399 delete thread files directory during automatic cleanup ([#401](https://github.com/whoz-oss/coday/pull/401), [#399](https://github.com/whoz-oss/coday/issues/399))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.55.3 (2025-12-18)
 
 ### 🩹 Fixes
