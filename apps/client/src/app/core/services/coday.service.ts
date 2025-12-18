@@ -453,8 +453,6 @@ export class CodayService implements OnDestroy {
   }
 
   private handleInviteEvent(event: InviteEvent): void {
-    this.stopThinking()
-
     // Check if the last message already contains this invite content to avoid duplicates
     const currentMessages = this.messagesSubject.value
     const lastMessage = currentMessages[currentMessages.length - 1]
@@ -468,6 +466,8 @@ export class CodayService implements OnDestroy {
       lastMessage.content.some((c) => c.type === 'text' && c.content.includes(event.invite))
 
     if (!inviteAlreadyDisplayed && event.invite !== InviteEventDefault) {
+      this.stopThinking()
+
       // Create an assistant message with the invite content
       const inviteMessage: ChatMessage = {
         id: event.timestamp,

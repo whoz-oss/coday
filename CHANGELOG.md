@@ -1,3 +1,136 @@
+## 0.55.0 (2025-12-16)
+
+### 🚀 Features
+
+- issue 381 slack integration ([#384](https://github.com/whoz-oss/coday/pull/384), [#381](https://github.com/whoz-oss/coday/issues/381))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.54.0 (2025-12-16)
+
+### 🚀 Features
+
+- #309 Add Plan Mode with plan and execute-plan prompt chains ([#316](https://github.com/whoz-oss/coday/pull/316), [#309](https://github.com/whoz-oss/coday/issues/309))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.53.1 (2025-12-16)
+
+### 🩹 Fixes
+
+- avoid excessive notifications of agent completion #378 ([#378](https://github.com/whoz-oss/coday/issues/378))
+- avoid excessive notifications of agent completion #378 ([#392](https://github.com/whoz-oss/coday/pull/392), [#378](https://github.com/whoz-oss/coday/issues/378))
+
+### ❤️ Thank You
+
+- Benoit Averty @BenoitAvertyWhoz
+- BenoitAvertyWhoz @BenoitAvertyWhoz
+
+## 0.53.0 (2025-12-15)
+
+### 🚀 Features
+
+- #378 allow the user to be notified when the agent finished a task or requests input ([#378](https://github.com/whoz-oss/coday/issues/378))
+
+### ❤️ Thank You
+
+- Benoit Averty @BenoitAvertyWhoz
+
+## 0.52.0 (2025-12-10)
+
+### 🚀 Features
+
+- #366 implement streaming for OpenAI client ([#374](https://github.com/whoz-oss/coday/pull/374), [#366](https://github.com/whoz-oss/coday/issues/366))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.51.1 (2025-12-10)
+
+### 🩹 Fixes
+
+- #372 MCP process cleanup with manual kill fallback ([#373](https://github.com/whoz-oss/coday/pull/373), [#372](https://github.com/whoz-oss/coday/issues/372))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.51.0 (2025-12-02)
+
+### 🚀 Features
+
+- #361 add clean context mode for delegate tool ([#364](https://github.com/whoz-oss/coday/pull/364), [#361](https://github.com/whoz-oss/coday/issues/361))
+- #365 add new thread FAB button below hamburger menu ([#367](https://github.com/whoz-oss/coday/pull/367), [#365](https://github.com/whoz-oss/coday/issues/365))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.50.1 (2025-12-02)
+
+### 🩹 Fixes
+
+- #359 OpenAI thread auto-naming and compaction improvements ([#363](https://github.com/whoz-oss/coday/pull/363), [#359](https://github.com/whoz-oss/coday/issues/359))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.50.0 (2025-12-01)
+
+### 🚀 Features
+
+- #251 Zendesk integration ([#355](https://github.com/whoz-oss/coday/pull/355), [#251](https://github.com/whoz-oss/coday/issues/251))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.49.0 (2025-11-28)
+
+### 🚀 Features
+
+- #345 Virtual agents from AI models for easy model selection ([#352](https://github.com/whoz-oss/coday/pull/352), [#345](https://github.com/whoz-oss/coday/issues/345))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.48.1 (2025-11-28)
+
+### 🩹 Fixes
+
+- #347 playwright screenshot ([#348](https://github.com/whoz-oss/coday/pull/348), [#347](https://github.com/whoz-oss/coday/issues/347))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.48.0 (2025-11-28)
+
+### 🚀 Features
+
+- update default AI models to November 2024 releases ([#353](https://github.com/whoz-oss/coday/pull/353))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.47.1 (2025-11-28)
+
+### 🩹 Fixes
+
+- #350 extend drag'n drop to file exchange drawer ([#351](https://github.com/whoz-oss/coday/pull/351), [#350](https://github.com/whoz-oss/coday/issues/350))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.47.0 (2025-11-18)
 
 ### 🚀 Features

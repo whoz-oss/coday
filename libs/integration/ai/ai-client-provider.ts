@@ -145,6 +145,29 @@ export class AiClientProvider {
   }
 
   /**
+   * Get all available models from all configured providers.
+   * Returns an array of model information including name and provider.
+   *
+   * @returns Array of models with their provider information
+   */
+  getAllModels(): Array<{ name: string; providerName: string }> {
+    const models: Array<{ name: string; providerName: string }> = []
+
+    for (const client of this.aiClients) {
+      if (client.models) {
+        for (const model of client.models) {
+          models.push({
+            name: model.name,
+            providerName: client.name,
+          })
+        }
+      }
+    }
+
+    return models
+  }
+
+  /**
    * Cleanup AI clients for fresh connections but keep configurations.
    * Used when ending a conversation but keeping Coday instance alive.
    */
