@@ -1,3 +1,13 @@
+## 0.55.3 (2025-12-18)
+
+### 🩹 Fixes
+
+- #382 thread name not updating in frontend list ([#402](https://github.com/whoz-oss/coday/pull/402), [#382](https://github.com/whoz-oss/coday/issues/382))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.55.2 (2025-12-18)
 
 ### 🩹 Fixes
