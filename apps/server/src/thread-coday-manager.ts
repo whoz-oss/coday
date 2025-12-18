@@ -10,7 +10,7 @@ import { MemoryService } from '@coday/service/memory.service'
 import { McpConfigService } from '@coday/service/mcp-config.service'
 import { CodayLogger } from '@coday/service/coday-logger'
 import { WebhookService } from '@coday/service/webhook.service'
-import { HeartBeatEvent, OAuthCallbackEvent } from '@coday/coday-events'
+import { HeartBeatEvent, ThreadUpdateEvent, OAuthCallbackEvent } from '@coday/coday-events'
 import { debugLog } from './log'
 import { ThreadService } from './services/thread.service'
 import { ProjectService } from './services/project.service'
@@ -274,6 +274,15 @@ class ThreadCodayInstance {
    * @param event Event to broadcast
    */
   private broadcastEvent(event: any): void {
+    // If this is a ThreadUpdateEvent with a name, update the thread service cache
+    if (event instanceof ThreadUpdateEvent && event.name) {
+      debugLog('THREAD_CODAY', `Updating thread cache for ${this.threadId} with name: ${event.name}`)
+      // Update the thread service cache asynchronously (don't block event broadcasting)
+      this.threadService.updateThread(this.projectName, this.threadId, { name: event.name }).catch((error) => {
+        debugLog('THREAD_CODAY', `Error updating thread cache:`, error)
+      })
+    }
+
     const data = `data: ${JSON.stringify(event)}\n\n`
 
     // Send to all active connections
