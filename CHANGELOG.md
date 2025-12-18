@@ -1,3 +1,43 @@
+## 0.55.4 (2025-12-18)
+
+### 🩹 Fixes
+
+- #399 delete thread files directory during automatic cleanup ([#401](https://github.com/whoz-oss/coday/pull/401), [#399](https://github.com/whoz-oss/coday/issues/399))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.55.3 (2025-12-18)
+
+### 🩹 Fixes
+
+- #382 thread name not updating in frontend list ([#402](https://github.com/whoz-oss/coday/pull/402), [#382](https://github.com/whoz-oss/coday/issues/382))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.55.2 (2025-12-18)
+
+### 🩹 Fixes
+
+- #383 render streaming text as markdown ([#387](https://github.com/whoz-oss/coday/pull/387), [#383](https://github.com/whoz-oss/coday/issues/383))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.55.1 (2025-12-17)
+
+### 🩹 Fixes
+
+- #382 thread list cache with incremental updates ([#386](https://github.com/whoz-oss/coday/pull/386), [#382](https://github.com/whoz-oss/coday/issues/382))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.55.0 (2025-12-16)
 
 ### 🚀 Features
