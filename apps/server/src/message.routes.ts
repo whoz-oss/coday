@@ -105,44 +105,65 @@ export function registerMessageRoutes(
    *   invite?: string
    * }
    */
-  app.post('/api/projects/:projectName/threads/:threadId/messages', (req: express.Request, res: express.Response) => {
-    try {
-      const { projectName, threadId } = req.params
-      const payload = req.body
+  app.post(
+    '/api/projects/:projectName/threads/:threadId/messages',
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { projectName, threadId } = req.params
+        const payload = req.body
 
-      if (!projectName || !threadId) {
-        res.status(400).send('Project name and thread ID are required')
-        return
+        if (!projectName || !threadId) {
+          res.status(400).send('Project name and thread ID are required')
+          return
+        }
+
+        const username = getUsernameFn(req)
+        if (!username) {
+          res.status(401).send('Authentication required')
+          return
+        }
+
+        console.log(`MESSAGE === POST MESSAGE ===`)
+        console.log(`MESSAGE ThreadId: ${threadId}`)
+        console.log(`MESSAGE Project: ${projectName}`)
+        console.log(`MESSAGE Payload: ${JSON.stringify(payload)}`)
+
+        // Get thread instance (works for both local and AgentOS)
+        const instance = threadCodayManager.get(threadId)
+        if (!instance) {
+          res.status(404).send('Thread not found or not connected')
+          return
+        }
+
+        // Verify thread ownership
+        if (instance.username !== username) {
+          res.status(403).send('Access denied: thread belongs to another user')
+          return
+        }
+
+        // Check if it's a local instance with Coday
+        if (instance.coday) {
+          // Local Coday: use interactor
+          instance.coday.interactor.sendEvent(new AnswerEvent(payload))
+        } else {
+          // AgentOS: use sendMessage method
+
+          const agentosInstance = instance as any // Cast to access AgentOS-specific methods
+          if (agentosInstance.sendMessage) {
+            await agentosInstance.sendMessage(payload.answer, payload.parentKey)
+          } else {
+            res.status(500).send('Instance does not support message sending')
+            return
+          }
+        }
+
+        res.status(200).send('Message received successfully!')
+      } catch (error) {
+        console.error('Error processing AnswerEvent:', error)
+        res.status(400).send('Invalid event data!')
       }
-
-      const username = getUsernameFn(req)
-      if (!username) {
-        res.status(401).send('Authentication required')
-        return
-      }
-
-      debugLog('MESSAGE', `threadId: ${threadId}, project: ${projectName}, received message`)
-
-      const instance = threadCodayManager.get(threadId)
-      if (!instance?.coday) {
-        res.status(404).send('Thread not found or not connected')
-        return
-      }
-
-      // Verify thread ownership
-      if (instance.username !== username) {
-        res.status(403).send('Access denied: thread belongs to another user')
-        return
-      }
-
-      instance.coday.interactor.sendEvent(new AnswerEvent(payload))
-
-      res.status(200).send('Message received successfully!')
-    } catch (error) {
-      console.error('Error processing AnswerEvent:', error)
-      res.status(400).send('Invalid event data!')
     }
-  })
+  )
 
   /**
    * GET /api/projects/:projectName/threads/:threadId/messages/:eventId
