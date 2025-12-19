@@ -1,3 +1,13 @@
+## 0.57.0 (2025-12-19)
+
+### 🚀 Features
+
+- #388 mcp pooled instances ([#397](https://github.com/whoz-oss/coday/pull/397), [#388](https://github.com/whoz-oss/coday/issues/388))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.56.0 (2025-12-19)
 
 ### 🚀 Features
