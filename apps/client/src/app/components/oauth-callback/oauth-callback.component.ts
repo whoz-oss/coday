@@ -19,7 +19,7 @@ export class OAuthCallbackComponent implements OnInit {
 
     console.log('[OAuth Callback] Code:', code, 'State:', state, 'Error:', error, 'Opener:', !!window.opener)
 
-    // Gérer les erreurs OAuth (ex: access_denied)
+    // Handle OAuth errors (e.g., access_denied)
     if (error) {
       console.log('[OAuth Callback] OAuth error received:', error, errorDescription)
 
@@ -29,11 +29,11 @@ export class OAuthCallbackComponent implements OnInit {
       }
 
       try {
-        // Envoyer l'erreur à la fenêtre parente
+        // Send error to parent window
         window.opener.postMessage({ error, state, errorDescription }, window.location.origin)
         console.log('[OAuth Callback] Error postMessage sent successfully')
 
-        // Fermer la popup
+        // Close popup
         setTimeout(() => {
           console.log('[OAuth Callback] Closing popup after error')
           window.close()
@@ -57,12 +57,12 @@ export class OAuthCallbackComponent implements OnInit {
     }
 
     try {
-      // Envoyer à la fenêtre parente
+      // Send to parent window
       console.log('[OAuth Callback] Sending postMessage to parent')
       window.opener.postMessage({ code, state }, window.location.origin)
       console.log('[OAuth Callback] postMessage sent successfully')
 
-      // Fermer la popup après un court délai
+      // Close popup after a short delay
       setTimeout(() => {
         console.log('[OAuth Callback] Closing popup')
         window.close()

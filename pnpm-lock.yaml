@@ -81,7 +81,7 @@ importers:
         specifier: 16.4.0
         version: 16.4.0
       oauth4webapi:
-        specifier: ^3.8.3
+        specifier: 3.8.3
         version: 3.8.3
       openai:
         specifier: 6.10.0

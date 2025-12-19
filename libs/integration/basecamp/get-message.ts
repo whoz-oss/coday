@@ -41,7 +41,7 @@ export async function getBasecampMessage(oauth: BasecampOAuth, projectId: number
 
 ${content}`
 
-    // Ajouter les commentaires s'il y en a
+    // Add comments section if there are any
     if (commentsCount > 0 && message.comments_url) {
       result += `\n\n## Comments
 

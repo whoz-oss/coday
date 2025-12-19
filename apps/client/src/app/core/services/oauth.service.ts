@@ -19,40 +19,40 @@ export class OAuthService {
   private popupCheckInterval: ReturnType<typeof setInterval> | null = null
 
   constructor() {
-    // Écouter les OAuthRequestEvent
+    // Listen to OAuthRequestEvent
     this.eventStream.events$
       .pipe(filter((e): e is OAuthRequestEvent => e.type === 'oauth_request'))
       .subscribe((event) => this.handleOAuthRequest(event))
 
-    // Écouter les messages de la popup (postMessage)
+    // Listen to popup messages (postMessage)
     window.addEventListener('message', (event) => this.handlePopupMessage(event))
   }
 
   /**
-   * Surveiller la popup pour détecter sa fermeture
+   * Monitor popup to detect when it closes
    */
   private startPopupMonitoring(popup: Window, state: string): void {
-    // Nettoyer l'intervalle précédent si existant
+    // Clean up previous interval if it exists
     if (this.popupCheckInterval) {
       clearInterval(this.popupCheckInterval)
     }
 
-    // Vérifier toutes les 500ms si la popup est fermée
+    // Check every 500ms if popup is closed
     this.popupCheckInterval = setInterval(() => {
       if (popup.closed) {
         console.log('[OAuth Service] Popup closed by user')
         clearInterval(this.popupCheckInterval!)
         this.popupCheckInterval = null
 
-        // Vérifier si le state est toujours pending (pas de callback reçu)
+        // Check if state is still pending (no callback received)
         if (this.pendingStates.has(state)) {
           console.warn('[OAuth Service] OAuth cancelled - popup closed without completing authentication')
 
-          // Récupérer integrationName AVANT de delete
+          // Get integrationName BEFORE deleting
           const integrationName = this.pendingStates.get(state)
           this.pendingStates.delete(state)
 
-          // Envoyer un OAuthCallbackEvent avec erreur user_cancelled
+          // Send OAuthCallbackEvent with user_cancelled error
           const projectName = this.projectState.getSelectedProjectId()
           const threadId = this.threadState.getSelectedThreadId()
 
@@ -77,11 +77,11 @@ export class OAuthService {
   private handleOAuthRequest(event: OAuthRequestEvent): void {
     console.log('[OAuth Service] Received OAuthRequestEvent:', event.integrationName, event.state)
 
-    // Stocker le state pour validation
+    // Store state for validation
     this.pendingStates.set(event.state, event.integrationName)
     console.log('[OAuth Service] Pending states:', Array.from(this.pendingStates.keys()))
 
-    // Ouvrir popup centrée
+    // Open centered popup
     const width = 600
     const height = 900
     const left = window.screenX + (window.outerWidth - width) / 2
@@ -91,7 +91,7 @@ export class OAuthService {
 
     console.log('[OAuth Service] Popup opened:', !!popup)
 
-    // Détecter la fermeture de la popup
+    // Detect popup closure
     if (popup) {
       this.startPopupMonitoring(popup, event.state)
     }
@@ -100,7 +100,7 @@ export class OAuthService {
   private handlePopupMessage(event: MessageEvent): void {
     console.log('[OAuth Service] Received postMessage:', event.origin, event.data)
 
-    // Vérifier l'origine (sécurité basique)
+    // Check origin (basic security)
     if (event.origin !== window.location.origin) {
       console.warn('[OAuth Service] Rejected message from different origin:', event.origin)
       return
@@ -108,7 +108,7 @@ export class OAuthService {
 
     const { code, state, error, errorDescription } = event.data || {}
 
-    // Gérer les erreurs OAuth (ex: access_denied)
+    // Handle OAuth errors (e.g., access_denied)
     if (error) {
       console.log('[OAuth Service] OAuth error received:', error, errorDescription)
 
@@ -116,13 +116,13 @@ export class OAuthService {
       if (integrationName) {
         this.pendingStates.delete(state)
 
-        // Arrêter le monitoring de la popup
+        // Stop popup monitoring
         if (this.popupCheckInterval) {
           clearInterval(this.popupCheckInterval)
           this.popupCheckInterval = null
         }
 
-        // Envoyer un OAuthCallbackEvent avec l'erreur
+        // Send OAuthCallbackEvent with error
         const projectName = this.projectState.getSelectedProjectId()
         const threadId = this.threadState.getSelectedThreadId()
 
@@ -163,14 +163,14 @@ export class OAuthService {
 
     console.log('[OAuth Service] Found integration:', integrationName)
 
-    // Nettoyer le state et arrêter le monitoring de la popup
+    // Clean up state and stop popup monitoring
     this.pendingStates.delete(state)
     if (this.popupCheckInterval) {
       clearInterval(this.popupCheckInterval)
       this.popupCheckInterval = null
     }
 
-    // Créer et envoyer l'event au backend
+    // Create and send event to backend
     const callbackEvent = new OAuthCallbackEvent({ code, state, integrationName })
 
     const projectName = this.projectState.getSelectedProjectId()

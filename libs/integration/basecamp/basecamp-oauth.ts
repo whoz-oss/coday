@@ -1,3 +1,18 @@
+/**
+ * Basecamp OAuth2 Integration
+ *
+ * This implementation uses oauth4webapi (low-level OAuth library) instead of openid-client because:
+ * - Basecamp's OAuth2 implementation has non-standard quirks:
+ *   - Missing token_type in token response (OAuth2 spec violation)
+ *   - Requires custom 'type' parameter (type=web_server, type=refresh)
+ *   - Non-standard accounts endpoint for multi-account selection
+ * - oauth4webapi's low-level API allows manual fallbacks for these quirks
+ * - Recommended by oauth.net (linked in Basecamp API docs)
+ * - Zero dependencies = better security posture
+ * - Same author (Filip Skokan), same certification (OpenID Connect) as openid-client
+ *
+ * See: https://github.com/basecamp/api/blob/master/sections/authentication.md
+ */
 import * as oauth from 'oauth4webapi'
 import { Interactor } from '../../model'
 import { OAuthRequestEvent, OAuthCallbackEvent } from '@coday/coday-events'
@@ -40,7 +55,7 @@ export class BasecampOAuth {
     private projectName: string,
     private integrationName: string = 'BASECAMP'
   ) {
-    // Basecamp has no discovery
+    // Basecamp has no OIDC discovery endpoint
     this.as = {
       issuer: 'https://launchpad.37signals.com',
       authorization_endpoint: 'https://launchpad.37signals.com/authorization/new',
@@ -53,7 +68,7 @@ export class BasecampOAuth {
 
   isAuthenticated(): boolean {
     if (!this.tokenData) {
-      // Try to load from UserService
+      // Try to load tokens from user storage
       this.loadTokensFromStorage()
     }
     if (!this.tokenData) return false
@@ -84,12 +99,12 @@ export class BasecampOAuth {
       return this.tokenData!
     }
 
-    // Generate state and PKCE
+    // Generate PKCE challenge and state
     const state = oauth.generateRandomState()
     const codeVerifier = oauth.generateRandomCodeVerifier()
     const codeChallenge = await oauth.calculatePKCECodeChallenge(codeVerifier)
 
-    // Store for callback
+    // Store state and verifier for callback validation
     this.pendingState = state
     this.pendingCodeVerifier = codeVerifier
 
@@ -110,8 +125,8 @@ export class BasecampOAuth {
       })
     )
 
-    // Await callback
-    // Note: timeout handled on frontend
+    // Return promise that will be resolved by handleCallback()
+    // Note: timeout is handled by frontend
     return new Promise((resolve, reject) => {
       this.pendingResolve = resolve
       this.pendingReject = reject
@@ -125,7 +140,7 @@ export class BasecampOAuth {
       return
     }
 
-    // Handle OAuth errors
+    // Handle OAuth errors (access_denied, user_cancelled, etc.)
     if (event.error) {
       const errorMessage =
         event.error === 'access_denied'
@@ -136,13 +151,13 @@ export class BasecampOAuth {
 
       this.interactor.warn(errorMessage)
 
-      // Reject pending promise
+      // Reject the authentication promise
       if (this.pendingReject) {
         this.pendingReject(new Error(errorMessage))
         this.pendingReject = null
       }
 
-      // Cleanup
+      // Cleanup pending state
       this.pendingResolve = null
       this.pendingState = null
       this.pendingCodeVerifier = null
@@ -161,7 +176,7 @@ export class BasecampOAuth {
 
       const params = oauth.validateAuthResponse(this.as, this.client, callbackUrl, this.pendingState)
 
-      // Exchange code against tokens
+      // Exchange authorization code for access token
       let response = await oauth.authorizationCodeGrantRequest(
         this.as,
         this.client,
@@ -176,24 +191,24 @@ export class BasecampOAuth {
 
       this.interactor.debug(`Token exchange response status: ${response.status}`)
 
-      // Get body before oauth4webapi
+      // Get raw response body before processing
       const rawBody = await response.text()
 
-      // Build response with same body for oauth4webapi
+      // Recreate response with same body for oauth4webapi processing
       response = new Response(rawBody, {
         status: response.status,
         statusText: response.statusText,
         headers: response.headers,
       })
 
-      // oauth4webapi validates strictly, but Basecamp does not return token_type
-      // parsing manually...
+      // oauth4webapi validates strictly, but Basecamp omits token_type (OAuth2 spec violation)
+      // We try standard validation first, then fall back to manual parsing
       let result: any
       try {
         result = await oauth.processAuthorizationCodeResponse(this.as, this.client, response)
         this.interactor.debug('oauth4webapi validation succeeded')
       } catch (error: any) {
-        // Basecamp does not retun token_type (non-conform OAuth 2.0 strict)
+        // Fallback: manual parsing for Basecamp's non-standard response
         this.interactor.debug(`Using manual parsing for Basecamp response: ${error.message}`)
 
         if (!response.ok) {
@@ -204,24 +219,25 @@ export class BasecampOAuth {
         this.interactor.debug('Token response parsed successfully')
       }
 
-      // Store tokens
+      // Store access and refresh tokens
       this.tokenData = {
         accessToken: result.access_token,
         refreshToken: result.refresh_token,
-        expiresAt: Date.now() + (result.expires_in ?? 1209600) * 1000,
+        expiresAt: Date.now() + (result.expires_in ?? 1209600) * 1000, // Default 14 days
       }
 
-      // Get accounts BEFORE persisting
+      // Fetch available Basecamp accounts before saving
       await this.fetchAccounts()
 
       this.saveTokensToStorage()
 
+      // Resolve the authentication promise
       if (this.pendingResolve) {
         this.pendingResolve(this.tokenData)
         this.pendingResolve = null
       }
 
-      // Cleanup
+      // Cleanup pending state
       this.pendingState = null
       this.pendingCodeVerifier = null
     } catch (error: any) {
@@ -247,6 +263,7 @@ export class BasecampOAuth {
 
       const data = (await response.json()) as any
 
+      // Filter for Basecamp 3 accounts only
       this.accounts = data.accounts
         .filter((a: any) => a.product === 'bc3')
         .map((a: any) => ({ id: a.id, name: a.name, href: a.href }))
@@ -284,10 +301,10 @@ export class BasecampOAuth {
       this.tokenData = {
         accessToken: result.access_token,
         refreshToken: result.refresh_token ?? this.tokenData.refreshToken,
-        expiresAt: Date.now() + (result.expires_in ?? 1209600) * 1000,
+        expiresAt: Date.now() + (result.expires_in ?? 1209600) * 1000, // Default 14 days
       }
 
-      // Persist new tokens
+      // Save refreshed tokens to storage
       this.saveTokensToStorage()
     } catch (error: any) {
       this.tokenData = null
@@ -332,7 +349,7 @@ export class BasecampOAuth {
 
     const userConfig = this.userService.config
 
-    // Ensure structure exists
+    // Ensure nested configuration structure exists
     if (!userConfig.projects) userConfig.projects = {}
     if (!userConfig.projects[this.projectName]) userConfig.projects[this.projectName] = { integration: {} }
     if (!userConfig.projects[this.projectName]!.integration) userConfig.projects[this.projectName]!.integration = {}
@@ -343,7 +360,7 @@ export class BasecampOAuth {
       userConfig.projects[this.projectName]!.integration![this.integrationName]!.oauth2 = {} as any
     }
 
-    // Save tokens and account info
+    // Save tokens and selected account information
     const oauth2Config = userConfig.projects[this.projectName]!.integration![this.integrationName]!.oauth2!
     oauth2Config.tokens = {
       access_token: this.tokenData.accessToken,
@@ -360,7 +377,7 @@ export class BasecampOAuth {
       oauth2Config.account_name = selectedAccount.name
     }
 
-    // Persist to disk
+    // Write to user configuration file
     this.userService.save()
     this.interactor.debug(`Saved OAuth tokens to storage for ${this.integrationName}`)
   }
