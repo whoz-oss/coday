@@ -99,17 +99,19 @@ export class AgentService implements Killable {
       const filesTime = performance.now() - filesStart
       this.interactor.debug(`📁 Loaded agent definitions from files: ${filesTime.toFixed(2)}ms`)
 
-      // Generate virtual agents from available models
-      const virtualStart = performance.now()
-      this.generateVirtualAgentsFromModels()
-      const virtualTime = performance.now() - virtualStart
-      this.interactor.debug(`🤖 Generated virtual agents from models: ${virtualTime.toFixed(2)}ms`)
-
       // If no agent definitions were loaded, use Coday as backup
+      // This must be done BEFORE generating virtual agents to ensure Coday is always available
       if (this.agentDefinitions.length === 0) {
         this.addDefinition(CodayAgentDefinition, this.projectPath)
         this.interactor.debug('🔄 No agent definitions found, using Coday as backup')
       }
+
+      // Generate virtual agents from available models
+      // This is done AFTER the backup check to ensure Coday is always present
+      const virtualStart = performance.now()
+      this.generateVirtualAgentsFromModels()
+      const virtualTime = performance.now() - virtualStart
+      this.interactor.debug(`🤖 Generated virtual agents from models: ${virtualTime.toFixed(2)}ms`)
     } catch (error: unknown) {
       this.interactor.error(`Failed to initialize agent definitions: ${error}`)
       throw error
