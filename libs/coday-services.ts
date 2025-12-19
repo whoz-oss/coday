@@ -8,6 +8,7 @@ import { McpConfigService } from './service/mcp-config.service'
 import { AiConfigService } from './service/ai-config.service'
 import { WebhookService } from './service/webhook.service'
 import { CodayLogger } from './service/coday-logger'
+import { McpInstancePool } from './integration/mcp/mcp-instance-pool'
 import { ThreadService } from '../apps/server/src/services/thread.service'
 
 export type CodayServices = {
@@ -18,6 +19,7 @@ export type CodayServices = {
   integrationConfig: IntegrationConfigService
   memory: MemoryService
   mcp: McpConfigService
+  mcpPool: McpInstancePool
   logger: CodayLogger
   agent?: AgentService
   aiConfig?: AiConfigService
