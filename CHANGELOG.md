@@ -1,3 +1,13 @@
+## 0.56.0 (2025-12-19)
+
+### 🚀 Features
+
+- #400 pause auto-scroll when user scrolls during streaming ([#407](https://github.com/whoz-oss/coday/pull/407), [#400](https://github.com/whoz-oss/coday/issues/400))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.55.4 (2025-12-18)
 
 ### 🩹 Fixes
