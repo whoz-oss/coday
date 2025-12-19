@@ -82,6 +82,9 @@ function mergeServerConfigs(existing: McpServerConfig, override: McpServerConfig
     enabled:
       override.enabled !== undefined ? override.enabled : existing.enabled !== undefined ? existing.enabled : true,
 
+    // NoShare: if any level sets noShare to true, it stays true (most restrictive wins)
+    noShare: existing.noShare || override.noShare || false,
+
     // Env: use merged environment with fallbacks applied
     env: envWithFallbacks,
 
@@ -103,6 +106,7 @@ function applyServerDefaults(server: McpServerConfig): McpServerConfig {
     ...server,
     enabled: server.enabled !== undefined ? server.enabled : true,
     debug: server.debug || false,
+    noShare: server.noShare || false,
     args: server.args || [],
     env: envWithFallbacks,
   }
@@ -114,26 +118,26 @@ function applyServerDefaults(server: McpServerConfig): McpServerConfig {
  */
 const DEFAULT_INHERITED_ENV_VARS = [
   // Execution environment - essential for running commands
-  'PATH',           // Command search path (essential)
-  'HOME',           // User's home directory
-  'USER',           // Current username
-  'TMPDIR',         // Temp directory (Unix/Linux/Mac)
-  'TEMP',           // Temp directory (Windows)
-  'TMP',            // Alternative temp directory (Windows)
-  
+  'PATH', // Command search path (essential)
+  'HOME', // User's home directory
+  'USER', // Current username
+  'TMPDIR', // Temp directory (Unix/Linux/Mac)
+  'TEMP', // Temp directory (Windows)
+  'TMP', // Alternative temp directory (Windows)
+
   // Locale and encoding - important for text processing
-  'LANG',           // Language/locale settings
-  'LC_ALL',         // Locale override
-  'LC_CTYPE',       // Character encoding
-  
+  'LANG', // Language/locale settings
+  'LC_ALL', // Locale override
+  'LC_CTYPE', // Character encoding
+
   // Terminal settings - useful for CLI tools
-  'TERM',           // Terminal type
-  'COLORTERM',      // Color support indicator
-  
+  'TERM', // Terminal type
+  'COLORTERM', // Color support indicator
+
   // Shell and platform detection
-  'SHELL',          // User's default shell (Unix/Linux/Mac)
-  'OS',             // Operating system (Windows)
-  
+  'SHELL', // User's default shell (Unix/Linux/Mac)
+  'OS', // Operating system (Windows)
+
   // Note: Security-sensitive variables (tokens, keys, passwords, secrets)
   // are NOT included and must be explicitly whitelisted via whiteListedHostEnvVarNames
 ]
