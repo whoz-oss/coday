@@ -14,9 +14,9 @@ This library provides the `CodayConfig` interface and related utilities for mana
 ## Key Features
 
 - **Unified interface**: Same `CodayConfig` type used at all levels
+- **UserConfig extension**: Specialized type for user-level config with per-project overrides
 - **Intelligent merging**: Smart merge logic for AI providers, MCP servers, integrations
 - **Context stacking**: Concatenates contexts from all levels
-- **Backward compatibility**: Deprecated fields mapped automatically
 - **Well-tested**: 98%+ code coverage with comprehensive unit tests
 
 ## Installation
@@ -24,7 +24,7 @@ This library provides the `CodayConfig` interface and related utilities for mana
 This is an internal library used by other Coday packages:
 
 ```typescript
-import { CodayConfig, mergeCodayConfigs, normalizeCodayConfig } from '@coday/coday-config'
+import { CodayConfig, UserConfig, mergeCodayConfigs } from '@coday/coday-config'
 ```
 
 ## Usage
@@ -56,16 +56,39 @@ const config: CodayConfig = {
 }
 ```
 
+### User Configuration with Per-Project Overrides
+
+```typescript
+const userConfig: UserConfig = {
+  version: 1,
+  context: 'I am Vincent, a software engineer',
+  ai: [{ name: 'openai', apiKey: 'sk-user-xxx' }],
+  
+  // Per-project overrides
+  projects: {
+    'coday': {
+      version: 1,
+      context: 'Focus on TypeScript best practices',
+      defaultAgent: 'sway',
+    },
+    'my-app': {
+      version: 1,
+      ai: [{ name: 'anthropic', apiKey: 'sk-ant-xxx' }],
+    },
+  },
+}
+```
+
 ### Merging Configurations
 
 ```typescript
-const userConfig: CodayConfig = {
+const userGlobal: CodayConfig = {
   version: 1,
   context: 'I am Vincent',
   ai: [{ name: 'openai', apiKey: 'sk-user-xxx' }],
 }
 
-const projectConfig: CodayConfig = {
+const codayYaml: CodayConfig = {
   version: 1,
   context: 'This is Coday project',
   ai: [
@@ -76,38 +99,32 @@ const projectConfig: CodayConfig = {
   ],
 }
 
+const projectLocal: CodayConfig = {
+  version: 1,
+  integrations: {
+    github: { apiKey: 'ghp_local_xxx' },
+  },
+}
+
+// Extract user-project config
+const userProject: CodayConfig | undefined = userConfig.projects?.['coday']
+
 // Merge configs (later configs override earlier ones)
-const merged = mergeCodayConfigs(userConfig, projectConfig)
+const merged = mergeCodayConfigs(userGlobal, codayYaml, projectLocal, userProject)
 
 // Result:
 // {
 //   version: 1,
-//   context: "I am Vincent\n\n---\n\nThis is Coday project",
+//   context: "I am Vincent\n\n---\n\nThis is Coday project\n\n---\n\nFocus on TypeScript best practices",
 //   ai: [{
 //     name: 'openai',
 //     apiKey: 'sk-user-xxx',
 //     models: [{ name: 'gpt-4o', alias: 'BIG', contextWindow: 128000 }]
-//   }]
-// }
-```
-
-### Normalizing Deprecated Fields
-
-```typescript
-const oldConfig: CodayConfig = {
-  version: 1,
-  description: 'Project description', // deprecated
-  bio: 'User bio', // deprecated
-}
-
-const normalized = normalizeCodayConfig(oldConfig)
-
-// Result:
-// {
-//   version: 1,
-//   context: "Project description\n\n---\n\nUser bio",
-//   description: 'Project description', // preserved for compatibility
-//   bio: 'User bio' // preserved for compatibility
+//   }],
+//   integrations: {
+//     github: { apiKey: 'ghp_local_xxx' }
+//   },
+//   defaultAgent: 'sway'
 // }
 ```
 
@@ -132,13 +149,25 @@ Concatenated with separator: `\n\n---\n\n`
 
 ### Simple Properties
 - `defaultAgent`: last value wins
-- Deprecated fields: last value wins (no merge)
+
+### Projects Property (UserConfig only)
+The `projects` property is **never merged**. It only exists at the user global level and is used to extract per-project configs before merging.
 
 ## API Reference
 
 ### `CodayConfig`
 
-Main configuration interface. See TypeScript definitions for complete structure.
+Main configuration interface used at all levels. Contains:
+- `version`: Configuration version number
+- `context`: Contextual information (bio, description, guidelines)
+- `ai`: AI provider configurations
+- `mcp`: MCP server configurations
+- `integrations`: Integration configurations (Slack, GitHub, etc.)
+- `defaultAgent`: Default agent name
+
+### `UserConfig extends CodayConfig`
+
+User-level configuration with additional `projects` property for per-project overrides.
 
 ### `mergeCodayConfigs(...configs: (CodayConfig | undefined | null)[]): CodayConfig`
 
@@ -150,19 +179,44 @@ Merge multiple configurations according to stacking order. Later configs overrid
 **Returns:**
 - Merged configuration
 
-### `normalizeCodayConfig(config: CodayConfig): CodayConfig`
-
-Normalize a config by mapping deprecated fields to their modern equivalents.
-
-**Parameters:**
-- `config` - Configuration to normalize
-
-**Returns:**
-- Normalized configuration
+**Example:**
+```typescript
+const merged = mergeCodayConfigs(
+  userGlobal,
+  codayYaml,
+  projectLocal,
+  userProjectOverride
+)
+```
 
 ### `DEFAULT_CODAY_CONFIG`
 
 Default empty configuration with version 1.
+
+## Configuration Levels
+
+### User Global (`~/.coday/users/{username}/user.yaml`)
+- Type: `UserConfig`
+- Contains global user preferences (API keys, bio)
+- Can define per-project overrides via `projects` property
+- Lowest priority in merge order
+
+### Coday.yaml (project root)
+- Type: `CodayConfig`
+- Versioned with the project
+- Contains project description, required integrations, MCP servers
+- Second priority in merge order
+
+### Project Local (`~/.coday/projects/{name}/project.yaml`)
+- Type: `CodayConfig`
+- Local, non-versioned overrides
+- Contains secrets, local paths, storage configuration
+- Third priority in merge order
+
+### User Project (`user.yaml > projects[name]`)
+- Type: `CodayConfig`
+- User-specific overrides for a specific project
+- Highest priority in merge order
 
 ## Testing
 
@@ -172,7 +226,11 @@ Run tests:
 nx test coday-config
 ```
 
-Current coverage: **98.52%**
+Current coverage: **98.03%** (25 tests)
+
+## Migration from Old Config Types
+
+This library does **not** handle migration from deprecated configuration types (`ProjectDescription`, `ProjectLocalConfig`, old `UserConfig`). Migration logic should be implemented at the application level when loading configurations.
 
 ## Related Documentation
 

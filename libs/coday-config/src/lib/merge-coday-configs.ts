@@ -11,7 +11,9 @@ import { CodayConfig } from './coday-config'
  * - **mcp**: Servers merged by id
  * - **integrations**: Merged by key
  * - **defaultAgent**: Last value wins
- * - **deprecated fields**: Last value wins (no merge)
+ *
+ * Note: The `projects` property (from UserConfig) is never merged.
+ * It only exists at the user global level and is used to extract per-project configs.
  *
  * @param configs Array of configs to merge, in order of increasing priority
  * @returns Merged configuration
@@ -107,12 +109,6 @@ export function mergeCodayConfigs(...configs: (CodayConfig | undefined | null)[]
 
     // Simple overrides
     if (config.defaultAgent !== undefined) result.defaultAgent = config.defaultAgent
-
-    // Deprecated fields (simple override, no merge)
-    if (config.agents !== undefined) result.agents = config.agents
-    if (config.agentFolders !== undefined) result.agentFolders = config.agentFolders
-    if (config.scripts !== undefined) result.scripts = config.scripts
-    if (config.prompts !== undefined) result.prompts = config.prompts
   }
 
   return result

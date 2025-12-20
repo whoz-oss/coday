@@ -1,9 +1,6 @@
 import { AiProviderConfig } from '@coday/model/ai-provider-config'
 import { McpConfig } from '@coday/model/mcp-server-config'
 import { IntegrationConfig } from '@coday/model/integration-config'
-import { AgentDefinition } from '@coday/model/agent-definition'
-import { Scripts } from '@coday/model/scripts'
-import { PromptChain } from '@coday/model/prompt-chain'
 
 /**
  * Integration configurations mapped by integration name
@@ -98,9 +95,17 @@ export interface CodayConfig {
    * or in Coday's built-in agents.
    */
   defaultAgent?: string
+}
 
+/**
+ * User-level configuration extending CodayConfig.
+ * Stored in ~/.coday/users/{username}/user.yaml
+ *
+ * Adds the ability to define per-project overrides.
+ */
+export interface UserConfig extends CodayConfig {
   /**
-   * User-specific project configurations (only in user global config).
+   * User-specific project configurations.
    * Maps project name to project-specific user config.
    *
    * This allows users to customize settings per project:
@@ -123,56 +128,6 @@ export interface CodayConfig {
   projects?: {
     [projectName: string]: CodayConfig
   }
-
-  // ============================================================================
-  // DEPRECATED FIELDS
-  // These fields are kept for backward compatibility but should not be used
-  // in new configurations. They will be removed in a future version.
-  // ============================================================================
-
-  /**
-   * @deprecated Agents should be defined in agents/ folder, not in config files.
-   * This field will be removed in a future version.
-   *
-   * Migration: Move agent definitions to:
-   * - {project-root}/agents/ for project-specific agents
-   * - ~/.coday/agents/ for user-global agents
-   */
-  agents?: AgentDefinition[]
-
-  /**
-   * @deprecated Agent folders should be configured via CLI --agentFolders flag,
-   * not in config files. This field will be removed in a future version.
-   */
-  agentFolders?: string[]
-
-  /**
-   * @deprecated Scripts should be defined separately, not in config.
-   * This field will be removed in a future version.
-   *
-   * Consider using MCP servers for custom tools instead.
-   */
-  scripts?: Scripts
-
-  /**
-   * @deprecated Prompts should be defined separately, not in config.
-   * This field will be removed in a future version.
-   *
-   * Consider using prompt chains or agent-specific prompts instead.
-   */
-  prompts?: { [key: string]: PromptChain }
-
-  /**
-   * @deprecated Use 'context' field instead.
-   * This field is mapped to 'context' during loading for backward compatibility.
-   */
-  description?: string
-
-  /**
-   * @deprecated Use 'context' field instead.
-   * This field is mapped to 'context' during loading for backward compatibility.
-   */
-  bio?: string
 }
 
 /**
@@ -181,32 +136,4 @@ export interface CodayConfig {
  */
 export const DEFAULT_CODAY_CONFIG: CodayConfig = {
   version: 1,
-}
-
-/**
- * Normalize a config by mapping deprecated fields to their modern equivalents.
- * This ensures backward compatibility when loading old configuration files.
- *
- * @param config Configuration to normalize
- * @returns Normalized configuration with deprecated fields mapped
- */
-export function normalizeCodayConfig(config: CodayConfig): CodayConfig {
-  const normalized = { ...config }
-
-  // Map deprecated 'description' to 'context'
-  if (config.description && !config.context) {
-    normalized.context = config.description
-  }
-
-  // Map deprecated 'bio' to 'context'
-  if (config.bio && !config.context) {
-    normalized.context = config.bio
-  }
-
-  // If both 'description' and 'bio' exist, concatenate them
-  if (config.description && config.bio && !config.context) {
-    normalized.context = config.description + '\n\n---\n\n' + config.bio
-  }
-
-  return normalized
 }
