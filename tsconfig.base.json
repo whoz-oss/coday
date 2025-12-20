@@ -29,7 +29,8 @@
       "@coday/model/*": ["libs/model/*"],
       "@coday/options": ["libs/options.ts"],
       "@coday/repository/*": ["libs/repository/*"],
-      "@coday/service/*": ["libs/service/*"]
+      "@coday/service/*": ["libs/service/*"],
+      "coday-config": ["libs/coday-config/src/index.ts"]
     },
     "skipDefaultLibCheck": true,
     "skipLibCheck": true,

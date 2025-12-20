@@ -1,9 +1,9 @@
-import { AiProviderConfig } from './ai-provider-config'
-import { McpConfig } from './mcp-server-config'
-import { IntegrationConfig } from './integration-config'
-import { AgentDefinition } from './agent-definition'
-import { Scripts } from './scripts'
-import { PromptChain } from './prompt-chain'
+import { AiProviderConfig } from '@coday/model/ai-provider-config'
+import { McpConfig } from '@coday/model/mcp-server-config'
+import { IntegrationConfig } from '@coday/model/integration-config'
+import { AgentDefinition } from '@coday/model/agent-definition'
+import { Scripts } from '@coday/model/scripts'
+import { PromptChain } from '@coday/model/prompt-chain'
 
 /**
  * Integration configurations mapped by integration name
@@ -181,96 +181,6 @@ export interface CodayConfig {
  */
 export const DEFAULT_CODAY_CONFIG: CodayConfig = {
   version: 1,
-}
-
-/**
- * Merge multiple CodayConfig objects according to the stacking order.
- * Later configs override earlier configs for simple properties.
- * Arrays (ai, mcp.servers, etc.) are merged intelligently.
- *
- * @param configs Array of configs to merge, in order of increasing priority
- * @returns Merged configuration
- */
-export function mergeCodayConfigs(...configs: (CodayConfig | undefined | null)[]): CodayConfig {
-  const result: CodayConfig = { version: 1 }
-
-  for (const config of configs) {
-    if (!config) continue
-
-    // Merge context (concatenate with separator)
-    if (config.context) {
-      if (result.context) {
-        result.context += '\n\n---\n\n' + config.context
-      } else {
-        result.context = config.context
-      }
-    }
-
-    // Merge AI providers (by name)
-    if (config.ai) {
-      if (!result.ai) result.ai = []
-      for (const provider of config.ai) {
-        const existing = result.ai.find((p) => p.name === provider.name)
-        if (existing) {
-          // Merge provider properties
-          Object.assign(existing, provider)
-          // Merge models if present
-          if (provider.models) {
-            if (!existing.models) existing.models = []
-            for (const model of provider.models) {
-              const existingModel = existing.models.find((m) => m.name === model.name)
-              if (existingModel) {
-                Object.assign(existingModel, model)
-              } else {
-                existing.models.push(model)
-              }
-            }
-          }
-        } else {
-          result.ai.push({ ...provider })
-        }
-      }
-    }
-
-    // Merge MCP config
-    if (config.mcp) {
-      if (!result.mcp) result.mcp = { servers: [] }
-      if (config.mcp.servers) {
-        if (!result.mcp.servers) result.mcp.servers = []
-        for (const server of config.mcp.servers) {
-          const existing = result.mcp.servers.find((s) => s.id === server.id)
-          if (existing) {
-            Object.assign(existing, server)
-          } else {
-            result.mcp.servers.push({ ...server })
-          }
-        }
-      }
-    }
-
-    // Merge integrations (by key)
-    if (config.integrations) {
-      if (!result.integrations) result.integrations = {}
-      for (const [key, integration] of Object.entries(config.integrations)) {
-        if (result.integrations[key]) {
-          Object.assign(result.integrations[key], integration)
-        } else {
-          result.integrations[key] = { ...integration }
-        }
-      }
-    }
-
-    // Simple overrides
-    if (config.defaultAgent !== undefined) result.defaultAgent = config.defaultAgent
-
-    // Deprecated fields (simple override, no merge)
-    if (config.agents !== undefined) result.agents = config.agents
-    if (config.agentFolders !== undefined) result.agentFolders = config.agentFolders
-    if (config.scripts !== undefined) result.scripts = config.scripts
-    if (config.prompts !== undefined) result.prompts = config.prompts
-  }
-
-  return result
 }
 
 /**

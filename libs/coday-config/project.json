@@ -1,0 +1,20 @@
+{
+  "name": "coday-config",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/coday-config/src",
+  "projectType": "library",
+  "tags": [],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/coday-config",
+        "tsConfig": "libs/coday-config/tsconfig.lib.json",
+        "packageJson": "libs/coday-config/package.json",
+        "main": "libs/coday-config/src/index.ts",
+        "assets": ["libs/coday-config/*.md"]
+      }
+    }
+  }
+}
