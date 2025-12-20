@@ -1,6 +1,6 @@
 import { inject, Injectable, OnDestroy } from '@angular/core'
 import { BehaviorSubject, Observable, Subject } from 'rxjs'
-import { takeUntil, tap } from 'rxjs/operators'
+import { takeUntil, tap, map } from 'rxjs/operators'
 import {
   AnswerEvent,
   ChoiceEvent,
@@ -91,6 +91,89 @@ export class CodayService implements OnDestroy {
   }
 
   /**
+   * Load thread history from API
+   * Should be called before connecting to SSE
+   * @param projectName Project name
+   * @param threadId Thread identifier
+   * @returns Observable that completes when history is loaded
+   */
+  loadThreadHistory(projectName: string, threadId: string): Observable<void> {
+    console.log('[CODAY] Loading thread history:', projectName, threadId)
+
+    return this.messageApi.getMessages(projectName, threadId).pipe(
+      tap((response) => {
+        console.log('[CODAY] Thread history loaded:', {
+          messageCount: response.messages.length,
+          threadName: response.threadInfo.name,
+        })
+
+        // Convert backend messages to ChatMessage format using proper conversion
+        const chatMessages: ChatMessage[] = response.messages.map((msg) => this.convertBackendMessageToChatMessage(msg))
+
+        // Load messages with deduplication
+        this.loadMessages(chatMessages)
+      }),
+      map(() => void 0)
+    )
+  }
+
+  /**
+   * Infer message type from backend message
+   */
+  private inferMessageType(msg: any): 'text' | 'error' | 'warning' | 'technical' {
+    if (msg.type === 'error') return 'error'
+    if (msg.type === 'warn') return 'warning'
+    if (msg.type === 'tool_request' || msg.type === 'tool_response') return 'technical'
+    if (msg.role === 'system') return 'technical'
+    return 'text'
+  }
+
+  /**
+   * Convert backend message to ChatMessage format
+   * Handles tool_request and tool_response events with proper text rendering
+   */
+  private convertBackendMessageToChatMessage(msg: any): ChatMessage {
+    // Handle tool_request events
+    if (msg.type === 'tool_request') {
+      const toolRequestEvent = new ToolRequestEvent(msg)
+      return {
+        id: msg.timestamp,
+        role: 'system',
+        speaker: 'System',
+        content: [{ type: 'text', content: toolRequestEvent.toSingleLineString() }],
+        timestamp: new Date(msg.timestamp),
+        type: 'technical',
+        eventId: msg.timestamp,
+      }
+    }
+
+    // Handle tool_response events
+    if (msg.type === 'tool_response') {
+      const toolResponseEvent = new ToolResponseEvent(msg)
+      return {
+        id: msg.timestamp,
+        role: 'system',
+        speaker: 'System',
+        content: [{ type: 'text', content: toolResponseEvent.toSingleLineString() }],
+        timestamp: new Date(msg.timestamp),
+        type: 'technical',
+        eventId: msg.timestamp,
+      }
+    }
+
+    // Handle regular messages
+    return {
+      id: msg.timestamp,
+      role: msg.role || 'system',
+      speaker: msg.name || msg.speaker || 'System',
+      content: msg.content || [{ type: 'text', content: msg.text || '' }],
+      timestamp: new Date(msg.timestamp),
+      type: this.inferMessageType(msg),
+      eventId: msg.timestamp,
+    }
+  }
+
+  /**
    * Connect to a specific thread's event stream
    * @param projectName Project name
    * @param threadId Thread identifier
@@ -115,6 +198,46 @@ export class CodayService implements OnDestroy {
     this.accumulatedChunks = ''
     this.streamingTextSubject.next('')
     this.stopThinking()
+  }
+
+  /**
+   * Load messages in bulk (e.g., from history endpoint)
+   * Deduplicates messages based on their IDs
+   * Replaces existing messages with newer versions if IDs match
+   * @param messages Messages to load
+   */
+  loadMessages(messages: ChatMessage[]): void {
+    console.log('[CODAY] Loading messages in bulk:', messages.length)
+
+    const currentMessages = this.messagesSubject.value
+    const existingMessagesMap = new Map(currentMessages.map((msg) => [msg.id, msg]))
+
+    let replacedCount = 0
+    let newCount = 0
+
+    // Process incoming messages: replace existing or add new
+    messages.forEach((msg) => {
+      if (existingMessagesMap.has(msg.id)) {
+        console.log('[CODAY] Replacing existing message with newer version during bulk load:', msg.id)
+        replacedCount++
+      } else {
+        newCount++
+      }
+      // Always set (either replace or add new)
+      existingMessagesMap.set(msg.id, msg)
+    })
+
+    // Convert map back to array and sort by timestamp (ID) to maintain chronological order
+    const mergedMessages = Array.from(existingMessagesMap.values()).sort((a, b) => a.id.localeCompare(b.id))
+
+    console.log('[CODAY] Loaded messages:', {
+      requested: messages.length,
+      new: newCount,
+      replaced: replacedCount,
+      total: mergedMessages.length,
+    })
+
+    this.messagesSubject.next(mergedMessages)
   }
 
   /**
@@ -490,12 +613,33 @@ export class CodayService implements OnDestroy {
   }
 
   /**
-   * Add a message to the history
+   * Add a message to the history with deduplication
+   * If a message with the same ID exists, replaces it with the newer version
+   * (messages may be updated/modified, so keep the most recent version)
    */
   private addMessage(message: ChatMessage): void {
     const currentMessages = this.messagesSubject.value
-    const newMessages = [...currentMessages, message]
 
+    // Check if message with this ID already exists
+    const existingIndex = currentMessages.findIndex((msg) => msg.id === message.id)
+
+    if (existingIndex !== -1) {
+      console.log('[CODAY] Message already exists, replacing with newer version:', {
+        id: message.id,
+        role: message.role,
+        speaker: message.speaker,
+        contentPreview: message.content[0]?.content?.substring(0, 50) || '(no content)',
+      })
+
+      // Replace the existing message with the new version
+      const newMessages = [...currentMessages]
+      newMessages[existingIndex] = message
+      this.messagesSubject.next(newMessages)
+      return
+    }
+
+    // Add the new message
+    const newMessages = [...currentMessages, message]
     this.messagesSubject.next(newMessages)
   }
 

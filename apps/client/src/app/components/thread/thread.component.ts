@@ -128,6 +128,18 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
 
     // Initialize the thread connection
     this.initializeThreadConnection()
+
+    // Listen for thread changes from ThreadStateService
+    // This handles cases where user selects a different thread from the list
+    this.threadState.selectedThread$.pipe(takeUntil(this.destroy$)).subscribe((thread) => {
+      if (thread && thread.id !== this.threadId) {
+        console.log('[THREAD] Thread changed via service:', thread.id)
+        // Update local threadId
+        this.threadId = thread.id
+        // Reinitialize connection with new thread
+        this.initializeThreadConnection()
+      }
+    })
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -152,7 +164,10 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   /**
    * Initialize or reinitialize the thread connection
    */
-  private initializeThreadConnection(): void {
+  private async initializeThreadConnection(): Promise<void> {
+    // Reset messages when switching threads
+    this.codayService.resetMessages()
+
     console.log('[THREAD] Initializing connection for thread:', this.threadId)
 
     // Initialize file exchange state for this thread
@@ -214,13 +229,20 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
       }
     })
 
-    // Reset messages when switching threads
-    this.codayService.resetMessages()
-
     // Connect services (to avoid circular dependency)
     this.codayService.setTabTitleService(this.titleService)
 
-    // Connect to the thread's event stream
+    // Load thread history first, then connect to SSE
+    console.log('[THREAD] Loading thread history before connecting to event stream')
+    try {
+      await this.codayService.loadThreadHistory(this.projectName, this.threadId).toPromise()
+      console.log('[THREAD] History loaded, now connecting to event stream')
+    } catch (error) {
+      console.error('[THREAD] Failed to load history:', error)
+      // Continue anyway to connect to SSE
+    }
+
+    // Connect to the thread's event stream for real-time updates
     console.log('[THREAD] Connecting to thread event stream')
     this.codayService.connectToThread(this.projectName, this.threadId)
 
