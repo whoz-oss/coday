@@ -326,48 +326,6 @@ describe('mergeCodayConfigs', () => {
     })
   })
 
-  describe('Deprecated fields', () => {
-    it('should override agents with last value', () => {
-      const config1: CodayConfig = {
-        version: 1,
-        agents: [{ name: 'agent1' }] as any,
-      }
-      const config2: CodayConfig = {
-        version: 1,
-        agents: [{ name: 'agent2' }] as any,
-      }
-
-      const result = mergeCodayConfigs(config1, config2)
-
-      expect(result.agents).toHaveLength(1)
-      expect(result.agents?.[0]).toEqual({ name: 'agent2' })
-    })
-
-    it('should override all deprecated fields', () => {
-      const config1: CodayConfig = {
-        version: 1,
-        agents: [{ name: 'agent1' }] as any,
-        agentFolders: ['folder1'],
-        scripts: { script1: {} } as any,
-        prompts: { prompt1: {} } as any,
-      }
-      const config2: CodayConfig = {
-        version: 1,
-        agents: [{ name: 'agent2' }] as any,
-        agentFolders: ['folder2'],
-        scripts: { script2: {} } as any,
-        prompts: { prompt2: {} } as any,
-      }
-
-      const result = mergeCodayConfigs(config1, config2)
-
-      expect(result.agents?.[0]).toEqual({ name: 'agent2' })
-      expect(result.agentFolders).toEqual(['folder2'])
-      expect(result.scripts).toEqual({ script2: {} })
-      expect(result.prompts).toEqual({ prompt2: {} })
-    })
-  })
-
   describe('Complex real-world scenarios', () => {
     it('should merge complete user -> coday.yaml -> project -> user-project stack', () => {
       const userGlobal: CodayConfig = {

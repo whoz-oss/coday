@@ -1,4 +1,4 @@
-import { normalizeCodayConfig, DEFAULT_CODAY_CONFIG, CodayConfig } from './coday-config'
+import { DEFAULT_CODAY_CONFIG, CodayConfig, UserConfig } from './coday-config'
 
 describe('CodayConfig', () => {
   describe('DEFAULT_CODAY_CONFIG', () => {
@@ -11,69 +11,69 @@ describe('CodayConfig', () => {
     })
   })
 
-  describe('normalizeCodayConfig', () => {
-    it('should map deprecated description to context', () => {
+  describe('CodayConfig interface', () => {
+    it('should accept minimal config', () => {
       const config: CodayConfig = {
         version: 1,
-        description: 'This is a description',
       }
 
-      const normalized = normalizeCodayConfig(config)
-
-      expect(normalized.context).toBe('This is a description')
-      expect(normalized.description).toBe('This is a description') // Original preserved
+      expect(config.version).toBe(1)
     })
 
-    it('should map deprecated bio to context', () => {
+    it('should accept full config', () => {
       const config: CodayConfig = {
         version: 1,
-        bio: 'This is a bio',
-      }
-
-      const normalized = normalizeCodayConfig(config)
-
-      expect(normalized.context).toBe('This is a bio')
-      expect(normalized.bio).toBe('This is a bio') // Original preserved
-    })
-
-    it('should concatenate description and bio if both present', () => {
-      const config: CodayConfig = {
-        version: 1,
-        description: 'Project description',
-        bio: 'User bio',
-      }
-
-      const normalized = normalizeCodayConfig(config)
-
-      expect(normalized.context).toBe('Project description\n\n---\n\nUser bio')
-    })
-
-    it('should not override existing context', () => {
-      const config: CodayConfig = {
-        version: 1,
-        context: 'Existing context',
-        description: 'Description',
-        bio: 'Bio',
-      }
-
-      const normalized = normalizeCodayConfig(config)
-
-      expect(normalized.context).toBe('Existing context')
-    })
-
-    it('should preserve all other properties', () => {
-      const config: CodayConfig = {
-        version: 1,
-        description: 'Test',
+        context: 'Test context',
+        ai: [{ name: 'openai', apiKey: 'sk-xxx' }],
+        mcp: { servers: [] },
+        integrations: {},
         defaultAgent: 'sway',
-        ai: [{ name: 'openai' }],
       }
 
-      const normalized = normalizeCodayConfig(config)
+      expect(config.version).toBe(1)
+      expect(config.context).toBe('Test context')
+      expect(config.ai).toHaveLength(1)
+      expect(config.defaultAgent).toBe('sway')
+    })
+  })
 
-      expect(normalized.version).toBe(1)
-      expect(normalized.defaultAgent).toBe('sway')
-      expect(normalized.ai).toEqual([{ name: 'openai' }])
+  describe('UserConfig interface', () => {
+    it('should extend CodayConfig', () => {
+      const config: UserConfig = {
+        version: 1,
+        context: 'User bio',
+        projects: {
+          'my-project': {
+            version: 1,
+            context: 'Project-specific context',
+            defaultAgent: 'sway',
+          },
+        },
+      }
+
+      expect(config.version).toBe(1)
+      expect(config.context).toBe('User bio')
+      expect(config.projects?.['my-project']?.defaultAgent).toBe('sway')
+    })
+
+    it('should accept projects with nested CodayConfig', () => {
+      const config: UserConfig = {
+        version: 1,
+        projects: {
+          project1: {
+            version: 1,
+            context: 'Context 1',
+          },
+          project2: {
+            version: 1,
+            ai: [{ name: 'openai' }],
+          },
+        },
+      }
+
+      expect(Object.keys(config.projects || {})).toHaveLength(2)
+      expect(config.projects?.project1?.context).toBe('Context 1')
+      expect(config.projects?.project2?.ai).toHaveLength(1)
     })
   })
 })
