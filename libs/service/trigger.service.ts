@@ -2,9 +2,10 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as yaml from 'yaml'
 import { randomUUID } from 'node:crypto'
-import type { Trigger, TriggerInfo, CronSchedule } from '../model/trigger'
+import type { Trigger, TriggerInfo } from '../model/trigger'
 import type { CodayLogger } from '@coday/service/coday-logger'
 import type { WebhookService } from './webhook.service'
+import { parseCronExpression, calculateNextRun } from '../util/cron.utils'
 
 /**
  * TriggerService - Manages scheduled webhook execution
@@ -105,7 +106,7 @@ export class TriggerService {
 
         // Calculate nextRun if not present or if in the past
         if (!trigger.nextRun || new Date(trigger.nextRun) < new Date()) {
-          trigger.nextRun = this.calculateNextRun(trigger.schedule)
+          trigger.nextRun = calculateNextRun(trigger.schedule)
         }
 
         triggers.push(trigger)
@@ -192,7 +193,7 @@ export class TriggerService {
 
     // Update trigger state
     trigger.lastRun = executedAt
-    trigger.nextRun = this.calculateNextRun(trigger.schedule)
+    trigger.nextRun = calculateNextRun(trigger.schedule)
 
     // Save updated trigger
     await this.saveTrigger(trigger)
@@ -212,120 +213,11 @@ export class TriggerService {
   }
 
   /**
-   * Parse cron expression and calculate next run time
-   *
-   * Supported patterns (MVP):
-   * - `* /X * * * *` - Every X minutes
-   * - `0 * /X * * *` - Every X hours
-   * - `0 0 * * *` - Daily at midnight
-   * - `0 0 * * 0` - Weekly on Sunday
+   * Public method to validate cron expressions (used by routes)
+   * Delegates to cron.utils for actual parsing
    */
-  parseCronExpression(cronExpression: string): CronSchedule | null {
-    const parts = cronExpression.trim().split(/\s+/)
-
-    if (parts.length !== 5) {
-      return null // Invalid format
-    }
-
-    const [minute, hour, dayOfMonth, month, dayOfWeek] = parts
-
-    try {
-      return {
-        minute: this.parseCronField(minute ?? '*', 0, 59),
-        hour: this.parseCronField(hour ?? '*', 0, 23),
-        dayOfMonth: (dayOfMonth ?? '*') === '*' ? '*' : parseInt(dayOfMonth ?? '1', 10),
-        month: (month ?? '*') === '*' ? '*' : parseInt(month ?? '1', 10),
-        dayOfWeek: (dayOfWeek ?? '*') === '*' ? '*' : parseInt(dayOfWeek ?? '0', 10),
-      }
-    } catch {
-      return null
-    }
-  }
-
-  /**
-   * Parse a single cron field
-   */
-  private parseCronField(field: string, min: number, max: number): number | '*' | number[] {
-    if (field === '*') return '*'
-
-    // Handle */X pattern (every X units)
-    if (field.startsWith('*/')) {
-      const interval = parseInt(field.substring(2), 10)
-      if (isNaN(interval) || interval < 1) throw new Error('Invalid interval')
-
-      const values: number[] = []
-      for (let i = min; i <= max; i += interval) {
-        values.push(i)
-      }
-      return values
-    }
-
-    // Handle single number
-    const num = parseInt(field, 10)
-    if (isNaN(num) || num < min || num > max) {
-      throw new Error(`Value out of range: ${field}`)
-    }
-    return num
-  }
-
-  /**
-   * Calculate the next run time based on cron schedule
-   */
-  calculateNextRun(cronExpression: string, fromDate: Date = new Date()): string {
-    const schedule = this.parseCronExpression(cronExpression)
-
-    if (!schedule) {
-      throw new Error(`Invalid cron expression: ${cronExpression}`)
-    }
-
-    // Start from next minute (round up)
-    const next = new Date(fromDate)
-    next.setSeconds(0, 0)
-    next.setMinutes(next.getMinutes() + 1)
-
-    // Find next matching time (max 1 year ahead to avoid infinite loop)
-    const maxIterations = 525600 // minutes in a year
-    let iterations = 0
-
-    while (iterations < maxIterations) {
-      if (this.matchesSchedule(next, schedule)) {
-        return next.toISOString()
-      }
-
-      next.setMinutes(next.getMinutes() + 1)
-      iterations++
-    }
-
-    throw new Error('Could not calculate next run time within reasonable timeframe')
-  }
-
-  /**
-   * Check if a date matches a cron schedule
-   */
-  private matchesSchedule(date: Date, schedule: CronSchedule): boolean {
-    // Check minute
-    if (!this.matchesField(date.getUTCMinutes(), schedule.minute)) return false
-
-    // Check hour
-    if (!this.matchesField(date.getUTCHours(), schedule.hour)) return false
-
-    // Check day of week (0 = Sunday)
-    if (schedule.dayOfWeek !== '*') {
-      if (!this.matchesField(date.getUTCDay(), schedule.dayOfWeek)) return false
-    }
-
-    // For MVP, we ignore dayOfMonth and month (always match)
-
-    return true
-  }
-
-  /**
-   * Check if a value matches a cron field
-   */
-  private matchesField(value: number, field: number | '*' | number[]): boolean {
-    if (field === '*') return true
-    if (typeof field === 'number') return value === field
-    return field.includes(value)
+  parseCronExpression(cronExpression: string) {
+    return parseCronExpression(cronExpression)
   }
 
   /**
@@ -414,7 +306,7 @@ export class TriggerService {
 
       // Ensure nextRun is up to date
       if (!trigger.nextRun || new Date(trigger.nextRun) < new Date()) {
-        trigger.nextRun = this.calculateNextRun(trigger.schedule)
+        trigger.nextRun = calculateNextRun(trigger.schedule)
       }
 
       // If username provided, verify ownership
@@ -464,7 +356,7 @@ export class TriggerService {
       parameters: data.parameters,
       createdBy: username,
       createdAt: new Date().toISOString(),
-      nextRun: this.calculateNextRun(data.schedule),
+      nextRun: calculateNextRun(data.schedule),
     }
 
     await this.saveTrigger(trigger, projectName)
@@ -515,7 +407,7 @@ export class TriggerService {
         throw new Error(`Invalid cron expression: ${updates.schedule}`)
       }
       trigger.schedule = updates.schedule
-      trigger.nextRun = this.calculateNextRun(updates.schedule)
+      trigger.nextRun = calculateNextRun(updates.schedule)
     }
 
     await this.saveTrigger(trigger, projectName)
