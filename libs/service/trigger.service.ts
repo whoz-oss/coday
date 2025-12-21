@@ -372,26 +372,36 @@ export class TriggerService {
   // ==================== CRUD Operations ====================
 
   /**
-   * List all triggers for a project
+   * List all triggers for a project owned by a specific user
+   * @param projectName - Project name
+   * @param username - User to filter triggers by
+   * @returns List of triggers owned by the user
    */
-  async listTriggers(projectName: string): Promise<TriggerInfo[]> {
+  async listTriggers(projectName: string, username: string): Promise<TriggerInfo[]> {
     const triggers = await this.loadProjectTriggers(projectName)
 
-    return triggers.map((trigger) => ({
-      id: trigger.id,
-      name: trigger.name,
-      enabled: trigger.enabled,
-      webhookUuid: trigger.webhookUuid,
-      schedule: trigger.schedule,
-      lastRun: trigger.lastRun,
-      nextRun: trigger.nextRun,
-    }))
+    // Filter by user ownership
+    return triggers
+      .filter((trigger) => trigger.createdBy === username)
+      .map((trigger) => ({
+        id: trigger.id,
+        name: trigger.name,
+        enabled: trigger.enabled,
+        webhookUuid: trigger.webhookUuid,
+        schedule: trigger.schedule,
+        lastRun: trigger.lastRun,
+        nextRun: trigger.nextRun,
+      }))
   }
 
   /**
-   * Get a specific trigger
+   * Get a specific trigger with ownership verification
+   * @param projectName - Project name
+   * @param triggerId - Trigger ID
+   * @param username - User requesting the trigger (optional, for ownership check)
+   * @returns Trigger if found and owned by user, null otherwise
    */
-  async getTrigger(projectName: string, triggerId: string): Promise<Trigger | null> {
+  async getTrigger(projectName: string, triggerId: string, username?: string): Promise<Trigger | null> {
     const filePath = this.getTriggerFilePath(projectName, triggerId)
 
     if (!fs.existsSync(filePath)) {
@@ -405,6 +415,11 @@ export class TriggerService {
       // Ensure nextRun is up to date
       if (!trigger.nextRun || new Date(trigger.nextRun) < new Date()) {
         trigger.nextRun = this.calculateNextRun(trigger.schedule)
+      }
+
+      // If username provided, verify ownership
+      if (username && trigger.createdBy !== username) {
+        return null // User doesn't own this trigger
       }
 
       return trigger
@@ -463,7 +478,13 @@ export class TriggerService {
   }
 
   /**
-   * Update a trigger
+   * Update a trigger with ownership verification
+   * @param projectName - Project name
+   * @param triggerId - Trigger ID
+   * @param updates - Fields to update
+   * @param username - User requesting the update
+   * @returns Updated trigger
+   * @throws Error if trigger not found or user doesn't own it
    */
   async updateTrigger(
     projectName: string,
@@ -473,12 +494,13 @@ export class TriggerService {
       enabled?: boolean
       schedule?: string
       parameters?: Record<string, unknown>
-    }
+    },
+    username: string
   ): Promise<Trigger> {
-    const trigger = await this.getTrigger(projectName, triggerId)
+    const trigger = await this.getTrigger(projectName, triggerId, username)
 
     if (!trigger) {
-      throw new Error(`Trigger not found: ${triggerId}`)
+      throw new Error(`Trigger not found or access denied: ${triggerId}`)
     }
 
     // Update fields
@@ -507,14 +529,20 @@ export class TriggerService {
   }
 
   /**
-   * Delete a trigger
+   * Delete a trigger with ownership verification
+   * @param projectName - Project name
+   * @param triggerId - Trigger ID
+   * @param username - User requesting the deletion
+   * @returns true if deleted, false if not found or access denied
    */
-  async deleteTrigger(projectName: string, triggerId: string): Promise<boolean> {
-    const filePath = this.getTriggerFilePath(projectName, triggerId)
+  async deleteTrigger(projectName: string, triggerId: string, username: string): Promise<boolean> {
+    const trigger = await this.getTrigger(projectName, triggerId, username)
 
-    if (!fs.existsSync(filePath)) {
-      return false
+    if (!trigger) {
+      return false // Not found or access denied
     }
+
+    const filePath = this.getTriggerFilePath(projectName, triggerId)
 
     fs.unlinkSync(filePath)
 
@@ -527,27 +555,32 @@ export class TriggerService {
   }
 
   /**
-   * Enable a trigger
+   * Enable a trigger with ownership verification
    */
-  async enableTrigger(projectName: string, triggerId: string): Promise<Trigger> {
-    return this.updateTrigger(projectName, triggerId, { enabled: true })
+  async enableTrigger(projectName: string, triggerId: string, username: string): Promise<Trigger> {
+    return this.updateTrigger(projectName, triggerId, { enabled: true }, username)
   }
 
   /**
-   * Disable a trigger
+   * Disable a trigger with ownership verification
    */
-  async disableTrigger(projectName: string, triggerId: string): Promise<Trigger> {
-    return this.updateTrigger(projectName, triggerId, { enabled: false })
+  async disableTrigger(projectName: string, triggerId: string, username: string): Promise<Trigger> {
+    return this.updateTrigger(projectName, triggerId, { enabled: false }, username)
   }
 
   /**
-   * Manually execute a trigger now (for testing)
+   * Manually execute a trigger now (for testing) with ownership verification
+   * @param projectName - Project name
+   * @param triggerId - Trigger ID
+   * @param username - User requesting the execution
+   * @returns Thread ID created by webhook execution
+   * @throws Error if trigger not found or user doesn't own it
    */
-  async runTriggerNow(projectName: string, triggerId: string): Promise<string> {
-    const trigger = await this.getTrigger(projectName, triggerId)
+  async runTriggerNow(projectName: string, triggerId: string, username: string): Promise<string> {
+    const trigger = await this.getTrigger(projectName, triggerId, username)
 
     if (!trigger) {
-      throw new Error(`Trigger not found: ${triggerId}`)
+      throw new Error(`Trigger not found or access denied: ${triggerId}`)
     }
 
     console.log(`[TRIGGER] Manually executing trigger "${trigger.name}" (${trigger.id})`)
