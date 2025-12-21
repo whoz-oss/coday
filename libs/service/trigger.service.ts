@@ -105,9 +105,15 @@ export class TriggerService {
         const content = fs.readFileSync(filePath, 'utf-8')
         const trigger = yaml.parse(content) as Trigger
 
-        // Calculate nextRun if not present or if in the past
-        if (!trigger.nextRun || (trigger.nextRun && new Date(trigger.nextRun) < new Date())) {
-          trigger.nextRun = calculateNextRun(trigger.schedule, new Date(), trigger.occurrenceCount || 0)
+        // Calculate nextRun, skipping missed occurrences
+        const result = this.calculateNextRunSkippingMissed(trigger)
+        const occurrenceCountChanged = result.occurrenceCount !== trigger.occurrenceCount
+        trigger.nextRun = result.nextRun
+        trigger.occurrenceCount = result.occurrenceCount
+
+        // If we skipped occurrences, save the updated trigger
+        if (occurrenceCountChanged) {
+          await this.saveTrigger(trigger, projectName)
         }
 
         triggers.push(trigger)
@@ -230,6 +236,74 @@ export class TriggerService {
   }
 
   /**
+   * Calculate next run time, skipping missed occurrences
+   *
+   * If nextRun is in the past, we increment the occurrence counter for each
+   * missed occurrence until we find a future date or the trigger expires.
+   *
+   * @param trigger - Trigger to calculate next run for
+   * @returns Object with nextRun and updated occurrenceCount
+   */
+  private calculateNextRunSkippingMissed(trigger: Trigger): { nextRun: string | null; occurrenceCount: number } {
+    const now = new Date()
+    let occurrenceCount = trigger.occurrenceCount || 0
+    let nextRun = trigger.nextRun
+
+    // If no nextRun, calculate from now
+    if (!nextRun) {
+      return {
+        nextRun: calculateNextRun(trigger.schedule, now, occurrenceCount),
+        occurrenceCount,
+      }
+    }
+
+    // If nextRun is in the future, keep it
+    if (new Date(nextRun) >= now) {
+      return { nextRun, occurrenceCount }
+    }
+
+    // nextRun is in the past - skip missed occurrences
+    const maxIterations = 1000 // Prevent infinite loop
+    let iterations = 0
+    let skippedCount = 0
+
+    while (iterations < maxIterations) {
+      // Count this as a missed occurrence
+      occurrenceCount++
+      skippedCount++
+
+      // Calculate next occurrence with updated counter
+      nextRun = calculateNextRun(trigger.schedule, now, occurrenceCount)
+
+      // If null, trigger is expired
+      if (!nextRun) {
+        if (skippedCount > 0) {
+          console.log(
+            `[TRIGGER] Trigger "${trigger.name}" (${trigger.id}) expired after skipping ${skippedCount} missed occurrence(s)`
+          )
+        }
+        return { nextRun: null, occurrenceCount }
+      }
+
+      // If future date found, return it
+      if (new Date(nextRun) >= now) {
+        if (skippedCount > 0) {
+          console.log(
+            `[TRIGGER] Trigger "${trigger.name}" (${trigger.id}) skipped ${skippedCount} missed occurrence(s), next run: ${nextRun}`
+          )
+        }
+        return { nextRun, occurrenceCount }
+      }
+
+      iterations++
+    }
+
+    // Safety: if we couldn't find a future date, consider expired
+    console.warn(`[TRIGGER] Could not find future nextRun for trigger ${trigger.id} after ${maxIterations} iterations`)
+    return { nextRun: null, occurrenceCount }
+  }
+
+  /**
    * Get triggers directory path for a project
    */
   private getTriggersDir(projectName: string): string {
@@ -313,10 +387,10 @@ export class TriggerService {
       const content = fs.readFileSync(filePath, 'utf-8')
       const trigger = yaml.parse(content) as Trigger
 
-      // Ensure nextRun is up to date
-      if (!trigger.nextRun || (trigger.nextRun && new Date(trigger.nextRun) < new Date())) {
-        trigger.nextRun = calculateNextRun(trigger.schedule, new Date(), trigger.occurrenceCount || 0)
-      }
+      // Ensure nextRun is up to date, skipping missed occurrences
+      const result = this.calculateNextRunSkippingMissed(trigger)
+      trigger.nextRun = result.nextRun
+      trigger.occurrenceCount = result.occurrenceCount
 
       // If username provided, verify ownership
       if (username && trigger.createdBy !== username) {
