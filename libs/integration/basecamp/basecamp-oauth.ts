@@ -335,6 +335,16 @@ export class BasecampOAuth {
       }
 
       this.interactor.debug(`Loaded OAuth tokens from storage for ${this.integrationName}`)
+
+      // Log token expiration in debug
+      const expiresAt = new Date(this.tokenData.expiresAt)
+      const now = new Date()
+      const remainingMs = this.tokenData.expiresAt - now.getTime()
+      const remainingDays = Math.floor(remainingMs / (1000 * 60 * 60 * 24))
+      const remainingHours = Math.floor((remainingMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+
+      this.interactor.debug(`Token expires at: ${expiresAt.toLocaleString()} (in ${remainingDays}d ${remainingHours}h)`)
+
       if (accountName) {
         this.interactor.displayText(`Using stored Basecamp account: ${accountName}`)
       }
@@ -379,7 +389,17 @@ export class BasecampOAuth {
 
     // Write to user configuration file
     this.userService.save()
-    this.interactor.debug(`Saved OAuth tokens to storage for ${this.integrationName}`)
+
+    // Log token expiration in debug
+    const expiresAt = new Date(this.tokenData.expiresAt)
+    const now = new Date()
+    const remainingMs = this.tokenData.expiresAt - now.getTime()
+    const remainingDays = Math.floor(remainingMs / (1000 * 60 * 60 * 24))
+    const remainingHours = Math.floor((remainingMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+
+    this.interactor.debug(
+      `Saved OAuth tokens to storage for ${this.integrationName}. Expires at: ${expiresAt.toLocaleString()} (in ${remainingDays}d ${remainingHours}h)`
+    )
   }
 
   /**

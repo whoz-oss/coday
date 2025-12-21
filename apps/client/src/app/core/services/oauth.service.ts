@@ -87,12 +87,15 @@ export class OAuthService {
     const left = window.screenX + (window.outerWidth - width) / 2
     const top = window.screenY + (window.outerHeight - height) / 2
 
-    const popup = window.open(event.authUrl, 'oauth_popup', `width=${width},height=${height},left=${left},top=${top}`)
+    // Add 'popup=yes' to force popup behavior and bring to front
+    const features = `width=${width},height=${height},left=${left},top=${top},popup=yes,resizable=yes,scrollbars=yes`
+    const popup = window.open(event.authUrl, 'oauth_popup', features)
 
     console.log('[OAuth Service] Popup opened:', !!popup)
 
-    // Detect popup closure
+    // Force focus on popup (helps with fullscreen mode on macOS)
     if (popup) {
+      popup.focus()
       this.startPopupMonitoring(popup, event.state)
     }
   }
