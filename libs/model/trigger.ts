@@ -24,14 +24,3 @@ export interface TriggerInfo {
   lastRun?: string
   nextRun?: string
 }
-
-/**
- * Result of cron parsing
- */
-export interface CronSchedule {
-  minute: number | '*' | number[] // Specific minute, wildcard, or array of minutes
-  hour: number | '*' | number[] // Specific hour, wildcard, or array of hours
-  dayOfMonth: number | '*' // Day of month (not used in MVP)
-  month: number | '*' // Month (not used in MVP)
-  dayOfWeek: number | '*' // Day of week (0 = Sunday)
-}
