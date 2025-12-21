@@ -47,7 +47,13 @@ export class CodayLogger {
     this.pushEntry(entry)
   }
 
-  logWebhookError(data: { error: string; username: string | null; project: string | null; clientId?: string | null; duration?: number }): void {
+  logWebhookError(data: {
+    error: string
+    username: string | null
+    project: string | null
+    clientId?: string | null
+    duration?: number
+  }): void {
     const entry = {
       ...data,
       type: 'WEBHOOK_ERROR',
@@ -62,6 +68,23 @@ export class CodayLogger {
       timestamp: new Date().toISOString(),
       project,
       threadFileName,
+    }
+    this.pushEntry(entry)
+  }
+
+  logTriggerExecution(data: {
+    triggerId: string
+    triggerName: string
+    webhookUuid: string
+    projectName: string
+    success: boolean
+    threadId?: string
+    error?: string
+  }): void {
+    const entry = {
+      ...data,
+      type: 'TRIGGER_EXECUTION',
+      timestamp: new Date().toISOString(),
     }
     this.pushEntry(entry)
   }
