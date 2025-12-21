@@ -152,7 +152,38 @@ export class TriggerService {
   }
 
   /**
-   * Execute a trigger (call the webhook)
+   * Execute a trigger internally (scheduled or manual)
+   * @param trigger - Trigger to execute
+   * @param mode - 'scheduled' or 'manual'
+   * @returns Thread ID created by webhook execution
+   * @throws Error if webhook not found or execution fails
+   */
+  private async executeTriggerInternal(trigger: Trigger, mode: 'scheduled' | 'manual'): Promise<string> {
+    console.log(`[TRIGGER] Executing trigger "${trigger.name}" (${trigger.id}) [${mode}]`)
+
+    // Get webhook to verify it exists
+    const webhook = await this.webhookService.get(trigger.webhookUuid)
+    if (!webhook) {
+      throw new Error(`Webhook not found: ${trigger.webhookUuid}`)
+    }
+
+    // Execute webhook with trigger parameters
+    // Use webhook's createdBy as username for trigger execution
+    const result = await this.webhookService.executeWebhook(
+      trigger.webhookUuid,
+      trigger.parameters || {},
+      webhook.createdBy,
+      mode === 'scheduled' ? `Scheduled: ${trigger.name}` : `Manual: ${trigger.name}`,
+      false // async execution
+    )
+
+    console.log(`[TRIGGER] Trigger "${trigger.name}" executed successfully. Thread: ${result.threadId}`)
+
+    return result.threadId
+  }
+
+  /**
+   * Execute a trigger (called by scheduler)
    */
   private async executeTrigger(trigger: Trigger): Promise<void> {
     const executedAt = new Date().toISOString()
@@ -164,30 +195,11 @@ export class TriggerService {
     let error: string | undefined
 
     try {
-      // Get webhook to verify it exists
-      const webhook = await this.webhookService.get(trigger.webhookUuid)
-      if (!webhook) {
-        throw new Error(`Webhook not found: ${trigger.webhookUuid}`)
-      }
-
-      // Execute webhook with trigger parameters
-      // Use webhook's createdBy as username for trigger execution
-      const result = await this.webhookService.executeWebhook(
-        trigger.webhookUuid,
-        trigger.parameters || {},
-        webhook.createdBy,
-        `Scheduled: ${trigger.name}`,
-        false // async execution for triggers
-      )
-
-      threadId = result.threadId
+      threadId = await this.executeTriggerInternal(trigger, 'scheduled')
       success = true
-
-      console.log(`[TRIGGER] Trigger "${trigger.name}" executed successfully. Thread: ${threadId}`)
     } catch (err) {
       success = false
       error = err instanceof Error ? err.message : String(err)
-
       console.error(`[TRIGGER] Trigger "${trigger.name}" failed:`, err)
     }
 
@@ -475,24 +487,7 @@ export class TriggerService {
       throw new Error(`Trigger not found or access denied: ${triggerId}`)
     }
 
-    console.log(`[TRIGGER] Manually executing trigger "${trigger.name}" (${trigger.id})`)
-
-    // Get webhook to verify it exists
-    const webhook = await this.webhookService.get(trigger.webhookUuid)
-    if (!webhook) {
-      throw new Error(`Webhook not found: ${trigger.webhookUuid}`)
-    }
-
-    // Execute webhook with trigger parameters
-    const result = await this.webhookService.executeWebhook(
-      trigger.webhookUuid,
-      trigger.parameters || {},
-      webhook.createdBy,
-      `Manual: ${trigger.name}`,
-      false // async execution
-    )
-
-    const threadId = result.threadId
+    const threadId = await this.executeTriggerInternal(trigger, 'manual')
 
     // Update lastRun but don't change nextRun (keep scheduled time)
     trigger.lastRun = new Date().toISOString()
