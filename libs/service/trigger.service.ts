@@ -163,17 +163,23 @@ export class TriggerService {
     let error: string | undefined
 
     try {
-      // Get webhook to verify it exists and get commands
+      // Get webhook to verify it exists
       const webhook = await this.webhookService.get(trigger.webhookUuid)
       if (!webhook) {
         throw new Error(`Webhook not found: ${trigger.webhookUuid}`)
       }
 
-      // For now, we'll just log that execution would happen
-      // The actual execution will be handled by the webhook routes
-      // This is a placeholder until we integrate with ThreadCodayManager
-      threadId = `trigger-${trigger.id}-${Date.now()}`
+      // Execute webhook with trigger parameters
+      // Use webhook's createdBy as username for trigger execution
+      const result = await this.webhookService.executeWebhook(
+        trigger.webhookUuid,
+        trigger.parameters || {},
+        webhook.createdBy,
+        `Scheduled: ${trigger.name}`,
+        false // async execution for triggers
+      )
 
+      threadId = result.threadId
       success = true
 
       console.log(`[TRIGGER] Trigger "${trigger.name}" executed successfully. Thread: ${threadId}`)
@@ -552,9 +558,16 @@ export class TriggerService {
       throw new Error(`Webhook not found: ${trigger.webhookUuid}`)
     }
 
-    // For now, return a placeholder threadId
-    // The actual execution will be handled by the webhook routes
-    const threadId = `trigger-manual-${trigger.id}-${Date.now()}`
+    // Execute webhook with trigger parameters
+    const result = await this.webhookService.executeWebhook(
+      trigger.webhookUuid,
+      trigger.parameters || {},
+      webhook.createdBy,
+      `Manual: ${trigger.name}`,
+      false // async execution
+    )
+
+    const threadId = result.threadId
 
     // Update lastRun but don't change nextRun (keep scheduled time)
     trigger.lastRun = new Date().toISOString()
