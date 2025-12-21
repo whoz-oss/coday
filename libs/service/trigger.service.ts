@@ -5,7 +5,8 @@ import { randomUUID } from 'node:crypto'
 import type { Trigger, TriggerInfo } from '../model/trigger'
 import type { CodayLogger } from '@coday/service/coday-logger'
 import type { WebhookService } from './webhook.service'
-import { parseCronExpression, calculateNextRun } from '../util/cron.utils'
+import { validateIntervalSchedule, calculateNextRun, shouldExecuteNow } from '../util/interval-schedule.utils'
+import type { IntervalSchedule } from '../model/trigger'
 
 /**
  * TriggerService - Manages scheduled webhook execution
@@ -105,8 +106,8 @@ export class TriggerService {
         const trigger = yaml.parse(content) as Trigger
 
         // Calculate nextRun if not present or if in the past
-        if (!trigger.nextRun || new Date(trigger.nextRun) < new Date()) {
-          trigger.nextRun = calculateNextRun(trigger.schedule)
+        if (!trigger.nextRun || (trigger.nextRun && new Date(trigger.nextRun) < new Date())) {
+          trigger.nextRun = calculateNextRun(trigger.schedule, new Date(), trigger.occurrenceCount || 0)
         }
 
         triggers.push(trigger)
@@ -134,16 +135,11 @@ export class TriggerService {
    * Check all triggers and execute those that should run
    */
   private async checkAndExecuteTriggers(): Promise<void> {
-    const now = new Date()
-
     for (const trigger of this.triggers.values()) {
       if (!trigger.enabled) continue
-      if (!trigger.nextRun) continue
 
-      const nextRunDate = new Date(trigger.nextRun)
-
-      // Execute if nextRun is in the past or now
-      if (nextRunDate <= now) {
+      // Check if trigger should execute now
+      if (shouldExecuteNow(trigger.schedule, trigger.nextRun || null, trigger.occurrenceCount || 0)) {
         this.executeTrigger(trigger).catch((error) => {
           console.error(`[TRIGGER] Failed to execute trigger ${trigger.id}:`, error)
         })
@@ -205,7 +201,8 @@ export class TriggerService {
 
     // Update trigger state
     trigger.lastRun = executedAt
-    trigger.nextRun = calculateNextRun(trigger.schedule)
+    trigger.occurrenceCount = (trigger.occurrenceCount || 0) + 1
+    trigger.nextRun = calculateNextRun(trigger.schedule, new Date(), trigger.occurrenceCount)
 
     // Save updated trigger
     await this.saveTrigger(trigger)
@@ -225,11 +222,11 @@ export class TriggerService {
   }
 
   /**
-   * Public method to validate cron expressions (used by routes)
-   * Delegates to cron.utils for actual parsing
+   * Public method to validate interval schedules (used by routes)
+   * Delegates to interval-schedule.utils for actual validation
    */
-  parseCronExpression(cronExpression: string) {
-    return parseCronExpression(cronExpression)
+  validateSchedule(schedule: IntervalSchedule): { valid: boolean; error?: string } {
+    return validateIntervalSchedule(schedule)
   }
 
   /**
@@ -317,8 +314,8 @@ export class TriggerService {
       const trigger = yaml.parse(content) as Trigger
 
       // Ensure nextRun is up to date
-      if (!trigger.nextRun || new Date(trigger.nextRun) < new Date()) {
-        trigger.nextRun = calculateNextRun(trigger.schedule)
+      if (!trigger.nextRun || (trigger.nextRun && new Date(trigger.nextRun) < new Date())) {
+        trigger.nextRun = calculateNextRun(trigger.schedule, new Date(), trigger.occurrenceCount || 0)
       }
 
       // If username provided, verify ownership
@@ -341,16 +338,16 @@ export class TriggerService {
     data: {
       name: string
       webhookUuid: string
-      schedule: string
+      schedule: IntervalSchedule
       parameters?: Record<string, unknown>
       enabled?: boolean
     },
     username: string
   ): Promise<Trigger> {
-    // Validate cron expression
-    const schedule = this.parseCronExpression(data.schedule)
-    if (!schedule) {
-      throw new Error(`Invalid cron expression: ${data.schedule}`)
+    // Validate schedule
+    const validation = this.validateSchedule(data.schedule)
+    if (!validation.valid) {
+      throw new Error(`Invalid schedule: ${validation.error}`)
     }
 
     // Verify webhook exists
@@ -368,7 +365,8 @@ export class TriggerService {
       parameters: data.parameters,
       createdBy: username,
       createdAt: new Date().toISOString(),
-      nextRun: calculateNextRun(data.schedule),
+      nextRun: calculateNextRun(data.schedule, new Date(), 0),
+      occurrenceCount: 0,
     }
 
     await this.saveTrigger(trigger, projectName)
@@ -396,7 +394,7 @@ export class TriggerService {
     updates: {
       name?: string
       enabled?: boolean
-      schedule?: string
+      schedule?: IntervalSchedule
       parameters?: Record<string, unknown>
     },
     username: string
@@ -413,13 +411,14 @@ export class TriggerService {
     if (updates.parameters !== undefined) trigger.parameters = updates.parameters
 
     // If schedule changed, validate and recalculate nextRun
-    if (updates.schedule !== undefined && updates.schedule !== trigger.schedule) {
-      const schedule = this.parseCronExpression(updates.schedule)
-      if (!schedule) {
-        throw new Error(`Invalid cron expression: ${updates.schedule}`)
+    if (updates.schedule !== undefined) {
+      const validation = this.validateSchedule(updates.schedule)
+      if (!validation.valid) {
+        throw new Error(`Invalid schedule: ${validation.error}`)
       }
       trigger.schedule = updates.schedule
-      trigger.nextRun = calculateNextRun(updates.schedule)
+      trigger.occurrenceCount = 0 // Reset count on schedule change
+      trigger.nextRun = calculateNextRun(updates.schedule, new Date(), 0)
     }
 
     await this.saveTrigger(trigger, projectName)

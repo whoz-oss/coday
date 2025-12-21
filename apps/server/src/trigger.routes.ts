@@ -55,7 +55,13 @@ export function registerTriggerRoutes(
     try {
       const { projectName } = req.params
       const username = getUsernameFn(req)
-      const { name, webhookUuid, schedule, parameters, enabled } = req.body
+      const { name, webhookUuid, schedule, parameters, enabled } = req.body as {
+        name: string
+        webhookUuid: string
+        schedule: any
+        parameters?: Record<string, unknown>
+        enabled?: boolean
+      }
 
       // Validation
       if (!name || typeof name !== 'string') {
@@ -68,18 +74,15 @@ export function registerTriggerRoutes(
         return
       }
 
-      if (!schedule || typeof schedule !== 'string') {
-        res.status(400).json({ error: 'Schedule is required and must be a string' })
+      if (!schedule || typeof schedule !== 'object') {
+        res.status(400).json({ error: 'Schedule is required and must be an object' })
         return
       }
 
-      // Validate cron expression
-      const parsedSchedule = triggerService.parseCronExpression(schedule)
-      if (!parsedSchedule) {
-        res.status(400).json({
-          error:
-            'Invalid cron expression. Supported patterns: */X * * * * (every X minutes), 0 */X * * * (every X hours), 0 0 * * * (daily), 0 0 * * 0 (weekly)',
-        })
+      // Validate interval schedule
+      const validation = triggerService.validateSchedule(schedule)
+      if (!validation.valid) {
+        res.status(400).json({ error: validation.error })
         return
       }
 
@@ -129,18 +132,15 @@ export function registerTriggerRoutes(
       }
 
       if (schedule !== undefined) {
-        if (typeof schedule !== 'string') {
-          res.status(400).json({ error: 'Schedule must be a string' })
+        if (typeof schedule !== 'object') {
+          res.status(400).json({ error: 'Schedule must be an object' })
           return
         }
 
-        // Validate cron expression
-        const parsedSchedule = triggerService.parseCronExpression(schedule)
-        if (!parsedSchedule) {
-          res.status(400).json({
-            error:
-              'Invalid cron expression. Supported patterns: */X * * * * (every X minutes), 0 */X * * * (every X hours), 0 0 * * * (daily), 0 0 * * 0 (weekly)',
-          })
+        // Validate interval schedule
+        const validation = triggerService.validateSchedule(schedule)
+        if (!validation.valid) {
+          res.status(400).json({ error: validation.error })
           return
         }
       }
