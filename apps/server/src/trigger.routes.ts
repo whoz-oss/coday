@@ -11,12 +11,13 @@ export function registerTriggerRoutes(
 ): void {
   /**
    * GET /api/projects/:projectName/triggers
-   * List all triggers for a project
+   * List all triggers for a project owned by the current user
    */
   app.get('/api/projects/:projectName/triggers', async (req, res) => {
     try {
       const { projectName } = req.params
-      const triggers = await triggerService.listTriggers(projectName)
+      const username = getUsernameFn(req)
+      const triggers = await triggerService.listTriggers(projectName, username)
       res.json(triggers)
     } catch (error) {
       console.error('Error listing triggers:', error)
@@ -26,15 +27,16 @@ export function registerTriggerRoutes(
 
   /**
    * GET /api/projects/:projectName/triggers/:id
-   * Get a specific trigger
+   * Get a specific trigger with ownership verification
    */
   app.get('/api/projects/:projectName/triggers/:id', async (req, res) => {
     try {
       const { projectName, id } = req.params
-      const trigger = await triggerService.getTrigger(projectName, id)
+      const username = getUsernameFn(req)
+      const trigger = await triggerService.getTrigger(projectName, id, username)
 
       if (!trigger) {
-        res.status(404).json({ error: 'Trigger not found' })
+        res.status(404).json({ error: 'Trigger not found or access denied' })
         return
       }
 
@@ -107,11 +109,12 @@ export function registerTriggerRoutes(
 
   /**
    * PUT /api/projects/:projectName/triggers/:id
-   * Update a trigger
+   * Update a trigger with ownership verification
    */
   app.put('/api/projects/:projectName/triggers/:id', async (req, res) => {
     try {
       const { projectName, id } = req.params
+      const username = getUsernameFn(req)
       const { name, enabled, schedule, parameters } = req.body
 
       // Validation
@@ -147,19 +150,24 @@ export function registerTriggerRoutes(
         return
       }
 
-      const trigger = await triggerService.updateTrigger(projectName, id, {
-        name,
-        enabled,
-        schedule,
-        parameters,
-      })
+      const trigger = await triggerService.updateTrigger(
+        projectName,
+        id,
+        {
+          name,
+          enabled,
+          schedule,
+          parameters,
+        },
+        username
+      )
 
       res.json(trigger)
     } catch (error) {
       console.error('Error updating trigger:', error)
       const message = error instanceof Error ? error.message : 'Failed to update trigger'
 
-      if (message.includes('not found')) {
+      if (message.includes('not found') || message.includes('access denied')) {
         res.status(404).json({ error: message })
       } else {
         res.status(500).json({ error: message })
@@ -169,15 +177,16 @@ export function registerTriggerRoutes(
 
   /**
    * DELETE /api/projects/:projectName/triggers/:id
-   * Delete a trigger
+   * Delete a trigger with ownership verification
    */
   app.delete('/api/projects/:projectName/triggers/:id', async (req, res) => {
     try {
       const { projectName, id } = req.params
-      const deleted = await triggerService.deleteTrigger(projectName, id)
+      const username = getUsernameFn(req)
+      const deleted = await triggerService.deleteTrigger(projectName, id, username)
 
       if (!deleted) {
-        res.status(404).json({ error: 'Trigger not found' })
+        res.status(404).json({ error: 'Trigger not found or access denied' })
         return
       }
 
@@ -190,18 +199,19 @@ export function registerTriggerRoutes(
 
   /**
    * POST /api/projects/:projectName/triggers/:id/enable
-   * Enable a trigger
+   * Enable a trigger with ownership verification
    */
   app.post('/api/projects/:projectName/triggers/:id/enable', async (req, res) => {
     try {
       const { projectName, id } = req.params
-      const trigger = await triggerService.enableTrigger(projectName, id)
+      const username = getUsernameFn(req)
+      const trigger = await triggerService.enableTrigger(projectName, id, username)
       res.json(trigger)
     } catch (error) {
       console.error('Error enabling trigger:', error)
       const message = error instanceof Error ? error.message : 'Failed to enable trigger'
 
-      if (message.includes('not found')) {
+      if (message.includes('not found') || message.includes('access denied')) {
         res.status(404).json({ error: message })
       } else {
         res.status(500).json({ error: message })
@@ -211,18 +221,19 @@ export function registerTriggerRoutes(
 
   /**
    * POST /api/projects/:projectName/triggers/:id/disable
-   * Disable a trigger
+   * Disable a trigger with ownership verification
    */
   app.post('/api/projects/:projectName/triggers/:id/disable', async (req, res) => {
     try {
       const { projectName, id } = req.params
-      const trigger = await triggerService.disableTrigger(projectName, id)
+      const username = getUsernameFn(req)
+      const trigger = await triggerService.disableTrigger(projectName, id, username)
       res.json(trigger)
     } catch (error) {
       console.error('Error disabling trigger:', error)
       const message = error instanceof Error ? error.message : 'Failed to disable trigger'
 
-      if (message.includes('not found')) {
+      if (message.includes('not found') || message.includes('access denied')) {
         res.status(404).json({ error: message })
       } else {
         res.status(500).json({ error: message })
@@ -232,12 +243,13 @@ export function registerTriggerRoutes(
 
   /**
    * POST /api/projects/:projectName/triggers/:id/run-now
-   * Manually execute a trigger now (for testing)
+   * Manually execute a trigger now (for testing) with ownership verification
    */
   app.post('/api/projects/:projectName/triggers/:id/run-now', async (req, res) => {
     try {
       const { projectName, id } = req.params
-      const threadId = await triggerService.runTriggerNow(projectName, id)
+      const username = getUsernameFn(req)
+      const threadId = await triggerService.runTriggerNow(projectName, id, username)
 
       res.json({
         success: true,
@@ -248,7 +260,7 @@ export function registerTriggerRoutes(
       console.error('Error running trigger:', error)
       const message = error instanceof Error ? error.message : 'Failed to run trigger'
 
-      if (message.includes('not found')) {
+      if (message.includes('not found') || message.includes('access denied')) {
         res.status(404).json({ error: message })
       } else {
         res.status(500).json({ error: message })
