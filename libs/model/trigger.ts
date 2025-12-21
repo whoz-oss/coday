@@ -1,18 +1,29 @@
 /**
- * Trigger model - Scheduled execution of webhooks
+ * Trigger model - Scheduled execution of webhooks using interval-based scheduling
  */
+
+export interface IntervalSchedule {
+  startTimestamp: string // ISO 8601 UTC
+  interval: string // '5h', '14d', '1m'
+  daysOfWeek?: number[] // 0-6 (0=Sunday, 6=Saturday), optional
+  endCondition?: {
+    type: 'occurrences' | 'endTimestamp'
+    value: number | string // number for occurrences, ISO 8601 for timestamp
+  }
+}
 
 export interface Trigger {
   id: string
   name: string
   enabled: boolean
   webhookUuid: string // Reference to existing webhook
-  schedule: string // Cron expression
+  schedule: IntervalSchedule // Interval-based schedule
   parameters?: Record<string, unknown> // Optional parameters to override webhook defaults
   createdBy: string
   createdAt: string // ISO 8601
   lastRun?: string // ISO 8601
-  nextRun?: string // ISO 8601 - calculated
+  nextRun?: string | null // ISO 8601 - calculated (null if no more occurrences)
+  occurrenceCount?: number // Internal counter for occurrence-based limits
 }
 
 export interface TriggerInfo {
@@ -20,7 +31,8 @@ export interface TriggerInfo {
   name: string
   enabled: boolean
   webhookUuid: string
-  schedule: string
+  schedule: IntervalSchedule
   lastRun?: string
-  nextRun?: string
+  nextRun?: string | null
+  occurrenceCount?: number
 }
