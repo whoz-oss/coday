@@ -247,6 +247,8 @@ registerAgentRoutes(
   codayOptions
 )
 
+// Note: Trigger routes will be registered after triggerService initialization in the PORT_PROMISE.then() block
+
 // Catch-all route for Angular client-side routing (MUST be after all API routes)
 // In production mode, serve index.html for any non-API routes
 // This allows Angular router to handle routes on page refresh
@@ -283,6 +285,9 @@ if (process.env.BUILD_ENV !== 'development') {
 
 // Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null
+
+// Initialize trigger service (server-only)
+let triggerService: TriggerService | null = null
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, _: express.NextFunction) => {
@@ -327,6 +332,22 @@ PORT_PROMISE.then(async (PORT) => {
   } catch (error) {
     console.error('Failed to start thread cleanup service:', error)
   }
+
+  // Initialize and start trigger service after server is running
+  try {
+    debugLog('TRIGGER', 'Initializing trigger service...')
+
+    const webhooksDir = webhookService.getWebhooksDir()
+    triggerService = new TriggerService(logger, webhookService, webhooksDir)
+    await triggerService.initialize()
+
+    // Register trigger routes now that service is initialized
+    registerTriggerRoutes(app, triggerService, getUsername)
+
+    debugLog('TRIGGER', 'Trigger service initialized and routes registered successfully')
+  } catch (error) {
+    console.error('Failed to initialize trigger service:', error)
+  }
 }).catch((error) => {
   console.error('Failed to start server:', error)
   process.exit(1)
@@ -345,6 +366,12 @@ async function gracefulShutdown(signal: string) {
   console.log(`Received ${signal}, shutting down gracefully...`)
 
   try {
+    // Stop trigger service
+    if (triggerService) {
+      console.log('Stopping trigger service...')
+      triggerService.stop()
+    }
+
     // Stop thread cleanup service
     if (cleanupService) {
       console.log('Stopping thread cleanup service...')

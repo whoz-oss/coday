@@ -1,0 +1,597 @@
+import * as fs from 'fs'
+import * as path from 'path'
+import * as yaml from 'yaml'
+import { randomUUID } from 'node:crypto'
+import type { Trigger, TriggerInfo, CronSchedule } from '../model/trigger'
+import type { CodayLogger } from '@coday/service/coday-logger'
+import type { WebhookService } from './webhook.service'
+
+/**
+ * TriggerService - Manages scheduled webhook execution
+ *
+ * Similar pattern to ThreadCleanupService:
+ * - Loads all triggers from all projects at startup
+ * - Checks every minute if any trigger should execute
+ * - Executes via WebhookService
+ * - Updates lastRun/nextRun timestamps
+ */
+export class TriggerService {
+  private triggers: Map<string, Trigger> = new Map()
+  private checkInterval?: NodeJS.Timeout
+  private readonly CHECK_INTERVAL_MS = 60000 // 1 minute
+
+  constructor(
+    private logger: CodayLogger,
+    private webhookService: WebhookService,
+    private webhooksDir: string
+  ) {}
+
+  /**
+   * Initialize service and start scheduling
+   */
+  async initialize(): Promise<void> {
+    console.log('[TRIGGER] Initializing TriggerService...')
+
+    // Load all triggers from all projects
+    await this.loadAllTriggers()
+
+    // Start the check interval
+    this.startScheduler()
+
+    console.log(`[TRIGGER] TriggerService initialized with ${this.triggers.size} triggers`)
+  }
+
+  /**
+   * Stop the scheduler (for graceful shutdown)
+   */
+  stop(): void {
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval)
+      this.checkInterval = undefined
+      console.log('[TRIGGER] TriggerService stopped')
+    }
+  }
+
+  /**
+   * Load all triggers from all projects
+   */
+  private async loadAllTriggers(): Promise<void> {
+    this.triggers.clear()
+
+    const projectsDir = path.dirname(this.webhooksDir) // Get .coday directory
+    const projectsPath = path.join(projectsDir, 'projects')
+
+    if (!fs.existsSync(projectsPath)) {
+      return
+    }
+
+    const projectDirs = fs
+      .readdirSync(projectsPath, { withFileTypes: true })
+      .filter((dirent) => dirent.isDirectory())
+      .map((dirent) => dirent.name)
+
+    for (const projectName of projectDirs) {
+      try {
+        const projectTriggers = await this.loadProjectTriggers(projectName)
+        for (const trigger of projectTriggers) {
+          this.triggers.set(trigger.id, trigger)
+        }
+      } catch (error) {
+        console.error(`[TRIGGER] Failed to load triggers for project ${projectName}:`, error)
+      }
+    }
+  }
+
+  /**
+   * Load triggers for a specific project
+   */
+  private async loadProjectTriggers(projectName: string): Promise<Trigger[]> {
+    const triggersDir = this.getTriggersDir(projectName)
+
+    if (!fs.existsSync(triggersDir)) {
+      return []
+    }
+
+    const files = fs.readdirSync(triggersDir)
+    const triggers: Trigger[] = []
+
+    for (const file of files) {
+      if (!file.endsWith('.yml')) continue
+
+      try {
+        const filePath = path.join(triggersDir, file)
+        const content = fs.readFileSync(filePath, 'utf-8')
+        const trigger = yaml.parse(content) as Trigger
+
+        // Calculate nextRun if not present or if in the past
+        if (!trigger.nextRun || new Date(trigger.nextRun) < new Date()) {
+          trigger.nextRun = this.calculateNextRun(trigger.schedule)
+        }
+
+        triggers.push(trigger)
+      } catch (error) {
+        console.error(`[TRIGGER] Failed to load trigger from ${file}:`, error)
+      }
+    }
+
+    return triggers
+  }
+
+  /**
+   * Start the scheduler that checks every minute
+   */
+  private startScheduler(): void {
+    this.checkInterval = setInterval(() => {
+      this.checkAndExecuteTriggers()
+    }, this.CHECK_INTERVAL_MS)
+
+    // Also check immediately on startup
+    this.checkAndExecuteTriggers()
+  }
+
+  /**
+   * Check all triggers and execute those that should run
+   */
+  private async checkAndExecuteTriggers(): Promise<void> {
+    const now = new Date()
+
+    for (const trigger of this.triggers.values()) {
+      if (!trigger.enabled) continue
+      if (!trigger.nextRun) continue
+
+      const nextRunDate = new Date(trigger.nextRun)
+
+      // Execute if nextRun is in the past or now
+      if (nextRunDate <= now) {
+        this.executeTrigger(trigger).catch((error) => {
+          console.error(`[TRIGGER] Failed to execute trigger ${trigger.id}:`, error)
+        })
+      }
+    }
+  }
+
+  /**
+   * Execute a trigger (call the webhook)
+   */
+  private async executeTrigger(trigger: Trigger): Promise<void> {
+    const executedAt = new Date().toISOString()
+
+    console.log(`[TRIGGER] Executing trigger "${trigger.name}" (${trigger.id})`)
+
+    let success = false
+    let threadId: string | undefined
+    let error: string | undefined
+
+    try {
+      // Get webhook to verify it exists and get commands
+      const webhook = await this.webhookService.get(trigger.webhookUuid)
+      if (!webhook) {
+        throw new Error(`Webhook not found: ${trigger.webhookUuid}`)
+      }
+
+      // For now, we'll just log that execution would happen
+      // The actual execution will be handled by the webhook routes
+      // This is a placeholder until we integrate with ThreadCodayManager
+      threadId = `trigger-${trigger.id}-${Date.now()}`
+
+      success = true
+
+      console.log(`[TRIGGER] Trigger "${trigger.name}" executed successfully. Thread: ${threadId}`)
+    } catch (err) {
+      success = false
+      error = err instanceof Error ? err.message : String(err)
+
+      console.error(`[TRIGGER] Trigger "${trigger.name}" failed:`, err)
+    }
+
+    // Update trigger state
+    trigger.lastRun = executedAt
+    trigger.nextRun = this.calculateNextRun(trigger.schedule)
+
+    // Save updated trigger
+    await this.saveTrigger(trigger)
+
+    // Log execution result via CodayLogger
+    this.logger.logTriggerExecution({
+      triggerId: trigger.id,
+      triggerName: trigger.name,
+      webhookUuid: trigger.webhookUuid,
+      projectName: this.findProjectForTrigger(trigger.id) || 'unknown',
+      success,
+      threadId,
+      error,
+    })
+
+    console.log(`[TRIGGER] Next execution for "${trigger.name}": ${trigger.nextRun}`)
+  }
+
+  /**
+   * Parse cron expression and calculate next run time
+   *
+   * Supported patterns (MVP):
+   * - `* /X * * * *` - Every X minutes
+   * - `0 * /X * * *` - Every X hours
+   * - `0 0 * * *` - Daily at midnight
+   * - `0 0 * * 0` - Weekly on Sunday
+   */
+  parseCronExpression(cronExpression: string): CronSchedule | null {
+    const parts = cronExpression.trim().split(/\s+/)
+
+    if (parts.length !== 5) {
+      return null // Invalid format
+    }
+
+    const [minute, hour, dayOfMonth, month, dayOfWeek] = parts
+
+    try {
+      return {
+        minute: this.parseCronField(minute ?? '*', 0, 59),
+        hour: this.parseCronField(hour ?? '*', 0, 23),
+        dayOfMonth: (dayOfMonth ?? '*') === '*' ? '*' : parseInt(dayOfMonth ?? '1', 10),
+        month: (month ?? '*') === '*' ? '*' : parseInt(month ?? '1', 10),
+        dayOfWeek: (dayOfWeek ?? '*') === '*' ? '*' : parseInt(dayOfWeek ?? '0', 10),
+      }
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Parse a single cron field
+   */
+  private parseCronField(field: string, min: number, max: number): number | '*' | number[] {
+    if (field === '*') return '*'
+
+    // Handle */X pattern (every X units)
+    if (field.startsWith('*/')) {
+      const interval = parseInt(field.substring(2), 10)
+      if (isNaN(interval) || interval < 1) throw new Error('Invalid interval')
+
+      const values: number[] = []
+      for (let i = min; i <= max; i += interval) {
+        values.push(i)
+      }
+      return values
+    }
+
+    // Handle single number
+    const num = parseInt(field, 10)
+    if (isNaN(num) || num < min || num > max) {
+      throw new Error(`Value out of range: ${field}`)
+    }
+    return num
+  }
+
+  /**
+   * Calculate the next run time based on cron schedule
+   */
+  calculateNextRun(cronExpression: string, fromDate: Date = new Date()): string {
+    const schedule = this.parseCronExpression(cronExpression)
+
+    if (!schedule) {
+      throw new Error(`Invalid cron expression: ${cronExpression}`)
+    }
+
+    // Start from next minute (round up)
+    const next = new Date(fromDate)
+    next.setSeconds(0, 0)
+    next.setMinutes(next.getMinutes() + 1)
+
+    // Find next matching time (max 1 year ahead to avoid infinite loop)
+    const maxIterations = 525600 // minutes in a year
+    let iterations = 0
+
+    while (iterations < maxIterations) {
+      if (this.matchesSchedule(next, schedule)) {
+        return next.toISOString()
+      }
+
+      next.setMinutes(next.getMinutes() + 1)
+      iterations++
+    }
+
+    throw new Error('Could not calculate next run time within reasonable timeframe')
+  }
+
+  /**
+   * Check if a date matches a cron schedule
+   */
+  private matchesSchedule(date: Date, schedule: CronSchedule): boolean {
+    // Check minute
+    if (!this.matchesField(date.getUTCMinutes(), schedule.minute)) return false
+
+    // Check hour
+    if (!this.matchesField(date.getUTCHours(), schedule.hour)) return false
+
+    // Check day of week (0 = Sunday)
+    if (schedule.dayOfWeek !== '*') {
+      if (!this.matchesField(date.getUTCDay(), schedule.dayOfWeek)) return false
+    }
+
+    // For MVP, we ignore dayOfMonth and month (always match)
+
+    return true
+  }
+
+  /**
+   * Check if a value matches a cron field
+   */
+  private matchesField(value: number, field: number | '*' | number[]): boolean {
+    if (field === '*') return true
+    if (typeof field === 'number') return value === field
+    return field.includes(value)
+  }
+
+  /**
+   * Get triggers directory path for a project
+   */
+  private getTriggersDir(projectName: string): string {
+    const codayDir = path.dirname(this.webhooksDir)
+    return path.join(codayDir, 'projects', projectName, 'triggers')
+  }
+
+  /**
+   * Get trigger file path
+   */
+  private getTriggerFilePath(projectName: string, triggerId: string): string {
+    return path.join(this.getTriggersDir(projectName), `${triggerId}.yml`)
+  }
+
+  /**
+   * Find project name for a trigger ID
+   */
+  private findProjectForTrigger(triggerId: string): string | null {
+    const codayDir = path.dirname(this.webhooksDir)
+    const projectsPath = path.join(codayDir, 'projects')
+
+    if (!fs.existsSync(projectsPath)) {
+      return null
+    }
+
+    const projectDirs = fs
+      .readdirSync(projectsPath, { withFileTypes: true })
+      .filter((dirent) => dirent.isDirectory())
+      .map((dirent) => dirent.name)
+
+    for (const projectName of projectDirs) {
+      const triggerPath = this.getTriggerFilePath(projectName, triggerId)
+      if (fs.existsSync(triggerPath)) {
+        return projectName
+      }
+    }
+
+    return null
+  }
+
+  // ==================== CRUD Operations ====================
+
+  /**
+   * List all triggers for a project
+   */
+  async listTriggers(projectName: string): Promise<TriggerInfo[]> {
+    const triggers = await this.loadProjectTriggers(projectName)
+
+    return triggers.map((trigger) => ({
+      id: trigger.id,
+      name: trigger.name,
+      enabled: trigger.enabled,
+      webhookUuid: trigger.webhookUuid,
+      schedule: trigger.schedule,
+      lastRun: trigger.lastRun,
+      nextRun: trigger.nextRun,
+    }))
+  }
+
+  /**
+   * Get a specific trigger
+   */
+  async getTrigger(projectName: string, triggerId: string): Promise<Trigger | null> {
+    const filePath = this.getTriggerFilePath(projectName, triggerId)
+
+    if (!fs.existsSync(filePath)) {
+      return null
+    }
+
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8')
+      const trigger = yaml.parse(content) as Trigger
+
+      // Ensure nextRun is up to date
+      if (!trigger.nextRun || new Date(trigger.nextRun) < new Date()) {
+        trigger.nextRun = this.calculateNextRun(trigger.schedule)
+      }
+
+      return trigger
+    } catch (error) {
+      console.error(`[TRIGGER] Failed to load trigger ${triggerId}:`, error)
+      return null
+    }
+  }
+
+  /**
+   * Create a new trigger
+   */
+  async createTrigger(
+    projectName: string,
+    data: {
+      name: string
+      webhookUuid: string
+      schedule: string
+      parameters?: Record<string, unknown>
+      enabled?: boolean
+    },
+    username: string
+  ): Promise<Trigger> {
+    // Validate cron expression
+    const schedule = this.parseCronExpression(data.schedule)
+    if (!schedule) {
+      throw new Error(`Invalid cron expression: ${data.schedule}`)
+    }
+
+    // Verify webhook exists
+    const webhook = await this.webhookService.get(data.webhookUuid)
+    if (!webhook) {
+      throw new Error(`Webhook not found: ${data.webhookUuid}`)
+    }
+
+    const trigger: Trigger = {
+      id: randomUUID(),
+      name: data.name,
+      enabled: data.enabled ?? true,
+      webhookUuid: data.webhookUuid,
+      schedule: data.schedule,
+      parameters: data.parameters,
+      createdBy: username,
+      createdAt: new Date().toISOString(),
+      nextRun: this.calculateNextRun(data.schedule),
+    }
+
+    await this.saveTrigger(trigger, projectName)
+
+    // Add to in-memory cache
+    this.triggers.set(trigger.id, trigger)
+
+    console.log(`[TRIGGER] Created trigger "${trigger.name}" (${trigger.id}) for project ${projectName}`)
+
+    return trigger
+  }
+
+  /**
+   * Update a trigger
+   */
+  async updateTrigger(
+    projectName: string,
+    triggerId: string,
+    updates: {
+      name?: string
+      enabled?: boolean
+      schedule?: string
+      parameters?: Record<string, unknown>
+    }
+  ): Promise<Trigger> {
+    const trigger = await this.getTrigger(projectName, triggerId)
+
+    if (!trigger) {
+      throw new Error(`Trigger not found: ${triggerId}`)
+    }
+
+    // Update fields
+    if (updates.name !== undefined) trigger.name = updates.name
+    if (updates.enabled !== undefined) trigger.enabled = updates.enabled
+    if (updates.parameters !== undefined) trigger.parameters = updates.parameters
+
+    // If schedule changed, validate and recalculate nextRun
+    if (updates.schedule !== undefined && updates.schedule !== trigger.schedule) {
+      const schedule = this.parseCronExpression(updates.schedule)
+      if (!schedule) {
+        throw new Error(`Invalid cron expression: ${updates.schedule}`)
+      }
+      trigger.schedule = updates.schedule
+      trigger.nextRun = this.calculateNextRun(updates.schedule)
+    }
+
+    await this.saveTrigger(trigger, projectName)
+
+    // Update in-memory cache
+    this.triggers.set(trigger.id, trigger)
+
+    console.log(`[TRIGGER] Updated trigger "${trigger.name}" (${trigger.id})`)
+
+    return trigger
+  }
+
+  /**
+   * Delete a trigger
+   */
+  async deleteTrigger(projectName: string, triggerId: string): Promise<boolean> {
+    const filePath = this.getTriggerFilePath(projectName, triggerId)
+
+    if (!fs.existsSync(filePath)) {
+      return false
+    }
+
+    fs.unlinkSync(filePath)
+
+    // Remove from in-memory cache
+    this.triggers.delete(triggerId)
+
+    console.log(`[TRIGGER] Deleted trigger ${triggerId}`)
+
+    return true
+  }
+
+  /**
+   * Enable a trigger
+   */
+  async enableTrigger(projectName: string, triggerId: string): Promise<Trigger> {
+    return this.updateTrigger(projectName, triggerId, { enabled: true })
+  }
+
+  /**
+   * Disable a trigger
+   */
+  async disableTrigger(projectName: string, triggerId: string): Promise<Trigger> {
+    return this.updateTrigger(projectName, triggerId, { enabled: false })
+  }
+
+  /**
+   * Manually execute a trigger now (for testing)
+   */
+  async runTriggerNow(projectName: string, triggerId: string): Promise<string> {
+    const trigger = await this.getTrigger(projectName, triggerId)
+
+    if (!trigger) {
+      throw new Error(`Trigger not found: ${triggerId}`)
+    }
+
+    console.log(`[TRIGGER] Manually executing trigger "${trigger.name}" (${trigger.id})`)
+
+    // Get webhook to verify it exists
+    const webhook = await this.webhookService.get(trigger.webhookUuid)
+    if (!webhook) {
+      throw new Error(`Webhook not found: ${trigger.webhookUuid}`)
+    }
+
+    // For now, return a placeholder threadId
+    // The actual execution will be handled by the webhook routes
+    const threadId = `trigger-manual-${trigger.id}-${Date.now()}`
+
+    // Update lastRun but don't change nextRun (keep scheduled time)
+    trigger.lastRun = new Date().toISOString()
+    await this.saveTrigger(trigger, projectName)
+    this.triggers.set(trigger.id, trigger)
+
+    // Log execution via CodayLogger
+    this.logger.logTriggerExecution({
+      triggerId: trigger.id,
+      triggerName: trigger.name,
+      webhookUuid: trigger.webhookUuid,
+      projectName,
+      success: true,
+      threadId,
+    })
+
+    return threadId
+  }
+
+  /**
+   * Save trigger to disk
+   */
+  private async saveTrigger(trigger: Trigger, projectName?: string | null): Promise<void> {
+    // Find project if not provided
+    if (!projectName) {
+      projectName = this.findProjectForTrigger(trigger.id)
+      if (!projectName) {
+        throw new Error(`Cannot find project for trigger ${trigger.id}`)
+      }
+    }
+
+    const triggersDir = this.getTriggersDir(projectName)
+    fs.mkdirSync(triggersDir, { recursive: true })
+
+    const filePath = this.getTriggerFilePath(projectName, trigger.id)
+    const content = yaml.stringify(trigger)
+
+    fs.writeFileSync(filePath, content, 'utf-8')
+  }
+}
