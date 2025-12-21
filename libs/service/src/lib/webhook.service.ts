@@ -3,6 +3,12 @@ import * as os from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs'
 import { readYamlFile, writeYamlFile } from '@coday/utils'
+import type { CodayOptions } from '@coday/options'
+import type { CodayLogger } from '@coday/service/coday-logger'
+import type { ThreadCodayManager } from '../../apps/server/src/thread-coday-manager'
+import type { ThreadService } from '../../apps/server/src/services/thread.service'
+import { CodayEvent, MessageEvent } from '@coday/coday-events'
+import { filter } from 'rxjs'
 
 export interface Webhook {
   uuid: string
@@ -16,6 +22,10 @@ export interface Webhook {
 
 export class WebhookService {
   private webhooksDir: string
+  private threadCodayManager?: ThreadCodayManager
+  private threadService?: ThreadService
+  private codayOptions?: CodayOptions
+  private logger?: CodayLogger
 
   constructor(codayConfigPath?: string) {
     const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
@@ -159,5 +169,190 @@ export class WebhookService {
    */
   getWebhooksDir(): string {
     return this.webhooksDir
+  }
+
+  /**
+   * Initialize webhook execution dependencies
+   * Called after server initialization with required services
+   */
+  initializeExecution(
+    threadCodayManager: ThreadCodayManager,
+    threadService: ThreadService,
+    codayOptions: CodayOptions,
+    logger: CodayLogger
+  ): void {
+    this.threadCodayManager = threadCodayManager
+    this.threadService = threadService
+    this.codayOptions = codayOptions
+    this.logger = logger
+  }
+
+  /**
+   * Execute a webhook
+   *
+   * @param webhookUuid - UUID of the webhook to execute
+   * @param parameters - Parameters to override webhook defaults (for template type)
+   * @param username - Username executing the webhook
+   * @param title - Optional title for the thread
+   * @param awaitFinalAnswer - Whether to wait for completion (default: false)
+   * @returns Promise<{ threadId: string, lastEvent?: MessageEvent }>
+   */
+  async executeWebhook(
+    webhookUuid: string,
+    parameters: Record<string, unknown>,
+    username: string,
+    title?: string,
+    awaitFinalAnswer: boolean = false
+  ): Promise<{ threadId: string; lastEvent?: MessageEvent }> {
+    // Verify execution is initialized
+    if (!this.threadCodayManager || !this.threadService || !this.codayOptions || !this.logger) {
+      throw new Error('Webhook execution not initialized. Call initializeExecution() first.')
+    }
+
+    // Load webhook configuration
+    const webhook = await this.get(webhookUuid)
+    if (!webhook) {
+      throw new Error(`Webhook not found: ${webhookUuid}`)
+    }
+
+    // Determine prompts based on webhook command type
+    let prompts: string[]
+    if (webhook.commandType === 'free') {
+      // For 'free' type, use prompts from parameters
+      const bodyPrompts = parameters.prompts as string[] | undefined
+      if (!bodyPrompts || !Array.isArray(bodyPrompts) || bodyPrompts.length === 0) {
+        throw new Error('Missing or invalid prompts array for free command type')
+      }
+      prompts = bodyPrompts
+    } else if (webhook.commandType === 'template') {
+      // For 'template' type, use webhook commands with placeholder replacement
+      if (!webhook.commands || webhook.commands.length === 0) {
+        throw new Error('Webhook has no template commands configured')
+      }
+
+      // Replace placeholders in template commands
+      prompts = webhook.commands.map((command) => {
+        let processedCommand = command
+        // Simple string replacement for placeholders like {{key}}
+        Object.entries(parameters).forEach(([key, value]) => {
+          const placeholder = `{{${key}}}`
+          processedCommand = processedCommand.replace(new RegExp(placeholder, 'g'), String(value))
+        })
+        return processedCommand
+      })
+    } else {
+      throw new Error(`Unknown webhook command type: ${webhook.commandType}`)
+    }
+
+    const project = webhook.project
+
+    if (!project) {
+      throw new Error('Webhook project not configured')
+    }
+
+    if (!username) {
+      throw new Error('Username is required')
+    }
+
+    // Create a new thread for the webhook
+    const thread = await this.threadService.createThread(project, username, title)
+    const threadId = thread.id
+
+    // Configure one-shot Coday instance with automatic prompts
+    const oneShotOptions: CodayOptions = {
+      ...this.codayOptions,
+      oneshot: true, // Creates isolated instance that terminates after processing
+      project, // Target project for the AI agent interaction
+      thread: threadId, // Use the newly created thread
+      prompts: prompts, // User prompts
+    }
+
+    console.log(`[WEBHOOK] Creating webhook instance with ${prompts.length} prompts:`, prompts)
+
+    // Create a thread-based Coday instance for this webhook (without SSE connection)
+    const instance = this.threadCodayManager.createWithoutConnection(threadId, project, username, oneShotOptions)
+
+    // IMPORTANT: Prepare Coday without starting run() to subscribe to events first
+    // Because interactor.events is a Subject (not ReplaySubject), we must subscribe BEFORE run() emits events
+    instance.prepareCoday()
+    const interactor = instance.coday!.interactor
+
+    // Log successful webhook initiation
+    const logData = {
+      project,
+      title: title ?? 'Untitled',
+      username,
+      clientId: threadId, // Use threadId as clientId for log correlation
+      promptCount: prompts.length,
+      awaitFinalAnswer: !!awaitFinalAnswer,
+      webhookName: webhook.name,
+      webhookUuid: webhook.uuid,
+    }
+    this.logger.logWebhook(logData)
+
+    if (awaitFinalAnswer) {
+      // Synchronous mode: wait for completion
+      // Collect all assistant messages during the run
+      const assistantMessages: MessageEvent[] = []
+      const subscription = interactor.events
+        .pipe(
+          filter((event: CodayEvent) => {
+            console.log(
+              `[WEBHOOK] Received event type: ${event.type}, role: ${event instanceof MessageEvent ? event.role : 'N/A'}`
+            )
+            return event instanceof MessageEvent && event.role === 'assistant' && !!event.name
+          })
+        )
+        .subscribe((event) => {
+          assistantMessages.push(event as MessageEvent)
+        })
+
+      try {
+        // Now start Coday run and wait for it to complete
+        await instance.coday!.run()
+        subscription.unsubscribe()
+
+        const lastEvent = assistantMessages[assistantMessages.length - 1]
+
+        // Cleanup the thread instance after completion
+        await this.threadCodayManager.cleanup(threadId)
+
+        return { threadId, lastEvent }
+      } catch (error) {
+        subscription.unsubscribe()
+
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        this.logger.logWebhookError({
+          error: `Webhook completion failed: ${errorMessage}`,
+          username,
+          project,
+          clientId: threadId,
+        })
+        console.error('[WEBHOOK] Error waiting for webhook completion:', error)
+
+        // Cleanup on error
+        await this.threadCodayManager.cleanup(threadId)
+
+        throw error
+      }
+    } else {
+      // Asynchronous mode: return immediately with thread ID
+      // Start Coday run in background
+      instance.coday!.run().catch((error) => {
+        console.error('[WEBHOOK] Error during webhook Coday run:', error)
+      })
+
+      // Schedule cleanup after a reasonable timeout (e.g., 5 minutes)
+      setTimeout(
+        () => {
+          this.threadCodayManager!.cleanup(threadId).catch((error) => {
+            console.error('[WEBHOOK] Error cleaning up webhook thread after timeout:', error)
+          })
+        },
+        5 * 60 * 1000
+      ) // 5 minutes
+
+      return { threadId }
+    }
   }
 }

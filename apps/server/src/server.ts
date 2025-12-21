@@ -51,7 +51,7 @@ debugLog(
 
 // Create single webhook service instance for all clients
 const webhookService = new WebhookService(codayOptions.configDir)
-debugLog('INIT', 'Webhook service initialized')
+debugLog('INIT', 'Webhook service initialized (execution will be initialized after thread manager)')
 // Middleware to parse JSON bodies with increased limit for image uploads
 app.use(express.json({ limit: '20mb' }))
 
@@ -163,6 +163,10 @@ debugLog('INIT', 'MCP instance pool initialized')
 // Initialize the thread-based Coday manager for SSE architecture
 const threadCodayManager = new ThreadCodayManager(logger, webhookService, projectService, threadService, mcpPool)
 
+// Initialize webhook execution dependencies now that thread manager is ready
+webhookService.initializeExecution(threadCodayManager, threadService, codayOptions, logger)
+debugLog('INIT', 'Webhook service execution initialized')
+
 // Initialize config service registry for REST API endpoints
 const configInteractor = new ServerInteractor('config-api')
 const configRegistry = new ConfigServiceRegistry(codayOptions.configDir, configInteractor)
@@ -224,7 +228,7 @@ registerUserRoutes(app, getUsername)
 registerConfigRoutes(app, configRegistry, getUsername)
 
 // Register webhook management routes (including execution endpoint)
-registerWebhookRoutes(app, webhookService, getUsername, threadService, threadCodayManager, codayOptions, logger)
+registerWebhookRoutes(app, webhookService, getUsername)
 
 // Register project management routes
 registerProjectRoutes(app, projectService)
