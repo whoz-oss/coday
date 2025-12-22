@@ -1,3 +1,13 @@
+## 0.57.1 (2025-12-22)
+
+### 🩹 Fixes
+
+- #404 ensure Coday agent is always available in fly projects ([#409](https://github.com/whoz-oss/coday/pull/409), [#404](https://github.com/whoz-oss/coday/issues/404), [#408](https://github.com/whoz-oss/coday/issues/408))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.57.0 (2025-12-19)
 
 ### 🚀 Features
