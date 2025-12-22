@@ -352,8 +352,7 @@ curl -X POST http://localhost:8080/api/plugins/{pluginId}/reload
 
 - **Project Documentation:**
   - [README.md](README.md) - Overview
-  - [MIGRATION.md](MIGRATION.md) - From PoC to production
-  - [agentos-sdk/README.md](agentos-sdk/README.md) - SDK guide
+  - [AgentOS SDK README.md](agentos-sdk/README.md) - SDK guide
 
 - **External Resources:**
   - [Spring Boot Docs](https://spring.io/projects/spring-boot)
@@ -365,7 +364,6 @@ curl -X POST http://localhost:8080/api/plugins/{pluginId}/reload
 
 - **GitHub Issues:** https://github.com/whoz-oss/coday/issues
 - **Discussions:** https://github.com/whoz-oss/coday/discussions
-- **Documentation:** [docs/](docs/)
 
 ## What's Next?
 
@@ -378,8 +376,3 @@ curl -X POST http://localhost:8080/api/plugins/{pluginId}/reload
 ---
 
 **You're all set!** 🎉
-
-For more advanced topics, see:
-- [ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [PLUGIN_SYSTEM.md](docs/PLUGIN_SYSTEM.md)
-- [EXAMPLES.md](docs/EXAMPLES.md)
