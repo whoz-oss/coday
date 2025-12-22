@@ -59,73 +59,7 @@ dependencies {
 ## Core Interfaces
 
 ### AgentPlugin
-
-The main extension point for creating plugins:
-
-```kotlin
-import org.pf4j.Extension
-import org.pf4j.Plugin
-import io.biznet.agentos.sdk.AgentPlugin
-
-@Extension
-class MyAgentPlugin : Plugin() {
-    
-    override fun start() {
-        println("MyAgentPlugin started")
-    }
-    
-    override fun stop() {
-        println("MyAgentPlugin stopped")
-    }
-}
-```
-
-### Agent Model
-
-Core agent representation:
-
-```kotlin
-data class Agent(
-    val id: String,
-    val name: String,
-    val description: String,
-    val capabilities: List<String>,
-    val contexts: List<ContextType>,
-    val tags: List<String> = emptyList(),
-    val priority: Int = 5,
-    val status: AgentStatus = AgentStatus.ACTIVE,
-    val version: String = "1.0.0"
-)
-```
-
-### Context Types
-
-Available context types for agents:
-
-```kotlin
-enum class ContextType {
-    GENERAL,
-    CODE_REVIEW,
-    TESTING,
-    DOCUMENTATION,
-    ARCHITECTURE,
-    SECURITY,
-    PERFORMANCE,
-    DEPLOYMENT,
-    MONITORING
-}
-```
-
-### Agent Status
-
-```kotlin
-enum class AgentStatus {
-    ACTIVE,
-    INACTIVE,
-    DEPRECATED,
-    EXPERIMENTAL
-}
-```
+TbD
 
 ## Creating a Plugin
 

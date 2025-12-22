@@ -267,10 +267,10 @@ agentos/
 ## Development
 
 ### Adding a new plugin
-To create a new plugin please read [PLUGIN_DEVELOPMENT](PLUGIN_DEVELOPMENT.md) which describe how 
+To create a new plugin please read [AgentOS SDK README.md](agentos-sdk/README.md) which describe how 
 to create a new project using AgentOS SDK. 
-A plugin should be deploy in the plugins directory of your AgentOS Service instance. 
-In case you use docker-compose you should ensure the proper location of the directory 
+A plugin should be deployed in the plugins directory of your AgentOS Service instance. 
+In case you use docker-compose you should ensure the proper location of the directory. 
 
 ### Modifying the SDK
 
@@ -404,9 +404,7 @@ Check that:
 
 ## Documentation
 
-- [Composite Build Guide](COMPOSITE_BUILD.md) - Detailed architecture explanation
-- [Migration Guide](MIGRATION_COMPOSITE_BUILD.md) - Migration details and troubleshooting
-- [Plugin Development Guide](PLUGIN_DEVELOPMENT.md) - How to develop plugins
+- [AgentOS SDK README.md](agentos-sdk/README.md) - How to develop plugins using AgentOS SDK
 - [Quick Start](QUICKSTART.md) - Get started quickly
 
 ## License
