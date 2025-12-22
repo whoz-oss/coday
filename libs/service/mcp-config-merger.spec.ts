@@ -30,7 +30,7 @@ describe('McpConfigMerger', () => {
       const codayServers: McpServerConfig[] = [
         {
           id: 'github',
-          name: 'GIT-PLATFORM',
+          name: 'GITHUB',
           enabled: true,
           args: ['run', '-i', '--rm', '-e', 'GITHUB_PERSONAL_ACCESS_TOKEN', 'ghcr.io/github/github-mcp-server'],
           debug: false,
@@ -40,7 +40,7 @@ describe('McpConfigMerger', () => {
       const projectServers: McpServerConfig[] = [
         {
           id: 'github',
-          name: 'GIT-PLATFORM',
+          name: 'GITHUB',
           command: '/usr/local/bin/docker',
           args: ['--network=host'],
           env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'project-token' },
@@ -52,7 +52,7 @@ describe('McpConfigMerger', () => {
       const userServers: McpServerConfig[] = [
         {
           id: 'github',
-          name: 'GIT-PLATFORM',
+          name: 'GITHUB',
           command: '/path/to/user/docker',
           env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'user-secret-token' },
           enabled: false,
@@ -67,7 +67,7 @@ describe('McpConfigMerger', () => {
 
       // Basic properties: later levels win
       expect(mergedServer.id).toBe('github')
-      expect(mergedServer.name).toBe('GIT-PLATFORM')
+      expect(mergedServer.name).toBe('GITHUB')
       expect(mergedServer.command).toBe('/path/to/user/docker') // USER level wins
 
       // Args: aggregated from all levels in order
@@ -378,7 +378,7 @@ describe('McpConfigMerger', () => {
       const codayServers: McpServerConfig[] = [
         {
           id: 'github',
-          name: 'GIT-PLATFORM',
+          name: 'GITHUB',
           command: 'docker',
           enabled: true,
           whiteListedHostEnvVarNames: ['GITHUB_PERSONAL_ACCESS_TOKEN'],
@@ -409,7 +409,7 @@ describe('McpConfigMerger', () => {
       const codayServers: McpServerConfig[] = [
         {
           id: 'github',
-          name: 'GIT-PLATFORM',
+          name: 'GITHUB',
           command: 'docker',
           enabled: true,
           whiteListedHostEnvVarNames: ['GITHUB_PERSONAL_ACCESS_TOKEN'],
@@ -442,7 +442,7 @@ describe('McpConfigMerger', () => {
       const codayServers: McpServerConfig[] = [
         {
           id: 'github',
-          name: 'GIT-PLATFORM',
+          name: 'GITHUB',
           command: 'docker',
           enabled: true,
           args: ['-e', 'GITHUB_PERSONAL_ACCESS_TOKEN'],
@@ -453,7 +453,7 @@ describe('McpConfigMerger', () => {
       const projectServers: McpServerConfig[] = [
         {
           id: 'github',
-          name: 'GIT-PLATFORM',
+          name: 'GITHUB',
           env: {
             OTHER_VAR: 'other-value',
           },

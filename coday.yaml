@@ -284,7 +284,7 @@ agents:
       - ./product/04-guidelines.md
       - ./docs/to-rework/INTEGRATIONS.md
     integrations:
-      GIT-PLATFORM:
+      GITHUB:
       FETCH:
       FILES:
       AI:
@@ -301,7 +301,7 @@ mcp:
       command: uvx
       debug: false
     - id: github
-      name: GIT-PLATFORM
+      name: GITHUB
       enabled: true
       command: docker
       whiteListedHostEnvVarNames:
@@ -313,7 +313,7 @@ mcp:
         - -e
         - GITHUB_PERSONAL_ACCESS_TOKEN
         - ghcr.io/github/github-mcp-server
-    # IMPORTANT, add through mcp config of GIT-PLATFORM at user level the env variable holding your access token, and the command
+    # IMPORTANT, add through mcp config of GITHUB at user level the env variable holding your access token, and the command
     #    env:
     #      GITHUB_PERSONAL_ACCESS_TOKEN: your_github_access_token
     #    command: /path/to/docker
