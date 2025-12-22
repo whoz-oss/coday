@@ -40,3 +40,5 @@ logs/
 *.temp
 temp/
 tmp/
+
+.env
