@@ -7,7 +7,7 @@ integrations:
   AI:
   MEMORY:
   FETCH:
-  GIT-PLATFORM:
+  GITHUB:
   GIT:
   PROJECT_SCRIPTS:
   DELEGATE:
