@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: agentos-service-test
+  
+  ai:
+    openai:
+      api-key: test-key
+    anthropic:
+      api-key: test-key
+
+server:
+  port: 0  # Random port for tests
+
+agentos:
+  plugins:
+    dir: build/test-plugins
+
+logging:
+  level:
+    root: WARN
+    io.biznet.agentos: INFO
+    org.pf4j: INFO
