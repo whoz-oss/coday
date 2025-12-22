@@ -43,7 +43,7 @@ The service module contains:
 ## Prerequisites
 
 - Java 17+
-- Gradle 8+ (wrapper included)
+- Gradle 9+ (wrapper included)
 - Node.js 20+ (for Nx build orchestration)
 
 ## Building
@@ -209,11 +209,8 @@ agentosService = "0.2.0"  # Update Service version here
 
 The project uses GitHub Actions with Nx for efficient CI/CD:
 
-- **On Push/PR**: Builds and tests all modules
 - **On PR**: Uses `nx affected` to build/test only changed projects
 - **On Main Push**: Publishes SDK to GitHub Packages
-
-See [`.github/workflows/agentos-ci.yml`](../.github/workflows/agentos-ci.yml) for details.
 
 ## Project Structure
 
@@ -270,12 +267,10 @@ agentos/
 ## Development
 
 ### Adding a new plugin
-
-1. Create a new module under `examples/` or externally
-2. Add dependency on `agentos-sdk`
-3. Implement the plugin interfaces
-4. Build your plugin JAR
-5. Copy to `agentos-service/plugins/` directory
+To create a new plugin please read [PLUGIN_DEVELOPMENT](PLUGIN_DEVELOPMENT.md) which describe how 
+to create a new project using AgentOS SDK. 
+A plugin should be deploy in the plugins directory of your AgentOS Service instance. 
+In case you use docker-compose you should ensure the proper location of the directory 
 
 ### Modifying the SDK
 
@@ -349,8 +344,7 @@ spring:
 
 agentos:
   plugins:
-    directory: plugins
-    autoLoad: true
+    dir: plugins
 ```
 
 ## Verification
@@ -421,4 +415,4 @@ Apache License 2.0
 
 ---
 
-**Built with Spring Boot 3.5 + Kotlin 1.9 + Spring AI + PF4J + Gradle Composite Builds**
+**Built with Spring Boot 3.5 + Kotlin 2 + Spring AI + PF4J + Gradle Composite Builds**
