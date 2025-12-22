@@ -1,0 +1,43 @@
+# Build artifacts
+**/build/
+**/target/
+**/.gradle/
+**/.nx/
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+docs/
+
+# CI/CD
+.github/
+project.json
+
+# Logs
+*.log
+logs/
+
+# Test files
+**/test/
+**/*Test.kt
+**/*Tests.kt
+
+# Runtime
+plugins/
+!plugins/.gitkeep
+*.pid

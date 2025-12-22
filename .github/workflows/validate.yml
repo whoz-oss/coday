@@ -25,6 +25,13 @@ jobs:
         with:
           version: 10
 
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
