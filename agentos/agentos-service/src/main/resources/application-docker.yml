@@ -33,10 +33,9 @@ management:
       export:
         enabled: true
 
-# PF4J configuration
-pf4j:
-  pluginsDir: ${PLUGINS_DIR:/app/plugins}
-  systemMode: deployment
+agentos:
+  plugins:
+    dir: ${PLUGINS_DIR:/plugins/}
 
 logging:
   level:
