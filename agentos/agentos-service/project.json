@@ -13,7 +13,9 @@
         "{workspaceRoot}/agentos/gradle.properties",
         "{workspaceRoot}/agentos/settings.gradle.kts"
       ],
-      "outputs": ["{projectRoot}/build"],
+      "outputs": [
+        "{projectRoot}/build"
+      ],
       "options": {
         "command": "./gradlew :agentos-service:build",
         "cwd": "agentos"
@@ -21,7 +23,9 @@
       "dependsOn": [
         {
           "target": "build",
-          "projects": ["agentos-sdk"]
+          "projects": [
+            "agentos-sdk"
+          ]
         }
       ]
     },
@@ -34,7 +38,10 @@
         "{workspaceRoot}/agentos/gradle.properties",
         "{workspaceRoot}/agentos/settings.gradle.kts"
       ],
-      "outputs": ["{projectRoot}/build/test-results", "{projectRoot}/build/reports"],
+      "outputs": [
+        "{projectRoot}/build/test-results",
+        "{projectRoot}/build/reports"
+      ],
       "options": {
         "command": "./gradlew :agentos-service:test",
         "cwd": "agentos",
@@ -58,13 +65,21 @@
         "{workspaceRoot}/agentos/gradle.properties",
         "{workspaceRoot}/agentos/settings.gradle.kts"
       ],
-      "outputs": ["{projectRoot}/build/libs"],
+      "outputs": [
+        "{projectRoot}/build/libs"
+      ],
       "options": {
         "command": "./gradlew :agentos-service:bootJar",
         "cwd": "agentos"
       },
-      "dependsOn": ["build"]
+      "dependsOn": [
+        "build"
+      ]
     }
   },
-  "tags": ["type:app", "platform:jvm", "scope:service"]
+  "tags": [
+    "type:app",
+    "platform:jvm",
+    "scope:service"
+  ]
 }

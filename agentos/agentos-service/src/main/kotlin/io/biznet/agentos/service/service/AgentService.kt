@@ -12,25 +12,29 @@ import org.springframework.stereotype.Service
  */
 @Service
 class AgentService(
-    private val pluginManager: PluginManager
+    private val pluginManager: PluginManager,
 ) {
-    
     /**
      * List all available agents.
      */
-    fun listAgents(): List<AgentMetadata> {
-        return pluginManager.getExtensions(AgentPlugin::class.java)
+    fun listAgents(): List<AgentMetadata> =
+        pluginManager
+            .getExtensions(AgentPlugin::class.java)
             .map { it.getMetadata() }
-    }
-    
+
     /**
      * Execute a specific agent by name.
      */
-    suspend fun executeAgent(agentName: String, input: AgentInput): AgentOutput {
-        val agent = pluginManager.getExtensions(AgentPlugin::class.java)
-            .firstOrNull { it.getMetadata().name == agentName }
-            ?: throw IllegalArgumentException("Agent not found: $agentName")
-        
+    suspend fun executeAgent(
+        agentName: String,
+        input: AgentInput,
+    ): AgentOutput {
+        val agent =
+            pluginManager
+                .getExtensions(AgentPlugin::class.java)
+                .firstOrNull { it.getMetadata().name == agentName }
+                ?: throw IllegalArgumentException("Agent not found: $agentName")
+
         return agent.execute(input)
     }
 }

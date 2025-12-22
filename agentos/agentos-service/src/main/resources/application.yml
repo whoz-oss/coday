@@ -40,14 +40,7 @@ management:
 
 agentos:
   plugins:
-    directory: ${PLUGINS_DIR:plugins}
-    autoLoad: ${PLUGINS_AUTO_LOAD:true}
-    development-mode: ${PLUGINS_DEV_MODE:false}
-  
-  agents:
-    registry:
-      cache-enabled: true
-      cache-ttl: 300
+    dir: ${PLUGINS_DIR:plugins/}
 
 logging:
   level:

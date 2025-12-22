@@ -11,17 +11,14 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/api/agents")
 class AgentController(
-    private val agentService: AgentService
+    private val agentService: AgentService,
 ) {
-    
     @GetMapping
     fun listAgents() = agentService.listAgents()
-    
+
     @PostMapping("/{agentName}/execute")
     suspend fun executeAgent(
         @PathVariable agentName: String,
-        @RequestBody input: AgentInput
-    ): AgentOutput {
-        return agentService.executeAgent(agentName, input)
-    }
+        @RequestBody input: AgentInput,
+    ): AgentOutput = agentService.executeAgent(agentName, input)
 }

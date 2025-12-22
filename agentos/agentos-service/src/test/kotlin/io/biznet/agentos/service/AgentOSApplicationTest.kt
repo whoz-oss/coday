@@ -3,16 +3,13 @@ package io.biznet.agentos.service
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.test.context.TestPropertySource
+import org.springframework.test.context.ActiveProfiles
 
 @SpringBootTest
-@TestPropertySource(properties = [
-    "pf4j.pluginsDir=./test-plugins"
-])
+@ActiveProfiles("test")
 class AgentOSApplicationTest : StringSpec() {
-    
     override fun extensions() = listOf(SpringExtension)
-    
+
     init {
         "context should load successfully" {
             // This test verifies that the Spring application context loads correctly
