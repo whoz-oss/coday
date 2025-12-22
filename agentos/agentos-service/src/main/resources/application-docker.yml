@@ -35,7 +35,7 @@ management:
 
 agentos:
   plugins:
-    dir: ${PLUGINS_DIR:/plugins/}
+    dir: ${PLUGINS_DIR:/app/plugins/}
 
 logging:
   level:
