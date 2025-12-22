@@ -83,7 +83,7 @@ mcp:
       args: [mcp-server-fetch, --ignore-robots-txt]
       
     - id: github
-      name: GIT-PLATFORM
+      name: GITHUB
       command: docker
       args:
         - run
@@ -164,7 +164,7 @@ agents:
       FETCH:           # Web content retrieval
       AI:              # Delegate to other agents
       MEMORY:          # Memory management
-      GIT-PLATFORM:    # GitHub integration (~15 tools)
+      GITHUB:    # GitHub integration (~15 tools)
       GIT:             # Git operations
       PROJECT_SCRIPTS: # All project scripts
       PLAYWRIGHT:      # Browser automation (~30 tools)
