@@ -60,3 +60,56 @@ Integration enables Zendesk Help Center article search and retrieval. All fields
   For example, if your help center is at `https://mycompany.zendesk.com`, enter `mycompany`
 - Username: your Zendesk email address associated to the API token
 - API key: Zendesk API token (create in Admin Center -> Apps and integrations -> Zendesk API -> Add API token) ⚠️ tied to the user.
+
+### Basecamp
+
+Integration enables Basecamp project and message management through OAuth2 authentication.
+
+#### Setup
+
+1. **Create a Basecamp OAuth2 application**:
+   - Go to [Basecamp Launchpad Integrations](https://launchpad.37signals.com/integrations)
+   - Click "Register one now" to create a new OAuth2 application
+   - Fill in the application details:
+     - **Name**: Your application name (e.g., "Coday Integration")
+     - **Company/Organization**: Your company name
+     - **Website**: Your website or GitHub repository
+     - **Redirect URI**: See configuration below
+
+2. **Configure redirect URIs**:
+   
+   Register the appropriate redirect URI(s) based on your environment:
+   
+   - **Development**: `http://localhost:3001/oauth/callback`
+   - **Production**: `https://your-domain.com/oauth/callback`
+   
+   You can register multiple redirect URIs to support both environments.
+
+3. **Configure in Coday**:
+
+   **Project-level configuration** (in `coday.yaml`):
+   ```yaml
+   integration:
+     BASECAMP:
+       username: "your_client_id_here"        # Client ID from Basecamp app
+       apiKey: "your_client_secret_here"    # Client Secret from Basecamp app
+       oauth2:
+         redirect_uri: "http://localhost:3001/oauth/callback"  # Or production URL
+   ```
+
+   **User-level configuration** (tokens are stored automatically after authentication):
+   
+   After your first OAuth authentication, Coday automatically stores tokens in `~/.coday/users/{username}/user.yml`:
+   ```yaml
+   projects:
+     your-project:
+       integration:
+         BASECAMP:
+           oauth2:
+             tokens:
+               access_token: "..."      # Stored securely
+               refresh_token: "..."     # For token renewal
+               expires_at: 1735689600000
+             account_href: "https://3.basecampapi.com/xxxxx"  # Selected account
+             account_name: "Your Company"                      # For display
+   ```
