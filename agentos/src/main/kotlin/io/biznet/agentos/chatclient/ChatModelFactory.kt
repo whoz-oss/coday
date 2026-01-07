@@ -1,5 +1,6 @@
 package io.biznet.agentos.chatclient
 
+import com.google.genai.Client
 import io.biznet.agentos.api.aiprovider.AiProvider
 import io.biznet.agentos.api.aiprovider.ApiType
 import io.micrometer.observation.ObservationRegistry
@@ -7,6 +8,8 @@ import org.springframework.ai.anthropic.AnthropicChatModel
 import org.springframework.ai.anthropic.AnthropicChatOptions
 import org.springframework.ai.anthropic.api.AnthropicApi
 import org.springframework.ai.chat.model.ChatModel
+import org.springframework.ai.google.genai.GoogleGenAiChatModel
+import org.springframework.ai.google.genai.GoogleGenAiChatOptions
 import org.springframework.ai.model.tool.DefaultToolCallingManager
 import org.springframework.ai.model.tool.DefaultToolExecutionEligibilityPredicate
 import org.springframework.ai.openai.OpenAiChatModel
@@ -32,9 +35,9 @@ class ChatModelFactory {
                 ?: throw IllegalArgumentException("No model name provided for provider '${provider.id}'.")
 
         return when (provider.apiType) {
-            ApiType.OpenAI -> createOpenAiModel(provider.baseUrl, apiKey, modelName, provider.temperature)
-            ApiType.Anthropic -> createAnthropicModel(provider.baseUrl, apiKey, modelName, provider.temperature)
-            ApiType.Gemini -> throw IllegalArgumentException("Ah!") // createGeminiModel(provider.baseUrl, apiKey, modelName, provider.temperature)
+            ApiType.OpenAI -> createOpenAiModel(provider.baseUrl!!, apiKey, modelName, provider.temperature)
+            ApiType.Anthropic -> createAnthropicModel(provider.baseUrl!!, apiKey, modelName, provider.temperature)
+            ApiType.Gemini -> createGeminiModel(apiKey, modelName, provider.temperature) // createGeminiModel(provider.baseUrl, apiKey, modelName, provider.temperature)
         }
     }
 
@@ -97,19 +100,26 @@ class ChatModelFactory {
         )
     }
 
-//    private fun createGeminiModel(
-//        baseUrl: String,
-//        apiKey: String,
-//        model: String,
-//        temp: Double,
-//    ): ChatModel {
-//        val api = Client.builder().apiKey(apiKey).build()
-//
-//        val options = GoogleGenAiChatOptions.builder()
-//            .model(model)
-//            .temperature(temp)
-//            .build()
-//
-//        return GoogleGenAiChatModel(api, options)
-//    }
+    private fun createGeminiModel(
+        apiKey: String,
+        model: String,
+        temp: Double,
+    ): ChatModel {
+        val api = Client.builder().apiKey(apiKey).build()
+
+        val options =
+            GoogleGenAiChatOptions
+                .builder()
+                .model(model)
+                .temperature(temp)
+                .build()
+
+        return GoogleGenAiChatModel(
+            api,
+            options,
+            DefaultToolCallingManager.builder().build(),
+            RetryUtils.DEFAULT_RETRY_TEMPLATE,
+            ObservationRegistry.NOOP,
+        )
+    }
 }

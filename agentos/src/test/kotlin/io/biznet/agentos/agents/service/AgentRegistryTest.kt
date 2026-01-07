@@ -4,18 +4,18 @@ import io.biznet.agentos.agents.domain.Agent
 import io.biznet.agentos.agents.domain.AgentContext
 import io.biznet.agentos.agents.domain.AgentStatus
 import io.biznet.agentos.agents.domain.ContextType
-import io.biznet.agentos.plugins.PluginService
+import io.biznet.agentos.plugins.AgentDiscoveryService
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
 class AgentRegistryTest {
     private lateinit var registry: AgentRegistry
-    private lateinit var pluginService: PluginService
+    private lateinit var agentDiscoveryService: AgentDiscoveryService
 
     @BeforeEach
     fun setup() {
-        registry = AgentRegistry(pluginService)
+        registry = AgentRegistry(agentDiscoveryService)
     }
 
     @Test

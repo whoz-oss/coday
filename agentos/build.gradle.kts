@@ -19,7 +19,7 @@ repositories {
     mavenCentral()
 }
 
-extra["springAiVersion"] = "1.0.3"
+extra["springAiVersion"] = "1.1.2"
 extra["pf4jVersion"] = "3.13.0"
 extra["pf4jSpringVersion"] = "0.10.0"
 
@@ -44,7 +44,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.9.0")
     implementation("org.springframework.ai:spring-ai-starter-model-anthropic")
     implementation("org.springframework.ai:spring-ai-starter-model-openai")
-    implementation("org.springframework.ai:spring-ai-google-genai:2.0.0-M1")
+    implementation("org.springframework.ai:spring-ai-starter-model-google-genai")
     implementation("org.springframework.ai:spring-ai-starter-mcp-client")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")

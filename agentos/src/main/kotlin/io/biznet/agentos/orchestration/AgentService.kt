@@ -12,7 +12,7 @@ import java.util.UUID
  */
 @Service
 class AgentService(
-    private val chatClientProvider: ChatClientProvider,
+    private val orchestratorChatClientProvider: OrchestratorChatClientProvider,
 ) : IAgentService {
     private val logger = LoggerFactory.getLogger(AgentService::class.java)
 
@@ -81,7 +81,7 @@ class AgentService(
         // TODO: Load tools based on agent model
         val tools = emptyList<io.biznet.agentos.tools.domain.StandardTool<*>>()
 
-        val chatClient = chatClientProvider.getChatClient()
+        val chatClient = orchestratorChatClientProvider.getChatClient()
 
         return AgentSimple(
             metadata = EntityMetadata(id = model.id),

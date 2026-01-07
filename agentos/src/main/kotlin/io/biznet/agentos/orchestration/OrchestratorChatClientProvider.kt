@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component
  * Returns a configured ChatClient ready to use.
  */
 @Component
-class ChatClientProvider(
+class OrchestratorChatClientProvider(
     @Qualifier("anthropicChatClient") private val chatClient: ChatClient,
 ) {
     fun getChatClient(): ChatClient = chatClient

@@ -14,9 +14,9 @@ class AgentServiceTest {
     @Test
     fun `should find default agent`() {
         // Given
-        val mockChatClientProvider = mockk<ChatClientProvider>()
-        every { mockChatClientProvider.getChatClient() } returns mockk<ChatClient>()
-        val agentService = AgentService(mockChatClientProvider)
+        val mockOrchestratorChatClientProvider = mockk<OrchestratorChatClientProvider>()
+        every { mockOrchestratorChatClientProvider.getChatClient() } returns mockk<ChatClient>()
+        val agentService = AgentService(mockOrchestratorChatClientProvider)
 
         // When
         val defaultAgent = agentService.getDefaultAgent()
@@ -29,9 +29,9 @@ class AgentServiceTest {
     @Test
     fun `should find agent by exact name`() {
         // Given
-        val mockChatClientProvider = mockk<ChatClientProvider>()
-        every { mockChatClientProvider.getChatClient() } returns mockk<ChatClient>()
-        val agentService = AgentService(mockChatClientProvider)
+        val mockOrchestratorChatClientProvider = mockk<OrchestratorChatClientProvider>()
+        every { mockOrchestratorChatClientProvider.getChatClient() } returns mockk<ChatClient>()
+        val agentService = AgentService(mockOrchestratorChatClientProvider)
 
         // When
         val agent = agentService.findAgentByName("General Purpose Agent")
@@ -44,9 +44,9 @@ class AgentServiceTest {
     @Test
     fun `should find agent by partial name`() {
         // Given
-        val mockChatClientProvider = mockk<ChatClientProvider>()
-        every { mockChatClientProvider.getChatClient() } returns mockk<ChatClient>()
-        val agentService = AgentService(mockChatClientProvider)
+        val mockOrchestratorChatClientProvider = mockk<OrchestratorChatClientProvider>()
+        every { mockOrchestratorChatClientProvider.getChatClient() } returns mockk<ChatClient>()
+        val agentService = AgentService(mockOrchestratorChatClientProvider)
 
         // When
         val agent = agentService.findAgentByName("General")
@@ -59,9 +59,9 @@ class AgentServiceTest {
     @Test
     fun `should throw exception for unknown agent`() {
         // Given
-        val mockChatClientProvider = mockk<ChatClientProvider>()
-        every { mockChatClientProvider.getChatClient() } returns mockk<ChatClient>()
-        val agentService = AgentService(mockChatClientProvider)
+        val mockOrchestratorChatClientProvider = mockk<OrchestratorChatClientProvider>()
+        every { mockOrchestratorChatClientProvider.getChatClient() } returns mockk<ChatClient>()
+        val agentService = AgentService(mockOrchestratorChatClientProvider)
 
         // When/Then
         try {

@@ -23,23 +23,31 @@ data class Step(
 ) {
     fun getMessages(): List<Message> {
         val id = UUID.randomUUID().toString()
+
         return listOf(
-            AssistantMessage(
-                intention.chatResponse.result.output.text!!,
-                emptyMap(),
-                listOf(
-                    AssistantMessage.ToolCall(
-                        id,
-                        "function",
-                        toolChoice.toolName,
-                        parameter.responseEntity.response!!
-                            .result.output.text!!,
-                    ),
-                ),
-            ),
-            ToolResponseMessage(
-                listOf(ToolResponseMessage.ToolResponse(id, toolChoice.toolName, toolResponse!!)),
-            ),
+            // Use Builder for AssistantMessage with ToolCalls
+            AssistantMessage.builder()
+                .content(intention.chatResponse.result.output.text!!)
+                .toolCalls(
+                    listOf(
+                        AssistantMessage.ToolCall(
+                            id,
+                            "function",
+                            toolChoice.toolName,
+                            parameter.responseEntity.response!!.result.output.text!!
+                        )
+                    )
+                )
+                .build(),
+
+            // Use Builder for ToolResponseMessage
+            ToolResponseMessage.builder()
+                .responses(
+                    listOf(
+                        ToolResponseMessage.ToolResponse(id, toolChoice.toolName, toolResponse!!)
+                    )
+                )
+                .build()
         )
     }
 }

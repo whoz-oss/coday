@@ -187,11 +187,10 @@ class AgentSimple(
                     // If we have accumulated tool calls, create AssistantMessage with them
                     if (toolCallsForCurrentMessage.isNotEmpty()) {
                         messages.add(
-                            AssistantMessage(
-                                "", // Empty content when there are tool calls
-                                emptyMap(),
-                                toolCallsForCurrentMessage.toList(),
-                            ),
+                            AssistantMessage.builder()
+                                .content("") // Empty content when there are tool calls
+                                .toolCalls(toolCallsForCurrentMessage.toList())
+                                .build()
                         )
 
                         // Add corresponding tool responses
@@ -209,7 +208,11 @@ class AgentSimple(
                             }
 
                         if (toolResponseMessages.isNotEmpty()) {
-                            messages.add(ToolResponseMessage(toolResponseMessages))
+                            messages.add(
+                                ToolResponseMessage.builder()
+                                    .responses(toolResponseMessages)
+                                    .build()
+                            )
                         }
 
                         toolCallsForCurrentMessage.clear()
@@ -256,12 +259,12 @@ class AgentSimple(
 
         // Handle any remaining tool calls at the end
         if (toolCallsForCurrentMessage.isNotEmpty()) {
+            // FIX: Use Builder here as well
             messages.add(
-                AssistantMessage(
-                    "",
-                    emptyMap(),
-                    toolCallsForCurrentMessage.toList(),
-                ),
+                AssistantMessage.builder()
+                    .content("")
+                    .toolCalls(toolCallsForCurrentMessage.toList())
+                    .build()
             )
 
             val toolResponseMessages =
@@ -278,7 +281,12 @@ class AgentSimple(
                 }
 
             if (toolResponseMessages.isNotEmpty()) {
-                messages.add(ToolResponseMessage(toolResponseMessages))
+                // FIX: Use Builder here as well
+                messages.add(
+                    ToolResponseMessage.builder()
+                        .responses(toolResponseMessages)
+                        .build()
+                )
             }
         }
 
