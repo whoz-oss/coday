@@ -4,7 +4,7 @@ data class AiProvider(
     val id: String,
     val name: String,
     val apiType: ApiType,
-    val baseUrl: String,
+    val baseUrl: String?,
     val description: String? = null,
     val defaultApiKey: String? = null,
     val baseModel: String? = null,
