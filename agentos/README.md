@@ -1,416 +1,187 @@
 # AgentOS
 
-A modular Spring Boot application for orchestrating AI agents with a plugin system based on PF4J.
+A Spring Boot application for orchestrating AI agents with a dynamic plugin system.
 
-## Architecture
+## What is AgentOS?
 
-AgentOS uses **Gradle Composite Builds** with centralized dependency management via **Version Catalog**:
+AgentOS provides a flexible service for discovering, registering, and managing AI agents based on their capabilities and context. It comes with a powerful plugin system that allows you to extend functionality without modifying the core application.
 
-```
-agentos/
-├── gradle/
-│   └── libs.versions.toml    # 🎯 Centralized version management
-├── agentos-sdk/               # Plugin SDK (interfaces + PF4J)
-│   └── settings.gradle.kts    # Independent build configuration
-├── agentos-service/           # Spring Boot service
-│   └── settings.gradle.kts    # Independent build configuration
-└── examples/
-    └── simple-plugin/         # Example plugin
-```
+## Features
 
-### agentos-sdk
+- 🤖 **Agent Registry** - 8 built-in agents for common tasks (code review, testing, documentation, etc.)
+- 🔌 **Plugin System** - Load agents dynamically from plugins
+- 🔄 **Hot Reload** - Add/remove plugins without restart
+- 📊 **Context-Aware** - Agents can be queried by context, capabilities, and tags
+- 🌐 **REST API** - Complete HTTP API for all operations
+- 🎯 **Priority-Based** - Agents ranked by priority for better orchestration
 
-The SDK module contains:
-- Plugin interfaces and extension points
-- Core domain models
-- Only dependency: **PF4J** (Plugin Framework for Java)
+## Quick Start
 
-This module is published to GitHub Packages and can be used by external plugin developers.
-
-**Version**: `1.0.0` (defined in `gradle/libs.versions.toml`)
-
-### agentos-service
-
-The service module contains:
-- Spring Boot application
-- Agent orchestration logic
-- REST API endpoints
-- Spring AI integrations
-- Dependencies: Spring Boot, Spring AI, PF4J-Spring, and **agentos-sdk**
-
-**Version**: `0.0.1-SNAPSHOT` (defined in `gradle/libs.versions.toml`)
-
-## Prerequisites
+### Prerequisites
 
 - Java 17+
-- Gradle 9+ (wrapper included)
-- Node.js 20+ (for Nx build orchestration)
+- Gradle (wrapper included)
 
-## Building
-
-### Build all modules
+### Run with Built-in Agents Only
 
 ```bash
 cd agentos
+./gradlew bootRun
+```
+
+Access the API at `http://localhost:8080`
+
+### Run with Plugins
+
+**Code-Based Plugin** (5 agents defined in Kotlin):
+```bash
+./run-code-based.sh
+```
+
+**Filesystem Plugin** (loads agents from YAML files):
+```bash
+./run-filesystem.sh
+```
+
+**All Plugins** (loads all available plugins):
+```bash
+./run-all-plugins.sh
+```
+
+## API Examples
+
+### List All Agents
+
+```bash
+curl http://localhost:8080/api/agents | jq
+```
+
+### Query Agents by Context
+
+```bash
+curl -X POST http://localhost:8080/api/agents/query \
+  -H "Content-Type: application/json" \
+  -d '{"contextTypes": ["CODE_REVIEW"], "minPriority": 8}' | jq
+```
+
+### List Plugins
+
+```bash
+curl http://localhost:8080/api/plugins | jq
+```
+
+## Plugin System
+
+### Two Types of Plugins
+
+**1. Code-Based Plugin** - Agents defined in Kotlin code (type-safe, compile-time checks)
+```bash
+./run-code-based.sh
+```
+Provides 5 agents: data-scientist, frontend-architect, backend-architect, cloud-engineer, qa-automation
+
+**2. Filesystem Plugin** - Agents defined in YAML files (no rebuild needed)
+```bash
+./run-filesystem.sh
+```
+Loads agents from `agents/*.yaml` files
+
+### Creating YAML Agents
+
+Create a file in `agents/my-agent.yaml`:
+
+```yaml
+name: My Custom Agent
+description: What this agent does
+capabilities:
+  - custom-capability
+contexts:
+  - GENERAL
+tags:
+  - custom
+priority: 7
+```
+
+Then reload:
+```bash
+curl -X POST http://localhost:8080/api/plugins/filesystem-agents/reload
+```
+
+## Configuration
+
+Edit `src/main/resources/application.yml`:
+
+```yaml
+agentos:
+  plugins:
+    directory: plugins    # Plugin directory
+    autoLoad: true        # Auto-load on startup
+```
+
+## Development
+
+### Build
+
+```bash
 ./gradlew build
 ```
 
-### Build specific modules
+### Run Tests
 
 ```bash
-# Build SDK only
-./gradlew :agentos-sdk:build
-
-# Build Service only (automatically builds SDK if needed)
-./gradlew :agentos-service:build
-```
-
-### Build modules independently
-
-Thanks to composite builds, each module can be built independently:
-
-```bash
-# Build SDK independently
-cd agentos-sdk
-../gradlew build
-
-# Build Service independently
-cd agentos-service
-../gradlew build
-```
-
-### Build with Nx (recommended for CI)
-
-```bash
-# Install Nx globally
-npm install -g nx
-
-# Build SDK
-nx build agentos-sdk
-
-# Build Service (automatically builds SDK first)
-nx build agentos-service
-
-# Build only affected projects (in PR context)
-nx affected -t build --base=origin/main
-```
-
-## Running
-
-### Run the service
-
-```bash
-cd agentos
-./gradlew :agentos-service:bootRun
-```
-
-Or with Nx:
-
-```bash
-nx bootRun agentos-service
-```
-
-The API will be available at `http://localhost:8080`
-
-## Testing
-
-### Test all modules
-
-```bash
-cd agentos
 ./gradlew test
 ```
 
-### Test with Nx
+### Build a Plugin
 
 ```bash
-# Test all
-nx test agentos-sdk
-nx test agentos-service
-
-# Test only affected
-nx affected -t test --base=origin/main
+cd code-based-plugin
+../gradlew jar
 ```
 
-## Publishing the SDK
+## Important Notes
 
-The SDK can be published to Maven Local or GitHub Packages:
-
-```bash
-# Publish to Maven Local (~/.m2/repository)
-./gradlew :agentos-sdk:publishToMavenLocal
-
-# Publish to GitHub Packages
-./gradlew :agentos-sdk:publish
-```
-
-Or with Nx:
-
-```bash
-nx publish agentos-sdk
-```
-
-### Using the SDK in your plugin
-
-Add to your plugin's `build.gradle.kts`:
-
-```kotlin
-repositories {
-    mavenLocal() // For local development
-    
-    maven {
-        url = uri("https://maven.pkg.github.com/whoz-oss/coday")
-        credentials {
-            username = project.findProperty("gpr.user") as String? ?: System.getenv("GITHUB_ACTOR")
-            password = project.findProperty("gpr.key") as String? ?: System.getenv("GITHUB_TOKEN")
-        }
-    }
-}
-
-dependencies {
-    compileOnly("io.biznet.agentos:agentos-sdk:1.0.0")
-}
-```
-
-## Version Management
-
-All dependency versions are centralized in `gradle/libs.versions.toml`:
-
-```toml
-[versions]
-kotlin = "1.9.25"
-springBoot = "3.5.7"
-agentosSdk = "1.0.0"
-agentosService = "0.0.1-SNAPSHOT"
-
-[libraries]
-pf4j = { module = "org.pf4j:pf4j", version.ref = "pf4j" }
-# ... more libraries
-```
-
-### Updating a dependency version
-
-1. Edit `gradle/libs.versions.toml`
-2. Rebuild: `./gradlew clean build`
-
-All modules will automatically use the updated version.
-
-### Updating module versions
-
-Module versions are also defined in `gradle/libs.versions.toml`:
-
-```toml
-[versions]
-agentosSdk = "1.1.0"      # Update SDK version here
-agentosService = "0.2.0"  # Update Service version here
-```
-
-## CI/CD
-
-The project uses GitHub Actions with Nx for efficient CI/CD:
-
-- **On PR**: Uses `nx affected` to build/test only changed projects
-- **On Main Push**: Publishes SDK to GitHub Packages
+⚠️ **Spring Boot DevTools must be disabled** when using plugins due to classloader conflicts. This is already configured in `build.gradle.kts`.
 
 ## Project Structure
 
 ```
 agentos/
-├── gradle/
-│   └── libs.versions.toml           # 🎯 Centralized version catalog
-├── settings.gradle.kts              # Root configuration (composite builds)
-├── build.gradle.kts                 # Root build configuration
-├── nx.json                          # Nx workspace configuration
-├── project.json                     # Nx project configuration
-│
-├── agentos-sdk/
-│   ├── settings.gradle.kts         # SDK independent configuration
-│   ├── build.gradle.kts            # SDK build (uses libs.*)
-│   ├── project.json                # Nx SDK configuration
-│   └── src/
-│       └── main/kotlin/
-│           └── io/biznet/agentos/
-│               └── sdk/            # Plugin interfaces
-│
-├── agentos-service/
-│   ├── settings.gradle.kts         # Service independent configuration
-│   ├── build.gradle.kts            # Service build (uses libs.*)
-│   ├── project.json                # Nx Service configuration
-│   └── src/
-│       └── main/
-│           ├── kotlin/
-│           │   └── io/biznet/agentos/
-│           │       ├── AgentosApplication.kt
-│           │       ├── agents/     # Agent registry
-│           │       ├── orchestrator/
-│           │       └── plugins/    # Plugin loading
-│           └── resources/
-│               └── application.yml
-│
-└── examples/
-    └── simple-plugin/
-        ├── build.gradle.kts        # Example plugin
-        └── src/main/kotlin/
+├── src/main/kotlin/
+│   └── io/biznet/agentos/
+│       ├── agents/              # Agent registry and API
+│       └── plugins/             # Plugin system
+├── code-based-plugin/           # Kotlin-based agents
+├── filesystem-plugin/           # YAML-based agents
+├── agents/                      # YAML agent files
+│   ├── howzi.yaml
+│   ├── security-scanner.yaml
+│   └── api-architect.yaml
+├── plugins/                     # Deployed plugin JARs
+├── run-code-based.sh           # Run with code-based plugin
+├── run-filesystem.sh           # Run with filesystem plugin
+└── run-all-plugins.sh          # Run with all plugins
 ```
-
-## Key Features
-
-- 🏗️ **Composite Builds**: Independent build for each module
-- 📦 **Version Catalog**: Centralized dependency management
-- 🔌 **Plugin System**: PF4J-based extensibility
-- ⚡ **Nx Integration**: Fast, incremental builds in CI
-- 📤 **SDK Publishing**: Reusable SDK for plugin developers
-- 🧪 **Full Testing**: Unit and integration tests
-- 🚀 **GitHub Actions**: Automated CI/CD pipeline
-- 🎯 **Type-Safe Dependencies**: IDE autocompletion with `libs.*`
-
-## Development
-
-### Adding a new plugin
-To create a new plugin please read [AgentOS SDK README.md](agentos-sdk/README.md) which describe how 
-to create a new project using AgentOS SDK. 
-A plugin should be deployed in the plugins directory of your AgentOS Service instance. 
-In case you use docker-compose you should ensure the proper location of the directory. 
-
-### Modifying the SDK
-
-When you modify the SDK:
-
-1. Make your changes in `agentos-sdk/src/`
-2. Build: `./gradlew :agentos-sdk:build`
-3. Publish locally: `./gradlew :agentos-sdk:publishToMavenLocal`
-4. The service will automatically use the updated SDK
-
-To release a new version:
-
-1. Update version in `gradle/libs.versions.toml`:
-   ```toml
-   agentosSdk = "1.1.0"
-   ```
-2. Build and test: `./gradlew :agentos-sdk:build`
-3. Publish: `./gradlew :agentos-sdk:publish`
-
-### Modifying the Service
-
-The service automatically depends on the SDK via composite builds. Changes to the SDK are immediately visible during development.
-
-### Adding a new dependency
-
-1. Add version to `gradle/libs.versions.toml`:
-   ```toml
-   [versions]
-   newLib = "1.2.3"
-   
-   [libraries]
-   new-lib = { module = "com.example:library", version.ref = "newLib" }
-   ```
-
-2. Use in `build.gradle.kts`:
-   ```kotlin
-   dependencies {
-       implementation(libs.new.lib)
-   }
-   ```
-
-### Available dependency bundles
-
-The version catalog includes several bundles for common dependency groups:
-
-```kotlin
-// Kotlin common dependencies
-implementation(libs.bundles.kotlin.common)
-
-// Kotlin coroutines
-implementation(libs.bundles.kotlin.coroutines)
-
-// Spring AI (Anthropic, OpenAI, MCP)
-implementation(libs.bundles.spring.ai)
-
-// Testing (Kotlin test + MockK)
-testImplementation(libs.bundles.testing.common)
-```
-
-## Configuration
-
-Edit `agentos-service/src/main/resources/application.yml`:
-
-```yaml
-spring:
-  ai:
-    openai:
-      api-key: ${OPENAI_API_KEY}
-    anthropic:
-      api-key: ${ANTHROPIC_API_KEY}
-
-agentos:
-  plugins:
-    dir: plugins
-```
-
-## Verification
-
-Run the verification script to ensure the composite build configuration is working:
-
-```bash
-chmod +x verify-composite-build.sh
-./verify-composite-build.sh
-```
-
-This script will:
-- ✅ Verify all configuration files
-- ✅ Build all modules
-- ✅ Publish SDK locally
-- ✅ Test independent builds
-- ✅ Verify generated artifacts
 
 ## Troubleshooting
-
-### Nx command not found
-
-Install Nx globally:
-```bash
-npm install -g nx@latest
-```
-
-### Gradle build fails
-
-Clean and rebuild:
-```bash
-./gradlew clean build --refresh-dependencies
-```
-
-### IDE doesn't recognize `libs.*`
-
-1. Refresh Gradle dependencies:
-   ```bash
-   ./gradlew --refresh-dependencies
-   ```
-2. In IntelliJ IDEA: File → Invalidate Caches → Invalidate and Restart
-3. Verify `enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")` is in `settings.gradle.kts`
-
-### "Could not find agentos-sdk"
-
-The service can't find the SDK. Publish it locally:
-```bash
-./gradlew :agentos-sdk:publishToMavenLocal
-```
 
 ### Plugin not loading
 
 Check that:
-1. Plugin JAR is in `agentos-service/plugins/` directory
-2. Plugin implements the correct interfaces from `agentos-sdk`
-3. Spring Boot DevTools is disabled (it causes classloader conflicts)
+1. JAR is directly in `plugins/` (not in a subdirectory)
+2. DevTools is disabled in `build.gradle.kts`
+3. Plugin was built with `clean jar`
 
 ## Documentation
 
-- [AgentOS SDK README.md](agentos-sdk/README.md) - How to develop plugins using AgentOS SDK
-- [Quick Start](QUICKSTART.md) - Get started quickly
+**[AGENTOS.md](AGENTOS.md)** - Vue d'ensemble complète (architecture, concepts, intégration Whoz)
 
-## License
+### Documentation Détaillée
 
-Apache License 2.0
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Architecture système
+- **[docs/PLUGIN_SYSTEM.md](docs/PLUGIN_SYSTEM.md)** - Développement de plugins
+- **[docs/EXAMPLES.md](docs/EXAMPLES.md)** - Exemples d'utilisation
 
 ---
 
-**Built with Spring Boot 3.5 + Kotlin 2 + Spring AI + PF4J + Gradle Composite Builds**
+**Built with Spring Boot 3.5 + Kotlin + Spring AI + PF4J**
