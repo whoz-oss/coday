@@ -1,8 +1,13 @@
 rootProject.name = "agentos"
 
-// Enable version catalog
-enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
+// Include API modules
+include("plugin-api")
 
-includeBuild("agentos-sdk")
-includeBuild("agentos-service")
-includeBuild("agentos-service")
+// Include client modules
+include("copilot-client")
+
+// Include plugin projects
+include("code-based-plugin")
+include("filesystem-plugin")
+include("example-plugin")
+include("copilot-agents-plugin")
