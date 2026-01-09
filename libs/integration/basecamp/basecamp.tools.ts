@@ -44,12 +44,17 @@ export class BasecampTools extends AssistantToolFactory {
     const clientId = config.username
     const clientSecret = config.apiKey
 
+    // Note: for local dev, use http://localhost:300x/oauth/callback
+    const redirectUri = config.oauth2?.redirect_uri
+    if (!redirectUri) {
+      this.interactor.displayText('Basecamp integration requires redirectUri')
+      return result
+    }
+
     if (!clientId || !clientSecret) {
       this.interactor.displayText('Basecamp integration requires clientId (username) and clientSecret (apiKey)')
       return result
     }
-    // Note: for local dev, use localhost:3001
-    const redirectUri = config.oauth2?.redirect_uri ?? 'http://localhost:3001/oauth/callback'
 
     const projectName = context.project.name
 
