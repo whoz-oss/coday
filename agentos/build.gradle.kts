@@ -3,7 +3,7 @@
 // with their own settings.gradle.kts and build configurations
 
 plugins {
-    id("dev.nx.gradle.project-graph") version("0.1.10")
+    id("dev.nx.gradle.project-graph") version ("0.1.10")
     base
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.kotlin.spring) apply false
@@ -11,7 +11,7 @@ plugins {
     alias(libs.plugins.spring.dependency.management) apply false
 }
 
-group = "io.biznet.agentos"
+group = "whoz-oss.agentos"
 version = "0.0.1-SNAPSHOT"
 
 tasks.named("clean") {
@@ -21,7 +21,6 @@ tasks.named("clean") {
 tasks.named("build") {
     dependsOn(gradle.includedBuilds.map { it.task(":build") })
 }
-
 
 allprojects {
     apply {
