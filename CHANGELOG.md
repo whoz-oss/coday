@@ -1,3 +1,17 @@
+## 0.58.0 (2026-01-13)
+
+### 🚀 Features
+
+- #394 Add Basecamp integration with OAuth2 ([#395](https://github.com/whoz-oss/coday/pull/395), [#394](https://github.com/whoz-oss/coday/issues/394))
+- **agentos:** issue 371 simplify documentation ([3a09861](https://github.com/whoz-oss/coday/commit/3a09861))
+- **agentos:** issue #371 simplify documentation ([#420](https://github.com/whoz-oss/coday/pull/420), [#371](https://github.com/whoz-oss/coday/issues/371))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+- vincent-audibert-whoz
+- vincent.couturier @vincent-couturier-whoz
+
 ## 0.57.1 (2025-12-22)
 
 ### 🩹 Fixes
