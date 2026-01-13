@@ -21,7 +21,7 @@ import { findFilesByName } from '../function/find-files-by-name'
 export class AgentService implements Killable {
   private agentCache: Map<string, Agent> = new Map()
   private agentDefinitions: { definition: AgentDefinition; basePath: string }[] = []
-  private toolbox: Toolbox
+  public toolbox: Toolbox
 
   constructor(
     private interactor: Interactor,

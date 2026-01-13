@@ -11,12 +11,14 @@ import { AssistantToolFactory, CodayTool } from './assistant-tool-factory'
 import { ConfluenceTools } from './confluence/confluence.tools'
 import { ZendeskTools } from './zendesk-articles/zendesk.tools'
 import { SlackTools } from './slack/slack.tools'
+import { BasecampTools } from './basecamp/basecamp.tools'
 import { CodayServices } from '../coday-services'
 import { AgentService } from '../agent'
 import { GetToolsInput } from './types'
 import { McpToolsFactory } from './mcp/mcp-tools-factory'
 import { McpServerConfig } from '@coday/model/mcp-server-config'
 import { Killable } from '@coday/model'
+import { OAuthCallbackEvent } from '@coday/coday-events'
 
 export class Toolbox implements Killable {
   private readonly toolFactories: AssistantToolFactory[]
@@ -44,6 +46,7 @@ export class Toolbox implements Killable {
       new ZendeskTools(interactor, services.integration),
       new JiraTools(interactor, services.integration),
       new SlackTools(interactor, services.integration),
+      new BasecampTools(interactor, services.integration, services.user),
     ]
   }
 
@@ -109,6 +112,30 @@ export class Toolbox implements Killable {
       this.interactor.debug(`Unexpected error building tools for agent ${agentName}: ${error}`)
       // Return empty array in case of critical failure
       return []
+    }
+  }
+
+  /**
+   * Route OAuth callback events to the appropriate integration
+   */
+  async handleOAuthCallback(event: OAuthCallbackEvent): Promise<void> {
+    // Find the factory for this integration
+    const factory = this.toolFactories.find((f) => f.name === event.integrationName)
+
+    if (!factory) {
+      this.interactor.warn(`No integration found for OAuth callback: ${event.integrationName}`)
+      return
+    }
+
+    // Check if the factory has a handleOAuthCallback method
+    if ('handleOAuthCallback' in factory && typeof factory.handleOAuthCallback === 'function') {
+      try {
+        await factory.handleOAuthCallback(event)
+      } catch (error) {
+        this.interactor.error(`Error handling OAuth callback for ${event.integrationName}: ${error}`)
+      }
+    } else {
+      this.interactor.warn(`Integration ${event.integrationName} does not support OAuth callbacks`)
     }
   }
 }

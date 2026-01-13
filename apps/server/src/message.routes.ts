@@ -1,7 +1,7 @@
 import express from 'express'
 import { debugLog } from './log'
 import { ThreadCodayManager } from './thread-coday-manager'
-import { AnswerEvent } from '@coday/coday-events'
+import { AnswerEvent, OAuthCallbackEvent, buildCodayEvent } from '@coday/coday-events'
 
 /**
  * Message Management REST API Routes
@@ -98,51 +98,73 @@ export function registerMessageRoutes(
    * POST /api/projects/:projectName/threads/:threadId/messages
    * Send a message to a thread via the interactor
    *
-   * Body: AnswerEvent payload
+   * Body: CodayEvent payload (AnswerEvent, OAuthCallbackEvent, etc.)
    * {
-   *   answer: string,
-   *   parentKey?: string,
-   *   invite?: string
+   *   type: string,
+   *   ... event-specific properties
    * }
    */
-  app.post('/api/projects/:projectName/threads/:threadId/messages', (req: express.Request, res: express.Response) => {
-    try {
-      const { projectName, threadId } = req.params
-      const payload = req.body
+  app.post(
+    '/api/projects/:projectName/threads/:threadId/messages',
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { projectName, threadId } = req.params
+        const payload = req.body
 
-      if (!projectName || !threadId) {
-        res.status(400).send('Project name and thread ID are required')
-        return
+        if (!projectName || !threadId) {
+          res.status(400).send('Project name and thread ID are required')
+          return
+        }
+
+        const username = getUsernameFn(req)
+        if (!username) {
+          res.status(401).send('Authentication required')
+          return
+        }
+
+        debugLog(
+          'MESSAGE',
+          `threadId: ${threadId}, project: ${projectName}, received message of type: ${payload.type || 'answer'}`
+        )
+
+        const instance = threadCodayManager.get(threadId)
+        if (!instance?.coday) {
+          res.status(404).send('Thread not found or not connected')
+          return
+        }
+
+        // Verify thread ownership
+        if (instance.username !== username) {
+          res.status(403).send('Access denied: thread belongs to another user')
+          return
+        }
+
+        // Handle OAuth callback events specially
+        if (payload.type === 'oauth_callback') {
+          const oauthEvent = buildCodayEvent(payload) as OAuthCallbackEvent
+          if (oauthEvent && instance.coday.services.agent) {
+            debugLog('MESSAGE', `Routing OAuth callback for ${oauthEvent.integrationName}`)
+            const toolbox = instance.coday.services.agent.toolbox
+            if (toolbox && 'handleOAuthCallback' in toolbox) {
+              await toolbox.handleOAuthCallback(oauthEvent)
+              res.status(200).send('OAuth callback handled successfully!')
+              return
+            }
+          } else {
+            debugLog('MESSAGE', `No agent service available for OAuth callback routing`)
+          }
+        }
+
+        // Default behavior: send as AnswerEvent
+        instance.coday.interactor.sendEvent(new AnswerEvent(payload))
+
+        res.status(200).send('Message received successfully!')
+      } catch (error) {
+        console.error('Error processing event:', error)
+        res.status(400).send('Invalid event data!')
       }
-
-      const username = getUsernameFn(req)
-      if (!username) {
-        res.status(401).send('Authentication required')
-        return
-      }
-
-      debugLog('MESSAGE', `threadId: ${threadId}, project: ${projectName}, received message`)
-
-      const instance = threadCodayManager.get(threadId)
-      if (!instance?.coday) {
-        res.status(404).send('Thread not found or not connected')
-        return
-      }
-
-      // Verify thread ownership
-      if (instance.username !== username) {
-        res.status(403).send('Access denied: thread belongs to another user')
-        return
-      }
-
-      instance.coday.interactor.sendEvent(new AnswerEvent(payload))
-
-      res.status(200).send('Message received successfully!')
-    } catch (error) {
-      console.error('Error processing AnswerEvent:', error)
-      res.status(400).send('Invalid event data!')
     }
-  })
+  )
 
   /**
    * GET /api/projects/:projectName/threads/:threadId/messages/:eventId
