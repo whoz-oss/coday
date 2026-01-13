@@ -80,6 +80,9 @@ importers:
       marked:
         specifier: 16.4.0
         version: 16.4.0
+      oauth4webapi:
+        specifier: 3.8.3
+        version: 3.8.3
       openai:
         specifier: 6.10.0
         version: 6.10.0(ws@8.18.0)(zod@3.25.76)
@@ -7728,6 +7731,9 @@ packages:
         optional: true
       '@swc/core':
         optional: true
+
+  oauth4webapi@3.8.3:
+    resolution: {integrity: sha512-pQ5BsX3QRTgnt5HxgHwgunIRaDXBdkT23tf8dfzmtTIL2LTpdmxgbpbBm0VgFWAIDlezQvQCTgnVIUmHupXHxw==}
 
   object-assign@4.1.1:
     resolution: {integrity: sha512-rJgTQnkUnH1sFw8yT6VSU3zD3sWmu6sZhIseY8VX+GRu3P6F7Fu+JNDoXfklElbLJSnc3FUQHVe4cU5hj+BcUg==}
@@ -19143,6 +19149,8 @@ snapshots:
       '@swc/core': 1.13.19(@swc/helpers@0.5.17)
     transitivePeerDependencies:
       - debug
+
+  oauth4webapi@3.8.3: {}
 
   object-assign@4.1.1: {}
 

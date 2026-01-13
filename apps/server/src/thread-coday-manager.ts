@@ -10,7 +10,7 @@ import { MemoryService } from '@coday/service/memory.service'
 import { McpConfigService } from '@coday/service/mcp-config.service'
 import { CodayLogger } from '@coday/service/coday-logger'
 import { WebhookService } from '@coday/service/webhook.service'
-import { HeartBeatEvent, ThreadUpdateEvent } from '@coday/coday-events'
+import { HeartBeatEvent, ThreadUpdateEvent, OAuthCallbackEvent } from '@coday/coday-events'
 import { McpInstancePool } from '@coday/integration/mcp/mcp-instance-pool'
 import { debugLog } from './log'
 import { ThreadService } from './services/thread.service'
@@ -223,6 +223,9 @@ class ThreadCodayInstance {
       webhook: this.webhookService,
     })
 
+    // Note: toolbox is now accessible via coday.services.agent.toolbox
+    // after agent service initialization
+
     return true
   }
 
@@ -306,6 +309,32 @@ class ThreadCodayInstance {
    */
   stop(): void {
     this.coday?.stop()
+  }
+
+  /**
+   * Handle OAuth callback by routing to the appropriate integration
+   */
+  async handleOAuthCallback(event: OAuthCallbackEvent): Promise<void> {
+    if (!this.coday) {
+      debugLog('THREAD_CODAY', `Cannot handle OAuth callback: Coday not initialized for thread ${this.threadId}`)
+      return
+    }
+
+    // Access toolbox through agent service
+    const agentService = this.coday.services.agent
+    if (!agentService) {
+      debugLog('THREAD_CODAY', `Cannot handle OAuth callback: Agent service not initialized`)
+      return
+    }
+
+    const toolbox = agentService.toolbox
+    if (!toolbox) {
+      debugLog('THREAD_CODAY', `Cannot handle OAuth callback: Toolbox not initialized`)
+      return
+    }
+
+    debugLog('THREAD_CODAY', `Routing OAuth callback for ${event.integrationName}`)
+    await toolbox.handleOAuthCallback(event)
   }
 
   /**
