@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: agentos
+  ai:
+    chat:
+      client:
+        enabled: false
+    openai:
+      api-key: ${OPENAI_API_KEY}
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY}
+    vllm:
+      base-url: ${VLLM_URL}
+      api-key: ${VLLM_TOKEN}
+      chat:
+        options:
+          model: /mnt/model
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+agentos:
+  plugins:
+    directory: agentos/plugins
+    autoLoad: true
+  mcp:
+    enabled: false
+    servers: []
+      # Examples:
+      # - "stdio:///usr/local/bin/mcp-server-github"
+      # - "stdio:///usr/local/bin/mcp-server-filesystem?arg=--root&arg=/workspace"
+
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+    jmx:
+      exposure:
+        include: "*"
