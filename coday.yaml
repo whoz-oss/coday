@@ -142,7 +142,7 @@ agents:
       - user email, slack ID.
       - preferences about tone, conciseness, emojis or not.
     integrations:
-      DELEGATE: []
+      DELEGATE:
       SLACK:
       MEMORY: [readMemories, memorizeUser, deleteMemory]
   - name: Gemini
