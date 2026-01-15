@@ -1,3 +1,13 @@
+## 0.59.0 (2026-01-15)
+
+### 🚀 Features
+
+- update openai dependency ([b4229e2](https://github.com/whoz-oss/coday/commit/b4229e2))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.58.1 (2026-01-15)
 
 ### 🚀 Features
