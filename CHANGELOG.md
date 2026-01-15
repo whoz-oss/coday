@@ -1,3 +1,18 @@
+## 0.58.1 (2026-01-15)
+
+### 🚀 Features
+
+- **agentos:** ensure publishing of agent-os sdk during release action ([#429](https://github.com/whoz-oss/coday/pull/429))
+
+### 🩹 Fixes
+
+- better merge of project and user config level for integrations ([#435](https://github.com/whoz-oss/coday/pull/435))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+- vincent-audibert-whoz
+
 ## 0.58.0 (2026-01-13)
 
 ### 🚀 Features
