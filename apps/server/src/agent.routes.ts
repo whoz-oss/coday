@@ -97,6 +97,7 @@ export function registerAgentRoutes(
         thread: threadService,
         logger,
         webhook: webhookService,
+        options,
       }
 
       // Select the project in the state service

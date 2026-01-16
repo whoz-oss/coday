@@ -221,6 +221,7 @@ class ThreadCodayInstance {
       thread: this.threadService,
       logger: this.logger,
       webhook: this.webhookService,
+      options: this.options,
     })
 
     // Note: toolbox is now accessible via coday.services.agent.toolbox

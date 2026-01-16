@@ -303,6 +303,14 @@ app.use((err: any, req: express.Request, res: express.Response, _: express.NextF
 
 // Use PORT_PROMISE to listen on the available port
 PORT_PROMISE.then(async (PORT) => {
+  // Set baseUrl if not already configured
+  if (!codayOptions.baseUrl) {
+    codayOptions.baseUrl = `http://localhost:${PORT}`
+    debugLog('INIT', `Base URL set to: ${codayOptions.baseUrl}`)
+  } else {
+    debugLog('INIT', `Using configured base URL: ${codayOptions.baseUrl}`)
+  }
+
   app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`)
   })
