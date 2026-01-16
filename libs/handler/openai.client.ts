@@ -449,8 +449,7 @@ export class OpenaiClient extends AiClient {
 
       // Handle regular MessageEvent
       if (msg instanceof MessageEvent) {
-        const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
-        const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
+        const content = msg.content
 
         // Convert rich content to OpenAI format
         const openaiContent: string | OpenAI.ChatCompletionContentPart[] = content.map((c) => {
