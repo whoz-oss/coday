@@ -1,9 +1,9 @@
-package io.biznet.agentos.plugins.codebased
+package io.whozoss.agentos.plugins.codebased
 
-import io.biznet.agentos.agents.domain.Agent
-import io.biznet.agentos.agents.domain.AgentStatus
-import io.biznet.agentos.agents.domain.ContextType
-import io.biznet.agentos.api.agent.AgentPlugin
+import io.whozoss.agentos.agents.domain.Agent
+import io.whozoss.agentos.agents.domain.AgentStatus
+import io.whozoss.agentos.agents.domain.ContextType
+import io.whozoss.agentos.api.agent.AgentPlugin
 import org.pf4j.Extension
 
 /**
