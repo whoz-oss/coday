@@ -127,8 +127,9 @@ export function registerMessageRoutes(
           `threadId: ${threadId}, project: ${projectName}, received message of type: ${payload.type || 'answer'}`
         )
 
+        // Get thread instance (works for both local and AgentOS)const instance = threadCodayManager.get(threadId)
         const instance = threadCodayManager.get(threadId)
-        if (!instance?.coday) {
+        if (!instance) {
           res.status(404).send('Thread not found or not connected')
           return
         }
@@ -142,7 +143,7 @@ export function registerMessageRoutes(
         // Handle OAuth callback events specially
         if (payload.type === 'oauth_callback') {
           const oauthEvent = buildCodayEvent(payload) as OAuthCallbackEvent
-          if (oauthEvent && instance.coday.services.agent) {
+          if (oauthEvent && instance?.coday?.services.agent) {
             debugLog('MESSAGE', `Routing OAuth callback for ${oauthEvent.integrationName}`)
             const toolbox = instance.coday.services.agent.toolbox
             if (toolbox && 'handleOAuthCallback' in toolbox) {
@@ -155,8 +156,21 @@ export function registerMessageRoutes(
           }
         }
 
-        // Default behavior: send as AnswerEvent
-        instance.coday.interactor.sendEvent(new AnswerEvent(payload))
+        // Check if it's a local instance with Coday
+        if (instance.coday) {
+          // Local Coday: use interactor
+          instance.coday.interactor.sendEvent(new AnswerEvent(payload))
+        } else {
+          // AgentOS: use sendMessage method
+
+          const agentosInstance = instance as any // Cast to access AgentOS-specific methods
+          if (agentosInstance.sendMessage) {
+            await agentosInstance.sendMessage(payload.answer, payload.parentKey)
+          } else {
+            res.status(500).send('Instance does not support message sending')
+            return
+          }
+        }
 
         res.status(200).send('Message received successfully!')
       } catch (error) {
