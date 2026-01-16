@@ -14,7 +14,7 @@ import { Interactor } from './interactor'
 import { AiModel } from './ai-model'
 import { AiProviderConfig } from './ai-provider-config'
 import { CodayLogger } from '../service/coday-logger'
-import { MessageContent, TextContent } from '../coday-events'
+import { TextContent } from '../coday-events'
 
 export interface CompletionOptions {
   model?: string

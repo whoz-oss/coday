@@ -295,7 +295,7 @@ export class AnthropicClient extends AiClient {
     const markerMessageId = this.getOrUpdateCacheMarker(thread, messages, updateCache)
 
     return messages
-      .map((msg, index) => {
+      .map((msg) => {
         let claudeMessage: Anthropic.MessageParam | undefined
         const shouldAddCache = markerMessageId && msg.timestamp === markerMessageId
 

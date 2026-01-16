@@ -436,7 +436,7 @@ export class OpenaiClient extends AiClient {
       role: 'system',
     }
 
-    const openaiMessages = messages.flatMap((msg, index): ChatCompletionMessageParam[] => {
+    const openaiMessages = messages.flatMap((msg): ChatCompletionMessageParam[] => {
       // Handle SummaryEvent - just the summary text
       if (msg instanceof SummaryEvent) {
         return [
