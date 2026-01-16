@@ -1,4 +1,4 @@
-package io.biznet.agentos
+package io.whozoss.agentos
 
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication

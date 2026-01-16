@@ -1,4 +1,4 @@
-package io.biznet.agentos.plugins.codebased
+package io.whozoss.agentos.plugins.codebased
 
 import org.pf4j.Plugin
 import org.pf4j.PluginWrapper

@@ -6,7 +6,7 @@ plugins {
     alias(libs.plugins.spring.dependency.management)
 }
 
-group = "io.biznet.agentos"
+group = "io.whozoss.agentos.service"
 version = libs.versions.agentosService.get()
 description = "AgentOS Service - Backend orchestration service"
 
@@ -19,7 +19,7 @@ java {
 dependencies {
     // AgentOS SDK - Contains plugin interfaces
     // When using composite builds, reference by coordinates
-    api("io.biznet.agentos:agentos-sdk:${libs.versions.agentosSdk.get()}")
+    api("io.whozoss.agentos:agentos-sdk:${libs.versions.agentosSdk.get()}")
 
     // PF4J Spring Integration (for service only, not SDK)
     implementation(libs.pf4j.spring) {

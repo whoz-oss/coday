@@ -4,7 +4,7 @@ plugins {
     `maven-publish`
 }
 
-group = "io.biznet.agentos"
+group = "io.whozoss.agentos"
 version = libs.versions.agentosSdk.get()
 description = "AgentOS SDK - Plugin interfaces and extension points"
 
