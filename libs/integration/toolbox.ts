@@ -18,7 +18,12 @@ import { GetToolsInput } from './types'
 import { McpToolsFactory } from './mcp/mcp-tools-factory'
 import { McpServerConfig } from '@coday/model/mcp-server-config'
 import { Killable } from '@coday/model'
-import { OAuthCallbackEvent } from '@coday/coday-events'
+import {
+  OAuthCallbackEvent,
+  GlobalAutoAcceptStateEvent,
+  PerToolAutoAcceptStateEvent,
+  PerToolAutoAcceptResetEvent,
+} from '@coday/coday-events'
 
 export class Toolbox implements Killable {
   private readonly toolFactories: AssistantToolFactory[]
@@ -137,5 +142,121 @@ export class Toolbox implements Killable {
     } else {
       this.interactor.warn(`Integration ${event.integrationName} does not support OAuth callbacks`)
     }
+  }
+
+  /**
+   * Get the current global auto-accept state from the interactor
+   */
+  public getGlobalAutoAcceptState(): boolean {
+    return this.interactor.globalAutoAccept || false
+  }
+
+  /**
+   * Toggle global auto-accept state and emit event
+   * When enabled, skips ALL confirmations across all tools
+   * When disabled, each tool maintains its own auto-accept state
+   */
+  public toggleGlobalAutoAccept(): void {
+    const wasOn = this.interactor.globalAutoAccept
+    this.interactor.globalAutoAccept = !this.interactor.globalAutoAccept
+
+    this.interactor.displayText(
+      `Global auto-accept ${this.interactor.globalAutoAccept ? 'enabled' : 'disabled'} for this session.`
+    )
+
+    // If turning global OFF, check if any per-tool flags are still active and inform user
+    if (wasOn && !this.interactor.globalAutoAccept) {
+      const activePerToolStates = this.checkActivePerToolStates()
+      if (activePerToolStates.length > 0) {
+        const toolsList = activePerToolStates.join(', ')
+        this.interactor.displayText(
+          `Note: Individual auto-accept states remain active for: ${toolsList}. ` +
+            `Click "Disable auto-accept for all tools" to reset them.`
+        )
+      }
+    }
+
+    this.interactor.sendEvent(
+      new GlobalAutoAcceptStateEvent({ globalAutoAcceptEnabled: this.interactor.globalAutoAccept })
+    )
+    this.interactor.debug(`[TOOLBOX] Global auto-accept toggled to: ${this.interactor.globalAutoAccept}`)
+  }
+
+  /**
+   * Check which tools have per-tool auto-accept states enabled
+   * @returns Array of tool names with active per-tool auto-accept
+   */
+  private checkActivePerToolStates(): string[] {
+    const activeTools: string[] = []
+
+    // Check FileTools
+    const fileTools = this.toolFactories.find((f) => f.name === 'FILES')
+    if (fileTools && typeof (fileTools as any).getAutoAcceptState === 'function') {
+      if ((fileTools as any).getAutoAcceptState()) {
+        activeTools.push('file operations')
+      }
+    }
+
+    // Add checks for other tools with per-tool flags as they're implemented
+    // Example:
+    // const memoryHandler = this.toolFactories.find((f) => f.name === 'MEMORY')
+    // if (memoryHandler && typeof (memoryHandler as any).getAutoAcceptState === 'function') {
+    //   if ((memoryHandler as any).getAutoAcceptState()) {
+    //     activeTools.push('memory operations')
+    //   }
+    // }
+
+    return activeTools
+  }
+
+  /**
+   * Emit current global auto-accept state (for reconnections)
+   */
+  public emitCurrentGlobalState(): void {
+    this.interactor.sendEvent(
+      new GlobalAutoAcceptStateEvent({ globalAutoAcceptEnabled: this.interactor.globalAutoAccept || false })
+    )
+    this.interactor.debug(`[TOOLBOX] Emitted global auto-accept state: ${this.interactor.globalAutoAccept}`)
+
+    // Also emit per-tool reset button visibility state
+    this.interactor.sendEvent(
+      new PerToolAutoAcceptStateEvent({ hasActivePerToolStates: this.hasActivePerToolStates() })
+    )
+  }
+
+  /**
+   * Check if any per-tool auto-accept is active
+   * @returns true if any tool has per-tool auto-accept enabled
+   */
+  public hasActivePerToolStates(): boolean {
+    return this.checkActivePerToolStates().length > 0
+  }
+
+  /**
+   * Reset all per-tool auto-accept flags
+   */
+  public resetAllPerToolAutoAccept(): void {
+    let resetCount = 0
+
+    // Reset FileTools
+    const fileTools = this.toolFactories.find((f) => f.name === 'FILES')
+    if (fileTools && typeof (fileTools as any).resetAutoAccept === 'function') {
+      ;(fileTools as any).resetAutoAccept()
+      resetCount++
+    }
+
+    // Add resets for other tools as they're implemented
+    // Example:
+    // const memoryHandler = this.toolFactories.find((f) => f.name === 'MEMORY')
+    // if (memoryHandler && typeof (memoryHandler as any).resetAutoAccept === 'function') {
+    //   (memoryHandler as any).resetAutoAccept()
+    //   resetCount++
+    // }
+
+    this.interactor.displayText(`Reset auto-accept for all tools (${resetCount} tool(s) affected).`)
+
+    // Emit event to notify UI that per-tool states were reset
+    this.interactor.sendEvent(new PerToolAutoAcceptResetEvent({}))
+    this.interactor.debug(`[TOOLBOX] Reset all per-tool auto-accept flags`)
   }
 }

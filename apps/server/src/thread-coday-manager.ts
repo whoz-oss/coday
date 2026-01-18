@@ -106,20 +106,16 @@ class ThreadCodayInstance {
         }
       }
 
-      // Emit current file auto-accept state after replay
+      // Emit current global auto-accept state after replay
       // This syncs the UI with the backend state when a new connection is established
       try {
         const toolbox = this.coday.services.agent.toolbox
-        if (toolbox) {
-          // Find FileTools in the toolFactories
-          const fileTools = (toolbox as any).toolFactories?.find((f: any) => f.name === 'FILES')
-          if (fileTools && typeof fileTools.emitCurrentState === 'function') {
-            fileTools.emitCurrentState()
-            debugLog('THREAD_CODAY', `Emitted file auto-accept state for new connection to ${this.threadId}`)
-          }
+        if (toolbox && typeof toolbox.emitCurrentGlobalState === 'function') {
+          toolbox.emitCurrentGlobalState()
+          debugLog('THREAD_CODAY', `Emitted global auto-accept state for new connection to ${this.threadId}`)
         }
       } catch (error) {
-        debugLog('THREAD_CODAY', `Error emitting file auto-accept state:`, error)
+        debugLog('THREAD_CODAY', `Error emitting global auto-accept state:`, error)
       }
     } catch (error) {
       debugLog('THREAD_CODAY', `Error replaying thread history:`, error)

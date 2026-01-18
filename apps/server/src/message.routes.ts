@@ -402,7 +402,9 @@ export function registerMessageRoutes(
 
   /**
    * POST /api/projects/:projectName/threads/:threadId/toggle-auto-accept
-   * Toggle file auto-accept state for a thread
+   * Toggle global auto-accept state for a thread
+   * When enabled, skips ALL confirmations across all tools
+   * When disabled, each tool maintains its own auto-accept state
    */
   app.post(
     '/api/projects/:projectName/threads/:threadId/toggle-auto-accept',
@@ -420,7 +422,7 @@ export function registerMessageRoutes(
           return
         }
 
-        debugLog('MESSAGE', `Toggle auto-accept for thread: ${threadId} in project: ${projectName}`)
+        debugLog('MESSAGE', `Toggle global auto-accept for thread: ${threadId} in project: ${projectName}`)
 
         // Get the thread instance
         const instance = threadCodayManager.get(threadId)
@@ -435,28 +437,76 @@ export function registerMessageRoutes(
           return
         }
 
-        // Get FileTools instance from toolbox
+        // Get Toolbox instance
         const toolbox = instance.coday.services.agent.toolbox
         if (!toolbox) {
           res.status(500).json({ error: 'Toolbox not initialized' })
           return
         }
 
-        // Find FileTools in the toolFactories
-        const fileTools = (toolbox as any).toolFactories?.find((f: any) => f.name === 'FILES')
-        if (!fileTools || typeof fileTools.toggleAutoAccept !== 'function') {
-          res.status(500).json({ error: 'FileTools not available' })
+        // Toggle global auto-accept (this will emit the GlobalAutoAcceptStateEvent via SSE)
+        toolbox.toggleGlobalAutoAccept()
+
+        res.status(200).json({ success: true, message: 'Global auto-accept toggled' })
+      } catch (error) {
+        console.error('Error toggling global auto-accept:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: `Failed to toggle global auto-accept: ${errorMessage}` })
+      }
+    }
+  )
+
+  /**
+   * POST /api/projects/:projectName/threads/:threadId/reset-per-tool-auto-accept
+   * Reset all per-tool auto-accept flags for a thread
+   * This resets individual tool auto-accept states (e.g., file operations, memory operations)
+   */
+  app.post(
+    '/api/projects/:projectName/threads/:threadId/reset-per-tool-auto-accept',
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { projectName, threadId } = req.params
+        if (!projectName || !threadId) {
+          res.status(400).json({ error: 'Project name and thread ID are required' })
           return
         }
 
-        // Toggle auto-accept (this will emit the event via SSE)
-        fileTools.toggleAutoAccept()
+        const username = getUsernameFn(req)
+        if (!username) {
+          res.status(401).json({ error: 'Authentication required' })
+          return
+        }
 
-        res.status(200).json({ success: true, message: 'Auto-accept toggled' })
+        debugLog('MESSAGE', `Reset per-tool auto-accept for thread: ${threadId} in project: ${projectName}`)
+
+        // Get the thread instance
+        const instance = threadCodayManager.get(threadId)
+        if (!instance?.coday) {
+          res.status(404).json({ error: `Thread '${threadId}' not found or not active` })
+          return
+        }
+
+        // Verify thread ownership
+        if (instance.username !== username) {
+          res.status(403).json({ error: 'Access denied: thread belongs to another user' })
+          return
+        }
+
+        // Get Toolbox instance
+        const toolbox = instance.coday.services.agent.toolbox
+        if (!toolbox) {
+          res.status(500).json({ error: 'Toolbox not initialized' })
+          return
+        }
+
+        // Reset all per-tool auto-accept flags (this will emit the PerToolAutoAcceptResetEvent via SSE)
+        toolbox.resetAllPerToolAutoAccept()
+
+        res.status(200).json({ success: true, message: 'Per-tool auto-accept reset' })
       } catch (error) {
-        console.error('Error toggling auto-accept:', error)
+        console.error('Error resetting per-tool auto-accept:', error)
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        res.status(500).json({ error: `Failed to toggle auto-accept: ${errorMessage}` })
+        res.status(500).json({ error: `Failed to reset per-tool auto-accept: ${errorMessage}` })
       }
     }
   )

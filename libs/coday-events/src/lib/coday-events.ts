@@ -335,6 +335,47 @@ export class FileConfirmationStateEvent extends CodayEvent {
 }
 
 /**
+ * Event emitted when global auto-accept state changes
+ * When enabled, skips ALL confirmations across all tools
+ * When disabled, each tool maintains its own auto-accept state
+ */
+export class GlobalAutoAcceptStateEvent extends CodayEvent {
+  globalAutoAcceptEnabled: boolean
+  static override type = 'global_auto_accept_state'
+
+  constructor(event: Partial<GlobalAutoAcceptStateEvent>) {
+    super(event, GlobalAutoAcceptStateEvent.type)
+    this.globalAutoAcceptEnabled = event.globalAutoAcceptEnabled ?? false
+  }
+}
+
+/**
+ * Event emitted when per-tool auto-accept state changes (for showing/hiding reset button)
+ * Indicates whether any tool has its per-tool auto-accept flag enabled
+ */
+export class PerToolAutoAcceptStateEvent extends CodayEvent {
+  hasActivePerToolStates: boolean
+  static override type = 'per_tool_auto_accept_state'
+
+  constructor(event: Partial<PerToolAutoAcceptStateEvent>) {
+    super(event, PerToolAutoAcceptStateEvent.type)
+    this.hasActivePerToolStates = event.hasActivePerToolStates ?? false
+  }
+}
+
+/**
+ * Event emitted when all per-tool auto-accept flags are reset
+ * Triggers hiding the reset button in the UI
+ */
+export class PerToolAutoAcceptResetEvent extends CodayEvent {
+  static override type = 'per_tool_auto_accept_reset'
+
+  constructor(event: Partial<PerToolAutoAcceptResetEvent>) {
+    super(event, PerToolAutoAcceptResetEvent.type)
+  }
+}
+
+/**
  * Event sent from frontend to toggle file confirmation auto-accept state
  */
 export class ToggleAutoAcceptEvent extends CodayEvent {
@@ -420,6 +461,9 @@ const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [SummaryEvent.type]: SummaryEvent,
   [FileEvent.type]: FileEvent,
   [FileConfirmationStateEvent.type]: FileConfirmationStateEvent,
+  [GlobalAutoAcceptStateEvent.type]: GlobalAutoAcceptStateEvent,
+  [PerToolAutoAcceptStateEvent.type]: PerToolAutoAcceptStateEvent,
+  [PerToolAutoAcceptResetEvent.type]: PerToolAutoAcceptResetEvent,
   [ToggleAutoAcceptEvent.type]: ToggleAutoAcceptEvent,
   [OAuthRequestEvent.type]: OAuthRequestEvent,
   [OAuthCallbackEvent.type]: OAuthCallbackEvent,

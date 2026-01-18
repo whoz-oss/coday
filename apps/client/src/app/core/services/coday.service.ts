@@ -7,6 +7,9 @@ import {
   CodayEvent,
   ErrorEvent,
   FileConfirmationStateEvent,
+  GlobalAutoAcceptStateEvent,
+  PerToolAutoAcceptStateEvent,
+  PerToolAutoAcceptResetEvent,
   HeartBeatEvent,
   InviteEvent,
   InviteEventDefault,
@@ -49,6 +52,7 @@ export class CodayService implements OnDestroy {
   private readonly messageToRestoreSubject = new BehaviorSubject<string>('')
   private readonly threadUpdateEventSubject = new BehaviorSubject<ThreadUpdateEvent | null>(null)
   private readonly autoAcceptEnabledSubject = new BehaviorSubject<boolean>(false)
+  private readonly showPerToolResetButtonSubject = new BehaviorSubject<boolean>(false)
 
   // Store original events for proper response building
   private currentChoiceEvent: ChoiceEvent | null = null
@@ -69,6 +73,7 @@ export class CodayService implements OnDestroy {
   messageToRestore$ = this.messageToRestoreSubject.asObservable()
   threadUpdateEvent$ = this.threadUpdateEventSubject.asObservable()
   autoAcceptEnabled$ = this.autoAcceptEnabledSubject.asObservable()
+  showPerToolResetButton$ = this.showPerToolResetButtonSubject.asObservable()
 
   // Connection status will be initialized in constructor
   connectionStatus$!: typeof this.eventStream.connectionStatus$
@@ -120,6 +125,7 @@ export class CodayService implements OnDestroy {
     this.accumulatedChunks = ''
     this.streamingTextSubject.next('')
     this.autoAcceptEnabledSubject.next(false)
+    this.showPerToolResetButtonSubject.next(false)
     this.stopThinking()
   }
 
@@ -306,6 +312,12 @@ export class CodayService implements OnDestroy {
       this.handleThreadUpdateEvent(event)
     } else if (event instanceof FileConfirmationStateEvent) {
       this.handleFileConfirmationStateEvent(event)
+    } else if (event instanceof GlobalAutoAcceptStateEvent) {
+      this.handleGlobalAutoAcceptStateEvent(event)
+    } else if (event instanceof PerToolAutoAcceptStateEvent) {
+      this.handlePerToolAutoAcceptStateEvent(event)
+    } else if (event instanceof PerToolAutoAcceptResetEvent) {
+      this.handlePerToolAutoAcceptResetEvent(event)
     } else if (event instanceof OAuthRequestEvent || event instanceof OAuthCallbackEvent) {
       // OAuth events are handled by OAuthService, no action needed here
     } else {
@@ -318,8 +330,25 @@ export class CodayService implements OnDestroy {
   }
 
   private handleFileConfirmationStateEvent(event: FileConfirmationStateEvent): void {
-    console.log('[CODAY-SERVICE] File confirmation state changed:', event.autoAcceptEnabled)
-    this.autoAcceptEnabledSubject.next(event.autoAcceptEnabled)
+    console.log('[CODAY-SERVICE] Per-tool file auto-accept state changed:', event.autoAcceptEnabled)
+    // Show reset button when per-tool auto-accept is enabled
+    this.showPerToolResetButtonSubject.next(event.autoAcceptEnabled)
+    // DO NOT update global UI indicator - that's only for global state
+  }
+
+  private handleGlobalAutoAcceptStateEvent(event: GlobalAutoAcceptStateEvent): void {
+    console.log('[CODAY-SERVICE] Global auto-accept state changed:', event.globalAutoAcceptEnabled)
+    this.autoAcceptEnabledSubject.next(event.globalAutoAcceptEnabled)
+  }
+
+  private handlePerToolAutoAcceptStateEvent(event: PerToolAutoAcceptStateEvent): void {
+    console.log('[CODAY-SERVICE] Per-tool auto-accept state:', event.hasActivePerToolStates)
+    this.showPerToolResetButtonSubject.next(event.hasActivePerToolStates)
+  }
+
+  private handlePerToolAutoAcceptResetEvent(_event: PerToolAutoAcceptResetEvent): void {
+    console.log('[CODAY-SERVICE] Per-tool auto-accept reset')
+    this.showPerToolResetButtonSubject.next(false)
   }
 
   private handleMessageEvent(event: MessageEvent): void {

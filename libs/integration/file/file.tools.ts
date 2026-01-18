@@ -54,10 +54,11 @@ export class FileTools extends AssistantToolFactory {
   name = 'FILES'
 
   /**
-   * Session-level flag to auto-accept all file operations
+   * Per-tool session-level flag to auto-accept all file operations
+   * Active only when global auto-accept is OFF
    * Reset when the FileTools instance is destroyed
    */
-  private autoAcceptAll: boolean = false
+  private fileAutoAcceptAll: boolean = false
 
   constructor(interactor: Interactor) {
     super(interactor)
@@ -68,26 +69,37 @@ export class FileTools extends AssistantToolFactory {
    * @returns true if auto-accept is enabled
    */
   public getAutoAcceptState(): boolean {
-    return this.autoAcceptAll
+    return this.fileAutoAcceptAll
   }
 
   /**
-   * Toggle auto-accept state and emit the new state
+   * Toggle per-tool file auto-accept state and emit the new state
+   * Note: This is separate from global auto-accept (managed by Toolbox)
    */
   public toggleAutoAccept(): void {
-    this.autoAcceptAll = !this.autoAcceptAll
-    this.interactor.displayText(`Auto-accept ${this.autoAcceptAll ? 'enabled' : 'disabled'} for this session.`)
-    this.interactor.sendEvent(new FileConfirmationStateEvent({ autoAcceptEnabled: this.autoAcceptAll }))
-    this.interactor.debug(`[FILE-CONFIRMATION] Auto-accept toggled to: ${this.autoAcceptAll}`)
+    this.fileAutoAcceptAll = !this.fileAutoAcceptAll
+    this.interactor.displayText(`File auto-accept ${this.fileAutoAcceptAll ? 'enabled' : 'disabled'} for this session.`)
+    this.interactor.sendEvent(new FileConfirmationStateEvent({ autoAcceptEnabled: this.fileAutoAcceptAll }))
+    this.interactor.debug(`[FILE-TOOLS] File auto-accept toggled to: ${this.fileAutoAcceptAll}`)
   }
 
   /**
-   * Emit the current auto-accept state to connected clients
+   * Emit the current per-tool file auto-accept state to connected clients
+   * Note: Global auto-accept state is emitted separately by Toolbox
    * Useful when a new connection is established
    */
   public emitCurrentState(): void {
-    this.interactor.sendEvent(new FileConfirmationStateEvent({ autoAcceptEnabled: this.autoAcceptAll }))
-    this.interactor.debug(`[FILE-CONFIRMATION] Emitted current auto-accept state: ${this.autoAcceptAll}`)
+    this.interactor.sendEvent(new FileConfirmationStateEvent({ autoAcceptEnabled: this.fileAutoAcceptAll }))
+    this.interactor.debug(`[FILE-TOOLS] Emitted current file auto-accept state: ${this.fileAutoAcceptAll}`)
+  }
+
+  /**
+   * Reset per-tool file auto-accept flag to false
+   * Called when user clicks "Disable auto-accept for all tools" button
+   */
+  public resetAutoAccept(): void {
+    this.fileAutoAcceptAll = false
+    this.interactor.debug(`[FILE-TOOLS] File auto-accept reset to false`)
   }
 
   /**
@@ -99,9 +111,12 @@ export class FileTools extends AssistantToolFactory {
     filePath: string,
     details?: string
   ): Promise<boolean> {
-    // If auto-accept is enabled, skip confirmation
-    if (this.autoAcceptAll) {
-      this.interactor.debug(`[FILE-CONFIRMATION] Auto-accepting ${operation} operation on ${filePath}`)
+    // Check BOTH global and per-tool auto-accept flags
+    if (this.interactor.globalAutoAccept || this.fileAutoAcceptAll) {
+      this.interactor.debug(
+        `[FILE-CONFIRMATION] Auto-accepting ${operation} operation on ${filePath} ` +
+          `(global: ${!!this.interactor.globalAutoAccept}, file: ${this.fileAutoAcceptAll})`
+      )
       return true
     }
 
@@ -127,15 +142,15 @@ export class FileTools extends AssistantToolFactory {
     this.interactor.debug(`[FILE-CONFIRMATION] Requesting confirmation for ${operation} operation on ${filePath}`)
 
     const choice = await this.interactor.chooseOption(
-      [`${label} file`, 'Accept all changes', 'Cancel'],
+      [`${label} file`, 'Accept all file changes', 'Cancel'],
       `Confirm file ${operation}:`,
       confirmMessage
     )
 
     this.interactor.debug(`[FILE-CONFIRMATION] User chose: ${choice}`)
 
-    if (choice === 'Accept all changes') {
-      this.autoAcceptAll = true
+    if (choice === 'Accept all file changes') {
+      this.fileAutoAcceptAll = true
       this.interactor.displayText(`Auto-accepting all file operations for this session.`)
 
       // Emit event to notify UI

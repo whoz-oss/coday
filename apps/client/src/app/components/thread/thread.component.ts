@@ -84,6 +84,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   showConnectionStatus: boolean = false
   private hasEverConnected: boolean = false
   autoAcceptEnabled: boolean = false
+  showPerToolResetButton: boolean = false
 
   // Input height management
   inputSectionHeight: number = 80 // Default height
@@ -223,6 +224,12 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
       this.autoAcceptEnabled = enabled
     })
 
+    // Listen for per-tool reset button visibility changes
+    this.codayService.showPerToolResetButton$.pipe(takeUntil(this.destroy$)).subscribe((show) => {
+      console.log('[THREAD] Show per-tool reset button:', show)
+      this.showPerToolResetButton = show
+    })
+
     // Reset messages when switching threads
     this.codayService.resetMessages()
 
@@ -317,6 +324,19 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
       },
       error: (error) => {
         console.error('[THREAD] Error toggling auto-accept:', error)
+      },
+    })
+  }
+
+  onResetPerToolAutoAccept(): void {
+    console.log('[THREAD] Resetting per-tool auto-accept')
+    this.messageApi.resetPerToolAutoAccept(this.projectName, this.threadId).subscribe({
+      next: () => {
+        console.log('[THREAD] Per-tool auto-accept reset successfully')
+        // Button will hide automatically via event
+      },
+      error: (error) => {
+        console.error('[THREAD] Error resetting per-tool auto-accept:', error)
       },
     })
   }
