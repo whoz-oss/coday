@@ -18,6 +18,10 @@ export abstract class Interactor {
 
   debugLevelEnabled: boolean = false
 
+  // Global auto-accept flag - when true, skips ALL confirmations across all tools
+  // Per-tool auto-accept flags (in tool classes) are still checked when this is false
+  globalAutoAccept: boolean = false
+
   constructor() {
     this.subs.push(
       this.thinking$.pipe(throttleTime(ThinkingEvent.debounce)).subscribe(() => this.sendEvent(new ThinkingEvent({})))

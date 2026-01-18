@@ -59,20 +59,38 @@
         <!-- Input Section -->
         <div class="input-section" #inputSection>
           <div class="input-center">
-            <!-- Auto-Accept Indicator - positioned below textarea -->
-            <div
-              class="auto-accept-status"
-              [class.active]="autoAcceptEnabled"
-              (click)="onToggleAutoAccept()"
-              role="button"
-              tabindex="0"
-              [attr.aria-label]="'Toggle auto-accept file operations. Currently ' + (autoAcceptEnabled ? 'ON' : 'OFF')"
-              title="Click to toggle auto-accept file operations"
-            >
-              <span class="status-label">Auto-accept:</span>
-              <span class="status-value" [class.on]="autoAcceptEnabled" [class.off]="!autoAcceptEnabled">
-                {{ autoAcceptEnabled ? 'ON' : 'OFF' }}
-              </span>
+            <!-- Auto-Accept Controls Container -->
+            <div class="auto-accept-controls">
+              <!-- Global Auto-Accept Indicator -->
+              <div
+                class="auto-accept-status"
+                [class.active]="autoAcceptEnabled"
+                (click)="onToggleAutoAccept()"
+                role="button"
+                tabindex="0"
+                [attr.aria-label]="
+                  'Toggle global auto-accept for all operations. Currently ' + (autoAcceptEnabled ? 'ON' : 'OFF')
+                "
+                title="Click to toggle global auto-accept. When ON: skips ALL confirmations. When OFF: tools maintain individual auto-accept states."
+              >
+                <span class="status-label">Global Auto-accept all:</span>
+                <span class="status-value" [class.on]="autoAcceptEnabled" [class.off]="!autoAcceptEnabled">
+                  {{ autoAcceptEnabled ? 'ON' : 'OFF' }}
+                </span>
+              </div>
+
+              <!-- Reset Per-Tool Auto-Accept Button (shown when per-tool auto-accept is active) -->
+              @if (showPerToolResetButton && !autoAcceptEnabled) {
+                <button
+                  class="reset-per-tool-btn"
+                  (click)="onResetPerToolAutoAccept()"
+                  type="button"
+                  title="Reset all per-tool auto-accept states"
+                >
+                  <span class="btn-icon">↺</span>
+                  <span class="btn-label">Disable auto-accept for all tools</span>
+                </button>
+              }
             </div>
 
             <div class="input-glass">

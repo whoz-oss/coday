@@ -83,4 +83,14 @@ export class MessageApiService {
   toggleAutoAccept(projectName: string, threadId: string): Observable<any> {
     return this.http.post(`/api/projects/${projectName}/threads/${threadId}/toggle-auto-accept`, {})
   }
+
+  /**
+   * Reset all per-tool auto-accept flags in a thread
+   * @param projectName Project name
+   * @param threadId Thread ID
+   * @returns Observable of response
+   */
+  resetPerToolAutoAccept(projectName: string, threadId: string): Observable<any> {
+    return this.http.post(`/api/projects/${projectName}/threads/${threadId}/reset-per-tool-auto-accept`, {})
+  }
 }
