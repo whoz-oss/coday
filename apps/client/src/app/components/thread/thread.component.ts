@@ -31,6 +31,7 @@ import { TabTitleService } from '../../services/tab-title.service'
 import { ThreadStateService } from '../../core/services/thread-state.service'
 import { ImageUploadService } from '../../services/image-upload.service'
 import { FileExchangeStateService } from '../../core/services/file-exchange-state.service'
+import { MessageApiService } from '../../core/services/message-api.service'
 
 /**
  * ThreadComponent - Dedicated component for displaying and interacting with a conversation thread
@@ -82,6 +83,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   isConnected: boolean = false
   showConnectionStatus: boolean = false
   private hasEverConnected: boolean = false
+  autoAcceptEnabled: boolean = false
 
   // Input height management
   inputSectionHeight: number = 80 // Default height
@@ -113,6 +115,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   private readonly threadState = inject(ThreadStateService)
   private readonly imageUploadService = inject(ImageUploadService)
   private readonly fileExchangeState = inject(FileExchangeStateService)
+  private readonly messageApi = inject(MessageApiService)
 
   ngOnInit(): void {
     console.log('[THREAD] Initializing with project:', this.projectName, 'thread:', this.threadId)
@@ -214,6 +217,12 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
       }
     })
 
+    // Listen for auto-accept state changes
+    this.codayService.autoAcceptEnabled$.pipe(takeUntil(this.destroy$)).subscribe((enabled) => {
+      console.log('[THREAD] Auto-accept state changed:', enabled)
+      this.autoAcceptEnabled = enabled
+    })
+
     // Reset messages when switching threads
     this.codayService.resetMessages()
 
@@ -298,6 +307,18 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
 
   onStopRequested(): void {
     this.threadState.stop()
+  }
+
+  onToggleAutoAccept(): void {
+    console.log('[THREAD] Toggling auto-accept')
+    this.messageApi.toggleAutoAccept(this.projectName, this.threadId).subscribe({
+      next: () => {
+        console.log('[THREAD] Auto-accept toggled successfully')
+      },
+      error: (error) => {
+        console.error('[THREAD] Error toggling auto-accept:', error)
+      },
+    })
   }
 
   onInputHeightChanged(height: number): void {

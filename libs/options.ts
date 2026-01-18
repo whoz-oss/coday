@@ -12,6 +12,7 @@ export interface Argv {
   oneshot?: boolean
   debug?: boolean
   fileReadOnly?: boolean
+  fileConfirmation?: boolean
   local?: boolean
   multi?: boolean
   agentFolders?: string[]
@@ -29,6 +30,7 @@ export interface CodayOptions {
   thread?: string
   prompts: string[]
   fileReadOnly: boolean
+  fileConfirmation: boolean
   configDir: string // Always defined with default value
   auth: boolean
   agentFolders: string[]
@@ -77,6 +79,11 @@ export function parseCodayOptions(): CodayOptions {
       type: 'boolean',
       description: 'Run in read-only mode for files (no write/delete operations)',
     })
+    .option('fileConfirmation', {
+      type: 'boolean',
+      description: 'Require confirmation before file operations (use --no-file-confirmation to disable)',
+      default: true,
+    })
     .option('configDir', {
       type: 'string',
       description: 'Path to the local .coday config dir',
@@ -106,6 +113,7 @@ export function parseCodayOptions(): CodayOptions {
   const prompts: string[] = (argv.prompt || argv._.slice(1)) as string[]
   const oneshot: boolean = !!argv.oneshot
   const fileReadOnly: boolean = !!argv.fileReadOnly
+  const fileConfirmation: boolean = argv.fileConfirmation !== false
 
   // Set configDir with default value
   const defaultConfigDir = path.join(os.homedir(), '.coday')
@@ -145,6 +153,7 @@ export function parseCodayOptions(): CodayOptions {
     project: projectName,
     prompts,
     fileReadOnly,
+    fileConfirmation,
     configDir,
     auth,
     agentFolders: (argv.agentFolders || []) as string[],

@@ -399,4 +399,65 @@ export function registerMessageRoutes(
       }
     }
   )
+
+  /**
+   * POST /api/projects/:projectName/threads/:threadId/toggle-auto-accept
+   * Toggle file auto-accept state for a thread
+   */
+  app.post(
+    '/api/projects/:projectName/threads/:threadId/toggle-auto-accept',
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { projectName, threadId } = req.params
+        if (!projectName || !threadId) {
+          res.status(400).json({ error: 'Project name and thread ID are required' })
+          return
+        }
+
+        const username = getUsernameFn(req)
+        if (!username) {
+          res.status(401).json({ error: 'Authentication required' })
+          return
+        }
+
+        debugLog('MESSAGE', `Toggle auto-accept for thread: ${threadId} in project: ${projectName}`)
+
+        // Get the thread instance
+        const instance = threadCodayManager.get(threadId)
+        if (!instance?.coday) {
+          res.status(404).json({ error: `Thread '${threadId}' not found or not active` })
+          return
+        }
+
+        // Verify thread ownership
+        if (instance.username !== username) {
+          res.status(403).json({ error: 'Access denied: thread belongs to another user' })
+          return
+        }
+
+        // Get FileTools instance from toolbox
+        const toolbox = instance.coday.services.agent.toolbox
+        if (!toolbox) {
+          res.status(500).json({ error: 'Toolbox not initialized' })
+          return
+        }
+
+        // Find FileTools in the toolFactories
+        const fileTools = (toolbox as any).toolFactories?.find((f: any) => f.name === 'FILES')
+        if (!fileTools || typeof fileTools.toggleAutoAccept !== 'function') {
+          res.status(500).json({ error: 'FileTools not available' })
+          return
+        }
+
+        // Toggle auto-accept (this will emit the event via SSE)
+        fileTools.toggleAutoAccept()
+
+        res.status(200).json({ success: true, message: 'Auto-accept toggled' })
+      } catch (error) {
+        console.error('Error toggling auto-accept:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: `Failed to toggle auto-accept: ${errorMessage}` })
+      }
+    }
+  )
 }

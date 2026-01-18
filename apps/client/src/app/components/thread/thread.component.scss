@@ -81,6 +81,63 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+// Auto-accept status indicator
+.auto-accept-status {
+  position: relative;
+  margin-bottom: 8px;
+  padding: 6px 12px;
+  background: var(--color-bg-solid, #fff);
+  border: 1px solid var(--color-border, #e0e0e0);
+  border-radius: 6px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  width: fit-content;
+  cursor: pointer;
+  user-select: none;
+
+  &:hover {
+    border-color: var(--color-primary, #1976d2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  .status-label {
+    color: var(--color-text-secondary, #666);
+    font-weight: 500;
+  }
+
+  .status-value {
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    transition: all 0.3s ease;
+
+    &.on {
+      color: var(--success-text, #155724);
+      background: var(--success-bg, #d4edda);
+    }
+
+    &.off {
+      color: var(--color-text-secondary, #666);
+      background: var(--color-bg-subtle, #f5f5f5);
+    }
+  }
+
+  &.active {
+    border-color: var(--success-border, #c3e6cb);
+    box-shadow: 0 2px 6px rgba(33, 150, 83, 0.15);
+  }
+}
+
 // Chat wrapper - scrollable area
 .chat-wrapper {
   flex: 1;
@@ -131,6 +188,7 @@
   width: 100%;
   margin: 0 auto;
   padding: 0 1rem;
+  position: relative; // For auto-accept status positioning
 }
 
 .input-glass {
@@ -220,6 +278,7 @@
 // Print styles
 @media print {
   .connection-status,
+  .auto-accept-status,
   .input-section,
   .drag-overlay,
   .file-drawer-toggle-btn,

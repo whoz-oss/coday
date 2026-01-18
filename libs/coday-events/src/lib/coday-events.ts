@@ -321,6 +321,30 @@ export class ThreadUpdateEvent extends CodayEvent {
   }
 }
 
+/**
+ * Event emitted when file confirmation auto-accept state changes
+ */
+export class FileConfirmationStateEvent extends CodayEvent {
+  autoAcceptEnabled: boolean
+  static override type = 'file_confirmation_state'
+
+  constructor(event: Partial<FileConfirmationStateEvent>) {
+    super(event, FileConfirmationStateEvent.type)
+    this.autoAcceptEnabled = event.autoAcceptEnabled ?? false
+  }
+}
+
+/**
+ * Event sent from frontend to toggle file confirmation auto-accept state
+ */
+export class ToggleAutoAcceptEvent extends CodayEvent {
+  static override type = 'toggle_auto_accept'
+
+  constructor(event: Partial<ToggleAutoAcceptEvent>) {
+    super(event, ToggleAutoAcceptEvent.type)
+  }
+}
+
 export class FileEvent extends CodayEvent {
   filename: string
   operation: 'created' | 'updated' | 'deleted'
@@ -395,6 +419,8 @@ const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [ThreadUpdateEvent.type]: ThreadUpdateEvent,
   [SummaryEvent.type]: SummaryEvent,
   [FileEvent.type]: FileEvent,
+  [FileConfirmationStateEvent.type]: FileConfirmationStateEvent,
+  [ToggleAutoAcceptEvent.type]: ToggleAutoAcceptEvent,
   [OAuthRequestEvent.type]: OAuthRequestEvent,
   [OAuthCallbackEvent.type]: OAuthCallbackEvent,
 }

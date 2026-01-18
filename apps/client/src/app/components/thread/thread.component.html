@@ -59,6 +59,22 @@
         <!-- Input Section -->
         <div class="input-section" #inputSection>
           <div class="input-center">
+            <!-- Auto-Accept Indicator - positioned below textarea -->
+            <div
+              class="auto-accept-status"
+              [class.active]="autoAcceptEnabled"
+              (click)="onToggleAutoAccept()"
+              role="button"
+              tabindex="0"
+              [attr.aria-label]="'Toggle auto-accept file operations. Currently ' + (autoAcceptEnabled ? 'ON' : 'OFF')"
+              title="Click to toggle auto-accept file operations"
+            >
+              <span class="status-label">Auto-accept:</span>
+              <span class="status-value" [class.on]="autoAcceptEnabled" [class.off]="!autoAcceptEnabled">
+                {{ autoAcceptEnabled ? 'ON' : 'OFF' }}
+              </span>
+            </div>
+
             <div class="input-glass">
               @if (!currentChoice) {
                 <app-chat-textarea
