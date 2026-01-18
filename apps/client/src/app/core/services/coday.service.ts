@@ -6,6 +6,7 @@ import {
   ChoiceEvent,
   CodayEvent,
   ErrorEvent,
+  FileConfirmationStateEvent,
   HeartBeatEvent,
   InviteEvent,
   InviteEventDefault,
@@ -47,6 +48,7 @@ export class CodayService implements OnDestroy {
   private readonly currentInviteEventSubject = new BehaviorSubject<InviteEvent | null>(null)
   private readonly messageToRestoreSubject = new BehaviorSubject<string>('')
   private readonly threadUpdateEventSubject = new BehaviorSubject<ThreadUpdateEvent | null>(null)
+  private readonly autoAcceptEnabledSubject = new BehaviorSubject<boolean>(false)
 
   // Store original events for proper response building
   private currentChoiceEvent: ChoiceEvent | null = null
@@ -66,6 +68,7 @@ export class CodayService implements OnDestroy {
   currentInviteEvent$ = this.currentInviteEventSubject.asObservable()
   messageToRestore$ = this.messageToRestoreSubject.asObservable()
   threadUpdateEvent$ = this.threadUpdateEventSubject.asObservable()
+  autoAcceptEnabled$ = this.autoAcceptEnabledSubject.asObservable()
 
   // Connection status will be initialized in constructor
   connectionStatus$!: typeof this.eventStream.connectionStatus$
@@ -116,6 +119,7 @@ export class CodayService implements OnDestroy {
     this.currentChoiceEvent = null
     this.accumulatedChunks = ''
     this.streamingTextSubject.next('')
+    this.autoAcceptEnabledSubject.next(false)
     this.stopThinking()
   }
 
@@ -176,6 +180,14 @@ export class CodayService implements OnDestroy {
       // Immediately set thinking state to true to prevent further interactions
       this.isThinkingSubject.next(true)
       this.tabTitleService?.setSystemActive()
+
+      // Set a safety timeout in case the AI doesn't send any more events after the choice
+      // This ensures the thinking indicator doesn't get stuck indefinitely
+      this.clearThinkingTimeout()
+      this.thinkingTimeout = setTimeout(() => {
+        console.warn('[CODAY-CHOICE] Safety timeout reached after choice answer, stopping thinking state')
+        this.stopThinking()
+      }, 30000) // 30 second safety timeout
 
       // Use the original ChoiceEvent to build proper answer with parentKey
       const answerEvent = this.currentChoiceEvent.buildAnswer(choice)
@@ -292,6 +304,8 @@ export class CodayService implements OnDestroy {
       this.handleInviteEvent(event)
     } else if (event instanceof ThreadUpdateEvent) {
       this.handleThreadUpdateEvent(event)
+    } else if (event instanceof FileConfirmationStateEvent) {
+      this.handleFileConfirmationStateEvent(event)
     } else if (event instanceof OAuthRequestEvent || event instanceof OAuthCallbackEvent) {
       // OAuth events are handled by OAuthService, no action needed here
     } else {
@@ -303,11 +317,21 @@ export class CodayService implements OnDestroy {
     this.threadUpdateEventSubject.next(event)
   }
 
+  private handleFileConfirmationStateEvent(event: FileConfirmationStateEvent): void {
+    console.log('[CODAY-SERVICE] File confirmation state changed:', event.autoAcceptEnabled)
+    this.autoAcceptEnabledSubject.next(event.autoAcceptEnabled)
+  }
+
   private handleMessageEvent(event: MessageEvent): void {
     // Reset streaming state if assistant message (final message replaces streaming)
     if (event.role === 'assistant' && this.accumulatedChunks) {
       this.accumulatedChunks = ''
       this.streamingTextSubject.next('')
+    }
+
+    // Stop thinking when receiving a final assistant message
+    if (event.role === 'assistant') {
+      this.stopThinking()
     }
 
     // Add message normally

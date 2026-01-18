@@ -8,7 +8,7 @@ import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
 import { FunctionTool } from '../types'
 import { readFileUnifiedAsMessageContent } from '../../function/read-file-unified'
 import { resolveFilePath, prefixSearchResults, FILE_PREFIXES } from './resolve-file-path'
-import { FileEvent } from '@coday/coday-events'
+import { FileEvent, FileConfirmationStateEvent } from '@coday/coday-events'
 import { unlinkSync } from 'node:fs'
 import * as pathModule from 'path'
 
@@ -53,8 +53,103 @@ import * as pathModule from 'path'
 export class FileTools extends AssistantToolFactory {
   name = 'FILES'
 
+  /**
+   * Session-level flag to auto-accept all file operations
+   * Reset when the FileTools instance is destroyed
+   */
+  private autoAcceptAll: boolean = false
+
   constructor(interactor: Interactor) {
     super(interactor)
+  }
+
+  /**
+   * Get the current auto-accept state
+   * @returns true if auto-accept is enabled
+   */
+  public getAutoAcceptState(): boolean {
+    return this.autoAcceptAll
+  }
+
+  /**
+   * Toggle auto-accept state and emit the new state
+   */
+  public toggleAutoAccept(): void {
+    this.autoAcceptAll = !this.autoAcceptAll
+    this.interactor.displayText(`Auto-accept ${this.autoAcceptAll ? 'enabled' : 'disabled'} for this session.`)
+    this.interactor.sendEvent(new FileConfirmationStateEvent({ autoAcceptEnabled: this.autoAcceptAll }))
+    this.interactor.debug(`[FILE-CONFIRMATION] Auto-accept toggled to: ${this.autoAcceptAll}`)
+  }
+
+  /**
+   * Emit the current auto-accept state to connected clients
+   * Useful when a new connection is established
+   */
+  public emitCurrentState(): void {
+    this.interactor.sendEvent(new FileConfirmationStateEvent({ autoAcceptEnabled: this.autoAcceptAll }))
+    this.interactor.debug(`[FILE-CONFIRMATION] Emitted current auto-accept state: ${this.autoAcceptAll}`)
+  }
+
+  /**
+   * Prompts user for confirmation before a file operation
+   * @returns true if user confirms, false if cancelled
+   */
+  private async confirmFileOperation(
+    operation: 'write' | 'edit' | 'delete',
+    filePath: string,
+    details?: string
+  ): Promise<boolean> {
+    // If auto-accept is enabled, skip confirmation
+    if (this.autoAcceptAll) {
+      this.interactor.debug(`[FILE-CONFIRMATION] Auto-accepting ${operation} operation on ${filePath}`)
+      return true
+    }
+
+    const operationLabels = {
+      write: 'Write',
+      edit: 'Edit',
+      delete: 'Delete',
+    }
+
+    const operationColors = {
+      write: '📝',
+      edit: '✏️',
+      delete: '🗑️',
+    }
+
+    const label = operationLabels[operation]
+    const icon = operationColors[operation]
+
+    const detailsSection = details ? `\n\n${details}` : ''
+
+    const confirmMessage = `${icon} **${label} File**\n\n**Path:** \`${filePath}\`${detailsSection}\n\n⚠️ This operation will modify your files.`
+
+    this.interactor.debug(`[FILE-CONFIRMATION] Requesting confirmation for ${operation} operation on ${filePath}`)
+
+    const choice = await this.interactor.chooseOption(
+      [`${label} file`, 'Accept all changes', 'Cancel'],
+      `Confirm file ${operation}:`,
+      confirmMessage
+    )
+
+    this.interactor.debug(`[FILE-CONFIRMATION] User chose: ${choice}`)
+
+    if (choice === 'Accept all changes') {
+      this.autoAcceptAll = true
+      this.interactor.displayText(`Auto-accepting all file operations for this session.`)
+
+      // Emit event to notify UI
+      this.interactor.sendEvent(new FileConfirmationStateEvent({ autoAcceptEnabled: true }))
+
+      return true
+    }
+
+    if (choice !== `${label} file`) {
+      this.interactor.displayText(`File ${operation} cancelled by user.`)
+      return false
+    }
+
+    return true
   }
 
   protected async buildTools(context: CommandContext, _agentName: string): Promise<CodayTool[]> {
@@ -62,12 +157,24 @@ export class FileTools extends AssistantToolFactory {
 
     // Only add write/delete tools if not in read-only mode
     if (!context.fileReadOnly) {
-      const removeFile = ({ path }: { path: string }) => {
+      const removeFile = async ({ path }: { path: string }) => {
         const resolved = resolveFilePath(path, context)
 
         // Check permissions for project files
         if (resolved.scope === 'project' && context.fileReadOnly) {
           throw new Error('Cannot delete project files in read-only mode')
+        }
+
+        // Request confirmation if enabled
+        if (context.fileConfirmation) {
+          const confirmed = await this.confirmFileOperation(
+            'delete',
+            resolved.relativePath,
+            `**Scope:** ${resolved.scope}\n**Absolute Path:** \`${resolved.absolutePath}\``
+          )
+          if (!confirmed) {
+            return 'File deletion cancelled by user'
+          }
         }
 
         try {
@@ -113,12 +220,26 @@ export class FileTools extends AssistantToolFactory {
 
     // Only add write tools if not in read-only mode
     if (!context.fileReadOnly) {
-      const writeProjectFile = ({ path, content }: { path: string; content: string }) => {
+      const writeProjectFile = async ({ path, content }: { path: string; content: string }) => {
         const resolved = resolveFilePath(path, context)
 
         // Check permissions for project files
         if (resolved.scope === 'project' && context.fileReadOnly) {
           throw new Error('Cannot write to project files in read-only mode')
+        }
+
+        // Request confirmation if enabled
+        if (context.fileConfirmation) {
+          const fileSize = Buffer.from(content).length
+          const sizeKb = (fileSize / 1024).toFixed(2)
+          const confirmed = await this.confirmFileOperation(
+            'write',
+            resolved.relativePath,
+            `**Scope:** ${resolved.scope}\n**Size:** ${sizeKb} KB\n**Absolute Path:** \`${resolved.absolutePath}\``
+          )
+          if (!confirmed) {
+            return 'File write cancelled by user'
+          }
         }
 
         // Use writeFileByPath with root as dirname and relPath as basename
@@ -139,6 +260,8 @@ export class FileTools extends AssistantToolFactory {
           })
           this.interactor.sendEvent(event)
         }
+
+        this.interactor.debug(`[FILE-CONFIRMATION] Write operation completed successfully for ${resolved.relativePath}`)
 
         return result
       }
@@ -167,7 +290,7 @@ export class FileTools extends AssistantToolFactory {
       }
       result.push(writeProjectFileFunction)
 
-      const writeFileChunkFunction = ({
+      const writeFileChunkFunction = async ({
         path,
         replacements,
       }: {
@@ -179,6 +302,25 @@ export class FileTools extends AssistantToolFactory {
         // Check permissions for project files
         if (resolved.scope === 'project' && context.fileReadOnly) {
           throw new Error('Cannot write to project files in read-only mode')
+        }
+
+        // Request confirmation if enabled
+        if (context.fileConfirmation) {
+          const replacementCount = replacements.length
+          const replacementDetails = replacements
+            .slice(0, 2) // Show first 2 replacements
+            .map((r, i) => `${i + 1}. Replace ${r.oldPart.length} chars with ${r.newPart.length} chars`)
+            .join('\n')
+          const moreText = replacements.length > 2 ? `\n...and ${replacements.length - 2} more` : ''
+
+          const confirmed = await this.confirmFileOperation(
+            'edit',
+            resolved.relativePath,
+            `**Scope:** ${resolved.scope}\n**Replacements:** ${replacementCount}\n\n${replacementDetails}${moreText}\n\n**Absolute Path:** \`${resolved.absolutePath}\``
+          )
+          if (!confirmed) {
+            return 'File edit cancelled by user'
+          }
         }
 
         const result = writeFileChunk({

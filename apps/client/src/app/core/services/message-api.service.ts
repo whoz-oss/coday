@@ -73,4 +73,14 @@ export class MessageApiService {
       { responseType: 'text' }
     )
   }
+
+  /**
+   * Toggle auto-accept state for file operations in a thread
+   * @param projectName Project name
+   * @param threadId Thread ID
+   * @returns Observable of response
+   */
+  toggleAutoAccept(projectName: string, threadId: string): Observable<any> {
+    return this.http.post(`/api/projects/${projectName}/threads/${threadId}/toggle-auto-accept`, {})
+  }
 }

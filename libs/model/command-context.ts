@@ -24,6 +24,11 @@ export class CommandContext {
   fileReadOnly: boolean = false
 
   /**
+   * When true, require user confirmation before any file write, edit, or delete operation
+   */
+  fileConfirmation: boolean = true
+
+  /**
    * Root directory for thread-specific files (conversation workspace)
    * Format: .coday/projects/{projectName}/threads/{threadId}-files
    */
@@ -62,6 +67,7 @@ export class CommandContext {
     const subContext = new CommandContext(this.project, this.username)
     subContext.oneshot = this.oneshot
     subContext.fileReadOnly = this.fileReadOnly
+    subContext.fileConfirmation = this.fileConfirmation
     subContext.addCommands(...commands)
     subContext.stackDepth = this.stackDepth - 1
     return subContext
@@ -71,6 +77,7 @@ export class CommandContext {
     const clone = new CommandContext(this.project, this.username)
     clone.oneshot = this.oneshot
     clone.fileReadOnly = this.fileReadOnly
+    clone.fileConfirmation = this.fileConfirmation
     clone.stackDepth = this.stackDepth
     clone.data = this.data
     return clone
