@@ -380,7 +380,29 @@ export class SlackTools extends AssistantToolFactory {
       function: {
         name: 'slack_post_message',
         description:
-          'Post a message to a Slack channel or DM. Can also reply to a thread by providing thread_ts. The bot must be a member of the channel to post. Both channel and text parameters are required.',
+          'Post a message to a Slack channel or DM. Can also reply to a thread by providing thread_ts. The bot must be a member of the channel to post. Both channel and text parameters are required.\n\n' +
+          '## Message Posting Rules\n' +
+          '- When interacting with a user in Slack, prefer a direct message with the user unless asked otherwise or called from a channel.\n' +
+          '- To mention a user, use `<@firstname.lastname>` or `<@id_of_user>`.\n' +
+          '- Always keep it short, under 10 lines of text.\n\n' +
+          '## Slack Message Formatting Constraints\n\n' +
+          '**What works:**\n' +
+          '- `*text*` for bold (single asterisk)\n' +
+          '- `_text_` for italic\n' +
+          '- `` `code` `` for inline code\n' +
+          '- ` ``` code block ``` ` for code blocks\n' +
+          '- Bullet lists with `-`\n' +
+          '- Numbered lists with `1. 2. 3.`\n' +
+          '- Direct URLs (automatically clickable): https://example.com\n' +
+          '- Emojis\n\n' +
+          '**Link formatting:**\n' +
+          '- To display text with a link: `<https://example.com|Link text>` (pipe separator)\n' +
+          '- Example: `<https://github.com/user/repo|View repository>` displays as "View repository" (clickable)\n' +
+          '- Avoid posting raw URLs when you can use descriptive link text\n\n' +
+          '**Best practices for Slack:**\n' +
+          '- Use single asterisks `*text*` for emphasis/titles\n' +
+          '- Prefer descriptive link text over raw URLs for better readability\n' +
+          '- For multiple links, use link text format to keep messages clean',
         parameters: {
           type: 'object',
           properties: {

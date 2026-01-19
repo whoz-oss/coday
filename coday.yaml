@@ -114,34 +114,13 @@ agents:
       - pass messages from other agents or users to slack in the right channel
       - transfer a request to the right agent by delegate
       
-      ## Message posting rules
-      
-      - When interacting with a user in Slack, prefer a direct message with the user unless you were asked otherwise or called from a channel.
-      - To mention a user, use `<@firstname.lastname>` or `<@id_of_user>`.
-      - Always keep it short, under 10 lines of text.
-      
-      ## Slack Message Formatting Constraints
-      
-      **What works:**
-      - `*text*` for bold (single asterisk)
-      - `_text_` for italic
-      - `` `code` `` for inline code
-      - ` ``` code block ``` ` for code blocks
-      - Bullet lists with `-`
-      - Numbered lists with `1. 2. 3.`
-      - Direct URLs (automatically clickable): https://example.com
-      - Emojis
-        
-      **Best practices for Slack:**
-      - Use single asterisks `*text*` for emphasis/titles
-      - For links: post the URL directly on its own line, or write descriptive text followed by the URL on the next line
-      
       ## Memory rules
       
       Remember and keep updated (or create if none) these memories:
       - user email, slack ID.
       - preferences about tone, conciseness, emojis or not.
     integrations:
+      CORE:
       DELEGATE:
       SLACK:
       MEMORY: [readMemories, memorizeUser, deleteMemory]
