@@ -7,7 +7,7 @@ export class CoreTools extends AssistantToolFactory {
 
   constructor(
     interactor: Interactor,
-    private services: CodayServices
+    private readonly services: CodayServices
   ) {
     super(interactor)
   }
@@ -34,15 +34,17 @@ export class CoreTools extends AssistantToolFactory {
               currentDate: now.toISOString().split('T')[0],
               dayOfWeek: now.toLocaleDateString('en-US', { weekday: 'long' }),
               username: context.username,
+              threadId: threadId,
             }
 
             // Add conversation URL if baseUrl is configured
             if (this.services.options?.baseUrl) {
               // Build complete URL with baseUrl from options
-              const baseUrl = this.services.options.baseUrl.endsWith('/')
-                ? this.services.options.baseUrl.slice(0, -1)
-                : this.services.options.baseUrl
-              info.conversationUrl = `${baseUrl}/project/${projectName}/thread/${threadId}`
+              // For custom protocols (e.g., coday://), baseUrl ends with '://' so we don't add a slash
+              // For HTTP URLs (e.g., http://localhost:3000), we add a slash
+              const baseUrl = this.services.options.baseUrl
+              const separator = baseUrl.endsWith('://') ? '' : '/'
+              info.conversationUrl = `${baseUrl}${separator}project/${projectName}/thread/${threadId}`
             }
 
             return JSON.stringify(info, null, 2)
