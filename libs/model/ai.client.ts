@@ -14,7 +14,7 @@ import { Interactor } from './interactor'
 import { AiModel } from './ai-model'
 import { AiProviderConfig } from './ai-provider-config'
 import { CodayLogger } from '../service/coday-logger'
-import { MessageContent, TextContent } from '../coday-events'
+import { TextContent } from '../coday-events'
 
 export interface CompletionOptions {
   model?: string
@@ -398,42 +398,6 @@ It can be summarized as:
 
   protected shouldProceed(thread: AiThread): boolean {
     return thread.runStatus === RunStatus.RUNNING && !this.killed
-  }
-
-  /**
-   * Enhances the last user message with current date/time information.
-   * This provides transient temporal context that is always current,
-   * avoiding persistence issues and pattern copying problems.
-   *
-   * @param content The original message content
-   * @param isLastUserMessage Whether this is the last user message in the thread
-   * @returns Enhanced content with date/time if applicable, otherwise original content
-   */
-  protected enhanceWithCurrentDateTime(content: MessageContent[], isLastUserMessage: boolean): MessageContent[] {
-    if (!isLastUserMessage) return content
-
-    const now = new Date()
-    const currentDate = now.toISOString().split('T')[0]
-    const currentTime = now.toLocaleTimeString('en-US', {
-      hour12: false,
-      timeZone: 'UTC',
-    })
-    const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'long' })
-    const dateInfo = `\n\n[Current date: ${currentDate} (${dayOfWeek}, time: ${currentTime} UTC)]`
-
-    const contentArray = [...content]
-    // need to find the last text content, if any, to clone and add the date info
-    let found = false
-    let i = contentArray.length - 1
-    while (!found && i >= 0) {
-      if (contentArray[i]?.type === 'text') {
-        const textContent = contentArray[i]!
-        contentArray[i] = { type: 'text', content: `${textContent.content}${dateInfo}` }
-        found = true
-      }
-      i--
-    }
-    return contentArray
   }
 
   protected showAgentAndUsage(agent: Agent, aiProvider: string, model: string, thread: AiThread): void {

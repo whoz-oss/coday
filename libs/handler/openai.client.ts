@@ -436,7 +436,7 @@ export class OpenaiClient extends AiClient {
       role: 'system',
     }
 
-    const openaiMessages = messages.flatMap((msg, index): ChatCompletionMessageParam[] => {
+    const openaiMessages = messages.flatMap((msg): ChatCompletionMessageParam[] => {
       // Handle SummaryEvent - just the summary text
       if (msg instanceof SummaryEvent) {
         return [
@@ -449,8 +449,7 @@ export class OpenaiClient extends AiClient {
 
       // Handle regular MessageEvent
       if (msg instanceof MessageEvent) {
-        const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
-        const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
+        const content = msg.content
 
         // Convert rich content to OpenAI format
         const openaiContent: string | OpenAI.ChatCompletionContentPart[] = content.map((c) => {

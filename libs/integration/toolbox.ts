@@ -1,4 +1,5 @@
 import { Interactor } from '../model'
+import { CoreTools } from './core.tools'
 import { AiTools } from './ai/ai.tools'
 import { DelegateTools } from './ai/delegate.tools'
 import { FileTools } from './file/file.tools'
@@ -35,6 +36,7 @@ export class Toolbox implements Killable {
 
     // Create non-MCP tool factories immediately
     this.toolFactories = [
+      new CoreTools(interactor, services),
       new AiTools(interactor, agentService),
       new DelegateTools(interactor, agentService),
       new FileTools(interactor),
