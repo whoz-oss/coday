@@ -1,3 +1,13 @@
+## 0.61.0 (2026-01-19)
+
+### 🚀 Features
+
+- #412 Add get_context_info core tool with conversation URL ([#437](https://github.com/whoz-oss/coday/pull/437), [#412](https://github.com/whoz-oss/coday/issues/412))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.60.0 (2026-01-19)
 
 ### 🚀 Features
