@@ -1,3 +1,13 @@
+## 0.60.0 (2026-01-19)
+
+### 🚀 Features
+
+- move agent agnostic slack guidelines to tool description ([#438](https://github.com/whoz-oss/coday/pull/438))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.59.0 (2026-01-15)
 
 ### 🚀 Features
