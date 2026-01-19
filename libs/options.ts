@@ -17,6 +17,7 @@ export interface Argv {
   agentFolders?: string[]
   log?: boolean
   log_folder?: string
+  base_url?: string
   _: (string | number)[]
   $0: string
 }
@@ -35,6 +36,7 @@ export interface CodayOptions {
   noLog: boolean
   logFolder?: string
   forcedProject: boolean // true if --local is used
+  baseUrl?: string // Base URL for generating absolute links (auto-detected from server port if not provided)
 }
 
 /**
@@ -99,6 +101,10 @@ export function parseCodayOptions(): CodayOptions {
       type: 'boolean',
       description: 'Sets debug right at startup',
     })
+    .option('base-url', {
+      type: 'string',
+      description: 'Base URL for generating absolute links (default: auto-detected from server port)',
+    })
     .help().argv as Argv
   let projectName: string | undefined
   let forcedProject: boolean
@@ -151,5 +157,6 @@ export function parseCodayOptions(): CodayOptions {
     noLog,
     logFolder,
     forcedProject,
+    baseUrl: argv.base_url,
   }
 }
