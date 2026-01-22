@@ -108,5 +108,14 @@ function extractTextFromPdfData(pdfData: any): string {
     }
   }
 
+  // Clean up excessive spacing that pdf2json sometimes introduces
+  // Replace multiple spaces with single space, but preserve intentional line breaks
+  text = text
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .join('\n')
+    // Remove excessive blank lines (more than 2 consecutive)
+    .replace(/\n{3,}/g, '\n\n')
+
   return text.trim()
 }
