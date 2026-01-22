@@ -87,7 +87,15 @@ function extractTextFromPdfData(pdfData: any): string {
           if (textElement.R) {
             for (const r of textElement.R) {
               // pdf2json encodes text in URI format, so we need to decode it
-              const decodedText = decodeURIComponent(r.T)
+              // Some PDFs may contain malformed URI sequences, so we handle that gracefully
+              let decodedText: string
+              try {
+                decodedText = decodeURIComponent(r.T)
+              } catch (error) {
+                // If decoding fails, use the text as-is
+                // This can happen with certain special characters or encoding issues
+                decodedText = r.T
+              }
               pageText += decodedText + ' '
             }
           }
@@ -99,6 +107,15 @@ function extractTextFromPdfData(pdfData: any): string {
       }
     }
   }
+
+  // Clean up excessive spacing that pdf2json sometimes introduces
+  // Replace multiple spaces with single space, but preserve intentional line breaks
+  text = text
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .join('\n')
+    // Remove excessive blank lines (more than 2 consecutive)
+    .replace(/\n{3,}/g, '\n\n')
 
   return text.trim()
 }

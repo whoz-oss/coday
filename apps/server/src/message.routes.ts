@@ -295,13 +295,23 @@ export function registerMessageRoutes(
         if (event.type === 'tool_request') {
           output = `Tool Request: ${(event as any).name}\n\nArguments:\n${JSON.stringify(JSON.parse((event as any).args), null, 2)}`
         } else if (event.type === 'tool_response') {
-          try {
-            // Try to parse as JSON for pretty printing
-            const parsedOutput = JSON.parse((event as any).output)
-            output = `Tool Response:\n\n${JSON.stringify(parsedOutput, null, 2)}`
-          } catch (e) {
-            // If not valid JSON, return as is
-            output = `Tool Response:\n\n${(event as any).output}`
+          const eventOutput = (event as any).output
+
+          // Check if output is already an object
+          if (typeof eventOutput === 'object' && eventOutput !== null) {
+            output = `Tool Response:\n\n${JSON.stringify(eventOutput, null, 2)}`
+          } else if (typeof eventOutput === 'string') {
+            try {
+              // Try to parse as JSON for pretty printing
+              const parsedOutput = JSON.parse(eventOutput)
+              output = `Tool Response:\n\n${JSON.stringify(parsedOutput, null, 2)}`
+            } catch (e) {
+              // If not valid JSON, return as is
+              output = `Tool Response:\n\n${eventOutput}`
+            }
+          } else {
+            // Fallback for other types (number, boolean, etc.)
+            output = `Tool Response:\n\n${String(eventOutput)}`
           }
         } else {
           output = JSON.stringify(event, null, 2)
