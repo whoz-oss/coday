@@ -14,6 +14,7 @@ mockk-spring = "3.1.2"
 kotest = "5.9.1"
 kotest-spring = "1.3.0"
 jackson = "2.17.0"
+klogger = "2.0.4"
 
 # AgentOS modules versions
 agentosSdk = "1.0.0"
@@ -38,6 +39,8 @@ spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-start
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 
+# Klogger
+klogger = {module="io.github.microutils:kotlin-logging-jvm", version.ref="klogger"}
 # Spring AI
 spring-ai-anthropic = { module = "org.springframework.ai:spring-ai-starter-model-anthropic" }
 spring-ai-gemini = { module = "org.springframework.ai:spring-ai-starter-model-google-genai" }

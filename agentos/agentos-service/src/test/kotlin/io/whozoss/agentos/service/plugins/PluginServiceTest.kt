@@ -1,13 +1,13 @@
 package io.whozoss.agentos.service.plugins
 
+import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.whozoss.agentos.sdk.agent.AgentPlugin
 import io.whozoss.agentos.service.agents.domain.Agent
 import io.whozoss.agentos.service.agents.domain.AgentStatus
 import io.whozoss.agentos.service.agents.domain.ContextType
-import io.whozoss.agentos.sdk.agent.AgentPlugin
 import org.junit.jupiter.api.Test
 import org.pf4j.DefaultPluginManager
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 
 /**
  * Tests for PluginService
@@ -18,7 +18,7 @@ class PluginServiceTest {
         val pluginManager = DefaultPluginManager()
         val pluginService = PluginService(pluginManager)
 
-        assertNotNull(pluginService)
+        pluginService.shouldNotBeNull()
     }
 
     @Test
@@ -27,7 +27,7 @@ class PluginServiceTest {
         val pluginService = PluginService(pluginManager)
 
         val plugins = pluginService.getLoadedPlugins()
-        assertTrue(plugins.isEmpty())
+        plugins shouldHaveSize 0
     }
 }
 
