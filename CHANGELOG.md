@@ -1,3 +1,13 @@
+## 0.61.1 (2026-01-22)
+
+### 🩹 Fixes
+
+- #439 handle malformed URI in PDF text extraction ([#440](https://github.com/whoz-oss/coday/pull/440), [#439](https://github.com/whoz-oss/coday/issues/439))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.61.0 (2026-01-19)
 
 ### 🚀 Features
