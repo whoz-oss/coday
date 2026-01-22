@@ -87,7 +87,15 @@ function extractTextFromPdfData(pdfData: any): string {
           if (textElement.R) {
             for (const r of textElement.R) {
               // pdf2json encodes text in URI format, so we need to decode it
-              const decodedText = decodeURIComponent(r.T)
+              // Some PDFs may contain malformed URI sequences, so we handle that gracefully
+              let decodedText: string
+              try {
+                decodedText = decodeURIComponent(r.T)
+              } catch (error) {
+                // If decoding fails, use the text as-is
+                // This can happen with certain special characters or encoding issues
+                decodedText = r.T
+              }
               pageText += decodedText + ' '
             }
           }
