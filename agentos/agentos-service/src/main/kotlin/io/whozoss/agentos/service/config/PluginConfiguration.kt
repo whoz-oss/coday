@@ -25,7 +25,7 @@ class PluginConfiguration {
         if (!Files.exists(pluginPath)) {
             Files.createDirectories(pluginPath)
         }
-        logger.info { "Plugin path: $pluginPath" }
+        logger.info("Plugin path: $pluginPath (absolute path is : ${pluginPath.toAbsolutePath()})")
         return SpringPluginManager(pluginPath).also { pluginManager -> pluginManager.applicationContext = applicationContext }
     }
 
