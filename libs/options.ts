@@ -18,7 +18,6 @@ export interface Argv {
   log?: boolean
   log_folder?: string
   base_url?: string
-  use_database?: boolean
   _: (string | number)[]
   $0: string
 }
@@ -38,7 +37,6 @@ export interface CodayOptions {
   logFolder?: string
   forcedProject: boolean // true if --local is used
   baseUrl?: string // Base URL for generating absolute links (auto-detected from server port if not provided)
-  useDatabase: boolean // true if --use-database is used (experimental SQLite backend)
 }
 
 /**
@@ -107,11 +105,6 @@ export function parseCodayOptions(): CodayOptions {
       type: 'string',
       description: 'Base URL for generating absolute links (default: auto-detected from server port)',
     })
-    .option('use-database', {
-      type: 'boolean',
-      description: 'Use SQLite database instead of YAML files (experimental)',
-      default: false,
-    })
     .help().argv as Argv
   let projectName: string | undefined
   let forcedProject: boolean
@@ -165,6 +158,5 @@ export function parseCodayOptions(): CodayOptions {
     logFolder,
     forcedProject,
     baseUrl: argv.base_url,
-    useDatabase: !!argv.use_database,
   }
 }

@@ -24,6 +24,7 @@ import { ProjectService } from './services/project.service'
 import { ThreadService } from './services/thread.service'
 import { ThreadFileService } from './services/thread-file.service'
 import { ProjectFileRepository } from '@coday/repository/project-file.repository'
+import { SqliteThreadRepository } from '@coday/repository/sqlite-thread.repository'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT
@@ -149,24 +150,16 @@ if (resolvedProjectName && !codayOptions.forcedProject) {
 
 const projectService = new ProjectService(projectRepository, resolvedProjectName, codayOptions.forcedProject)
 
+// Initialize thread repository (SQLite-based)
+const threadRepository = new SqliteThreadRepository(codayOptions.configDir)
+debugLog('INIT', '🗄️  Using SQLite database for thread storage')
+
 // Initialize thread file service for REST API endpoints
 const projectsDir = path.join(codayOptions.configDir, 'projects')
 const threadFileService = new ThreadFileService(projectsDir)
 
 // Initialize thread service for REST API endpoints
-const threadService = new ThreadService(
-  projectRepository,
-  projectsDir,
-  threadFileService,
-  codayOptions.useDatabase,
-  codayOptions.configDir
-)
-
-if (codayOptions.useDatabase) {
-  debugLog('INIT', '🗄️  Using SQLite database for thread storage (experimental)')
-} else {
-  debugLog('INIT', '📁 Using YAML files for thread storage (default)')
-}
+const threadService = new ThreadService(projectRepository, threadRepository, threadFileService)
 
 // Initialize MCP instance pool for shared MCP instances
 const mcpPool = new McpInstancePool()
