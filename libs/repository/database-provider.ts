@@ -6,34 +6,42 @@ import fs from 'fs/promises'
 /**
  * Database Provider - Centralized SQLite connection management
  *
- * Provides a singleton-like database instance per project.
- * Handles connection pooling, WAL mode, and proper lifecycle management.
+ * Provides a single global database instance for all Coday data.
+ * Handles connection lifecycle, WAL mode, and proper shutdown.
  *
  * Architecture notes:
- * - One database file per project: ~/.coday/projects/{projectName}/coday.db
+ * - Single database file: ~/.coday/coday.db
  * - WAL mode enabled for better concurrent read/write performance
  * - Busy timeout set to 5000ms to handle concurrent access
  * - Async API using 'sqlite' wrapper over 'sqlite3'
+ * - All entities partitioned by project_id (except users/groups)
  */
 export class DatabaseProvider {
-  private static instances: Map<string, Database> = new Map()
+  private static instance: Database | null = null
+  private static codayHomePath: string | null = null
 
   /**
-   * Get or create a database connection for a project
+   * Get or create the global database connection
    *
-   * @param projectPath - Full path to the project directory
+   * @param codayHomePath - Path to .coday directory (e.g., ~/.coday)
    * @returns Promise<Database> - SQLite database instance
    */
-  static async getDatabase(projectPath: string): Promise<Database> {
-    // Use projectPath as cache key
-    if (this.instances.has(projectPath)) {
-      return this.instances.get(projectPath)!
+  static async getDatabase(codayHomePath: string): Promise<Database> {
+    // Return cached instance if same path
+    if (this.instance && this.codayHomePath === codayHomePath) {
+      return this.instance
     }
 
-    // Ensure project directory exists
-    await fs.mkdir(projectPath, { recursive: true })
+    // Close existing instance if path changed
+    if (this.instance && this.codayHomePath !== codayHomePath) {
+      await this.instance.close()
+      this.instance = null
+    }
 
-    const dbPath = path.join(projectPath, 'coday.db')
+    // Ensure .coday directory exists
+    await fs.mkdir(codayHomePath, { recursive: true })
+
+    const dbPath = path.join(codayHomePath, 'coday.db')
 
     // Open database connection
     const db = await open({
@@ -44,41 +52,31 @@ export class DatabaseProvider {
     // Configure for concurrent access
     await db.run('PRAGMA journal_mode = WAL')
     await db.run('PRAGMA busy_timeout = 5000')
+    await db.run('PRAGMA foreign_keys = ON')
 
     // Cache the instance
-    this.instances.set(projectPath, db)
+    this.instance = db
+    this.codayHomePath = codayHomePath
 
     return db
   }
 
   /**
-   * Close a specific database connection
-   *
-   * @param projectPath - Full path to the project directory
+   * Close the global database connection
+   * Used during graceful shutdown
    */
-  static async closeDatabase(projectPath: string): Promise<void> {
-    const db = this.instances.get(projectPath)
-    if (db) {
-      await db.close()
-      this.instances.delete(projectPath)
+  static async close(): Promise<void> {
+    if (this.instance) {
+      await this.instance.close()
+      this.instance = null
+      this.codayHomePath = null
     }
   }
 
   /**
-   * Close all database connections
-   * Used during graceful shutdown
+   * Check if database is connected
    */
-  static async closeAll(): Promise<void> {
-    const closingPromises = Array.from(this.instances.values()).map((db) => db.close())
-    await Promise.all(closingPromises)
-    this.instances.clear()
-  }
-
-  /**
-   * Get the number of active database connections
-   * Useful for monitoring and debugging
-   */
-  static getActiveConnectionCount(): number {
-    return this.instances.size
+  static isConnected(): boolean {
+    return this.instance !== null
   }
 }
