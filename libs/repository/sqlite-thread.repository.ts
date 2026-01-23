@@ -3,8 +3,7 @@ import { ThreadSummary } from '../ai-thread/ai-thread.types'
 import { ThreadRepository } from './thread.repository'
 import { Database } from 'sqlite'
 import { DatabaseProvider } from './database-provider'
-import { buildCodayEvent } from '../ai-thread/coday-event-builder'
-import { ThreadMessage } from '../coday-events/src'
+import { MessageEvent, ToolRequestEvent, ToolResponseEvent, SummaryEvent } from '@coday/coday-events'
 
 /**
  * SQLite-based implementation of ThreadRepository
@@ -104,12 +103,11 @@ export class SqliteThreadRepository implements ThreadRepository {
     )
 
     // Reconstruct thread object
-    const messages: ThreadMessage[] = messageRows
-      .map((row) => {
-        const event = this.rowToEvent(row)
-        return event
-      })
-      .filter((event): event is ThreadMessage => event !== undefined)
+    const messages = messageRows
+      .map((row) => this.rowToEvent(row))
+      .filter(
+        (event): event is MessageEvent | ToolRequestEvent | ToolResponseEvent | SummaryEvent => event !== undefined
+      )
 
     return new AiThread({
       id: threadRow.id,
@@ -122,14 +120,13 @@ export class SqliteThreadRepository implements ThreadRepository {
       price: threadRow.price,
       starring: JSON.parse(threadRow.starring),
       messages,
-      data: JSON.parse(threadRow.data || '{}'),
     })
   }
 
   /**
    * Convert database row to CodayEvent
    */
-  private rowToEvent(row: any): ThreadMessage | undefined {
+  private rowToEvent(row: any): MessageEvent | ToolRequestEvent | ToolResponseEvent | SummaryEvent | undefined {
     const baseEvent = {
       timestamp: row.timestamp,
       type: row.type,
@@ -139,37 +136,32 @@ export class SqliteThreadRepository implements ThreadRepository {
     // Reconstruct event based on type
     switch (row.type) {
       case 'MessageEvent':
-        return buildCodayEvent({
+        return new MessageEvent({
           ...baseEvent,
           role: row.role,
           name: row.name,
           content: JSON.parse(row.content),
         })
       case 'ToolRequestEvent':
-        return buildCodayEvent({
+        return new ToolRequestEvent({
           ...baseEvent,
           name: row.name,
           args: row.args,
           toolRequestId: row.tool_request_id,
         })
       case 'ToolResponseEvent':
-        return buildCodayEvent({
+        return new ToolResponseEvent({
           ...baseEvent,
           toolRequestId: row.tool_request_id,
           output: row.output ? JSON.parse(row.output) : row.output,
         })
       case 'SummaryEvent':
-        return buildCodayEvent({
+        return new SummaryEvent({
           ...baseEvent,
           summary: row.summary,
         })
-      case 'ThinkingEvent':
-        return buildCodayEvent({
-          ...baseEvent,
-          thinking: true,
-        })
       default:
-        return buildCodayEvent(baseEvent)
+        return undefined
     }
   }
 
@@ -206,8 +198,11 @@ export class SqliteThreadRepository implements ThreadRepository {
       // Delete existing messages for this thread
       await this.db.run('DELETE FROM messages WHERE thread_id = ?', thread.id)
 
+      // Get all messages (not the compacted ones)
+      const allMessages = thread.getAllMessages()
+
       // Insert all messages
-      for (const message of thread.getMessages()) {
+      for (const message of allMessages) {
         await this.saveMessage(thread.id, message)
       }
 
@@ -225,7 +220,10 @@ export class SqliteThreadRepository implements ThreadRepository {
   /**
    * Save a single message
    */
-  private async saveMessage(threadId: string, message: ThreadMessage): Promise<void> {
+  private async saveMessage(
+    threadId: string,
+    message: MessageEvent | ToolRequestEvent | ToolResponseEvent | SummaryEvent
+  ): Promise<void> {
     if (!this.db) throw new Error('Database not initialized')
 
     const baseValues = [message.timestamp, message.type, threadId, message.length]
