@@ -7,14 +7,16 @@ import { DatabaseProvider } from './database-provider'
  * Handles threads and messages with support for:
  * - Structured data (id, name, dates)
  * - Unstructured data (JSON in 'data' column for cache markers, etc.)
+ * - Multi-project support via project_id foreign key
  *
  * Schema design:
- * - threads table: Core thread metadata + unstructured 'data' JSON column
+ * - threads table: Core thread metadata + unstructured 'data' JSON column + project_id
  * - messages table: Individual messages linked to threads
  */
 
 export interface ThreadRow {
   id: string
+  project_id: string
   name: string
   agent_name: string | null
   created_at: string
@@ -33,11 +35,11 @@ export interface MessageRow {
 }
 
 export class ThreadRepository {
-  private projectPath: string
+  private codayHomePath: string
   private db: Database | null = null
 
-  constructor(projectPath: string) {
-    this.projectPath = projectPath
+  constructor(codayHomePath: string) {
+    this.codayHomePath = codayHomePath
   }
 
   /**
@@ -45,7 +47,7 @@ export class ThreadRepository {
    * Must be called before using the repository
    */
   async initialize(): Promise<void> {
-    this.db = await DatabaseProvider.getDatabase(this.projectPath)
+    this.db = await DatabaseProvider.getDatabase(this.codayHomePath)
     await this.createSchema()
   }
 
@@ -58,6 +60,7 @@ export class ThreadRepository {
     await this.db.exec(`
       CREATE TABLE IF NOT EXISTS threads (
         id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
         name TEXT NOT NULL,
         agent_name TEXT,
         created_at TEXT NOT NULL,
@@ -76,8 +79,17 @@ export class ThreadRepository {
         FOREIGN KEY(thread_id) REFERENCES threads(id) ON DELETE CASCADE
       );
       
-      CREATE INDEX IF NOT EXISTS idx_messages_thread_time 
-        ON messages(thread_id, timestamp);
+      -- Index for filtering threads by project
+      CREATE INDEX IF NOT EXISTS idx_threads_project 
+        ON threads(project_id, updated_at DESC);
+      
+      -- Composite index for common message queries
+      CREATE INDEX IF NOT EXISTS idx_messages_thread_type_time 
+        ON messages(thread_id, type, timestamp);
+      
+      -- Index for searching messages by type across projects
+      CREATE INDEX IF NOT EXISTS idx_messages_type_time 
+        ON messages(type, timestamp DESC);
     `)
   }
 
@@ -87,6 +99,7 @@ export class ThreadRepository {
    */
   async saveThread(thread: {
     id: string
+    projectId: string
     name: string
     agentName?: string
     createdAt: string
@@ -98,10 +111,11 @@ export class ThreadRepository {
 
     await this.db.run(
       `INSERT OR REPLACE INTO threads 
-       (id, name, agent_name, created_at, updated_at, summary, data) 
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       (id, project_id, name, agent_name, created_at, updated_at, summary, data) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         thread.id,
+        thread.projectId,
         thread.name,
         thread.agentName || null,
         thread.createdAt,
@@ -121,6 +135,18 @@ export class ThreadRepository {
     const row = await this.db.get<ThreadRow>('SELECT * FROM threads WHERE id = ?', id)
 
     return row || null
+  }
+
+  /**
+   * List threads for a specific project
+   */
+  async listThreadsByProject(projectId: string, limit = 100): Promise<ThreadRow[]> {
+    if (!this.db) throw new Error('Database not initialized')
+
+    return await this.db.all<ThreadRow[]>(
+      'SELECT * FROM threads WHERE project_id = ? ORDER BY updated_at DESC LIMIT ?',
+      [projectId, limit]
+    )
   }
 
   /**
@@ -160,13 +186,44 @@ export class ThreadRepository {
   }
 
   /**
+   * Get messages of a specific type for a thread (uses index)
+   */
+  async getThreadMessagesByType(threadId: string, type: string): Promise<MessageRow[]> {
+    if (!this.db) throw new Error('Database not initialized')
+
+    return await this.db.all<MessageRow[]>(
+      'SELECT * FROM messages WHERE thread_id = ? AND type = ? ORDER BY timestamp',
+      [threadId, type]
+    )
+  }
+
+  /**
+   * Get all messages of a specific type across a project (uses index)
+   */
+  async getProjectMessagesByType(projectId: string, type: string, limit = 100): Promise<MessageRow[]> {
+    if (!this.db) throw new Error('Database not initialized')
+
+    return await this.db.all<MessageRow[]>(
+      `SELECT m.* FROM messages m 
+       JOIN threads t ON m.thread_id = t.id 
+       WHERE t.project_id = ? AND m.type = ? 
+       ORDER BY m.timestamp DESC 
+       LIMIT ?`,
+      [projectId, type, limit]
+    )
+  }
+
+  /**
    * Search messages across all threads
    */
-  async searchMessages(query: string, limit = 50): Promise<Array<MessageRow & { thread_name: string }>> {
+  async searchMessages(
+    query: string,
+    limit = 50
+  ): Promise<Array<MessageRow & { thread_name: string; project_id: string }>> {
     if (!this.db) throw new Error('Database not initialized')
 
     return await this.db.all(
-      `SELECT m.*, t.name as thread_name 
+      `SELECT m.*, t.name as thread_name, t.project_id 
        FROM messages m 
        JOIN threads t ON m.thread_id = t.id 
        WHERE m.content LIKE ? 
@@ -192,7 +249,7 @@ export class ThreadRepository {
    */
   async close(): Promise<void> {
     if (this.db) {
-      await DatabaseProvider.closeDatabase(this.projectPath)
+      await DatabaseProvider.close()
       this.db = null
     }
   }
