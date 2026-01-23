@@ -1,5 +1,6 @@
 import { ThreadRepository } from '@coday/repository/thread.repository'
 import { ThreadFileRepository } from '@coday/repository/thread-file.repository'
+import { SqliteThreadRepository } from '@coday/repository/sqlite-thread.repository'
 import { ProjectRepository } from '@coday/repository/project.repository'
 import { AiThread } from '@coday/ai-thread/ai-thread'
 import { ThreadSummary } from '@coday/ai-thread/ai-thread.types'
@@ -49,7 +50,9 @@ export class ThreadService {
   constructor(
     private readonly projectRepository: ProjectRepository,
     private readonly projectsDir: string,
-    private readonly threadFileService: ThreadFileService
+    private readonly threadFileService: ThreadFileService,
+    private readonly useSqlite: boolean = false,
+    private readonly codayHomePath?: string
   ) {}
 
   /**
@@ -71,8 +74,11 @@ export class ThreadService {
       throw new Error(`Project '${projectName}' not found`)
     }
 
-    // Create and cache new repository
-    const repository = new ThreadFileRepository(this.projectsDir)
+    // Create and cache new repository based on configuration
+    const repository = this.useSqlite
+      ? new SqliteThreadRepository(this.codayHomePath || this.projectsDir)
+      : new ThreadFileRepository(this.projectsDir)
+
     this.repositoryCache.set(projectName, repository)
     return repository
   }

@@ -154,7 +154,19 @@ const projectsDir = path.join(codayOptions.configDir, 'projects')
 const threadFileService = new ThreadFileService(projectsDir)
 
 // Initialize thread service for REST API endpoints
-const threadService = new ThreadService(projectRepository, projectsDir, threadFileService)
+const threadService = new ThreadService(
+  projectRepository,
+  projectsDir,
+  threadFileService,
+  codayOptions.useDatabase,
+  codayOptions.configDir
+)
+
+if (codayOptions.useDatabase) {
+  debugLog('INIT', '🗄️  Using SQLite database for thread storage (experimental)')
+} else {
+  debugLog('INIT', '📁 Using YAML files for thread storage (default)')
+}
 
 // Initialize MCP instance pool for shared MCP instances
 const mcpPool = new McpInstancePool()
