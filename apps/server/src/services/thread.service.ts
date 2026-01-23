@@ -1,6 +1,4 @@
 import { ThreadRepository } from '@coday/repository/thread.repository'
-import { ThreadFileRepository } from '@coday/repository/thread-file.repository'
-import { SqliteThreadRepository } from '@coday/repository/sqlite-thread.repository'
 import { ProjectRepository } from '@coday/repository/project.repository'
 import { AiThread } from '@coday/ai-thread/ai-thread'
 import { ThreadSummary } from '@coday/ai-thread/ai-thread.types'
@@ -19,8 +17,8 @@ interface ThreadListCacheEntry {
  * Stateless service for managing threads independently of user sessions.
  *
  * This service provides a clean API for thread operations without coupling
- * to session state or observables. It creates thread repositories on-demand
- * based on the project context.
+ * to session state or observables. It uses an injected ThreadRepository
+ * for persistence (SQLite-based).
  *
  * Performance: Thread list cached per project (4h TTL) with incremental updates.
  * Cache stores all threads for a project, filtering by user done in-memory.
@@ -28,12 +26,6 @@ interface ThreadListCacheEntry {
  * Issue #382
  */
 export class ThreadService {
-  /**
-   * Cache of thread repositories by project name.
-   * Avoids recreating repository instances for each operation.
-   */
-  private readonly repositoryCache = new Map<string, ThreadRepository>()
-
   /**
    * Thread list cache: key="projectName", value=all threads for project
    * Shared across all users, filtered in-memory. Updated incrementally on modifications.
@@ -49,50 +41,25 @@ export class ThreadService {
 
   constructor(
     private readonly projectRepository: ProjectRepository,
-    private readonly projectsDir: string,
-    private readonly threadFileService: ThreadFileService,
-    private readonly useSqlite: boolean = false,
-    private readonly codayHomePath?: string
+    private readonly threadRepository: ThreadRepository,
+    private readonly threadFileService: ThreadFileService
   ) {}
 
   /**
-   * Get or create a cached thread repository for a specific project
+   * Get the thread repository for a specific project
    * @param projectName Project name
-   * @returns Cached thread repository instance
+   * @returns Thread repository instance
    * @throws Error if project doesn't exist
    */
   getThreadRepository(projectName: string): ThreadRepository {
-    // Check cache first
-    const cached = this.repositoryCache.get(projectName)
-    if (cached) {
-      return cached
-    }
-
     // Validate project exists
     const projectInfo = this.projectRepository.getProjectInfo(projectName)
     if (!projectInfo) {
       throw new Error(`Project '${projectName}' not found`)
     }
 
-    // Create and cache new repository based on configuration
-    const repository = this.useSqlite
-      ? new SqliteThreadRepository(this.codayHomePath || this.projectsDir)
-      : new ThreadFileRepository(this.projectsDir)
-
-    this.repositoryCache.set(projectName, repository)
-    return repository
-  }
-
-  /**
-   * Clear the repository cache for a specific project or all projects
-   * @param projectName Optional project name to clear specific cache entry
-   */
-  clearCache(projectName?: string): void {
-    if (projectName) {
-      this.repositoryCache.delete(projectName)
-    } else {
-      this.repositoryCache.clear()
-    }
+    // Return the injected repository instance
+    return this.threadRepository
   }
 
   /**
