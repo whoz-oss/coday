@@ -10,6 +10,8 @@ import {
   InviteEvent,
   InviteEventDefault,
   MessageEvent,
+  OAuthCallbackEvent,
+  OAuthRequestEvent,
   TextChunkEvent,
   TextEvent,
   ThinkingEvent,
@@ -290,6 +292,8 @@ export class CodayService implements OnDestroy {
       this.handleInviteEvent(event)
     } else if (event instanceof ThreadUpdateEvent) {
       this.handleThreadUpdateEvent(event)
+    } else if (event instanceof OAuthRequestEvent || event instanceof OAuthCallbackEvent) {
+      // OAuth events are handled by OAuthService, no action needed here
     } else {
       console.warn('[CODAY] Unhandled event type:', event.type)
     }
@@ -453,8 +457,6 @@ export class CodayService implements OnDestroy {
   }
 
   private handleInviteEvent(event: InviteEvent): void {
-    this.stopThinking()
-
     // Check if the last message already contains this invite content to avoid duplicates
     const currentMessages = this.messagesSubject.value
     const lastMessage = currentMessages[currentMessages.length - 1]
@@ -468,6 +470,8 @@ export class CodayService implements OnDestroy {
       lastMessage.content.some((c) => c.type === 'text' && c.content.includes(event.invite))
 
     if (!inviteAlreadyDisplayed && event.invite !== InviteEventDefault) {
+      this.stopThinking()
+
       // Create an assistant message with the invite content
       const inviteMessage: ChatMessage = {
         id: event.timestamp,

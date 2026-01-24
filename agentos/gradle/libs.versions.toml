@@ -1,0 +1,70 @@
+# Version catalog for AgentOS project
+# This file centralizes all dependency versions for consistency across modules
+
+[versions]
+kotlin = "2.2.21"
+springBoot = "3.5.7"
+springDependencyManagement = "1.1.7"
+springAi = "1.1.2"
+pf4j = "3.13.0"
+pf4jSpring = "0.10.0"
+kotlinCoroutines = "1.10.2"
+mockk = "1.13.5"
+mockk-spring = "3.1.2"
+kotest = "5.9.1"
+kotest-spring = "1.3.0"
+jackson = "2.17.0"
+
+# AgentOS modules versions
+agentosSdk = "1.0.0"
+agentosService = "0.0.1-SNAPSHOT"
+
+[libraries]
+# Kotlin
+kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib" }
+kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
+kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5" }
+
+# Kotlin Coroutines
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinCoroutines" }
+kotlinx-coroutines-reactive = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactive", version.ref = "kotlinCoroutines" }
+
+# PF4J Plugin Framework
+pf4j = { module = "org.pf4j:pf4j", version.ref = "pf4j" }
+pf4j-spring = { module = "org.pf4j:pf4j-spring", version.ref = "pf4jSpring" }
+
+# Spring Boot
+spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
+spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+
+# Spring AI
+spring-ai-anthropic = { module = "org.springframework.ai:spring-ai-starter-model-anthropic" }
+spring-ai-openai = { module = "org.springframework.ai:spring-ai-starter-model-openai" }
+spring-ai-mcp-client = { module = "org.springframework.ai:spring-ai-starter-mcp-client" }
+spring-ai-bom = { module = "org.springframework.ai:spring-ai-bom", version.ref = "springAi" }
+
+# Jackson
+jackson-module-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin" }
+
+# Testing
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+mockk-spring = { module = "com.ninja-squad:springmockk", version.ref = "mockk-spring" }
+kotest-runner-junit5 = { module = "io.kotest:kotest-runner-junit5", version.ref = "kotest" }
+kotest-assertions-core = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
+kotest-property = { module = "io.kotest:kotest-property", version.ref = "kotest" }
+kotest-extensions-spring = { module = "io.kotest.extensions:kotest-extensions-spring", version.ref = "kotest-spring" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-spring = { id = "org.jetbrains.kotlin.plugin.spring", version.ref = "kotlin" }
+spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
+spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "springDependencyManagement" }
+
+[bundles]
+kotlin-common = ["kotlin-stdlib", "kotlin-reflect"]
+kotlin-coroutines = ["kotlinx-coroutines-core", "kotlinx-coroutines-reactive"]
+spring-ai = ["spring-ai-anthropic", "spring-ai-openai", "spring-ai-mcp-client"]
+testing-common = ["kotest-runner-junit5", "kotest-assertions-core", "kotest-property", "mockk"]
+testing-spring = ["kotest-runner-junit5", "kotest-assertions-core", "kotest-extensions-spring", "mockk"]

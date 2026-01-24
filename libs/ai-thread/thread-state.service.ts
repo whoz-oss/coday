@@ -109,19 +109,18 @@ export class ThreadStateService implements Killable {
     }
 
     try {
-      const nameChanged = newName && thread.name !== newName
       if (newName) {
         thread.name = newName
       }
       await this.threadRepository.save(this.projectId, thread)
 
-      // Emit thread update event whenever we save (for modifiedDate updates)
-      // This ensures the thread list is refreshed when messages are added
+      // Emit thread update event whenever we save
+      // Always include the current name to ensure frontend list stays in sync
       if (this.interactor) {
         this.interactor.sendEvent(
           new ThreadUpdateEvent({
             threadId: thread.id,
-            name: nameChanged ? newName : undefined,
+            name: thread.name || undefined, // Include current name if it exists
           })
         )
       }

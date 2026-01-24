@@ -82,6 +82,9 @@ function mergeServerConfigs(existing: McpServerConfig, override: McpServerConfig
     enabled:
       override.enabled !== undefined ? override.enabled : existing.enabled !== undefined ? existing.enabled : true,
 
+    // NoShare: if any level sets noShare to true, it stays true (most restrictive wins)
+    noShare: existing.noShare || override.noShare || false,
+
     // Env: use merged environment with fallbacks applied
     env: envWithFallbacks,
 
@@ -103,6 +106,7 @@ function applyServerDefaults(server: McpServerConfig): McpServerConfig {
     ...server,
     enabled: server.enabled !== undefined ? server.enabled : true,
     debug: server.debug || false,
+    noShare: server.noShare || false,
     args: server.args || [],
     env: envWithFallbacks,
   }

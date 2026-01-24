@@ -14,6 +14,9 @@ const fs = require('fs') as typeof import('fs')
 let mainWindow: BrowserWindowType | null = null
 let serverProcess: ChildProcess | null = null
 let serverUrl: string | null | undefined = null
+let pendingDeepLink: string | null = null
+
+const PROTOCOL_NAME = 'coday'
 
 // Storage file path
 const STORAGE_FILE = join(app.getPath('userData'), 'preferences.json')
@@ -220,7 +223,7 @@ async function startCodayServer(): Promise<void> {
 
     log('INFO', 'Found npx at:', npxPath)
     const command = npxPath
-    const args = ['--yes', '@whoz-oss/coday-web']
+    const args = ['--yes', '@whoz-oss/coday-web', '--base-url=coday://']
 
     log('INFO', 'Spawning:', command, args.join(' '))
 
@@ -441,6 +444,12 @@ function createWindow(): void {
   mainWindow.once('ready-to-show', () => {
     if (mainWindow) {
       mainWindow.show()
+
+      // Handle pending deeplink if any
+      if (pendingDeepLink) {
+        log('INFO', 'Processing pending deeplink:', pendingDeepLink)
+        handleDeepLink(pendingDeepLink)
+      }
     }
   })
 
@@ -556,6 +565,56 @@ function setupStorageHandlers(): void {
 }
 
 /**
+ * Handle deeplink navigation
+ */
+function handleDeepLink(url: string): void {
+  log('INFO', 'Handling deeplink:', url)
+
+  try {
+    // Parse URL: coday://project/my-project/thread/abc-123
+    const match = url.match(/coday:\/\/project\/([^/]+)\/thread\/([^/?#]+)/)
+
+    if (!match) {
+      log('WARN', 'Invalid deeplink format:', url)
+      return
+    }
+
+    const [, projectName, threadId] = match
+    log('INFO', 'Parsed deeplink - project:', projectName, 'thread:', threadId)
+
+    if (!serverUrl) {
+      log('WARN', 'Server not ready yet, storing deeplink for later')
+      pendingDeepLink = url
+      return
+    }
+
+    if (!mainWindow) {
+      log('WARN', 'Main window not available, storing deeplink for later')
+      pendingDeepLink = url
+      return
+    }
+
+    // Build local server URL
+    const targetUrl = `${serverUrl}/project/${projectName}/thread/${threadId}`
+    log('INFO', 'Navigating to:', targetUrl)
+
+    void mainWindow.loadURL(targetUrl)
+
+    // Show and focus window
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore()
+    }
+    mainWindow.show()
+    mainWindow.focus()
+
+    // Clear pending deeplink
+    pendingDeepLink = null
+  } catch (error) {
+    log('ERROR', 'Error handling deeplink:', error)
+  }
+}
+
+/**
  * Initialize the application
  */
 async function initialize(): Promise<void> {
@@ -606,6 +665,54 @@ async function initialize(): Promise<void> {
 
     app.quit()
   }
+}
+
+// Register custom protocol handler
+if (process.defaultApp) {
+  // Development mode
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(PROTOCOL_NAME, process.execPath, [require('path').resolve(process.argv[1])])
+  }
+} else {
+  // Production mode
+  app.setAsDefaultProtocolClient(PROTOCOL_NAME)
+}
+
+log('INFO', 'Registered protocol handler for:', PROTOCOL_NAME)
+
+// Handle deeplinks on macOS
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  log('INFO', 'Received deeplink (macOS):', url)
+  handleDeepLink(url)
+})
+
+// Handle single instance lock for Windows/Linux deeplinks
+const gotTheLock = app.requestSingleInstanceLock()
+
+if (!gotTheLock) {
+  log('INFO', 'Another instance is already running, quitting')
+  app.quit()
+} else {
+  app.on('second-instance', (_event, commandLine) => {
+    log('INFO', 'Second instance detected, command line:', commandLine)
+
+    // Look for deeplink in command line arguments
+    const url = commandLine.find((arg) => arg.startsWith(`${PROTOCOL_NAME}://`))
+    if (url) {
+      log('INFO', 'Found deeplink in second instance:', url)
+      handleDeepLink(url)
+    }
+
+    // Focus existing window
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore()
+      }
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
 }
 
 // App event handlers
