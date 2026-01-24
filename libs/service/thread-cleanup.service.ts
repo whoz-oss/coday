@@ -220,14 +220,20 @@ export class ThreadCleanupService {
         if (this.shouldDeleteThread(threadData)) {
           const userMessageCount = this.countUserMessages(threadData.messages || [])
           const daysSinceModified = this.getDaysSinceModified(threadData.modifiedDate)
+          const threadId = threadData.id || file.replace('.yml', '')
 
+          // Delete YAML file
           await fs.unlink(filePath)
+
+          // Also delete files directory (consistent with manual deletion)
+          await this.deleteThreadFiles(threadsDir, threadId)
+
           deleted++
 
           // Audit trail logging
           this.logger.logThreadCleanup(projectName, file)
           console.log(
-            `ThreadCleanup: Deleted thread ${threadData.id || file} (${userMessageCount} user messages, ${daysSinceModified} days old)`
+            `ThreadCleanup: Deleted thread ${threadId} and its files directory (${userMessageCount} user messages, ${daysSinceModified} days old)`
           )
         }
       })
@@ -270,6 +276,32 @@ export class ThreadCleanupService {
     const now = new Date()
     const diffTime = now.getTime() - modified.getTime()
     return Math.floor(diffTime / (1000 * 60 * 60 * 24))
+  }
+
+  /**
+   * Deletes the files directory for a thread
+   * @param threadsDir Path to the threads directory
+   * @param threadId Thread identifier
+   */
+  private async deleteThreadFiles(threadsDir: string, threadId: string): Promise<void> {
+    try {
+      const filesDir = path.join(threadsDir, `${threadId}-files`)
+
+      // Check if directory exists before attempting deletion
+      try {
+        await fs.access(filesDir)
+        await fs.rm(filesDir, { recursive: true, force: true })
+        console.log(`ThreadCleanup: Deleted files directory ${filesDir}`)
+      } catch (error: any) {
+        // Directory doesn't exist or already deleted - not an error
+        if (error.code !== 'ENOENT') {
+          throw error
+        }
+      }
+    } catch (error) {
+      console.error(`ThreadCleanup: Error deleting files for ${threadId}:`, error)
+      // Don't propagate error - file deletion shouldn't block cleanup
+    }
   }
 
   /**

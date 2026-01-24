@@ -8,7 +8,7 @@ integrations:
   FETCH:
   AI:
   MEMORY:
-  GIT-PLATFORM:
+  GITHUB:
   GIT:
   PROJECT_SCRIPTS:
   PLAYWRIGHT:

@@ -1,3 +1,184 @@
+## 0.61.1 (2026-01-22)
+
+### 🩹 Fixes
+
+- #439 handle malformed URI in PDF text extraction ([#440](https://github.com/whoz-oss/coday/pull/440), [#439](https://github.com/whoz-oss/coday/issues/439))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.61.0 (2026-01-19)
+
+### 🚀 Features
+
+- #412 Add get_context_info core tool with conversation URL ([#437](https://github.com/whoz-oss/coday/pull/437), [#412](https://github.com/whoz-oss/coday/issues/412))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.60.0 (2026-01-19)
+
+### 🚀 Features
+
+- move agent agnostic slack guidelines to tool description ([#438](https://github.com/whoz-oss/coday/pull/438))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.59.0 (2026-01-15)
+
+### 🚀 Features
+
+- update openai dependency ([b4229e2](https://github.com/whoz-oss/coday/commit/b4229e2))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.58.1 (2026-01-15)
+
+### 🚀 Features
+
+- **agentos:** ensure publishing of agent-os sdk during release action ([#429](https://github.com/whoz-oss/coday/pull/429))
+
+### 🩹 Fixes
+
+- better merge of project and user config level for integrations ([#435](https://github.com/whoz-oss/coday/pull/435))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+- vincent-audibert-whoz
+
+## 0.58.0 (2026-01-13)
+
+### 🚀 Features
+
+- #394 Add Basecamp integration with OAuth2 ([#395](https://github.com/whoz-oss/coday/pull/395), [#394](https://github.com/whoz-oss/coday/issues/394))
+- **agentos:** issue 371 simplify documentation ([3a09861](https://github.com/whoz-oss/coday/commit/3a09861))
+- **agentos:** issue #371 simplify documentation ([#420](https://github.com/whoz-oss/coday/pull/420), [#371](https://github.com/whoz-oss/coday/issues/371))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+- vincent-audibert-whoz
+- vincent.couturier @vincent-couturier-whoz
+
+## 0.57.1 (2025-12-22)
+
+### 🩹 Fixes
+
+- #404 ensure Coday agent is always available in fly projects ([#409](https://github.com/whoz-oss/coday/pull/409), [#404](https://github.com/whoz-oss/coday/issues/404), [#408](https://github.com/whoz-oss/coday/issues/408))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.57.0 (2025-12-19)
+
+### 🚀 Features
+
+- #388 mcp pooled instances ([#397](https://github.com/whoz-oss/coday/pull/397), [#388](https://github.com/whoz-oss/coday/issues/388))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.56.0 (2025-12-19)
+
+### 🚀 Features
+
+- #400 pause auto-scroll when user scrolls during streaming ([#407](https://github.com/whoz-oss/coday/pull/407), [#400](https://github.com/whoz-oss/coday/issues/400))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.55.4 (2025-12-18)
+
+### 🩹 Fixes
+
+- #399 delete thread files directory during automatic cleanup ([#401](https://github.com/whoz-oss/coday/pull/401), [#399](https://github.com/whoz-oss/coday/issues/399))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.55.3 (2025-12-18)
+
+### 🩹 Fixes
+
+- #382 thread name not updating in frontend list ([#402](https://github.com/whoz-oss/coday/pull/402), [#382](https://github.com/whoz-oss/coday/issues/382))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.55.2 (2025-12-18)
+
+### 🩹 Fixes
+
+- #383 render streaming text as markdown ([#387](https://github.com/whoz-oss/coday/pull/387), [#383](https://github.com/whoz-oss/coday/issues/383))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.55.1 (2025-12-17)
+
+### 🩹 Fixes
+
+- #382 thread list cache with incremental updates ([#386](https://github.com/whoz-oss/coday/pull/386), [#382](https://github.com/whoz-oss/coday/issues/382))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.55.0 (2025-12-16)
+
+### 🚀 Features
+
+- issue 381 slack integration ([#384](https://github.com/whoz-oss/coday/pull/384), [#381](https://github.com/whoz-oss/coday/issues/381))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.54.0 (2025-12-16)
+
+### 🚀 Features
+
+- #309 Add Plan Mode with plan and execute-plan prompt chains ([#316](https://github.com/whoz-oss/coday/pull/316), [#309](https://github.com/whoz-oss/coday/issues/309))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.53.1 (2025-12-16)
+
+### 🩹 Fixes
+
+- avoid excessive notifications of agent completion #378 ([#378](https://github.com/whoz-oss/coday/issues/378))
+- avoid excessive notifications of agent completion #378 ([#392](https://github.com/whoz-oss/coday/pull/392), [#378](https://github.com/whoz-oss/coday/issues/378))
+
+### ❤️ Thank You
+
+- Benoit Averty @BenoitAvertyWhoz
+- BenoitAvertyWhoz @BenoitAvertyWhoz
+
+## 0.53.0 (2025-12-15)
+
+### 🚀 Features
+
+- #378 allow the user to be notified when the agent finished a task or requests input ([#378](https://github.com/whoz-oss/coday/issues/378))
+
+### ❤️ Thank You
+
+- Benoit Averty @BenoitAvertyWhoz
+
 ## 0.52.0 (2025-12-10)
 
 ### 🚀 Features
