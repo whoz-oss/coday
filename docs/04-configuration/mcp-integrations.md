@@ -116,7 +116,7 @@ Allows agents to fetch web content for research.
 
 ```yaml
 - id: github
-  name: GIT-PLATFORM
+  name: GITHUB
   command: docker
   args:
     - run

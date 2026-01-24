@@ -38,6 +38,16 @@ export interface McpServerConfig {
   /** Enable MCP Inspector debug mode for this server */
   debug?: boolean
 
+  /**
+   * Prevent sharing this MCP instance across threads/users.
+   * Set to true for MCP servers that:
+   * - Maintain internal state specific to a conversation
+   * - Use user-specific credentials or authentication
+   * - Cannot safely handle concurrent requests from different contexts
+   * Default: false (sharing enabled for performance)
+   */
+  noShare?: boolean
+
   // Note: OAuth authentication support might be added in the future
 }
 
@@ -53,6 +63,7 @@ export const McpServerConfigArgs = [
   'enabled',
   'allowedTools',
   'debug',
+  'noShare',
 ]
 
 /**

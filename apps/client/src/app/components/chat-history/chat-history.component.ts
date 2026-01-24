@@ -21,6 +21,8 @@ import { Subject } from 'rxjs'
 import { MatIcon } from '@angular/material/icon'
 import { ThinkingLoaderComponent } from '../thinking-loader/thinking-loader.component'
 import { MatFabButton } from '@angular/material/button'
+import { MarkdownService } from '../../services/markdown.service'
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 
 @Component({
   selector: 'app-chat-history',
@@ -39,6 +41,9 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   private lastMessageCount = 0
   private destroy$ = new Subject<void>()
 
+  // Rendered streaming text (markdown converted to HTML)
+  renderedStreamingText: SafeHtml = ''
+
   // Scroll tracking state
   isTracking = true // Tracking mode active by default
   showGoToBottom = false // Go-to-bottom button visibility
@@ -46,6 +51,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   private lastScrollTop = 0
   private readonly NEAR_BOTTOM_THRESHOLD = 100 // pixels
   private scrollCheckTimeout: any
+  private isProgrammaticScroll = false // Flag to distinguish programmatic vs user scroll
 
   // Message freshness threshold for automatic announcement (5 minutes)
   private readonly MESSAGE_FRESHNESS_THRESHOLD = 5 * 60 * 1000 // in milliseconds
@@ -56,6 +62,8 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   private voiceSynthesisService = inject(VoiceSynthesisService)
   private preferencesService = inject(PreferencesService)
   private codayService = inject(CodayService)
+  private markdownService = inject(MarkdownService)
+  private sanitizer = inject(DomSanitizer)
 
   ngOnInit() {
     // Find scrollable container on startup
@@ -80,9 +88,14 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
 
   ngOnChanges(changes: SimpleChanges) {
     // Auto-scroll during streaming ONLY if streamingText changed and we're tracking
-    if (changes['streamingText'] && this.streamingText && this.isTracking) {
-      // Small delay to ensure DOM is updated
-      setTimeout(() => this.scrollToBottom(), 0)
+    if (changes['streamingText']) {
+      // Render markdown for streaming text
+      this.renderStreamingText()
+
+      if (this.streamingText && this.isTracking) {
+        // Small delay to ensure DOM is updated
+        setTimeout(() => this.scrollToBottom(), 0)
+      }
     }
   }
 
@@ -119,7 +132,8 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
       }
 
       if (this.scrollContainer) {
-        // Note: Programmatic scroll
+        // Mark this as programmatic scroll to avoid false positive in handleScroll
+        this.isProgrammaticScroll = true
 
         // Small delay to ensure DOM is updated
         setTimeout(() => {
@@ -129,6 +143,11 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
               behavior: 'smooth',
             })
           }
+
+          // Reset flag after scroll completes (smooth animation takes ~500ms)
+          setTimeout(() => {
+            this.isProgrammaticScroll = false
+          }, 600)
         }, 50)
       }
     } catch (err) {
@@ -171,11 +190,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     }
 
     // Cannot delete while thinking
-    if (this.isThinking) {
-      return false
-    }
-
-    return true
+    return !this.isThinking
   }
 
   /**
@@ -268,43 +283,35 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     if (!this.scrollContainer) return
 
     const currentScrollTop = this.scrollContainer.scrollTop
-    const scrollDirection = currentScrollTop > this.lastScrollTop ? 'down' : 'up'
     const scrollDelta = Math.abs(currentScrollTop - this.lastScrollTop)
 
-    // Ignore micro-scrolls (might be programmatic scroll)
-    if (scrollDelta < 5) {
+    // Ignore micro-scrolls
+    if (scrollDelta < 1) {
       this.lastScrollTop = currentScrollTop
       return
     }
 
-    console.log(
-      '[CHAT-HISTORY] Scroll direction:',
-      scrollDirection,
-      'delta:',
-      scrollDelta,
-      'position:',
-      currentScrollTop
-    )
+    // If this is a programmatic scroll, ignore it
+    if (this.isProgrammaticScroll) {
+      this.lastScrollTop = currentScrollTop
+      return
+    }
 
-    // Note: We could detect user vs programmatic scroll here if needed
+    console.log('[CHAT-HISTORY] User scroll detected - disabling auto-scroll')
 
-    // If user scrolls up significantly, exit tracking mode
-    if (scrollDirection === 'up' && this.isTracking && scrollDelta > 10) {
-      console.log('[CHAT-HISTORY] User scrolled up significantly - exiting tracking mode')
+    // ANY user scroll disables auto-scroll immediately
+    if (this.isTracking) {
       this.isTracking = false
       this.showGoToBottom = true
     }
 
-    // Check if we're near the bottom
-    this.checkScrollPosition()
-
-    this.lastScrollTop = currentScrollTop
-
-    // Debounce to avoid too frequent calls
+    // Check position with debounce to avoid immediate re-activation
     clearTimeout(this.scrollCheckTimeout)
     this.scrollCheckTimeout = setTimeout(() => {
-      // Can be used for future optimizations
-    }, 150)
+      this.checkScrollPosition()
+    }, 500) // Wait 500ms after scroll stops
+
+    this.lastScrollTop = currentScrollTop
   }
 
   /**
@@ -319,7 +326,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
 
     // If near bottom and not tracking, reactivate tracking
     if (isNearBottom && !this.isTracking) {
-      console.log('[CHAT-HISTORY] Near bottom - entering tracking mode')
+      console.log('[CHAT-HISTORY] Near bottom - re-enabling auto-scroll')
       this.isTracking = true
       this.showGoToBottom = false
 
@@ -337,7 +344,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
    * Go to bottom of conversation (triggered by button)
    */
   goToBottom(): void {
-    console.log('[CHAT-HISTORY] Go to bottom clicked')
+    console.log('[CHAT-HISTORY] Go to bottom clicked - re-enabling auto-scroll')
     this.scrollToBottom()
     this.isTracking = true
     this.showGoToBottom = false
@@ -536,5 +543,25 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     )
 
     return result.text || text // Fallback to full text if nothing extracted
+  }
+
+  /**
+   * Render streaming text as markdown
+   * Called once per streamingText update (accumulated chunks)
+   */
+  private async renderStreamingText(): Promise<void> {
+    if (!this.streamingText) {
+      this.renderedStreamingText = ''
+      return
+    }
+
+    try {
+      const html = await this.markdownService.parse(this.streamingText)
+      this.renderedStreamingText = this.sanitizer.bypassSecurityTrustHtml(html)
+    } catch (error) {
+      console.error('[CHAT-HISTORY] Error rendering streaming text markdown:', error)
+      // Fallback to plain text on error
+      this.renderedStreamingText = this.sanitizer.bypassSecurityTrustHtml(this.streamingText)
+    }
   }
 }

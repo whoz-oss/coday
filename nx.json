@@ -93,5 +93,9 @@
       "style": "scss",
       "unitTestRunner": "jest"
     }
+  },
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*"],
+    "production": ["default", "!{projectRoot}/src/test/**/*"]
   }
 }

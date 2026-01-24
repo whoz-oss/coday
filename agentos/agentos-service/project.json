@@ -1,0 +1,85 @@
+{
+  "name": "agentos-service",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "agentos/agentos-service/src",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "{projectRoot}/build.gradle.kts",
+        "{workspaceRoot}/agentos/gradle.properties",
+        "{workspaceRoot}/agentos/settings.gradle.kts"
+      ],
+      "outputs": [
+        "{projectRoot}/build"
+      ],
+      "options": {
+        "command": "./gradlew :agentos-service:build",
+        "cwd": "agentos"
+      },
+      "dependsOn": [
+        {
+          "target": "build",
+          "projects": [
+            "agentos-sdk"
+          ]
+        }
+      ]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "{projectRoot}/build.gradle.kts",
+        "{workspaceRoot}/agentos/gradle.properties",
+        "{workspaceRoot}/agentos/settings.gradle.kts"
+      ],
+      "outputs": [
+        "{projectRoot}/build/test-results",
+        "{projectRoot}/build/reports"
+      ],
+      "options": {
+        "command": "./gradlew :agentos-service:test",
+        "cwd": "agentos",
+        "passWithNoTests": null
+      }
+    },
+    "bootRun": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./gradlew :agentos-service:bootRun",
+        "cwd": "agentos"
+      }
+    },
+    "bootJar": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "{projectRoot}/build.gradle.kts",
+        "{workspaceRoot}/agentos/gradle.properties",
+        "{workspaceRoot}/agentos/settings.gradle.kts"
+      ],
+      "outputs": [
+        "{projectRoot}/build/libs"
+      ],
+      "options": {
+        "command": "./gradlew :agentos-service:bootJar",
+        "cwd": "agentos"
+      },
+      "dependsOn": [
+        "build"
+      ]
+    }
+  },
+  "tags": [
+    "type:app",
+    "platform:jvm",
+    "scope:service"
+  ]
+}

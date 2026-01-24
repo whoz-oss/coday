@@ -12,6 +12,7 @@ import { IntegrationService } from '@coday/service/integration.service'
 import { IntegrationConfigService } from '@coday/service/integration-config.service'
 import { MemoryService } from '@coday/service/memory.service'
 import { McpConfigService } from '@coday/service/mcp-config.service'
+import { McpInstancePool } from '@coday/integration/mcp/mcp-instance-pool'
 import { CodayLogger } from '@coday/service/coday-logger'
 import { WebhookService } from '@coday/service/webhook.service'
 import { ThreadService } from './services/thread.service'
@@ -82,6 +83,9 @@ export function registerAgentRoutes(
       const memory = new MemoryService(projectState, user)
       const mcp = new McpConfigService(user, projectState, interactor)
 
+      // Create a temporary MCP pool for this request (won't be used but required by CodayServices)
+      const mcpPool = new McpInstancePool()
+
       const services: CodayServices = {
         user,
         project: projectState,
@@ -89,9 +93,11 @@ export function registerAgentRoutes(
         integrationConfig,
         memory,
         mcp,
+        mcpPool,
         thread: threadService,
         logger,
         webhook: webhookService,
+        options,
       }
 
       // Select the project in the state service

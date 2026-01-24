@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core'
 import { marked, Renderer } from 'marked'
+import DOMPurify from 'dompurify'
 
 /**
  * Service to configure and provide markdown rendering with custom link handling
@@ -14,7 +15,7 @@ import { marked, Renderer } from 'marked'
   providedIn: 'root',
 })
 export class MarkdownService {
-  private renderer: Renderer
+  private readonly renderer: Renderer
 
   constructor() {
     this.renderer = new Renderer()
@@ -108,10 +109,31 @@ export class MarkdownService {
   /**
    * Parse markdown to HTML with custom renderer
    *
+   * Security: This method sanitizes the output HTML using DOMPurify to prevent XSS attacks.
+   * This is critical since components use bypassSecurityTrustHtml for rendering.
+   *
    * @param markdown The markdown string to parse
-   * @returns Promise that resolves to HTML string
+   * @returns Promise that resolves to sanitized HTML string
    */
   async parse(markdown: string): Promise<string> {
-    return marked.parse(markdown, { renderer: this.renderer })
+    // First, parse markdown to HTML
+    const rawHtml = await marked.parse(markdown, {
+      renderer: this.renderer,
+      breaks: true, // Support line breaks
+      gfm: true, // GitHub Flavored Markdown
+    })
+
+    // Then sanitize the HTML to prevent XSS
+    // DOMPurify removes dangerous elements like <script>, <iframe>, event handlers, etc.
+    // while preserving safe HTML elements and our custom external link icons
+    const sanitizedHtml = DOMPurify.sanitize(rawHtml, {
+      // Allow our custom external link icon span
+      ADD_TAGS: ['span'],
+      ADD_ATTR: ['aria-hidden', 'aria-label', 'target', 'rel'],
+      // Keep links safe with target and rel attributes
+      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+    })
+
+    return sanitizedHtml
   }
 }

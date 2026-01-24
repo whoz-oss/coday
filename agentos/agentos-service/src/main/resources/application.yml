@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: agentos-service
+  
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      chat:
+        options:
+          model: gpt-4-turbo-preview
+          temperature: 0.7
+    
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:}
+      chat:
+        options:
+          model: claude-3-5-sonnet-20241022
+          temperature: 0.7
+    
+    mcp:
+      client:
+        enabled: ${MCP_ENABLED:false}
+
+server:
+  port: 8123
+  compression:
+    enabled: true
+  error:
+    include-message: always
+    include-binding-errors: always
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+
+agentos:
+  plugins:
+    dir: ${PLUGINS_DIR:plugins/}
+
+logging:
+  level:
+    root: INFO
+    io.biznet.agentos: DEBUG
+    org.pf4j: DEBUG
+    org.springframework.ai: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

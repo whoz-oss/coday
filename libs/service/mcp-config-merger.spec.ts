@@ -30,7 +30,7 @@ describe('McpConfigMerger', () => {
       const codayServers: McpServerConfig[] = [
         {
           id: 'github',
-          name: 'GIT-PLATFORM',
+          name: 'GITHUB',
           enabled: true,
           args: ['run', '-i', '--rm', '-e', 'GITHUB_PERSONAL_ACCESS_TOKEN', 'ghcr.io/github/github-mcp-server'],
           debug: false,
@@ -40,7 +40,7 @@ describe('McpConfigMerger', () => {
       const projectServers: McpServerConfig[] = [
         {
           id: 'github',
-          name: 'GIT-PLATFORM',
+          name: 'GITHUB',
           command: '/usr/local/bin/docker',
           args: ['--network=host'],
           env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'project-token' },
@@ -52,7 +52,7 @@ describe('McpConfigMerger', () => {
       const userServers: McpServerConfig[] = [
         {
           id: 'github',
-          name: 'GIT-PLATFORM',
+          name: 'GITHUB',
           command: '/path/to/user/docker',
           env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'user-secret-token' },
           enabled: false,
@@ -67,7 +67,7 @@ describe('McpConfigMerger', () => {
 
       // Basic properties: later levels win
       expect(mergedServer.id).toBe('github')
-      expect(mergedServer.name).toBe('GIT-PLATFORM')
+      expect(mergedServer.name).toBe('GITHUB')
       expect(mergedServer.command).toBe('/path/to/user/docker') // USER level wins
 
       // Args: aggregated from all levels in order
@@ -295,7 +295,7 @@ describe('McpConfigMerger', () => {
         command: 'minimal-command',
         enabled: true, // Default
         debug: false, // Default
-        args: [], // Default
+        noShare: false, // Defaultargs: [], // Default
         env: {
           // Default whitelist vars are always included
           PATH: '/usr/local/bin:/usr/bin:/bin',
@@ -377,7 +377,7 @@ describe('McpConfigMerger', () => {
       const codayServers: McpServerConfig[] = [
         {
           id: 'github',
-          name: 'GIT-PLATFORM',
+          name: 'GITHUB',
           command: 'docker',
           enabled: true,
           whiteListedHostEnvVarNames: ['GITHUB_PERSONAL_ACCESS_TOKEN'],
@@ -408,7 +408,7 @@ describe('McpConfigMerger', () => {
       const codayServers: McpServerConfig[] = [
         {
           id: 'github',
-          name: 'GIT-PLATFORM',
+          name: 'GITHUB',
           command: 'docker',
           enabled: true,
           whiteListedHostEnvVarNames: ['GITHUB_PERSONAL_ACCESS_TOKEN'],
@@ -441,7 +441,7 @@ describe('McpConfigMerger', () => {
       const codayServers: McpServerConfig[] = [
         {
           id: 'github',
-          name: 'GIT-PLATFORM',
+          name: 'GITHUB',
           command: 'docker',
           enabled: true,
           args: ['-e', 'GITHUB_PERSONAL_ACCESS_TOKEN'],
@@ -452,7 +452,7 @@ describe('McpConfigMerger', () => {
       const projectServers: McpServerConfig[] = [
         {
           id: 'github',
-          name: 'GIT-PLATFORM',
+          name: 'GITHUB',
           env: {
             OTHER_VAR: 'other-value',
           },
@@ -543,6 +543,55 @@ describe('McpConfigMerger', () => {
 
       // Should have unique values from all levels
       expect(result[0]?.whiteListedHostEnvVarNames).toEqual(['VAR1', 'VAR2', 'VAR3', 'VAR4'])
+    })
+
+    it('should handle noShare flag correctly - true if any level sets it', () => {
+      const codayServers: McpServerConfig[] = [
+        {
+          id: 'test',
+          name: 'Test Server',
+          command: 'test',
+          enabled: true,
+          noShare: false,
+        },
+      ]
+
+      const projectServers: McpServerConfig[] = [
+        {
+          id: 'test',
+          name: 'Test Server',
+          noShare: true,
+        },
+      ]
+
+      const userServers: McpServerConfig[] = [
+        {
+          id: 'test',
+          name: 'Test Server',
+          noShare: false, // Even though USER sets it to false, PROJECT set it to true
+        },
+      ]
+
+      const result = mergeMcpConfigs(codayServers, projectServers, userServers)
+
+      // Most restrictive wins - if any level says noShare, then noShare
+      expect(result[0]?.noShare).toBe(true)
+    })
+
+    it('should default noShare to false when not specified', () => {
+      const codayServers: McpServerConfig[] = [
+        {
+          id: 'test',
+          name: 'Test Server',
+          command: 'test',
+          enabled: true,
+          // noShare not specified
+        },
+      ]
+
+      const result = mergeMcpConfigs(codayServers, [], [])
+
+      expect(result[0]?.noShare).toBe(false)
     })
 
     it('should handle multiple environment variables in envVarNames', () => {

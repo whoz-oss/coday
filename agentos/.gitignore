@@ -1,0 +1,44 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# IDE
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+.vscode/
+
+# Kotlin
+.kotlin/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Nx
+.nx/
+node_modules/
+.cache/
+
+# AgentOS specific
+plugins/*.jar
+!plugins/.gitkeep
+agents/*.yaml
+!agents/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Temp
+*.tmp
+*.temp
+temp/
+tmp/
+
+.env

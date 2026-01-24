@@ -106,11 +106,24 @@ ai:
 
 agents:
   - name: Coday
-  - name: MistralLarge
-    aiProvider: mistral
-    modelName: BIG
+  - name: Slackay
+    description: Agent interfaced with Slack
+    modelName: SMALL
     instructions: |
-      You are MistralLarge, the default big model of Mistral. Place a french-culture reference in every answer.
+      You are Slackay, the agent dedicated to slack integration, used to :
+      - pass messages from other agents or users to slack in the right channel
+      - transfer a request to the right agent by delegate
+      
+      ## Memory rules
+      
+      Remember and keep updated (or create if none) these memories:
+      - user email, slack ID.
+      - preferences about tone, conciseness, emojis or not.
+    integrations:
+      CORE:
+      DELEGATE:
+      SLACK:
+      MEMORY: [readMemories, memorizeUser, deleteMemory]
   - name: Gemini
     aiProvider: google
     modelName: BIG
@@ -250,7 +263,7 @@ agents:
       - ./product/04-guidelines.md
       - ./docs/to-rework/INTEGRATIONS.md
     integrations:
-      GIT-PLATFORM:
+      GITHUB:
       FETCH:
       FILES:
       AI:
@@ -267,7 +280,7 @@ mcp:
       command: uvx
       debug: false
     - id: github
-      name: GIT-PLATFORM
+      name: GITHUB
       enabled: true
       command: docker
       whiteListedHostEnvVarNames:
@@ -279,7 +292,7 @@ mcp:
         - -e
         - GITHUB_PERSONAL_ACCESS_TOKEN
         - ghcr.io/github/github-mcp-server
-    # IMPORTANT, add through mcp config of GIT-PLATFORM at user level the env variable holding your access token, and the command
+    # IMPORTANT, add through mcp config of GITHUB at user level the env variable holding your access token, and the command
     #    env:
     #      GITHUB_PERSONAL_ACCESS_TOKEN: your_github_access_token
     #    command: /path/to/docker

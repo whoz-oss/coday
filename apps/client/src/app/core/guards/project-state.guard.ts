@@ -1,6 +1,6 @@
 import { inject } from '@angular/core'
 import { ActivatedRouteSnapshot, CanActivateFn } from '@angular/router'
-import { lastValueFrom, take } from 'rxjs'
+import { first, firstValueFrom } from 'rxjs'
 import { ProjectStateService } from '../services/project-state.service'
 
 /**
@@ -35,11 +35,6 @@ export const projectStateGuard: CanActivateFn = async (route: ActivatedRouteSnap
   }
 
   projectState.selectProject(projectName)
-  const currentProject = await lastValueFrom(projectState.selectedProject$.pipe(take(1)))
-  const validity = currentProject?.name === projectName
-
-  if (!validity) {
-    console.log('[PROJECT GUARD] current project not matching the route')
-  }
-  return validity
+  const currentProject = await firstValueFrom(projectState.selectedProject$.pipe(first((p) => p?.name === projectName)))
+  return currentProject?.name === projectName
 }

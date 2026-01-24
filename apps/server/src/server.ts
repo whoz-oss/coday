@@ -9,6 +9,7 @@ import { debugLog } from './log'
 import { CodayLogger } from '@coday/service/coday-logger'
 import { WebhookService } from '@coday/service/webhook.service'
 import { ThreadCleanupService } from '@coday/service/thread-cleanup.service'
+import { McpInstancePool } from '@coday/integration/mcp/mcp-instance-pool'
 import { findAvailablePort } from './find-available-port'
 import { ConfigServiceRegistry } from '@coday/service/config-service-registry'
 import { ServerInteractor } from '@coday/model/server-interactor'
@@ -155,8 +156,12 @@ const threadFileService = new ThreadFileService(projectsDir)
 // Initialize thread service for REST API endpoints
 const threadService = new ThreadService(projectRepository, projectsDir, threadFileService)
 
+// Initialize MCP instance pool for shared MCP instances
+const mcpPool = new McpInstancePool()
+debugLog('INIT', 'MCP instance pool initialized')
+
 // Initialize the thread-based Coday manager for SSE architecture
-const threadCodayManager = new ThreadCodayManager(logger, webhookService, projectService, threadService)
+const threadCodayManager = new ThreadCodayManager(logger, webhookService, projectService, threadService, mcpPool)
 
 // Initialize config service registry for REST API endpoints
 const configInteractor = new ServerInteractor('config-api')
@@ -298,6 +303,14 @@ app.use((err: any, req: express.Request, res: express.Response, _: express.NextF
 
 // Use PORT_PROMISE to listen on the available port
 PORT_PROMISE.then(async (PORT) => {
+  // Set baseUrl if not already configured
+  if (!codayOptions.baseUrl) {
+    codayOptions.baseUrl = `http://localhost:${PORT}`
+    debugLog('INIT', `Base URL set to: ${codayOptions.baseUrl}`)
+  } else {
+    debugLog('INIT', `Using configured base URL: ${codayOptions.baseUrl}`)
+  }
+
   app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`)
   })

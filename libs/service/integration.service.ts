@@ -10,9 +10,9 @@ export class IntegrationService {
   userIntegrations: IntegrationLocalConfig = {}
 
   constructor(
-    private projectService: ProjectStateService,
-    private userService: UserService,
-    private interactor?: Interactor
+    private readonly projectService: ProjectStateService,
+    private readonly userService: UserService,
+    private readonly interactor?: Interactor
   ) {
     projectService.selectedProject$.subscribe((selectedProject) => {
       // Ensure we only proceed if a project is selected
@@ -35,7 +35,7 @@ export class IntegrationService {
       // Merge the integrations
       this.integrations = { ...this.projectIntegrations }
 
-      // Safely merge user integrations
+      // Safely merge user integrations with deep merge for oauth2
       Object.keys(this.userIntegrations).forEach((key) => {
         const userIntegration = this.userIntegrations[key]!
         const currentProjectIntegration = this.integrations[key]
@@ -43,7 +43,15 @@ export class IntegrationService {
         if (!currentProjectIntegration) {
           this.integrations[key] = userIntegration
         } else {
-          this.integrations[key] = { ...currentProjectIntegration, ...userIntegration }
+          // Deep merge: handle oauth2 object specially to preserve both PROJECT and USER properties
+          const merged = { ...currentProjectIntegration, ...userIntegration }
+
+          // If both have oauth2, merge them deeply instead of replacing
+          if (currentProjectIntegration.oauth2 && userIntegration.oauth2) {
+            merged.oauth2 = { ...currentProjectIntegration.oauth2, ...userIntegration.oauth2 }
+          }
+
+          this.integrations[key] = merged
         }
       })
     })

@@ -295,7 +295,7 @@ export class AnthropicClient extends AiClient {
     const markerMessageId = this.getOrUpdateCacheMarker(thread, messages, updateCache)
 
     return messages
-      .map((msg, index) => {
+      .map((msg) => {
         let claudeMessage: Anthropic.MessageParam | undefined
         const shouldAddCache = markerMessageId && msg.timestamp === markerMessageId
 
@@ -314,8 +314,7 @@ export class AnthropicClient extends AiClient {
         }
         // Handle regular MessageEvent
         else if (msg instanceof MessageEvent) {
-          const isLastUserMessage = msg.role === 'user' && index === messages.length - 1
-          const content = this.enhanceWithCurrentDateTime(msg.content, isLastUserMessage)
+          const content = msg.content
           const claudeContent: (Anthropic.ImageBlockParam | Anthropic.TextBlockParam)[] = content
             .map((c, index) => {
               let result: Anthropic.ImageBlockParam | Anthropic.TextBlockParam | undefined = undefined

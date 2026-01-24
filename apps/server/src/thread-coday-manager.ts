@@ -10,7 +10,8 @@ import { MemoryService } from '@coday/service/memory.service'
 import { McpConfigService } from '@coday/service/mcp-config.service'
 import { CodayLogger } from '@coday/service/coday-logger'
 import { WebhookService } from '@coday/service/webhook.service'
-import { HeartBeatEvent } from '@coday/coday-events'
+import { HeartBeatEvent, ThreadUpdateEvent, OAuthCallbackEvent } from '@coday/coday-events'
+import { McpInstancePool } from '@coday/integration/mcp/mcp-instance-pool'
 import { debugLog } from './log'
 import { ThreadService } from './services/thread.service'
 import { ProjectService } from './services/project.service'
@@ -41,6 +42,7 @@ class ThreadCodayInstance {
     private readonly webhookService: WebhookService,
     private readonly projectService: ProjectService,
     private readonly threadService: ThreadService,
+    private readonly mcpPool: McpInstancePool,
     private readonly onTimeout: (threadId: string) => void
   ) {
     // Start inactivity timeout
@@ -215,10 +217,15 @@ class ThreadCodayInstance {
       integrationConfig,
       memory,
       mcp,
+      mcpPool: this.mcpPool,
       thread: this.threadService,
       logger: this.logger,
       webhook: this.webhookService,
+      options: this.options,
     })
+
+    // Note: toolbox is now accessible via coday.services.agent.toolbox
+    // after agent service initialization
 
     return true
   }
@@ -271,6 +278,15 @@ class ThreadCodayInstance {
    * @param event Event to broadcast
    */
   private broadcastEvent(event: any): void {
+    // If this is a ThreadUpdateEvent with a name, update the thread service cache
+    if (event instanceof ThreadUpdateEvent && event.name) {
+      debugLog('THREAD_CODAY', `Updating thread cache for ${this.threadId} with name: ${event.name}`)
+      // Update the thread service cache asynchronously (don't block event broadcasting)
+      this.threadService.updateThread(this.projectName, this.threadId, { name: event.name }).catch((error) => {
+        debugLog('THREAD_CODAY', `Error updating thread cache:`, error)
+      })
+    }
+
     const data = `data: ${JSON.stringify(event)}\n\n`
 
     // Send to all active connections
@@ -294,6 +310,32 @@ class ThreadCodayInstance {
    */
   stop(): void {
     this.coday?.stop()
+  }
+
+  /**
+   * Handle OAuth callback by routing to the appropriate integration
+   */
+  async handleOAuthCallback(event: OAuthCallbackEvent): Promise<void> {
+    if (!this.coday) {
+      debugLog('THREAD_CODAY', `Cannot handle OAuth callback: Coday not initialized for thread ${this.threadId}`)
+      return
+    }
+
+    // Access toolbox through agent service
+    const agentService = this.coday.services.agent
+    if (!agentService) {
+      debugLog('THREAD_CODAY', `Cannot handle OAuth callback: Agent service not initialized`)
+      return
+    }
+
+    const toolbox = agentService.toolbox
+    if (!toolbox) {
+      debugLog('THREAD_CODAY', `Cannot handle OAuth callback: Toolbox not initialized`)
+      return
+    }
+
+    debugLog('THREAD_CODAY', `Routing OAuth callback for ${event.integrationName}`)
+    await toolbox.handleOAuthCallback(event)
   }
 
   /**
@@ -348,7 +390,8 @@ export class ThreadCodayManager {
     private readonly logger: CodayLogger,
     private readonly webhookService: WebhookService,
     private readonly projectService: ProjectService,
-    private readonly threadService: ThreadService
+    private readonly threadService: ThreadService,
+    private readonly mcpPool: McpInstancePool
   ) {
     // Start global heartbeat mechanism
     this.heartbeatInterval = setInterval(() => this.sendHeartbeats(), ThreadCodayManager.HEARTBEAT_INTERVAL)
@@ -403,6 +446,7 @@ export class ThreadCodayManager {
         this.webhookService,
         this.projectService,
         this.threadService,
+        this.mcpPool,
         this.handleInstanceTimeout
       )
       this.instances.set(threadId, instance)
@@ -444,6 +488,7 @@ export class ThreadCodayManager {
         this.webhookService,
         this.projectService,
         this.threadService,
+        this.mcpPool,
         this.handleInstanceTimeout
       )
       instance.markAsOneshot() // Mark as oneshot for shorter timeout
@@ -503,6 +548,9 @@ export class ThreadCodayManager {
   async cleanup(threadId: string): Promise<void> {
     const instance = this.instances.get(threadId)
     if (instance) {
+      // Release MCP instances used by this thread
+      await this.mcpPool.releaseThread(threadId)
+
       await instance.cleanup()
       this.instances.delete(threadId)
       debugLog('THREAD_CODAY', `Removed instance for thread ${threadId}`)
@@ -553,6 +601,10 @@ export class ThreadCodayManager {
 
     await Promise.all(cleanupPromises)
     this.instances.clear()
+
+    // Shutdown MCP instance pool
+    await this.mcpPool.shutdown()
+
     debugLog('THREAD_CODAY_MANAGER', 'All thread instances cleaned up')
   }
 }
