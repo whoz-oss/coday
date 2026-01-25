@@ -1,4 +1,4 @@
-import { ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
+import { ToolRequestEvent, ToolResponseEvent } from './coday-events'
 import { CodayTool } from './coday-tool'
 
 export class ToolSet {

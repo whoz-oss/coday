@@ -1,5 +1,6 @@
-import { CommandContext, CommandHandler, Interactor } from '@coday/model'
-import { CodayServices } from '../../coday-services'
+import { CommandContext, CommandHandler } from '@coday/handler'
+import { Interactor } from '@coday/model/interactor'
+import { CodayServices } from '@coday/coday-services'
 
 /**
  * Handler for listing all configured webhooks.

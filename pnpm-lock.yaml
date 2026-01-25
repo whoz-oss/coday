@@ -78,6 +78,9 @@ catalogs:
     marked:
       specifier: 16.4.0
       version: 16.4.0
+    oauth4webapi:
+      specifier: 3.8.3
+      version: 3.8.3
     openai:
       specifier: 6.10.0
       version: 6.10.0
@@ -209,6 +212,12 @@ catalogs:
     '@types/sharp':
       specifier: 0.32.0
       version: 0.32.0
+    '@types/turndown':
+      specifier: 5.0.6
+      version: 5.0.6
+    '@types/yargs':
+      specifier: 17.0.35
+      version: 17.0.35
     '@typescript-eslint/eslint-plugin':
       specifier: ^8.46.3
       version: 8.49.0
@@ -683,6 +692,21 @@ importers:
 
   libs/agent:
     dependencies:
+      '@coday/function':
+        specifier: workspace:*
+        version: link:../function
+      '@coday/handler':
+        specifier: workspace:*
+        version: link:../handler
+      '@coday/integration':
+        specifier: workspace:*
+        version: link:../integration
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../model
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
       tslib:
         specifier: 'catalog:'
         version: 2.8.1
@@ -707,8 +731,27 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
-  libs/coday-events:
+  libs/coday-services:
     dependencies:
+      '@coday/service':
+        specifier: workspace:*
+        version: link:../service
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/core:
+    dependencies:
+      '@coday/ai-thread':
+        specifier: workspace:*
+        version: link:../ai-thread
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../model
       tslib:
         specifier: 'catalog:'
         version: 2.8.1
@@ -719,12 +762,6 @@ importers:
 
   libs/function:
     dependencies:
-      '@coday/coday-events':
-        specifier: workspace:*
-        version: link:../coday-events
-      '@coday/integration':
-        specifier: workspace:*
-        version: link:../integration
       '@coday/model':
         specifier: workspace:*
         version: link:../model
@@ -756,6 +793,27 @@ importers:
       '@anthropic-ai/sdk':
         specifier: 'catalog:'
         version: 0.65.0(zod@3.25.76)
+      '@coday/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@coday/ai-thread':
+        specifier: workspace:*
+        version: link:../ai-thread
+      '@coday/coday-services':
+        specifier: workspace:*
+        version: link:../coday-services
+      '@coday/function':
+        specifier: workspace:*
+        version: link:../function
+      '@coday/integration':
+        specifier: workspace:*
+        version: link:../integration
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../model
+      '@coday/service':
+        specifier: workspace:*
+        version: link:../service
       openai:
         specifier: 'catalog:'
         version: 6.10.0(ws@8.18.3)(zod@3.25.76)
@@ -770,14 +828,168 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/handler/src:
+    dependencies:
+      '@anthropic-ai/sdk':
+        specifier: 'catalog:'
+        version: 0.65.0(zod@3.25.76)
+      '@coday/ai-thread':
+        specifier: workspace:*
+        version: link:../../ai-thread
+      '@coday/function':
+        specifier: workspace:*
+        version: link:../../function
+      '@coday/integration':
+        specifier: workspace:*
+        version: link:../../integration
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../../model
+      '@coday/service':
+        specifier: workspace:*
+        version: link:../../service
+      openai:
+        specifier: 'catalog:'
+        version: 6.10.0(ws@8.18.3)(zod@3.25.76)
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/handlers/config:
+    dependencies:
+      '@coday/ai-thread':
+        specifier: workspace:*
+        version: link:../../ai-thread
+      '@coday/coday-services':
+        specifier: workspace:*
+        version: link:../../coday-services
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../../model
+      '@coday/service':
+        specifier: workspace:*
+        version: link:../../service
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/handlers/load:
+    dependencies:
+      '@coday/function':
+        specifier: workspace:*
+        version: link:../../function
+      '@coday/integration':
+        specifier: workspace:*
+        version: link:../../integration
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../../model
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/handlers/looper:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/handlers/memory:
+    dependencies:
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../../model
+      '@coday/service':
+        specifier: workspace:*
+        version: link:../../service
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/handlers/openai:
+    dependencies:
+      '@coday/agent':
+        specifier: workspace:*
+        version: link:../../agent
+      '@coday/ai-thread':
+        specifier: workspace:*
+        version: link:../../ai-thread
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../../model
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/handlers/stats:
+    dependencies:
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../../model
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/integration:
     dependencies:
+      '@coday/ai-thread':
+        specifier: workspace:*
+        version: link:../ai-thread
+      '@coday/function':
+        specifier: workspace:*
+        version: link:../function
+      '@coday/handler':
+        specifier: workspace:*
+        version: link:../handler
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../model
+      '@coday/service':
+        specifier: workspace:*
+        version: link:../service
       '@modelcontextprotocol/sdk':
         specifier: 'catalog:'
         version: 1.23.1(zod@3.25.76)
       axios:
         specifier: 'catalog:'
         version: 1.12.2
+      oauth4webapi:
+        specifier: 'catalog:'
+        version: 3.8.3
       rxjs:
         specifier: 'catalog:'
         version: 7.8.2
@@ -792,8 +1004,23 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
-  libs/model:
+  libs/integrations/ai:
     dependencies:
+      '@coday/agent':
+        specifier: workspace:*
+        version: link:../../agent
+      '@coday/ai-thread':
+        specifier: workspace:*
+        version: link:../../ai-thread
+      '@coday/handler':
+        specifier: workspace:*
+        version: link:../../handler
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../../model
+      '@coday/service':
+        specifier: workspace:*
+        version: link:../../service
       rxjs:
         specifier: 'catalog:'
         version: 7.8.2
@@ -805,8 +1032,198 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/integrations/basecamp:
+    dependencies:
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../../model
+      '@coday/service':
+        specifier: workspace:*
+        version: link:../../service
+      oauth4webapi:
+        specifier: 'catalog:'
+        version: 3.8.3
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integrations/confluence:
+    dependencies:
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../../model
+      '@coday/service':
+        specifier: workspace:*
+        version: link:../../service
+      axios:
+        specifier: 'catalog:'
+        version: 1.12.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+      turndown:
+        specifier: 'catalog:'
+        version: 7.2.2
+    devDependencies:
+      '@types/turndown':
+        specifier: catalog:dev
+        version: 5.0.6
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integrations/file:
+    dependencies:
+      '@coday/function':
+        specifier: workspace:*
+        version: link:../../function
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../../model
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integrations/git:
+    dependencies:
+      '@coday/function':
+        specifier: workspace:*
+        version: link:../../function
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../../model
+      '@coday/service':
+        specifier: workspace:*
+        version: link:../../service
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integrations/gitlab:
+    dependencies:
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../../model
+      '@coday/service':
+        specifier: workspace:*
+        version: link:../../service
+      axios:
+        specifier: 'catalog:'
+        version: 1.12.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integrations/jira:
+    dependencies:
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../../model
+      '@coday/service':
+        specifier: workspace:*
+        version: link:../../service
+      axios:
+        specifier: 'catalog:'
+        version: 1.12.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integrations/slack:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integrations/zendesk-articles:
+    dependencies:
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../../model
+      '@coday/service':
+        specifier: workspace:*
+        version: link:../../service
+      axios:
+        specifier: 'catalog:'
+        version: 1.12.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/mcp:
+    dependencies:
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../model
+      '@modelcontextprotocol/sdk':
+        specifier: 'catalog:'
+        version: 1.23.1(zod@3.25.76)
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/model:
+    dependencies:
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      '@types/yargs':
+        specifier: catalog:dev
+        version: 17.0.35
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/repository:
     dependencies:
+      '@coday/ai-thread':
+        specifier: workspace:*
+        version: link:../ai-thread
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../model
+      '@coday/service':
+        specifier: workspace:*
+        version: link:../service
+      '@coday/utils':
+        specifier: workspace:*
+        version: link:../utils
       tslib:
         specifier: 'catalog:'
         version: 2.8.1
@@ -820,6 +1237,15 @@ importers:
 
   libs/service:
     dependencies:
+      '@coday/function':
+        specifier: workspace:*
+        version: link:../function
+      '@coday/model':
+        specifier: workspace:*
+        version: link:../model
+      '@coday/utils':
+        specifier: workspace:*
+        version: link:../utils
       rxjs:
         specifier: 'catalog:'
         version: 7.8.2
@@ -4257,6 +4683,9 @@ packages:
 
   '@types/turndown@5.0.5':
     resolution: {integrity: sha512-TL2IgGgc7B5j78rIccBtlYAnkuv8nUQqhQc+DSYV5j9Be9XOcm/SKOVRuA47xAVI3680Tk9B1d8flK2GWT2+4w==}
+
+  '@types/turndown@5.0.6':
+    resolution: {integrity: sha512-ru00MoyeeouE5BX4gRL+6m/BsDfbRayOskWqUvh7CLGW+UXxHQItqALa38kKnOiZPqJrtzJUgAC2+F0rL1S4Pg==}
 
   '@types/verror@1.10.11':
     resolution: {integrity: sha512-RlDm9K7+o5stv0Co8i8ZRGxDbrTxhJtgjqjFyVh/tXQyl/rYtTKlnTvZ88oSTeYREWurwx20Js4kTuKCsFkUtg==}
@@ -8179,6 +8608,9 @@ packages:
         optional: true
       '@swc/core':
         optional: true
+
+  oauth4webapi@3.8.3:
+    resolution: {integrity: sha512-pQ5BsX3QRTgnt5HxgHwgunIRaDXBdkT23tf8dfzmtTIL2LTpdmxgbpbBm0VgFWAIDlezQvQCTgnVIUmHupXHxw==}
 
   object-assign@4.1.1:
     resolution: {integrity: sha512-rJgTQnkUnH1sFw8yT6VSU3zD3sWmu6sZhIseY8VX+GRu3P6F7Fu+JNDoXfklElbLJSnc3FUQHVe4cU5hj+BcUg==}
@@ -14815,6 +15247,8 @@ snapshots:
 
   '@types/turndown@5.0.5': {}
 
+  '@types/turndown@5.0.6': {}
+
   '@types/verror@1.10.11':
     optional: true
 
@@ -19723,6 +20157,8 @@ snapshots:
       '@swc/core': 1.13.19(@swc/helpers@0.5.17)
     transitivePeerDependencies:
       - debug
+
+  oauth4webapi@3.8.3: {}
 
   object-assign@4.1.1: {}
 

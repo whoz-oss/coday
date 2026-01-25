@@ -6,11 +6,11 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
-    "@coday/coday-events": "workspace:*",
     "rxjs": "catalog:",
     "tslib": "catalog:"
   },
   "devDependencies": {
+    "@types/yargs": "catalog:dev",
     "typescript": "catalog:dev"
   }
 }

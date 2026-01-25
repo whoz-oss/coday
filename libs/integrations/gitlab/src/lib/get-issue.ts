@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { Interactor } from '@coday/model'
+import { Interactor } from '@coday/model/interactor'
 
 export async function getIssue(
   issueId: string,

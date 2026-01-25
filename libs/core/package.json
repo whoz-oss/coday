@@ -7,7 +7,7 @@
   "types": "./src/index.d.ts",
   "dependencies": {
     "@coday/ai-thread": "workspace:*",
-    "@coday/coday-events": "workspace:*",
+    "@coday/model": "workspace:*",
     "tslib": "catalog:"
   },
   "devDependencies": {

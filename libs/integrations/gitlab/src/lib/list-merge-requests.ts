@@ -1,5 +1,6 @@
 import axios from 'axios'
-import { IntegrationConfig, Interactor } from '@coday/model'
+import { IntegrationConfig } from '@coday/model/integration-config'
+import { Interactor } from '@coday/model/interactor'
 
 type ListMergeRequestsInput = {
   criteria: string

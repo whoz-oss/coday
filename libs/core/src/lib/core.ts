@@ -1,12 +1,12 @@
 import * as path from 'path'
-import { CommandContext } from '@coday/model/command-context'
+import { CommandContext } from '@coday/handler'
 import { ConfigHandler } from '@coday/handlers/config'
 import { HandlerLooper } from '@coday/handlers/looper'
 import { AiHandler } from '@coday/handlers/openai'
 import { AiThread, RunStatus, ThreadMessage, ThreadStateService } from '@coday/ai-thread'
 import { AiClientProvider } from '@coday/integrations/ai'
 import { Interactor } from '@coday/model/interactor'
-import { CodayOptions } from '@coday/options'
+import { CodayOptions } from '@coday/model/options'
 import { CodayServices } from '@coday/coday-services'
 import {
   InviteEventDefault,
@@ -14,9 +14,9 @@ import {
   MessageEvent,
   ToolRequestEvent,
   ToolResponseEvent,
-} from '@coday/coday-events'
-import { AiConfigService } from '@coday/service'
+} from '@coday/model/coday-events'
 import { AgentService } from '@coday/agent'
+import { AiConfigService } from '@coday/service/ai-config.service'
 
 const MAX_ITERATIONS = 100
 

@@ -1,6 +1,6 @@
 import { WithDocs } from '@coday/model/with-docs'
 import * as path from 'node:path'
-import { Interactor } from '@coday/model'
+import { Interactor } from '@coday/model/interactor'
 import { existsSync } from 'node:fs'
 import { FileContent } from '@coday/model/file-content'
 import { readFileUnified } from './read-file-unified'
@@ -84,7 +84,7 @@ export async function getFormattedDocs(
 
     if (mandatoryDocText) {
       formattedDocs += `\n\nMandatory documents
-    
+
     Each of the following files are included entirely as deemed important.\n\n${mandatoryDocText}`
     }
 

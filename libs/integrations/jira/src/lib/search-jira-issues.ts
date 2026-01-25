@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { JiraSearchParams, JiraSearchResponse, LightWeightSearchResponse } from '@coday/jira'
+import { JiraSearchParams, JiraSearchResponse, LightWeightSearchResponse } from './jira'
 import { generateJiraJQLUrl, getLightWeightIssues } from './jira.helpers'
 import { resolveJiraFields } from './jira.helpers'
 // Search Jira Issues

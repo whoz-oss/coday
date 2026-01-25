@@ -1,7 +1,6 @@
-import { CommandContext, CommandHandler } from '@coday/model'
-import { parseArgs } from '../parse-args'
+import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
 import { Interactor } from '@coday/model/interactor'
-import { CodayServices } from '../../coday-services'
+import { CodayServices } from '@coday/coday-services'
 import { ConfigLevel } from '@coday/model/config-level'
 import { AiProviderConfig } from '@coday/model/ai-provider-config'
 

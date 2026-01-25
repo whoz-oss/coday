@@ -1,8 +1,11 @@
-import { Agent, CommandContext, Interactor } from '@coday/model'
-import { AgentService } from '@coday/agent'
+import { CommandContext } from '@coday/handler'
+import { Interactor } from '@coday/model/interactor'
+import { Agent, AgentService } from '@coday/agent'
 import { AiThread } from '@coday/ai-thread'
-import { filter, lastValueFrom, Observable, tap } from 'rxjs'
-import { CodayEvent, MessageEvent } from '@coday/coday-events'
+import { lastValueFrom, Observable } from 'rxjs'
+import { filter, tap } from 'rxjs/operators'
+import { CodayEvent } from '@coday/model/coday-events'
+import { MessageEvent } from '@coday/model/coday-events'
 
 type DelegateInput = {
   context: CommandContext

@@ -1,7 +1,8 @@
 import { AssistantToolFactory } from './assistant-tool-factory'
 import { Interactor } from '@coday/model/interactor'
-import { CommandContext } from '@coday/model/command-context'
 import { CodayTool } from '@coday/model/coday-tool'
+import { CodayServices } from '@coday/coday-services'
+import { CommandContext } from '@coday/handler'
 
 export class CoreTools extends AssistantToolFactory {
   name = 'CORE'
@@ -55,7 +56,7 @@ export class CoreTools extends AssistantToolFactory {
     ]
   }
 
-  async kill(): Promise<void> {
+  override async kill(): Promise<void> {
     // No cleanup needed
   }
 }

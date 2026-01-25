@@ -1,7 +1,7 @@
-import { CommandContext, CommandHandler, Interactor } from '@coday/model'
+import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
+import { Interactor } from '@coday/model/interactor'
 import { IntegrationConfigService } from '@coday/service/integration-config.service'
 import { ConfigLevel } from '@coday/model/config-level'
-import { parseArgs } from '../parse-args'
 
 export class IntegrationDeleteHandler extends CommandHandler {
   constructor(
@@ -65,8 +65,8 @@ export class IntegrationDeleteHandler extends CommandHandler {
     const confirmMessage = `
 # ⚠️ Confirm Deletion
 
-**Integration:** ${integrationName}  
-**Level:** ${levelName}  
+**Integration:** ${integrationName}
+**Level:** ${levelName}
 **Configuration:**
 - API URL: ${integrationConfig?.apiUrl || 'Not set'}
 - Username: ${integrationConfig?.username || 'Not set'}
@@ -92,8 +92,8 @@ Are you sure you want to delete this integration configuration?
       const successMessage = `
 # ✅ Integration Deleted
 
-**Integration:** ${integrationName}  
-**Level:** ${levelName}  
+**Integration:** ${integrationName}
+**Level:** ${levelName}
 **Status:** Successfully removed from configuration
 `
       this.interactor.displayText(successMessage)

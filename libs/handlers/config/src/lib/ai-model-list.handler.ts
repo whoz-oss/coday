@@ -1,7 +1,7 @@
-import { CommandContext, CommandHandler, Interactor } from '@coday/model'
-import { CodayServices } from '../../coday-services'
+import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
+import { Interactor } from '@coday/model/interactor'
+import { CodayServices } from '@coday/coday-services'
 import { ConfigLevel } from '@coday/model/config-level'
-import { parseArgs } from '../parse-args'
 
 /**
  * Handler for listing all models (merged) and those defined at each config level.

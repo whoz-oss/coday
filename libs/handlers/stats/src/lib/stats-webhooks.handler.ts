@@ -1,6 +1,6 @@
-import { CommandContext, CommandHandler, Interactor } from '@coday/model'
-import { CodayServices } from '../../coday-services'
-import { parseArgs } from '../parse-args'
+import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
+import { Interactor } from '@coday/model/interactor'
+import { CodayServices } from '@coday/coday-services'
 
 interface WebhookStats {
   webhookName: string

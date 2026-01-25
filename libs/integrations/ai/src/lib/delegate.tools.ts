@@ -1,8 +1,10 @@
-import { CommandContext, Interactor } from '@coday/model'
-import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
-import { FunctionTool } from '../types'
+import { AssistantToolFactory } from '@coday/integration/assistant-tool-factory'
+import { Interactor } from '@coday/model/interactor'
 import { AgentService } from '@coday/agent'
-import { delegateFunction } from './delegate.function'
+import { CommandContext } from '@coday/handler'
+import { CodayTool } from '@coday/model/coday-tool'
+import { delegateFunction } from '@coday/integrations/ai'
+import { FunctionTool } from '@coday/model/integration-types'
 
 export class DelegateTools extends AssistantToolFactory {
   name = 'DELEGATE'
@@ -110,12 +112,12 @@ These agents are LLM-based, so you should assess in return if the task was corre
             task: {
               type: 'string',
               description: `Description of the task to delegate, should contain:
-              
+
   - intent
   - constraints
   - definition of done
   - any necessary actions/operations to perform (the agent will execute these directly)
-  
+
   Take care to rephrase it as if you are the originator of the task. Include ALL required actions in the task description - do not expect to perform any actions yourself after delegation.
                 `,
             },

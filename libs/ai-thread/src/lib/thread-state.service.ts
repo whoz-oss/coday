@@ -11,7 +11,7 @@ import { UserService } from '@coday/service/user.service'
 import { Killable } from '@coday/model/killable'
 import { Interactor } from '@coday/model/interactor'
 import { ThreadRepository } from '@coday/repository/thread.repository'
-import { ThreadUpdateEvent } from '@coday/coday-events'
+import { ThreadUpdateEvent } from '@coday/model/coday-events'
 
 export class ThreadStateService implements Killable {
   private readonly activeThread$ = new BehaviorSubject<AiThread | null>(null)

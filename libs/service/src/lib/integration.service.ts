@@ -1,6 +1,9 @@
-import { ConcreteIntegrations, IntegrationConfig, IntegrationLocalConfig, Integrations, Interactor } from '@coday/model'
 import { ProjectStateService } from './project-state.service'
 import { UserService } from './user.service'
+import { IntegrationLocalConfig } from '@coday/model/project-local-config'
+import { Interactor } from '@coday/model/interactor'
+import { ConcreteIntegrations, Integrations } from '@coday/model/integrations'
+import { IntegrationConfig } from '@coday/model/integration-config'
 
 const API_KEY_SUFFIX = '_API_KEY'
 

@@ -1,7 +1,7 @@
-import { CommandContext, CommandHandler, Interactor } from '@coday/model'
 import { MemoryService } from '@coday/service/memory.service'
 import { MemoryLevel, Memory } from '@coday/model/memory'
-import { parseArgs } from '../parse-args'
+import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
+import { Interactor } from '@coday/model/interactor'
 
 export class MemoryListHandler extends CommandHandler {
   constructor(

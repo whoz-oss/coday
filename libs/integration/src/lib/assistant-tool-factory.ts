@@ -1,7 +1,7 @@
 import { Killable } from '@coday/model/killable'
 import { CodayTool } from '@coday/model/coday-tool'
 import { Interactor } from '@coday/model/interactor'
-import { CommandContext } from '@coday/model/command-context'
+import { CommandContext } from '@coday/handler'
 
 export abstract class AssistantToolFactory implements Killable {
   tools: CodayTool[] = []

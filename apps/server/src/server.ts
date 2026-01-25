@@ -3,7 +3,7 @@ import path from 'path'
 import fs from 'fs'
 import { ThreadCodayManager } from './thread-coday-manager'
 
-import { parseCodayOptions } from '@coday/options'
+import { parseCodayOptions } from '@coday/model/options'
 import * as os from 'node:os'
 import { debugLog } from './log'
 import { CodayLogger } from '@coday/service/coday-logger'

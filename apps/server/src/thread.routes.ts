@@ -4,9 +4,9 @@ import { debugLog } from './log'
 import { ThreadService } from './services/thread.service'
 import { ThreadFileService } from './services/thread-file.service'
 import { ThreadCodayManager } from './thread-coday-manager'
-import { ImageContent } from '@coday/coday-events'
+import { ImageContent } from '@coday/model/coday-events'
 import { processImageBuffer } from '@coday/function/image-processor'
-import { CodayOptions } from '@coday/options'
+import { CodayOptions } from '@coday/model/options'
 import { MAX_FILE_SIZE, isFileExtensionAllowed, getAllowedExtensionsString } from '@coday/model/file-config'
 
 /**

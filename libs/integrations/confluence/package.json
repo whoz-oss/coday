@@ -13,6 +13,7 @@
     "turndown": "catalog:"
   },
   "devDependencies": {
+    "@types/turndown": "catalog:dev",
     "typescript": "catalog:dev"
   }
 }

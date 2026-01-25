@@ -1,6 +1,6 @@
 import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, inject } from '@angular/core'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
-import { MessageContent } from '@coday/coday-events'
+import { MessageContent } from '@coday/model/coday-events'
 import { MessageContextMenuComponent, MenuAction } from '../message-context-menu/message-context-menu.component'
 import { NgClass } from '@angular/common'
 import { NotificationService } from '../../services/notification.service'

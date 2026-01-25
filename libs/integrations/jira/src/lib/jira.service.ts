@@ -1,7 +1,7 @@
 import { IntegrationService } from '@coday/service/integration.service'
-import { Interactor } from '@coday/model'
+import { Interactor } from '@coday/model/interactor'
 import { ActiveFieldMapping, createJiraFieldMapping } from './jira-field-mapper'
-import { FieldMappingDescription } from '@coday/jira'
+import { FieldMappingDescription } from './jira'
 
 /**
  * Service responsible for Jira field mapping initialization

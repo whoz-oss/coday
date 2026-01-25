@@ -1,7 +1,7 @@
 import express from 'express'
 import { debugLog } from './log'
 import { ThreadCodayManager } from './thread-coday-manager'
-import { AnswerEvent, OAuthCallbackEvent, buildCodayEvent } from '@coday/coday-events'
+import { AnswerEvent, OAuthCallbackEvent, buildCodayEvent } from '@coday/model/coday-events'
 
 /**
  * Message Management REST API Routes

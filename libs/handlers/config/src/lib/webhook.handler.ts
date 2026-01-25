@@ -1,9 +1,7 @@
-import { Interactor, NestedHandler } from '@coday/model'
-import { CodayServices } from '../../coday-services'
-import { WebhookListHandler } from './webhook-list.handler'
-import { WebhookAddHandler } from './webhook-add.handler'
-import { WebhookEditHandler } from './webhook-edit.handler'
-import { WebhookDeleteHandler } from './webhook-delete.handler'
+import { NestedHandler } from '@coday/handler'
+import { Interactor } from '@coday/model/interactor'
+import { CodayServices } from '@coday/coday-services'
+import { WebhookAddHandler, WebhookDeleteHandler, WebhookEditHandler, WebhookListHandler } from '@coday/handlers/config'
 
 /**
  * Root handler for all webhook config commands: list, add, edit, delete.

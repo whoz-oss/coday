@@ -1,6 +1,7 @@
 packages:
   - 'apps/*'
   - 'libs/*'
+  - 'libs/**/*'
   - 'plugins/*'
 catalog:
   '@angular/animations': '20.3.4'
@@ -33,6 +34,7 @@ catalog:
   '@types/turndown': '5.0.5'
   tslib: '2.8.1'
   zone.js: '0.15.1'
+  oauth4webapi: '3.8.3'
   os: '0.1.2'
   sharp: '0.34.4'
   '@inquirer/prompts': '7.9.0'
@@ -41,6 +43,8 @@ catalogs:
   dev:
     typescript: '5.9.3'
     '@types/node': '24.7.2'
+    '@types/turndown': '5.0.6'
+    '@types/yargs': '17.0.35'
     '@angular-devkit/core': '20.3.5'
     '@angular-devkit/schematics': '20.3.5'
     '@angular/build': '20.3.5'

@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core'
-import { OAuthRequestEvent, OAuthCallbackEvent } from '@coday/coday-events'
+import { OAuthRequestEvent, OAuthCallbackEvent } from '@coday/model/coday-events'
 import { EventStreamService } from './event-stream.service'
 import { MessageApiService } from './message-api.service'
 import { ProjectStateService } from './project-state.service'

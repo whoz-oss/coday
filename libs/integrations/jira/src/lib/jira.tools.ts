@@ -1,7 +1,4 @@
 import { IntegrationService } from '@coday/service/integration.service'
-import { CommandContext, Interactor } from '@coday/model'
-import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
-import { FunctionTool } from '../types'
 import { searchJiraIssuesWithAI } from './search-jira-issues'
 import { addJiraComment } from './add-jira-comment'
 import { addJiraInternalNote } from './add-jira-internal-note'
@@ -11,7 +8,12 @@ import { createJiraIssue } from './create-jira-issue'
 import { linkJiraIssues } from './link-jira-issues'
 import { JiraService } from './jira.service'
 import { validateJqlOperators } from './jira.helpers'
-import { CreateJiraIssueRequest } from '@coday/jira'
+import { AssistantToolFactory } from '@coday/integration/assistant-tool-factory'
+import { Interactor } from '@coday/model/interactor'
+import { CommandContext } from '@coday/handler'
+import { CodayTool } from '@coday/model/coday-tool'
+import { FunctionTool } from '@coday/model/integration-types'
+import { CreateJiraIssueRequest } from './jira'
 // JiraCustomFieldHelper is used in createJiraIssue.ts
 
 export class JiraTools extends AssistantToolFactory {
