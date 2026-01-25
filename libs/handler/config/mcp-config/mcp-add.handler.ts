@@ -1,7 +1,7 @@
-import { CommandContext, CommandHandler, Interactor } from '../@coday/model'
-import { McpConfigService } from '../@coday/service/mcp-config.service'
-import { McpServerConfig } from '../@coday/model/mcp-server-config'
-import { ConfigLevel } from '../@coday/model/config-level'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
+import { McpConfigService } from '@coday/service/mcp-config.service'
+import { McpServerConfig } from '@coday/model/mcp-server-config'
+import { ConfigLevel } from '@coday/model/config-level'
 import { parseArgs } from '../../parse-args'
 import { McpEditHandler } from './mcp-edit.handler'
 
@@ -69,9 +69,9 @@ export class McpAddHandler extends CommandHandler {
     const successMessage = `
 # ✅ MCP Server Created
 
-**Server:** ${serverName}  
-**ID:** \`${serverId}\`  
-**Level:** ${level.toLowerCase()}  
+**Server:** ${serverName}
+**ID:** \`${serverId}\`
+**Level:** ${level.toLowerCase()}
 **Status:** Default configuration created
 
 Now completing the configuration...

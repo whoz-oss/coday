@@ -6,6 +6,8 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
+    "@coday/coday-events": "workspace:*",
+    "@coday/integration": "workspace:*",
     "rxjs": "catalog:",
     "tslib": "catalog:"
   },
