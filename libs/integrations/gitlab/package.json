@@ -1,0 +1,17 @@
+{
+  "name": "@coday/gitlab",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "@coday/model": "workspace:*",
+    "@coday/service": "workspace:*",
+    "axios": "catalog:",
+    "tslib": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:dev"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@coday/file",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "@coday/coday-events": "workspace:*",
+    "@coday/function": "workspace:*",
+    "@coday/model": "workspace:*",
+    "tslib": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:dev"
+  }
+}

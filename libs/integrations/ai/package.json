@@ -1,0 +1,21 @@
+{
+  "name": "@coday/ai",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "@coday/agent": "workspace:*",
+    "@coday/ai-thread": "workspace:*",
+    "@coday/coday-events": "workspace:*",
+    "@coday/handler": "workspace:*",
+    "@coday/model": "workspace:*",
+    "@coday/service": "workspace:*",
+    "rxjs": "catalog:",
+    "tslib": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:dev"
+  }
+}

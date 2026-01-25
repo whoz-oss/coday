@@ -1,0 +1,26 @@
+{
+  "name": "jira",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/jira",
+  "tags": [
+    "scope:libs",
+    "type:core"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "libs/jira/dist",
+        "main": "libs/jira/src/index.ts",
+        "tsConfig": "libs/jira/tsconfig.lib.json",
+        "assets": [
+          "libs/jira/*.md"
+        ]
+      }
+    }
+  }
+}

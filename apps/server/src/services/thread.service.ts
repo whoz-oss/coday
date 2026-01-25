@@ -1,7 +1,7 @@
 import { ThreadRepository } from '@coday/repository/thread.repository'
 import { ThreadFileRepository } from '@coday/repository/thread-file.repository'
 import { ProjectRepository } from '@coday/repository/project.repository'
-import { AiThread } from '@coday/ai-thread/ai-thread'
+import { AiThread } from '@coday/ai-thread'
 import { ThreadSummary } from '@coday/ai-thread/ai-thread.types'
 import { ThreadFileService } from './thread-file.service'
 

@@ -1,0 +1,26 @@
+{
+  "name": "openai",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/handlers/openai",
+  "tags": [
+    "scope:libs",
+    "type:core"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "libs/handlers/openai/dist",
+        "main": "libs/handlers/openai/src/index.ts",
+        "tsConfig": "libs/handlers/openai/tsconfig.lib.json",
+        "assets": [
+          "libs/handlers/openai/*.md"
+        ]
+      }
+    }
+  }
+}

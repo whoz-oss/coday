@@ -11,7 +11,7 @@ import {
   ToolResponseEvent,
 } from '@coday/coday-events'
 import { Observable, of, Subject } from 'rxjs'
-import { AiThread } from '@coday/ai-thread/ai-thread'
+import { AiThread } from '@coday/ai-thread'
 import { ThreadMessage } from '@coday/ai-thread/ai-thread.types'
 import { CodayLogger } from '@coday/service/coday-logger'
 

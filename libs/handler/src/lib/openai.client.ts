@@ -9,7 +9,7 @@ import {
   ToolRequestEvent,
   ToolResponseEvent,
 } from '@coday/coday-events'
-import { AiThread } from '@coday/ai-thread/ai-thread'
+import { AiThread } from '@coday/ai-thread'
 import { Observable, Subject } from 'rxjs'
 import { ThreadMessage } from '@coday/ai-thread/ai-thread.types'
 import { ChatCompletionMessageParam, ChatCompletionSystemMessageParam } from 'openai/resources/chat/completions'

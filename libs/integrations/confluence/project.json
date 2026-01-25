@@ -1,0 +1,26 @@
+{
+  "name": "confluence",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/confluence",
+  "tags": [
+    "scope:libs",
+    "type:core"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "libs/confluence/dist",
+        "main": "libs/confluence/src/index.ts",
+        "tsConfig": "libs/confluence/tsconfig.lib.json",
+        "assets": [
+          "libs/confluence/*.md"
+        ]
+      }
+    }
+  }
+}

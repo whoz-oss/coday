@@ -1,0 +1,26 @@
+{
+  "name": "gitlab",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/gitlab",
+  "tags": [
+    "scope:libs",
+    "type:core"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "libs/gitlab/dist",
+        "main": "libs/gitlab/src/index.ts",
+        "tsConfig": "libs/gitlab/tsconfig.lib.json",
+        "assets": [
+          "libs/gitlab/*.md"
+        ]
+      }
+    }
+  }
+}

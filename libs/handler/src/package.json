@@ -1,0 +1,23 @@
+{
+  "name": "@coday/src",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "@anthropic-ai/sdk": "catalog:",
+    "@coday/ai-thread": "workspace:*",
+    "@coday/coday-events": "workspace:*",
+    "@coday/function": "workspace:*",
+    "@coday/integration": "workspace:*",
+    "@coday/model": "workspace:*",
+    "@coday/service": "workspace:*",
+    "openai": "catalog:",
+    "rxjs": "catalog:",
+    "tslib": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:dev"
+  }
+}

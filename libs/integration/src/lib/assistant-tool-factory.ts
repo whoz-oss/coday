@@ -1,7 +1,7 @@
-import { CommandContext, Interactor, Killable } from '@coday/model'
-import { FunctionTool } from './types'
-
-export type CodayTool = FunctionTool<any>
+import { Killable } from '@coday/model/killable'
+import { CodayTool } from '@coday/model/coday-tool'
+import { Interactor } from '@coday/model/interactor'
+import { CommandContext } from '@coday/model/command-context'
 
 export abstract class AssistantToolFactory implements Killable {
   tools: CodayTool[] = []
