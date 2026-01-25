@@ -1,5 +1,5 @@
 import { addJiraInternalNote } from './add-jira-internal-note'
-import { Interactor } from '@coday/model'
+import { Interactor } from '@coday/model/interactor'
 
 // Mock fetch globally
 global.fetch = jest.fn()

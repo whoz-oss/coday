@@ -1,6 +1,6 @@
-import { CommandContext, CommandHandler, Interactor } from '@coday/model'
+import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
+import { Interactor } from '@coday/model/interactor'
 import { MemoryLevel } from '@coday/model/memory'
-import { parseArgs } from '../parse-args'
 
 export class MemoryCurateHandler extends CommandHandler {
   constructor(private interactor: Interactor) {

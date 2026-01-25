@@ -1,6 +1,6 @@
-import { McpServerConfig } from '../../model/mcp-server-config'
 import { McpToolsFactory } from './mcp-tools-factory'
 import { computeMcpConfigHash } from './mcp-instance-key'
+import { McpServerConfig } from '@coday/model/mcp-server-config'
 
 /**
  * Pooled MCP instance with tracking information

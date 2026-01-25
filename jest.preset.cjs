@@ -12,11 +12,11 @@ module.exports = {
 
   // CORRECTION : Utiliser <rootDir>/../../ pour remonter au workspace root
   moduleNameMapper: {
-    '^@coday/coday-events$': '<rootDir>/../../libs/coday-events/src/index.ts',
+    '^@coday/model/coday-events$': '<rootDir>/../../libs/coday-events/src/index.ts',
     '^@coday/ai-thread/(.*)$': '<rootDir>/../../libs/ai-thread/$1',
     '^@coday/core$': '<rootDir>/../../libs/coday.ts',
     '^@coday/model/(.*)$': '<rootDir>/../../libs/model/$1',
-    '^@coday/options$': '<rootDir>/../../libs/options.ts',
+    '^@coday/model/options$': '<rootDir>/../../libs/options.ts',
     '^@coday/service/(.*)$': '<rootDir>/../../libs/service/$1',
   },
 

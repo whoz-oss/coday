@@ -1,9 +1,9 @@
-import { CommandContext, CommandHandler, Interactor } from '@coday/model'
 import { McpConfigService } from '@coday/service/mcp-config.service'
 import { McpServerConfig } from '@coday/model/mcp-server-config'
 import { ConfigLevel } from '@coday/model/config-level'
-import { parseArgs } from '../../parse-args'
 import { McpEditHandler } from './mcp-edit.handler'
+import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
+import { Interactor } from '@coday/model/interactor'
 
 /**
  * Handler for adding a new MCP server configuration.

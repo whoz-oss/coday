@@ -1,4 +1,4 @@
-import { PromptChain } from '@coday/model'
+import { PromptChain } from '@coday/model/prompt-chain'
 
 export const CodayPromptChains: (PromptChain & { name: string })[] = [
   {
@@ -55,7 +55,7 @@ This ensures the memory system stays efficient and valuable.`,
       'expand the request into a simple flow of requests : analysis, plan, review, execution, learn. No delegation to other assistants is encouraged nor sub-tasking.',
     commands: [
       `@ I want you to act as a coordinator (until asked otherwise) to manage the completion of the following request that you must **remember** in the whole thread.
-      
+
 ## Request
 
 PROMPT
@@ -84,7 +84,7 @@ Before starting this iterative process:
 Given the analysis and the plan, define the first task and delegate it.`,
       // Here the process should iterate on the task
       `Here is the initial request you were given:
-      
+
 ## Initial Request
 
 PROMPT
@@ -108,15 +108,15 @@ You deemed the task completed by not delegating another task, so:
       Pay attention to the keywords, mentions, and tone.
       Gather as much context as possible over the concerned topic.
       Identify the logical personas and the expectations they have and those they must satisfy
-      
+
       The assignment: PROMPT`,
       `@ build a high-level plan to complete the assignment repeated here: PROMPT
-      
+
       Focus on separating independent or clearly iterative steps.`,
       `@ from the plan previously built, craft high-level subtasks with explicit expectations, to submit through the 'delegate' tool.
       Make sure to start the delegated task description with 'small-task' !!!`,
       `small-task review the completed work given the assignment repeated here: PROMPT
-      
+
       Check the work has been done or at least seriously attempted.
       Summarize shortly what was done, what is missing if any and what could be the next steps.`,
     ],
@@ -126,7 +126,7 @@ You deemed the task completed by not delegating another task, so:
     description: 'Pushes the AI to extract newly gained knowledge and memorize it.',
     commands: [
       `@ learn about PROMPT:
-      
+
       From the recent context, formulate what you learned and that was not in the initially given context.
       Split it into cohesive subjects, formulate a short title (maximum one sentence) and a detailed description of what you learned that is new, specific to the user or the project, and useful to know.
       It should not be generic knowledge and neither a perfect copy on a file, but rather from a paragraph up to a 3 pages document.

@@ -1,5 +1,5 @@
 import { ActiveFieldMapping } from './jira-field-mapper'
-import { JiraFields, JiraIssue, LightWeightIssues, VisibleField } from '@coday/jira'
+import { JiraFields, JiraIssue, LightWeightIssues, VisibleField } from './jira'
 
 export function createFieldMapping(visibleFields: VisibleField[], issues: JiraIssue[]): ActiveFieldMapping[] {
   // Create a map to track field usage

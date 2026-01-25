@@ -1,4 +1,4 @@
-import { ProjectDescription } from '@coday/model'
+import { ProjectDescription } from '@coday/model/project-description'
 
 export const DEFAULT_CODAY_YAML: ProjectDescription = {
   description: `Dummy description of the project, refer to docs for proper use.`,

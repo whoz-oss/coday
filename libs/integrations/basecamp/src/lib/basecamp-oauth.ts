@@ -14,10 +14,10 @@
  * See: https://github.com/basecamp/api/blob/master/sections/authentication.md
  */
 import * as oauth from 'oauth4webapi'
-import { Interactor } from '@coday/model'
-import { OAuthRequestEvent, OAuthCallbackEvent } from '@coday/coday-events'
+import { Interactor } from '@coday/model/interactor'
+import { OAuthRequestEvent, OAuthCallbackEvent } from '@coday/model/coday-events'
 import { UserService } from '@coday/service'
-import { OAuth2Tokens } from '@coday/model'
+import { OAuth2Tokens } from '@coday/model/integration-config'
 
 export interface BasecampAccount {
   id: number

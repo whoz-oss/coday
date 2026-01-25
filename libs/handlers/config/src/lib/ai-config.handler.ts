@@ -1,11 +1,14 @@
-import { Interactor, NestedHandler } from '@coday/model'
-import { CodayServices } from '../../coday-services'
-import { AiConfigListHandler } from './ai-config-list.handler'
-import { AiConfigAddHandler } from './ai-config-add.handler'
-import { AiConfigEditHandler } from './ai-config-edit.handler'
-import { AiConfigDeleteHandler } from './ai-config-delete.handler'
-import { AiModelHandler } from './ai-model.handler'
-import { AiConfigApikeyHandler } from './ai-config-apikey.handler'
+import { NestedHandler } from '@coday/handler'
+import { Interactor } from '@coday/model/interactor'
+import { CodayServices } from '@coday/coday-services'
+import {
+  AiConfigAddHandler,
+  AiConfigApikeyHandler,
+  AiConfigDeleteHandler,
+  AiConfigEditHandler,
+  AiConfigListHandler,
+  AiModelHandler,
+} from '@coday/handlers/config'
 
 /**
  * Root handler for all AI config commands: list, add, edit, delete, and nested model commands.

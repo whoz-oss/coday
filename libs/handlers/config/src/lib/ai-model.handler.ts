@@ -1,9 +1,7 @@
-import { NestedHandler, Interactor } from '@coday/model'
-import { CodayServices } from '../../coday-services'
-import { AiModelListHandler } from './ai-model-list.handler'
-import { AiModelAddHandler } from './ai-model-add.handler'
-import { AiModelEditHandler } from './ai-model-edit.handler'
-import { AiModelDeleteHandler } from './ai-model-delete.handler'
+import { NestedHandler } from '@coday/handler'
+import { Interactor } from '@coday/model/interactor'
+import { CodayServices } from '@coday/coday-services'
+import { AiModelAddHandler, AiModelDeleteHandler, AiModelEditHandler, AiModelListHandler } from '@coday/handlers/config'
 
 /**
  * Nested handler for managing AI models within provider configs.

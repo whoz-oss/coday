@@ -1,7 +1,7 @@
-import { JiraCount } from '@coday/jira'
 import { generateJiraJQLUrl } from './jira.helpers'
 import axios from 'axios'
-import { Interactor } from '@coday/model'
+import { Interactor } from '@coday/model/interactor'
+import { JiraCount } from './jira'
 
 export async function countJiraIssues(
   jql: string,

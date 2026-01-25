@@ -8,7 +8,6 @@
   "dependencies": {
     "@coday/agent": "workspace:*",
     "@coday/ai-thread": "workspace:*",
-    "@coday/coday-events": "workspace:*",
     "@coday/handler": "workspace:*",
     "@coday/model": "workspace:*",
     "@coday/service": "workspace:*",

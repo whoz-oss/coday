@@ -1,4 +1,5 @@
-import { CommandContext, CommandHandler, Interactor } from '@coday/model'
+import { CommandContext, CommandHandler } from '@coday/handler'
+import { Interactor } from '@coday/model/interactor'
 import { readFileUnifiedAsString } from '@coday/function/read-file-unified'
 
 export class LoadFileHandler extends CommandHandler {

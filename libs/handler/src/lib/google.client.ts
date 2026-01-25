@@ -1,9 +1,10 @@
 import { OpenaiClient } from './openai.client'
-import { AiProviderConfig, Interactor } from '@coday/model'
 import { CodayLogger } from '@coday/service/coday-logger'
+import { Interactor } from '@coday/model/interactor'
+import { AiProviderConfig } from '@coday/model/ai-provider-config'
 
 export class GoogleClient extends OpenaiClient {
-  models = [
+  override models = [
     {
       name: 'gemini-3-pro-preview',
       contextWindow: 1048576,

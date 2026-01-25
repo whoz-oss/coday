@@ -1,5 +1,7 @@
-import { CommandContext, CommandHandler, Interactor } from '@coday/model'
-import { AiHandler } from './openai/ai.handler'
+import { CommandHandler } from './command-handler'
+import { Interactor } from '@coday/model/interactor'
+import { AiHandler } from '@coday/handlers/openai'
+import { CommandContext } from './command-context'
 
 /**
  * FIXME: Handler not applicable anymore as functionality should be embedded inside ai.handler

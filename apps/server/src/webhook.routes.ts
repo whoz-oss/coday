@@ -3,9 +3,9 @@ import { debugLog } from './log'
 import { WebhookService, Webhook } from '@coday/service/webhook.service'
 import { ThreadCodayManager } from './thread-coday-manager'
 import { ThreadService } from './services/thread.service'
-import { CodayOptions } from '@coday/options'
+import { CodayOptions } from '@coday/model/options'
 import { CodayLogger } from '@coday/service/coday-logger'
-import { CodayEvent, MessageEvent } from '@coday/coday-events'
+import { CodayEvent, MessageEvent } from '@coday/model/coday-events'
 import { filter } from 'rxjs'
 
 /**

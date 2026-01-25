@@ -1,6 +1,4 @@
-import { Agent, AiClient, AiModel, AiProviderConfig, CompletionOptions, Interactor } from '@coday/model'
 import Anthropic from '@anthropic-ai/sdk'
-import { ToolSet } from '@coday/integration/tool-set'
 import {
   CodayEvent,
   ErrorEvent,
@@ -9,11 +7,15 @@ import {
   TextChunkEvent,
   ToolRequestEvent,
   ToolResponseEvent,
-} from '@coday/coday-events'
+} from '@coday/model/coday-events'
 import { Observable, of, Subject } from 'rxjs'
-import { AiThread } from '@coday/ai-thread'
-import { ThreadMessage } from '@coday/ai-thread/ai-thread.types'
+import { AiThread, ThreadMessage } from '@coday/ai-thread'
 import { CodayLogger } from '@coday/service/coday-logger'
+import { ToolSet } from '@coday/model/integration-tool-set'
+import { AiModel } from '@coday/model/ai-model'
+import { Interactor } from '@coday/model/interactor'
+import { AiProviderConfig } from '@coday/model/ai-provider-config'
+import { Agent, AiClient, CompletionOptions } from '@coday/agent'
 
 interface RateLimitInfo {
   inputTokensRemaining: number
@@ -681,7 +683,7 @@ export class AnthropicClient extends AiClient {
    * Note: 429 errors are now handled locally in processThread, so this method
    * focuses on other error types and provides Anthropic-specific context.
    */
-  protected handleError(error: unknown, subscriber: Subject<CodayEvent>, providerName: string): void {
+  protected override handleError(error: unknown, subscriber: Subject<CodayEvent>, providerName: string): void {
     // Use the parent implementation for all errors
     // 429 errors are handled locally in processThread before reaching here
     super.handleError(error, subscriber, providerName)

@@ -19,7 +19,7 @@ import {
   ToolRequestEvent,
   ToolResponseEvent,
   WarnEvent,
-} from '@coday/coday-events'
+} from '@coday/model/coday-events'
 
 import { EventStreamService } from './event-stream.service'
 import { MessageApiService } from './message-api.service'

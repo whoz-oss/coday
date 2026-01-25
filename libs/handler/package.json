@@ -9,7 +9,6 @@
     "@anthropic-ai/sdk": "catalog:",
     "@coday/agent": "workspace:*",
     "@coday/ai-thread": "workspace:*",
-    "@coday/coday-events": "workspace:*",
     "@coday/coday-services": "workspace:*",
     "@coday/function": "workspace:*",
     "@coday/integration": "workspace:*",

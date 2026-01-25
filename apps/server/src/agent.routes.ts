@@ -1,7 +1,7 @@
 import express from 'express'
 import { debugLog } from './log'
 import { AgentService } from '@coday/agent/agent.service'
-import { CommandContext } from '@coday/model/command-context'
+import { CommandContext } from '@coday/handler'
 import { ProjectService } from './services/project.service'
 import { ServerInteractor } from '@coday/model/server-interactor'
 import { UserService } from '@coday/service/user.service'
@@ -16,7 +16,7 @@ import { McpInstancePool } from '@coday/integration/mcp/mcp-instance-pool'
 import { CodayLogger } from '@coday/service/coday-logger'
 import { WebhookService } from '@coday/service/webhook.service'
 import { ThreadService } from './services/thread.service'
-import { CodayOptions } from '@coday/options'
+import { CodayOptions } from '@coday/model/options'
 import { loadOrInitProjectDescription } from '@coday/service/load-or-init-project-description'
 
 /**

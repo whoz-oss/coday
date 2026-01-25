@@ -19,7 +19,7 @@ export default {
 
   // Module name mapping
   moduleNameMapper: {
-    '^@coday/coday-events$': '<rootDir>/libs/coday-events/src/index.ts',
+    '^@coday/model/coday-events$': '<rootDir>/libs/coday-events/src/index.ts',
     '^@coday/service/(.*)$': '<rootDir>/libs/service/$1',
     '^@coday/utils/(.*)$': '<rootDir>/libs/utils/$1',
   },

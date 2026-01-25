@@ -1,8 +1,10 @@
-import { CommandContext, CommandHandler, IntegrationLocalConfig, Interactor } from '@coday/model'
+import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
+import { Interactor } from '@coday/model/interactor'
 import { IntegrationConfigService } from '@coday/service/integration-config.service'
-import { IntegrationConfig, ConcreteIntegrations } from '@coday/model'
 import { ConfigLevel } from '@coday/model/config-level'
-import { parseArgs } from '../parse-args'
+import { ConcreteIntegrations } from '@coday/model/integrations'
+import { IntegrationConfig } from '@coday/model/integration-config'
+import { IntegrationLocalConfig } from '@coday/model/project-local-config'
 
 const MASKED_VALUE = '********'
 
@@ -69,8 +71,8 @@ export class IntegrationEditHandler extends CommandHandler {
     const successMessage = `
 # ✅ Updated Integration Configuration
 
-**Integration:** ${selectedIntegration}  
-**Level:** ${levelName}  
+**Integration:** ${selectedIntegration}
+**Level:** ${levelName}
 **Status:** Successfully updated
 `
     this.interactor.displayText(successMessage)
@@ -171,14 +173,14 @@ export class IntegrationEditHandler extends CommandHandler {
     const contextMessage = `
 # Editing Integration Configuration
 
-**Integration:** ${integrationName}  
-**Level:** ${levelName}  
+**Integration:** ${integrationName}
+**Level:** ${levelName}
 
 ## Current Context
 
 The following shows current values at different levels:
 - **PROJECT level**: Values from project configuration
-- **USER level**: Values from user configuration  
+- **USER level**: Values from user configuration
 - **MERGED**: Final effective values after merging
 `
     this.interactor.displayText(contextMessage)

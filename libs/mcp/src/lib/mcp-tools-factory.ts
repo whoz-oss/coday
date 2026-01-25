@@ -1,11 +1,13 @@
-import { AssistantToolFactory, CodayTool } from '../assistant-tool-factory'
-import { CommandContext, McpServerConfig } from '@coday/model'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { ResourceTemplate, ToolInfo } from './types'
 import { ChildProcess, spawn } from 'child_process'
 import { ServerInteractor } from '@coday/model/server-interactor'
+import { AssistantToolFactory } from '@coday/integration/assistant-tool-factory'
+import { CodayTool } from '@coday/model/coday-tool'
+import { McpServerConfig } from '@coday/model/mcp-server-config'
+import { CommandContext } from '@coday/handler'
 
 const MCP_CONNECT_TIMEOUT = 15000 // in ms
 

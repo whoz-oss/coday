@@ -1,9 +1,8 @@
-import { AiProviderType, CommandContext, CommandHandler } from '@coday/model'
-import { parseArgs } from '../parse-args'
+import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
 import { Interactor } from '@coday/model/interactor'
-import { CodayServices } from '../../coday-services'
+import { CodayServices } from '@coday/coday-services'
 import { ConfigLevel } from '@coday/model/config-level'
-import { AiProviderConfig } from '@coday/model/ai-provider-config'
+import { AiProviderConfig, AiProviderType } from '@coday/model/ai-provider-config'
 
 /**
  * Handler for editing an existing AI provider configuration (not models).

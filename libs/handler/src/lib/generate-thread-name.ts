@@ -1,6 +1,6 @@
+import { MessageEvent } from '@coday/model/coday-events'
 import { AiThread } from '@coday/ai-thread'
-import { Agent } from '@coday/model'
-import { MessageEvent } from '@coday/coday-events'
+import { Agent } from '@coday/agent'
 
 export async function generateThreadName(thread: AiThread, agent: Agent): Promise<string> {
   // Extract context from first few user messages

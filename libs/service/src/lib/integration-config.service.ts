@@ -1,8 +1,9 @@
 import { Interactor } from '@coday/model/interactor'
 import { UserService } from './user.service'
 import { ProjectStateService } from './project-state.service'
-import { IntegrationConfig, IntegrationLocalConfig } from '@coday/model'
 import { ConfigLevel, ConfigLevelValidator } from '@coday/model/config-level'
+import { IntegrationLocalConfig } from '@coday/model/project-local-config'
+import { IntegrationConfig } from '@coday/model/integration-config'
 
 const MASKED_VALUE = '********'
 

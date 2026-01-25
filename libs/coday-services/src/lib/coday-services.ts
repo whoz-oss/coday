@@ -10,7 +10,7 @@ import type {
   WebhookService,
 } from '@coday/service'
 import type { McpInstancePool } from '@coday/mcp/src'
-import type { CodayOptions } from '@coday/options'
+import type { CodayOptions } from '@coday/model/options'
 import type { AgentService } from '@coday/agent'
 import type { ThreadService } from 'apps/server/src/services/thread.service'
 
