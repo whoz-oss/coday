@@ -1,0 +1,26 @@
+{
+  "name": "keywords",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/keywords",
+  "tags": [
+    "scope:libs",
+    "type:core"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "libs/keywords/dist",
+        "main": "libs/keywords/index.ts",
+        "tsConfig": "libs/keywords/tsconfig.lib.json",
+        "assets": [
+          "libs/keywords/*.md"
+        ]
+      }
+    }
+  }
+}

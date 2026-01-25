@@ -1,7 +1,7 @@
-import { CommandContext, CommandHandler, Interactor } from '../@coday/model'
-import { McpConfigService } from '../@coday/service/mcp-config.service'
-import { McpServerConfig } from '../@coday/model/mcp-server-config'
-import { ConfigLevel } from '../@coday/model/config-level'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
+import { McpConfigService } from '@coday/service/mcp-config.service'
+import { McpServerConfig } from '@coday/model/mcp-server-config'
+import { ConfigLevel } from '@coday/model/config-level'
 import { formatMcpConfig, sanitizeMcpServerConfig } from './helpers'
 import { parseArgs } from '../../parse-args'
 

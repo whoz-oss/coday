@@ -24,12 +24,14 @@
       "@coday/coday-services": ["libs/coday-services.ts"],
       "@coday/core": ["libs/coday.ts"],
       "@coday/function/*": ["libs/function/*"],
+      "@coday/handler/*": ["libs/handler/*"],
       "@coday/integration/*": ["libs/integration/*"],
       "@coday/model": ["libs/model/index.ts"],
       "@coday/model/*": ["libs/model/*"],
       "@coday/options": ["libs/options.ts"],
       "@coday/repository/*": ["libs/repository/*"],
-      "@coday/service/*": ["libs/service/*"]
+      "@coday/service/*": ["libs/service/*"],
+      "@coday/utils/*": ["libs/utils/*"]
     },
     "skipDefaultLibCheck": true,
     "skipLibCheck": true,

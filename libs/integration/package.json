@@ -6,6 +6,11 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
+    "@coday/agent": "workspace:*",
+    "@coday/coday-events": "workspace:*",
+    "@coday/function": "workspace:*",
+    "@coday/model": "workspace:*",
+    "@coday/utils": "workspace:*",
     "@modelcontextprotocol/sdk": "catalog:",
     "axios": "catalog:",
     "rxjs": "catalog:",

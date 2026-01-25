@@ -1,7 +1,7 @@
-import { CommandContext, CommandHandler, Interactor } from '../@coday/model'
-import { McpConfigService } from '../@coday/service/mcp-config.service'
-import { McpServerConfig } from '../@coday/model/mcp-server-config'
-import { ConfigLevel } from '../@coday/model/config-level'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
+import { McpConfigService } from '@coday/service/mcp-config.service'
+import { McpServerConfig } from '@coday/model/mcp-server-config'
+import { ConfigLevel } from '@coday/model/config-level'
 import { parseArgs } from '../../parse-args'
 import { cleanServerConfig, formatMcpConfig, getMcpConfigNameAndId, sanitizeMcpServerConfig } from './helpers'
 
@@ -141,8 +141,8 @@ ${formatMcpConfig(updatedSanitized)}
       const message = `
 # Editing Configuration
 
-**Server:** ${selected.config.name} (${selected.config.id})  
-**Level:** ${targetLevel.toLowerCase()}  
+**Server:** ${selected.config.name} (${selected.config.id})
+**Level:** ${targetLevel.toLowerCase()}
 **Action:** Direct edit
 `
       this.interactor.displayText(message)
@@ -152,9 +152,9 @@ ${formatMcpConfig(updatedSanitized)}
       const message = `
 # Cloning Configuration
 
-**Server:** "${selected.config.name}"  
-**From:** ${selected.sourceLevel.toLowerCase()} level  
-**To:** ${targetLevel.toLowerCase()} level  
+**Server:** "${selected.config.name}"
+**From:** ${selected.sourceLevel.toLowerCase()} level
+**To:** ${targetLevel.toLowerCase()} level
 **Action:** Creating ${targetLevel.toLowerCase()}-level override
 `
       this.interactor.displayText(message)
@@ -188,8 +188,8 @@ ${formatMcpConfig(updatedSanitized)}
       const fixedMessage = `
 ## Fixed Configuration
 
-**ID:** \`${config.id}\` (fixed)  
-**Name:** \`${config.name}\` (fixed)  
+**ID:** \`${config.id}\` (fixed)
+**Name:** \`${config.name}\` (fixed)
 
 These values are fixed for new configurations. Continuing with other settings...
 `

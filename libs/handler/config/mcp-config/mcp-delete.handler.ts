@@ -1,7 +1,7 @@
-import { CommandContext, CommandHandler, Interactor } from '../@coday/model'
-import { McpConfigService } from '../@coday/service/mcp-config.service'
-import { McpServerConfig } from '../@coday/model/mcp-server-config'
-import { ConfigLevel } from '../@coday/model/config-level'
+import { CommandContext, CommandHandler, Interactor } from '@coday/model'
+import { McpConfigService } from '@coday/service/mcp-config.service'
+import { McpServerConfig } from '@coday/model/mcp-server-config'
+import { ConfigLevel } from '@coday/model/config-level'
 import { parseArgs } from '../../parse-args'
 import { getMcpConfigNameAndId } from './helpers'
 
@@ -74,9 +74,9 @@ export class McpDeleteHandler extends CommandHandler {
     const confirmMessage = `
 # ⚠️ Confirm Deletion
 
-**Server:** ${serverConfig.name}  
-**ID:** \`${serverConfig.id}\`  
-**Level:** ${levelName}  
+**Server:** ${serverConfig.name}
+**ID:** \`${serverConfig.id}\`
+**Level:** ${levelName}
 
 Are you sure you want to delete this MCP server configuration?
 `
@@ -97,9 +97,9 @@ Are you sure you want to delete this MCP server configuration?
     const successMessage = `
 # ✅ Server Deleted
 
-**Server:** ${serverConfig.name}  
-**ID:** \`${serverConfig.id}\`  
-**Level:** ${levelName}  
+**Server:** ${serverConfig.name}
+**ID:** \`${serverConfig.id}\`
+**Level:** ${levelName}
 **Status:** Successfully removed from configuration
 `
     this.interactor.displayText(successMessage)
