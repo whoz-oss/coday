@@ -1,0 +1,16 @@
+{
+  "name": "@coday/memory",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "@coday/model": "workspace:*",
+    "@coday/service": "workspace:*",
+    "tslib": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:dev"
+  }
+}

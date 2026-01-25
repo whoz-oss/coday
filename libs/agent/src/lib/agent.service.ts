@@ -1,22 +1,18 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'yaml'
-import { AiClientProvider } from '@coday/integration/ai/ai-client-provider'
+import { AiClientProvider } from '@coday/integrations/ai'
 import { Toolbox } from '@coday/integration/toolbox'
-import {
-  Agent,
-  AgentDefinition,
-  AgentSummary,
-  CodayAgentDefinition,
-  CommandContext,
-  Interactor,
-  Killable,
-} from '@coday/model'
-import { CodayServices } from '../coday-services'
 import { ToolSet } from '@coday/integration/tool-set'
 import { getFormattedDocs } from '@coday/function/get-formatted-docs'
 import { MemoryLevel } from '@coday/model/memory'
 import { findFilesByName } from '@coday/function/find-files-by-name'
+import { Killable } from '@coday/model/killable'
+import { CodayServices } from '@coday/coday-services'
+import { AgentDefinition, CodayAgentDefinition } from '@coday/model/agent-definition'
+import { Interactor } from '@coday/model/interactor'
+import { CommandContext } from '@coday/model/command-context'
+import { Agent } from './agent'
 
 export class AgentService implements Killable {
   private agentCache: Map<string, Agent> = new Map()
