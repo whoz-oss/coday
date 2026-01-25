@@ -15,7 +15,7 @@
       ],
       "options": {
         "outputPath": "libs/coday-services/dist",
-        "main": "libs/coday-services/index.ts",
+        "main": "libs/coday-services/src/index.ts",
         "tsConfig": "libs/coday-services/tsconfig.lib.json",
         "assets": [
           "libs/coday-services/*.md"
