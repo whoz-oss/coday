@@ -15,7 +15,7 @@
       ],
       "options": {
         "outputPath": "libs/handler-looper/dist",
-        "main": "libs/handler-looper/index.ts",
+        "main": "libs/handler-looper/src/index.ts",
         "tsConfig": "libs/handler-looper/tsconfig.lib.json",
         "assets": [
           "libs/handler-looper/*.md"

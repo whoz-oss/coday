@@ -3,16 +3,23 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "library",
   "sourceRoot": "libs/model",
-  "tags": ["scope:libs", "type:model"],
+  "tags": [
+    "scope:libs",
+    "type:model"
+  ],
   "targets": {
     "build": {
       "executor": "@nx/js:tsc",
-      "outputs": ["{options.outputPath}"],
+      "outputs": [
+        "{options.outputPath}"
+      ],
       "options": {
         "outputPath": "{projectRoot}/dist",
-        "main": "libs/model/index.ts",
+        "main": "libs/model/src/index.ts",
         "tsConfig": "libs/model/tsconfig.lib.json",
-        "assets": ["libs/model/*.md"]
+        "assets": [
+          "libs/model/*.md"
+        ]
       }
     }
   }
