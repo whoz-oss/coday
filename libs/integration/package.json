@@ -7,12 +7,15 @@
   "types": "./src/index.d.ts",
   "dependencies": {
     "@coday/agent": "workspace:*",
+    "@coday/ai-thread": "workspace:*",
     "@coday/coday-events": "workspace:*",
     "@coday/function": "workspace:*",
+    "@coday/handler": "workspace:*",
     "@coday/model": "workspace:*",
-    "@coday/utils": "workspace:*",
+    "@coday/service": "workspace:*",
     "@modelcontextprotocol/sdk": "catalog:",
     "axios": "catalog:",
+    "oauth4webapi": "catalog:",
     "rxjs": "catalog:",
     "tslib": "catalog:",
     "turndown": "catalog:"
