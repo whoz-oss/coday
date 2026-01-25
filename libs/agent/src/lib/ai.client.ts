@@ -4,17 +4,16 @@ import {
   ErrorEvent,
   MessageEvent,
   SummaryEvent,
+  TextContent,
   ToolRequestEvent,
   ToolResponseEvent,
-} from '@coday/coday-events'
+} from '@coday/model/coday-events'
 import { Agent } from './agent'
-import { AiThread } from '@coday/ai-thread'
-import { RunStatus, ThreadMessage } from '@coday/ai-thread/ai-thread.types'
-import { Interactor } from './interactor'
-import { AiModel } from './ai-model'
-import { AiProviderConfig } from './ai-provider-config'
+import { AiThread, RunStatus, ThreadMessage } from '@coday/ai-thread'
 import { CodayLogger } from '@coday/service/coday-logger'
-import { TextContent } from '../coday-events'
+import { AiModel } from '@coday/model/ai-model'
+import { Interactor } from '@coday/model/interactor'
+import { AiProviderConfig } from '@coday/model/ai-provider-config'
 
 export interface CompletionOptions {
   model?: string

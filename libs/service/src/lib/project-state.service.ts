@@ -5,7 +5,6 @@ import { BehaviorSubject, Observable } from 'rxjs'
 import { Interactor, ProjectLocalConfig, SelectedProject } from '@coday/model'
 import { writeYamlFile } from './write-yaml-file'
 import { ConfigMaskingService } from './config-masking.service'
-import { ProjectService } from '../../apps/server/src/services/project.service'
 
 const PROJECTS = 'projects'
 const PROJECT_FILENAME = 'project.yaml'

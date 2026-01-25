@@ -1,4 +1,4 @@
-import { Interactor } from '@coday/model'
+import { Interactor } from '@coday/model/interactor'
 
 /**
  * Add an internal note to a Jira ticket using the Jira REST API

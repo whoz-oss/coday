@@ -1,9 +1,10 @@
-import { CommandContext, CommandHandler, Interactor } from '@coday/model'
+import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
+import { Interactor } from '@coday/model/interactor'
 import { IntegrationConfigService } from '@coday/service/integration-config.service'
-import { IntegrationConfig, ConcreteIntegrations } from '@coday/model'
+import { IntegrationEditHandler } from '@coday/handlers/config'
 import { ConfigLevel } from '@coday/model/config-level'
-import { parseArgs } from '../parse-args'
-import { IntegrationEditHandler } from './integration-edit.handler'
+import { ConcreteIntegrations } from '@coday/model/integrations'
+import { IntegrationConfig } from '@coday/model/integration-config'
 
 /**
  * Handler for adding a new integration configuration.
@@ -65,8 +66,8 @@ export class IntegrationAddHandler extends CommandHandler {
     const successMessage = `
 # ✅ Integration Created
 
-**Integration:** ${selectedIntegration}  
-**Level:** ${levelName}  
+**Integration:** ${selectedIntegration}
+**Level:** ${levelName}
 **Status:** Default configuration created
 
 Now completing the configuration...

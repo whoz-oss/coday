@@ -8,7 +8,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "catalog:",
     "@coday/ai-thread": "workspace:*",
-    "@coday/coday-events": "workspace:*",
     "@coday/function": "workspace:*",
     "@coday/integration": "workspace:*",
     "@coday/model": "workspace:*",

@@ -4,7 +4,7 @@ import { filter } from 'rxjs/operators'
 
 import { FileExchangeApiService, FileInfo } from './file-exchange-api.service'
 import { EventStreamService } from './event-stream.service'
-import { FileEvent } from '@coday/coday-events'
+import { FileEvent } from '@coday/model/coday-events'
 
 /**
  * FileExchangeStateService - Business logic and state management for file exchange

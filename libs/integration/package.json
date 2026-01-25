@@ -7,7 +7,6 @@
   "types": "./src/index.d.ts",
   "dependencies": {
     "@coday/ai-thread": "workspace:*",
-    "@coday/coday-events": "workspace:*",
     "@coday/function": "workspace:*",
     "@coday/handler": "workspace:*",
     "@coday/model": "workspace:*",

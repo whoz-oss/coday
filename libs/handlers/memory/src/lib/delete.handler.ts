@@ -1,7 +1,7 @@
-import { CommandContext, CommandHandler, Interactor } from '@coday/model'
+import { Interactor } from '@coday/model/interactor'
+import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
 import { MemoryService } from '@coday/service/memory.service'
 import { Memory, MemoryLevel } from '@coday/model/memory'
-import { parseArgs } from '../parse-args'
 
 export class MemoryDeleteHandler extends CommandHandler {
   constructor(

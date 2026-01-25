@@ -1,5 +1,5 @@
 import * as path from 'path'
-import { CommandContext } from '@coday/model'
+import { CommandContext } from '@coday/handler'
 
 /**
  * File path prefixes for different file scopes

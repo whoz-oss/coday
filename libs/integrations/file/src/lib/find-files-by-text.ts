@@ -1,4 +1,4 @@
-import { Interactor } from '@coday/model'
+import { Interactor } from '@coday/model/interactor'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 

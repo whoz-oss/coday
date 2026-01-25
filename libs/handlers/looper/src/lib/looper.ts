@@ -1,22 +1,22 @@
 import {
   AddQueryHandler,
   CodayPromptChains,
+  CommandContext,
+  CommandHandler,
   DebugHandler,
   FileMapHandler,
-  MemoryHandler,
   PromptChainHandler,
   RunBashHandler,
 } from '@coday/handler'
-import { CommandHandler } from '@coday/model/command.handler'
 import { Interactor } from '@coday/model/interactor'
 import { AiHandler } from '@coday/handlers/openai'
 import { ConfigHandler } from '@coday/handlers/config'
 import { CodayServices } from '@coday/coday-services'
 import { ProjectDescription } from '@coday/model/project-description'
+import { MemoryHandler } from '@coday/handlers/memory'
 import { LoadHandler } from '@coday/handlers/load'
 import { StatsHandler } from '@coday/handlers/stats'
 import { PromptChain } from '@coday/model/prompt-chain'
-import { CommandContext } from '@coday/model/command-context'
 import { RunStatus } from '@coday/ai-thread'
 
 const MAX_ITERATIONS = 100

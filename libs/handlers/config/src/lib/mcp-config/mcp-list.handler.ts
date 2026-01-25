@@ -1,9 +1,9 @@
-import { CommandContext, CommandHandler, Interactor } from '@coday/model'
+import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
+import { Interactor } from '@coday/model/interactor'
 import { McpConfigService } from '@coday/service/mcp-config.service'
-import { McpServerConfig } from '@coday/model/mcp-server-config'
 import { ConfigLevel } from '@coday/model/config-level'
-import { formatMcpConfig, sanitizeMcpServerConfig } from './helpers'
-import { parseArgs } from '../../parse-args'
+import { McpServerConfig } from '@coday/model/mcp-server-config'
+import { formatMcpConfig, sanitizeMcpServerConfig } from '@coday/handlers/config/mcp-config/helpers'
 
 export class McpListHandler extends CommandHandler {
   constructor(

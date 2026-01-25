@@ -1,12 +1,12 @@
-import { keywords } from '../../keywords'
-import { Agent, CommandContext, CommandHandler, Interactor, Killable } from '@coday/model'
 import { lastValueFrom, Observable } from 'rxjs'
-import { CodayEvent } from '@coday/coday-events'
-import { AgentService } from '@coday/agent'
+import { CodayEvent } from '@coday/model/coday-events'
+import { Agent, AgentService } from '@coday/agent'
 import { parseAgentCommand } from './parseAgentCommand'
-import { ThreadStateService } from '@coday/ai-thread/thread-state.service'
-import { AiThread } from '@coday/ai-thread'
-import { generateThreadName } from '../generate-thread-name'
+import { AiThread, ThreadStateService } from '@coday/ai-thread'
+import { keywords } from '@coday/model/keywords'
+import { CommandContext, CommandHandler, generateThreadName } from '@coday/handler'
+import { Killable } from '@coday/model/killable'
+import { Interactor } from '@coday/model/interactor'
 
 export class AiHandler extends CommandHandler implements Killable {
   constructor(
@@ -109,12 +109,12 @@ export class AiHandler extends CommandHandler implements Killable {
     await this.checkAndAutoSave(context.aiThread!, agent)
 
     events.subscribe({
-      next: (event) => {
+      next: (event: any) => {
         this.interactor.sendEvent(event)
         // MessageEvent is now handled directly by the frontend
         // No need to convert to TextEvent - this would cause duplication
       },
-      error: (error) => {
+      error: (error: any) => {
         if (error.message === 'Processing interrupted by user request') {
           this.interactor.debug('Processing stopped gracefully')
         } else {

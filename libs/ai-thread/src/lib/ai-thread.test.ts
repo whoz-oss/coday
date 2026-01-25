@@ -1,4 +1,4 @@
-import { MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/coday-events'
+import { MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/model/coday-events'
 import { ToolCall, ToolResponse } from '@coday/integration/tool-call'
 import { AiThread } from './ai-thread'
 

@@ -1,6 +1,6 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import { Interactor } from '@coday/model'
+import { Interactor } from '@coday/model/interactor'
 import { FileContent } from '@coday/model/file-content'
 import PDFParser from 'pdf2json'
 

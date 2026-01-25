@@ -1,4 +1,4 @@
-import { AnswerEvent } from '@coday/coday-events'
+import { AnswerEvent } from './coday-events'
 import { Interactor } from './interactor'
 
 export class ServerInteractor extends Interactor {
@@ -11,7 +11,7 @@ export class ServerInteractor extends Interactor {
     this.sendEvent(answerEvent)
   }
 
-  kill() {
+  override kill() {
     console.log(`Interactor for clientId ${this.clientId} killed`)
     super.kill()
   }

@@ -1,10 +1,14 @@
-import { AssistantToolFactory, CodayTool } from './assistant-tool-factory'
+import { CodayServices } from '@coday/coday-services'
 import { Killable } from '@coday/model/killable'
+import { AssistantToolFactory } from '@coday/integration/assistant-tool-factory'
 import { McpServerConfig } from '@coday/model/mcp-server-config'
+import { CodayTool } from '@coday/model/coday-tool'
 import { Interactor } from '@coday/model/interactor'
-import { CoreTools } from './core.tools'
-import { ProjectScriptsTools } from './projectScriptsTools'
-import { MemoryTools } from './memory.tools'
+import { AgentService } from '@coday/agent'
+import { CoreTools } from '@coday/integration/core.tools'
+import { AiTools, DelegateTools } from '@coday/integrations/ai'
+import { ProjectScriptsTools } from '@coday/integration/projectScriptsTools'
+import { MemoryTools } from '@coday/integration/memory.tools'
 
 export class Toolbox implements Killable {
   private readonly toolFactories: AssistantToolFactory[]

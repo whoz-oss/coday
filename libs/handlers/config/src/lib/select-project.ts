@@ -1,7 +1,8 @@
-import { CommandContext, Interactor } from '@coday/model'
-import { loadOrInitProjectDescription } from '@coday/service/load-or-init-project-description'
-import { CodayServices } from '../../coday-services'
+import { Interactor } from '@coday/model/interactor'
+import { CodayServices } from '@coday/coday-services'
+import { CommandContext } from '@coday/handler'
 import { UserData } from '@coday/model/user-data'
+import { loadOrInitProjectDescription } from '@coday/service/load-or-init-project-description'
 
 export async function buildFirstCommandContext(
   interactor: Interactor,
