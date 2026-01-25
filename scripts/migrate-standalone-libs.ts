@@ -9,8 +9,8 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { execSync } from 'child_process'
 
-const LIBS_DIR = path.join(process.cwd(), '../libs')
-const TSCONFIG_BASE = path.join(process.cwd(), '../tsconfig.base.json')
+const LIBS_DIR = path.join(process.cwd(), 'libs')
+const TSCONFIG_BASE = path.join(process.cwd(), 'tsconfig.base.json')
 
 interface StandaloneLib {
   libName: string
@@ -98,7 +98,7 @@ function createNxLibrary(lib: StandaloneLib): void {
         outputs: ['{options.outputPath}'],
         options: {
           outputPath: `libs/${lib.libName}/dist`,
-          main: `libs/${lib.libName}/index.ts`,
+          main: `libs/${lib.libName}/src/index.ts`,
           tsConfig: `libs/${lib.libName}/tsconfig.lib.json`,
           assets: [`libs/${lib.libName}/*.md`],
         },
@@ -108,13 +108,6 @@ function createNxLibrary(lib: StandaloneLib): void {
 
   fs.writeFileSync(path.join(lib.libPath, 'project.json'), JSON.stringify(projectJson, null, 2) + '\n')
   console.log(`  Created project.json`)
-
-  // Create index.ts barrel export if it doesn't exist
-  const indexPath = path.join(lib.libPath, 'index.ts')
-  if (!fs.existsSync(indexPath)) {
-    fs.writeFileSync(indexPath, `export * from './src/index';\n`)
-    console.log(`  Created index.ts`)
-  }
 
   // Create tsconfig.lib.json
   const tsconfigLib = {
@@ -452,19 +445,27 @@ function main() {
 
   if (standaloneLibs.length === 0) {
     console.log('No standalone libs found. All libs are already Nx libraries!')
-    return
+  } else {
+    console.log(`Found ${standaloneLibs.length} standalone lib(s) to migrate:`)
+    standaloneLibs.forEach((lib) => console.log(`  - ${lib.libName} -> ${lib.packageName}`))
+
+    // Step 1: Create Nx library structure for each standalone lib
+    for (const lib of standaloneLibs) {
+      createNxLibrary(lib)
+      createPackageJson(lib)
+    }
+
+    // Step 2: Update tsconfig.base.json paths
+    updateTsconfigPaths(standaloneLibs)
+
+    // Step 3: Update all imports across the project
+    updateAllImports(standaloneLibs)
+
+    // Step 4: Update Nx graph
+    updateNxGraph()
   }
 
-  console.log(`Found ${standaloneLibs.length} standalone lib(s) to migrate:`)
-  standaloneLibs.forEach((lib) => console.log(`  - ${lib.libName} -> ${lib.packageName}`))
-
-  // Step 1: Create Nx library structure for each standalone lib
-  for (const lib of standaloneLibs) {
-    createNxLibrary(lib)
-    createPackageJson(lib)
-  }
-
-  // Step 1.5: Check existing Nx libs for missing package.json
+  // Step 5: Check existing Nx libs for missing package.json
   console.log('\nChecking existing Nx libraries for missing package.json...')
   const allLibs = fs
     .readdirSync(LIBS_DIR, { withFileTypes: true })
@@ -494,21 +495,11 @@ function main() {
     console.log(`  Created ${createdCount} package.json file(s)`)
   }
 
-  // Step 2: Update tsconfig.base.json paths
-  updateTsconfigPaths(standaloneLibs)
-
-  // Step 3: Update all imports across the project
-  updateAllImports(standaloneLibs)
-
-  // Step 4: Update Nx graph
-  updateNxGraph()
-
   console.log('\nMigration complete!')
   console.log('\nNext steps:')
-  console.log('  1. Run: tsx scripts/generate-lib-packages.ts')
-  console.log('  2. Run: pnpm install')
-  console.log('  3. Verify: nx graph')
-  console.log('  4. Test: nx run-many -t build')
+  console.log('  1. Run: pnpm install')
+  console.log('  2. Verify: nx graph')
+  console.log('  3. Test: nx run-many -t build')
 }
 
 main()
