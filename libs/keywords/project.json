@@ -15,7 +15,7 @@
       ],
       "options": {
         "outputPath": "libs/keywords/dist",
-        "main": "libs/keywords/index.ts",
+        "main": "libs/keywords/src/index.ts",
         "tsConfig": "libs/keywords/tsconfig.lib.json",
         "assets": [
           "libs/keywords/*.md"

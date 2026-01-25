@@ -3,16 +3,23 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "library",
   "sourceRoot": "libs/agent",
-  "tags": ["scope:libs", "type:service"],
+  "tags": [
+    "scope:libs",
+    "type:service"
+  ],
   "targets": {
     "build": {
       "executor": "@nx/js:tsc",
-      "outputs": ["{options.outputPath}"],
+      "outputs": [
+        "{options.outputPath}"
+      ],
       "options": {
         "outputPath": "{projectRoot}/dist",
-        "main": "libs/agent/index.ts",
+        "main": "libs/agent/src/index.ts",
         "tsConfig": "libs/agent/tsconfig.lib.json",
-        "assets": ["libs/agent/*.md"]
+        "assets": [
+          "libs/agent/*.md"
+        ]
       }
     }
   }

@@ -3,16 +3,23 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "library",
   "sourceRoot": "libs/handler",
-  "tags": ["scope:libs", "type:handler"],
+  "tags": [
+    "scope:libs",
+    "type:handler"
+  ],
   "targets": {
     "build": {
       "executor": "@nx/js:tsc",
-      "outputs": ["{options.outputPath}"],
+      "outputs": [
+        "{options.outputPath}"
+      ],
       "options": {
         "outputPath": "{projectRoot}/dist",
-        "main": "libs/handler/index.ts",
+        "main": "libs/handler/src/index.ts",
         "tsConfig": "libs/handler/tsconfig.lib.json",
-        "assets": ["libs/handler/*.md"]
+        "assets": [
+          "libs/handler/*.md"
+        ]
       }
     }
   }

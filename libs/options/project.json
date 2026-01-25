@@ -15,7 +15,7 @@
       ],
       "options": {
         "outputPath": "libs/options/dist",
-        "main": "libs/options/index.ts",
+        "main": "libs/options/src/index.ts",
         "tsConfig": "libs/options/tsconfig.lib.json",
         "assets": [
           "libs/options/*.md"

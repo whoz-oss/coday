@@ -1,18 +1,22 @@
 {
   "name": "coday-events",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "libs/coday-events/src",
+  "sourceRoot": "libs/coday-events",
   "projectType": "library",
   "tags": [],
   "targets": {
     "build": {
       "executor": "@nx/js:tsc",
-      "outputs": ["{options.outputPath}"],
+      "outputs": [
+        "{options.outputPath}"
+      ],
       "options": {
         "outputPath": "{projectRoot}/dist",
         "main": "libs/coday-events/src/index.ts",
         "tsConfig": "libs/coday-events/tsconfig.lib.json",
-        "assets": ["libs/coday-events/*.md"]
+        "assets": [
+          "libs/coday-events/*.md"
+        ]
       }
     }
   }
