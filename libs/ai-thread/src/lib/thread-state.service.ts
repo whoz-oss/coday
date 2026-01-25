@@ -6,7 +6,7 @@
 
 import { BehaviorSubject, Observable } from 'rxjs'
 import { AiThread } from './ai-thread'
-// eslint-disable-next-line @nx/enforce-module-boundaries
+
 import { UserService } from '@coday/service/user.service'
 import { Killable } from '@coday/model/killable'
 import { Interactor } from '@coday/model/interactor'

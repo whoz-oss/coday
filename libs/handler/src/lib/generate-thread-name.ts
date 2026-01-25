@@ -1,4 +1,4 @@
-import { AiThread } from '@coday/ai-thread/ai-thread'
+import { AiThread } from '@coday/ai-thread'
 import { Agent } from '@coday/model'
 import { MessageEvent } from '@coday/coday-events'
 

@@ -1,6 +1,7 @@
-import { AssistantToolFactory, CodayTool } from './assistant-tool-factory'
-import { CommandContext, Interactor } from '../model'
-import { CodayServices } from '../coday-services'
+import { AssistantToolFactory } from './assistant-tool-factory'
+import { Interactor } from '@coday/model/interactor'
+import { CommandContext } from '@coday/model/command-context'
+import { CodayTool } from '@coday/model/coday-tool'
 
 export class CoreTools extends AssistantToolFactory {
   name = 'CORE'
