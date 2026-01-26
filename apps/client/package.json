@@ -17,7 +17,8 @@
     "@coday/model": "workspace:*",
     "dompurify": "catalog:",
     "marked": "catalog:",
-    "rxjs": "catalog:"
+    "rxjs": "catalog:",
+    "tslib": "catalog:"
   },
   "devDependencies": {
     "jest-preset-angular": "catalog:dev",

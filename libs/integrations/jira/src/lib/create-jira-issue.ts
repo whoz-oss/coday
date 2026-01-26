@@ -1,4 +1,4 @@
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 import { CreateJiraIssueRequest } from './jira'
 import axios from 'axios'
 

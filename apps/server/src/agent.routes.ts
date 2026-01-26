@@ -14,10 +14,10 @@ import { CodayLogger } from '@coday/service'
 import { WebhookService } from '@coday/service'
 import { CodayOptions } from '@coday/model'
 import { loadOrInitProjectDescription } from '@coday/service'
-import { ThreadService } from '@coday/service'
 import { McpInstancePool } from '@coday/mcp'
-import { AiClientProvider } from '@coday/integrations-ai'
 import { AgentService } from '@coday/agent'
+import { AiClientProvider } from '@coday/integrations-ai'
+import { ThreadService } from 'libs/service/src/lib/thread.service'
 
 /**
  * Agent Management REST API Routes

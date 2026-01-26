@@ -1,18 +1,16 @@
-import { UserService } from '@coday/service/user.service'
-import { AssistantToolFactory } from '@coday/integration/assistant-tool-factory'
+import { UserService } from '@coday/service'
+import { AssistantToolFactory } from '@coday/integration'
 import { BasecampOAuth } from './basecamp-oauth'
-import {
-  getBasecampMessage,
-  getBasecampMessageBoard,
-  getBasecampMessages,
-  listBasecampProjects,
-} from './basecamp.tools'
-import { Interactor } from '@coday/model/interactor'
-import { IntegrationService } from '@coday/service/integration.service'
-import { OAuthCallbackEvent } from '@coday/model/coday-events'
+import { Interactor } from '@coday/model'
+import { IntegrationService } from '@coday/service'
+import { OAuthCallbackEvent } from '@coday/model'
 import { CommandContext } from '@coday/handler'
-import { CodayTool } from '@coday/model/coday-tool'
-import { FunctionTool } from '@coday/model/integration-types'
+import { CodayTool } from '@coday/model'
+import { FunctionTool } from '@coday/model'
+import { listBasecampProjects } from './list-projects'
+import { getBasecampMessageBoard } from './get-message-board'
+import { getBasecampMessages } from './get-messages'
+import { getBasecampMessage } from './get-message'
 
 export class BasecampTools extends AssistantToolFactory {
   name = 'BASECAMP'

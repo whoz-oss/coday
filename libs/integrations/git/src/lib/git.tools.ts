@@ -1,10 +1,10 @@
-import { IntegrationService } from '@coday/service/integration.service'
-import { AssistantToolFactory } from '@coday/integration/assistant-tool-factory'
-import { Interactor } from '@coday/model/interactor'
+import { IntegrationService } from '@coday/service'
+import { AssistantToolFactory } from '@coday/integration'
+import { Interactor } from '@coday/model'
 import { CommandContext } from '@coday/handler'
-import { CodayTool } from '@coday/model/coday-tool'
+import { CodayTool } from '@coday/model'
 import { git } from './git'
-import { FunctionTool } from '@coday/model/integration-types'
+import { FunctionTool } from '@coday/model'
 
 export class GitTools extends AssistantToolFactory {
   name = 'GIT'

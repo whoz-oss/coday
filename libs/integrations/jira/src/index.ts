@@ -1,7 +1,5 @@
 export * from './lib/add-jira-comment'
-export * from './lib/add-jira-comment.test'
 export * from './lib/add-jira-internal-note'
-export * from './lib/add-jira-internal-note.test'
 export * from './lib/count-jira-issues'
 export * from './lib/create-jira-issue'
 export * from './lib/jira'

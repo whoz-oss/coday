@@ -1,5 +1,5 @@
-import { Interactor } from '@coday/model/interactor'
-import { runBash } from '@coday/function/run-bash'
+import { Interactor } from '@coday/model'
+import { runBash } from '@coday/function'
 
 const dangerKeywords = ['push', 'push -f', 'push --force', 'push --tags', 'reset', '&&']
 

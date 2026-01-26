@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 
 /**
  * Interfaces for Jira field data structures

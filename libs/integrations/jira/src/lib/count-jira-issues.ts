@@ -1,6 +1,6 @@
 import { generateJiraJQLUrl } from './jira.helpers'
 import axios from 'axios'
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 import { JiraCount } from './jira'
 
 export async function countJiraIssues(
