@@ -1,8 +1,8 @@
-import { ProjectRepository } from '@coday/repository/project.repository'
 import { ProjectLocalConfig } from '@coday/model/project-local-config'
 import { ConfigMaskingService } from '@coday/service/config-masking.service'
 import * as crypto from 'crypto'
 import * as path from 'path'
+import { ProjectRepository } from '@coday/repository'
 
 /**
  * Server-side project management service.

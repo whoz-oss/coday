@@ -1,6 +1,6 @@
 import express from 'express'
 import { debugLog } from './log'
-import { ProjectService } from './services/project.service'
+import { ProjectService } from '@coday/service/project.service'
 import { ProjectLocalConfig } from '@coday/model/project-local-config'
 
 /**

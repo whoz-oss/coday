@@ -3,10 +3,6 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "sourceRoot": "apps/server/src",
-  "implicitDependencies": [
-    "coday-events",
-    "ai-thread"
-  ],
   "tags": ["web-server"],
   "targets": {
     "build": {

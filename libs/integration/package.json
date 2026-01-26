@@ -9,6 +9,7 @@
     "@coday/ai-thread": "workspace:*",
     "@coday/function": "workspace:*",
     "@coday/handler": "workspace:*",
+    "@coday/mcp": "workspace:*",
     "@coday/model": "workspace:*",
     "@coday/service": "workspace:*",
     "@modelcontextprotocol/sdk": "catalog:",
