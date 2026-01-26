@@ -1,6 +1,6 @@
-import { runBash } from '@coday/function/run-bash'
+import { runBash } from '@coday/function'
 import { CommandHandler } from './command-handler'
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 import { CommandContext } from './command-context'
 
 export class RunBashHandler extends CommandHandler {

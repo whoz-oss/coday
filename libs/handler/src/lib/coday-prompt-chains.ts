@@ -1,4 +1,4 @@
-import { PromptChain } from '@coday/model/prompt-chain'
+import { PromptChain } from '@coday/model'
 
 export const CodayPromptChains: (PromptChain & { name: string })[] = [
   {

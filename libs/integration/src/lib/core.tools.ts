@@ -1,6 +1,6 @@
 import { AssistantToolFactory } from './assistant-tool-factory'
-import { Interactor } from '@coday/model/interactor'
-import { CodayTool } from '@coday/model/coday-tool'
+import { Interactor } from '@coday/model'
+import { CodayTool } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
 import { CommandContext } from '@coday/handler'
 

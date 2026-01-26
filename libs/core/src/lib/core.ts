@@ -1,22 +1,16 @@
 import * as path from 'path'
 import { CommandContext } from '@coday/handler'
-import { ConfigHandler } from '@coday/handlers/config'
-import { HandlerLooper } from '@coday/handlers/looper'
-import { AiHandler } from '@coday/handlers/openai'
+import { ConfigHandler } from '@coday/handlers-config'
+import { HandlerLooper } from '@coday/handlers-looper'
+import { AiHandler } from '@coday/handlers-openai'
 import { AiThread, RunStatus, ThreadMessage, ThreadStateService } from '@coday/ai-thread'
-import { AiClientProvider } from '@coday/integrations/ai'
-import { Interactor } from '@coday/model/interactor'
-import { CodayOptions } from '@coday/model/options'
+import { AiClientProvider } from '@coday/integrations-ai'
+import { Interactor } from '@coday/model'
+import { CodayOptions } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
-import {
-  InviteEventDefault,
-  MessageContent,
-  MessageEvent,
-  ToolRequestEvent,
-  ToolResponseEvent,
-} from '@coday/model/coday-events'
+import { InviteEventDefault, MessageContent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/model'
 import { AgentService } from '@coday/agent'
-import { AiConfigService } from '@coday/service/ai-config.service'
+import { AiConfigService } from '@coday/service'
 
 const MAX_ITERATIONS = 100
 

@@ -1,8 +1,8 @@
 import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
-import { ConfigLevel } from '@coday/model/config-level'
-import { AiModel } from '@coday/model/ai-model'
+import { ConfigLevel } from '@coday/model'
+import { AiModel } from '@coday/model'
 
 /**
  * Handler for editing a single model of a provider config at a precise level (default user).

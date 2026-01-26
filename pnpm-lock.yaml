@@ -473,7 +473,7 @@ importers:
       '@coday/handler':
         specifier: workspace:*
         version: link:../../libs/handler
-      '@coday/integrations/ai':
+      '@coday/integrations-ai':
         specifier: workspace:*
         version: link:../../libs/integrations/ai
       '@coday/mcp':
@@ -528,7 +528,7 @@ importers:
       '@coday/integration':
         specifier: workspace:*
         version: link:../integration
-      '@coday/integrations/ai':
+      '@coday/integrations-ai':
         specifier: workspace:*
         version: link:../integrations/ai
       '@coday/model':
@@ -615,16 +615,16 @@ importers:
       '@coday/handler':
         specifier: workspace:*
         version: link:../handler
-      '@coday/handlers/config':
+      '@coday/handlers-config':
         specifier: workspace:*
         version: link:../handlers/config
-      '@coday/handlers/looper':
+      '@coday/handlers-looper':
         specifier: workspace:*
         version: link:../handlers/looper
-      '@coday/handlers/openai':
+      '@coday/handlers-openai':
         specifier: workspace:*
         version: link:../handlers/openai
-      '@coday/integrations/ai':
+      '@coday/integrations-ai':
         specifier: workspace:*
         version: link:../integrations/ai
       '@coday/model':
@@ -683,6 +683,9 @@ importers:
       '@coday/function':
         specifier: workspace:*
         version: link:../function
+      '@coday/handlers-openai':
+        specifier: workspace:*
+        version: link:../handlers/openai
       '@coday/model':
         specifier: workspace:*
         version: link:../model
@@ -736,7 +739,7 @@ importers:
       '@coday/handler':
         specifier: workspace:*
         version: link:../../handler
-      '@coday/integrations/file':
+      '@coday/integrations-file':
         specifier: workspace:*
         version: link:../../integrations/file
       '@coday/model':
@@ -761,6 +764,21 @@ importers:
       '@coday/handler':
         specifier: workspace:*
         version: link:../../handler
+      '@coday/handlers-config':
+        specifier: workspace:*
+        version: link:../config
+      '@coday/handlers-load':
+        specifier: workspace:*
+        version: link:../load
+      '@coday/handlers-memory':
+        specifier: workspace:*
+        version: link:../memory
+      '@coday/handlers-openai':
+        specifier: workspace:*
+        version: link:../openai
+      '@coday/handlers-stats':
+        specifier: workspace:*
+        version: link:../stats
       '@coday/model':
         specifier: workspace:*
         version: link:../../model
@@ -852,31 +870,31 @@ importers:
       '@coday/handler':
         specifier: workspace:*
         version: link:../handler
-      '@coday/integrations/ai':
+      '@coday/integrations-ai':
         specifier: workspace:*
         version: link:../integrations/ai
-      '@coday/integrations/basecamp':
+      '@coday/integrations-basecamp':
         specifier: workspace:*
         version: link:../integrations/basecamp
-      '@coday/integrations/confluence':
+      '@coday/integrations-confluence':
         specifier: workspace:*
         version: link:../integrations/confluence
-      '@coday/integrations/file':
+      '@coday/integrations-file':
         specifier: workspace:*
         version: link:../integrations/file
-      '@coday/integrations/git':
+      '@coday/integrations-git':
         specifier: workspace:*
         version: link:../integrations/git
-      '@coday/integrations/gitlab':
+      '@coday/integrations-gitlab':
         specifier: workspace:*
         version: link:../integrations/gitlab
-      '@coday/integrations/jira':
+      '@coday/integrations-jira':
         specifier: workspace:*
         version: link:../integrations/jira
-      '@coday/integrations/slack':
+      '@coday/integrations-slack':
         specifier: workspace:*
         version: link:../integrations/slack
-      '@coday/integrations/zendesk-articles':
+      '@coday/integrations-zendesk-articles':
         specifier: workspace:*
         version: link:../integrations/zendesk-articles
       '@coday/mcp':
@@ -7836,6 +7854,7 @@ packages:
     resolution: {integrity: sha512-WkezNsLK8sGpuFC7+PPP0DsXROwdoOxmXPBTtUWWkCwCi/Vi97MRC52Ly6FWIJjOKIywpm/L2oaUgSrmtU+7ZQ==}
     engines: {node: '>=20.18.0'}
     hasBin: true
+    bundledDependencies: []
 
   pend@1.2.0:
     resolution: {integrity: sha512-F3asv42UuXchdzt+xXqfW1OGlVBe+mxa2mqI0pg5yAHZPvFmY3Y6drSf/GQ1A86WgWEN9Kzh/WrgKa6iGcHXLg==}

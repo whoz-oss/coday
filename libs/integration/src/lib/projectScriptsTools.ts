@@ -1,10 +1,10 @@
-import { AssistantToolFactory } from '@coday/integration/assistant-tool-factory'
-import { Interactor } from '@coday/model/interactor'
+import { AssistantToolFactory } from '@coday/integration'
+import { Interactor } from '@coday/model'
 import { CommandContext } from '@coday/handler'
-import { CodayTool } from '@coday/model/coday-tool'
-import { Scripts } from '@coday/model/scripts'
-import { runBash } from '@coday/function/run-bash'
-import { FunctionTool } from '@coday/model/integration-types'
+import { CodayTool } from '@coday/model'
+import { Scripts } from '@coday/model'
+import { runBash } from '@coday/function'
+import { FunctionTool } from '@coday/model'
 
 const PARAMETERS: string = 'PARAMETERS'
 

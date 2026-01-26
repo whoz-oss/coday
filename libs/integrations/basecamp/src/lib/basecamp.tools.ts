@@ -1,12 +1,12 @@
 import { UserService } from '@coday/service/user.service'
 import { AssistantToolFactory } from '@coday/integration/assistant-tool-factory'
+import { BasecampOAuth } from './basecamp-oauth'
 import {
-  BasecampOAuth,
   getBasecampMessage,
   getBasecampMessageBoard,
   getBasecampMessages,
   listBasecampProjects,
-} from '@coday/integrations/basecamp'
+} from './basecamp.tools'
 import { Interactor } from '@coday/model/interactor'
 import { IntegrationService } from '@coday/service/integration.service'
 import { OAuthCallbackEvent } from '@coday/model/coday-events'

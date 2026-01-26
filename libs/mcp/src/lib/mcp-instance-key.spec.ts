@@ -1,5 +1,5 @@
 import { computeMcpConfigHash } from './mcp-instance-key'
-import { McpServerConfig } from '@coday/model/mcp-server-config'
+import { McpServerConfig } from '@coday/model'
 
 describe('computeMcpConfigHash', () => {
   describe('identical configs produce same hash', () => {

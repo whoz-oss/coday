@@ -1,7 +1,7 @@
 import express from 'express'
 import { debugLog } from './log'
-import { ConfigServiceRegistry } from '@coday/service/config-service-registry'
-import { UserConfig } from '@coday/model/user-config'
+import { ConfigServiceRegistry } from '@coday/service'
+import { UserConfig } from '@coday/model'
 
 /**
  * Configuration Management REST API Routes

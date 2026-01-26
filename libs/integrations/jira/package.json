@@ -1,5 +1,5 @@
 {
-  "name": "@coday/integrations/jira",
+  "name": "@coday/integrations-jira",
   "version": "0.0.1",
   "private": true,
   "type": "module",

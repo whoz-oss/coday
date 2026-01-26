@@ -1,5 +1,5 @@
 import { UserService } from './user.service'
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 
 /**
  * Registry for managing UserService and ProjectService instances

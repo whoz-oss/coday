@@ -1,7 +1,7 @@
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 import { CommandHandler, CommandHandlerConstructorInput } from './command-handler'
 import { CommandContext } from './command-context'
-import { keywords } from '@coday/model/keywords'
+import { keywords } from '@coday/model'
 
 export abstract class NestedHandler extends CommandHandler {
   protected handlers: CommandHandler[] = []

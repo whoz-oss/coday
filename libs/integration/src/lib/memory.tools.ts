@@ -1,10 +1,10 @@
-import { MemoryService } from '@coday/service/memory.service'
-import { AssistantToolFactory } from '@coday/integration/assistant-tool-factory'
-import { Interactor } from '@coday/model/interactor'
+import { MemoryService } from '@coday/service'
+import { AssistantToolFactory } from '@coday/integration'
+import { Interactor } from '@coday/model'
 import { CommandContext } from '@coday/handler'
-import { CodayTool } from '@coday/model/coday-tool'
-import { MemoryLevel } from '@coday/model/memory'
-import { FunctionTool } from '@coday/model/integration-types'
+import { CodayTool } from '@coday/model'
+import { MemoryLevel } from '@coday/model'
+import { FunctionTool } from '@coday/model'
 
 export class MemoryTools extends AssistantToolFactory {
   name = 'MEMORY'

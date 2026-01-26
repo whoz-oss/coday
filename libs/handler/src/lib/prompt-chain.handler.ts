@@ -1,5 +1,5 @@
 import { CommandHandler } from './command-handler'
-import { PromptChain } from '@coday/model/prompt-chain'
+import { PromptChain } from '@coday/model'
 import { CommandContext } from './command-context'
 
 const PROMPT_KEYWORD = 'PROMPT'

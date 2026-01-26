@@ -11,7 +11,7 @@
     "@coday/core": "workspace:*",
     "@coday/function": "workspace:*",
     "@coday/handler": "workspace:*",
-    "@coday/integrations/ai": "workspace:*",
+    "@coday/integrations-ai": "workspace:*",
     "@coday/mcp": "workspace:*",
     "@coday/model": "workspace:*",
     "@coday/repository": "workspace:*",

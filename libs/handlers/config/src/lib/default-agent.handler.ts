@@ -1,5 +1,5 @@
 import { CommandContext, CommandHandler } from '@coday/handler'
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
 
 export class DefaultAgentHandler extends CommandHandler {
