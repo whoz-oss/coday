@@ -2,9 +2,9 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import yaml from 'yaml'
 import { ThreadRepository } from './thread.repository'
-import { AiThread, aiThreadMigrations, ThreadRepositoryError, ThreadSummary } from '@coday/ai-thread'
+import { AiThread, ThreadRepositoryError, ThreadSummary } from '@coday/ai-thread'
 import { migrateData } from '@coday/utils'
-import { writeYamlFile } from '@coday/service'
+import { aiThreadMigrations, writeYamlFile } from '@coday/service'
 
 /**
  * Helper function to safely read YAML file content

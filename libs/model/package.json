@@ -11,6 +11,7 @@
     "yargs": "catalog:"
   },
   "devDependencies": {
+    "@types/node": "catalog:dev",
     "@types/yargs": "catalog:dev",
     "typescript": "catalog:dev"
   }

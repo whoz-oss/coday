@@ -6,8 +6,6 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
-    "@coday/model": "workspace:*",
-    "@coday/utils": "workspace:*",
     "@vscode/ripgrep": "catalog:",
     "glob": "catalog:",
     "pdf2json": "catalog:",

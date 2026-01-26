@@ -30,6 +30,7 @@ catalog:
   oauth4webapi: 3.8.3
   openai: 6.10.0
   os: 0.1.2
+  path: 0.12.7
   pdf2json: 4.0.0
   rxjs: 7.8.2
   sharp: 0.34.4
