@@ -1,5 +1,5 @@
 import { NestedHandler } from '@coday/handler'
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 import { LoadFileHandler } from './load-file.handler'
 import { LoadFolderHandler } from './load-folder.handler'
 

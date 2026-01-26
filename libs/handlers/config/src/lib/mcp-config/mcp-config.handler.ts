@@ -4,7 +4,7 @@ import { McpEditHandler } from './mcp-edit.handler'
 import { McpAddHandler } from './mcp-add.handler'
 import { McpDeleteHandler } from './mcp-delete.handler'
 import { NestedHandler } from '@coday/handler'
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 
 /**
  * Handler for MCP server configuration commands

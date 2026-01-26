@@ -1,4 +1,4 @@
-import { McpServerConfig } from '@coday/model/mcp-server-config'
+import { McpServerConfig } from '@coday/model'
 import { mergeMcpConfigs } from './mcp-config-merger'
 
 describe('McpConfigMerger', () => {

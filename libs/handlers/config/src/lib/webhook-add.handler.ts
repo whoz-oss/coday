@@ -1,8 +1,8 @@
 import { CommandContext, CommandHandler } from '@coday/handler'
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
 import { WebhookEditHandler } from './webhook-edit.handler'
-import { Webhook } from '@coday/service/webhook.service'
+import { Webhook } from '@coday/service'
 
 /**
  * Handler for adding a new webhook configuration.

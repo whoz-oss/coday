@@ -1,5 +1,5 @@
 import { AiThread } from '@coday/ai-thread'
-import { Project } from '@coday/model/project'
+import { Project } from '@coday/model'
 
 export class CommandContext {
   private commandQueue: string[] = []

@@ -1,5 +1,5 @@
 import { NestedHandler } from '@coday/handler'
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
 import { AiConfigEditHandler } from './ai-config-edit.handler'
 import { AiConfigAddHandler } from './ai-config-add.handler'

@@ -7,13 +7,13 @@ import {
   TextContent,
   ToolRequestEvent,
   ToolResponseEvent,
-} from '@coday/model/coday-events'
+} from '@coday/model'
 import { Agent } from './agent'
 import { AiThread, RunStatus, ThreadMessage } from '@coday/ai-thread'
-import { CodayLogger } from '@coday/service/coday-logger'
-import { AiModel } from '@coday/model/ai-model'
-import { Interactor } from '@coday/model/interactor'
-import { AiProviderConfig } from '@coday/model/ai-provider-config'
+import { CodayLogger } from '@coday/service'
+import { AiModel } from '@coday/model'
+import { Interactor } from '@coday/model'
+import { AiProviderConfig } from '@coday/model'
 
 export interface CompletionOptions {
   model?: string

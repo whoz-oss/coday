@@ -1,4 +1,4 @@
-import { migrateData } from '@coday/utils/data-migration'
+import { migrateData } from '@coday/utils'
 import { aiPropertyToAi } from './ai-providers-to-ai.migration'
 
 describe('aiProviders to ai migration', () => {

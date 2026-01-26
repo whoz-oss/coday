@@ -3,7 +3,7 @@ import { Interactor } from '@coday/model/interactor'
 import { AgentService } from '@coday/agent'
 import { CommandContext } from '@coday/handler'
 import { CodayTool } from '@coday/model/coday-tool'
-import { delegateFunction } from '@coday/integrations/ai'
+import { delegateFunction } from './delegate.function'
 import { FunctionTool } from '@coday/model/integration-types'
 
 export class DelegateTools extends AssistantToolFactory {

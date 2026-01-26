@@ -1,10 +1,10 @@
 import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
-import { Interactor } from '@coday/model/interactor'
-import { IntegrationConfigService } from '@coday/service/integration-config.service'
-import { ConfigLevel } from '@coday/model/config-level'
-import { ConcreteIntegrations } from '@coday/model/integrations'
-import { IntegrationConfig } from '@coday/model/integration-config'
-import { IntegrationLocalConfig } from '@coday/model/project-local-config'
+import { Interactor } from '@coday/model'
+import { IntegrationConfigService } from '@coday/service'
+import { ConfigLevel } from '@coday/model'
+import { ConcreteIntegrations } from '@coday/model'
+import { IntegrationConfig } from '@coday/model'
+import { IntegrationLocalConfig } from '@coday/model'
 
 const MASKED_VALUE = '********'
 

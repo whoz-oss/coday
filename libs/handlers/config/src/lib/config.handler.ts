@@ -7,8 +7,8 @@ import {
   SelectProjectHandler,
   UserBioHandler,
   WebhookHandler,
-} from '@coday/handlers/config'
-import { Interactor } from '@coday/model/interactor'
+} from '@coday/handlers-config'
+import { Interactor } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
 import { McpConfigHandler } from './mcp-config/mcp-config.handler'
 

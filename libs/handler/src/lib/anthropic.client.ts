@@ -7,14 +7,14 @@ import {
   TextChunkEvent,
   ToolRequestEvent,
   ToolResponseEvent,
-} from '@coday/model/coday-events'
+} from '@coday/model'
 import { Observable, of, Subject } from 'rxjs'
 import { AiThread, ThreadMessage } from '@coday/ai-thread'
-import { CodayLogger } from '@coday/service/coday-logger'
-import { ToolSet } from '@coday/model/integration-tool-set'
-import { AiModel } from '@coday/model/ai-model'
-import { Interactor } from '@coday/model/interactor'
-import { AiProviderConfig } from '@coday/model/ai-provider-config'
+import { CodayLogger } from '@coday/service'
+import { ToolSet } from '@coday/model'
+import { AiModel } from '@coday/model'
+import { Interactor } from '@coday/model'
+import { AiProviderConfig } from '@coday/model'
 import { Agent, AiClient, CompletionOptions } from '@coday/agent'
 
 interface RateLimitInfo {
