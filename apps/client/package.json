@@ -1,10 +1,9 @@
 {
-  "name": "@coday/client",
-  "version": "0.0.1",
+  "name": "@whoz-oss/coday-client",
+  "version": "0.61.1",
   "private": true,
+  "repository": "https://github.com/whoz-oss/coday",
   "type": "module",
-  "main": "./src/index.js",
-  "types": "./src/index.d.ts",
   "dependencies": {
     "@angular/animations": "catalog:",
     "@angular/common": "catalog:",
@@ -19,7 +18,11 @@
     "tslib": "catalog:"
   },
   "devDependencies": {
+    "@angular/build": "catalog:dev",
     "jest-preset-angular": "catalog:dev",
     "typescript": "catalog:dev"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
