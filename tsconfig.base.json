@@ -38,7 +38,7 @@
       "@coday/handlers-memory": ["libs/handlers/memory/src/index.ts"],
       "@coday/handlers-openai": ["libs/handlers/openai/src/index.ts"],
       "@coday/handlers-stats": ["libs/handlers/stats/src/index.ts"],
-      "@coday/integration": ["libs/integration/src/lib/index.ts"],
+      "@coday/integration": ["libs/integration/src/index.ts"],
       "@coday/integrations-ai": ["libs/integrations/ai/src/index.ts"],
       "@coday/integrations-basecamp": ["libs/integrations/basecamp/src/index.ts"],
       "@coday/integrations-confluence": ["libs/integrations/confluence/src/index.ts"],

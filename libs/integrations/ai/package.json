@@ -6,6 +6,7 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
+    "rxjs": "catalog:",
     "tslib": "catalog:"
   },
   "devDependencies": {

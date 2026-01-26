@@ -1,7 +1,7 @@
 import { lastValueFrom, Observable } from 'rxjs'
 import { CodayEvent } from '@coday/model'
 import { Agent, AgentService } from '@coday/agent'
-import { parseAgentCommand } from './parseAgentCommand'
+import { parseAgentCommand } from './parse-agent-command'
 import { AiThread, ThreadStateService } from '@coday/ai-thread'
 import { keywords } from '@coday/model'
 import { CommandContext, CommandHandler, generateThreadName } from '@coday/handler'

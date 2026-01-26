@@ -1,8 +1,7 @@
-import { CommandContext } from '@coday/handler'
+import { CommandContext, CommandHandler } from '@coday/handler'
 import { Interactor } from '@coday/model'
 import { buildFirstCommandContext } from './select-project'
-import { CommandHandler } from '@coday/model'
-import { CodayServices } from '../../coday-services'
+import { CodayServices } from '@coday/coday-services'
 
 export class SelectProjectHandler extends CommandHandler {
   constructor(

@@ -1,10 +1,10 @@
 import { CommandContext } from '@coday/handler'
-import { Interactor } from '@coday/model/interactor'
-import { AssistantToolFactory } from '@coday/integration/assistant-tool-factory'
+import { Interactor } from '@coday/model'
+import { AssistantToolFactory } from '@coday/integration'
 import { AgentService } from '@coday/agent'
-import { CodayTool } from '@coday/model/coday-tool'
-import { FunctionTool } from '@coday/model/integration-types'
-import { redirectFunction } from './ai.tools'
+import { CodayTool } from '@coday/model'
+import { FunctionTool } from '@coday/model'
+import { redirectFunction } from './redirect.function'
 
 export class AiTools extends AssistantToolFactory {
   name = 'AI'

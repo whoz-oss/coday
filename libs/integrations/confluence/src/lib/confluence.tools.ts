@@ -1,10 +1,10 @@
 import { retrieveConfluencePage } from './retrieve-confluence-page'
 import { searchConfluencePages } from './search-confluence-pages'
-import { IntegrationService } from '@coday/service/integration.service'
-import { Interactor } from '@coday/model/interactor'
-import { AssistantToolFactory } from '@coday/integration/assistant-tool-factory'
-import { CodayTool } from '@coday/model/coday-tool'
-import { FunctionTool } from '@coday/model/integration-types'
+import { IntegrationService } from '@coday/service'
+import { Interactor } from '@coday/model'
+import { AssistantToolFactory } from '@coday/integration'
+import { CodayTool } from '@coday/model'
+import { FunctionTool } from '@coday/model'
 
 export class ConfluenceTools extends AssistantToolFactory {
   name = 'CONFLUENCE'

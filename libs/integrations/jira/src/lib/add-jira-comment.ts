@@ -1,4 +1,4 @@
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 
 /**
  * Add a public comment to a Jira ticket using the Jira REST API
