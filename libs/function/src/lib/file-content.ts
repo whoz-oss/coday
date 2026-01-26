@@ -1,4 +1,4 @@
-import { MessageContent } from './coday-events'
+import { MessageContent } from '@coday/model'
 
 export type FileContent =
   | {

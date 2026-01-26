@@ -1,4 +1,4 @@
-import { FileContent } from '@coday/model'
+import { FileContent } from './file-content'
 import { ImageContent, MessageContent } from '@coday/model'
 import { readFileByPath } from './read-file-by-path'
 import { readPdfFile } from './pdf-reader'

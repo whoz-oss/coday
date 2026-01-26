@@ -7,10 +7,13 @@
   "types": "./src/index.d.ts",
   "dependencies": {
     "express": "catalog:",
-    "rxjs": "catalog:"
+    "rxjs": "catalog:",
+    "yargs": "catalog:"
   },
   "devDependencies": {
     "@types/express": "catalog:dev",
+    "@types/node": "catalog:dev",
+    "@types/yargs": "catalog:dev",
     "http-proxy-middleware": "catalog:dev",
     "typescript": "catalog:dev"
   }
