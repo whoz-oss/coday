@@ -52,7 +52,7 @@
       "@coday/integrations/zendesk-articles": ["libs/integrations/zendesk-articles/src/index.ts"],
       "@coday/jira/*": ["libs/jira/*"],
       "@coday/load/*": ["libs/load/*"],
-      "@coday/mcp/*": ["libs/mcp/*"],
+      "@coday/mcp": ["libs/mcp/src/index.ts"],
       "@coday/memory/*": ["libs/memory/*"],
       "@coday/model/*": ["libs/model/src/lib/*"],
       "@coday/node_modules/*": ["libs/node_modules/*"],

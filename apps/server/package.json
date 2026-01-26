@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "catalog:",
+    "@coday/mcp": "workspace:*",
     "@esbuild-plugins/node-modules-polyfill": "catalog:",
     "@google/generative-ai": "catalog:",
     "@inquirer/prompts": "catalog:",
