@@ -1,7 +1,7 @@
 import { Response } from 'express'
 import { Coday } from '@coday/core'
 import { ServerInteractor } from '@coday/model/server-interactor'
-import { CodayOptions } from '@coday/model/options'
+import { CodayOptions } from '@coday/model/coday-options'
 import { UserService } from '@coday/service/user.service'
 import { ProjectStateService } from '@coday/service/project-state.service'
 import { IntegrationService } from '@coday/service/integration.service'
@@ -11,10 +11,10 @@ import { McpConfigService } from '@coday/service/mcp-config.service'
 import { CodayLogger } from '@coday/service/coday-logger'
 import { WebhookService } from '@coday/service/webhook.service'
 import { HeartBeatEvent, ThreadUpdateEvent, OAuthCallbackEvent } from '@coday/model/coday-events'
-import { McpInstancePool } from '@coday/integration/mcp/mcp-instance-pool'
 import { debugLog } from './log'
-import { ThreadService } from './services/thread.service'
-import { ProjectService } from './services/project.service'
+import { ProjectService } from '@coday/service/project.service'
+import { ThreadService } from '@coday/service/thread.service'
+import { McpInstancePool } from '@coday/mcp/src'
 
 /**
  * Represents a Coday instance associated with a specific thread.

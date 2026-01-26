@@ -585,6 +585,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: 'catalog:'
         version: 0.65.0(zod@3.25.76)
+      '@coday/mcp':
+        specifier: workspace:*
+        version: link:../../libs/mcp
       '@esbuild-plugins/node-modules-polyfill':
         specifier: 'catalog:'
         version: 0.2.2(esbuild@0.27.1)
@@ -975,6 +978,9 @@ importers:
       '@coday/handler':
         specifier: workspace:*
         version: link:../handler
+      '@coday/mcp':
+        specifier: workspace:*
+        version: link:../mcp
       '@coday/model':
         specifier: workspace:*
         version: link:../model
