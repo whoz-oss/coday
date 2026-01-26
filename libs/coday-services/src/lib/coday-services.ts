@@ -11,7 +11,7 @@ import type {
 } from '@coday/service'
 import { ThreadService } from '@coday/service'
 import { McpInstancePool } from '@coday/mcp'
-import { CodayOptions } from '@coday/model'
+import { CodayOptions } from '../../../model/src/lib/coday-options'
 import { AgentService } from '@coday/agent'
 
 export type CodayServices = {

@@ -485,10 +485,19 @@ importers:
       rxjs:
         specifier: 'catalog:'
         version: 7.8.2
+      yargs:
+        specifier: 'catalog:'
+        version: 18.0.0
     devDependencies:
       '@types/express':
         specifier: catalog:dev
         version: 5.0.3
+      '@types/node':
+        specifier: catalog:dev
+        version: 24.7.2
+      '@types/yargs':
+        specifier: catalog:dev
+        version: 17.0.35
       http-proxy-middleware:
         specifier: catalog:dev
         version: 3.0.5
@@ -800,16 +809,7 @@ importers:
       tslib:
         specifier: 'catalog:'
         version: 2.8.1
-      yargs:
-        specifier: 'catalog:'
-        version: 18.0.0
     devDependencies:
-      '@types/node':
-        specifier: catalog:dev
-        version: 24.7.2
-      '@types/yargs':
-        specifier: catalog:dev
-        version: 17.0.35
       typescript:
         specifier: catalog:dev
         version: 5.9.3

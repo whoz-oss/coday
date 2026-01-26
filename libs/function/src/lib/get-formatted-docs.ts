@@ -2,7 +2,7 @@ import { WithDocs } from '@coday/model'
 import * as path from 'node:path'
 import { Interactor } from '@coday/model'
 import { existsSync } from 'node:fs'
-import { FileContent } from '@coday/model'
+import { FileContent } from './file-content'
 import { readFileUnified } from './read-file-unified'
 
 export async function getFormattedDocs(

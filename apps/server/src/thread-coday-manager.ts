@@ -1,7 +1,7 @@
 import { Response } from 'express'
 import { Coday } from '@coday/core'
 import { ServerInteractor } from '@coday/model'
-import { CodayOptions } from '@coday/model'
+import { CodayOptions } from '../../../libs/model/src/lib/coday-options'
 import { UserService } from '@coday/service'
 import { ProjectStateService } from '@coday/service'
 import { IntegrationService } from '@coday/service'
