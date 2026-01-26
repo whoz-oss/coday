@@ -71,7 +71,7 @@ function extractImports(filePath: string): Set<string> {
     const importPath = match[1] || match[2]
     if (importPath && !importPath.startsWith('.')) {
       // For @coday/integrations-* and @coday/handlers-*, use the full path
-      if (importPath.startsWith('@coday/integrations-') || importPath.startsWith('@coday/handlers-')) {
+      if (importPath.startsWith('@coday/integration')) {
         // Keep the full import path (e.g., @coday/integrations-git)
         const fullPath = importPath.split('/').slice(0, 3).join('/')
         imports.add(fullPath)

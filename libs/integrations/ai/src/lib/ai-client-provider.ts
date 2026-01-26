@@ -1,12 +1,12 @@
 import { CommandContext, OpenaiClient } from '@coday/handler'
 import { AnthropicClient } from '@coday/handler'
-import { UserService } from '@coday/service/user.service'
-import { ProjectStateService } from '@coday/service/project-state.service'
+import { UserService } from '@coday/service'
+import { ProjectStateService } from '@coday/service'
 import { GoogleClient } from '@coday/handler'
-import { CodayLogger } from '@coday/service/coday-logger'
+import { CodayLogger } from '@coday/service'
 import { AiClient } from '@coday/agent'
-import { AiProviderConfig } from '@coday/model/ai-provider-config'
-import { Interactor } from '@coday/model/interactor'
+import { AiProviderConfig } from '@coday/model'
+import { Interactor } from '@coday/model'
 
 /**
  * Environment variable names for each provider.

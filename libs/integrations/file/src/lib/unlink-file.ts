@@ -1,6 +1,6 @@
 import * as fs from 'fs'
 import { promisify } from 'util'
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 
 const unlink = promisify(fs.unlink)
 

@@ -6,11 +6,7 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
-    "@coday/integration": "workspace:*",
     "@coday/model": "workspace:*",
-    "@coday/repository": "workspace:*",
-    "@coday/service": "workspace:*",
-    "@coday/utils": "workspace:*",
     "rxjs": "catalog:",
     "tslib": "catalog:"
   },

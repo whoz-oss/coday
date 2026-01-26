@@ -1,4 +1,4 @@
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 
 export interface Jira {
   expand: string

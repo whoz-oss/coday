@@ -15,6 +15,7 @@
     "tslib": "catalog:"
   },
   "devDependencies": {
+    "@jest/globals": "catalog:dev",
     "typescript": "catalog:dev"
   }
 }

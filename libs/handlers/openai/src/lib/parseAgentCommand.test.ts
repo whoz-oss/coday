@@ -1,4 +1,4 @@
-import { parseAgentCommand } from './parseAgentCommand'
+import { parseAgentCommand } from './parse-agent-command'
 
 describe('parseAgentCommand', () => {
   it('parses simple agent command with command string', () => {

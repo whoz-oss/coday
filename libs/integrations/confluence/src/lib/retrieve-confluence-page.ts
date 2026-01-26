@@ -1,6 +1,6 @@
 import axios from 'axios'
 import TurndownService from 'turndown'
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 
 // Initialize Turndown service for HTML to Markdown conversion
 const turndownService = new TurndownService({

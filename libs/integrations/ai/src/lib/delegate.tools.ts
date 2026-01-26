@@ -1,10 +1,10 @@
-import { AssistantToolFactory } from '@coday/integration/assistant-tool-factory'
-import { Interactor } from '@coday/model/interactor'
+import { AssistantToolFactory } from '@coday/integration'
+import { Interactor } from '@coday/model'
 import { AgentService } from '@coday/agent'
 import { CommandContext } from '@coday/handler'
-import { CodayTool } from '@coday/model/coday-tool'
+import { CodayTool } from '@coday/model'
 import { delegateFunction } from './delegate.function'
-import { FunctionTool } from '@coday/model/integration-types'
+import { FunctionTool } from '@coday/model'
 
 export class DelegateTools extends AssistantToolFactory {
   name = 'DELEGATE'

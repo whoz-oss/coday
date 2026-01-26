@@ -1,4 +1,4 @@
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 import { retrieveAutocompleteData } from './retrieve-autocomplete-data'
 import { searchJiraIssues } from './search-jira-issues'
 import { createFieldMapping } from './jira.helpers'

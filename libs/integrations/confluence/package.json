@@ -6,7 +6,9 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
-    "tslib": "catalog:"
+    "axios": "catalog:",
+    "tslib": "catalog:",
+    "turndown": "catalog:"
   },
   "devDependencies": {
     "typescript": "catalog:dev"

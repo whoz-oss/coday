@@ -1,4 +1,4 @@
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 
 /**
  * Interface for the Jira issue link request

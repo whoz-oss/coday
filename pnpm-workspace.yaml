@@ -53,6 +53,7 @@ catalogs:
     '@eslint/eslintrc': 3.3.1
     '@eslint/js': 9.37.0
     '@img/sharp-darwin-arm64': 0.34.4
+    '@jest/globals': 30.2.0
     '@nx/angular': 22.2.3
     '@nx/devkit': 22.2.3
     '@nx/esbuild': 22.2.3

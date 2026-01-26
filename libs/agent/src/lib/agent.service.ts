@@ -1,7 +1,6 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'yaml'
-import { AiClientProvider } from '@coday/integrations-ai'
 import { Toolbox } from '@coday/integration'
 import { getFormattedDocs } from '@coday/function'
 import { MemoryLevel } from '@coday/model'
@@ -13,6 +12,7 @@ import { Interactor } from '@coday/model'
 import { Agent, AgentSummary } from './agent'
 import { CommandContext } from '@coday/handler'
 import { ToolSet } from '@coday/model'
+import { AiClientProvider } from '@coday/integrations-ai'
 
 export class AgentService implements Killable {
   private agentCache: Map<string, Agent> = new Map()

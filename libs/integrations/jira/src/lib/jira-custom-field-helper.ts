@@ -1,4 +1,4 @@
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 import {
   JiraCustomField,
   retrieveAllJiraFields,

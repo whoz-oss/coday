@@ -1,9 +1,9 @@
 // Slack API Types
-import { CodayTool } from '@coday/model/coday-tool'
-import { AssistantToolFactory } from '@coday/integration/assistant-tool-factory'
-import { Interactor } from '@coday/model/interactor'
-import { IntegrationService } from '@coday/service/integration.service'
-import { FunctionTool } from '@coday/model/integration-types'
+import { CodayTool } from '@coday/model'
+import { AssistantToolFactory } from '@coday/integration'
+import { Interactor } from '@coday/model'
+import { IntegrationService } from '@coday/service'
+import { FunctionTool } from '@coday/model'
 
 interface SlackChannel {
   id: string
