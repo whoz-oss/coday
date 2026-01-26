@@ -12,6 +12,7 @@
     "lint": "nx run-many --target=lint",
     "postinstall": "pnpm husky-setup",
     "server": "nx run server:serve",
+    "sync-deps": "tsx scripts/sync-project-dependencies.ts",
     "test": "nx run-many --target=test",
     "web": "npx --yes @whoz-oss/coday-web",
     "web:dev": "nx run-many --target=serve --projects=client,server --parallel=2"
