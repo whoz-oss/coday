@@ -22,6 +22,7 @@
     "tslib": "catalog:"
   },
   "devDependencies": {
+    "@types/express": "catalog:dev",
     "typescript": "catalog:dev"
   }
 }
