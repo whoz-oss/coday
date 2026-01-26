@@ -424,41 +424,30 @@ importers:
       dompurify:
         specifier: 'catalog:'
         version: 3.3.1
-      jest-preset-angular:
-        specifier: catalog:dev
-        version: 15.0.2(d8b3cc091b67071e293b1ed055fde70a)
       marked:
         specifier: 'catalog:'
         version: 16.4.0
       rxjs:
         specifier: 'catalog:'
         version: 7.8.2
-      tslib:
-        specifier: 'catalog:'
-        version: 2.8.1
     devDependencies:
+      jest-preset-angular:
+        specifier: catalog:dev
+        version: 15.0.2(d8b3cc091b67071e293b1ed055fde70a)
       typescript:
         specifier: catalog:dev
         version: 5.9.3
 
   apps/client-e2e:
-    dependencies:
+    devDependencies:
       '@playwright/test':
         specifier: catalog:dev
         version: 1.56.0
-      tslib:
-        specifier: 'catalog:'
-        version: 2.8.1
-    devDependencies:
       typescript:
         specifier: catalog:dev
         version: 5.9.3
 
   apps/desktop:
-    dependencies:
-      tslib:
-        specifier: 'catalog:'
-        version: 2.8.1
     devDependencies:
       typescript:
         specifier: catalog:dev
@@ -481,9 +470,9 @@ importers:
       '@coday/handler':
         specifier: workspace:*
         version: link:../../libs/handler
-      '@coday/integration':
+      '@coday/integrations/ai':
         specifier: workspace:*
-        version: link:../../libs/integration
+        version: link:../../libs/integrations/ai
       '@coday/mcp':
         specifier: workspace:*
         version: link:../../libs/mcp
@@ -499,28 +488,21 @@ importers:
       express:
         specifier: 'catalog:'
         version: 5.1.0
-      http-proxy-middleware:
-        specifier: catalog:dev
-        version: 3.0.5
       rxjs:
         specifier: 'catalog:'
         version: 7.8.2
-      tslib:
-        specifier: 'catalog:'
-        version: 2.8.1
     devDependencies:
       '@types/express':
         specifier: catalog:dev
         version: 5.0.3
+      http-proxy-middleware:
+        specifier: catalog:dev
+        version: 3.0.5
       typescript:
         specifier: catalog:dev
         version: 5.9.3
 
   apps/web:
-    dependencies:
-      tslib:
-        specifier: 'catalog:'
-        version: 2.8.1
     devDependencies:
       typescript:
         specifier: catalog:dev
@@ -543,6 +525,9 @@ importers:
       '@coday/integration':
         specifier: workspace:*
         version: link:../integration
+      '@coday/integrations/ai':
+        specifier: workspace:*
+        version: link:../integrations/ai
       '@coday/model':
         specifier: workspace:*
         version: link:../model
@@ -627,6 +612,18 @@ importers:
       '@coday/handler':
         specifier: workspace:*
         version: link:../handler
+      '@coday/handlers/config':
+        specifier: workspace:*
+        version: link:../handlers/config
+      '@coday/handlers/looper':
+        specifier: workspace:*
+        version: link:../handlers/looper
+      '@coday/handlers/openai':
+        specifier: workspace:*
+        version: link:../handlers/openai
+      '@coday/integrations/ai':
+        specifier: workspace:*
+        version: link:../integrations/ai
       '@coday/model':
         specifier: workspace:*
         version: link:../model
@@ -736,6 +733,9 @@ importers:
       '@coday/handler':
         specifier: workspace:*
         version: link:../../handler
+      '@coday/integrations/file':
+        specifier: workspace:*
+        version: link:../../integrations/file
       '@coday/model':
         specifier: workspace:*
         version: link:../../model
@@ -849,6 +849,33 @@ importers:
       '@coday/handler':
         specifier: workspace:*
         version: link:../handler
+      '@coday/integrations/ai':
+        specifier: workspace:*
+        version: link:../integrations/ai
+      '@coday/integrations/basecamp':
+        specifier: workspace:*
+        version: link:../integrations/basecamp
+      '@coday/integrations/confluence':
+        specifier: workspace:*
+        version: link:../integrations/confluence
+      '@coday/integrations/file':
+        specifier: workspace:*
+        version: link:../integrations/file
+      '@coday/integrations/git':
+        specifier: workspace:*
+        version: link:../integrations/git
+      '@coday/integrations/gitlab':
+        specifier: workspace:*
+        version: link:../integrations/gitlab
+      '@coday/integrations/jira':
+        specifier: workspace:*
+        version: link:../integrations/jira
+      '@coday/integrations/slack':
+        specifier: workspace:*
+        version: link:../integrations/slack
+      '@coday/integrations/zendesk-articles':
+        specifier: workspace:*
+        version: link:../integrations/zendesk-articles
       '@coday/mcp':
         specifier: workspace:*
         version: link:../mcp
@@ -868,9 +895,6 @@ importers:
 
   libs/integrations/ai:
     dependencies:
-      rxjs:
-        specifier: 'catalog:'
-        version: 7.8.2
       tslib:
         specifier: 'catalog:'
         version: 2.8.1

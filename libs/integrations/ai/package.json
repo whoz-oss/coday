@@ -1,12 +1,11 @@
 {
-  "name": "@coday/ai",
+  "name": "@coday/integrations/ai",
   "version": "0.0.1",
   "private": true,
   "type": "module",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
-    "rxjs": "catalog:",
     "tslib": "catalog:"
   },
   "devDependencies": {
