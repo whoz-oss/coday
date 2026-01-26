@@ -28,6 +28,7 @@
     "*.ts": "prettier --write"
   },
   "dependencies": {
+    "glob": "catalog:",
     "yargs": "catalog:"
   },
   "devDependencies": {

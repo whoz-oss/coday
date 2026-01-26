@@ -237,6 +237,9 @@ importers:
 
   .:
     dependencies:
+      glob:
+        specifier: 'catalog:'
+        version: 11.1.0
       yargs:
         specifier: 'catalog:'
         version: 18.0.0
@@ -7833,7 +7836,6 @@ packages:
     resolution: {integrity: sha512-WkezNsLK8sGpuFC7+PPP0DsXROwdoOxmXPBTtUWWkCwCi/Vi97MRC52Ly6FWIJjOKIywpm/L2oaUgSrmtU+7ZQ==}
     engines: {node: '>=20.18.0'}
     hasBin: true
-    bundledDependencies: []
 
   pend@1.2.0:
     resolution: {integrity: sha512-F3asv42UuXchdzt+xXqfW1OGlVBe+mxa2mqI0pg5yAHZPvFmY3Y6drSf/GQ1A86WgWEN9Kzh/WrgKa6iGcHXLg==}
@@ -9554,6 +9556,7 @@ packages:
   whatwg-encoding@3.1.1:
     resolution: {integrity: sha512-6qN4hJdMwfYBtE3YBTTHhoeuUrDBPZmbQaxWAqSALV/MeEnR5z1xd8UKud2RAkFoPkmB+hli1TZSnyi84xz1vQ==}
     engines: {node: '>=18'}
+    deprecated: Use @exodus/bytes instead for a more spec-conformant and faster implementation
 
   whatwg-mimetype@4.0.0:
     resolution: {integrity: sha512-QaKxh0eNIi2mE9p2vEdzfagOKHCcj1pJ56EEHGQOVxp8r9/iszLUUV7v89x9O1p/T+NlTM5W7jW6+cz4Fq1YVg==}
