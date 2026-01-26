@@ -1,5 +1,5 @@
 import { Interactor } from '@coday/model'
-import { FileContent } from '@coday/model'
+import { FileContent } from './file-content'
 import * as path from 'path'
 import { readFile } from 'node:fs/promises'
 
