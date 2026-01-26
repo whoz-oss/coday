@@ -6,10 +6,6 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
-    "@coday/ai-thread": "workspace:*",
-    "@coday/model": "workspace:*",
-    "@coday/service": "workspace:*",
-    "@coday/utils": "workspace:*",
     "tslib": "catalog:",
     "yaml": "catalog:"
   },
