@@ -6,8 +6,11 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
+    "@coday/ai-thread": "workspace:*",
     "@coday/function": "workspace:*",
+    "@coday/handler": "workspace:*",
     "@coday/model": "workspace:*",
+    "@coday/repository": "workspace:*",
     "@coday/utils": "workspace:*",
     "rxjs": "catalog:",
     "tslib": "catalog:",

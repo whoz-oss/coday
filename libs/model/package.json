@@ -7,10 +7,10 @@
   "types": "./src/index.d.ts",
   "dependencies": {
     "rxjs": "catalog:",
-    "tslib": "catalog:"
+    "tslib": "catalog:",
+    "yargs": "catalog:"
   },
   "devDependencies": {
-    "@types/yargs": "catalog:dev",
     "typescript": "catalog:dev"
   }
 }

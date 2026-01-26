@@ -1,60 +1,14 @@
 {
-  "name": "@whoz-oss/coday-desktop",
-  "version": "0.61.1",
-  "description": "Coday Desktop - Electron-based desktop application",
-  "repository": "https://github.com/whoz-oss/coday",
-  "license": "MIT",
-  "author": "vincent.audibert@whoz.com",
-  "main": "dist/main.js",
-  "scripts": {
-    "start": "electron dist/main.js"
+  "name": "@coday/desktop",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "tslib": "catalog:"
   },
   "devDependencies": {
-    "electron": "catalog:dev",
-    "electron-builder": "catalog:dev",
     "typescript": "catalog:dev"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "build": {
-    "appId": "com.whoz.coday",
-    "directories": {
-      "buildResources": "assets",
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*",
-      "assets/**/*"
-    ],
-    "icon": "assets/icon.jpg",
-    "linux": {
-      "category": "Development",
-      "icon": "assets/icon.jpg",
-      "target": [
-        "AppImage",
-        "deb"
-      ]
-    },
-    "mac": {
-      "category": "public.app-category.developer-tools",
-      "entitlements": "macos/entitlements.mac.plist",
-      "entitlementsInherit": "macos/entitlements.mac.plist",
-      "gatekeeperAssess": false,
-      "hardenedRuntime": true,
-      "icon": "assets/icon.jpg",
-      "identity": "BIZNET.IO (7DPGXLTDQS)",
-      "target": [
-        "dmg"
-      ]
-    },
-    "productName": "Coday",
-    "win": {
-      "icon": "assets/icon.jpg",
-      "target": [
-        "nsis",
-        "portable"
-      ]
-    }
   }
 }

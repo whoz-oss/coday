@@ -6,14 +6,9 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
-    "@coday/model": "workspace:*",
-    "@coday/service": "workspace:*",
-    "axios": "catalog:",
-    "tslib": "catalog:",
-    "turndown": "catalog:"
+    "tslib": "catalog:"
   },
   "devDependencies": {
-    "@types/turndown": "catalog:dev",
     "typescript": "catalog:dev"
   }
 }

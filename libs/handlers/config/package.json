@@ -8,6 +8,7 @@
   "dependencies": {
     "@coday/ai-thread": "workspace:*",
     "@coday/coday-services": "workspace:*",
+    "@coday/handler": "workspace:*",
     "@coday/model": "workspace:*",
     "@coday/service": "workspace:*",
     "tslib": "catalog:"

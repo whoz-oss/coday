@@ -1,11 +1,15 @@
 {
-  "name": "@coday/handlers/looper",
+  "name": "@coday/looper",
   "version": "0.0.1",
   "private": true,
   "type": "module",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
+    "@coday/ai-thread": "workspace:*",
+    "@coday/coday-services": "workspace:*",
+    "@coday/handler": "workspace:*",
+    "@coday/model": "workspace:*",
     "tslib": "catalog:"
   },
   "devDependencies": {

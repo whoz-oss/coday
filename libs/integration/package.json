@@ -6,18 +6,14 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
-    "@coday/ai-thread": "workspace:*",
+    "@coday/agent": "workspace:*",
+    "@coday/coday-services": "workspace:*",
     "@coday/function": "workspace:*",
     "@coday/handler": "workspace:*",
     "@coday/mcp": "workspace:*",
     "@coday/model": "workspace:*",
     "@coday/service": "workspace:*",
-    "@modelcontextprotocol/sdk": "catalog:",
-    "axios": "catalog:",
-    "oauth4webapi": "catalog:",
-    "rxjs": "catalog:",
-    "tslib": "catalog:",
-    "turndown": "catalog:"
+    "tslib": "catalog:"
   },
   "devDependencies": {
     "typescript": "catalog:dev"
