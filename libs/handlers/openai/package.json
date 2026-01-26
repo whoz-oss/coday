@@ -8,6 +8,7 @@
   "dependencies": {
     "@coday/agent": "workspace:*",
     "@coday/ai-thread": "workspace:*",
+    "@coday/handler": "workspace:*",
     "@coday/model": "workspace:*",
     "rxjs": "catalog:",
     "tslib": "catalog:"

@@ -6,9 +6,6 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
-    "@coday/function": "workspace:*",
-    "@coday/model": "workspace:*",
-    "@coday/service": "workspace:*",
     "tslib": "catalog:"
   },
   "devDependencies": {

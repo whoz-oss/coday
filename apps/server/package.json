@@ -1,51 +1,27 @@
 {
-  "name": "@whoz-oss/coday-server",
-  "version": "0.61.1",
-  "repository": "https://github.com/whoz-oss/coday",
+  "name": "@coday/server",
+  "version": "0.0.1",
+  "private": true,
   "type": "module",
-  "main": "server/server.js",
-  "bin": {
-    "coday-server": "./bin.js"
-  },
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
   "dependencies": {
-    "@anthropic-ai/sdk": "catalog:",
+    "@coday/agent": "workspace:*",
+    "@coday/coday-services": "workspace:*",
+    "@coday/core": "workspace:*",
+    "@coday/function": "workspace:*",
+    "@coday/handler": "workspace:*",
+    "@coday/integration": "workspace:*",
     "@coday/mcp": "workspace:*",
-    "@esbuild-plugins/node-modules-polyfill": "catalog:",
-    "@google/generative-ai": "catalog:",
-    "@inquirer/prompts": "catalog:",
-    "@modelcontextprotocol/sdk": "catalog:",
-    "@types/express": "catalog:",
-    "@types/turndown": "catalog:",
-    "@types/yargs": "catalog:",
-    "@vscode/ripgrep": "catalog:",
-    "axios": "catalog:",
-    "chalk": "catalog:",
+    "@coday/model": "workspace:*",
+    "@coday/repository": "workspace:*",
+    "@coday/service": "workspace:*",
     "express": "catalog:",
-    "glob": "catalog:",
-    "marked": "catalog:",
-    "openai": "catalog:",
-    "os": "catalog:",
-    "pdf2json": "catalog:",
+    "http-proxy-middleware": "catalog:dev",
     "rxjs": "catalog:",
-    "sharp": "catalog:",
-    "tslib": "catalog:",
-    "turndown": "catalog:",
-    "yaml": "catalog:",
-    "yargs": "catalog:"
+    "tslib": "catalog:"
   },
   "devDependencies": {
-    "@esbuild-plugins/node-globals-polyfill": "catalog:dev",
-    "@img/sharp-darwin-arm64": "catalog:dev",
-    "@types/http-proxy-middleware": "catalog:dev",
-    "@types/node": "catalog:dev",
-    "@types/sharp": "catalog:dev",
-    "http-proxy-middleware": "catalog:dev",
-    "ts-jest": "catalog:dev",
-    "ts-loader": "catalog:dev",
-    "tsx": "catalog:dev",
     "typescript": "catalog:dev"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

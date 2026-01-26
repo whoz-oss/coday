@@ -31,7 +31,8 @@ interface ProjectJson {
   }
 }
 
-const LIBS_DIR = path.join(process.cwd(), 'libs')
+const HANDLERS_DIR = path.join(process.cwd(), 'libs/handlers')
+const INTEGRATIONS_DIR = path.join(process.cwd(), 'libs/integrations')
 const TSCONFIG_BASE = path.join(process.cwd(), 'tsconfig.base.json')
 
 // Read the main package.json to get available external dependencies
@@ -69,11 +70,18 @@ function extractImports(filePath: string): Set<string> {
   while ((match = importRegex.exec(content)) !== null) {
     const importPath = match[1] || match[2]
     if (importPath && !importPath.startsWith('.')) {
-      // Extract package name (handle scoped packages)
-      const packageName = importPath.startsWith('@')
-        ? importPath.split('/').slice(0, 2).join('/')
-        : importPath.split('/')[0]
-      imports.add(packageName)
+      // For @coday/integrations/* and @coday/handlers/*, use the full path
+      if (importPath.startsWith('@coday/integrations/') || importPath.startsWith('@coday/handlers/')) {
+        // Keep the full import path (e.g., @coday/integrations/git)
+        const fullPath = importPath.split('/').slice(0, 3).join('/')
+        imports.add(fullPath)
+      } else {
+        // Extract package name (handle scoped packages)
+        const packageName = importPath.startsWith('@')
+          ? importPath.split('/').slice(0, 2).join('/')
+          : importPath.split('/')[0]
+        imports.add(packageName)
+      }
     }
   }
 
@@ -234,20 +242,35 @@ function generatePackageJson(libPath: string, libName: string): void {
 }
 
 /**
+ * Process a directory of libraries
+ */
+function processLibraryDirectory(dirPath: string, dirName: string) {
+  console.log(`\nProcessing ${dirName}...`)
+
+  if (!fs.existsSync(dirPath)) {
+    console.log(`  Skipping ${dirName}: directory not found`)
+    return
+  }
+
+  const libs = fs
+    .readdirSync(dirPath, { withFileTypes: true })
+    .filter((item) => item.isDirectory())
+    .map((item) => item.name)
+
+  for (const lib of libs) {
+    const libPath = path.join(dirPath, lib)
+    generatePackageJson(libPath, lib)
+  }
+}
+
+/**
  * Main execution
  */
 function main() {
   console.log('Generating package.json files for all libs...\n')
 
-  const libs = fs
-    .readdirSync(LIBS_DIR, { withFileTypes: true })
-    .filter((item) => item.isDirectory())
-    .map((item) => item.name)
-
-  for (const lib of libs) {
-    const libPath = path.join(LIBS_DIR, lib)
-    generatePackageJson(libPath, lib)
-  }
+  processLibraryDirectory(HANDLERS_DIR, 'handlers')
+  processLibraryDirectory(INTEGRATIONS_DIR, 'integrations')
 
   console.log('\n✓ Done!')
 }
