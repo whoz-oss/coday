@@ -1,5 +1,5 @@
 {
-  "name": "@coday/config",
+  "name": "@coday/handlers/config",
   "version": "0.0.1",
   "private": true,
   "type": "module",

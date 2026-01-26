@@ -11,18 +11,17 @@
     "@coday/core": "workspace:*",
     "@coday/function": "workspace:*",
     "@coday/handler": "workspace:*",
-    "@coday/integration": "workspace:*",
+    "@coday/integrations/ai": "workspace:*",
     "@coday/mcp": "workspace:*",
     "@coday/model": "workspace:*",
     "@coday/repository": "workspace:*",
     "@coday/service": "workspace:*",
     "express": "catalog:",
-    "http-proxy-middleware": "catalog:dev",
-    "rxjs": "catalog:",
-    "tslib": "catalog:"
+    "rxjs": "catalog:"
   },
   "devDependencies": {
     "@types/express": "catalog:dev",
+    "http-proxy-middleware": "catalog:dev",
     "typescript": "catalog:dev"
   }
 }

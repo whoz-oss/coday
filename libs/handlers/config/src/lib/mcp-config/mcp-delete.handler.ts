@@ -3,7 +3,7 @@ import { Interactor } from '@coday/model/interactor'
 import { McpConfigService } from '@coday/service/mcp-config.service'
 import { ConfigLevel } from '@coday/model/config-level'
 import { McpServerConfig } from '@coday/model/mcp-server-config'
-import { getMcpConfigNameAndId } from '@coday/handlers/config/mcp-config/helpers'
+import { getMcpConfigNameAndId } from './helpers'
 
 export class McpDeleteHandler extends CommandHandler {
   constructor(

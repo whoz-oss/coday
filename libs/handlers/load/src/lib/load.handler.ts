@@ -1,6 +1,7 @@
 import { NestedHandler } from '@coday/handler'
 import { Interactor } from '@coday/model/interactor'
-import { LoadFileHandler, LoadFolderHandler } from '@coday/handlers/load'
+import { LoadFileHandler } from './load-file.handler'
+import { LoadFolderHandler } from './load-folder.handler'
 
 export class LoadHandler extends NestedHandler {
   constructor(interactor: Interactor) {

@@ -1,7 +1,7 @@
 import { Interactor } from '@coday/model/interactor'
 import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
 import { CodayServices } from '@coday/coday-services'
-import { AiConfigEditHandler } from '@coday/handlers/config'
+import { AiConfigEditHandler } from './ai-config-edit.handler'
 import { ConfigLevel } from '@coday/model/config-level'
 import { AiProviderConfig } from '@coday/model/ai-provider-config'
 

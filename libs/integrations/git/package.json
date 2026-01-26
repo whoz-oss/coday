@@ -1,5 +1,5 @@
 {
-  "name": "@coday/git",
+  "name": "@coday/integrations/git",
   "version": "0.0.1",
   "private": true,
   "type": "module",

@@ -11,6 +11,7 @@
     "@coday/function": "workspace:*",
     "@coday/handler": "workspace:*",
     "@coday/integration": "workspace:*",
+    "@coday/integrations/ai": "workspace:*",
     "@coday/model": "workspace:*",
     "@coday/service": "workspace:*",
     "rxjs": "catalog:",

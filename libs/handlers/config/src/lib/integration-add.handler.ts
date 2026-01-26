@@ -1,7 +1,7 @@
 import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
 import { Interactor } from '@coday/model/interactor'
 import { IntegrationConfigService } from '@coday/service/integration-config.service'
-import { IntegrationEditHandler } from '@coday/handlers/config'
+import { IntegrationEditHandler } from './integration-edit.handler'
 import { ConfigLevel } from '@coday/model/config-level'
 import { ConcreteIntegrations } from '@coday/model/integrations'
 import { IntegrationConfig } from '@coday/model/integration-config'

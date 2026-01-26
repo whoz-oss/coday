@@ -3,7 +3,7 @@ import { Interactor } from '@coday/model/interactor'
 import { McpConfigService } from '@coday/service/mcp-config.service'
 import { ConfigLevel } from '@coday/model/config-level'
 import { McpServerConfig } from '@coday/model/mcp-server-config'
-import { formatMcpConfig, sanitizeMcpServerConfig } from '@coday/handlers/config/mcp-config/helpers'
+import { formatMcpConfig, sanitizeMcpServerConfig } from './helpers'
 
 export class McpListHandler extends CommandHandler {
   constructor(
