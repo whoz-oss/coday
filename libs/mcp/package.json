@@ -6,6 +6,8 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
+    "@coday/handler": "workspace:*",
+    "@coday/integration": "workspace:*",
     "@coday/model": "workspace:*",
     "@modelcontextprotocol/sdk": "catalog:",
     "tslib": "catalog:"

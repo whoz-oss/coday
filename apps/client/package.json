@@ -1,38 +1,27 @@
 {
-  "name": "@whoz-oss/coday-client",
-  "version": "0.61.1",
-  "repository": "https://github.com/whoz-oss/coday",
+  "name": "@coday/client",
+  "version": "0.0.1",
+  "private": true,
   "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
   "dependencies": {
     "@angular/animations": "catalog:",
-    "@angular/cdk": "catalog:",
     "@angular/common": "catalog:",
-    "@angular/compiler": "catalog:",
     "@angular/core": "catalog:",
     "@angular/forms": "catalog:",
     "@angular/material": "catalog:",
     "@angular/platform-browser": "catalog:",
-    "@angular/platform-browser-dynamic": "catalog:",
     "@angular/router": "catalog:",
+    "@coday/ai-thread": "workspace:*",
+    "@coday/model": "workspace:*",
+    "dompurify": "catalog:",
+    "jest-preset-angular": "catalog:dev",
     "marked": "catalog:",
     "rxjs": "catalog:",
-    "tslib": "catalog:",
-    "zone.js": "catalog:"
+    "tslib": "catalog:"
   },
   "devDependencies": {
-    "@angular-devkit/core": "catalog:dev",
-    "@angular-devkit/schematics": "catalog:dev",
-    "@angular/build": "catalog:dev",
-    "@angular/cli": "catalog:dev",
-    "@angular/compiler-cli": "catalog:dev",
-    "@angular/language-service": "catalog:dev",
-    "@schematics/angular": "catalog:dev",
-    "@types/jest": "catalog:dev",
-    "jest": "catalog:dev",
-    "jest-preset-angular": "catalog:dev",
     "typescript": "catalog:dev"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }
