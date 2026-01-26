@@ -5,11 +5,8 @@
   "type": "module",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
-  "dependencies": {
-    "@playwright/test": "catalog:dev",
-    "tslib": "catalog:"
-  },
   "devDependencies": {
+    "@playwright/test": "catalog:dev",
     "typescript": "catalog:dev"
   }
 }

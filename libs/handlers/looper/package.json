@@ -1,5 +1,5 @@
 {
-  "name": "@coday/looper",
+  "name": "@coday/handlers/looper",
   "version": "0.0.1",
   "private": true,
   "type": "module",

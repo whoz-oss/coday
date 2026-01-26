@@ -1,7 +1,10 @@
 import { Interactor } from '@coday/model/interactor'
 import { CodayServices } from '@coday/coday-services'
-import { MemoryCurateHandler, MemoryDeleteHandler, MemoryEditHandler, MemoryListHandler } from '@coday/handlers/memory'
 import { NestedHandler } from '@coday/handler'
+import { MemoryEditHandler } from './edit.handler'
+import { MemoryListHandler } from './list.handler'
+import { MemoryDeleteHandler } from './delete.handler'
+import { MemoryCurateHandler } from './curate.handler'
 
 export class MemoryHandler extends NestedHandler {
   constructor(interactor: Interactor, services: CodayServices) {

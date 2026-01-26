@@ -16,12 +16,11 @@
     "@coday/ai-thread": "workspace:*",
     "@coday/model": "workspace:*",
     "dompurify": "catalog:",
-    "jest-preset-angular": "catalog:dev",
     "marked": "catalog:",
-    "rxjs": "catalog:",
-    "tslib": "catalog:"
+    "rxjs": "catalog:"
   },
   "devDependencies": {
+    "jest-preset-angular": "catalog:dev",
     "typescript": "catalog:dev"
   }
 }

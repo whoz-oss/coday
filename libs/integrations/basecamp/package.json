@@ -1,5 +1,5 @@
 {
-  "name": "@coday/basecamp",
+  "name": "@coday/integrations/basecamp",
   "version": "0.0.1",
   "private": true,
   "type": "module",

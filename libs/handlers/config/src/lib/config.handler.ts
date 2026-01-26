@@ -10,7 +10,7 @@ import {
 } from '@coday/handlers/config'
 import { Interactor } from '@coday/model/interactor'
 import { CodayServices } from '@coday/coday-services'
-import { McpConfigHandler } from '@coday/handlers/config/src/lib/mcp-config/mcp-config.handler'
+import { McpConfigHandler } from './mcp-config/mcp-config.handler'
 
 export class ConfigHandler extends NestedHandler {
   selectProjectHandler: SelectProjectHandler
