@@ -6,10 +6,6 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
-    "@coday/agent": "workspace:*",
-    "@coday/mcp": "workspace:*",
-    "@coday/model": "workspace:*",
-    "@coday/service": "workspace:*",
     "tslib": "catalog:"
   },
   "devDependencies": {

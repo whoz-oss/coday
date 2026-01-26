@@ -7,12 +7,6 @@
   "types": "./src/index.d.ts",
   "dependencies": {
     "@anthropic-ai/sdk": "catalog:",
-    "@coday/agent": "workspace:*",
-    "@coday/ai-thread": "workspace:*",
-    "@coday/function": "workspace:*",
-    "@coday/handlers-openai": "workspace:*",
-    "@coday/model": "workspace:*",
-    "@coday/service": "workspace:*",
     "openai": "catalog:",
     "rxjs": "catalog:",
     "tslib": "catalog:"

@@ -13,8 +13,6 @@
     "@angular/material": "catalog:",
     "@angular/platform-browser": "catalog:",
     "@angular/router": "catalog:",
-    "@coday/ai-thread": "workspace:*",
-    "@coday/model": "workspace:*",
     "dompurify": "catalog:",
     "marked": "catalog:",
     "rxjs": "catalog:",

@@ -6,15 +6,6 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
-    "@coday/ai-thread": "workspace:*",
-    "@coday/coday-services": "workspace:*",
-    "@coday/handler": "workspace:*",
-    "@coday/handlers-config": "workspace:*",
-    "@coday/handlers-load": "workspace:*",
-    "@coday/handlers-memory": "workspace:*",
-    "@coday/handlers-openai": "workspace:*",
-    "@coday/handlers-stats": "workspace:*",
-    "@coday/model": "workspace:*",
     "tslib": "catalog:"
   },
   "devDependencies": {

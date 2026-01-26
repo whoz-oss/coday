@@ -442,12 +442,6 @@ importers:
       '@angular/router':
         specifier: 'catalog:'
         version: 20.3.4(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@20.3.4(@angular/animations@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(rxjs@7.8.2)
-      '@coday/ai-thread':
-        specifier: workspace:*
-        version: link:../../libs/ai-thread
-      '@coday/model':
-        specifier: workspace:*
-        version: link:../../libs/model
       dompurify:
         specifier: 'catalog:'
         version: 3.3.1
@@ -485,36 +479,6 @@ importers:
 
   apps/server:
     dependencies:
-      '@coday/agent':
-        specifier: workspace:*
-        version: link:../../libs/agent
-      '@coday/coday-services':
-        specifier: workspace:*
-        version: link:../../libs/coday-services
-      '@coday/core':
-        specifier: workspace:*
-        version: link:../../libs/core
-      '@coday/function':
-        specifier: workspace:*
-        version: link:../../libs/function
-      '@coday/handler':
-        specifier: workspace:*
-        version: link:../../libs/handler
-      '@coday/integrations-ai':
-        specifier: workspace:*
-        version: link:../../libs/integrations/ai
-      '@coday/mcp':
-        specifier: workspace:*
-        version: link:../../libs/mcp
-      '@coday/model':
-        specifier: workspace:*
-        version: link:../../libs/model
-      '@coday/repository':
-        specifier: workspace:*
-        version: link:../../libs/repository
-      '@coday/service':
-        specifier: workspace:*
-        version: link:../../libs/service
       express:
         specifier: 'catalog:'
         version: 5.1.0
@@ -540,30 +504,6 @@ importers:
 
   libs/agent:
     dependencies:
-      '@coday/ai-thread':
-        specifier: workspace:*
-        version: link:../ai-thread
-      '@coday/coday-services':
-        specifier: workspace:*
-        version: link:../coday-services
-      '@coday/function':
-        specifier: workspace:*
-        version: link:../function
-      '@coday/handler':
-        specifier: workspace:*
-        version: link:../handler
-      '@coday/integration':
-        specifier: workspace:*
-        version: link:../integration
-      '@coday/integrations-ai':
-        specifier: workspace:*
-        version: link:../integrations/ai
-      '@coday/model':
-        specifier: workspace:*
-        version: link:../model
-      '@coday/service':
-        specifier: workspace:*
-        version: link:../service
       rxjs:
         specifier: 'catalog:'
         version: 7.8.2
@@ -580,9 +520,6 @@ importers:
 
   libs/ai-thread:
     dependencies:
-      '@coday/model':
-        specifier: workspace:*
-        version: link:../model
       rxjs:
         specifier: 'catalog:'
         version: 7.8.2
@@ -596,18 +533,6 @@ importers:
 
   libs/coday-services:
     dependencies:
-      '@coday/agent':
-        specifier: workspace:*
-        version: link:../agent
-      '@coday/mcp':
-        specifier: workspace:*
-        version: link:../mcp
-      '@coday/model':
-        specifier: workspace:*
-        version: link:../model
-      '@coday/service':
-        specifier: workspace:*
-        version: link:../service
       tslib:
         specifier: 'catalog:'
         version: 2.8.1
@@ -618,36 +543,6 @@ importers:
 
   libs/core:
     dependencies:
-      '@coday/agent':
-        specifier: workspace:*
-        version: link:../agent
-      '@coday/ai-thread':
-        specifier: workspace:*
-        version: link:../ai-thread
-      '@coday/coday-services':
-        specifier: workspace:*
-        version: link:../coday-services
-      '@coday/handler':
-        specifier: workspace:*
-        version: link:../handler
-      '@coday/handlers-config':
-        specifier: workspace:*
-        version: link:../handlers/config
-      '@coday/handlers-looper':
-        specifier: workspace:*
-        version: link:../handlers/looper
-      '@coday/handlers-openai':
-        specifier: workspace:*
-        version: link:../handlers/openai
-      '@coday/integrations-ai':
-        specifier: workspace:*
-        version: link:../integrations/ai
-      '@coday/model':
-        specifier: workspace:*
-        version: link:../model
-      '@coday/service':
-        specifier: workspace:*
-        version: link:../service
       tslib:
         specifier: 'catalog:'
         version: 2.8.1
@@ -658,12 +553,6 @@ importers:
 
   libs/function:
     dependencies:
-      '@coday/model':
-        specifier: workspace:*
-        version: link:../model
-      '@coday/utils':
-        specifier: workspace:*
-        version: link:../utils
       '@vscode/ripgrep':
         specifier: 'catalog:'
         version: 1.15.9
@@ -692,24 +581,6 @@ importers:
       '@anthropic-ai/sdk':
         specifier: 'catalog:'
         version: 0.65.0(zod@3.25.76)
-      '@coday/agent':
-        specifier: workspace:*
-        version: link:../agent
-      '@coday/ai-thread':
-        specifier: workspace:*
-        version: link:../ai-thread
-      '@coday/function':
-        specifier: workspace:*
-        version: link:../function
-      '@coday/handlers-openai':
-        specifier: workspace:*
-        version: link:../handlers/openai
-      '@coday/model':
-        specifier: workspace:*
-        version: link:../model
-      '@coday/service':
-        specifier: workspace:*
-        version: link:../service
       openai:
         specifier: 'catalog:'
         version: 6.10.0(ws@8.18.3)(zod@3.25.76)
@@ -726,21 +597,6 @@ importers:
 
   libs/handlers/config:
     dependencies:
-      '@coday/ai-thread':
-        specifier: workspace:*
-        version: link:../../ai-thread
-      '@coday/coday-services':
-        specifier: workspace:*
-        version: link:../../coday-services
-      '@coday/handler':
-        specifier: workspace:*
-        version: link:../../handler
-      '@coday/model':
-        specifier: workspace:*
-        version: link:../../model
-      '@coday/service':
-        specifier: workspace:*
-        version: link:../../service
       tslib:
         specifier: 'catalog:'
         version: 2.8.1
@@ -751,18 +607,6 @@ importers:
 
   libs/handlers/load:
     dependencies:
-      '@coday/function':
-        specifier: workspace:*
-        version: link:../../function
-      '@coday/handler':
-        specifier: workspace:*
-        version: link:../../handler
-      '@coday/integrations-file':
-        specifier: workspace:*
-        version: link:../../integrations/file
-      '@coday/model':
-        specifier: workspace:*
-        version: link:../../model
       tslib:
         specifier: 'catalog:'
         version: 2.8.1
@@ -773,33 +617,6 @@ importers:
 
   libs/handlers/looper:
     dependencies:
-      '@coday/ai-thread':
-        specifier: workspace:*
-        version: link:../../ai-thread
-      '@coday/coday-services':
-        specifier: workspace:*
-        version: link:../../coday-services
-      '@coday/handler':
-        specifier: workspace:*
-        version: link:../../handler
-      '@coday/handlers-config':
-        specifier: workspace:*
-        version: link:../config
-      '@coday/handlers-load':
-        specifier: workspace:*
-        version: link:../load
-      '@coday/handlers-memory':
-        specifier: workspace:*
-        version: link:../memory
-      '@coday/handlers-openai':
-        specifier: workspace:*
-        version: link:../openai
-      '@coday/handlers-stats':
-        specifier: workspace:*
-        version: link:../stats
-      '@coday/model':
-        specifier: workspace:*
-        version: link:../../model
       tslib:
         specifier: 'catalog:'
         version: 2.8.1
@@ -810,18 +627,6 @@ importers:
 
   libs/handlers/memory:
     dependencies:
-      '@coday/coday-services':
-        specifier: workspace:*
-        version: link:../../coday-services
-      '@coday/handler':
-        specifier: workspace:*
-        version: link:../../handler
-      '@coday/model':
-        specifier: workspace:*
-        version: link:../../model
-      '@coday/service':
-        specifier: workspace:*
-        version: link:../../service
       tslib:
         specifier: 'catalog:'
         version: 2.8.1
@@ -832,18 +637,6 @@ importers:
 
   libs/handlers/openai:
     dependencies:
-      '@coday/agent':
-        specifier: workspace:*
-        version: link:../../agent
-      '@coday/ai-thread':
-        specifier: workspace:*
-        version: link:../../ai-thread
-      '@coday/handler':
-        specifier: workspace:*
-        version: link:../../handler
-      '@coday/model':
-        specifier: workspace:*
-        version: link:../../model
       rxjs:
         specifier: 'catalog:'
         version: 7.8.2
@@ -857,15 +650,6 @@ importers:
 
   libs/handlers/stats:
     dependencies:
-      '@coday/coday-services':
-        specifier: workspace:*
-        version: link:../../coday-services
-      '@coday/handler':
-        specifier: workspace:*
-        version: link:../../handler
-      '@coday/model':
-        specifier: workspace:*
-        version: link:../../model
       tslib:
         specifier: 'catalog:'
         version: 2.8.1
@@ -876,54 +660,6 @@ importers:
 
   libs/integration:
     dependencies:
-      '@coday/agent':
-        specifier: workspace:*
-        version: link:../agent
-      '@coday/coday-services':
-        specifier: workspace:*
-        version: link:../coday-services
-      '@coday/function':
-        specifier: workspace:*
-        version: link:../function
-      '@coday/handler':
-        specifier: workspace:*
-        version: link:../handler
-      '@coday/integrations-ai':
-        specifier: workspace:*
-        version: link:../integrations/ai
-      '@coday/integrations-basecamp':
-        specifier: workspace:*
-        version: link:../integrations/basecamp
-      '@coday/integrations-confluence':
-        specifier: workspace:*
-        version: link:../integrations/confluence
-      '@coday/integrations-file':
-        specifier: workspace:*
-        version: link:../integrations/file
-      '@coday/integrations-git':
-        specifier: workspace:*
-        version: link:../integrations/git
-      '@coday/integrations-gitlab':
-        specifier: workspace:*
-        version: link:../integrations/gitlab
-      '@coday/integrations-jira':
-        specifier: workspace:*
-        version: link:../integrations/jira
-      '@coday/integrations-slack':
-        specifier: workspace:*
-        version: link:../integrations/slack
-      '@coday/integrations-zendesk-articles':
-        specifier: workspace:*
-        version: link:../integrations/zendesk-articles
-      '@coday/mcp':
-        specifier: workspace:*
-        version: link:../mcp
-      '@coday/model':
-        specifier: workspace:*
-        version: link:../model
-      '@coday/service':
-        specifier: workspace:*
-        version: link:../service
       tslib:
         specifier: 'catalog:'
         version: 2.8.1
@@ -1045,15 +781,6 @@ importers:
 
   libs/mcp:
     dependencies:
-      '@coday/handler':
-        specifier: workspace:*
-        version: link:../handler
-      '@coday/integration':
-        specifier: workspace:*
-        version: link:../integration
-      '@coday/model':
-        specifier: workspace:*
-        version: link:../model
       '@modelcontextprotocol/sdk':
         specifier: 'catalog:'
         version: 1.23.1(zod@3.25.76)
@@ -1077,6 +804,9 @@ importers:
         specifier: 'catalog:'
         version: 18.0.0
     devDependencies:
+      '@types/node':
+        specifier: catalog:dev
+        version: 24.7.2
       '@types/yargs':
         specifier: catalog:dev
         version: 17.0.35
@@ -1086,18 +816,6 @@ importers:
 
   libs/repository:
     dependencies:
-      '@coday/ai-thread':
-        specifier: workspace:*
-        version: link:../ai-thread
-      '@coday/model':
-        specifier: workspace:*
-        version: link:../model
-      '@coday/service':
-        specifier: workspace:*
-        version: link:../service
-      '@coday/utils':
-        specifier: workspace:*
-        version: link:../utils
       tslib:
         specifier: 'catalog:'
         version: 2.8.1
@@ -1111,24 +829,6 @@ importers:
 
   libs/service:
     dependencies:
-      '@coday/ai-thread':
-        specifier: workspace:*
-        version: link:../ai-thread
-      '@coday/function':
-        specifier: workspace:*
-        version: link:../function
-      '@coday/handler':
-        specifier: workspace:*
-        version: link:../handler
-      '@coday/model':
-        specifier: workspace:*
-        version: link:../model
-      '@coday/repository':
-        specifier: workspace:*
-        version: link:../repository
-      '@coday/utils':
-        specifier: workspace:*
-        version: link:../utils
       rxjs:
         specifier: 'catalog:'
         version: 7.8.2
@@ -11568,7 +11268,7 @@ snapshots:
   '@jest/console@30.2.0':
     dependencies:
       '@jest/types': 30.2.0
-      '@types/node': 24.7.2
+      '@types/node': 25.0.2
       chalk: 4.1.2
       jest-message-util: 30.2.0
       jest-util: 30.2.0
@@ -11582,14 +11282,14 @@ snapshots:
       '@jest/test-result': 30.2.0
       '@jest/transform': 30.2.0
       '@jest/types': 30.2.0
-      '@types/node': 24.7.2
+      '@types/node': 25.0.2
       ansi-escapes: 4.3.2
       chalk: 4.1.2
       ci-info: 4.3.1
       exit-x: 0.2.2
       graceful-fs: 4.2.11
       jest-changed-files: 30.2.0
-      jest-config: 30.2.0(@types/node@24.7.2)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.19(@swc/helpers@0.5.17))(@types/node@24.7.2)(typescript@5.9.3))
+      jest-config: 30.2.0(@types/node@25.0.2)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.19(@swc/helpers@0.5.17))(@types/node@24.7.2)(typescript@5.9.3))
       jest-haste-map: 30.2.0
       jest-message-util: 30.2.0
       jest-regex-util: 30.0.1
@@ -11618,7 +11318,7 @@ snapshots:
       '@jest/fake-timers': 30.2.0
       '@jest/types': 30.2.0
       '@types/jsdom': 21.1.7
-      '@types/node': 24.7.2
+      '@types/node': 25.0.2
       jest-mock: 30.2.0
       jest-util: 30.2.0
       jsdom: 26.1.0
@@ -11629,7 +11329,7 @@ snapshots:
       '@jest/fake-timers': 30.2.0
       '@jest/types': 30.2.0
       '@types/jsdom': 21.1.7
-      '@types/node': 24.7.2
+      '@types/node': 25.0.2
       jest-mock: 30.2.0
       jest-util: 30.2.0
       jsdom: 27.0.0(postcss@8.5.6)
@@ -11656,7 +11356,7 @@ snapshots:
     dependencies:
       '@jest/types': 30.2.0
       '@sinonjs/fake-timers': 13.0.5
-      '@types/node': 24.7.2
+      '@types/node': 25.0.2
       jest-message-util: 30.2.0
       jest-mock: 30.2.0
       jest-util: 30.2.0
@@ -11685,7 +11385,7 @@ snapshots:
       '@jest/transform': 30.2.0
       '@jest/types': 30.2.0
       '@jridgewell/trace-mapping': 0.3.31
-      '@types/node': 24.7.2
+      '@types/node': 25.0.2
       chalk: 4.1.2
       collect-v8-coverage: 1.0.3
       exit-x: 0.2.2
@@ -13246,7 +12946,7 @@ snapshots:
 
   '@types/jsdom@21.1.7':
     dependencies:
-      '@types/node': 24.7.2
+      '@types/node': 25.0.2
       '@types/tough-cookie': 4.0.5
       parse5: 7.3.0
 
@@ -16438,7 +16138,7 @@ snapshots:
       '@jest/expect': 30.2.0
       '@jest/test-result': 30.2.0
       '@jest/types': 30.2.0
-      '@types/node': 24.7.2
+      '@types/node': 25.0.2
       chalk: 4.1.2
       co: 4.6.0
       dedent: 1.7.0(babel-plugin-macros@3.1.0)
@@ -16510,6 +16210,39 @@ snapshots:
       - babel-plugin-macros
       - supports-color
 
+  jest-config@30.2.0(@types/node@25.0.2)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.19(@swc/helpers@0.5.17))(@types/node@24.7.2)(typescript@5.9.3)):
+    dependencies:
+      '@babel/core': 7.28.5
+      '@jest/get-type': 30.1.0
+      '@jest/pattern': 30.0.1
+      '@jest/test-sequencer': 30.2.0
+      '@jest/types': 30.2.0
+      babel-jest: 30.2.0(@babel/core@7.28.5)
+      chalk: 4.1.2
+      ci-info: 4.3.1
+      deepmerge: 4.3.1
+      glob: 10.5.0
+      graceful-fs: 4.2.11
+      jest-circus: 30.2.0(babel-plugin-macros@3.1.0)
+      jest-docblock: 30.2.0
+      jest-environment-node: 30.2.0
+      jest-regex-util: 30.0.1
+      jest-resolve: 30.2.0
+      jest-runner: 30.2.0
+      jest-util: 30.2.0
+      jest-validate: 30.2.0
+      micromatch: 4.0.8
+      parse-json: 5.2.0
+      pretty-format: 30.2.0
+      slash: 3.0.0
+      strip-json-comments: 3.1.1
+    optionalDependencies:
+      '@types/node': 25.0.2
+      ts-node: 10.9.2(@swc/core@1.13.19(@swc/helpers@0.5.17))(@types/node@24.7.2)(typescript@5.9.3)
+    transitivePeerDependencies:
+      - babel-plugin-macros
+      - supports-color
+
   jest-diff@30.2.0:
     dependencies:
       '@jest/diff-sequences': 30.0.1
@@ -16554,7 +16287,7 @@ snapshots:
   jest-haste-map@30.2.0:
     dependencies:
       '@jest/types': 30.2.0
-      '@types/node': 24.7.2
+      '@types/node': 25.0.2
       anymatch: 3.1.3
       fb-watchman: 2.0.2
       graceful-fs: 4.2.11
@@ -16651,7 +16384,7 @@ snapshots:
       '@jest/test-result': 30.2.0
       '@jest/transform': 30.2.0
       '@jest/types': 30.2.0
-      '@types/node': 24.7.2
+      '@types/node': 25.0.2
       chalk: 4.1.2
       emittery: 0.13.1
       exit-x: 0.2.2
@@ -16680,7 +16413,7 @@ snapshots:
       '@jest/test-result': 30.2.0
       '@jest/transform': 30.2.0
       '@jest/types': 30.2.0
-      '@types/node': 24.7.2
+      '@types/node': 25.0.2
       chalk: 4.1.2
       cjs-module-lexer: 2.1.1
       collect-v8-coverage: 1.0.3
@@ -16736,7 +16469,7 @@ snapshots:
   jest-util@30.2.0:
     dependencies:
       '@jest/types': 30.2.0
-      '@types/node': 24.7.2
+      '@types/node': 25.0.2
       chalk: 4.1.2
       ci-info: 4.3.1
       graceful-fs: 4.2.11
@@ -16755,7 +16488,7 @@ snapshots:
     dependencies:
       '@jest/test-result': 30.2.0
       '@jest/types': 30.2.0
-      '@types/node': 24.7.2
+      '@types/node': 25.0.2
       ansi-escapes: 4.3.2
       chalk: 4.1.2
       emittery: 0.13.1
@@ -16777,7 +16510,7 @@ snapshots:
 
   jest-worker@30.2.0:
     dependencies:
-      '@types/node': 24.7.2
+      '@types/node': 25.0.2
       '@ungap/structured-clone': 1.3.0
       jest-util: 30.2.0
       merge-stream: 2.0.0
