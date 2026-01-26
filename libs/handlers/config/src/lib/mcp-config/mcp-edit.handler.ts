@@ -1,8 +1,8 @@
 import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
-import { Interactor } from '@coday/model/interactor'
-import { McpConfigService } from '@coday/service/mcp-config.service'
-import { ConfigLevel } from '@coday/model/config-level'
-import { McpServerConfig } from '@coday/model/mcp-server-config'
+import { Interactor } from '@coday/model'
+import { McpConfigService } from '@coday/service'
+import { ConfigLevel } from '@coday/model'
+import { McpServerConfig } from '@coday/model'
 import { cleanServerConfig, formatMcpConfig, getMcpConfigNameAndId, sanitizeMcpServerConfig } from './helpers'
 
 export class McpEditHandler extends CommandHandler {

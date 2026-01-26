@@ -10,6 +10,7 @@
     "@coday/agent": "workspace:*",
     "@coday/ai-thread": "workspace:*",
     "@coday/function": "workspace:*",
+    "@coday/handlers-openai": "workspace:*",
     "@coday/model": "workspace:*",
     "@coday/service": "workspace:*",
     "openai": "catalog:",

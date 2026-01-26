@@ -1,6 +1,6 @@
 import { CommandHandler } from './command-handler'
-import { Interactor } from '@coday/model/interactor'
-import { AiHandler } from '@coday/handlers/openai'
+import { Interactor } from '@coday/model'
+import { AiHandler } from '@coday/handlers-openai'
 import { CommandContext } from './command-context'
 
 /**

@@ -3,7 +3,7 @@ import { AssistantToolFactory } from '@coday/integration/assistant-tool-factory'
 import { Interactor } from '@coday/model/interactor'
 import { CommandContext } from '@coday/handler'
 import { CodayTool } from '@coday/model/coday-tool'
-import { git } from '@coday/integrations/git'
+import { git } from './git'
 import { FunctionTool } from '@coday/model/integration-types'
 
 export class GitTools extends AssistantToolFactory {

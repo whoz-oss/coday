@@ -1,7 +1,7 @@
 import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
-import { Interactor } from '@coday/model/interactor'
-import { IntegrationConfigService } from '@coday/service/integration-config.service'
-import { ConfigLevel } from '@coday/model/config-level'
+import { Interactor } from '@coday/model'
+import { IntegrationConfigService } from '@coday/service'
+import { ConfigLevel } from '@coday/model'
 
 export class IntegrationDeleteHandler extends CommandHandler {
   constructor(

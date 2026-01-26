@@ -1,4 +1,4 @@
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
 import { NestedHandler } from '@coday/handler'
 import { MemoryEditHandler } from './edit.handler'

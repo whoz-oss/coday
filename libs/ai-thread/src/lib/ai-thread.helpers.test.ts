@@ -1,4 +1,4 @@
-import { MessageEvent } from '@coday/model/coday-events'
+import { MessageEvent } from '@coday/model'
 import { partition } from './ai-thread.helpers'
 
 const message1 = new MessageEvent({ role: 'user', name: 'joe', content: [{ type: 'text', content: 'hello' }] })

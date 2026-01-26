@@ -8,15 +8,15 @@ import {
   PromptChainHandler,
   RunBashHandler,
 } from '@coday/handler'
-import { Interactor } from '@coday/model/interactor'
-import { AiHandler } from '@coday/handlers/openai'
-import { ConfigHandler } from '@coday/handlers/config'
+import { Interactor } from '@coday/model'
+import { AiHandler } from '@coday/handlers-openai'
+import { ConfigHandler } from '@coday/handlers-config'
 import { CodayServices } from '@coday/coday-services'
-import { ProjectDescription } from '@coday/model/project-description'
-import { MemoryHandler } from '@coday/handlers/memory'
-import { LoadHandler } from '@coday/handlers/load'
-import { StatsHandler } from '@coday/handlers/stats'
-import { PromptChain } from '@coday/model/prompt-chain'
+import { ProjectDescription } from '@coday/model'
+import { MemoryHandler } from '@coday/handlers-memory'
+import { LoadHandler } from '@coday/handlers-load'
+import { StatsHandler } from '@coday/handlers-stats'
+import { PromptChain } from '@coday/model'
 import { RunStatus } from '@coday/ai-thread'
 
 const MAX_ITERATIONS = 100

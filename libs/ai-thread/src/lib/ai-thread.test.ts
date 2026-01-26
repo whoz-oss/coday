@@ -1,5 +1,5 @@
-import { MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/model/coday-events'
-import { ToolCall, ToolResponse } from '@coday/integration/tool-call'
+import { MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/model'
+import { ToolCall, ToolResponse } from '@coday/integration'
 import { AiThread } from './ai-thread'
 
 const createToolCall = (name: string, args: string, id?: string): ToolCall => ({

@@ -1,8 +1,8 @@
 import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
-import { ConfigLevel } from '@coday/model/config-level'
-import { AiProviderConfig } from '@coday/model/ai-provider-config'
+import { ConfigLevel } from '@coday/model'
+import { AiProviderConfig } from '@coday/model'
 
 /**
  * Handler for setting only the API key of an existing AI provider.

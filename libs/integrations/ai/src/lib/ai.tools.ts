@@ -4,7 +4,7 @@ import { AssistantToolFactory } from '@coday/integration/assistant-tool-factory'
 import { AgentService } from '@coday/agent'
 import { CodayTool } from '@coday/model/coday-tool'
 import { FunctionTool } from '@coday/model/integration-types'
-import { redirectFunction } from '@coday/integrations/ai'
+import { redirectFunction } from './ai.tools'
 
 export class AiTools extends AssistantToolFactory {
   name = 'AI'

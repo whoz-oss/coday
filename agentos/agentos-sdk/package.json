@@ -1,5 +1,5 @@
 {
-  "name": "@coday/agentos-sdk",
+  "name": "@agentos/agentos-sdk",
   "version": "0.0.1",
   "private": true,
   "type": "module",

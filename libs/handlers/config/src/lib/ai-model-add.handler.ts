@@ -1,9 +1,9 @@
 import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
 import { AiModelEditHandler } from './ai-model-edit.handler'
-import { ConfigLevel } from '@coday/model/config-level'
-import { AiModel } from '@coday/model/ai-model'
+import { ConfigLevel } from '@coday/model'
+import { AiModel } from '@coday/model'
 
 /**
  * Handler for adding a new model to an AI provider config.

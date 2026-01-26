@@ -1,12 +1,12 @@
 import express from 'express'
 import { debugLog } from './log'
-import { WebhookService, Webhook } from '@coday/service/webhook.service'
+import { WebhookService, Webhook } from '@coday/service'
 import { ThreadCodayManager } from './thread-coday-manager'
-import { CodayOptions } from '@coday/model/coday-options'
-import { CodayLogger } from '@coday/service/coday-logger'
-import { CodayEvent, MessageEvent } from '@coday/model/coday-events'
+import { CodayOptions } from '@coday/model'
+import { CodayLogger } from '@coday/service'
+import { CodayEvent, MessageEvent } from '@coday/model'
 import { filter } from 'rxjs'
-import { ThreadService } from '@coday/service/thread.service'
+import { ThreadService } from '@coday/service'
 
 /**
  * Webhook Management REST API Routes

@@ -1,8 +1,8 @@
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import * as path from 'path'
-import { DEFAULT_CHAR_LIMIT, DEFAULT_LINE_LIMIT, limitOutput } from '@coday/utils/output-limiter'
+import { DEFAULT_CHAR_LIMIT, DEFAULT_LINE_LIMIT, limitOutput } from '@coday/utils'
 
 const execAsync = promisify(exec)
 

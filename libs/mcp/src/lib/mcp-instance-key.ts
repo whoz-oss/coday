@@ -1,5 +1,5 @@
 import { createHash } from 'crypto'
-import { McpServerConfig } from '@coday/model/mcp-server-config'
+import { McpServerConfig } from '@coday/model'
 
 /**
  * Compute a deterministic hash for an MCP server configuration.

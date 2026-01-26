@@ -1,7 +1,7 @@
-import { generateFileTree } from '@coday/function/generate-file-tree'
+import { generateFileTree } from '@coday/function'
 import * as path from 'path'
 import { CommandHandler } from './command-handler'
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 import { CommandContext } from './command-context'
 
 export class FileMapHandler extends CommandHandler {

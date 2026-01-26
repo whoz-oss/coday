@@ -1,4 +1,4 @@
-import { Memory, MemoryLevel } from '@coday/model/memory'
+import { Memory, MemoryLevel } from '@coday/model'
 import * as path from 'node:path'
 import { existsSync, writeFileSync } from 'node:fs'
 import * as yaml from 'yaml'

@@ -1,6 +1,6 @@
 import { Injectable, NgZone, OnDestroy, inject } from '@angular/core'
 import { Subject, BehaviorSubject } from 'rxjs'
-import { CodayEvent, buildCodayEvent, ErrorEvent } from '@coday/model/coday-events'
+import { CodayEvent, buildCodayEvent, ErrorEvent } from '@coday/model'
 
 export interface ConnectionStatus {
   connected: boolean

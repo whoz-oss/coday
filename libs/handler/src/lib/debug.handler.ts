@@ -1,5 +1,5 @@
 import { CommandHandler } from './command-handler'
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 import { CommandContext } from './command-context'
 
 export class DebugHandler extends CommandHandler {

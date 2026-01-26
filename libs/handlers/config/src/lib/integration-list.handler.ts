@@ -1,9 +1,9 @@
 import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
-import { Interactor } from '@coday/model/interactor'
-import { IntegrationConfigService } from '@coday/service/integration-config.service'
-import { ConfigLevel } from '@coday/model/config-level'
-import { IntegrationLocalConfig } from '@coday/model/project-local-config'
-import { IntegrationConfig } from '@coday/model/integration-config'
+import { Interactor } from '@coday/model'
+import { IntegrationConfigService } from '@coday/service'
+import { ConfigLevel } from '@coday/model'
+import { IntegrationLocalConfig } from '@coday/model'
+import { IntegrationConfig } from '@coday/model'
 
 export class IntegrationListHandler extends CommandHandler {
   constructor(

@@ -1,3 +1,3 @@
-# @coday/handlers/looper
+# @coday/handlers-looper
 
 Core library for looper.

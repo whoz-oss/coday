@@ -1,12 +1,12 @@
 import { existsSync, readFileSync } from 'fs'
 import * as yaml from 'yaml'
 import * as path from 'node:path'
-import { findFilesByName } from '@coday/function/find-files-by-name'
-import { getFormattedDocs } from '@coday/function/get-formatted-docs'
+import { findFilesByName } from '@coday/function'
+import { getFormattedDocs } from '@coday/function'
 import { DEFAULT_CODAY_YAML } from './default-coday-yaml'
-import { UserData } from '@coday/model/user-data'
-import { ProjectDescription } from '@coday/model/project-description'
-import { Interactor } from '@coday/model/interactor'
+import { UserData } from '@coday/model'
+import { ProjectDescription } from '@coday/model'
+import { Interactor } from '@coday/model'
 
 const CONFIG_FILENAME_YAML = 'coday.yaml'
 

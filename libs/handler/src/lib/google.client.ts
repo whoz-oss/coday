@@ -1,7 +1,7 @@
 import { OpenaiClient } from './openai.client'
-import { CodayLogger } from '@coday/service/coday-logger'
-import { Interactor } from '@coday/model/interactor'
-import { AiProviderConfig } from '@coday/model/ai-provider-config'
+import { CodayLogger } from '@coday/service'
+import { Interactor } from '@coday/model'
+import { AiProviderConfig } from '@coday/model'
 
 export class GoogleClient extends OpenaiClient {
   override models = [

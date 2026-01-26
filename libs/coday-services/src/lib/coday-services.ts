@@ -9,9 +9,9 @@ import type {
   UserService,
   WebhookService,
 } from '@coday/service'
-import { ThreadService } from '@coday/service/thread.service'
+import { ThreadService } from '@coday/service'
 import { McpInstancePool } from '@coday/mcp'
-import { CodayOptions } from '@coday/model/coday-options'
+import { CodayOptions } from '@coday/model'
 import { AgentService } from '@coday/agent'
 
 export type CodayServices = {

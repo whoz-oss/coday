@@ -1,5 +1,5 @@
 {
-  "name": "@coday/integrations/gitlab",
+  "name": "@coday/integrations-gitlab",
   "version": "0.0.1",
   "private": true,
   "type": "module",

@@ -1,4 +1,4 @@
-import { McpServerConfig } from '@coday/model/mcp-server-config'
+import { McpServerConfig } from '@coday/model'
 
 /**
  * Merge MCP servers from multiple configuration levels

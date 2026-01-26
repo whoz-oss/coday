@@ -1,5 +1,5 @@
 {
-  "name": "@coday/handlers/looper",
+  "name": "@coday/handlers-looper",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -9,6 +9,11 @@
     "@coday/ai-thread": "workspace:*",
     "@coday/coday-services": "workspace:*",
     "@coday/handler": "workspace:*",
+    "@coday/handlers-config": "workspace:*",
+    "@coday/handlers-load": "workspace:*",
+    "@coday/handlers-memory": "workspace:*",
+    "@coday/handlers-openai": "workspace:*",
+    "@coday/handlers-stats": "workspace:*",
     "@coday/model": "workspace:*",
     "tslib": "catalog:"
   },

@@ -1,10 +1,10 @@
 import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
-import { Interactor } from '@coday/model/interactor'
-import { IntegrationConfigService } from '@coday/service/integration-config.service'
+import { Interactor } from '@coday/model'
+import { IntegrationConfigService } from '@coday/service'
 import { IntegrationEditHandler } from './integration-edit.handler'
-import { ConfigLevel } from '@coday/model/config-level'
-import { ConcreteIntegrations } from '@coday/model/integrations'
-import { IntegrationConfig } from '@coday/model/integration-config'
+import { ConfigLevel } from '@coday/model'
+import { ConcreteIntegrations } from '@coday/model'
+import { IntegrationConfig } from '@coday/model'
 
 /**
  * Handler for adding a new integration configuration.

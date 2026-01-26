@@ -2,12 +2,12 @@ import express from 'express'
 import { existsSync, readFileSync } from 'fs'
 import { debugLog } from './log'
 import { ThreadCodayManager } from './thread-coday-manager'
-import { ImageContent } from '@coday/model/coday-events'
-import { processImageBuffer } from '@coday/function/image-processor'
-import { CodayOptions } from '@coday/model/coday-options'
-import { MAX_FILE_SIZE, isFileExtensionAllowed, getAllowedExtensionsString } from '@coday/model/file-config'
-import { ThreadService } from '@coday/service/thread.service'
-import { ThreadFileService } from '@coday/service/thread-file.service'
+import { ImageContent } from '@coday/model'
+import { processImageBuffer } from '@coday/function'
+import { CodayOptions } from '@coday/model'
+import { MAX_FILE_SIZE, isFileExtensionAllowed, getAllowedExtensionsString } from '@coday/model'
+import { ThreadService } from '@coday/service'
+import { ThreadFileService } from '@coday/service'
 
 /**
  * Thread Management REST API Routes

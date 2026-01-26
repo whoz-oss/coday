@@ -7,11 +7,11 @@
 import { BehaviorSubject, Observable } from 'rxjs'
 import { AiThread } from './ai-thread'
 
-import { UserService } from '@coday/service/user.service'
-import { Killable } from '@coday/model/killable'
-import { Interactor } from '@coday/model/interactor'
-import { ThreadRepository } from '@coday/repository/thread.repository'
-import { ThreadUpdateEvent } from '@coday/model/coday-events'
+import { UserService } from '@coday/service'
+import { Killable } from '@coday/model'
+import { Interactor } from '@coday/model'
+import { ThreadRepository } from '@coday/repository'
+import { ThreadUpdateEvent } from '@coday/model'
 
 export class ThreadStateService implements Killable {
   private readonly activeThread$ = new BehaviorSubject<AiThread | null>(null)

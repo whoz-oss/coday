@@ -1,5 +1,5 @@
 import { NestedHandler } from '@coday/handler'
-import { Interactor } from '@coday/model/interactor'
+import { Interactor } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
 import { StatsAgentsHandler } from './stats-agents.handler'
 import { StatsWebhooksHandler } from './stats-webhooks.handler'

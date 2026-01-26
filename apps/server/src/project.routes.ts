@@ -1,7 +1,7 @@
 import express from 'express'
 import { debugLog } from './log'
-import { ProjectService } from '@coday/service/project.service'
-import { ProjectLocalConfig } from '@coday/model/project-local-config'
+import { ProjectService } from '@coday/service'
+import { ProjectLocalConfig } from '@coday/model'
 
 /**
  * Project Management REST API Routes

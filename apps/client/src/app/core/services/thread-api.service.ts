@@ -1,7 +1,7 @@
 import { inject, Injectable } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
 import { Observable } from 'rxjs'
-import { ThreadSummary } from '@coday/ai-thread/ai-thread.types'
+import { ThreadSummary } from '@coday/ai-thread'
 
 /**
  * Thread list response

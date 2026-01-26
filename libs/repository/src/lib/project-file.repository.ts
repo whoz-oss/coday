@@ -2,11 +2,11 @@ import * as path from 'node:path'
 import * as os from 'node:os'
 import { existsSync, lstatSync, mkdirSync, readdirSync } from 'fs'
 import { ProjectRepository, ProjectInfo } from './project.repository'
-import { ProjectLocalConfig } from '@coday/model/project-local-config'
-import { readYamlFile } from '@coday/service/read-yaml-file'
-import { writeYamlFile } from '@coday/service/write-yaml-file'
-import { migrateData } from '@coday/utils/data-migration'
-import { projectConfigMigrations } from '@coday/service/migration/project-config-migrations'
+import { ProjectLocalConfig } from '@coday/model'
+import { readYamlFile } from '@coday/service'
+import { writeYamlFile } from '@coday/service'
+import { migrateData } from '@coday/utils'
+import { projectConfigMigrations } from '@coday/service'
 
 /**
  * File-based implementation of ProjectRepository.

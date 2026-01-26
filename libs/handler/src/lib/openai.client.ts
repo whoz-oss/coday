@@ -7,18 +7,18 @@ import {
   TextChunkEvent,
   ToolRequestEvent,
   ToolResponseEvent,
-} from '@coday/model/coday-events'
+} from '@coday/model'
 import { AiThread, ThreadMessage } from '@coday/ai-thread'
 import { Observable, Subject } from 'rxjs'
 import { ChatCompletionMessageParam, ChatCompletionSystemMessageParam } from 'openai/resources/chat/completions'
 import { MessageCreateParams } from 'openai/resources/beta/threads/messages'
 import { AssistantStream } from 'openai/lib/AssistantStream'
 import { RunSubmitToolOutputsParams } from 'openai/resources/beta/threads/runs/runs'
-import { CodayLogger } from '@coday/service/coday-logger'
-import { AiModel } from '@coday/model/ai-model'
+import { CodayLogger } from '@coday/service'
+import { AiModel } from '@coday/model'
 import { Agent, AiClient, CompletionOptions } from '@coday/agent'
-import { Interactor } from '@coday/model/interactor'
-import { AiProviderConfig } from '@coday/model/ai-provider-config'
+import { Interactor } from '@coday/model'
+import { AiProviderConfig } from '@coday/model'
 
 type AssistantThreadData = {
   threadId?: string

@@ -1,6 +1,6 @@
 import { AiThread, ThreadSummary } from '@coday/ai-thread'
 import { ProjectRepository, ThreadFileRepository, ThreadRepository } from '@coday/repository'
-import { ThreadFileService } from '@coday/service/thread-file.service'
+import { ThreadFileService } from '@coday/service'
 
 /**
  * Cache entry for thread list with timestamp

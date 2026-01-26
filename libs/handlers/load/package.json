@@ -1,5 +1,5 @@
 {
-  "name": "@coday/handlers/load",
+  "name": "@coday/handlers-load",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -8,7 +8,7 @@
   "dependencies": {
     "@coday/function": "workspace:*",
     "@coday/handler": "workspace:*",
-    "@coday/integrations/file": "workspace:*",
+    "@coday/integrations-file": "workspace:*",
     "@coday/model": "workspace:*",
     "tslib": "catalog:"
   },
