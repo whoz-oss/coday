@@ -1,5 +1,6 @@
 import { Interactor } from '@coday/model/interactor'
-import { CommandContext, CommandHandler } from '@coday/handler'
+import { CommandContext } from './command-context'
+import { CommandHandler } from './command-handler'
 import { keywords } from '@coday/model/keywords'
 
 export class AddQueryHandler extends CommandHandler {
