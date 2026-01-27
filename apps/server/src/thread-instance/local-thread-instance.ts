@@ -14,14 +14,14 @@ import { HeartBeatEvent } from '@coday/coday-events'
 import { debugLog } from '../log'
 import { ThreadService } from '../services/thread.service'
 import { ProjectService } from '../services/project.service'
-import { IThreadInstance } from './thread-instance.interface'
+import { ThreadInstance } from './thread-instance.interface'
 import { McpInstancePool } from '@coday/integration/mcp/mcp-instance-pool'
 
 /**
  * Local Coday execution instance for a thread.
  * Manages the lifecycle and SSE connections for a single thread using local Coday runtime.
  */
-export class LocalThreadInstance implements IThreadInstance {
+export class LocalThreadInstance implements ThreadInstance {
   private readonly connections: Set<Response> = new Set()
   private lastActivity: number = Date.now()
   private disconnectTimeout?: NodeJS.Timeout

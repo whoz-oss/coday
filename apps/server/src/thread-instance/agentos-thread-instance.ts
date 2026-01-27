@@ -1,14 +1,16 @@
 import { Response } from 'express'
 import axios from 'axios'
 import { debugLog } from '../log'
-import { IThreadInstance } from './thread-instance.interface'
+import { ThreadInstance } from './thread-instance.interface'
 import { HeartBeatEvent, InviteEvent } from '@coday/coday-events'
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
  * AgentOS remote execution instance for a thread.
  * Proxies execution to AgentOS backend via HTTP/SSE.
  */
-export class AgentOSThreadInstance implements IThreadInstance {
+export class AgentOSThreadInstance implements ThreadInstance {
   private readonly connections: Set<Response> = new Set()
   private lastActivity: number = Date.now()
   private disconnectTimeout?: NodeJS.Timeout
@@ -368,8 +370,7 @@ export class AgentOSThreadInstance implements IThreadInstance {
 
     // AgentOS expects UUID for answerToEventId, but Coday uses timestamps
     // For POC: ignore answerToEventId if it's not a valid UUID
-    const isValidUUID =
-      answerToEventId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(answerToEventId)
+    const isValidUUID = answerToEventId && UUID_PATTERN.test(answerToEventId)
 
     if (answerToEventId && !isValidUUID) {
       debugLog('AGENTOS_THREAD', `Ignoring non-UUID answerToEventId: ${answerToEventId}`)
