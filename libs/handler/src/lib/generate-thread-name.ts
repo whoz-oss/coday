@@ -1,13 +1,13 @@
 import { MessageEvent } from '@coday/model'
-import { AiThread } from '@coday/ai-thread'
-import { Agent } from '@coday/agent'
+import { AiThread } from '@coday/model'
+import { Agent } from '@coday/model'
 
 export async function generateThreadName(thread: AiThread, agent: Agent): Promise<string> {
   // Extract context from first few user messages
   const messages = (await thread.getMessages(undefined, undefined)).messages
     .filter((msg) => msg instanceof MessageEvent && msg.role === 'user')
     .slice(0, 3)
-    .map((msg) => (msg as MessageEvent).getTextContent())
+    .map((msg) => (msg as unknown as MessageEvent).getTextContent())
     .join('\n\n')
 
   const prompt = `Here are the messages a user sent in a conversation with an AI:\n\n<messages>${messages}</messages>\n\nGenerate a short title for this conversation between <conversation-name></conversation-name> tags, and without introduction nor line jumps.\n`

@@ -1,5 +1,5 @@
 import { Interactor } from '@coday/model'
-import { CommandContext } from './command-context'
+import { CommandContext } from '@coday/model'
 import { CommandHandler } from './command-handler'
 import { keywords } from '@coday/model'
 

@@ -2,8 +2,7 @@ import * as path from 'node:path'
 import * as os from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs'
-import { readYamlFile } from './read-yaml-file'
-import { writeYamlFile } from './write-yaml-file'
+import { readYamlFile, writeYamlFile } from '@coday/utils'
 
 export interface Webhook {
   uuid: string

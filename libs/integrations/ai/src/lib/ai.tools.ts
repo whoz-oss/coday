@@ -1,7 +1,6 @@
-import { CommandContext } from '@coday/handler'
+import { AgentSummary, CommandContext } from '@coday/model'
 import { Interactor } from '@coday/model'
-import { AssistantToolFactory } from '@coday/integration'
-import { AgentService } from '@coday/agent'
+import { AssistantToolFactory } from '@coday/model'
 import { CodayTool } from '@coday/model'
 import { FunctionTool } from '@coday/model'
 import { redirectFunction } from './redirect.function'
@@ -11,7 +10,7 @@ export class AiTools extends AssistantToolFactory {
 
   constructor(
     interactor: Interactor,
-    private agentService: AgentService
+    private agentSummaries: () => AgentSummary[]
   ) {
     super(interactor)
   }
@@ -65,10 +64,9 @@ AVOID closed options unless the user explicitly needs to choose between specific
 
     if (!context.oneshot) {
       // Add redirect tool
-      const redirect = redirectFunction({ context, agentService: this.agentService })
+      const redirect = redirectFunction(context)
 
-      const agentSummaries = this.agentService
-        .listAgentSummaries()
+      const agentSummaries = this.agentSummaries()
         .map((a) => `  - ${a.name} : ${a.description}`)
         .join('\n')
       const redirectTool: FunctionTool<{ query: string; agentName: string }> = {

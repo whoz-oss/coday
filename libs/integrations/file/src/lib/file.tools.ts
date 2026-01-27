@@ -8,9 +8,9 @@ import { resolveFilePath, prefixSearchResults, FILE_PREFIXES } from './resolve-f
 import { FileEvent } from '@coday/model'
 import { unlinkSync } from 'node:fs'
 import * as pathModule from 'path'
-import { AssistantToolFactory } from '@coday/integration'
+import { AssistantToolFactory } from '@coday/model'
 import { Interactor } from '@coday/model'
-import { CommandContext } from '@coday/handler'
+import { CommandContext } from '@coday/model'
 import { CodayTool } from '@coday/model'
 import { FunctionTool } from '@coday/model'
 

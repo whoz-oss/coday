@@ -1,5 +1,5 @@
 {
-  "name": "slack",
+  "name": "integrations-slack",
   "$schema": "../../../node_modules/nx/schemas/project-schema.json",
   "projectType": "library",
   "sourceRoot": "libs/slack",

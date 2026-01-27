@@ -3,10 +3,10 @@ import * as os from 'node:os'
 import { existsSync, lstatSync, mkdirSync, readdirSync } from 'fs'
 import { ProjectRepository, ProjectInfo } from './project.repository'
 import { ProjectLocalConfig } from '@coday/model'
-import { readYamlFile } from '@coday/service'
-import { writeYamlFile } from '@coday/service'
+import { readYamlFile } from '@coday/utils'
+import { writeYamlFile } from '@coday/utils'
 import { migrateData } from '@coday/utils'
-import { projectConfigMigrations } from '@coday/service'
+import { projectConfigMigrations } from '@coday/utils'
 
 /**
  * File-based implementation of ProjectRepository.

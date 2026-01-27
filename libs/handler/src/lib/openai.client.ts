@@ -8,15 +8,15 @@ import {
   ToolRequestEvent,
   ToolResponseEvent,
 } from '@coday/model'
-import { AiThread, ThreadMessage } from '@coday/ai-thread'
+import { AiThread, ThreadMessage } from '@coday/model'
 import { Observable, Subject } from 'rxjs'
 import { ChatCompletionMessageParam, ChatCompletionSystemMessageParam } from 'openai/resources/chat/completions'
 import { MessageCreateParams } from 'openai/resources/beta/threads/messages'
 import { AssistantStream } from 'openai/lib/AssistantStream'
 import { RunSubmitToolOutputsParams } from 'openai/resources/beta/threads/runs/runs'
-import { CodayLogger } from '@coday/service'
+import { CodayLogger } from '@coday/model'
 import { AiModel } from '@coday/model'
-import { Agent, AiClient, CompletionOptions } from '@coday/agent'
+import { Agent, AiClient, CompletionOptions } from '@coday/model'
 import { Interactor } from '@coday/model'
 import { AiProviderConfig } from '@coday/model'
 

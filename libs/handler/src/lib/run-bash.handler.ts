@@ -1,7 +1,7 @@
 import { runBash } from '@coday/function'
 import { CommandHandler } from './command-handler'
 import { Interactor } from '@coday/model'
-import { CommandContext } from './command-context'
+import { CommandContext } from '@coday/model'
 
 export class RunBashHandler extends CommandHandler {
   constructor(private readonly interactor: Interactor) {

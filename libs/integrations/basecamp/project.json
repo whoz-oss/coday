@@ -1,5 +1,5 @@
 {
-  "name": "basecamp",
+  "name": "integrations-basecamp",
   "$schema": "../../../node_modules/nx/schemas/project-schema.json",
   "projectType": "library",
   "sourceRoot": "libs/basecamp",

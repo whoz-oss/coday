@@ -1,6 +1,6 @@
 import { Interactor } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
-import { CommandContext } from '@coday/handler'
+import { CommandContext } from '@coday/model'
 import { UserData } from '@coday/model'
 import { loadOrInitProjectDescription } from '@coday/service'
 

@@ -6,7 +6,7 @@ import { IntegrationService } from '@coday/service'
 import { Interactor } from '@coday/model'
 import { listIssues } from './list-issues'
 import { listMergeRequests } from './list-merge-requests'
-import { AssistantToolFactory } from '@coday/integration'
+import { AssistantToolFactory } from '@coday/model'
 import { CodayTool } from '@coday/model'
 import { FunctionTool } from '@coday/model'
 

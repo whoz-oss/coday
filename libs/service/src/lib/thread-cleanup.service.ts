@@ -6,7 +6,7 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'yaml'
-import { CodayLogger } from './coday-logger'
+import { CodayLogger } from '@coday/model'
 
 // Service configuration
 const INITIAL_DELAY_MINUTES = 5

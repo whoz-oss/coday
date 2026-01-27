@@ -1,5 +1,5 @@
 import { OpenaiClient } from './openai.client'
-import { CodayLogger } from '@coday/service'
+import { CodayLogger } from '@coday/model'
 import { Interactor } from '@coday/model'
 import { AiProviderConfig } from '@coday/model'
 

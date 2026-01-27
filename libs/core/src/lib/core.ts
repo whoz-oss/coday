@@ -1,11 +1,11 @@
 import * as path from 'path'
-import { CommandContext } from '@coday/handler'
+import { CommandContext } from '@coday/model'
 import { ConfigHandler } from '@coday/handlers-config'
 import { HandlerLooper } from '@coday/handlers-looper'
 import { AiHandler } from '@coday/handlers-openai'
-import { AiThread, RunStatus, ThreadMessage } from '@coday/ai-thread'
+import { AiThread, RunStatus, ThreadMessage } from '@coday/model'
 import { Interactor } from '@coday/model'
-import { CodayOptions } from '../../../model/src/lib/coday-options'
+import { CodayOptions } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
 import { InviteEventDefault, MessageContent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/model'
 import { AgentService } from '@coday/agent'
@@ -49,7 +49,7 @@ export class Coday {
     this.aiClientProvider = new AiClientProvider(
       this.interactor,
       this.services.user,
-      this.services.project,
+      this.services.project.selectedProject?.config?.ai || [],
       this.services.logger
     )
   }

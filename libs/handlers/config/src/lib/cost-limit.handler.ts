@@ -1,6 +1,6 @@
-import { CommandContext, CommandHandler } from '@coday/handler'
-import { Interactor } from '@coday/model'
-import { EmptyUsage } from '@coday/ai-thread'
+import { CommandHandler } from '@coday/handler'
+import { CommandContext, Interactor } from '@coday/model'
+import { EmptyUsage } from '@coday/model'
 
 export class CostLimitHandler extends CommandHandler {
   constructor(private interactor: Interactor) {

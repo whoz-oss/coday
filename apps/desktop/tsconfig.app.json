@@ -5,7 +5,6 @@
     "module": "commonjs",
     "moduleResolution": "node",
     "noImplicitOverride": true,
-    "noPropertyAccessFromIndexSignature": true,
     "noUncheckedIndexedAccess": true,
     "outDir": "../../dist/out-tsc",
     "skipLibCheck": true,

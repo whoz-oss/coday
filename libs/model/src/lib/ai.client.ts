@@ -7,13 +7,14 @@ import {
   TextContent,
   ToolRequestEvent,
   ToolResponseEvent,
-} from '@coday/model'
+} from './coday-events'
 import { Agent } from './agent'
-import { AiThread, RunStatus, ThreadMessage } from '@coday/ai-thread'
-import { CodayLogger } from '@coday/service'
-import { AiModel } from '@coday/model'
-import { Interactor } from '@coday/model'
-import { AiProviderConfig } from '@coday/model'
+import { AiThread } from './ai-thread'
+import { RunStatus, ThreadMessage } from './ai-thread.types'
+import { CodayLogger } from './coday-logger'
+import { AiModel } from './ai-model'
+import { Interactor } from './interactor'
+import { AiProviderConfig } from './ai-provider-config'
 
 export interface CompletionOptions {
   model?: string
@@ -36,8 +37,8 @@ export abstract class AiClient {
   protected username?: string
 
   // Timer management for proper cleanup
-  private readonly activeThinkingIntervals: Set<NodeJS.Timeout> = new Set()
-  private readonly activeDelays: Set<NodeJS.Timeout> = new Set()
+  private readonly activeThinkingIntervals: Set<ReturnType<typeof setInterval>> = new Set()
+  private readonly activeDelays: Set<ReturnType<typeof setTimeout>> = new Set()
   private isShuttingDown = false
 
   protected constructor(
@@ -134,7 +135,7 @@ export abstract class AiClient {
    * Start a thinking interval with automatic cleanup tracking
    * @returns The interval handle
    */
-  protected startThinkingInterval(): NodeJS.Timeout {
+  protected startThinkingInterval(): ReturnType<typeof setInterval> {
     const interval = setInterval(() => this.interactor.thinking(), this.thinkingInterval)
     this.activeThinkingIntervals.add(interval)
     return interval
@@ -144,7 +145,7 @@ export abstract class AiClient {
    * Stop a thinking interval and remove from tracking
    * @param interval The interval to stop
    */
-  protected stopThinkingInterval(interval: NodeJS.Timeout): void {
+  protected stopThinkingInterval(interval: ReturnType<typeof setInterval>): void {
     clearInterval(interval)
     this.activeThinkingIntervals.delete(interval)
   }

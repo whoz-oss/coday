@@ -1,5 +1,5 @@
-import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
-import { Interactor } from '@coday/model'
+import { CommandHandler, parseArgs } from '@coday/handler'
+import { CommandContext, Interactor } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
 
 interface AgentStats {

@@ -1,5 +1,6 @@
 import { Interactor } from '@coday/model'
-import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
+import { CommandHandler, parseArgs } from '@coday/handler'
+import { CommandContext } from '@coday/model'
 import { MemoryService } from '@coday/service'
 import { Memory, MemoryLevel } from '@coday/model'
 

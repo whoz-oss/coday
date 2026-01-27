@@ -11,9 +11,9 @@ import {
   SummaryEvent,
   ToolRequestEvent,
   ToolResponseEvent,
-} from '@coday/model'
+} from './coday-events'
 
-import { ToolCall, ToolResponse } from '@coday/model'
+import { ToolCall, ToolResponse } from './integration-tool-call'
 
 import { EmptyUsage, RunStatus, ThreadMessage, ThreadSerialized, Usage } from './ai-thread.types'
 import { partition } from './ai-thread.helpers'

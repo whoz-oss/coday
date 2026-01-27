@@ -2,11 +2,10 @@ import { Memory, MemoryLevel } from '@coday/model'
 import * as path from 'node:path'
 import { existsSync, writeFileSync } from 'node:fs'
 import * as yaml from 'yaml'
-import { readYamlFile } from './read-yaml-file'
-import { writeYamlFile } from './write-yaml-file'
 import { UserService } from './user.service'
 import { ProjectStateService } from './project-state.service'
 import { distinctUntilChanged } from 'rxjs'
+import { readYamlFile, writeYamlFile } from '@coday/utils'
 
 /**
  * Name of the memories file, could be in different folders depending on the level
@@ -64,7 +63,7 @@ export class MemoryService {
     if (!levelMemories.length) return ''
 
     levelMemories.unshift(`## ${level} memories
-    
+
     Here are the information collected during previous chats:\n`)
     return levelMemories.join('\n')
   }

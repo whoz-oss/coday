@@ -1,6 +1,6 @@
 import express from 'express'
 import { debugLog } from './log'
-import { CommandContext } from '@coday/handler'
+import { CommandContext, Project } from '@coday/model'
 import { ProjectService } from '@coday/service'
 import { ServerInteractor } from '@coday/model'
 import { UserService } from '@coday/service'
@@ -10,14 +10,14 @@ import { IntegrationService } from '@coday/service'
 import { IntegrationConfigService } from '@coday/service'
 import { MemoryService } from '@coday/service'
 import { McpConfigService } from '@coday/service'
-import { CodayLogger } from '@coday/service'
+import { CodayLogger } from '@coday/model'
 import { WebhookService } from '@coday/service'
-import { CodayOptions } from '../../../libs/model/src/lib/coday-options'
+import { CodayOptions } from '@coday/model'
 import { loadOrInitProjectDescription } from '@coday/service'
 import { McpInstancePool } from '@coday/mcp'
 import { AgentService } from '@coday/agent'
 import { AiClientProvider } from '@coday/integrations-ai'
-import { ThreadService } from 'libs/service/src/lib/thread.service'
+import { ThreadService } from '@coday/service'
 
 /**
  * Agent Management REST API Routes
@@ -68,7 +68,7 @@ export function registerAgentRoutes(
       debugLog('AGENT', `GET agents list: project="${projectName}", user="${username}"`)
 
       // Get project from ProjectService
-      const projectData = projectService.getProject(projectName)
+      const projectData = projectService.getProject(<string>projectName)
       if (!projectData) {
         res.status(404).json({ error: `Project '${projectName}' not found` })
         return
@@ -101,10 +101,15 @@ export function registerAgentRoutes(
       }
 
       // Select the project in the state service
-      projectState.selectProject(projectName)
+      projectState.selectProject(<string>projectName)
 
       // Create temporary AiClientProvider and AgentService
-      const aiClientProvider = new AiClientProvider(interactor, user, projectState, logger)
+      const aiClientProvider = new AiClientProvider(
+        interactor,
+        user,
+        projectState.selectedProject?.config?.ai || [],
+        logger
+      )
       const agentService = new AgentService(
         interactor,
         aiClientProvider,
@@ -120,10 +125,10 @@ export function registerAgentRoutes(
       })
 
       // Create a Project object (ProjectDescription + root + name)
-      const projectObj = {
+      const projectObj: Project = {
         ...projectDescription,
         root: projectData.config.path,
-        name: projectName,
+        name: projectName as string,
       }
 
       // Create a command context with the full project object

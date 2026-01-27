@@ -2,7 +2,7 @@ import { retrieveZendeskArticle } from './retrieve-zendesk-article'
 import { searchZendeskArticles } from './search-zendesk-articles'
 import { IntegrationService } from '@coday/service'
 import { Interactor } from '@coday/model'
-import { AssistantToolFactory } from '@coday/integration'
+import { AssistantToolFactory } from '@coday/model'
 import { CodayTool } from '@coday/model'
 import { FunctionTool } from '@coday/model'
 

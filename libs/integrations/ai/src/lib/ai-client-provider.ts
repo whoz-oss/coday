@@ -1,11 +1,10 @@
-import { CommandContext, OpenaiClient } from '@coday/handler'
+import { OpenaiClient } from '@coday/handler'
 import { AnthropicClient } from '@coday/handler'
 import { UserService } from '@coday/service'
-import { ProjectStateService } from '@coday/service'
 import { GoogleClient } from '@coday/handler'
-import { CodayLogger } from '@coday/service'
-import { AiClient } from '@coday/agent'
-import { AiProviderConfig } from '@coday/model'
+import { CodayLogger } from '@coday/model'
+import { AiClient } from '@coday/model'
+import { AiProviderConfig, CommandContext } from '@coday/model'
 import { Interactor } from '@coday/model'
 
 /**
@@ -38,7 +37,7 @@ export class AiClientProvider {
   constructor(
     private readonly interactor: Interactor,
     private readonly userService: UserService,
-    private readonly projectService: ProjectStateService,
+    private readonly projectsAiProviderConfigs: AiProviderConfig[],
     private readonly logger: CodayLogger
   ) {}
 
@@ -46,7 +45,7 @@ export class AiClientProvider {
     if (this.aiProviderConfigs) return
     // get the ai def and models from coday.yaml
     const aiCodayYaml = context.project.ai || []
-    const projectYaml = this.projectService.selectedProject?.config?.ai || []
+    const projectYaml = this.projectsAiProviderConfigs || []
     const userYaml = this.userService.config.ai || []
 
     // Auto-detect providers from environment variables

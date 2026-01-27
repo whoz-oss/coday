@@ -2,7 +2,7 @@ import { UserService } from './user.service'
 import { ProjectStateService } from './project-state.service'
 import { ConfigLevel, ConfigLevelValidator } from '@coday/model'
 import { AiProviderConfig } from '@coday/model'
-import { CommandContext } from '@coday/handler'
+import { CommandContext } from '@coday/model'
 import { AiModel } from '@coday/model'
 
 /**
