@@ -1,17 +1,21 @@
-import { AssistantToolFactory } from '@coday/integration'
-import { Interactor } from '@coday/model'
-import { AgentService } from '@coday/agent'
-import { CommandContext } from '@coday/handler'
-import { CodayTool } from '@coday/model'
+import {
+  Agent,
+  AgentSummary,
+  AssistantToolFactory,
+  CodayTool,
+  CommandContext,
+  FunctionTool,
+  Interactor,
+} from '@coday/model'
 import { delegateFunction } from './delegate.function'
-import { FunctionTool } from '@coday/model'
 
 export class DelegateTools extends AssistantToolFactory {
   name = 'DELEGATE'
 
   constructor(
     interactor: Interactor,
-    private agentService: AgentService
+    private agentFind: (nameStart: string | undefined, context: CommandContext) => Promise<Agent | undefined>,
+    private agentSummaries: () => AgentSummary[]
   ) {
     super(interactor)
   }
@@ -39,7 +43,7 @@ export class DelegateTools extends AssistantToolFactory {
         : undefined
 
     // List all agent summaries, filter by allow-list if present
-    const allAgentSummaries = this.agentService.listAgentSummaries()
+    const allAgentSummaries = this.agentSummaries()
     const agentSummaries = allowList
       ? allAgentSummaries.filter((a) => allowList.includes(a.name.toLowerCase()))
       : allAgentSummaries
@@ -54,7 +58,7 @@ export class DelegateTools extends AssistantToolFactory {
     const delegate = delegateFunction({
       context,
       interactor: this.interactor,
-      agentService: this.agentService,
+      agentFind: this.agentFind,
     })
     const delegateWithAllowList = async ({ task, agentName }: { task: string; agentName: string | undefined }) => {
       if (allowList && (!agentName || !allowList.includes(agentName.toLowerCase()))) {

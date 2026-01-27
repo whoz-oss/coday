@@ -1,6 +1,6 @@
 // Slack API Types
 import { CodayTool } from '@coday/model'
-import { AssistantToolFactory } from '@coday/integration'
+import { AssistantToolFactory } from '@coday/model'
 import { Interactor } from '@coday/model'
 import { IntegrationService } from '@coday/service'
 import { FunctionTool } from '@coday/model'

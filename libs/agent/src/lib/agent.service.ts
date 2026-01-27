@@ -1,20 +1,20 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'yaml'
-import { Toolbox } from '@coday/integration'
 import { getFormattedDocs } from '@coday/function'
-import { MemoryLevel } from '@coday/model'
+import { Agent, AgentSummary, MemoryLevel } from '@coday/model'
 import { findFilesByName } from '@coday/function'
 import { Killable } from '@coday/model'
-import { CodayServices } from '@coday/coday-services'
 import { AgentDefinition, CodayAgentDefinition } from '@coday/model'
 import { Interactor } from '@coday/model'
-import { Agent, AgentSummary } from './agent'
-import { CommandContext } from '@coday/handler'
+import { CommandContext } from '@coday/model'
 import { ToolSet } from '@coday/model'
+import { CodayServices } from '@coday/coday-services'
 import { AiClientProvider } from '@coday/integrations-ai'
+import { Toolbox } from './toolbox'
+import { AgentServiceModel } from '@coday/model'
 
-export class AgentService implements Killable {
+export class AgentService implements Killable, AgentServiceModel {
   private agentCache: Map<string, Agent> = new Map()
   private agentDefinitions: { definition: AgentDefinition; basePath: string }[] = []
   public toolbox: Toolbox
@@ -31,7 +31,7 @@ export class AgentService implements Killable {
       this.agentCache.clear()
       this.agentDefinitions = []
     })
-    this.toolbox = new Toolbox(this.interactor, services, this)
+    this.toolbox = new Toolbox(this.interactor, services, this.findAgentByNameStart, this.listAgentSummaries)
   }
 
   listAgentSummaries(): AgentSummary[] {
@@ -250,7 +250,7 @@ export class AgentService implements Killable {
    * They are named exactly as the model name (e.g., 'gpt-4o', 'claude-sonnet-4.5').
    */
   private generateVirtualAgentsFromModels(): void {
-    const allModels = this.aiClientProvider.getAllModels()
+    const allModels = this.aiClientProvider.getAllModels() as Array<{ name: string; providerName: string }>
 
     for (const model of allModels) {
       // Create a minimal AgentDefinition for each model

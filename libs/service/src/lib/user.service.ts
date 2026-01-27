@@ -1,14 +1,12 @@
 import * as path from 'node:path'
 import { existsSync, mkdirSync } from 'fs'
-import { readYamlFile } from './read-yaml-file'
-import { writeYamlFile } from './write-yaml-file'
 import { DEFAULT_USER_CONFIG, UserConfig } from '@coday/model'
 import { UserData } from '@coday/model'
 import { Interactor } from '@coday/model'
 import { IntegrationLocalConfig } from '@coday/model'
 import * as os from 'node:os'
-import { migrateData } from '@coday/utils'
-import { userConfigMigrations } from './migration/user-config-migrations'
+import { migrateData, readYamlFile, userConfigMigrations, writeYamlFile } from '@coday/utils'
+
 import { ConfigMaskingService } from './config-masking.service'
 
 const usersFolder = 'users'

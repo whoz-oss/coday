@@ -1,12 +1,10 @@
 import { NestedHandler } from '@coday/handler'
 import { Interactor } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
-import {
-  IntegrationAddHandler,
-  IntegrationDeleteHandler,
-  IntegrationEditHandler,
-  IntegrationListHandler,
-} from '@coday/handlers-config'
+import { IntegrationAddHandler } from './integration-add.handler'
+import { IntegrationDeleteHandler } from './integration-delete.handler'
+import { IntegrationEditHandler } from './integration-edit.handler'
+import { IntegrationListHandler } from './integration-list.handler'
 
 export class IntegrationHandler extends NestedHandler {
   constructor(interactor: Interactor, services: CodayServices) {

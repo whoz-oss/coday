@@ -1,25 +1,27 @@
-import { CodayServices } from '@coday/coday-services'
-import { Killable } from '@coday/model'
-import { AssistantToolFactory } from '@coday/integration'
-import { McpServerConfig } from '@coday/model'
-import { CodayTool } from '@coday/model'
-import { Interactor } from '@coday/model'
-import { AgentService } from '@coday/agent'
-import { CoreTools } from '@coday/integration'
+import {
+  Agent,
+  AgentSummary,
+  AssistantToolFactory,
+  CodayTool,
+  CommandContext,
+  GetToolsInput,
+  Interactor,
+  Killable,
+  McpServerConfig,
+  OAuthCallbackEvent,
+} from '@coday/model'
 import { AiTools, DelegateTools } from '@coday/integrations-ai'
+import { McpToolsFactory } from '@coday/mcp'
+import { CoreTools, MemoryTools, ProjectScriptsTools } from '@coday/integration'
+import { FileTools } from '@coday/integrations-file'
 import { GitTools } from '@coday/integrations-git'
 import { GitLabTools } from '@coday/integrations-gitlab'
-import { ProjectScriptsTools } from '@coday/integration'
-import { MemoryTools } from '@coday/integration'
-import { GetToolsInput } from '@coday/handler'
-import { McpToolsFactory } from '@coday/mcp'
-import { OAuthCallbackEvent } from '@coday/model'
-import { FileTools } from '@coday/integrations-file'
 import { ConfluenceTools } from '@coday/integrations-confluence'
 import { ZendeskTools } from '@coday/integrations-zendesk-articles'
 import { JiraTools } from '@coday/integrations-jira'
 import { SlackTools } from '@coday/integrations-slack'
 import { BasecampTools } from '@coday/integrations-basecamp'
+import { CodayServices } from '@coday/coday-services'
 
 export class Toolbox implements Killable {
   private readonly toolFactories: AssistantToolFactory[]
@@ -29,16 +31,17 @@ export class Toolbox implements Killable {
   constructor(
     private readonly interactor: Interactor,
     private readonly services: CodayServices,
-    agentService: AgentService
+    agentFind: (nameStart: string | undefined, context: CommandContext) => Promise<Agent | undefined>,
+    agentSummaries: () => AgentSummary[]
   ) {
     // Store MCP configs for lazy initialization via pool
     this.mcpConfigs = services.mcp.getMergedConfiguration().servers
 
     // Create non-MCP tool factories immediately
     this.toolFactories = [
-      new CoreTools(interactor, services),
-      new AiTools(interactor, agentService),
-      new DelegateTools(interactor, agentService),
+      new CoreTools(interactor, services.options?.baseUrl),
+      new AiTools(interactor, agentSummaries),
+      new DelegateTools(interactor, agentFind, agentSummaries),
       new FileTools(interactor),
       new GitTools(interactor, services.integration),
       new ProjectScriptsTools(interactor),

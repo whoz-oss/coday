@@ -2,7 +2,7 @@
  * @fileoverview Type definitions for thread-related structures
  */
 
-import { MessageEvent, ToolRequestEvent, ToolResponseEvent, SummaryEvent } from '@coday/model'
+import { MessageEvent, SummaryEvent, ToolRequestEvent, ToolResponseEvent } from './coday-events'
 
 /**
  * Union type representing all possible message types in a thread:

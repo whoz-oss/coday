@@ -1,7 +1,6 @@
-import { CommandContext } from '@coday/handler'
+import { Agent, CommandContext } from '@coday/model'
 import { Interactor } from '@coday/model'
-import { Agent, AgentService } from '@coday/agent'
-import { AiThread } from '@coday/ai-thread'
+import { AiThread } from '@coday/model'
 import { lastValueFrom, Observable } from 'rxjs'
 import { filter, tap } from 'rxjs/operators'
 import { CodayEvent } from '@coday/model'
@@ -10,11 +9,11 @@ import { MessageEvent } from '@coday/model'
 type DelegateInput = {
   context: CommandContext
   interactor: Interactor
-  agentService: AgentService
+  agentFind: (agentName: string | undefined, context: CommandContext) => Promise<Agent | undefined>
 }
 
 export function delegateFunction(input: DelegateInput) {
-  const { context, interactor, agentService } = input
+  const { context, interactor, agentFind } = input
   const delegate = async ({ task, agentName }: { task: string; agentName: string | undefined }) => {
     try {
       interactor.debug(`Delegating with stackDepth: ${context.stackDepth}`)
@@ -22,7 +21,7 @@ export function delegateFunction(input: DelegateInput) {
         return 'Delegation not allowed, either permanently, or existing capacity already used.'
       }
 
-      const agent: Agent | undefined = await agentService.findAgentByNameStart(agentName, context)
+      const agent: Agent | undefined = await agentFind(agentName, context)
 
       if (!agent) {
         return `Agent ${agentName} not found.`

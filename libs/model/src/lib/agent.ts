@@ -1,9 +1,9 @@
 import { AiClient } from './ai.client'
-import { AiThread } from '@coday/ai-thread'
+import { AiThread } from './ai-thread'
 import { Observable } from 'rxjs'
-import { CodayEvent } from '@coday/model'
-import { AgentDefinition, ModelSize } from '@coday/model'
-import { ToolSet } from '@coday/model'
+import { CodayEvent } from './coday-events'
+import { AgentDefinition, ModelSize } from './agent-definition'
+import { ToolSet } from './integration-tool-set'
 
 /**
  * Simplified view of an agent for listing and selection purposes

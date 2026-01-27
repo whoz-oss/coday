@@ -70,5 +70,5 @@
     "target": "ESNext",
     "typeRoots": ["node_modules/@types"]
   },
-  "exclude": ["node_modules", "tmp"]
+  "exclude": ["node_modules", "tmp", "dist"]
 }

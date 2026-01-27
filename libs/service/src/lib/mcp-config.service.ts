@@ -3,7 +3,7 @@ import { UserService } from './user.service'
 import { ProjectStateService } from './project-state.service'
 import { McpServerConfig } from '@coday/model'
 import { ConfigLevel, ConfigLevelValidator } from '@coday/model'
-import { CommandContext } from '@coday/handler'
+import { CommandContext } from '@coday/model'
 import { mergeMcpConfigs } from './mcp-config-merger'
 
 /**

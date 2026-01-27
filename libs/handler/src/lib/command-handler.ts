@@ -1,4 +1,4 @@
-import { CommandContext } from './command-context'
+import { CommandContext } from '@coday/model'
 
 export type CommandHandlerConstructorInput = {
   commandWord: string

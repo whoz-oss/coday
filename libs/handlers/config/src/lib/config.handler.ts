@@ -1,16 +1,14 @@
 import { NestedHandler } from '@coday/handler'
-import {
-  AiConfigHandler,
-  CostLimitHandler,
-  DefaultAgentHandler,
-  IntegrationHandler,
-  SelectProjectHandler,
-  UserBioHandler,
-  WebhookHandler,
-} from '@coday/handlers-config'
+import { AiConfigHandler } from './ai-config.handler'
 import { Interactor } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
 import { McpConfigHandler } from './mcp-config/mcp-config.handler'
+import { SelectProjectHandler } from './select-project.handler'
+import { IntegrationHandler } from './integration.handler'
+import { DefaultAgentHandler } from './default-agent.handler'
+import { WebhookHandler } from './webhook.handler'
+import { UserBioHandler } from './user-bio.handler'
+import { CostLimitHandler } from './cost-limit.handler'
 
 export class ConfigHandler extends NestedHandler {
   selectProjectHandler: SelectProjectHandler

@@ -1,13 +1,14 @@
 import { promises as fs } from 'fs'
 import * as path from 'path'
 import * as os from 'os'
+import { CodayLogger } from '@coday/model'
 
 /**
  * Simple usage logger for AI agent interactions
  * Logs to daily JSONL files when logging is enabled
  * Uses buffering to avoid concurrent file access issues
  */
-export class CodayLogger {
+export class CodayLoggerUtils implements CodayLogger {
   private enabled: boolean
   private logFolder: string
   private buffer: any[] = []

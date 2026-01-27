@@ -1,4 +1,4 @@
-import { CodayLogger } from './coday-logger'
+import { CodayLoggerUtils } from './coday-logger-utils'
 import { promises as fs } from 'fs'
 import * as path from 'path'
 
@@ -35,7 +35,7 @@ describe('CodayLogger', () => {
 
   describe('when logging is disabled', () => {
     it('should not create log files', async () => {
-      const logger = new CodayLogger(false, testLogDir)
+      const logger = new CodayLoggerUtils(false, testLogDir)
 
       await logger.logAgentUsage('test-user', 'Dev', 'gpt-4o', 0.05)
       await logger.shutdown()
@@ -53,7 +53,7 @@ describe('CodayLogger', () => {
 
   describe('when logging is enabled', () => {
     it('should create daily log files with correct format', async () => {
-      const logger = new CodayLogger(true, testLogDir, 100) // Very short flush interval for testing
+      const logger = new CodayLoggerUtils(true, testLogDir, 100) // Very short flush interval for testing
 
       await logger.logAgentUsage('test-user', 'Dev', 'gpt-4o', 0.05)
       await logger.logAgentUsage('test-user', 'Sway', 'claude-3-sonnet', 0.03)
@@ -109,7 +109,7 @@ describe('CodayLogger', () => {
     })
 
     it('should buffer entries and flush periodically', async () => {
-      const logger = new CodayLogger(true, testLogDir, 200) // 200ms flush interval
+      const logger = new CodayLoggerUtils(true, testLogDir, 200) // 200ms flush interval
 
       await logger.logAgentUsage('test-user', 'Dev', 'gpt-4o', 0.05)
 
@@ -133,7 +133,7 @@ describe('CodayLogger', () => {
     })
 
     it('should flush immediately when buffer gets large', async () => {
-      const logger = new CodayLogger(true, testLogDir, 10000) // Long flush interval
+      const logger = new CodayLoggerUtils(true, testLogDir, 10000) // Long flush interval
 
       // Add 100+ entries to trigger immediate flush
       for (let i = 0; i < 105; i++) {
