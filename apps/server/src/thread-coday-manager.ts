@@ -5,7 +5,7 @@ import { WebhookService } from '@coday/service/webhook.service'
 import { debugLog } from './log'
 import { ThreadService } from './services/thread.service'
 import { ProjectService } from './services/project.service'
-import { IThreadInstance } from './thread-instance/thread-instance.interface'
+import { ThreadInstance } from './thread-instance/thread-instance.interface'
 import { LocalThreadInstance } from './thread-instance/local-thread-instance'
 import { AgentOSThreadInstance } from './thread-instance/agentos-thread-instance'
 import { McpInstancePool } from '@coday/integration/mcp/mcp-instance-pool'
@@ -14,19 +14,19 @@ import { McpInstancePool } from '@coday/integration/mcp/mcp-instance-pool'
  * Legacy type alias for backward compatibility
  * @deprecated Use IThreadInstance instead
  */
-export type ThreadCodayInstance = IThreadInstance
+export type ThreadCodayInstance = ThreadInstance
 
 /**
  * Manages thread execution instances indexed by threadId.
  * Supports both local Coday and remote AgentOS backends.
  */
 export class ThreadCodayManager {
-  private readonly instances: Map<string, IThreadInstance> = new Map()
+  private readonly instances: Map<string, ThreadInstance> = new Map()
   private readonly useAgentOS: boolean
   private readonly heartbeatInterval: NodeJS.Timeout
 
   // AgentOS configuration (POC - hardcoded defaults)
-  private static readonly AGENTOS_URL = 'http://localhost:8080'
+  private static readonly AGENTOS_URL = process.env.AGENTOS_URL ?? 'http://localhost:8080'
   private static readonly AGENTOS_DEFAULT_PROJECT_ID = '00000000-0000-0000-0000-000000000000'
 
   static readonly HEARTBEAT_INTERVAL = 30_000 // 30 seconds
@@ -81,7 +81,7 @@ export class ThreadCodayManager {
    * @param username User identifier
    * @param options Coday options (must include project and thread)
    * @param response SSE response object
-   * @returns IThreadInstance
+   * @returns ThreadInstance
    */
   getOrCreate(
     threadId: string,
@@ -89,7 +89,7 @@ export class ThreadCodayManager {
     username: string,
     options: CodayOptions,
     response: Response
-  ): IThreadInstance {
+  ): ThreadInstance {
     let instance = this.instances.get(threadId)
 
     if (!instance) {
@@ -137,14 +137,14 @@ export class ThreadCodayManager {
    * @param projectName Project name
    * @param username User identifier
    * @param options Coday options (must include project and thread)
-   * @returns IThreadInstance
+   * @returns ThreadInstance
    */
   createWithoutConnection(
     threadId: string,
     projectName: string,
     username: string,
     options: CodayOptions
-  ): IThreadInstance {
+  ): ThreadInstance {
     let instance = this.instances.get(threadId)
 
     if (!instance) {
@@ -188,7 +188,7 @@ export class ThreadCodayManager {
    * @param threadId Thread identifier
    * @returns IThreadInstance or undefined
    */
-  get(threadId: string): IThreadInstance | undefined {
+  get(threadId: string): ThreadInstance | undefined {
     return this.instances.get(threadId)
   }
 

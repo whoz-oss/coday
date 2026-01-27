@@ -5,7 +5,7 @@ import { Coday } from '@coday/core'
  * Interface for thread execution backends.
  * Abstracts whether execution happens locally (Coday) or remotely (AgentOS).
  */
-export interface IThreadInstance {
+export interface ThreadInstance {
   readonly threadId: string
   readonly projectName: string
   readonly username: string
