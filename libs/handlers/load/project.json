@@ -1,0 +1,26 @@
+{
+  "name": "load",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/handlers/load",
+  "tags": [
+    "scope:libs",
+    "type:core"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "libs/handlers/load/dist",
+        "main": "libs/handlers/load/src/index.ts",
+        "tsConfig": "libs/handlers/load/tsconfig.lib.json",
+        "assets": [
+          "libs/handlers/load/*.md"
+        ]
+      }
+    }
+  }
+}

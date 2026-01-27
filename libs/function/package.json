@@ -1,0 +1,19 @@
+{
+  "name": "@coday/function",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "@vscode/ripgrep": "catalog:",
+    "glob": "catalog:",
+    "pdf2json": "catalog:",
+    "sharp": "catalog:",
+    "tslib": "catalog:"
+  },
+  "devDependencies": {
+    "@jest/globals": "catalog:dev",
+    "typescript": "catalog:dev"
+  }
+}

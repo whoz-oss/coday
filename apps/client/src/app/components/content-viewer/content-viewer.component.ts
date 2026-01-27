@@ -10,7 +10,7 @@ import { ContentRendererComponent } from '../content-renderer/content-renderer.c
 import { ContentViewerService, type FileContent } from '../../core/services/content-viewer.service'
 import type { FileInfo } from '../../core/services/file-exchange-api.service'
 import { EventStreamService } from '../../core/services/event-stream.service'
-import { FileEvent } from '@coday/coday-events'
+import { FileEvent } from '@coday/model'
 
 /**
  * ContentViewerComponent - Displays file content with appropriate rendering
