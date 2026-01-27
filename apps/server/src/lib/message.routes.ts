@@ -63,7 +63,7 @@ export function registerMessageRoutes(
         debugLog('MESSAGE', `GET messages for thread: ${threadId} in project: ${projectName}`)
 
         // Get the thread instance
-        const instance = threadCodayManager.get(threadId)
+        const instance = threadCodayManager.get(<string>threadId)
         if (!instance?.coday) {
           res.status(404).json({ error: `Thread '${threadId}' not found or not active` })
           return
@@ -127,7 +127,7 @@ export function registerMessageRoutes(
           `threadId: ${threadId}, project: ${projectName}, received message of type: ${payload.type || 'answer'}`
         )
 
-        const instance = threadCodayManager.get(threadId)
+        const instance = threadCodayManager.get(<string>threadId)
         if (!instance?.coday) {
           res.status(404).send('Thread not found or not connected')
           return
@@ -181,7 +181,7 @@ export function registerMessageRoutes(
         }
 
         // Decode eventId in case it was URL encoded
-        const eventId = decodeURIComponent(rawEventId)
+        const eventId = decodeURIComponent(<string>rawEventId)
 
         const username = getUsernameFn(req)
         if (!username) {
@@ -192,7 +192,7 @@ export function registerMessageRoutes(
         debugLog('MESSAGE', `GET message: ${eventId} from thread: ${threadId} in project: ${projectName}`)
 
         // Get the thread instance
-        const instance = threadCodayManager.get(threadId)
+        const instance = threadCodayManager.get(<string>threadId)
         if (!instance?.coday) {
           res.status(404).json({ error: `Thread '${threadId}' not found or not active` })
           return
@@ -248,7 +248,7 @@ export function registerMessageRoutes(
         }
 
         // Decode eventId in case it was URL encoded
-        const eventId = decodeURIComponent(rawEventId)
+        const eventId = decodeURIComponent(<string>rawEventId)
 
         const username = getUsernameFn(req)
         if (!username) {
@@ -259,7 +259,7 @@ export function registerMessageRoutes(
         debugLog('MESSAGE', `GET formatted message: ${eventId} from thread: ${threadId} in project: ${projectName}`)
 
         // Get the thread instance
-        const instance = threadCodayManager.get(threadId)
+        const instance = threadCodayManager.get(<string>threadId)
         if (!instance?.coday) {
           res.status(404).send('Thread not found or not active')
           return
@@ -344,7 +344,7 @@ export function registerMessageRoutes(
         }
 
         // Decode eventId in case it was URL encoded
-        const eventId = decodeURIComponent(rawEventId)
+        const eventId = decodeURIComponent(<string>rawEventId)
 
         const username = getUsernameFn(req)
         if (!username) {
@@ -368,7 +368,7 @@ export function registerMessageRoutes(
         )
 
         // Get the thread instance
-        const instance = threadCodayManager.get(threadId)
+        const instance = threadCodayManager.get(<string>threadId)
         if (!instance?.coday) {
           res.status(404).json({ error: `Thread '${threadId}' not found or not active` })
           return

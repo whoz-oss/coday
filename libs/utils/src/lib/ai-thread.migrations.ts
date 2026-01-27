@@ -1,4 +1,4 @@
-import { Migration } from '@coday/utils'
+import { Migration } from './data-migration'
 
 const messageEventToMessageContent: Migration = {
   version: 1,

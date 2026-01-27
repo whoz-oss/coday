@@ -1,6 +1,6 @@
 import { CommandHandler } from './command-handler'
 import { Interactor } from '@coday/model'
-import { CommandContext } from './command-context'
+import { CommandContext } from '@coday/model'
 
 export class DebugHandler extends CommandHandler {
   constructor(private interactor: Interactor) {

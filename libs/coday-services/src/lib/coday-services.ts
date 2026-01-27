@@ -1,6 +1,5 @@
 import type {
   AiConfigService,
-  CodayLogger,
   IntegrationConfigService,
   IntegrationService,
   McpConfigService,
@@ -11,8 +10,7 @@ import type {
 } from '@coday/service'
 import { ThreadService } from '@coday/service'
 import { McpInstancePool } from '@coday/mcp'
-import { CodayOptions } from '../../../model/src/lib/coday-options'
-import { AgentService } from '@coday/agent'
+import { AgentServiceModel, CodayLogger, CodayOptions } from '@coday/model'
 
 export type CodayServices = {
   user: UserService
@@ -25,7 +23,7 @@ export type CodayServices = {
   mcpPool: McpInstancePool
   logger: CodayLogger
   options?: CodayOptions
-  agent?: AgentService
+  agent?: AgentServiceModel
   aiConfig?: AiConfigService
   webhook?: WebhookService
 }

@@ -1,4 +1,4 @@
-import { Migration } from '@coday/utils'
+import { Migration } from './data-migration'
 import { aiPropertyToAi } from './ai-providers-to-ai.migration'
 
 /**

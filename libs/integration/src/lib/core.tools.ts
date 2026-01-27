@@ -1,15 +1,13 @@
-import { AssistantToolFactory } from './assistant-tool-factory'
-import { Interactor } from '@coday/model'
+import { AssistantToolFactory, Interactor } from '@coday/model'
 import { CodayTool } from '@coday/model'
-import { CodayServices } from '@coday/coday-services'
-import { CommandContext } from '@coday/handler'
+import { CommandContext } from '@coday/model'
 
 export class CoreTools extends AssistantToolFactory {
   name = 'CORE'
 
   constructor(
     interactor: Interactor,
-    private readonly services: CodayServices
+    private readonly baseUrl?: string
   ) {
     super(interactor)
   }
@@ -40,11 +38,11 @@ export class CoreTools extends AssistantToolFactory {
             }
 
             // Add conversation URL if baseUrl is configured
-            if (this.services.options?.baseUrl) {
+            if (this.baseUrl) {
               // Build complete URL with baseUrl from options
               // For custom protocols (e.g., coday://), baseUrl ends with '://' so we don't add a slash
               // For HTTP URLs (e.g., http://localhost:3000), we add a slash
-              const baseUrl = this.services.options.baseUrl
+              const baseUrl = this.baseUrl
               const separator = baseUrl.endsWith('://') ? '' : '/'
               info.conversationUrl = `${baseUrl}${separator}project/${projectName}/thread/${threadId}`
             }

@@ -1,20 +1,21 @@
 import { Response } from 'express'
 import { Coday } from '@coday/core'
 import { ServerInteractor } from '@coday/model'
-import { CodayOptions } from '../../../libs/model/src/lib/coday-options'
+import { CodayOptions } from '@coday/model'
 import { UserService } from '@coday/service'
 import { ProjectStateService } from '@coday/service'
 import { IntegrationService } from '@coday/service'
 import { IntegrationConfigService } from '@coday/service'
 import { MemoryService } from '@coday/service'
 import { McpConfigService } from '@coday/service'
-import { CodayLogger } from '@coday/service'
+import { CodayLogger } from '@coday/model'
 import { WebhookService } from '@coday/service'
 import { HeartBeatEvent, ThreadUpdateEvent, OAuthCallbackEvent } from '@coday/model'
 import { debugLog } from './log'
 import { ProjectService } from '@coday/service'
 import { ThreadService } from '@coday/service'
 import { McpInstancePool } from '@coday/mcp'
+import { AgentService } from '@coday/agent'
 
 /**
  * Represents a Coday instance associated with a specific thread.
@@ -328,7 +329,7 @@ class ThreadCodayInstance {
       return
     }
 
-    const toolbox = agentService.toolbox
+    const toolbox = (<AgentService>this.coday.services.agent)?.toolbox
     if (!toolbox) {
       debugLog('THREAD_CODAY', `Cannot handle OAuth callback: Toolbox not initialized`)
       return

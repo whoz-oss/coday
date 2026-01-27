@@ -1,14 +1,6 @@
-import { AgentService } from '@coday/agent'
-import { CommandContext } from '@coday/handler'
+import { CommandContext } from '@coday/model'
 
-type RedirectInput = {
-  context: CommandContext
-  agentService: AgentService
-}
-
-export function redirectFunction(input: RedirectInput) {
-  const { context } = input
-
+export function redirectFunction(context: CommandContext) {
   const redirect = ({ query, agentName }: { query: string; agentName: string }) => {
     try {
       // Add a command to the queue that will be processed after this run completes

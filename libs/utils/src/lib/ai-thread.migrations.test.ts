@@ -1,4 +1,4 @@
-import { migrateData } from '@coday/utils'
+import { migrateData } from './data-migration'
 import { aiThreadMigrations } from './ai-thread.migrations'
 
 describe('AI Thread migrations', () => {

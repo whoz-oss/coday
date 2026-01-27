@@ -1,4 +1,5 @@
-import { CommandContext, CommandHandler, parseArgs } from '@coday/handler'
+import { CommandHandler, parseArgs } from '@coday/handler'
+import { CommandContext } from '@coday/model'
 import { Interactor } from '@coday/model'
 import { McpConfigService } from '@coday/service'
 import { ConfigLevel } from '@coday/model'

@@ -1,4 +1,4 @@
-import { AiThread, ThreadSummary } from '@coday/ai-thread'
+import { AiThread, ThreadSummary } from '@coday/model'
 
 /**
  * Repository interface for thread persistence operations.

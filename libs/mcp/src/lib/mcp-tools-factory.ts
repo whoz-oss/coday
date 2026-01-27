@@ -4,10 +4,10 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { ResourceTemplate, ToolInfo } from './types'
 import { ChildProcess, spawn } from 'child_process'
 import { ServerInteractor } from '@coday/model'
-import { AssistantToolFactory } from '@coday/integration'
+import { AssistantToolFactory } from '@coday/model'
 import { CodayTool } from '@coday/model'
 import { McpServerConfig } from '@coday/model'
-import { CommandContext } from '@coday/handler'
+import { CommandContext } from '@coday/model'
 
 const MCP_CONNECT_TIMEOUT = 15000 // in ms
 

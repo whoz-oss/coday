@@ -1,4 +1,4 @@
-import { Migration } from '@coday/utils'
+import { Migration } from './data-migration'
 
 const defaultProviders = ['anthropic', 'openai', 'google']
 export const aiPropertyToAi: Migration = {

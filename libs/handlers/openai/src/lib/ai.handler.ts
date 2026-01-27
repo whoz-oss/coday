@@ -1,17 +1,16 @@
 import { lastValueFrom, Observable } from 'rxjs'
-import { CodayEvent } from '@coday/model'
-import { Agent, AgentService } from '@coday/agent'
+import { Agent, AgentServiceModel, AiThread, CodayEvent, CommandContext } from '@coday/model'
 import { parseAgentCommand } from './parse-agent-command'
-import { AiThread, ThreadStateService } from '@coday/ai-thread'
 import { keywords } from '@coday/model'
-import { CommandContext, CommandHandler, generateThreadName } from '@coday/handler'
 import { Killable } from '@coday/model'
 import { Interactor } from '@coday/model'
+import { CommandHandler, generateThreadName } from '@coday/handler'
+import { ThreadStateService } from '@coday/service'
 
 export class AiHandler extends CommandHandler implements Killable {
   constructor(
     private interactor: Interactor,
-    private agentService: AgentService,
+    private agentService: AgentServiceModel,
     private threadService: ThreadStateService
   ) {
     super({
