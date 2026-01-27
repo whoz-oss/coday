@@ -15,7 +15,8 @@
     "dompurify": "catalog:",
     "marked": "catalog:",
     "rxjs": "catalog:",
-    "tslib": "catalog:"
+    "tslib": "catalog:",
+    "zone.js": "catalog:"
   },
   "devDependencies": {
     "@angular/build": "catalog:dev",
