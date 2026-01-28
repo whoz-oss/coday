@@ -344,7 +344,7 @@ export function registerWebhookRoutes(
 
       // IMPORTANT: Prepare Coday without starting run() to subscribe to events first
       // Because interactor.events is a Subject (not ReplaySubject), we must subscribe BEFORE run() emits events
-      instance.prepareCoday()
+      await instance.prepareInstance()
       const interactor = instance.coday!.interactor
 
       // Log successful webhook initiation
