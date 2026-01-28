@@ -52,7 +52,7 @@ export default [
               sourceTag: '*',
             },
           ],
-          enforceBuildableLibDependency: false,
+          enforceBuildableLibDependency: false
         },
       ],
     },
