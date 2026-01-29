@@ -24,12 +24,10 @@ export abstract class AssistantToolFactory implements Killable {
 
   protected constructor(
     protected interactor: Interactor,
-    instanceName?: string,
+    instanceName: string,
     config?: IntegrationConfig
   ) {
-    if (instanceName) {
-      this.name = instanceName
-    }
+    this.name = instanceName
     this.config = config
   }
 

@@ -19,14 +19,10 @@ export class BasecampTools extends AssistantToolFactory {
     interactor: Interactor,
     private readonly integrationService: IntegrationService,
     private readonly userService: UserService,
-    instanceName?: string,
+    instanceName: string,
     config?: any
   ) {
     super(interactor, instanceName, config)
-    // If no instanceName provided, use legacy name
-    if (!instanceName) {
-      this.name = 'BASECAMP'
-    }
   }
 
   async handleOAuthCallback(event: OAuthCallbackEvent): Promise<void> {
@@ -70,7 +66,7 @@ export class BasecampTools extends AssistantToolFactory {
     const listProjectsTool: FunctionTool<{ page?: number }> = {
       type: 'function',
       function: {
-        name: `${this.name}_listBasecampProjects`,
+        name: `${this.name}_listProjects`,
         description:
           'List all projects in the connected Basecamp account. Will prompt for OAuth authentication if not already connected. ' +
           'Basecamp uses geared pagination: page 1 returns 15 results, page 2 returns 30, page 3 returns 50, and page 4+ return 100 results each. ' +
@@ -94,7 +90,7 @@ export class BasecampTools extends AssistantToolFactory {
     const getMessageBoardTool: FunctionTool<{ projectId: number }> = {
       type: 'function',
       function: {
-        name: `${this.name}_getBasecampMessageBoard`,
+        name: `${this.name}_getMessageBoard`,
         description:
           'Get the message board ID for a Basecamp project. You need this ID to retrieve messages from the project.',
         parameters: {
@@ -116,7 +112,7 @@ export class BasecampTools extends AssistantToolFactory {
     const getMessagesTool: FunctionTool<{ projectId: number; messageBoardId: number; page?: number }> = {
       type: 'function',
       function: {
-        name: `${this.name}_getBasecampMessages`,
+        name: `${this.name}_getMessages`,
         description:
           'List all messages in a Basecamp message board. Returns a summary of each message with title, author, date, and preview. ' +
           'Basecamp uses geared pagination: page 1 returns 15 results, page 2 returns 30, page 3 returns 50, and page 4+ return 100 results each. ' +
@@ -149,7 +145,7 @@ export class BasecampTools extends AssistantToolFactory {
     const getMessageTool: FunctionTool<{ projectId: number; messageId: number }> = {
       type: 'function',
       function: {
-        name: `${this.name}_getBasecampMessage`,
+        name: `${this.name}_getMessage`,
         description:
           'Get the full content of a specific Basecamp message, including title, author, date, and complete text content.',
         parameters: {

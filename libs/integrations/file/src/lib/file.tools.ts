@@ -92,7 +92,7 @@ export class FileTools extends AssistantToolFactory {
       const removeFileFunction: FunctionTool<{ path: string }> = {
         type: 'function',
         function: {
-          name: `${this.name}_removeFile`,
+          name: `${this.name}_remove`,
           description:
             'Remove a file. File path must start with "project://" (for project files) or "exchange://" (for files shared with the user).',
           parameters: {
@@ -146,7 +146,7 @@ export class FileTools extends AssistantToolFactory {
       const writeProjectFileFunction: FunctionTool<{ path: string; content: string }> = {
         type: 'function',
         function: {
-          name: `${this.name}_writeProjectFile`,
+          name: `${this.name}_writeFile`,
           description:
             'Write the content of a file. IMPORTANT: the whole file is written, do not write it partially. ' +
             'Prefer this tool for first writes or really full edits. For partial edits, use `writeFileChunk` tool. ' +
@@ -274,7 +274,7 @@ export class FileTools extends AssistantToolFactory {
     const searchProjectFileFunction: FunctionTool<{ text: string; path?: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_searchProjectFile`,
+        name: `${this.name}_searchFile`,
         description:
           'Search for files by name in both project and conversation files. Returns paths with "project://" or "exchange://" prefix. ' +
           'Prefer this over `searchFilesByText` when searching by filename.',
@@ -315,7 +315,7 @@ export class FileTools extends AssistantToolFactory {
     const listProjectFilesAndDirectoriesFunction: FunctionTool<{ relPath: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_listFilesAndDirectories`,
+        name: `${this.name}_ls`,
         description:
           'List directories and files in a folder (similar to ls command). Directories end with a slash. ' +
           'Path must start with "project://" or "exchange://" prefix.',
@@ -397,7 +397,7 @@ export class FileTools extends AssistantToolFactory {
       function: {
         name: `${this.name}_searchFilesByText`,
         description:
-          'Search for files containing text in both project and conversation files. Returns paths with "project://" or "exchange://" prefix. ' +
+          'Search for files containing text in both project and exchange files. Returns paths with "project://" or "exchange://" prefix. ' +
           'This function is slow, restrict scope by giving a path and fileTypes if possible, to avoid a timeout. If searching for a filename, prefer `searchProjectFile`.',
         parameters: {
           type: 'object',
@@ -435,7 +435,7 @@ export class FileTools extends AssistantToolFactory {
     const readFileFunction: FunctionTool<{ filePath: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_readFile`,
+        name: `${this.name}_read`,
         description:
           'Read content from any file type. Supports text files, PDFs, and image files (PNG, JPEG, GIF, WebP). ' +
           'File path must start with "project://" (for project files) or "exchange://" (for files shared with the user). ' +
