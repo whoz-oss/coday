@@ -23,13 +23,13 @@ export class DelegateTools extends AssistantToolFactory {
   /**
    * getTools override: treats 'toolNames' as allow-list of agents, passes to buildTools.
    */
-  async getTools(context: CommandContext, toolNames: string[], agentName: string): Promise<CodayTool[]> {
+  override async getTools(context: CommandContext, toolNames: string[], agentName: string): Promise<CodayTool[]> {
     return this.buildTools(context, agentName, toolNames)
   }
 
   /**
    * @param context
-   * @param agentName
+   * @param _agentName
    * @param allowedAgentNames (optional) if provided, only these agent names can be delegated to
    */
   protected async buildTools(
