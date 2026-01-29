@@ -1,3 +1,27 @@
+## 0.62.0 (2026-01-29)
+
+### 🚀 Features
+
+- raise file tools limits ([#446](https://github.com/whoz-oss/coday/pull/446))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.61.2 (2026-01-28)
+
+### 🩹 Fixes
+
+- deep link navigation to project URLs ([#441](https://github.com/whoz-oss/coday/issues/441))
+- deep link navigation to project URLs ([#442](https://github.com/whoz-oss/coday/pull/442), [#441](https://github.com/whoz-oss/coday/issues/441), [#123](https://github.com/whoz-oss/coday/issues/123))
+- add page parameter to go over the 15 first ones ([#445](https://github.com/whoz-oss/coday/pull/445))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+- vincent-audibert-whoz
+
 ## 0.61.1 (2026-01-22)
 
 ### 🩹 Fixes
