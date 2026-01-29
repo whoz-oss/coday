@@ -1,3 +1,13 @@
+## 0.62.0 (2026-01-29)
+
+### 🚀 Features
+
+- raise file tools limits ([#446](https://github.com/whoz-oss/coday/pull/446))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.61.2 (2026-01-28)
 
 ### 🩹 Fixes
