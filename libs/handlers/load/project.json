@@ -1,5 +1,5 @@
 {
-  "name": "load",
+  "name": "handlers-load",
   "$schema": "../../../node_modules/nx/schemas/project-schema.json",
   "projectType": "library",
   "sourceRoot": "libs/handlers/load",
