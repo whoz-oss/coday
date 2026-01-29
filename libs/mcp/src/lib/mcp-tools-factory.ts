@@ -55,7 +55,7 @@ export class McpToolsFactory extends AssistantToolFactory {
   lastUsed: number = Date.now()
 
   constructor(private readonly serverConfig: McpServerConfig) {
-    super(new ServerInteractor('not used'))
+    super(new ServerInteractor('not used'), serverConfig.name)
     this.name = serverConfig.name
   }
 

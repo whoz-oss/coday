@@ -7,13 +7,15 @@ import { git } from './git'
 import { FunctionTool } from '@coday/model'
 
 export class GitTools extends AssistantToolFactory {
-  name = 'GIT'
+  static readonly TYPE = 'GIT' as const
 
   constructor(
     interactor: Interactor,
-    private integrationService: IntegrationService
+    private readonly integrationService: IntegrationService,
+    instanceName: string,
+    config?: any
   ) {
-    super(interactor)
+    super(interactor, instanceName, config)
   }
 
   protected async buildTools(context: CommandContext, _agentName: string): Promise<CodayTool[]> {
@@ -34,7 +36,7 @@ export class GitTools extends AssistantToolFactory {
     const gitTool: FunctionTool<{ params: string }> = {
       type: 'function',
       function: {
-        name: 'git',
+        name: `${this.name}`, // should be 'GIT' or as explicit
         description: 'Run git command and parameters.',
         parameters: {
           type: 'object',

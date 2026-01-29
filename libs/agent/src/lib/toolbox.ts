@@ -5,6 +5,7 @@ import {
   CodayTool,
   CommandContext,
   GetToolsInput,
+  IntegrationConfig,
   Interactor,
   Killable,
   McpServerConfig,
@@ -24,7 +25,12 @@ import { BasecampTools } from '@coday/integrations-basecamp'
 import { CodayServices } from '@coday/coday-services'
 
 export class Toolbox implements Killable {
-  private readonly toolFactories: AssistantToolFactory[]
+  // Registry: integration type -> factory constructor function
+  private readonly factoryConstructors: Map<string, (name: string, config: IntegrationConfig) => AssistantToolFactory>
+
+  // Factory instances cache (created on-demand per instance name)
+  private readonly factoryInstances: Map<string, AssistantToolFactory> = new Map()
+
   private readonly mcpConfigs: McpServerConfig[]
   private tools: CodayTool[] = []
 
@@ -37,29 +43,62 @@ export class Toolbox implements Killable {
     // Store MCP configs for lazy initialization via pool
     this.mcpConfigs = services.mcp.getMergedConfiguration().servers
 
-    // Create non-MCP tool factories immediately
-    this.toolFactories = [
-      new CoreTools(interactor, services.options?.baseUrl),
-      new AiTools(interactor, agentSummaries),
-      new DelegateTools(interactor, agentFind, agentSummaries),
-      new FileTools(interactor),
-      new GitTools(interactor, services.integration),
-      new ProjectScriptsTools(interactor),
-      new TmuxTools(interactor),
-      new GitLabTools(interactor, services.integration),
-      new MemoryTools(interactor, services.memory),
-      new ConfluenceTools(interactor, services.integration),
-      new ZendeskTools(interactor, services.integration),
-      new JiraTools(interactor, services.integration),
-      new SlackTools(interactor, services.integration),
-      new BasecampTools(interactor, services.integration, services.user),
-    ]
+    // Initialize factory constructors registry for ALL tool types
+    this.factoryConstructors = new Map<string, (name: string, config: IntegrationConfig) => AssistantToolFactory>()
+
+    // Core tools (always available, no config needed)
+    this.factoryConstructors.set(
+      CoreTools.TYPE,
+      (name) => new CoreTools(interactor, name, {}, this.services.options?.baseUrl)
+    )
+    this.factoryConstructors.set(AiTools.TYPE, (name) => new AiTools(interactor, agentSummaries, name, {}))
+    this.factoryConstructors.set(
+      DelegateTools.TYPE,
+      (name) => new DelegateTools(interactor, agentFind, agentSummaries, name, {})
+    )
+    this.factoryConstructors.set(FileTools.TYPE, (name, config) => new FileTools(interactor, name, config))
+    this.factoryConstructors.set(ProjectScriptsTools.TYPE, (name) => new ProjectScriptsTools(interactor, name, {}))
+    this.factoryConstructors.set(MemoryTools.TYPE, (name) => new MemoryTools(interactor, services.memory, name, {}))
+
+    // Integration tools (require config)
+    this.factoryConstructors.set(
+      GitTools.TYPE,
+      (name, config) => new GitTools(interactor, services.integration, name, config)
+    )
+    this.factoryConstructors.set(
+      GitLabTools.TYPE,
+      (name, config) => new GitLabTools(interactor, services.integration, name, config)
+    )
+    this.factoryConstructors.set(
+      ConfluenceTools.TYPE,
+      (name, config) => new ConfluenceTools(interactor, services.integration, name, config)
+    )
+    this.factoryConstructors.set(
+      ZendeskTools.TYPE,
+      (name, config) => new ZendeskTools(interactor, services.integration, name, config)
+    )
+    this.factoryConstructors.set(
+      JiraTools.TYPE,
+      (name, config) => new JiraTools(interactor, services.integration, name, config)
+    )
+    this.factoryConstructors.set(
+      SlackTools.TYPE,
+      (name, config) => new SlackTools(interactor, services.integration, name, config)
+    )
+    this.factoryConstructors.set(
+      BasecampTools.TYPE,
+      (name, config) => new BasecampTools(interactor, services.integration, services.user, name, config)
+    )
+    this.factoryConstructors.set(
+      TmuxTools.TYPE,
+      (name) => new TmuxTools(interactor, name)
+    )
   }
 
   async kill(): Promise<void> {
-    console.log(`[TOOLBOX] Closing non-MCP tool factories`)
-    await Promise.all(this.toolFactories.map((f) => f.kill()))
-    console.log(`[TOOLBOX] Closed non-MCP tool factories`)
+    console.log(`[TOOLBOX] Closing tool factories`)
+    await Promise.all(Array.from(this.factoryInstances.values()).map((f) => f.kill()))
+    console.log(`[TOOLBOX] Closed tool factories`)
 
     // Note: MCP factories are managed by the pool
     // They will be released when ThreadCodayManager calls mcpPool.releaseThread()
@@ -72,6 +111,57 @@ export class Toolbox implements Killable {
     const threadId = context.aiThread?.id
     if (!threadId) {
       this.interactor.warn('No thread ID in context, MCP tools will not be available')
+    }
+
+    // Collect all requested factories
+    const allFactories: AssistantToolFactory[] = []
+
+    // Process requested integrations (on-demand instantiation)
+    if (integrations) {
+      const mergedIntegrations = this.services.integration.integrations
+
+      for (const [instanceName] of integrations) {
+        // Check if it's already instantiated
+        if (this.factoryInstances.has(instanceName)) {
+          const factory = this.factoryInstances.get(instanceName)!
+          allFactories.push(factory)
+          continue
+        }
+
+        // Otherwise, it's an integration that needs config
+        const config = mergedIntegrations[instanceName]
+
+        if (!config) {
+          this.interactor.debug(`Integration config '${instanceName}' not found`)
+          continue
+        }
+
+        // Determine type (fallback to instance name for backward compatibility)
+        const type = config.type || instanceName
+
+        // Find factory constructor for this type
+        const constructor = this.factoryConstructors.get(type)
+
+        if (!constructor) {
+          this.interactor.debug(`No factory constructor for integration type '${type}'`)
+          continue
+        }
+
+        // Get or create factory instance (keyed by instanceName, not type)
+        let factory = this.factoryInstances.get(instanceName)
+        if (!factory) {
+          try {
+            factory = constructor(instanceName, config)
+            this.factoryInstances.set(instanceName, factory)
+            this.interactor.debug(`Created integration factory '${instanceName}' of type '${type}'`)
+          } catch (error) {
+            this.interactor.debug(`Error creating factory for '${instanceName}': ${error}`)
+            continue
+          }
+        }
+
+        allFactories.push(factory)
+      }
     }
 
     // Get or create MCP factories via pool (lazy initialization)
@@ -92,16 +182,13 @@ export class Toolbox implements Killable {
       }
     }
 
-    // Combine non-MCP and MCP factories
-    const allFactories = [...this.toolFactories, ...mcpFactories]
-
-    // Filter factories based on integrations
-    const filteredFactories = allFactories.filter((factory) => !integrations || integrations.has(factory.name))
+    // Combine all factories
+    allFactories.push(...mcpFactories)
 
     try {
-      // Process each filtered factory to get their tools
+      // Process each factory to get their tools
       const toolResults = await Promise.all(
-        filteredFactories.map(async (factory) => {
+        allFactories.map(async (factory) => {
           try {
             return await factory.getTools(context, integrations?.get(factory.name) ?? [], agentName ?? 'default')
           } catch (error) {
@@ -126,7 +213,7 @@ export class Toolbox implements Killable {
    */
   async handleOAuthCallback(event: OAuthCallbackEvent): Promise<void> {
     // Find the factory for this integration
-    const factory = this.toolFactories.find((f) => f.name === event.integrationName)
+    const factory = this.factoryInstances.get(event.integrationName)
 
     if (!factory) {
       this.interactor.warn(`No integration found for OAuth callback: ${event.integrationName}`)
