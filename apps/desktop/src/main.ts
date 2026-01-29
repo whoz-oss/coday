@@ -694,11 +694,11 @@ if (!gotTheLock) {
   log('INFO', 'Another instance is already running, quitting')
   app.quit()
 } else {
-  app.on('second-instance', (_event, commandLine) => {
+  app.on('second-instance', (_event: any, commandLine: any) => {
     log('INFO', 'Second instance detected, command line:', commandLine)
 
     // Look for deeplink in command line arguments
-    const url = commandLine.find((arg) => arg.startsWith(`${PROTOCOL_NAME}://`))
+    const url = commandLine.find((arg: any) => arg.startsWith(`${PROTOCOL_NAME}://`))
     if (url) {
       log('INFO', 'Found deeplink in second instance:', url)
       handleDeepLink(url)

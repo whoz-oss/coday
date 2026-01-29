@@ -40,8 +40,5 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run tests
-        run: npx nx affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --target="lint,test" --parallel=$NX_MAX_WORKERS --verbose
-
-      - name: Build app
-        run: npx nx run server:build --parallel=$NX_MAX_WORKERS --verbose
+      - name: Run tests and build
+        run: npx nx affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --target="lint,test,build" --parallel=$NX_MAX_WORKERS --verbose

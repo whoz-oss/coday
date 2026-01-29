@@ -2,7 +2,7 @@
   "name": "integrations-zendesk-articles",
   "$schema": "../../../node_modules/nx/schemas/project-schema.json",
   "projectType": "library",
-  "sourceRoot": "libs/zendesk-articles",
+  "sourceRoot": "libs/integrations/zendesk-articles",
   "tags": [
     "scope:libs",
     "type:core"
@@ -14,11 +14,11 @@
         "{options.outputPath}"
       ],
       "options": {
-        "outputPath": "libs/zendesk-articles/dist",
-        "main": "libs/zendesk-articles/src/index.ts",
-        "tsConfig": "libs/zendesk-articles/tsconfig.lib.json",
+        "outputPath": "libs/integrations/zendesk-articles/dist",
+        "main": "libs/integrations/zendesk-articles/src/index.ts",
+        "tsConfig": "libs/integrations/zendesk-articles/tsconfig.lib.json",
         "assets": [
-          "libs/zendesk-articles/*.md"
+          "libs/integrations/zendesk-articles/*.md"
         ]
       }
     }

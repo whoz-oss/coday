@@ -1,4 +1,5 @@
-import { CommandContext, CommandHandler } from '@coday/handler'
+import { CommandHandler } from '@coday/handler'
+import { CommandContext } from '@coday/model'
 import { Interactor } from '@coday/model'
 import { buildFirstCommandContext } from './select-project'
 import { CodayServices } from '@coday/coday-services'

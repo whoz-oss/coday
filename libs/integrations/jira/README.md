@@ -1,3 +1,3 @@
-# @coday/jira
+# @coday/integrations-jira
 
 Core library for jira.

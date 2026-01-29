@@ -1,3 +1,3 @@
-# @coday/gitlab
+# @coday/integrations-gitlab
 
 Core library for gitlab.

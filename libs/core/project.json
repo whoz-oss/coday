@@ -14,11 +14,11 @@
         "{options.outputPath}"
       ],
       "options": {
-        "outputPath": "libs/coday/dist",
+        "outputPath": "libs/core/dist",
         "main": "libs/core/src/index.ts",
-        "tsConfig": "libs/coday/tsconfig.lib.json",
+        "tsConfig": "libs/core/tsconfig.lib.json",
         "assets": [
-          "libs/coday/*.md"
+          "libs/core/*.md"
         ]
       }
     }
