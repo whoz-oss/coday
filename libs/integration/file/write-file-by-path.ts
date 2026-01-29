@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
-import { Interactor } from '../../model/interactor'
+import { Interactor } from '@coday/model'
 import * as path from 'path'
 
-const SIZE_THRESHOLD_KB = 18
+const SIZE_THRESHOLD_KB = 64
 const SIZE_THRESHOLD_BYTES = SIZE_THRESHOLD_KB * 1024
 
 type WriteFileByPathInput = {
