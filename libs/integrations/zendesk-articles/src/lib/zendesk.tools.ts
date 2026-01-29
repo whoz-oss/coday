@@ -7,13 +7,15 @@ import { CodayTool } from '@coday/model'
 import { FunctionTool } from '@coday/model'
 
 export class ZendeskTools extends AssistantToolFactory {
-  name = 'ZENDESK'
+  static readonly TYPE = 'ZENDESK' as const
 
   constructor(
     interactor: Interactor,
-    private readonly integrationService: IntegrationService
+    private readonly integrationService: IntegrationService,
+    instanceName: string,
+    config?: any
   ) {
-    super(interactor)
+    super(interactor, instanceName, config)
   }
 
   protected async buildTools(): Promise<CodayTool[]> {
@@ -32,7 +34,7 @@ export class ZendeskTools extends AssistantToolFactory {
     const articleRetrievalFunction: FunctionTool<{ articleId: string; locale?: string }> = {
       type: 'function',
       function: {
-        name: 'retrieveZendeskArticle',
+        name: `${this.name}_getArticle`,
         description:
           'Retrieve a Zendesk Help Center article by article ID. Returns the full article content including HTML body.',
         parameters: {
@@ -65,7 +67,7 @@ export class ZendeskTools extends AssistantToolFactory {
     const searchFunction: FunctionTool<{ query: string; locale?: string }> = {
       type: 'function',
       function: {
-        name: 'searchZendeskArticles',
+        name: `${this.name}_searchArticles`,
         description:
           'Search Zendesk Help Center articles by query text. Returns a list of matching articles with ID, title, snippet, and URL. If several articles seem relevant, you **should** retrieve them using retrieveZendeskArticle. Keep queries simple and focused for best results.',
         parameters: {
