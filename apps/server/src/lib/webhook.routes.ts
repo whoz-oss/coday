@@ -7,6 +7,7 @@ import { CodayLogger } from '@coday/model'
 import { CodayEvent, MessageEvent } from '@coday/model'
 import { filter } from 'rxjs'
 import { ThreadService } from '@coday/service'
+import { getParamAsString } from './route-helpers'
 
 /**
  * Webhook Management REST API Routes
@@ -68,7 +69,7 @@ export function registerWebhookRoutes(
    */
   app.get('/api/webhooks/:uuid', async (req: express.Request, res: express.Response) => {
     try {
-      const { uuid } = req.params
+      const uuid = getParamAsString(req.params.uuid)
       if (!uuid) {
         res.status(400).json({ error: 'Webhook UUID is required' })
         return
@@ -154,7 +155,7 @@ export function registerWebhookRoutes(
    */
   app.put('/api/webhooks/:uuid', async (req: express.Request, res: express.Response) => {
     try {
-      const { uuid } = req.params
+      const uuid = getParamAsString(req.params.uuid)
       if (!uuid) {
         res.status(404).json({ error: 'Webhook UUID is required' })
         return
@@ -205,7 +206,7 @@ export function registerWebhookRoutes(
    */
   app.delete('/api/webhooks/:uuid', async (req: express.Request, res: express.Response) => {
     try {
-      const { uuid } = req.params
+      const uuid = getParamAsString(req.params.uuid)
       if (!uuid) {
         res.status(400).json({ error: 'Webhook UUID is required' })
         return
@@ -259,7 +260,7 @@ export function registerWebhookRoutes(
 
     try {
       // Extract UUID from URL parameters
-      const { uuid } = req.params
+      const uuid = getParamAsString(req.params.uuid)
       if (!uuid) {
         debugLog('WEBHOOK', 'Missing UUID in request')
         res.status(400).send({ error: 'Missing webhook UUID in URL' })

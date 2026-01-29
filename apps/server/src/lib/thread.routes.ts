@@ -2,6 +2,7 @@ import express from 'express'
 import { existsSync, readFileSync } from 'fs'
 import { debugLog } from './log'
 import { ThreadCodayManager } from './thread-coday-manager'
+import { getParamAsString } from './route-helpers'
 import { ImageContent } from '@coday/model'
 import { processImageBuffer } from '@coday/function'
 import { CodayOptions } from '@coday/model'
@@ -56,7 +57,7 @@ export function registerThreadRoutes(
    */
   app.get('/api/projects/:projectName/threads', async (req: express.Request, res: express.Response) => {
     try {
-      const { projectName } = req.params
+      const projectName = getParamAsString(req.params.projectName)
       if (!projectName) {
         res.status(400).json({ error: 'Project name is required' })
         return
@@ -87,7 +88,7 @@ export function registerThreadRoutes(
    */
   app.post('/api/projects/:projectName/threads', async (req: express.Request, res: express.Response) => {
     try {
-      const { projectName } = req.params
+      const projectName = getParamAsString(req.params.projectName)
       if (!projectName) {
         res.status(400).json({ error: 'Project name is required' })
         return
@@ -131,7 +132,8 @@ export function registerThreadRoutes(
    */
   app.get('/api/projects/:projectName/threads/:threadId', async (req: express.Request, res: express.Response) => {
     try {
-      const { projectName, threadId } = req.params
+      const projectName = getParamAsString(req.params.projectName)
+      const threadId = getParamAsString(req.params.threadId)
       if (!projectName || !threadId) {
         res.status(400).json({ error: 'Project name and thread ID are required' })
         return
@@ -183,7 +185,8 @@ export function registerThreadRoutes(
    */
   app.put('/api/projects/:projectName/threads/:threadId', async (req: express.Request, res: express.Response) => {
     try {
-      const { projectName, threadId } = req.params
+      const projectName = getParamAsString(req.params.projectName)
+      const threadId = getParamAsString(req.params.threadId)
       if (!projectName || !threadId) {
         res.status(400).json({ error: 'Project name and thread ID are required' })
         return
@@ -234,7 +237,8 @@ export function registerThreadRoutes(
    */
   app.post('/api/projects/:projectName/threads/:threadId/star', async (req: express.Request, res: express.Response) => {
     try {
-      const { projectName, threadId } = req.params
+      const projectName = getParamAsString(req.params.projectName)
+      const threadId = getParamAsString(req.params.threadId)
       if (!projectName || !threadId) {
         res.status(400).json({ error: 'Project name and thread ID are required' })
         return
@@ -279,7 +283,8 @@ export function registerThreadRoutes(
     '/api/projects/:projectName/threads/:threadId/star',
     async (req: express.Request, res: express.Response) => {
       try {
-        const { projectName, threadId } = req.params
+        const projectName = getParamAsString(req.params.projectName)
+        const threadId = getParamAsString(req.params.threadId)
         if (!projectName || !threadId) {
           res.status(400).json({ error: 'Project name and thread ID are required' })
           return
@@ -323,7 +328,8 @@ export function registerThreadRoutes(
    */
   app.post('/api/projects/:projectName/threads/:threadId/stop', (req: express.Request, res: express.Response) => {
     try {
-      const { projectName, threadId } = req.params
+      const projectName = getParamAsString(req.params.projectName)
+      const threadId = getParamAsString(req.params.threadId)
       if (!projectName || !threadId) {
         res.status(400).json({ error: 'Project name and thread ID are required' })
         return
@@ -355,7 +361,8 @@ export function registerThreadRoutes(
    */
   app.delete('/api/projects/:projectName/threads/:threadId', async (req: express.Request, res: express.Response) => {
     try {
-      const { projectName, threadId } = req.params
+      const projectName = getParamAsString(req.params.projectName)
+      const threadId = getParamAsString(req.params.threadId)
       if (!projectName || !threadId) {
         res.status(400).json({ error: 'Project name and thread ID are required' })
         return
@@ -423,7 +430,8 @@ export function registerThreadRoutes(
     '/api/projects/:projectName/threads/:threadId/upload',
     async (req: express.Request, res: express.Response) => {
       try {
-        const { projectName, threadId } = req.params
+        const projectName = getParamAsString(req.params.projectName)
+        const threadId = getParamAsString(req.params.threadId)
         const { content, mimeType, filename } = req.body
 
         // Validate required fields
@@ -536,7 +544,8 @@ export function registerThreadRoutes(
    */
   app.get('/api/projects/:projectName/threads/:threadId/files', async (req: express.Request, res: express.Response) => {
     try {
-      const { projectName, threadId } = req.params
+      const projectName = getParamAsString(req.params.projectName)
+      const threadId = getParamAsString(req.params.threadId)
 
       if (!projectName || !threadId) {
         res.status(400).json({ error: 'Project name and thread ID are required' })
@@ -580,7 +589,9 @@ export function registerThreadRoutes(
     '/api/projects/:projectName/threads/:threadId/files/:filename',
     async (req: express.Request, res: express.Response) => {
       try {
-        const { projectName, threadId, filename } = req.params
+        const projectName = getParamAsString(req.params.projectName)
+        const threadId = getParamAsString(req.params.threadId)
+        const filename = getParamAsString(req.params.filename)
 
         if (!projectName || !threadId || !filename) {
           res.status(400).json({ error: 'Project name, thread ID, and filename are required' })
@@ -605,8 +616,8 @@ export function registerThreadRoutes(
           return
         }
 
-        // Decode filename from URL (Express already does this, but be explicit)
-        const decodedFilename = decodeURIComponent(filename)
+        // Decode filename from URL (already done by getParamAsString)
+        const decodedFilename = filename
 
         // Get file path using ThreadFileService (with security checks)
         const filePath = await threadFileService.getFilePath(projectName, threadId, decodedFilename)
@@ -649,7 +660,9 @@ export function registerThreadRoutes(
     '/api/projects/:projectName/threads/:threadId/files/:filename',
     async (req: express.Request, res: express.Response) => {
       try {
-        const { projectName, threadId, filename } = req.params
+        const projectName = getParamAsString(req.params.projectName)
+        const threadId = getParamAsString(req.params.threadId)
+        const filename = getParamAsString(req.params.filename)
 
         if (!projectName || !threadId || !filename) {
           res.status(400).json({ error: 'Project name, thread ID, and filename are required' })
@@ -704,7 +717,8 @@ export function registerThreadRoutes(
   app.get(
     '/api/projects/:projectName/threads/:threadId/event-stream',
     async (req: express.Request, res: express.Response) => {
-      const { projectName, threadId } = req.params
+      const projectName = getParamAsString(req.params.projectName)
+      const threadId = getParamAsString(req.params.threadId)
       const username = getUsernameFn(req)
 
       // Validate required parameters
