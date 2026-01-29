@@ -743,12 +743,14 @@ export function registerThreadRoutes(
         threadCodayManager.removeConnection(threadId, res)
       })
 
-      // Start Coday if it's a new instance
-      if (instance.startCoday()) {
-        debugLog('THREAD_SSE', `New Coday instance started for thread ${threadId}`)
-      } else {
-        debugLog('THREAD_SSE', `Reconnected to existing Coday instance for thread ${threadId}`)
-      }
+      // Start execution if it's a new instance
+      instance.startExecution().then((wasCreated) => {
+        if (wasCreated) {
+          debugLog('THREAD_SSE', `New execution instance started for thread ${threadId}`)
+        } else {
+          debugLog('THREAD_SSE', `Reconnected to existing execution instance for thread ${threadId}`)
+        }
+      })
     }
   )
 }
