@@ -2,7 +2,7 @@
   "name": "integrations-gitlab",
   "$schema": "../../../node_modules/nx/schemas/project-schema.json",
   "projectType": "library",
-  "sourceRoot": "libs/gitlab",
+  "sourceRoot": "libs/integrations/gitlab",
   "tags": [
     "scope:libs",
     "type:core"
@@ -14,11 +14,11 @@
         "{options.outputPath}"
       ],
       "options": {
-        "outputPath": "libs/gitlab/dist",
-        "main": "libs/gitlab/src/index.ts",
-        "tsConfig": "libs/gitlab/tsconfig.lib.json",
+        "outputPath": "libs/integrations/gitlab/dist",
+        "main": "libs/integrations/gitlab/src/index.ts",
+        "tsConfig": "libs/integrations/gitlab/tsconfig.lib.json",
         "assets": [
-          "libs/gitlab/*.md"
+          "libs/integrations/gitlab/*.md"
         ]
       }
     }
