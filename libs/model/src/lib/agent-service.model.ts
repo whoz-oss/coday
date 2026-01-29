@@ -2,6 +2,7 @@ import { Agent, AgentSummary } from './agent'
 import { CommandContext } from './command-context'
 
 export interface AgentServiceModel {
+  toolbox: any // Toolbox from @coday/agent - typed as any to avoid circular dependency
   listAgentSummaries(): AgentSummary[]
   initialize(context: CommandContext): Promise<void>
   /**

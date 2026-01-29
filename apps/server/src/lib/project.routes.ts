@@ -2,6 +2,7 @@ import express from 'express'
 import { debugLog } from './log'
 import { ProjectService } from '@coday/service'
 import { ProjectLocalConfig } from '@coday/model'
+import { getParamAsString } from './route-helpers'
 
 /**
  * Project Management REST API Routes
@@ -53,7 +54,7 @@ export function registerProjectRoutes(app: express.Application, projectService: 
    */
   app.get('/api/projects/:name', (req: express.Request, res: express.Response) => {
     try {
-      const { name } = req.params
+      const name = getParamAsString(req.params.name)
       if (!name) {
         res.status(400).json({ error: 'Project name is required' })
         return
@@ -109,7 +110,7 @@ export function registerProjectRoutes(app: express.Application, projectService: 
    */
   app.get('/api/projects/:name/config', (req: express.Request, res: express.Response) => {
     try {
-      const { name } = req.params
+      const name = getParamAsString(req.params.name)
       if (!name) {
         res.status(400).json({ error: 'Project name is required' })
         return
@@ -136,7 +137,7 @@ export function registerProjectRoutes(app: express.Application, projectService: 
    */
   app.put('/api/projects/:name/config', (req: express.Request, res: express.Response) => {
     try {
-      const { name } = req.params
+      const name = getParamAsString(req.params.name)
       if (!name) {
         res.status(400).json({ error: 'Project name is required' })
         return
@@ -180,7 +181,7 @@ export function registerProjectRoutes(app: express.Application, projectService: 
    */
   app.delete('/api/projects/:name', (req: express.Request, res: express.Response) => {
     try {
-      const { name } = req.params
+      const name = getParamAsString(req.params.name)
       if (!name) {
         res.status(400).json({ error: 'Project name is required' })
         return
