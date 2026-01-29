@@ -1,11 +1,23 @@
 {
-  "name": "@coday/web",
-  "version": "0.0.1",
-  "private": true,
+  "name": "@whoz-oss/coday-web",
+  "version": "0.62.0",
+  "repository": "https://github.com/whoz-oss/coday",
   "type": "module",
-  "main": "./src/index.js",
-  "types": "./src/index.d.ts",
+  "bin": {
+    "coday-web": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "dependencies": {
+    "@whoz-oss/coday-client": "0.62.0",
+    "@whoz-oss/coday-server": "0.62.0"
+  },
   "devDependencies": {
     "typescript": "catalog:dev"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
