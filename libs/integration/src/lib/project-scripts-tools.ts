@@ -8,10 +8,8 @@ import { FunctionTool } from '@coday/model'
 const PARAMETERS: string = 'PARAMETERS'
 
 export class ProjectScriptsTools extends AssistantToolFactory {
-  name = 'PROJECT_SCRIPTS'
-
-  constructor(interactor: Interactor) {
-    super(interactor)
+  constructor(interactor: Interactor, instanceName: string, config: any) {
+    super(interactor, instanceName, config)
   }
 
   protected async buildTools(context: CommandContext, _agentName: string): Promise<CodayTool[]> {
@@ -37,7 +35,7 @@ export class ProjectScriptsTools extends AssistantToolFactory {
           const scriptFunction: FunctionTool<unknown> = {
             type: 'function',
             function: {
-              name: entry[0],
+              name: `${this.name}_${entry[0]}`,
               description: entry[1].description,
               parameters: entry[1].parametersDescription
                 ? {
