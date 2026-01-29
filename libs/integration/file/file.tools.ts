@@ -251,7 +251,7 @@ export class FileTools extends AssistantToolFactory {
           text,
           path: exchangePath,
           root: context.threadFilesRoot,
-          limit: 50,
+          limit: 500,
         })
         results.push(...prefixSearchResults(exchangeResults, 'exchange'))
       }
@@ -263,7 +263,7 @@ export class FileTools extends AssistantToolFactory {
           text,
           path: projectPath,
           root: context.project.root,
-          limit: 50,
+          limit: 500,
         })
         results.push(...prefixSearchResults(projectResults, 'project'))
       }
