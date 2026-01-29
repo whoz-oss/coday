@@ -76,7 +76,7 @@ export class DelegateTools extends AssistantToolFactory {
     const delegateTool: FunctionTool<{ task: string; agentName: string | undefined }> = {
       type: 'function',
       function: {
-        name: `${this.name}_delegate`,
+        name: `${this.name}`, // name should be 'DELEGATE'
         description: cleanContextMode
           ? `Delegate the completion of a task to another available agent among:
 ${agentListText || '(No allowed agents for delegation)'}

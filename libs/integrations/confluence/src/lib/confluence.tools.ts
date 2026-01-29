@@ -9,15 +9,11 @@ import { FunctionTool } from '@coday/model'
 export class ConfluenceTools extends AssistantToolFactory {
   constructor(
     interactor: Interactor,
-    private integrationService: IntegrationService,
-    instanceName?: string,
+    private readonly integrationService: IntegrationService,
+    instanceName: string,
     config?: any
   ) {
     super(interactor, instanceName, config)
-    // If no instanceName provided, use legacy name
-    if (!instanceName) {
-      this.name = 'CONFLUENCE'
-    }
   }
 
   protected async buildTools(): Promise<CodayTool[]> {
@@ -36,8 +32,8 @@ export class ConfluenceTools extends AssistantToolFactory {
     const pageRetrievalFunction: FunctionTool<{ pageId: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_retrieveConfluencePage`,
-        description: 'Retrieve Confluence wiki page by page ID.',
+        name: `${this.name}_getPage`,
+        description: 'Get Confluence wiki page by page ID.',
         parameters: {
           type: 'object',
           properties: {
@@ -59,7 +55,7 @@ export class ConfluenceTools extends AssistantToolFactory {
     const searchFunction: FunctionTool<{ query: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_searchConfluencePage`,
+        name: `${this.name}_search`,
         description:
           'Search Confluence pages by words, returns list of page matches. If several pages seem relevant, you **should** read them. Use several searches if many words to check.',
         parameters: {

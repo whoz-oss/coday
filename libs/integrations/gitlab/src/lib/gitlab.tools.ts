@@ -13,15 +13,11 @@ import { FunctionTool } from '@coday/model'
 export class GitLabTools extends AssistantToolFactory {
   constructor(
     interactor: Interactor,
-    private integrationService: IntegrationService,
-    instanceName?: string,
+    private readonly integrationService: IntegrationService,
+    instanceName: string,
     config?: any
   ) {
     super(interactor, instanceName, config)
-    // If no instanceName provided, use legacy name
-    if (!instanceName) {
-      this.name = 'GITLAB'
-    }
   }
 
   protected async buildTools(): Promise<CodayTool[]> {
@@ -51,8 +47,8 @@ export class GitLabTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: `${this.name}_retrieveGitlabMR`,
-        description: 'Retrieve GitLab merge request details by merge request ID.',
+        name: `${this.name}_getMR`,
+        description: 'Get GitLab merge request details by merge request ID.',
         parameters: {
           type: 'object',
           properties: {
@@ -73,8 +69,8 @@ export class GitLabTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: `${this.name}_retrieveGitlabIssue`,
-        description: 'Retrieve GitLab issue details by issue ID, usually a number.',
+        name: `${this.name}_getIssue`,
+        description: 'Get GitLab issue details by issue ID, usually a number.',
         parameters: {
           type: 'object',
           properties: {
@@ -93,7 +89,7 @@ export class GitLabTools extends AssistantToolFactory {
     const retrieveGitlabIssuesFunction: FunctionTool<{ criteria: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_retrieveGitlabIssues`,
+        name: `${this.name}_getIssues`,
         description: `Retrieve GitLab issues by criteria.`,
         parameters: {
           type: 'object',
@@ -125,7 +121,7 @@ export class GitLabTools extends AssistantToolFactory {
     const retrieveGitlabMergeRequestsFunction: FunctionTool<{ criteria: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_retrieveGitlabMergeRequests`,
+        name: `${this.name}_getMergeRequests`,
         description: `Retrieve GitLab merge requests by criteria.`,
         parameters: {
           type: 'object',

@@ -10,14 +10,10 @@ export class GitTools extends AssistantToolFactory {
   constructor(
     interactor: Interactor,
     private readonly integrationService: IntegrationService,
-    instanceName?: string,
+    instanceName: string,
     config?: any
   ) {
     super(interactor, instanceName, config)
-    // If no instanceName provided, use legacy name
-    if (!instanceName) {
-      this.name = 'GIT'
-    }
   }
 
   protected async buildTools(context: CommandContext, _agentName: string): Promise<CodayTool[]> {
@@ -38,7 +34,7 @@ export class GitTools extends AssistantToolFactory {
     const gitTool: FunctionTool<{ params: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_git`,
+        name: `${this.name}`, // should be 'GIT' or as explicit
         description: 'Run git command and parameters.',
         parameters: {
           type: 'object',

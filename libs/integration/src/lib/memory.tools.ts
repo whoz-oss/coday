@@ -8,7 +8,7 @@ import { FunctionTool } from '@coday/model'
 export class MemoryTools extends AssistantToolFactory {
   constructor(
     interactor: Interactor,
-    private memoryService: MemoryService,
+    private readonly memoryService: MemoryService,
     instanceName: string,
     config: any
   ) {
@@ -71,7 +71,7 @@ export class MemoryTools extends AssistantToolFactory {
     const readMemoriesTool: FunctionTool<{ title?: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_readMemories`,
+        name: `${this.name}_read`,
         description: `Read agent's memories. Without title parameter, returns the list of all memories with their titles and levels. With title parameter, returns the full content of the specified memory.`,
         parameters: {
           type: 'object',
@@ -201,7 +201,7 @@ Do not memorize partial knowledge, single-use information, or minor implementati
     const deleteMemoryTool: FunctionTool<{ title: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_deleteMemory`,
+        name: `${this.name}_delete`,
         description: 'Delete a memory entry by its title. Works for both PROJECT and USER level memories.',
         parameters: {
           type: 'object',
