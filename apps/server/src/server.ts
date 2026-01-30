@@ -1,29 +1,29 @@
 import express from 'express'
 import path from 'path'
 import fs from 'fs'
-import { ThreadCodayManager } from './thread-coday-manager'
+import { ThreadCodayManager } from './lib/thread-coday-manager'
 
-import { parseCodayOptions } from '@coday/options'
 import * as os from 'node:os'
-import { debugLog } from './log'
-import { CodayLogger } from '@coday/service/coday-logger'
-import { WebhookService } from '@coday/service/webhook.service'
-import { ThreadCleanupService } from '@coday/service/thread-cleanup.service'
-import { McpInstancePool } from '@coday/integration/mcp/mcp-instance-pool'
-import { findAvailablePort } from './find-available-port'
-import { ConfigServiceRegistry } from '@coday/service/config-service-registry'
-import { ServerInteractor } from '@coday/model/server-interactor'
-import { registerConfigRoutes } from './config.routes'
-import { registerWebhookRoutes } from './webhook.routes'
-import { registerProjectRoutes } from './project.routes'
-import { registerThreadRoutes } from './thread.routes'
-import { registerMessageRoutes } from './message.routes'
-import { registerUserRoutes } from './user.routes'
-import { registerAgentRoutes } from './agent.routes'
-import { ProjectService } from './services/project.service'
-import { ThreadService } from './services/thread.service'
-import { ThreadFileService } from './services/thread-file.service'
-import { ProjectFileRepository } from '@coday/repository/project-file.repository'
+import { debugLog } from './lib/log'
+import { CodayLoggerUtils } from '@coday/utils'
+import { WebhookService } from '@coday/service'
+import { ThreadCleanupService } from '@coday/service'
+import { findAvailablePort } from './lib/find-available-port'
+import { ConfigServiceRegistry } from '@coday/service'
+import { ServerInteractor } from '@coday/model'
+import { registerConfigRoutes } from './lib/config.routes'
+import { registerWebhookRoutes } from './lib/webhook.routes'
+import { registerProjectRoutes } from './lib/project.routes'
+import { registerThreadRoutes } from './lib/thread.routes'
+import { registerMessageRoutes } from './lib/message.routes'
+import { registerUserRoutes } from './lib/user.routes'
+import { registerAgentRoutes } from './lib/agent.routes'
+import { ProjectService } from '@coday/service'
+import { parseCodayOptions } from './lib/coday-options-utils'
+import { ProjectFileRepository } from '@coday/repository'
+import { ThreadFileService } from '@coday/service'
+import { ThreadService } from '@coday/service'
+import { McpInstancePool } from '@coday/mcp'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT
@@ -43,7 +43,7 @@ debugLog('INIT', 'Coday options:', codayOptions)
 // Create single usage logger instance for all clients
 // Logging is enabled when --log flag is used and not in no-auth mode
 const loggingEnabled = !codayOptions.noLog
-const logger = new CodayLogger(loggingEnabled, codayOptions.logFolder)
+const logger = new CodayLoggerUtils(loggingEnabled, codayOptions.logFolder)
 debugLog(
   'INIT',
   `Usage logging ${loggingEnabled ? 'enabled' : 'disabled'} ${codayOptions.logFolder ? `(custom folder: ${codayOptions.logFolder})` : ''}`

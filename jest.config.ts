@@ -17,13 +17,6 @@ export default {
   // FORCE IGNORE PROBLEMATIC DIRECTORIES
   modulePathIgnorePatterns: ['<rootDir>/dist/', '<rootDir>/.nx/', '<rootDir>/libs/coday-events/dist/'],
 
-  // Module name mapping
-  moduleNameMapper: {
-    '^@coday/coday-events$': '<rootDir>/libs/coday-events/src/index.ts',
-    '^@coday/service/(.*)$': '<rootDir>/libs/service/$1',
-    '^@coday/utils/(.*)$': '<rootDir>/libs/utils/$1',
-  },
-
   testPathIgnorePatterns: [
     '/node_modules/',
     '/dist/',
