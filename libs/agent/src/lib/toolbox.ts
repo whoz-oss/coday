@@ -58,29 +58,29 @@ export class Toolbox implements Killable {
     this.factoryConstructors.set('MEMORY', (name) => new MemoryTools(interactor, services.memory, name, {}))
 
     // Integration tools (require config)
-    this.factoryConstructors.set('git', (name, config) => new GitTools(interactor, services.integration, name, config))
+    this.factoryConstructors.set('GIT', (name, config) => new GitTools(interactor, services.integration, name, config))
     this.factoryConstructors.set(
-      'gitlab',
+      'GITLAB',
       (name, config) => new GitLabTools(interactor, services.integration, name, config)
     )
     this.factoryConstructors.set(
-      'confluence',
+      'CONFLUENCE',
       (name, config) => new ConfluenceTools(interactor, services.integration, name, config)
     )
     this.factoryConstructors.set(
-      'zendesk',
+      'ZENDESK',
       (name, config) => new ZendeskTools(interactor, services.integration, name, config)
     )
     this.factoryConstructors.set(
-      'jira',
+      'JIRA',
       (name, config) => new JiraTools(interactor, services.integration, name, config)
     )
     this.factoryConstructors.set(
-      'slack',
+      'SLACK',
       (name, config) => new SlackTools(interactor, services.integration, name, config)
     )
     this.factoryConstructors.set(
-      'basecamp',
+      'BASECAMP',
       (name, config) => new BasecampTools(interactor, services.integration, services.user, name, config)
     )
   }
