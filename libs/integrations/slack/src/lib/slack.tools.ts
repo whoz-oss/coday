@@ -71,6 +71,8 @@ const userCache: Map<string, SlackUser> = new Map()
 let userCachePopulated = false
 
 export class SlackTools extends AssistantToolFactory {
+  static readonly TYPE = 'SLACK' as const
+
   constructor(
     interactor: Interactor,
     private readonly integrationService: IntegrationService,

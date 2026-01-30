@@ -10,6 +10,8 @@ import {
 import { delegateFunction } from './delegate.function'
 
 export class DelegateTools extends AssistantToolFactory {
+  static readonly TYPE = 'DELEGATE' as const
+
   constructor(
     interactor: Interactor,
     private agentFind: (nameStart: string | undefined, context: CommandContext) => Promise<Agent | undefined>,

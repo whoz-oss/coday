@@ -53,6 +53,8 @@ import { FunctionTool } from '@coday/model'
  * @extends AssistantToolFactory
  */
 export class FileTools extends AssistantToolFactory {
+  static readonly TYPE = 'FILES' as const
+
   constructor(interactor: Interactor, instanceName: string, config: any) {
     super(interactor, instanceName, config)
   }

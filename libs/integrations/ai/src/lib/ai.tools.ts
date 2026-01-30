@@ -6,6 +6,8 @@ import { FunctionTool } from '@coday/model'
 import { redirectFunction } from './redirect.function'
 
 export class AiTools extends AssistantToolFactory {
+  static readonly TYPE = 'AI' as const
+
   constructor(
     interactor: Interactor,
     private agentSummaries: () => AgentSummary[],

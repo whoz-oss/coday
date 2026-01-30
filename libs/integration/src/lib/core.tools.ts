@@ -3,6 +3,8 @@ import { CodayTool } from '@coday/model'
 import { CommandContext } from '@coday/model'
 
 export class CoreTools extends AssistantToolFactory {
+  static readonly TYPE = 'CORE' as const
+
   constructor(
     interactor: Interactor,
     instanceName: string,

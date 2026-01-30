@@ -11,6 +11,8 @@ import { CodayTool } from '@coday/model'
 import { FunctionTool } from '@coday/model'
 
 export class GitLabTools extends AssistantToolFactory {
+  static readonly TYPE = 'GITLAB' as const
+
   constructor(
     interactor: Interactor,
     private readonly integrationService: IntegrationService,

@@ -9,7 +9,7 @@ export abstract class AssistantToolFactory implements Killable {
 
   // name is the INSTANCE name (e.g., "jira-prod")
   // Will be set by concrete classes in their constructor
-  name: string = ''
+  name: string
 
   // config holds the integration configuration for this instance
   protected config?: IntegrationConfig

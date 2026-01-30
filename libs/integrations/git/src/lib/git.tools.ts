@@ -7,6 +7,8 @@ import { git } from './git'
 import { FunctionTool } from '@coday/model'
 
 export class GitTools extends AssistantToolFactory {
+  static readonly TYPE = 'GIT' as const
+
   constructor(
     interactor: Interactor,
     private readonly integrationService: IntegrationService,

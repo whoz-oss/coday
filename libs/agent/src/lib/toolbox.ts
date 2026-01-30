@@ -47,40 +47,46 @@ export class Toolbox implements Killable {
     this.factoryConstructors = new Map<string, (name: string, config: IntegrationConfig) => AssistantToolFactory>()
 
     // Core tools (always available, no config needed)
-    this.factoryConstructors.set('CORE', (name) => new CoreTools(interactor, name, {}, this.services.options?.baseUrl))
-    this.factoryConstructors.set('AI', (name) => new AiTools(interactor, agentSummaries, name, {}))
     this.factoryConstructors.set(
-      'DELEGATE',
+      CoreTools.TYPE,
+      (name) => new CoreTools(interactor, name, {}, this.services.options?.baseUrl)
+    )
+    this.factoryConstructors.set(AiTools.TYPE, (name) => new AiTools(interactor, agentSummaries, name, {}))
+    this.factoryConstructors.set(
+      DelegateTools.TYPE,
       (name) => new DelegateTools(interactor, agentFind, agentSummaries, name, {})
     )
-    this.factoryConstructors.set('FILES', (name, config) => new FileTools(interactor, name, config))
-    this.factoryConstructors.set('PROJECT_SCRIPTS', (name) => new ProjectScriptsTools(interactor, name, {}))
-    this.factoryConstructors.set('MEMORY', (name) => new MemoryTools(interactor, services.memory, name, {}))
+    this.factoryConstructors.set(FileTools.TYPE, (name, config) => new FileTools(interactor, name, config))
+    this.factoryConstructors.set(ProjectScriptsTools.TYPE, (name) => new ProjectScriptsTools(interactor, name, {}))
+    this.factoryConstructors.set(MemoryTools.TYPE, (name) => new MemoryTools(interactor, services.memory, name, {}))
 
     // Integration tools (require config)
-    this.factoryConstructors.set('GIT', (name, config) => new GitTools(interactor, services.integration, name, config))
     this.factoryConstructors.set(
-      'GITLAB',
+      GitTools.TYPE,
+      (name, config) => new GitTools(interactor, services.integration, name, config)
+    )
+    this.factoryConstructors.set(
+      GitLabTools.TYPE,
       (name, config) => new GitLabTools(interactor, services.integration, name, config)
     )
     this.factoryConstructors.set(
-      'CONFLUENCE',
+      ConfluenceTools.TYPE,
       (name, config) => new ConfluenceTools(interactor, services.integration, name, config)
     )
     this.factoryConstructors.set(
-      'ZENDESK',
+      ZendeskTools.TYPE,
       (name, config) => new ZendeskTools(interactor, services.integration, name, config)
     )
     this.factoryConstructors.set(
-      'JIRA',
+      JiraTools.TYPE,
       (name, config) => new JiraTools(interactor, services.integration, name, config)
     )
     this.factoryConstructors.set(
-      'SLACK',
+      SlackTools.TYPE,
       (name, config) => new SlackTools(interactor, services.integration, name, config)
     )
     this.factoryConstructors.set(
-      'BASECAMP',
+      BasecampTools.TYPE,
       (name, config) => new BasecampTools(interactor, services.integration, services.user, name, config)
     )
   }
