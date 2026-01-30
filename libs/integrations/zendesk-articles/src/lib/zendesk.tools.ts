@@ -7,6 +7,8 @@ import { CodayTool } from '@coday/model'
 import { FunctionTool } from '@coday/model'
 
 export class ZendeskTools extends AssistantToolFactory {
+  static readonly TYPE = 'ZENDESK' as const
+
   constructor(
     interactor: Interactor,
     private readonly integrationService: IntegrationService,

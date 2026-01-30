@@ -6,6 +6,8 @@ import { MemoryLevel } from '@coday/model'
 import { FunctionTool } from '@coday/model'
 
 export class MemoryTools extends AssistantToolFactory {
+  static readonly TYPE = 'MEMORY' as const
+
   constructor(
     interactor: Interactor,
     private readonly memoryService: MemoryService,

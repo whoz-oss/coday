@@ -13,6 +13,8 @@ import { getBasecampMessages } from './get-messages'
 import { getBasecampMessage } from './get-message'
 
 export class BasecampTools extends AssistantToolFactory {
+  static readonly TYPE = 'BASECAMP' as const
+
   private oauth: BasecampOAuth | null = null
 
   constructor(

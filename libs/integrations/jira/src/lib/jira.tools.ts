@@ -18,6 +18,8 @@ import { CreateJiraIssueRequest } from './jira'
 // JiraCustomFieldHelper is used in createJiraIssue.ts
 
 export class JiraTools extends AssistantToolFactory {
+  static readonly TYPE = 'JIRA' as const
+
   private jiraService: JiraService
 
   constructor(

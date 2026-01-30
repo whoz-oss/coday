@@ -7,6 +7,8 @@ import { CodayTool } from '@coday/model'
 import { FunctionTool } from '@coday/model'
 
 export class ConfluenceTools extends AssistantToolFactory {
+  static readonly TYPE = 'CONFLUENCE' as const
+
   constructor(
     interactor: Interactor,
     private readonly integrationService: IntegrationService,
