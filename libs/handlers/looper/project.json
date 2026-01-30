@@ -1,0 +1,26 @@
+{
+  "name": "handlers-looper",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/handlers/looper",
+  "tags": [
+    "scope:libs",
+    "type:core"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "libs/handlers/looper/dist",
+        "main": "libs/handlers/looper/src/index.ts",
+        "tsConfig": "libs/handlers/looper/tsconfig.lib.json",
+        "assets": [
+          "libs/handlers/looper/*.md"
+        ]
+      }
+    }
+  }
+}

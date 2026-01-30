@@ -1,0 +1,26 @@
+{
+  "name": "handlers-memory",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/handlers/memory",
+  "tags": [
+    "scope:libs",
+    "type:core"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "libs/handlers/memory/dist",
+        "main": "libs/handlers/memory/src/index.ts",
+        "tsConfig": "libs/handlers/memory/tsconfig.lib.json",
+        "assets": [
+          "libs/handlers/memory/*.md"
+        ]
+      }
+    }
+  }
+}

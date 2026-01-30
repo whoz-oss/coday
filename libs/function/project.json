@@ -1,0 +1,26 @@
+{
+  "name": "function",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/function",
+  "tags": [
+    "scope:libs",
+    "type:function"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "{projectRoot}/dist",
+        "main": "libs/function/src/index.ts",
+        "tsConfig": "libs/function/tsconfig.lib.json",
+        "assets": [
+          "libs/function/*.md"
+        ]
+      }
+    }
+  }
+}
