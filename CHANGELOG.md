@@ -1,3 +1,13 @@
+## 0.63.3 (2026-01-30)
+
+### 🩹 Fixes
+
+- client package configuration to allow publish ([dbd2ab8](https://github.com/whoz-oss/coday/commit/dbd2ab8))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.63.2 (2026-01-30)
 
 ### 🩹 Fixes
