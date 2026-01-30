@@ -5,6 +5,7 @@ import {
   CodayTool,
   CommandContext,
   GetToolsInput,
+  IntegrationConfig,
   Interactor,
   Killable,
   McpServerConfig,
@@ -46,9 +47,12 @@ export class Toolbox implements Killable {
     this.factoryConstructors = new Map<string, (name: string, config: IntegrationConfig) => AssistantToolFactory>()
 
     // Core tools (always available, no config needed)
-    this.factoryConstructors.set('CORE', (name) => new CoreTools(interactor, services, name, {}))
-    this.factoryConstructors.set('AI', (name) => new AiTools(interactor, agentService, name, {}))
-    this.factoryConstructors.set('DELEGATE', (name) => new DelegateTools(interactor, agentService, name, {}))
+    this.factoryConstructors.set('CORE', (name) => new CoreTools(interactor, name, {}, this.services.options?.baseUrl))
+    this.factoryConstructors.set('AI', (name) => new AiTools(interactor, agentSummaries, name, {}))
+    this.factoryConstructors.set(
+      'DELEGATE',
+      (name) => new DelegateTools(interactor, agentFind, agentSummaries, name, {})
+    )
     this.factoryConstructors.set('FILES', (name, config) => new FileTools(interactor, name, config))
     this.factoryConstructors.set('PROJECT_SCRIPTS', (name) => new ProjectScriptsTools(interactor, name, {}))
     this.factoryConstructors.set('MEMORY', (name) => new MemoryTools(interactor, services.memory, name, {}))
@@ -79,15 +83,6 @@ export class Toolbox implements Killable {
       'basecamp',
       (name, config) => new BasecampTools(interactor, services.integration, services.user, name, config)
     )
-
-    // Create core tool factories immediately (they don't need config from integrations)
-    // These are always available and don't require integration config
-    this.factoryInstances.set('CORE', new CoreTools(interactor, services, 'CORE', {}))
-    this.factoryInstances.set('AI', new AiTools(interactor, agentService, 'AI', {}))
-    this.factoryInstances.set('DELEGATE', new DelegateTools(interactor, agentService, 'DELEGATE', {}))
-    this.factoryInstances.set('FILES', new FileTools(interactor, 'FILES', {}))
-    this.factoryInstances.set('PROJECT_SCRIPTS', new ProjectScriptsTools(interactor, 'PROJECT_SCRIPTS', {}))
-    this.factoryInstances.set('MEMORY', new MemoryTools(interactor, services.memory, 'MEMORY', {}))
   }
 
   async kill(): Promise<void> {
