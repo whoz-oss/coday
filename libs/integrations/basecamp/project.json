@@ -1,0 +1,26 @@
+{
+  "name": "integrations-basecamp",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/integrations/basecamp",
+  "tags": [
+    "scope:libs",
+    "type:core"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "libs/integrations/basecamp/dist",
+        "main": "libs/integrations/basecamp/src/index.ts",
+        "tsConfig": "libs/integrations/basecamp/tsconfig.lib.json",
+        "assets": [
+          "libs/integrations/basecamp/*.md"
+        ]
+      }
+    }
+  }
+}

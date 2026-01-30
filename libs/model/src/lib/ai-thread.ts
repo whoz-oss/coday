@@ -1,0 +1,618 @@
+/**
+ * @fileoverview Manages a conversation thread between users and AI agents, including tool interactions.
+ * Provides a unified interface for message and tool execution handling while maintaining thread state
+ * and ensuring proper message sequencing.
+ */
+
+import {
+  buildCodayEvent,
+  MessageContent,
+  MessageEvent,
+  SummaryEvent,
+  ToolRequestEvent,
+  ToolResponseEvent,
+} from './coday-events'
+
+import { ToolCall, ToolResponse } from './integration-tool-call'
+
+import { EmptyUsage, RunStatus, ThreadMessage, ThreadSerialized, Usage } from './ai-thread.types'
+import { partition } from './ai-thread.helpers'
+
+/**
+ * Allowed message types for filtering when building thread history
+ */
+const THREAD_MESSAGE_TYPES = [MessageEvent.type, ToolRequestEvent.type, ToolResponseEvent.type, SummaryEvent.type]
+
+/**
+ * AiThread manages the state and interactions of a conversation thread between users and AI agents.
+ * It handles message sequencing, tool execution requests/responses, and maintains thread history
+ * while providing deduplication of similar tool calls.
+ *
+ * Temporary notes:
+ * To narrate it, an aiThread start just after the user chose a project: the configuration being defined, we can then get the list of the existing threads, and select the last one being used (or create the first if none). At every point in time, the user can select another (or create a new) thread, name it (but later it would be better to generate the name), and delete it.
+ *
+ * The aiThread is then present for all the ai-related parts : ai.handler.ts, agents, aiClients to receive the events composing the history. When a thread is loaded, the said events are also re-played for the frontend to udpate the display.
+ *
+ * On some future occasions, the current aiThread can be forked or cloned to run a task without polluting the parent thread. Also, in the near future, the agents will be aware of the existence of these other threads and may request informations from them. This would happen through the name (and/or the summary) of aiThreads, and the request would produce an end text message that will be transfered to the parent thread (as a tool response most probably).
+ *
+ * When an aiThread is left by the user (disconnection, explicit save), it is saved and may trigger several actions like a new summarization, a memory extraction to benefit all threads and users.
+ *
+ * AiThreads are (for now) tied to a user by default, maybe later shareable or multi-user capable, so aiThread management is important, leading to some necessary work to do on the frontend and API, to select a thread without resorting to commands (although these should still work for terminal interfaces).
+ */
+export class AiThread {
+  /** Unique identifier for the thread */
+  id: string
+
+  username: string
+
+  /** Project identifier this thread belongs to */
+  projectId: string
+
+  /** Name or title or very short sentence about the content of the thread */
+  name: string
+
+  /** Summary of the whole thread, to be used for cross-thread research */
+  summary: string
+
+  /** List of usernames who starred this thread */
+  starring: string[] = []
+
+  createdDate: string
+  modifiedDate: string
+  runStatus: RunStatus = RunStatus.STOPPED
+
+  /** Garbage object for passing data or keeping track of counters or stuff...*/
+  data: any = {}
+
+  usage: Usage = { ...EmptyUsage }
+
+  price: number = 0
+
+  /** Track depth of thread delegations (not serializable) */
+  delegationDepth: number = 0
+
+  /** Store forked threads for specific agents */
+  private forkedThreads: Map<string | null, AiThread> = new Map()
+
+  private parentThread: AiThread | undefined
+
+  /** Internal storage of thread messages in chronological order */
+  private messages: ThreadMessage[]
+
+  get messagesLength(): number {
+    return this.messages.length
+  }
+
+  /**
+   * Creates a new AiThread instance.
+   * @param thread - Configuration object containing thread ID and optional message history
+   * @param thread.id - Unique identifier for the thread
+   * @param thread.messages - Optional array of raw message objects to initialize the thread
+   */
+  constructor(thread: ThreadSerialized) {
+    this.id = thread.id
+    this.username = thread.username
+    this.projectId = thread.projectId ?? ''
+    this.name = thread.name ?? ''
+    this.summary = thread.summary ?? ''
+    this.starring = thread.starring ?? []
+    this.createdDate = thread.createdDate ?? new Date().toISOString()
+    this.modifiedDate = thread.modifiedDate ?? this.createdDate
+    this.price = thread.price ?? 0
+
+    // Filter on type first, then build events
+    // Ensure messages is always initialized as an array, even if empty
+    const rawMessages = thread.messages ?? []
+    if (!Array.isArray(rawMessages)) {
+      this.messages = []
+    } else {
+      this.messages = rawMessages
+        .filter((msg) => THREAD_MESSAGE_TYPES.includes(msg.type))
+        .map((msg) => buildCodayEvent(msg))
+        .filter((event): event is ThreadMessage => event !== undefined)
+    }
+  }
+
+  /**
+   * Returns messages for AI processing, stopping at the first SummaryEvent encountered backward.
+   * This ensures AI sees summaries instead of old detailed messages.
+   * @param maxChars Maximum character limit for the returned messages
+   * @param compactor Function to create summaries when needed
+   * @returns messages for AI context and compaction status
+   */
+  async getMessages(
+    maxChars: number | undefined,
+    compactor: undefined | ((msgs: ThreadMessage[]) => Promise<SummaryEvent>)
+  ): Promise<{
+    messages: ThreadMessage[]
+    compacted: boolean
+  }> {
+    // Defensive programming: ensure messages is always an array
+    if (!this.messages || !Array.isArray(this.messages)) {
+      this.messages = []
+    }
+
+    if (!maxChars) {
+      // No budget limit: return all messages up to first summary going backward
+      const messagesForAI = this.getMessagesUpToFirstSummary()
+      const cleanedMessages = this.cleanToolRequestResponseConsistency(messagesForAI)
+      return { messages: cleanedMessages, compacted: false }
+    }
+
+    // Get messages up to first summary (chronological order)
+    const relevantMessages = this.getMessagesUpToFirstSummary()
+
+    // Filter oversized tool responses before partitioning (truncate those >50% of budget)
+    const maxSingleMessageSize = Math.floor(maxChars * 0.5)
+    const filteredMessages = relevantMessages.map((msg) => {
+      if (msg instanceof ToolResponseEvent && msg.length > maxSingleMessageSize) {
+        const truncateAt = Math.floor(maxChars * 0.15)
+        const output = msg.getTextOutput()
+        const truncated = `[... truncated ${msg.length - truncateAt} chars]\n` + output.slice(-truncateAt)
+        return new ToolResponseEvent({
+          ...msg,
+          output: truncated,
+        })
+      }
+      return msg
+    })
+
+    // From the end, take all messages that fit into the budget
+    let { messages, overflow } = partition(filteredMessages.toReversed(), maxChars)
+    messages = messages.toReversed()
+    overflow = overflow.toReversed()
+
+    if (!compactor || overflow.length === 0) {
+      // No compaction needed or no compactor provided
+      const cleaned = this.cleanToolRequestResponseConsistency(messages)
+      return { messages: cleaned, compacted: overflow.length > 0 }
+    }
+
+    // Create summary for overflow messages
+    let summaryEvent: SummaryEvent
+    try {
+      summaryEvent = await compactor(overflow)
+
+      // Insert summary event chronologically after the last overflowed message
+      const lastOverflowMsg = overflow[overflow.length - 1]
+      if (lastOverflowMsg) {
+        const lastOverflowIndex = this.messages.indexOf(lastOverflowMsg)
+        if (lastOverflowIndex !== -1) {
+          // Insert right after the last summarized message
+          this.messages.splice(lastOverflowIndex + 1, 0, summaryEvent)
+        }
+      }
+    } catch (error) {
+      // If compaction fails, just truncate
+      console.error('[AiThread] Compaction failed, keeping recent messages only:', error)
+      const cleaned = this.cleanToolRequestResponseConsistency(messages)
+      return { messages: cleaned, compacted: true }
+    }
+
+    // Return summary + recent messages for AI
+    const cleanedMessages = this.cleanToolRequestResponseConsistency(messages)
+    return {
+      messages: [summaryEvent, ...cleanedMessages],
+      compacted: true,
+    }
+  }
+
+  /**
+   * Returns all messages including originals, for UI rendering and export.
+   * This is the complete history without any summarization filtering.
+   * @returns all thread messages
+   */
+  getAllMessages(): ThreadMessage[] {
+    return this.cleanToolRequestResponseConsistency([...this.messages])
+  }
+
+  /**
+   * Gets messages from the thread going backward until hitting a SummaryEvent.
+   * Returns messages in chronological order (oldest first).
+   * @private
+   */
+  private getMessagesUpToFirstSummary(): ThreadMessage[] {
+    // Go backward through messages
+    const reversed = [...this.messages].reverse()
+    const result: ThreadMessage[] = []
+
+    for (const msg of reversed) {
+      // If we hit a summary, include it and stop
+      if (msg instanceof SummaryEvent) {
+        result.push(msg)
+        break
+      }
+      result.push(msg)
+    }
+
+    // Return in chronological order (oldest first)
+    return result.reverse()
+  }
+
+  /**
+   * Cleans tool request-response consistency to prevent API errors.
+   * Removes orphaned tool requests/responses that would cause Anthropic API 400 errors.
+   *
+   * @param messages Array of messages to clean
+   * @returns Cleaned array of messages
+   * @private
+   */
+  private cleanToolRequestResponseConsistency(messages: ThreadMessage[]): ThreadMessage[] {
+    const cleanedMessages: ThreadMessage[] = []
+    const toolRequestIds = new Set<string>()
+    const toolResponseIds = new Set<string>()
+
+    // First pass: collect all tool request and response IDs
+    for (const message of messages) {
+      if (message instanceof ToolRequestEvent && message.toolRequestId) {
+        toolRequestIds.add(message.toolRequestId)
+      } else if (message instanceof ToolResponseEvent && message.toolRequestId) {
+        toolResponseIds.add(message.toolRequestId)
+      }
+    }
+
+    // Second pass: filter messages based on consistency rules
+    for (const message of messages) {
+      let shouldKeep = true
+
+      if (message instanceof ToolRequestEvent) {
+        // Rule 1: Remove toolRequest without corresponding toolResponse
+        if (message.toolRequestId && !toolResponseIds.has(message.toolRequestId)) {
+          console.debug(`[AiThread] Removing orphaned tool request: ${message.name} (ID: ${message.toolRequestId})`)
+          shouldKeep = false
+        }
+      } else if (message instanceof ToolResponseEvent) {
+        // Rule 2: Remove toolResponse without reference to tool (missing toolRequestId)
+        if (!message.toolRequestId) {
+          console.warn(`[AiThread] Removing tool response without tool reference (timestamp: ${message.timestamp})`)
+          shouldKeep = false
+        }
+        // Rule 3: Remove toolResponse without matching toolRequest
+        else if (!toolRequestIds.has(message.toolRequestId)) {
+          console.debug(`[AiThread] Removing orphaned tool response for missing request ID: ${message.toolRequestId}`)
+          shouldKeep = false
+        }
+      }
+
+      if (shouldKeep) {
+        cleanedMessages.push(message)
+      }
+    }
+
+    return cleanedMessages
+  }
+
+  /**
+   * Resets the counters related to the run (all except price.thread)
+   */
+  resetUsageForRun(): void {
+    this.usage = { ...EmptyUsage }
+  }
+
+  addUsage(usage: Partial<Usage>): void {
+    this.price += usage.price ?? 0
+    this.usage.price += usage.price ?? 0
+    this.usage.iterations += 1
+
+    const tokens = this.usage
+    tokens.input += usage.input ?? 0
+    tokens.output += usage.output ?? 0
+    tokens.cache_read += usage.cache_read ?? 0
+    tokens.cache_write += usage.cache_write ?? 0
+  }
+
+  /**
+   * Adds a new message to the thread.
+   * @param message - The message to add
+   */
+  private add(message: ThreadMessage): void {
+    this.messages.push(message)
+  }
+
+  /**
+   * Finds a tool request by its unique identifier.
+   * @param id - The tool request ID to search for
+   * @returns The matching ToolRequestEvent or undefined if not found
+   */
+  private findToolRequestById(id: string): ToolRequestEvent | undefined {
+    return this.messages.find((msg) => msg instanceof ToolRequestEvent && msg.toolRequestId === id) as
+      | ToolRequestEvent
+      | undefined
+  }
+
+  /**
+   * Finds all tool requests that are similar to the reference request
+   * (same name and arguments, but different ID).
+   * Used for deduplication of repeated tool calls.
+   * @param reference - The tool request to compare against
+   * @returns Array of similar tool requests (excluding the reference)
+   */
+  private findSimilarToolRequests(reference: ToolRequestEvent): ToolRequestEvent[] {
+    return this.messages.filter(
+      (msg) =>
+        msg !== reference && // Exclude the reference request
+        msg instanceof ToolRequestEvent &&
+        msg.name === reference.name &&
+        msg.args === reference.args
+    ) as ToolRequestEvent[]
+  }
+
+  /**
+   * Finds all tool responses associated with the given tool requests.
+   * Used when cleaning up duplicated tool calls and their responses.
+   * @param requests - Array of tool requests to find responses for
+   * @returns Array of tool responses matching the given requests
+   */
+  private findToolResponsesToRequests(requests: ToolRequestEvent[]): ToolResponseEvent[] {
+    return this.messages.filter(
+      (msg) => msg instanceof ToolResponseEvent && requests.some((r) => r.toolRequestId === msg.toolRequestId)
+    ) as ToolResponseEvent[]
+  }
+
+  /**
+   * Removes specific messages from the thread.
+   * Used primarily for cleaning up duplicated tool calls and responses.
+   * @param messages - Array of messages to remove
+   */
+  private removeMessages(messages: ThreadMessage[]): void {
+    this.messages = this.messages.filter((msg) => !messages.includes(msg))
+  }
+
+  /**
+   * Adds a user message to the thread.
+   * @param username - The name of the user sending the message
+   * @param content - The content of the message
+   */
+  addUserMessage(username: string, content: MessageContent): void {
+    const lastMessage = this.messages[this.messages.length - 1]
+    const shouldMergeIntoLastMessage =
+      lastMessage && lastMessage instanceof MessageEvent && lastMessage.role === 'user' && lastMessage.name === username
+
+    if (shouldMergeIntoLastMessage) {
+      lastMessage.content.push(content)
+    } else {
+      this.add(
+        new MessageEvent({
+          role: 'user',
+          content: [content],
+          name: username,
+        })
+      )
+    }
+
+    // Update modified date whenever a user message is added
+    this.modifiedDate = new Date().toISOString()
+  }
+
+  /**
+   * Adds an AI agent message to the thread.
+   * @param agentName - The name of the AI agent sending the message
+   * @param content - The content of the message
+   */
+  addAgentMessage(agentName: string, content: MessageContent): void {
+    const lastMessage = this.messages[this.messages.length - 1]
+    const shouldMergeIntoLastMessage =
+      lastMessage &&
+      lastMessage instanceof MessageEvent &&
+      lastMessage.role === 'assistant' &&
+      lastMessage.name === agentName
+
+    if (shouldMergeIntoLastMessage) {
+      lastMessage.content.push(content)
+    } else {
+      this.add(
+        new MessageEvent({
+          role: 'assistant',
+          content: [content],
+          name: agentName,
+        })
+      )
+    }
+
+    // Update modified date whenever an agent message is added
+    this.modifiedDate = new Date().toISOString()
+  }
+
+  /**
+   * Fork a thread for a specific agent delegation
+   * @param agentName Name of the agent to delegate to
+   * @returns Forked AiThread instance
+   */
+  /**
+   * Fork a thread, optionally for a specific agent
+   * @param agentName Optional name of the agent to delegate to
+   * @param cleanContext If true, create an empty thread without parent messages (default: false)
+   * @returns Forked AiThread instance
+   */
+  fork(agentName?: string | null, cleanContext: boolean = false): AiThread {
+    // Check if a forked thread for this agent already exists
+    const existingForkedThread = this.forkedThreads.get(agentName ?? null)
+    if (existingForkedThread) {
+      existingForkedThread.runStatus = RunStatus.RUNNING
+      return existingForkedThread
+    }
+
+    // Create a new forked thread with destructured properties
+    const forkedThread = new AiThread({
+      id: this.id, // Reuse parent thread ID as we don't save this
+      username: this.username,
+      projectId: this.projectId,
+      name: agentName ? `${this.name} - Delegated to ${agentName}` : `${this.name} - Forked`,
+      summary: cleanContext ? '' : this.summary, // Empty summary in clean context mode
+      createdDate: this.createdDate,
+      modifiedDate: new Date().toISOString(),
+      price: 0,
+      messages: cleanContext ? [] : [...this.messages], // Empty messages in clean context mode
+    })
+
+    // Increment delegation depth (non-serializable)
+    forkedThread.delegationDepth = this.delegationDepth + 1
+    forkedThread.parentThread = this
+    forkedThread.runStatus = RunStatus.RUNNING
+
+    // Store the forked thread
+    this.forkedThreads.set(agentName ?? null, forkedThread)
+
+    return forkedThread
+  }
+
+  /**
+   * Merge a specific forked thread back into this thread
+   * @param forkedThread The thread to merge back
+   */
+  merge(forkedThread: AiThread): void {
+    // Add the forked thread's price to this thread's price
+    this.price += forkedThread.price
+
+    // Reset the price of the forked as moved into the parent
+    forkedThread.price = 0
+  }
+
+  get totalPrice(): number {
+    return this.price + (this.parentThread?.totalPrice ?? 0)
+  }
+
+  /**
+   * Returns the name of the last agent (assistant) that responded in this thread, or undefined if none.
+   */
+  getLastAgentName(): string | undefined {
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      const msg = this.messages[i]
+      if (msg instanceof MessageEvent && msg.role === 'assistant' && msg.name) {
+        return msg.name
+      }
+    }
+    return undefined
+  }
+
+  /**
+   * Returns the count of user messages in this thread.
+   */
+  getUserMessageCount(): number {
+    return this.messages.filter((msg) => msg instanceof MessageEvent && msg.role === 'user').length
+  }
+
+  /**
+   * Gets an event by its timestamp ID
+   * @param eventId The timestamp ID of the event to retrieve
+   * @returns The event if found, undefined otherwise
+   */
+  getEventById(eventId: string): ThreadMessage | undefined {
+    return this.messages.find((msg) => msg.timestamp === eventId)
+  }
+
+  /**
+   * Truncates the thread at a specific user message, removing that message and all subsequent messages.
+   * This provides a "rewind" functionality allowing users to retry from an earlier point in the conversation.
+   *
+   * @param eventId The timestamp ID of the user message to delete
+   * @returns true if truncation was successful, false otherwise
+   *
+   * Validation rules:
+   * - Only user messages (MessageEvent with role='user') can be deleted
+   * - Cannot delete the first message in the thread (index 0)
+   * - Message must exist in the thread
+   */
+  truncateAtUserMessage(eventId: string): boolean {
+    // Find the message index
+    const index = this.messages.findIndex((msg) => msg.timestamp === eventId)
+    if (index === -1) {
+      return false // Message not found
+    }
+
+    // Validate that it's a user message
+    const message = this.messages[index]
+    if (!(message instanceof MessageEvent) || message.role !== 'user') {
+      return false // Not a user message
+    }
+
+    // Prevent deletion of the first message
+    if (index === 0) {
+      return false // Cannot delete first message
+    }
+
+    // Truncate the messages array at the specified index
+    this.messages = this.messages.slice(0, index)
+
+    // Update modification timestamp
+    this.modifiedDate = new Date().toISOString()
+
+    return true
+  }
+
+  addToolRequests(_agentName: string, toolRequests: ToolRequestEvent[]): void {
+    toolRequests.forEach((toolRequest) => {
+      if (!toolRequest.toolRequestId || !toolRequest.name || !toolRequest.args) return
+      this.add(toolRequest)
+    })
+  }
+
+  addToolResponseEvents(toolResponseEvents: ToolResponseEvent[]): void {
+    toolResponseEvents.forEach((response) => {
+      if (!response.toolRequestId || !response.output) return
+      const request = this.findToolRequestById(response.toolRequestId)
+      if (!request) return
+
+      // Find similar requests using the current request as reference
+      const similarRequests = this.findSimilarToolRequests(request)
+      const responsesToRemove = this.findToolResponsesToRequests(similarRequests)
+
+      // Remove old requests and responses
+      this.removeMessages([...similarRequests, ...responsesToRemove])
+
+      // Add the new response
+      this.add(response)
+    })
+  }
+
+  /**
+   * Adds tool execution requests to the thread.
+   * Validates each tool call for required fields before adding.
+   * @param _agentName - The name of the AI agent making the tool calls
+   * @param toolCalls - Array of tool calls to process
+   */
+  addToolCalls(_agentName: string, toolCalls: ToolCall[]): void {
+    toolCalls.forEach((call) => {
+      if (!call.id || !call.name || !call.args) return
+      this.add(
+        new ToolRequestEvent({
+          name: call.name,
+          args: call.args,
+          toolRequestId: call.id,
+        })
+      )
+    })
+  }
+
+  /**
+   * Adds tool execution responses to the thread.
+   * Implements deduplication by removing similar previous tool calls and their responses
+   * when a new response is added. This ensures that only the latest execution of a tool
+   * with specific arguments is kept in the thread.
+   *
+   * @param _username - The name of the user/system processing the tool responses
+   * @param responses - Array of tool responses to process
+   */
+  addToolResponses(_username: string, responses: ToolResponse[]): void {
+    responses.forEach((response) => {
+      if (!response.id || !response.response) return
+      const request = this.findToolRequestById(response.id)
+      if (!request) return
+
+      // Find similar requests using the current request as reference
+      const similarRequests = this.findSimilarToolRequests(request)
+      const responsesToRemove = this.findToolResponsesToRequests(similarRequests)
+
+      // Remove old requests and responses
+      this.removeMessages([...similarRequests, ...responsesToRemove])
+
+      // Add the new response
+      this.add(
+        new ToolResponseEvent({
+          toolRequestId: response.id,
+          output: response.response,
+        })
+      )
+    })
+  }
+}
