@@ -1,3 +1,14 @@
+## 0.63.1 (2026-01-30)
+
+### 🩹 Fixes
+
+- force release (remove update for lockfile) ([aabb4b6](https://github.com/whoz-oss/coday/commit/aabb4b6))
+- force release (exclude web from pnpm workspace) ([25c9681](https://github.com/whoz-oss/coday/commit/25c9681))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.63.0 (2026-01-30)
 
 ### 🚀 Features
