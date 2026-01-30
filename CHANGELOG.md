@@ -1,3 +1,14 @@
+## 0.63.0 (2026-01-30)
+
+### 🚀 Features
+
+- force release ([e13216e](https://github.com/whoz-oss/coday/commit/e13216e))
+- force release (with fix for lockfile) ([a368cb9](https://github.com/whoz-oss/coday/commit/a368cb9))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.62.0 (2026-01-29)
 
 ### 🚀 Features
