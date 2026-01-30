@@ -538,19 +538,6 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
-  apps/web:
-    dependencies:
-      '@whoz-oss/coday-client':
-        specifier: 0.62.0
-        version: 0.62.0
-      '@whoz-oss/coday-server':
-        specifier: 0.62.0
-        version: 0.62.0
-    devDependencies:
-      typescript:
-        specifier: catalog:dev
-        version: 5.9.3
-
   libs/agent:
     dependencies:
       rxjs:
@@ -594,16 +581,6 @@ importers:
         version: 5.9.3
 
   libs/coday-services/dist:
-    dependencies:
-      tslib:
-        specifier: 'catalog:'
-        version: 2.8.1
-    devDependencies:
-      typescript:
-        specifier: catalog:dev
-        version: 5.9.3
-
-  libs/coday/dist:
     dependencies:
       tslib:
         specifier: 'catalog:'
@@ -4850,13 +4827,6 @@ packages:
 
   '@webassemblyjs/wast-printer@1.14.1':
     resolution: {integrity: sha512-kPSSXE6De1XOR820C90RIo2ogvZG+c3KiHzqUoO/F34Y2shGzesfqv7o57xrxovZJH/MetF5UjroJ/R/3isoiw==}
-
-  '@whoz-oss/coday-client@0.62.0':
-    resolution: {integrity: sha512-ci2x/htVFAH2rhRTpLhtK2K3kHBYi1ae/MKmEc7Zuy7/7aoswPlWtwkJAtt8KyGXoTOwYyIIzNA/TU33nGwARQ==}
-
-  '@whoz-oss/coday-server@0.62.0':
-    resolution: {integrity: sha512-vsCzBzLUc987twYSVTY6/t0Obe5cgNuJTf/xqQ6xtWEW4wGqkSxwAXuPC1oEhjqyXDUeJB1LeGkuxsYZa374Eg==}
-    hasBin: true
 
   '@xhmikosr/archive-type@7.1.0':
     resolution: {integrity: sha512-xZEpnGplg1sNPyEgFh0zbHxqlw5dtYg6viplmWSxUj12+QjU9SKu3U/2G73a15pEjLaOqTefNSZ1fOPUOT4Xgg==}
@@ -15205,15 +15175,6 @@ snapshots:
     dependencies:
       '@webassemblyjs/ast': 1.14.1
       '@xtuc/long': 4.2.2
-
-  '@whoz-oss/coday-client@0.62.0': {}
-
-  '@whoz-oss/coday-server@0.62.0':
-    dependencies:
-      '@vscode/ripgrep': 1.15.9
-      sharp: 0.34.4
-    transitivePeerDependencies:
-      - supports-color
 
   '@xhmikosr/archive-type@7.1.0':
     dependencies:

@@ -14,9 +14,6 @@
     "@whoz-oss/coday-client": "0.63.0",
     "@whoz-oss/coday-server": "0.63.0"
   },
-  "devDependencies": {
-    "typescript": "catalog:dev"
-  },
   "publishConfig": {
     "access": "public"
   }
