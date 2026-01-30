@@ -18,7 +18,7 @@ java {
 
 dependencies {
     // AgentOS SDK - Contains plugin interfaces
-    // When using composite builds, reference by coordinates
+    // Coordinates are substituted by composite build (see settings.gradle.kts)
     api("whoz-oss.agentos:agentos-sdk:${libs.versions.agentosSdk.get()}")
 
     // PF4J Spring Integration (for service only, not SDK)

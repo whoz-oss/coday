@@ -1,9 +1,9 @@
 package io.biznet.agentos.service.controller
 
-import io.biznet.agentos.sdk.AgentInput
-import io.biznet.agentos.sdk.AgentOutput
-import io.biznet.agentos.service.service.AgentService
-import org.springframework.web.bind.annotation.*
+import io.biznet.agentos.model.AgentService
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RestController
 
 /**
  * REST controller for agent operations.
@@ -15,10 +15,4 @@ class AgentController(
 ) {
     @GetMapping
     fun listAgents() = agentService.listAgents()
-
-    @PostMapping("/{agentName}/execute")
-    suspend fun executeAgent(
-        @PathVariable agentName: String,
-        @RequestBody input: AgentInput,
-    ): AgentOutput = agentService.executeAgent(agentName, input)
 }

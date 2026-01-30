@@ -123,6 +123,7 @@ agents:
       CORE:
       DELEGATE:
       SLACK:
+      BASECAMP:
       MEMORY: [readMemories, memorizeUser, deleteMemory]
   - name: Gemini
     aiProvider: google
