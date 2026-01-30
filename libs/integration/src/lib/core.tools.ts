@@ -5,9 +5,9 @@ import { CommandContext } from '@coday/model'
 export class CoreTools extends AssistantToolFactory {
   constructor(
     interactor: Interactor,
-    private readonly baseUrl?: string,
     instanceName: string,
-    config: any
+    config: any,
+    private readonly baseUrl?: string
   ) {
     super(interactor, instanceName, config)
   }

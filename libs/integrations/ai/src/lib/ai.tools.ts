@@ -8,7 +8,7 @@ import { redirectFunction } from './redirect.function'
 export class AiTools extends AssistantToolFactory {
   constructor(
     interactor: Interactor,
-    private agentSummaries: () => AgentSummary[]
+    private agentSummaries: () => AgentSummary[],
     instanceName: string,
     config: any
   ) {
