@@ -115,6 +115,17 @@ jobs:
           NEW_VERSION=$(node -p "require('./apps/client/package.json').version")
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
+      - name: Update lockfile and commit if changed
+        env:
+          HUSKY: 0
+        run: |
+          pnpm install --lockfile-only
+          if [ -n "$(git status --porcelain pnpm-lock.yaml)" ]; then
+            git add pnpm-lock.yaml
+            git commit -m "chore: update lockfile after release"
+            git push
+          fi
+
   # Job 3: Build and upload desktop app
   desktop-release:
     runs-on: macos-latest

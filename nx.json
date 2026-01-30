@@ -85,7 +85,10 @@
     },
     "version": {
       "conventionalCommits": true,
-      "manifestRootsToUpdate": ["apps/{projectName}"]
+      "manifestRootsToUpdate": ["apps/{projectName}"],
+      "versionActionsOptions": {
+        "skipLockFileUpdate": true
+      }
     }
   },
   "tui": {
