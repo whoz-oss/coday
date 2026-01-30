@@ -1,3 +1,13 @@
+## 0.63.2 (2026-01-30)
+
+### 🩹 Fixes
+
+- put back fix for openai dependency ([fdb3d59](https://github.com/whoz-oss/coday/commit/fdb3d59))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.63.1 (2026-01-30)
 
 ### 🩹 Fixes
