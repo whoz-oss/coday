@@ -30,7 +30,12 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'gradle'
+
+      - name: Setup Gradle with smart caching
+        uses: gradle/gradle-build-action@v3
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/master' }}
+          gradle-home-cache-cleanup: true
 
       - uses: actions/setup-node@v4
         with:
@@ -40,5 +45,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run tests and lint
+      - name: Make self-healing script executable
+        run: chmod +x agentos/scripts/gradle-self-healing.sh
+
+      - name: Run tests and lint (with self-healing built-in)
         run: npx nx affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --target="lint,test" --parallel=$NX_MAX_WORKERS --verbose

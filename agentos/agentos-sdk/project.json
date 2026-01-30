@@ -15,8 +15,19 @@
       ],
       "outputs": ["{projectRoot}/build"],
       "options": {
+        "command": "bash scripts/gradle-self-healing.sh agentos-sdk build",
+        "cwd": "agentos"
+      }
+    },
+    "build:direct": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
         "command": "./gradlew :agentos-sdk:build",
         "cwd": "agentos"
+      },
+      "metadata": {
+        "description": "Run build directly without self-healing (for debugging)"
       }
     },
     "test": {
@@ -30,9 +41,20 @@
       ],
       "outputs": ["{projectRoot}/build/test-results", "{projectRoot}/build/reports"],
       "options": {
-        "command": "./gradlew :agentos-sdk:test",
+        "command": "bash scripts/gradle-self-healing.sh agentos-sdk test",
         "cwd": "agentos",
         "passWithNoTests": null
+      }
+    },
+    "test:direct": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./gradlew :agentos-sdk:test",
+        "cwd": "agentos"
+      },
+      "metadata": {
+        "description": "Run tests directly without self-healing (for debugging)"
       }
     },
     "publish": {
