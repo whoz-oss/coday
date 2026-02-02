@@ -1,3 +1,138 @@
+## 0.63.3 (2026-01-30)
+
+### 🩹 Fixes
+
+- client package configuration to allow publish ([dbd2ab8](https://github.com/whoz-oss/coday/commit/dbd2ab8))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.63.2 (2026-01-30)
+
+### 🩹 Fixes
+
+- put back fix for openai dependency ([fdb3d59](https://github.com/whoz-oss/coday/commit/fdb3d59))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.63.1 (2026-01-30)
+
+### 🩹 Fixes
+
+- force release (remove update for lockfile) ([aabb4b6](https://github.com/whoz-oss/coday/commit/aabb4b6))
+- force release (exclude web from pnpm workspace) ([25c9681](https://github.com/whoz-oss/coday/commit/25c9681))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.63.0 (2026-01-30)
+
+### 🚀 Features
+
+- force release ([e13216e](https://github.com/whoz-oss/coday/commit/e13216e))
+- force release (with fix for lockfile) ([a368cb9](https://github.com/whoz-oss/coday/commit/a368cb9))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.62.0 (2026-01-29)
+
+### 🚀 Features
+
+- raise file tools limits ([#446](https://github.com/whoz-oss/coday/pull/446))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.61.2 (2026-01-28)
+
+### 🩹 Fixes
+
+- deep link navigation to project URLs ([#441](https://github.com/whoz-oss/coday/issues/441))
+- deep link navigation to project URLs ([#442](https://github.com/whoz-oss/coday/pull/442), [#441](https://github.com/whoz-oss/coday/issues/441), [#123](https://github.com/whoz-oss/coday/issues/123))
+- add page parameter to go over the 15 first ones ([#445](https://github.com/whoz-oss/coday/pull/445))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+- vincent-audibert-whoz
+
+## 0.61.1 (2026-01-22)
+
+### 🩹 Fixes
+
+- #439 handle malformed URI in PDF text extraction ([#440](https://github.com/whoz-oss/coday/pull/440), [#439](https://github.com/whoz-oss/coday/issues/439))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.61.0 (2026-01-19)
+
+### 🚀 Features
+
+- #412 Add get_context_info core tool with conversation URL ([#437](https://github.com/whoz-oss/coday/pull/437), [#412](https://github.com/whoz-oss/coday/issues/412))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.60.0 (2026-01-19)
+
+### 🚀 Features
+
+- move agent agnostic slack guidelines to tool description ([#438](https://github.com/whoz-oss/coday/pull/438))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.59.0 (2026-01-15)
+
+### 🚀 Features
+
+- update openai dependency ([b4229e2](https://github.com/whoz-oss/coday/commit/b4229e2))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.58.1 (2026-01-15)
+
+### 🚀 Features
+
+- **agentos:** ensure publishing of agent-os sdk during release action ([#429](https://github.com/whoz-oss/coday/pull/429))
+
+### 🩹 Fixes
+
+- better merge of project and user config level for integrations ([#435](https://github.com/whoz-oss/coday/pull/435))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+- vincent-audibert-whoz
+
+## 0.58.0 (2026-01-13)
+
+### 🚀 Features
+
+- #394 Add Basecamp integration with OAuth2 ([#395](https://github.com/whoz-oss/coday/pull/395), [#394](https://github.com/whoz-oss/coday/issues/394))
+- **agentos:** issue 371 simplify documentation ([3a09861](https://github.com/whoz-oss/coday/commit/3a09861))
+- **agentos:** issue #371 simplify documentation ([#420](https://github.com/whoz-oss/coday/pull/420), [#371](https://github.com/whoz-oss/coday/issues/371))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+- vincent-audibert-whoz
+- vincent.couturier @vincent-couturier-whoz
+
 ## 0.57.1 (2025-12-22)
 
 ### 🩹 Fixes

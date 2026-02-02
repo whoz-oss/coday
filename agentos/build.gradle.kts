@@ -12,7 +12,7 @@ plugins {
 
 group = "whoz-oss.agentos"
 version = "0.0.1-SNAPSHOT"
-    
+
 tasks.named("clean") {
     dependsOn(gradle.includedBuilds.map { it.task(":clean") })
 }

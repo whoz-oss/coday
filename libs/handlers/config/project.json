@@ -1,0 +1,26 @@
+{
+  "name": "handlers-config",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/handlers/config",
+  "tags": [
+    "scope:libs",
+    "type:core"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "libs/handlers/config/dist",
+        "main": "libs/handlers/config/src/index.ts",
+        "tsConfig": "libs/handlers/config/tsconfig.lib.json",
+        "assets": [
+          "libs/handlers/config/*.md"
+        ]
+      }
+    }
+  }
+}
