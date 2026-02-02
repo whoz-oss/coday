@@ -1,7 +1,21 @@
 package io.biznet.agentos.agent
 
 import io.biznet.agentos.sdk.entity.EntityMetadata
-import io.biznet.agentos.sdk.model.*
+import io.biznet.agentos.sdk.model.ActorRole
+import io.biznet.agentos.sdk.model.Agent
+import io.biznet.agentos.sdk.model.AgentFinishedEvent
+import io.biznet.agentos.sdk.model.AgentModel
+import io.biznet.agentos.sdk.model.AgentRunningEvent
+import io.biznet.agentos.sdk.model.CaseEvent
+import io.biznet.agentos.sdk.model.IntentionGeneratedEvent
+import io.biznet.agentos.sdk.model.MessageContent
+import io.biznet.agentos.sdk.model.MessageEvent
+import io.biznet.agentos.sdk.model.StandardTool
+import io.biznet.agentos.sdk.model.ThinkingEvent
+import io.biznet.agentos.sdk.model.ToolRequestEvent
+import io.biznet.agentos.sdk.model.ToolResponseEvent
+import io.biznet.agentos.sdk.model.ToolSelectedEvent
+import io.biznet.agentos.sdk.model.WarnEvent
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import org.springframework.ai.chat.client.ChatClient
@@ -9,7 +23,10 @@ import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
-import java.util.*
+import java.util.UUID
+import kotlin.collections.firstOrNull
+import kotlin.collections.joinToString
+import kotlin.collections.map
 
 /**
  * Advanced agent implementation with multi-step orchestration loop.
