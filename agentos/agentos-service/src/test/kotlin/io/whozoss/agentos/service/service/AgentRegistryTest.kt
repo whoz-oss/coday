@@ -1,199 +1,244 @@
 package io.whozoss.agentos.service.agents.service
 
+import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.booleans.shouldBeFalse
+import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.collections.shouldNotBeEmpty
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
+import io.mockk.every
+import io.mockk.mockk
 import io.whozoss.agentos.service.agents.domain.Agent
 import io.whozoss.agentos.service.agents.domain.AgentContext
 import io.whozoss.agentos.service.agents.domain.AgentStatus
 import io.whozoss.agentos.service.agents.domain.ContextType
 import io.whozoss.agentos.service.plugins.AgentDiscoveryService
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
 
-class AgentRegistryTest {
-    private lateinit var registry: AgentRegistry
-    private lateinit var agentDiscoveryService: AgentDiscoveryService
+class AgentRegistryTest :
+    DescribeSpec({
 
-    @BeforeEach
-    fun setup() {
-        registry = AgentRegistry(agentDiscoveryService)
-    }
+        describe("AgentRegistry") {
 
-    @Test
-    fun `should register and retrieve agent`() {
-        val agent =
-            Agent(
-                id = "test-agent",
-                name = "Test Agent",
-                description = "A test agent",
-                version = "1.0.0",
-                capabilities = listOf("test"),
-                requiredContext = setOf(ContextType.GENERAL),
-            )
+            lateinit var agentDiscoveryService: AgentDiscoveryService
+            lateinit var registry: AgentRegistry
 
-        val registered = registry.registerAgent(agent)
-        assertEquals(agent, registered)
+            beforeEach {
+                agentDiscoveryService = mockk()
+                every { agentDiscoveryService.discoverAgents() } returns emptyList()
+                registry = AgentRegistry(agentDiscoveryService)
+            }
 
-        val retrieved = registry.getAgent("test-agent")
-        assertEquals(agent, retrieved)
-    }
+            describe("register and retrieve") {
 
-    @Test
-    fun `should find agents by context type`() {
-        val context =
-            AgentContext(
-                contextTypes = setOf(ContextType.CODE_REVIEW),
-            )
+                it("should register and retrieve agent") {
+                    val agent =
+                        Agent(
+                            id = "test-agent",
+                            name = "Test Agent",
+                            description = "A test agent",
+                            version = "1.0.0",
+                            capabilities = listOf("test"),
+                            requiredContext = setOf(ContextType.GENERAL),
+                        )
 
-        val response = registry.findAgents(context)
+                    val registered = registry.registerAgent(agent)
+                    registered shouldBe agent
 
-        assertTrue(response.agents.isNotEmpty())
-        assertTrue(
-            response.agents.all {
-                it.requiredContext.contains(ContextType.CODE_REVIEW)
-            },
-        )
-    }
+                    val retrieved = registry.getAgent("test-agent")
+                    retrieved shouldBe agent
+                }
 
-    @Test
-    fun `should find agents by capability`() {
-        val context =
-            AgentContext(
-                capabilities = setOf("test-generation"),
-            )
+                it("should update existing agent") {
+                    val agent =
+                        Agent(
+                            id = "update-test",
+                            name = "Original Name",
+                            description = "Original description",
+                            version = "1.0.0",
+                            capabilities = listOf("test"),
+                            requiredContext = setOf(ContextType.GENERAL),
+                        )
 
-        val response = registry.findAgents(context)
+                    registry.registerAgent(agent)
 
-        assertTrue(response.agents.isNotEmpty())
-        assertTrue(
-            response.agents.all {
-                it.capabilities.contains("test-generation")
-            },
-        )
-    }
+                    val updated = agent.copy(name = "Updated Name")
+                    val result = registry.updateAgent("update-test", updated)
 
-    @Test
-    fun `should find agents by tags`() {
-        val context =
-            AgentContext(
-                tags = setOf("security"),
-            )
+                    result.shouldNotBeNull()
+                    result.name shouldBe "Updated Name"
+                }
 
-        val response = registry.findAgents(context)
+                it("should unregister agent") {
+                    val agent =
+                        Agent(
+                            id = "delete-test",
+                            name = "Delete Test",
+                            description = "To be deleted",
+                            version = "1.0.0",
+                            capabilities = listOf("test"),
+                            requiredContext = setOf(ContextType.GENERAL),
+                        )
 
-        assertTrue(response.agents.isNotEmpty())
-        assertTrue(
-            response.agents.all {
-                it.tags.contains("security")
-            },
-        )
-    }
+                    registry.registerAgent(agent)
+                    registry.unregisterAgent("delete-test").shouldBeTrue()
+                    registry.getAgent("delete-test").shouldBeNull()
+                }
 
-    @Test
-    fun `should limit results with maxResults`() {
-        val context =
-            AgentContext(
-                contextTypes = setOf(ContextType.GENERAL),
-                maxResults = 3,
-            )
+                it("should return all agents") {
+                    val agent =
+                        Agent(
+                            id = "all-test",
+                            name = "All Test",
+                            description = "Test",
+                            version = "1.0.0",
+                            capabilities = listOf("test"),
+                            requiredContext = setOf(ContextType.GENERAL),
+                        )
+                    registry.registerAgent(agent)
 
-        val response = registry.findAgents(context)
+                    val allAgents = registry.getAllAgents()
+                    allAgents.shouldNotBeEmpty()
+                }
+            }
 
-        assertTrue(response.agents.size <= 3)
-    }
+            describe("findAgents") {
 
-    @Test
-    fun `should filter by minimum priority`() {
-        val context =
-            AgentContext(
-                minPriority = 9,
-            )
+                beforeEach {
+                    // Register some test agents
+                    registry.registerAgent(
+                        Agent(
+                            id = "code-reviewer",
+                            name = "Code Reviewer",
+                            description = "Reviews code",
+                            version = "1.0.0",
+                            capabilities = listOf("code-review", "test-generation"),
+                            requiredContext = setOf(ContextType.CODE_REVIEW),
+                            tags = setOf("quality"),
+                            priority = 8,
+                        ),
+                    )
+                    registry.registerAgent(
+                        Agent(
+                            id = "security-scanner",
+                            name = "Security Scanner",
+                            description = "Scans for security issues",
+                            version = "1.0.0",
+                            capabilities = listOf("security-scan"),
+                            requiredContext = setOf(ContextType.GENERAL),
+                            tags = setOf("security"),
+                            priority = 10,
+                        ),
+                    )
+                    registry.registerAgent(
+                        Agent(
+                            id = "general-helper",
+                            name = "General Helper",
+                            description = "General purpose agent",
+                            version = "1.0.0",
+                            capabilities = listOf("help"),
+                            requiredContext = setOf(ContextType.GENERAL),
+                            tags = setOf("general"),
+                            priority = 5,
+                        ),
+                    )
+                }
 
-        val response = registry.findAgents(context)
+                it("should find agents by context type") {
+                    val context =
+                        AgentContext(
+                            contextTypes = setOf(ContextType.CODE_REVIEW),
+                        )
 
-        assertTrue(response.agents.isNotEmpty())
-        assertTrue(response.agents.all { it.priority >= 9 })
-    }
+                    val response = registry.findAgents(context)
 
-    @Test
-    fun `should exclude agents by status`() {
-        // First, add an inactive agent
-        registry.registerAgent(
-            Agent(
-                id = "inactive-agent",
-                name = "Inactive Agent",
-                description = "An inactive agent",
-                version = "1.0.0",
-                capabilities = listOf("test"),
-                requiredContext = setOf(ContextType.GENERAL),
-                status = AgentStatus.INACTIVE,
-            ),
-        )
+                    response.agents.shouldNotBeEmpty()
+                    response.agents.all { it.requiredContext.contains(ContextType.CODE_REVIEW) }.shouldBeTrue()
+                }
 
-        val context =
-            AgentContext(
-                excludeStatuses = setOf(AgentStatus.INACTIVE),
-            )
+                it("should find agents by capability") {
+                    val context =
+                        AgentContext(
+                            capabilities = setOf("test-generation"),
+                        )
 
-        val response = registry.findAgents(context)
+                    val response = registry.findAgents(context)
 
-        assertFalse(response.agents.any { it.status == AgentStatus.INACTIVE })
-    }
+                    response.agents.shouldNotBeEmpty()
+                    response.agents.all { it.capabilities.contains("test-generation") }.shouldBeTrue()
+                }
 
-    @Test
-    fun `should update existing agent`() {
-        val agent =
-            Agent(
-                id = "update-test",
-                name = "Original Name",
-                description = "Original description",
-                version = "1.0.0",
-                capabilities = listOf("test"),
-                requiredContext = setOf(ContextType.GENERAL),
-            )
+                it("should find agents by tags") {
+                    val context =
+                        AgentContext(
+                            tags = setOf("security"),
+                        )
 
-        registry.registerAgent(agent)
+                    val response = registry.findAgents(context)
 
-        val updated = agent.copy(name = "Updated Name")
-        val result = registry.updateAgent("update-test", updated)
+                    response.agents.shouldNotBeEmpty()
+                    response.agents.all { it.tags.contains("security") }.shouldBeTrue()
+                }
 
-        assertNotNull(result)
-        assertEquals("Updated Name", result?.name)
-    }
+                it("should limit results with maxResults") {
+                    val context =
+                        AgentContext(
+                            contextTypes = setOf(ContextType.GENERAL),
+                            maxResults = 1,
+                        )
 
-    @Test
-    fun `should unregister agent`() {
-        val agent =
-            Agent(
-                id = "delete-test",
-                name = "Delete Test",
-                description = "To be deleted",
-                version = "1.0.0",
-                capabilities = listOf("test"),
-                requiredContext = setOf(ContextType.GENERAL),
-            )
+                    val response = registry.findAgents(context)
 
-        registry.registerAgent(agent)
-        assertTrue(registry.unregisterAgent("delete-test"))
-        assertNull(registry.getAgent("delete-test"))
-    }
+                    (response.agents.size <= 1).shouldBeTrue()
+                }
 
-    @Test
-    fun `should return all agents`() {
-        val allAgents = registry.getAllAgents()
-        assertTrue(allAgents.isNotEmpty())
-    }
+                it("should filter by minimum priority") {
+                    val context =
+                        AgentContext(
+                            minPriority = 9,
+                        )
 
-    @Test
-    fun `should sort agents by priority descending`() {
-        val context =
-            AgentContext(
-                contextTypes = setOf(ContextType.GENERAL),
-            )
+                    val response = registry.findAgents(context)
 
-        val response = registry.findAgents(context)
+                    response.agents.shouldNotBeEmpty()
+                    response.agents.all { it.priority >= 9 }.shouldBeTrue()
+                }
 
-        for (i in 0 until response.agents.size - 1) {
-            assertTrue(response.agents[i].priority >= response.agents[i + 1].priority)
+                it("should exclude agents by status") {
+                    registry.registerAgent(
+                        Agent(
+                            id = "inactive-agent",
+                            name = "Inactive Agent",
+                            description = "An inactive agent",
+                            version = "1.0.0",
+                            capabilities = listOf("test"),
+                            requiredContext = setOf(ContextType.GENERAL),
+                            status = AgentStatus.INACTIVE,
+                        ),
+                    )
+
+                    val context =
+                        AgentContext(
+                            excludeStatuses = setOf(AgentStatus.INACTIVE),
+                        )
+
+                    val response = registry.findAgents(context)
+
+                    response.agents.any { it.status == AgentStatus.INACTIVE }.shouldBeFalse()
+                }
+
+                it("should sort agents by priority descending") {
+                    val context =
+                        AgentContext(
+                            contextTypes = setOf(ContextType.GENERAL),
+                        )
+
+                    val response = registry.findAgents(context)
+
+                    for (i in 0 until response.agents.size - 1) {
+                        (response.agents[i].priority >= response.agents[i + 1].priority).shouldBeTrue()
+                    }
+                }
+            }
         }
-    }
-}
+    })
