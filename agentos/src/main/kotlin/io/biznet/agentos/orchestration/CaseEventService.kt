@@ -1,68 +1,13 @@
 package io.biznet.agentos.orchestration
 
-import org.slf4j.LoggerFactory
-import org.springframework.stereotype.Service
 import java.util.UUID
 
 /**
- * Service for managing CaseEvent entities with business logic.
+ * Service for managing CaseEvent entities.
  *
- * Responsibilities:
- * - Validation of events before persistence
- * - Business rules enforcement (e.g., event ordering, consistency checks)
- * - Coordination with other services if needed
- * - Delegation to repository for persistence
+ * Extends EntityService with no additional methods.
+ * Parent type is UUID representing the caseId.
  *
- * This layer separates business logic from pure persistence concerns.
+ * Implementation must ensure that findByParent returns events ordered by timestamp (oldest first).
  */
-@Service
-class CaseEventService(
-    private val repository: CaseEventRepository,
-) : ICaseEventService {
-    private val logger = LoggerFactory.getLogger(CaseEventService::class.java)
-
-    /**
-     * Save an event with validation.
-     * Ensures events are valid before persisting.
-     */
-    override fun save(event: CaseEvent): CaseEvent {
-        // Future: Add validation logic here
-        // - Check event integrity
-        // - Validate relationships (case exists, etc.)
-        // - Enforce business rules
-
-        return repository.save(event)
-    }
-
-    /**
-     * Find multiple events by their IDs.
-     */
-    override fun findByIds(ids: Collection<UUID>): List<CaseEvent> {
-        return repository.findByIds(ids)
-    }
-
-    /**
-     * Find all events belonging to a case, ordered by timestamp.
-     */
-    override fun findByParent(parentId: UUID): List<CaseEvent> {
-        return repository.findByParent(parentId)
-    }
-
-    /**
-     * Delete multiple events.
-     * Future: May need to validate deletion rules (e.g., prevent deletion of certain event types).
-     */
-    override fun deleteMany(ids: Collection<UUID>): Int {
-        if (ids.isEmpty()) {
-            logger.warn("deleteMany called with empty collection")
-            return 0
-        }
-
-        // Future: Add business logic here
-        // - Check if events can be deleted
-        // - Cascade deletions if needed
-        // - Emit domain events
-
-        return repository.deleteMany(ids)
-    }
-}
+interface CaseEventService : EntityService<CaseEvent, UUID>

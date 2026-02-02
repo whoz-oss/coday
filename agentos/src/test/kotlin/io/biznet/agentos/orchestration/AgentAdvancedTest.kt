@@ -40,7 +40,7 @@ class AgentAdvancedTest {
             }
 
             // Mock IAgentService
-            val mockAgentService = mockk<IAgentService>()
+            val mockAgentService = mockk<AgentService>()
 
             // Mock Answer tool
             val answerTool = mockk<StandardTool<Nothing>>()
@@ -54,11 +54,12 @@ class AgentAdvancedTest {
             val tools = listOf(answerTool)
 
             // Create agent
-            val model = AgentModel(
-                id = agentId,
-                name = "TestAgent",
-                description = "Test agent for advanced orchestration",
-            )
+            val model =
+                AgentModel(
+                    id = agentId,
+                    name = "TestAgent",
+                    description = "Test agent for advanced orchestration",
+                )
             val agent =
                 AgentAdvanced(
                     metadata = EntityMetadata(id = agentId),

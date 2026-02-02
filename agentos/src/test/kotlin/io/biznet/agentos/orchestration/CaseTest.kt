@@ -480,13 +480,12 @@ class FakeCaseServices {
     val eventService = FakeCaseEventService()
 }
 
-class FakeAgentService : IAgentService {
-    private val agents = mutableMapOf<String, IAgent>()
+class FakeAgentService : AgentService {
+    private val agents = mutableMapOf<String, Agent>()
 
-    override fun findAgentByName(namePart: String): IAgent =
-        agents[namePart] ?: throw IllegalArgumentException("Agent not found: $namePart")
+    override fun findAgentByName(namePart: String): Agent = agents[namePart] ?: throw IllegalArgumentException("Agent not found: $namePart")
 
-    override fun getDefaultAgent(): IAgent? = null
+    override fun getDefaultAgent(): Agent? = null
 
     override suspend fun cleanup() {
         // Fake cleanup - do nothing
@@ -496,12 +495,12 @@ class FakeAgentService : IAgentService {
         // Fake kill - do nothing
     }
 
-    fun registerAgent(agent: IAgent) {
+    fun registerAgent(agent: Agent) {
         agents[agent.name] = agent
     }
 }
 
-class FakeCaseService : ICaseService {
+class FakeCaseService : CaseService {
     val savedCases = mutableListOf<CaseModel>()
 
     override fun save(entity: CaseModel): CaseModel {
@@ -510,19 +509,30 @@ class FakeCaseService : ICaseService {
     }
 
     override fun findByIds(ids: Collection<UUID>): List<CaseModel> = emptyList()
+
     override fun findByParent(parentId: UUID): List<CaseModel> = emptyList()
+
     override fun deleteMany(ids: Collection<UUID>): Int = 0
-    override fun createCaseInstance(projectId: UUID, initialEvents: List<CaseEvent>): Case =
-        throw NotImplementedError()
+
+    override fun createCaseInstance(
+        projectId: UUID,
+        initialEvents: List<CaseEvent>,
+    ): Case = throw NotImplementedError()
+
     override fun getCaseInstance(caseId: UUID): Case? = null
+
     override fun getActiveCasesByProject(projectId: UUID): List<Case> = emptyList()
+
     override fun getAllActiveCases(): List<Case> = emptyList()
+
     override fun getCaseEventStream(caseId: UUID) = null
+
     override fun stopCase(caseId: UUID): Boolean = false
+
     override fun killCase(caseId: UUID): Boolean = false
 }
 
-class FakeCaseEventService : ICaseEventService {
+class FakeCaseEventService : CaseEventService {
     val savedEvents = mutableListOf<CaseEvent>()
 
     override fun save(entity: CaseEvent): CaseEvent {
@@ -530,13 +540,9 @@ class FakeCaseEventService : ICaseEventService {
         return entity
     }
 
-    override fun findByIds(ids: Collection<UUID>): List<CaseEvent> {
-        return savedEvents.filter { it.id in ids }
-    }
+    override fun findByIds(ids: Collection<UUID>): List<CaseEvent> = savedEvents.filter { it.id in ids }
 
-    override fun findByParent(parentId: UUID): List<CaseEvent> {
-        return savedEvents.filter { it.caseId == parentId }.sortedBy { it.timestamp }
-    }
+    override fun findByParent(parentId: UUID): List<CaseEvent> = savedEvents.filter { it.caseId == parentId }.sortedBy { it.timestamp }
 
     override fun deleteMany(ids: Collection<UUID>): Int {
         val toRemove = savedEvents.filter { it.id in ids }
@@ -548,7 +554,7 @@ class FakeCaseEventService : ICaseEventService {
 class FakeAgent(
     override val metadata: EntityMetadata,
     override val name: String,
-) : IAgent {
+) : Agent {
     val runCallCount = mutableListOf<List<CaseEvent>>()
 
     override fun run(events: List<CaseEvent>) =

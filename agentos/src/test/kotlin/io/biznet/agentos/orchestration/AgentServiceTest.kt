@@ -17,7 +17,7 @@ class AgentServiceTest {
         // Given
         val mockChatClientProvider = mockk<ChatClientProvider>()
         every { mockChatClientProvider.getChatClient(any()) } returns mockk<ChatClient>()
-        val agentService = AgentService(mockChatClientProvider, "anthropic")
+        val agentService = AgentServiceImpl(mockChatClientProvider, "anthropic")
 
         // When
         val defaultAgent = agentService.getDefaultAgent()
@@ -32,7 +32,7 @@ class AgentServiceTest {
         // Given
         val mockChatClientProvider = mockk<ChatClientProvider>()
         every { mockChatClientProvider.getChatClient(any()) } returns mockk<ChatClient>()
-        val agentService = AgentService(mockChatClientProvider, "anthropic")
+        val agentService = AgentServiceImpl(mockChatClientProvider, "anthropic")
 
         // When
         val agent = agentService.findAgentByName("General Purpose Agent")
@@ -47,7 +47,7 @@ class AgentServiceTest {
         // Given
         val mockChatClientProvider = mockk<ChatClientProvider>()
         every { mockChatClientProvider.getChatClient(any()) } returns mockk<ChatClient>()
-        val agentService = AgentService(mockChatClientProvider, "anthropic")
+        val agentService = AgentServiceImpl(mockChatClientProvider, "anthropic")
 
         // When
         val agent = agentService.findAgentByName("General")
@@ -62,7 +62,7 @@ class AgentServiceTest {
         // Given
         val mockChatClientProvider = mockk<ChatClientProvider>()
         every { mockChatClientProvider.getChatClient(any()) } returns mockk<ChatClient>()
-        val agentService = AgentService(mockChatClientProvider, "anthropic")
+        val agentService = AgentServiceImpl(mockChatClientProvider, "anthropic")
 
         // When/Then
         try {

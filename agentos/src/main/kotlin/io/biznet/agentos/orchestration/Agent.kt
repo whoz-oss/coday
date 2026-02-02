@@ -2,7 +2,7 @@ package io.biznet.agentos.orchestration
 
 import kotlinx.coroutines.flow.Flow
 
-interface IAgent : Entity {
+interface Agent : Entity {
     val name: String
 
     /**

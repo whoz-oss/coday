@@ -19,9 +19,9 @@ class Case(
     val projectId: UUID,
     @Volatile
     private var status: CaseStatus = CaseStatus.PENDING,
-    private val agentService: IAgentService,
-    private val caseService: ICaseService,
-    private val caseEventService: ICaseEventService,
+    private val agentService: AgentService,
+    private val caseService: CaseService,
+    private val caseEventService: CaseEventService,
     /**
      * List sorted by timestamp of the events on the case. Sort order to keep.
      */
@@ -270,7 +270,7 @@ class Case(
         }
     }
 
-    private suspend fun runAgent(agent: IAgent) {
+    private suspend fun runAgent(agent: Agent) {
         logger.info("[Case $id] Running agent: ${agent.name}")
 
         agent

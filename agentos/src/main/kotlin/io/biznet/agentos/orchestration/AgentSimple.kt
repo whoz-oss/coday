@@ -36,7 +36,7 @@ class AgentSimple(
     private val model: AgentModel,
     private val chatClient: ChatClient,
     private val tools: List<StandardTool<*>>,
-) : IAgent {
+) : Agent {
     override val name: String get() = model.name
     private val id get() = metadata.id
 

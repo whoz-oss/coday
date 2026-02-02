@@ -17,7 +17,7 @@ import java.util.UUID
 @RestController
 @RequestMapping("/api/cases")
 class CaseController(
-    private val caseService: ICaseService,
+    private val caseService: CaseService,
 ) {
     private val logger = LoggerFactory.getLogger(CaseController::class.java)
 

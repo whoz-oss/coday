@@ -27,11 +27,12 @@ class AgentAdvanced(
     private val model: AgentModel,
     private val chatClient: ChatClient,
     private val tools: List<StandardTool<*>>,
-    private val agentService: IAgentService,
+    private val agentService: AgentService,
     private val maxIterations: Int = 20,
-) : IAgent {
+) : Agent {
     override val name: String get() = model.name
     private val id get() = metadata.id
+
     override fun run(events: List<CaseEvent>): Flow<CaseEvent> =
         flow {
             val projectId = events.firstOrNull()?.projectId ?: throw IllegalArgumentException("No events provided")
