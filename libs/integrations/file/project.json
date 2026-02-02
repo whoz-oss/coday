@@ -1,0 +1,26 @@
+{
+  "name": "integrations-file",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/integrations/file",
+  "tags": [
+    "scope:libs",
+    "type:core"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "libs/integrations/file/dist",
+        "main": "libs/integrations/file/src/index.ts",
+        "tsConfig": "libs/integrations/file/tsconfig.lib.json",
+        "assets": [
+          "libs/integrations/file/*.md"
+        ]
+      }
+    }
+  }
+}

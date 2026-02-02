@@ -1,0 +1,26 @@
+{
+  "name": "service",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/service",
+  "tags": [
+    "scope:libs",
+    "type:service"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "{projectRoot}/dist",
+        "main": "libs/service/src/index.ts",
+        "tsConfig": "libs/service/tsconfig.lib.json",
+        "assets": [
+          "libs/service/*.md"
+        ]
+      }
+    }
+  }
+}

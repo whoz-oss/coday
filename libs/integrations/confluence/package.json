@@ -1,0 +1,17 @@
+{
+  "name": "@coday/integrations-confluence",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "axios": "catalog:",
+    "tslib": "catalog:",
+    "turndown": "catalog:"
+  },
+  "devDependencies": {
+    "@types/turndown": "catalog:dev",
+    "typescript": "catalog:dev"
+  }
+}
