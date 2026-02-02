@@ -1,7 +1,7 @@
 import { Interactor } from '@coday/model'
 import { runBash } from '@coday/function'
 
-const dangerKeywords = ['push', 'push -f', 'push --force', 'push --tags', 'reset', '&&']
+const dangerKeywords = ['push', 'push -f', 'push --force', 'push --tags', 'reset', '&&', 'clean']
 
 export const git = async ({
   params,
