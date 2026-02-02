@@ -10,16 +10,6 @@ module.exports = {
   coverageDirectory: `${process.env.NX_WORKSPACE_ROOT}/coverage/${process.env.NX_TASK_TARGET_PROJECT}`,
   coverageReporters: ['html'],
 
-  // CORRECTION : Utiliser <rootDir>/../../ pour remonter au workspace root
-  moduleNameMapper: {
-    '^@coday/coday-events$': '<rootDir>/../../libs/coday-events/src/index.ts',
-    '^@coday/ai-thread/(.*)$': '<rootDir>/../../libs/ai-thread/$1',
-    '^@coday/core$': '<rootDir>/../../libs/coday.ts',
-    '^@coday/model/(.*)$': '<rootDir>/../../libs/model/$1',
-    '^@coday/options$': '<rootDir>/../../libs/options.ts',
-    '^@coday/service/(.*)$': '<rootDir>/../../libs/service/$1',
-  },
-
   // Exclude problematic directories
   modulePathIgnorePatterns: [
     '<rootDir>/dist/',

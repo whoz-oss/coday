@@ -1,6 +1,6 @@
 {
   "name": "@whoz-oss/coday-server",
-  "version": "0.57.1",
+  "version": "0.63.3",
   "repository": "https://github.com/whoz-oss/coday",
   "type": "module",
   "main": "server/server.js",
@@ -8,8 +8,18 @@
     "coday-server": "./bin.js"
   },
   "dependencies": {
-    "@vscode/ripgrep": "1.15.9",
-    "sharp": "0.34.4"
+    "@vscode/ripgrep": "catalog:",
+    "express": "catalog:",
+    "rxjs": "catalog:",
+    "sharp": "catalog:",
+    "yargs": "catalog:"
+  },
+  "devDependencies": {
+    "@types/express": "catalog:dev",
+    "@types/node": "catalog:dev",
+    "@types/yargs": "catalog:dev",
+    "http-proxy-middleware": "catalog:dev",
+    "typescript": "catalog:dev"
   },
   "publishConfig": {
     "access": "public"

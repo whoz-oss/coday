@@ -7,7 +7,7 @@ import { MatInputModule } from '@angular/material/input'
 import { MatFormFieldModule } from '@angular/material/form-field'
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
 
-import { SessionState } from '@coday/model/session-state'
+import { SessionState } from '@coday/model'
 import { ThreadStateService } from '../../core/services/thread-state.service'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { ProjectStateService } from '../../core/services/project-state.service'

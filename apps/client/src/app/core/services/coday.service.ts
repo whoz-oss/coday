@@ -10,6 +10,8 @@ import {
   InviteEvent,
   InviteEventDefault,
   MessageEvent,
+  OAuthCallbackEvent,
+  OAuthRequestEvent,
   TextChunkEvent,
   TextEvent,
   ThinkingEvent,
@@ -17,7 +19,7 @@ import {
   ToolRequestEvent,
   ToolResponseEvent,
   WarnEvent,
-} from '@coday/coday-events'
+} from '@coday/model'
 
 import { EventStreamService } from './event-stream.service'
 import { MessageApiService } from './message-api.service'
@@ -290,6 +292,8 @@ export class CodayService implements OnDestroy {
       this.handleInviteEvent(event)
     } else if (event instanceof ThreadUpdateEvent) {
       this.handleThreadUpdateEvent(event)
+    } else if (event instanceof OAuthRequestEvent || event instanceof OAuthCallbackEvent) {
+      // OAuth events are handled by OAuthService, no action needed here
     } else {
       console.warn('[CODAY] Unhandled event type:', event.type)
     }

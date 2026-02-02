@@ -213,9 +213,9 @@ jobs:
           gh release upload "$TAG" "$DMG_PATH" --clobber
 
   publish-sdk:
-    name: Publish SDK to GitHub Packages
+    name: publish SDK to GitHub Packages
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: needs.release.outputs.new_version != ''
 
     permissions:
       contents: read
@@ -254,6 +254,6 @@ jobs:
       - name: Publish SDK to GitHub Packages
         working-directory: agentos
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
           GITHUB_ACTOR: ${{ github.actor }}
         run: npx nx publish agentos-sdk

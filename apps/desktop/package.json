@@ -1,17 +1,18 @@
 {
   "name": "@whoz-oss/coday-desktop",
-  "version": "0.57.1",
+  "version": "0.63.3",
   "description": "Coday Desktop - Electron-based desktop application",
   "repository": "https://github.com/whoz-oss/coday",
   "license": "MIT",
-  "author": "vincent.audibert@whoz.com",
+  "author": "Whoz OSS",
   "main": "dist/main.js",
   "scripts": {
     "start": "electron dist/main.js"
   },
   "devDependencies": {
-    "electron": "38.3.0",
-    "electron-builder": "26.0.12"
+    "electron": "catalog:dev",
+    "electron-builder": "catalog:dev",
+    "typescript": "catalog:dev"
   },
   "publishConfig": {
     "access": "public"

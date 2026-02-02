@@ -1,8 +1,27 @@
 {
   "name": "@whoz-oss/coday-client",
-  "version": "0.57.1",
+  "version": "0.63.3",
   "repository": "https://github.com/whoz-oss/coday",
   "type": "module",
+  "dependencies": {
+    "@angular/animations": "catalog:",
+    "@angular/common": "catalog:",
+    "@angular/core": "catalog:",
+    "@angular/forms": "catalog:",
+    "@angular/material": "catalog:",
+    "@angular/platform-browser": "catalog:",
+    "@angular/router": "catalog:",
+    "dompurify": "catalog:",
+    "marked": "catalog:",
+    "rxjs": "catalog:",
+    "tslib": "catalog:",
+    "zone.js": "catalog:"
+  },
+  "devDependencies": {
+    "@angular/build": "catalog:dev",
+    "jest-preset-angular": "catalog:dev",
+    "typescript": "catalog:dev"
+  },
   "publishConfig": {
     "access": "public"
   }

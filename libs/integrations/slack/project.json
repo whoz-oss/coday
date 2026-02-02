@@ -1,0 +1,26 @@
+{
+  "name": "integrations-slack",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/integrations/slack",
+  "tags": [
+    "scope:libs",
+    "type:core"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "libs/integrations/slack/dist",
+        "main": "libs/integrations/slack/src/index.ts",
+        "tsConfig": "libs/integrations/slack/tsconfig.lib.json",
+        "assets": [
+          "libs/integrations/slack/*.md"
+        ]
+      }
+    }
+  }
+}
