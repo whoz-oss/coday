@@ -1,4 +1,4 @@
-package io.biznet.agentos.service
+package io.biznet.agentos
 
 import io.biznet.agentos.service.config.properties.AgentOsPluginsConfigProperties
 import org.springframework.boot.autoconfigure.SpringBootApplication
