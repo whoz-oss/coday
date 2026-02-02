@@ -1,4 +1,4 @@
-package io.biznet.agentos.service.service
+package io.biznet.agentos.chatClient
 
 import io.biznet.agentos.plugins.AiProviderDiscoveryService
 import io.biznet.agentos.sdk.model.AiProvider

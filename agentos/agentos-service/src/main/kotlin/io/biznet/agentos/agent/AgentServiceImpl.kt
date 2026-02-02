@@ -1,18 +1,50 @@
 package io.biznet.agentos.agent
 
+import io.biznet.agentos.chatClient.ChatClientProvider
 import io.biznet.agentos.orchestration.AgentSimple
 import io.biznet.agentos.sdk.entity.EntityMetadata
 import io.biznet.agentos.sdk.model.Agent
 import io.biznet.agentos.sdk.model.AgentModel
 import io.biznet.agentos.sdk.model.StandardTool
-import io.biznet.agentos.service.service.ChatClientProvider
 import org.slf4j.LoggerFactory
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.model.ChatModel
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
-import java.util.*
+import java.util.UUID
+
+// /**
+// * Remnant of POC with example of pluginManager use.
+// */
+// @Service
+// class AgentService(
+//    private val pluginManager: PluginManager,
+// ) {
+//    /**
+//     * List all available agents.
+//     */
+//    fun listAgents(): List<AgentMetadata> =
+//        pluginManager
+//            .getExtensions(AgentPlugin::class.java)
+//            .map { it.getMetadata() }
+//
+//    /**
+//     * Execute a specific agent by name.
+//     */
+//    suspend fun executeAgent(
+//        agentName: String,
+//        input: AgentInput,
+//    ): AgentOutput {
+//        val agent =
+//            pluginManager
+//                .getExtensions(AgentPlugin::class.java)
+//                .firstOrNull { it.getMetadata().name == agentName }
+//                ?: throw IllegalArgumentException("Agent not found: $agentName")
+//
+//        return agent.execute(input)
+//    }
+// }
 
 /**
  * Implementation of AgentService with hard-coded agent definitions.

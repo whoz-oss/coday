@@ -1,6 +1,6 @@
-package io.biznet.agentos.service.config
+package io.biznet.agentos.config
 
-import io.biznet.agentos.service.config.properties.AgentOsPluginsConfigProperties
+import io.biznet.agentos.config.properties.AgentOsPluginsConfigProperties
 import org.pf4j.PluginManager
 import org.pf4j.spring.SpringPluginManager
 import org.springframework.context.annotation.Bean

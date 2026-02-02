@@ -1,4 +1,4 @@
-package io.biznet.agentos.service.config.properties
+package io.biznet.agentos.config.properties
 
 import org.springframework.boot.context.properties.ConfigurationProperties
 

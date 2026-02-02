@@ -1,4 +1,4 @@
-package io.biznet.agentos.acase
+package io.biznet.agentos.caseFlow
 
 import io.biznet.agentos.sdk.entity.EntityService
 import io.biznet.agentos.sdk.model.CaseEvent
