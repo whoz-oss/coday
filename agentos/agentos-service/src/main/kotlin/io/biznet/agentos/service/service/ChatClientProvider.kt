@@ -2,6 +2,7 @@ package io.biznet.agentos.service.service
 
 import io.biznet.agentos.plugins.AiProviderDiscoveryService
 import io.biznet.agentos.sdk.model.AiProvider
+import io.biznet.agentos.sdk.model.ModelConfig
 import jakarta.annotation.PostConstruct
 import org.slf4j.LoggerFactory
 import org.springframework.ai.chat.client.ChatClient
