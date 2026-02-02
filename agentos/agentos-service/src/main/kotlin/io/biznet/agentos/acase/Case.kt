@@ -1,30 +1,16 @@
 package io.biznet.agentos.acase
 
-import io.biznet.agentos.model.AgentService
-import io.biznet.agentos.model.CaseEventService
+import io.biznet.agentos.agent.AgentService
+import io.biznet.agentos.caseEvent.CaseEventService
+import io.biznet.agentos.caseEvent.DefaultCaseEventEmitter
+import io.biznet.agentos.caseEvent.InMemoryCaseEventList
 import io.biznet.agentos.orchestration.CaseEventEmitter
-import io.biznet.agentos.orchestration.DefaultCaseEventEmitter
-import io.biznet.agentos.orchestration.InMemoryCaseEventList
 import io.biznet.agentos.sdk.entity.EntityMetadata
-import io.biznet.agentos.sdk.model.Actor
-import io.biznet.agentos.sdk.model.ActorRole
-import io.biznet.agentos.sdk.model.Agent
-import io.biznet.agentos.sdk.model.AgentFinishedEvent
-import io.biznet.agentos.sdk.model.AgentRunningEvent
-import io.biznet.agentos.sdk.model.AgentSelectedEvent
-import io.biznet.agentos.sdk.model.CaseEvent
-import io.biznet.agentos.sdk.model.CaseStatus
-import io.biznet.agentos.sdk.model.CaseStatusEvent
-import io.biznet.agentos.sdk.model.MessageContent
-import io.biznet.agentos.sdk.model.MessageEvent
-import io.biznet.agentos.sdk.model.QuestionEvent
-import io.biznet.agentos.sdk.model.WarnEvent
+import io.biznet.agentos.sdk.model.*
 import kotlinx.coroutines.flow.catch
 import org.slf4j.LoggerFactory
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.collections.indexOfLast
-import kotlin.collections.lastIndex
 
 /**
  * Represents a case to be run.

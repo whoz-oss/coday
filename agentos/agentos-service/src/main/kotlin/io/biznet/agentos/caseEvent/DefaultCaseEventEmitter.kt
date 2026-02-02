@@ -1,30 +1,12 @@
-package io.biznet.agentos.orchestration
+package io.biznet.agentos.caseEvent
 
+import io.biznet.agentos.orchestration.CaseEventEmitter
 import io.biznet.agentos.sdk.model.CaseEvent
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import org.slf4j.LoggerFactory
-
-/**
- * Interface for emitting case events.
- * Can be delegated to separate emission concerns from business logic.
- * Focuses solely on event emission (hot observable flow).
- */
-interface CaseEventEmitter {
-    /**
-     * Observable flow of case events.
-     * This is a hot flow - events are emitted regardless of collectors.
-     */
-    val events: SharedFlow<CaseEvent>
-
-    /**
-     * Emit an event to all collectors.
-     * Non-blocking operation.
-     */
-    fun emit(event: CaseEvent)
-}
 
 /**
  * Default implementation of CaseEventEmitter.

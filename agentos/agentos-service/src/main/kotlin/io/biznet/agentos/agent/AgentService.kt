@@ -1,4 +1,4 @@
-package io.biznet.agentos.model
+package io.biznet.agentos.agent
 
 import io.biznet.agentos.sdk.model.Agent
 

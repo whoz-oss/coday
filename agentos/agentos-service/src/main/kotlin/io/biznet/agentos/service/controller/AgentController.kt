@@ -1,6 +1,6 @@
 package io.biznet.agentos.service.controller
 
-import io.biznet.agentos.model.AgentService
+import io.biznet.agentos.agent.AgentService
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController

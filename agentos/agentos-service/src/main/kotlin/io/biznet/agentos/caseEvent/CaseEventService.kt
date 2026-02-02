@@ -1,8 +1,8 @@
-package io.biznet.agentos.model
+package io.biznet.agentos.caseEvent
 
 import io.biznet.agentos.sdk.entity.EntityService
 import io.biznet.agentos.sdk.model.CaseEvent
-import java.util.UUID
+import java.util.*
 
 /**
  * Service for managing CaseEvent entities.
