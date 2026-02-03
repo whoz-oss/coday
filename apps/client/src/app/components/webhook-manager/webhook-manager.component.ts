@@ -11,6 +11,7 @@ import {
 } from '../../core/services/webhook-api.service'
 import { MatIcon } from '@angular/material/icon'
 import { MatButton, MatIconButton } from '@angular/material/button'
+import { ProjectStateService } from '../../core/services/project-state.service'
 
 /**
  * Smart/Container Component for webhook management
@@ -43,11 +44,13 @@ import { MatButton, MatIconButton } from '@angular/material/button'
 export class WebhookManagerComponent implements OnInit {
   private dialogRef = inject(MatDialogRef<WebhookManagerComponent>)
   private webhookApi = inject(WebhookApiService)
+  private projectState = inject(ProjectStateService)
 
   // State
   webhooks: Webhook[] = []
   isLoading: boolean = false
   errorMessage: string = ''
+  projectName: string | null = null
 
   // View state
   currentView: 'list' | 'form' = 'list'
@@ -57,6 +60,14 @@ export class WebhookManagerComponent implements OnInit {
   successMessage: string = ''
 
   ngOnInit(): void {
+    // Get current project name
+    this.projectName = this.projectState.getSelectedProjectId()
+
+    if (!this.projectName) {
+      this.errorMessage = 'No project selected. Please select a project first.'
+      return
+    }
+
     this.loadWebhooks()
   }
 
@@ -70,10 +81,15 @@ export class WebhookManagerComponent implements OnInit {
   }
 
   private loadWebhooks(): void {
+    if (!this.projectName) {
+      this.errorMessage = 'No project selected'
+      return
+    }
+
     this.isLoading = true
     this.errorMessage = ''
 
-    this.webhookApi.listWebhooks().subscribe({
+    this.webhookApi.listWebhooks(this.projectName).subscribe({
       next: (webhooks) => {
         this.webhooks = webhooks
         this.isLoading = false
@@ -100,6 +116,11 @@ export class WebhookManagerComponent implements OnInit {
   }
 
   onDeleteClick(webhook: Webhook): void {
+    if (!this.projectName) {
+      this.errorMessage = 'No project selected'
+      return
+    }
+
     const confirmed = confirm(
       `Are you sure you want to delete webhook "${webhook.name}"?\n\nThis action cannot be undone.`
     )
@@ -108,7 +129,7 @@ export class WebhookManagerComponent implements OnInit {
       return
     }
 
-    this.webhookApi.deleteWebhook(webhook.uuid).subscribe({
+    this.webhookApi.deleteWebhook(this.projectName, webhook.uuid).subscribe({
       next: () => {
         this.showSuccess(`Webhook "${webhook.name}" deleted successfully`)
         this.loadWebhooks()
@@ -124,12 +145,17 @@ export class WebhookManagerComponent implements OnInit {
   }
 
   onFormSave(data: WebhookCreateData | WebhookUpdateData): void {
+    if (!this.projectName) {
+      this.errorMessage = 'No project selected'
+      return
+    }
+
     this.isSaving = true
     this.errorMessage = ''
 
     if (this.editingWebhook) {
       // Update existing webhook
-      this.webhookApi.updateWebhook(this.editingWebhook.uuid, data as WebhookUpdateData).subscribe({
+      this.webhookApi.updateWebhook(this.projectName, this.editingWebhook.uuid, data as WebhookUpdateData).subscribe({
         next: (response) => {
           this.isSaving = false
           this.showSuccess(`Webhook "${response.webhook.name}" updated successfully`)
@@ -144,7 +170,7 @@ export class WebhookManagerComponent implements OnInit {
       })
     } else {
       // Create new webhook
-      this.webhookApi.createWebhook(data as WebhookCreateData).subscribe({
+      this.webhookApi.createWebhook(this.projectName, data as WebhookCreateData).subscribe({
         next: (webhook) => {
           this.isSaving = false
           this.showSuccess(`Webhook "${webhook.name}" created successfully`)

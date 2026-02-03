@@ -8,74 +8,68 @@ The webhook system is designed for integration with external tools like Jira, Gi
 
 ## Architecture
 
+### Key Concepts
+
 - **UUID-based Endpoints**: Each webhook has a unique UUID v4 identifier
-- **Configuration Storage**: Webhooks are stored as YAML files in `{configDir}/webhooks/{uuid}.yml`
+- **Project-Scoped Storage**: Webhooks are stored per project in `~/.coday/projects/{projectName}/webhooks/{uuid}.yml`
 - **Command Types**: Support for both free-form commands and template-based commands
-- **Project Binding**: Each webhook is associated with a specific Coday project
-- **User Context**: Execution runs in the context of the webhook creator
+- **Access Control**: Owner OR CODAY_ADMIN group members can manage webhooks
+- **User Context**: Execution runs in the context of the user who triggers the webhook
+
+### Storage Architecture
+
+```
+~/.coday/
+  projects/
+    my-project/
+      webhooks/
+        {uuid-1}.yml
+        {uuid-2}.yml
+      triggers/
+        {trigger-id}.yml
+```
+
+Webhooks are now stored per project, ensuring proper isolation and access control.
 
 ## Configuration Management
 
-### Commands Overview
+### Web Interface (Recommended)
 
-All webhook configuration is managed through the `config webhook` command group:
+The easiest way to manage webhooks is through the web interface:
 
-```bash
-config webhook list                    # List all configured webhooks
-config webhook add                     # Add a new webhook (goes directly to edit)
-config webhook edit --uuid=<uuid>     # Edit an existing webhook
-config webhook delete --uuid=<uuid>   # Delete a webhook
-```
+1. Navigate to your project
+2. Click the menu button (☰) in the top-left corner
+3. Select "Webhooks" from the menu
+4. Use the dialog to create, edit, or delete webhooks
 
-### Adding a Webhook
+The web interface provides:
+- Visual form for webhook configuration
+- Project-scoped webhook listing
+- Access control enforcement (only your webhooks + CODAY_ADMIN)
+- Validation and error feedback
 
-The add command creates a minimal webhook and immediately opens the edit interface:
+### REST API
 
-```bash
-config webhook add
-```
-
-This will:
-1. Create the webhook with default settings
-2. Automatically open the edit interface to complete configuration
-
-### Editing a Webhook
-
-The edit command allows modification of all webhook properties:
+For programmatic management, use the REST API endpoints:
 
 ```bash
-config webhook edit --uuid=abc123-def456-...
+# List webhooks for a project
+GET /api/projects/{projectName}/webhooks
+
+# Get specific webhook
+GET /api/projects/{projectName}/webhooks/{uuid}
+
+# Create webhook
+POST /api/projects/{projectName}/webhooks
+
+# Update webhook
+PUT /api/projects/{projectName}/webhooks/{uuid}
+
+# Delete webhook
+DELETE /api/projects/{projectName}/webhooks/{uuid}
 ```
 
-Or without UUID to select from a list:
-
-```bash
-config webhook edit
-```
-
-**Editable Fields:**
-- **Name**: Descriptive name for the webhook
-- **Project**: Target Coday project for execution
-- **Command Type**: 'free' or 'template'
-- **Commands**: Array of commands (for template type)
-
-### Listing Webhooks
-
-View all configured webhooks with details:
-
-```bash
-config webhook list
-```
-
-Shows: name, UUID, project, creator, creation date, command type, and command count.
-
-### Deleting a Webhook
-
-Remove a webhook configuration:
-
-```bash
-config webhook delete --uuid=abc123-def456-...
-```
+All CRUD operations require authentication and enforce ownership (owner OR CODAY_ADMIN).
 
 ## Webhook Model
 
@@ -84,8 +78,7 @@ Each webhook is stored as a YAML file with the following structure:
 ```yaml
 uuid: "550e8400-e29b-41d4-a716-446655440000"  # UUID v4 format
 name: "Jira Issue Analysis"                   # Descriptive name
-project: "my-project"                         # Target Coday project
-createdBy: "john.doe@company.com"             # Creator username (for tracking)
+createdBy: "john.doe@company.com"             # Creator username
 createdAt: "2025-07-01T10:30:00.000Z"        # Creation timestamp
 commandType: "template"                       # 'free' or 'template'
 commands:                                     # Commands array (for template type)
@@ -99,33 +92,53 @@ commands:                                     # Commands array (for template typ
 |-------|------|-------------|
 | `uuid` | string | UUID v4 identifier for the webhook |
 | `name` | string | Human-readable name for identification |
-| `project` | string | Coday project name for execution context |
-| `createdBy` | string | Username of webhook creator (tracking only) |
+| `createdBy` | string | Username of webhook creator |
 | `createdAt` | Date | Webhook creation timestamp |
 | `commandType` | 'free' \| 'template' | Command processing mode |
 | `commands` | string[] | Template commands (for template type only) |
 
+**Note**: The `project` field has been removed - the project is implicit from the storage location.
+
+## Access Control
+
+### Ownership Model
+
+- **Owner**: User who created the webhook can view, edit, and delete it
+- **CODAY_ADMIN**: Members of the CODAY_ADMIN group can manage ALL webhooks in ALL projects
+- **Other users**: Cannot see or modify webhooks they don't own
+
+### Setting CODAY_ADMIN Group
+
+Add users to the CODAY_ADMIN group in their user configuration:
+
+```yaml
+# ~/.coday/users/{username}/user.yml
+version: 1
+temp_groups:
+  - CODAY_ADMIN
+```
+
 ## API Endpoint Specification
 
-### Endpoint URL
+### Execution Endpoint
 
 ```
 POST /api/webhooks/{uuid}/execute
 ```
 
-Where `{uuid}` is the UUID v4 identifier of the configured webhook.
-
-**Note**: The endpoint follows REST conventions with plural resource names (`/api/webhooks/`) and the action as a sub-resource (`/execute`).
+**Important**: The execution endpoint remains project-agnostic. The webhook service automatically finds the webhook across all projects using the UUID.
 
 ### Authentication
 
-Authentication is handled by the reverse proxy using the `x-forwarded-email` header. The webhook execution runs under the authenticated user's context, NOT the webhook creator's context.
+Authentication is handled by the reverse proxy using the `x-forwarded-email` header. The webhook execution runs under the authenticated user's context.
+
+In development mode (without `--auth` flag), the system username is used.
 
 ### Request Headers
 
 ```
 Content-Type: application/json
-x-forwarded-email: user@company.com  # Set by authentication proxy
+x-forwarded-email: user@company.com  # Set by authentication proxy (production)
 ```
 
 ### Request Body
@@ -187,7 +200,7 @@ Waits for all commands to complete and returns the final result:
 | Status | Description | Response Body |
 |--------|-------------|---------------|
 | 400 | Missing UUID | `{"error": "Missing webhook UUID in URL"}` |
-| 404 | Webhook not found | `{"error": "Webhook with UUID 'xxx' not found"}` |
+| 404 | Webhook not found | `{"error": "Webhook not found: xxx"}` |
 | 422 | Invalid request | `{"error": "Missing or invalid prompts array"}` |
 | 500 | Server error | `{"error": "Internal server error"}` |
 
@@ -199,7 +212,7 @@ Waits for all commands to complete and returns the final result:
 ```yaml
 uuid: "abc123-def456-..."
 name: "Ad-hoc Analysis"
-project: "research-project"
+createdBy: "analyst@company.com"
 commandType: "free"
 ```
 
@@ -232,7 +245,7 @@ curl -X POST "https://coday.company.com/api/webhooks/abc123-def456-.../execute" 
 ```yaml
 uuid: "def456-ghi789-..."
 name: "Jira Issue Processor"
-project: "support-project"
+createdBy: "support@company.com"
 commandType: "template"
 commands:
   - "analyze jira issue {{issueKey}}: {{summary}}"
@@ -279,18 +292,6 @@ curl -X POST "https://coday.company.com/api/webhooks/def456-ghi789-.../execute" 
 
 Create a Jira automation rule that calls Coday when issues are created or updated.
 
-**Webhook Setup:**
-```bash
-config webhook add
-# Name: Jira Issue Analysis
-# Project: support-analysis
-# Command Type: template
-# Commands:
-#   - "analyze jira issue {{issueKey}}: {{summary}}"
-#   - "categorize issue type and priority"
-#   - "suggest initial response for {{issueKey}}"
-```
-
 **Jira Automation Rule:**
 ```json
 {
@@ -313,18 +314,6 @@ config webhook add
 ### GitLab Integration
 
 Set up GitLab webhooks to trigger code analysis on merge requests.
-
-**Webhook Setup:**
-```bash
-config webhook add
-# Name: GitLab MR Analysis
-# Project: code-review
-# Command Type: template
-# Commands:
-#   - "analyze merge request {{merge_request_iid}}: {{title}}"
-#   - "review changes in {{source_branch}} -> {{target_branch}}"
-#   - "check for security issues and code quality"
-```
 
 **GitLab Webhook Configuration:**
 - URL: `https://coday.company.com/api/webhooks/your-webhook-uuid/execute`
@@ -378,7 +367,8 @@ jobs:
 
 1. **Authentication**: Ensure your reverse proxy properly validates and sets the `x-forwarded-email` header
 2. **UUID Secrecy**: Treat webhook UUIDs as secrets - don't expose them in public repositories
-3. **Input Validation**: Template placeholders should be validated before sending to avoid injection
+3. **Access Control**: Only CODAY_ADMIN members can manage webhooks across projects
+4. **Input Validation**: Template placeholders should be validated before sending to avoid injection
 
 ### Performance Optimization
 
@@ -390,7 +380,7 @@ jobs:
 
 1. **Thread IDs**: Store returned thread IDs for later reference and debugging
 2. **Logging**: All webhook calls are logged with correlation IDs for tracing
-3. **Testing**: Use the terminal interface to test webhook commands before automation
+3. **Testing**: Test webhooks through the web interface before automation
 
 ### Template Design
 
@@ -405,31 +395,46 @@ jobs:
 **404 Webhook Not Found**
 - Verify the UUID in the URL matches an existing webhook
 - Check that the webhook wasn't deleted
+- Ensure the webhook exists in one of your projects
+
+**401/403 Access Denied**
+- For CRUD operations: You must be the owner OR in CODAY_ADMIN group
+- For execution: Authentication required (x-forwarded-email header)
 
 **422 Invalid Request**
 - For 'free' type: ensure `prompts` array is provided and not empty
 - For 'template' type: verify required placeholder values are included
 
-**Authentication Errors**
-- Confirm `x-forwarded-email` header is properly set by your proxy
-- Verify the authenticated user has access to the target project
-
 **Template Processing Issues**
 - Check that placeholder names in the request match `{{placeholders}}` in templates
 - Verify placeholder values are properly formatted (strings, numbers, etc.)
 
-### Debug Commands
+### Debug Steps
 
-Check webhook configuration:
-```bash
-config webhook list
-config webhook edit --uuid=your-uuid
-```
+1. **Check webhook exists**:
+   - Open web interface
+   - Navigate to project
+   - Open Webhooks dialog
+   - Verify webhook is listed
 
-Test webhook manually using curl:
-```bash
-curl -X POST "http://localhost:4100/api/webhooks/your-uuid/execute" \
-  -H "Content-Type: application/json" \
-  -H "x-forwarded-email: your@email.com" \
-  -d '{"prompts": ["test command"]}'
-```
+2. **Test manually**:
+   ```bash
+   curl -X POST "http://localhost:4100/api/webhooks/your-uuid/execute" \
+     -H "Content-Type: application/json" \
+     -d '{"prompts": ["test command"]}'
+   ```
+
+3. **Check logs**:
+   - Server logs show webhook execution attempts
+   - Look for `[WEBHOOK]` prefixed messages
+   - Thread IDs in logs help trace execution
+
+## Migration from Legacy System
+
+If you have webhooks in the old global storage (`~/.coday/webhooks/`), they need to be recreated:
+
+1. Note the configuration of your existing webhooks
+2. Delete the old webhook files manually
+3. Recreate webhooks through the web interface in the appropriate projects
+
+The new architecture provides better isolation, access control, and project organization.

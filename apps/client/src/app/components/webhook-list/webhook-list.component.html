@@ -38,7 +38,6 @@
         <thead>
           <tr>
             <th>Name</th>
-            <th>Project</th>
             <th>Type</th>
             <th>Created</th>
             <th>Actions</th>
@@ -48,7 +47,6 @@
           @for (webhook of webhooks; track webhook.uuid) {
             <tr>
               <td class="name-cell">{{ webhook.name }}</td>
-              <td class="project-cell">{{ webhook.project }}</td>
               <td class="type-cell">
                 <span
                   class="type-badge"

@@ -25,14 +25,12 @@ import { MatButton } from '@angular/material/button'
 export class WebhookFormComponent implements OnChanges {
   @Input() webhook?: Webhook // If provided, edit mode; otherwise create mode
   @Input() isSaving: boolean = false
-  @Input() availableProjects: string[] = [] // List of projects for dropdown
 
   @Output() save = new EventEmitter<WebhookCreateData | WebhookUpdateData>()
   @Output() cancelForm = new EventEmitter<void>()
 
   // Form fields
   name: string = ''
-  project: string = ''
   commandType: 'free' | 'template' = 'template'
   commands: string = '' // Commands as newline-separated string
 
@@ -51,7 +49,6 @@ export class WebhookFormComponent implements OnChanges {
     if (changes['webhook'] && this.webhook) {
       // Populate form with webhook data in edit mode
       this.name = this.webhook.name
-      this.project = this.webhook.project
       this.commandType = this.webhook.commandType
       this.commands = this.webhook.commands?.join('\n') ?? ''
     }
@@ -70,11 +67,6 @@ export class WebhookFormComponent implements OnChanges {
     // Validate
     if (!this.name.trim()) {
       this.errorMessage = 'Webhook name is required'
-      return
-    }
-
-    if (!this.project.trim()) {
-      this.errorMessage = 'Project is required'
       return
     }
 
@@ -100,7 +92,6 @@ export class WebhookFormComponent implements OnChanges {
 
     const data: WebhookCreateData | WebhookUpdateData = {
       name: this.name.trim(),
-      project: this.project.trim(),
       commandType: this.commandType,
       ...(commandLines && { commands: commandLines }),
     }

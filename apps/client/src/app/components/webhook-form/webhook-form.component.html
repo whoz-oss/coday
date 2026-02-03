@@ -22,31 +22,6 @@
       <small class="hint">A descriptive name for this webhook</small>
     </div>
 
-    <!-- Project Field -->
-    <div class="form-group">
-      <label for="project">Project *</label>
-      @if (availableProjects.length === 0) {
-        <input
-          type="text"
-          id="project"
-          [(ngModel)]="project"
-          name="project"
-          placeholder="e.g., my-project"
-          [disabled]="isSaving"
-          required
-        />
-      }
-      @if (availableProjects.length > 0) {
-        <select id="project" [(ngModel)]="project" name="project" [disabled]="isSaving" required>
-          <option value="">Select a project...</option>
-          @for (proj of availableProjects; track proj) {
-            <option [value]="proj">{{ proj }}</option>
-          }
-        </select>
-      }
-      <small class="hint">The project context for this webhook</small>
-    </div>
-
     <!-- Command Type Field -->
     <div class="form-group">
       <span class="field-label">Command Type *</span>

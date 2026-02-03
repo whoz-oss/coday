@@ -6,21 +6,18 @@ import { getParamAsString } from './route-helpers'
 /**
  * Webhook Management REST API Routes
  *
- * This module provides REST endpoints for managing webhooks through the web UI.
- * These endpoints complement the existing webhook execution endpoint (/api/webhook/:uuid).
+ * NEW ARCHITECTURE:
+ * - CRUD operations are scoped to projects: /api/projects/:projectName/webhooks
+ * - Execution endpoint remains project-agnostic: /api/webhooks/:uuid/execute
+ * - Access control: owner OR CODAY_ADMIN group members can access
  *
  * Endpoints:
- * - GET    /api/webhooks          - List all webhooks
- * - GET    /api/webhooks/:uuid    - Get specific webhook by UUID
- * - POST   /api/webhooks          - Create new webhook
- * - PUT    /api/webhooks/:uuid    - Update existing webhook
- * - DELETE /api/webhooks/:uuid    - Delete webhook
- *
- * TODO: Consider implementing JSON Schema validation (e.g., using Ajv) for more robust
- * and maintainable validation instead of manual checks. This would provide:
- * - Automatic validation with clear error messages
- * - Self-documenting API through schema
- * - Easier maintenance as requirements evolve
+ * - GET    /api/projects/:projectName/webhooks          - List webhooks for project
+ * - GET    /api/projects/:projectName/webhooks/:uuid    - Get specific webhook
+ * - POST   /api/projects/:projectName/webhooks          - Create new webhook
+ * - PUT    /api/projects/:projectName/webhooks/:uuid    - Update webhook
+ * - DELETE /api/projects/:projectName/webhooks/:uuid    - Delete webhook
+ * - POST   /api/webhooks/:uuid/execute                   - Execute webhook (project-agnostic)
  */
 
 /**
@@ -35,13 +32,25 @@ export function registerWebhookRoutes(
   getUsernameFn: (req: express.Request) => string
 ): void {
   /**
-   * GET /api/webhooks
-   * List all webhooks
+   * GET /api/projects/:projectName/webhooks
+   * List all webhooks for a project (filtered by access control)
    */
-  app.get('/api/webhooks', async (_req: express.Request, res: express.Response) => {
+  app.get('/api/projects/:projectName/webhooks', async (req: express.Request, res: express.Response) => {
     try {
-      debugLog('WEBHOOK_API', 'GET all webhooks')
-      const webhooks = await webhookService.list()
+      const projectName = getParamAsString(req.params.projectName)
+      if (!projectName) {
+        res.status(400).json({ error: 'Project name is required' })
+        return
+      }
+
+      const username = getUsernameFn(req)
+      if (!username) {
+        res.status(401).json({ error: 'Username not found in request headers' })
+        return
+      }
+
+      debugLog('WEBHOOK_API', `GET webhooks for project: ${projectName}, user: ${username}`)
+      const webhooks = await webhookService.list(projectName, username)
       res.status(200).json(webhooks)
     } catch (error) {
       console.error('Error listing webhooks:', error)
@@ -50,22 +59,35 @@ export function registerWebhookRoutes(
   })
 
   /**
-   * GET /api/webhooks/:uuid
-   * Get specific webhook by UUID
+   * GET /api/projects/:projectName/webhooks/:uuid
+   * Get specific webhook by UUID (with access control)
    */
-  app.get('/api/webhooks/:uuid', async (req: express.Request, res: express.Response) => {
+  app.get('/api/projects/:projectName/webhooks/:uuid', async (req: express.Request, res: express.Response) => {
     try {
+      const projectName = getParamAsString(req.params.projectName)
       const uuid = getParamAsString(req.params.uuid)
+
+      if (!projectName) {
+        res.status(400).json({ error: 'Project name is required' })
+        return
+      }
+
       if (!uuid) {
         res.status(400).json({ error: 'Webhook UUID is required' })
         return
       }
 
-      debugLog('WEBHOOK_API', `GET webhook: ${uuid}`)
-      const webhook = await webhookService.get(uuid)
+      const username = getUsernameFn(req)
+      if (!username) {
+        res.status(401).json({ error: 'Username not found in request headers' })
+        return
+      }
+
+      debugLog('WEBHOOK_API', `GET webhook: ${uuid} in project: ${projectName}, user: ${username}`)
+      const webhook = await webhookService.get(projectName, uuid, username)
 
       if (!webhook) {
-        res.status(404).json({ error: `Webhook with UUID '${uuid}' not found` })
+        res.status(404).json({ error: `Webhook with UUID '${uuid}' not found or access denied` })
         return
       }
 
@@ -77,11 +99,17 @@ export function registerWebhookRoutes(
   })
 
   /**
-   * POST /api/webhooks
-   * Create new webhook
+   * POST /api/projects/:projectName/webhooks
+   * Create new webhook in project
    */
-  app.post('/api/webhooks', async (req: express.Request, res: express.Response) => {
+  app.post('/api/projects/:projectName/webhooks', async (req: express.Request, res: express.Response) => {
     try {
+      const projectName = getParamAsString(req.params.projectName)
+      if (!projectName) {
+        res.status(400).json({ error: 'Project name is required' })
+        return
+      }
+
       const webhookData = req.body as Omit<Webhook, 'uuid' | 'createdAt' | 'createdBy'>
 
       // Basic validation
@@ -92,11 +120,6 @@ export function registerWebhookRoutes(
 
       if (!webhookData.name || typeof webhookData.name !== 'string') {
         res.status(422).json({ error: 'Webhook name is required' })
-        return
-      }
-
-      if (!webhookData.project || typeof webhookData.project !== 'string') {
-        res.status(422).json({ error: 'Webhook project is required' })
         return
       }
 
@@ -120,9 +143,9 @@ export function registerWebhookRoutes(
         return
       }
 
-      debugLog('WEBHOOK_API', `POST new webhook: ${webhookData.name}`)
+      debugLog('WEBHOOK_API', `POST new webhook: ${webhookData.name} in project: ${projectName}`)
 
-      const newWebhook = await webhookService.create({
+      const newWebhook = await webhookService.create(projectName, {
         ...webhookData,
         createdBy: username,
       })
@@ -136,12 +159,19 @@ export function registerWebhookRoutes(
   })
 
   /**
-   * PUT /api/webhooks/:uuid
-   * Update existing webhook
+   * PUT /api/projects/:projectName/webhooks/:uuid
+   * Update existing webhook (with access control)
    */
-  app.put('/api/webhooks/:uuid', async (req: express.Request, res: express.Response) => {
+  app.put('/api/projects/:projectName/webhooks/:uuid', async (req: express.Request, res: express.Response) => {
     try {
+      const projectName = getParamAsString(req.params.projectName)
       const uuid = getParamAsString(req.params.uuid)
+
+      if (!projectName) {
+        res.status(400).json({ error: 'Project name is required' })
+        return
+      }
+
       if (!uuid) {
         res.status(404).json({ error: 'Webhook UUID is required' })
         return
@@ -169,12 +199,18 @@ export function registerWebhookRoutes(
         }
       }
 
-      debugLog('WEBHOOK_API', `PUT webhook: ${uuid}`)
+      const username = getUsernameFn(req)
+      if (!username) {
+        res.status(401).json({ error: 'Username not found in request headers' })
+        return
+      }
 
-      const updatedWebhook = await webhookService.update(uuid, updates)
+      debugLog('WEBHOOK_API', `PUT webhook: ${uuid} in project: ${projectName}, user: ${username}`)
+
+      const updatedWebhook = await webhookService.update(projectName, uuid, updates, username)
 
       if (!updatedWebhook) {
-        res.status(404).json({ error: `Webhook with UUID '${uuid}' not found` })
+        res.status(404).json({ error: `Webhook with UUID '${uuid}' not found or access denied` })
         return
       }
 
@@ -187,23 +223,36 @@ export function registerWebhookRoutes(
   })
 
   /**
-   * DELETE /api/webhooks/:uuid
-   * Delete webhook
+   * DELETE /api/projects/:projectName/webhooks/:uuid
+   * Delete webhook (with access control)
    */
-  app.delete('/api/webhooks/:uuid', async (req: express.Request, res: express.Response) => {
+  app.delete('/api/projects/:projectName/webhooks/:uuid', async (req: express.Request, res: express.Response) => {
     try {
+      const projectName = getParamAsString(req.params.projectName)
       const uuid = getParamAsString(req.params.uuid)
+
+      if (!projectName) {
+        res.status(400).json({ error: 'Project name is required' })
+        return
+      }
+
       if (!uuid) {
         res.status(400).json({ error: 'Webhook UUID is required' })
         return
       }
 
-      debugLog('WEBHOOK_API', `DELETE webhook: ${uuid}`)
+      const username = getUsernameFn(req)
+      if (!username) {
+        res.status(401).json({ error: 'Username not found in request headers' })
+        return
+      }
 
-      const success = await webhookService.delete(uuid)
+      debugLog('WEBHOOK_API', `DELETE webhook: ${uuid} in project: ${projectName}, user: ${username}`)
+
+      const success = await webhookService.delete(projectName, uuid, username)
 
       if (!success) {
-        res.status(404).json({ error: `Webhook with UUID '${uuid}' not found` })
+        res.status(404).json({ error: `Webhook with UUID '${uuid}' not found or access denied` })
         return
       }
 
@@ -221,6 +270,9 @@ export function registerWebhookRoutes(
    *
    * This endpoint enables external systems to trigger Coday AI agent interactions remotely
    * using pre-configured webhook definitions identified by UUID.
+   *
+   * IMPORTANT: This endpoint remains project-agnostic - the webhook service
+   * finds the project automatically based on the webhook UUID.
    *
    * URL Parameters:
    * - uuid: string (required) - The UUID of the configured webhook
@@ -262,7 +314,7 @@ export function registerWebhookRoutes(
         return
       }
 
-      // Execute webhook via WebhookService
+      // Execute webhook via WebhookService (finds project automatically)
       const result = await webhookService.executeWebhook(uuid, parameters, username, title, awaitFinalAnswer)
 
       if (awaitFinalAnswer) {
