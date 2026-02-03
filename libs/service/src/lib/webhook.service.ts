@@ -3,11 +3,13 @@ import * as os from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs'
 import { readYamlFile, writeYamlFile } from '@coday/utils'
-import type { CodayOptions } from '@coday/options'
-import type { CodayLogger } from '@coday/service/coday-logger'
-import type { ThreadCodayManager } from '../../apps/server/src/thread-coday-manager'
-import type { ThreadService } from '../../apps/server/src/services/thread.service'
-import { CodayEvent, MessageEvent } from '@coday/coday-events'
+import type { CodayOptions, CodayLogger } from '@coday/model'
+import { CodayEvent, MessageEvent } from '@coday/model'
+import type { ThreadService } from './thread.service'
+
+// ThreadCodayManager is in apps/server, so we use a type-only import to avoid circular dependencies
+// The actual instance will be injected via initializeExecution()
+type ThreadCodayManager = any
 import { filter } from 'rxjs'
 
 export interface Webhook {
@@ -303,8 +305,8 @@ export class WebhookService {
             return event instanceof MessageEvent && event.role === 'assistant' && !!event.name
           })
         )
-        .subscribe((event) => {
-          assistantMessages.push(event as MessageEvent)
+        .subscribe((event: MessageEvent) => {
+          assistantMessages.push(event)
         })
 
       try {
@@ -338,14 +340,14 @@ export class WebhookService {
     } else {
       // Asynchronous mode: return immediately with thread ID
       // Start Coday run in background
-      instance.coday!.run().catch((error) => {
+      instance.coday!.run().catch((error: unknown) => {
         console.error('[WEBHOOK] Error during webhook Coday run:', error)
       })
 
       // Schedule cleanup after a reasonable timeout (e.g., 5 minutes)
       setTimeout(
         () => {
-          this.threadCodayManager!.cleanup(threadId).catch((error) => {
+          this.threadCodayManager!.cleanup(threadId).catch((error: unknown) => {
             console.error('[WEBHOOK] Error cleaning up webhook thread after timeout:', error)
           })
         },

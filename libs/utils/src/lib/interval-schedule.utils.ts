@@ -8,15 +8,7 @@
  * - Optional end condition (occurrences or end timestamp)
  */
 
-export interface IntervalSchedule {
-  startTimestamp: string // ISO 8601 UTC
-  interval: string // '5h', '14d', '1m'
-  daysOfWeek?: number[] // 0-6, optional (if absent = all days)
-  endCondition?: {
-    type: 'occurrences' | 'endTimestamp'
-    value: number | string // number for occurrences, ISO 8601 for timestamp
-  }
-}
+import type { IntervalSchedule } from '@coday/model'
 
 interface ParsedInterval {
   value: number

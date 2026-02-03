@@ -2,11 +2,10 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as yaml from 'yaml'
 import { randomUUID } from 'node:crypto'
-import type { Trigger, TriggerInfo } from '../model/trigger'
-import type { CodayLogger } from '@coday/service/coday-logger'
-import type { WebhookService } from './webhook.service'
-import { validateIntervalSchedule, calculateNextRun, shouldExecuteNow } from '../util/interval-schedule.utils'
-import type { IntervalSchedule } from '../model/trigger'
+import type { Trigger, TriggerInfo, IntervalSchedule } from '@coday/model'
+import { validateIntervalSchedule, calculateNextRun, shouldExecuteNow } from '@coday/utils'
+import { CodayLogger } from '@coday/model'
+import { WebhookService } from './webhook.service'
 
 /**
  * TriggerService - Manages scheduled webhook execution
