@@ -363,6 +363,7 @@ export class TriggerService {
         enabled: trigger.enabled,
         webhookUuid: trigger.webhookUuid,
         schedule: trigger.schedule,
+        parameters: trigger.parameters,
         lastRun: trigger.lastRun,
         nextRun: trigger.nextRun,
       }))

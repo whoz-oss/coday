@@ -32,6 +32,7 @@ export interface TriggerInfo {
   enabled: boolean
   webhookUuid: string
   schedule: IntervalSchedule
+  parameters?: Record<string, unknown>
   lastRun?: string
   nextRun?: string | null
   occurrenceCount?: number
