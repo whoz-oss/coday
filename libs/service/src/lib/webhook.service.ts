@@ -100,13 +100,13 @@ export class WebhookService {
     // Check if user is in CODAY_ADMIN group
     try {
       const userConfigPath = path.join(this.codayConfigDir, 'users', username, 'user.yml')
-      const userConfig = readYamlFile<{ temp_groups?: string[] }>(userConfigPath)
+      const userConfig = readYamlFile<{ groups?: string[] }>(userConfigPath)
 
       if (!userConfig) {
         return false
       }
 
-      return userConfig.temp_groups?.includes('CODAY_ADMIN') ?? false
+      return userConfig.groups?.includes('CODAY_ADMIN') ?? false
     } catch (error) {
       // If config doesn't exist or can't be read, user is not admin
       return false

@@ -6,7 +6,7 @@ import * as os from 'node:os'
  * Check if a user belongs to the CODAY_ADMIN group
  *
  * This function reads the user's configuration file and checks if they have
- * the CODAY_ADMIN group in their temp_groups array.
+ * the CODAY_ADMIN group in their groups array.
  *
  * @param username - Username to check
  * @param configDir - Coday configuration directory (defaults to ~/.coday)
@@ -17,13 +17,13 @@ export function isUserAdmin(username: string, configDir?: string): boolean {
     const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
     const userConfigPath = path.join(configDir ?? defaultConfigPath, 'users', username, 'user.yml')
 
-    const userConfig = readYamlFile<{ temp_groups?: string[] }>(userConfigPath)
+    const userConfig = readYamlFile<{ groups?: string[] }>(userConfigPath)
 
     if (!userConfig) {
       return false
     }
 
-    return userConfig.temp_groups?.includes('CODAY_ADMIN') ?? false
+    return userConfig.groups?.includes('CODAY_ADMIN') ?? false
   } catch (error) {
     // If config doesn't exist or can't be read, user is not admin
     console.error(`[USER_GROUPS] Error checking admin status for ${username}:`, error)
