@@ -1,3 +1,15 @@
+## 0.65.0 (2026-02-03)
+
+### 🚀 Features
+
+- add clipboard paste support for all file types ([5aa4c4d](https://github.com/whoz-oss/coday/commit/5aa4c4d))
+- add clipboard paste support for all file types ([#451](https://github.com/whoz-oss/coday/pull/451), [#450](https://github.com/whoz-oss/coday/issues/450))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.64.0 (2026-02-03)
 
 ### 🚀 Features
