@@ -305,6 +305,23 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
     this.inputSectionHeight = height
   }
 
+  onFilesPasted(files: File[]): void {
+    console.log('[THREAD] File(s) pasted:', files.length)
+
+    const imageFiles = this.imageUploadService.filterImageFiles(files)
+    const otherFiles = files.filter((f) => !f.type.startsWith('image/'))
+
+    if (imageFiles.length) {
+      this.uploadFilesSequentially(imageFiles, 0)
+    }
+    if (otherFiles.length) {
+      void this.uploadFilesToExchangeSpace(otherFiles)
+    }
+    if (!imageFiles.length && !otherFiles.length) {
+      this.showUploadError('No supported files found')
+    }
+  }
+
   // File drawer methods
   toggleFileDrawer(): void {
     console.log('[THREAD] Toggling file drawer')
