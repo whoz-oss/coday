@@ -161,6 +161,11 @@ export function validateIntervalSchedule(schedule: IntervalSchedule): { valid: b
  * - Days of week constraint (skips non-matching days)
  * - End timestamp (stops if exceeded)
  *
+ * Logic:
+ * - If no daysOfWeek constraint: simply add interval to fromDate
+ * - If daysOfWeek constraint: add interval repeatedly until we land on a valid day
+ *   This ensures the interval is respected while filtering by day of week
+ *
  * @param schedule - Interval schedule configuration
  * @param fromDate - Starting date (default: now)
  * @param currentOccurrences - Current occurrence count (default: 0)
@@ -208,7 +213,8 @@ export function calculateNextRun(
     }
   }
 
-  // If daysOfWeek constraint, find next matching day
+  // If daysOfWeek constraint, find next matching day by adding intervals
+  // This ensures we respect the interval while filtering by day of week
   if (schedule.daysOfWeek && schedule.daysOfWeek.length > 0) {
     const maxIterations = 365 // Prevent infinite loop (1 year max search)
     let iterations = 0
@@ -227,9 +233,18 @@ export function calculateNextRun(
         return next.toISOString()
       }
 
-      // Move to next day to find matching day of week
-      next.setUTCDate(next.getUTCDate() + 1)
+      // Add interval again to find next occurrence that matches day of week
+      // This maintains the interval constraint while filtering by day
+      next = addInterval(next, parsed)
       iterations++
+
+      // Check end conditions during iteration
+      if (schedule.endCondition?.type === 'endTimestamp') {
+        const endDate = new Date(schedule.endCondition.value as string)
+        if (next > endDate) {
+          return null
+        }
+      }
     }
 
     throw new Error('Could not find next valid day within reasonable timeframe')

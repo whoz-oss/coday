@@ -203,8 +203,16 @@ export class TriggerManagerComponent implements OnInit {
         next: (trigger) => {
           this.isSaving = false
           this.showSuccess(`Trigger "${trigger.name}" updated successfully`)
+
+          // Update the trigger in the local list immediately for better UX
+          const index = this.triggers.findIndex((t) => t.id === trigger.id)
+          if (index !== -1) {
+            this.triggers[index] = trigger
+          }
+
           this.currentView = 'list'
           this.editingTrigger = undefined
+          // Still reload to ensure consistency with backend
           this.loadTriggers()
         },
         error: (error) => {

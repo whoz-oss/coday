@@ -118,7 +118,7 @@ export function registerTriggerRoutes(
     try {
       const { projectName, id } = req.params
       const username = getUsernameFn(req)
-      const { name, enabled, schedule, parameters } = req.body
+      const { name, enabled, webhookUuid, schedule, parameters } = req.body
 
       // Validation
       if (name !== undefined && typeof name !== 'string') {
@@ -128,6 +128,11 @@ export function registerTriggerRoutes(
 
       if (enabled !== undefined && typeof enabled !== 'boolean') {
         res.status(400).json({ error: 'Enabled must be a boolean' })
+        return
+      }
+
+      if (webhookUuid !== undefined && typeof webhookUuid !== 'string') {
+        res.status(400).json({ error: 'Webhook UUID must be a string' })
         return
       }
 
@@ -156,6 +161,7 @@ export function registerTriggerRoutes(
         {
           name,
           enabled,
+          webhookUuid,
           schedule,
           parameters,
         },
