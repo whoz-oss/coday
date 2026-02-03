@@ -6,6 +6,7 @@ import { readYamlFile, writeYamlFile } from '@coday/utils'
 import type { CodayOptions, CodayLogger } from '@coday/model'
 import { CodayEvent, MessageEvent } from '@coday/model'
 import type { ThreadService } from './thread.service'
+import { canAccessWebhook } from './user-groups'
 
 // ThreadCodayManager is in apps/server, so we use a type-only import to avoid circular dependencies
 // The actual instance will be injected via initializeExecution()
@@ -91,26 +92,8 @@ export class WebhookService {
    * @param username - Username requesting access
    * @returns true if user can access, false otherwise
    */
-  private canAccessWebhook(webhook: Webhook, username: string): boolean {
-    // Owner can always access
-    if (webhook.createdBy === username) {
-      return true
-    }
-
-    // Check if user is in CODAY_ADMIN group
-    try {
-      const userConfigPath = path.join(this.codayConfigDir, 'users', username, 'user.yml')
-      const userConfig = readYamlFile<{ groups?: string[] }>(userConfigPath)
-
-      if (!userConfig) {
-        return false
-      }
-
-      return userConfig.groups?.includes('CODAY_ADMIN') ?? false
-    } catch (error) {
-      // If config doesn't exist or can't be read, user is not admin
-      return false
-    }
+  private canUserAccessWebhook(webhook: Webhook, username: string): boolean {
+    return canAccessWebhook(webhook.createdBy, username, this.codayConfigDir)
   }
 
   /**
@@ -172,7 +155,7 @@ export class WebhookService {
       }
 
       // Access control check if username provided
-      if (username && !this.canAccessWebhook(webhook, username)) {
+      if (username && !this.canUserAccessWebhook(webhook, username)) {
         console.log(`[WEBHOOK] Access denied for user ${username} to webhook ${uuid}`)
         return null
       }

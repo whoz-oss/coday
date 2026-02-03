@@ -3,6 +3,15 @@ import * as path from 'node:path'
 import * as os from 'node:os'
 
 /**
+ * Sanitize username for filesystem usage
+ * Replaces non-alphanumeric characters with underscores
+ * This must match the sanitization in UserService
+ */
+function sanitizeUsername(username: string): string {
+  return username.replace(/[^a-zA-Z0-9]/g, '_')
+}
+
+/**
  * Check if a user belongs to the CODAY_ADMIN group
  *
  * This function reads the user's configuration file and checks if they have
@@ -15,7 +24,8 @@ import * as os from 'node:os'
 export function isUserAdmin(username: string, configDir?: string): boolean {
   try {
     const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
-    const userConfigPath = path.join(configDir ?? defaultConfigPath, 'users', username, 'user.yml')
+    const sanitizedUsername = sanitizeUsername(username)
+    const userConfigPath = path.join(configDir ?? defaultConfigPath, 'users', sanitizedUsername, 'user.yaml')
 
     const userConfig = readYamlFile<{ groups?: string[] }>(userConfigPath)
 
@@ -26,7 +36,6 @@ export function isUserAdmin(username: string, configDir?: string): boolean {
     return userConfig.groups?.includes('CODAY_ADMIN') ?? false
   } catch (error) {
     // If config doesn't exist or can't be read, user is not admin
-    console.error(`[USER_GROUPS] Error checking admin status for ${username}:`, error)
     return false
   }
 }

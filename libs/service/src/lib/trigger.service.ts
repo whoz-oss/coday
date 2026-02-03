@@ -6,6 +6,7 @@ import type { Trigger, TriggerInfo, IntervalSchedule } from '@coday/model'
 import { validateIntervalSchedule, calculateNextRun, shouldExecuteNow } from '@coday/utils'
 import { CodayLogger } from '@coday/model'
 import { WebhookService } from './webhook.service'
+import { isUserAdmin } from './user-groups'
 
 /**
  * TriggerService - Manages scheduled webhook execution
@@ -346,17 +347,34 @@ export class TriggerService {
   // ==================== CRUD Operations ====================
 
   /**
-   * List all triggers for a project owned by a specific user
+   * Check if a user can access a trigger (owner or CODAY_ADMIN)
+   *
+   * @param trigger - Trigger to check access for
+   * @param username - Username requesting access
+   * @returns true if user can access, false otherwise
+   */
+  private canAccessTrigger(trigger: Trigger, username: string): boolean {
+    // Owner can always access
+    if (trigger.createdBy === username) {
+      return true
+    }
+
+    // Check if user is in CODAY_ADMIN group
+    return isUserAdmin(username, this.codayConfigDir)
+  }
+
+  /**
+   * List all triggers for a project with access control
    * @param projectName - Project name
-   * @param username - User to filter triggers by
-   * @returns List of triggers owned by the user
+   * @param username - Username requesting the list
+   * @returns Array of triggers the user can access (owned + admin access)
    */
   async listTriggers(projectName: string, username: string): Promise<TriggerInfo[]> {
     const triggers = await this.loadProjectTriggers(projectName)
 
-    // Filter by user ownership
+    // Filter by access control (owner OR admin)
     return triggers
-      .filter((trigger) => trigger.createdBy === username)
+      .filter((trigger) => this.canAccessTrigger(trigger, username))
       .map((trigger) => ({
         id: trigger.id,
         name: trigger.name,
@@ -366,15 +384,16 @@ export class TriggerService {
         parameters: trigger.parameters,
         lastRun: trigger.lastRun,
         nextRun: trigger.nextRun,
+        createdBy: trigger.createdBy, // Include createdBy for display
       }))
   }
 
   /**
-   * Get a specific trigger with ownership verification
+   * Get a specific trigger with access control
    * @param projectName - Project name
    * @param triggerId - Trigger ID
-   * @param username - User requesting the trigger (optional, for ownership check)
-   * @returns Trigger if found and owned by user, null otherwise
+   * @param username - User requesting the trigger (optional, for access check)
+   * @returns Trigger if found and accessible, null otherwise
    */
   async getTrigger(projectName: string, triggerId: string, username?: string): Promise<Trigger | null> {
     const filePath = this.getTriggerFilePath(projectName, triggerId)
@@ -392,9 +411,10 @@ export class TriggerService {
       trigger.nextRun = result.nextRun
       trigger.occurrenceCount = result.occurrenceCount
 
-      // If username provided, verify ownership
-      if (username && trigger.createdBy !== username) {
-        return null // User doesn't own this trigger
+      // Access control check if username provided
+      if (username && !this.canAccessTrigger(trigger, username)) {
+        console.log(`[TRIGGER] Access denied for user ${username} to trigger ${triggerId}`)
+        return null
       }
 
       return trigger
@@ -454,13 +474,13 @@ export class TriggerService {
   }
 
   /**
-   * Update a trigger with ownership verification
+   * Update a trigger with access control
    * @param projectName - Project name
    * @param triggerId - Trigger ID
    * @param updates - Fields to update
    * @param username - User requesting the update
    * @returns Updated trigger
-   * @throws Error if trigger not found or user doesn't own it
+   * @throws Error if trigger not found or access denied
    */
   async updateTrigger(
     projectName: string,
@@ -479,6 +499,8 @@ export class TriggerService {
     if (!trigger) {
       throw new Error(`Trigger not found or access denied: ${triggerId}`)
     }
+
+    console.log(`[TRIGGER] Updating trigger ${triggerId} by user ${username}`)
 
     // Update fields
     if (updates.name !== undefined) trigger.name = updates.name
@@ -516,7 +538,7 @@ export class TriggerService {
   }
 
   /**
-   * Delete a trigger with ownership verification
+   * Delete a trigger with access control
    * @param projectName - Project name
    * @param triggerId - Trigger ID
    * @param username - User requesting the deletion
@@ -536,32 +558,32 @@ export class TriggerService {
     // Remove from in-memory cache
     this.triggers.delete(triggerId)
 
-    console.log(`[TRIGGER] Deleted trigger ${triggerId}`)
+    console.log(`[TRIGGER] Deleted trigger ${triggerId} by user ${username}`)
 
     return true
   }
 
   /**
-   * Enable a trigger with ownership verification
+   * Enable a trigger with access control
    */
   async enableTrigger(projectName: string, triggerId: string, username: string): Promise<Trigger> {
     return this.updateTrigger(projectName, triggerId, { enabled: true }, username)
   }
 
   /**
-   * Disable a trigger with ownership verification
+   * Disable a trigger with access control
    */
   async disableTrigger(projectName: string, triggerId: string, username: string): Promise<Trigger> {
     return this.updateTrigger(projectName, triggerId, { enabled: false }, username)
   }
 
   /**
-   * Manually execute a trigger now (for testing) with ownership verification
+   * Manually execute a trigger now (for testing) with access control
    * @param projectName - Project name
    * @param triggerId - Trigger ID
    * @param username - User requesting the execution
    * @returns Thread ID created by webhook execution
-   * @throws Error if trigger not found or user doesn't own it
+   * @throws Error if trigger not found or access denied
    */
   async runTriggerNow(projectName: string, triggerId: string, username: string): Promise<string> {
     const trigger = await this.getTrigger(projectName, triggerId, username)
