@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Timeout
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
 import reactor.core.publisher.Flux
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -53,7 +54,7 @@ class AgentSimpleTest {
             // Create agent
             val model =
                 AgentModel(
-                    id = agentId,
+                    metadata = EntityMetadata(id = agentId),
                     name = "SimpleAgent",
                     description = "A simple test agent",
                     instructions = "You are a helpful assistant.",
@@ -138,7 +139,7 @@ class AgentSimpleTest {
 
             val model =
                 AgentModel(
-                    id = agentId,
+                    metadata = EntityMetadata(id = agentId),
                     name = "SimpleAgent",
                     description = "A simple test agent",
                 )
@@ -213,7 +214,7 @@ class AgentSimpleTest {
 
             val model =
                 AgentModel(
-                    id = agentId,
+                    metadata = EntityMetadata(id = agentId),
                     name = "SimpleAgent",
                     description = "A simple test agent",
                 )
@@ -271,7 +272,7 @@ class AgentSimpleTest {
 
             val model =
                 AgentModel(
-                    id = agentId,
+                    metadata = EntityMetadata(id = agentId),
                     name = "SimpleAgent",
                     description = "A simple test agent",
                 )

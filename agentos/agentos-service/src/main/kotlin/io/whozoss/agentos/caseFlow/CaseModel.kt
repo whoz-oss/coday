@@ -14,9 +14,4 @@ data class CaseModel(
     override val metadata: EntityMetadata = EntityMetadata(),
     val projectId: UUID,
     val status: CaseStatus,
-) : Entity {
-    /**
-     * Convenience property for backward compatibility.
-     */
-    val id: UUID get() = metadata.id
-}
+) : Entity

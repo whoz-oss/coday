@@ -24,7 +24,7 @@ class ChatClientProvider(
         providers.clear()
         val discovered = aiProviderDiscoveryService.discoverAiProviders()
         discovered.forEach {
-            providers[it.id] = it
+            providers[it.name] = it
         }
         logger.info("Loaded ${providers.size} AI Providers available for use.")
     }

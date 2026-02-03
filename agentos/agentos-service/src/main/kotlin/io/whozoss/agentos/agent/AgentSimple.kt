@@ -49,13 +49,12 @@ import kotlin.collections.map
  * compared to AgentAdvanced.
  */
 class AgentSimple(
-    override val metadata: EntityMetadata,
+    override val metadata: EntityMetadata = EntityMetadata(),
     private val model: AgentModel,
     private val chatClient: ChatClient,
     private val tools: List<StandardTool<*>>,
 ) : Agent {
     override val name: String get() = model.name
-    private val id get() = metadata.id
 
     override fun run(events: List<CaseEvent>): Flow<CaseEvent> =
         flow {

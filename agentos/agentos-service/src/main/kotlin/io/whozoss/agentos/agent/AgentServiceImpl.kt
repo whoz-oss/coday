@@ -67,7 +67,7 @@ class AgentServiceImpl(
     private val hardCodedAgents =
         listOf(
             AgentModel(
-                id = UUID.nameUUIDFromBytes("general-purpose".toByteArray()),
+                metadata = EntityMetadata(id = UUID.nameUUIDFromBytes("general-purpose".toByteArray())),
                 name = "AgentOS General Assistant",
                 description = "Default agent running on AgentOS - Kotlin/Spring AI orchestration layer",
                 instructions =

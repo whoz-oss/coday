@@ -41,7 +41,7 @@ import kotlin.collections.map
  * Each step emits events for observability and potential resumption.
  */
 class AgentAdvanced(
-    override val metadata: EntityMetadata,
+    override val metadata: EntityMetadata = EntityMetadata(),
     private val model: AgentModel,
     private val chatClient: ChatClient,
     private val tools: List<StandardTool<*>>,
@@ -49,7 +49,6 @@ class AgentAdvanced(
     private val maxIterations: Int = 20,
 ) : Agent {
     override val name: String get() = model.name
-    private val id get() = metadata.id
 
     override fun run(events: List<CaseEvent>): Flow<CaseEvent> =
         flow {

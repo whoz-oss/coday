@@ -14,6 +14,7 @@ import io.whozoss.agentos.sdk.model.MessageEvent
 import io.whozoss.agentos.sdk.model.StandardTool
 import io.whozoss.agentos.sdk.model.ThinkingEvent
 import io.whozoss.agentos.sdk.model.ToolSelectedEvent
+import jdk.internal.agent.resources.agent
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
@@ -22,6 +23,7 @@ import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import kotlin.run
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -67,7 +69,7 @@ class AgentAdvancedTest {
             // Create agent
             val model =
                 AgentModel(
-                    id = agentId,
+                    metadata = EntityMetadata(id = agentId),
                     name = "TestAgent",
                     description = "Test agent for advanced orchestration",
                 )

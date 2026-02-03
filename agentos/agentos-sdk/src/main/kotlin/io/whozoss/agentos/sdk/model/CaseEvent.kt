@@ -41,13 +41,6 @@ sealed interface CaseEvent : Entity {
     val caseId: UUID
     val timestamp: Instant
     val type: CaseEventType
-
-    /**
-     * Convenience property for backward compatibility.
-     * Delegates to metadata.id.
-     */
-    val id: UUID
-        get() = metadata.id
 }
 
 /**
