@@ -24,7 +24,7 @@ export class TriggerService {
   constructor(
     private readonly logger: CodayLogger,
     private readonly webhookService: WebhookService,
-    private readonly webhooksDir: string
+    private readonly codayConfigDir: string
   ) {}
 
   /**
@@ -59,8 +59,7 @@ export class TriggerService {
   private async loadAllTriggers(): Promise<void> {
     this.triggers.clear()
 
-    const projectsDir = path.dirname(this.webhooksDir) // Get .coday directory
-    const projectsPath = path.join(projectsDir, 'projects')
+    const projectsPath = path.join(this.codayConfigDir, 'projects')
 
     if (!fs.existsSync(projectsPath)) {
       return
@@ -162,18 +161,12 @@ export class TriggerService {
   private async executeTriggerInternal(trigger: Trigger, mode: 'scheduled' | 'manual'): Promise<string> {
     console.log(`[TRIGGER] Executing trigger "${trigger.name}" (${trigger.id}) [${mode}]`)
 
-    // Get webhook to verify it exists
-    const webhook = await this.webhookService.get(trigger.webhookUuid)
-    if (!webhook) {
-      throw new Error(`Webhook not found: ${trigger.webhookUuid}`)
-    }
-
     // Execute webhook with trigger parameters
-    // Use webhook's createdBy as username for trigger execution
+    // Use trigger's createdBy as username for execution (not webhook's createdBy)
     const result = await this.webhookService.executeWebhook(
       trigger.webhookUuid,
       trigger.parameters || {},
-      webhook.createdBy,
+      trigger.createdBy,
       mode === 'scheduled' ? `Scheduled: ${trigger.name}` : `Manual: ${trigger.name}`,
       false // async execution
     )
@@ -315,8 +308,7 @@ export class TriggerService {
    * Get triggers directory path for a project
    */
   private getTriggersDir(projectName: string): string {
-    const codayDir = path.dirname(this.webhooksDir)
-    return path.join(codayDir, 'projects', projectName, 'triggers')
+    return path.join(this.codayConfigDir, 'projects', projectName, 'triggers')
   }
 
   /**
@@ -330,8 +322,7 @@ export class TriggerService {
    * Find project name for a trigger ID
    */
   private findProjectForTrigger(triggerId: string): string | null {
-    const codayDir = path.dirname(this.webhooksDir)
-    const projectsPath = path.join(codayDir, 'projects')
+    const projectsPath = path.join(this.codayConfigDir, 'projects')
 
     if (!fs.existsSync(projectsPath)) {
       return null
@@ -432,9 +423,9 @@ export class TriggerService {
       throw new Error(`Invalid schedule: ${validation.error}`)
     }
 
-    // Verify webhook exists
-    const webhook = await this.webhookService.get(data.webhookUuid)
-    if (!webhook) {
+    // Verify webhook exists (use getByUuid to find it across all projects)
+    const webhookResult = await this.webhookService.getByUuid(data.webhookUuid)
+    if (!webhookResult) {
       throw new Error(`Webhook not found: ${data.webhookUuid}`)
     }
 
@@ -493,10 +484,10 @@ export class TriggerService {
     if (updates.enabled !== undefined) trigger.enabled = updates.enabled
     if (updates.parameters !== undefined) trigger.parameters = updates.parameters
 
-    // If webhook changed, verify it exists
+    // If webhook changed, verify it exists (use getByUuid to find it across all projects)
     if (updates.webhookUuid !== undefined) {
-      const webhook = await this.webhookService.get(updates.webhookUuid)
-      if (!webhook) {
+      const webhookResult = await this.webhookService.getByUuid(updates.webhookUuid)
+      if (!webhookResult) {
         throw new Error(`Webhook not found: ${updates.webhookUuid}`)
       }
       trigger.webhookUuid = updates.webhookUuid

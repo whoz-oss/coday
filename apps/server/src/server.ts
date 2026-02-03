@@ -341,8 +341,7 @@ PORT_PROMISE.then(async (PORT) => {
   try {
     debugLog('TRIGGER', 'Initializing trigger service...')
 
-    const webhooksDir = webhookService.getWebhooksDir()
-    triggerService = new TriggerService(logger, webhookService, webhooksDir)
+    triggerService = new TriggerService(logger, webhookService, codayOptions.configDir)
     await triggerService.initialize()
 
     // Register trigger routes now that service is initialized

@@ -107,7 +107,7 @@ export class TriggerManagerComponent implements OnInit {
   }
 
   private loadWebhooks(): void {
-    this.webhookApi.listWebhooks().subscribe({
+    this.webhookApi.listWebhooks(this.projectName).subscribe({
       next: (webhooks) => {
         this.webhooks = webhooks
       },

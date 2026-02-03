@@ -4,11 +4,11 @@ import { Observable } from 'rxjs'
 
 /**
  * Webhook interface matching backend definition
+ * Note: 'project' is no longer part of the model - webhooks are stored per project
  */
 export interface Webhook {
   uuid: string
   name: string
-  project: string
   createdBy: string
   createdAt: Date | string
   commandType: 'free' | 'template'
@@ -17,10 +17,10 @@ export interface Webhook {
 
 /**
  * Data for creating a new webhook (without auto-generated fields)
+ * Note: project is passed via URL path, not in the data
  */
 export interface WebhookCreateData {
   name: string
-  project: string
   commandType: 'free' | 'template'
   commands?: string[]
 }
@@ -30,56 +30,69 @@ export interface WebhookCreateData {
  */
 export interface WebhookUpdateData {
   name?: string
-  project?: string
   commandType?: 'free' | 'template'
   commands?: string[]
 }
 
 /**
  * Angular service for webhook API communication
- * 
- * Provides methods to interact with the webhook REST API endpoints.
+ *
+ * NEW ARCHITECTURE:
+ * - CRUD operations are scoped to projects: /api/projects/:projectName/webhooks
+ * - Webhooks are stored per project and filtered by ownership (owner OR CODAY_ADMIN)
+ * - All methods require projectName parameter
+ *
  * All methods return Observables for reactive programming patterns.
  */
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class WebhookApiService {
   private http = inject(HttpClient)
-  private readonly BASE_URL = '/api/webhooks'
 
   /**
-   * List all webhooks
+   * Get base URL for webhook operations within a project
    */
-  listWebhooks(): Observable<Webhook[]> {
-    return this.http.get<Webhook[]>(this.BASE_URL)
+  private getBaseUrl(projectName: string): string {
+    return `/api/projects/${projectName}/webhooks`
   }
 
   /**
-   * Get specific webhook by UUID
+   * List all webhooks for a project (filtered by access control)
    */
-  getWebhook(uuid: string): Observable<Webhook> {
-    return this.http.get<Webhook>(`${this.BASE_URL}/${uuid}`)
+  listWebhooks(projectName: string): Observable<Webhook[]> {
+    return this.http.get<Webhook[]>(this.getBaseUrl(projectName))
   }
 
   /**
-   * Create new webhook
+   * Get specific webhook by UUID within a project
    */
-  createWebhook(data: WebhookCreateData): Observable<Webhook> {
-    return this.http.post<Webhook>(this.BASE_URL, data)
+  getWebhook(projectName: string, uuid: string): Observable<Webhook> {
+    return this.http.get<Webhook>(`${this.getBaseUrl(projectName)}/${uuid}`)
   }
 
   /**
-   * Update existing webhook
+   * Create new webhook in a project
    */
-  updateWebhook(uuid: string, data: WebhookUpdateData): Observable<{success: boolean, webhook: Webhook}> {
-    return this.http.put<{success: boolean, webhook: Webhook}>(`${this.BASE_URL}/${uuid}`, data)
+  createWebhook(projectName: string, data: WebhookCreateData): Observable<Webhook> {
+    return this.http.post<Webhook>(this.getBaseUrl(projectName), data)
   }
 
   /**
-   * Delete webhook
+   * Update existing webhook in a project
    */
-  deleteWebhook(uuid: string): Observable<{success: boolean, message: string}> {
-    return this.http.delete<{success: boolean, message: string}>(`${this.BASE_URL}/${uuid}`)
+  updateWebhook(
+    projectName: string,
+    uuid: string,
+    data: WebhookUpdateData
+  ): Observable<{ success: boolean; webhook: Webhook }> {
+    return this.http.put<{ success: boolean; webhook: Webhook }>(`${this.getBaseUrl(projectName)}/${uuid}`, data)
+  }
+
+  /**
+   * Delete webhook from a project
+   */
+  deleteWebhook(projectName: string, uuid: string): Observable<{ success: boolean; message: string }> {
+    return this.http.delete<{ success: boolean; message: string }>(`${this.getBaseUrl(projectName)}/${uuid}`)
   }
 }
