@@ -89,8 +89,8 @@ export class SidenavComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (config: any) => {
-          // Check if user has CODAY_ADMIN role in temp_groups
-          this.isAdmin = config.temp_groups?.includes('CODAY_ADMIN') ?? false
+          // Check if user has CODAY_ADMIN role in groups
+          this.isAdmin = config.groups?.includes('CODAY_ADMIN') ?? false
           console.log('[SIDENAV] User admin status:', this.isAdmin)
         },
         error: (error) => {

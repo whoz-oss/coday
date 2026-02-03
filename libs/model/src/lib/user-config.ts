@@ -42,7 +42,7 @@ export type UserProjectConfig = {
 export interface UserConfig {
   version: number
 
-  temp_groups?: string[]
+  groups?: string[]
 
   ai?: AiProviderConfig[]
   /**

@@ -114,7 +114,7 @@ Add users to the CODAY_ADMIN group in their user configuration:
 ```yaml
 # ~/.coday/users/{username}/user.yml
 version: 1
-temp_groups:
+groups:
   - CODAY_ADMIN
 ```
 
