@@ -30,7 +30,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("io.biznet.agentos:agentos-sdk:1.0.0")
+    compileOnly("io.whozoss.agentos:agentos-sdk:1.0.0")
 }
 ```
 
@@ -52,7 +52,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("io.biznet.agentos:agentos-sdk:1.0.0")
+    compileOnly("io.whozoss.agentos:agentos-sdk:1.0.0")
 }
 ```
 
@@ -88,7 +88,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("io.biznet.agentos:agentos-sdk:1.0.0")
+    compileOnly("io.whozoss.agentos:agentos-sdk:1.0.0")
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
 }
 
@@ -111,10 +111,10 @@ package com.example
 
 import org.pf4j.Extension
 import org.pf4j.Plugin
-import io.biznet.agentos.sdk.AgentPlugin
-import io.biznet.agentos.sdk.Agent
-import io.biznet.agentos.sdk.ContextType
-import io.biznet.agentos.sdk.AgentStatus
+import io.whozoss.agentos.sdk.AgentPlugin
+import io.whozoss.agentos.sdk.Agent
+import io.whozoss.agentos.sdk.ContextType
+import io.whozoss.agentos.sdk.AgentStatus
 
 class MyPlugin : Plugin() {
     

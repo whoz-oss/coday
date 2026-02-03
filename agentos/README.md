@@ -168,7 +168,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("io.biznet.agentos:agentos-sdk:1.0.0")
+    compileOnly("io.whozoss.agentos:agentos-sdk:1.0.0")
 }
 ```
 
