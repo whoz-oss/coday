@@ -36,4 +36,5 @@ export interface TriggerInfo {
   lastRun?: string
   nextRun?: string | null
   occurrenceCount?: number
+  createdBy: string // Owner of the trigger
 }

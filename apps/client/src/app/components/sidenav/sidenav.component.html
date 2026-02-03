@@ -212,7 +212,10 @@
             </a>
           </div>
         }
-        <!-- Webhooks - Admin only -->
+      }
+
+      <!-- Webhooks - Available for all users -->
+      @if (selectedProjectName()) {
         <div class="section-container">
           <a
             class="section-toggle"
@@ -222,6 +225,13 @@
           >
             <mat-icon class="section-icon">webhook</mat-icon>
             <span class="section-label">Webhooks</span>
+          </a>
+        </div>
+      } @else {
+        <div class="section-container">
+          <a class="section-toggle disabled" role="button" tabindex="-1" aria-disabled="true">
+            <mat-icon class="section-icon">webhook</mat-icon>
+            <span class="section-label">Webhooks (No project)</span>
           </a>
         </div>
       }
