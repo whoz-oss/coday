@@ -1,5 +1,5 @@
 import type express from 'express'
-import type { TriggerService } from '@coday/service/trigger.service'
+import { TriggerService } from '@coday/service'
 
 /**
  * Register trigger-related REST API routes
