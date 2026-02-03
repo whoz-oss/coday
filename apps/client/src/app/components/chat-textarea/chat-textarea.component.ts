@@ -44,6 +44,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   isStopping: boolean = false
   // Local flag to immediately disable textarea when message is sent
   isLocallyDisabled: boolean = false
+  @Output() filesPasted = new EventEmitter<File[]>()
   @Output() messageSubmitted = new EventEmitter<string>()
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
   @Output() heightChanged = new EventEmitter<number>()
@@ -253,6 +254,30 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
     // Check for autocomplete triggers
     this.checkForAutocomplete()
+  }
+
+  @HostListener('paste', ['$event'])
+  onPaste(event: ClipboardEvent): void {
+    const items = event.clipboardData?.items
+    if (!items) {
+      return
+    }
+
+    const fileItems = Array.from(items).filter((item) => item.kind === 'file')
+    if (!fileItems.length) {
+      return
+    }
+
+    event.preventDefault()
+
+    const files = fileItems.reduce<File[]>((acc, item) => {
+      const file = item.getAsFile()
+      return file ? [...acc, file] : acc
+    }, [])
+
+    if (files.length) {
+      this.filesPasted.emit(files)
+    }
   }
 
   /**

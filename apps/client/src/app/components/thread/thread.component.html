@@ -71,7 +71,8 @@
                   (voiceRecordingToggled)="onVoiceToggled($event)"
                   (heightChanged)="onInputHeightChanged($event)"
                   (stopRequested)="onStopRequested()"
-                ></app-chat-textarea>
+                  (filesPasted)="onFilesPasted($event)"
+                />
               }
 
               <!-- Choice Select - Overlay on top of input-section -->
