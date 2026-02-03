@@ -17,14 +17,14 @@ import { WebhookService } from './webhook.service'
  * - Updates lastRun/nextRun timestamps
  */
 export class TriggerService {
-  private triggers: Map<string, Trigger> = new Map()
+  private readonly triggers: Map<string, Trigger> = new Map()
   private checkInterval?: NodeJS.Timeout
   private readonly CHECK_INTERVAL_MS = 30000 // 1 minute
 
   constructor(
-    private logger: CodayLogger,
-    private webhookService: WebhookService,
-    private webhooksDir: string
+    private readonly logger: CodayLogger,
+    private readonly webhookService: WebhookService,
+    private readonly webhooksDir: string
   ) {}
 
   /**
@@ -144,7 +144,7 @@ export class TriggerService {
       if (!trigger.enabled) continue
 
       // Check if trigger should execute now
-      if (shouldExecuteNow(trigger.schedule, trigger.nextRun || null, trigger.occurrenceCount || 0)) {
+      if (shouldExecuteNow(trigger.schedule, trigger.nextRun ?? null, trigger.occurrenceCount ?? 0)) {
         this.executeTrigger(trigger).catch((error) => {
           console.error(`[TRIGGER] Failed to execute trigger ${trigger.id}:`, error)
         })
@@ -198,13 +198,13 @@ export class TriggerService {
       return
     }
 
-    let success = false
+    let success: boolean
     let threadId: string | undefined
     let error: string | undefined
 
     // Update trigger state
     trigger.lastRun = executedAt
-    trigger.occurrenceCount = (trigger.occurrenceCount || 0) + 1
+    trigger.occurrenceCount = (trigger.occurrenceCount ?? 0) + 1
     trigger.nextRun = calculateNextRun(trigger.schedule, new Date(), trigger.occurrenceCount)
 
     try {
@@ -254,7 +254,7 @@ export class TriggerService {
    */
   private calculateNextRunSkippingMissed(trigger: Trigger): { nextRun: string | null; occurrenceCount: number } {
     const now = new Date()
-    let occurrenceCount = trigger.occurrenceCount || 0
+    let occurrenceCount = trigger.occurrenceCount ?? 0
     let nextRun = trigger.nextRun
 
     // If no nextRun, calculate from now
@@ -476,6 +476,7 @@ export class TriggerService {
     updates: {
       name?: string
       enabled?: boolean
+      webhookUuid?: string
       schedule?: IntervalSchedule
       parameters?: Record<string, unknown>
     },
@@ -491,6 +492,15 @@ export class TriggerService {
     if (updates.name !== undefined) trigger.name = updates.name
     if (updates.enabled !== undefined) trigger.enabled = updates.enabled
     if (updates.parameters !== undefined) trigger.parameters = updates.parameters
+
+    // If webhook changed, verify it exists
+    if (updates.webhookUuid !== undefined) {
+      const webhook = await this.webhookService.get(updates.webhookUuid)
+      if (!webhook) {
+        throw new Error(`Webhook not found: ${updates.webhookUuid}`)
+      }
+      trigger.webhookUuid = updates.webhookUuid
+    }
 
     // If schedule changed, validate and recalculate nextRun
     if (updates.schedule !== undefined) {

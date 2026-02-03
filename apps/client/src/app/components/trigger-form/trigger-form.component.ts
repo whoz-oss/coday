@@ -106,11 +106,12 @@ export class TriggerFormComponent implements OnChanges {
     // Parse schedule
     const schedule = this.trigger.schedule
 
-    // Start timestamp
+    // Start timestamp (convert UTC to local)
     const startDate = new Date(schedule.startTimestamp)
-    const isoDate = startDate.toISOString().split('T')[0]
-    this.startDate = isoDate || ''
-    this.startTime = startDate.toTimeString().substring(0, 5)
+    // Format date as YYYY-MM-DD in local timezone
+    this.startDate = this.formatDateForInput(startDate)
+    // Format time as HH:mm in local timezone
+    this.startTime = this.formatTimeForInput(startDate)
 
     // Interval
     const match = schedule.interval.match(/^(\d+)(min|h|d|M)$/)
@@ -138,9 +139,9 @@ export class TriggerFormComponent implements OnChanges {
         this.endOccurrences = schedule.endCondition.value as number
       } else if (schedule.endCondition.type === 'endTimestamp') {
         const endDate = new Date(schedule.endCondition.value as string)
-        const isoEndDate = endDate.toISOString().split('T')[0]
-        this.endDate = isoEndDate || ''
-        this.endTime = endDate.toTimeString().substring(0, 5)
+        // Format date and time in local timezone
+        this.endDate = this.formatDateForInput(endDate)
+        this.endTime = this.formatTimeForInput(endDate)
       }
     } else {
       this.endConditionType = 'none'
@@ -162,15 +163,14 @@ export class TriggerFormComponent implements OnChanges {
     this.webhookUuid = ''
     this.enabled = true
 
-    // Set default start to now + 1 hour
+    // Set default start to now + 1 hour (in local timezone)
     const now = new Date()
     now.setHours(now.getHours() + 1)
     now.setMinutes(0)
     now.setSeconds(0)
     now.setMilliseconds(0)
-    const isoDate = now.toISOString().split('T')[0]
-    this.startDate = isoDate || ''
-    this.startTime = now.toTimeString().substring(0, 5)
+    this.startDate = this.formatDateForInput(now)
+    this.startTime = this.formatTimeForInput(now)
 
     this.intervalValue = 1
     this.intervalUnit = 'h'
@@ -185,10 +185,14 @@ export class TriggerFormComponent implements OnChanges {
 
   /**
    * Show/hide days of week based on interval
+   * Days of week constraint makes sense for:
+   * - Minutes: run every X minutes but only on specific days
+   * - Hours: run every X hours but only on specific days
+   * - Days: run every X days but only on specific days of week
+   * Not relevant for months (too long interval)
    */
   shouldShowDaysOfWeek(): boolean {
-    // Show only if interval is at least 1 day or 1 month
-    return (this.intervalUnit === 'd' || this.intervalUnit === 'M') && this.intervalValue >= 1
+    return this.intervalUnit === 'min' || this.intervalUnit === 'h' || this.intervalUnit === 'd'
   }
 
   onSave(): void {
@@ -284,6 +288,25 @@ export class TriggerFormComponent implements OnChanges {
     }
 
     return null
+  }
+
+  /**
+   * Format a Date object as YYYY-MM-DD string in local timezone
+   */
+  private formatDateForInput(date: Date): string {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  /**
+   * Format a Date object as HH:mm string in local timezone
+   */
+  private formatTimeForInput(date: Date): string {
+    const hours = String(date.getHours()).padStart(2, '0')
+    const minutes = String(date.getMinutes()).padStart(2, '0')
+    return `${hours}:${minutes}`
   }
 
   /**
