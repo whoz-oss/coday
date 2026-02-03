@@ -4,7 +4,7 @@ import io.whozoss.agentos.sdk.aiprovider.AiProvider
 import io.whozoss.agentos.service.plugins.AiProviderDiscoveryService
 import io.whozoss.agentos.service.provider.ModelConfig
 import jakarta.annotation.PostConstruct
-import org.slf4j.LoggerFactory
+import mu.KLogging
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.stereotype.Service
 import java.util.concurrent.ConcurrentHashMap
@@ -14,8 +14,6 @@ class ChatClientProvider(
     private val aiProviderDiscoveryService: AiProviderDiscoveryService,
     private val chatModelFactory: ChatModelFactory,
 ) {
-    private val logger = LoggerFactory.getLogger(ChatClientProvider::class.java)
-
     private val providers = ConcurrentHashMap<String, AiProvider>()
 
     @PostConstruct
@@ -33,20 +31,25 @@ class ChatClientProvider(
      * The main entry point. Creates a lightweight ChatClient on demand.
      */
     fun getChatClient(modelConfig: ModelConfig): ChatClient {
-        val provider = providers[modelConfig.providerId]
-            ?: throw IllegalArgumentException("Provider '${modelConfig.providerId}' not found.")
+        val provider =
+            providers[modelConfig.providerId]
+                ?: throw IllegalArgumentException("Provider '${modelConfig.providerId}' not found.")
 
-        val chatModel = chatModelFactory.createChatModel(
-            provider = provider,
-            runtimeApiKey = modelConfig.apiKey,
-            runtimeModel = modelConfig.model
-        )
+        val chatModel =
+            chatModelFactory.createChatModel(
+                provider = provider,
+                runtimeApiKey = modelConfig.apiKey,
+                runtimeModel = modelConfig.model,
+            )
 
-        return ChatClient.builder(chatModel)
+        return ChatClient
+            .builder(chatModel)
             .build()
     }
 
     fun getProviderMetadata(id: String): AiProvider? = providers[id]
 
     fun getAllProviders(): List<AiProvider> = providers.values.toList()
+
+    companion object : KLogging()
 }

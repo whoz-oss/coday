@@ -10,8 +10,6 @@ import org.slf4j.LoggerFactory
 class CodeBasedPlugin(
     wrapper: PluginWrapper,
 ) : Plugin(wrapper) {
-    private val logger = LoggerFactory.getLogger(CodeBasedPlugin::class.java)
-
     override fun start() {
         logger.info("Code-Based Agents Plugin started!")
     }
@@ -19,4 +17,6 @@ class CodeBasedPlugin(
     override fun stop() {
         logger.info("Code-Based Agents Plugin stopped!")
     }
+
+    companion object : KLogging()
 }

@@ -1,9 +1,9 @@
 package io.whozoss.agentos.service.plugins
 
 import io.whozoss.agentos.sdk.agent.AgentPlugin
+import mu.KLogging
 import org.pf4j.PluginManager
 import org.pf4j.PluginState
-import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.nio.file.Path
 
@@ -14,8 +14,6 @@ import java.nio.file.Path
 class PluginService(
     private val pluginManager: PluginManager,
 ) {
-    private val logger = LoggerFactory.getLogger(PluginService::class.java)
-
     /**
      * Get all loaded plugins with their metadata
      */
@@ -134,6 +132,8 @@ class PluginService(
             pluginPath = wrapper.pluginPath.toString(),
         )
     }
+
+    companion object : KLogging()
 }
 
 /**

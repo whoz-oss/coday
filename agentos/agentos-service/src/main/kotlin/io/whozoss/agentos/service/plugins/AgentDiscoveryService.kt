@@ -1,9 +1,9 @@
 package io.whozoss.agentos.service.plugins
 
-import io.whozoss.agentos.service.agents.domain.Agent
 import io.whozoss.agentos.sdk.agent.AgentPlugin
+import io.whozoss.agentos.service.agents.domain.Agent
+import mu.KLogging
 import org.pf4j.PluginManager
-import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 
 /**
@@ -11,16 +11,14 @@ import org.springframework.stereotype.Service
  */
 @Service
 class AgentDiscoveryService(
-    private val pluginManager: PluginManager
+    private val pluginManager: PluginManager,
 ) {
-    private val logger = LoggerFactory.getLogger(AgentDiscoveryService::class.java)
-
     /**
      * Get all agents from all loaded plugins
      */
     fun discoverAgents(): List<Agent> {
         logger.info("Searching for AgentPlugin extensions...")
-        
+
         val extensions = pluginManager.getExtensions(AgentPlugin::class.java)
         logger.info("Found ${extensions.size} AgentPlugin extension(s) total")
 
@@ -43,4 +41,6 @@ class AgentDiscoveryService(
 
         return agents
     }
+
+    companion object : KLogging()
 }
