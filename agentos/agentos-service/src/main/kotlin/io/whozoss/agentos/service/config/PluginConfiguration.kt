@@ -29,5 +29,5 @@ class PluginConfiguration {
         return SpringPluginManager(pluginPath).also { pluginManager -> pluginManager.applicationContext = applicationContext }
     }
 
-    companion object : KLogging() {}
+    companion object : KLogging()
 }

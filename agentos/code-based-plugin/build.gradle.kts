@@ -3,7 +3,7 @@ plugins {
     kotlin("kapt")
 }
 
-group = "io.whozoss.agentos.plugins"
+group = "whoz-oss.agentos"
 version = "1.0.0"
 
 repositories {
@@ -60,7 +60,7 @@ tasks.jar {
             "Plugin-Id" to "code-based-agents",
             "Plugin-Version" to version,
             "Plugin-Provider" to "AgentOS",
-            "Plugin-Class" to "io.whozoss.agentos.plugins.codebased.CodeBasedPlugin",
+            "Plugin-Class" to "whoz-oss.agentos.plugins.codebased.CodeBasedPlugin",
         )
     }
 

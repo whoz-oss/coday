@@ -2,8 +2,8 @@ package io.whozoss.agentos.service.plugins
 
 import io.whozoss.agentos.sdk.aiprovider.AiProvider
 import io.whozoss.agentos.sdk.aiprovider.AiProviderPlugin
+import mu.KLogging
 import org.pf4j.PluginManager
-import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 
 /**
@@ -11,10 +11,8 @@ import org.springframework.stereotype.Service
  */
 @Service
 class AiProviderDiscoveryService(
-    private val pluginManager: PluginManager
+    private val pluginManager: PluginManager,
 ) {
-    private val logger = LoggerFactory.getLogger(AiProviderDiscoveryService::class.java)
-
     /**
      * Get all AI Providers from all loaded plugins
      */
@@ -39,4 +37,6 @@ class AiProviderDiscoveryService(
 
         return providers
     }
+
+    companion object : KLogging()
 }

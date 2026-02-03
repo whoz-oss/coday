@@ -140,7 +140,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("io.whozoss.agentos:agentos-sdk:1.0.0")
+    compileOnly("whoz-oss.agentos:agentos-sdk:1.0.0")
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
 }
 
@@ -159,13 +159,6 @@ tasks.jar {
 3. **Implement your plugin:**
 
 ```kotlin
-package com.example
-
-import org.pf4j.Extension
-import org.pf4j.Plugin
-import io.whozoss.agentos.sdk.AgentPlugin
-import io.whozoss.agentos.sdk.Agent
-import io.whozoss.agentos.sdk.ContextType
 
 class MyPlugin : Plugin()
 
