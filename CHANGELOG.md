@@ -1,3 +1,13 @@
+## 0.64.0 (2026-02-03)
+
+### 🚀 Features
+
+- add `clean` to git danger keywords ([#448](https://github.com/whoz-oss/coday/pull/448))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.63.3 (2026-01-30)
 
 ### 🩹 Fixes
