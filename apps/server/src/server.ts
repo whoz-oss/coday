@@ -13,6 +13,7 @@ import { ConfigServiceRegistry } from '@coday/service'
 import { ServerInteractor } from '@coday/model'
 import { registerConfigRoutes } from './lib/config.routes'
 import { registerWebhookRoutes } from './lib/webhook.routes'
+import { registerSlackRoutes, SlackSocketModeManager } from '@coday/integrations-slack'
 import { registerProjectRoutes } from './lib/project.routes'
 import { registerThreadRoutes } from './lib/thread.routes'
 import { registerMessageRoutes } from './lib/message.routes'
@@ -53,7 +54,14 @@ debugLog(
 const webhookService = new WebhookService(codayOptions.configDir)
 debugLog('INIT', 'Webhook service initialized')
 // Middleware to parse JSON bodies with increased limit for image uploads
-app.use(express.json({ limit: '20mb' }))
+app.use(
+  express.json({
+    limit: '20mb',
+    verify: (req, _res, buf) => {
+      ;(req as any).rawBody = buf
+    },
+  })
+)
 
 // Development mode: proxy to Angular dev server
 if (process.env.BUILD_ENV === 'development') {
@@ -226,6 +234,18 @@ registerConfigRoutes(app, configRegistry, getUsername)
 // Register webhook management routes (including execution endpoint)
 registerWebhookRoutes(app, webhookService, getUsername, threadService, threadCodayManager, codayOptions, logger)
 
+// Register Slack integration routes (HTTP webhooks)
+registerSlackRoutes(app, projectService, threadService, threadCodayManager, codayOptions, debugLog)
+
+// Initialize Slack Socket Mode manager
+const slackSocketManager = new SlackSocketModeManager(
+  projectService,
+  threadService,
+  threadCodayManager,
+  codayOptions,
+  debugLog
+)
+
 // Register project management routes
 registerProjectRoutes(app, projectService)
 
@@ -311,8 +331,15 @@ PORT_PROMISE.then(async (PORT) => {
     debugLog('INIT', `Using configured base URL: ${codayOptions.baseUrl}`)
   }
 
-  app.listen(PORT, () => {
+  app.listen(PORT, async () => {
     console.log(`Server is running on http://localhost:${PORT}`)
+
+    // Initialize Slack Socket Mode connections
+    try {
+      await slackSocketManager.initialize()
+    } catch (error) {
+      console.error('Failed to initialize Slack Socket Mode:', error)
+    }
   })
 
   // Start thread cleanup service after server is running
@@ -350,6 +377,10 @@ async function gracefulShutdown(signal: string) {
       console.log('Stopping thread cleanup service...')
       await cleanupService.stop()
     }
+
+    // Disconnect Slack Socket Mode
+    console.log('Disconnecting Slack Socket Mode...')
+    await slackSocketManager.shutdown()
 
     // Cleanup thread-based Coday instances
     console.log('Cleaning up thread Coday instances...')

@@ -1028,6 +1028,12 @@ importers:
 
   libs/integrations/slack:
     dependencies:
+      '@slack/socket-mode':
+        specifier: 2.0.5
+        version: 2.0.5
+      '@slack/web-api':
+        specifier: 7.13.0
+        version: 7.13.0
       tslib:
         specifier: 'catalog:'
         version: 2.8.1
@@ -4225,6 +4231,22 @@ packages:
   '@sinonjs/fake-timers@13.0.5':
     resolution: {integrity: sha512-36/hTbH2uaWuGVERyC6da9YwGWnzUZXuPro/F2LfsdOsLnCojz/iSH8MxUt/FD2S5XBSVPhmArFUXcpCQ2Hkiw==}
 
+  '@slack/logger@4.0.0':
+    resolution: {integrity: sha512-Wz7QYfPAlG/DR+DfABddUZeNgoeY7d1J39OCR2jR+v7VBsB8ezulDK5szTnDDPDwLH5IWhLvXIHlCFZV7MSKgA==}
+    engines: {node: '>= 18', npm: '>= 8.6.0'}
+
+  '@slack/socket-mode@2.0.5':
+    resolution: {integrity: sha512-VaapvmrAifeFLAFaDPfGhEwwunTKsI6bQhYzxRXw7BSujZUae5sANO76WqlVsLXuhVtCVrBWPiS2snAQR2RHJQ==}
+    engines: {node: '>= 18', npm: '>= 8.6.0'}
+
+  '@slack/types@2.19.0':
+    resolution: {integrity: sha512-7+QZ38HGcNh/b/7MpvPG6jnw7mliV6UmrquJLqgdxkzJgQEYUcEztvFWRU49z0x4vthF0ixL5lTK601AXrS8IA==}
+    engines: {node: '>= 12.13.0', npm: '>= 6.12.0'}
+
+  '@slack/web-api@7.13.0':
+    resolution: {integrity: sha512-ERcExbWrnkDN8ovoWWe6Wgt/usanj1dWUd18dJLpctUI4mlPS0nKt81Joh8VI+OPbNnY1lIilVt9gdMBD9U2ig==}
+    engines: {node: '>= 18', npm: '>= 8.6.0'}
+
   '@swc-node/core@1.14.1':
     resolution: {integrity: sha512-jrt5GUaZUU6cmMS+WTJEvGvaB6j1YNKPHPzC2PUi2BjaFbtxURHj6641Az6xN7b665hNniAIdvjxWcRml5yCnw==}
     engines: {node: '>= 10'}
@@ -4506,6 +4528,9 @@ packages:
 
   '@types/responselike@1.0.3':
     resolution: {integrity: sha512-H/+L+UkTV33uf49PH5pCAUBVPNj2nDBXTN+qS1dOwyyg24l3CcicicCA7ca+HMvJBZcFgl5r8e+RR6elsb4Lyw==}
+
+  '@types/retry@0.12.0':
+    resolution: {integrity: sha512-wWKOClTTiizcZhXnPY4wikVAwmdYHp8q6DmC+EJUzAMsycb7HB32Kh9RN4+0gExjmPmZSAQjgURXIGATPegAvA==}
 
   '@types/retry@0.12.2':
     resolution: {integrity: sha512-XISRgDJ2Tc5q4TRqvgJtzsRkFYNJzZrhTdtMoGVBttwzzQJkPnS3WWTFc7kuDRoPtPakl+T+OfdEUjYJj7Jbow==}
@@ -7197,6 +7222,9 @@ packages:
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
     hasBin: true
 
+  is-electron@2.2.2:
+    resolution: {integrity: sha512-FO/Rhvz5tuw4MCWkpMzHFKWD2LsfHzIb7i6MdPYZ/KW7AlxawyLkqdy+jPZP1WubqEADE3O4FUENlJHDfQASRg==}
+
   is-extglob@2.1.1:
     resolution: {integrity: sha512-SbKbANkN603Vi4jEZv49LeVJMn4yGwsbzZworEoyEiutsN3nJYdbO36zfhGJ6QEDpOZIFkDtnq5JRxmvl3jsoQ==}
     engines: {node: '>=0.10.0'}
@@ -8451,6 +8479,10 @@ packages:
     resolution: {integrity: sha512-37/tPdZ3oJwHaS3gNJdenCDB3Tz26i9sjhnguBtvN0vYlRIiDNnvTWkuh+0hETV9rLPdJ3rlL3yVOYPIAnM8rw==}
     engines: {node: '>=18'}
 
+  p-finally@1.0.0:
+    resolution: {integrity: sha512-LICb2p9CB7FS+0eR1oqWnHhp0FljGLZCWBE9aix0Uye9W8LTQPwMTYVGWQWIw9RdQiDg4+epXQODwIYJtSJaow==}
+    engines: {node: '>=4'}
+
   p-limit@1.3.0:
     resolution: {integrity: sha512-vvcXsLAJ9Dr5rQOPk7toZQZJApBl2K4J6dANSsEuh6QI41JYcsS/qhTGa9ErIUUgK3WNQoJYvylxvjqmiqEA9Q==}
     engines: {node: '>=4'}
@@ -8491,13 +8523,25 @@ packages:
     resolution: {integrity: sha512-tkAQEw8ysMzmkhgw8k+1U/iPhWNhykKnSk4Rd5zLoPJCuJaGRPo6YposrZgaxHKzDHdDWWZvE/Sk7hsL2X/CpQ==}
     engines: {node: '>=18'}
 
+  p-queue@6.6.2:
+    resolution: {integrity: sha512-RwFpb72c/BhQLEXIZ5K2e+AhgNVmIejGlTgiB9MzZ0e93GRvqZ7uSi0dvRF7/XIXDeNkra2fNHBxTyPDGySpjQ==}
+    engines: {node: '>=8'}
+
   p-reduce@3.0.0:
     resolution: {integrity: sha512-xsrIUgI0Kn6iyDYm9StOpOeK29XM1aboGji26+QEortiFST1hGZaUQOLhtEbqHErPpGW/aSz6allwK2qcptp0Q==}
     engines: {node: '>=12'}
 
+  p-retry@4.6.2:
+    resolution: {integrity: sha512-312Id396EbJdvRONlngUx0NydfrIQ5lsYu0znKVUzVvArzEIt08V1qhtyESbGVd1FGX7UKtiFp5uwKZdM8wIuQ==}
+    engines: {node: '>=8'}
+
   p-retry@6.2.1:
     resolution: {integrity: sha512-hEt02O4hUct5wtwg4H4KcWgDdm+l1bOaEy/hWzd8xtXB9BqxTWBBhb+2ImAtH4Cv4rPjV76xN3Zumqk3k3AhhQ==}
     engines: {node: '>=16.17'}
+
+  p-timeout@3.2.0:
+    resolution: {integrity: sha512-rhIwUycgwwKcP9yTOOFK/AKsAopjjCakVqLHePO3CC6Mir1Z99xT+R63jZxAT5lFZLa2inS5h+ZS2GvR99/FBg==}
+    engines: {node: '>=8'}
 
   p-try@1.0.0:
     resolution: {integrity: sha512-U1etNYuMJoIz3ZXSrrySFjsXQTWOx2/jdi86L+2pRvph/qMKL6sbcCYdH23fqsbm8TH2Gn0OybpT4eSFlCVHww==}
@@ -8606,7 +8650,6 @@ packages:
     resolution: {integrity: sha512-WkezNsLK8sGpuFC7+PPP0DsXROwdoOxmXPBTtUWWkCwCi/Vi97MRC52Ly6FWIJjOKIywpm/L2oaUgSrmtU+7ZQ==}
     engines: {node: '>=20.18.0'}
     hasBin: true
-    bundledDependencies: []
 
   pe-library@0.4.1:
     resolution: {integrity: sha512-eRWB5LBz7PpDu4PUlwT0PhnQfTQJlDDdPa35urV4Osrm0t0AqQFGn+UIkU3klZvwJ8KPO3VbBFsXquA6p6kqZw==}
@@ -14466,6 +14509,42 @@ snapshots:
     dependencies:
       '@sinonjs/commons': 3.0.1
 
+  '@slack/logger@4.0.0':
+    dependencies:
+      '@types/node': 24.7.2
+
+  '@slack/socket-mode@2.0.5':
+    dependencies:
+      '@slack/logger': 4.0.0
+      '@slack/web-api': 7.13.0
+      '@types/node': 24.7.2
+      '@types/ws': 8.18.1
+      eventemitter3: 5.0.4
+      ws: 8.19.0
+    transitivePeerDependencies:
+      - bufferutil
+      - debug
+      - utf-8-validate
+
+  '@slack/types@2.19.0': {}
+
+  '@slack/web-api@7.13.0':
+    dependencies:
+      '@slack/logger': 4.0.0
+      '@slack/types': 2.19.0
+      '@types/node': 24.7.2
+      '@types/retry': 0.12.0
+      axios: 1.13.3
+      eventemitter3: 5.0.4
+      form-data: 4.0.5
+      is-electron: 2.2.2
+      is-stream: 2.0.1
+      p-queue: 6.6.2
+      p-retry: 4.6.2
+      retry: 0.13.1
+    transitivePeerDependencies:
+      - debug
+
   '@swc-node/core@1.14.1(@swc/core@1.13.19(@swc/helpers@0.5.17))(@swc/types@0.1.25)':
     dependencies:
       '@swc/core': 1.13.19(@swc/helpers@0.5.17)
@@ -14783,6 +14862,8 @@ snapshots:
   '@types/responselike@1.0.3':
     dependencies:
       '@types/node': 24.7.2
+
+  '@types/retry@0.12.0': {}
 
   '@types/retry@0.12.2': {}
 
@@ -18128,6 +18209,8 @@ snapshots:
 
   is-docker@3.0.0: {}
 
+  is-electron@2.2.2: {}
+
   is-extglob@2.1.1: {}
 
   is-finalizationregistry@1.1.1:
@@ -19679,6 +19762,8 @@ snapshots:
     dependencies:
       p-map: 7.0.4
 
+  p-finally@1.0.0: {}
+
   p-limit@1.3.0:
     dependencies:
       p-try: 1.0.0
@@ -19717,13 +19802,27 @@ snapshots:
 
   p-map@7.0.4: {}
 
+  p-queue@6.6.2:
+    dependencies:
+      eventemitter3: 4.0.7
+      p-timeout: 3.2.0
+
   p-reduce@3.0.0: {}
+
+  p-retry@4.6.2:
+    dependencies:
+      '@types/retry': 0.12.0
+      retry: 0.13.1
 
   p-retry@6.2.1:
     dependencies:
       '@types/retry': 0.12.2
       is-network-error: 1.3.0
       retry: 0.13.1
+
+  p-timeout@3.2.0:
+    dependencies:
+      p-finally: 1.0.0
 
   p-try@1.0.0: {}
 
