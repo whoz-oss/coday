@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@angular/build": "catalog:dev",
+    "@types/dompurify": "catalog:dev",
     "jest-preset-angular": "catalog:dev",
     "typescript": "catalog:dev"
   },

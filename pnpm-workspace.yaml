@@ -79,7 +79,7 @@ catalogs:
     '@types/http-proxy-middleware': 1.0.0
     '@types/jest': 30.0.0
     '@types/node': 24.7.2
-    '@types/sharp': 0.32.0
+    '@types/dompurify': 3.0.5
     '@types/turndown': 5.0.6
     '@types/yargs': 17.0.35
     '@typescript-eslint/eslint-plugin': ^8.46.3
