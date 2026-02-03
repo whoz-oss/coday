@@ -1,12 +1,6 @@
 import express from 'express'
 import { debugLog } from './log'
 import { WebhookService, Webhook } from '@coday/service'
-import { ThreadCodayManager } from './thread-coday-manager'
-import { CodayOptions } from '@coday/model'
-import { CodayLogger } from '@coday/model'
-import { CodayEvent, MessageEvent } from '@coday/model'
-import { filter } from 'rxjs'
-import { ThreadService } from '@coday/service'
 import { getParamAsString } from './route-helpers'
 
 /**

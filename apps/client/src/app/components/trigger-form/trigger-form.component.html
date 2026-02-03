@@ -1,6 +1,4 @@
 <div class="trigger-form-container">
-  <h2>{{ formTitle }}</h2>
-
   <!-- Error Message -->
   @if (errorMessage) {
     <div class="error-message">
@@ -27,13 +25,13 @@
     <!-- Webhook Field -->
     <mat-form-field appearance="outline" class="full-width">
       <mat-label>Webhook</mat-label>
-      <mat-select [(ngModel)]="webhookUuid" name="webhookUuid" [disabled]="isSaving || isEditMode" required>
+      <mat-select [(ngModel)]="webhookUuid" name="webhookUuid" [disabled]="isSaving" required>
         <mat-option value="">Select a webhook...</mat-option>
         @for (webhook of webhooks; track webhook.uuid) {
           <mat-option [value]="webhook.uuid">{{ webhook.name }}</mat-option>
         }
       </mat-select>
-      <mat-hint>{{ isEditMode ? 'Webhook cannot be changed after creation' : 'The webhook to execute' }}</mat-hint>
+      <mat-hint>The webhook to execute on schedule</mat-hint>
     </mat-form-field>
 
     <!-- Schedule Section -->
@@ -85,7 +83,7 @@
     <!-- Days of Week (only for daily+ intervals) -->
     @if (shouldShowDaysOfWeek()) {
       <div class="days-of-week">
-        <label class="field-label">Run on specific days:</label>
+        <div class="field-label">Run on specific days:</div>
         <div class="checkbox-group">
           @for (dayName of dayNames; track $index) {
             <mat-checkbox [(ngModel)]="daysOfWeek[$index]" [name]="'day' + $index" [disabled]="isSaving">
@@ -99,7 +97,7 @@
 
     <!-- End Condition -->
     <div class="end-condition">
-      <label class="field-label">End condition:</label>
+      <div class="field-label">End condition:</div>
       <mat-radio-group [(ngModel)]="endConditionType" name="endConditionType" [disabled]="isSaving" class="radio-group">
         <mat-radio-button value="none">No end (run indefinitely)</mat-radio-button>
         <mat-radio-button value="occurrences">After a number of executions</mat-radio-button>

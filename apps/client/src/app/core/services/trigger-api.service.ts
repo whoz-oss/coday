@@ -49,6 +49,7 @@ export interface TriggerCreateData {
 export interface TriggerUpdateData {
   name?: string
   enabled?: boolean
+  webhookUuid?: string
   schedule?: IntervalSchedule
   parameters?: Record<string, unknown>
 }
