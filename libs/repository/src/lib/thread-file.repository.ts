@@ -122,6 +122,7 @@ export class ThreadFileRepository implements ThreadRepository {
 
       // Save migrated thread if needed
       if (migratedThread !== data) {
+        console.log(`[THREAD-REPO] Saving migrated thread ${threadId} (v${migratedThread.version})`)
         writeYamlFile(filePath, migratedThread)
       }
 

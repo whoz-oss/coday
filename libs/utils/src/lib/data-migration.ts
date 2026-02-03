@@ -41,6 +41,7 @@ export function migrateData(data: any, migrations: Migration[]): any {
 
   // Apply migrations sequentially based on the current version
   for (const migration of orderedMigrations) {
+    console.log(`[MIGRATION] Applying v${migration.version} to thread ${currentConfig.id || 'unknown'}`)
     const newConfig = migration.migrate({ ...currentConfig })
     newConfig.version = migration.version + 1
     currentConfig = newConfig
