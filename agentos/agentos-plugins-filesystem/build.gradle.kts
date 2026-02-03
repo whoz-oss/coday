@@ -1,6 +1,7 @@
 plugins {
     id("dev.nx.gradle.project-graph") version ("0.1.10")
     alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.kapt) // Required for PF4J annotation processing
 }
 
 group = "whoz-oss.agentos"
@@ -19,9 +20,17 @@ dependencies {
 
     // PF4J - Required for @Extension annotation processing
     compileOnly(libs.pf4j)
+    kapt(libs.pf4j)
 
     // Jackson for YAML parsing
     compileOnly(libs.bundles.jackson)
+}
+
+// Configure kapt for PF4J extension processing
+kapt {
+    arguments {
+        arg("pf4j.storageClassName", "org.pf4j.processor.LegacyExtensionStorage")
+    }
 }
 
 kotlin {
