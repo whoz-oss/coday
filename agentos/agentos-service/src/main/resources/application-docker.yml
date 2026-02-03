@@ -40,7 +40,7 @@ agentos:
 logging:
   level:
     root: ${LOGGING_LEVEL_ROOT:INFO}
-    io.biznet.agentos: ${LOGGING_LEVEL_IO_BIZNET_AGENTOS:DEBUG}
+    io.whozoss.agentos.service: ${LOGGING_LEVEL_IO_BIZNET_AGENTOS:DEBUG}
     org.pf4j: INFO
     org.springframework.boot: INFO
   pattern:
