@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter } from '@angular/core'
+import { Component, Input, Output, EventEmitter, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { Trigger, IntervalSchedule } from '../../core/services/trigger-api.service'
 import { Webhook } from '../../core/services/webhook-api.service'
@@ -7,6 +7,7 @@ import { MatButton, MatIconButton } from '@angular/material/button'
 import { MatTooltip } from '@angular/material/tooltip'
 import { MatChipsModule } from '@angular/material/chips'
 import { MatTableModule } from '@angular/material/table'
+import { UserService } from '../../core/services/user.service'
 
 /**
  * Dumb/Presentation Component for displaying trigger list
@@ -26,6 +27,8 @@ import { MatTableModule } from '@angular/material/table'
   styleUrl: './trigger-list.component.scss',
 })
 export class TriggerListComponent {
+  private userService = inject(UserService)
+
   @Input() triggers: Trigger[] = []
   @Input() webhooks: Webhook[] = []
   @Input() isLoading: boolean = false
@@ -127,5 +130,13 @@ export class TriggerListComponent {
       return '—'
     }
     return this.formatDate(trigger.nextRun)
+  }
+
+  /**
+   * Check if a trigger belongs to another user
+   */
+  isOtherUser(trigger: Trigger): boolean {
+    const currentUsername = this.userService.getUsername()
+    return currentUsername !== null && trigger.createdBy !== currentUsername
   }
 }

@@ -1,8 +1,7 @@
 <div class="webhook-list-container">
   <!-- Header with Create Button -->
   <div class="list-header">
-    <h2>Webhooks</h2>
-    <button matButton="filled" color="primary" (click)="onCreateClick()" [disabled]="isLoading">
+    <button mat-flat-button color="primary" (click)="onCreateClick()" [disabled]="isLoading">
       <mat-icon>add</mat-icon>
       New Webhook
     </button>
@@ -26,6 +25,7 @@
   <!-- Empty State -->
   @if (!isLoading && !errorMessage && webhooks.length === 0) {
     <div class="empty-state">
+      <mat-icon>webhook</mat-icon>
       <p>No webhooks configured yet.</p>
       <p class="hint">Create your first webhook to enable programmatic AI interactions.</p>
     </div>
@@ -34,48 +34,62 @@
   <!-- Webhook Table -->
   @if (!isLoading && !errorMessage && webhooks.length > 0) {
     <div class="webhook-table">
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Created</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (webhook of webhooks; track webhook.uuid) {
-            <tr>
-              <td class="name-cell">{{ webhook.name }}</td>
-              <td class="type-cell">
-                <span
-                  class="type-badge"
-                  [class.type-free]="webhook.commandType === 'free'"
-                  [class.type-template]="webhook.commandType === 'template'"
-                >
-                  {{ getCommandTypeLabel(webhook.commandType) }}
-                </span>
-              </td>
-              <td class="date-cell">
-                <div class="date-info">
-                  <span class="date">{{ formatDate(webhook.createdAt) }}</span>
-                  <span class="creator">by {{ webhook.createdBy }}</span>
-                </div>
-              </td>
-              <td class="actions-cell">
-                <button mat-icon-button (click)="onCopyUrl(webhook)" title="Copy webhook URL">
-                  <mat-icon>content_copy</mat-icon>
-                </button>
-                <button mat-icon-button (click)="onEditClick(webhook)" title="Edit webhook">
-                  <mat-icon>edit</mat-icon>
-                </button>
-                <button mat-icon-button color="warn" (click)="onDeleteClick(webhook)" title="Delete webhook">
-                  <mat-icon>delete</mat-icon>
-                </button>
-              </td>
-            </tr>
-          }
-        </tbody>
+      <table mat-table [dataSource]="webhooks">
+        <!-- Name Column -->
+        <ng-container matColumnDef="name">
+          <th mat-header-cell *matHeaderCellDef>Name</th>
+          <td mat-cell *matCellDef="let webhook">
+            <div class="name-with-icon">
+              @if (isOtherUser(webhook)) {
+                <mat-icon class="shared-icon" matTooltip="Shared by admin">group</mat-icon>
+              }
+              <strong>{{ webhook.name }}</strong>
+            </div>
+          </td>
+        </ng-container>
+
+        <!-- Type Column -->
+        <ng-container matColumnDef="type">
+          <th mat-header-cell *matHeaderCellDef>Type</th>
+          <td mat-cell *matCellDef="let webhook">
+            <mat-chip
+              [class.chip-free]="webhook.commandType === 'free'"
+              [class.chip-template]="webhook.commandType === 'template'"
+            >
+              {{ getCommandTypeLabel(webhook.commandType) }}
+            </mat-chip>
+          </td>
+        </ng-container>
+
+        <!-- Created Column -->
+        <ng-container matColumnDef="created">
+          <th mat-header-cell *matHeaderCellDef>Created</th>
+          <td mat-cell *matCellDef="let webhook">
+            <div class="date-info">
+              <span class="date">{{ formatDate(webhook.createdAt) }}</span>
+              <span class="creator">by {{ webhook.createdBy }}</span>
+            </div>
+          </td>
+        </ng-container>
+
+        <!-- Actions Column -->
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef>Actions</th>
+          <td mat-cell *matCellDef="let webhook" class="actions-cell">
+            <button mat-icon-button (click)="onCopyUrl(webhook)" matTooltip="Copy webhook URL">
+              <mat-icon>content_copy</mat-icon>
+            </button>
+            <button mat-icon-button (click)="onEditClick(webhook)" matTooltip="Edit webhook">
+              <mat-icon>edit</mat-icon>
+            </button>
+            <button mat-icon-button color="warn" (click)="onDeleteClick(webhook)" matTooltip="Delete webhook">
+              <mat-icon>delete</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="['name', 'type', 'created', 'actions']"></tr>
+        <tr mat-row *matRowDef="let row; columns: ['name', 'type', 'created', 'actions']"></tr>
       </table>
     </div>
   }
