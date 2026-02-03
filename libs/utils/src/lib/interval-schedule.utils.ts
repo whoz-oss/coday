@@ -12,27 +12,30 @@ import type { IntervalSchedule } from '@coday/model'
 
 interface ParsedInterval {
   value: number
-  unit: 'h' | 'd' | 'm'
+  unit: 'min' | 'h' | 'd' | 'M'
 }
 
 /**
  * Validate an interval string
  *
  * Rules:
+ * - Minutes: 1min to 59min (then use hours)
  * - Hours: 1h to 24h (then use days)
  * - Days: 1d to 31d (then use months)
- * - Months: 1m to 12m (max one year)
+ * - Months: 1M to 12M (max one year)
  *
- * @param interval - Interval string like '5h', '14d', '1m'
+ * @param interval - Interval string like '2min', '5h', '14d', '1M'
  * @returns true if valid
  *
  * @example
- * validateInterval('5h')   // true
- * validateInterval('14d')  // true
- * validateInterval('1m')   // true
- * validateInterval('25h')  // false (use days)
- * validateInterval('32d')  // false (use months)
- * validateInterval('13m')  // false (max 12 months)
+ * validateInterval('2min')  // true
+ * validateInterval('5h')    // true
+ * validateInterval('14d')   // true
+ * validateInterval('1M')    // true
+ * validateInterval('60min') // false (use hours)
+ * validateInterval('25h')   // false (use days)
+ * validateInterval('32d')   // false (use months)
+ * validateInterval('13M')   // false (max 12 months)
  */
 export function validateInterval(interval: string): boolean {
   const parsed = parseInterval(interval)
@@ -41,11 +44,13 @@ export function validateInterval(interval: string): boolean {
   const { value, unit } = parsed
 
   switch (unit) {
+    case 'min':
+      return value >= 1 && value <= 59
     case 'h':
       return value >= 1 && value <= 24
     case 'd':
       return value >= 1 && value <= 31
-    case 'm':
+    case 'M':
       return value >= 1 && value <= 12
     default:
       return false
@@ -59,11 +64,13 @@ export function validateInterval(interval: string): boolean {
  * @returns Parsed interval or null if invalid format
  */
 function parseInterval(interval: string): ParsedInterval | null {
-  const match = interval.match(/^(\d+)(h|d|m)$/)
+  // Match: number + unit (min, h, d, M)
+  // Note: 'min' for minutes, 'M' (capital) for months to avoid ambiguity
+  const match = interval.match(/^(\d+)(min|h|d|M)$/)
   if (!match || !match[1] || !match[2]) return null
 
   const value = parseInt(match[1], 10)
-  const unit = match[2] as 'h' | 'd' | 'm'
+  const unit = match[2] as 'min' | 'h' | 'd' | 'M'
 
   if (isNaN(value) || value < 1) return null
 
@@ -105,7 +112,7 @@ export function validateIntervalSchedule(schedule: IntervalSchedule): { valid: b
   if (!validateInterval(schedule.interval)) {
     return {
       valid: false,
-      error: 'Invalid interval. Use 1h-24h, 1d-31d, or 1m-12m',
+      error: 'Invalid interval. Use 1min-59min, 1h-24h, 1d-31d, or 1M-12M',
     }
   }
 
@@ -242,19 +249,22 @@ function addInterval(date: Date, interval: ParsedInterval): Date {
   const result = new Date(date)
 
   switch (interval.unit) {
+    case 'min':
+      result.setUTCMinutes(result.getUTCMinutes() + interval.value)
+      break
     case 'h':
       result.setUTCHours(result.getUTCHours() + interval.value)
       break
     case 'd':
       result.setUTCDate(result.getUTCDate() + interval.value)
       break
-    case 'm':
+    case 'M':
       // Add months, handling day overflow (e.g., Jan 31 -> Feb 28/29)
       const currentDay = result.getUTCDate()
       result.setUTCMonth(result.getUTCMonth() + interval.value)
 
       // If day changed due to month overflow, skip this occurrence
-      // (e.g., Jan 31 + 1m would become Mar 3, we detect this and handle in calculateNextRun)
+      // (e.g., Jan 31 + 1M would become Mar 3, we detect this and handle in calculateNextRun)
       if (result.getUTCDate() !== currentDay) {
         // Date rolled over (e.g., Jan 31 -> Mar 3), reset to last day of target month
         result.setUTCDate(0) // Go to last day of previous month

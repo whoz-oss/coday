@@ -1,0 +1,54 @@
+<div class="trigger-manager-dialog">
+  <!-- Dialog Header -->
+  <div mat-dialog-title class="dialog-header">
+    <h1>{{ getTitle() }}</h1>
+    <button mat-icon-button (click)="onCloseClick()" class="close-button">
+      <mat-icon>close</mat-icon>
+    </button>
+  </div>
+
+  <!-- Dialog Content -->
+  <div mat-dialog-content class="dialog-content">
+    <!-- Success Message -->
+    @if (successMessage) {
+      <div class="success-message">
+        <mat-icon>check_circle</mat-icon>
+        {{ successMessage }}
+      </div>
+    }
+
+    <!-- Error Message (global) -->
+    @if (errorMessage && currentView === 'list') {
+      <div class="error-message">
+        <mat-icon>error</mat-icon>
+        {{ errorMessage }}
+      </div>
+    }
+
+    <!-- List View -->
+    @if (currentView === 'list') {
+      <app-trigger-list
+        [triggers]="triggers"
+        [webhooks]="webhooks"
+        [isLoading]="isLoading"
+        [errorMessage]="errorMessage"
+        (create)="onCreateClick()"
+        (edit)="onEditClick($event)"
+        (deleteTrigger)="onDeleteClick($event)"
+        (toggleEnabled)="onToggleEnabled($event)"
+        (runNow)="onRunNow($event)"
+      ></app-trigger-list>
+    }
+
+    <!-- Form View -->
+    @if (currentView === 'form') {
+      <app-trigger-form
+        [trigger]="editingTrigger"
+        [webhooks]="webhooks"
+        [isSaving]="isSaving"
+        (save)="onFormSave($event)"
+        (cancelForm)="onFormCancel()"
+      ></app-trigger-form>
+    }
+  </div>
+</div>

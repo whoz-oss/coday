@@ -1,0 +1,178 @@
+<div class="trigger-form-container">
+  <h2>{{ formTitle }}</h2>
+
+  <!-- Error Message -->
+  @if (errorMessage) {
+    <div class="error-message">
+      <mat-icon>error</mat-icon>
+      {{ errorMessage }}
+    </div>
+  }
+
+  <form (ngSubmit)="onSave()">
+    <!-- Name Field -->
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Name</mat-label>
+      <input
+        matInput
+        [(ngModel)]="name"
+        name="name"
+        placeholder="e.g., Daily Security Scan"
+        [disabled]="isSaving"
+        required
+      />
+      <mat-hint>A descriptive name for this scheduled task</mat-hint>
+    </mat-form-field>
+
+    <!-- Webhook Field -->
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Webhook</mat-label>
+      <mat-select [(ngModel)]="webhookUuid" name="webhookUuid" [disabled]="isSaving || isEditMode" required>
+        <mat-option value="">Select a webhook...</mat-option>
+        @for (webhook of webhooks; track webhook.uuid) {
+          <mat-option [value]="webhook.uuid">{{ webhook.name }}</mat-option>
+        }
+      </mat-select>
+      <mat-hint>{{ isEditMode ? 'Webhook cannot be changed after creation' : 'The webhook to execute' }}</mat-hint>
+    </mat-form-field>
+
+    <!-- Schedule Section -->
+    <div class="section-header">
+      <mat-icon>schedule</mat-icon>
+      <h3>Schedule</h3>
+    </div>
+
+    <!-- Start Date/Time -->
+    <div class="form-row">
+      <mat-form-field appearance="outline" class="half-width">
+        <mat-label>Start Date</mat-label>
+        <input matInput type="date" [(ngModel)]="startDate" name="startDate" [disabled]="isSaving" required />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="half-width">
+        <mat-label>Start Time</mat-label>
+        <input matInput type="time" [(ngModel)]="startTime" name="startTime" [disabled]="isSaving" required />
+      </mat-form-field>
+    </div>
+    <div class="hint-below">First execution will occur at this date and time (your local timezone)</div>
+
+    <!-- Interval -->
+    <div class="form-row">
+      <mat-form-field appearance="outline" class="half-width">
+        <mat-label>Repeat every</mat-label>
+        <input
+          matInput
+          type="number"
+          [(ngModel)]="intervalValue"
+          name="intervalValue"
+          min="1"
+          [disabled]="isSaving"
+          required
+        />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="half-width">
+        <mat-label>Unit</mat-label>
+        <mat-select [(ngModel)]="intervalUnit" name="intervalUnit" [disabled]="isSaving" required>
+          <mat-option value="min">Minutes (1-59)</mat-option>
+          <mat-option value="h">Hours (1-24)</mat-option>
+          <mat-option value="d">Days (1-31)</mat-option>
+          <mat-option value="M">Months (1-12)</mat-option>
+        </mat-select>
+      </mat-form-field>
+    </div>
+
+    <!-- Days of Week (only for daily+ intervals) -->
+    @if (shouldShowDaysOfWeek()) {
+      <div class="days-of-week">
+        <label class="field-label">Run on specific days:</label>
+        <div class="checkbox-group">
+          @for (dayName of dayNames; track $index) {
+            <mat-checkbox [(ngModel)]="daysOfWeek[$index]" [name]="'day' + $index" [disabled]="isSaving">
+              {{ dayName }}
+            </mat-checkbox>
+          }
+        </div>
+        <div class="hint-below">Leave all unchecked to run every day</div>
+      </div>
+    }
+
+    <!-- End Condition -->
+    <div class="end-condition">
+      <label class="field-label">End condition:</label>
+      <mat-radio-group [(ngModel)]="endConditionType" name="endConditionType" [disabled]="isSaving" class="radio-group">
+        <mat-radio-button value="none">No end (run indefinitely)</mat-radio-button>
+        <mat-radio-button value="occurrences">After a number of executions</mat-radio-button>
+        <mat-radio-button value="endTimestamp">On a specific date</mat-radio-button>
+      </mat-radio-group>
+
+      <!-- Occurrences input -->
+      @if (endConditionType === 'occurrences') {
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Number of executions</mat-label>
+          <input
+            matInput
+            type="number"
+            [(ngModel)]="endOccurrences"
+            name="endOccurrences"
+            min="1"
+            [disabled]="isSaving"
+            required
+          />
+          <mat-hint>Trigger will stop after this many executions</mat-hint>
+        </mat-form-field>
+      }
+
+      <!-- End date/time inputs -->
+      @if (endConditionType === 'endTimestamp') {
+        <div class="form-row">
+          <mat-form-field appearance="outline" class="half-width">
+            <mat-label>End Date</mat-label>
+            <input matInput type="date" [(ngModel)]="endDate" name="endDate" [disabled]="isSaving" required />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="half-width">
+            <mat-label>End Time</mat-label>
+            <input matInput type="time" [(ngModel)]="endTime" name="endTime" [disabled]="isSaving" required />
+          </mat-form-field>
+        </div>
+        <div class="hint-below">Trigger will stop after this date and time</div>
+      }
+    </div>
+
+    <!-- Parameters Section -->
+    <div class="section-header">
+      <mat-icon>settings</mat-icon>
+      <h3>Parameters (Optional)</h3>
+    </div>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Parameters (JSON)</mat-label>
+      <textarea
+        matInput
+        [(ngModel)]="parametersJson"
+        name="parametersJson"
+        rows="4"
+        placeholder='{ "key": "value" }'
+        [disabled]="isSaving"
+      ></textarea>
+      <mat-hint>Optional parameters to override webhook defaults (must be valid JSON)</mat-hint>
+    </mat-form-field>
+
+    <!-- Enabled Checkbox -->
+    <div class="enabled-checkbox">
+      <mat-checkbox [(ngModel)]="enabled" name="enabled" [disabled]="isSaving">
+        <strong>Start enabled</strong>
+        <span class="hint-inline">Trigger will begin executing immediately if checked</span>
+      </mat-checkbox>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="form-actions">
+      <button mat-button type="button" (click)="onCancel()" [disabled]="isSaving">Cancel</button>
+      <button mat-flat-button color="primary" type="submit" [disabled]="isSaving">
+        {{ isSaving ? 'Saving...' : 'Save Trigger' }}
+      </button>
+    </div>
+  </form>
+</div>

@@ -225,6 +225,28 @@
           </a>
         </div>
       }
+
+      <!-- Scheduler - Available for all users -->
+      @if (selectedProjectName()) {
+        <div class="section-container">
+          <a
+            class="section-toggle"
+            (click)="openTriggers(); $event.preventDefault(); $event.stopPropagation()"
+            role="button"
+            tabindex="0"
+          >
+            <mat-icon class="section-icon">schedule</mat-icon>
+            <span class="section-label">Scheduler</span>
+          </a>
+        </div>
+      } @else {
+        <div class="section-container">
+          <a class="section-toggle disabled" role="button" tabindex="-1" aria-disabled="true">
+            <mat-icon class="section-icon">schedule</mat-icon>
+            <span class="section-label">Scheduler (No project)</span>
+          </a>
+        </div>
+      }
     </div>
   </mat-sidenav>
 
