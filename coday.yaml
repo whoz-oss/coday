@@ -46,16 +46,16 @@ scripts:
     parametersDescription: the test file path or pattern to run specific tests (e.g., "parseAgentCommand.test.ts" or "--testNamePattern=specific test name")
   lint-project:
     description: |
-      Runs the lint for the app.
-    command: nx run client:lint && nx run server:lint
+      Runs linting.
+    command: pnpm nx run-many --all --targets=lint
   yarn-client-test:
     description: |
-      Runs the test for the client app.
-    command: nx run client:test
-  build-angular-production:
+      Runs tests
+    command: pnpm nx run-many --all --targets=test
+  build:
     description: |
-      Runs the build of the angular app in production setting
-    command: nx run client:build-angular:production
+      Runs builds
+    command: pnpm nx run-many --all --targets=build
 
 # The prompts section allows you to define custom sequences of commands, known as prompt chains,
 # that the system can execute in order. Each prompt chain is identified by a unique key and
@@ -113,9 +113,9 @@ agents:
       You are Slackay, the agent dedicated to slack integration, used to :
       - pass messages from other agents or users to slack in the right channel
       - transfer a request to the right agent by delegate
-      
+
       ## Memory rules
-      
+
       Remember and keep updated (or create if none) these memories:
       - user email, slack ID.
       - preferences about tone, conciseness, emojis or not.

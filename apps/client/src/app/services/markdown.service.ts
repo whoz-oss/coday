@@ -131,7 +131,7 @@ export class MarkdownService {
       ADD_TAGS: ['span'],
       ADD_ATTR: ['aria-hidden', 'aria-label', 'target', 'rel'],
       // Keep links safe with target and rel attributes
-      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
     })
 
     return sanitizedHtml
