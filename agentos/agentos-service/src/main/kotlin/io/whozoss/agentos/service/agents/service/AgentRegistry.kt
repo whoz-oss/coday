@@ -6,7 +6,7 @@ import io.whozoss.agentos.service.agents.domain.AgentQueryResponse
 import io.whozoss.agentos.service.agents.domain.ContextType
 import io.whozoss.agentos.service.plugins.AgentDiscoveryService
 import jakarta.annotation.PostConstruct
-import org.slf4j.LoggerFactory
+import mu.KLogging
 import org.springframework.stereotype.Service
 
 /**
@@ -17,7 +17,6 @@ import org.springframework.stereotype.Service
 class AgentRegistry(
     private val agentDiscoveryService: AgentDiscoveryService,
 ) {
-    private val logger = LoggerFactory.getLogger(AgentRegistry::class.java)
     private val agents = mutableMapOf<String, Agent>()
 
     @PostConstruct
@@ -168,4 +167,6 @@ class AgentRegistry(
             ),
         )
     }
+
+    companion object : KLogging()
 }

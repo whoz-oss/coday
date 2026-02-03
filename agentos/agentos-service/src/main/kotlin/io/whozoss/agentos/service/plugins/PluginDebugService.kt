@@ -1,8 +1,8 @@
 package io.whozoss.agentos.service.plugins
 
 import io.whozoss.agentos.sdk.agent.AgentPlugin
+import mu.KLogging
 import org.pf4j.PluginManager
-import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -15,8 +15,6 @@ import java.util.jar.JarFile
 class PluginDebugService(
     private val pluginManager: PluginManager,
 ) {
-    private val logger = LoggerFactory.getLogger(PluginDebugService::class.java)
-
     /**
      * Debug extension discovery for a specific plugin
      */
@@ -103,4 +101,6 @@ class PluginDebugService(
             debugPlugin(plugin.pluginId)
         }
     }
+
+    companion object : KLogging()
 }
