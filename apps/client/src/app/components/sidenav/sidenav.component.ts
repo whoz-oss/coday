@@ -15,6 +15,7 @@ import { OptionsPanelComponent } from '../options-panel'
 import { ThreadSelectorComponent } from '../thread-selector/thread-selector.component'
 import { JsonEditorComponent, JsonEditorData } from '../json-editor/json-editor.component'
 import { WebhookManagerComponent } from '../webhook-manager/webhook-manager.component'
+import { TriggerManagerComponent } from '../trigger-manager/trigger-manager.component'
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { ProjectApiService } from '../../core/services/project-api.service'
@@ -239,6 +240,27 @@ export class SidenavComponent implements OnInit, OnDestroy {
   openWebhooks(): void {
     console.log('[SIDENAV] Opening webhook manager dialog')
     this.dialog.open(WebhookManagerComponent)
+  }
+
+  /**
+   * Open trigger manager dialog (Scheduler)
+   * Available for all users if a project is selected
+   */
+  openTriggers(): void {
+    const projectName = this.selectedProjectName()
+    if (!projectName) {
+      console.error('[SIDENAV] No project selected, cannot open triggers')
+      this.configErrorMessage = 'Please select a project first'
+      return
+    }
+
+    console.log('[SIDENAV] Opening trigger manager dialog for project:', projectName)
+    this.dialog.open(TriggerManagerComponent, {
+      width: '90vw',
+      maxWidth: '1200px',
+      height: '90vh',
+      maxHeight: '900px',
+    })
   }
 
   /**

@@ -1,0 +1,143 @@
+.trigger-list-container {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+}
+
+.list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+
+  h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 500;
+  }
+
+  button {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+}
+
+.loading-state,
+.error-state,
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  text-align: center;
+}
+
+.loading-state {
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(0, 0, 0, 0.1);
+    border-left-color: var(--mat-primary-color, #1976d2);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+}
+
+.error-state {
+  color: var(--mat-error-color, #f44336);
+
+  p {
+    margin: 0;
+    font-size: 1rem;
+  }
+}
+
+.empty-state {
+  color: rgba(0, 0, 0, 0.6);
+
+  mat-icon {
+    font-size: 64px;
+    width: 64px;
+    height: 64px;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+  }
+
+  p {
+    margin: 0.5rem 0;
+    font-size: 1rem;
+  }
+
+  .hint {
+    font-size: 0.875rem;
+    opacity: 0.7;
+  }
+}
+
+.trigger-table {
+  flex: 1;
+  overflow: auto;
+
+  table {
+    width: 100%;
+  }
+
+  .schedule-text {
+    font-size: 0.875rem;
+  }
+
+  .text-muted {
+    color: rgba(0, 0, 0, 0.5);
+    font-style: italic;
+  }
+
+  .chip-enabled {
+    background-color: #4caf50 !important;
+    color: white !important;
+
+    mat-icon {
+      color: white;
+    }
+  }
+
+  .chip-disabled {
+    background-color: #9e9e9e !important;
+    color: white !important;
+
+    mat-icon {
+      color: white;
+    }
+  }
+
+  .actions-cell {
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+  }
+}
+
+// Responsive
+@media (max-width: 768px) {
+  .trigger-table {
+    table {
+      font-size: 0.875rem;
+    }
+
+    .actions-cell button {
+      mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+    }
+  }
+}

@@ -4,7 +4,7 @@
 
 export interface IntervalSchedule {
   startTimestamp: string // ISO 8601 UTC
-  interval: string // '5h', '14d', '1m'
+  interval: string // '2min', '5h', '14d', '1M' (min=minutes, h=hours, d=days, M=months)
   daysOfWeek?: number[] // 0-6 (0=Sunday, 6=Saturday), optional
   endCondition?: {
     type: 'occurrences' | 'endTimestamp'

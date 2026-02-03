@@ -19,7 +19,7 @@ import { WebhookService } from './webhook.service'
 export class TriggerService {
   private triggers: Map<string, Trigger> = new Map()
   private checkInterval?: NodeJS.Timeout
-  private readonly CHECK_INTERVAL_MS = 60000 // 1 minute
+  private readonly CHECK_INTERVAL_MS = 30000 // 1 minute
 
   constructor(
     private logger: CodayLogger,
@@ -191,11 +191,30 @@ export class TriggerService {
 
     console.log(`[TRIGGER] Executing trigger "${trigger.name}" (${trigger.id})`)
 
+    // Find project name first (needed for saving)
+    const projectName = this.findProjectForTrigger(trigger.id)
+    if (!projectName) {
+      console.error(`[TRIGGER] Cannot find project for trigger ${trigger.id}, skipping execution`)
+      return
+    }
+
     let success = false
     let threadId: string | undefined
     let error: string | undefined
 
+    // Update trigger state
+    trigger.lastRun = executedAt
+    trigger.occurrenceCount = (trigger.occurrenceCount || 0) + 1
+    trigger.nextRun = calculateNextRun(trigger.schedule, new Date(), trigger.occurrenceCount)
+
     try {
+      // Save updated trigger with explicit project name
+      await this.saveTrigger(trigger, projectName)
+      console.log(`[TRIGGER] Next execution for "${trigger.name}": ${trigger.nextRun}`)
+
+      // Update in-memory cache with the updated trigger
+      this.triggers.set(trigger.id, trigger)
+
       threadId = await this.executeTriggerInternal(trigger, 'scheduled')
       success = true
     } catch (err) {
@@ -204,26 +223,16 @@ export class TriggerService {
       console.error(`[TRIGGER] Trigger "${trigger.name}" failed:`, err)
     }
 
-    // Update trigger state
-    trigger.lastRun = executedAt
-    trigger.occurrenceCount = (trigger.occurrenceCount || 0) + 1
-    trigger.nextRun = calculateNextRun(trigger.schedule, new Date(), trigger.occurrenceCount)
-
-    // Save updated trigger
-    await this.saveTrigger(trigger)
-
     // Log execution result via CodayLogger
     this.logger.logTriggerExecution({
       triggerId: trigger.id,
       triggerName: trigger.name,
       webhookUuid: trigger.webhookUuid,
-      projectName: this.findProjectForTrigger(trigger.id) || 'unknown',
+      projectName,
       success,
       threadId,
       error,
     })
-
-    console.log(`[TRIGGER] Next execution for "${trigger.name}": ${trigger.nextRun}`)
   }
 
   /**

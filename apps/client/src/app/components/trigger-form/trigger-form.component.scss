@@ -1,0 +1,155 @@
+.trigger-form-container {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+
+  h2 {
+    margin: 0 0 1.5rem 0;
+    font-size: 1.5rem;
+    font-weight: 500;
+  }
+
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+}
+
+.error-message {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background-color: #ffebee;
+  color: #c62828;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+
+  mat-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+
+  mat-icon {
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 500;
+  }
+}
+
+.full-width {
+  width: 100%;
+}
+
+.form-row {
+  display: flex;
+  gap: 1rem;
+  width: 100%;
+
+  .half-width {
+    flex: 1;
+  }
+}
+
+.hint-below {
+  margin-top: -0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.75rem;
+  color: rgba(0, 0, 0, 0.6);
+  padding-left: 0.5rem;
+}
+
+.field-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.days-of-week {
+  margin-bottom: 1rem;
+
+  .checkbox-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+
+    mat-checkbox {
+      flex: 0 0 calc(50% - 0.25rem);
+    }
+  }
+}
+
+.end-condition {
+  margin-bottom: 1rem;
+
+  .radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0.5rem 0 1rem 0;
+  }
+}
+
+.enabled-checkbox {
+  margin: 1rem 0;
+
+  .hint-inline {
+    display: block;
+    font-size: 0.75rem;
+    color: rgba(0, 0, 0, 0.6);
+    margin-top: 0.25rem;
+  }
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+// Responsive
+@media (max-width: 768px) {
+  .trigger-form-container {
+    padding: 0.5rem;
+
+    h2 {
+      font-size: 1.25rem;
+    }
+  }
+
+  .form-row {
+    flex-direction: column;
+
+    .half-width {
+      width: 100%;
+    }
+  }
+
+  .days-of-week {
+    .checkbox-group {
+      mat-checkbox {
+        flex: 0 0 100%;
+      }
+    }
+  }
+}
