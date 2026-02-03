@@ -18,5 +18,5 @@ agentos:
 logging:
   level:
     root: WARN
-    io.biznet.agentos: INFO
+    io.whozoss.agentos.service: INFO
     org.pf4j: INFO

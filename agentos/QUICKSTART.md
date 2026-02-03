@@ -140,7 +140,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("io.biznet.agentos:agentos-sdk:1.0.0")
+    compileOnly("whoz-oss.agentos:agentos-sdk:1.0.0")
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
 }
 
@@ -159,13 +159,6 @@ tasks.jar {
 3. **Implement your plugin:**
 
 ```kotlin
-package com.example
-
-import org.pf4j.Extension
-import org.pf4j.Plugin
-import io.biznet.agentos.sdk.AgentPlugin
-import io.biznet.agentos.sdk.Agent
-import io.biznet.agentos.sdk.ContextType
 
 class MyPlugin : Plugin()
 
@@ -303,7 +296,7 @@ java -version  # Should be 17+
 
 3. **Run Configuration:**
    - Add new "Spring Boot" configuration
-   - Main class: `io.biznet.agentos.AgentosApplication`
+   - Main class: `io.whozoss.agentos.AgentosApplication`
    - Module: `agentos-service.main`
    - Add environment variables
 
