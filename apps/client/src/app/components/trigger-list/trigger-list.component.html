@@ -39,7 +39,12 @@
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Name</th>
           <td mat-cell *matCellDef="let trigger">
-            <strong>{{ trigger.name }}</strong>
+            <div class="name-with-icon">
+              @if (isOtherUser(trigger)) {
+                <mat-icon class="shared-icon" matTooltip="Shared by admin">group</mat-icon>
+              }
+              <strong>{{ trigger.name }}</strong>
+            </div>
           </td>
         </ng-container>
 

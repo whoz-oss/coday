@@ -10,12 +10,6 @@
   align-items: center;
   margin-bottom: 1.5rem;
 
-  h2 {
-    margin: 0;
-    font-size: 1.5rem;
-    font-weight: 500;
-  }
-
   button {
     display: flex;
     align-items: center;
@@ -91,6 +85,33 @@
     width: 100%;
   }
 
+  // Fix row height to prevent line breaks
+  tr.mat-mdc-row {
+    height: 52px;
+  }
+
+  td.mat-mdc-cell {
+    padding: 8px 16px;
+    vertical-align: middle;
+  }
+
+  th.mat-mdc-header-cell {
+    padding: 8px 16px;
+  }
+
+  .name-with-icon {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    .shared-icon {
+      font-size: 1.1rem;
+      width: 1.1rem;
+      height: 1.1rem;
+      color: var(--mat-primary-color, #1976d2);
+    }
+  }
+
   .schedule-text {
     font-size: 0.875rem;
   }
@@ -119,9 +140,14 @@
   }
 
   .actions-cell {
-    display: flex;
-    gap: 0.25rem;
-    align-items: center;
+    white-space: nowrap;
+    width: 1%; // Force minimum width to prevent wrapping
+
+    button {
+      display: inline-flex;
+      vertical-align: middle;
+      margin: 0 2px; // Small margin between buttons
+    }
   }
 }
 
