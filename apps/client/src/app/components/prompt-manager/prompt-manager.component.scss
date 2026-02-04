@@ -1,0 +1,98 @@
+.prompt-manager {
+  padding: 1rem;
+
+  h2 {
+    margin-bottom: 1rem;
+  }
+}
+
+.loading,
+.error,
+.empty {
+  padding: 1rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.error {
+  color: var(--color-error);
+}
+
+.prompt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.prompt-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+
+  &:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
+.prompt-info {
+  flex: 1;
+
+  h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.1rem;
+  }
+
+  .description {
+    margin: 0 0 0.5rem 0;
+    color: var(--color-text-secondary);
+  }
+
+  .meta {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+
+    .webhook-status {
+      &.enabled {
+        color: var(--color-success);
+        font-weight: 600;
+      }
+    }
+  }
+}
+
+.prompt-actions {
+  display: flex;
+  gap: 0.5rem;
+
+  button {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+
+    &.btn-secondary {
+      background: var(--color-secondary);
+      color: white;
+
+      &:hover {
+        opacity: 0.9;
+      }
+    }
+
+    &.btn-danger {
+      background: var(--color-error);
+      color: white;
+
+      &:hover {
+        opacity: 0.9;
+      }
+    }
+  }
+}

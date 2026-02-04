@@ -1,0 +1,53 @@
+<div class="scheduler-manager">
+  <h2>Schedulers</h2>
+
+  <div *ngIf="isLoading" class="loading">Loading schedulers...</div>
+
+  <div *ngIf="errorMessage" class="error">{{ errorMessage }}</div>
+
+  <div *ngIf="!isLoading && schedulers.length === 0" class="empty">
+    No schedulers found. Create your first scheduler to automate prompt execution.
+  </div>
+
+  <div class="scheduler-list" *ngIf="!isLoading && schedulers.length > 0">
+    <div *ngFor="let scheduler of schedulers" class="scheduler-item">
+      <div class="scheduler-info">
+        <h3>
+          {{ scheduler.name }}
+          <span class="status-badge" [class.enabled]="scheduler.enabled">
+            {{ scheduler.enabled ? 'Enabled' : 'Disabled' }}
+          </span>
+        </h3>
+        <div class="details">
+          <div class="detail-row">
+            <span class="label">Prompt ID:</span>
+            <span class="value">{{ scheduler.promptId }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="label">Schedule:</span>
+            <span class="value">{{ formatInterval(scheduler.schedule.interval) }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="label">Next Run:</span>
+            <span class="value">{{ formatNextRun(scheduler.nextRun) }}</span>
+          </div>
+          <div class="detail-row" *ngIf="scheduler.lastRun">
+            <span class="label">Last Run:</span>
+            <span class="value">{{ scheduler.lastRun | date: 'short' }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="label">Created By:</span>
+            <span class="value">{{ scheduler.createdBy }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="scheduler-actions">
+        <button (click)="toggleEnabled(scheduler)" class="btn-secondary">
+          {{ scheduler.enabled ? 'Disable' : 'Enable' }}
+        </button>
+        <button (click)="runNow(scheduler.id)" class="btn-primary">Run Now</button>
+        <button (click)="deleteScheduler(scheduler.id)" class="btn-danger">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>

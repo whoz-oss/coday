@@ -14,8 +14,8 @@ import { PreferencesService } from '../../services/preferences.service'
 import { OptionsPanelComponent } from '../options-panel'
 import { ThreadSelectorComponent } from '../thread-selector/thread-selector.component'
 import { JsonEditorComponent, JsonEditorData } from '../json-editor/json-editor.component'
-import { WebhookManagerComponent } from '../webhook-manager/webhook-manager.component'
-import { TriggerManagerComponent } from '../trigger-manager/trigger-manager.component'
+import { PromptManagerComponent } from '../prompt-manager/prompt-manager.component'
+import { SchedulerManagerComponent } from '../scheduler-manager/scheduler-manager.component'
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { ProjectApiService } from '../../core/services/project-api.service'
@@ -235,27 +235,39 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Open webhook manager dialog
+   * Open prompt manager dialog
    */
-  openWebhooks(): void {
-    console.log('[SIDENAV] Opening webhook manager dialog')
-    this.dialog.open(WebhookManagerComponent)
-  }
-
-  /**
-   * Open trigger manager dialog (Scheduler)
-   * Available for all users if a project is selected
-   */
-  openTriggers(): void {
+  openPrompts(): void {
     const projectName = this.selectedProjectName()
     if (!projectName) {
-      console.error('[SIDENAV] No project selected, cannot open triggers')
+      console.error('[SIDENAV] No project selected, cannot open prompts')
       this.configErrorMessage = 'Please select a project first'
       return
     }
 
-    console.log('[SIDENAV] Opening trigger manager dialog for project:', projectName)
-    this.dialog.open(TriggerManagerComponent, {
+    console.log('[SIDENAV] Opening prompt manager dialog')
+    this.dialog.open(PromptManagerComponent, {
+      width: '90vw',
+      maxWidth: '1200px',
+      height: '90vh',
+      maxHeight: '900px',
+    })
+  }
+
+  /**
+   * Open scheduler manager dialog
+   * Available for all users if a project is selected
+   */
+  openSchedulers(): void {
+    const projectName = this.selectedProjectName()
+    if (!projectName) {
+      console.error('[SIDENAV] No project selected, cannot open schedulers')
+      this.configErrorMessage = 'Please select a project first'
+      return
+    }
+
+    console.log('[SIDENAV] Opening scheduler manager dialog for project:', projectName)
+    this.dialog.open(SchedulerManagerComponent, {
       width: '90vw',
       maxWidth: '1200px',
       height: '90vh',
