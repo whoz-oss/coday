@@ -486,30 +486,3 @@ jobs:
 3. **Verify placeholders**: Ensure placeholder names match parameter keys exactly
 4. **Check logs**: Look for `[PROMPT_EXEC]` messages in server logs
 5. **Validate syntax**: Ensure `{{placeholders}}` use double braces
-
-## Migration from Webhooks
-
-The prompt system replaces the previous webhook system. To migrate:
-
-1. **Review existing webhooks** in `~/.coday/projects/{project}/webhooks/`
-2. **Create equivalent prompts** through the web interface
-3. **Update external integrations** to use new prompt IDs
-4. **Enable webhook flag** (CODAY_ADMIN) for external API access
-5. **Test thoroughly** before removing old webhooks
-
-### Key Differences
-
-| Aspect | Old Webhooks | New Prompts |
-|--------|-------------|-------------|
-| Ownership | Owner-based | Collaborative |
-| Parameters | Template only | Simple + Structured |
-| Naming | Free-form | Normalized (lowercase-with-hyphens) |
-| Access Control | Owner or CODAY_ADMIN | All users (webhook flag: CODAY_ADMIN only) |
-| Storage | Per-project | Per-project |
-| API | Same execution endpoint | Same execution endpoint |
-
-## See Also
-
-- [Schedulers Documentation](./schedulers.md) - Automated prompt execution
-- [Webhooks Documentation](./webhooks.md) - Legacy webhook system (deprecated)
-- [Configuration Management](./README.md) - General configuration guide
