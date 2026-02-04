@@ -1,8 +1,10 @@
 import { Component, inject, OnInit } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { MatIconModule } from '@angular/material/icon'
+import { MatDialog } from '@angular/material/dialog'
 import { SchedulerApiService, SchedulerInfo } from '../../core/services/scheduler-api.service'
 import { ProjectStateService } from '../../core/services/project-state.service'
+import { SchedulerFormComponent, SchedulerFormData } from '../scheduler-form/scheduler-form.component'
 
 @Component({
   selector: 'app-scheduler-manager',
@@ -14,6 +16,7 @@ import { ProjectStateService } from '../../core/services/project-state.service'
 export class SchedulerManagerComponent implements OnInit {
   private schedulerApi = inject(SchedulerApiService)
   private projectState = inject(ProjectStateService)
+  private dialog = inject(MatDialog)
 
   schedulers: SchedulerInfo[] = []
   isLoading = false
@@ -103,24 +106,67 @@ export class SchedulerManagerComponent implements OnInit {
   }
 
   formatInterval(interval: string): string {
-    // Parse interval like "1h", "30m", "1d"
-    const match = interval.match(/^(\d+)([mhd])$/)
+    // Parse interval like "1h", "30min", "1d", "2M"
+    const match = interval.match(/^(\d+)(min|h|d|M)$/)
     if (!match) return interval
 
     const [, value, unit] = match
     if (!value || !unit) return interval
 
     const units: Record<string, string> = {
-      m: 'minute',
+      min: 'minute',
       h: 'hour',
       d: 'day',
+      M: 'month',
     }
     const unitName = units[unit] || unit
     return `Every ${value} ${unitName}${parseInt(value, 10) > 1 ? 's' : ''}`
   }
 
   createScheduler(): void {
-    // TODO: Open scheduler creation dialog
-    alert('Scheduler creation form coming soon!')
+    const dialogRef = this.dialog.open<SchedulerFormComponent, SchedulerFormData, boolean>(SchedulerFormComponent, {
+      width: '700px',
+      maxHeight: '90vh',
+      data: {
+        mode: 'create',
+      },
+    })
+
+    dialogRef.afterClosed().subscribe((result) => {
+      if (result) {
+        // Reload schedulers after successful creation
+        this.loadSchedulers()
+      }
+    })
+  }
+
+  editScheduler(scheduler: SchedulerInfo): void {
+    const projectName = this.projectState.getSelectedProjectId()
+    if (!projectName) return
+
+    // Load full scheduler details before editing
+    this.schedulerApi.getScheduler(projectName, scheduler.id).subscribe({
+      next: (fullScheduler) => {
+        const dialogRef = this.dialog.open<SchedulerFormComponent, SchedulerFormData, boolean>(SchedulerFormComponent, {
+          width: '700px',
+          maxHeight: '90vh',
+          data: {
+            mode: 'edit',
+            scheduler: fullScheduler,
+          },
+        })
+
+        dialogRef.afterClosed().subscribe((result) => {
+          if (result) {
+            // Reload schedulers after successful update
+            this.loadSchedulers()
+          }
+        })
+      },
+      error: (error) => {
+        console.error('Error loading scheduler details:', error)
+        alert('Failed to load scheduler details')
+      },
+    })
   }
 }

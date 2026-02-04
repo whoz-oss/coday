@@ -146,6 +146,15 @@
       }
     }
 
+    &.btn-accent {
+      background: #ff9800;
+      color: white;
+
+      &:hover {
+        opacity: 0.9;
+      }
+    }
+
     &.btn-danger {
       background: var(--color-error);
       color: white;

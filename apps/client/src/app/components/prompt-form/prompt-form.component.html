@@ -60,6 +60,22 @@
       <p class="hint">Webhook can be enabled/disabled later by admins</p>
     </div>
 
+    <!-- Webhook URL (only in edit mode, if webhook enabled and user is admin) -->
+    <div *ngIf="isEditMode && webhookEnabled && isAdmin" class="webhook-url-section">
+      <div class="webhook-url-header">
+        <mat-icon class="webhook-icon">link</mat-icon>
+        <h4>Webhook URL</h4>
+      </div>
+      <div class="webhook-url-content">
+        <p class="url-text">{{ getWebhookUrl() }}</p>
+        <button mat-raised-button color="accent" (click)="copyWebhookUrl()" type="button">
+          <mat-icon>content_copy</mat-icon>
+          <span>Copy URL</span>
+        </button>
+      </div>
+      <p class="hint">Use this URL to trigger the prompt via HTTP POST</p>
+    </div>
+
     <!-- Error message -->
     <div *ngIf="errorMessage" class="error-message">
       <mat-icon>error</mat-icon>

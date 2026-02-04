@@ -48,10 +48,11 @@
         </div>
       </div>
       <div class="scheduler-actions">
+        <button (click)="editScheduler(scheduler)" class="btn-primary">Edit</button>
         <button (click)="toggleEnabled(scheduler)" class="btn-secondary">
           {{ scheduler.enabled ? 'Disable' : 'Enable' }}
         </button>
-        <button (click)="runNow(scheduler.id)" class="btn-primary">Run Now</button>
+        <button (click)="runNow(scheduler.id)" class="btn-accent">Run Now</button>
         <button (click)="deleteScheduler(scheduler.id)" class="btn-danger">Delete</button>
       </div>
     </div>

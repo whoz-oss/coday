@@ -6,8 +6,10 @@ import { MatButtonModule } from '@angular/material/button'
 import { MatInputModule } from '@angular/material/input'
 import { MatFormFieldModule } from '@angular/material/form-field'
 import { MatIconModule } from '@angular/material/icon'
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar'
 import { PromptApiService, Prompt } from '../../core/services/prompt-api.service'
 import { ProjectStateService } from '../../core/services/project-state.service'
+import { ConfigApiService } from '../../core/services/config-api.service'
 
 export interface PromptFormData {
   mode: 'create' | 'edit'
@@ -25,6 +27,7 @@ export interface PromptFormData {
     MatInputModule,
     MatFormFieldModule,
     MatIconModule,
+    MatSnackBarModule,
   ],
   templateUrl: './prompt-form.component.html',
   styleUrls: ['./prompt-form.component.scss'],
@@ -33,6 +36,8 @@ export class PromptFormComponent implements OnInit {
   private promptApi = inject(PromptApiService)
   private projectState = inject(ProjectStateService)
   private dialogRef = inject(MatDialogRef<PromptFormComponent>)
+  private configApi = inject(ConfigApiService)
+  private snackBar = inject(MatSnackBar)
 
   // Form data
   name = ''
@@ -43,17 +48,31 @@ export class PromptFormComponent implements OnInit {
   // UI state
   isSaving = false
   errorMessage = ''
+  isAdmin = false
 
   // Mode
   isEditMode = false
+  promptId = ''
 
   constructor(@Inject(MAT_DIALOG_DATA) public data: PromptFormData) {
     this.isEditMode = data.mode === 'edit'
   }
 
   ngOnInit(): void {
+    // Load user config to check if admin
+    this.configApi.getUserConfig().subscribe({
+      next: (config: any) => {
+        this.isAdmin = config.groups?.includes('CODAY_ADMIN') ?? false
+      },
+      error: (error) => {
+        console.error('[PROMPT_FORM] Error loading user config:', error)
+        this.isAdmin = false
+      },
+    })
+
     if (this.isEditMode && this.data.prompt) {
       // Load existing prompt data
+      this.promptId = this.data.prompt.id
       this.name = this.data.prompt.name
       this.description = this.data.prompt.description
       this.commands = [...this.data.prompt.commands]
@@ -177,5 +196,41 @@ export class PromptFormComponent implements OnInit {
    */
   cancel(): void {
     this.dialogRef.close(false)
+  }
+
+  /**
+   * Get the webhook URL
+   */
+  getWebhookUrl(): string {
+    const baseUrl = window.location.origin
+    return `${baseUrl}/api/webhooks/${this.promptId}/execute`
+  }
+
+  /**
+   * Copy webhook URL to clipboard
+   */
+  copyWebhookUrl(): void {
+    if (!this.webhookEnabled) {
+      this.snackBar.open('Webhook is not enabled', 'Close', { duration: 3000 })
+      return
+    }
+
+    if (!this.promptId) {
+      this.snackBar.open('Prompt must be saved before getting webhook URL', 'Close', { duration: 3000 })
+      return
+    }
+
+    const webhookUrl = this.getWebhookUrl()
+
+    // Copy to clipboard
+    navigator.clipboard
+      .writeText(webhookUrl)
+      .then(() => {
+        this.snackBar.open('Webhook URL copied to clipboard!', 'Close', { duration: 3000 })
+      })
+      .catch((error) => {
+        console.error('Failed to copy webhook URL:', error)
+        this.snackBar.open('Failed to copy URL', 'Close', { duration: 3000 })
+      })
   }
 }
