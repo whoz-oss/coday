@@ -1,6 +1,9 @@
 import { Component, inject, OnInit } from '@angular/core'
 import { CommonModule } from '@angular/common'
+import { FormsModule } from '@angular/forms'
 import { MatIconModule } from '@angular/material/icon'
+import { MatInputModule } from '@angular/material/input'
+import { MatFormFieldModule } from '@angular/material/form-field'
 import { MatDialog } from '@angular/material/dialog'
 import { SchedulerApiService, SchedulerInfo } from '../../core/services/scheduler-api.service'
 import { PromptApiService, PromptInfo } from '../../core/services/prompt-api.service'
@@ -11,7 +14,7 @@ import { SchedulerFormComponent, SchedulerFormData } from '../scheduler-form/sch
 @Component({
   selector: 'app-scheduler-manager',
   standalone: true,
-  imports: [CommonModule, MatIconModule],
+  imports: [CommonModule, FormsModule, MatIconModule, MatInputModule, MatFormFieldModule],
   templateUrl: './scheduler-manager.component.html',
   styleUrls: ['./scheduler-manager.component.scss'],
 })
@@ -23,7 +26,9 @@ export class SchedulerManagerComponent implements OnInit {
   private dialog = inject(MatDialog)
 
   schedulers: SchedulerInfo[] = []
+  filteredSchedulers: SchedulerInfo[] = []
   prompts: PromptInfo[] = []
+  searchQuery = ''
   isLoading = false
   errorMessage = ''
   currentUsername = ''
@@ -69,6 +74,7 @@ export class SchedulerManagerComponent implements OnInit {
     this.schedulerApi.listSchedulers(projectName).subscribe({
       next: (schedulers) => {
         this.schedulers = schedulers
+        this.applyFilter()
         this.isLoading = false
       },
       error: (error) => {
@@ -162,6 +168,42 @@ export class SchedulerManagerComponent implements OnInit {
     }
     const unitName = units[unit] || unit
     return `Every ${value} ${unitName}${parseInt(value, 10) > 1 ? 's' : ''}`
+  }
+
+  /**
+   * Filter schedulers based on search query
+   */
+  applyFilter(): void {
+    const query = this.searchQuery.toLowerCase().trim()
+
+    if (!query) {
+      this.filteredSchedulers = [...this.schedulers]
+      return
+    }
+
+    this.filteredSchedulers = this.schedulers.filter((scheduler) => {
+      // Search in name
+      if (scheduler.name.toLowerCase().includes(query)) return true
+
+      // Search in promptId
+      if (scheduler.promptId.toLowerCase().includes(query)) return true
+
+      // Search in prompt name
+      const promptName = this.getPromptName(scheduler.promptId).toLowerCase()
+      if (promptName.includes(query)) return true
+
+      // Search in createdBy
+      if (scheduler.createdBy.toLowerCase().includes(query)) return true
+
+      return false
+    })
+  }
+
+  /**
+   * Handle search input changes
+   */
+  onSearchChange(): void {
+    this.applyFilter()
   }
 
   createScheduler(): void {

@@ -1,10 +1,17 @@
 <div class="scheduler-manager">
   <div class="header">
     <h2>Schedulers</h2>
-    <button class="btn-create" (click)="createScheduler()">
-      <mat-icon>add</mat-icon>
-      <span>Create Scheduler</span>
-    </button>
+    <div class="header-actions">
+      <mat-form-field appearance="outline" class="search-field">
+        <mat-label>Search</mat-label>
+        <input matInput [(ngModel)]="searchQuery" (input)="onSearchChange()" placeholder="Name, prompt, author..." />
+        <mat-icon matPrefix>search</mat-icon>
+      </mat-form-field>
+      <button class="btn-create" (click)="createScheduler()">
+        <mat-icon>add</mat-icon>
+        <span>Create Scheduler</span>
+      </button>
+    </div>
   </div>
 
   <div *ngIf="isLoading" class="loading">Loading schedulers...</div>
@@ -15,8 +22,12 @@
     No schedulers found. Create your first scheduler to automate prompt execution.
   </div>
 
-  <div class="scheduler-list" *ngIf="!isLoading && schedulers.length > 0">
-    <div *ngFor="let scheduler of schedulers" class="scheduler-item">
+  <div *ngIf="!isLoading && schedulers.length > 0 && filteredSchedulers.length === 0" class="empty">
+    No schedulers match your search.
+  </div>
+
+  <div class="scheduler-list" *ngIf="!isLoading && filteredSchedulers.length > 0">
+    <div *ngFor="let scheduler of filteredSchedulers" class="scheduler-item">
       <div class="scheduler-info">
         <h3>
           {{ scheduler.name }}
