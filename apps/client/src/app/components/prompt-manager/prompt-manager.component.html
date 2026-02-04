@@ -1,5 +1,11 @@
 <div class="prompt-manager">
-  <h2>Prompts</h2>
+  <div class="header">
+    <h2>Prompts</h2>
+    <button class="btn-create" (click)="createPrompt()">
+      <mat-icon>add</mat-icon>
+      <span>Create Prompt</span>
+    </button>
+  </div>
 
   <div *ngIf="isLoading" class="loading">Loading prompts...</div>
 
@@ -22,6 +28,7 @@
         </div>
       </div>
       <div class="prompt-actions">
+        <button (click)="editPrompt(prompt)" class="btn-primary">Edit</button>
         <button (click)="toggleWebhook(prompt)" class="btn-secondary">
           {{ prompt.webhookEnabled ? 'Disable Webhook' : 'Enable Webhook' }}
         </button>
