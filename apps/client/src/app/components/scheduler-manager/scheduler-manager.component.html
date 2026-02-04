@@ -23,11 +23,18 @@
           <span class="status-badge" [class.enabled]="scheduler.enabled">
             {{ scheduler.enabled ? 'Enabled' : 'Disabled' }}
           </span>
+          <span
+            *ngIf="scheduler.createdBy !== getCurrentUsername()"
+            class="owner-badge"
+            title="Created by {{ scheduler.createdBy }}"
+          >
+            👤 {{ scheduler.createdBy }}
+          </span>
         </h3>
         <div class="details">
           <div class="detail-row">
-            <span class="label">Prompt ID:</span>
-            <span class="value">{{ scheduler.promptId }}</span>
+            <span class="label">Prompt:</span>
+            <span class="value">{{ getPromptName(scheduler.promptId) }}</span>
           </div>
           <div class="detail-row">
             <span class="label">Schedule:</span>
@@ -41,15 +48,15 @@
             <span class="label">Last Run:</span>
             <span class="value">{{ scheduler.lastRun | date: 'short' }}</span>
           </div>
-          <div class="detail-row">
-            <span class="label">Created By:</span>
-            <span class="value">{{ scheduler.createdBy }}</span>
-          </div>
         </div>
       </div>
       <div class="scheduler-actions">
         <button (click)="editScheduler(scheduler)" class="btn-primary">Edit</button>
-        <button (click)="toggleEnabled(scheduler)" class="btn-secondary">
+        <button
+          (click)="toggleEnabled(scheduler)"
+          [class.btn-enabled]="scheduler.enabled"
+          [class.btn-disabled]="!scheduler.enabled"
+        >
           {{ scheduler.enabled ? 'Disable' : 'Enable' }}
         </button>
         <button (click)="runNow(scheduler.id)" class="btn-accent">Run Now</button>

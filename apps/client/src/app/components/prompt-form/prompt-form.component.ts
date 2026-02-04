@@ -104,6 +104,17 @@ export class PromptFormComponent implements OnInit {
   }
 
   /**
+   * Normalize name: replace spaces and common punctuation with hyphens
+   */
+  normalizeName(): void {
+    this.name = this.name
+      .replace(/[\s_.,;:!?()\[\]{}]+/g, '-') // Replace spaces and punctuation with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
+      .replace(/^-|-$/g, '') // Remove leading/trailing hyphens
+      .toLowerCase()
+  }
+
+  /**
    * Validate form before submission
    */
   private validateForm(): boolean {
@@ -155,7 +166,7 @@ export class PromptFormComponent implements OnInit {
           name: this.name.trim(),
           description: this.description.trim(),
           commands: validCommands,
-          // Note: webhookEnabled is not updated here (requires CODAY_ADMIN)
+          webhookEnabled: this.webhookEnabled, // Admin can update webhook status
         })
         .subscribe({
           next: () => {

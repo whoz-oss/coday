@@ -112,6 +112,14 @@ export function registerPromptRoutes(
         return
       }
 
+      // Validate name format (lowercase, hyphens, alphanumeric)
+      if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(promptData.name)) {
+        res.status(422).json({
+          error: 'Prompt name must be lowercase alphanumeric with hyphens (e.g., my-prompt-name)',
+        })
+        return
+      }
+
       if (!promptData.description || typeof promptData.description !== 'string') {
         res.status(422).json({ error: 'Prompt description is required' })
         return
@@ -177,6 +185,20 @@ export function registerPromptRoutes(
       if (!updates || typeof updates !== 'object') {
         res.status(422).json({ error: 'Invalid prompt format' })
         return
+      }
+
+      // Validate name format if provided
+      if (updates.name !== undefined) {
+        if (typeof updates.name !== 'string') {
+          res.status(422).json({ error: 'Prompt name must be a string' })
+          return
+        }
+        if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(updates.name)) {
+          res.status(422).json({
+            error: 'Prompt name must be lowercase alphanumeric with hyphens (e.g., my-prompt-name)',
+          })
+          return
+        }
       }
 
       // Validate commands if provided

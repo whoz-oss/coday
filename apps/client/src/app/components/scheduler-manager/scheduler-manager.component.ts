@@ -3,7 +3,9 @@ import { CommonModule } from '@angular/common'
 import { MatIconModule } from '@angular/material/icon'
 import { MatDialog } from '@angular/material/dialog'
 import { SchedulerApiService, SchedulerInfo } from '../../core/services/scheduler-api.service'
+import { PromptApiService, PromptInfo } from '../../core/services/prompt-api.service'
 import { ProjectStateService } from '../../core/services/project-state.service'
+import { ConfigApiService } from '../../core/services/config-api.service'
 import { SchedulerFormComponent, SchedulerFormData } from '../scheduler-form/scheduler-form.component'
 
 @Component({
@@ -15,15 +17,45 @@ import { SchedulerFormComponent, SchedulerFormData } from '../scheduler-form/sch
 })
 export class SchedulerManagerComponent implements OnInit {
   private schedulerApi = inject(SchedulerApiService)
+  private promptApi = inject(PromptApiService)
   private projectState = inject(ProjectStateService)
+  private configApi = inject(ConfigApiService)
   private dialog = inject(MatDialog)
 
   schedulers: SchedulerInfo[] = []
+  prompts: PromptInfo[] = []
   isLoading = false
   errorMessage = ''
+  currentUsername = ''
 
   ngOnInit(): void {
+    // Load user config to get username
+    this.configApi.getUserConfig().subscribe({
+      next: (config: any) => {
+        // Normalize username: replace dots and spaces with underscores
+        this.currentUsername = (config.username || '').replace(/[.\s]+/g, '_')
+      },
+      error: (error) => {
+        console.error('[SCHEDULER_MANAGER] Error loading user config:', error)
+      },
+    })
+
+    this.loadPrompts()
     this.loadSchedulers()
+  }
+
+  private loadPrompts(): void {
+    const projectName = this.projectState.getSelectedProjectId()
+    if (!projectName) return
+
+    this.promptApi.listPrompts(projectName).subscribe({
+      next: (prompts) => {
+        this.prompts = prompts
+      },
+      error: (error) => {
+        console.error('Error loading prompts:', error)
+      },
+    })
   }
 
   private loadSchedulers(): void {
@@ -103,6 +135,15 @@ export class SchedulerManagerComponent implements OnInit {
     if (!nextRun) return 'Expired or completed'
     const date = new Date(nextRun)
     return date.toLocaleString()
+  }
+
+  getCurrentUsername(): string {
+    return this.currentUsername
+  }
+
+  getPromptName(promptId: string): string {
+    const prompt = this.prompts.find((p) => p.id === promptId)
+    return prompt ? prompt.name : promptId
   }
 
   formatInterval(interval: string): string {
