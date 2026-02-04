@@ -86,6 +86,7 @@ export class PromptManagerComponent implements OnInit {
   createPrompt(): void {
     const dialogRef = this.dialog.open<PromptFormComponent, PromptFormData, boolean>(PromptFormComponent, {
       width: '700px',
+      maxHeight: '90vh',
       data: {
         mode: 'create',
       },
@@ -108,6 +109,7 @@ export class PromptManagerComponent implements OnInit {
       next: (fullPrompt) => {
         const dialogRef = this.dialog.open<PromptFormComponent, PromptFormData, boolean>(PromptFormComponent, {
           width: '700px',
+          maxHeight: '90vh',
           data: {
             mode: 'edit',
             prompt: fullPrompt,

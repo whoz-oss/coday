@@ -1,0 +1,153 @@
+.form-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0;
+  min-width: 600px;
+
+  @media (max-width: 768px) {
+    min-width: auto;
+  }
+}
+
+.full-width {
+  width: 100%;
+}
+
+.interval-section {
+  h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .interval-fields {
+    display: flex;
+    gap: 1rem;
+
+    .interval-value {
+      flex: 1;
+    }
+
+    .interval-unit {
+      flex: 1;
+    }
+  }
+}
+
+.days-section {
+  h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .days-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+
+    mat-checkbox {
+      min-width: 120px;
+    }
+  }
+
+  .hint {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+  }
+}
+
+.end-condition-section {
+  h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+}
+
+.parameters-section {
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+
+    h3 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+  }
+
+  .parameters-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .parameter-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+
+    .param-key {
+      flex: 1;
+    }
+
+    .param-value {
+      flex: 2;
+    }
+
+    .remove-btn {
+      margin-top: 8px;
+    }
+  }
+
+  .hint {
+    margin: 0.5rem 0 0 0;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+  }
+}
+
+.enabled-section {
+  padding: 1rem;
+  background: var(--color-surface);
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+
+  mat-checkbox {
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+
+  .hint {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+  }
+}
+
+.error-message {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: rgba(244, 67, 54, 0.1);
+  border: 1px solid var(--color-error);
+  border-radius: 4px;
+  color: var(--color-error);
+
+  mat-icon {
+    font-size: 1.25rem;
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  span {
+    flex: 1;
+  }
+}
