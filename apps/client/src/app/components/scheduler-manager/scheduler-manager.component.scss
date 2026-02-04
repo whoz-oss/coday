@@ -1,37 +1,51 @@
 .scheduler-manager {
-  padding: 1rem;
+  padding: 1.5rem;
+  padding-right: 0.5rem;
 
   .header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem;
+    margin-bottom: 1.5rem;
+    padding-right: 1rem;
 
     h2 {
       margin: 0;
     }
 
-    .btn-create {
+    .header-actions {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      padding: 0.75rem 1.5rem;
-      border: none;
-      border-radius: 4px;
-      background: var(--color-primary);
-      color: white;
-      cursor: pointer;
-      font-size: 1rem;
-      font-weight: 500;
+      gap: 1rem;
 
-      &:hover {
-        opacity: 0.9;
+      .search-field {
+        width: 300px;
+        margin-bottom: -1.25em;
       }
 
-      mat-icon {
-        font-size: 1.25rem;
-        width: 1.25rem;
-        height: 1.25rem;
+      .btn-create {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 4px;
+        background: var(--color-primary);
+        color: white;
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: 500;
+        white-space: nowrap;
+
+        &:hover {
+          opacity: 0.9;
+        }
+
+        mat-icon {
+          font-size: 1.25rem;
+          width: 1.25rem;
+          height: 1.25rem;
+        }
       }
     }
   }
@@ -41,6 +55,7 @@
 .error,
 .empty {
   padding: 1rem;
+  padding-right: 1.5rem;
   text-align: center;
   color: var(--color-text-secondary);
 }
@@ -53,6 +68,7 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  padding-right: 1rem;
 }
 
 .scheduler-item {
