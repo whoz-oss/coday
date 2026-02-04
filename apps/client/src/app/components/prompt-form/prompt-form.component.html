@@ -1,0 +1,76 @@
+<h2 mat-dialog-title>{{ isEditMode ? 'Edit Prompt' : 'Create Prompt' }}</h2>
+
+<mat-dialog-content>
+  <div class="form-container">
+    <!-- Name -->
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Name</mat-label>
+      <input matInput [(ngModel)]="name" placeholder="My Prompt" required />
+      <mat-hint>A descriptive name for this prompt</mat-hint>
+    </mat-form-field>
+
+    <!-- Description -->
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Description</mat-label>
+      <textarea matInput [(ngModel)]="description" placeholder="What does this prompt do?" rows="3" required></textarea>
+      <mat-hint>Explain the purpose of this prompt</mat-hint>
+    </mat-form-field>
+
+    <!-- Commands -->
+    <div class="commands-section">
+      <div class="section-header">
+        <h3>Commands</h3>
+        <button mat-icon-button (click)="addCommand()" type="button" title="Add command">
+          <mat-icon>add</mat-icon>
+        </button>
+      </div>
+
+      <div class="commands-list">
+        <div *ngFor="let command of commands; let i = index; trackBy: trackByIndex" class="command-item">
+          <mat-form-field appearance="outline" class="command-field">
+            <mat-label>Command {{ i + 1 }}</mat-label>
+            <textarea
+              matInput
+              [(ngModel)]="commands[i]"
+              placeholder="Enter command with placeholders like \{\{key\}\}"
+              rows="2"
+            ></textarea>
+            <mat-hint>Use placeholder for dynamic values</mat-hint>
+          </mat-form-field>
+          <button
+            mat-icon-button
+            (click)="removeCommand(i)"
+            type="button"
+            [disabled]="commands.length === 1"
+            title="Remove command"
+            class="remove-btn"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Webhook Enabled (only for create mode) -->
+    <div *ngIf="!isEditMode" class="webhook-section">
+      <label class="checkbox-label">
+        <input type="checkbox" [(ngModel)]="webhookEnabled" />
+        <span>Enable webhook (requires CODAY_ADMIN)</span>
+      </label>
+      <p class="hint">Webhook can be enabled/disabled later by admins</p>
+    </div>
+
+    <!-- Error message -->
+    <div *ngIf="errorMessage" class="error-message">
+      <mat-icon>error</mat-icon>
+      <span>{{ errorMessage }}</span>
+    </div>
+  </div>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="cancel()" [disabled]="isSaving">Cancel</button>
+  <button mat-raised-button color="primary" (click)="save()" [disabled]="isSaving">
+    {{ isSaving ? 'Saving...' : 'Save' }}
+  </button>
+</mat-dialog-actions>

@@ -1,5 +1,11 @@
 <div class="scheduler-manager">
-  <h2>Schedulers</h2>
+  <div class="header">
+    <h2>Schedulers</h2>
+    <button class="btn-create" (click)="createScheduler()">
+      <mat-icon>add</mat-icon>
+      <span>Create Scheduler</span>
+    </button>
+  </div>
 
   <div *ngIf="isLoading" class="loading">Loading schedulers...</div>
 

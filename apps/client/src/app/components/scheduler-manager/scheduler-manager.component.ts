@@ -1,12 +1,13 @@
 import { Component, inject, OnInit } from '@angular/core'
 import { CommonModule } from '@angular/common'
+import { MatIconModule } from '@angular/material/icon'
 import { SchedulerApiService, SchedulerInfo } from '../../core/services/scheduler-api.service'
 import { ProjectStateService } from '../../core/services/project-state.service'
 
 @Component({
   selector: 'app-scheduler-manager',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, MatIconModule],
   templateUrl: './scheduler-manager.component.html',
   styleUrls: ['./scheduler-manager.component.scss'],
 })
@@ -116,5 +117,10 @@ export class SchedulerManagerComponent implements OnInit {
     }
     const unitName = units[unit] || unit
     return `Every ${value} ${unitName}${parseInt(value, 10) > 1 ? 's' : ''}`
+  }
+
+  createScheduler(): void {
+    // TODO: Open scheduler creation dialog
+    alert('Scheduler creation form coming soon!')
   }
 }
