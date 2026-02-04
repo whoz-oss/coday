@@ -1,0 +1,32 @@
+<div class="prompt-manager">
+  <h2>Prompts</h2>
+
+  <div *ngIf="isLoading" class="loading">Loading prompts...</div>
+
+  <div *ngIf="errorMessage" class="error">{{ errorMessage }}</div>
+
+  <div *ngIf="!isLoading && prompts.length === 0" class="empty">
+    No prompts found. Create your first prompt to get started.
+  </div>
+
+  <div class="prompt-list" *ngIf="!isLoading && prompts.length > 0">
+    <div *ngFor="let prompt of prompts" class="prompt-item">
+      <div class="prompt-info">
+        <h3>{{ prompt.name }}</h3>
+        <p class="description">{{ prompt.description }}</p>
+        <div class="meta">
+          <span class="created-by">By: {{ prompt.createdBy }}</span>
+          <span class="webhook-status" [class.enabled]="prompt.webhookEnabled">
+            Webhook: {{ prompt.webhookEnabled ? 'Enabled' : 'Disabled' }}
+          </span>
+        </div>
+      </div>
+      <div class="prompt-actions">
+        <button (click)="toggleWebhook(prompt)" class="btn-secondary">
+          {{ prompt.webhookEnabled ? 'Disable Webhook' : 'Enable Webhook' }}
+        </button>
+        <button (click)="deletePrompt(prompt.id)" class="btn-danger">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>

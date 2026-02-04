@@ -1,0 +1,127 @@
+.scheduler-manager {
+  padding: 1rem;
+
+  h2 {
+    margin-bottom: 1rem;
+  }
+}
+
+.loading,
+.error,
+.empty {
+  padding: 1rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.error {
+  color: var(--color-error);
+}
+
+.scheduler-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.scheduler-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+
+  &:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
+.scheduler-info {
+  flex: 1;
+
+  h3 {
+    margin: 0 0 0.75rem 0;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .status-badge {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    border-radius: 4px;
+    background: var(--color-text-secondary);
+    color: white;
+
+    &.enabled {
+      background: var(--color-success);
+    }
+  }
+
+  .details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .detail-row {
+    display: flex;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+
+    .label {
+      font-weight: 600;
+      min-width: 100px;
+      color: var(--color-text-secondary);
+    }
+
+    .value {
+      color: var(--color-text);
+    }
+  }
+}
+
+.scheduler-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+
+  button {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    white-space: nowrap;
+
+    &.btn-primary {
+      background: var(--color-primary);
+      color: white;
+
+      &:hover {
+        opacity: 0.9;
+      }
+    }
+
+    &.btn-secondary {
+      background: var(--color-secondary);
+      color: white;
+
+      &:hover {
+        opacity: 0.9;
+      }
+    }
+
+    &.btn-danger {
+      background: var(--color-error);
+      color: white;
+
+      &:hover {
+        opacity: 0.9;
+      }
+    }
+  }
+}

@@ -214,24 +214,24 @@
         }
       }
 
-      <!-- Webhooks - Available for all users -->
+      <!-- Prompts - Available for all users -->
       @if (selectedProjectName()) {
         <div class="section-container">
           <a
             class="section-toggle"
-            (click)="openWebhooks(); $event.preventDefault(); $event.stopPropagation()"
+            (click)="openPrompts(); $event.preventDefault(); $event.stopPropagation()"
             role="button"
             tabindex="0"
           >
-            <mat-icon class="section-icon">webhook</mat-icon>
-            <span class="section-label">Webhooks</span>
+            <mat-icon class="section-icon">description</mat-icon>
+            <span class="section-label">Prompts</span>
           </a>
         </div>
       } @else {
         <div class="section-container">
           <a class="section-toggle disabled" role="button" tabindex="-1" aria-disabled="true">
-            <mat-icon class="section-icon">webhook</mat-icon>
-            <span class="section-label">Webhooks (No project)</span>
+            <mat-icon class="section-icon">description</mat-icon>
+            <span class="section-label">Prompts (No project)</span>
           </a>
         </div>
       }
@@ -241,19 +241,19 @@
         <div class="section-container">
           <a
             class="section-toggle"
-            (click)="openTriggers(); $event.preventDefault(); $event.stopPropagation()"
+            (click)="openSchedulers(); $event.preventDefault(); $event.stopPropagation()"
             role="button"
             tabindex="0"
           >
             <mat-icon class="section-icon">schedule</mat-icon>
-            <span class="section-label">Scheduler</span>
+            <span class="section-label">Schedulers</span>
           </a>
         </div>
       } @else {
         <div class="section-container">
           <a class="section-toggle disabled" role="button" tabindex="-1" aria-disabled="true">
             <mat-icon class="section-icon">schedule</mat-icon>
-            <span class="section-label">Scheduler (No project)</span>
+            <span class="section-label">Schedulers (No project)</span>
           </a>
         </div>
       }
