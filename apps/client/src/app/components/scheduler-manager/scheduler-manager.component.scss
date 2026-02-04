@@ -78,6 +78,15 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+
+    .owner-badge {
+      font-size: 0.75rem;
+      padding: 0.25rem 0.5rem;
+      background: #2196f3;
+      color: white;
+      border-radius: 4px;
+      font-weight: normal;
+    }
   }
 
   .status-badge {
@@ -139,6 +148,24 @@
 
     &.btn-secondary {
       background: var(--color-secondary);
+      color: white;
+
+      &:hover {
+        opacity: 0.9;
+      }
+    }
+
+    &.btn-enabled {
+      background: #4caf50;
+      color: white;
+
+      &:hover {
+        opacity: 0.9;
+      }
+    }
+
+    &.btn-disabled {
+      background: #9e9e9e;
       color: white;
 
       &:hover {

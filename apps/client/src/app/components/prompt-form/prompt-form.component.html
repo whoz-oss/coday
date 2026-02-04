@@ -5,8 +5,8 @@
     <!-- Name -->
     <mat-form-field appearance="outline" class="full-width">
       <mat-label>Name</mat-label>
-      <input matInput [(ngModel)]="name" placeholder="My Prompt" required />
-      <mat-hint>A descriptive name for this prompt</mat-hint>
+      <input matInput [(ngModel)]="name" (blur)="normalizeName()" placeholder="my-prompt" required />
+      <mat-hint>A descriptive name (spaces and punctuation will be replaced with hyphens)</mat-hint>
     </mat-form-field>
 
     <!-- Description -->
@@ -51,13 +51,13 @@
       </div>
     </div>
 
-    <!-- Webhook Enabled (only for create mode) -->
-    <div *ngIf="!isEditMode" class="webhook-section">
+    <!-- Webhook Enabled (only for admin users) -->
+    <div *ngIf="isAdmin" class="webhook-section">
       <label class="checkbox-label">
         <input type="checkbox" [(ngModel)]="webhookEnabled" />
-        <span>Enable webhook (requires CODAY_ADMIN)</span>
+        <span>Enable webhook</span>
       </label>
-      <p class="hint">Webhook can be enabled/disabled later by admins</p>
+      <p class="hint">Enable webhook to trigger this prompt via HTTP POST</p>
     </div>
 
     <!-- Webhook URL (only in edit mode, if webhook enabled and user is admin) -->

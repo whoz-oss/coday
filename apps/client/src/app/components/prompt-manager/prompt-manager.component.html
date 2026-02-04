@@ -1,10 +1,22 @@
 <div class="prompt-manager">
   <div class="header">
     <h2>Prompts</h2>
-    <button class="btn-create" (click)="createPrompt()">
-      <mat-icon>add</mat-icon>
-      <span>Create Prompt</span>
-    </button>
+    <div class="header-actions">
+      <mat-form-field appearance="outline" class="search-field">
+        <mat-label>Search</mat-label>
+        <input
+          matInput
+          [(ngModel)]="searchQuery"
+          (input)="onSearchChange()"
+          placeholder="Name, description, author..."
+        />
+        <mat-icon matPrefix>search</mat-icon>
+      </mat-form-field>
+      <button class="btn-create" (click)="createPrompt()">
+        <mat-icon>add</mat-icon>
+        <span>Create Prompt</span>
+      </button>
+    </div>
   </div>
 
   <div *ngIf="isLoading" class="loading">Loading prompts...</div>
@@ -15,13 +27,25 @@
     No prompts found. Create your first prompt to get started.
   </div>
 
-  <div class="prompt-list" *ngIf="!isLoading && prompts.length > 0">
-    <div *ngFor="let prompt of prompts" class="prompt-item">
+  <div *ngIf="!isLoading && prompts.length > 0 && filteredPrompts.length === 0" class="empty">
+    No prompts match your search.
+  </div>
+
+  <div class="prompt-list" *ngIf="!isLoading && filteredPrompts.length > 0">
+    <div *ngFor="let prompt of filteredPrompts" class="prompt-item">
       <div class="prompt-info">
-        <h3>{{ prompt.name }}</h3>
+        <h3>
+          {{ prompt.name }}
+          <span
+            *ngIf="prompt.createdBy !== getCurrentUsername()"
+            class="owner-badge"
+            title="Created by {{ prompt.createdBy }}"
+          >
+            👤 {{ prompt.createdBy }}
+          </span>
+        </h3>
         <p class="description">{{ prompt.description }}</p>
         <div class="meta">
-          <span class="created-by">By: {{ prompt.createdBy }}</span>
           <span class="webhook-status" [class.enabled]="prompt.webhookEnabled">
             Webhook: {{ prompt.webhookEnabled ? 'Enabled' : 'Disabled' }}
           </span>
@@ -29,7 +53,12 @@
       </div>
       <div class="prompt-actions">
         <button (click)="editPrompt(prompt)" class="btn-primary">Edit</button>
-        <button (click)="toggleWebhook(prompt)" class="btn-secondary">
+        <button
+          *ngIf="isAdmin"
+          (click)="toggleWebhook(prompt)"
+          [class.btn-webhook-enabled]="prompt.webhookEnabled"
+          [class.btn-webhook-disabled]="!prompt.webhookEnabled"
+        >
           {{ prompt.webhookEnabled ? 'Disable Webhook' : 'Enable Webhook' }}
         </button>
         <button (click)="deletePrompt(prompt.id)" class="btn-danger">Delete</button>

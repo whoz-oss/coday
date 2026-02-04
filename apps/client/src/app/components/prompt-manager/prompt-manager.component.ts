@@ -1,15 +1,19 @@
 import { Component, inject, OnInit } from '@angular/core'
 import { CommonModule } from '@angular/common'
+import { FormsModule } from '@angular/forms'
 import { MatIconModule } from '@angular/material/icon'
+import { MatInputModule } from '@angular/material/input'
+import { MatFormFieldModule } from '@angular/material/form-field'
 import { MatDialog } from '@angular/material/dialog'
 import { PromptApiService, PromptInfo } from '../../core/services/prompt-api.service'
 import { ProjectStateService } from '../../core/services/project-state.service'
+import { ConfigApiService } from '../../core/services/config-api.service'
 import { PromptFormComponent, PromptFormData } from '../prompt-form/prompt-form.component'
 
 @Component({
   selector: 'app-prompt-manager',
   standalone: true,
-  imports: [CommonModule, MatIconModule],
+  imports: [CommonModule, FormsModule, MatIconModule, MatInputModule, MatFormFieldModule],
   templateUrl: './prompt-manager.component.html',
   styleUrls: ['./prompt-manager.component.scss'],
 })
@@ -17,12 +21,30 @@ export class PromptManagerComponent implements OnInit {
   private promptApi = inject(PromptApiService)
   private projectState = inject(ProjectStateService)
   private dialog = inject(MatDialog)
+  private configApi = inject(ConfigApiService)
 
   prompts: PromptInfo[] = []
+  filteredPrompts: PromptInfo[] = []
+  searchQuery = ''
   isLoading = false
   errorMessage = ''
+  isAdmin = false
+  currentUsername = ''
 
   ngOnInit(): void {
+    // Load user config to check if admin and get username
+    this.configApi.getUserConfig().subscribe({
+      next: (config: any) => {
+        this.isAdmin = config.groups?.includes('CODAY_ADMIN') ?? false
+        // Normalize username: replace dots and spaces with underscores
+        this.currentUsername = (config.username || '').replace(/[.\s]+/g, '_')
+      },
+      error: (error) => {
+        console.error('[PROMPT_MANAGER] Error loading user config:', error)
+        this.isAdmin = false
+      },
+    })
+
     this.loadPrompts()
   }
 
@@ -37,6 +59,7 @@ export class PromptManagerComponent implements OnInit {
     this.promptApi.listPrompts(projectName).subscribe({
       next: (prompts) => {
         this.prompts = prompts
+        this.applyFilter()
         this.isLoading = false
       },
       error: (error) => {
@@ -98,6 +121,42 @@ export class PromptManagerComponent implements OnInit {
         this.loadPrompts()
       }
     })
+  }
+
+  getCurrentUsername(): string {
+    return this.currentUsername
+  }
+
+  /**
+   * Filter prompts based on search query
+   */
+  applyFilter(): void {
+    const query = this.searchQuery.toLowerCase().trim()
+
+    if (!query) {
+      this.filteredPrompts = [...this.prompts]
+      return
+    }
+
+    this.filteredPrompts = this.prompts.filter((prompt) => {
+      // Search in name
+      if (prompt.name.toLowerCase().includes(query)) return true
+
+      // Search in description
+      if (prompt.description.toLowerCase().includes(query)) return true
+
+      // Search in createdBy
+      if (prompt.createdBy.toLowerCase().includes(query)) return true
+
+      return false
+    })
+  }
+
+  /**
+   * Handle search input changes
+   */
+  onSearchChange(): void {
+    this.applyFilter()
   }
 
   editPrompt(prompt: PromptInfo): void {
