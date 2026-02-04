@@ -43,10 +43,83 @@ export class PromptExecutionService {
   }
 
   /**
+   * Process commands with parameter interpolation
+   *
+   * Rules:
+   * 1. String parameter:
+   *    - If {{PARAMETERS}} present → replace in ALL commands
+   *    - If no placeholders → append to FIRST command only
+   *    - If other {{key}} placeholders → Error
+   * 2. Object parameter:
+   *    - Replace all {{key}} with values from object
+   * 3. Undefined:
+   *    - Commands used as-is
+   * 4. Final validation:
+   *    - If any {{...}} remain → Throw with list of missing keys
+   */
+  private processCommands(commands: string[], parameters: Record<string, unknown> | string | undefined): string[] {
+    let processed: string[]
+
+    if (typeof parameters === 'string') {
+      // String parameter mode
+      const hasParametersPlaceholder = commands.some((cmd) => /\{\{PARAMETERS\}\}/.test(cmd))
+      const hasOtherPlaceholders = commands.some((cmd) => /\{\{(?!PARAMETERS\}\})\w+\}\}/.test(cmd))
+
+      if (hasOtherPlaceholders) {
+        throw new Error(
+          'Prompt contains structured placeholders ({{key}}). Use an object parameter instead of a string.'
+        )
+      }
+
+      if (hasParametersPlaceholder) {
+        // Replace {{PARAMETERS}} in ALL commands
+        processed = commands.map((cmd) => cmd.replace(/\{\{PARAMETERS\}\}/g, parameters))
+      } else {
+        // No placeholders → Append to first command only
+        processed = commands.map((cmd, index) => (index === 0 ? `${cmd} ${parameters}`.trim() : cmd))
+      }
+    } else if (typeof parameters === 'object' && parameters !== null) {
+      // Object parameter mode - structured interpolation
+      processed = commands.map((command) => {
+        let processedCommand = command
+        Object.entries(parameters).forEach(([key, value]) => {
+          const placeholder = `{{${key}}}`
+          processedCommand = processedCommand.replace(new RegExp(placeholder, 'g'), String(value))
+        })
+        return processedCommand
+      })
+    } else {
+      // No parameters - use commands as-is
+      processed = [...commands]
+    }
+
+    // Final validation: check for remaining placeholders
+    const remainingPlaceholders = new Set<string>()
+    processed.forEach((cmd) => {
+      const matches = cmd.match(/\{\{(\w+)\}\}/g)
+      if (matches) {
+        matches.forEach((match) => remainingPlaceholders.add(match))
+      }
+    })
+
+    if (remainingPlaceholders.size > 0) {
+      const missingKeys = Array.from(remainingPlaceholders)
+        .map((p) => p.replace(/[{}]/g, ''))
+        .join(', ')
+      throw new Error(`Missing required parameters: ${missingKeys}`)
+    }
+
+    return processed
+  }
+
+  /**
    * Execute a prompt with given parameters and user context
    *
    * @param promptId - ID of the prompt to execute
-   * @param parameters - Parameters for prompt execution (placeholder values, etc.)
+   * @param parameters - Parameters for prompt execution:
+   *   - Record<string, unknown>: Structured parameters for {{key}} interpolation
+   *   - string: Simple parameter for {{PARAMETERS}} or append to first command
+   *   - undefined: No parameters (commands executed as-is)
    * @param username - User identity for execution (determines permissions)
    * @param executionMode - Context of execution: 'direct', 'scheduled', or 'webhook'
    * @param options - Additional execution options
@@ -54,7 +127,7 @@ export class PromptExecutionService {
    */
   async executePrompt(
     promptId: string,
-    parameters: Record<string, unknown>,
+    parameters: Record<string, unknown> | string | undefined,
     username: string,
     executionMode: 'direct' | 'scheduled' | 'webhook',
     options?: {
@@ -87,16 +160,8 @@ export class PromptExecutionService {
       throw new Error('Prompt has no commands configured')
     }
 
-    // Replace placeholders in template commands
-    const prompts = prompt.commands.map((command) => {
-      let processedCommand = command
-      // Simple string replacement for placeholders like {{key}}
-      Object.entries(parameters).forEach(([key, value]) => {
-        const placeholder = `{{${key}}}`
-        processedCommand = processedCommand.replace(new RegExp(placeholder, 'g'), String(value))
-      })
-      return processedCommand
-    })
+    // Process commands with parameters
+    const prompts = this.processCommands(prompt.commands, parameters)
 
     if (!username) {
       throw new Error('Username is required')

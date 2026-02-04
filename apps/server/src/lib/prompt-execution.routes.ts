@@ -97,7 +97,12 @@ export function registerPromptExecutionRoutes(
         res.status(404).send({ error: errorMessage })
       } else if (errorMessage.includes('not enabled for webhook')) {
         res.status(403).send({ error: errorMessage })
-      } else if (errorMessage.includes('Missing or invalid') || errorMessage.includes('not configured')) {
+      } else if (
+        errorMessage.includes('Missing required parameters') ||
+        errorMessage.includes('contains structured placeholders') ||
+        errorMessage.includes('Missing or invalid') ||
+        errorMessage.includes('not configured')
+      ) {
         res.status(422).send({ error: errorMessage })
       } else {
         res.status(500).send({ error: 'Internal server error' })
