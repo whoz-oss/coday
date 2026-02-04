@@ -89,33 +89,52 @@
     <div class="parameters-section">
       <div class="section-header">
         <h3>Parameters (Optional)</h3>
-        <button mat-icon-button (click)="addParameter()" type="button" title="Add parameter">
-          <mat-icon>add</mat-icon>
-        </button>
+        <mat-button-toggle-group [(ngModel)]="parameterMode" class="mode-toggle">
+          <mat-button-toggle value="simple">Simple</mat-button-toggle>
+          <mat-button-toggle value="structured">Structured</mat-button-toggle>
+        </mat-button-toggle-group>
       </div>
 
-      <div class="parameters-list" *ngIf="parameters.length > 0">
-        <div *ngFor="let param of parameters; let i = index; trackBy: trackByIndex" class="parameter-item">
-          <mat-form-field appearance="outline" class="param-key">
-            <mat-label>Key</mat-label>
-            <input matInput [(ngModel)]="param.key" placeholder="parameterName" />
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="param-value">
-            <mat-label>Value</mat-label>
-            <input matInput [(ngModel)]="param.value" placeholder="value" />
-          </mat-form-field>
-          <button
-            mat-icon-button
-            (click)="removeParameter(i)"
-            type="button"
-            title="Remove parameter"
-            class="remove-btn"
-          >
-            <mat-icon>delete</mat-icon>
+      <!-- Simple parameter mode -->
+      <div *ngIf="parameterMode === 'simple'">
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Parameter Value</mat-label>
+          <input matInput [(ngModel)]="simpleParameter" placeholder="e.g., 1234 or staging" />
+          <mat-hint>Simple value for {{ '{{PARAMETERS}}' }} placeholder or appended to first command</mat-hint>
+        </mat-form-field>
+      </div>
+
+      <!-- Structured parameters mode -->
+      <div *ngIf="parameterMode === 'structured'">
+        <div class="section-header">
+          <button mat-icon-button (click)="addParameter()" type="button" title="Add parameter">
+            <mat-icon>add</mat-icon>
           </button>
         </div>
+
+        <div class="parameters-list" *ngIf="parameters.length > 0">
+          <div *ngFor="let param of parameters; let i = index; trackBy: trackByIndex" class="parameter-item">
+            <mat-form-field appearance="outline" class="param-key">
+              <mat-label>Key</mat-label>
+              <input matInput [(ngModel)]="param.key" placeholder="parameterName" />
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="param-value">
+              <mat-label>Value</mat-label>
+              <input matInput [(ngModel)]="param.value" placeholder="value" />
+            </mat-form-field>
+            <button
+              mat-icon-button
+              (click)="removeParameter(i)"
+              type="button"
+              title="Remove parameter"
+              class="remove-btn"
+            >
+              <mat-icon>delete</mat-icon>
+            </button>
+          </div>
+        </div>
+        <p class="hint">Key-value pairs for {{ '{{key}}' }} placeholders in prompt commands</p>
       </div>
-      <p class="hint">Parameters will replace placeholders in the prompt commands</p>
     </div>
 
     <!-- Enabled -->

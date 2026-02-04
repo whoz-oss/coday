@@ -14,7 +14,7 @@ import { isUserAdmin } from './user-groups'
 interface PromptExecutionService {
   executePrompt(
     promptId: string,
-    parameters: Record<string, unknown>,
+    parameters: Record<string, unknown> | string | undefined,
     username: string,
     executionMode: 'direct' | 'scheduled' | 'webhook',
     options?: { title?: string; awaitFinalAnswer?: boolean }
@@ -189,9 +189,21 @@ export class SchedulerService {
 
     // Execute prompt with scheduler parameters
     // Use scheduler's createdBy as username for execution
+    // Convert parameters: if it's {PARAMETERS: "value"}, extract the string
+    let parameters: Record<string, unknown> | string | undefined = scheduler.parameters
+    if (
+      scheduler.parameters &&
+      typeof scheduler.parameters === 'object' &&
+      Object.keys(scheduler.parameters).length === 1 &&
+      'PARAMETERS' in scheduler.parameters
+    ) {
+      // Simple mode: extract the string value
+      parameters = String(scheduler.parameters.PARAMETERS)
+    }
+
     const result = await this.promptExecutionService.executePrompt(
       scheduler.promptId,
-      scheduler.parameters || {},
+      parameters,
       scheduler.createdBy,
       'scheduled',
       {

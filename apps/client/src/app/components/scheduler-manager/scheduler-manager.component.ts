@@ -97,7 +97,8 @@ export class SchedulerManagerComponent implements OnInit {
       },
       error: (error) => {
         console.error('Error deleting scheduler:', error)
-        alert('Failed to delete scheduler')
+        const errorMessage = error?.error?.error || error?.message || 'Failed to delete scheduler'
+        alert(`Failed to delete scheduler: ${errorMessage}`)
       },
     })
   }
@@ -116,7 +117,8 @@ export class SchedulerManagerComponent implements OnInit {
       },
       error: (error) => {
         console.error('Error toggling scheduler:', error)
-        alert('Failed to toggle scheduler')
+        const errorMessage = error?.error?.error || error?.message || 'Failed to toggle scheduler'
+        alert(`Failed to toggle scheduler: ${errorMessage}`)
       },
     })
   }
@@ -132,7 +134,9 @@ export class SchedulerManagerComponent implements OnInit {
       },
       error: (error) => {
         console.error('Error running scheduler:', error)
-        alert('Failed to run scheduler')
+        // Extract detailed error message from backend
+        const errorMessage = error?.error?.error || error?.message || 'Failed to run scheduler'
+        alert(`Failed to run scheduler: ${errorMessage}`)
       },
     })
   }
@@ -248,7 +252,8 @@ export class SchedulerManagerComponent implements OnInit {
       },
       error: (error) => {
         console.error('Error loading scheduler details:', error)
-        alert('Failed to load scheduler details')
+        const errorMessage = error?.error?.error || error?.message || 'Failed to load scheduler details'
+        alert(`Failed to load scheduler details: ${errorMessage}`)
       },
     })
   }

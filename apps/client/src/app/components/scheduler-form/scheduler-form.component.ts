@@ -8,6 +8,7 @@ import { MatFormFieldModule } from '@angular/material/form-field'
 import { MatIconModule } from '@angular/material/icon'
 import { MatSelectModule } from '@angular/material/select'
 import { MatCheckboxModule } from '@angular/material/checkbox'
+import { MatButtonToggleModule } from '@angular/material/button-toggle'
 import { SchedulerApiService, Scheduler, IntervalSchedule } from '../../core/services/scheduler-api.service'
 import { PromptApiService, PromptInfo } from '../../core/services/prompt-api.service'
 import { ProjectStateService } from '../../core/services/project-state.service'
@@ -30,6 +31,7 @@ export interface SchedulerFormData {
     MatIconModule,
     MatSelectModule,
     MatCheckboxModule,
+    MatButtonToggleModule,
   ],
   templateUrl: './scheduler-form.component.html',
   styleUrls: ['./scheduler-form.component.scss'],
@@ -55,6 +57,8 @@ export class SchedulerFormComponent implements OnInit {
   endConditionType: 'none' | 'occurrences' | 'endTimestamp' = 'none'
   endOccurrences = 10
   endTimestamp = ''
+  parameterMode: 'simple' | 'structured' = 'simple'
+  simpleParameter = ''
   parameters: { key: string; value: string }[] = []
 
   // UI state
@@ -121,12 +125,23 @@ export class SchedulerFormComponent implements OnInit {
         }
       }
 
-      // Parameters
+      // Parameters - detect if it's a simple string or structured object
       if (this.data.scheduler.parameters) {
-        this.parameters = Object.entries(this.data.scheduler.parameters).map(([key, value]) => ({
-          key,
-          value: String(value),
-        }))
+        // Check if parameters is a simple string (stored as {PARAMETERS: "value"})
+        if (
+          typeof this.data.scheduler.parameters === 'object' &&
+          Object.keys(this.data.scheduler.parameters).length === 1 &&
+          'PARAMETERS' in this.data.scheduler.parameters
+        ) {
+          this.parameterMode = 'simple'
+          this.simpleParameter = String(this.data.scheduler.parameters.PARAMETERS)
+        } else {
+          this.parameterMode = 'structured'
+          this.parameters = Object.entries(this.data.scheduler.parameters).map(([key, value]) => ({
+            key,
+            value: String(value),
+          }))
+        }
       }
     }
   }
@@ -303,6 +318,15 @@ export class SchedulerFormComponent implements OnInit {
    * Build parameters object from form data
    */
   private buildParameters(): Record<string, unknown> | undefined {
+    if (this.parameterMode === 'simple') {
+      // Simple mode: store as {PARAMETERS: "value"} if not empty
+      if (this.simpleParameter.trim()) {
+        return { PARAMETERS: this.simpleParameter.trim() }
+      }
+      return undefined
+    }
+
+    // Structured mode
     const validParams = this.parameters.filter((p) => p.key.trim())
     if (validParams.length === 0) return undefined
 
@@ -351,7 +375,8 @@ export class SchedulerFormComponent implements OnInit {
           },
           error: (error) => {
             console.error('Error updating scheduler:', error)
-            this.errorMessage = error?.error?.error || 'Failed to update scheduler'
+            // Extract error message from backend response
+            this.errorMessage = error?.error?.error || error?.message || 'Failed to update scheduler'
             this.isSaving = false
           },
         })
@@ -372,7 +397,8 @@ export class SchedulerFormComponent implements OnInit {
           },
           error: (error) => {
             console.error('Error creating scheduler:', error)
-            this.errorMessage = error?.error?.error || 'Failed to create scheduler'
+            // Extract error message from backend response
+            this.errorMessage = error?.error?.error || error?.message || 'Failed to create scheduler'
             this.isSaving = false
           },
         })

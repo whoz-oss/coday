@@ -175,7 +175,8 @@ export class PromptFormComponent implements OnInit {
           },
           error: (error) => {
             console.error('Error updating prompt:', error)
-            this.errorMessage = error?.error?.error || 'Failed to update prompt'
+            // Extract error message from backend response
+            this.errorMessage = error?.error?.error || error?.message || 'Failed to update prompt'
             this.isSaving = false
           },
         })
@@ -195,7 +196,8 @@ export class PromptFormComponent implements OnInit {
           },
           error: (error) => {
             console.error('Error creating prompt:', error)
-            this.errorMessage = error?.error?.error || 'Failed to create prompt'
+            // Extract error message from backend response
+            this.errorMessage = error?.error?.error || error?.message || 'Failed to create prompt'
             this.isSaving = false
           },
         })

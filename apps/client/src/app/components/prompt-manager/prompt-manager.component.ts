@@ -82,7 +82,8 @@ export class PromptManagerComponent implements OnInit {
       },
       error: (error) => {
         console.error('Error deleting prompt:', error)
-        alert('Failed to delete prompt')
+        const errorMessage = error?.error?.error || error?.message || 'Failed to delete prompt'
+        alert(`Failed to delete prompt: ${errorMessage}`)
       },
     })
   }
@@ -101,7 +102,8 @@ export class PromptManagerComponent implements OnInit {
       },
       error: (error) => {
         console.error('Error toggling webhook:', error)
-        alert('Failed to toggle webhook. You may need CODAY_ADMIN permissions.')
+        const errorMessage = error?.error?.error || error?.message || 'Failed to toggle webhook'
+        alert(`Failed to toggle webhook: ${errorMessage}`)
       },
     })
   }
@@ -184,7 +186,8 @@ export class PromptManagerComponent implements OnInit {
       },
       error: (error) => {
         console.error('Error loading prompt details:', error)
-        alert('Failed to load prompt details')
+        const errorMessage = error?.error?.error || error?.message || 'Failed to load prompt details'
+        alert(`Failed to load prompt details: ${errorMessage}`)
       },
     })
   }
