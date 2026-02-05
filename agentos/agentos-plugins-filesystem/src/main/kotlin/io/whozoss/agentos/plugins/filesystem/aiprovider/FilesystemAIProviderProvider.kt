@@ -48,7 +48,7 @@ class FilesystemAIProviderProvider : AiProviderPlugin {
                 .filter { it.toString().endsWith(".yaml") || it.toString().endsWith(".yml") }
                 .forEach { yamlFile ->
                     try {
-                        logger.debug("Processing aiProvider file: $yamlFile")
+                        logger.debug("Processing aiProvider file: {}", yamlFile)
                         val aiProvider = loadAiProviderFromYaml(yamlFile.toFile())
                         aiProviders.add(aiProvider)
                         logger.info("Loaded AI Provider '${aiProvider.id}' from ${yamlFile.fileName}")
@@ -85,6 +85,7 @@ class FilesystemAIProviderProvider : AiProviderPlugin {
             baseUrl = yamlModel.baseUrl,
             baseModel = yamlModel.baseModel,
             temperature = yamlModel.temperature ?: 1.0,
+            maxTokens = yamlModel.maxTokens,
         )
     }
 
