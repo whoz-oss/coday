@@ -38,6 +38,20 @@ export interface CodayLogger {
   logThreadCleanup(project: string, threadFileName: string): void
 
   /**
+   * Log a trigger execution event
+   * @param data - The trigger execution data
+   */
+  logTriggerExecution(data: {
+    triggerId: string
+    triggerName: string
+    webhookUuid: string
+    projectName: string
+    success: boolean
+    threadId?: string
+    error?: string
+  }): void
+
+  /**
    * Read logs for a date range
    * @param from - Start date
    * @param to - End date

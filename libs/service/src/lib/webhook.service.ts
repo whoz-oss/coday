@@ -1,163 +1,96 @@
-import * as path from 'node:path'
-import * as os from 'node:os'
-import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs'
-import { readYamlFile, writeYamlFile } from '@coday/utils'
+import type { PromptExecutionService } from './prompt-execution.service'
+import type { PromptService } from './prompt.service'
 
-export interface Webhook {
-  uuid: string
-  name: string
-  project: string
-  createdBy: string
-  createdAt: Date
-  commandType: 'free' | 'template'
-  commands?: string[]
-}
-
+/**
+ * WebhookService - Delegates webhook execution to PromptExecutionService
+ *
+ * ARCHITECTURE:
+ * - This service is a thin wrapper around PromptExecutionService
+ * - It validates that prompts have webhookEnabled = true
+ * - It delegates all execution logic to PromptExecutionService
+ * - Kept for backward compatibility and injection into Coday runtime
+ *
+ * MIGRATION NOTE:
+ * This service previously managed webhooks as separate entities.
+ * Now webhooks are simply prompts with webhookEnabled=true.
+ * All CRUD operations are handled by PromptService.
+ * This service only handles execution delegation.
+ */
 export class WebhookService {
-  private webhooksDir: string
+  private promptExecutionService?: PromptExecutionService
+  private promptService?: PromptService
 
-  constructor(codayConfigPath?: string) {
-    const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
-    this.webhooksDir = path.join(codayConfigPath ?? defaultConfigPath, 'webhooks')
-
-    // Ensure the webhooks directory exists
-    mkdirSync(this.webhooksDir, { recursive: true })
+  constructor() {
+    // Empty constructor - services will be injected via initializeExecution
   }
 
   /**
-   * Creates a new webhook with generated UUID and timestamp
+   * Initialize webhook execution dependencies
+   * Called after server initialization with required services
    */
-  async create(webhook: Omit<Webhook, 'uuid' | 'createdAt'>): Promise<Webhook> {
-    try {
-      // Generate proper UUID v4
-      const uuid = randomUUID()
+  initializeExecution(promptExecutionService: PromptExecutionService, promptService: PromptService): void {
+    this.promptExecutionService = promptExecutionService
+    this.promptService = promptService
+    console.log('[WEBHOOK] WebhookService initialized with PromptExecutionService delegation')
+  }
 
-      const newWebhook: Webhook = {
-        ...webhook,
-        uuid,
-        createdAt: new Date(),
-      }
-
-      const filePath = path.join(this.webhooksDir, `${uuid}.yml`)
-
-      // Check if file already exists (highly unlikely but defensive)
-      if (existsSync(filePath)) {
-        throw new Error(`Webhook with UUID ${uuid} already exists`)
-      }
-
-      writeYamlFile(filePath, newWebhook)
-      return newWebhook
-    } catch (error) {
-      throw new Error(`Failed to create webhook: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  /**
+   * Execute a webhook by delegating to PromptExecutionService
+   *
+   * This method is called by the /api/webhooks/:promptId/execute endpoint
+   * and by agents that need to trigger webhooks programmatically.
+   *
+   * @param promptId - ID of the prompt to execute (must have webhookEnabled=true)
+   * @param parameters - Parameters to pass to the prompt execution
+   * @param username - Username executing the webhook
+   * @param title - Optional title for the thread
+   * @param awaitFinalAnswer - Whether to wait for completion (default: false)
+   * @returns Promise<{ threadId: string, lastEvent?: any }>
+   */
+  async executeWebhook(
+    promptId: string,
+    parameters: Record<string, unknown>,
+    username: string,
+    title?: string,
+    awaitFinalAnswer: boolean = false
+  ): Promise<{ threadId: string; lastEvent?: any }> {
+    // Verify execution is initialized
+    if (!this.promptExecutionService || !this.promptService) {
+      throw new Error('WebhookService not initialized. Call initializeExecution() first.')
     }
+
+    console.log(`[WEBHOOK] Delegating execution to PromptExecutionService for prompt ${promptId}`)
+
+    // Delegate to PromptExecutionService (it will validate webhookEnabled)
+    return this.promptExecutionService.executePrompt(promptId, parameters, username, 'webhook', {
+      title,
+      awaitFinalAnswer,
+    })
   }
 
   /**
-   * Retrieves a webhook by UUID
+   * DEPRECATED: Get webhook by UUID
+   * This method is kept for backward compatibility with old code that might call it.
+   * New code should use PromptService.getById() directly.
+   *
+   * @deprecated Use PromptService.getById() instead
    */
-  async get(uuid: string): Promise<Webhook | null> {
-    try {
-      const filePath = path.join(this.webhooksDir, `${uuid}.yml`)
-      const webhook = readYamlFile<Webhook>(filePath)
+  async getByUuid(promptId: string): Promise<{ webhook: any; projectName: string } | null> {
+    if (!this.promptService) {
+      throw new Error('WebhookService not initialized')
+    }
 
-      if (!webhook) {
-        return null
-      }
+    console.warn('[WEBHOOK] DEPRECATED: getByUuid() called. Use PromptService.getById() instead.')
 
-      // Ensure createdAt is a Date object
-      if (webhook.createdAt && typeof webhook.createdAt === 'string') {
-        webhook.createdAt = new Date(webhook.createdAt)
-      }
-
-      return webhook
-    } catch (error) {
-      console.error(`Failed to get webhook ${uuid}:`, error)
+    const result = await this.promptService.getById(promptId)
+    if (!result) {
       return null
     }
-  }
 
-  /**
-   * Updates an existing webhook
-   */
-  async update(uuid: string, updates: Partial<Webhook>): Promise<Webhook | null> {
-    try {
-      const existing = await this.get(uuid)
-      if (!existing) {
-        return null
-      }
-
-      // Prevent changing UUID and createdAt
-      const { uuid: _, createdAt: __, ...allowedUpdates } = updates
-
-      const updatedWebhook: Webhook = {
-        ...existing,
-        ...allowedUpdates,
-      }
-
-      const filePath = path.join(this.webhooksDir, `${uuid}.yml`)
-      writeYamlFile(filePath, updatedWebhook)
-
-      return updatedWebhook
-    } catch (error) {
-      console.error(`Failed to update webhook ${uuid}:`, error)
-      return null
+    // Return in old format for backward compatibility
+    return {
+      webhook: result.prompt,
+      projectName: result.projectName,
     }
-  }
-
-  /**
-   * Deletes a webhook by UUID
-   */
-  async delete(uuid: string): Promise<boolean> {
-    try {
-      const filePath = path.join(this.webhooksDir, `${uuid}.yml`)
-
-      if (!existsSync(filePath)) {
-        return false
-      }
-
-      unlinkSync(filePath)
-      return true
-    } catch (error) {
-      console.error(`Failed to delete webhook ${uuid}:`, error)
-      return false
-    }
-  }
-
-  /**
-   * Lists all webhooks
-   */
-  async list(): Promise<Webhook[]> {
-    try {
-      if (!existsSync(this.webhooksDir)) {
-        return []
-      }
-
-      const files = readdirSync(this.webhooksDir)
-      const webhookFiles = files.filter((file) => file.endsWith('.yml'))
-
-      const webhooks: Webhook[] = []
-
-      for (const file of webhookFiles) {
-        const uuid = file.replace('.yml', '')
-        const webhook = await this.get(uuid)
-        if (webhook) {
-          webhooks.push(webhook)
-        }
-      }
-
-      // Sort by creation date (newest first)
-      return webhooks.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-    } catch (error) {
-      console.error('Failed to list webhooks:', error)
-      return []
-    }
-  }
-
-  /**
-   * Returns the webhooks directory path
-   */
-  getWebhooksDir(): string {
-    return this.webhooksDir
   }
 }
