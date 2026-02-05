@@ -1,3 +1,24 @@
+## 0.66.0 (2026-02-05)
+
+### 🚀 Features
+
+- wz-28668: add minimal unit test to SDK ([ef877c1](https://github.com/whoz-oss/coday/commit/ef877c1))
+- wz-28668: use kotests for unit tests ([893a2a2](https://github.com/whoz-oss/coday/commit/893a2a2))
+- wz-28668: move package to whoz-oss ([7b24905](https://github.com/whoz-oss/coday/commit/7b24905))
+- wz-28668: annotation processing with kapt to generate extensions.idx file ([23c1779](https://github.com/whoz-oss/coday/commit/23c1779))
+- wz-28668: restore more detailed README.md ([030320a](https://github.com/whoz-oss/coday/commit/030320a))
+- wz-28668: PR review ([bc13be2](https://github.com/whoz-oss/coday/commit/bc13be2))
+- add upload file button ([#454](https://github.com/whoz-oss/coday/pull/454))
+- **agentos:** add logs and fix test ([b4a67f5](https://github.com/whoz-oss/coday/commit/b4a67f5))
+- **agentos:** fix add absolute path of plugins folder in log message ([6c8eea7](https://github.com/whoz-oss/coday/commit/6c8eea7))
+- **agentos:** add AgentOSApplication.xml configuration ([d97b8a9](https://github.com/whoz-oss/coday/commit/d97b8a9))
+
+### ❤️ Thank You
+
+- thomas.martin @thomasmartin-whoz
+- vincent-audibert-whoz
+- vincent.couturier @vincent-couturier-whoz
+
 ## 0.65.0 (2026-02-03)
 
 ### 🚀 Features
