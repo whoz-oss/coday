@@ -3,7 +3,7 @@ package io.whozoss.agentos.plugins.filesystem.aiprovider
 data class AiProviderYamlModel(
     val name: String,
     val apiType: String,
-    val baseUrl: String? = null,
+    val baseUrl: String,
     val description: String? = null,
     val defaultApiKey: String? = null,
     val baseModel: String? = null,

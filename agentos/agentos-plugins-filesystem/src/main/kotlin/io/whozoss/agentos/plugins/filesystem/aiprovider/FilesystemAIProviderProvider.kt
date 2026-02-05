@@ -3,9 +3,9 @@ package io.whozoss.agentos.plugins.filesystem.aiprovider
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.KotlinModule
-import io.whozoss.agentos.sdk.aiprovider.AiProvider
-import io.whozoss.agentos.sdk.aiprovider.AiProviderPlugin
-import io.whozoss.agentos.sdk.aiprovider.ApiType
+import io.whozoss.agentos.sdk.model.AiApiType
+import io.whozoss.agentos.sdk.model.AiProvider
+import io.whozoss.agentos.sdk.plugin.AiProviderPlugin
 import org.pf4j.Extension
 import org.slf4j.LoggerFactory
 import java.io.File
@@ -68,19 +68,10 @@ class FilesystemAIProviderProvider : AiProviderPlugin {
     private fun loadAiProviderFromYaml(file: File): AiProvider {
         val yamlModel = yamlMapper.readValue(file, AiProviderYamlModel::class.java)
 
-        // Generate ID from filename (remove extension and normalize)
-        val aiProviderId =
-            file.nameWithoutExtension
-                .lowercase()
-                .replace(Regex("[^a-z0-9-]"), "-")
-                .replace(Regex("-+"), "-")
-                .trim('-')
-
         return AiProvider(
-            id = aiProviderId,
             name = yamlModel.name,
             description = yamlModel.description,
-            apiType = ApiType.valueOf(yamlModel.apiType),
+            apiType = AiApiType.valueOf(yamlModel.apiType),
             defaultApiKey = yamlModel.defaultApiKey,
             baseUrl = yamlModel.baseUrl,
             baseModel = yamlModel.baseModel,

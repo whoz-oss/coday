@@ -4,6 +4,7 @@ import io.whozoss.agentos.service.chatclient.ChatClientProvider
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
+import java.util.UUID
 
 @RestController
 class AiController(
@@ -30,7 +31,7 @@ data class Query(
 )
 
 data class ModelConfig(
-    val providerId: String,
+    val providerId: UUID,
     val apiKey: String?,
     val model: String?,
 )

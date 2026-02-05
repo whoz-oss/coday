@@ -2,6 +2,7 @@ package io.whozoss.agentos.sdk
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.whozoss.agentos.sdk.agent.AgentPlugin
 
 class AgentPluginTest :
     StringSpec({

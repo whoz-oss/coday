@@ -11,9 +11,10 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.plugins.AiProviderDiscoveryService
-import io.whozoss.agentos.sdk.aiprovider.AiProvider
+import io.whozoss.agentos.sdk.model.AiProvider
 import io.whozoss.agentos.service.provider.ModelConfig
 import org.springframework.ai.chat.model.ChatModel
+import java.util.UUID
 
 class ChatClientProviderTest :
     DescribeSpec({
@@ -33,44 +34,47 @@ class ChatClientProviderTest :
             describe("refreshProviders") {
 
                 it("should refresh providers on initialization") {
+                    val providerId = UUID.randomUUID()
                     val aiProvider = mockk<AiProvider>()
-                    every { aiProvider.id } returns "test-provider"
+                    every { aiProvider.id } returns providerId
                     every { discoveryService.discoverAiProviders() } returns listOf(aiProvider)
 
                     provider.refreshProviders()
 
-                    val result = provider.getProviderMetadata("test-provider")
+                    val result = provider.getProviderMetadata(providerId)
                     result shouldBe aiProvider
                     provider.getAllProviders() shouldHaveSize 1
                 }
 
                 it("should replace existing providers on refresh") {
+                    val p1Id = UUID.randomUUID()
                     val p1 = mockk<AiProvider>()
-                    every { p1.id } returns "p1"
+                    every { p1.id } returns p1Id
 
+                    val p2Id = UUID.randomUUID()
                     val p2 = mockk<AiProvider>()
-                    every { p2.id } returns "p2"
+                    every { p2.id } returns p2Id
 
                     // First load
                     every { discoveryService.discoverAiProviders() } returns listOf(p1)
                     provider.refreshProviders()
                     provider.getAllProviders() shouldHaveSize 1
-                    provider.getProviderMetadata("p1").shouldNotBeNull()
+                    provider.getProviderMetadata(p1Id).shouldNotBeNull()
 
                     // Second load (replace p1 with p2)
                     every { discoveryService.discoverAiProviders() } returns listOf(p2)
                     provider.refreshProviders()
 
                     provider.getAllProviders() shouldHaveSize 1
-                    provider.getProviderMetadata("p2").shouldNotBeNull()
-                    provider.getProviderMetadata("p1").shouldBeNull()
+                    provider.getProviderMetadata(p2Id).shouldNotBeNull()
+                    provider.getProviderMetadata(p1Id).shouldBeNull()
                 }
             }
 
             describe("getChatClient") {
 
                 it("should create chat client for existing provider") {
-                    val providerId = "openai-gpt4"
+                    val providerId = UUID.randomUUID()
                     val apiKey = "sk-runtime"
                     val modelName = "gpt-4-turbo"
 
@@ -94,7 +98,8 @@ class ChatClientProviderTest :
                     every { discoveryService.discoverAiProviders() } returns emptyList()
                     provider.refreshProviders()
 
-                    val config = ModelConfig("unknown-provider", null, null)
+                    val unknownProviderId = UUID.randomUUID()
+                    val config = ModelConfig(unknownProviderId, null, null)
 
                     val exception =
                         shouldThrow<IllegalArgumentException> {

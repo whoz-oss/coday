@@ -9,10 +9,11 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.plugins.AiProviderDiscoveryService
-import io.whozoss.agentos.sdk.aiprovider.AiProvider
-import io.whozoss.agentos.sdk.aiprovider.AiProviderPlugin
-import io.whozoss.agentos.sdk.aiprovider.ApiType
+import io.whozoss.agentos.sdk.model.AiApiType
+import io.whozoss.agentos.sdk.model.AiProvider
+import io.whozoss.agentos.sdk.plugin.AiProviderPlugin
 import org.pf4j.PluginManager
+import java.util.UUID
 
 class AiProviderDiscoveryServiceTest :
     DescribeSpec({
@@ -30,8 +31,8 @@ class AiProviderDiscoveryServiceTest :
             describe("discoverAiProviders") {
 
                 it("should discover providers from loaded plugins") {
-                    val provider1 = createAiProvider("p1", ApiType.OpenAI)
-                    val provider2 = createAiProvider("p2", ApiType.Anthropic)
+                    val provider1 = createAiProvider(UUID.randomUUID(), AiApiType.OpenAI)
+                    val provider2 = createAiProvider(UUID.randomUUID(), AiApiType.Anthropic)
 
                     val mockPlugin = mockk<AiProviderPlugin>()
                     every { mockPlugin.getPluginId() } returns "test-plugin"
@@ -49,7 +50,7 @@ class AiProviderDiscoveryServiceTest :
 
                 it("should handle plugins that throw exceptions") {
                     val goodPlugin = mockk<AiProviderPlugin>()
-                    val provider = createAiProvider("p1", ApiType.OpenAI)
+                    val provider = createAiProvider(UUID.randomUUID(), AiApiType.OpenAI)
                     every { goodPlugin.getPluginId() } returns "good-plugin"
                     every { goodPlugin.getAiProviders() } returns listOf(provider)
 
@@ -77,11 +78,11 @@ class AiProviderDiscoveryServiceTest :
     })
 
 private fun createAiProvider(
-    id: String,
-    type: ApiType,
+    id: UUID,
+    type: AiApiType,
 ): AiProvider {
     val provider = mockk<AiProvider>()
-    every { provider.id } returns id
+    every { provider.metadata.id } returns id
     every { provider.apiType } returns type
     return provider
 }
