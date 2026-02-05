@@ -2,8 +2,8 @@ package io.whozoss.agentos.service.chatclient
 
 import com.google.genai.Client
 import io.micrometer.observation.ObservationRegistry
-import io.whozoss.agentos.sdk.aiprovider.AiProvider
-import io.whozoss.agentos.sdk.aiprovider.ApiType
+import io.whozoss.agentos.sdk.model.AiApiType
+import io.whozoss.agentos.sdk.model.AiProvider
 import org.springframework.ai.anthropic.AnthropicChatModel
 import org.springframework.ai.anthropic.AnthropicChatOptions
 import org.springframework.ai.anthropic.api.AnthropicApi
@@ -35,9 +35,9 @@ class ChatModelFactory {
                 ?: throw IllegalArgumentException("No model name provided for provider '${provider.id}'.")
 
         return when (provider.apiType) {
-            ApiType.OpenAI -> createOpenAiModel(provider.baseUrl!!, apiKey, modelName, provider.temperature)
-            ApiType.Anthropic -> createAnthropicModel(provider.baseUrl!!, apiKey, modelName, provider.temperature)
-            ApiType.Gemini -> createGeminiModel(apiKey, modelName, provider.temperature)
+            AiApiType.OpenAI -> createOpenAiModel(provider.baseUrl!!, apiKey, modelName, provider.temperature)
+            AiApiType.Anthropic -> createAnthropicModel(provider.baseUrl!!, apiKey, modelName, provider.temperature)
+            AiApiType.Gemini -> createGeminiModel(apiKey, modelName, provider.temperature)
         }
     }
 
