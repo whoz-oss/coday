@@ -8,4 +8,5 @@ data class AiProviderYamlModel(
     val defaultApiKey: String? = null,
     val baseModel: String? = null,
     val temperature: Double?,
+    val maxTokens: Int? = null,
 )

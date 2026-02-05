@@ -1,0 +1,4 @@
+name: gemini
+apiType: Gemini
+defaultApiKey: "****"
+temperature: 0.8
