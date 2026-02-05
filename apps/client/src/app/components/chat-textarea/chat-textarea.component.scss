@@ -143,8 +143,30 @@
 
 .voice-btn,
 .send-btn,
-.stop-btn {
+.stop-btn,
+.upload-btn {
   margin: 0 0.5rem 0 0.08rem;
+}
+
+.upload-btn {
+  color: var(--color-text-secondary);
+  transition:
+    color 0.2s,
+    transform 0.2s;
+
+  &:hover:not(:disabled) {
+    color: var(--color-primary);
+    transform: scale(1.1);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(1.15);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 }
 
 .voice-btn.recording {
@@ -306,6 +328,7 @@
   .stop-btn,
   .voice-btn,
   .send-btn,
+  .upload-btn,
   .recording-indicator,
   .autocomplete-popup {
     display: none !important;
