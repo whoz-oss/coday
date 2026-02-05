@@ -14,6 +14,7 @@ mockk-spring = "3.1.2"
 kotest = "5.9.1"
 kotest-spring = "1.3.0"
 jackson = "2.17.0"
+klogger = "2.0.4"
 
 # AgentOS modules versions
 agentosSdk = "1.0.0"
@@ -38,14 +39,21 @@ spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-start
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 
+# Klogger
+klogger = {module="io.github.microutils:kotlin-logging-jvm", version.ref="klogger"}
 # Spring AI
 spring-ai-anthropic = { module = "org.springframework.ai:spring-ai-starter-model-anthropic" }
+spring-ai-gemini = { module = "org.springframework.ai:spring-ai-starter-model-google-genai" }
 spring-ai-openai = { module = "org.springframework.ai:spring-ai-starter-model-openai" }
 spring-ai-mcp-client = { module = "org.springframework.ai:spring-ai-starter-mcp-client" }
 spring-ai-bom = { module = "org.springframework.ai:spring-ai-bom", version.ref = "springAi" }
 
 # Jackson
-jackson-module-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin" }
+jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations", version.ref = "jackson" }
+jackson-core = { module = "com.fasterxml.jackson.core:jackson-core", version.ref = "jackson" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+jackson-dataformat-yaml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml", version.ref = "jackson" }
+jackson-module-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin", version.ref = "jackson" }
 
 # Testing
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
@@ -58,13 +66,15 @@ junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-kapt = { id = "org.jetbrains.kotlin.kapt", version.ref = "kotlin" }
 kotlin-spring = { id = "org.jetbrains.kotlin.plugin.spring", version.ref = "kotlin" }
 spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
 spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "springDependencyManagement" }
 
 [bundles]
+jackson = ["jackson-annotations", "jackson-core", "jackson-databind", "jackson-dataformat-yaml", "jackson-module-kotlin"]
 kotlin-common = ["kotlin-stdlib", "kotlin-reflect"]
 kotlin-coroutines = ["kotlinx-coroutines-core", "kotlinx-coroutines-reactive"]
-spring-ai = ["spring-ai-anthropic", "spring-ai-openai", "spring-ai-mcp-client"]
+spring-ai = ["spring-ai-anthropic", "spring-ai-gemini", "spring-ai-openai", "spring-ai-mcp-client"]
 testing-common = ["kotest-runner-junit5", "kotest-assertions-core", "kotest-property", "mockk"]
 testing-spring = ["kotest-runner-junit5", "kotest-assertions-core", "kotest-extensions-spring", "mockk"]

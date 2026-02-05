@@ -30,6 +30,7 @@ dependencies {
     // Spring Boot dependencies
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.actuator)
+    implementation(libs.klogger)
 
     // Jackson for JSON processing
     implementation(libs.jackson.module.kotlin)

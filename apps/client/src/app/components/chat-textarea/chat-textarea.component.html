@@ -67,6 +67,28 @@
         >
           <mat-icon>send</mat-icon>
         </button>
+        <!-- Upload button - hidden on welcome screen (no threadId yet) -->
+        @if (!showWelcome) {
+          <button
+            class="upload-btn"
+            mat-icon-button
+            (click)="triggerFileUpload()"
+            [disabled]="isDisabled || isLocallyDisabled"
+            title="Upload files (images or documents)"
+            type="button"
+          >
+            <mat-icon>attach_file</mat-icon>
+          </button>
+          <!-- Hidden file input -->
+          <input
+            #fileInput
+            type="file"
+            multiple
+            accept="image/*,application/pdf,.pdf,.doc,.docx,.txt,.md,.json,.yaml,.yml,.csv,.xml,.html"
+            style="display: none"
+            (change)="onFileInputChange($event)"
+          />
+        }
         <button
           class="voice-btn"
           mat-icon-button

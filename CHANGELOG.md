@@ -1,3 +1,88 @@
+## 0.66.0 (2026-02-05)
+
+### 🚀 Features
+
+- wz-28668: add minimal unit test to SDK ([ef877c1](https://github.com/whoz-oss/coday/commit/ef877c1))
+- wz-28668: use kotests for unit tests ([893a2a2](https://github.com/whoz-oss/coday/commit/893a2a2))
+- wz-28668: move package to whoz-oss ([7b24905](https://github.com/whoz-oss/coday/commit/7b24905))
+- wz-28668: annotation processing with kapt to generate extensions.idx file ([23c1779](https://github.com/whoz-oss/coday/commit/23c1779))
+- wz-28668: restore more detailed README.md ([030320a](https://github.com/whoz-oss/coday/commit/030320a))
+- wz-28668: PR review ([bc13be2](https://github.com/whoz-oss/coday/commit/bc13be2))
+- add upload file button ([#454](https://github.com/whoz-oss/coday/pull/454))
+- **agentos:** add logs and fix test ([b4a67f5](https://github.com/whoz-oss/coday/commit/b4a67f5))
+- **agentos:** fix add absolute path of plugins folder in log message ([6c8eea7](https://github.com/whoz-oss/coday/commit/6c8eea7))
+- **agentos:** add AgentOSApplication.xml configuration ([d97b8a9](https://github.com/whoz-oss/coday/commit/d97b8a9))
+
+### ❤️ Thank You
+
+- thomas.martin @thomasmartin-whoz
+- vincent-audibert-whoz
+- vincent.couturier @vincent-couturier-whoz
+
+## 0.65.0 (2026-02-03)
+
+### 🚀 Features
+
+- add clipboard paste support for all file types ([5aa4c4d](https://github.com/whoz-oss/coday/commit/5aa4c4d))
+- add clipboard paste support for all file types ([#451](https://github.com/whoz-oss/coday/pull/451), [#450](https://github.com/whoz-oss/coday/issues/450))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.64.0 (2026-02-03)
+
+### 🚀 Features
+
+- add `clean` to git danger keywords ([#448](https://github.com/whoz-oss/coday/pull/448))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.63.3 (2026-01-30)
+
+### 🩹 Fixes
+
+- client package configuration to allow publish ([dbd2ab8](https://github.com/whoz-oss/coday/commit/dbd2ab8))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.63.2 (2026-01-30)
+
+### 🩹 Fixes
+
+- put back fix for openai dependency ([fdb3d59](https://github.com/whoz-oss/coday/commit/fdb3d59))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.63.1 (2026-01-30)
+
+### 🩹 Fixes
+
+- force release (remove update for lockfile) ([aabb4b6](https://github.com/whoz-oss/coday/commit/aabb4b6))
+- force release (exclude web from pnpm workspace) ([25c9681](https://github.com/whoz-oss/coday/commit/25c9681))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
+## 0.63.0 (2026-01-30)
+
+### 🚀 Features
+
+- force release ([e13216e](https://github.com/whoz-oss/coday/commit/e13216e))
+- force release (with fix for lockfile) ([a368cb9](https://github.com/whoz-oss/coday/commit/a368cb9))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.62.0 (2026-01-29)
 
 ### 🚀 Features

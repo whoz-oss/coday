@@ -44,12 +44,14 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   isStopping: boolean = false
   // Local flag to immediately disable textarea when message is sent
   isLocallyDisabled: boolean = false
+  @Output() filesPasted = new EventEmitter<File[]>()
   @Output() messageSubmitted = new EventEmitter<string>()
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
   @Output() heightChanged = new EventEmitter<number>()
   @Output() stopRequested = new EventEmitter<void>()
 
   @ViewChild('messageInput', { static: true }) messageInput!: ElementRef<HTMLTextAreaElement>
+  @ViewChild('fileInput') fileInput?: ElementRef<HTMLInputElement>
 
   message: string = ''
   isRecording: boolean = false
@@ -253,6 +255,58 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
     // Check for autocomplete triggers
     this.checkForAutocomplete()
+  }
+
+  @HostListener('paste', ['$event'])
+  onPaste(event: ClipboardEvent): void {
+    const items = event.clipboardData?.items
+    if (!items) {
+      return
+    }
+
+    const fileItems = Array.from(items).filter((item) => item.kind === 'file')
+    if (!fileItems.length) {
+      return
+    }
+
+    event.preventDefault()
+
+    const files = fileItems.reduce<File[]>((acc, item) => {
+      const file = item.getAsFile()
+      return file ? [...acc, file] : acc
+    }, [])
+
+    if (files.length) {
+      this.filesPasted.emit(files)
+    }
+  }
+
+  /**
+   * Trigger the hidden file input click
+   */
+  triggerFileUpload(): void {
+    console.log('[CHAT-TEXTAREA] Triggering file upload')
+    this.fileInput?.nativeElement?.click()
+  }
+
+  /**
+   * Handle file input change event
+   */
+  onFileInputChange(event: Event): void {
+    const input = event.target as HTMLInputElement
+    const files = input.files
+
+    if (!files || files.length === 0) {
+      console.log('[CHAT-TEXTAREA] No files selected')
+      return
+    }
+
+    console.log('[CHAT-TEXTAREA] Files selected:', files.length)
+    const fileArray = Array.from(files)
+    this.filesPasted.emit(fileArray)
+
+    // Reset the input so the same file can be selected again
+    input.value = ''
   }
 
   /**
