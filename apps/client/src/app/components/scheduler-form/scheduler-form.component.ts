@@ -1,4 +1,4 @@
-import { Component, inject, Inject, OnInit } from '@angular/core'
+import { Component, inject, OnInit } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog'
@@ -68,6 +68,7 @@ export class SchedulerFormComponent implements OnInit {
   // Mode
   isEditMode = false
   schedulerId = ''
+  data = inject<SchedulerFormData>(MAT_DIALOG_DATA)
 
   // Days of week options
   daysOfWeekOptions = [
@@ -80,8 +81,8 @@ export class SchedulerFormComponent implements OnInit {
     { value: 6, label: 'Saturday' },
   ]
 
-  constructor(@Inject(MAT_DIALOG_DATA) public data: SchedulerFormData) {
-    this.isEditMode = data.mode === 'edit'
+  constructor() {
+    this.isEditMode = this.data.mode === 'edit'
   }
 
   ngOnInit(): void {

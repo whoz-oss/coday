@@ -1,4 +1,4 @@
-import { Component, inject, Inject, OnInit } from '@angular/core'
+import { Component, inject, OnInit } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog'
@@ -53,9 +53,10 @@ export class PromptFormComponent implements OnInit {
   // Mode
   isEditMode = false
   promptId = ''
+  data = inject<PromptFormData>(MAT_DIALOG_DATA)
 
-  constructor(@Inject(MAT_DIALOG_DATA) public data: PromptFormData) {
-    this.isEditMode = data.mode === 'edit'
+  constructor() {
+    this.isEditMode = this.data.mode === 'edit'
   }
 
   ngOnInit(): void {
@@ -108,7 +109,7 @@ export class PromptFormComponent implements OnInit {
    */
   normalizeName(): void {
     this.name = this.name
-      .replace(/[\s_.,;:!?()\[\]{}]+/g, '-') // Replace spaces and punctuation with hyphens
+      .replace(/[\s_.,;:!?()[\]{}]+/g, '-') // Replace spaces and punctuation with hyphens
       .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
       .replace(/^-|-$/g, '') // Remove leading/trailing hyphens
       .toLowerCase()
