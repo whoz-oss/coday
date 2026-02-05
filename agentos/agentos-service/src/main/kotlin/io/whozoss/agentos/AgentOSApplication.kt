@@ -1,6 +1,5 @@
 package io.whozoss.agentos
 
-import io.whozoss.agentos.config.properties.AgentOsPluginsConfigProperties
 import io.whozoss.agentos.service.config.AgentOsPluginsConfigProperties
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.context.properties.EnableConfigurationProperties

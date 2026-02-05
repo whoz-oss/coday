@@ -1,7 +1,7 @@
 package io.whozoss.agentos.service.chatclient
 
+import io.whozoss.agentos.plugins.AiProviderDiscoveryService
 import io.whozoss.agentos.sdk.aiprovider.AiProvider
-import io.whozoss.agentos.service.plugins.AiProviderDiscoveryService
 import io.whozoss.agentos.service.provider.ModelConfig
 import jakarta.annotation.PostConstruct
 import mu.KLogging

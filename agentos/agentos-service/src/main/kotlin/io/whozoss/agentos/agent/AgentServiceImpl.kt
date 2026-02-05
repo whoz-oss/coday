@@ -1,50 +1,18 @@
+@file:Suppress("ktlint:standard:no-wildcard-imports")
+
 package io.whozoss.agentos.agent
 
-import io.whozoss.agentos.chatClient.ChatClientProvider
 import io.whozoss.agentos.orchestration.AgentSimple
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.model.Agent
 import io.whozoss.agentos.sdk.model.AgentModel
 import io.whozoss.agentos.sdk.model.StandardTool
+import io.whozoss.agentos.service.chatclient.ChatClientProvider
+import io.whozoss.agentos.service.provider.ModelConfig
 import org.slf4j.LoggerFactory
-import org.springframework.ai.chat.client.ChatClient
-import org.springframework.ai.chat.model.ChatModel
-import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
-import java.util.UUID
-
-// /**
-// * Remnant of POC with example of pluginManager use.
-// */
-// @Service
-// class AgentService(
-//    private val pluginManager: PluginManager,
-// ) {
-//    /**
-//     * List all available agents.
-//     */
-//    fun listAgents(): List<AgentMetadata> =
-//        pluginManager
-//            .getExtensions(AgentPlugin::class.java)
-//            .map { it.getMetadata() }
-//
-//    /**
-//     * Execute a specific agent by name.
-//     */
-//    suspend fun executeAgent(
-//        agentName: String,
-//        input: AgentInput,
-//    ): AgentOutput {
-//        val agent =
-//            pluginManager
-//                .getExtensions(AgentPlugin::class.java)
-//                .firstOrNull { it.getMetadata().name == agentName }
-//                ?: throw IllegalArgumentException("Agent not found: $agentName")
-//
-//        return agent.execute(input)
-//    }
-// }
+import java.util.*
 
 /**
  * Implementation of AgentService with hard-coded agent definitions.
@@ -55,7 +23,6 @@ import java.util.UUID
 @Service
 class AgentServiceImpl(
     private val chatClientProvider: ChatClientProvider,
-    @Qualifier("anthropicChatModel") private val chatModel: ChatModel, // Use Anthropic for POC
     @Value("\${agentos.default-provider:anthropic}") private val defaultProviderId: String,
 ) : AgentService {
     private val logger = LoggerFactory.getLogger(AgentServiceImpl::class.java)
@@ -104,8 +71,14 @@ class AgentServiceImpl(
 
         val agentModel =
             when {
-                matchingAgents.isEmpty() -> throw IllegalArgumentException("Agent not found: $namePart")
-                matchingAgents.size == 1 -> matchingAgents.first()
+                matchingAgents.isEmpty() -> {
+                    throw IllegalArgumentException("Agent not found: $namePart")
+                }
+
+                matchingAgents.size == 1 -> {
+                    matchingAgents.first()
+                }
+
                 else -> {
                     // Try exact match first
                     val exactMatch =
@@ -147,7 +120,14 @@ class AgentServiceImpl(
 
         // POC: Use the injected ChatModel (auto-configured by Spring AI)
         logger.info("[AgentService] Creating ChatClient from injected ChatModel")
-        val chatClient = ChatClient.builder(chatModel).build()
+        val chatClient =
+            chatClientProvider.getChatClient(
+                ModelConfig(
+                    providerId = model.id.toString(),
+                    apiKey = model.provider!!.defaultApiKey,
+                    model = model.modelName,
+                ),
+            )
         logger.info("[AgentService] ChatClient created successfully")
 
         return AgentSimple(

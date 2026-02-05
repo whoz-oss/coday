@@ -1,9 +1,9 @@
 package io.whozoss.agentos.service.chatclient
 
 import com.google.genai.Client
+import io.micrometer.observation.ObservationRegistry
 import io.whozoss.agentos.sdk.aiprovider.AiProvider
 import io.whozoss.agentos.sdk.aiprovider.ApiType
-import io.micrometer.observation.ObservationRegistry
 import org.springframework.ai.anthropic.AnthropicChatModel
 import org.springframework.ai.anthropic.AnthropicChatOptions
 import org.springframework.ai.anthropic.api.AnthropicApi
@@ -37,7 +37,7 @@ class ChatModelFactory {
         return when (provider.apiType) {
             ApiType.OpenAI -> createOpenAiModel(provider.baseUrl!!, apiKey, modelName, provider.temperature)
             ApiType.Anthropic -> createAnthropicModel(provider.baseUrl!!, apiKey, modelName, provider.temperature)
-            ApiType.Gemini -> createGeminiModel(apiKey, modelName, provider.temperature) // createGeminiModel(provider.baseUrl, apiKey, modelName, provider.temperature)
+            ApiType.Gemini -> createGeminiModel(apiKey, modelName, provider.temperature)
         }
     }
 

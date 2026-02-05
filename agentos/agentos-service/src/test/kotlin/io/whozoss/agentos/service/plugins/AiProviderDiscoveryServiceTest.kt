@@ -8,6 +8,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.whozoss.agentos.plugins.AiProviderDiscoveryService
 import io.whozoss.agentos.sdk.aiprovider.AiProvider
 import io.whozoss.agentos.sdk.aiprovider.AiProviderPlugin
 import io.whozoss.agentos.sdk.aiprovider.ApiType

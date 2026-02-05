@@ -1,11 +1,8 @@
 package io.whozoss.agentos.plugins
 
-import io.whozoss.agentos.sdk.model.AiProvider
-import io.whozoss.agentos.sdk.plugin.AiProviderPlugin
+import mu.KLogging
 import org.pf4j.PluginManager
-import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
-import kotlin.jvm.java
 
 /**
  * Service responsible for discovering and extracting AI Providers from loaded plugins.
@@ -14,18 +11,16 @@ import kotlin.jvm.java
 class AiProviderDiscoveryService(
     private val pluginManager: PluginManager,
 ) {
-    private val logger = LoggerFactory.getLogger(AiProviderDiscoveryService::class.java)
-
     /**
      * Get all AI Providers from all loaded plugins
      */
-    fun discoverAiProviders(): List<AiProvider> {
+    fun discoverAiProviders(): List<io.whozoss.agentos.sdk.aiprovider.AiProvider> {
         logger.info("Searching for AiProviderPlugin extensions...")
 
-        val extensions = pluginManager.getExtensions(AiProviderPlugin::class.java)
+        val extensions = pluginManager.getExtensions(io.whozoss.agentos.sdk.aiprovider.AiProviderPlugin::class.java)
         logger.info("Found ${extensions.size} AiProviderPlugin extension(s) total")
 
-        val providers = mutableListOf<AiProvider>()
+        val providers = mutableListOf<io.whozoss.agentos.sdk.aiprovider.AiProvider>()
 
         extensions.forEach { plugin ->
             try {
@@ -40,4 +35,6 @@ class AiProviderDiscoveryService(
 
         return providers
     }
+
+    companion object : KLogging()
 }
