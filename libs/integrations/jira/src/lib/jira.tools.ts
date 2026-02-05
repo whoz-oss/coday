@@ -14,17 +14,21 @@ import { CommandContext } from '@coday/model'
 import { CodayTool } from '@coday/model'
 import { FunctionTool } from '@coday/model'
 import { CreateJiraIssueRequest } from './jira'
+
 // JiraCustomFieldHelper is used in createJiraIssue.ts
 
 export class JiraTools extends AssistantToolFactory {
-  name = 'JIRA'
+  static readonly TYPE = 'JIRA' as const
+
   private jiraService: JiraService
 
   constructor(
     interactor: Interactor,
-    private integrationService: IntegrationService
+    private readonly integrationService: IntegrationService,
+    instanceName: string,
+    config?: any
   ) {
-    super(interactor)
+    super(interactor, instanceName, config)
     this.jiraService = new JiraService(interactor, integrationService)
   }
 
@@ -49,8 +53,8 @@ export class JiraTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: 'retrieveJiraIssue',
-        description: 'Retrieve Jira issue details by ticket ID.',
+        name: `${this.name}_getIssue`,
+        description: 'Get Jira issue details by ticket ID.',
         parameters: {
           type: 'object',
           properties: {
@@ -70,7 +74,7 @@ export class JiraTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: 'searchJiraIssues',
+        name: `${this.name}_searchIssues`,
         description: `Perform a flexible search across Jira issues using a jql query based on natural language.
         WORKFLOW:
            a) From the fieldMappingInfo get the relevant query keys.
@@ -154,7 +158,7 @@ export class JiraTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: 'addJiraComment',
+        name: `${this.name}_postComment`,
         description:
           'Add a public comment to a Jira ticket. The comment will be visible to customers. For internal notes, use addJiraInternalNote instead.',
         parameters: {
@@ -176,7 +180,7 @@ export class JiraTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: 'addJiraInternalNote',
+        name: `${this.name}_postInternalNote`,
         description:
           'Add an internal note to a Jira ticket. Internal notes are only visible to agents and not to customers.',
         parameters: {
@@ -197,7 +201,7 @@ export class JiraTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: 'countJiraIssues',
+        name: `${this.name}_countIssues`,
         description: `Count the number of jira issues matching the jql.
         WORKFLOW:
            a) From the fieldMappingInfo get the relevant query keys.
@@ -243,7 +247,7 @@ export class JiraTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: 'createJiraIssue',
+        name: `${this.name}_postIssue`,
         description:
           'Create a new Jira issue/ticket without asking for more information from the user, directly call the function to create the ticket',
         parameters: {
@@ -338,7 +342,7 @@ export class JiraTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: 'linkJiraIssues',
+        name: `${this.name}_linkIssues`,
         description: 'Link two Jira issues with a specified relationship type',
         parameters: {
           type: 'object',

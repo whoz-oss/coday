@@ -2,10 +2,17 @@ import { Killable } from './killable'
 import { CodayTool } from './coday-tool'
 import { Interactor } from './interactor'
 import { CommandContext } from './command-context'
+import { IntegrationConfig } from './integration-config'
 
 export abstract class AssistantToolFactory implements Killable {
   tools: CodayTool[] = []
-  abstract name: string
+
+  // name is the INSTANCE name (e.g., "jira-prod")
+  // Will be set by concrete classes in their constructor
+  name: string
+
+  // config holds the integration configuration for this instance
+  protected config?: IntegrationConfig
 
   /**
    * Hook for clean up on session kill.
@@ -16,7 +23,14 @@ export abstract class AssistantToolFactory implements Killable {
     return
   }
 
-  protected constructor(protected interactor: Interactor) {}
+  protected constructor(
+    protected interactor: Interactor,
+    instanceName: string,
+    config?: IntegrationConfig
+  ) {
+    this.name = instanceName
+    this.config = config
+  }
 
   protected abstract buildTools(context: CommandContext, agentName: string): Promise<CodayTool[]>
 
