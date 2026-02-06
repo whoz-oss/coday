@@ -1,4 +1,5 @@
 import { AfterViewInit, Component, ElementRef, inject, OnDestroy, OnInit, ViewChild } from '@angular/core'
+import { DOCUMENT } from '@angular/common'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
@@ -15,6 +16,7 @@ import { PreferencesService } from '../../services/preferences.service'
 import { ThreadApiService } from '../../core/services/thread-api.service'
 import { AgentNotificationService } from '../../services/agent-notification.service'
 import { FirstMessageStateService } from '../../core/services/first-message-state.service'
+import { WINDOW } from '../../core/tokens/window'
 
 @Component({
   selector: 'app-main',
@@ -49,6 +51,8 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   inputSectionHeight: number = 80 // Default height
 
   // Modern Angular dependency injection
+  private readonly window = inject(WINDOW)
+  private readonly document = inject(DOCUMENT)
   private codayService = inject(CodayService)
   private titleService = inject(TabTitleService)
   private preferencesService = inject(PreferencesService)
@@ -113,8 +117,8 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     this.destroy$.complete()
 
     // Cleanup print handlers
-    window.removeEventListener('beforeprint', this.handleBeforePrint)
-    window.removeEventListener('afterprint', this.handleAfterPrint)
+    this.window.removeEventListener('beforeprint', this.handleBeforePrint)
+    this.window.removeEventListener('afterprint', this.handleAfterPrint)
   }
 
   /**
@@ -177,8 +181,8 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // Print handling
   private setupPrintHandlers(): void {
-    window.addEventListener('beforeprint', this.handleBeforePrint)
-    window.addEventListener('afterprint', this.handleAfterPrint)
+    this.window.addEventListener('beforeprint', this.handleBeforePrint)
+    this.window.addEventListener('afterprint', this.handleAfterPrint)
   }
 
   private handleBeforePrint = (): void => {
@@ -187,15 +191,15 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     console.log('[PRINT] Print technical messages:', printTechnicalMessages)
 
     if (printTechnicalMessages) {
-      document.body.classList.add('print-include-technical')
+      this.document.body.classList.add('print-include-technical')
     } else {
-      document.body.classList.remove('print-include-technical')
+      this.document.body.classList.remove('print-include-technical')
     }
   }
 
   private handleAfterPrint = (): void => {
     console.log('[PRINT] After print event triggered')
     // Clean up the class after printing
-    document.body.classList.remove('print-include-technical')
+    this.document.body.classList.remove('print-include-technical')
   }
 }

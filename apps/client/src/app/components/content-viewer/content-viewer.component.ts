@@ -1,5 +1,5 @@
 import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, inject } from '@angular/core'
-import { CommonModule } from '@angular/common'
+import { CommonModule, DOCUMENT } from '@angular/common'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
@@ -36,6 +36,7 @@ export class ContentViewerComponent implements OnInit, OnDestroy {
 
   @Output() closeViewer = new EventEmitter<void>()
 
+  private readonly document = inject(DOCUMENT)
   private readonly contentService = inject(ContentViewerService)
   private readonly eventStream = inject(EventStreamService)
 
@@ -84,12 +85,12 @@ export class ContentViewerComponent implements OnInit, OnDestroy {
   download(): void {
     // Create a download link
     const blob = new Blob([this.fileContent?.content || ''], { type: 'text/plain' })
-    const url = window.URL.createObjectURL(blob)
-    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    const link = this.document.createElement('a')
     link.href = url
     link.download = this.file.filename
     link.click()
-    window.URL.revokeObjectURL(url)
+    URL.revokeObjectURL(url)
   }
 
   formatSize(bytes: number): string {
