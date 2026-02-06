@@ -36,7 +36,7 @@ class ChatModelFactory {
 
         return when (provider.apiType) {
             AiApiType.OpenAI -> createOpenAiModel(provider.baseUrl!!, apiKey, modelName, provider.temperature)
-            AiApiType.Anthropic -> createAnthropicModel(provider.baseUrl!!, apiKey, modelName, provider.temperature)
+            AiApiType.Anthropic -> createAnthropicModel(provider.baseUrl!!, apiKey, modelName, provider.temperature, provider.maxTokens)
             AiApiType.Gemini -> createGeminiModel(apiKey, modelName, provider.temperature)
         }
     }
@@ -76,6 +76,7 @@ class ChatModelFactory {
         apiKey: String,
         model: String,
         temp: Double,
+        maxTokens: Int?,
     ): ChatModel {
         val api =
             AnthropicApi
@@ -89,11 +90,14 @@ class ChatModelFactory {
                 .builder()
                 .temperature(temp)
                 .model(model)
-                .build()
+
+        if (maxTokens != null) {
+            options.maxTokens(maxTokens)
+        }
 
         return AnthropicChatModel(
             api,
-            options,
+            options.build(),
             DefaultToolCallingManager.builder().build(),
             RetryUtils.DEFAULT_RETRY_TEMPLATE,
             ObservationRegistry.NOOP,

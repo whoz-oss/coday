@@ -31,6 +31,7 @@ class ChatModelFactoryTest :
                     every { provider.defaultApiKey } returns "sk-test"
                     every { provider.baseModel } returns "gpt-4"
                     every { provider.temperature } returns 0.7
+                    every { provider.maxTokens } returns null
 
                     val model = factory.createChatModel(provider, null, null)
 
@@ -46,6 +47,7 @@ class ChatModelFactoryTest :
                     every { provider.defaultApiKey } returns "sk-ant-test"
                     every { provider.baseModel } returns "claude-3"
                     every { provider.temperature } returns 0.5
+                    every { provider.maxTokens } returns 4000
 
                     val model = factory.createChatModel(provider, null, null)
 
@@ -60,6 +62,7 @@ class ChatModelFactoryTest :
                     every { provider.defaultApiKey } returns "google-key"
                     every { provider.baseModel } returns "gemini-pro"
                     every { provider.temperature } returns 0.5
+                    every { provider.maxTokens } returns null
 
                     val model = factory.createChatModel(provider, null, null)
 
@@ -75,6 +78,7 @@ class ChatModelFactoryTest :
                     every { provider.defaultApiKey } returns "default-key"
                     every { provider.baseModel } returns "gpt-3.5"
                     every { provider.temperature } returns 0.7
+                    every { provider.maxTokens } returns null
 
                     // Providing runtime key and model
                     val model = factory.createChatModel(provider, "runtime-key", "gpt-4-runtime")
@@ -92,6 +96,7 @@ class ChatModelFactoryTest :
                     val provider = mockk<AiProvider>()
                     every { provider.id } returns UUID.randomUUID()
                     every { provider.defaultApiKey } returns null // No default key
+                    every { provider.maxTokens } returns null
 
                     val exception =
                         shouldThrow<IllegalArgumentException> {
@@ -105,6 +110,7 @@ class ChatModelFactoryTest :
                     every { provider.id } returns UUID.randomUUID()
                     every { provider.defaultApiKey } returns "key"
                     every { provider.baseModel } returns null // No default model
+                    every { provider.maxTokens } returns null
 
                     val exception =
                         shouldThrow<IllegalArgumentException> {
