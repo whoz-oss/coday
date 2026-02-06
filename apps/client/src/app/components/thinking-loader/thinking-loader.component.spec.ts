@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { ThinkingLoaderComponent } from './thinking-loader.component'
+import { WINDOW, windowFactory } from '../../core/tokens/window'
 
 describe('ThinkingLoaderComponent', () => {
   let component: ThinkingLoaderComponent
@@ -8,6 +9,7 @@ describe('ThinkingLoaderComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [ThinkingLoaderComponent],
+      providers: [{ provide: WINDOW, useFactory: windowFactory }],
     }).compileComponents()
 
     fixture = TestBed.createComponent(ThinkingLoaderComponent)

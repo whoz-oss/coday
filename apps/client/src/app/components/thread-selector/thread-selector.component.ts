@@ -1,5 +1,5 @@
 import { Component, EventEmitter, inject, Input, OnInit, Output } from '@angular/core'
-import { CommonModule } from '@angular/common'
+import { CommonModule, DOCUMENT } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
@@ -38,6 +38,7 @@ export class ThreadSelectorComponent implements OnInit {
   @Input() searchQuery = ''
   @Output() searchModeChange = new EventEmitter<boolean>()
 
+  private readonly document = inject(DOCUMENT)
   private readonly projectStateService = inject(ProjectStateService)
   private readonly threadStateService = inject(ThreadStateService)
   private readonly threadApiService = inject(ThreadApiService)
@@ -279,7 +280,7 @@ export class ThreadSelectorComponent implements OnInit {
 
     // Focus the input after Angular renders it
     setTimeout(() => {
-      const input = document.querySelector('.thread-name-input') as HTMLInputElement
+      const input = this.document.querySelector('.thread-name-input') as HTMLInputElement
       if (input) {
         input.focus()
         input.select()

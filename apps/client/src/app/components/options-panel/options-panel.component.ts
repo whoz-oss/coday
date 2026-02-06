@@ -7,6 +7,7 @@ import { VoiceSynthesisService, VoiceInfo } from '../../services/voice-synthesis
 import { ThemeService, ThemeMode } from '../../core/services/theme.service'
 import { MatIcon } from '@angular/material/icon'
 import { MatSlideToggle } from '@angular/material/slide-toggle'
+import { WINDOW } from '../../core/tokens/window'
 
 interface VoiceLanguageOption {
   code: string
@@ -62,6 +63,7 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
   ]
 
   // Modern Angular dependency injection
+  private readonly window = inject(WINDOW)
   private preferencesService = inject(PreferencesService)
   private voiceSynthesisService = inject(VoiceSynthesisService)
   private themeService = inject(ThemeService)
@@ -260,7 +262,7 @@ export class OptionsPanelComponent implements OnInit, OnDestroy {
    * Check the current notification permission status
    */
   private checkNotificationPermission(): void {
-    if ('Notification' in window) {
+    if ('Notification' in this.window) {
       this.browserNotificationDenied = Notification.permission === 'denied'
       console.log('[OPTIONS] Notification permission status:', Notification.permission)
     }

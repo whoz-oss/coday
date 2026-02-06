@@ -13,6 +13,7 @@ import { MAT_DIALOG_DEFAULT_OPTIONS } from '@angular/material/dialog'
 import { appRoutes } from './app.routes'
 import { ProjectStateService } from './core/services/project-state.service'
 import { OAuthService } from './core/services/oauth.service'
+import { WINDOW, windowFactory } from './core/tokens/window'
 
 /**
  * Initialize default project selection at app startup
@@ -61,6 +62,10 @@ export const appConfig: ApplicationConfig = {
         maxWidth: '80vw',
         maxHeight: '80vh',
       },
+    },
+    {
+      provide: WINDOW,
+      useFactory: windowFactory,
     },
   ],
 }
