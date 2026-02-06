@@ -35,8 +35,10 @@ class ChatClientProviderTest :
 
                 it("should refresh providers on initialization") {
                     val providerId = UUID.randomUUID()
+                    val providerName = "test-provider"
                     val aiProvider = mockk<AiProvider>()
                     every { aiProvider.id } returns providerId
+                    every { aiProvider.name } returns providerName
                     every { discoveryService.discoverAiProviders() } returns listOf(aiProvider)
 
                     provider.refreshProviders()
@@ -48,12 +50,16 @@ class ChatClientProviderTest :
 
                 it("should replace existing providers on refresh") {
                     val p1Id = UUID.randomUUID()
+                    val p1Name = "provider-1"
                     val p1 = mockk<AiProvider>()
                     every { p1.id } returns p1Id
+                    every { p1.name } returns p1Name
 
                     val p2Id = UUID.randomUUID()
+                    val p2Name = "provider-2"
                     val p2 = mockk<AiProvider>()
                     every { p2.id } returns p2Id
+                    every { p2.name } returns p2Name
 
                     // First load
                     every { discoveryService.discoverAiProviders() } returns listOf(p1)
@@ -75,11 +81,13 @@ class ChatClientProviderTest :
 
                 it("should create chat client for existing provider") {
                     val providerId = UUID.randomUUID()
+                    val providerName = "some LLM provider"
                     val apiKey = "sk-runtime"
                     val modelName = "gpt-4-turbo"
 
                     val aiProvider = mockk<AiProvider>()
                     every { aiProvider.id } returns providerId
+                    every { aiProvider.name } returns providerName
                     every { discoveryService.discoverAiProviders() } returns listOf(aiProvider)
 
                     val mockChatModel = mockk<ChatModel>(relaxed = true)
@@ -87,7 +95,7 @@ class ChatClientProviderTest :
 
                     provider.refreshProviders()
 
-                    val config = ModelConfig(providerId, apiKey, modelName)
+                    val config = ModelConfig(providerName, apiKey, modelName)
                     val client = provider.getChatClient(config)
 
                     client.shouldNotBeNull()
@@ -98,8 +106,8 @@ class ChatClientProviderTest :
                     every { discoveryService.discoverAiProviders() } returns emptyList()
                     provider.refreshProviders()
 
-                    val unknownProviderId = UUID.randomUUID()
-                    val config = ModelConfig(unknownProviderId, null, null)
+                    val unknownProviderName = "another LLM provider"
+                    val config = ModelConfig(unknownProviderName, null, null)
 
                     val exception =
                         shouldThrow<IllegalArgumentException> {

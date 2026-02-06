@@ -33,29 +33,85 @@ optionalDocs:
 #    parametersDescription: text that will be displayed to the user
 
 scripts:
-  compile:
-    description: compile the typescript project to raise any issue on code correctness, it does not run the tests.
-    command: nx run-many --target=build --all
-  # yarn:
-  #   description: runs a pnpm command, give just the arguments. Do not start interactive commands !!!
-  #   command: yarn
-  test:
-    description: run tests for a specific file or pattern (or all of them if no arguments)
-    # should be pnpm test, but current non-nx code architecture prevents it to be useful
-    command: npx jest PARAMETERS
-    parametersDescription: the test file path or pattern to run specific tests (e.g., "parseAgentCommand.test.ts" or "--testNamePattern=specific test name")
-  lint-project:
+  nx:
     description: |
-      Runs the lint for the app.
-    command: nx run client:lint && nx run server:lint
-  yarn-client-test:
+      Run Nx commands for the monorepo. Nx is the build system orchestrating all projects.
+      
+      Common targets:
+      - build: Compile a project (e.g., "nx build client")
+      - test: Run tests (e.g., "nx test server", "nx test agentos-service")
+      - lint: Run linter (e.g., "nx lint client")
+      - serve: Start dev server (e.g., "nx serve client")
+      
+      Common commands:
+      - "test agentos-service" - Run all Kotlin tests for AgentOS service
+      - "test client" - Run all Angular client tests
+      - "lint server" - Lint the server code
+      - "build client" - Build the Angular client
+      - "run-many --target=test --all" - Run all tests in monorepo
+      - "run-many --target=build --all" - Build all projects
+      - "affected --target=test" - Test only affected projects
+      - "graph" - Show project dependency graph
+      - "list" - List all projects in workspace
+      - "show project client" - Show project configuration
+      
+      For Kotlin-specific test filtering (e.g., specific test class):
+      Use gradle directly: "cd agentos && ./gradlew :agentos-service:test --tests ChatClientProviderTest"
+      
+      Note: Nx handles both TypeScript (Jest) and Kotlin (Gradle) projects seamlessly.
+      
+      ⚠️ Do not run interactive commands!
+      ⚠️ Commands that modify dependencies require user confirmation.
+    command: nx PARAMETERS
+    parametersDescription: |
+      Nx command with arguments. Examples:
+      - "test agentos-service"
+      - "build client"
+      - "run-many --target=test --all"
+      - "affected --target=build --base=origin/master"
+      - "graph"
+  gradle:
     description: |
-      Runs the test for the client app.
-    command: nx run client:test
-  build-angular-production:
+      Run Gradle commands for Kotlin/Java projects in the agentos/ directory.
+      
+      Common commands:
+      - ":agentos-service:test" - Run all service tests
+      - ":agentos-service:test --tests ChatClientProviderTest" - Run specific test class
+      - ":agentos-service:build" - Build the service
+      - ":agentos-sdk:test" - Run SDK tests
+      - "test" - Run all tests in agentos/
+      - "build" - Build all Gradle projects
+      
+      The command runs from agentos/ directory with optimized flags:
+      --no-build-cache, --no-configuration-cache, --no-daemon
+    command: cd agentos && ./gradlew PARAMETERS --no-build-cache --no-configuration-cache --no-daemon
+    parametersDescription: |
+      Gradle task with arguments. Examples:
+      - ":agentos-service:test"
+      - ":agentos-service:test --tests ChatClientProviderTest"
+      - ":agentos-sdk:build"
+      - "test" (all tests)
+  pnpm:
     description: |
-      Runs the build of the angular app in production setting
-    command: nx run client:build-angular:production
+      Run pnpm commands for package management and scripts.
+      Use for installing dependencies, running package.json scripts, etc.
+      
+      Common commands:
+      - "install" - Install dependencies
+      - "add <package>" - Add a dependency
+      - "remove <package>" - Remove a dependency
+      - "web" - Start web interface (from package.json)
+      - "start" - Start terminal interface
+      
+      ⚠️ Do not run interactive commands!
+      ⚠️ Commands that modify dependencies require user confirmation.
+    command: pnpm PARAMETERS
+    parametersDescription: |
+      pnpm command with arguments. Examples:
+      - "install"
+      - "add -D @types/node"
+      - "web"
+    requireConfirmation: true
 
 # The prompts section allows you to define custom sequences of commands, known as prompt chains,
 # that the system can execute in order. Each prompt chain is identified by a unique key and
