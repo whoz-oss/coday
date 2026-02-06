@@ -1,3 +1,13 @@
+## 0.66.2 (2026-02-06)
+
+### 🩹 Fixes
+
+- remove tools pre-init ([#461](https://github.com/whoz-oss/coday/pull/461))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.66.1 (2026-02-06)
 
 ### 🚀 Features
