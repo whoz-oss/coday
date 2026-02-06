@@ -1,8 +1,10 @@
 import { Injectable, inject, OnDestroy } from '@angular/core'
+import { DOCUMENT } from '@angular/common'
 import { Subject } from 'rxjs'
 import { takeUntil, pairwise, filter } from 'rxjs/operators'
 import { CodayService } from '../core/services/coday.service'
 import { PreferencesService } from './preferences.service'
+import { WINDOW } from '../core/tokens/window'
 
 /**
  * Service responsible for notifying the user when the agent finishes a task
@@ -18,6 +20,8 @@ export class AgentNotificationService implements OnDestroy {
   private destroy$ = new Subject<void>()
   private isSetup = false
 
+  private readonly window = inject(WINDOW)
+  private readonly document = inject(DOCUMENT)
   private codayService = inject(CodayService)
   private preferencesService = inject(PreferencesService)
 
@@ -87,7 +91,12 @@ export class AgentNotificationService implements OnDestroy {
    */
   private playCompletionSound(): void {
     try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const AudioContextClass = this.window.AudioContext || this.window.webkitAudioContext
+      if (!AudioContextClass) {
+        console.warn('[AGENT-NOTIFICATION] AudioContext not available')
+        return
+      }
+      const audioContext = new AudioContextClass()
 
       // First tone: 700Hz
       const oscillator1 = audioContext.createOscillator()
@@ -130,7 +139,7 @@ export class AgentNotificationService implements OnDestroy {
    */
   private async handleBrowserNotificationEnabled(): Promise<void> {
     // Check if browser supports notifications
-    if (!('Notification' in window)) {
+    if (!('Notification' in this.window)) {
       console.warn('[AGENT-NOTIFICATION] Browser does not support notifications')
       this.preferencesService.setBrowserNotificationEnabled(false)
       return
@@ -171,12 +180,12 @@ export class AgentNotificationService implements OnDestroy {
    */
   private sendBrowserNotification(): void {
     // Check if browser supports notifications
-    if (!('Notification' in window)) {
+    if (!('Notification' in this.window)) {
       console.warn('[AGENT-NOTIFICATION] Browser does not support notifications')
       return
     }
 
-    if (document.hasFocus()) {
+    if (this.document.hasFocus()) {
       console.warn('[AGENT-NOTIFICATION] Document is focused, skipping browser notification')
       return
     }
@@ -208,7 +217,7 @@ export class AgentNotificationService implements OnDestroy {
 
     // Focus window when notification is clicked
     notification.onclick = () => {
-      window.focus()
+      this.window.focus()
       notification.close()
     }
 
@@ -231,7 +240,7 @@ export class AgentNotificationService implements OnDestroy {
 
     // Focus window when notification is clicked
     notification.onclick = () => {
-      window.focus()
+      this.window.focus()
       notification.close()
     }
 

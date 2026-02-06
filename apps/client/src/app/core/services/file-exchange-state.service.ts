@@ -1,4 +1,5 @@
 import { Injectable, inject, signal, computed } from '@angular/core'
+import { DOCUMENT } from '@angular/common'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { filter } from 'rxjs/operators'
 
@@ -21,6 +22,7 @@ import { FileEvent } from '@coday/model'
   providedIn: 'root',
 })
 export class FileExchangeStateService {
+  private readonly document = inject(DOCUMENT)
   private fileApi = inject(FileExchangeApiService)
   private eventStream = inject(EventStreamService)
 
@@ -175,12 +177,12 @@ export class FileExchangeStateService {
     this.fileApi.downloadFile(projectName, threadId, filename).subscribe({
       next: (blob) => {
         // Create download link
-        const url = window.URL.createObjectURL(blob)
-        const link = document.createElement('a')
+        const url = URL.createObjectURL(blob)
+        const link = this.document.createElement('a')
         link.href = url
         link.download = filename
         link.click()
-        window.URL.revokeObjectURL(url)
+        URL.revokeObjectURL(url)
         console.log('[FILE_EXCHANGE_STATE] Download initiated:', filename)
       },
       error: (error) => {
