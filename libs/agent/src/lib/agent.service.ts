@@ -1,18 +1,22 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'yaml'
-import { getFormattedDocs } from '@coday/function'
-import { Agent, AgentSummary, MemoryLevel } from '@coday/model'
-import { findFilesByName } from '@coday/function'
-import { Killable } from '@coday/model'
-import { AgentDefinition, CodayAgentDefinition } from '@coday/model'
-import { Interactor } from '@coday/model'
-import { CommandContext } from '@coday/model'
-import { ToolSet } from '@coday/model'
+import { getFormattedDocs, findFilesByName } from '@coday/function'
+import {
+  Agent,
+  AgentDefinition,
+  AgentServiceModel,
+  AgentSummary,
+  CodayAgentDefinition,
+  CommandContext,
+  Interactor,
+  Killable,
+  MemoryLevel,
+  ToolSet,
+} from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
 import { AiClientProvider } from '@coday/integrations-ai'
 import { Toolbox } from './toolbox'
-import { AgentServiceModel } from '@coday/model'
 
 export class AgentService implements Killable, AgentServiceModel {
   private agentCache: Map<string, Agent> = new Map()
@@ -34,7 +38,7 @@ export class AgentService implements Killable, AgentServiceModel {
     this.toolbox = new Toolbox(this.interactor, services, this.findAgentByNameStart, this.listAgentSummaries)
   }
 
-  listAgentSummaries(): AgentSummary[] {
+  listAgentSummaries: () => AgentSummary[] = () => {
     return this.agentDefinitions
       .map((entry) => ({
         name: entry.definition.name,
@@ -49,7 +53,7 @@ export class AgentService implements Killable, AgentServiceModel {
    * - project local configuration agents
    * - ~/.coday/[project]/agents/ folder
    */
-  async initialize(context: CommandContext): Promise<void> {
+  initialize: (context: CommandContext) => Promise<void> = async (context) => {
     // Already initialized if we have any definitions
     if (this.agentDefinitions.length > 0) return
 
@@ -147,7 +151,10 @@ export class AgentService implements Killable, AgentServiceModel {
     return undefined
   }
 
-  async findAgentByNameStart(nameStart: string | undefined, context: CommandContext): Promise<Agent | undefined> {
+  findAgentByNameStart: (nameStart: string | undefined, context: CommandContext) => Promise<Agent | undefined> = async (
+    nameStart,
+    context
+  ) => {
     if (!nameStart) {
       return
     }
@@ -168,7 +175,7 @@ export class AgentService implements Killable, AgentServiceModel {
     const options = matchingAgents.map((agent) => agent.name)
     try {
       if (context.oneshot) {
-        throw new Error('Agent ambiguous names not allowed in oneshot context')
+        return undefined
       }
       const selection = await this.interactor.chooseOption(
         options,
@@ -403,16 +410,28 @@ ${agentDocs}
 
       const integrations = def.integrations
         ? new Map<string, string[]>(
-            Object.entries(def.integrations).map(([integration, names]: [string, string[]]): [string, string[]] => {
-              const toolNames: string[] = !names || !names.length ? [] : names
-              return [integration, toolNames]
-            })
+            Object.entries(def.integrations).map(
+              ([integration, names]: [string, string[] | null]): [string, string[]] => {
+                // Treat null, undefined, or empty array as "all tools from this integration"
+                const toolNames: string[] = names && names.length > 0 ? names : []
+                return [integration, toolNames]
+              }
+            )
           )
         : undefined
+
+      this.interactor.debug(
+        `Agent '${def.name}' integrations: ${integrations ? Array.from(integrations.keys()).join(', ') : 'ALL (undefined)'}`
+      )
 
       const toolsStart = performance.now()
       const syncTools = await this.toolbox.getTools({ context, integrations, agentName: def.name })
       const toolsTime = performance.now() - toolsStart
+
+      // Debug: log available tools
+      this.interactor.debug(
+        `  📦 Tools available for '${def.name}': ${syncTools.map((t) => t.function.name).join(', ')}`
+      )
 
       const toolset = new ToolSet([...syncTools])
       const agent = new Agent(def, aiClient, toolset)
