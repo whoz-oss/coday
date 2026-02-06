@@ -1,7 +1,7 @@
 package io.whozoss.agentos.caseEvent
 
 import io.whozoss.agentos.orchestration.CaseEventList
-import io.whozoss.agentos.sdk.model.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import org.slf4j.LoggerFactory
 import java.util.*
 

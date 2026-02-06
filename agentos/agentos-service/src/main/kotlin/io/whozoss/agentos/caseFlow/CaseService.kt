@@ -1,7 +1,7 @@
 package io.whozoss.agentos.caseFlow
 
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.entity.EntityService
-import io.whozoss.agentos.sdk.model.CaseEvent
 import kotlinx.coroutines.flow.SharedFlow
 import java.util.UUID
 

@@ -1,21 +1,21 @@
 package io.whozoss.agentos.orchestration
 
+import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.agent.Agent
+import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
+import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.sdk.model.Actor
-import io.whozoss.agentos.sdk.model.ActorRole
-import io.whozoss.agentos.sdk.model.Agent
-import io.whozoss.agentos.sdk.model.AgentFinishedEvent
-import io.whozoss.agentos.sdk.model.AgentModel
-import io.whozoss.agentos.sdk.model.AgentRunningEvent
-import io.whozoss.agentos.sdk.model.CaseEvent
-import io.whozoss.agentos.sdk.model.MessageContent
-import io.whozoss.agentos.sdk.model.MessageEvent
-import io.whozoss.agentos.sdk.model.StandardTool
-import io.whozoss.agentos.sdk.model.TextChunkEvent
-import io.whozoss.agentos.sdk.model.ThinkingEvent
-import io.whozoss.agentos.sdk.model.ToolRequestEvent
-import io.whozoss.agentos.sdk.model.ToolResponseEvent
-import io.whozoss.agentos.sdk.model.WarnEvent
+import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -50,7 +50,7 @@ import kotlin.collections.map
  */
 class AgentSimple(
     override val metadata: EntityMetadata = EntityMetadata(),
-    private val model: AgentModel,
+    private val model: AiModel,
     private val chatClient: ChatClient,
     private val tools: List<StandardTool<*>>,
 ) : Agent {

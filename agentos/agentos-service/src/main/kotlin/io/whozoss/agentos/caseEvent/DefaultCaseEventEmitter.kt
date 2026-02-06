@@ -1,7 +1,7 @@
 package io.whozoss.agentos.caseEvent
 
 import io.whozoss.agentos.orchestration.CaseEventEmitter
-import io.whozoss.agentos.sdk.model.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow

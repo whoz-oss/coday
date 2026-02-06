@@ -49,7 +49,7 @@ import org.pf4j.ExtensionPoint
  * 3. Copy JAR to AgentOS `plugins/` directory
  * 4. AgentOS will auto-discover and load your plugin
  *
- * @see Agent
+ * @see AgentDefinition
  * @see ContextType
  * @see AgentStatus
  */
@@ -71,7 +71,7 @@ interface AgentPlugin : ExtensionPoint {
      *
      * @return List of agents (can be empty)
      */
-    fun getAgents(): List<Agent>
+    fun getAgents(): List<AgentDefinition>
 
     /**
      * Plugin version.

@@ -2,13 +2,13 @@
 
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.aiProvider.ChatClientProvider
+import io.whozoss.agentos.aiProvider.ModelConfig
 import io.whozoss.agentos.orchestration.AgentSimple
+import io.whozoss.agentos.sdk.agent.Agent
+import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.sdk.model.Agent
-import io.whozoss.agentos.sdk.model.AgentModel
-import io.whozoss.agentos.sdk.model.StandardTool
-import io.whozoss.agentos.service.chatclient.ChatClientProvider
-import io.whozoss.agentos.service.provider.ModelConfig
+import io.whozoss.agentos.sdk.tool.StandardTool
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -33,7 +33,7 @@ class AgentServiceImpl(
 
     private val hardCodedAgents =
         listOf(
-            AgentModel(
+            AiModel(
                 metadata = EntityMetadata(id = UUID.nameUUIDFromBytes("general-purpose".toByteArray())),
                 name = "AgentOS General Assistant",
                 description = "Default agent running on AgentOS - Kotlin/Spring AI orchestration layer",
@@ -112,7 +112,7 @@ class AgentServiceImpl(
      * For now, creates AgentSimple instances.
      * Future: Could use factory pattern based on agent configuration.
      */
-    private fun createAgentInstance(model: AgentModel): Agent {
+    private fun createAgentInstance(model: AiModel): Agent {
         logger.info("[AgentService] Creating agent instance for: ${model.name}")
 
         // TODO: Load tools based on agent model

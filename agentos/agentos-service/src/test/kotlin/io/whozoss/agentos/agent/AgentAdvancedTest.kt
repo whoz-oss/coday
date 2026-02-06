@@ -2,19 +2,18 @@ package io.whozoss.agentos.agent
 
 import io.mockk.every
 import io.mockk.mockk
+import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
+import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolSelectedEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.sdk.model.Actor
-import io.whozoss.agentos.sdk.model.ActorRole
-import io.whozoss.agentos.sdk.model.AgentFinishedEvent
-import io.whozoss.agentos.sdk.model.AgentModel
-import io.whozoss.agentos.sdk.model.AgentRunningEvent
-import io.whozoss.agentos.sdk.model.IntentionGeneratedEvent
-import io.whozoss.agentos.sdk.model.MessageContent
-import io.whozoss.agentos.sdk.model.MessageEvent
-import io.whozoss.agentos.sdk.model.StandardTool
-import io.whozoss.agentos.sdk.model.ThinkingEvent
-import io.whozoss.agentos.sdk.model.ToolSelectedEvent
-import jdk.internal.agent.resources.agent
+import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
@@ -23,7 +22,6 @@ import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
 import java.util.UUID
 import java.util.concurrent.TimeUnit
-import kotlin.run
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -68,7 +66,7 @@ class AgentAdvancedTest {
 
             // Create agent
             val model =
-                AgentModel(
+                AiModel(
                     metadata = EntityMetadata(id = agentId),
                     name = "TestAgent",
                     description = "Test agent for advanced orchestration",

@@ -1,6 +1,6 @@
 package io.whozoss.agentos.orchestration
 
-import io.whozoss.agentos.sdk.model.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import java.util.*
 
 /**

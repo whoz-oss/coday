@@ -3,18 +3,18 @@ package io.whozoss.agentos.agent
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.orchestration.AgentSimple
+import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
+import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.sdk.model.Actor
-import io.whozoss.agentos.sdk.model.ActorRole
-import io.whozoss.agentos.sdk.model.AgentFinishedEvent
-import io.whozoss.agentos.sdk.model.AgentModel
-import io.whozoss.agentos.sdk.model.AgentRunningEvent
-import io.whozoss.agentos.sdk.model.MessageContent
-import io.whozoss.agentos.sdk.model.MessageEvent
-import io.whozoss.agentos.sdk.model.StandardTool
-import io.whozoss.agentos.sdk.model.TextChunkEvent
-import io.whozoss.agentos.sdk.model.ThinkingEvent
-import io.whozoss.agentos.sdk.model.WarnEvent
+import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
@@ -53,7 +53,7 @@ class AgentSimpleTest {
 
             // Create agent
             val model =
-                AgentModel(
+                AiModel(
                     metadata = EntityMetadata(id = agentId),
                     name = "SimpleAgent",
                     description = "A simple test agent",
@@ -138,7 +138,7 @@ class AgentSimpleTest {
             val tools = emptyList<StandardTool<*>>()
 
             val model =
-                AgentModel(
+                AiModel(
                     metadata = EntityMetadata(id = agentId),
                     name = "SimpleAgent",
                     description = "A simple test agent",
@@ -213,7 +213,7 @@ class AgentSimpleTest {
             val tools = emptyList<StandardTool<*>>()
 
             val model =
-                AgentModel(
+                AiModel(
                     metadata = EntityMetadata(id = agentId),
                     name = "SimpleAgent",
                     description = "A simple test agent",
@@ -271,7 +271,7 @@ class AgentSimpleTest {
             val tools = emptyList<StandardTool<*>>()
 
             val model =
-                AgentModel(
+                AiModel(
                     metadata = EntityMetadata(id = agentId),
                     name = "SimpleAgent",
                     description = "A simple test agent",

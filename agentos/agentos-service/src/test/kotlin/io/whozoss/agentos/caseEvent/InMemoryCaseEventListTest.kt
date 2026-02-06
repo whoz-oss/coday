@@ -1,9 +1,9 @@
 package io.whozoss.agentos.caseEvent
 
-import io.whozoss.agentos.sdk.model.Actor
-import io.whozoss.agentos.sdk.model.ActorRole
-import io.whozoss.agentos.sdk.model.MessageContent
-import io.whozoss.agentos.sdk.model.MessageEvent
+import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout

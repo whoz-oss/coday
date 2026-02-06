@@ -1,7 +1,7 @@
 package io.whozoss.agentos.caseEvent
 
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.entity.InMemoryEntityRepository
-import io.whozoss.agentos.sdk.model.CaseEvent
 import org.springframework.stereotype.Repository
 import java.util.UUID
 

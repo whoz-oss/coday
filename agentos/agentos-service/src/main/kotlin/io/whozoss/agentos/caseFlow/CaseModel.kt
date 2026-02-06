@@ -1,8 +1,8 @@
 package io.whozoss.agentos.caseFlow
 
+import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.sdk.model.CaseStatus
 import java.util.UUID
 
 /**

@@ -1,6 +1,6 @@
 package io.whozoss.agentos.agent
 
-import io.whozoss.agentos.sdk.model.Agent
+import io.whozoss.agentos.sdk.agent.Agent
 
 /**
  * Service for managing agent runtime instances.

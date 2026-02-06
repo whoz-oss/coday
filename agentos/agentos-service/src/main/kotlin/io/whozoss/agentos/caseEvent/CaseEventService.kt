@@ -1,7 +1,7 @@
 package io.whozoss.agentos.caseEvent
 
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.entity.EntityService
-import io.whozoss.agentos.sdk.model.CaseEvent
 import java.util.*
 
 /**
