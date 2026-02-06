@@ -1,8 +1,9 @@
-import { Component, Input, Output, EventEmitter } from '@angular/core'
+import { Component, Input, Output, EventEmitter, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { Webhook } from '../../core/services/webhook-api.service'
 import { MatIcon } from '@angular/material/icon'
 import { MatButton, MatIconButton } from '@angular/material/button'
+import { WINDOW } from '../../core/tokens/window'
 
 /**
  * Dumb/Presentation Component for displaying webhook list
@@ -22,6 +23,8 @@ import { MatButton, MatIconButton } from '@angular/material/button'
   styleUrl: './webhook-list.component.scss',
 })
 export class WebhookListComponent {
+  private readonly window = inject(WINDOW)
+
   @Input() set webhooks(value: Webhook[]) {
     console.log('[WEBHOOK-LIST] Received webhooks:', value)
     this._webhooks = value
@@ -52,7 +55,7 @@ export class WebhookListComponent {
   }
 
   onCopyUrl(webhook: Webhook): void {
-    const url = `${window.location.origin}/api/webhooks/${webhook.uuid}/execute`
+    const url = `${this.window.location.origin}/api/webhooks/${webhook.uuid}/execute`
     navigator.clipboard
       .writeText(url)
       .then(() => {

@@ -1,6 +1,8 @@
 import { Injectable, inject } from '@angular/core'
+import { DOCUMENT } from '@angular/common'
 import { BehaviorSubject } from 'rxjs'
 import { PreferencesService } from '../../services/preferences.service'
+import { WINDOW } from '../tokens/window'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
@@ -12,6 +14,8 @@ export class ThemeService {
   currentTheme$ = this.currentThemeSubject.asObservable()
 
   // Modern Angular dependency injection
+  private readonly window = inject(WINDOW)
+  private readonly document = inject(DOCUMENT)
   private preferences = inject(PreferencesService)
 
   constructor() {
@@ -52,8 +56,8 @@ export class ThemeService {
 
     if (theme === 'system') {
       // Use system preference (check if matchMedia is available)
-      if (typeof window !== 'undefined' && window.matchMedia) {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+      if (this.window.matchMedia) {
+        const prefersDark = this.window.matchMedia('(prefers-color-scheme: dark)').matches
         const resolvedTheme = prefersDark ? 'dark' : 'light'
         console.log('[THEME] System theme resolved to:', resolvedTheme)
         this.setDocumentTheme(resolvedTheme)
@@ -70,19 +74,19 @@ export class ThemeService {
   private setDocumentTheme(theme: 'light' | 'dark'): void {
     console.log('[THEME] Setting document theme to:', theme)
     // Check if document is available (not always available in test environment)
-    if (typeof document !== 'undefined' && document.documentElement) {
+    if (this.document?.documentElement) {
       if (theme === 'dark') {
-        document.documentElement.setAttribute('data-theme', 'dark')
+        this.document.documentElement.setAttribute('data-theme', 'dark')
       } else {
-        document.documentElement.removeAttribute('data-theme')
+        this.document.documentElement.removeAttribute('data-theme')
       }
     }
   }
 
   private setupSystemThemeListener(): void {
     // Check if matchMedia is available (not available in test environment)
-    if (typeof window !== 'undefined' && window.matchMedia) {
-      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    if (this.window.matchMedia) {
+      this.window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
         const currentTheme = this.getCurrentTheme()
         if (currentTheme === 'system') {
           this.setDocumentTheme(e.matches ? 'dark' : 'light')

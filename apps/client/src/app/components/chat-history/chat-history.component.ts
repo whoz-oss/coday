@@ -12,6 +12,7 @@ import {
   SimpleChanges,
   inject,
 } from '@angular/core'
+import { DOCUMENT } from '@angular/common'
 import { ChatMessageComponent, ChatMessage } from '../chat-message/chat-message.component'
 import { UnreadMessagesService } from '../../services/unread-messages.service'
 import { VoiceSynthesisService } from '../../services/voice-synthesis.service'
@@ -23,6 +24,7 @@ import { ThinkingLoaderComponent } from '../thinking-loader/thinking-loader.comp
 import { MatFabButton } from '@angular/material/button'
 import { MarkdownService } from '../../services/markdown.service'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
+import { WINDOW } from '../../core/tokens/window'
 
 @Component({
   selector: 'app-chat-history',
@@ -57,6 +59,8 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   private readonly MESSAGE_FRESHNESS_THRESHOLD = 5 * 60 * 1000 // in milliseconds
 
   // Modern Angular dependency injection
+  private readonly window = inject(WINDOW)
+  private readonly document = inject(DOCUMENT)
   private elementRef = inject(ElementRef)
   private unreadService = inject(UnreadMessagesService)
   private voiceSynthesisService = inject(VoiceSynthesisService)
@@ -82,8 +86,8 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     }
 
     // Clean up focus listeners
-    window.removeEventListener('focus', this.handleWindowFocus)
-    window.removeEventListener('blur', this.handleWindowBlur)
+    this.window.removeEventListener('focus', this.handleWindowFocus)
+    this.window.removeEventListener('blur', this.handleWindowBlur)
   }
 
   ngOnChanges(changes: SimpleChanges) {
@@ -383,7 +387,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
    */
   private shouldMarkNewMessagesAsUnread(): boolean {
     // Condition 1: Tab doesn't have focus
-    if (!document.hasFocus()) {
+    if (!this.document.hasFocus()) {
       console.log('[CHAT-HISTORY] Tab does not have focus -> unread')
       return true
     }
@@ -402,8 +406,8 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
    * Set up listeners for window focus/blur
    */
   private setupFocusListeners(): void {
-    window.addEventListener('focus', this.handleWindowFocus)
-    window.addEventListener('blur', this.handleWindowBlur)
+    this.window.addEventListener('focus', this.handleWindowFocus)
+    this.window.addEventListener('blur', this.handleWindowBlur)
   }
 
   /**

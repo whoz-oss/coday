@@ -1,4 +1,5 @@
 import { inject, Injectable } from '@angular/core'
+import { DOCUMENT } from '@angular/common'
 import { combineLatest } from 'rxjs'
 import { UnreadMessagesService } from './unread-messages.service'
 import { ProjectStateService } from '../core/services/project-state.service'
@@ -16,6 +17,7 @@ export class TabTitleService {
   private readonly SYSTEM_ACTIVE_TIMEOUT = 4000 // 4 seconds
 
   // Modern Angular dependency injection
+  private readonly document = inject(DOCUMENT)
   private unreadService = inject(UnreadMessagesService)
   private readonly project = inject(ProjectStateService)
 
@@ -52,7 +54,7 @@ export class TabTitleService {
       title = projectTitle
     }
 
-    document.title = title
+    this.document.title = title
     console.log('[TAB-TITLE] Updated to:', title)
   }
 
