@@ -1,4 +1,5 @@
-import { Component, OnDestroy, OnInit } from '@angular/core'
+import { Component, OnDestroy, OnInit, inject } from '@angular/core'
+import { WINDOW } from '../../core/tokens/window'
 
 @Component({
   selector: 'app-welcome-message',
@@ -8,6 +9,8 @@ import { Component, OnDestroy, OnInit } from '@angular/core'
   styleUrl: './welcome-message.component.scss',
 })
 export class WelcomeMessageComponent implements OnInit, OnDestroy {
+  private readonly window = inject(WINDOW)
+
   // Welcome message rotation
   welcomeMessages = [
     'Welcome to Coday', // English
@@ -36,7 +39,7 @@ export class WelcomeMessageComponent implements OnInit, OnDestroy {
   }
 
   private startWelcomeRotation(): void {
-    this.welcomeRotationInterval = window.setInterval(() => {
+    this.welcomeRotationInterval = this.window.setInterval(() => {
       this.currentWelcomeIndex = (this.currentWelcomeIndex + 1) % this.welcomeMessages.length
       this.currentWelcomeMessage = this.welcomeMessages[this.currentWelcomeIndex]
     }, 3000)
