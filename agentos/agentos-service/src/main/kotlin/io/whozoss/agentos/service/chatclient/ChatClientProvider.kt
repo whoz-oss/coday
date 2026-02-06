@@ -16,6 +16,7 @@ class ChatClientProvider(
     private val chatModelFactory: ChatModelFactory,
 ) {
     private val providersById = ConcurrentHashMap<UUID, AiProvider>()
+    private val providersByName = ConcurrentHashMap<String, AiProvider>()
 
     @PostConstruct
     fun refreshProviders() {
@@ -24,6 +25,7 @@ class ChatClientProvider(
         val discovered = aiProviderDiscoveryService.discoverAiProviders()
         discovered.forEach {
             providersById[it.id] = it
+            providersByName[it.name] = it
         }
         logger.info("Loaded ${providersById.size} AI Providers available for use.")
     }
@@ -33,8 +35,8 @@ class ChatClientProvider(
      */
     fun getChatClient(modelConfig: ModelConfig): ChatClient {
         val provider =
-            providersById[modelConfig.providerId]
-                ?: throw IllegalArgumentException("Provider '${modelConfig.providerId}' not found.")
+            providersByName[modelConfig.providerName]
+                ?: throw IllegalArgumentException("Provider '${modelConfig.providerName}' not found.")
 
         val chatModel =
             chatModelFactory.createChatModel(

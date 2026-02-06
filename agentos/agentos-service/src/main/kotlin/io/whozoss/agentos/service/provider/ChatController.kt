@@ -31,7 +31,7 @@ data class Query(
 )
 
 data class ModelConfig(
-    val providerId: UUID,
+    val providerName: String,
     val apiKey: String?,
     val model: String?,
 )

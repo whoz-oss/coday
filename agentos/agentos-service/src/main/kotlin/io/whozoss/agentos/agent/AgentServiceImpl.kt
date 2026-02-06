@@ -123,7 +123,7 @@ class AgentServiceImpl(
         val chatClient =
             chatClientProvider.getChatClient(
                 ModelConfig(
-                    providerId = model.id,
+                    providerName = model.name,
                     apiKey = model.provider!!.defaultApiKey,
                     model = model.modelName,
                 ),
