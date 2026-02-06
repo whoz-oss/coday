@@ -19,16 +19,16 @@ import { AiClientProvider } from '@coday/integrations-ai'
 import { Toolbox } from './toolbox'
 
 export class AgentService implements Killable, AgentServiceModel {
-  private agentCache: Map<string, Agent> = new Map()
+  private readonly agentCache: Map<string, Agent> = new Map()
   private agentDefinitions: { definition: AgentDefinition; basePath: string }[] = []
   public toolbox: Toolbox
 
   constructor(
-    private interactor: Interactor,
-    private aiClientProvider: AiClientProvider,
-    private services: CodayServices,
-    private projectPath: string,
-    private commandLineAgentFolders: string[] = []
+    private readonly interactor: Interactor,
+    private readonly aiClientProvider: AiClientProvider,
+    private readonly services: CodayServices,
+    private readonly projectPath: string,
+    private readonly commandLineAgentFolders: string[] = []
   ) {
     // Subscribe to project changes to reset agents
     this.services.project.selectedProject$.subscribe(() => {
@@ -60,13 +60,6 @@ export class AgentService implements Killable, AgentServiceModel {
     const startTime = performance.now()
     this.interactor.debug('🚀 Starting agent initialization...')
 
-    // Pre-initialize tools in parallel (fire-and-forget)
-    this.interactor.debug('🛠️ Pre-initializing tools in parallel...')
-    this.toolbox
-      .getTools({ context, integrations: undefined, agentName: 'pre-init' })
-      .then((_) => this.interactor.debug('🛠️ ...completed pre-initializing tools in parallel'))
-      .catch((error) => this.interactor.debug(`Pre-initialization warning: ${error.message}`))
-
     try {
       // Load from coday.yml agents section first
       const codayYmlStart = performance.now()
@@ -77,7 +70,7 @@ export class AgentService implements Killable, AgentServiceModel {
       }
       const codayYmlTime = performance.now() - codayYmlStart
       this.interactor.debug(
-        `📋 Loaded agent definitions from coday.yml: ${codayYmlTime.toFixed(2)}ms (${context.project.agents?.length || 0} agents)`
+        `📋 Loaded agent definitions from coday.yml: ${codayYmlTime.toFixed(2)}ms (${context.project.agents?.length ?? 0} agents)`
       )
 
       // Load from project local configuration
@@ -90,7 +83,7 @@ export class AgentService implements Killable, AgentServiceModel {
       }
       const projectConfigTime = performance.now() - projectConfigStart
       this.interactor.debug(
-        `⚙️ Loaded agent definitions from project local config: ${projectConfigTime.toFixed(2)}ms (${selectedProject?.config.agents?.length || 0} agents)`
+        `⚙️ Loaded agent definitions from project local config: ${projectConfigTime.toFixed(2)}ms (${selectedProject?.config.agents?.length ?? 0} agents)`
       )
 
       // Then load from files
