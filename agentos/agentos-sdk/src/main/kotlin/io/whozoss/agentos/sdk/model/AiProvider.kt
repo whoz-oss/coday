@@ -12,4 +12,5 @@ data class AiProvider(
     val defaultApiKey: String? = null,
     val baseModel: String? = null,
     val temperature: Double = 1.0,
+    val maxTokens: Int? = null,
 ) : Entity

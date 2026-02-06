@@ -35,9 +35,28 @@ class ChatModelFactory {
                 ?: throw IllegalArgumentException("No model name provided for provider '${provider.id}'.")
 
         return when (provider.apiType) {
-            AiApiType.OpenAI -> createOpenAiModel(provider.baseUrl!!, apiKey, modelName, provider.temperature)
-            AiApiType.Anthropic -> createAnthropicModel(provider.baseUrl!!, apiKey, modelName, provider.temperature, provider.maxTokens)
-            AiApiType.Gemini -> createGeminiModel(apiKey, modelName, provider.temperature)
+            AiApiType.OpenAI -> {
+                createOpenAiModel(
+                    baseUrl = provider.baseUrl,
+                    apiKey = apiKey,
+                    model = modelName,
+                    temp = provider.temperature,
+                )
+            }
+
+            AiApiType.Anthropic -> {
+                createAnthropicModel(
+                    baseUrl = provider.baseUrl,
+                    apiKey = apiKey,
+                    model = modelName,
+                    temp = provider.temperature,
+                    maxTokens = provider.maxTokens,
+                )
+            }
+
+            AiApiType.Gemini -> {
+                createGeminiModel(apiKey = apiKey, model = modelName, temp = provider.temperature)
+            }
         }
     }
 
