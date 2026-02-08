@@ -16,5 +16,9 @@ dependencyResolutionManagement {
     }
 }
 
-// Include SDK as composite build
-includeBuild("../agentos-sdk")
+// Include SDK as composite build with dependency substitution
+includeBuild("../agentos-sdk") {
+    dependencySubstitution {
+        substitute(module("whoz-oss.agentos:agentos-sdk")).using(project(":"))
+    }
+}

@@ -26,6 +26,9 @@ dependencies {
     // Kotlin standard library
     implementation(libs.kotlin.stdlib)
 
+    // Kotlin Coroutines
+    api(libs.kotlinx.coroutines.core)
+
     // Test dependencies
     testImplementation(libs.bundles.testing.common)
     testRuntimeOnly(libs.junit.platform.launcher)

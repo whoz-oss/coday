@@ -33,6 +33,9 @@ bower_components
 !.idea/runConfigurations
 *.iml
 
+# IntelliJ IDEA build output
+out/
+
 # OS metadata
 .DS_Store
 Thumbs.db
