@@ -1,38 +1,46 @@
 @if (isVisible) {
-  <form class="choice-form" (ngSubmit)="onSubmit()">
+  <div class="choice-container">
     <!-- Label at top -->
     <div class="choice-label" [innerHTML]="renderedLabel$ | async"></div>
 
-    <!-- Select and button in grouped container -->
-    <div class="select-button-row" [class.focused]="isFocused">
-      <select
-        class="choice-select-inline"
-        [(ngModel)]="selectedValue"
-        name="choice"
-        required
-        #choiceSelect
-        (change)="onSelectChange()"
-        (keydown.enter)="onSubmit()"
-        (focus)="isFocused = true"
-        (blur)="isFocused = false"
-      >
-        <option value="" disabled>-- Select an option --</option>
-        @for (option of options; track option.value) {
-          <option [value]="option.value" [disabled]="option.disabled || option.value === '__separator__'">
-            {{ option.label }}
-          </option>
+    <!-- Button list -->
+    <div
+      class="choice-buttons"
+      role="listbox"
+      [attr.aria-activedescendant]="'choice-option-' + highlightedIndex"
+      (keydown)="onKeyDown($event)"
+      tabindex="0"
+      #buttonContainer
+    >
+      @for (option of options; track option.value; let i = $index) {
+        @if (option.value === '__separator__') {
+          <div class="choice-separator">{{ option.label }}</div>
+        } @else {
+          <button
+            type="button"
+            class="choice-button"
+            [class.highlighted]="i === highlightedIndex"
+            [disabled]="option.disabled"
+            [id]="'choice-option-' + i"
+            role="option"
+            [attr.aria-selected]="i === highlightedIndex"
+            (click)="onOptionClick(option.value)"
+          >
+            <span class="choice-button-label">{{ option.label }}</span>
+            @if (i === highlightedIndex) {
+              <mat-icon class="choice-button-icon">keyboard_return</mat-icon>
+            }
+          </button>
         }
-      </select>
-
-      <button
-        type="submit"
-        class="submit-btn"
-        mat-icon-button
-        [disabled]="!selectedValue || selectedValue === '__separator__'"
-        title="Submit selection"
-      >
-        <mat-icon>send</mat-icon>
-      </button>
+      }
     </div>
-  </form>
+
+    <!-- Type-ahead indicator -->
+    @if (searchText) {
+      <div class="search-indicator">
+        <mat-icon>search</mat-icon>
+        <span>{{ searchText }}</span>
+      </div>
+    }
+  </div>
 }
