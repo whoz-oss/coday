@@ -247,12 +247,34 @@ export class FileExchangeStateService {
     switch (event.operation) {
       case 'created': {
         // Add new file at the beginning (most recent)
+        // Extract just the ISO date part if timestamp has random suffix
+        // Format: "2026-02-09T16:57:20.839Z-x81ku" (ISO + dash + random suffix)
+        // We need to remove everything after the last dash if it looks like a random suffix
+        let dateStr = event.timestamp
+        const lastDashIndex = event.timestamp.lastIndexOf('-')
+
+        // Check if there's a suffix after the last dash (5 chars random suffix)
+        if (lastDashIndex > 0) {
+          const afterLastDash = event.timestamp.substring(lastDashIndex + 1)
+          // If it's a short alphanumeric string (random suffix), remove it
+          if (afterLastDash.length === 5 && /^[a-z0-9]+$/.test(afterLastDash)) {
+            dateStr = event.timestamp.substring(0, lastDashIndex)
+          }
+        }
+
         const newFile: FileInfo = {
           filename: event.filename,
           size: event.size || 0,
-          lastModified: new Date(event.timestamp),
+          lastModified: new Date(dateStr),
         }
-        console.log('[FILE_EXCHANGE_STATE] Adding new file:', newFile.filename)
+        console.log(
+          '[FILE_EXCHANGE_STATE] Adding new file:',
+          newFile.filename,
+          'timestamp:',
+          event.timestamp,
+          'parsed date:',
+          newFile.lastModified
+        )
         this.filesSignal.set([newFile, ...currentFiles])
         break
       }
@@ -261,12 +283,33 @@ export class FileExchangeStateService {
         // Update existing file and move it to the top
         const updatedFiles = currentFiles.filter((f) => f.filename !== event.filename)
         const existingFile = currentFiles.find((f) => f.filename === event.filename)
+
+        // Extract just the ISO date part if timestamp has random suffix
+        let dateStr = event.timestamp
+        const lastDashIndex = event.timestamp.lastIndexOf('-')
+
+        // Check if there's a suffix after the last dash (5 chars random suffix)
+        if (lastDashIndex > 0) {
+          const afterLastDash = event.timestamp.substring(lastDashIndex + 1)
+          // If it's a short alphanumeric string (random suffix), remove it
+          if (afterLastDash.length === 5 && /^[a-z0-9]+$/.test(afterLastDash)) {
+            dateStr = event.timestamp.substring(0, lastDashIndex)
+          }
+        }
+
         const updatedFile: FileInfo = {
           filename: event.filename,
           size: event.size || existingFile?.size || 0,
-          lastModified: new Date(event.timestamp),
+          lastModified: new Date(dateStr),
         }
-        console.log('[FILE_EXCHANGE_STATE] Updating file:', updatedFile.filename)
+        console.log(
+          '[FILE_EXCHANGE_STATE] Updating file:',
+          updatedFile.filename,
+          'timestamp:',
+          event.timestamp,
+          'parsed date:',
+          updatedFile.lastModified
+        )
         this.filesSignal.set([updatedFile, ...updatedFiles])
         break
       }
