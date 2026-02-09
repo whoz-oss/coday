@@ -2,7 +2,15 @@
  * @fileoverview Type definitions for thread-related structures
  */
 
-import { MessageEvent, SummaryEvent, ToolRequestEvent, ToolResponseEvent } from './coday-events'
+import {
+  AnswerEvent,
+  ChoiceEvent,
+  InviteEvent,
+  MessageEvent,
+  SummaryEvent,
+  ToolRequestEvent,
+  ToolResponseEvent,
+} from './coday-events'
 
 /**
  * Union type representing all possible message types in a thread:
@@ -10,8 +18,18 @@ import { MessageEvent, SummaryEvent, ToolRequestEvent, ToolResponseEvent } from 
  * - ToolRequestEvent: Tool execution requests from agents
  * - ToolResponseEvent: Results from tool executions
  * - SummaryEvent: Compacted summary of previous messages
+ * - InviteEvent: Questions asking for user input
+ * - ChoiceEvent: Multiple choice questions for user selection
+ * - AnswerEvent: User responses to InviteEvent or ChoiceEvent
  */
-export type ThreadMessage = MessageEvent | ToolRequestEvent | ToolResponseEvent | SummaryEvent
+export type ThreadMessage =
+  | MessageEvent
+  | ToolRequestEvent
+  | ToolResponseEvent
+  | SummaryEvent
+  | InviteEvent
+  | ChoiceEvent
+  | AnswerEvent
 
 /**
  * Serialized representation of a thread for storage
