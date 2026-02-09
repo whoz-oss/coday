@@ -13,25 +13,21 @@
       #buttonContainer
     >
       @for (option of options; track option.value; let i = $index) {
-        @if (option.value === '__separator__') {
-          <div class="choice-separator">{{ option.label }}</div>
-        } @else {
-          <button
-            type="button"
-            class="choice-button"
-            [class.highlighted]="i === highlightedIndex"
-            [disabled]="option.disabled"
-            [id]="'choice-option-' + i"
-            role="option"
-            [attr.aria-selected]="i === highlightedIndex"
-            (click)="onOptionClick(option.value)"
-          >
-            <span class="choice-button-label">{{ option.label }}</span>
-            @if (i === highlightedIndex) {
-              <mat-icon class="choice-button-icon">keyboard_return</mat-icon>
-            }
-          </button>
-        }
+        <button
+          type="button"
+          class="choice-button"
+          [class.highlighted]="i === highlightedIndex"
+          [disabled]="option.disabled"
+          [id]="'choice-option-' + i"
+          role="option"
+          [attr.aria-selected]="i === highlightedIndex"
+          (click)="onOptionClick(option.value)"
+        >
+          <span class="choice-button-label">{{ option.label }}</span>
+          @if (i === highlightedIndex) {
+            <mat-icon class="choice-button-icon">keyboard_return</mat-icon>
+          }
+        </button>
       }
     </div>
 

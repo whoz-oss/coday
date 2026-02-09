@@ -106,7 +106,7 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
   }
 
   onKeyDown(event: KeyboardEvent): void {
-    const selectableOptions = this.options.filter((opt) => opt.value !== '__separator__' && !opt.disabled)
+    const selectableOptions = this.options.filter((opt) => !opt.disabled)
 
     if (selectableOptions.length === 0) return
 
@@ -154,7 +154,7 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
   private moveHighlight(direction: 1 | -1): void {
     const selectableIndices = this.options
       .map((opt, idx) => ({ opt, idx }))
-      .filter(({ opt }) => opt.value !== '__separator__' && !opt.disabled)
+      .filter(({ opt }) => !opt.disabled)
       .map(({ idx }) => idx)
 
     if (selectableIndices.length === 0) return
@@ -186,7 +186,7 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
   }
 
   private highlightFirst(): void {
-    const firstSelectable = this.options.findIndex((opt) => opt.value !== '__separator__' && !opt.disabled)
+    const firstSelectable = this.options.findIndex((opt) => !opt.disabled)
     if (firstSelectable >= 0) {
       this.highlightedIndex = firstSelectable
       this.scrollToHighlighted()
@@ -196,7 +196,7 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
   private highlightLast(): void {
     const selectableIndices = this.options
       .map((opt, idx) => ({ opt, idx }))
-      .filter(({ opt }) => opt.value !== '__separator__' && !opt.disabled)
+      .filter(({ opt }) => !opt.disabled)
       .map(({ idx }) => idx)
 
     if (selectableIndices.length > 0) {
@@ -219,7 +219,7 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
 
   private selectHighlighted(): void {
     const option = this.options[this.highlightedIndex]
-    if (option && option.value !== '__separator__' && !option.disabled) {
+    if (option && !option.disabled) {
       this.onOptionClick(option.value)
     }
   }
@@ -229,7 +229,7 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
 
     // Find first matching option
     const matchIndex = this.options.findIndex(
-      (opt) => opt.value !== '__separator__' && !opt.disabled && opt.label.toLowerCase().startsWith(this.searchText)
+      (opt) => !opt.disabled && opt.label.toLowerCase().startsWith(this.searchText)
     )
 
     if (matchIndex >= 0) {
