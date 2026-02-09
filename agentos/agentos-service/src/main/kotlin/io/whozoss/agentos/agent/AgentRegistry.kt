@@ -1,8 +1,6 @@
 package io.whozoss.agentos.agent
 
-import io.whozoss.agentos.agent.AgentDiscoveryService
 import io.whozoss.agentos.sdk.agent.AgentDefinition
-import io.whozoss.agentos.sdk.agent.ContextType
 import jakarta.annotation.PostConstruct
 import mu.KLogging
 import org.springframework.stereotype.Service
@@ -160,7 +158,7 @@ class AgentRegistry(
                 description = "Default agent without any particular purpose, should delegate specific tasks to other agents",
                 version = "1.0.0",
                 capabilities = listOf("general", "conversation", "delegation"),
-                requiredContext = setOf(ContextType.GENERAL),
+                requiredContext = setOf("GENERAL"),
                 tags = setOf("general", "conversation", "delegation"),
                 priority = 100,
             ),
