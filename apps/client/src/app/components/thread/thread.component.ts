@@ -225,15 +225,10 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
     this.codayService.connectToThread(this.projectName, this.threadId)
 
     // Check if we have a first message from router state (implicit thread creation)
-    // Try both getCurrentNavigation() and history.state as fallback
+    // ONLY use getCurrentNavigation() - do NOT use history.state as fallback
+    // to avoid re-sending the message on page reload
     const navigation = this.router.getCurrentNavigation()
-    let firstMessage = navigation?.extras?.state?.['firstMessage'] as string | undefined
-
-    // Fallback: check window.history.state if navigation is null
-    if (!firstMessage && window.history.state?.['firstMessage']) {
-      firstMessage = window.history.state['firstMessage'] as string
-      console.log('[THREAD] Retrieved first message from history.state')
-    }
+    const firstMessage = navigation?.extras?.state?.['firstMessage'] as string | undefined
 
     // If we have a first message, wait for the first InviteEvent before sending it
     if (firstMessage) {

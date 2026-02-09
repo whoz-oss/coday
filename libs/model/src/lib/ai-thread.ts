@@ -5,7 +5,10 @@
  */
 
 import {
+  AnswerEvent,
   buildCodayEvent,
+  ChoiceEvent,
+  InviteEvent,
   MessageContent,
   MessageEvent,
   SummaryEvent,
@@ -21,7 +24,15 @@ import { partition } from './ai-thread.helpers'
 /**
  * Allowed message types for filtering when building thread history
  */
-const THREAD_MESSAGE_TYPES = [MessageEvent.type, ToolRequestEvent.type, ToolResponseEvent.type, SummaryEvent.type]
+const THREAD_MESSAGE_TYPES = [
+  MessageEvent.type,
+  ToolRequestEvent.type,
+  ToolResponseEvent.type,
+  SummaryEvent.type,
+  InviteEvent.type,
+  ChoiceEvent.type,
+  AnswerEvent.type,
+]
 
 /**
  * AiThread manages the state and interactions of a conversation thread between users and AI agents.
@@ -385,6 +396,16 @@ export class AiThread {
   }
 
   /**
+   * Adds an answer event to the thread.
+   * This is used when users respond to InviteEvent or ChoiceEvent.
+   * @param answerEvent - The answer event to add
+   */
+  addAnswerEvent(answerEvent: AnswerEvent): void {
+    this.add(answerEvent)
+    this.modifiedDate = new Date().toISOString()
+  }
+
+  /**
    * Adds an AI agent message to the thread.
    * @param agentName - The name of the AI agent sending the message
    * @param content - The content of the message
@@ -487,9 +508,12 @@ export class AiThread {
 
   /**
    * Returns the count of user messages in this thread.
+   * Counts both MessageEvent with role='user' (legacy) and AnswerEvent (current).
    */
   getUserMessageCount(): number {
-    return this.messages.filter((msg) => msg instanceof MessageEvent && msg.role === 'user').length
+    return this.messages.filter(
+      (msg) => (msg instanceof MessageEvent && msg.role === 'user') || msg instanceof AnswerEvent
+    ).length
   }
 
   /**

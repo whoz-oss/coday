@@ -1,8 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk'
 import {
+  AnswerEvent,
+  ChoiceEvent,
   CodayEvent,
   CodayLogger,
   ErrorEvent,
+  InviteEvent,
   MessageEvent,
   SummaryEvent,
   TextChunkEvent,
@@ -411,6 +414,49 @@ export class AnthropicClient extends AiClient {
                 type: 'tool_result',
                 tool_use_id: msg.toolRequestId,
                 content: toolResultContent,
+                ...(shouldAddCache && { cache_control: { type: 'ephemeral' } }),
+              },
+            ],
+          }
+        }
+        // Handle InviteEvent - represent as assistant question
+        else if (msg instanceof InviteEvent) {
+          claudeMessage = {
+            role: 'assistant',
+            content: [
+              {
+                type: 'text',
+                text: msg.invite,
+                ...(shouldAddCache && { cache_control: { type: 'ephemeral' } }),
+              },
+            ],
+          }
+        }
+        // Handle ChoiceEvent - represent as assistant question with options
+        else if (msg instanceof ChoiceEvent) {
+          const optionsText = msg.options.map((opt, i) => `${i + 1}. ${opt}`).join('\n')
+          const content = msg.optionalQuestion
+            ? `${msg.optionalQuestion}\n${msg.invite}\n${optionsText}`
+            : `${msg.invite}\n${optionsText}`
+          claudeMessage = {
+            role: 'assistant',
+            content: [
+              {
+                type: 'text',
+                text: content,
+                ...(shouldAddCache && { cache_control: { type: 'ephemeral' } }),
+              },
+            ],
+          }
+        }
+        // Handle AnswerEvent - represent as user response
+        else if (msg instanceof AnswerEvent) {
+          claudeMessage = {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: msg.answer,
                 ...(shouldAddCache && { cache_control: { type: 'ephemeral' } }),
               },
             ],
