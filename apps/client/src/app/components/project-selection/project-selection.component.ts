@@ -5,7 +5,7 @@ import { filter, take } from 'rxjs'
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { ChoiceSelectComponent, ChoiceOption } from '../choice-select/choice-select.component'
-import { WelcomeMessageComponent } from '../welcome-message/welcome-message.component'
+import { WelcomeMessageComponent } from '../welcome-message'
 import { ProjectCreateComponent } from '../project-create/project-create.component'
 import { MatButton } from '@angular/material/button'
 
@@ -54,12 +54,9 @@ export class ProjectSelectionComponent {
       label: project.volatile ? `${project.name} 🔸temp` : project.name,
     }))
 
-    // Add separator and "New project..." option at the end
+    // Add "New project..." option at the end
     if (projectList.length > 0) {
-      options.push(
-        { value: '__separator__', label: '──────────────────────', disabled: true },
-        { value: '__new_project__', label: 'New project...' }
-      )
+      options.push({ value: '__new_project__', label: 'New project...' })
     }
 
     return options
@@ -99,11 +96,6 @@ export class ProjectSelectionComponent {
     // Handle special "New project..." option
     if (projectName === '__new_project__') {
       this.openCreateForm()
-      return
-    }
-
-    // Ignore separator selection
-    if (projectName === '__separator__') {
       return
     }
 

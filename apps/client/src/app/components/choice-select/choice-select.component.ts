@@ -11,12 +11,10 @@ import {
   ViewChild,
   inject,
 } from '@angular/core'
-import { FormsModule } from '@angular/forms'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
-import { BehaviorSubject, Observable } from 'rxjs'
+import { BehaviorSubject, Observable, Subject } from 'rxjs'
 import { AsyncPipe } from '@angular/common'
 import { MatIconModule } from '@angular/material/icon'
-import { MatButtonModule } from '@angular/material/button'
 import { MarkdownService } from '../../services/markdown.service'
 
 export interface ChoiceOption {
@@ -28,7 +26,7 @@ export interface ChoiceOption {
 @Component({
   selector: 'app-choice-select',
   standalone: true,
-  imports: [FormsModule, AsyncPipe, MatIconModule, MatButtonModule],
+  imports: [AsyncPipe, MatIconModule],
   templateUrl: './choice-select.component.html',
   styleUrl: './choice-select.component.scss',
 })
@@ -47,10 +45,12 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
 
   @Output() choiceSelected = new EventEmitter<string>()
 
-  @ViewChild('choiceSelect') selectElement!: ElementRef<HTMLSelectElement>
+  @ViewChild('buttonContainer') buttonContainer!: ElementRef<HTMLDivElement>
 
-  selectedValue: string = ''
-  isFocused = false
+  highlightedIndex: number = 0
+  searchText: string = ''
+  private searchTimeout?: ReturnType<typeof setTimeout>
+  private destroy$ = new Subject<void>()
 
   // Observable for asynchronous label rendering
   private renderedLabelSubject = new BehaviorSubject<SafeHtml>('')
@@ -62,12 +62,17 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
 
   ngOnDestroy(): void {
     this.renderedLabelSubject.complete()
+    this.destroy$.next()
+    this.destroy$.complete()
+    if (this.searchTimeout) {
+      clearTimeout(this.searchTimeout)
+    }
   }
 
   ngAfterViewInit(): void {
     // Auto-focus when component becomes visible
-    if (this.isVisible && this.selectElement) {
-      setTimeout(() => this.focusSelect(), 100)
+    if (this.isVisible && this.buttonContainer) {
+      setTimeout(() => this.focusContainer(), 100)
     }
   }
 
@@ -82,30 +87,168 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
       )
       if (changes['isVisible'].currentValue && !changes['isVisible'].previousValue) {
         console.log('[CHOICE-SELECT] Component becoming visible, setting focus...')
-        setTimeout(() => this.focusSelect(), 150) // Slightly longer delay for animation
+        this.highlightedIndex = 0 // Reset to first option
+        setTimeout(() => this.focusContainer(), 150)
+      }
+    }
+
+    // Reset highlighted index if options change
+    if (changes['options'] && !changes['options'].firstChange) {
+      this.highlightedIndex = 0
+    }
+  }
+
+  private focusContainer(): void {
+    if (this.buttonContainer?.nativeElement) {
+      this.buttonContainer.nativeElement.focus()
+      console.log('[CHOICE-SELECT] Focus set on button container')
+    }
+  }
+
+  onKeyDown(event: KeyboardEvent): void {
+    const selectableOptions = this.options.filter((opt) => !opt.disabled)
+
+    if (selectableOptions.length === 0) return
+
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault()
+        this.moveHighlight(1)
+        break
+
+      case 'ArrowUp':
+        event.preventDefault()
+        this.moveHighlight(-1)
+        break
+
+      case 'Enter':
+      case ' ':
+        event.preventDefault()
+        this.selectHighlighted()
+        break
+
+      case 'Home':
+        event.preventDefault()
+        this.highlightFirst()
+        break
+
+      case 'End':
+        event.preventDefault()
+        this.highlightLast()
+        break
+
+      case 'Escape':
+        event.preventDefault()
+        // Could emit a cancel event if needed
+        break
+
+      default:
+        // Type-ahead search
+        if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          this.handleTypeAhead(event.key)
+        }
+        break
+    }
+  }
+
+  private moveHighlight(direction: 1 | -1): void {
+    const selectableIndices = this.options
+      .map((opt, idx) => ({ opt, idx }))
+      .filter(({ opt }) => !opt.disabled)
+      .map(({ idx }) => idx)
+
+    if (selectableIndices.length === 0) return
+
+    const currentSelectableIdx = selectableIndices.findIndex((idx) => idx === this.highlightedIndex)
+    const nextSelectableIdx = currentSelectableIdx + direction
+
+    if (nextSelectableIdx >= 0 && nextSelectableIdx < selectableIndices.length) {
+      const newIndex = selectableIndices[nextSelectableIdx]
+      if (newIndex !== undefined) {
+        this.highlightedIndex = newIndex
+        this.scrollToHighlighted()
+      }
+    } else if (direction === 1 && nextSelectableIdx >= selectableIndices.length) {
+      // Wrap to first
+      const firstIndex = selectableIndices[0]
+      if (firstIndex !== undefined) {
+        this.highlightedIndex = firstIndex
+        this.scrollToHighlighted()
+      }
+    } else if (direction === -1 && nextSelectableIdx < 0) {
+      // Wrap to last
+      const lastIndex = selectableIndices[selectableIndices.length - 1]
+      if (lastIndex !== undefined) {
+        this.highlightedIndex = lastIndex
+        this.scrollToHighlighted()
       }
     }
   }
 
-  private focusSelect(): void {
-    if (this.selectElement?.nativeElement) {
-      this.selectElement.nativeElement.focus()
-      console.log('[CHOICE-SELECT] Focus set on select element')
+  private highlightFirst(): void {
+    const firstSelectable = this.options.findIndex((opt) => !opt.disabled)
+    if (firstSelectable >= 0) {
+      this.highlightedIndex = firstSelectable
+      this.scrollToHighlighted()
     }
   }
 
-  onSubmit() {
-    if (this.selectedValue && this.selectedValue !== '__separator__') {
-      console.log('[CHOICE-SELECT] Choice selected:', this.selectedValue)
-      this.choiceSelected.emit(this.selectedValue)
-      this.selectedValue = '' // Reset for next use
-    } else {
-      console.warn('[CHOICE-SELECT] No choice selected or separator selected')
+  private highlightLast(): void {
+    const selectableIndices = this.options
+      .map((opt, idx) => ({ opt, idx }))
+      .filter(({ opt }) => !opt.disabled)
+      .map(({ idx }) => idx)
+
+    if (selectableIndices.length > 0) {
+      const lastIndex = selectableIndices[selectableIndices.length - 1]
+      if (lastIndex !== undefined) {
+        this.highlightedIndex = lastIndex
+        this.scrollToHighlighted()
+      }
     }
   }
 
-  onSelectChange() {
-    console.log('[CHOICE-SELECT] Selection changed to:', this.selectedValue)
+  private scrollToHighlighted(): void {
+    setTimeout(() => {
+      const highlightedElement = document.getElementById('choice-option-' + this.highlightedIndex)
+      if (highlightedElement) {
+        highlightedElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      }
+    }, 0)
+  }
+
+  private selectHighlighted(): void {
+    const option = this.options[this.highlightedIndex]
+    if (option && !option.disabled) {
+      this.onOptionClick(option.value)
+    }
+  }
+
+  private handleTypeAhead(char: string): void {
+    this.searchText += char.toLowerCase()
+
+    // Find first matching option
+    const matchIndex = this.options.findIndex(
+      (opt) => !opt.disabled && opt.label.toLowerCase().startsWith(this.searchText)
+    )
+
+    if (matchIndex >= 0) {
+      this.highlightedIndex = matchIndex
+      this.scrollToHighlighted()
+    }
+
+    // Clear search text after 1 second
+    if (this.searchTimeout) {
+      clearTimeout(this.searchTimeout)
+    }
+    this.searchTimeout = setTimeout(() => {
+      this.searchText = ''
+    }, 1000)
+  }
+
+  onOptionClick(value: string): void {
+    console.log('[CHOICE-SELECT] Choice selected:', value)
+    this.choiceSelected.emit(value)
   }
 
   /**
