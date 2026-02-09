@@ -55,7 +55,6 @@ export class FileExchangeDrawerComponent {
    * View file content
    */
   viewFile(file: FileInfo): void {
-    console.log('[FILE_DRAWER] View file:', file.filename)
     this.currentFile = file
     this.viewerState = 'content'
   }
@@ -64,24 +63,19 @@ export class FileExchangeDrawerComponent {
    * Back to file list
    */
   backToList(): void {
-    console.log('[FILE_DRAWER] Back to list')
     this.viewerState = 'list'
     this.currentFile = null
   }
 
   downloadAll(): void {
-    console.log('[FILE_DRAWER] Download all files')
     this.fileExchangeState.downloadAllFiles()
   }
 
   download(file: FileInfo): void {
-    console.log('[FILE_DRAWER] Download file:', file.filename)
     this.fileExchangeState.downloadFile(file.filename)
   }
 
   async delete(file: FileInfo): Promise<void> {
-    console.log('[FILE_DRAWER] Delete file:', file.filename)
-
     // Simple confirmation (we'll improve this later with a proper dialog)
     const confirmed = confirm(`Delete file "${file.filename}"?`)
     if (!confirmed) {

@@ -47,8 +47,6 @@ export class FileExchangeStateService {
    * @param threadId - Thread ID
    */
   initializeForThread(projectName: string, threadId: string): void {
-    console.log('[FILE_EXCHANGE_STATE] Initializing for thread:', { projectName, threadId })
-
     // Update current context
     this.currentProjectSignal.set(projectName)
     this.currentThreadSignal.set(threadId)
@@ -61,7 +59,6 @@ export class FileExchangeStateService {
    * Clear state (when leaving thread)
    */
   clear(): void {
-    console.log('[FILE_EXCHANGE_STATE] Clearing state')
     this.filesSignal.set([])
     this.currentProjectSignal.set(null)
     this.currentThreadSignal.set(null)
@@ -79,12 +76,10 @@ export class FileExchangeStateService {
       return
     }
 
-    console.log('[FILE_EXCHANGE_STATE] Refreshing file list')
     this.isLoadingSignal.set(true)
 
     this.fileApi.listFiles(projectName, threadId).subscribe({
       next: (files) => {
-        console.log('[FILE_EXCHANGE_STATE] Files loaded:', files.length)
         // Convert lastModified strings to Date objects and sort by most recent first
         const processedFiles = files
           .map((file) => ({
@@ -117,12 +112,9 @@ export class FileExchangeStateService {
       return { success: false, error: 'No project or thread selected' }
     }
 
-    console.log('[FILE_EXCHANGE_STATE] Uploading file:', file.name)
-
     return new Promise((resolve) => {
       this.fileApi.uploadFile(projectName, threadId, file).subscribe({
-        next: (response) => {
-          console.log('[FILE_EXCHANGE_STATE] Upload successful:', response.filename)
+        next: () => {
           // Refresh file list to show new file
           this.refreshFileList()
           resolve({ success: true })
@@ -146,8 +138,6 @@ export class FileExchangeStateService {
       return
     }
 
-    console.log('[FILE_EXCHANGE_STATE] Downloading all files:', files.length)
-
     // Download files sequentially with small delay between each
     files.forEach((file, index) => {
       setTimeout(() => {
@@ -170,8 +160,6 @@ export class FileExchangeStateService {
       return
     }
 
-    console.log('[FILE_EXCHANGE_STATE] Downloading file:', filename)
-
     this.fileApi.downloadFile(projectName, threadId, filename).subscribe({
       next: (blob) => {
         // Create download link
@@ -181,7 +169,6 @@ export class FileExchangeStateService {
         link.download = filename
         link.click()
         window.URL.revokeObjectURL(url)
-        console.log('[FILE_EXCHANGE_STATE] Download initiated:', filename)
       },
       error: (error) => {
         console.error('[FILE_EXCHANGE_STATE] Download error:', error)
@@ -204,12 +191,9 @@ export class FileExchangeStateService {
       return { success: false, error: 'No project or thread selected' }
     }
 
-    console.log('[FILE_EXCHANGE_STATE] Deleting file:', filename)
-
     return new Promise((resolve) => {
       this.fileApi.deleteFile(projectName, threadId, filename).subscribe({
-        next: (response) => {
-          console.log('[FILE_EXCHANGE_STATE] Delete successful:', response.message)
+        next: () => {
           // Refresh file list to remove deleted file
           this.refreshFileList()
           resolve({ success: true })
@@ -233,7 +217,6 @@ export class FileExchangeStateService {
         takeUntilDestroyed()
       )
       .subscribe((fileEvent) => {
-        console.log('[FILE_EXCHANGE_STATE] FileEvent received:', fileEvent)
         this.handleFileEvent(fileEvent as FileEvent)
       })
   }
@@ -267,14 +250,6 @@ export class FileExchangeStateService {
           size: event.size || 0,
           lastModified: new Date(dateStr),
         }
-        console.log(
-          '[FILE_EXCHANGE_STATE] Adding new file:',
-          newFile.filename,
-          'timestamp:',
-          event.timestamp,
-          'parsed date:',
-          newFile.lastModified
-        )
         this.filesSignal.set([newFile, ...currentFiles])
         break
       }
@@ -302,21 +277,12 @@ export class FileExchangeStateService {
           size: event.size || existingFile?.size || 0,
           lastModified: new Date(dateStr),
         }
-        console.log(
-          '[FILE_EXCHANGE_STATE] Updating file:',
-          updatedFile.filename,
-          'timestamp:',
-          event.timestamp,
-          'parsed date:',
-          updatedFile.lastModified
-        )
         this.filesSignal.set([updatedFile, ...updatedFiles])
         break
       }
 
       case 'deleted': {
         // Remove file from list
-        console.log('[FILE_EXCHANGE_STATE] Removing file:', event.filename)
         const filteredFiles = currentFiles.filter((f) => f.filename !== event.filename)
         this.filesSignal.set(filteredFiles)
         break
