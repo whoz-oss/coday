@@ -1,3 +1,13 @@
+## 0.68.0 (2026-02-09)
+
+### 🚀 Features
+
+- save also invite and answers events ([#463](https://github.com/whoz-oss/coday/pull/463))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.67.0 (2026-02-09)
 
 ### 🚀 Features
