@@ -6,7 +6,6 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.sdk.agent.AgentDefinition
 import io.whozoss.agentos.sdk.agent.AgentPlugin
 import io.whozoss.agentos.sdk.agent.AgentStatus
-import io.whozoss.agentos.sdk.agent.ContextType
 import org.pf4j.Extension
 import org.slf4j.LoggerFactory
 import java.io.File
@@ -127,23 +126,19 @@ class FilesystemAgentProvider : AgentPlugin {
         )
     }
 
-    private fun parseContextTypes(contexts: List<String>?): Set<ContextType> {
+    private fun parseContextTypes(contexts: List<String>?): Set<String> {
         if (contexts.isNullOrEmpty()) {
-            return setOf(ContextType.GENERAL)
+            return setOf("general")
         }
 
-        val contextTypes = mutableSetOf<ContextType>()
+        val contextTypes = mutableSetOf<String>()
         contexts.forEach { contextStr ->
-            try {
-                val contextType = ContextType.valueOf(contextStr.uppercase().replace("-", "_"))
-                contextTypes.add(contextType)
-            } catch (e: IllegalArgumentException) {
-                logger.warn("Unknown context type: $contextStr, using GENERAL")
-                contextTypes.add(ContextType.GENERAL)
-            }
+            // Normalize context type to lowercase kebab-case
+            val normalizedContext = contextStr.lowercase().replace("_", "-")
+            contextTypes.add(normalizedContext)
         }
 
-        return contextTypes.ifEmpty { setOf(ContextType.GENERAL) }
+        return contextTypes.ifEmpty { setOf("general") }
     }
 
     private fun parseStatus(statusStr: String?): AgentStatus {
