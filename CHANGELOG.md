@@ -1,3 +1,13 @@
+## 0.67.0 (2026-02-09)
+
+### 🚀 Features
+
+- change choice for button list ([#462](https://github.com/whoz-oss/coday/pull/462))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.66.2 (2026-02-06)
 
 ### 🩹 Fixes
