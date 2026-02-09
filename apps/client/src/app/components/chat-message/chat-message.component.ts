@@ -19,6 +19,8 @@ export interface ChatMessage {
   timestamp: Date
   type: 'text' | 'error' | 'warning' | 'technical'
   eventId?: string // For event detail links
+  parentKey?: string // Link to InviteEvent/ChoiceEvent for question-answer relationship
+  invite?: string // Original question (for context)
 }
 
 @Component({

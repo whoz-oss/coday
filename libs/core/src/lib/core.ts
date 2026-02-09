@@ -7,7 +7,16 @@ import { AiThread, RunStatus, ThreadMessage } from '@coday/model'
 import { Interactor } from '@coday/model'
 import { CodayOptions } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
-import { InviteEventDefault, MessageContent, MessageEvent, ToolRequestEvent, ToolResponseEvent } from '@coday/model'
+import {
+  AnswerEvent,
+  ChoiceEvent,
+  InviteEvent,
+  InviteEventDefault,
+  MessageContent,
+  MessageEvent,
+  ToolRequestEvent,
+  ToolResponseEvent,
+} from '@coday/model'
 import { AgentService } from '@coday/agent'
 import { AiConfigService, ThreadStateService } from '@coday/service'
 import { AiClientProvider } from '@coday/integrations-ai'
@@ -222,7 +231,10 @@ export class Coday {
       if (
         message instanceof MessageEvent ||
         message instanceof ToolRequestEvent ||
-        message instanceof ToolResponseEvent
+        message instanceof ToolResponseEvent ||
+        message instanceof InviteEvent ||
+        message instanceof ChoiceEvent ||
+        message instanceof AnswerEvent
       ) {
         this.interactor.sendEvent(message)
       }

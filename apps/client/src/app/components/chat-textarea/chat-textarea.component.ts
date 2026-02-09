@@ -709,16 +709,22 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   private handleInviteEvent(invite: string, defaultValue?: string): void {
     this.currentInvite = invite
 
+    // Reset local disable flag immediately when an invite arrives
+    // This allows the user to respond without waiting for thinking state to clear
+    this.isLocallyDisabled = false
+
     // Set default value if provided
     if (defaultValue) {
       this.message = defaultValue
       setTimeout(() => this.adjustTextareaHeight(), 0)
     }
 
-    // Focus on textarea
-    if (this.messageInput?.nativeElement) {
-      this.messageInput.nativeElement.focus()
-    }
+    // Focus on textarea after a short delay to ensure disabled attribute is removed
+    setTimeout(() => {
+      if (this.messageInput?.nativeElement) {
+        this.messageInput.nativeElement.focus()
+      }
+    }, 50)
   }
 
   /**
