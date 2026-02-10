@@ -1,3 +1,13 @@
+## 0.68.1 (2026-02-10)
+
+### 🩹 Fixes
+
+- file dates in exchange area ([#464](https://github.com/whoz-oss/coday/pull/464))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.68.0 (2026-02-09)
 
 ### 🚀 Features
