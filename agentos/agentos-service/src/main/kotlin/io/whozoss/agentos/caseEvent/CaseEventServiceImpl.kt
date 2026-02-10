@@ -46,20 +46,20 @@ class CaseEventServiceImpl(
     override fun findByParent(parentId: UUID): List<CaseEvent> = repository.findByParent(parentId)
 
     /**
-     * Delete multiple events.
+     * Delete a single event.
      * Future: May need to validate deletion rules (e.g., prevent deletion of certain event types).
      */
-    override fun deleteMany(ids: Collection<UUID>): Int {
-        if (ids.isEmpty()) {
-            logger.warn("deleteMany called with empty collection")
-            return 0
-        }
-
+    override fun delete(id: UUID): Boolean {
         // Future: Add business logic here
-        // - Check if events can be deleted
-        // - Cascade deletions if needed
+        // - Check if event can be deleted
         // - Emit domain events
 
-        return repository.deleteMany(ids)
+        return repository.delete(id)
     }
+
+    /**
+     * Delete all events belonging to a parent (case).
+     * Useful for cascade deletion when a case is removed.
+     */
+    override fun deleteByParent(parentId: UUID): Int = repository.deleteByParent(parentId)
 }

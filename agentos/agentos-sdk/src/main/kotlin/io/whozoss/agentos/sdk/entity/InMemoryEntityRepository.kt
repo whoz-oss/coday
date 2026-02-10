@@ -101,22 +101,36 @@ abstract class InMemoryEntityRepository<T : Entity, P>(
     }
 
     /**
-     * Soft delete multiple entities by their IDs.
+     * Soft delete a single entity by its ID.
+     * Marks the entity as removed instead of physically deleting it.
+     */
+    @Synchronized
+    override fun delete(id: UUID): Boolean {
+        val entity = entitiesById[id]
+        return if (entity != null && !entity.metadata.removed) {
+            entity.metadata.removed = true
+            logger.debug("Entity soft deleted (id=$id)")
+            true
+        } else {
+            false
+        }
+    }
+
+    /**
+     * Soft delete all entities belonging to a parent.
      * Marks entities as removed instead of physically deleting them.
      */
     @Synchronized
-    override fun deleteMany(ids: Collection<UUID>): Int {
+    override fun deleteByParent(parentId: P): Int {
+        val entityIds = entityIdsByParentId[parentId] ?: return 0
         var deletedCount = 0
-
-        ids.forEach { id ->
-            val entity = entitiesById[id]
-            if (entity != null && !entity.metadata.removed) {
-                entity.metadata.removed = true
+        
+        entityIds.forEach { id ->
+            if (delete(id)) {
                 deletedCount++
-                logger.debug("Entity soft deleted (id=$id)")
             }
         }
-
+        
         return deletedCount
     }
 }

@@ -1,7 +1,6 @@
 name: Dev
 description: Software Agent for Coday and AgentOS
 aiProvider: anthropic
-modelSize: BIG
 modelName: BIG
 integrations:
   FILES:

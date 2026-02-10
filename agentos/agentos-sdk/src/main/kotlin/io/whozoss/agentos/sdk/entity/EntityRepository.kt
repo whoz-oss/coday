@@ -47,11 +47,21 @@ interface EntityRepository<T : Entity, P> {
     fun findByParent(parentId: P): List<T>
 
     /**
-     * Soft delete multiple entities by their identifiers.
+     * Soft delete a single entity by its identifier.
      * Sets the removed flag to true instead of physically deleting.
      *
-     * @param ids Collection of unique identifiers
+     * @param id The unique identifier
+     * @return true if the entity was deleted, false if not found or already removed
+     */
+    fun delete(id: UUID): Boolean
+
+    /**
+     * Soft delete all entities belonging to a parent.
+     * Sets the removed flag to true instead of physically deleting.
+     * Useful for cascade deletion when a parent entity is removed.
+     *
+     * @param parentId The parent identifier
      * @return Number of entities actually marked as removed
      */
-    fun deleteMany(ids: Collection<UUID>): Int
+    fun deleteByParent(parentId: P): Int
 }

@@ -20,6 +20,10 @@ class FilesystemAgentProvider : AgentPlugin {
     private val logger = LoggerFactory.getLogger(FilesystemAgentProvider::class.java)
     private val yamlMapper = ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build())
 
+    companion object {
+        const val DEFAULT_CONTEXT = "general"
+    }
+
     // Configuration - can be overridden via system properties or environment variables
     private val agentsDirectory: String =
         System.getProperty(
@@ -128,7 +132,7 @@ class FilesystemAgentProvider : AgentPlugin {
 
     private fun parseContextTypes(contexts: List<String>?): Set<String> {
         if (contexts.isNullOrEmpty()) {
-            return setOf("general")
+            return setOf(DEFAULT_CONTEXT)
         }
 
         val contextTypes = mutableSetOf<String>()
@@ -138,7 +142,7 @@ class FilesystemAgentProvider : AgentPlugin {
             contextTypes.add(normalizedContext)
         }
 
-        return contextTypes.ifEmpty { setOf("general") }
+        return contextTypes.ifEmpty { setOf(DEFAULT_CONTEXT) }
     }
 
     private fun parseStatus(statusStr: String?): AgentStatus {

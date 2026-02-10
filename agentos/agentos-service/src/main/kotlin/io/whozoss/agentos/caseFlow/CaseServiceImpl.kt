@@ -64,16 +64,28 @@ class CaseServiceImpl(
 
     override fun findByParent(parentId: UUID): List<CaseModel> = caseRepository.findByParent(parentId)
 
-    override fun deleteMany(ids: Collection<UUID>): Int {
+    override fun delete(id: UUID): Boolean {
+        // Stop any active runtime instance before deleting
+        activeCases[id]?.let { case ->
+            logger.info("Stopping case $id before deletion")
+            case.stop()
+            activeCases.remove(id)
+        }
+        return caseRepository.delete(id)
+    }
+
+    override fun deleteByParent(parentId: UUID): Int {
+        // Find all cases for this project
+        val cases = findByParent(parentId)
         // Stop any active runtime instances before deleting
-        ids.forEach { id ->
-            activeCases[id]?.let { case ->
-                logger.info("Stopping case $id before deletion")
+        cases.forEach { caseModel ->
+            activeCases[caseModel.id]?.let { case ->
+                logger.info("Stopping case ${caseModel.id} before deletion (parent $parentId)")
                 case.stop()
-                activeCases.remove(id)
+                activeCases.remove(caseModel.id)
             }
         }
-        return caseRepository.deleteMany(ids)
+        return caseRepository.deleteByParent(parentId)
     }
 
     // ========================================

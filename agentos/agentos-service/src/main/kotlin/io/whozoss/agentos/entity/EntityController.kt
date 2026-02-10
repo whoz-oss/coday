@@ -136,23 +136,23 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier>(
     fun delete(
         @PathVariable id: UUID,
     ) {
-        val deletedCount = service.deleteMany(listOf(id))
-        if (deletedCount == 0) {
+        val deleted = service.delete(id)
+        if (!deleted) {
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found: $id")
         }
     }
 
     /**
-     * Soft delete multiple entities.
+     * Soft delete all entities belonging to a parent.
+     * Useful for cascade deletion when a parent entity is removed.
      *
-     * @param ids Comma-separated list of UUIDs to delete
+     * Must be overridden by subclasses to extract the parent identifier from path variables.
+     *
+     * @param parentId The parent identifier
      * @return Map with number of entities deleted
      */
-    @DeleteMapping
-    fun deleteMany(
-        @RequestParam ids: List<UUID>,
-    ): Map<String, Int> {
-        val deletedCount = service.deleteMany(ids)
+    protected fun deleteByParent(parentId: ParentIdentifier): Map<String, Int> {
+        val deletedCount = service.deleteByParent(parentId)
         return mapOf("deleted" to deletedCount)
     }
 }
