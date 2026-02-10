@@ -7,6 +7,7 @@ import { FileExchangeStateService } from '../../core/services/file-exchange-stat
 import type { FileInfo } from '../../core/services/file-exchange-api.service'
 import { ContentViewerComponent } from '../content-viewer/content-viewer.component'
 import { ContentViewerService } from '../../core/services/content-viewer.service'
+import { formatDateWithTime } from '../../utils/date-format.utils'
 
 type ViewerState = 'list' | 'content'
 
@@ -55,7 +56,6 @@ export class FileExchangeDrawerComponent {
    * View file content
    */
   viewFile(file: FileInfo): void {
-    console.log('[FILE_DRAWER] View file:', file.filename)
     this.currentFile = file
     this.viewerState = 'content'
   }
@@ -64,24 +64,19 @@ export class FileExchangeDrawerComponent {
    * Back to file list
    */
   backToList(): void {
-    console.log('[FILE_DRAWER] Back to list')
     this.viewerState = 'list'
     this.currentFile = null
   }
 
   downloadAll(): void {
-    console.log('[FILE_DRAWER] Download all files')
     this.fileExchangeState.downloadAllFiles()
   }
 
   download(file: FileInfo): void {
-    console.log('[FILE_DRAWER] Download file:', file.filename)
     this.fileExchangeState.downloadFile(file.filename)
   }
 
   async delete(file: FileInfo): Promise<void> {
-    console.log('[FILE_DRAWER] Delete file:', file.filename)
-
     // Simple confirmation (we'll improve this later with a proper dialog)
     const confirmed = confirm(`Delete file "${file.filename}"?`)
     if (!confirmed) {
@@ -134,23 +129,10 @@ export class FileExchangeDrawerComponent {
   }
 
   /**
-   * Format date in relative time
+   * Format date with relative time and precise time
    */
   formatDate(date: Date): string {
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffMins = Math.floor(diffMs / (1000 * 60))
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-    if (diffMins < 1) return 'just now'
-    if (diffMins < 60) return `${diffMins} min ago`
-    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
-    if (diffDays === 1) return 'yesterday'
-    if (diffDays < 7) return `${diffDays} days ago`
-
-    // Fallback to date string
-    return date.toLocaleDateString()
+    return formatDateWithTime(date)
   }
 
   /**
