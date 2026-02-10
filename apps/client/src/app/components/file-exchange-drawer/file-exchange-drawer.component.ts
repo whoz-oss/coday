@@ -7,6 +7,7 @@ import { FileExchangeStateService } from '../../core/services/file-exchange-stat
 import type { FileInfo } from '../../core/services/file-exchange-api.service'
 import { ContentViewerComponent } from '../content-viewer/content-viewer.component'
 import { ContentViewerService } from '../../core/services/content-viewer.service'
+import { formatDateWithTime } from '../../utils/date-format.utils'
 
 type ViewerState = 'list' | 'content'
 
@@ -128,35 +129,10 @@ export class FileExchangeDrawerComponent {
   }
 
   /**
-   * Format date with day and time (HH:MM:SS)
+   * Format date with relative time and precise time
    */
   formatDate(date: Date): string {
-    // Check if date is valid
-    if (!date || isNaN(date.getTime())) {
-      return 'unknown'
-    }
-
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffMins = Math.floor(diffMs / (1000 * 60))
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-    // Format time as HH:MM:SS
-    const hours = date.getHours().toString().padStart(2, '0')
-    const minutes = date.getMinutes().toString().padStart(2, '0')
-    const seconds = date.getSeconds().toString().padStart(2, '0')
-    const timeStr = `${hours}:${minutes}:${seconds}`
-
-    // For recent times, show relative + time
-    if (diffMins < 1) return `just now (${timeStr})`
-    if (diffMins < 60) return `${diffMins} min ago (${timeStr})`
-    if (diffHours < 24) return `${diffHours}h ago (${timeStr})`
-    if (diffDays === 1) return `yesterday ${timeStr}`
-    if (diffDays < 7) return `${diffDays}d ago ${timeStr}`
-
-    // For older dates, show full date + time
-    return `${date.toLocaleDateString()} ${timeStr}`
+    return formatDateWithTime(date)
   }
 
   /**

@@ -11,6 +11,7 @@
     "@angular/material": "catalog:",
     "@angular/platform-browser": "catalog:",
     "@angular/router": "catalog:",
+    "date-fns": "catalog:",
     "dompurify": "catalog:",
     "marked": "catalog:",
     "rxjs": "catalog:",
