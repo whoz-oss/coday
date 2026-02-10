@@ -1,3 +1,13 @@
+## 0.68.2 (2026-02-10)
+
+### 🩹 Fixes
+
+- user config path and first message ([#465](https://github.com/whoz-oss/coday/pull/465))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.68.1 (2026-02-10)
 
 ### 🩹 Fixes
