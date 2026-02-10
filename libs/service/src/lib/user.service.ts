@@ -5,7 +5,7 @@ import { UserData } from '@coday/model'
 import { Interactor } from '@coday/model'
 import { IntegrationLocalConfig } from '@coday/model'
 import * as os from 'node:os'
-import { migrateData, readYamlFile, userConfigMigrations, writeYamlFile } from '@coday/utils'
+import { migrateData, readYamlFile, sanitizeUsername, userConfigMigrations, writeYamlFile } from '@coday/utils'
 
 import { ConfigMaskingService } from './config-masking.service'
 
@@ -23,8 +23,8 @@ export class UserService {
     public readonly username: string,
     private readonly interactor: Interactor
   ) {
-    // Format username correctly
-    this.sanitizedUsername = this.sanitizeUsername(username)
+    // Format username correctly using centralized utility
+    this.sanitizedUsername = sanitizeUsername(username)
 
     // Resolve configuration path
     const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
@@ -88,11 +88,6 @@ export class UserService {
 
     // Save the configuration
     this.save()
-  }
-
-  private sanitizeUsername(username: string): string {
-    // Replaces non-alphanumeric characters with underscores
-    return username.replace(/[^a-zA-Z0-9]/g, '_')
   }
 
   public setBio(bio: string): void {

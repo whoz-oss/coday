@@ -10,7 +10,7 @@ import {
   ViewChild,
   inject,
 } from '@angular/core'
-import { Router } from '@angular/router'
+
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
 
@@ -31,6 +31,7 @@ import { TabTitleService } from '../../services/tab-title.service'
 import { ThreadStateService } from '../../core/services/thread-state.service'
 import { ImageUploadService } from '../../services/image-upload.service'
 import { FileExchangeStateService } from '../../core/services/file-exchange-state.service'
+import { FirstMessageStateService } from '../../core/services/first-message-state.service'
 
 /**
  * ThreadComponent - Dedicated component for displaying and interacting with a conversation thread
@@ -109,10 +110,11 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   private readonly preferencesService = inject(PreferencesService)
   private readonly titleService = inject(TabTitleService)
   private readonly elementRef = inject(ElementRef)
-  private readonly router = inject(Router)
+
   private readonly threadState = inject(ThreadStateService)
   private readonly imageUploadService = inject(ImageUploadService)
   private readonly fileExchangeState = inject(FileExchangeStateService)
+  private readonly firstMessageState = inject(FirstMessageStateService)
 
   ngOnInit(): void {
     console.log('[THREAD] Initializing with project:', this.projectName, 'thread:', this.threadId)
@@ -224,16 +226,8 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
     console.log('[THREAD] Connecting to thread event stream')
     this.codayService.connectToThread(this.projectName, this.threadId)
 
-    // Check if we have a first message from router state (implicit thread creation)
-    // Try both getCurrentNavigation() and history.state as fallback
-    const navigation = this.router.getCurrentNavigation()
-    let firstMessage = navigation?.extras?.state?.['firstMessage'] as string | undefined
-
-    // Fallback: check window.history.state if navigation is null
-    if (!firstMessage && window.history.state?.['firstMessage']) {
-      firstMessage = window.history.state['firstMessage'] as string
-      console.log('[THREAD] Retrieved first message from history.state')
-    }
+    // Check if we have a first message from the state service (implicit thread creation)
+    const firstMessage = this.firstMessageState.consumePendingFirstMessage()
 
     // If we have a first message, wait for the first InviteEvent before sending it
     if (firstMessage) {
@@ -246,7 +240,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
 
       this.subscribeToFirstInvite()
     } else {
-      console.log('[THREAD] No first message found in navigation state')
+      console.log('[THREAD] No first message found in state service')
     }
   }
 
@@ -486,22 +480,12 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
    * Subscribe to the first InviteEvent to send the pending first message
    */
   private subscribeToFirstInvite(): void {
-    // First, check if there's already an InviteEvent available (timing issue)
-    const existingInvite = this.codayService.getCurrentInviteEvent()
-    if (existingInvite && this.pendingFirstMessage) {
-      console.log('[THREAD] InviteEvent already available, sending pending message immediately')
-      const messageToSend = this.pendingFirstMessage
-      this.pendingFirstMessage = null
-      this.codayService.sendMessage(messageToSend)
-      return // Don't subscribe if we already sent the message
-    }
-
-    // Otherwise, subscribe to wait for the InviteEvent
+    // Subscribe to wait for the first InviteEvent
     console.log('[THREAD] Subscribing to wait for InviteEvent')
     this.subscriptions.push(
       this.codayService.currentInviteEvent$.subscribe((inviteEvent) => {
         if (inviteEvent && this.pendingFirstMessage) {
-          console.log('[THREAD] Received InviteEvent via subscription, sending pending message')
+          console.log('[THREAD] Received InviteEvent, sending pending message')
           const messageToSend = this.pendingFirstMessage
           this.pendingFirstMessage = null // Clear to avoid sending twice
 

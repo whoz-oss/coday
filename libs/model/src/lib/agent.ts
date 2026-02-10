@@ -1,7 +1,7 @@
 import { AiClient } from './ai.client'
 import { AiThread } from './ai-thread'
 import { Observable } from 'rxjs'
-import { CodayEvent } from './coday-events'
+import { AnswerEvent, CodayEvent } from './coday-events'
 import { AgentDefinition, ModelSize } from './agent-definition'
 import { ToolSet } from './integration-tool-set'
 
@@ -72,9 +72,10 @@ export class Agent {
     // Update model size
     this.definition.modelSize = newModelSize
 
-    // Add processed command to thread
-    // TODO: assess whether we can make the command a MessageContent array: containing text and images
-    thread.addUserMessage('user', { type: 'text', content: processedCommand })
+    // Add AnswerEvent to thread (replaces the old addUserMessage approach)
+    // This preserves the question-answer relationship through parentKey
+    const answerEvent = new AnswerEvent({ answer: processedCommand })
+    thread.addAnswerEvent(answerEvent)
 
     // Run with updated configuration
     return await this.aiClient.run(this, thread)

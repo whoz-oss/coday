@@ -1,6 +1,6 @@
 {
   "name": "@whoz-oss/coday-client",
-  "version": "0.66.0",
+  "version": "0.68.2",
   "repository": "https://github.com/whoz-oss/coday",
   "type": "module",
   "dependencies": {
@@ -11,6 +11,7 @@
     "@angular/material": "catalog:",
     "@angular/platform-browser": "catalog:",
     "@angular/router": "catalog:",
+    "date-fns": "catalog:",
     "dompurify": "catalog:",
     "marked": "catalog:",
     "rxjs": "catalog:",

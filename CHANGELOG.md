@@ -1,3 +1,71 @@
+## 0.68.2 (2026-02-10)
+
+### 🩹 Fixes
+
+- user config path and first message ([#465](https://github.com/whoz-oss/coday/pull/465))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.68.1 (2026-02-10)
+
+### 🩹 Fixes
+
+- file dates in exchange area ([#464](https://github.com/whoz-oss/coday/pull/464))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.68.0 (2026-02-09)
+
+### 🚀 Features
+
+- save also invite and answers events ([#463](https://github.com/whoz-oss/coday/pull/463))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.67.0 (2026-02-09)
+
+### 🚀 Features
+
+- change choice for button list ([#462](https://github.com/whoz-oss/coday/pull/462))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.66.2 (2026-02-06)
+
+### 🩹 Fixes
+
+- remove tools pre-init ([#461](https://github.com/whoz-oss/coday/pull/461))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.66.1 (2026-02-06)
+
+### 🚀 Features
+
+- wz-28668: max tokens parameter for anthropic models ([e7ae5d9](https://github.com/whoz-oss/coday/commit/e7ae5d9))
+- wz-28668: remove vllm url ([97f588f](https://github.com/whoz-oss/coday/commit/97f588f))
+- wz-28668: max tokens parameter for anthropic models ([#457](https://github.com/whoz-oss/coday/pull/457))
+
+### 🩹 Fixes
+
+- delegation through proper js function injection ([#460](https://github.com/whoz-oss/coday/pull/460))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+- thomas.martin @thomasmartin-whoz
+- vincent-audibert-whoz
+
 ## 0.66.0 (2026-02-05)
 
 ### 🚀 Features
