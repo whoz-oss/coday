@@ -140,7 +140,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("whoz-oss.agentos:agentos-sdk:1.0.0")
+    compileOnly("io.whozoss.agentos:agentos-sdk:1.0.0")
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
 }
 
@@ -159,7 +159,6 @@ tasks.jar {
 3. **Implement your plugin:**
 
 ```kotlin
-
 class MyPlugin : Plugin()
 
 @Extension
