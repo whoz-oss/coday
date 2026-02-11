@@ -2,6 +2,7 @@ import type { CodayOptions, CodayLogger } from '@coday/model'
 import { CodayEvent, MessageEvent } from '@coday/model'
 import type { ThreadService } from './thread.service'
 import { PromptService } from './prompt.service'
+import { validateInterval } from '@coday/utils'
 import { filter } from 'rxjs'
 
 // ThreadCodayManager is in apps/server, so we use a type-only import to avoid circular dependencies
@@ -40,6 +41,105 @@ export class PromptExecutionService {
     this.threadService = threadService
     this.codayOptions = codayOptions
     this.logger = logger
+  }
+
+  /**
+   * Resolve which thread to use based on threadLifetime configuration
+   *
+   * Logic:
+   * - No threadLifetime: Create new thread (default behavior)
+   * - With threadLifetime: Reuse activeThreadId if within lifetime, otherwise create new and update activeThreadId
+   */
+  private async resolveThreadId(prompt: any, projectName: string, username: string, title?: string): Promise<string> {
+    // No threadLifetime: always create new thread (default behavior)
+    if (!prompt.threadLifetime) {
+      const thread = await this.threadService!.createThread(projectName, username, title)
+      console.log(`[PROMPT_EXEC] Created new thread: ${thread.id} (no threadLifetime)`)
+      return thread.id
+    }
+
+    // Validate threadLifetime format
+    if (!validateInterval(prompt.threadLifetime)) {
+      throw new Error(
+        `Invalid threadLifetime format: ${prompt.threadLifetime}. Use format like '2min', '5h', '14d', '1M'`
+      )
+    }
+
+    // Check if we have an active thread
+    if (!prompt.activeThreadId) {
+      // No active thread: create new one and update prompt
+      const thread = await this.threadService!.createThread(projectName, username, title)
+      await this.updatePromptActiveThread(prompt.id, projectName, thread.id)
+      console.log(`[PROMPT_EXEC] Created new thread: ${thread.id} (no activeThreadId)`)
+      return thread.id
+    }
+
+    // Check if active thread still exists
+    const activeThread = await this.threadService!.getThread(projectName, prompt.activeThreadId)
+    if (!activeThread) {
+      // Active thread deleted: create new one and update prompt
+      const thread = await this.threadService!.createThread(projectName, username, title)
+      await this.updatePromptActiveThread(prompt.id, projectName, thread.id)
+      console.log(`[PROMPT_EXEC] Created new thread: ${thread.id} (activeThread not found)`)
+      return thread.id
+    }
+
+    // Check if active thread is still within lifetime
+    const lifetimeMs = this.parseLifetimeToMs(prompt.threadLifetime)
+    const threadAge = Date.now() - new Date(activeThread.createdDate).getTime()
+
+    if (threadAge > lifetimeMs) {
+      // Thread expired: create new one and update prompt
+      const thread = await this.threadService!.createThread(projectName, username, title)
+      await this.updatePromptActiveThread(prompt.id, projectName, thread.id)
+      console.log(`[PROMPT_EXEC] Created new thread: ${thread.id} (expired: ${threadAge}ms > ${lifetimeMs}ms)`)
+      return thread.id
+    }
+
+    // Thread is still valid: reuse it
+    console.log(`[PROMPT_EXEC] Reusing active thread: ${prompt.activeThreadId} (age: ${threadAge}ms / ${lifetimeMs}ms)`)
+    return prompt.activeThreadId
+  }
+
+  /**
+   * Parse threadLifetime string to milliseconds
+   * Format: '2min', '5h', '14d', '1M'
+   */
+  private parseLifetimeToMs(lifetime: string): number {
+    const match = lifetime.match(/^(\d+)(min|h|d|M)$/)
+    if (!match || !match[1] || !match[2]) {
+      throw new Error(`Invalid threadLifetime format: ${lifetime}`)
+    }
+
+    const value = parseInt(match[1], 10)
+    const unit = match[2]
+
+    switch (unit) {
+      case 'min':
+        return value * 60 * 1000
+      case 'h':
+        return value * 60 * 60 * 1000
+      case 'd':
+        return value * 24 * 60 * 60 * 1000
+      case 'M':
+        // Approximate: 30 days per month
+        return value * 30 * 24 * 60 * 60 * 1000
+      default:
+        throw new Error(`Unknown unit: ${unit}`)
+    }
+  }
+
+  /**
+   * Update the activeThreadId in the prompt
+   */
+  private async updatePromptActiveThread(promptId: string, projectName: string, threadId: string): Promise<void> {
+    try {
+      await this.promptService.update(projectName, promptId, { activeThreadId: threadId }, 'system')
+      console.log(`[PROMPT_EXEC] Updated prompt ${promptId} activeThreadId to ${threadId}`)
+    } catch (error) {
+      console.error(`[PROMPT_EXEC] Failed to update prompt activeThreadId:`, error)
+      // Non-blocking: execution continues even if update fails
+    }
   }
 
   /**
@@ -167,9 +267,8 @@ export class PromptExecutionService {
       throw new Error('Username is required')
     }
 
-    // Create a new thread for the prompt execution
-    const thread = await this.threadService.createThread(projectName, username, title)
-    const threadId = thread.id
+    // Determine thread to use based on threadLifetime
+    const threadId = await this.resolveThreadId(prompt, projectName, username, title)
 
     // Configure one-shot Coday instance with automatic prompts
     const oneShotOptions: CodayOptions = {

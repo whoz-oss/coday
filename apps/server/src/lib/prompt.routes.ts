@@ -1,6 +1,7 @@
 import express from 'express'
 import { debugLog } from './log'
 import { PromptService, Prompt } from '@coday/service'
+import { validateInterval } from '@coday/utils'
 import { getParamAsString } from './route-helpers'
 
 /**
@@ -136,6 +137,26 @@ export function registerPromptRoutes(
         return
       }
 
+      // Validate threadLifetime format if provided
+      if (promptData.threadLifetime !== undefined) {
+        if (typeof promptData.threadLifetime !== 'string') {
+          res.status(422).json({ error: 'threadLifetime must be a string' })
+          return
+        }
+        if (!validateInterval(promptData.threadLifetime)) {
+          res.status(422).json({
+            error: "Invalid threadLifetime format. Use format like '2min', '5h', '14d', '1M'",
+          })
+          return
+        }
+      }
+
+      // Prevent manual setting of activeThreadId (managed automatically)
+      if (promptData.activeThreadId !== undefined) {
+        res.status(422).json({ error: 'activeThreadId is managed automatically and cannot be set manually' })
+        return
+      }
+
       // Get username for createdBy field
       const username = getUsernameFn(req)
       if (!username) {
@@ -212,6 +233,26 @@ export function registerPromptRoutes(
       // Validate webhookEnabled if provided
       if (updates.webhookEnabled !== undefined && typeof updates.webhookEnabled !== 'boolean') {
         res.status(422).json({ error: 'webhookEnabled must be a boolean' })
+        return
+      }
+
+      // Validate threadLifetime format if provided
+      if (updates.threadLifetime !== undefined) {
+        if (updates.threadLifetime !== null && typeof updates.threadLifetime !== 'string') {
+          res.status(422).json({ error: 'threadLifetime must be a string or null' })
+          return
+        }
+        if (updates.threadLifetime && !validateInterval(updates.threadLifetime)) {
+          res.status(422).json({
+            error: "Invalid threadLifetime format. Use format like '2min', '5h', '14d', '1M'",
+          })
+          return
+        }
+      }
+
+      // Prevent manual modification of activeThreadId (managed automatically)
+      if (updates.activeThreadId !== undefined) {
+        res.status(422).json({ error: 'activeThreadId is managed automatically and cannot be modified manually' })
         return
       }
 

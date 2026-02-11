@@ -51,6 +51,16 @@
       </div>
     </div>
 
+    <!-- Thread Lifetime -->
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Thread Lifetime (optional)</mat-label>
+      <input matInput [(ngModel)]="threadLifetime" placeholder="e.g., 1h, 24h, 7d" />
+      <mat-hint
+        >Duration to reuse same thread. Format: '2min', '5h', '14d', '1M'. Leave empty for new thread each
+        time.</mat-hint
+      >
+    </mat-form-field>
+
     <!-- Webhook Enabled (only for admin users) -->
     <div *ngIf="isAdmin" class="webhook-section">
       <label class="checkbox-label">

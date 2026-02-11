@@ -44,6 +44,7 @@ export class PromptFormComponent implements OnInit {
   description = ''
   commands: string[] = ['']
   webhookEnabled = false
+  threadLifetime = ''
 
   // UI state
   isSaving = false
@@ -78,6 +79,7 @@ export class PromptFormComponent implements OnInit {
       this.description = this.data.prompt.description
       this.commands = [...this.data.prompt.commands]
       this.webhookEnabled = this.data.prompt.webhookEnabled
+      this.threadLifetime = this.data.prompt.threadLifetime || ''
     }
   }
 
@@ -162,46 +164,59 @@ export class PromptFormComponent implements OnInit {
 
     if (this.isEditMode && this.data.prompt) {
       // Update existing prompt
-      this.promptApi
-        .updatePrompt(projectName, this.data.prompt.id, {
-          name: this.name.trim(),
-          description: this.description.trim(),
-          commands: validCommands,
-          webhookEnabled: this.webhookEnabled, // Admin can update webhook status
-        })
-        .subscribe({
-          next: () => {
-            this.isSaving = false
-            this.dialogRef.close(true) // Success
-          },
-          error: (error) => {
-            console.error('Error updating prompt:', error)
-            // Extract error message from backend response
-            this.errorMessage = error?.error?.error || error?.message || 'Failed to update prompt'
-            this.isSaving = false
-          },
-        })
+      const updates: any = {
+        name: this.name.trim(),
+        description: this.description.trim(),
+        commands: validCommands,
+        webhookEnabled: this.webhookEnabled, // Admin can update webhook status
+      }
+
+      // Add threadLifetime if provided, or null to clear it
+      if (this.threadLifetime.trim()) {
+        updates.threadLifetime = this.threadLifetime.trim()
+      } else if (this.data.prompt?.threadLifetime) {
+        // If there was a threadLifetime before and now it's empty, explicitly set to null
+        updates.threadLifetime = null
+      }
+
+      this.promptApi.updatePrompt(projectName, this.data.prompt.id, updates).subscribe({
+        next: () => {
+          this.isSaving = false
+          this.dialogRef.close(true) // Success
+        },
+        error: (error) => {
+          console.error('Error updating prompt:', error)
+          // Extract error message from backend response
+          this.errorMessage = error?.error?.error || error?.message || 'Failed to update prompt'
+          this.isSaving = false
+        },
+      })
     } else {
       // Create new prompt
-      this.promptApi
-        .createPrompt(projectName, {
-          name: this.name.trim(),
-          description: this.description.trim(),
-          commands: validCommands,
-          webhookEnabled: this.webhookEnabled,
-        })
-        .subscribe({
-          next: () => {
-            this.isSaving = false
-            this.dialogRef.close(true) // Success
-          },
-          error: (error) => {
-            console.error('Error creating prompt:', error)
-            // Extract error message from backend response
-            this.errorMessage = error?.error?.error || error?.message || 'Failed to create prompt'
-            this.isSaving = false
-          },
-        })
+      const promptData: any = {
+        name: this.name.trim(),
+        description: this.description.trim(),
+        commands: validCommands,
+        webhookEnabled: this.webhookEnabled,
+      }
+
+      // Add threadLifetime if provided
+      if (this.threadLifetime.trim()) {
+        promptData.threadLifetime = this.threadLifetime.trim()
+      }
+
+      this.promptApi.createPrompt(projectName, promptData).subscribe({
+        next: () => {
+          this.isSaving = false
+          this.dialogRef.close(true) // Success
+        },
+        error: (error) => {
+          console.error('Error creating prompt:', error)
+          // Extract error message from backend response
+          this.errorMessage = error?.error?.error || error?.message || 'Failed to create prompt'
+          this.isSaving = false
+        },
+      })
     }
   }
 

@@ -14,6 +14,8 @@ export interface Prompt {
   createdBy: string
   createdAt: string
   updatedAt?: string
+  threadLifetime?: string
+  activeThreadId?: string
 }
 
 export interface PromptInfo {

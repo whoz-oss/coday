@@ -52,6 +52,24 @@ export interface Prompt {
    * Last update timestamp (ISO 8601)
    */
   updatedAt?: string
+
+  /**
+   * Thread lifetime for reuse (optional)
+   * When defined, prompt reuses same thread within lifetime window
+   * Format: '2min', '5h', '14d', '1M' (same as Scheduler interval format)
+   * - min = minutes
+   * - h = hours
+   * - d = days
+   * - M = months
+   */
+  threadLifetime?: string
+
+  /**
+   * Current active thread ID (managed automatically)
+   * Updated when a new thread is created due to lifetime expiration
+   * Not set manually - automatically managed by PromptExecutionService
+   */
+  activeThreadId?: string
 }
 
 /**
