@@ -1,0 +1,145 @@
+# Example PSO integration configuration
+# Place this in your project's coday.yaml
+
+integration:
+  PSO:
+    type: http
+    baseUrl: "https://pso.whoz.com/api"
+    
+    # OAuth2 with Google SSO
+    auth:
+      type: oauth2
+      provider: google-sso
+      authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth"
+      tokenEndpoint: "https://oauth2.googleapis.com/token"
+      scope: "openid email profile"
+    
+    # OAuth2 client credentials (store in environment variables)
+    oauth2:
+      client_id: "${env:PSO_GOOGLE_CLIENT_ID}"
+      client_secret: "${env:PSO_GOOGLE_CLIENT_SECRET}"
+      redirect_uri: "http://localhost:3000/oauth/callback"
+    
+    # Common headers for all requests (optional)
+    headers:
+      Accept: "application/json"
+    
+    # Timeout in milliseconds (optional)
+    timeout: 30000
+    
+    # Endpoint definitions
+    endpoints:
+      # Search for concepts
+      - name: searchConcepts
+        method: POST
+        path: "/search"
+        description: "Search for concepts by term with optional filters"
+        params:
+          - name: term
+            type: string
+            required: true
+            description: "Search term to find concepts"
+          
+          - name: languages
+            type: array
+            required: false
+            description: "Array of language codes to search in (e.g., ['en', 'fr'])"
+            items:
+              type: string
+          
+          - name: conceptType
+            type: string
+            required: false
+            description: "Filter by concept type (e.g., 'skill', 'role', 'domain')"
+          
+          - name: limit
+            type: number
+            required: false
+            default: 20
+            description: "Maximum number of results to return"
+      
+      # Get concept by ID
+      - name: getConcept
+        method: GET
+        path: "/concepts/{conceptId}"
+        description: "Get detailed information about a specific concept"
+        params:
+          - name: conceptId
+            type: string
+            required: true
+            location: path
+            description: "Unique identifier of the concept"
+      
+      # Get child concepts
+      - name: getConceptChildren
+        method: GET
+        path: "/hierarchy/children/{conceptId}"
+        description: "Get all direct child concepts of a parent concept"
+        params:
+          - name: conceptId
+            type: string
+            required: true
+            location: path
+            description: "Parent concept ID"
+          
+          - name: depth
+            type: number
+            required: false
+            location: query
+            default: 1
+            description: "Depth of the hierarchy to retrieve (1 = direct children only)"
+      
+      # Get parent concepts
+      - name: getConceptParents
+        method: GET
+        path: "/hierarchy/parents/{conceptId}"
+        description: "Get all parent concepts of a concept"
+        params:
+          - name: conceptId
+            type: string
+            required: true
+            location: path
+            description: "Child concept ID"
+      
+      # Get related concepts
+      - name: getRelatedConcepts
+        method: GET
+        path: "/concepts/{conceptId}/related"
+        description: "Get concepts related to a specific concept"
+        params:
+          - name: conceptId
+            type: string
+            required: true
+            location: path
+            description: "Concept ID"
+          
+          - name: relationType
+            type: string
+            required: false
+            location: query
+            description: "Filter by relation type (e.g., 'similar', 'prerequisite')"
+          
+          - name: limit
+            type: number
+            required: false
+            location: query
+            default: 10
+            description: "Maximum number of related concepts to return"
+
+# Agent configuration using PSO
+agents:
+  - name: pso-expert
+    description: "Expert assistant for PSO concept navigation and search"
+    integrations:
+      - PSO  # All PSO endpoints become available as tools
+    systemInstructions: |
+      You are an expert assistant for the PSO (Professional Skills Ontology) system.
+      
+      You can help users:
+      - Search for concepts by name or description
+      - Navigate concept hierarchies
+      - Find related concepts
+      - Understand concept relationships
+      
+      When searching, always provide clear results with concept IDs for further exploration.
+      When navigating hierarchies, explain the parent-child relationships clearly.
