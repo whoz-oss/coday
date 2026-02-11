@@ -2,5 +2,10 @@
   "name": "@coday/integrations-http",
   "version": "0.0.1",
   "type": "commonjs",
-  "main": "./src/index.ts"
+  "main": "./src/index.ts",
+  "dependencies": {
+    "axios": "catalog:",
+    "axios-retry": "^4.5.0",
+    "oauth4webapi": "catalog:"
+  }
 }

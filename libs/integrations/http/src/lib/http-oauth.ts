@@ -1,14 +1,25 @@
 /**
  * OAuth2 handler for HTTP integrations
- * Similar to BasecampOAuth but more generic
+ * Uses oauth4webapi for secure OAuth2 implementation with PKCE
  */
 
-import { Interactor, OAuthCallbackEvent, OAuth2Tokens } from '@coday/model'
+import * as oauth from 'oauth4webapi'
+import { Interactor, OAuthCallbackEvent, OAuthRequestEvent, OAuth2Tokens } from '@coday/model'
 import { UserService } from '@coday/service'
 import { HttpOAuth2Auth } from './http-config'
 
 export class HttpOAuth {
+  // OAuth4webapi configuration
+  private as: oauth.AuthorizationServer
+  private client: oauth.Client
+  private clientAuth: oauth.ClientAuth
+
+  // OAuth state management
   private tokens: OAuth2Tokens | null = null
+  private pendingState: string | null = null
+  private pendingCodeVerifier: string | null = null
+  private pendingResolve: ((tokens: OAuth2Tokens) => void) | null = null
+  private pendingReject: ((error: Error) => void) | null = null
 
   constructor(
     private readonly clientId: string,
@@ -19,19 +30,37 @@ export class HttpOAuth {
     private readonly userService: UserService,
     private readonly projectName: string,
     private readonly integrationName: string
-  ) {}
+  ) {
+    // Configure OAuth authorization server
+    this.as = {
+      issuer: this.getIssuer(),
+      authorization_endpoint: authConfig.authorizationEndpoint,
+      token_endpoint: authConfig.tokenEndpoint,
+    }
+
+    this.client = { client_id: clientId }
+    this.clientAuth = oauth.ClientSecretPost(clientSecret)
+  }
+
+  /**
+   * Get issuer URL based on provider
+   */
+  private getIssuer(): string {
+    if (this.authConfig.provider === 'google-sso') {
+      return 'https://accounts.google.com'
+    }
+    // For standard OAuth2, issuer can be derived from endpoints
+    return this.authConfig.authorizationEndpoint?.split('/oauth')[0] || 'https://oauth.example.com'
+  }
 
   /**
    * Initialize OAuth - load existing tokens or prompt for authorization
    */
   async initialize(): Promise<void> {
     // Try to load existing tokens from user config
-    const userConfig = await this.userService.getConfig(this.projectName)
-    const integrationConfig = userConfig.integration?.[this.integrationName]
+    this.loadTokensFromStorage()
 
-    if (integrationConfig?.oauth2?.tokens) {
-      this.tokens = integrationConfig.oauth2.tokens
-
+    if (this.tokens) {
       // Check if token is expired
       if (this.isTokenExpired()) {
         this.interactor.displayText(`🔄 OAuth token expired for ${this.integrationName}, refreshing...`)
@@ -41,7 +70,21 @@ export class HttpOAuth {
       }
     } else {
       // No tokens, need to authorize
-      await this.promptForAuthorization()
+      await this.authenticate()
+    }
+  }
+
+  /**
+   * Load tokens from user config storage
+   */
+  private loadTokensFromStorage(): void {
+    const userConfig = this.userService.config
+    const oauth2 = userConfig.projects?.[this.projectName]?.integration?.[this.integrationName]?.oauth2
+    const tokens = oauth2?.tokens
+
+    if (tokens) {
+      this.tokens = tokens
+      this.interactor.debug(`Loaded OAuth tokens from storage for ${this.integrationName}`)
     }
   }
 
@@ -54,108 +97,166 @@ export class HttpOAuth {
   }
 
   /**
-   * Prompt user to authorize
+   * Authenticate with OAuth2 using PKCE
    */
-  private async promptForAuthorization(): Promise<void> {
-    const provider = this.authConfig.provider || 'standard'
-    const authUrl = this.buildAuthorizationUrl()
-
-    this.interactor.displayText(`
-🔐 **OAuth Authorization Required for ${this.integrationName}**
-
-Please authorize this application by visiting:
-${authUrl}
-
-After authorization, you'll be redirected and the token will be saved automatically.
-`)
-
-    // The actual callback will be handled by handleCallback()
-    throw new Error('OAuth authorization required - waiting for callback')
-  }
-
-  /**
-   * Build authorization URL
-   */
-  private buildAuthorizationUrl(): string {
-    const authEndpoint = this.authConfig.authorizationEndpoint
-    if (!authEndpoint) {
-      throw new Error('Authorization endpoint not configured')
+  async authenticate(): Promise<OAuth2Tokens> {
+    if (this.isAuthenticated()) {
+      return this.tokens!
     }
 
-    const params = new URLSearchParams({
-      client_id: this.clientId,
-      redirect_uri: this.redirectUri,
-      response_type: 'code',
-      scope: this.authConfig.scope || '',
-    })
+    // Generate PKCE challenge and state (secure by default)
+    const state = oauth.generateRandomState()
+    const codeVerifier = oauth.generateRandomCodeVerifier()
+    const codeChallenge = await oauth.calculatePKCECodeChallenge(codeVerifier)
 
-    return `${authEndpoint}?${params.toString()}`
+    // Store for callback validation
+    this.pendingState = state
+    this.pendingCodeVerifier = codeVerifier
+
+    // Build authorization URL with PKCE
+    const authorizationUrl = new URL(this.as.authorization_endpoint!)
+    authorizationUrl.searchParams.set('client_id', this.client.client_id)
+    authorizationUrl.searchParams.set('redirect_uri', this.redirectUri)
+    authorizationUrl.searchParams.set('response_type', 'code')
+    authorizationUrl.searchParams.set('state', state)
+    authorizationUrl.searchParams.set('code_challenge', codeChallenge)
+    authorizationUrl.searchParams.set('code_challenge_method', 'S256')
+    if (this.authConfig.scope) {
+      authorizationUrl.searchParams.set('scope', this.authConfig.scope)
+    }
+
+    // Send OAuth request event to frontend
+    this.interactor.sendEvent(
+      new OAuthRequestEvent({
+        authUrl: authorizationUrl.toString(),
+        state: state,
+        integrationName: this.integrationName,
+      })
+    )
+
+    // Return promise that will be resolved by handleCallback()
+    return new Promise((resolve, reject) => {
+      this.pendingResolve = resolve
+      this.pendingReject = reject
+    })
   }
 
   /**
-   * Handle OAuth callback
+   * Check if authenticated
+   */
+  isAuthenticated(): boolean {
+    return this.tokens !== null && !this.isTokenExpired()
+  }
+
+  /**
+   * Handle OAuth callback with state validation
    */
   async handleCallback(event: OAuthCallbackEvent): Promise<void> {
-    this.interactor.displayText(`📥 Received OAuth callback for ${this.integrationName}`)
+    if (event.integrationName !== this.integrationName) return
 
+    this.interactor.debug(`📥 Received OAuth callback for ${this.integrationName}`)
+
+    // Validate state (CSRF protection)
+    if (event.state !== this.pendingState) {
+      const error = new Error('Invalid OAuth state - possible CSRF attack')
+      this.interactor.error(error.message)
+      if (this.pendingReject) {
+        this.pendingReject(error)
+        this.pendingReject = null
+      }
+      this.cleanup()
+      return
+    }
+
+    // Handle OAuth errors
     if (event.error) {
-      throw new Error(`OAuth error: ${event.error}`)
+      const errorMessage =
+        event.error === 'access_denied'
+          ? 'OAuth authentication denied by user'
+          : event.error === 'user_cancelled'
+            ? 'OAuth authentication cancelled by user'
+            : `OAuth error: ${event.error}${event.errorDescription ? ' - ' + event.errorDescription : ''}`
+
+      this.interactor.warn(errorMessage)
+
+      if (this.pendingReject) {
+        this.pendingReject(new Error(errorMessage))
+        this.pendingReject = null
+      }
+
+      this.cleanup()
+      return
     }
 
-    if (!event.code) {
-      throw new Error('No authorization code received')
+    if (!event.code || !this.pendingCodeVerifier) {
+      const error = new Error('No authorization code or code verifier')
+      this.interactor.error(error.message)
+      if (this.pendingReject) {
+        this.pendingReject(error)
+        this.pendingReject = null
+      }
+      this.cleanup()
+      return
     }
 
-    // Exchange code for tokens
-    await this.exchangeCodeForToken(event.code)
+    try {
+      // Build callback URL for validation
+      const callbackUrl = new URL(this.redirectUri)
+      callbackUrl.searchParams.set('code', event.code)
+      callbackUrl.searchParams.set('state', event.state)
 
-    this.interactor.displayText(`✅ OAuth authorization successful for ${this.integrationName}`)
+      // Validate authorization response
+      const params = oauth.validateAuthResponse(this.as, this.client, callbackUrl, this.pendingState)
+
+      // Exchange code for tokens with PKCE
+      const response = await oauth.authorizationCodeGrantRequest(
+        this.as,
+        this.client,
+        this.clientAuth,
+        params,
+        this.redirectUri,
+        this.pendingCodeVerifier
+      )
+
+      // Process and validate token response
+      const result = await oauth.processAuthorizationCodeResponse(this.as, this.client, response)
+
+      // Store tokens
+      this.tokens = {
+        access_token: result.access_token,
+        refresh_token: result.refresh_token,
+        expires_at: Date.now() + (result.expires_in ?? 3600) * 1000,
+        token_type: result.token_type || 'Bearer',
+        scope: this.authConfig.scope,
+      }
+
+      this.saveTokensToStorage()
+
+      this.interactor.displayText(`✅ OAuth authorization successful for ${this.integrationName}`)
+
+      // Resolve authentication promise
+      if (this.pendingResolve) {
+        this.pendingResolve(this.tokens)
+        this.pendingResolve = null
+      }
+
+      this.cleanup()
+    } catch (error: any) {
+      this.interactor.error(`OAuth token exchange failed: ${error.message}`)
+      if (this.pendingReject) {
+        this.pendingReject(error)
+        this.pendingReject = null
+      }
+      this.cleanup()
+    }
   }
 
   /**
-   * Exchange authorization code for access token
+   * Cleanup pending OAuth state
    */
-  private async exchangeCodeForToken(code: string): Promise<void> {
-    const tokenEndpoint = this.authConfig.tokenEndpoint
-    if (!tokenEndpoint) {
-      throw new Error('Token endpoint not configured')
-    }
-
-    const body = new URLSearchParams({
-      grant_type: 'authorization_code',
-      code,
-      client_id: this.clientId,
-      client_secret: this.clientSecret,
-      redirect_uri: this.redirectUri,
-    })
-
-    const response = await fetch(tokenEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`Token exchange failed: ${response.status} ${errorText}`)
-    }
-
-    const data = await response.json()
-
-    // Calculate expiration timestamp
-    const expiresIn = data.expires_in || 3600 // Default 1 hour
-    const expiresAt = Date.now() + expiresIn * 1000
-
-    this.tokens = {
-      access_token: data.access_token,
-      refresh_token: data.refresh_token,
-      expires_at: expiresAt,
-      token_type: data.token_type || 'Bearer',
-      scope: data.scope,
-    }
-
-    // Save tokens to user config
-    await this.saveTokens()
+  private cleanup(): void {
+    this.pendingState = null
+    this.pendingCodeVerifier = null
   }
 
   /**
@@ -164,81 +265,81 @@ After authorization, you'll be redirected and the token will be saved automatica
   private async refreshAccessToken(): Promise<void> {
     if (!this.tokens?.refresh_token) {
       // No refresh token, need to re-authorize
-      await this.promptForAuthorization()
+      this.tokens = null
+      await this.authenticate()
       return
     }
 
-    const tokenEndpoint = this.authConfig.tokenEndpoint
-    if (!tokenEndpoint) {
-      throw new Error('Token endpoint not configured')
-    }
-
-    const body = new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: this.tokens.refresh_token,
-      client_id: this.clientId,
-      client_secret: this.clientSecret,
-    })
-
     try {
-      const response = await fetch(tokenEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: body.toString(),
-      })
+      // Use oauth4webapi for secure token refresh
+      const response = await oauth.refreshTokenGrantRequest(
+        this.as,
+        this.client,
+        this.clientAuth,
+        this.tokens.refresh_token
+      )
 
-      if (!response.ok) {
-        throw new Error(`Token refresh failed: ${response.status}`)
-      }
+      const result = await oauth.processRefreshTokenResponse(this.as, this.client, response)
 
-      const data = await response.json()
-
-      const expiresIn = data.expires_in || 3600
-      const expiresAt = Date.now() + expiresIn * 1000
-
+      // Update tokens
       this.tokens = {
-        access_token: data.access_token,
-        refresh_token: data.refresh_token || this.tokens.refresh_token, // Keep old if not provided
-        expires_at: expiresAt,
-        token_type: data.token_type || 'Bearer',
-        scope: data.scope,
+        access_token: result.access_token,
+        refresh_token: result.refresh_token ?? this.tokens.refresh_token, // Keep old if not provided
+        expires_at: Date.now() + (result.expires_in ?? 3600) * 1000,
+        token_type: result.token_type || 'Bearer',
+        scope: this.authConfig.scope,
       }
 
-      await this.saveTokens()
+      this.saveTokensToStorage()
       this.interactor.displayText(`✅ OAuth token refreshed for ${this.integrationName}`)
-    } catch (error) {
-      this.interactor.error(`Failed to refresh token: ${error}`)
-      // Clear invalid tokens and prompt for re-authorization
+    } catch (error: any) {
+      this.interactor.error(`Failed to refresh token: ${error.message}`)
+      // Clear invalid tokens and re-authenticate
       this.tokens = null
-      await this.promptForAuthorization()
+      this.clearTokensFromStorage()
+      await this.authenticate()
     }
   }
 
   /**
-   * Save tokens to user config
+   * Save tokens to user config storage
    */
-  private async saveTokens(): Promise<void> {
-    const userConfig = await this.userService.getConfig(this.projectName)
+  private saveTokensToStorage(): void {
+    if (!this.tokens) return
 
-    if (!userConfig.integration) {
-      userConfig.integration = {}
+    const userConfig = this.userService.config
+
+    // Ensure nested structure exists
+    if (!userConfig.projects) userConfig.projects = {}
+    if (!userConfig.projects[this.projectName]) userConfig.projects[this.projectName] = { integration: {} }
+    if (!userConfig.projects[this.projectName]!.integration) userConfig.projects[this.projectName]!.integration = {}
+    if (!userConfig.projects[this.projectName]!.integration![this.integrationName]) {
+      userConfig.projects[this.projectName]!.integration![this.integrationName] = {}
+    }
+    if (!userConfig.projects[this.projectName]!.integration![this.integrationName]!.oauth2) {
+      userConfig.projects[this.projectName]!.integration![this.integrationName]!.oauth2 = {} as any
     }
 
-    if (!userConfig.integration[this.integrationName]) {
-      userConfig.integration[this.integrationName] = {}
+    // Save tokens
+    const oauth2Config = userConfig.projects[this.projectName]!.integration![this.integrationName]!.oauth2!
+    oauth2Config.tokens = this.tokens
+
+    this.userService.save()
+    this.interactor.debug(`Saved OAuth tokens to storage for ${this.integrationName}`)
+  }
+
+  /**
+   * Clear tokens from user config storage
+   */
+  private clearTokensFromStorage(): void {
+    const userConfig = this.userService.config
+    const oauth2Config = userConfig.projects?.[this.projectName]?.integration?.[this.integrationName]?.oauth2
+
+    if (oauth2Config) {
+      delete oauth2Config.tokens
+      this.userService.save()
+      this.interactor.debug(`Cleared OAuth tokens from storage for ${this.integrationName}`)
     }
-
-    if (!userConfig.integration[this.integrationName].oauth2) {
-      userConfig.integration[this.integrationName].oauth2 = {
-        client_id: this.clientId,
-        client_secret: this.clientSecret,
-        redirect_uri: this.redirectUri,
-      }
-    }
-
-    userConfig.integration[this.integrationName].oauth2!.tokens = this.tokens!
-
-    await this.userService.saveConfig(userConfig, this.projectName)
   }
 
   /**
@@ -253,13 +354,10 @@ After authorization, you'll be redirected and the token will be saved automatica
       await this.refreshAccessToken()
     }
 
-    return this.tokens!.access_token
-  }
+    if (!this.tokens) {
+      throw new Error('Failed to get access token')
+    }
 
-  /**
-   * Check if authenticated
-   */
-  isAuthenticated(): boolean {
-    return this.tokens !== null && !this.isTokenExpired()
+    return this.tokens.access_token
   }
 }
