@@ -80,7 +80,7 @@ export class ThreadStateService {
             return of({ threads: [], projectName: null })
           } else {
             console.log('[THREAD_STATE] Fetching threads for project:', projectName)
-            return this.threadApi.listThreads(projectName).pipe(
+            return this.threadApi.listThreads().pipe(
               map((threads) => ({ threads, projectName })),
               catchError((error) => {
                 console.error('[THREAD_STATE] Error loading thread list:', error)
@@ -117,7 +117,7 @@ export class ThreadStateService {
         console.log('🐼 loading thread:', threadId)
 
         this.isLoadingSubject.next(true)
-        return this.threadApi.getThread(projectName, threadId).pipe(
+        return this.threadApi.getThread(threadId).pipe(
           tap((thread) => {
             console.log('🐼 loaded thread:', thread?.id)
           }),
@@ -154,19 +154,18 @@ export class ThreadStateService {
 
   /**
    * Stop the current execution for the selected thread
-   * Requires both a project and a thread to be selected
+   * Requires a thread to be selected
    */
   stop(): void {
-    const projectName = this.projectStateService.getSelectedProjectId()
     const threadId = this.selectedThreadIdSubject.value
 
-    if (!projectName || !threadId) {
-      console.error('[THREAD_STATE] Cannot stop: no project or thread selected')
+    if (!threadId) {
+      console.error('[THREAD_STATE] Cannot stop: no thread selected')
       return
     }
 
-    console.log('[THREAD_STATE] Stopping thread:', threadId, 'in project:', projectName)
-    this.threadApi.stopThread(projectName, threadId).subscribe({
+    console.log('[THREAD_STATE] Stopping thread:', threadId)
+    this.threadApi.stopThread(threadId).subscribe({
       next: (response) => console.log('[THREAD_STATE] Stop signal sent:', response.message),
       error: (error) => console.error('[THREAD_STATE] Error stopping thread:', error),
     })
@@ -188,13 +187,6 @@ export class ThreadStateService {
    * @returns Observable that emits the update response
    */
   renameThread(threadId: string, newName: string): Observable<ThreadUpdateResponse> {
-    const projectName = this.projectStateService.getSelectedProjectId()
-
-    if (!projectName) {
-      console.error('[THREAD_STATE] Cannot rename thread: no project selected')
-      return throwError(() => new Error('No project selected'))
-    }
-
     const trimmedName = newName.trim()
     if (!trimmedName || trimmedName.length === 0) {
       console.error('[THREAD_STATE] Cannot rename thread: name is empty after trimming')
@@ -203,7 +195,7 @@ export class ThreadStateService {
 
     console.log('[THREAD_STATE] Renaming thread:', threadId, 'to:', trimmedName)
 
-    return this.threadApi.updateThread(projectName, threadId, trimmedName).pipe(
+    return this.threadApi.updateThread(threadId, trimmedName).pipe(
       tap((response) => {
         console.log('[THREAD_STATE] Thread renamed successfully:', response)
         // Refresh thread list to show updated name

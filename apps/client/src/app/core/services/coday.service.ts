@@ -23,7 +23,6 @@ import {
 
 import { EventStreamService } from './event-stream.service'
 import { MessageApiService } from './message-api.service'
-import { ProjectStateService } from './project-state.service'
 import { ThreadStateService } from './thread-state.service'
 
 import { ChatMessage } from '../../components/chat-message/chat-message.component'
@@ -76,7 +75,6 @@ export class CodayService implements OnDestroy {
   // Modern Angular dependency injection
   private readonly eventStream = inject(EventStreamService)
   private readonly messageApi = inject(MessageApiService)
-  private readonly projectState = inject(ProjectStateService)
   private readonly threadState = inject(ThreadStateService)
 
   constructor() {
@@ -168,7 +166,7 @@ export class CodayService implements OnDestroy {
       // Clear the current invite event immediately after using it
       this.currentInviteEventSubject.next(null)
 
-      this.messageApi.sendMessage(this.currentProject, this.currentThread, answerEvent).subscribe({
+      this.messageApi.sendMessage(this.currentThread, answerEvent).subscribe({
         error: (error) => {
           console.error('[CODAY] Send error:', error)
           // Reset thinking state on error
@@ -179,7 +177,7 @@ export class CodayService implements OnDestroy {
       // Fallback to basic AnswerEvent if no invite event stored
       const answerEvent = new AnswerEvent({ answer: message })
 
-      this.messageApi.sendMessage(this.currentProject, this.currentThread, answerEvent).subscribe({
+      this.messageApi.sendMessage(this.currentThread, answerEvent).subscribe({
         error: (error) => {
           console.error('[CODAY] Send error:', error)
           // Reset thinking state on error
@@ -210,7 +208,7 @@ export class CodayService implements OnDestroy {
       this.currentChoiceSubject.next(null)
       // Clear the current choice event to prevent reuse
       this.currentChoiceEvent = null
-      this.messageApi.sendMessage(this.currentProject, this.currentThread, answerEvent).subscribe({
+      this.messageApi.sendMessage(this.currentThread, answerEvent).subscribe({
         next: () => {},
         error: (error) => {
           console.error('[CODAY-CHOICE] Choice error:', error)
@@ -227,19 +225,18 @@ export class CodayService implements OnDestroy {
    * Delete a message from the thread (rewind/retry functionality)
    */
   deleteMessage(messageId: string): Observable<{ success: boolean; message?: string; error?: string }> {
-    // Get current project and thread from state services
-    const projectName = this.projectState.getSelectedProjectId()
+    // Get current thread from state service
     const threadId = this.threadState.getSelectedThreadId()
 
-    if (!projectName || !threadId) {
-      throw new Error('Cannot delete message: no project or thread selected')
+    if (!threadId) {
+      throw new Error('Cannot delete message: no thread selected')
     }
 
     // Extract text content from the message before deleting it
     const messageToDelete = this.messagesSubject.value.find((msg) => msg.id === messageId)
     const textContent = this.extractTextContentFromMessage(messageToDelete)
 
-    return this.messageApi.deleteMessage(projectName, threadId, messageId).pipe(
+    return this.messageApi.deleteMessage(threadId, messageId).pipe(
       tap((response: { success: boolean; message?: string; error?: string }) => {
         if (response.success) {
           // Update local messages immediately for better UX (no replay needed)

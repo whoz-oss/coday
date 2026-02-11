@@ -186,17 +186,16 @@ export class ThreadSelectorComponent implements OnInit {
    */
   toggleStar(event: Event, thread: { id: string; starring: string[] }): void {
     event.stopPropagation()
-    const projectName = this.currentProject()?.name
     const currentUsername = this.username()
 
-    if (!projectName || !currentUsername) {
+    if (!currentUsername) {
       return
     }
 
     const isStarred = thread.starring && thread.starring.includes(currentUsername)
     const operation = isStarred
-      ? this.threadApiService.unstarThread(projectName, thread.id)
-      : this.threadApiService.starThread(projectName, thread.id)
+      ? this.threadApiService.unstarThread(thread.id)
+      : this.threadApiService.starThread(thread.id)
 
     operation.subscribe({
       next: () => {
@@ -225,7 +224,7 @@ export class ThreadSelectorComponent implements OnInit {
       return
     }
 
-    this.threadApiService.deleteThread(projectName, thread.id).subscribe({
+    this.threadApiService.deleteThread(thread.id).subscribe({
       next: () => {
         // If we're deleting the current thread, clear selection
         if (this.currentThread()?.id === thread.id) {

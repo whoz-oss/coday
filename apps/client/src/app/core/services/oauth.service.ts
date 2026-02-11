@@ -2,7 +2,6 @@ import { Injectable, inject } from '@angular/core'
 import { OAuthRequestEvent, OAuthCallbackEvent } from '@coday/model'
 import { EventStreamService } from './event-stream.service'
 import { MessageApiService } from './message-api.service'
-import { ProjectStateService } from './project-state.service'
 import { ThreadStateService } from './thread-state.service'
 import { filter } from 'rxjs/operators'
 
@@ -12,7 +11,6 @@ import { filter } from 'rxjs/operators'
 export class OAuthService {
   private eventStream = inject(EventStreamService)
   private messageApi = inject(MessageApiService)
-  private projectState = inject(ProjectStateService)
   private threadState = inject(ThreadStateService)
 
   private pendingStates = new Map<string, string>() // state -> integrationName
@@ -53,10 +51,9 @@ export class OAuthService {
           this.pendingStates.delete(state)
 
           // Send OAuthCallbackEvent with user_cancelled error
-          const projectName = this.projectState.getSelectedProjectId()
           const threadId = this.threadState.getSelectedThreadId()
 
-          if (projectName && threadId && integrationName) {
+          if (threadId && integrationName) {
             const cancelCallbackEvent = new OAuthCallbackEvent({
               state,
               integrationName,
@@ -64,7 +61,7 @@ export class OAuthService {
               errorDescription: 'User closed the popup without completing authentication',
             })
 
-            this.messageApi.sendMessage(projectName, threadId, cancelCallbackEvent).subscribe({
+            this.messageApi.sendMessage(threadId, cancelCallbackEvent).subscribe({
               next: () => console.log('[OAuth Service] Cancellation sent to backend'),
               error: (err) => console.error('[OAuth Service] Failed to send cancellation:', err),
             })
@@ -126,10 +123,9 @@ export class OAuthService {
         }
 
         // Send OAuthCallbackEvent with error
-        const projectName = this.projectState.getSelectedProjectId()
         const threadId = this.threadState.getSelectedThreadId()
 
-        if (projectName && threadId) {
+        if (threadId) {
           const errorCallbackEvent = new OAuthCallbackEvent({
             state,
             integrationName,
@@ -137,7 +133,7 @@ export class OAuthService {
             errorDescription,
           })
 
-          this.messageApi.sendMessage(projectName, threadId, errorCallbackEvent).subscribe({
+          this.messageApi.sendMessage(threadId, errorCallbackEvent).subscribe({
             next: () => console.log('[OAuth Service] Error callback sent to backend'),
             error: (err) => console.error('[OAuth Service] Failed to send error callback:', err),
           })
@@ -176,14 +172,13 @@ export class OAuthService {
     // Create and send event to backend
     const callbackEvent = new OAuthCallbackEvent({ code, state, integrationName })
 
-    const projectName = this.projectState.getSelectedProjectId()
     const threadId = this.threadState.getSelectedThreadId()
 
-    console.log('[OAuth Service] Project:', projectName, 'Thread:', threadId)
+    console.log('[OAuth Service] Thread:', threadId)
 
-    if (projectName && threadId) {
+    if (threadId) {
       console.log('[OAuth Service] Sending callback to backend...')
-      this.messageApi.sendMessage(projectName, threadId, callbackEvent).subscribe({
+      this.messageApi.sendMessage(threadId, callbackEvent).subscribe({
         next: () => console.log('[OAuth Service] Callback sent to backend successfully'),
         error: (err) => console.error('[OAuth Service] Failed to send callback:', err),
       })

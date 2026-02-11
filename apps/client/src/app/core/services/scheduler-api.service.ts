@@ -67,11 +67,7 @@ export class SchedulerApiService {
   private projectState = inject(ProjectStateService)
 
   private getBaseUrl(): string {
-    const projectName = this.projectState.getSelectedProjectId()
-    if (!projectName) {
-      throw new Error('[SCHEDULER_API] No project selected')
-    }
-    return `/api/projects/${projectName}/schedulers`
+    return `/api/projects/${this.projectState.getSelectedProjectIdOrThrow()}/schedulers`
   }
 
   /**

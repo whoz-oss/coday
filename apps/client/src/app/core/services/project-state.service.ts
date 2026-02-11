@@ -72,6 +72,19 @@ export class ProjectStateService {
   }
 
   /**
+   * Get the currently selected project name or throw an error
+   * @throws Error if no project is selected
+   * @returns Current project name
+   */
+  getSelectedProjectIdOrThrow(): string {
+    const projectName = this.selectedProjectIdSubject.value
+    if (!projectName) {
+      throw new Error('[PROJECT_STATE] No project selected')
+    }
+    return projectName
+  }
+
+  /**
    * Clear the selected project
    */
   clearSelection(): void {

@@ -49,11 +49,7 @@ export class PromptApiService {
   private projectState = inject(ProjectStateService)
 
   private getBaseUrl(): string {
-    const projectName = this.projectState.getSelectedProjectId()
-    if (!projectName) {
-      throw new Error('[PROMPT_API] No project selected')
-    }
-    return `/api/projects/${projectName}/prompts`
+    return `/api/projects/${this.projectState.getSelectedProjectIdOrThrow()}/prompts`
   }
 
   /**

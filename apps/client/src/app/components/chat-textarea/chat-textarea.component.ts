@@ -829,26 +829,26 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   private showAgentAutocomplete(query: string): void {
     this.autocompleteTrigger = '@'
 
-    // Get current project name
-    const projectName = this.projectStateService.getSelectedProjectId()
-    if (!projectName) {
+    try {
+      // Get current project name
+      const projectName = this.projectStateService.getSelectedProjectIdOrThrow()
+
+      // Get filtered agents (uses cache if available)
+      this.agentApiService.getAgentsAutocomplete(projectName, query).subscribe({
+        next: (agents: AgentAutocomplete[]) => {
+          this.autocompleteItems = agents
+          this.autocompleteVisible = agents.length > 0
+          this.selectedAutocompleteIndex = 0
+        },
+        error: (error) => {
+          console.error('[AUTOCOMPLETE] Error loading agents:', error)
+          this.hideAutocomplete()
+        },
+      })
+    } catch (error) {
       console.warn('[AUTOCOMPLETE] No project selected, cannot load agents')
       this.hideAutocomplete()
-      return
     }
-
-    // Get filtered agents (uses cache if available)
-    this.agentApiService.getAgentsAutocomplete(projectName, query).subscribe({
-      next: (agents: AgentAutocomplete[]) => {
-        this.autocompleteItems = agents
-        this.autocompleteVisible = agents.length > 0
-        this.selectedAutocompleteIndex = 0
-      },
-      error: (error) => {
-        console.error('[AUTOCOMPLETE] Error loading agents:', error)
-        this.hideAutocomplete()
-      },
-    })
   }
 
   /**
