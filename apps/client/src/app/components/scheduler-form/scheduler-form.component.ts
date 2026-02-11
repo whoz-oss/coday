@@ -151,14 +151,8 @@ export class SchedulerFormComponent implements OnInit {
    * Load available prompts
    */
   private loadPrompts(): void {
-    const projectName = this.projectState.getSelectedProjectId()
-    if (!projectName) {
-      this.errorMessage = 'No project selected'
-      return
-    }
-
     this.isLoadingPrompts = true
-    this.promptApi.listPrompts(projectName).subscribe({
+    this.promptApi.listPrompts().subscribe({
       next: (prompts) => {
         this.availablePrompts = prompts
         this.isLoadingPrompts = false

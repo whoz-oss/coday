@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
 import { Observable } from 'rxjs'
+import { ProjectStateService } from './project-state.service'
 
 /**
  * Prompt model matching backend
@@ -45,64 +46,62 @@ export interface PromptInfo {
 })
 export class PromptApiService {
   private http = inject(HttpClient)
+  private projectState = inject(ProjectStateService)
 
-  private getBaseUrl(projectName: string): string {
+  private getBaseUrl(): string {
+    const projectName = this.projectState.getSelectedProjectId()
+    if (!projectName) {
+      throw new Error('[PROMPT_API] No project selected')
+    }
     return `/api/projects/${projectName}/prompts`
   }
 
   /**
-   * List all prompts for a project
+   * List all prompts for the current project
    */
-  listPrompts(projectName: string): Observable<PromptInfo[]> {
-    return this.http.get<PromptInfo[]>(this.getBaseUrl(projectName))
+  listPrompts(): Observable<PromptInfo[]> {
+    return this.http.get<PromptInfo[]>(this.getBaseUrl())
   }
 
   /**
    * Get a specific prompt by ID
    */
-  getPrompt(projectName: string, id: string): Observable<Prompt> {
-    return this.http.get<Prompt>(`${this.getBaseUrl(projectName)}/${id}`)
+  getPrompt(id: string): Observable<Prompt> {
+    return this.http.get<Prompt>(`${this.getBaseUrl()}/${id}`)
   }
 
   /**
    * Create a new prompt
    */
-  createPrompt(
-    projectName: string,
-    prompt: Omit<Prompt, 'id' | 'createdAt' | 'createdBy' | 'updatedAt'>
-  ): Observable<Prompt> {
-    return this.http.post<Prompt>(this.getBaseUrl(projectName), prompt)
+  createPrompt(prompt: Omit<Prompt, 'id' | 'createdAt' | 'createdBy' | 'updatedAt'>): Observable<Prompt> {
+    return this.http.post<Prompt>(this.getBaseUrl(), prompt)
   }
 
   /**
    * Update an existing prompt
    */
-  updatePrompt(
-    projectName: string,
-    id: string,
-    updates: Partial<Prompt>
-  ): Observable<{ success: boolean; prompt: Prompt }> {
-    return this.http.put<{ success: boolean; prompt: Prompt }>(`${this.getBaseUrl(projectName)}/${id}`, updates)
+  updatePrompt(id: string, updates: Partial<Prompt>): Observable<{ success: boolean; prompt: Prompt }> {
+    return this.http.put<{ success: boolean; prompt: Prompt }>(`${this.getBaseUrl()}/${id}`, updates)
   }
 
   /**
    * Delete a prompt
    */
-  deletePrompt(projectName: string, id: string): Observable<{ success: boolean; message: string }> {
-    return this.http.delete<{ success: boolean; message: string }>(`${this.getBaseUrl(projectName)}/${id}`)
+  deletePrompt(id: string): Observable<{ success: boolean; message: string }> {
+    return this.http.delete<{ success: boolean; message: string }>(`${this.getBaseUrl()}/${id}`)
   }
 
   /**
    * Enable webhook for a prompt (CODAY_ADMIN only)
    */
-  enableWebhook(projectName: string, id: string): Observable<{ success: boolean; prompt: Prompt }> {
-    return this.http.post<{ success: boolean; prompt: Prompt }>(`${this.getBaseUrl(projectName)}/${id}/webhook`, {})
+  enableWebhook(id: string): Observable<{ success: boolean; prompt: Prompt }> {
+    return this.http.post<{ success: boolean; prompt: Prompt }>(`${this.getBaseUrl()}/${id}/webhook`, {})
   }
 
   /**
    * Disable webhook for a prompt (CODAY_ADMIN only)
    */
-  disableWebhook(projectName: string, id: string): Observable<{ success: boolean; prompt: Prompt }> {
-    return this.http.delete<{ success: boolean; prompt: Prompt }>(`${this.getBaseUrl(projectName)}/${id}/webhook`)
+  disableWebhook(id: string): Observable<{ success: boolean; prompt: Prompt }> {
+    return this.http.delete<{ success: boolean; prompt: Prompt }>(`${this.getBaseUrl()}/${id}/webhook`)
   }
 }

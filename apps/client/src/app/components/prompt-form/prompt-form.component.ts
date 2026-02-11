@@ -8,7 +8,6 @@ import { MatFormFieldModule } from '@angular/material/form-field'
 import { MatIconModule } from '@angular/material/icon'
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar'
 import { PromptApiService, Prompt } from '../../core/services/prompt-api.service'
-import { ProjectStateService } from '../../core/services/project-state.service'
 import { ConfigApiService } from '../../core/services/config-api.service'
 
 export interface PromptFormData {
@@ -34,7 +33,6 @@ export interface PromptFormData {
 })
 export class PromptFormComponent implements OnInit {
   private promptApi = inject(PromptApiService)
-  private projectState = inject(ProjectStateService)
   private dialogRef = inject(MatDialogRef<PromptFormComponent>)
   private configApi = inject(ConfigApiService)
   private snackBar = inject(MatSnackBar)
@@ -151,12 +149,6 @@ export class PromptFormComponent implements OnInit {
       return
     }
 
-    const projectName = this.projectState.getSelectedProjectId()
-    if (!projectName) {
-      this.errorMessage = 'No project selected'
-      return
-    }
-
     // Filter out empty commands
     const validCommands = this.commands.filter((cmd) => cmd.trim())
 
@@ -179,7 +171,7 @@ export class PromptFormComponent implements OnInit {
         updates.threadLifetime = null
       }
 
-      this.promptApi.updatePrompt(projectName, this.data.prompt.id, updates).subscribe({
+      this.promptApi.updatePrompt(this.data.prompt.id, updates).subscribe({
         next: () => {
           this.isSaving = false
           this.dialogRef.close(true) // Success
@@ -205,7 +197,7 @@ export class PromptFormComponent implements OnInit {
         promptData.threadLifetime = this.threadLifetime.trim()
       }
 
-      this.promptApi.createPrompt(projectName, promptData).subscribe({
+      this.promptApi.createPrompt(promptData).subscribe({
         next: () => {
           this.isSaving = false
           this.dialogRef.close(true) // Success

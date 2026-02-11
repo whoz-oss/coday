@@ -50,10 +50,7 @@ export class SchedulerManagerComponent implements OnInit {
   }
 
   private loadPrompts(): void {
-    const projectName = this.projectState.getSelectedProjectId()
-    if (!projectName) return
-
-    this.promptApi.listPrompts(projectName).subscribe({
+    this.promptApi.listPrompts().subscribe({
       next: (prompts) => {
         this.prompts = prompts
       },

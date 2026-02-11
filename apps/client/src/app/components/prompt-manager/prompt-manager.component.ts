@@ -6,7 +6,6 @@ import { MatInputModule } from '@angular/material/input'
 import { MatFormFieldModule } from '@angular/material/form-field'
 import { MatDialog } from '@angular/material/dialog'
 import { PromptApiService, PromptInfo } from '../../core/services/prompt-api.service'
-import { ProjectStateService } from '../../core/services/project-state.service'
 import { ConfigApiService } from '../../core/services/config-api.service'
 import { PromptFormComponent, PromptFormData } from '../prompt-form/prompt-form.component'
 
@@ -19,7 +18,6 @@ import { PromptFormComponent, PromptFormData } from '../prompt-form/prompt-form.
 })
 export class PromptManagerComponent implements OnInit {
   private promptApi = inject(PromptApiService)
-  private projectState = inject(ProjectStateService)
   private dialog = inject(MatDialog)
   private configApi = inject(ConfigApiService)
 
@@ -49,14 +47,8 @@ export class PromptManagerComponent implements OnInit {
   }
 
   private loadPrompts(): void {
-    const projectName = this.projectState.getSelectedProjectId()
-    if (!projectName) {
-      this.errorMessage = 'No project selected'
-      return
-    }
-
     this.isLoading = true
-    this.promptApi.listPrompts(projectName).subscribe({
+    this.promptApi.listPrompts().subscribe({
       next: (prompts) => {
         this.prompts = prompts
         this.applyFilter()
@@ -71,12 +63,9 @@ export class PromptManagerComponent implements OnInit {
   }
 
   deletePrompt(id: string): void {
-    const projectName = this.projectState.getSelectedProjectId()
-    if (!projectName) return
-
     if (!confirm('Are you sure you want to delete this prompt?')) return
 
-    this.promptApi.deletePrompt(projectName, id).subscribe({
+    this.promptApi.deletePrompt(id).subscribe({
       next: () => {
         this.loadPrompts()
       },
@@ -89,12 +78,9 @@ export class PromptManagerComponent implements OnInit {
   }
 
   toggleWebhook(prompt: PromptInfo): void {
-    const projectName = this.projectState.getSelectedProjectId()
-    if (!projectName) return
-
     const action = prompt.webhookEnabled
-      ? this.promptApi.disableWebhook(projectName, prompt.id)
-      : this.promptApi.enableWebhook(projectName, prompt.id)
+      ? this.promptApi.disableWebhook(prompt.id)
+      : this.promptApi.enableWebhook(prompt.id)
 
     action.subscribe({
       next: () => {
@@ -162,11 +148,8 @@ export class PromptManagerComponent implements OnInit {
   }
 
   editPrompt(prompt: PromptInfo): void {
-    const projectName = this.projectState.getSelectedProjectId()
-    if (!projectName) return
-
     // Load full prompt details before editing
-    this.promptApi.getPrompt(projectName, prompt.id).subscribe({
+    this.promptApi.getPrompt(prompt.id).subscribe({
       next: (fullPrompt) => {
         const dialogRef = this.dialog.open<PromptFormComponent, PromptFormData, boolean>(PromptFormComponent, {
           width: '700px',
