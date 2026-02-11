@@ -146,6 +146,19 @@ export class ThreadStateService {
   }
 
   /**
+   * Get the currently selected thread ID or throw an error
+   * @throws Error if no thread is selected
+   * @returns Current thread ID
+   */
+  getSelectedThreadIdOrThrow(): string {
+    const threadId = this.selectedThreadIdSubject.value
+    if (!threadId) {
+      throw new Error('[THREAD_STATE] No thread selected')
+    }
+    return threadId
+  }
+
+  /**
    * Clear the selected thread
    */
   clearSelection(): void {

@@ -68,16 +68,9 @@ export class FileExchangeStateService {
    * Refresh the file list from backend
    */
   refreshFileList(): void {
-    const threadId = this.currentThreadSignal()
-
-    if (!threadId) {
-      console.warn('[FILE_EXCHANGE_STATE] Cannot refresh: no thread selected')
-      return
-    }
-
     this.isLoadingSignal.set(true)
 
-    this.fileApi.listFiles(threadId).subscribe({
+    this.fileApi.listFiles().subscribe({
       next: (files) => {
         // Convert lastModified strings to Date objects and sort by most recent first
         const processedFiles = files
@@ -103,15 +96,8 @@ export class FileExchangeStateService {
    * @returns Promise that resolves when upload completes
    */
   async uploadFile(file: File): Promise<{ success: boolean; error?: string }> {
-    const threadId = this.currentThreadSignal()
-
-    if (!threadId) {
-      console.error('[FILE_EXCHANGE_STATE] Cannot upload: no thread selected')
-      return { success: false, error: 'No thread selected' }
-    }
-
     return new Promise((resolve) => {
-      this.fileApi.uploadFile(threadId, file).subscribe({
+      this.fileApi.uploadFile(file).subscribe({
         next: () => {
           // Refresh file list to show new file
           this.refreshFileList()
@@ -150,14 +136,7 @@ export class FileExchangeStateService {
    * @param filename - Name of the file to download
    */
   downloadFile(filename: string): void {
-    const threadId = this.currentThreadSignal()
-
-    if (!threadId) {
-      console.error('[FILE_EXCHANGE_STATE] Cannot download: no thread selected')
-      return
-    }
-
-    this.fileApi.downloadFile(threadId, filename).subscribe({
+    this.fileApi.downloadFile(filename).subscribe({
       next: (blob) => {
         // Create download link
         const url = window.URL.createObjectURL(blob)
@@ -180,15 +159,8 @@ export class FileExchangeStateService {
    * @returns Promise that resolves when deletion completes
    */
   async deleteFile(filename: string): Promise<{ success: boolean; error?: string }> {
-    const threadId = this.currentThreadSignal()
-
-    if (!threadId) {
-      console.error('[FILE_EXCHANGE_STATE] Cannot delete: no thread selected')
-      return { success: false, error: 'No thread selected' }
-    }
-
     return new Promise((resolve) => {
-      this.fileApi.deleteFile(threadId, filename).subscribe({
+      this.fileApi.deleteFile(filename).subscribe({
         next: () => {
           // Refresh file list to remove deleted file
           this.refreshFileList()

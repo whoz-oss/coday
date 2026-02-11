@@ -34,7 +34,7 @@ export class ProjectStateService {
   selectedProject$ = combineLatest([this.selectedProjectIdSubject, this.forcedProject$]).pipe(
     switchMap(([projectId, forcedProject]) => {
       // Priority: forcedProject > explicit selection
-      const targetProject = forcedProject || projectId
+      const targetProject = forcedProject ?? projectId
 
       if (!targetProject) {
         return of(null)

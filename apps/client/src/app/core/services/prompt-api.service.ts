@@ -45,8 +45,8 @@ export interface PromptInfo {
   providedIn: 'root',
 })
 export class PromptApiService {
-  private http = inject(HttpClient)
-  private projectState = inject(ProjectStateService)
+  private readonly http = inject(HttpClient)
+  private readonly projectState = inject(ProjectStateService)
 
   private getBaseUrl(): string {
     return `/api/projects/${this.projectState.getSelectedProjectIdOrThrow()}/prompts`
