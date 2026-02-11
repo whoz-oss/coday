@@ -1,28 +1,76 @@
 /**
  * HTTP client for making requests with authentication
+ * Uses Axios for robust HTTP handling with timeout and retry
  */
 
+import axios, { AxiosInstance, AxiosRequestConfig } from 'axios'
+import axiosRetry from 'axios-retry'
 import { Interactor } from '@coday/model'
-import {
-  HttpAuth,
-  HttpEndpoint,
-  HttpEndpointParam,
-  HttpIntegrationConfig,
-  HttpMethod,
-  isCredentialsAuth,
-  isBearerAuth,
-  isOAuth2Auth,
-} from './http-config'
+import { HttpEndpoint, HttpIntegrationConfig, isCredentialsAuth, isBearerAuth, isOAuth2Auth } from './http-config'
 import { HttpOAuth } from './http-oauth'
 
 export class HttpClient {
+  private axiosInstance: AxiosInstance
   private oauth: HttpOAuth | null = null
 
   constructor(
     private readonly config: HttpIntegrationConfig,
     private readonly interactor: Interactor,
     private readonly integrationName: string
-  ) {}
+  ) {
+    // Create Axios instance with base configuration
+    this.axiosInstance = axios.create({
+      baseURL: config.baseUrl,
+      timeout: config.timeout || 30000, // 30s default timeout
+      headers: {
+        'Content-Type': 'application/json',
+        ...config.headers,
+      },
+    })
+
+    // Configure automatic retry for network errors and idempotent requests
+    axiosRetry(this.axiosInstance, {
+      retries: 3,
+      retryDelay: axiosRetry.exponentialDelay,
+      retryCondition: (error) => {
+        // Retry on network errors and 5xx server errors for idempotent requests
+        return (
+          axiosRetry.isNetworkOrIdempotentRequestError(error) ||
+          (error.response?.status ? error.response.status >= 500 : false)
+        )
+      },
+      onRetry: (retryCount, error) => {
+        this.interactor.debug(`[HTTP] Retry attempt ${retryCount} for ${error.config?.url}: ${error.message}`)
+      },
+    })
+
+    // Add request interceptor for authentication
+    this.axiosInstance.interceptors.request.use(
+      async (config) => {
+        await this.addAuthHeaders(config.headers as Record<string, string>)
+        return config
+      },
+      (error) => Promise.reject(error)
+    )
+
+    // Add response interceptor for logging
+    this.axiosInstance.interceptors.response.use(
+      (response) => {
+        this.interactor.debug(
+          `[HTTP] ${response.config.method?.toUpperCase()} ${response.config.url} → ${response.status}`
+        )
+        return response
+      },
+      (error) => {
+        if (error.response) {
+          this.interactor.debug(
+            `[HTTP] ${error.config?.method?.toUpperCase()} ${error.config?.url} → ${error.response.status} ${error.response.statusText}`
+          )
+        }
+        return Promise.reject(error)
+      }
+    )
+  }
 
   /**
    * Set OAuth handler (injected from HttpTools)
@@ -35,46 +83,42 @@ export class HttpClient {
    * Make an HTTP request to an endpoint
    */
   async request(endpoint: HttpEndpoint, params: Record<string, any>): Promise<any> {
-    const url = this.buildUrl(endpoint, params)
-    const headers = await this.buildHeaders(endpoint, params)
-    const body = this.buildBody(endpoint, params)
-
-    const options: RequestInit = {
-      method: endpoint.method,
-      headers,
-    }
-
-    if (body !== null) {
-      options.body = body
-    }
-
-    this.interactor.debug(`[HTTP] ${endpoint.method} ${url}`)
-
     try {
-      const response = await fetch(url, options)
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`HTTP ${response.status}: ${errorText}`)
+      // Build request config
+      const config: AxiosRequestConfig = {
+        method: endpoint.method,
+        url: this.buildPath(endpoint, params),
+        params: this.getQueryParams(endpoint, params),
+        data: this.getBodyParams(endpoint, params),
+        headers: this.getHeaderParams(endpoint, params),
       }
 
-      const contentType = response.headers.get('content-type')
-      if (contentType?.includes('application/json')) {
-        const data = await response.json()
-        return this.transformResponse(endpoint, data)
+      // Make request (auth added via interceptor)
+      const response = await this.axiosInstance.request(config)
+
+      // Transform and return response
+      return this.transformResponse(endpoint, response.data)
+    } catch (error: any) {
+      // Axios wraps errors nicely
+      if (error.response) {
+        // Server responded with error status
+        throw new Error(
+          `HTTP ${error.response.status}: ${error.response.data?.message || error.response.statusText || 'Request failed'}`
+        )
+      } else if (error.request) {
+        // Request made but no response
+        throw new Error(`No response from server: ${error.message}`)
       } else {
-        return await response.text()
+        // Request setup error
+        throw new Error(`Request failed: ${error.message}`)
       }
-    } catch (error) {
-      this.interactor.error(`HTTP request failed: ${error}`)
-      throw error
     }
   }
 
   /**
-   * Build complete URL with path and query parameters
+   * Build path with path parameters replaced
    */
-  private buildUrl(endpoint: HttpEndpoint, params: Record<string, any>): string {
+  private buildPath(endpoint: HttpEndpoint, params: Record<string, any>): string {
     let path = endpoint.path
 
     // Replace path parameters
@@ -86,46 +130,67 @@ export class HttpClient {
       }
     }
 
-    // Add query parameters
+    return path
+  }
+
+  /**
+   * Get query parameters
+   */
+  private getQueryParams(endpoint: HttpEndpoint, params: Record<string, any>): Record<string, any> {
     const queryParams =
       endpoint.params?.filter((p) => {
         const location = p.location || this.defaultParamLocation(endpoint.method)
         return location === 'query'
       }) || []
 
-    const queryString = new URLSearchParams()
+    const result: Record<string, any> = {}
     for (const param of queryParams) {
       const value = params[param.name]
       if (value !== undefined) {
-        if (param.type === 'array' && Array.isArray(value)) {
-          value.forEach((v) => queryString.append(param.name, String(v)))
-        } else {
-          queryString.append(param.name, String(value))
-        }
+        result[param.name] = value
       }
     }
 
-    const query = queryString.toString()
-    const separator = path.includes('?') ? '&' : '?'
-    const fullPath = query ? `${path}${separator}${query}` : path
-
-    return `${this.config.baseUrl}${fullPath}`
+    return result
   }
 
   /**
-   * Build request headers with authentication
+   * Get body parameters
    */
-  private async buildHeaders(endpoint: HttpEndpoint, params: Record<string, any>): Promise<Record<string, string>> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...this.config.headers,
-      ...endpoint.headers,
+  private getBodyParams(endpoint: HttpEndpoint, params: Record<string, any>): any {
+    if (endpoint.method === 'GET' || endpoint.method === 'DELETE') {
+      return undefined
     }
 
-    // Add authentication headers
-    await this.addAuthHeaders(headers)
+    const bodyParams =
+      endpoint.params?.filter((p) => {
+        const location = p.location || this.defaultParamLocation(endpoint.method)
+        return location === 'body'
+      }) || []
 
-    // Add header parameters
+    if (bodyParams.length === 0) {
+      return undefined
+    }
+
+    const body: Record<string, any> = {}
+    for (const param of bodyParams) {
+      const value = params[param.name]
+      if (value !== undefined) {
+        body[param.name] = value
+      } else if (param.required) {
+        throw new Error(`Required parameter '${param.name}' is missing`)
+      }
+    }
+
+    return body
+  }
+
+  /**
+   * Get header parameters
+   */
+  private getHeaderParams(endpoint: HttpEndpoint, params: Record<string, any>): Record<string, string> {
+    const headers: Record<string, string> = { ...endpoint.headers }
+
     const headerParams = endpoint.params?.filter((p) => p.location === 'header') || []
     for (const param of headerParams) {
       const value = params[param.name]
@@ -179,45 +244,14 @@ export class HttpClient {
         const scheme = auth.scheme || 'Bearer'
         headers[header] = `${scheme} ${token}`
       }
-      // Query parameter token will be added in buildUrl
+      // Query parameter token handled in getQueryParams if needed
     }
-  }
-
-  /**
-   * Build request body
-   */
-  private buildBody(endpoint: HttpEndpoint, params: Record<string, any>): string | null {
-    if (endpoint.method === 'GET' || endpoint.method === 'DELETE') {
-      return null
-    }
-
-    const bodyParams =
-      endpoint.params?.filter((p) => {
-        const location = p.location || this.defaultParamLocation(endpoint.method)
-        return location === 'body'
-      }) || []
-
-    if (bodyParams.length === 0) {
-      return null
-    }
-
-    const body: Record<string, any> = {}
-    for (const param of bodyParams) {
-      const value = params[param.name]
-      if (value !== undefined) {
-        body[param.name] = value
-      } else if (param.required) {
-        throw new Error(`Required parameter '${param.name}' is missing`)
-      }
-    }
-
-    return JSON.stringify(body)
   }
 
   /**
    * Default parameter location based on HTTP method
    */
-  private defaultParamLocation(method: HttpMethod): 'query' | 'body' {
+  private defaultParamLocation(method: string): 'query' | 'body' {
     return method === 'GET' || method === 'DELETE' ? 'query' : 'body'
   }
 
