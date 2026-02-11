@@ -61,7 +61,7 @@ export class HttpTools extends AssistantToolFactory {
     }
 
     // Create HTTP client
-    this.client = new HttpClient(this.httpConfig, this.interactor, this.name)
+    this.client = new HttpClient(this.httpConfig, this.interactor)
 
     // Initialize OAuth if needed
     const auth = this.httpConfig.auth
@@ -82,7 +82,7 @@ export class HttpTools extends AssistantToolFactory {
         this.interactor,
         this.userService,
         context.project.name,
-        this.name
+        this.name // integrationName
       )
 
       // Initialize OAuth (load tokens or prompt)
