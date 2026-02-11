@@ -4,7 +4,6 @@
  */
 
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios'
-import axiosRetry from 'axios-retry'
 import { Interactor } from '@coday/model'
 import { HttpEndpoint, HttpIntegrationConfig, isCredentialsAuth, isBearerAuth, isOAuth2Auth } from './http-config'
 import { HttpOAuth } from './http-oauth'
@@ -15,8 +14,7 @@ export class HttpClient {
 
   constructor(
     private readonly config: HttpIntegrationConfig,
-    private readonly interactor: Interactor,
-    private readonly integrationName: string
+    private readonly interactor: Interactor
   ) {
     // Create Axios instance with base configuration
     this.axiosInstance = axios.create({
@@ -25,22 +23,6 @@ export class HttpClient {
       headers: {
         'Content-Type': 'application/json',
         ...config.headers,
-      },
-    })
-
-    // Configure automatic retry for network errors and idempotent requests
-    axiosRetry(this.axiosInstance, {
-      retries: 3,
-      retryDelay: axiosRetry.exponentialDelay,
-      retryCondition: (error) => {
-        // Retry on network errors and 5xx server errors for idempotent requests
-        return (
-          axiosRetry.isNetworkOrIdempotentRequestError(error) ||
-          (error.response?.status ? error.response.status >= 500 : false)
-        )
-      },
-      onRetry: (retryCount, error) => {
-        this.interactor.debug(`[HTTP] Retry attempt ${retryCount} for ${error.config?.url}: ${error.message}`)
       },
     })
 

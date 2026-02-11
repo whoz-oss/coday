@@ -22,8 +22,8 @@ export class HttpOAuth {
   private pendingReject: ((error: Error) => void) | null = null
 
   constructor(
-    private readonly clientId: string,
-    private readonly clientSecret: string,
+    clientId: string, // Used in oauth4webapi client/clientAuth
+    clientSecret: string, // Used in oauth4webapi clientAuth
     private readonly redirectUri: string,
     private readonly authConfig: HttpOAuth2Auth,
     private readonly interactor: Interactor,
