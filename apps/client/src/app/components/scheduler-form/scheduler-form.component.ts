@@ -11,7 +11,6 @@ import { MatCheckboxModule } from '@angular/material/checkbox'
 import { MatButtonToggleModule } from '@angular/material/button-toggle'
 import { SchedulerApiService, Scheduler, IntervalSchedule } from '../../core/services/scheduler-api.service'
 import { PromptApiService, PromptInfo } from '../../core/services/prompt-api.service'
-import { ProjectStateService } from '../../core/services/project-state.service'
 
 export interface SchedulerFormData {
   mode: 'create' | 'edit'
@@ -39,7 +38,6 @@ export interface SchedulerFormData {
 export class SchedulerFormComponent implements OnInit {
   private schedulerApi = inject(SchedulerApiService)
   private promptApi = inject(PromptApiService)
-  private projectState = inject(ProjectStateService)
   private dialogRef = inject(MatDialogRef<SchedulerFormComponent>)
 
   // Available prompts
@@ -342,12 +340,6 @@ export class SchedulerFormComponent implements OnInit {
       return
     }
 
-    const projectName = this.projectState.getSelectedProjectId()
-    if (!projectName) {
-      this.errorMessage = 'No project selected'
-      return
-    }
-
     const schedule = this.buildSchedule()
     const parameters = this.buildParameters()
 
@@ -356,7 +348,7 @@ export class SchedulerFormComponent implements OnInit {
     if (this.isEditMode && this.schedulerId) {
       // Update existing scheduler
       this.schedulerApi
-        .updateScheduler(projectName, this.schedulerId, {
+        .updateScheduler(this.schedulerId, {
           name: this.name.trim(),
           enabled: this.enabled,
           promptId: this.promptId,
@@ -378,7 +370,7 @@ export class SchedulerFormComponent implements OnInit {
     } else {
       // Create new scheduler
       this.schedulerApi
-        .createScheduler(projectName, {
+        .createScheduler({
           name: this.name.trim(),
           promptId: this.promptId,
           schedule,

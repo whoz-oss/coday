@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
 import { Observable } from 'rxjs'
+import { ProjectStateService } from './project-state.service'
 
 /**
  * IntervalSchedule model matching backend
@@ -63,46 +64,47 @@ export interface SchedulerInfo {
 })
 export class SchedulerApiService {
   private http = inject(HttpClient)
+  private projectState = inject(ProjectStateService)
 
-  private getBaseUrl(projectName: string): string {
+  private getBaseUrl(): string {
+    const projectName = this.projectState.getSelectedProjectId()
+    if (!projectName) {
+      throw new Error('[SCHEDULER_API] No project selected')
+    }
     return `/api/projects/${projectName}/schedulers`
   }
 
   /**
-   * List all schedulers for a project (with access control)
+   * List all schedulers for the current project (with access control)
    */
-  listSchedulers(projectName: string): Observable<SchedulerInfo[]> {
-    return this.http.get<SchedulerInfo[]>(this.getBaseUrl(projectName))
+  listSchedulers(): Observable<SchedulerInfo[]> {
+    return this.http.get<SchedulerInfo[]>(this.getBaseUrl())
   }
 
   /**
    * Get a specific scheduler by ID
    */
-  getScheduler(projectName: string, id: string): Observable<Scheduler> {
-    return this.http.get<Scheduler>(`${this.getBaseUrl(projectName)}/${id}`)
+  getScheduler(id: string): Observable<Scheduler> {
+    return this.http.get<Scheduler>(`${this.getBaseUrl()}/${id}`)
   }
 
   /**
    * Create a new scheduler
    */
-  createScheduler(
-    projectName: string,
-    scheduler: {
-      name: string
-      promptId: string
-      schedule: IntervalSchedule
-      parameters?: Record<string, unknown>
-      enabled?: boolean
-    }
-  ): Observable<Scheduler> {
-    return this.http.post<Scheduler>(this.getBaseUrl(projectName), scheduler)
+  createScheduler(scheduler: {
+    name: string
+    promptId: string
+    schedule: IntervalSchedule
+    parameters?: Record<string, unknown>
+    enabled?: boolean
+  }): Observable<Scheduler> {
+    return this.http.post<Scheduler>(this.getBaseUrl(), scheduler)
   }
 
   /**
    * Update an existing scheduler
    */
   updateScheduler(
-    projectName: string,
     id: string,
     updates: {
       name?: string
@@ -112,39 +114,36 @@ export class SchedulerApiService {
       parameters?: Record<string, unknown>
     }
   ): Observable<Scheduler> {
-    return this.http.put<Scheduler>(`${this.getBaseUrl(projectName)}/${id}`, updates)
+    return this.http.put<Scheduler>(`${this.getBaseUrl()}/${id}`, updates)
   }
 
   /**
    * Delete a scheduler
    */
-  deleteScheduler(projectName: string, id: string): Observable<{ success: boolean; message: string }> {
-    return this.http.delete<{ success: boolean; message: string }>(`${this.getBaseUrl(projectName)}/${id}`)
+  deleteScheduler(id: string): Observable<{ success: boolean; message: string }> {
+    return this.http.delete<{ success: boolean; message: string }>(`${this.getBaseUrl()}/${id}`)
   }
 
   /**
    * Enable a scheduler
    */
-  enableScheduler(projectName: string, id: string): Observable<Scheduler> {
-    return this.http.post<Scheduler>(`${this.getBaseUrl(projectName)}/${id}/enable`, {})
+  enableScheduler(id: string): Observable<Scheduler> {
+    return this.http.post<Scheduler>(`${this.getBaseUrl()}/${id}/enable`, {})
   }
 
   /**
    * Disable a scheduler
    */
-  disableScheduler(projectName: string, id: string): Observable<Scheduler> {
-    return this.http.post<Scheduler>(`${this.getBaseUrl(projectName)}/${id}/disable`, {})
+  disableScheduler(id: string): Observable<Scheduler> {
+    return this.http.post<Scheduler>(`${this.getBaseUrl()}/${id}/disable`, {})
   }
 
   /**
    * Manually execute a scheduler now (for testing)
    */
-  runSchedulerNow(
-    projectName: string,
-    id: string
-  ): Observable<{ success: boolean; message: string; threadId: string }> {
+  runSchedulerNow(id: string): Observable<{ success: boolean; message: string; threadId: string }> {
     return this.http.post<{ success: boolean; message: string; threadId: string }>(
-      `${this.getBaseUrl(projectName)}/${id}/run-now`,
+      `${this.getBaseUrl()}/${id}/run-now`,
       {}
     )
   }

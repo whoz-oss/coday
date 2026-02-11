@@ -7,7 +7,6 @@ import { MatFormFieldModule } from '@angular/material/form-field'
 import { MatDialog } from '@angular/material/dialog'
 import { SchedulerApiService, SchedulerInfo } from '../../core/services/scheduler-api.service'
 import { PromptApiService, PromptInfo } from '../../core/services/prompt-api.service'
-import { ProjectStateService } from '../../core/services/project-state.service'
 import { ConfigApiService } from '../../core/services/config-api.service'
 import { SchedulerFormComponent, SchedulerFormData } from '../scheduler-form/scheduler-form.component'
 
@@ -21,7 +20,6 @@ import { SchedulerFormComponent, SchedulerFormData } from '../scheduler-form/sch
 export class SchedulerManagerComponent implements OnInit {
   private schedulerApi = inject(SchedulerApiService)
   private promptApi = inject(PromptApiService)
-  private projectState = inject(ProjectStateService)
   private configApi = inject(ConfigApiService)
   private dialog = inject(MatDialog)
 
@@ -61,14 +59,8 @@ export class SchedulerManagerComponent implements OnInit {
   }
 
   private loadSchedulers(): void {
-    const projectName = this.projectState.getSelectedProjectId()
-    if (!projectName) {
-      this.errorMessage = 'No project selected'
-      return
-    }
-
     this.isLoading = true
-    this.schedulerApi.listSchedulers(projectName).subscribe({
+    this.schedulerApi.listSchedulers().subscribe({
       next: (schedulers) => {
         this.schedulers = schedulers
         this.applyFilter()
@@ -83,12 +75,9 @@ export class SchedulerManagerComponent implements OnInit {
   }
 
   deleteScheduler(id: string): void {
-    const projectName = this.projectState.getSelectedProjectId()
-    if (!projectName) return
-
     if (!confirm('Are you sure you want to delete this scheduler?')) return
 
-    this.schedulerApi.deleteScheduler(projectName, id).subscribe({
+    this.schedulerApi.deleteScheduler(id).subscribe({
       next: () => {
         this.loadSchedulers()
       },
@@ -101,12 +90,9 @@ export class SchedulerManagerComponent implements OnInit {
   }
 
   toggleEnabled(scheduler: SchedulerInfo): void {
-    const projectName = this.projectState.getSelectedProjectId()
-    if (!projectName) return
-
     const action = scheduler.enabled
-      ? this.schedulerApi.disableScheduler(projectName, scheduler.id)
-      : this.schedulerApi.enableScheduler(projectName, scheduler.id)
+      ? this.schedulerApi.disableScheduler(scheduler.id)
+      : this.schedulerApi.enableScheduler(scheduler.id)
 
     action.subscribe({
       next: () => {
@@ -121,10 +107,7 @@ export class SchedulerManagerComponent implements OnInit {
   }
 
   runNow(id: string): void {
-    const projectName = this.projectState.getSelectedProjectId()
-    if (!projectName) return
-
-    this.schedulerApi.runSchedulerNow(projectName, id).subscribe({
+    this.schedulerApi.runSchedulerNow(id).subscribe({
       next: (response) => {
         alert(`Scheduler executed successfully! Thread ID: ${response.threadId}`)
         this.loadSchedulers()
@@ -225,11 +208,8 @@ export class SchedulerManagerComponent implements OnInit {
   }
 
   editScheduler(scheduler: SchedulerInfo): void {
-    const projectName = this.projectState.getSelectedProjectId()
-    if (!projectName) return
-
     // Load full scheduler details before editing
-    this.schedulerApi.getScheduler(projectName, scheduler.id).subscribe({
+    this.schedulerApi.getScheduler(scheduler.id).subscribe({
       next: (fullScheduler) => {
         const dialogRef = this.dialog.open<SchedulerFormComponent, SchedulerFormData, boolean>(SchedulerFormComponent, {
           width: '700px',
