@@ -91,12 +91,12 @@ export class PromptService {
   /**
    * Find which project contains a prompt by ID
    * Used by execution to locate prompt without knowing project
-   * Searches in local prompts only for now (webhooks typically use local prompts)
+   * Searches in both local and project prompts
    *
    * @param id - Prompt ID
    * @returns Project name if found, null otherwise
    */
-  findProjectForPrompt(id: string): string | null {
+  async findProjectForPrompt(id: string): Promise<string | null> {
     const projectsPath = path.join(this.codayConfigDir, 'projects')
 
     if (!existsSync(projectsPath)) {
@@ -108,13 +108,23 @@ export class PromptService {
       .map((dirent) => dirent.name)
 
     for (const projectName of projectDirs) {
-      // Check local prompts
+      // Check local prompts first (most common)
       const localPath = path.join(this.codayConfigDir, 'projects', projectName, 'prompts', `${id}.yml`)
       if (existsSync(localPath)) {
         return projectName
       }
 
-      // TODO: Also check project prompts if needed for webhook execution
+      // Check project prompts
+      if (this.projectPath) {
+        try {
+          const projectPromptPath = await this.getPromptFilePath(projectName, id, 'project')
+          if (existsSync(projectPromptPath)) {
+            return projectName
+          }
+        } catch (error) {
+          // Project prompts not accessible for this project, continue to next
+        }
+      }
     }
 
     return null
@@ -204,7 +214,7 @@ export class PromptService {
    */
   async getById(id: string): Promise<{ prompt: Prompt; projectName: string } | null> {
     try {
-      const projectName = this.findProjectForPrompt(id)
+      const projectName = await this.findProjectForPrompt(id)
       if (!projectName) {
         return null
       }

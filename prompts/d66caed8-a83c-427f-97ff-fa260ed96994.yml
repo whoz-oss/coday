@@ -1,0 +1,10 @@
+name: test-local
+description: Sends a slack DM message to test
+commands:
+  - "@Slackay send me a DM saying something random, one sentence max."
+webhookEnabled: false
+source: project
+threadLifetime: 1d
+createdBy: vincent.audibert
+id: d66caed8-a83c-427f-97ff-fa260ed96994
+createdAt: 2026-02-12T19:39:07.743Z
