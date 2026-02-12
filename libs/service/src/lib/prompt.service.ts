@@ -144,6 +144,13 @@ export class PromptService {
     source: PromptSource = 'local'
   ): Promise<Prompt> {
     try {
+      // Validate threadLifetime restrictions
+      if (prompt.threadLifetime && source === 'project') {
+        throw new Error(
+          'Thread lifetime is not allowed for project prompts (committable files). Use local prompts for thread reuse.'
+        )
+      }
+
       // Generate proper UUID v4
       const id = randomUUID()
 
@@ -152,6 +159,7 @@ export class PromptService {
         id,
         source, // Store source in the prompt
         createdAt: new Date().toISOString(),
+        parameterFormat: this.getParameterFormat(prompt.commands), // Compute at creation
       }
 
       const promptsDir = await this.getPromptsDir(projectName, source)
@@ -270,6 +278,31 @@ export class PromptService {
         updatedAt: new Date().toISOString(),
       }
 
+      // Recalculate parameterFormat if commands were updated
+      if (updates.commands) {
+        updatedPrompt.parameterFormat = this.getParameterFormat(updates.commands)
+      }
+
+      // Validate threadLifetime changes
+      if ('threadLifetime' in updates) {
+        if (updates.threadLifetime) {
+          // Setting a threadLifetime value
+          if (typeof updates.threadLifetime !== 'string') {
+            throw new Error('threadLifetime must be a string')
+          }
+          // Project prompts cannot use threadLifetime (committed files shouldn't have changing activeThreadId)
+          if (existing.source === 'project') {
+            throw new Error(
+              'Thread lifetime is not allowed for project prompts (committable files). Use local prompts for thread reuse.'
+            )
+          }
+        } else {
+          // Clearing threadLifetime (set to null or undefined)
+          updatedPrompt.activeThreadId = undefined
+          console.log(`[PROMPT] Cleared activeThreadId for prompt ${id} (threadLifetime removed)`)
+        }
+      }
+
       // Write to the original source (immutable)
       const filePath = await this.getPromptFilePath(projectName, id, existing.source)
       writeYamlFile(filePath, updatedPrompt)
@@ -306,6 +339,48 @@ export class PromptService {
       console.error(`Failed to delete prompt ${id}:`, error)
       return false
     }
+  }
+
+  /**
+   * Analyze prompt commands to extract expected parameter format
+   * Returns:
+   * - undefined: No parameters (commands have no placeholders and don't accept trailing params)
+   * - "" (empty string): Single trailing parameter ({{PARAMETERS}} or no placeholders)
+   * - "key1=\"\" key2=\"\"": Structured parameters with placeholders
+   *
+   * @param commands - Array of command strings
+   * @returns Parameter format string or undefined
+   */
+  getParameterFormat(commands: string[]): string | undefined {
+    // Check if commands contain {{PARAMETERS}} placeholder
+    const hasParametersPlaceholder = commands.some((cmd) => /\{\{PARAMETERS\}\}/.test(cmd))
+    if (hasParametersPlaceholder) {
+      return '' // Empty string means trailing parameter expected
+    }
+
+    // Extract all {{key}} placeholders (excluding {{PARAMETERS}})
+    const placeholderPattern = /\{\{(\w+)\}\}/g
+    const placeholders = new Set<string>()
+
+    commands.forEach((cmd) => {
+      let match
+      while ((match = placeholderPattern.exec(cmd)) !== null) {
+        const key = match[1]
+        if (key && key !== 'PARAMETERS') {
+          placeholders.add(key)
+        }
+      }
+    })
+
+    // If no placeholders found, commands are used as-is (could append trailing param)
+    if (placeholders.size === 0) {
+      return '' // Empty string means optional trailing parameter
+    }
+
+    // Build format string: key1="" key2=""
+    return Array.from(placeholders)
+      .map((key) => `${key}=""`)
+      .join(' ')
   }
 
   /**
@@ -348,6 +423,7 @@ export class PromptService {
                 createdAt: prompt.createdAt,
                 updatedAt: prompt.updatedAt,
                 source: prompt.source || source, // Fallback for backwards compat
+                parameterFormat: prompt.parameterFormat, // Already computed and stored
               })
             }
           }

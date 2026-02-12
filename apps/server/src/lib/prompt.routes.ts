@@ -159,6 +159,14 @@ export function registerPromptRoutes(
           })
           return
         }
+        // Project prompts cannot use threadLifetime (committed files shouldn't have changing activeThreadId)
+        if (promptSource === 'project') {
+          res.status(422).json({
+            error:
+              'Thread lifetime is not allowed for project prompts (committable files). Use local prompts for thread reuse.',
+          })
+          return
+        }
       }
 
       // Prevent manual setting of activeThreadId (managed automatically)
@@ -268,6 +276,17 @@ export function registerPromptRoutes(
             error: "Invalid threadLifetime format. Use format like '2min', '5h', '14d', '1M'",
           })
           return
+        }
+        // Need to check prompt source for validation
+        if (updates.threadLifetime) {
+          const existing = await promptService.get(projectName, id)
+          if (existing && existing.source === 'project') {
+            res.status(422).json({
+              error:
+                'Thread lifetime is not allowed for project prompts (committable files). Use local prompts for thread reuse.',
+            })
+            return
+          }
         }
       }
 

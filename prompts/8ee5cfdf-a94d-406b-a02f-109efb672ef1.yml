@@ -1,0 +1,11 @@
+name: impersona
+description: impersonates someone doing something
+commands:
+  - "@yuki salut, tu peux te faire passer pour {{celebrity}} en train de faire
+    {{activity}} ?"
+webhookEnabled: false
+source: project
+createdBy: vincent.audibert
+id: 8ee5cfdf-a94d-406b-a02f-109efb672ef1
+createdAt: 2026-02-12T21:42:54.742Z
+parameterFormat: celebrity="" activity=""

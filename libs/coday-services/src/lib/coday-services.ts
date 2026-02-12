@@ -5,6 +5,7 @@ import type {
   McpConfigService,
   MemoryService,
   ProjectStateService,
+  PromptService,
   UserService,
 } from '@coday/service'
 import { ThreadService } from '@coday/service'
@@ -21,6 +22,7 @@ export type CodayServices = {
   mcp: McpConfigService
   mcpPool: McpInstancePool
   logger: CodayLogger
+  prompt: PromptService
   options?: CodayOptions
   agent?: AgentServiceModel
   aiConfig?: AiConfigService

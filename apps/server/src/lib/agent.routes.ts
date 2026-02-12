@@ -16,7 +16,7 @@ import { loadOrInitProjectDescription } from '@coday/service'
 import { McpInstancePool } from '@coday/mcp'
 import { AgentService } from '@coday/agent'
 import { AiClientProvider } from '@coday/integrations-ai'
-import { ThreadService } from '@coday/service'
+import { ThreadService, PromptService } from '@coday/service'
 
 /**
  * Agent Management REST API Routes
@@ -43,6 +43,7 @@ export function registerAgentRoutes(
   getUsernameFn: (req: express.Request) => string,
   configDir: string,
   logger: CodayLogger,
+  promptService: PromptService,
   threadService: ThreadService,
   options: CodayOptions
 ): void {
@@ -92,6 +93,7 @@ export function registerAgentRoutes(
         mcp,
         mcpPool,
         thread: threadService,
+        prompt: promptService,
         logger,
         options,
       }

@@ -8,6 +8,7 @@ import { IntegrationService } from '@coday/service'
 import { IntegrationConfigService } from '@coday/service'
 import { MemoryService } from '@coday/service'
 import { McpConfigService } from '@coday/service'
+import { PromptService } from '@coday/service'
 import { CodayLogger } from '@coday/model'
 import { HeartBeatEvent, ThreadUpdateEvent, OAuthCallbackEvent } from '@coday/model'
 import { debugLog } from './log'
@@ -41,6 +42,7 @@ class ThreadCodayInstance {
     private readonly logger: CodayLogger,
     private readonly projectService: ProjectService,
     private readonly threadService: ThreadService,
+    private readonly promptService: PromptService,
     private readonly mcpPool: McpInstancePool,
     private readonly onTimeout: (threadId: string) => void
   ) {
@@ -218,6 +220,7 @@ class ThreadCodayInstance {
       mcp,
       mcpPool: this.mcpPool,
       thread: this.threadService,
+      prompt: this.promptService,
       logger: this.logger,
       options: this.options,
     })
@@ -388,6 +391,7 @@ export class ThreadCodayManager {
     private readonly logger: CodayLogger,
     private readonly projectService: ProjectService,
     private readonly threadService: ThreadService,
+    private readonly promptService: PromptService,
     private readonly mcpPool: McpInstancePool
   ) {
     // Start global heartbeat mechanism
@@ -442,6 +446,7 @@ export class ThreadCodayManager {
         this.logger,
         this.projectService,
         this.threadService,
+        this.promptService,
         this.mcpPool,
         this.handleInstanceTimeout
       )
@@ -483,6 +488,7 @@ export class ThreadCodayManager {
         this.logger,
         this.projectService,
         this.threadService,
+        this.promptService,
         this.mcpPool,
         this.handleInstanceTimeout
       )

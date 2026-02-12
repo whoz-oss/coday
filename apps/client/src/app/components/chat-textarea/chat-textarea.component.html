@@ -21,10 +21,12 @@
           (keydown.space)="selectAutocompleteItemByClick(i)"
           (mouseenter)="selectedAutocompleteIndex = i"
         >
-          <div
-            class="item-name"
-            [innerHTML]="autocompleteTrigger + item.name | highlight: getAutocompleteQuery()"
-          ></div>
+          <div class="item-name">
+            <span [innerHTML]="autocompleteTrigger + item.name | highlight: getAutocompleteQuery()"></span>
+            @if (hasParameterFormat(item)) {
+              <span class="parameter-format">{{ ' ' + (getParameterFormat(item) || '') }}</span>
+            }
+          </div>
           <div class="item-description" [innerHTML]="item.description | highlight: getAutocompleteQuery()"></div>
         </div>
       }

@@ -20,6 +20,7 @@ import { CodayService } from '../../core/services/coday.service'
 import { MatIconButton } from '@angular/material/button'
 import { MatIcon } from '@angular/material/icon'
 import { AgentApiService, AgentAutocomplete } from '../../core/services/agent-api.service'
+import { PromptApiService, PromptAutocomplete } from '../../core/services/prompt-api.service'
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { HighlightPipe } from '../../pipes/highlight.pipe'
 
@@ -87,6 +88,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   private readonly preferencesService = inject(PreferencesService)
   private readonly codayService = inject(CodayService)
   private readonly agentApiService = inject(AgentApiService)
+  private readonly promptApiService = inject(PromptApiService)
   private readonly projectStateService = inject(ProjectStateService)
 
   ngOnInit(): void {
@@ -655,7 +657,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     } else if (this.showWelcome) {
       return 'How can I help you today?'
     } else {
-      return `Select an agent with '@' (optional), type your message here...`
+      return `Type '@' for agents, '/' for commands, or just your message...`
     }
   }
 
@@ -806,17 +808,17 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
       return
     }
 
-    // Commands with / are disabled for now
-    // if (text.startsWith('/')) {
-    //   const afterTrigger = text.substring(1)
-    //   if (afterTrigger.includes(' ')) {
-    //     this.hideAutocomplete()
-    //     return
-    //   }
-    //   const query = afterTrigger
-    //   this.showCommandAutocomplete(query)
-    //   return
-    // }
+    // Check if starts with / (prompts/commands)
+    if (text.startsWith('/')) {
+      const afterTrigger = text.substring(1)
+      // If there's a space after /, close the autocomplete
+      if (afterTrigger.includes(' ')) {
+        this.hideAutocomplete()
+        return
+      }
+      this.showPromptAutocomplete(afterTrigger)
+      return
+    }
 
     // No trigger found, hide autocomplete
     this.hideAutocomplete()
@@ -852,6 +854,35 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   }
 
   /**
+   * Show prompt autocomplete filtered by query
+   * Filtering is done client-side from API response
+   */
+  private showPromptAutocomplete(query: string): void {
+    this.autocompleteTrigger = '/'
+
+    try {
+      // Get current project name
+      const projectName = this.projectStateService.getSelectedProjectIdOrThrow()
+
+      // Get filtered prompts
+      this.promptApiService.getPromptsAutocomplete(projectName, query).subscribe({
+        next: (prompts: PromptAutocomplete[]) => {
+          this.autocompleteItems = prompts
+          this.autocompleteVisible = prompts.length > 0
+          this.selectedAutocompleteIndex = 0
+        },
+        error: (error) => {
+          console.error('[AUTOCOMPLETE] Error loading prompts:', error)
+          this.hideAutocomplete()
+        },
+      })
+    } catch (error) {
+      console.warn('[AUTOCOMPLETE] No project selected, cannot load prompts')
+      this.hideAutocomplete()
+    }
+  }
+
+  /**
    * Hide the autocomplete popup
    */
   private hideAutocomplete(): void {
@@ -867,18 +898,50 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     const item = this.autocompleteItems[this.selectedAutocompleteIndex]
     if (!item) return
 
-    // Replace @query or /query with @name or /name + space
-    this.message = `${this.autocompleteTrigger}${item.name} `
+    let cursorPosition: number | null = null
+
+    // Build the completed text based on trigger type
+    if (this.autocompleteTrigger === '/') {
+      // For slash commands (prompts), append parameter format if available
+      const promptItem = item as any // Cast to access parameterFormat
+      const paramFormat = promptItem.parameterFormat
+      console.log(promptItem)
+
+      if (paramFormat === undefined) {
+        // No parameters: just command name
+        this.message = `/${item.name}`
+      } else if (paramFormat === '') {
+        // Trailing parameter: add space for user to type
+        this.message = `/${item.name} `
+      } else {
+        // Structured parameters: add format with placeholders
+        this.message = `/${item.name} ${paramFormat}`
+        // Position cursor inside first empty quotes (key1="HERE")
+        const firstQuotePos = this.message.indexOf('=""')
+        if (firstQuotePos !== -1) {
+          cursorPosition = firstQuotePos + 2 // Position between the quotes
+        }
+      }
+    } else {
+      // For @ (agents), just add name + space
+      this.message = `@${item.name} `
+    }
 
     this.hideAutocomplete()
 
-    // Keep focus on textarea
+    // Keep focus on textarea and position cursor
     setTimeout(() => {
       if (this.messageInput?.nativeElement) {
         this.messageInput.nativeElement.focus()
-        // Place cursor at end
-        const length = this.message.length
-        this.messageInput.nativeElement.setSelectionRange(length, length)
+
+        if (cursorPosition !== null) {
+          // Position cursor at specific location (inside first quotes)
+          this.messageInput.nativeElement.setSelectionRange(cursorPosition, cursorPosition)
+        } else {
+          // Place cursor at end (default behavior)
+          const length = this.message.length
+          this.messageInput.nativeElement.setSelectionRange(length, length)
+        }
       }
     }, 0)
   }
@@ -896,6 +959,20 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
    */
   getAutocompleteQuery(): string {
     return this.message.substring(1).split(' ')[0] ?? ''
+  }
+
+  /**
+   * Get parameter format for a prompt item (slash commands only)
+   */
+  getParameterFormat(item: any): string | undefined {
+    return item.parameterFormat
+  }
+
+  /**
+   * Check if item has parameter format defined
+   */
+  hasParameterFormat(item: any): boolean {
+    return this.autocompleteTrigger === '/' && item.parameterFormat !== undefined
   }
 
   /**

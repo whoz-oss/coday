@@ -51,8 +51,8 @@
       </div>
     </div>
 
-    <!-- Thread Lifetime -->
-    <mat-form-field appearance="outline" class="full-width">
+    <!-- Thread Lifetime (only for local prompts) -->
+    <mat-form-field appearance="outline" class="full-width" *ngIf="source === 'local'">
       <mat-label>Thread Lifetime (optional)</mat-label>
       <input matInput [(ngModel)]="threadLifetime" placeholder="e.g., 1h, 24h, 7d" />
       <mat-hint
@@ -60,6 +60,18 @@
         time.</mat-hint
       >
     </mat-form-field>
+
+    <!-- Thread Lifetime disabled message (project prompts) -->
+    <div *ngIf="source === 'project'" class="thread-lifetime-disabled">
+      <mat-icon>info</mat-icon>
+      <p>
+        <strong>Thread lifetime not available for project prompts</strong><br />
+        <span class="hint"
+          >Project prompts are committable files and shouldn't have changing thread IDs. Use local prompts for thread
+          reuse.</span
+        >
+      </p>
+    </div>
 
     <!-- Source selection (creation only) -->
     <div *ngIf="!isEditMode" class="source-section">

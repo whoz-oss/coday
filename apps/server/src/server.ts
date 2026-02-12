@@ -182,7 +182,7 @@ const mcpPool = new McpInstancePool()
 debugLog('INIT', 'MCP instance pool initialized')
 
 // Initialize the thread-based Coday manager for SSE architecture
-const threadCodayManager = new ThreadCodayManager(logger, projectService, threadService, mcpPool)
+const threadCodayManager = new ThreadCodayManager(logger, projectService, threadService, promptService, mcpPool)
 
 // Initialize prompt execution dependencies now that thread manager is ready
 promptExecutionService.initialize(threadCodayManager, threadService, codayOptions, logger)
@@ -269,7 +269,16 @@ registerThreadRoutes(app, threadService, threadFileService, threadCodayManager, 
 registerMessageRoutes(app, threadCodayManager, getUsername)
 
 // Register agent management routes
-registerAgentRoutes(app, projectService, getUsername, codayOptions.configDir, logger, threadService, codayOptions)
+registerAgentRoutes(
+  app,
+  projectService,
+  getUsername,
+  codayOptions.configDir,
+  logger,
+  promptService,
+  threadService,
+  codayOptions
+)
 
 // Catch-all route for Angular client-side routing (MUST be after all API routes)
 // In production mode, serve index.html for any non-API routes

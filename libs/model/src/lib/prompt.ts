@@ -87,6 +87,16 @@ export interface Prompt {
    * If editing is needed in a different location, user must duplicate manually.
    */
   source: PromptSource
+
+  /**
+   * Parameter format for autocomplete (computed from commands)
+   * - undefined: No parameters expected
+   * - "" (empty string): Single trailing parameter
+   * - "key1=\"\" key2=\"\"": Structured parameters
+   *
+   * Automatically computed when prompt is created or commands are updated.
+   */
+  parameterFormat?: string
 }
 
 /**
@@ -101,4 +111,11 @@ export interface PromptInfo {
   createdAt: string
   updatedAt?: string
   source: PromptSource
+  /**
+   * Parameter format for autocomplete
+   * - undefined: No parameters expected
+   * - "" (empty string): Single trailing parameter
+   * - "key1=\"\" key2=\"\"": Structured parameters
+   */
+  parameterFormat?: string
 }
