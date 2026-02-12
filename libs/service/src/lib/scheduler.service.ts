@@ -17,7 +17,7 @@ interface PromptExecutionService {
     parameters: Record<string, unknown> | string | undefined,
     username: string,
     executionMode: 'direct' | 'scheduled' | 'webhook',
-    options?: { title?: string; awaitFinalAnswer?: boolean }
+    options?: { title?: string; awaitFinalAnswer?: boolean; projectName?: string }
   ): Promise<{ threadId: string; lastEvent?: any }>
 }
 
@@ -176,11 +176,16 @@ export class SchedulerService {
   /**
    * Execute a scheduler internally (scheduled or manual)
    * @param scheduler - Scheduler to execute
+   * @param projectName - Project name where scheduler is stored
    * @param mode - 'scheduled' or 'manual'
    * @returns Thread ID created by prompt execution
    * @throws Error if prompt not found or execution fails
    */
-  private async executeSchedulerInternal(scheduler: Scheduler, mode: 'scheduled' | 'manual'): Promise<string> {
+  private async executeSchedulerInternal(
+    scheduler: Scheduler,
+    projectName: string,
+    mode: 'scheduled' | 'manual'
+  ): Promise<string> {
     if (!this.promptExecutionService) {
       throw new Error('PromptExecutionService not initialized')
     }
@@ -209,6 +214,7 @@ export class SchedulerService {
       {
         title: mode === 'scheduled' ? `Scheduled: ${scheduler.name}` : `Manual: ${scheduler.name}`,
         awaitFinalAnswer: false, // async execution
+        projectName, // Pass project name from scheduler context
       }
     )
 
@@ -249,7 +255,7 @@ export class SchedulerService {
       // Update in-memory cache with the updated scheduler
       this.schedulers.set(scheduler.id, scheduler)
 
-      threadId = await this.executeSchedulerInternal(scheduler, 'scheduled')
+      threadId = await this.executeSchedulerInternal(scheduler, projectName, 'scheduled')
       success = true
     } catch (err) {
       success = false
@@ -583,7 +589,7 @@ export class SchedulerService {
       throw new Error(`Scheduler not found or access denied: ${schedulerId}`)
     }
 
-    const threadId = await this.executeSchedulerInternal(scheduler, 'manual')
+    const threadId = await this.executeSchedulerInternal(scheduler, projectName, 'manual')
 
     // Update lastRun but don't change nextRun (keep scheduled time)
     scheduler.lastRun = new Date().toISOString()

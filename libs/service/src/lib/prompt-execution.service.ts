@@ -233,6 +233,7 @@ export class PromptExecutionService {
     options?: {
       title?: string
       awaitFinalAnswer?: boolean
+      projectName?: string // Optional: specify project name (for scheduler context)
     }
   ): Promise<{ threadId: string; lastEvent?: MessageEvent }> {
     // Verify execution is initialized
@@ -240,15 +241,29 @@ export class PromptExecutionService {
       throw new Error('PromptExecutionService not initialized. Call initialize() first.')
     }
 
-    const { title, awaitFinalAnswer = false } = options || {}
+    const { title, awaitFinalAnswer = false, projectName: contextProjectName } = options || {}
 
     // Load prompt configuration
-    const result = await this.promptService.getById(promptId)
-    if (!result) {
-      throw new Error(`Prompt not found: ${promptId}`)
-    }
+    // If projectName provided in options (scheduler context), use it directly
+    let prompt: any
+    let projectName: string
 
-    const { prompt, projectName } = result
+    if (contextProjectName) {
+      // Use provided project name (from scheduler context)
+      projectName = contextProjectName
+      prompt = await this.promptService.get(projectName, promptId)
+      if (!prompt) {
+        throw new Error(`Prompt ${promptId} not found in project ${projectName}`)
+      }
+    } else {
+      // Search for prompt across all projects
+      const result = await this.promptService.getById(promptId)
+      if (!result) {
+        throw new Error(`Prompt not found: ${promptId}`)
+      }
+      prompt = result.prompt
+      projectName = result.projectName
+    }
 
     // For webhook execution, verify webhookEnabled flag
     if (executionMode === 'webhook' && !prompt.webhookEnabled) {
