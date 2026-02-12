@@ -15,7 +15,7 @@ export * from './lib/prompt-execution.service'
 export * from './lib/scheduler.service'
 
 // Re-export types from @coday/model for convenience
-export type { Prompt, PromptInfo, Scheduler, SchedulerInfo, IntervalSchedule } from '@coday/model'
+export type { Prompt, PromptInfo, PromptSource, Scheduler, SchedulerInfo, IntervalSchedule } from '@coday/model'
 export * from './lib/thread.service'
 export * from './lib/thread-cleanup.service'
 export * from './lib/thread-file.service'

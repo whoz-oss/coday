@@ -21,6 +21,9 @@ Prompts replace the previous "Webhook" concept with a more generic and flexible 
 
 ### Storage Architecture
 
+Prompts can be stored in two locations:
+
+**1. Local Storage** (default, user-specific):
 ```
 ~/.coday/
   projects/
@@ -29,7 +32,23 @@ Prompts replace the previous "Webhook" concept with a more generic and flexible 
         {prompt-id}.yml
 ```
 
+**2. Project Storage** (committable, shared with team):
+```
+project-root/
+  coday.yaml
+  prompts/              # Same level as coday.yaml
+    {prompt-id}.yml
+```
+
 Each prompt is stored as a YAML file with a unique ID (UUID v4).
+
+**Storage Rules**:
+- Source is chosen at **creation time** and cannot be changed afterwards
+- Local prompts are personal and not committed to version control
+- Project prompts are shared with the team and can be committed
+- User decides whether to commit project prompts (Coday doesn't manage git)
+- No ID conflicts possible (UUIDs are unique across both locations)
+- If multiple prompts have the same name but different IDs, UI shows both with ID + source indicator
 
 ## Prompt Model
 
@@ -47,6 +66,7 @@ webhookEnabled: false
 createdBy: "john_doe"
 createdAt: "2025-01-15T10:30:00.000Z"
 updatedAt: "2025-01-20T14:45:00.000Z"
+source: "local"  # or "project"
 ```
 
 ### Field Descriptions
@@ -61,6 +81,7 @@ updatedAt: "2025-01-20T14:45:00.000Z"
 | `createdBy` | string | Username of creator (normalized with underscores) |
 | `createdAt` | string | ISO 8601 creation timestamp |
 | `updatedAt` | string | ISO 8601 last update timestamp |
+| `source` | string | Storage location: `local` (personal) or `project` (committable) - **immutable after creation** |
 
 ### Naming Rules
 
@@ -163,9 +184,11 @@ The system validates parameters strictly:
 
 ### Viewing and Editing
 
-- **All users** can view and edit all prompts in a project
-- Prompts are **collaborative** by design (unlike webhooks which are ownership-based)
+- **All users** can view and edit prompts from both sources (local and project)
+- Prompts are **collaborative** by design
 - The `createdBy` field shows who created each prompt (displayed with a badge in UI)
+- The `source` field shows where the prompt is stored (displayed with a badge in UI)
+- **Source cannot be changed** after creation - if you need to move a prompt, duplicate it manually
 
 ### Webhook Enablement
 
@@ -185,14 +208,20 @@ The system validates parameters strictly:
    - **Name**: Descriptive identifier (auto-normalized)
    - **Description**: Explain the prompt's purpose
    - **Commands**: One or more template commands
+   - **Save to**: Choose storage location
+     - **👤 Local** (~/.coday/...) - Personal, not committed (default)
+     - **📦 Project** (./prompts/) - Shared with team, committable
    - **Enable webhook** (CODAY_ADMIN only): Allow external API access
+
+**Note**: The storage location is permanent and cannot be changed after creation.
 
 ### Editing a Prompt
 
 1. Open Prompts dialog
 2. Click "Edit" on any prompt
 3. Modify fields (all users can edit)
-4. Save changes
+4. **Source is read-only** (shown as badge, cannot be changed)
+5. Save changes - updates the file where it currently exists
 
 ### Webhook URL (CODAY_ADMIN only)
 
@@ -203,9 +232,13 @@ When editing a prompt with `webhookEnabled: true`, admins see:
 
 ### Visual Indicators
 
+- **Source badge**: Shows storage location
+  - **👤 Local** - Personal prompt in ~/.coday/
+  - **📦 Project** - Shared prompt in project directory
 - **Owner badge**: Blue badge shows creator's username if different from current user
 - **Webhook status**: "Webhook: Enabled/Disabled" displayed in prompt list
 - **Toggle button**: CODAY_ADMIN can enable/disable webhook access (orange when enabled, gray when disabled)
+- **Prompt ID**: Displayed discreetly in case multiple prompts have the same name
 
 ### Webhook Execution Endpoint
 
@@ -429,6 +462,9 @@ jobs:
 2. **Explicit placeholders**: Use descriptive names like `{{issueKey}}` not `{{id}}`
 3. **Command ordering**: Structure commands in logical execution order
 4. **Documentation**: Write clear descriptions explaining the prompt's purpose
+5. **Storage choice**:
+   - Use **local** for personal workflows and experimentation
+   - Use **project** for team templates and best practices you want to share
 
 ### Parameter Strategy
 
@@ -450,7 +486,8 @@ jobs:
 1. **Webhook enablement**: Only enable webhooks for prompts that need external access
 2. **Parameter validation**: Validate input at the calling system before sending
 3. **Access control**: Remember all users can edit prompts - use CODAY_ADMIN for sensitive operations
-4. **Audit trail**: Check `createdBy` and `updatedAt` fields for change tracking
+4. **Audit trail**: Check `createdBy`, `updatedAt`, and `source` fields for change tracking
+5. **Git responsibility**: User decides what to commit - Coday doesn't manage version control
 
 ### Testing
 
@@ -458,6 +495,7 @@ jobs:
 2. **Verify parameter interpolation** with sample data
 3. **Check error handling** with missing/invalid parameters
 4. **Monitor execution** through thread IDs and logs
+5. **Test both sources**: Try creating local and project prompts to verify storage
 
 ## Troubleshooting
 

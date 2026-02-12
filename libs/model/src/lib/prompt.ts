@@ -9,6 +9,13 @@
  * Replaces the previous "Webhook" concept with a more generic task definition.
  */
 
+/**
+ * Source location for prompt storage
+ * - 'local': Stored in ~/.coday/projects/{projectName}/prompts/ (user-specific, not committed)
+ * - 'project': Stored in {projectPath}/prompts/ (next to coday.yaml, committable)
+ */
+export type PromptSource = 'local' | 'project'
+
 export interface Prompt {
   /**
    * Unique identifier (UUID v4)
@@ -70,6 +77,16 @@ export interface Prompt {
    * Not set manually - automatically managed by PromptExecutionService
    */
   activeThreadId?: string
+
+  /**
+   * Storage location for this prompt
+   * - 'local': Personal prompt in ~/.coday/projects/{projectName}/prompts/
+   * - 'project': Shared prompt in {projectPath}/prompts/ (committable)
+   *
+   * Set at creation time and immutable afterwards.
+   * If editing is needed in a different location, user must duplicate manually.
+   */
+  source: PromptSource
 }
 
 /**
@@ -83,4 +100,5 @@ export interface PromptInfo {
   createdBy: string
   createdAt: string
   updatedAt?: string
+  source: PromptSource
 }

@@ -7,7 +7,7 @@ import { MatInputModule } from '@angular/material/input'
 import { MatFormFieldModule } from '@angular/material/form-field'
 import { MatIconModule } from '@angular/material/icon'
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar'
-import { PromptApiService, Prompt } from '../../core/services/prompt-api.service'
+import { PromptApiService, Prompt, PromptSource } from '../../core/services/prompt-api.service'
 import { ConfigApiService } from '../../core/services/config-api.service'
 
 export interface PromptFormData {
@@ -43,6 +43,7 @@ export class PromptFormComponent implements OnInit {
   commands: string[] = ['']
   webhookEnabled = false
   threadLifetime = ''
+  source: PromptSource = 'local' // Default to local
 
   // UI state
   isSaving = false
@@ -78,6 +79,7 @@ export class PromptFormComponent implements OnInit {
       this.commands = [...this.data.prompt.commands]
       this.webhookEnabled = this.data.prompt.webhookEnabled
       this.threadLifetime = this.data.prompt.threadLifetime || ''
+      this.source = this.data.prompt.source
     }
   }
 
@@ -190,6 +192,7 @@ export class PromptFormComponent implements OnInit {
         description: this.description.trim(),
         commands: validCommands,
         webhookEnabled: this.webhookEnabled,
+        source: this.source, // Include source for creation
       }
 
       // Add threadLifetime if provided

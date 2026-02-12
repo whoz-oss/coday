@@ -1,6 +1,6 @@
 import express from 'express'
 import { debugLog } from './log'
-import { PromptService, Prompt } from '@coday/service'
+import { PromptService, Prompt, PromptSource } from '@coday/service'
 import { validateInterval } from '@coday/utils'
 import { getParamAsString } from './route-helpers'
 
@@ -91,6 +91,7 @@ export function registerPromptRoutes(
   /**
    * POST /api/projects/:projectName/prompts
    * Create new prompt in project
+   * Body should include 'source' field ('local' or 'project', defaults to 'local')
    */
   app.post('/api/projects/:projectName/prompts', async (req: express.Request, res: express.Response) => {
     try {
@@ -100,7 +101,9 @@ export function registerPromptRoutes(
         return
       }
 
-      const promptData = req.body as Omit<Prompt, 'id' | 'createdAt' | 'createdBy' | 'updatedAt'>
+      const promptData = req.body as Omit<Prompt, 'id' | 'createdAt' | 'createdBy' | 'updatedAt'> & {
+        source?: PromptSource
+      }
 
       // Basic validation
       if (!promptData || typeof promptData !== 'object') {
@@ -137,6 +140,13 @@ export function registerPromptRoutes(
         return
       }
 
+      // Validate source if provided
+      const promptSource: PromptSource = promptData.source === 'project' ? 'project' : 'local' // Default to local
+      if (promptData.source !== undefined && promptData.source !== 'local' && promptData.source !== 'project') {
+        res.status(422).json({ error: "source must be 'local' or 'project'" })
+        return
+      }
+
       // Validate threadLifetime format if provided
       if (promptData.threadLifetime !== undefined) {
         if (typeof promptData.threadLifetime !== 'string') {
@@ -164,13 +174,18 @@ export function registerPromptRoutes(
         return
       }
 
-      debugLog('PROMPT_API', `POST new prompt: ${promptData.name} in project: ${projectName}`)
+      debugLog('PROMPT_API', `POST new prompt: ${promptData.name} in ${promptSource} for project: ${projectName}`)
 
-      const newPrompt = await promptService.create(projectName, {
-        ...promptData,
-        webhookEnabled: promptData.webhookEnabled ?? false, // Default to false
-        createdBy: username,
-      })
+      const newPrompt = await promptService.create(
+        projectName,
+        {
+          ...promptData,
+          webhookEnabled: promptData.webhookEnabled ?? false, // Default to false
+          createdBy: username,
+          source: promptSource, // Include source in prompt data
+        },
+        promptSource // Pass source to service
+      )
 
       res.status(201).json(newPrompt)
     } catch (error) {
@@ -233,6 +248,12 @@ export function registerPromptRoutes(
       // Validate webhookEnabled if provided
       if (updates.webhookEnabled !== undefined && typeof updates.webhookEnabled !== 'boolean') {
         res.status(422).json({ error: 'webhookEnabled must be a boolean' })
+        return
+      }
+
+      // Prevent modification of source (immutable after creation)
+      if (updates.source !== undefined) {
+        res.status(422).json({ error: 'source cannot be changed after creation' })
         return
       }
 

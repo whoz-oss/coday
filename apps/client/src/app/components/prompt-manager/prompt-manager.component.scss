@@ -88,20 +88,54 @@
 .prompt-info {
   flex: 1;
 
-  h3 {
-    margin: 0 0 0.5rem 0;
-    font-size: 1.1rem;
+  .prompt-header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
 
-    .owner-badge {
-      font-size: 0.75rem;
-      padding: 0.25rem 0.5rem;
-      background: #2196f3;
-      color: white;
-      border-radius: 4px;
-      font-weight: normal;
+    h3 {
+      margin: 0;
+      font-size: 1.1rem;
+      flex: 1;
+    }
+
+    .badges {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+
+      .source-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        font-size: 1rem;
+        cursor: help;
+
+        &.badge-local {
+          background: rgba(33, 150, 243, 0.1);
+          border: 1px solid rgba(33, 150, 243, 0.3);
+        }
+
+        &.badge-project {
+          background: rgba(76, 175, 80, 0.1);
+          border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+      }
+
+      .owner-badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        background: #2196f3;
+        color: white;
+        border-radius: 4px;
+        font-weight: normal;
+        white-space: nowrap;
+      }
     }
   }
 
@@ -115,6 +149,11 @@
     gap: 1rem;
     font-size: 0.85rem;
     color: var(--color-text-secondary);
+
+    .prompt-id {
+      font-family: monospace;
+      opacity: 0.7;
+    }
 
     .webhook-status {
       &.enabled {

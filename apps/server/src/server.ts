@@ -60,13 +60,10 @@ debugLog(
 const webhookService = new WebhookService()
 debugLog('INIT', 'Webhook service initialized (will be initialized with prompt execution service)')
 
-// Create prompt service instance
-const promptService = new PromptService(codayOptions.configDir)
-debugLog('INIT', 'Prompt service initialized')
-
-// Create prompt execution service instance
-const promptExecutionService = new PromptExecutionService(promptService)
-debugLog('INIT', 'Prompt execution service initialized (will be initialized with dependencies after thread manager)')
+// Create prompt service instance and execution service
+// Note: projectPath will be set after projectService is initialized
+let promptService: PromptService
+let promptExecutionService: PromptExecutionService
 // Middleware to parse JSON bodies with increased limit for image uploads
 app.use(express.json({ limit: '20mb' }))
 
@@ -163,6 +160,22 @@ if (resolvedProjectName && !codayOptions.forcedProject) {
 }
 
 const projectService = new ProjectService(projectRepository, resolvedProjectName, codayOptions.forcedProject)
+
+// Now initialize prompt service with project path
+let projectPathForPrompts: string | undefined
+if (resolvedProjectName) {
+  const project = projectService.getProject(resolvedProjectName)
+  if (project?.config.path) {
+    projectPathForPrompts = project.config.path
+    debugLog('INIT', `Project path for prompts: ${projectPathForPrompts}`)
+  }
+}
+promptService = new PromptService(codayOptions.configDir, projectPathForPrompts)
+debugLog('INIT', 'Prompt service initialized')
+
+// Create prompt execution service
+promptExecutionService = new PromptExecutionService(promptService)
+debugLog('INIT', 'Prompt execution service initialized (will be initialized with dependencies after thread manager)')
 
 // Initialize thread file service for REST API endpoints
 const projectsDir = path.join(codayOptions.configDir, 'projects')

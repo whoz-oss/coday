@@ -61,6 +61,44 @@
       >
     </mat-form-field>
 
+    <!-- Source selection (creation only) -->
+    <div *ngIf="!isEditMode" class="source-section">
+      <h3>Save to</h3>
+      <div class="source-options">
+        <label class="source-option" [class.selected]="source === 'local'">
+          <input type="radio" name="source" value="local" [(ngModel)]="source" />
+          <div class="source-content">
+            <div class="source-header">
+              <span class="source-icon">👤</span>
+              <span class="source-label">Local</span>
+            </div>
+            <p class="source-description">Personal prompt in ~/.coday/... (not committed)</p>
+          </div>
+        </label>
+        <label class="source-option" [class.selected]="source === 'project'">
+          <input type="radio" name="source" value="project" [(ngModel)]="source" />
+          <div class="source-content">
+            <div class="source-header">
+              <span class="source-icon">📦</span>
+              <span class="source-label">Project</span>
+            </div>
+            <p class="source-description">Shared prompt in ./prompts/ (committable)</p>
+          </div>
+        </label>
+      </div>
+      <p class="hint">Storage location is permanent and cannot be changed after creation</p>
+    </div>
+
+    <!-- Source display (edit mode) -->
+    <div *ngIf="isEditMode" class="source-display">
+      <h3>Storage Location</h3>
+      <div class="source-badge" [class.badge-local]="source === 'local'" [class.badge-project]="source === 'project'">
+        <span class="source-icon">{{ source === 'local' ? '👤' : '📦' }}</span>
+        <span class="source-label">{{ source === 'local' ? 'Local' : 'Project' }}</span>
+      </div>
+      <p class="hint">Cannot be changed after creation</p>
+    </div>
+
     <!-- Webhook Enabled (only for admin users) -->
     <div *ngIf="isAdmin" class="webhook-section">
       <label class="checkbox-label">

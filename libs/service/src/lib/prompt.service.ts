@@ -3,14 +3,18 @@ import * as os from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs'
 import { readYamlFile, writeYamlFile } from '@coday/utils'
-import type { Prompt, PromptInfo } from '@coday/model'
+import type { Prompt, PromptInfo, PromptSource } from '@coday/model'
+import { findFilesByName } from '@coday/function'
 import { isUserAdmin } from './user-groups'
 
 /**
  * PromptService - Manages prompt CRUD operations
  *
  * Architecture:
- * - Prompts are stored per project: ~/.coday/projects/{projectName}/prompts/{id}.yml
+ * - Prompts can be stored in two locations:
+ *   1. Local: ~/.coday/projects/{projectName}/prompts/{id}.yml (personal, not committed)
+ *   2. Project: {projectPath}/prompts/{id}.yml (next to coday.yaml, committable)
+ * - Source is chosen at creation and is immutable
  * - Each prompt is owned by a user (createdBy field)
  * - Access control:
  *   - Anyone can view/edit prompts (collaborative)
@@ -18,29 +22,76 @@ import { isUserAdmin } from './user-groups'
  */
 export class PromptService {
   private readonly codayConfigDir: string
+  private projectPath?: string
 
-  constructor(codayConfigPath?: string) {
+  constructor(codayConfigPath?: string, projectPath?: string) {
     const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
     this.codayConfigDir = codayConfigPath ?? defaultConfigPath
+    this.projectPath = projectPath
   }
 
   /**
-   * Get prompts directory path for a specific project
+   * Get prompts directory path for a specific source
    */
-  private getPromptsDir(projectName: string): string {
-    return path.join(this.codayConfigDir, 'projects', projectName, 'prompts')
+  private async getPromptsDir(projectName: string, source: PromptSource): Promise<string> {
+    if (source === 'local') {
+      return path.join(this.codayConfigDir, 'projects', projectName, 'prompts')
+    } else {
+      // project source: find coday.yaml and put prompts/ next to it
+      if (!this.projectPath) {
+        throw new Error('Project path not configured, cannot access project prompts')
+      }
+
+      // Find coday.yaml location (same logic as agent.service.ts)
+      const codayFiles = await findFilesByName({ text: 'coday.yaml', root: this.projectPath })
+      if (codayFiles.length === 0) {
+        throw new Error(`coday.yaml not found in project path: ${this.projectPath}`)
+      }
+
+      const codayFolder = path.dirname(codayFiles[0]!)
+      return path.join(this.projectPath, codayFolder, 'prompts')
+    }
   }
 
   /**
    * Get prompt file path
    */
-  private getPromptFilePath(projectName: string, id: string): string {
-    return path.join(this.getPromptsDir(projectName), `${id}.yml`)
+  private async getPromptFilePath(projectName: string, id: string, source: PromptSource): Promise<string> {
+    const dir = await this.getPromptsDir(projectName, source)
+    return path.join(dir, `${id}.yml`)
+  }
+
+  /**
+   * Find which source contains a prompt by ID
+   * Checks both local and project sources
+   */
+  private async findPromptSource(projectName: string, id: string): Promise<PromptSource | null> {
+    // Check local first (most common)
+    const localPath = await this.getPromptFilePath(projectName, id, 'local')
+    if (existsSync(localPath)) {
+      return 'local'
+    }
+
+    // Check project
+    if (this.projectPath) {
+      try {
+        const projectPath = await this.getPromptFilePath(projectName, id, 'project')
+        if (existsSync(projectPath)) {
+          return 'project'
+        }
+      } catch (error) {
+        // Project prompts directory doesn't exist or coday.yaml not found
+        // This is normal, not all projects have project prompts
+      }
+    }
+
+    return null
   }
 
   /**
    * Find which project contains a prompt by ID
    * Used by execution to locate prompt without knowing project
+   * Searches in local prompts only for now (webhooks typically use local prompts)
    *
    * @param id - Prompt ID
    * @returns Project name if found, null otherwise
@@ -57,10 +108,13 @@ export class PromptService {
       .map((dirent) => dirent.name)
 
     for (const projectName of projectDirs) {
-      const promptPath = this.getPromptFilePath(projectName, id)
-      if (existsSync(promptPath)) {
+      // Check local prompts
+      const localPath = path.join(this.codayConfigDir, 'projects', projectName, 'prompts', `${id}.yml`)
+      if (existsSync(localPath)) {
         return projectName
       }
+
+      // TODO: Also check project prompts if needed for webhook execution
     }
 
     return null
@@ -70,10 +124,15 @@ export class PromptService {
    * Creates a new prompt with generated ID and timestamp
    *
    * @param projectName - Project name where prompt will be created
-   * @param prompt - Prompt data (without id and createdAt)
+   * @param prompt - Prompt data (without id and createdAt, but with source)
+   * @param source - Storage location ('local' or 'project'), defaults to 'local'
    * @returns Created prompt
    */
-  async create(projectName: string, prompt: Omit<Prompt, 'id' | 'createdAt'>): Promise<Prompt> {
+  async create(
+    projectName: string,
+    prompt: Omit<Prompt, 'id' | 'createdAt'>,
+    source: PromptSource = 'local'
+  ): Promise<Prompt> {
     try {
       // Generate proper UUID v4
       const id = randomUUID()
@@ -81,13 +140,14 @@ export class PromptService {
       const newPrompt: Prompt = {
         ...prompt,
         id,
+        source, // Store source in the prompt
         createdAt: new Date().toISOString(),
       }
 
-      const promptsDir = this.getPromptsDir(projectName)
+      const promptsDir = await this.getPromptsDir(projectName, source)
       mkdirSync(promptsDir, { recursive: true })
 
-      const filePath = this.getPromptFilePath(projectName, id)
+      const filePath = await this.getPromptFilePath(projectName, id, source)
 
       // Check if file already exists (highly unlikely but defensive)
       if (existsSync(filePath)) {
@@ -95,7 +155,7 @@ export class PromptService {
       }
 
       writeYamlFile(filePath, newPrompt)
-      console.log(`[PROMPT] Created prompt ${id} in project ${projectName}`)
+      console.log(`[PROMPT] Created prompt ${id} in ${source} for project ${projectName}`)
       return newPrompt
     } catch (error) {
       throw new Error(`Failed to create prompt: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -104,6 +164,7 @@ export class PromptService {
 
   /**
    * Retrieves a prompt by ID and project
+   * Automatically finds the source (local or project)
    *
    * @param projectName - Project name
    * @param id - Prompt ID
@@ -111,11 +172,21 @@ export class PromptService {
    */
   async get(projectName: string, id: string): Promise<Prompt | null> {
     try {
-      const filePath = this.getPromptFilePath(projectName, id)
+      const source = await this.findPromptSource(projectName, id)
+      if (!source) {
+        return null
+      }
+
+      const filePath = await this.getPromptFilePath(projectName, id, source)
       const prompt = readYamlFile<Prompt>(filePath)
 
       if (!prompt) {
         return null
+      }
+
+      // Ensure source is set (for backwards compatibility with prompts created before source field)
+      if (!prompt.source) {
+        prompt.source = source
       }
 
       return prompt
@@ -152,15 +223,18 @@ export class PromptService {
 
   /**
    * Updates an existing prompt
+   * Updates the file where it currently exists (source is immutable after creation)
    *
-   * Special rule: Only CODAY_ADMIN can modify webhookEnabled flag
+   * Special rules:
+   * - Only CODAY_ADMIN can modify webhookEnabled flag
+   * - Source cannot be changed after creation
    *
    * @param projectName - Project name
    * @param id - Prompt ID
    * @param updates - Fields to update
    * @param username - Username requesting the update
    * @returns Updated prompt if successful, null if not found
-   * @throws Error if non-admin tries to modify webhookEnabled
+   * @throws Error if non-admin tries to modify webhookEnabled or if source change attempted
    */
   async update(projectName: string, id: string, updates: Partial<Prompt>, username: string): Promise<Prompt | null> {
     try {
@@ -177,8 +251,8 @@ export class PromptService {
         }
       }
 
-      // Prevent changing ID and createdAt
-      const { id: _, createdAt: __, ...allowedUpdates } = updates
+      // Prevent changing ID, createdAt, and source
+      const { id: _, createdAt: __, source: ___, ...allowedUpdates } = updates
 
       const updatedPrompt: Prompt = {
         ...existing,
@@ -186,10 +260,11 @@ export class PromptService {
         updatedAt: new Date().toISOString(),
       }
 
-      const filePath = this.getPromptFilePath(projectName, id)
+      // Write to the original source (immutable)
+      const filePath = await this.getPromptFilePath(projectName, id, existing.source)
       writeYamlFile(filePath, updatedPrompt)
 
-      console.log(`[PROMPT] Updated prompt ${id} by user ${username}`)
+      console.log(`[PROMPT] Updated prompt ${id} (${existing.source}) by user ${username}`)
       return updatedPrompt
     } catch (error) {
       console.error(`Failed to update prompt ${id}:`, error)
@@ -199,6 +274,7 @@ export class PromptService {
 
   /**
    * Deletes a prompt by ID
+   * Deletes from whichever source it's in
    *
    * @param projectName - Project name
    * @param id - Prompt ID
@@ -206,15 +282,15 @@ export class PromptService {
    */
   async delete(projectName: string, id: string): Promise<boolean> {
     try {
-      const existing = await this.get(projectName, id)
-      if (!existing) {
+      const source = await this.findPromptSource(projectName, id)
+      if (!source) {
         return false
       }
 
-      const filePath = this.getPromptFilePath(projectName, id)
+      const filePath = await this.getPromptFilePath(projectName, id, source)
       unlinkSync(filePath)
 
-      console.log(`[PROMPT] Deleted prompt ${id}`)
+      console.log(`[PROMPT] Deleted prompt ${id} from ${source}`)
       return true
     } catch (error) {
       console.error(`Failed to delete prompt ${id}:`, error)
@@ -223,37 +299,52 @@ export class PromptService {
   }
 
   /**
-   * Lists all prompts for a project
+   * Lists all prompts for a project from both sources
+   * Returns prompts with their source indicated
    *
    * @param projectName - Project name
-   * @returns Array of prompts
+   * @returns Array of prompts from both local and project sources
    */
   async list(projectName: string): Promise<PromptInfo[]> {
     try {
-      const promptsDir = this.getPromptsDir(projectName)
+      const prompts: PromptInfo[] = []
+      const sources: PromptSource[] = ['local']
 
-      if (!existsSync(promptsDir)) {
-        return []
+      if (this.projectPath) {
+        sources.push('project')
       }
 
-      const files = readdirSync(promptsDir)
-      const promptFiles = files.filter((file) => file.endsWith('.yml'))
+      for (const source of sources) {
+        try {
+          const promptsDir = await this.getPromptsDir(projectName, source)
 
-      const prompts: PromptInfo[] = []
+          if (!existsSync(promptsDir)) {
+            continue
+          }
 
-      for (const file of promptFiles) {
-        const id = file.replace('.yml', '')
-        const prompt = await this.get(projectName, id)
-        if (prompt) {
-          prompts.push({
-            id: prompt.id,
-            name: prompt.name,
-            description: prompt.description,
-            webhookEnabled: prompt.webhookEnabled,
-            createdBy: prompt.createdBy,
-            createdAt: prompt.createdAt,
-            updatedAt: prompt.updatedAt,
-          })
+          const files = readdirSync(promptsDir)
+          const promptFiles = files.filter((file) => file.endsWith('.yml'))
+
+          for (const file of promptFiles) {
+            const id = file.replace('.yml', '')
+            const prompt = await this.get(projectName, id)
+            if (prompt) {
+              prompts.push({
+                id: prompt.id,
+                name: prompt.name,
+                description: prompt.description,
+                webhookEnabled: prompt.webhookEnabled,
+                createdBy: prompt.createdBy,
+                createdAt: prompt.createdAt,
+                updatedAt: prompt.updatedAt,
+                source: prompt.source || source, // Fallback for backwards compat
+              })
+            }
+          }
+        } catch (error) {
+          // Error accessing this source (e.g., coday.yaml not found for project source)
+          // This is normal, not all projects have both sources
+          console.log(`[PROMPT] Could not access ${source} prompts for ${projectName}:`, error)
         }
       }
 

@@ -34,18 +34,31 @@
   <div class="prompt-list" *ngIf="!isLoading && filteredPrompts.length > 0">
     <div *ngFor="let prompt of filteredPrompts" class="prompt-item">
       <div class="prompt-info">
-        <h3>
-          {{ prompt.name }}
-          <span
-            *ngIf="prompt.createdBy !== getCurrentUsername()"
-            class="owner-badge"
-            title="Created by {{ prompt.createdBy }}"
-          >
-            👤 {{ prompt.createdBy }}
-          </span>
-        </h3>
+        <div class="prompt-header">
+          <h3>{{ prompt.name }}</h3>
+          <div class="badges">
+            <!-- Source badge -->
+            <span
+              class="source-badge"
+              [class.badge-local]="prompt.source === 'local'"
+              [class.badge-project]="prompt.source === 'project'"
+              [title]="prompt.source === 'local' ? 'Local prompt (~/.coday/)' : 'Project prompt (./prompts/)'"
+            >
+              {{ prompt.source === 'local' ? '👤' : '📦' }}
+            </span>
+            <!-- Owner badge -->
+            <span
+              *ngIf="prompt.createdBy !== getCurrentUsername()"
+              class="owner-badge"
+              title="Created by {{ prompt.createdBy }}"
+            >
+              👤 {{ prompt.createdBy }}
+            </span>
+          </div>
+        </div>
         <p class="description">{{ prompt.description }}</p>
         <div class="meta">
+          <span class="prompt-id" title="Prompt ID">ID: {{ prompt.id }}</span>
           <span class="webhook-status" [class.enabled]="prompt.webhookEnabled">
             Webhook: {{ prompt.webhookEnabled ? 'Enabled' : 'Disabled' }}
           </span>

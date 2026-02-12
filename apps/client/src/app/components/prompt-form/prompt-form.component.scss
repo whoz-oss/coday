@@ -161,3 +161,138 @@
     flex: 1;
   }
 }
+
+// Source selection section (creation mode)
+.source-section {
+  padding: 1rem;
+  background: var(--color-surface);
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+
+  h3 {
+    margin: 0 0 1rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .source-options {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+
+    @media (max-width: 768px) {
+      flex-direction: column;
+    }
+  }
+
+  .source-option {
+    flex: 1;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: var(--color-bg);
+    border: 2px solid var(--color-border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    &:hover {
+      border-color: var(--color-primary);
+      background: var(--color-bg-hover);
+    }
+
+    &.selected {
+      border-color: var(--color-primary);
+      background: var(--color-bg-hover);
+      box-shadow: 0 0 0 1px var(--color-primary);
+    }
+
+    input[type='radio'] {
+      margin-top: 2px;
+      cursor: pointer;
+    }
+
+    .source-content {
+      flex: 1;
+
+      .source-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+
+        .source-icon {
+          font-size: 1.25rem;
+        }
+
+        .source-label {
+          font-weight: 600;
+          font-size: 0.95rem;
+        }
+      }
+
+      .source-description {
+        margin: 0;
+        font-size: 0.85rem;
+        color: var(--color-text-secondary);
+        line-height: 1.4;
+      }
+    }
+  }
+
+  .hint {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    font-style: italic;
+  }
+}
+
+// Source display section (edit mode)
+.source-display {
+  padding: 1rem;
+  background: var(--color-surface);
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+
+  h3 {
+    margin: 0 0 0.75rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .source-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+
+    .source-icon {
+      font-size: 1.1rem;
+    }
+
+    &.badge-local {
+      background: rgba(33, 150, 243, 0.1);
+      color: #2196f3;
+      border: 1px solid rgba(33, 150, 243, 0.3);
+    }
+
+    &.badge-project {
+      background: rgba(76, 175, 80, 0.1);
+      color: #4caf50;
+      border: 1px solid rgba(76, 175, 80, 0.3);
+    }
+  }
+
+  .hint {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    font-style: italic;
+  }
+}

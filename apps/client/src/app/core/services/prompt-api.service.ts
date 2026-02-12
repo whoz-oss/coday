@@ -4,6 +4,11 @@ import { Observable } from 'rxjs'
 import { ProjectStateService } from './project-state.service'
 
 /**
+ * Source location for prompt storage
+ */
+export type PromptSource = 'local' | 'project'
+
+/**
  * Prompt model matching backend
  */
 export interface Prompt {
@@ -17,6 +22,7 @@ export interface Prompt {
   updatedAt?: string
   threadLifetime?: string
   activeThreadId?: string
+  source: PromptSource
 }
 
 export interface PromptInfo {
@@ -27,6 +33,7 @@ export interface PromptInfo {
   createdBy: string
   createdAt: string
   updatedAt?: string
+  source: PromptSource
 }
 
 /**
