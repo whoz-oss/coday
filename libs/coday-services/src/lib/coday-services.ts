@@ -6,7 +6,6 @@ import type {
   MemoryService,
   ProjectStateService,
   UserService,
-  WebhookService,
 } from '@coday/service'
 import { ThreadService } from '@coday/service'
 import { McpInstancePool } from '@coday/mcp'
@@ -25,5 +24,4 @@ export type CodayServices = {
   options?: CodayOptions
   agent?: AgentServiceModel
   aiConfig?: AiConfigService
-  webhook?: WebhookService
 }

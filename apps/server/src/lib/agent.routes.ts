@@ -11,7 +11,6 @@ import { IntegrationConfigService } from '@coday/service'
 import { MemoryService } from '@coday/service'
 import { McpConfigService } from '@coday/service'
 import { CodayLogger } from '@coday/model'
-import { WebhookService } from '@coday/service'
 import { CodayOptions } from '@coday/model'
 import { loadOrInitProjectDescription } from '@coday/service'
 import { McpInstancePool } from '@coday/mcp'
@@ -35,7 +34,6 @@ import { ThreadService } from '@coday/service'
  * @param getUsernameFn - Function to extract username from request
  * @param configDir - Configuration directory path
  * @param logger - Coday logger instance
- * @param webhookService - Webhook service instance
  * @param threadService - Thread service instance
  * @param options - Coday options
  */
@@ -45,7 +43,6 @@ export function registerAgentRoutes(
   getUsernameFn: (req: express.Request) => string,
   configDir: string,
   logger: CodayLogger,
-  webhookService: WebhookService,
   threadService: ThreadService,
   options: CodayOptions
 ): void {
@@ -96,7 +93,6 @@ export function registerAgentRoutes(
         mcpPool,
         thread: threadService,
         logger,
-        webhook: webhookService,
         options,
       }
 

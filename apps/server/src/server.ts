@@ -6,13 +6,7 @@ import { ThreadCodayManager } from './lib/thread-coday-manager'
 import * as os from 'node:os'
 import { debugLog } from './lib/log'
 import { CodayLoggerUtils } from '@coday/utils'
-import {
-  WebhookService,
-  ThreadCleanupService,
-  PromptService,
-  SchedulerService,
-  PromptExecutionService,
-} from '@coday/service'
+import { ThreadCleanupService, PromptService, SchedulerService, PromptExecutionService } from '@coday/service'
 import { findAvailablePort } from './lib/find-available-port'
 import { ConfigServiceRegistry } from '@coday/service'
 import { ServerInteractor } from '@coday/model'
@@ -57,7 +51,6 @@ debugLog(
 )
 
 // Create webhook service instance (delegates to prompt execution)
-const webhookService = new WebhookService()
 debugLog('INIT', 'Webhook service initialized (will be initialized with prompt execution service)')
 
 // Create prompt service instance and execution service
@@ -189,14 +182,12 @@ const mcpPool = new McpInstancePool()
 debugLog('INIT', 'MCP instance pool initialized')
 
 // Initialize the thread-based Coday manager for SSE architecture
-const threadCodayManager = new ThreadCodayManager(logger, webhookService, projectService, threadService, mcpPool)
+const threadCodayManager = new ThreadCodayManager(logger, projectService, threadService, mcpPool)
 
 // Initialize prompt execution dependencies now that thread manager is ready
 promptExecutionService.initialize(threadCodayManager, threadService, codayOptions, logger)
 debugLog('INIT', 'Prompt execution service initialized')
 
-// Initialize webhook service to delegate to prompt execution
-webhookService.initializeExecution(promptExecutionService, promptService)
 debugLog('INIT', 'Webhook service initialized with prompt execution delegation')
 
 // Initialize config service registry for REST API endpoints
@@ -278,16 +269,7 @@ registerThreadRoutes(app, threadService, threadFileService, threadCodayManager, 
 registerMessageRoutes(app, threadCodayManager, getUsername)
 
 // Register agent management routes
-registerAgentRoutes(
-  app,
-  projectService,
-  getUsername,
-  codayOptions.configDir,
-  logger,
-  webhookService,
-  threadService,
-  codayOptions
-)
+registerAgentRoutes(app, projectService, getUsername, codayOptions.configDir, logger, threadService, codayOptions)
 
 // Catch-all route for Angular client-side routing (MUST be after all API routes)
 // In production mode, serve index.html for any non-API routes

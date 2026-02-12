@@ -9,7 +9,6 @@ import { IntegrationConfigService } from '@coday/service'
 import { MemoryService } from '@coday/service'
 import { McpConfigService } from '@coday/service'
 import { CodayLogger } from '@coday/model'
-import { WebhookService } from '@coday/service'
 import { HeartBeatEvent, ThreadUpdateEvent, OAuthCallbackEvent } from '@coday/model'
 import { debugLog } from './log'
 import { ProjectService } from '@coday/service'
@@ -40,7 +39,6 @@ class ThreadCodayInstance {
     public readonly username: string,
     private readonly options: CodayOptions,
     private readonly logger: CodayLogger,
-    private readonly webhookService: WebhookService,
     private readonly projectService: ProjectService,
     private readonly threadService: ThreadService,
     private readonly mcpPool: McpInstancePool,
@@ -221,7 +219,6 @@ class ThreadCodayInstance {
       mcpPool: this.mcpPool,
       thread: this.threadService,
       logger: this.logger,
-      webhook: this.webhookService,
       options: this.options,
     })
 
@@ -389,7 +386,6 @@ export class ThreadCodayManager {
 
   constructor(
     private readonly logger: CodayLogger,
-    private readonly webhookService: WebhookService,
     private readonly projectService: ProjectService,
     private readonly threadService: ThreadService,
     private readonly mcpPool: McpInstancePool
@@ -444,7 +440,6 @@ export class ThreadCodayManager {
         username,
         options,
         this.logger,
-        this.webhookService,
         this.projectService,
         this.threadService,
         this.mcpPool,
@@ -486,7 +481,6 @@ export class ThreadCodayManager {
         username,
         options,
         this.logger,
-        this.webhookService,
         this.projectService,
         this.threadService,
         this.mcpPool,
