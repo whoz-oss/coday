@@ -1,7 +1,6 @@
 import express from 'express'
 import { debugLog } from './log'
 import { PromptService, Prompt, PromptSource } from '@coday/service'
-import { validateInterval } from '@coday/utils'
 import { getParamAsString } from './route-helpers'
 
 /**
@@ -147,34 +146,6 @@ export function registerPromptRoutes(
         return
       }
 
-      // Validate threadLifetime format if provided
-      if (promptData.threadLifetime !== undefined) {
-        if (typeof promptData.threadLifetime !== 'string') {
-          res.status(422).json({ error: 'threadLifetime must be a string' })
-          return
-        }
-        if (!validateInterval(promptData.threadLifetime)) {
-          res.status(422).json({
-            error: "Invalid threadLifetime format. Use format like '2min', '5h', '14d', '1M'",
-          })
-          return
-        }
-        // Project prompts cannot use threadLifetime (committed files shouldn't have changing activeThreadId)
-        if (promptSource === 'project') {
-          res.status(422).json({
-            error:
-              'Thread lifetime is not allowed for project prompts (committable files). Use local prompts for thread reuse.',
-          })
-          return
-        }
-      }
-
-      // Prevent manual setting of activeThreadId (managed automatically)
-      if (promptData.activeThreadId !== undefined) {
-        res.status(422).json({ error: 'activeThreadId is managed automatically and cannot be set manually' })
-        return
-      }
-
       // Get username for createdBy field
       const username = getUsernameFn(req)
       if (!username) {
@@ -262,37 +233,6 @@ export function registerPromptRoutes(
       // Prevent modification of source (immutable after creation)
       if (updates.source !== undefined) {
         res.status(422).json({ error: 'source cannot be changed after creation' })
-        return
-      }
-
-      // Validate threadLifetime format if provided
-      if (updates.threadLifetime !== undefined) {
-        if (updates.threadLifetime !== null && typeof updates.threadLifetime !== 'string') {
-          res.status(422).json({ error: 'threadLifetime must be a string or null' })
-          return
-        }
-        if (updates.threadLifetime && !validateInterval(updates.threadLifetime)) {
-          res.status(422).json({
-            error: "Invalid threadLifetime format. Use format like '2min', '5h', '14d', '1M'",
-          })
-          return
-        }
-        // Need to check prompt source for validation
-        if (updates.threadLifetime) {
-          const existing = await promptService.get(projectName, id)
-          if (existing && existing.source === 'project') {
-            res.status(422).json({
-              error:
-                'Thread lifetime is not allowed for project prompts (committable files). Use local prompts for thread reuse.',
-            })
-            return
-          }
-        }
-      }
-
-      // Prevent manual modification of activeThreadId (managed automatically)
-      if (updates.activeThreadId !== undefined) {
-        res.status(422).json({ error: 'activeThreadId is managed automatically and cannot be modified manually' })
         return
       }
 

@@ -131,6 +131,36 @@ export class PromptService {
   }
 
   /**
+   * Validate that all placeholders in commands are properly formatted
+   * Allowed format: {{key}} where key matches ^[A-Za-z][A-Za-z0-9-]*$
+   * (starts with letter, then letters/digits/hyphens)
+   *
+   * @throws Error if invalid placeholders found
+   */
+  private validatePlaceholders(commands: string[]): void {
+    const placeholderPattern = /\{\{(\w+)\}\}/g
+    const invalidPlaceholders: string[] = []
+    const keyPattern = /^[A-Za-z][A-Za-z0-9-]*$/
+
+    commands.forEach((cmd) => {
+      let match
+      while ((match = placeholderPattern.exec(cmd)) !== null) {
+        const key = match[1]
+        if (key && key !== 'PARAMETERS' && !keyPattern.test(key)) {
+          invalidPlaceholders.push(key!)
+        }
+      }
+    })
+
+    if (invalidPlaceholders.length > 0) {
+      throw new Error(
+        `Invalid parameter keys: ${invalidPlaceholders.join(', ')}. ` +
+          `Keys must start with a letter and contain only letters, digits, and hyphens.`
+      )
+    }
+  }
+
+  /**
    * Creates a new prompt with generated ID and timestamp
    *
    * @param projectName - Project name where prompt will be created
@@ -144,12 +174,8 @@ export class PromptService {
     source: PromptSource = 'local'
   ): Promise<Prompt> {
     try {
-      // Validate threadLifetime restrictions
-      if (prompt.threadLifetime && source === 'project') {
-        throw new Error(
-          'Thread lifetime is not allowed for project prompts (committable files). Use local prompts for thread reuse.'
-        )
-      }
+      // Validate placeholder format
+      this.validatePlaceholders(prompt.commands)
 
       // Generate proper UUID v4
       const id = randomUUID()
@@ -272,6 +298,11 @@ export class PromptService {
       // Prevent changing ID, createdAt, and source
       const { id: _, createdAt: __, source: ___, ...allowedUpdates } = updates
 
+      // Validate placeholder format if commands were updated
+      if (updates.commands) {
+        this.validatePlaceholders(updates.commands)
+      }
+
       const updatedPrompt: Prompt = {
         ...existing,
         ...allowedUpdates,
@@ -281,26 +312,6 @@ export class PromptService {
       // Recalculate parameterFormat if commands were updated
       if (updates.commands) {
         updatedPrompt.parameterFormat = this.getParameterFormat(updates.commands)
-      }
-
-      // Validate threadLifetime changes
-      if ('threadLifetime' in updates) {
-        if (updates.threadLifetime) {
-          // Setting a threadLifetime value
-          if (typeof updates.threadLifetime !== 'string') {
-            throw new Error('threadLifetime must be a string')
-          }
-          // Project prompts cannot use threadLifetime (committed files shouldn't have changing activeThreadId)
-          if (existing.source === 'project') {
-            throw new Error(
-              'Thread lifetime is not allowed for project prompts (committable files). Use local prompts for thread reuse.'
-            )
-          }
-        } else {
-          // Clearing threadLifetime (set to null or undefined)
-          updatedPrompt.activeThreadId = undefined
-          console.log(`[PROMPT] Cleared activeThreadId for prompt ${id} (threadLifetime removed)`)
-        }
       }
 
       // Write to the original source (immutable)
