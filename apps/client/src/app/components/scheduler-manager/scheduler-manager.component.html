@@ -7,6 +7,9 @@
         <input matInput [(ngModel)]="searchQuery" (input)="onSearchChange()" placeholder="Name, prompt, author..." />
         <mat-icon matPrefix>search</mat-icon>
       </mat-form-field>
+      <mat-slide-toggle [(ngModel)]="showOnlyMine" (change)="applyFilter()" color="primary" class="mine-toggle">
+        Mine
+      </mat-slide-toggle>
       <button class="btn-create" (click)="createScheduler()">
         <mat-icon>add</mat-icon>
         <span>Create Scheduler</span>
