@@ -295,7 +295,8 @@ describe('McpConfigMerger', () => {
         command: 'minimal-command',
         enabled: true, // Default
         debug: false, // Default
-        noShare: false, // Defaultargs: [], // Default
+        noShare: false, // Default
+        args: [], // Default (empty array is applied by applyServerDefaults)
         env: {
           // Default whitelist vars are always included
           PATH: '/usr/local/bin:/usr/bin:/bin',

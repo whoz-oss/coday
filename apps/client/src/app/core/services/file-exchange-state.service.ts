@@ -68,17 +68,9 @@ export class FileExchangeStateService {
    * Refresh the file list from backend
    */
   refreshFileList(): void {
-    const projectName = this.currentProjectSignal()
-    const threadId = this.currentThreadSignal()
-
-    if (!projectName || !threadId) {
-      console.warn('[FILE_EXCHANGE_STATE] Cannot refresh: no project or thread selected')
-      return
-    }
-
     this.isLoadingSignal.set(true)
 
-    this.fileApi.listFiles(projectName, threadId).subscribe({
+    this.fileApi.listFiles().subscribe({
       next: (files) => {
         // Convert lastModified strings to Date objects and sort by most recent first
         const processedFiles = files
@@ -104,16 +96,8 @@ export class FileExchangeStateService {
    * @returns Promise that resolves when upload completes
    */
   async uploadFile(file: File): Promise<{ success: boolean; error?: string }> {
-    const projectName = this.currentProjectSignal()
-    const threadId = this.currentThreadSignal()
-
-    if (!projectName || !threadId) {
-      console.error('[FILE_EXCHANGE_STATE] Cannot upload: no project or thread selected')
-      return { success: false, error: 'No project or thread selected' }
-    }
-
     return new Promise((resolve) => {
-      this.fileApi.uploadFile(projectName, threadId, file).subscribe({
+      this.fileApi.uploadFile(file).subscribe({
         next: () => {
           // Refresh file list to show new file
           this.refreshFileList()
@@ -152,15 +136,7 @@ export class FileExchangeStateService {
    * @param filename - Name of the file to download
    */
   downloadFile(filename: string): void {
-    const projectName = this.currentProjectSignal()
-    const threadId = this.currentThreadSignal()
-
-    if (!projectName || !threadId) {
-      console.error('[FILE_EXCHANGE_STATE] Cannot download: no project or thread selected')
-      return
-    }
-
-    this.fileApi.downloadFile(projectName, threadId, filename).subscribe({
+    this.fileApi.downloadFile(filename).subscribe({
       next: (blob) => {
         // Create download link
         const url = window.URL.createObjectURL(blob)
@@ -183,16 +159,8 @@ export class FileExchangeStateService {
    * @returns Promise that resolves when deletion completes
    */
   async deleteFile(filename: string): Promise<{ success: boolean; error?: string }> {
-    const projectName = this.currentProjectSignal()
-    const threadId = this.currentThreadSignal()
-
-    if (!projectName || !threadId) {
-      console.error('[FILE_EXCHANGE_STATE] Cannot delete: no project or thread selected')
-      return { success: false, error: 'No project or thread selected' }
-    }
-
     return new Promise((resolve) => {
-      this.fileApi.deleteFile(projectName, threadId, filename).subscribe({
+      this.fileApi.deleteFile(filename).subscribe({
         next: () => {
           // Refresh file list to remove deleted file
           this.refreshFileList()
