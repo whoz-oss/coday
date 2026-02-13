@@ -37,14 +37,17 @@ export class UserService {
     // Load user configuration
     const filePath = path.join(this.userConfigPath, USER_FILENAME)
     if (!existsSync(filePath)) {
+      console.log(`[USER_SERVICE] Creating default config for user '${this.sanitizedUsername}' at ${filePath}`)
       // Add version to default config
       const defaultConfig = { ...DEFAULT_USER_CONFIG, version: 1 }
       writeYamlFile(filePath, defaultConfig)
     }
 
+    console.log(`[USER_SERVICE] Loading config for '${this.sanitizedUsername}' from ${filePath}`)
     const rawUserConfig = readYamlFile(filePath)
 
     if (!rawUserConfig) {
+      console.log(`[USER_SERVICE] ERROR: Failed to read user config at ${filePath}`)
       throw Error(`Could not read user config for username ${this.sanitizedUsername}`)
     }
 
@@ -53,6 +56,7 @@ export class UserService {
 
     // Save the migrated config if reference changed, meaning some migration happened
     if (this.config !== rawUserConfig) {
+      console.log(`[USER_SERVICE] Config migrated for '${this.sanitizedUsername}' to version ${this.config?.version}`)
       writeYamlFile(filePath, this.config)
       this.interactor.displayText(`User configuration migrated to version ${this.config?.version}`)
     }
