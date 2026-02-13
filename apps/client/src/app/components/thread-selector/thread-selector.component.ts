@@ -14,6 +14,7 @@ import { ProjectStateService } from '../../core/services/project-state.service'
 import { Router } from '@angular/router'
 import { ThreadApiService } from '../../core/services/thread-api.service'
 import { UserService } from '../../core/services/user.service'
+import { BrowserGlobalsService } from '../../core/services/browser-globals.service'
 
 @Component({
   selector: 'app-thread-selector',
@@ -38,6 +39,7 @@ export class ThreadSelectorComponent implements OnInit {
   @Input() searchQuery = ''
   @Output() searchModeChange = new EventEmitter<boolean>()
 
+  private browserGlobals = inject(BrowserGlobalsService)
   private readonly projectStateService = inject(ProjectStateService)
   private readonly threadStateService = inject(ThreadStateService)
   private readonly threadApiService = inject(ThreadApiService)
@@ -279,7 +281,7 @@ export class ThreadSelectorComponent implements OnInit {
 
     // Focus the input after Angular renders it
     setTimeout(() => {
-      const input = document.querySelector('.thread-name-input') as HTMLInputElement
+      const input = this.browserGlobals.document.querySelector('.thread-name-input') as HTMLInputElement
       if (input) {
         input.focus()
         input.select()

@@ -23,6 +23,7 @@ import { ThinkingLoaderComponent } from '../thinking-loader/thinking-loader.comp
 import { MatFabButton } from '@angular/material/button'
 import { MarkdownService } from '../../services/markdown.service'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
+import { BrowserGlobalsService } from '../../core/services/browser-globals.service'
 
 @Component({
   selector: 'app-chat-history',
@@ -57,6 +58,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   private readonly MESSAGE_FRESHNESS_THRESHOLD = 5 * 60 * 1000 // in milliseconds
 
   // Modern Angular dependency injection
+  private browserGlobals = inject(BrowserGlobalsService)
   private elementRef = inject(ElementRef)
   private unreadService = inject(UnreadMessagesService)
   private voiceSynthesisService = inject(VoiceSynthesisService)
@@ -82,8 +84,8 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
     }
 
     // Clean up focus listeners
-    window.removeEventListener('focus', this.handleWindowFocus)
-    window.removeEventListener('blur', this.handleWindowBlur)
+    this.browserGlobals.window.removeEventListener('focus', this.handleWindowFocus)
+    this.browserGlobals.window.removeEventListener('blur', this.handleWindowBlur)
   }
 
   ngOnChanges(changes: SimpleChanges) {
@@ -383,7 +385,7 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
    */
   private shouldMarkNewMessagesAsUnread(): boolean {
     // Condition 1: Tab doesn't have focus
-    if (!document.hasFocus()) {
+    if (!this.browserGlobals.hasFocus) {
       console.log('[CHAT-HISTORY] Tab does not have focus -> unread')
       return true
     }
@@ -402,8 +404,8 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
    * Set up listeners for window focus/blur
    */
   private setupFocusListeners(): void {
-    window.addEventListener('focus', this.handleWindowFocus)
-    window.addEventListener('blur', this.handleWindowBlur)
+    this.browserGlobals.window.addEventListener('focus', this.handleWindowFocus)
+    this.browserGlobals.window.addEventListener('blur', this.handleWindowBlur)
   }
 
   /**

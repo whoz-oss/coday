@@ -1,5 +1,6 @@
-import { Component, OnInit, OnDestroy } from '@angular/core'
+import { Component, OnInit, OnDestroy, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
+import { BrowserGlobalsService } from '../../core/services/browser-globals.service'
 
 @Component({
   selector: 'app-thinking-loader',
@@ -9,6 +10,8 @@ import { CommonModule } from '@angular/common'
   styleUrl: './thinking-loader.component.scss',
 })
 export class ThinkingLoaderComponent implements OnInit, OnDestroy {
+  private browserGlobals = inject(BrowserGlobalsService)
+
   // Same thinking phrases as in chat-textarea
   private thinkingPhrases: string[] = ['Processing request...', 'Thinking...', 'Working on it...']
   currentThinkingPhrase: string = 'Processing request...'
@@ -30,14 +33,14 @@ export class ThinkingLoaderComponent implements OnInit, OnDestroy {
     this.thinkingPhraseIndex = 0
     this.currentThinkingPhrase = this.thinkingPhrases[0] || 'Thinking...'
 
-    this.thinkingInterval = window.setInterval(() => {
+    this.thinkingInterval = this.browserGlobals.window.setInterval(() => {
       // Move to next phrase only if not at the last one
       if (this.thinkingPhraseIndex < this.thinkingPhrases.length - 1) {
         this.thinkingPhraseIndex++
         this.currentThinkingPhrase = this.thinkingPhrases[this.thinkingPhraseIndex] || 'Thinking...'
       }
       // If we're at the last phrase, stay there (no change)
-    }, 2000) // Change phrase every 2 seconds
+    }, 2000) as number // Change phrase every 2 seconds
   }
 
   /**

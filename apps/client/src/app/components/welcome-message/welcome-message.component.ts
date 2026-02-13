@@ -1,4 +1,5 @@
-import { Component, OnDestroy, OnInit } from '@angular/core'
+import { Component, OnDestroy, OnInit, inject } from '@angular/core'
+import { BrowserGlobalsService } from '../../core/services/browser-globals.service'
 
 @Component({
   selector: 'app-welcome-message',
@@ -8,6 +9,8 @@ import { Component, OnDestroy, OnInit } from '@angular/core'
   styleUrl: './welcome-message.component.scss',
 })
 export class WelcomeMessageComponent implements OnInit, OnDestroy {
+  private browserGlobals = inject(BrowserGlobalsService)
+
   // Welcome message rotation
   welcomeMessages = [
     'Welcome to Coday', // English
@@ -36,7 +39,7 @@ export class WelcomeMessageComponent implements OnInit, OnDestroy {
   }
 
   private startWelcomeRotation(): void {
-    this.welcomeRotationInterval = window.setInterval(() => {
+    this.welcomeRotationInterval = this.browserGlobals.window.setInterval(() => {
       this.currentWelcomeIndex = (this.currentWelcomeIndex + 1) % this.welcomeMessages.length
       this.currentWelcomeMessage = this.welcomeMessages[this.currentWelcomeIndex]
     }, 3000)

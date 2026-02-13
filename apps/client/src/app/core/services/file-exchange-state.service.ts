@@ -5,6 +5,7 @@ import { filter } from 'rxjs/operators'
 import { FileExchangeApiService, FileInfo } from './file-exchange-api.service'
 import { EventStreamService } from './event-stream.service'
 import { FileEvent } from '@coday/model'
+import { BrowserGlobalsService } from './browser-globals.service'
 
 /**
  * FileExchangeStateService - Business logic and state management for file exchange
@@ -21,6 +22,7 @@ import { FileEvent } from '@coday/model'
   providedIn: 'root',
 })
 export class FileExchangeStateService {
+  private browserGlobals = inject(BrowserGlobalsService)
   private fileApi = inject(FileExchangeApiService)
   private eventStream = inject(EventStreamService)
 
@@ -163,12 +165,12 @@ export class FileExchangeStateService {
     this.fileApi.downloadFile(projectName, threadId, filename).subscribe({
       next: (blob) => {
         // Create download link
-        const url = window.URL.createObjectURL(blob)
-        const link = document.createElement('a')
+        const url = URL.createObjectURL(blob)
+        const link = this.browserGlobals.document.createElement('a')
         link.href = url
         link.download = filename
         link.click()
-        window.URL.revokeObjectURL(url)
+        URL.revokeObjectURL(url)
       },
       error: (error) => {
         console.error('[FILE_EXCHANGE_STATE] Download error:', error)

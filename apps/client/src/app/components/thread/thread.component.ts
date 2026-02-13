@@ -1,16 +1,15 @@
 import {
-  Component,
-  Input,
-  OnInit,
-  OnDestroy,
-  OnChanges,
-  SimpleChanges,
   AfterViewChecked,
+  Component,
   ElementRef,
-  ViewChild,
   inject,
+  Input,
+  OnChanges,
+  OnDestroy,
+  OnInit,
+  SimpleChanges,
+  ViewChild,
 } from '@angular/core'
-
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
 
@@ -32,6 +31,7 @@ import { ThreadStateService } from '../../core/services/thread-state.service'
 import { ImageUploadService } from '../../services/image-upload.service'
 import { FileExchangeStateService } from '../../core/services/file-exchange-state.service'
 import { FirstMessageStateService } from '../../core/services/first-message-state.service'
+import { BrowserGlobalsService } from '../../core/services/browser-globals.service'
 
 /**
  * ThreadComponent - Dedicated component for displaying and interacting with a conversation thread
@@ -106,6 +106,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   private subscriptions: any[] = []
 
   // Modern Angular dependency injection
+  private browserGlobals = inject(BrowserGlobalsService)
   private readonly codayService = inject(CodayService)
   private readonly preferencesService = inject(PreferencesService)
   private readonly titleService = inject(TabTitleService)
@@ -267,8 +268,8 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
     this.subscriptions = []
 
     // Cleanup print handlers
-    window.removeEventListener('beforeprint', this.handleBeforePrint)
-    window.removeEventListener('afterprint', this.handleAfterPrint)
+    this.browserGlobals.window.removeEventListener('beforeprint', this.handleBeforePrint)
+    this.browserGlobals.window.removeEventListener('afterprint', this.handleAfterPrint)
   }
 
   onMessageSubmitted(message: string): void {
@@ -498,8 +499,8 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
 
   // Print handling
   private setupPrintHandlers(): void {
-    window.addEventListener('beforeprint', this.handleBeforePrint)
-    window.addEventListener('afterprint', this.handleAfterPrint)
+    this.browserGlobals.window.addEventListener('beforeprint', this.handleBeforePrint)
+    this.browserGlobals.window.addEventListener('afterprint', this.handleAfterPrint)
   }
 
   private readonly handleBeforePrint = (): void => {
@@ -508,15 +509,15 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
     console.log('[PRINT] Print technical messages:', printTechnicalMessages)
 
     if (printTechnicalMessages) {
-      document.body.classList.add('print-include-technical')
+      this.browserGlobals.document.body.classList.add('print-include-technical')
     } else {
-      document.body.classList.remove('print-include-technical')
+      this.browserGlobals.document.body.classList.remove('print-include-technical')
     }
   }
 
   private readonly handleAfterPrint = (): void => {
     console.log('[PRINT] After print event triggered')
     // Clean up the class after printing
-    document.body.classList.remove('print-include-technical')
+    this.browserGlobals.document.body.classList.remove('print-include-technical')
   }
 }

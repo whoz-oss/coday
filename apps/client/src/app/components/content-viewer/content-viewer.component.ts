@@ -11,6 +11,7 @@ import { ContentViewerService, type FileContent } from '../../core/services/cont
 import type { FileInfo } from '../../core/services/file-exchange-api.service'
 import { EventStreamService } from '../../core/services/event-stream.service'
 import { FileEvent } from '@coday/model'
+import { BrowserGlobalsService } from '../../core/services/browser-globals.service'
 
 /**
  * ContentViewerComponent - Displays file content with appropriate rendering
@@ -36,6 +37,7 @@ export class ContentViewerComponent implements OnInit, OnDestroy {
 
   @Output() closeViewer = new EventEmitter<void>()
 
+  private browserGlobals = inject(BrowserGlobalsService)
   private readonly contentService = inject(ContentViewerService)
   private readonly eventStream = inject(EventStreamService)
 
@@ -84,12 +86,12 @@ export class ContentViewerComponent implements OnInit, OnDestroy {
   download(): void {
     // Create a download link
     const blob = new Blob([this.fileContent?.content || ''], { type: 'text/plain' })
-    const url = window.URL.createObjectURL(blob)
-    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    const link = this.browserGlobals.document.createElement('a')
     link.href = url
     link.download = this.file.filename
     link.click()
-    window.URL.revokeObjectURL(url)
+    URL.revokeObjectURL(url)
   }
 
   formatSize(bytes: number): string {

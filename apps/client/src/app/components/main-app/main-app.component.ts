@@ -15,6 +15,7 @@ import { PreferencesService } from '../../services/preferences.service'
 import { ThreadApiService } from '../../core/services/thread-api.service'
 import { AgentNotificationService } from '../../services/agent-notification.service'
 import { FirstMessageStateService } from '../../core/services/first-message-state.service'
+import { BrowserGlobalsService } from '../../core/services/browser-globals.service'
 
 @Component({
   selector: 'app-main',
@@ -49,6 +50,7 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   inputSectionHeight: number = 80 // Default height
 
   // Modern Angular dependency injection
+  private browserGlobals = inject(BrowserGlobalsService)
   private codayService = inject(CodayService)
   private titleService = inject(TabTitleService)
   private preferencesService = inject(PreferencesService)
@@ -113,8 +115,8 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     this.destroy$.complete()
 
     // Cleanup print handlers
-    window.removeEventListener('beforeprint', this.handleBeforePrint)
-    window.removeEventListener('afterprint', this.handleAfterPrint)
+    this.browserGlobals.window.removeEventListener('beforeprint', this.handleBeforePrint)
+    this.browserGlobals.window.removeEventListener('afterprint', this.handleAfterPrint)
   }
 
   /**
@@ -177,8 +179,8 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // Print handling
   private setupPrintHandlers(): void {
-    window.addEventListener('beforeprint', this.handleBeforePrint)
-    window.addEventListener('afterprint', this.handleAfterPrint)
+    this.browserGlobals.window.addEventListener('beforeprint', this.handleBeforePrint)
+    this.browserGlobals.window.addEventListener('afterprint', this.handleAfterPrint)
   }
 
   private handleBeforePrint = (): void => {
@@ -187,15 +189,15 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     console.log('[PRINT] Print technical messages:', printTechnicalMessages)
 
     if (printTechnicalMessages) {
-      document.body.classList.add('print-include-technical')
+      this.browserGlobals.document.body.classList.add('print-include-technical')
     } else {
-      document.body.classList.remove('print-include-technical')
+      this.browserGlobals.document.body.classList.remove('print-include-technical')
     }
   }
 
   private handleAfterPrint = (): void => {
     console.log('[PRINT] After print event triggered')
     // Clean up the class after printing
-    document.body.classList.remove('print-include-technical')
+    this.browserGlobals.document.body.classList.remove('print-include-technical')
   }
 }

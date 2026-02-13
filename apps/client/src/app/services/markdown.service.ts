@@ -1,6 +1,7 @@
-import { Injectable } from '@angular/core'
+import { Injectable, inject } from '@angular/core'
 import { marked, Renderer } from 'marked'
 import DOMPurify from 'dompurify'
+import { BrowserGlobalsService } from '../core/services/browser-globals.service'
 
 /**
  * Service to configure and provide markdown rendering with custom link handling
@@ -16,6 +17,7 @@ import DOMPurify from 'dompurify'
 })
 export class MarkdownService {
   private readonly renderer: Renderer
+  private browserGlobals = inject(BrowserGlobalsService)
 
   constructor() {
     this.renderer = new Renderer()
@@ -83,9 +85,9 @@ export class MarkdownService {
 
     // Check if it's an absolute URL
     try {
-      const url = new URL(href, window.location.href)
+      const url = new URL(href, this.browserGlobals.window.location.href)
       // If the hostname differs from current hostname, it's external
-      return url.hostname !== window.location.hostname
+      return url.hostname !== this.browserGlobals.window.location.hostname
     } catch {
       // If URL parsing fails, treat as internal for safety
       return false

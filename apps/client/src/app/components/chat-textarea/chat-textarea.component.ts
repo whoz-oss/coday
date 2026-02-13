@@ -22,6 +22,7 @@ import { MatIcon } from '@angular/material/icon'
 import { AgentApiService, AgentAutocomplete } from '../../core/services/agent-api.service'
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { HighlightPipe } from '../../pipes/highlight.pipe'
+import { BrowserGlobalsService } from '../../core/services/browser-globals.service'
 
 @Component({
   selector: 'app-chat-textarea',
@@ -84,6 +85,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   selectedAutocompleteIndex = 0
 
   // Modern Angular dependency injection
+  private browserGlobals = inject(BrowserGlobalsService)
   private readonly preferencesService = inject(PreferencesService)
   private readonly codayService = inject(CodayService)
   private readonly agentApiService = inject(AgentApiService)
@@ -317,7 +319,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     if (!this.autocompleteVisible) return
 
     const target = event.target as HTMLElement
-    const popup = document.querySelector('.autocomplete-popup')
+    const popup = this.browserGlobals.document.querySelector('.autocomplete-popup')
     const textarea = this.messageInput?.nativeElement
 
     // Close if click is outside both popup and textarea
@@ -392,7 +394,9 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
   private initializeVoiceInput(): void {
     // Check if Speech Recognition is available
-    const SpeechRecognition = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
+    const SpeechRecognition =
+      (this.browserGlobals.window as any).SpeechRecognition ??
+      (this.browserGlobals.window as any).webkitSpeechRecognition
     console.log('[SPEECH] speechRecognition', SpeechRecognition)
     if (!SpeechRecognition) {
       console.warn('[SPEECH] Speech Recognition API not available')
@@ -552,14 +556,14 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     this.clearPendingLineBreaks() // Clear any existing timeout
 
     // Wait 500ms for pending transcriptions to arrive
-    this.pendingLineBreaksTimeout = window.setTimeout(() => {
+    this.pendingLineBreaksTimeout = this.browserGlobals.window.setTimeout(() => {
       if (this.sessionHadTranscript) {
         console.log('[SPEECH] Adding line breaks after transcript session')
         this.appendToTextarea('\n\n')
         this.sessionHadTranscript = false // Reset for next session
       }
       this.pendingLineBreaksTimeout = null
-    }, 500)
+    }, 500) as number
   }
 
   private clearPendingLineBreaks(): void {
@@ -578,7 +582,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     if (!textarea) return
 
     // Calculate line height (approximately 1.5em based on CSS)
-    const style = window.getComputedStyle(textarea)
+    const style = this.browserGlobals.window.getComputedStyle(textarea)
     const fontSize = parseFloat(style.fontSize)
     const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.5
 
@@ -905,7 +909,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   private scrollSelectedItemIntoView(): void {
     // Use setTimeout to ensure DOM is updated before scrolling
     setTimeout(() => {
-      const popup = document.querySelector('.autocomplete-popup')
+      const popup = this.browserGlobals.document.querySelector('.autocomplete-popup')
       if (!popup) return
 
       const selectedItem = popup.querySelector('.autocomplete-item.selected')
