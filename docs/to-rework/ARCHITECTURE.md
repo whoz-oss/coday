@@ -2,6 +2,8 @@
 
 Coday is a web-based AI agent system built with Angular frontend and Express backend, connected through REST API and Server-Sent Events (SSE).
 
+> **Note**: The current Express/Node.js backend (`apps/server`) is a prototype implementation. It will eventually be replaced by **AgentOS** (`agentos/`), a production-grade Kotlin framework designed to power the agentic infrastructure.
+
 ## System Architecture
 
 ```mermaid
@@ -39,7 +41,7 @@ graph TB
 - SSE for real-time event streaming
 - Service layer architecture (API + State services)
 
-**Server Layer** (`apps/server`)
+**Server Layer** (`apps/server`) - *Prototype, will be replaced by AgentOS*
 - Express.js HTTP server
 - REST API routes for resource management
 - SSE endpoints for event streaming
@@ -54,7 +56,9 @@ graph TB
 
 ## Server Architecture (Express Backend)
 
-The Express server (`apps/server`) provides the bridge between web clients and Coday runtime instances.
+> **Prototype Implementation**: The Express server (`apps/server`) is the current prototype backend. This architecture will be replaced by AgentOS, a Kotlin-based framework with production-grade reliability, scalability, and client-facing capabilities.
+
+The Express server provides the bridge between web clients and Coday runtime instances.
 
 ```mermaid
 graph TB
