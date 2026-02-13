@@ -195,6 +195,9 @@ class ThreadCodayInstance {
     }
 
     debugLog('THREAD_CODAY', `Creating Coday instance for thread ${this.threadId}`)
+    console.log(
+      `[THREAD_CODAY] Preparing instance for thread '${this.threadId}' (project: ${this.projectName}, user: ${this.username})`
+    )
 
     // Create services for this Coday instance
     const interactor = new ServerInteractor(this.threadId)
@@ -224,6 +227,7 @@ class ThreadCodayInstance {
       logger: this.logger,
       options: this.options,
     })
+    console.log(`[THREAD_CODAY] Instance created for thread '${this.threadId}'`)
 
     // Note: toolbox is now accessible via coday.services.agent.toolbox
     // after agent service initialization

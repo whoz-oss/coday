@@ -46,6 +46,7 @@ export class ProjectFileRepository implements ProjectRepository {
   getConfig(name: string): ProjectLocalConfig | null {
     const projectInfo = this.getProjectInfo(name)
     if (!projectInfo) {
+      console.log(`[PROJECT_REPO] No project info found for: '${name}'`)
       return null
     }
 
@@ -53,6 +54,7 @@ export class ProjectFileRepository implements ProjectRepository {
     let rawConfig = readYamlFile(configFile)
 
     if (!rawConfig) {
+      console.log(`[PROJECT_REPO] Failed to load config for '${name}' from ${configFile}`)
       return null
     }
 
@@ -61,6 +63,7 @@ export class ProjectFileRepository implements ProjectRepository {
 
     // Save migrated config if needed
     if (migratedConfig !== rawConfig) {
+      console.log(`[PROJECT_REPO] Config migrated for '${name}', saving...`)
       writeYamlFile(configFile, migratedConfig)
     }
 
@@ -86,6 +89,8 @@ export class ProjectFileRepository implements ProjectRepository {
       return false
     }
 
+    console.log(`[PROJECT_REPO] Creating project '${name}' with path: ${projectPath}`)
+
     // Create directory if it doesn't exist (idempotent)
     mkdirSync(configPath, { recursive: true })
 
@@ -98,6 +103,7 @@ export class ProjectFileRepository implements ProjectRepository {
     }
 
     writeYamlFile(configFile, defaultConfig)
+    console.log(`[PROJECT_REPO] Project '${name}' created successfully`)
     return true
   }
 

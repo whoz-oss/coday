@@ -20,6 +20,7 @@ export const loadOrInitProjectDescription = async (
   let projectDescription: ProjectDescription | undefined
 
   if (foundFiles.length > 1) {
+    console.log(`[LOAD_PROJECT_DESC] ERROR: Multiple ${CONFIG_FILENAME_YAML} files found in ${projectPath}`)
     throw new Error(
       `Multiple files found for ${CONFIG_FILENAME_YAML}. Please ensure there is only one file with this name.`
     )
@@ -32,6 +33,9 @@ export const loadOrInitProjectDescription = async (
     if (absoluteProjectDescriptionPath && existsSync(absoluteProjectDescriptionPath)) {
       const fileContent = readFileSync(absoluteProjectDescriptionPath, 'utf-8')
       projectDescription = yaml.parse(fileContent) as ProjectDescription
+      console.log(
+        `[LOAD_PROJECT_DESC] Loaded ${CONFIG_FILENAME_YAML}: ${projectDescription.agents?.length || 0} agents, ${projectDescription.description?.length || 0} chars desc`
+      )
       interactor.displayText?.(`Project configuration used: ${absoluteProjectDescriptionPath}`)
     }
   } finally {

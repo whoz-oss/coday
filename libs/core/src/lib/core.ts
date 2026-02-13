@@ -246,10 +246,19 @@ export class Coday {
 
   private async initContext(): Promise<void> {
     if (this.context) {
+      this.interactor.debug('[CODAY] Context already initialized, skipping')
       return
     }
 
+    this.interactor.debug(`[CODAY] Initializing context for project: ${this.options.project}`)
     this.context = await this.configHandler.selectProjectHandler.selectProject(this.options.project!)
+
+    if (!this.context) {
+      console.log('[CODAY] ERROR: Failed to create context from selectProject')
+      return
+    }
+
+    console.log(`[CODAY] Context initialized: '${this.context.project.name}' at ${this.context.project.root}`)
 
     if (this.context) {
       this.context.oneshot = this.options.oneshot
@@ -271,14 +280,11 @@ export class Coday {
         // Note: Directory creation is handled lazily by ThreadFileService on first use
       }
 
-      // Create and store the aiConfig service (late init)
+      // Create and store services
       this.services.aiConfig = new AiConfigService(this.services.user, this.services.project)
       this.services.aiConfig.initialize(this.context)
-
-      // Initialize the MCP service with context
       this.services.mcp.initialize(this.context)
 
-      // Create and store the agent service
       this.services.agent = new AgentService(
         this.interactor,
         this.aiClientProvider,
@@ -290,7 +296,10 @@ export class Coday {
       this.handlerLooper = new HandlerLooper(this.interactor, this.aiHandler, this.configHandler, this.services)
       this.aiClientProvider.init(this.context)
       await this.handlerLooper.init(this.context.project)
+
+      console.log('[CODAY] Initializing services...')
       await this.services.agent.initialize(this.context)
+      console.log('[CODAY] Services initialized')
     }
   }
 

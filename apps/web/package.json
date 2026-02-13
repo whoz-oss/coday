@@ -1,6 +1,6 @@
 {
   "name": "@whoz-oss/coday-web",
-  "version": "0.68.2",
+  "version": "0.68.3",
   "repository": "https://github.com/whoz-oss/coday",
   "type": "module",
   "bin": {
@@ -11,8 +11,8 @@
     "README.md"
   ],
   "dependencies": {
-    "@whoz-oss/coday-client": "0.68.2",
-    "@whoz-oss/coday-server": "0.68.2"
+    "@whoz-oss/coday-client": "0.68.3",
+    "@whoz-oss/coday-server": "0.68.3"
   },
   "publishConfig": {
     "access": "public"

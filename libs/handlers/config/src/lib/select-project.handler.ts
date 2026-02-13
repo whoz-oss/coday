@@ -27,7 +27,9 @@ export class SelectProjectHandler extends CommandHandler {
 
   async selectProject(projectName: string): Promise<CommandContext | null> {
     this.services.project.selectProject(projectName)
-    if (!this.services.project.selectedProject) return null
+    if (!this.services.project.selectedProject) {
+      return null
+    }
     return buildFirstCommandContext(this.interactor, this.services)
   }
 }
