@@ -22,6 +22,7 @@ export class AiHandler extends CommandHandler implements Killable {
 
   async handle(command: string, context: CommandContext): Promise<CommandContext> {
     const [agentName, restOfCommand] = parseAgentCommand(command)
+    const userFormattedCommand = agentName ? command : restOfCommand
     this.interactor.debug(`Agent name extracted from command: ${agentName}`)
 
     // Try to select the specified agent
@@ -40,7 +41,7 @@ export class AiHandler extends CommandHandler implements Killable {
     }
 
     // Pass the original command to preserve @agentName in AnswerEvent
-    return this.runAgent(selectedAgent!, command, context)
+    return this.runAgent(selectedAgent!, userFormattedCommand, context)
   }
 
   /**

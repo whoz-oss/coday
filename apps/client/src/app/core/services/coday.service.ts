@@ -368,39 +368,13 @@ export class CodayService implements OnDestroy {
     this.addMessage(message)
   }
 
-  /**
-   * Extract agent name from answer if it starts with @agentName
-   * @param answer The answer text
-   * @returns Object with agentName (if found) and original answer
-   */
-  private extractAgentNameFromAnswer(answer: string): { agentName: string | null; originalAnswer: string } {
-    const trimmed = answer.trim()
-    if (trimmed.startsWith('@')) {
-      const spaceIndex = trimmed.indexOf(' ')
-      if (spaceIndex > 1) {
-        const agentName = trimmed.substring(1, spaceIndex)
-        return { agentName, originalAnswer: answer }
-      }
-      // Edge case: only @agentName without message
-      if (spaceIndex === -1 && trimmed.length > 1) {
-        return { agentName: trimmed.substring(1), originalAnswer: answer }
-      }
-    }
-    return { agentName: null, originalAnswer: answer }
-  }
-
   private handleAnswerEvent(event: AnswerEvent): void {
-    // Extract agent name if present in the answer
-    const { agentName, originalAnswer } = this.extractAgentNameFromAnswer(event.answer)
-
     // Display AnswerEvent as a user message
-    // If agent name is present, show it as speaker
-    const speaker = agentName ? `@${agentName}` : 'User'
     const message: ChatMessage = {
       id: event.timestamp,
       role: 'user',
-      speaker: speaker,
-      content: [{ type: 'text', content: originalAnswer }], // Keep original with @agentName
+      speaker: 'User',
+      content: [{ type: 'text', content: event.answer }],
       timestamp: new Date(),
       type: 'text',
       parentKey: event.parentKey, // Link to the InviteEvent/ChoiceEvent
