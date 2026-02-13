@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
-import { WINDOW } from '../../core/tokens/window'
+import { BrowserGlobalsService } from '../../core/services/browser-globals.service'
 
 @Component({
   selector: 'app-thinking-loader',
@@ -10,7 +10,7 @@ import { WINDOW } from '../../core/tokens/window'
   styleUrl: './thinking-loader.component.scss',
 })
 export class ThinkingLoaderComponent implements OnInit, OnDestroy {
-  private readonly window = inject(WINDOW)
+  private browserGlobals = inject(BrowserGlobalsService)
 
   // Same thinking phrases as in chat-textarea
   private thinkingPhrases: string[] = ['Processing request...', 'Thinking...', 'Working on it...']
@@ -33,7 +33,7 @@ export class ThinkingLoaderComponent implements OnInit, OnDestroy {
     this.thinkingPhraseIndex = 0
     this.currentThinkingPhrase = this.thinkingPhrases[0] || 'Thinking...'
 
-    this.thinkingInterval = this.window.setInterval(() => {
+    this.thinkingInterval = this.browserGlobals.window.setInterval(() => {
       // Move to next phrase only if not at the last one
       if (this.thinkingPhraseIndex < this.thinkingPhrases.length - 1) {
         this.thinkingPhraseIndex++

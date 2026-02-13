@@ -1,11 +1,11 @@
 import { Injectable, inject, signal, computed } from '@angular/core'
-import { DOCUMENT } from '@angular/common'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { filter } from 'rxjs/operators'
 
 import { FileExchangeApiService, FileInfo } from './file-exchange-api.service'
 import { EventStreamService } from './event-stream.service'
 import { FileEvent } from '@coday/model'
+import { BrowserGlobalsService } from './browser-globals.service'
 
 /**
  * FileExchangeStateService - Business logic and state management for file exchange
@@ -22,7 +22,7 @@ import { FileEvent } from '@coday/model'
   providedIn: 'root',
 })
 export class FileExchangeStateService {
-  private readonly document = inject(DOCUMENT)
+  private browserGlobals = inject(BrowserGlobalsService)
   private fileApi = inject(FileExchangeApiService)
   private eventStream = inject(EventStreamService)
 
@@ -166,7 +166,7 @@ export class FileExchangeStateService {
       next: (blob) => {
         // Create download link
         const url = URL.createObjectURL(blob)
-        const link = this.document.createElement('a')
+        const link = this.browserGlobals.document.createElement('a')
         link.href = url
         link.download = filename
         link.click()

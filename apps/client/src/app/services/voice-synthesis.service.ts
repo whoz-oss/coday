@@ -2,7 +2,7 @@ import { Injectable, OnDestroy, inject } from '@angular/core'
 import { Subject, BehaviorSubject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
 import { PreferencesService } from './preferences.service'
-import { WINDOW } from '../core/tokens/window'
+import { BrowserGlobalsService } from '../core/services/browser-globals.service'
 
 export interface VoiceInfo {
   name: string
@@ -31,7 +31,7 @@ export class VoiceSynthesisService implements OnDestroy {
   private selectedVoice: SpeechSynthesisVoice | undefined
 
   // Modern Angular dependency injection
-  private readonly window = inject(WINDOW)
+  private browserGlobals = inject(BrowserGlobalsService)
   private preferencesService = inject(PreferencesService)
 
   constructor() {
@@ -46,13 +46,13 @@ export class VoiceSynthesisService implements OnDestroy {
   }
 
   private initializeSpeechSynthesis(): void {
-    if (!('speechSynthesis' in this.window)) {
+    if (!('speechSynthesis' in this.browserGlobals.window)) {
       console.warn('[VOICE-SERVICE] Speech synthesis not available')
       this.voices = new Promise((resolve) => resolve([]))
       return
     }
 
-    const synthesis = this.window.speechSynthesis
+    const synthesis = this.browserGlobals.window.speechSynthesis
 
     this.voices = new Promise((resolve, reject) => {
       const immediateVoices = synthesis.getVoices()
@@ -106,11 +106,11 @@ export class VoiceSynthesisService implements OnDestroy {
   }
 
   isReady(): boolean {
-    return 'speechSynthesis' in this.window && this.selectedVoice !== undefined
+    return 'speechSynthesis' in this.browserGlobals.window && this.selectedVoice !== undefined
   }
 
   isSpeaking(): boolean {
-    return this.window.speechSynthesis?.speaking ?? false
+    return this.browserGlobals.window.speechSynthesis?.speaking ?? false
   }
 
   async speak(text: string, onEnd?: () => void): Promise<boolean> {
@@ -177,7 +177,7 @@ export class VoiceSynthesisService implements OnDestroy {
         if (originalOnError) originalOnError.call(utterance, event)
       }
 
-      this.window.speechSynthesis.speak(utterance)
+      this.browserGlobals.window.speechSynthesis.speak(utterance)
 
       console.log('[VOICE-SERVICE] Started speaking:', text.substring(0, 50) + '...')
       return true
@@ -188,8 +188,8 @@ export class VoiceSynthesisService implements OnDestroy {
   }
 
   stopSpeech(): void {
-    if (this.currentUtterance || this.window.speechSynthesis?.speaking) {
-      this.window.speechSynthesis.cancel()
+    if (this.currentUtterance || this.browserGlobals.window.speechSynthesis?.speaking) {
+      this.browserGlobals.window.speechSynthesis.cancel()
       this.currentUtterance = null
 
       // Execute callback before cleaning it up
@@ -208,7 +208,7 @@ export class VoiceSynthesisService implements OnDestroy {
 
   ding(): void {
     try {
-      const AudioContextClass = this.window.AudioContext || this.window.webkitAudioContext
+      const AudioContextClass = this.browserGlobals.window.AudioContext || this.browserGlobals.window.webkitAudioContext
       if (!AudioContextClass) {
         console.warn('[VOICE-SERVICE] AudioContext not available')
         return

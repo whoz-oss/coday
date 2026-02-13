@@ -1,5 +1,5 @@
 import { Component, OnDestroy, OnInit, inject } from '@angular/core'
-import { WINDOW } from '../../core/tokens/window'
+import { BrowserGlobalsService } from '../../core/services/browser-globals.service'
 
 @Component({
   selector: 'app-welcome-message',
@@ -9,7 +9,7 @@ import { WINDOW } from '../../core/tokens/window'
   styleUrl: './welcome-message.component.scss',
 })
 export class WelcomeMessageComponent implements OnInit, OnDestroy {
-  private readonly window = inject(WINDOW)
+  private browserGlobals = inject(BrowserGlobalsService)
 
   // Welcome message rotation
   welcomeMessages = [
@@ -39,7 +39,7 @@ export class WelcomeMessageComponent implements OnInit, OnDestroy {
   }
 
   private startWelcomeRotation(): void {
-    this.welcomeRotationInterval = this.window.setInterval(() => {
+    this.welcomeRotationInterval = this.browserGlobals.window.setInterval(() => {
       this.currentWelcomeIndex = (this.currentWelcomeIndex + 1) % this.welcomeMessages.length
       this.currentWelcomeMessage = this.welcomeMessages[this.currentWelcomeIndex]
     }, 3000)

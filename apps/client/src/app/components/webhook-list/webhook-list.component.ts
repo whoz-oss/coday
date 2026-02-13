@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common'
 import { Webhook } from '../../core/services/webhook-api.service'
 import { MatIcon } from '@angular/material/icon'
 import { MatButton, MatIconButton } from '@angular/material/button'
-import { WINDOW } from '../../core/tokens/window'
+import { BrowserGlobalsService } from '../../core/services/browser-globals.service'
 
 /**
  * Dumb/Presentation Component for displaying webhook list
@@ -23,7 +23,7 @@ import { WINDOW } from '../../core/tokens/window'
   styleUrl: './webhook-list.component.scss',
 })
 export class WebhookListComponent {
-  private readonly window = inject(WINDOW)
+  private browserGlobals = inject(BrowserGlobalsService)
 
   @Input() set webhooks(value: Webhook[]) {
     console.log('[WEBHOOK-LIST] Received webhooks:', value)
@@ -55,7 +55,7 @@ export class WebhookListComponent {
   }
 
   onCopyUrl(webhook: Webhook): void {
-    const url = `${this.window.location.origin}/api/webhooks/${webhook.uuid}/execute`
+    const url = `${this.browserGlobals.window.location.origin}/api/webhooks/${webhook.uuid}/execute`
     navigator.clipboard
       .writeText(url)
       .then(() => {

@@ -1,8 +1,7 @@
 import { Injectable, inject } from '@angular/core'
-import { DOCUMENT } from '@angular/common'
 import { BehaviorSubject } from 'rxjs'
 import { PreferencesService } from '../../services/preferences.service'
-import { WINDOW } from '../tokens/window'
+import { BrowserGlobalsService } from './browser-globals.service'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
@@ -14,8 +13,7 @@ export class ThemeService {
   currentTheme$ = this.currentThemeSubject.asObservable()
 
   // Modern Angular dependency injection
-  private readonly window = inject(WINDOW)
-  private readonly document = inject(DOCUMENT)
+  private browserGlobals = inject(BrowserGlobalsService)
   private preferences = inject(PreferencesService)
 
   constructor() {
@@ -56,8 +54,8 @@ export class ThemeService {
 
     if (theme === 'system') {
       // Use system preference (check if matchMedia is available)
-      if (this.window.matchMedia) {
-        const prefersDark = this.window.matchMedia('(prefers-color-scheme: dark)').matches
+      if (this.browserGlobals.window.matchMedia) {
+        const prefersDark = this.browserGlobals.window.matchMedia('(prefers-color-scheme: dark)').matches
         const resolvedTheme = prefersDark ? 'dark' : 'light'
         console.log('[THEME] System theme resolved to:', resolvedTheme)
         this.setDocumentTheme(resolvedTheme)
@@ -73,20 +71,21 @@ export class ThemeService {
 
   private setDocumentTheme(theme: 'light' | 'dark'): void {
     console.log('[THEME] Setting document theme to:', theme)
-    // Check if document is available (not always available in test environment)
-    if (this.document?.documentElement) {
+    // Check if document element is available (not always available in test environment)
+    const docElement = this.browserGlobals.documentElement
+    if (docElement) {
       if (theme === 'dark') {
-        this.document.documentElement.setAttribute('data-theme', 'dark')
+        docElement.setAttribute('data-theme', 'dark')
       } else {
-        this.document.documentElement.removeAttribute('data-theme')
+        docElement.removeAttribute('data-theme')
       }
     }
   }
 
   private setupSystemThemeListener(): void {
     // Check if matchMedia is available (not available in test environment)
-    if (this.window.matchMedia) {
-      this.window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    if (this.browserGlobals.window.matchMedia) {
+      this.browserGlobals.window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
         const currentTheme = this.getCurrentTheme()
         if (currentTheme === 'system') {
           this.setDocumentTheme(e.matches ? 'dark' : 'light')

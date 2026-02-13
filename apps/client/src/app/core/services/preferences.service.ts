@@ -1,13 +1,13 @@
 import { Injectable, inject } from '@angular/core'
 import { BehaviorSubject, Observable } from 'rxjs'
-import { WINDOW } from '../tokens/window'
+import { BrowserGlobalsService } from './browser-globals.service'
 
 @Injectable({
   providedIn: 'root',
 })
 export class PreferencesService {
   private readonly STORAGE_KEY = 'coday-preferences'
-  private readonly window = inject(WINDOW)
+  private browserGlobals = inject(BrowserGlobalsService)
 
   // Subjects for reactive preferences
   private preferencesSubject = new BehaviorSubject<Record<string, any>>(this.loadAllPreferences())
@@ -17,7 +17,7 @@ export class PreferencesService {
 
   constructor() {
     // Listen for storage changes from other tabs
-    this.window.addEventListener('storage', (event) => {
+    this.browserGlobals.window.addEventListener('storage', (event) => {
       if (event.key === this.STORAGE_KEY) {
         this.preferencesSubject.next(this.loadAllPreferences())
       }

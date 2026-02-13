@@ -1,6 +1,6 @@
 import { Component, OnInit, inject } from '@angular/core'
 import { ActivatedRoute } from '@angular/router'
-import { WINDOW } from '../../core/tokens/window'
+import { BrowserGlobalsService } from '../../core/services/browser-globals.service'
 
 @Component({
   selector: 'app-oauth-callback',
@@ -8,7 +8,7 @@ import { WINDOW } from '../../core/tokens/window'
   template: `<p>Authentication in progress...</p>`,
 })
 export class OAuthCallbackComponent implements OnInit {
-  private readonly window = inject(WINDOW)
+  private browserGlobals = inject(BrowserGlobalsService)
   private route = inject(ActivatedRoute)
 
   ngOnInit(): void {
@@ -19,26 +19,38 @@ export class OAuthCallbackComponent implements OnInit {
     const error = this.route.snapshot.queryParamMap.get('error')
     const errorDescription = this.route.snapshot.queryParamMap.get('error_description')
 
-    console.log('[OAuth Callback] Code:', code, 'State:', state, 'Error:', error, 'Opener:', !!this.window.opener)
+    console.log(
+      '[OAuth Callback] Code:',
+      code,
+      'State:',
+      state,
+      'Error:',
+      error,
+      'Opener:',
+      !!this.browserGlobals.window.opener
+    )
 
     // Handle OAuth errors (e.g., access_denied)
     if (error) {
       console.log('[OAuth Callback] OAuth error received:', error, errorDescription)
 
-      if (!this.window.opener) {
+      if (!this.browserGlobals.window.opener) {
         alert(`OAuth error: ${error}${errorDescription ? ' - ' + errorDescription : ''}. Please close this window.`)
         return
       }
 
       try {
         // Send error to parent window
-        this.window.opener.postMessage({ error, state, errorDescription }, this.window.location.origin)
+        this.browserGlobals.window.opener.postMessage(
+          { error, state, errorDescription },
+          this.browserGlobals.window.location.origin
+        )
         console.log('[OAuth Callback] Error postMessage sent successfully')
 
         // Close popup
         setTimeout(() => {
           console.log('[OAuth Callback] Closing popup after error')
-          this.window.close()
+          this.browserGlobals.window.close()
         }, 1000)
       } catch (err) {
         console.error('[OAuth Callback] Error sending error postMessage:', err)
@@ -52,7 +64,7 @@ export class OAuthCallbackComponent implements OnInit {
       return
     }
 
-    if (!this.window.opener) {
+    if (!this.browserGlobals.window.opener) {
       console.error('[OAuth Callback] No window.opener - popup may have been opened incorrectly')
       alert('OAuth callback error: No parent window found. Please close this window and try again.')
       return
@@ -61,13 +73,13 @@ export class OAuthCallbackComponent implements OnInit {
     try {
       // Send to parent window
       console.log('[OAuth Callback] Sending postMessage to parent')
-      this.window.opener.postMessage({ code, state }, this.window.location.origin)
+      this.browserGlobals.window.opener.postMessage({ code, state }, this.browserGlobals.window.location.origin)
       console.log('[OAuth Callback] postMessage sent successfully')
 
       // Close popup after a short delay
       setTimeout(() => {
         console.log('[OAuth Callback] Closing popup')
-        this.window.close()
+        this.browserGlobals.window.close()
       }, 1000)
     } catch (error) {
       console.error('[OAuth Callback] Error sending postMessage:', error)

@@ -1,8 +1,8 @@
 import { inject, Injectable } from '@angular/core'
-import { DOCUMENT } from '@angular/common'
 import { combineLatest } from 'rxjs'
 import { UnreadMessagesService } from './unread-messages.service'
 import { ProjectStateService } from '../core/services/project-state.service'
+import { BrowserGlobalsService } from '../core/services/browser-globals.service'
 
 @Injectable({
   providedIn: 'root',
@@ -17,7 +17,7 @@ export class TabTitleService {
   private readonly SYSTEM_ACTIVE_TIMEOUT = 4000 // 4 seconds
 
   // Modern Angular dependency injection
-  private readonly document = inject(DOCUMENT)
+  private browserGlobals = inject(BrowserGlobalsService)
   private unreadService = inject(UnreadMessagesService)
   private readonly project = inject(ProjectStateService)
 
@@ -54,7 +54,7 @@ export class TabTitleService {
       title = projectTitle
     }
 
-    this.document.title = title
+    this.browserGlobals.document.title = title
     console.log('[TAB-TITLE] Updated to:', title)
   }
 

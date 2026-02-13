@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core'
 import { BehaviorSubject } from 'rxjs'
-import { WINDOW } from '../core/tokens/window'
+import { BrowserGlobalsService } from '../core/services/browser-globals.service'
 
 // Type definition for Electron storage API
 interface ElectronStorage {
@@ -18,7 +18,7 @@ export class PreferencesService {
   private isDesktopApp = false
   private electronStorage: ElectronStorage | null = null
 
-  private readonly window = inject(WINDOW)
+  private browserGlobals = inject(BrowserGlobalsService)
 
   private voiceLanguageSubject = new BehaviorSubject<string>('en-US')
   public voiceLanguage$ = this.voiceLanguageSubject.asObservable()
@@ -66,9 +66,9 @@ export class PreferencesService {
     console.log('[PREFERENCES] Initializing preferences service')
 
     // Check if running in Electron desktop app
-    if ((this.window as any).codayDesktop?.storage) {
+    if ((this.browserGlobals.window as any).codayDesktop?.storage) {
       this.isDesktopApp = true
-      this.electronStorage = (this.window as any).codayDesktop.storage as ElectronStorage
+      this.electronStorage = (this.browserGlobals.window as any).codayDesktop.storage as ElectronStorage
       console.log('[PREFERENCES] Running in desktop app mode with persistent storage')
     }
 

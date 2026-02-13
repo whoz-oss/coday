@@ -1,5 +1,5 @@
 import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, inject } from '@angular/core'
-import { CommonModule, DOCUMENT } from '@angular/common'
+import { CommonModule } from '@angular/common'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
@@ -11,6 +11,7 @@ import { ContentViewerService, type FileContent } from '../../core/services/cont
 import type { FileInfo } from '../../core/services/file-exchange-api.service'
 import { EventStreamService } from '../../core/services/event-stream.service'
 import { FileEvent } from '@coday/model'
+import { BrowserGlobalsService } from '../../core/services/browser-globals.service'
 
 /**
  * ContentViewerComponent - Displays file content with appropriate rendering
@@ -36,7 +37,7 @@ export class ContentViewerComponent implements OnInit, OnDestroy {
 
   @Output() closeViewer = new EventEmitter<void>()
 
-  private readonly document = inject(DOCUMENT)
+  private browserGlobals = inject(BrowserGlobalsService)
   private readonly contentService = inject(ContentViewerService)
   private readonly eventStream = inject(EventStreamService)
 
@@ -86,7 +87,7 @@ export class ContentViewerComponent implements OnInit, OnDestroy {
     // Create a download link
     const blob = new Blob([this.fileContent?.content || ''], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
-    const link = this.document.createElement('a')
+    const link = this.browserGlobals.document.createElement('a')
     link.href = url
     link.download = this.file.filename
     link.click()
