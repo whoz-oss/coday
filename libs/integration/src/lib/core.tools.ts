@@ -3,13 +3,15 @@ import { CodayTool } from '@coday/model'
 import { CommandContext } from '@coday/model'
 
 export class CoreTools extends AssistantToolFactory {
-  name = 'CORE'
+  static readonly TYPE = 'CORE' as const
 
   constructor(
     interactor: Interactor,
+    instanceName: string,
+    config: any,
     private readonly baseUrl?: string
   ) {
-    super(interactor)
+    super(interactor, instanceName, config)
   }
 
   protected async buildTools(context: CommandContext, _agentName: string): Promise<CodayTool[]> {
@@ -17,7 +19,7 @@ export class CoreTools extends AssistantToolFactory {
       {
         type: 'function',
         function: {
-          name: 'get_context_info',
+          name: `${this.name}_get_context_info`,
           description: 'Get current contextual information including time, date, username, and conversation URL',
           parameters: {
             type: 'object',

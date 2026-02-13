@@ -1,0 +1,23 @@
+{
+  "name": "@coday/integrations-http",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/integrations/http/src",
+  "projectType": "library",
+  "tags": ["type:integration"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/integrations/http",
+        "main": "libs/integrations/http/src/index.ts",
+        "tsConfig": "libs/integrations/http/tsconfig.lib.json",
+        "assets": ["libs/integrations/http/*.md"]
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"]
+    }
+  }
+}
