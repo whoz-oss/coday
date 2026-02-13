@@ -78,7 +78,8 @@ export class PromptFormComponent implements OnInit {
       this.description = this.data.prompt.description
       this.commands = [...this.data.prompt.commands]
       this.webhookEnabled = this.data.prompt.webhookEnabled
-      this.threadLifetime = this.data.prompt.threadLifetime || ''
+      // threadLifetime - TEMPORARILY DISABLED
+      // this.threadLifetime = this.data.prompt.threadLifetime || ''
       this.source = this.data.prompt.source
     }
   }
@@ -165,13 +166,15 @@ export class PromptFormComponent implements OnInit {
         webhookEnabled: this.webhookEnabled, // Admin can update webhook status
       }
 
-      // Add threadLifetime if provided, or null to clear it
+      // Thread lifetime - TEMPORARILY DISABLED (buggy behavior)
+      // TODO: Re-enable after refactoring interactor
+      /*
       if (this.threadLifetime.trim()) {
         updates.threadLifetime = this.threadLifetime.trim()
       } else if (this.data.prompt?.threadLifetime) {
-        // If there was a threadLifetime before and now it's empty, explicitly set to null
         updates.threadLifetime = null
       }
+      */
 
       this.promptApi.updatePrompt(this.data.prompt.id, updates).subscribe({
         next: () => {
@@ -195,10 +198,13 @@ export class PromptFormComponent implements OnInit {
         source: this.source, // Include source for creation
       }
 
-      // Add threadLifetime if provided
+      // Thread lifetime - TEMPORARILY DISABLED (buggy behavior)
+      // TODO: Re-enable after refactoring interactor
+      /*
       if (this.threadLifetime.trim()) {
         promptData.threadLifetime = this.threadLifetime.trim()
       }
+      */
 
       this.promptApi.createPrompt(promptData).subscribe({
         next: () => {
