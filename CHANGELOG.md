@@ -1,3 +1,18 @@
+## 0.68.3 (2026-02-13)
+
+### 🚀 Features
+
+- porting agentos poc core ([#449](https://github.com/whoz-oss/coday/pull/449))
+
+### 🩹 Fixes
+
+- #469 preserve @agentName in user messages ([#471](https://github.com/whoz-oss/coday/pull/471), [#469](https://github.com/whoz-oss/coday/issues/469))
+
+### ❤️ Thank You
+
+- thomas.martin @thomasmartin-whoz
+- vincent-audibert-whoz
+
 ## 0.68.2 (2026-02-10)
 
 ### 🩹 Fixes
