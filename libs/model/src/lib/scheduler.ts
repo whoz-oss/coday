@@ -82,6 +82,15 @@ export interface Scheduler {
   /**
    * Optional parameters to pass to the prompt execution
    * These override or provide values for template placeholders
+   *
+   * Parameter format:
+   * - For structured placeholders ({{key}}): Use object with matching keys
+   *   Example: { prNumber: "123", project: "coday" }
+   *
+   * - For simple trailing parameter ({{PARAMETERS}} or no placeholders):
+   *   You can use a simple object with a single PARAMETERS key:
+   *   Example: { PARAMETERS: "my value" }
+   *   This will be automatically converted to the string "my value" during execution
    */
   parameters?: Record<string, unknown>
 

@@ -121,16 +121,22 @@ interface IntervalSchedule {
 Schedulers support two parameter modes:
 
 #### Simple Mode
-Single string value stored as `{PARAMETERS: "value"}`:
+For prompts with `{{PARAMETERS}}` placeholder or no placeholders (append mode).
+
+In the UI, you enter a single text value. It's automatically stored as:
 ```yaml
 parameters:
   PARAMETERS: "staging"
 ```
 
-Passed to prompt as string: `"staging"`
+During execution, this is converted to a simple string and passed to the prompt as: `"staging"`
+
+**Note**: This automatic conversion happens transparently - you don't need to worry about the internal format.
 
 #### Structured Mode
-Key-value pairs for multiple parameters:
+For prompts with named placeholders like `{{app}}`, `{{env}}`, etc.
+
+In the UI, you enter key-value pairs. They're stored as:
 ```yaml
 parameters:
   app: "coday"
