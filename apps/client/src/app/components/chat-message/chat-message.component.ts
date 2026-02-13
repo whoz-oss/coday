@@ -82,8 +82,13 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   }
 
   get shouldShowSpeaker(): boolean {
-    // Show speaker for user and assistant, not for others
-    return false
+    // Show speaker for:
+    // - User messages with @agentName (speaker starts with @)
+    // - Assistant messages (always)
+    if (this.message.role === 'user') {
+      return this.message.speaker.startsWith('@')
+    }
+    return this.message.role === 'assistant'
   }
 
   get shouldShowActions(): boolean {
