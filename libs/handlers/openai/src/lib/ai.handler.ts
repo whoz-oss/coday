@@ -39,7 +39,8 @@ export class AiHandler extends CommandHandler implements Killable {
       return context
     }
 
-    return this.runAgent(selectedAgent!, restOfCommand, context)
+    // Pass the original command to preserve @agentName in AnswerEvent
+    return this.runAgent(selectedAgent!, command, context)
   }
 
   /**
