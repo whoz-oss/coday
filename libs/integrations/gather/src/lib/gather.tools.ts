@@ -91,9 +91,10 @@ export class GatherTools extends AssistantToolFactory {
 
       const { nonce } = (await challengeRes.json()) as { nonce: string }
 
-      // Sign the nonce
+      // Sign the nonce (base64-decode first, then sign raw bytes)
       const privateKey = crypto.createPrivateKey(privateKeyPem)
-      const signature = crypto.sign(null, Buffer.from(nonce), privateKey)
+      const nonceBytes = Buffer.from(nonce, 'base64')
+      const signature = crypto.sign(null, nonceBytes, privateKey)
       const signatureB64 = signature.toString('base64')
 
       // Authenticate
@@ -102,7 +103,6 @@ export class GatherTools extends AssistantToolFactory {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           public_key: publicKeyPem,
-          nonce,
           signature: signatureB64,
         }),
       })
@@ -119,8 +119,13 @@ export class GatherTools extends AssistantToolFactory {
 
     // Solve proof-of-work
     const solvePoW = async (jwt: string): Promise<{ challenge: string; nonce: string }> => {
-      const powRes = await fetch(`${baseUrl}/api/pow/challenge?purpose=post`, {
-        headers: { Authorization: `Bearer ${jwt}` },
+      const powRes = await fetch(`${baseUrl}/api/pow/challenge`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${jwt}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ purpose: 'post' }),
       })
 
       if (!powRes.ok) {
