@@ -47,6 +47,7 @@
       "@coday/integrations-gitlab": ["libs/integrations/gitlab/src/index.ts"],
       "@coday/integrations-jira": ["libs/integrations/jira/src/index.ts"],
       "@coday/integrations-mcp": ["libs/integrations/mcp/src/index.ts"],
+      "@coday/integrations-gather": ["libs/integrations/gather/src/index.ts"],
       "@coday/integrations-slack": ["libs/integrations/slack/src/index.ts"],
       "@coday/integrations-zendesk-articles": ["libs/integrations/zendesk-articles/src/index.ts"],
       "@coday/jira": ["libs/jira/src/index.ts"],

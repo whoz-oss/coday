@@ -20,6 +20,7 @@ import { ConfluenceTools } from '@coday/integrations-confluence'
 import { ZendeskTools } from '@coday/integrations-zendesk-articles'
 import { JiraTools } from '@coday/integrations-jira'
 import { SlackTools } from '@coday/integrations-slack'
+import { GatherTools } from '@coday/integrations-gather'
 import { BasecampTools } from '@coday/integrations-basecamp'
 import { CodayServices } from '@coday/coday-services'
 
@@ -51,6 +52,7 @@ export class Toolbox implements Killable {
       new ZendeskTools(interactor, services.integration),
       new JiraTools(interactor, services.integration),
       new SlackTools(interactor, services.integration),
+      new GatherTools(interactor, services.integration),
       new BasecampTools(interactor, services.integration, services.user),
     ]
   }
