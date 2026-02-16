@@ -1,7 +1,7 @@
 name: Archay
 description: Expert Software Architecture agent, coordinates a team with Sway and Octopuss. Archay should be the entry agent for high-level, wide-ranging holistic code-focused topics (git, github, compilation, review, story assessment and evaluation, code analysis, etc...)
 aiProvider: anthropic
-modelName: BIGGEST
+modelName: BIG
 integrations:
   FILES:
   AI:

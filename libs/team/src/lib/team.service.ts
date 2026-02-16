@@ -1,4 +1,4 @@
-import { Agent, AiThread, Interactor } from '@coday/model'
+import { Agent, AiThread, Interactor, TeamEvent } from '@coday/model'
 import { Team } from './team'
 import { TeammateSession, TeammateStatus } from './teammate-session'
 
@@ -34,7 +34,7 @@ export class TeamService {
   }
 
   /**
-   * Find any team that has the given agent as a member
+   * Find any team that has the given agent as a member.
    */
   getTeamByMember(agentName: string): Team | undefined {
     return Array.from(this.teams.values()).find((t) => t.members.has(agentName))
@@ -43,8 +43,26 @@ export class TeamService {
   /**
    * Spawn a teammate into an existing team.
    * Creates a TeammateSession with a forked thread and starts its run loop.
+   *
+   * @param team - The team to spawn the teammate into
+   * @param agent - The agent definition to use
+   * @param parentThread - The thread to fork from
+   * @param initialTask - The initial task for the teammate
+   * @returns The agent name and the TeammateSession
    */
-  spawnTeammate(team: Team, agent: Agent, parentThread: AiThread, initialTask: string): TeammateSession {
+  spawnTeammate(
+    team: Team,
+    agent: Agent,
+    parentThread: AiThread,
+    initialTask: string
+  ): { instanceName: string; session: TeammateSession } {
+    // Check if agent is already in the team
+    if (team.members.has(agent.name)) {
+      throw new Error(`Agent '${agent.name}' is already a member of this team`)
+    }
+
+    const instanceName = agent.name
+
     // Ensure the agent has TEAM_MEMBER integration enabled
     // This is critical: without this, the toolbox will exclude TEAM_MEMBER tools
     if (!agent.definition.integrations) {
@@ -56,26 +74,66 @@ export class TeamService {
 
     const onStatusChange = (name: string, status: TeammateStatus) => {
       this.interactor.debug(`👤 Teammate '${name}' status: ${status}`)
+
+      // Emit TeamEvent for status change
+      this.interactor.sendEvent(
+        new TeamEvent({
+          teamId: team.id,
+          eventType: 'teammate_status_changed',
+          teammateName: name,
+          status: status,
+        })
+      )
+
       if (status === 'idle') {
         // Notify lead via mailbox
         team.mailbox.send(name, team.leadAgentName, `Teammate '${name}' is now idle and available for new tasks.`)
       }
     }
 
-    // Fork a clean thread for the teammate
-    const forkedThread = parentThread.fork(agent.name, true)
+    // Fork a clean thread for the teammate, using instance name for thread identity
+    const forkedThread = parentThread.fork(instanceName, true)
 
-    const session = new TeammateSession(agent.name, agent, forkedThread, team.mailbox, this.interactor, onStatusChange)
+    const session = new TeammateSession(
+      instanceName,
+      agent,
+      forkedThread,
+      team.mailbox,
+      this.interactor,
+      onStatusChange
+    )
 
     team.addMember(session)
     session.start(initialTask)
 
-    this.interactor.displayText(`👤 Teammate '${agent.name}' spawned with task: ${initialTask.substring(0, 100)}...`)
+    // Check if there are pre-assigned tasks for this agent and notify them
+    const assignedTasks = team.taskList.getTasksForAgent(instanceName)
+    if (assignedTasks.length > 0) {
+      const taskInfo = assignedTasks.map((t) => `- ${t.id}: ${t.description} [status: ${t.status}]`).join('\n')
+      team.mailbox.send(
+        team.leadAgentName,
+        instanceName,
+        `You have ${assignedTasks.length} pre-assigned task(s) in the shared task list. Use listTasks to see all tasks, then use claimTask to claim them:\n${taskInfo}`
+      )
+    }
+
+    this.interactor.displayText(`👤 Teammate '${instanceName}' spawned with task: ${initialTask.substring(0, 100)}...`)
+
+    // Emit TeamEvent for teammate spawn
+    this.interactor.sendEvent(
+      new TeamEvent({
+        teamId: team.id,
+        eventType: 'teammate_spawned',
+        teammateName: instanceName,
+        status: 'working',
+        details: initialTask,
+      })
+    )
 
     // Merge forked thread price tracking back to parent
     parentThread.merge(forkedThread)
 
-    return session
+    return { instanceName, session }
   }
 
   /**
@@ -88,6 +146,17 @@ export class TeamService {
     await member.shutdown()
     team.members.delete(teammateName)
     this.interactor.displayText(`👋 Teammate '${teammateName}' shut down`)
+
+    // Emit TeamEvent for teammate shutdown
+    this.interactor.sendEvent(
+      new TeamEvent({
+        teamId: team.id,
+        eventType: 'teammate_shutdown',
+        teammateName: teammateName,
+        status: 'stopped',
+      })
+    )
+
     return true
   }
 

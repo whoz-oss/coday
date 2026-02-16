@@ -6,11 +6,18 @@
   (dragleave)="onDragLeave($event)"
   (drop)="onDrop($event)"
 >
-  <!-- File Exchange Drawer Container - wraps entire thread -->
-  <mat-drawer-container class="file-drawer-container" [hasBackdrop]="false">
+  <!-- Drawer Container - wraps entire thread with drawers on both sides -->
+  <mat-drawer-container class="drawer-container" [hasBackdrop]="false">
     <mat-drawer-content>
       <div class="thread-container">
-        <!-- Floating File Exchange Button (top-right) - hidden when drawer open -->
+        <!-- Floating Team Panel Button - shown when team is active and drawer closed -->
+        @if (isTeamActive && !isTeamPanelOpen) {
+          <button matFab class="team-panel-toggle-btn" (click)="toggleTeamPanel()" title="Team Activity" type="button">
+            <mat-icon>groups</mat-icon>
+          </button>
+        }
+
+        <!-- Floating File Exchange Button - hidden when drawer open -->
         @if (!isFileDrawerOpen) {
           <button
             matFab
@@ -91,8 +98,13 @@
       </div>
     </mat-drawer-content>
 
-    <!-- File Exchange Drawer (right side) -->
-    <mat-drawer mode="side" position="end" [opened]="isFileDrawerOpen" (closed)="closeFileDrawer()">
+    <!-- Team Activity Drawer (right side, below file drawer) -->
+    <mat-drawer class="team-drawer" mode="side" position="end" [opened]="isTeamPanelOpen" (closed)="closeTeamPanel()">
+      <app-team-activity-panel (closePanel)="closeTeamPanel()"></app-team-activity-panel>
+    </mat-drawer>
+
+    <!-- File Exchange Drawer (right side, above team drawer) -->
+    <mat-drawer class="file-drawer" mode="side" position="end" [opened]="isFileDrawerOpen" (closed)="closeFileDrawer()">
       <app-file-exchange-drawer
         [projectName]="projectName"
         [threadId]="threadId"

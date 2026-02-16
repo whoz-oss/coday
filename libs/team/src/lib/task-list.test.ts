@@ -267,6 +267,93 @@ describe('TaskList', () => {
     })
   })
 
+  describe('tasks-before-agents scenarios', () => {
+    it('should allow tasks to be created before any agents exist', () => {
+      // This simulates creating a full task list before spawning any agents
+      const task1 = taskList.createTask('Research component A', [], 'Dev-1')
+      const task2 = taskList.createTask('Research component B', [], 'Dev-2')
+      const task3 = taskList.createTask('Synthesize findings', [task1.id, task2.id], 'Archay')
+
+      // All tasks should be created successfully
+      expect(task1.id).toBe('task-1')
+      expect(task2.id).toBe('task-2')
+      expect(task3.id).toBe('task-3')
+
+      // Task 1 and 2 should be available (no dependencies)
+      const available = taskList.getAvailableTasks()
+      expect(available.map((t) => t.id).sort()).toEqual([task1.id, task2.id].sort())
+
+      // Task 3 should be blocked by dependencies
+      expect(available.find((t) => t.id === task3.id)).toBeUndefined()
+    })
+
+    it('should support task assignment to agents that do not exist yet', () => {
+      // Create tasks assigned to agents that haven't been spawned
+      const task1 = taskList.createTask('Task for future agent', [], 'AgentThatDoesNotExistYet')
+
+      expect(task1.assignee).toBe('AgentThatDoesNotExistYet')
+      expect(task1.status).toBe('pending')
+
+      // When the agent eventually spawns and tries to claim, it should work
+      const claimed = taskList.claimTask(task1.id, 'AgentThatDoesNotExistYet')
+      expect(claimed).toBe(true)
+
+      const retrieved = taskList.getTask(task1.id)
+      expect(retrieved?.status).toBe('in_progress')
+      expect(retrieved?.assignee).toBe('AgentThatDoesNotExistYet')
+    })
+
+    it('should support pre-assigned tasks with dependencies', () => {
+      // Create a dependency chain with pre-assigned agents
+      const task1 = taskList.createTask('First task', [], 'Dev-1')
+      const task2 = taskList.createTask('Second task', [task1.id], 'Dev-2')
+      const task3 = taskList.createTask('Third task', [task2.id], 'Dev-3')
+
+      // Dev-1 can claim immediately
+      expect(taskList.claimTask(task1.id, 'Dev-1')).toBe(true)
+
+      // Dev-2 cannot claim yet (dependencies not resolved)
+      expect(taskList.claimTask(task2.id, 'Dev-2')).toBe(false)
+
+      // Complete task 1
+      taskList.completeTask(task1.id, 'Dev-1')
+
+      // Now Dev-2 can claim
+      expect(taskList.claimTask(task2.id, 'Dev-2')).toBe(true)
+
+      // Dev-3 still cannot claim
+      expect(taskList.claimTask(task3.id, 'Dev-3')).toBe(false)
+
+      // Complete task 2
+      taskList.completeTask(task2.id, 'Dev-2')
+
+      // Now Dev-3 can claim
+      expect(taskList.claimTask(task3.id, 'Dev-3')).toBe(true)
+    })
+
+    it('should return correct tasks for pre-assigned agents', () => {
+      // Create multiple tasks with various assignments
+      const task1 = taskList.createTask('Dev-1 task A', [], 'Dev-1')
+      const task2 = taskList.createTask('Dev-2 task', [], 'Dev-2')
+      const task3 = taskList.createTask('Dev-1 task B', [], 'Dev-1')
+      const task4 = taskList.createTask('Unassigned task', [])
+
+      // Check Dev-1's pre-assigned tasks
+      const dev1Tasks = taskList.getTasksForAgent('Dev-1')
+      expect(dev1Tasks).toHaveLength(2)
+      expect(dev1Tasks.map((t) => t.id).sort()).toEqual([task1.id, task3.id].sort())
+
+      // Check Dev-2's pre-assigned tasks
+      const dev2Tasks = taskList.getTasksForAgent('Dev-2')
+      expect(dev2Tasks).toHaveLength(1)
+      expect(dev2Tasks[0]!.id).toBe(task2.id)
+
+      // Unassigned task should not appear in any agent's list
+      expect(dev1Tasks.find((t) => t.id === task4.id)).toBeUndefined()
+      expect(dev2Tasks.find((t) => t.id === task4.id)).toBeUndefined()
+    })
+  })
+
   describe('dependency chain', () => {
     it('should properly handle A → B → C dependency chain', () => {
       const taskA = taskList.createTask('Task A')

@@ -14,7 +14,15 @@
   background: transparent; // Background is now on file-drawer-container
 }
 
-// Floating file drawer toggle button (top-right) - Material FAB
+// Floating team panel toggle button - Material FAB
+.team-panel-toggle-btn {
+  position: fixed !important;
+  top: 5rem !important;
+  right: 1rem !important;
+  z-index: 100 !important;
+}
+
+// Floating file drawer toggle button - Material FAB
 .file-drawer-toggle-btn {
   position: fixed !important;
   top: 1rem !important;
@@ -36,8 +44,8 @@
   }
 }
 
-// File drawer container (Material sidenav) - wraps entire component
-.file-drawer-container {
+// Drawer container (Material sidenav) - wraps entire component
+.drawer-container {
   height: 100vh;
   width: 100%;
   background: var(--color-bg); // Preserve gradient background
@@ -51,18 +59,35 @@
   }
 
   ::ng-deep .mat-drawer {
-    width: 35vw; // Fixed 40% width for now - simple and works
-    max-width: 90vw;
     box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
-
-    @media (max-width: 768px) {
-      width: 100vw; // Mobile: full screen
-      max-width: 100vw;
-    }
   }
 
   ::ng-deep .mat-drawer-backdrop {
     display: none; // No backdrop since hasBackdrop is false
+  }
+}
+
+// File exchange drawer - higher z-index to appear on top
+::ng-deep .file-drawer.mat-drawer {
+  width: 35vw;
+  max-width: 90vw;
+  z-index: 3 !important; // Above team drawer
+
+  @media (max-width: 768px) {
+    width: 100vw;
+    max-width: 100vw;
+  }
+}
+
+// Team activity drawer - lower z-index, appears behind file drawer
+::ng-deep .team-drawer.mat-drawer {
+  width: 400px;
+  max-width: 90vw;
+  z-index: 2 !important; // Below file drawer
+
+  @media (max-width: 768px) {
+    width: 100vw;
+    max-width: 100vw;
   }
 }
 
@@ -204,13 +229,12 @@
     font-size: 3rem;
   }
 
-  // Mobile: full width drawer
-  .file-drawer-container ::ng-deep .mat-drawer {
-    width: 100vw;
-    max-width: 100vw;
+  // Mobile: adjust FAB button positions
+  .team-panel-toggle-btn {
+    top: 4rem !important;
+    right: 0.75rem !important;
   }
 
-  // Mobile: adjust FAB button position
   .file-drawer-toggle-btn {
     top: 0.75rem !important;
     right: 0.75rem !important;

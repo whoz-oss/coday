@@ -1,5 +1,5 @@
-import { AssistantToolFactory, CodayTool, CommandContext, FunctionTool, Interactor } from '@coday/model'
-import { TeamService } from '@coday/team'
+import { AssistantToolFactory, CodayTool, CommandContext, FunctionTool, Interactor, TeamEvent } from '@coday/model'
+import { MailboxMessage, Task, TeamService } from '@coday/team'
 
 export class TeamMemberTools extends AssistantToolFactory {
   name = 'TEAM_MEMBER'
@@ -14,9 +14,12 @@ export class TeamMemberTools extends AssistantToolFactory {
   protected async buildTools(_context: CommandContext, agentName: string): Promise<CodayTool[]> {
     const tools: CodayTool[] = []
 
+    // Capture teamService for use in closures (avoids 'this' shadowing issues)
+    const teamService = this.teamService
+
     // --- sendMessage ---
     const sendMessageFn = async ({ to, message }: { to: string; message: string }) => {
-      const team = this.teamService.getTeamByMember(agentName)
+      const team = teamService.getTeamByMember(agentName)
       if (!team) return 'You are not part of a team.'
 
       // Can send to lead or other members
@@ -59,13 +62,13 @@ export class TeamMemberTools extends AssistantToolFactory {
 
     // --- readMessages ---
     const readMessagesFn = async () => {
-      const team = this.teamService.getTeamByMember(agentName)
+      const team = teamService.getTeamByMember(agentName)
       if (!team) return 'You are not part of a team.'
 
       const messages = team.mailbox.receive(agentName)
       if (messages.length === 0) return 'No pending messages.'
 
-      return messages.map((m) => `[${m.timestamp}] From ${m.from}: ${m.content}`).join('\n')
+      return messages.map((m: MailboxMessage) => `[${m.timestamp}] From ${m.from}: ${m.content}`).join('\n')
     }
 
     const readMessagesTool: FunctionTool<Record<string, never>> = {
@@ -85,12 +88,25 @@ export class TeamMemberTools extends AssistantToolFactory {
 
     // --- claimTask ---
     const claimTaskFn = async ({ taskId }: { taskId: string }) => {
-      const team = this.teamService.getTeamByMember(agentName)
+      const team = teamService.getTeamByMember(agentName)
       if (!team) return 'You are not part of a team.'
 
       const success = team.taskList.claimTask(taskId, agentName)
       if (success) {
         const task = team.taskList.getTask(taskId)
+
+        // Emit TeamEvent for task status change
+        this.interactor.sendEvent(
+          new TeamEvent({
+            teamId: team.id,
+            eventType: 'task_status_changed',
+            taskId: taskId,
+            taskDescription: task?.description,
+            taskStatus: 'in_progress',
+            teammateName: agentName,
+          })
+        )
+
         return `Task '${taskId}' claimed successfully. Description: ${task?.description ?? 'unknown'}`
       }
 
@@ -123,11 +139,26 @@ export class TeamMemberTools extends AssistantToolFactory {
 
     // --- completeTask ---
     const completeTaskFn = async ({ taskId, result }: { taskId: string; result?: string }) => {
-      const team = this.teamService.getTeamByMember(agentName)
+      const team = teamService.getTeamByMember(agentName)
       if (!team) return 'You are not part of a team.'
 
       const success = team.taskList.completeTask(taskId, agentName, result)
       if (success) {
+        const task = team.taskList.getTask(taskId)
+
+        // Emit TeamEvent for task completion
+        this.interactor.sendEvent(
+          new TeamEvent({
+            teamId: team.id,
+            eventType: 'task_status_changed',
+            taskId: taskId,
+            taskDescription: task?.description,
+            taskStatus: 'completed',
+            teammateName: agentName,
+            details: result,
+          })
+        )
+
         // Notify lead about task completion
         team.mailbox.send(
           agentName,
@@ -182,14 +213,14 @@ export class TeamMemberTools extends AssistantToolFactory {
 
     // --- listTasks ---
     const listTasksFn = async () => {
-      const team = this.teamService.getTeamByMember(agentName)
+      const team = teamService.getTeamByMember(agentName)
       if (!team) return 'You are not part of a team.'
 
       const tasks = team.taskList.listTasks()
       if (tasks.length === 0) return 'No tasks in the task list.'
 
       return tasks
-        .map((t) => {
+        .map((t: Task) => {
           const deps = t.dependencies.length > 0 ? ` (depends on: ${t.dependencies.join(', ')})` : ''
           const assigneeStr = t.assignee ? ` [assigned: ${t.assignee}]` : ''
           const resultStr = t.result ? ` → ${t.result.substring(0, 100)}` : ''
@@ -216,7 +247,7 @@ export class TeamMemberTools extends AssistantToolFactory {
 
     // --- listTeammates ---
     const listTeammatesFn = async () => {
-      const team = this.teamService.getTeamByMember(agentName)
+      const team = teamService.getTeamByMember(agentName)
       if (!team) return 'You are not part of a team.'
 
       const lines: string[] = []

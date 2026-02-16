@@ -12,6 +12,7 @@ import {
   MessageEvent,
   OAuthCallbackEvent,
   OAuthRequestEvent,
+  TeamEvent,
   TextChunkEvent,
   TextEvent,
   ThinkingEvent,
@@ -28,6 +29,26 @@ import { ThreadStateService } from './thread-state.service'
 
 import { ChatMessage } from '../../components/chat-message/chat-message.component'
 import { ChoiceOption } from '../../components/choice-select/choice-select.component'
+
+// Team state interfaces
+export interface TeammateInfo {
+  name: string
+  status: string // 'idle' | 'working' | 'stopped'
+}
+
+export interface TaskInfo {
+  id: string
+  description: string
+  status: string // 'pending' | 'in_progress' | 'completed'
+  assignee?: string
+}
+
+export interface TeamState {
+  active: boolean
+  teamId: string | null
+  teammates: TeammateInfo[]
+  tasks: TaskInfo[]
+}
 
 @Injectable({
   providedIn: 'root',
@@ -47,6 +68,12 @@ export class CodayService implements OnDestroy {
   private readonly currentInviteEventSubject = new BehaviorSubject<InviteEvent | null>(null)
   private readonly messageToRestoreSubject = new BehaviorSubject<string>('')
   private readonly threadUpdateEventSubject = new BehaviorSubject<ThreadUpdateEvent | null>(null)
+  private readonly teamStateSubject = new BehaviorSubject<TeamState>({
+    active: false,
+    teamId: null,
+    teammates: [],
+    tasks: [],
+  })
 
   // Store original events for proper response building
   private currentChoiceEvent: ChoiceEvent | null = null
@@ -66,6 +93,7 @@ export class CodayService implements OnDestroy {
   currentInviteEvent$ = this.currentInviteEventSubject.asObservable()
   messageToRestore$ = this.messageToRestoreSubject.asObservable()
   threadUpdateEvent$ = this.threadUpdateEventSubject.asObservable()
+  teamState$ = this.teamStateSubject.asObservable()
 
   // Connection status will be initialized in constructor
   connectionStatus$!: typeof this.eventStream.connectionStatus$
@@ -143,6 +171,14 @@ export class CodayService implements OnDestroy {
     this.accumulatedChunks = ''
     this.streamingTextSubject.next('')
     this.stopThinking()
+
+    // Reset team state
+    this.teamStateSubject.next({
+      active: false,
+      teamId: null,
+      teammates: [],
+      tasks: [],
+    })
   }
 
   /**
@@ -318,6 +354,8 @@ export class CodayService implements OnDestroy {
       this.handleInviteEvent(event)
     } else if (event instanceof ThreadUpdateEvent) {
       this.handleThreadUpdateEvent(event)
+    } else if (event instanceof TeamEvent) {
+      this.handleTeamEvent(event)
     } else if (event instanceof OAuthRequestEvent || event instanceof OAuthCallbackEvent) {
       // OAuth events are handled by OAuthService, no action needed here
     } else {
@@ -327,6 +365,89 @@ export class CodayService implements OnDestroy {
 
   private handleThreadUpdateEvent(event: ThreadUpdateEvent): void {
     this.threadUpdateEventSubject.next(event)
+  }
+
+  private handleTeamEvent(event: TeamEvent): void {
+    const currentState = this.teamStateSubject.value
+
+    switch (event.eventType) {
+      case 'teammate_spawned':
+        // Add teammate to the list
+        if (event.teammateName) {
+          const newTeammate: TeammateInfo = {
+            name: event.teammateName,
+            status: event.status || 'working',
+          }
+          this.teamStateSubject.next({
+            active: true,
+            teamId: event.teamId,
+            teammates: [...currentState.teammates, newTeammate],
+            tasks: currentState.tasks,
+          })
+        }
+        break
+
+      case 'teammate_status_changed':
+        // Update teammate status
+        if (event.teammateName) {
+          const updatedTeammates = currentState.teammates.map((t) =>
+            t.name === event.teammateName ? { ...t, status: event.status || t.status } : t
+          )
+          this.teamStateSubject.next({
+            ...currentState,
+            teammates: updatedTeammates,
+          })
+        }
+        break
+
+      case 'teammate_shutdown':
+        // Remove teammate from the list
+        if (event.teammateName) {
+          const remainingTeammates = currentState.teammates.filter((t) => t.name !== event.teammateName)
+          this.teamStateSubject.next({
+            active: remainingTeammates.length > 0,
+            teamId: remainingTeammates.length > 0 ? currentState.teamId : null,
+            teammates: remainingTeammates,
+            tasks: currentState.tasks,
+          })
+        }
+        break
+
+      case 'task_created':
+        // Add task to the list
+        if (event.taskId && event.taskDescription) {
+          const newTask: TaskInfo = {
+            id: event.taskId,
+            description: event.taskDescription,
+            status: event.taskStatus || 'pending',
+            assignee: event.teammateName,
+          }
+          this.teamStateSubject.next({
+            ...currentState,
+            tasks: [...currentState.tasks, newTask],
+          })
+        }
+        break
+
+      case 'task_status_changed':
+        // Update task status
+        if (event.taskId) {
+          const updatedTasks = currentState.tasks.map((t) =>
+            t.id === event.taskId
+              ? {
+                  ...t,
+                  status: event.taskStatus || t.status,
+                  assignee: event.teammateName || t.assignee,
+                }
+              : t
+          )
+          this.teamStateSubject.next({
+            ...currentState,
+            tasks: updatedTasks,
+          })
+        }
+        break
+    }
   }
 
   private handleMessageEvent(event: MessageEvent): void {

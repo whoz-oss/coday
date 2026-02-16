@@ -6,6 +6,7 @@ import {
   CommandContext,
   FunctionTool,
   Interactor,
+  TeamEvent,
 } from '@coday/model'
 import { TeamService } from '@coday/team'
 
@@ -37,15 +38,10 @@ export class TeamLeadTools extends AssistantToolFactory {
           team = this.teamService.createTeam(agentName)
         }
 
-        // Resolve the agent
+        // Resolve the agent definition
         const agent = await this.agentFind(teammateName, context)
         if (!agent) {
           return `Agent '${teammateName}' not found. Available agents:\n${agentListText}`
-        }
-
-        // Check if already a member
-        if (team.members.has(agent.name)) {
-          return `Agent '${agent.name}' is already a teammate. Use sendMessage to communicate with them.`
         }
 
         if (!context.aiThread) {
@@ -53,9 +49,9 @@ export class TeamLeadTools extends AssistantToolFactory {
         }
 
         // Spawn the teammate
-        this.teamService.spawnTeammate(team, agent, context.aiThread, task)
+        const { instanceName } = this.teamService.spawnTeammate(team, agent, context.aiThread, task)
 
-        return `Teammate '${agent.name}' spawned successfully and is working on: ${task.substring(0, 200)}...`
+        return `Teammate '${instanceName}' spawned successfully and is working on: ${task.substring(0, 200)}...`
       } catch (error: any) {
         return `Error spawning teammate: ${error.message}`
       }
@@ -77,13 +73,17 @@ Each teammate:
 - Goes idle when done and can be messaged for more work
 - Notifies you when it becomes idle
 
+NOTE: Each agent can only be spawned once per team. If you need multiple similar agents, create separate agent definition files (e.g., Dev-1.yml, Dev-2.yml, Dev-3.yml).
+
+BEST PRACTICE: Create all tasks FIRST using createTask, then spawn teammates. This ensures agents see their assigned tasks immediately and can properly claim/complete them.
+
 IMPORTANT: Provide a complete, self-contained task description since the teammate has no prior context.`,
         parameters: {
           type: 'object',
           properties: {
             teammateName: {
               type: 'string',
-              description: 'Name of the agent to spawn as a teammate.',
+              description: 'Name of the agent to spawn (e.g., "Dev", "Sway", "Dev-1").',
             },
             task: {
               type: 'string',
@@ -182,11 +182,27 @@ Use this to:
       dependencies?: string[]
       assignee?: string
     }) => {
-      const team = this.teamService.getTeamByLead(agentName)
-      if (!team) return 'No active team. Spawn teammates first.'
+      // Get or create team for this lead (allows task creation before spawning)
+      let team = this.teamService.getTeamByLead(agentName)
+      if (!team) {
+        team = this.teamService.createTeam(agentName)
+      }
 
       try {
         const task = team.taskList.createTask(description, dependencies ?? [], assignee)
+
+        // Emit TeamEvent for task creation
+        this.interactor.sendEvent(
+          new TeamEvent({
+            teamId: team.id,
+            eventType: 'task_created',
+            taskId: task.id,
+            taskDescription: task.description,
+            taskStatus: task.status,
+            teammateName: assignee,
+          })
+        )
+
         return `Task created: ${JSON.stringify(task, null, 2)}`
       } catch (error: any) {
         return `Error creating task: ${error.message}`
@@ -197,9 +213,13 @@ Use this to:
       type: 'function',
       function: {
         name: 'createTask',
-        description: `Create a task in the shared task list. Tasks can have dependencies on other tasks (by task ID) and can be optionally pre-assigned to a specific teammate.
+        description: `Create a task in the shared task list. Can be called BEFORE spawning teammates to set up the full work plan first.
+
+Tasks can have dependencies on other tasks (by task ID) and can be optionally pre-assigned to a specific teammate. When you spawn a teammate who has pre-assigned tasks, they will be notified immediately.
 
 Teammates can see the task list and claim available tasks. A task becomes available when all its dependencies are completed.
+
+BEST PRACTICE: Create all tasks first, then spawn teammates. This ensures proper task lifecycle (claim → complete) and avoids race conditions.
 
 Use this to break down complex work into coordinated steps.`,
         parameters: {

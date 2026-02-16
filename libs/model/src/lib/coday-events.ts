@@ -378,6 +378,37 @@ export class OAuthCallbackEvent extends CodayEvent {
   }
 }
 
+export type TeamEventType =
+  | 'teammate_spawned'
+  | 'teammate_status_changed'
+  | 'teammate_shutdown'
+  | 'task_created'
+  | 'task_status_changed'
+
+export class TeamEvent extends CodayEvent {
+  teamId: string
+  eventType: TeamEventType
+  teammateName?: string
+  status?: string // 'idle' | 'working' | 'stopped'
+  taskId?: string
+  taskDescription?: string
+  taskStatus?: string // 'pending' | 'in_progress' | 'completed'
+  details?: string
+  static override type = 'team'
+
+  constructor(event: Partial<TeamEvent>) {
+    super(event, TeamEvent.type)
+    this.teamId = event.teamId!
+    this.eventType = event.eventType!
+    this.teammateName = event.teammateName
+    this.status = event.status
+    this.taskId = event.taskId
+    this.taskDescription = event.taskDescription
+    this.taskStatus = event.taskStatus
+    this.details = event.details
+  }
+}
+
 // Exposing a map of event types to their corresponding classes
 const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [MessageEvent.type]: MessageEvent,
@@ -395,6 +426,7 @@ const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [ThreadUpdateEvent.type]: ThreadUpdateEvent,
   [SummaryEvent.type]: SummaryEvent,
   [FileEvent.type]: FileEvent,
+  [TeamEvent.type]: TeamEvent,
   [OAuthRequestEvent.type]: OAuthRequestEvent,
   [OAuthCallbackEvent.type]: OAuthCallbackEvent,
 }

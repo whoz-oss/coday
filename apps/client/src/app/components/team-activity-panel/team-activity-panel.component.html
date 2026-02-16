@@ -1,0 +1,52 @@
+<div class="team-panel-container">
+  <!-- Header -->
+  <div class="panel-header">
+    <div class="header-left">
+      <h3 class="panel-title">Team Activity</h3>
+    </div>
+    <div class="header-actions">
+      <button mat-icon-button class="close-btn" (click)="close()" title="Close" type="button">
+        <mat-icon>chevron_left</mat-icon>
+      </button>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="panel-content">
+    <!-- Teammates Section -->
+    <div class="teammates-section">
+      <h4 class="section-title">Teammates</h4>
+      @if (teamState.teammates.length > 0) {
+        @for (teammate of teamState.teammates; track teammate.name) {
+          <div class="teammate-item">
+            <span class="status-dot" [ngClass]="getStatusClass(teammate.status)"></span>
+            <div class="teammate-details">
+              <span class="teammate-name">{{ teammate.name }}</span>
+              <span class="teammate-status">{{ teammate.status }}</span>
+            </div>
+          </div>
+        }
+      } @else {
+        <div class="empty-state">No active teammates</div>
+      }
+    </div>
+
+    <!-- Tasks Section -->
+    @if (teamState.tasks.length > 0) {
+      <div class="tasks-section">
+        <h4 class="section-title">Tasks ({{ teamState.tasks.length }})</h4>
+        @for (task of teamState.tasks; track task.id) {
+          <div class="task-item" [ngClass]="getTaskClass(task.status)">
+            <div class="task-status-icon">{{ getTaskIcon(task.status) }}</div>
+            <div class="task-details">
+              <span class="task-description">{{ truncateDescription(task.description) }}</span>
+              @if (task.assignee) {
+                <span class="task-assignee">{{ task.assignee }}</span>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+</div>

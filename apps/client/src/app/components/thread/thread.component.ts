@@ -19,6 +19,7 @@ import { ChatMessage } from '../chat-message/chat-message.component'
 import { ChatTextareaComponent } from '../chat-textarea/chat-textarea.component'
 import { ChoiceOption, ChoiceSelectComponent } from '../choice-select/choice-select.component'
 import { FileExchangeDrawerComponent } from '../file-exchange-drawer/file-exchange-drawer.component'
+import { TeamActivityPanelComponent } from '../team-activity-panel/team-activity-panel.component'
 import { MatSidenavModule } from '@angular/material/sidenav'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
@@ -57,6 +58,7 @@ import { FirstMessageStateService } from '../../core/services/first-message-stat
     ChatTextareaComponent,
     ChoiceSelectComponent,
     FileExchangeDrawerComponent,
+    TeamActivityPanelComponent,
     MatSidenavModule,
     MatIconModule,
     MatButtonModule,
@@ -95,6 +97,10 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
 
   // File exchange drawer state
   isFileDrawerOpen: boolean = false
+
+  // Team panel state
+  isTeamPanelOpen: boolean = false
+  isTeamActive: boolean = false
 
   // Connect to file exchange state for file count
   get fileCount(): number {
@@ -159,6 +165,11 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
 
     // Initialize file exchange state for this thread
     this.fileExchangeState.initializeForThread(this.projectName, this.threadId)
+
+    // Subscribe to team state
+    this.codayService.teamState$.pipe(takeUntil(this.destroy$)).subscribe((teamState) => {
+      this.isTeamActive = teamState.active
+    })
 
     // Subscribe to conversation state
     this.codayService.messages$.pipe(takeUntil(this.destroy$)).subscribe((messages) => {
@@ -325,6 +336,17 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   closeFileDrawer(): void {
     console.log('[THREAD] Closing file drawer')
     this.isFileDrawerOpen = false
+  }
+
+  // Team panel methods
+  toggleTeamPanel(): void {
+    console.log('[THREAD] Toggling team panel')
+    this.isTeamPanelOpen = !this.isTeamPanelOpen
+  }
+
+  closeTeamPanel(): void {
+    console.log('[THREAD] Closing team panel')
+    this.isTeamPanelOpen = false
   }
 
   // Drag and Drop Event Handlers for image uploads

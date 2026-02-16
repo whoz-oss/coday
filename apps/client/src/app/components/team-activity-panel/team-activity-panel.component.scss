@@ -1,0 +1,235 @@
+.team-panel-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-backdrop-blur);
+  -webkit-backdrop-filter: var(--glass-backdrop-blur);
+  color: var(--color-text);
+}
+
+// Header
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.panel-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.close-btn {
+  color: var(--color-text-secondary);
+
+  &:hover {
+    color: var(--color-text);
+    background: var(--color-bg-hover);
+  }
+}
+
+// Content
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+// Section styles
+.section-title {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+}
+
+// Teammates section
+.teammates-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.teammate-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: var(--color-bg-secondary);
+  transition: background 0.2s;
+
+  &:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+
+  &.status-idle {
+    background-color: var(--color-success);
+    box-shadow: 0 0 8px var(--color-success);
+  }
+
+  &.status-working {
+    background-color: var(--color-warning);
+    box-shadow: 0 0 8px var(--color-warning);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  &.status-stopped {
+    background-color: var(--color-text-secondary);
+  }
+
+  &.status-unknown {
+    background-color: var(--color-border);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.teammate-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.teammate-name {
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.teammate-status {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  text-transform: capitalize;
+}
+
+// Tasks section
+.tasks-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.task-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: var(--color-bg-secondary);
+  transition: background 0.2s;
+  border-left: 3px solid transparent;
+
+  &:hover {
+    background: var(--color-bg-hover);
+  }
+
+  &.task-pending {
+    border-left-color: var(--color-text-secondary);
+  }
+
+  &.task-in_progress {
+    border-left-color: var(--color-warning);
+  }
+
+  &.task-completed {
+    border-left-color: var(--color-success);
+    opacity: 0.7;
+  }
+}
+
+.task-status-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.task-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.task-description {
+  font-size: 0.9rem;
+  color: var(--color-text);
+  line-height: 1.4;
+  word-wrap: break-word;
+}
+
+.task-assignee {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+// Empty state
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+// Mobile adjustments
+@media (max-width: 768px) {
+  .panel-header {
+    padding: 0.75rem;
+  }
+
+  .panel-content {
+    padding: 0.75rem;
+  }
+
+  .teammate-item,
+  .task-item {
+    padding: 0.5rem;
+  }
+}
