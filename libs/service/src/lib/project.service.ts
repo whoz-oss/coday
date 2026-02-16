@@ -88,6 +88,7 @@ export class ProjectService {
 
       // If the requested name is either the simple basename or the full volatile ID
       if (name === basename || name === volatileId || name === this.defaultProject) {
+        console.log(`[PROJECT_SERVICE] Creating volatile project for '${name}' at ${cwd}`)
         const createdId = this.getOrCreateVolatileProject(cwd)
         config = this.repository.getConfig(createdId)
         if (config) {

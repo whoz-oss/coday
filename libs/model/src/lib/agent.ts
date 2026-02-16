@@ -2,7 +2,7 @@ import { AiClient } from './ai.client'
 import { AiThread } from './ai-thread'
 import { Observable } from 'rxjs'
 import { AnswerEvent, CodayEvent } from './coday-events'
-import { AgentDefinition, ModelSize } from './agent-definition'
+import { AgentDefinition } from './agent-definition'
 import { ToolSet } from './integration-tool-set'
 
 /**
@@ -49,35 +49,18 @@ export class Agent {
    * Process a work request through this agent
    *
    * @returns Observable stream of events from the processing
-   * @param command text written by the user
+   * @param command text written by the user (may include @agentName)
    * @param thread
    */
   async run(command: string, thread: AiThread): Promise<Observable<CodayEvent>> {
-    // Trim the command
     const trimmedCommand = command.trim()
 
-    // Handle model size change
-    const currentModelSize = this.definition.modelSize || ModelSize.SMALL
-    let processedCommand = trimmedCommand
-    let newModelSize = currentModelSize
-
-    if (trimmedCommand.startsWith('+') && currentModelSize === ModelSize.SMALL) {
-      newModelSize = ModelSize.BIG
-      processedCommand = trimmedCommand.slice(1).trim()
-    } else if (trimmedCommand.startsWith('-') && currentModelSize === ModelSize.BIG) {
-      newModelSize = ModelSize.SMALL
-      processedCommand = trimmedCommand.slice(1).trim()
-    }
-
-    // Update model size
-    this.definition.modelSize = newModelSize
-
-    // Add AnswerEvent to thread (replaces the old addUserMessage approach)
-    // This preserves the question-answer relationship through parentKey
-    const answerEvent = new AnswerEvent({ answer: processedCommand })
+    // Add AnswerEvent to thread with the original command (including @agentName if present)
+    // This preserves the user's original input in the thread history
+    const answerEvent = new AnswerEvent({ answer: trimmedCommand })
     thread.addAnswerEvent(answerEvent)
 
-    // Run with updated configuration
+    // Run with AI client
     return await this.aiClient.run(this, thread)
   }
 }

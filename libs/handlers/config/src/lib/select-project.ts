@@ -9,10 +9,10 @@ export async function buildFirstCommandContext(
   services: CodayServices
 ): Promise<CommandContext> {
   const project = services.project.selectedProject!
-  const userData: UserData = services.user.getUserData(project.name) // Pass project name
+  const userData: UserData = services.user.getUserData(project.name)
   const projectConfig = await loadOrInitProjectDescription(project.config.path, interactor, userData)
 
-  return new CommandContext(
+  const context = new CommandContext(
     {
       ...projectConfig,
       root: project.config.path,
@@ -20,4 +20,8 @@ export async function buildFirstCommandContext(
     },
     services.user.username
   )
+  console.log(
+    `[BUILD_CONTEXT] Context for '${context.project.name}' → root: ${context.project.root}, desc: ${context.project.description?.length || 0} chars`
+  )
+  return context
 }
