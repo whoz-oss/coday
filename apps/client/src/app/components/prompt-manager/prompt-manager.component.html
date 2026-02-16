@@ -1,0 +1,84 @@
+<div class="prompt-manager">
+  <div class="header">
+    <h2>Prompts</h2>
+    <div class="header-actions">
+      <mat-form-field appearance="outline" class="search-field">
+        <mat-label>Search</mat-label>
+        <input
+          matInput
+          [(ngModel)]="searchQuery"
+          (input)="onSearchChange()"
+          placeholder="Name, description, author..."
+        />
+        <mat-icon matPrefix>search</mat-icon>
+      </mat-form-field>
+      <mat-slide-toggle [(ngModel)]="showOnlyMine" (change)="applyFilter()" color="primary" class="mine-toggle">
+        Mine
+      </mat-slide-toggle>
+      <button class="btn-create" (click)="createPrompt()">
+        <mat-icon>add</mat-icon>
+        <span>Create Prompt</span>
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="isLoading" class="loading">Loading prompts...</div>
+
+  <div *ngIf="errorMessage" class="error">{{ errorMessage }}</div>
+
+  <div *ngIf="!isLoading && prompts.length === 0" class="empty">
+    No prompts found. Create your first prompt to get started.
+  </div>
+
+  <div *ngIf="!isLoading && prompts.length > 0 && filteredPrompts.length === 0" class="empty">
+    No prompts match your search.
+  </div>
+
+  <div class="prompt-list" *ngIf="!isLoading && filteredPrompts.length > 0">
+    <div *ngFor="let prompt of filteredPrompts" class="prompt-item">
+      <div class="prompt-info">
+        <div class="prompt-header">
+          <h3>{{ prompt.name }}</h3>
+          <div class="badges">
+            <!-- Source badge -->
+            <span
+              class="source-badge"
+              [class.badge-local]="prompt.source === 'local'"
+              [class.badge-project]="prompt.source === 'project'"
+              [title]="prompt.source === 'local' ? 'Local prompt (~/.coday/)' : 'Project prompt (./prompts/)'"
+            >
+              {{ prompt.source === 'local' ? '👤' : '📦' }}
+            </span>
+            <!-- Owner badge -->
+            <span
+              *ngIf="prompt.createdBy !== getCurrentUsername()"
+              class="owner-badge"
+              title="Created by {{ prompt.createdBy }}"
+            >
+              👤 {{ prompt.createdBy }}
+            </span>
+          </div>
+        </div>
+        <p class="description">{{ prompt.description }}</p>
+        <div class="meta">
+          <span class="prompt-id" title="Prompt ID">ID: {{ prompt.id }}</span>
+          <span class="webhook-status" [class.enabled]="prompt.webhookEnabled">
+            Webhook: {{ prompt.webhookEnabled ? 'Enabled' : 'Disabled' }}
+          </span>
+        </div>
+      </div>
+      <div class="prompt-actions">
+        <button (click)="editPrompt(prompt)" class="btn-primary">Edit</button>
+        <button
+          *ngIf="isAdmin"
+          (click)="toggleWebhook(prompt)"
+          [class.btn-webhook-enabled]="prompt.webhookEnabled"
+          [class.btn-webhook-disabled]="!prompt.webhookEnabled"
+        >
+          {{ prompt.webhookEnabled ? 'Disable Webhook' : 'Enable Webhook' }}
+        </button>
+        <button (click)="deletePrompt(prompt.id)" class="btn-danger">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>

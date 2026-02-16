@@ -128,7 +128,7 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     this.isStartingFirstMessage = true
 
     // Create thread WITHOUT a name - the backend will auto-generate a name from the first message
-    this.threadApiService.createThread(this.projectName).subscribe({
+    this.threadApiService.createThread().subscribe({
       next: (response) => {
         console.log('[MAIN-APP] Thread created:', response.thread.id)
 

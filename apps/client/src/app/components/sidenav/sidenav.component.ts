@@ -14,7 +14,8 @@ import { PreferencesService } from '../../services/preferences.service'
 import { OptionsPanelComponent } from '../options-panel'
 import { ThreadSelectorComponent } from '../thread-selector/thread-selector.component'
 import { JsonEditorComponent, JsonEditorData } from '../json-editor/json-editor.component'
-import { WebhookManagerComponent } from '../webhook-manager/webhook-manager.component'
+import { PromptManagerComponent } from '../prompt-manager/prompt-manager.component'
+import { SchedulerManagerComponent } from '../scheduler-manager/scheduler-manager.component'
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { ProjectApiService } from '../../core/services/project-api.service'
@@ -88,8 +89,8 @@ export class SidenavComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (config: any) => {
-          // Check if user has CODAY_ADMIN role in temp_groups
-          this.isAdmin = config.temp_groups?.includes('CODAY_ADMIN') ?? false
+          // Check if user has CODAY_ADMIN role in groups
+          this.isAdmin = config.groups?.includes('CODAY_ADMIN') ?? false
           console.log('[SIDENAV] User admin status:', this.isAdmin)
         },
         error: (error) => {
@@ -234,11 +235,54 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Open webhook manager dialog
+   * Check if a project is selected and show error if not
+   * @returns true if project is selected, false otherwise
    */
-  openWebhooks(): void {
-    console.log('[SIDENAV] Opening webhook manager dialog')
-    this.dialog.open(WebhookManagerComponent)
+  private requireProjectSelection(context: string): boolean {
+    const projectName = this.selectedProjectName()
+    if (!projectName) {
+      console.error(`[SIDENAV] No project selected, cannot ${context}`)
+      this.configErrorMessage = 'Please select a project first'
+      return false
+    }
+    return true
+  }
+
+  /**
+   * Open a manager dialog with standard dimensions
+   */
+  private openManagerDialog(component: any, logMessage: string): void {
+    console.log(`[SIDENAV] ${logMessage}`)
+    this.dialog.open(component, {
+      width: '90vw',
+      maxWidth: '1200px',
+      height: '90vh',
+      maxHeight: '900px',
+    })
+  }
+
+  /**
+   * Open prompt manager dialog
+   */
+  openPrompts(): void {
+    if (!this.requireProjectSelection('open prompts')) {
+      return
+    }
+    this.openManagerDialog(PromptManagerComponent, 'Opening prompt manager dialog')
+  }
+
+  /**
+   * Open scheduler manager dialog
+   * Available for all users if a project is selected
+   */
+  openSchedulers(): void {
+    if (!this.requireProjectSelection('open schedulers')) {
+      return
+    }
+    this.openManagerDialog(
+      SchedulerManagerComponent,
+      `Opening scheduler manager dialog for project: ${this.selectedProjectName()}`
+    )
   }
 
   /**

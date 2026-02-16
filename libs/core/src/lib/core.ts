@@ -295,7 +295,7 @@ export class Coday {
       this.aiHandler = new AiHandler(this.interactor, this.services.agent, this.aiThreadService)
       this.handlerLooper = new HandlerLooper(this.interactor, this.aiHandler, this.configHandler, this.services)
       this.aiClientProvider.init(this.context)
-      this.handlerLooper.init(this.context.project)
+      await this.handlerLooper.init(this.context.project)
 
       console.log('[CODAY] Initializing services...')
       await this.services.agent.initialize(this.context)

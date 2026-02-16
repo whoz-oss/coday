@@ -1,6 +1,6 @@
-import { CodayLoggerUtils } from './coday-logger-utils'
 import { promises as fs } from 'fs'
 import * as path from 'path'
+import { CodayLoggerUtils } from './coday-logger.utils'
 
 describe('CodayLogger', () => {
   const testLogDir = path.join(process.cwd(), 'logs', 'usage')

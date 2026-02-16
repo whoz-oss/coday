@@ -1,6 +1,8 @@
 import { inject, Injectable } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
 import { Observable } from 'rxjs'
+import { ProjectStateService } from './project-state.service'
+import { ThreadStateService } from './thread-state.service'
 
 /**
  * Service for message-related API calls.
@@ -11,66 +13,62 @@ import { Observable } from 'rxjs'
 })
 export class MessageApiService {
   private readonly http = inject(HttpClient)
+  private readonly projectState = inject(ProjectStateService)
+  private readonly threadState = inject(ThreadStateService)
 
   /**
-   * Get all messages from a thread
-   * @param projectName Project name
-   * @param threadId Thread ID
-   * @returns Observable of messages array
+   * Build base URL for the current project's thread messages
    */
-  getMessages(projectName: string, threadId: string): Observable<any[]> {
-    return this.http.get<any[]>(`/api/projects/${projectName}/threads/${threadId}/messages`)
+  private getBaseUrl(): string {
+    return `/api/projects/${this.projectState.getSelectedProjectIdOrThrow()}/threads/${this.threadState.getSelectedThreadIdOrThrow()}/messages`
   }
 
   /**
-   * Send a message to a thread
-   * @param projectName Project name
-   * @param threadId Thread ID
+   * Get all messages from the current thread
+   * @returns Observable of messages array
+   */
+  getMessages(): Observable<any[]> {
+    return this.http.get<any[]>(this.getBaseUrl())
+  }
+
+  /**
+   * Send a message to the current thread
    * @param payload AnswerEvent payload
    * @returns Observable of response
    */
-  sendMessage(projectName: string, threadId: string, payload: any): Observable<any> {
-    return this.http.post(`/api/projects/${projectName}/threads/${threadId}/messages`, payload, {
+  sendMessage(payload: any): Observable<any> {
+    return this.http.post(this.getBaseUrl(), payload, {
       responseType: 'text',
     })
   }
 
   /**
    * Get a specific message by event ID
-   * @param projectName Project name
-   * @param threadId Thread ID
    * @param eventId Event timestamp ID
    * @returns Observable of message
    */
-  getMessage(projectName: string, threadId: string, eventId: string): Observable<any> {
-    return this.http.get<any>(
-      `/api/projects/${projectName}/threads/${threadId}/messages/${encodeURIComponent(eventId)}`
-    )
+  getMessage(eventId: string): Observable<any> {
+    return this.http.get<any>(`${this.getBaseUrl()}/${encodeURIComponent(eventId)}`)
   }
 
   /**
    * Delete a message (truncate thread at this message)
-   * @param projectName Project name
-   * @param threadId Thread ID
    * @param eventId Event timestamp ID
    * @returns Observable of response
    */
-  deleteMessage(projectName: string, threadId: string, eventId: string): Observable<any> {
-    return this.http.delete(`/api/projects/${projectName}/threads/${threadId}/messages/${encodeURIComponent(eventId)}`)
+  deleteMessage(eventId: string): Observable<any> {
+    return this.http.delete(`${this.getBaseUrl()}/${encodeURIComponent(eventId)}`)
   }
 
   /**
    * Get formatted message for display (temporary endpoint)
    * TODO: Remove once frontend has proper event display components
-   * @param projectName Project name
-   * @param threadId Thread ID
    * @param eventId Event timestamp ID
    * @returns Observable of formatted text
    */
-  getFormattedMessage(projectName: string, threadId: string, eventId: string): Observable<string> {
-    return this.http.get(
-      `/api/projects/${projectName}/threads/${threadId}/messages/${encodeURIComponent(eventId)}/formatted`,
-      { responseType: 'text' }
-    )
+  getFormattedMessage(eventId: string): Observable<string> {
+    return this.http.get(`${this.getBaseUrl()}/${encodeURIComponent(eventId)}/formatted`, {
+      responseType: 'text',
+    })
   }
 }

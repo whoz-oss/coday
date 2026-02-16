@@ -1,6 +1,5 @@
 import { AiClientProvider } from './ai-client-provider'
 import { UserService } from '@coday/service'
-import { ProjectStateService } from '@coday/service'
 import { CodayLogger } from '@coday/model'
 import { Interactor } from '@coday/model'
 import { CommandContext } from '@coday/model'
@@ -9,7 +8,6 @@ describe('AiClientProvider - Auto-detection', () => {
   let provider: AiClientProvider
   let mockInteractor: jest.Mocked<Interactor>
   let mockUserService: jest.Mocked<UserService>
-  let mockProjectService: jest.Mocked<ProjectStateService>
   let mockLogger: jest.Mocked<CodayLogger>
   let originalEnv: NodeJS.ProcessEnv
 
@@ -28,13 +26,11 @@ describe('AiClientProvider - Auto-detection', () => {
       config: { ai: [] },
     } as any
 
-    mockProjectService = {
-      selectedProject: null,
-    } as any
-
     mockLogger = {} as any
 
-    provider = new AiClientProvider(mockInteractor, mockUserService, mockProjectService, mockLogger)
+    // AiClientProvider constructor expects: (interactor, userService, projectsAiProviderConfigs[], logger)
+    // projectsAiProviderConfigs is an array of AiProviderConfig, not ProjectStateService
+    provider = new AiClientProvider(mockInteractor, mockUserService, [], mockLogger)
   })
 
   afterEach(() => {

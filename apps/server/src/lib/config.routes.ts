@@ -30,6 +30,7 @@ export function registerConfigRoutes(
   /**
    * GET /api/config/user
    * Retrieve user configuration with masked sensitive values
+   * Includes username in response for client-side filtering
    */
   app.get('/api/config/user', (req: express.Request, res: express.Response) => {
     try {
@@ -45,7 +46,13 @@ export function registerConfigRoutes(
       // Get masked config from service
       const maskedConfig = userService.getConfigForClient()
 
-      res.status(200).json(maskedConfig)
+      // Add username to response (not stored in config file, but needed by client)
+      const response = {
+        ...maskedConfig,
+        username: username, // Add username for client-side filtering
+      }
+
+      res.status(200).json(response)
     } catch (error) {
       console.error('Error retrieving user config:', error)
       res.status(500).json({ error: 'Failed to retrieve user configuration' })
