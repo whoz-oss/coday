@@ -6,9 +6,17 @@ import { ThreadCodayManager } from './lib/thread-coday-manager'
 import * as os from 'node:os'
 import { debugLog } from './lib/log'
 import { CodayLoggerUtils } from '@coday/utils'
-import { ThreadCleanupService, PromptService, SchedulerService, PromptExecutionService } from '@coday/service'
+import {
+  ThreadCleanupService,
+  PromptService,
+  SchedulerService,
+  PromptExecutionService,
+  ConfigServiceRegistry,
+  ProjectService,
+  ThreadFileService,
+  ThreadService,
+} from '@coday/service'
 import { findAvailablePort } from './lib/find-available-port'
-import { ConfigServiceRegistry } from '@coday/service'
 import { ServerInteractor } from '@coday/model'
 import { registerConfigRoutes } from './lib/config.routes'
 import { registerProjectRoutes } from './lib/project.routes'
@@ -19,11 +27,8 @@ import { registerAgentRoutes } from './lib/agent.routes'
 import { registerPromptRoutes } from './lib/prompt.routes'
 import { registerSchedulerRoutes } from './lib/scheduler.routes'
 import { registerPromptExecutionRoutes } from './lib/prompt-execution.routes'
-import { ProjectService } from '@coday/service'
 import { parseCodayOptions } from './lib/coday-options-utils'
 import { ProjectFileRepository } from '@coday/repository'
-import { ThreadFileService } from '@coday/service'
-import { ThreadService } from '@coday/service'
 import { McpInstancePool } from '@coday/mcp'
 
 const app = express()
@@ -280,6 +285,12 @@ registerAgentRoutes(
   codayOptions
 )
 
+// Initialize scheduler service early so routes can be registered before catch-all
+const schedulerService = new SchedulerService(logger, promptService, codayOptions.configDir)
+
+// Register scheduler routes (service will be initialized after server starts)
+registerSchedulerRoutes(app, schedulerService, getUsername)
+
 // Catch-all route for Angular client-side routing (MUST be after all API routes)
 // In production mode, serve index.html for any non-API routes
 // This allows Angular router to handle routes on page refresh
@@ -316,9 +327,6 @@ if (process.env.BUILD_ENV !== 'development') {
 
 // Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null
-
-// Initialize scheduler service (server-only)
-let schedulerService: SchedulerService | null = null
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, _: express.NextFunction) => {
@@ -365,19 +373,16 @@ PORT_PROMISE.then(async (PORT) => {
   }
 
   // Initialize and start scheduler service after server is running
+  // Routes are already registered, just need to initialize the service
   try {
     debugLog('SCHEDULER', 'Initializing scheduler service...')
 
-    schedulerService = new SchedulerService(logger, promptService, codayOptions.configDir)
     await schedulerService.initialize()
 
     // Initialize execution dependencies
     schedulerService.initializeExecution(promptExecutionService)
 
-    // Register scheduler routes now that service is initialized
-    registerSchedulerRoutes(app, schedulerService, getUsername)
-
-    debugLog('SCHEDULER', 'Scheduler service initialized and routes registered successfully')
+    debugLog('SCHEDULER', 'Scheduler service initialized successfully')
   } catch (error) {
     console.error('Failed to initialize scheduler service:', error)
   }
@@ -400,10 +405,8 @@ async function gracefulShutdown(signal: string) {
 
   try {
     // Stop scheduler service
-    if (schedulerService) {
-      console.log('Stopping scheduler service...')
-      schedulerService.stop()
-    }
+    console.log('Stopping scheduler service...')
+    schedulerService.stop()
 
     // Stop thread cleanup service
     if (cleanupService) {
