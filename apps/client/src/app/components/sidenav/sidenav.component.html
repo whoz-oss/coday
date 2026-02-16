@@ -176,19 +176,6 @@
         </a>
       </div>
 
-      <div class="section-container">
-        <a
-          href="https://github.com/whoz-oss/coday"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="section-toggle contribute-btn"
-          title="Contribute on GitHub"
-        >
-          <img [attr.src]="'CODAY-Logo.png'" alt="Coday" class="contribute-logo" />
-          <span class="section-label">Contribute on GitHub</span>
-        </a>
-      </div>
-
       <!-- Admin only -->
       @if (isAdmin) {
         <!-- Project Config -->
@@ -257,6 +244,20 @@
           </a>
         </div>
       }
+
+      <!-- Contribute on GitHub - Always at the bottom -->
+      <div class="section-container">
+        <a
+          href="https://github.com/whoz-oss/coday"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="section-toggle contribute-btn"
+          title="Contribute on GitHub"
+        >
+          <img [attr.src]="'CODAY-Logo.png'" alt="Coday" class="contribute-logo" />
+          <span class="section-label">Contribute on GitHub</span>
+        </a>
+      </div>
     </div>
   </mat-sidenav>
 

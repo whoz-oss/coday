@@ -235,18 +235,25 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Open prompt manager dialog
+   * Check if a project is selected and show error if not
+   * @returns true if project is selected, false otherwise
    */
-  openPrompts(): void {
+  private requireProjectSelection(context: string): boolean {
     const projectName = this.selectedProjectName()
     if (!projectName) {
-      console.error('[SIDENAV] No project selected, cannot open prompts')
+      console.error(`[SIDENAV] No project selected, cannot ${context}`)
       this.configErrorMessage = 'Please select a project first'
-      return
+      return false
     }
+    return true
+  }
 
-    console.log('[SIDENAV] Opening prompt manager dialog')
-    this.dialog.open(PromptManagerComponent, {
+  /**
+   * Open a manager dialog with standard dimensions
+   */
+  private openManagerDialog(component: any, logMessage: string): void {
+    console.log(`[SIDENAV] ${logMessage}`)
+    this.dialog.open(component, {
       width: '90vw',
       maxWidth: '1200px',
       height: '90vh',
@@ -255,24 +262,27 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Open prompt manager dialog
+   */
+  openPrompts(): void {
+    if (!this.requireProjectSelection('open prompts')) {
+      return
+    }
+    this.openManagerDialog(PromptManagerComponent, 'Opening prompt manager dialog')
+  }
+
+  /**
    * Open scheduler manager dialog
    * Available for all users if a project is selected
    */
   openSchedulers(): void {
-    const projectName = this.selectedProjectName()
-    if (!projectName) {
-      console.error('[SIDENAV] No project selected, cannot open schedulers')
-      this.configErrorMessage = 'Please select a project first'
+    if (!this.requireProjectSelection('open schedulers')) {
       return
     }
-
-    console.log('[SIDENAV] Opening scheduler manager dialog for project:', projectName)
-    this.dialog.open(SchedulerManagerComponent, {
-      width: '90vw',
-      maxWidth: '1200px',
-      height: '90vh',
-      maxHeight: '900px',
-    })
+    this.openManagerDialog(
+      SchedulerManagerComponent,
+      `Opening scheduler manager dialog for project: ${this.selectedProjectName()}`
+    )
   }
 
   /**

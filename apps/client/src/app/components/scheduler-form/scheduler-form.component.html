@@ -13,9 +13,11 @@
     <mat-form-field appearance="outline" class="full-width">
       <mat-label>Prompt</mat-label>
       <mat-select [(ngModel)]="promptId" required>
-        <mat-option *ngFor="let prompt of availablePrompts" [value]="prompt.id">
-          {{ prompt.name }}
-        </mat-option>
+        @for (prompt of availablePrompts; track prompt.id) {
+          <mat-option [value]="prompt.id">
+            {{ prompt.name }}
+          </mat-option>
+        }
       </mat-select>
       <mat-hint>Select the prompt to execute</mat-hint>
     </mat-form-field>
@@ -51,13 +53,11 @@
     <div class="days-section">
       <h3>Days of Week (Optional)</h3>
       <div class="days-checkboxes">
-        <mat-checkbox
-          *ngFor="let day of daysOfWeekOptions"
-          [checked]="isDaySelected(day.value)"
-          (change)="toggleDayOfWeek(day.value)"
-        >
-          {{ day.label }}
-        </mat-checkbox>
+        @for (day of daysOfWeekOptions; track day.value) {
+          <mat-checkbox [checked]="isDaySelected(day.value)" (change)="toggleDayOfWeek(day.value)">
+            {{ day.label }}
+          </mat-checkbox>
+        }
       </div>
       <p class="hint">Leave empty to run every day</p>
     </div>
@@ -74,15 +74,19 @@
         </mat-select>
       </mat-form-field>
 
-      <mat-form-field *ngIf="endConditionType === 'occurrences'" appearance="outline" class="full-width">
-        <mat-label>Number of Occurrences</mat-label>
-        <input matInput type="number" [(ngModel)]="endOccurrences" min="1" required />
-      </mat-form-field>
+      @if (endConditionType === 'occurrences') {
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Number of Occurrences</mat-label>
+          <input matInput type="number" [(ngModel)]="endOccurrences" min="1" required />
+        </mat-form-field>
+      }
 
-      <mat-form-field *ngIf="endConditionType === 'endTimestamp'" appearance="outline" class="full-width">
-        <mat-label>End Date</mat-label>
-        <input matInput type="datetime-local" [(ngModel)]="endTimestamp" required />
-      </mat-form-field>
+      @if (endConditionType === 'endTimestamp') {
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>End Date</mat-label>
+          <input matInput type="datetime-local" [(ngModel)]="endTimestamp" required />
+        </mat-form-field>
+      }
     </div>
 
     <!-- Parameters -->
@@ -96,45 +100,53 @@
       </div>
 
       <!-- Simple parameter mode -->
-      <div *ngIf="parameterMode === 'simple'">
-        <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Parameter Value</mat-label>
-          <input matInput [(ngModel)]="simpleParameter" placeholder="e.g., 1234 or staging" />
-          <mat-hint>Simple value for {{ '{{PARAMETERS}}' }} placeholder or appended to first command</mat-hint>
-        </mat-form-field>
-      </div>
+      @if (parameterMode === 'simple') {
+        <div>
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Parameter Value</mat-label>
+            <input matInput [(ngModel)]="simpleParameter" placeholder="e.g., 1234 or staging" />
+            <mat-hint>Simple value for {{ '{{PARAMETERS}}' }} placeholder or appended to first command</mat-hint>
+          </mat-form-field>
+        </div>
+      }
 
       <!-- Structured parameters mode -->
-      <div *ngIf="parameterMode === 'structured'">
-        <div class="section-header">
-          <button mat-icon-button (click)="addParameter()" type="button" title="Add parameter">
-            <mat-icon>add</mat-icon>
-          </button>
-        </div>
-
-        <div class="parameters-list" *ngIf="parameters.length > 0">
-          <div *ngFor="let param of parameters; let i = index; trackBy: trackByIndex" class="parameter-item">
-            <mat-form-field appearance="outline" class="param-key">
-              <mat-label>Key</mat-label>
-              <input matInput [(ngModel)]="param.key" placeholder="parameterName" />
-            </mat-form-field>
-            <mat-form-field appearance="outline" class="param-value">
-              <mat-label>Value</mat-label>
-              <input matInput [(ngModel)]="param.value" placeholder="value" />
-            </mat-form-field>
-            <button
-              mat-icon-button
-              (click)="removeParameter(i)"
-              type="button"
-              title="Remove parameter"
-              class="remove-btn"
-            >
-              <mat-icon>delete</mat-icon>
+      @if (parameterMode === 'structured') {
+        <div>
+          <div class="section-header">
+            <button mat-icon-button (click)="addParameter()" type="button" title="Add parameter">
+              <mat-icon>add</mat-icon>
             </button>
           </div>
+
+          @if (parameters.length > 0) {
+            <div class="parameters-list">
+              @for (param of parameters; track $index; let i = $index) {
+                <div class="parameter-item">
+                  <mat-form-field appearance="outline" class="param-key">
+                    <mat-label>Key</mat-label>
+                    <input matInput [(ngModel)]="param.key" placeholder="parameterName" />
+                  </mat-form-field>
+                  <mat-form-field appearance="outline" class="param-value">
+                    <mat-label>Value</mat-label>
+                    <input matInput [(ngModel)]="param.value" placeholder="value" />
+                  </mat-form-field>
+                  <button
+                    mat-icon-button
+                    (click)="removeParameter(i)"
+                    type="button"
+                    title="Remove parameter"
+                    class="remove-btn"
+                  >
+                    <mat-icon>delete</mat-icon>
+                  </button>
+                </div>
+              }
+            </div>
+          }
+          <p class="hint">Key-value pairs for {{ '{{key}}' }} placeholders in prompt commands</p>
         </div>
-        <p class="hint">Key-value pairs for {{ '{{key}}' }} placeholders in prompt commands</p>
-      </div>
+      }
     </div>
 
     <!-- Enabled -->
@@ -144,10 +156,12 @@
     </div>
 
     <!-- Error message -->
-    <div *ngIf="errorMessage" class="error-message">
-      <mat-icon>error</mat-icon>
-      <span>{{ errorMessage }}</span>
-    </div>
+    @if (errorMessage) {
+      <div class="error-message">
+        <mat-icon>error</mat-icon>
+        <span>{{ errorMessage }}</span>
+      </div>
+    }
   </div>
 </mat-dialog-content>
 
