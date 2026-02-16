@@ -1,3 +1,13 @@
+## 0.69.1 (2026-02-16)
+
+### 🩹 Fixes
+
+- scheduler routes 404 in production mode ([#473](https://github.com/whoz-oss/coday/pull/473))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.69.0 (2026-02-16)
 
 ### 🚀 Features
