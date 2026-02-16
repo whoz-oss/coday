@@ -16,6 +16,7 @@ import { ProjectService } from '@coday/service'
 import { ThreadService } from '@coday/service'
 import { McpInstancePool } from '@coday/mcp'
 import { AgentService } from '@coday/agent'
+import { TeamService } from '@coday/team'
 
 /**
  * Represents a Coday instance associated with a specific thread.
@@ -207,6 +208,7 @@ class ThreadCodayInstance {
     const integrationConfig = new IntegrationConfigService(user, project, interactor)
     const memory = new MemoryService(project, user)
     const mcp = new McpConfigService(user, project, interactor)
+    const team = new TeamService(interactor)
 
     // Subscribe to interactor events and broadcast to all SSE connections
     interactor.events.subscribe((event) => {
@@ -226,6 +228,7 @@ class ThreadCodayInstance {
       logger: this.logger,
       webhook: this.webhookService,
       options: this.options,
+      team,
     })
     console.log(`[THREAD_CODAY] Instance created for thread '${this.threadId}'`)
 

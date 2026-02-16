@@ -1,0 +1,19 @@
+{
+  "name": "team",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/team",
+  "tags": ["scope:libs", "type:core"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "libs/team/dist",
+        "main": "libs/team/src/index.ts",
+        "tsConfig": "libs/team/tsconfig.lib.json",
+        "assets": ["libs/team/*.md"]
+      }
+    }
+  }
+}

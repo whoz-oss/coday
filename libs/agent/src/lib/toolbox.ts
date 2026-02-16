@@ -21,6 +21,7 @@ import { ZendeskTools } from '@coday/integrations-zendesk-articles'
 import { JiraTools } from '@coday/integrations-jira'
 import { SlackTools } from '@coday/integrations-slack'
 import { BasecampTools } from '@coday/integrations-basecamp'
+import { TeamLeadTools, TeamMemberTools } from '@coday/integrations-team'
 import { CodayServices } from '@coday/coday-services'
 
 export class Toolbox implements Killable {
@@ -53,6 +54,14 @@ export class Toolbox implements Killable {
       new SlackTools(interactor, services.integration),
       new BasecampTools(interactor, services.integration, services.user),
     ]
+
+    // Add team tools if TeamService is available
+    if (services.team) {
+      this.toolFactories.push(
+        new TeamLeadTools(interactor, services.team, agentFind, agentSummaries),
+        new TeamMemberTools(interactor, services.team)
+      )
+    }
   }
 
   async kill(): Promise<void> {
@@ -95,7 +104,21 @@ export class Toolbox implements Killable {
     const allFactories = [...this.toolFactories, ...mcpFactories]
 
     // Filter factories based on integrations
-    const filteredFactories = allFactories.filter((factory) => !integrations || integrations.has(factory.name))
+    const filteredFactories = allFactories.filter((factory) => {
+      if (integrations) {
+        // Agent has explicit integration list: respect it exactly
+        return integrations.has(factory.name)
+      }
+
+      // Agent has no integration filter (gets all tools):
+      // Exclude TEAM_LEAD and TEAM_MEMBER to avoid duplicate tool names.
+      // These should only be enabled via explicit agent configuration.
+      if (factory.name === 'TEAM_LEAD' || factory.name === 'TEAM_MEMBER') {
+        return false
+      }
+
+      return true
+    })
 
     try {
       // Process each filtered factory to get their tools

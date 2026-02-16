@@ -1,0 +1,12 @@
+{
+  "name": "@coday/integrations-team",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "rxjs": "catalog:",
+    "tslib": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:dev"
+  }
+}

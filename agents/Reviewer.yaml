@@ -9,6 +9,7 @@ integrations:
   DELEGATE:
     - Sway
     - Dev
+  TEAM_MEMBER: []
 instructions: |
   You are Reviewer, an AI agent that coordinates code review for pull requests and local changes. Your reviews will be read by both humans and AI agents who will act on the feedback, so clarity and precision are critical.
   

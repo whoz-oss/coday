@@ -172,6 +172,11 @@ export class Coday {
    */
   async cleanup(): Promise<void> {
     try {
+      // Clean up team service if it exists
+      if (this.services.team) {
+        await this.services.team.cleanupAll()
+      }
+
       if (this.services.agent) {
         await this.services.agent.kill()
       }
