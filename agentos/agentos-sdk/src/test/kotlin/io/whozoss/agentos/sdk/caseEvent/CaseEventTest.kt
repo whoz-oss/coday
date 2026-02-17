@@ -9,7 +9,7 @@ import java.util.UUID
 class CaseEventTest {
     @Test
     fun `QuestionEvent should create AnswerEvent with correct references`() {
-        // Arrange
+        // Given
         val projectId = UUID.randomUUID()
         val caseId = UUID.randomUUID()
         val agentId = UUID.randomUUID()
@@ -34,10 +34,10 @@ class CaseEventTest {
                 role = ActorRole.USER,
             )
 
-        // Act
+        // When
         val answerEvent = questionEvent.createAnswer(actor, "Yes")
 
-        // Assert answer event properties
+        // Then Assert answer event properties
         Assertions.assertEquals(questionEvent.id, answerEvent.questionId)
         Assertions.assertEquals(projectId, answerEvent.projectId)
         Assertions.assertEquals(caseId, answerEvent.caseId)
