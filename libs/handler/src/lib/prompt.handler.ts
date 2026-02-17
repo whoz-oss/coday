@@ -1,6 +1,7 @@
 import { CommandHandler } from './command-handler'
-import { CommandContext } from '@coday/model'
+import { CommandContext, Prompt } from '@coday/model'
 import { PromptService } from '@coday/service'
+import { BuiltinPrompts } from './builtin-prompts'
 
 /**
  * PromptHandler - Execute a single stored prompt
@@ -36,8 +37,13 @@ export class PromptHandler extends CommandHandler {
     const firstSpaceIndex = command.indexOf(' ')
     const userInput = firstSpaceIndex === -1 ? '' : command.substring(firstSpaceIndex + 1).trim()
 
-    // Load full prompt with commands
-    const fullPrompt = await this.promptService.get(this.projectName, this.promptId)
+    // Load full prompt (check built-ins first, then user prompts)
+    let fullPrompt: Prompt | null = BuiltinPrompts.find((p) => p.id === this.promptId) || null
+
+    if (!fullPrompt) {
+      fullPrompt = await this.promptService.get(this.projectName, this.promptId)
+    }
+
     if (!fullPrompt || !fullPrompt.commands || fullPrompt.commands.length === 0) {
       throw new Error(`Prompt "${this.commandWord}" has no commands configured`)
     }

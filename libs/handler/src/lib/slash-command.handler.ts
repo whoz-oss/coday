@@ -2,6 +2,7 @@ import { NestedHandler } from './nested.handler'
 import { Interactor } from '@coday/model'
 import { PromptService } from '@coday/service'
 import { PromptHandler } from './prompt.handler'
+import { BuiltinPrompts } from './builtin-prompts'
 
 /**
  * SlashCommandHandler - Routes slash commands to prompt handlers
@@ -33,8 +34,17 @@ export class SlashCommandHandler extends NestedHandler {
       interactor
     )
 
+    // Combine built-in prompts with user prompts
+    const builtinPromptInfos = BuiltinPrompts.map((p) => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+    }))
+
+    const allPrompts = [...builtinPromptInfos, ...prompts]
+
     // Create a PromptHandler for each prompt
-    this.handlers = prompts.map(
+    this.handlers = allPrompts.map(
       (prompt) => new PromptHandler(promptService, projectName, prompt.id, prompt.name, prompt.description)
     )
   }
