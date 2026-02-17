@@ -1,3 +1,16 @@
+## 0.69.2 (2026-02-17)
+
+### 🩹 Fixes
+
+- auto-create prompts directory when saving prompt with project source ([#475](https://github.com/whoz-oss/coday/pull/475))
+- **publish-sdk:** #371 add missed needs condition on publish-sdk job ([#371](https://github.com/whoz-oss/coday/issues/371))
+- **publish-sdk:** #371 change test in order to force build and test sdk publishing during release ([#371](https://github.com/whoz-oss/coday/issues/371))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+- vincent.couturier
+
 ## 0.69.1 (2026-02-16)
 
 ### 🩹 Fixes
