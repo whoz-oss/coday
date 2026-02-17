@@ -22,7 +22,7 @@ import { isUserAdmin } from './user-groups'
  */
 export class PromptService {
   private readonly codayConfigDir: string
-  private projectPath?: string
+  private readonly projectPath?: string
 
   constructor(codayConfigPath?: string, projectPath?: string) {
     const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
@@ -32,10 +32,13 @@ export class PromptService {
 
   /**
    * Get prompts directory path for a specific source
+   * Creates the directory if it doesn't exist (for both local and project sources)
    */
-  private async getPromptsDir(projectName: string, source: PromptSource): Promise<string> {
+  private async getOrCreatePromptsDir(projectName: string, source: PromptSource): Promise<string> {
+    let promptsDir: string
+
     if (source === 'local') {
-      return path.join(this.codayConfigDir, 'projects', projectName, 'prompts')
+      promptsDir = path.join(this.codayConfigDir, 'projects', projectName, 'prompts')
     } else {
       // project source: find coday.yaml and put prompts/ next to it
       if (!this.projectPath) {
@@ -49,15 +52,23 @@ export class PromptService {
       }
 
       const codayFolder = path.dirname(codayFiles[0]!)
-      return path.join(this.projectPath, codayFolder, 'prompts')
+      promptsDir = path.join(this.projectPath, codayFolder, 'prompts')
     }
+
+    // Create directory if it doesn't exist
+    if (!existsSync(promptsDir)) {
+      mkdirSync(promptsDir, { recursive: true })
+      console.log(`[PROMPT] Created prompts directory: ${promptsDir}`)
+    }
+
+    return promptsDir
   }
 
   /**
    * Get prompt file path
    */
   private async getPromptFilePath(projectName: string, id: string, source: PromptSource): Promise<string> {
-    const dir = await this.getPromptsDir(projectName, source)
+    const dir = await this.getOrCreatePromptsDir(projectName, source)
     return path.join(dir, `${id}.yml`)
   }
 
@@ -188,9 +199,7 @@ export class PromptService {
         parameterFormat: this.getParameterFormat(prompt.commands), // Compute at creation
       }
 
-      const promptsDir = await this.getPromptsDir(projectName, source)
-      mkdirSync(promptsDir, { recursive: true })
-
+      // getPromptFilePath will call getPromptsDir which creates the directory if needed
       const filePath = await this.getPromptFilePath(projectName, id, source)
 
       // Check if file already exists (highly unlikely but defensive)
@@ -412,7 +421,7 @@ export class PromptService {
 
       for (const source of sources) {
         try {
-          const promptsDir = await this.getPromptsDir(projectName, source)
+          const promptsDir = await this.getOrCreatePromptsDir(projectName, source)
 
           if (!existsSync(promptsDir)) {
             continue
