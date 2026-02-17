@@ -223,4 +223,54 @@ The goal is to transform a rough idea into a well-defined request that will prod
     webhookEnabled: false,
     parameterFormat: '',
   },
+  {
+    id: 'builtin-memory-learn',
+    name: 'memory-learn',
+    description: 'Extract and memorize new knowledge gained from recent context',
+    source: 'builtin',
+    commands: [
+      `@ Learn about the following topic and memorize relevant insights if defined:
+
+<topic>
+{{PARAMETERS}}
+</topic>
+
+If no specific topic is provided, extract learnings from the entire recent conversation context.
+
+## Process
+
+1. **Identify new knowledge**: From the recent conversation context, identify what you learned that:
+   - Was not in the initially given context
+   - Is specific to this user or project (not generic knowledge)
+   - Is useful and worth remembering
+   - Represents understanding, not just file copies
+
+2. **Organize insights**: Split the knowledge into cohesive subjects, each with:
+   - **Title**: Short and descriptive (one sentence maximum)
+   - **Content**: Detailed explanation of what was learned
+     - Length: at most 3 paragraphs or short extracts and notes
+     - Format: Well-structured markdown
+     - Focus: Specific patterns, decisions, constraints, or insights
+
+3. **Check for redundancy**: Before memorizing:
+   - Review the list of existing memories to avoid duplication
+   - If a similar memory exists, consider updating it instead of creating a new one
+   - delete memories if needed
+
+4. **Memorize**: Use the memorization tools to save each subject:
+   - Choose appropriate level if available (PROJECT or USER)
+   - Ensure clear structure and completeness
+   - Memorize one subject at a time
+
+## Guidelines
+- Focus on actionable insights, not generic facts
+- Ensure memories are self-contained and clear
+- Avoid redundancy with existing memories
+- Prioritize quality over quantity`,
+    ],
+    createdBy: 'system',
+    createdAt: new Date('2024-01-01').toISOString(),
+    webhookEnabled: false,
+    parameterFormat: '',
+  },
 ]
