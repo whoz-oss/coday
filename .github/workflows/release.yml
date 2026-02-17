@@ -110,7 +110,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
         run: |
-          npx nx release --yes
+          pnpm nx release --yes
           # Capture the new version for desktop build from client package.json
           NEW_VERSION=$(node -p "require('./apps/client/package.json').version")
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
@@ -185,7 +185,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
-          npx nx run desktop:package-dist
+          pnpm nx run desktop:package-dist
 
       - name: Cleanup Keychain
         if: always()
@@ -242,6 +242,9 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
 
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Grant execute permission for gradlew
         working-directory: agentos
         run: chmod +x gradlew
@@ -251,4 +254,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
           GITHUB_ACTOR: ${{ github.actor }}
-        run: npx nx publish agentos-sdk
+        run: pnpm nx publish agentos-sdk
