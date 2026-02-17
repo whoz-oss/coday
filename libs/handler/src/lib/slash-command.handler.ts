@@ -4,6 +4,12 @@ import { PromptService } from '@coday/service'
 import { PromptHandler } from './prompt.handler'
 import { BuiltinPrompts } from './builtin-prompts'
 
+const builtinPromptInfos = BuiltinPrompts.map((p) => ({
+  id: p.id,
+  name: p.name,
+  description: p.description,
+}))
+
 /**
  * SlashCommandHandler - Routes slash commands to prompt handlers
  *
@@ -33,13 +39,6 @@ export class SlashCommandHandler extends NestedHandler {
       },
       interactor
     )
-
-    // Combine built-in prompts with user prompts
-    const builtinPromptInfos = BuiltinPrompts.map((p) => ({
-      id: p.id,
-      name: p.name,
-      description: p.description,
-    }))
 
     const allPrompts = [...builtinPromptInfos, ...prompts]
 

@@ -17,9 +17,9 @@ import { BuiltinPrompts } from './builtin-prompts'
  */
 export class PromptHandler extends CommandHandler {
   constructor(
-    private promptService: PromptService,
-    private projectName: string,
-    private promptId: string,
+    private readonly promptService: PromptService,
+    private readonly projectName: string,
+    private readonly promptId: string,
     promptName: string,
     promptDescription: string
   ) {
