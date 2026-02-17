@@ -74,6 +74,8 @@ Based on your research and understanding:
 Remember: Only ask questions that are truly necessary to create a solid plan.`,
       `@ finish with Phase 3: Plan Creation
 
+Break down the task into 3-10 clear, actionable steps. Each step should be substantial enough to represent meaningful progress, but focused enough to be completed in one session.
+
 Create a detailed execution plan:
 - if you have access to the exchange area, save the plan there as 'plan.md'.
 - otherwise, output the plan in the conversation.
@@ -89,16 +91,17 @@ The plan must follow this Markdown structure:
 ## Context
 Key information and constraints identified during research:
 - Relevant patterns/conventions found
-- Technical constraints
+- Constraints or limitations
 - Dependencies or prerequisites
-- Key files/resources involved
+- Key resources or materials involved
 
 ## Steps
 
 ### Step 1: [Step Title]
-- **Resources to modify**: List files, APIs, or resources
-- **Changes**: Specific modifications to make
-- **Validation**: How to verify this step (compile, test, manual check)
+- **What to do**: Clear description of the action to take
+- **Resources needed**: List files, tools, information, or materials required
+- **Expected outcome**: What should be produced or achieved
+- **Validation**: How to verify this step is complete
 - **Dependencies**: Which previous steps must complete first (or "None")
 
 ### Step 2: [Step Title]
@@ -106,24 +109,70 @@ Key information and constraints identified during research:
 
 [Continue for all steps...]
 
-## Verification
-How to test the complete implementation:
-1. Compilation checks
-2. Automated tests
-3. Manual verification steps
+## Success Criteria
+How to verify the task is fully complete:
+1. Objective measures of completion
+2. Quality checks or review points
+3. Final validation steps
 
 ## Risks & Considerations
-- Potential issues or edge cases
+- Potential challenges or obstacles
 - Alternative approaches considered
-- Technical debt or future improvements
+- Areas requiring special attention
+- Future improvements or follow-up items
 
 ---
 
-After saving the plan:
-1. Inform the user that the plan is ready
-2. Mention it can be reviewed with: load exchange://execution-plan.md
-3. Mention it can be edited manually or via agent assistance
-4. Mention it can be executed with: execute-plan`,
+After outputting the plan in the right place (in exchange or in conversation or according to user directives):
+- do not produce other outputs nor documents
+- do not start executing the plan`,
+    ],
+    createdBy: 'system',
+    createdAt: new Date('2024-01-01').toISOString(),
+    webhookEnabled: false,
+    parameterFormat: '',
+  },
+  {
+    id: 'builtin-execute-plan',
+    name: 'execute-plan',
+    description: 'Execute a previously created plan step by step, with validation and progress tracking.',
+    source: 'builtin',
+    commands: [
+      `@ Execute the plan from the exchange area or outlined previously in the conversation:
+
+## Preparation
+1. **Load the plan**: Read from exchange area (plan.md) or use previously discussed plan
+2. **Review**: Understand the overall objective, context, and step sequence
+3. **Pre-check**: Verify prerequisites are met; report any obvious issues
+
+## Step-by-Step Execution
+
+For each step in order:
+
+1. **Announce**: State which step you're starting and what you'll do
+2. **Check dependencies**: Verify required previous steps are complete
+3. **Execute**: Perform the actions specified in the step
+4. **Validate**: Apply the validation criteria from the plan
+5. **Report**: Confirm completion and note any deviations
+
+**For significant or risky steps**: Ask user confirmation before proceeding (use 'choice' tool)
+
+## Issue Handling
+
+If a step fails:
+- Report the issue clearly
+- Suggest solutions (retry, skip if non-critical, or stop)
+- Use 'choice' tool to ask how to proceed if needed
+
+## Completion
+
+1. **Final verification**: Apply success criteria from the plan
+2. **Summary**: Report what was accomplished, any deviations, validation results, and next steps
+
+## Guidelines
+- Follow the plan's order unless circumstances require adaptation
+- Communicate progress clearly at each step, without excessive details
+- Ask for guidance when the plan is unclear or issues arise`,
     ],
     createdBy: 'system',
     createdAt: new Date('2024-01-01').toISOString(),
