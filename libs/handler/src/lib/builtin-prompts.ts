@@ -273,4 +273,83 @@ If no specific topic is provided, extract learnings from the entire recent conve
     webhookEnabled: false,
     parameterFormat: '',
   },
+  {
+    id: 'builtin-memory-curate',
+    name: 'memory-curate',
+    description:
+      'Analyze and clean up the memory system by consolidating redundancies and removing outdated information',
+    source: 'builtin',
+    commands: [
+      `@ we start a 4 phase memory curation process. Complete only the requested phase at each time. 
+      
+Phase 1: Analyze redundancies
+
+Review all current memories to identify:
+
+1. **Redundant memories** that:
+   - Cover similar or overlapping topics
+   - Contain duplicate information
+   - Could be consolidated for better clarity
+
+2. **For each group of redundant memories**:
+   - List the memory titles involved
+   - Explain the redundancy briefly
+   - Propose a consolidation approach
+
+Do not make changes yet - just analyze and report findings.`,
+
+      `@ Phase 2: Consolidate redundancies
+
+Based on the analysis from Phase 1:
+
+1. **For each identified redundancy**:
+   - Delete the individual redundant memories using deleteMemory
+   - Create a new consolidated memory that:
+     - Maintains all critical details from the originals
+     - Provides clear, well-structured content
+     - Uses appropriate level (PROJECT or USER)
+   - Explain your consolidation reasoning
+
+2. **Be proactive but careful**: Preserve important details while eliminating duplication.`,
+
+      `@ Phase 3: Check for outdated information
+
+Review remaining memories for accuracy and relevance:
+
+1. **Compare each memory against**:
+   - Other memories for inconsistencies
+   - Current project context for outdated information
+   - Core documentation for misalignments
+
+2. **For each problematic memory**:
+   - List the memory title with brief explanation of the issue
+   - Take appropriate action:
+     - Delete if outdated or incorrect
+     - Update if incomplete or partially incorrect
+     - Consolidate if it fits better elsewhere
+   - Explain your reasoning clearly
+
+Be thorough in your analysis.`,
+
+      `@ Phase 4: Final verification
+
+Verify the memory system's overall health:
+
+1. **Review the current state**:
+   - Check overall structure and organization
+   - Verify each memory for completeness and validity
+   - Confirm proper categorization (PROJECT vs USER)
+
+2. **Document the results**:
+   - Summarize what was consolidated or removed
+   - List any remaining issues or concerns
+   - Provide recommendations for maintaining memory quality
+
+This ensures the memory system stays efficient and valuable.`,
+    ],
+    createdBy: 'system',
+    createdAt: new Date('2024-01-01').toISOString(),
+    webhookEnabled: false,
+    parameterFormat: '',
+  },
 ]
