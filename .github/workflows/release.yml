@@ -233,12 +233,6 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
-      - name: Setup Node.js (for Nx)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
       - uses: pnpm/action-setup@v4
         with:
           version: 10
