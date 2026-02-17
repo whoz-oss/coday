@@ -1,0 +1,166 @@
+<h2 mat-dialog-title>{{ isEditMode ? 'Edit Prompt' : 'Create Prompt' }}</h2>
+
+<mat-dialog-content>
+  <div class="form-container">
+    <!-- Name -->
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Name</mat-label>
+      <input matInput [(ngModel)]="name" (blur)="normalizeName()" placeholder="my-prompt" required />
+      <mat-hint>A descriptive name (spaces and punctuation will be replaced with hyphens)</mat-hint>
+    </mat-form-field>
+
+    <!-- Description -->
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Description</mat-label>
+      <textarea matInput [(ngModel)]="description" placeholder="What does this prompt do?" rows="3" required></textarea>
+      <mat-hint>Explain the purpose of this prompt</mat-hint>
+    </mat-form-field>
+
+    <!-- Commands -->
+    <div class="commands-section">
+      <div class="section-header">
+        <h3>Commands</h3>
+        <button mat-icon-button (click)="addCommand()" type="button" title="Add command">
+          <mat-icon>add</mat-icon>
+        </button>
+      </div>
+
+      <div class="commands-list">
+        @for (command of commands; track $index; let i = $index) {
+          <div class="command-item">
+            <mat-form-field appearance="outline" class="command-field">
+              <mat-label>Command {{ i + 1 }}</mat-label>
+              <textarea
+                matInput
+                [(ngModel)]="commands[i]"
+                placeholder="Enter command with placeholders like \{\{key\}\}"
+                rows="2"
+              ></textarea>
+              <mat-hint>Use placeholder for dynamic values</mat-hint>
+            </mat-form-field>
+            <button
+              mat-icon-button
+              (click)="removeCommand(i)"
+              type="button"
+              [disabled]="commands.length === 1"
+              title="Remove command"
+              class="remove-btn"
+            >
+              <mat-icon>delete</mat-icon>
+            </button>
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- Thread Lifetime - TEMPORARILY DISABLED (buggy behavior with interactor) -->
+    <!-- TODO: Re-enable after refactoring interactor to support simple message addition -->
+    <!--
+    <mat-form-field appearance="outline" class="full-width" *ngIf="source === 'local'">
+      <mat-label>Thread Lifetime (optional)</mat-label>
+      <input matInput [(ngModel)]="threadLifetime" placeholder="e.g., 1h, 24h, 7d" />
+      <mat-hint
+        >Duration to reuse same thread. Format: '2min', '5h', '14d', '1M'. Leave empty for new thread each
+        time.</mat-hint
+      >
+    </mat-form-field>
+
+    <div *ngIf="source === 'project'" class="thread-lifetime-disabled">
+      <mat-icon>info</mat-icon>
+      <p>
+        <strong>Thread lifetime not available for project prompts</strong><br />
+        <span class="hint"
+          >Project prompts are committable files and shouldn't have changing thread IDs. Use local prompts for thread
+          reuse.</span
+        >
+      </p>
+    </div>
+    -->
+
+    <!-- Source selection (creation only) -->
+    @if (!isEditMode) {
+      <div class="source-section">
+        <h3>Save to</h3>
+        <div class="source-options">
+          <label class="source-option" [class.selected]="source === 'local'">
+            <input type="radio" name="source" value="local" [(ngModel)]="source" />
+            <div class="source-content">
+              <div class="source-header">
+                <span class="source-icon">👤</span>
+                <span class="source-label">Local</span>
+              </div>
+              <p class="source-description">Personal prompt in ~/.coday/... (not committed)</p>
+            </div>
+          </label>
+          <label class="source-option" [class.selected]="source === 'project'">
+            <input type="radio" name="source" value="project" [(ngModel)]="source" />
+            <div class="source-content">
+              <div class="source-header">
+                <span class="source-icon">📦</span>
+                <span class="source-label">Project</span>
+              </div>
+              <p class="source-description">Shared prompt in ./prompts/ (committable)</p>
+            </div>
+          </label>
+        </div>
+        <p class="hint">Storage location is permanent and cannot be changed after creation</p>
+      </div>
+    }
+
+    <!-- Source display (edit mode) -->
+    @if (isEditMode) {
+      <div class="source-display">
+        <h3>Storage Location</h3>
+        <div class="source-badge" [class.badge-local]="source === 'local'" [class.badge-project]="source === 'project'">
+          <span class="source-icon">{{ source === 'local' ? '👤' : '📦' }}</span>
+          <span class="source-label">{{ source === 'local' ? 'Local' : 'Project' }}</span>
+        </div>
+        <p class="hint">Cannot be changed after creation</p>
+      </div>
+    }
+
+    <!-- Webhook Enabled (only for admin users) -->
+    @if (isAdmin) {
+      <div class="webhook-section">
+        <label class="checkbox-label">
+          <input type="checkbox" [(ngModel)]="webhookEnabled" />
+          <span>Enable webhook</span>
+        </label>
+        <p class="hint">Enable webhook to trigger this prompt via HTTP POST</p>
+      </div>
+    }
+
+    <!-- Webhook URL (only in edit mode, if webhook enabled and user is admin) -->
+    @if (isEditMode && webhookEnabled && isAdmin) {
+      <div class="webhook-url-section">
+        <div class="webhook-url-header">
+          <mat-icon class="webhook-icon">link</mat-icon>
+          <h4>Webhook URL</h4>
+        </div>
+        <div class="webhook-url-content">
+          <p class="url-text">{{ getWebhookUrl() }}</p>
+          <button mat-raised-button color="accent" (click)="copyWebhookUrl()" type="button">
+            <mat-icon>content_copy</mat-icon>
+            <span>Copy URL</span>
+          </button>
+        </div>
+        <p class="hint">Use this URL to trigger the prompt via HTTP POST</p>
+      </div>
+    }
+
+    <!-- Error message -->
+    @if (errorMessage) {
+      <div class="error-message">
+        <mat-icon>error</mat-icon>
+        <span>{{ errorMessage }}</span>
+      </div>
+    }
+  </div>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="cancel()" [disabled]="isSaving">Cancel</button>
+  <button mat-raised-button color="primary" (click)="save()" [disabled]="isSaving">
+    {{ isSaving ? 'Saving...' : 'Save' }}
+  </button>
+</mat-dialog-actions>

@@ -5,6 +5,7 @@ import {
   DebugHandler,
   FileMapHandler,
   PromptChainHandler,
+  SlashCommandHandler,
   RunBashHandler,
 } from '@coday/handler'
 import { CommandContext, Interactor, RunStatus } from '@coday/model'
@@ -33,7 +34,7 @@ export class HandlerLooper {
     private services: CodayServices // unused temporarily...
   ) {}
 
-  init(projectDescription: ProjectDescription | null) {
+  async init(projectDescription: ProjectDescription | null): Promise<void> {
     try {
       const queryHandler = new AddQueryHandler(this.interactor)
       const memoryHandler = new MemoryHandler(this.interactor, this.services)
@@ -56,6 +57,18 @@ export class HandlerLooper {
         for (const [promptName, promptChain] of Object.entries(projectDescription.prompts)) {
           this.handlers.push(new PromptChainHandler(promptChain as PromptChain, promptName))
         }
+      }
+
+      // Add SlashCommandHandler for stored prompts (from PromptService)
+      if (this.services.project.selectedProject) {
+        const prompts = await this.services.prompt.list(this.services.project.selectedProject.name)
+        const slashCommandHandler = new SlashCommandHandler(
+          this.interactor,
+          this.services.prompt,
+          this.services.project.selectedProject.name,
+          prompts
+        )
+        this.handlers.push(slashCommandHandler)
       }
 
       // SUPER IMPORTANT: Add aiHandler at the end !!!!!!!!!!!!!

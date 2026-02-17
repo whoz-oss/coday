@@ -1,3 +1,23 @@
+## 0.69.1 (2026-02-16)
+
+### 🩹 Fixes
+
+- scheduler routes 404 in production mode ([#473](https://github.com/whoz-oss/coday/pull/473))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.69.0 (2026-02-16)
+
+### 🚀 Features
+
+- #411 Scheduled Tasks with interval-based scheduling and per-project webhooks ([#453](https://github.com/whoz-oss/coday/pull/453), [#411](https://github.com/whoz-oss/coday/issues/411))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.68.3 (2026-02-13)
 
 ### 🚀 Features

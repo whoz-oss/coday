@@ -1,6 +1,6 @@
 {
   "name": "@whoz-oss/coday-client",
-  "version": "0.68.3",
+  "version": "0.69.1",
   "repository": "https://github.com/whoz-oss/coday",
   "type": "module",
   "dependencies": {
@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@angular/build": "catalog:dev",
+    "@types/dompurify": "catalog:dev",
     "jest-preset-angular": "catalog:dev",
     "typescript": "catalog:dev"
   },
