@@ -24,6 +24,8 @@ RUN chmod +x gradlew
 # Build the application (this will build SDK first due to dependency)
 RUN ./gradlew :agentos-service:build -x test --no-daemon
 
+# TODO build default plugins to generate jars
+
 # Extract the built JAR
 RUN mkdir -p /workspace/extracted && \
     cd /workspace/extracted && \
@@ -46,6 +48,8 @@ COPY --from=builder --chown=agentos:agentos /workspace/extracted/application/ ./
 
 # Create plugins directory
 RUN mkdir -p /app/plugins && chown -R agentos:agentos /app/plugins
+
+# TODO copy default plugins jar to plugin directory
 
 # Switch to non-root user
 USER agentos

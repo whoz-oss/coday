@@ -1,0 +1,23 @@
+{
+  "name": "agentos-datetime-plugin",
+  "targets": {
+    "build": {
+      "executor": "@nx/gradle:gradle",
+      "options": {
+        "task": "build"
+      }
+    },
+    "test": {
+      "executor": "@nx/gradle:gradle",
+      "options": {
+        "task": "test"
+      }
+    },
+    "clean": {
+      "executor": "@nx/gradle:gradle",
+      "options": {
+        "task": "clean"
+      }
+    }
+  }
+}

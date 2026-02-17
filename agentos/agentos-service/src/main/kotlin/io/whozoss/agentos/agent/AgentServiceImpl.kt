@@ -8,7 +8,8 @@ import io.whozoss.agentos.orchestration.AgentSimple
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolRegistry
+import mu.KLogging
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -23,10 +24,9 @@ import java.util.*
 @Service
 class AgentServiceImpl(
     private val chatClientProvider: ChatClientProvider,
+    private val toolRegistry: ToolRegistry,
     @Value("\${agentos.default-provider:anthropic}") private val defaultProviderId: String,
 ) : AgentService {
-    private val logger = LoggerFactory.getLogger(AgentServiceImpl::class.java)
-
     // ========================================
     // Hard-coded Agent Definitions
     // ========================================
@@ -115,8 +115,16 @@ class AgentServiceImpl(
     private fun createAgentInstance(model: AiModel): Agent {
         logger.info("[AgentService] Creating agent instance for: ${model.name}")
 
-        // TODO: Load tools based on agent model
-        val tools = emptyList<StandardTool<*>>()
+        // Load tools from registry
+        val tools = toolRegistry.listTools()
+
+        // Use metadata for logging to avoid redundant lookups
+        if (logger.isInfoEnabled) {
+            logger.info { "[AgentService] Loaded ${tools.size} tool(s) for agent: ${model.name}" }
+            tools.forEach { meta ->
+                logger.info { "  - ${meta.name} v${meta.version}: ${meta.description}" }
+            }
+        }
 
         // POC: Use the injected ChatModel (auto-configured by Spring AI)
         logger.info("[AgentService] Creating ChatClient from injected ChatModel")
@@ -147,4 +155,6 @@ class AgentServiceImpl(
         logger.info("Killing all agent operations")
         // TODO: Force stop any running agent operations
     }
+
+    companion object : KLogging()
 }
