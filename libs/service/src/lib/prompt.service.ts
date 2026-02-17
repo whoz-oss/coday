@@ -4,9 +4,9 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs'
 import { readYamlFile, writeYamlFile } from '@coday/utils'
 import type { Prompt, PromptInfo, PromptSource } from '@coday/model'
+import { BuiltinPrompts } from '@coday/model'
 import { findFilesByName } from '@coday/function'
 import { isUserAdmin } from './user-groups'
-import { BuiltinPrompts } from '@coday/handler'
 
 /**
  * PromptService - Manages prompt CRUD operations

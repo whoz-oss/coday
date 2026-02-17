@@ -1,6 +1,5 @@
 export * from './lib/add-query.handler'
 export * from './lib/anthropic.client'
-export * from './lib/builtin-prompts'
 export * from './lib/command-handler'
 export * from './lib/debug.handler'
 export * from './lib/file-map.handler'

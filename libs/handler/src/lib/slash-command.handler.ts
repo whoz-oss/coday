@@ -1,8 +1,7 @@
 import { NestedHandler } from './nested.handler'
-import { Interactor } from '@coday/model'
+import { Interactor, BuiltinPrompts } from '@coday/model'
 import { PromptService } from '@coday/service'
 import { PromptHandler } from './prompt.handler'
-import { BuiltinPrompts } from './builtin-prompts'
 
 const builtinPromptInfos = BuiltinPrompts.map((p) => ({
   id: p.id,

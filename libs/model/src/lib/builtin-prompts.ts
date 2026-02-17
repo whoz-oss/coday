@@ -1,4 +1,4 @@
-import { Prompt } from '@coday/model'
+import { Prompt } from './prompt'
 
 /**
  * Built-in system prompts

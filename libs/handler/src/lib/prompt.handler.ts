@@ -1,7 +1,6 @@
 import { CommandHandler } from './command-handler'
-import { CommandContext, Prompt } from '@coday/model'
+import { CommandContext, Prompt, BuiltinPrompts } from '@coday/model'
 import { PromptService } from '@coday/service'
-import { BuiltinPrompts } from './builtin-prompts'
 
 /**
  * PromptHandler - Execute a single stored prompt
