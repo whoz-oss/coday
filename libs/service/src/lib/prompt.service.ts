@@ -67,7 +67,7 @@ export class PromptService {
   /**
    * Get prompt file path
    */
-  private async getPromptFilePath(projectName: string, id: string, source: PromptSource): Promise<string> {
+  private async getOrCreatePromptFilePath(projectName: string, id: string, source: PromptSource): Promise<string> {
     const dir = await this.getOrCreatePromptsDir(projectName, source)
     return path.join(dir, `${id}.yml`)
   }
@@ -78,7 +78,7 @@ export class PromptService {
    */
   private async findPromptSource(projectName: string, id: string): Promise<PromptSource | null> {
     // Check local first (most common)
-    const localPath = await this.getPromptFilePath(projectName, id, 'local')
+    const localPath = await this.getOrCreatePromptFilePath(projectName, id, 'local')
     if (existsSync(localPath)) {
       return 'local'
     }
@@ -86,7 +86,7 @@ export class PromptService {
     // Check project
     if (this.projectPath) {
       try {
-        const projectPath = await this.getPromptFilePath(projectName, id, 'project')
+        const projectPath = await this.getOrCreatePromptFilePath(projectName, id, 'project')
         if (existsSync(projectPath)) {
           return 'project'
         }
@@ -128,7 +128,7 @@ export class PromptService {
       // Check project prompts
       if (this.projectPath) {
         try {
-          const projectPromptPath = await this.getPromptFilePath(projectName, id, 'project')
+          const projectPromptPath = await this.getOrCreatePromptFilePath(projectName, id, 'project')
           if (existsSync(projectPromptPath)) {
             return projectName
           }
@@ -158,7 +158,7 @@ export class PromptService {
       while ((match = placeholderPattern.exec(cmd)) !== null) {
         const key = match[1]
         if (key && key !== 'PARAMETERS' && !keyPattern.test(key)) {
-          invalidPlaceholders.push(key!)
+          invalidPlaceholders.push(key)
         }
       }
     })
@@ -199,8 +199,7 @@ export class PromptService {
         parameterFormat: this.getParameterFormat(prompt.commands), // Compute at creation
       }
 
-      // getPromptFilePath will call getPromptsDir which creates the directory if needed
-      const filePath = await this.getPromptFilePath(projectName, id, source)
+      const filePath = await this.getOrCreatePromptFilePath(projectName, id, source)
 
       // Check if file already exists (highly unlikely but defensive)
       if (existsSync(filePath)) {
@@ -230,7 +229,7 @@ export class PromptService {
         return null
       }
 
-      const filePath = await this.getPromptFilePath(projectName, id, source)
+      const filePath = await this.getOrCreatePromptFilePath(projectName, id, source)
       const prompt = readYamlFile<Prompt>(filePath)
 
       if (!prompt) {
@@ -324,7 +323,7 @@ export class PromptService {
       }
 
       // Write to the original source (immutable)
-      const filePath = await this.getPromptFilePath(projectName, id, existing.source)
+      const filePath = await this.getOrCreatePromptFilePath(projectName, id, existing.source)
       writeYamlFile(filePath, updatedPrompt)
 
       console.log(`[PROMPT] Updated prompt ${id} (${existing.source}) by user ${username}`)
@@ -350,7 +349,7 @@ export class PromptService {
         return false
       }
 
-      const filePath = await this.getPromptFilePath(projectName, id, source)
+      const filePath = await this.getOrCreatePromptFilePath(projectName, id, source)
       unlinkSync(filePath)
 
       console.log(`[PROMPT] Deleted prompt ${id} from ${source}`)
