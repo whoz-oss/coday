@@ -42,18 +42,6 @@ const OPENAI_DEFAULT_MODELS: AiModel[] = [
     },
   },
   {
-    name: 'gpt-5.2-pro',
-    contextWindow: 400000,
-    alias: 'BIGGEST',
-    temperature: 0.8,
-    maxOutputTokens: 128000,
-    price: {
-      inputMTokens: 21.0,
-      cacheRead: 0, // No cache pricing available
-      outputMTokens: 168.0,
-    },
-  },
-  {
     name: 'gpt-5-mini',
     alias: 'SMALL',
     contextWindow: 400000,
