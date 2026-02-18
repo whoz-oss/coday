@@ -1,7 +1,4 @@
-package io.whozoss.agentos.sdk.tool
-
-import java.time.Instant
-import java.util.UUID
+package io.whozoss.agentos.tool
 
 /**
  * Metadata for tool registration and discovery.

@@ -3,7 +3,7 @@ package io.whozoss.agentos.tool
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
-import io.whozoss.agentos.sdk.tool.ToolOutput
+import io.whozoss.agentos.tool.ToolOutput
 import io.whozoss.agentos.tool.ToolRegistry
 import mu.KLogging
 import org.springframework.http.ResponseEntity
