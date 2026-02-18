@@ -1,6 +1,7 @@
 export * from './lib/agent'
 export * from './lib/agent-definition'
 export * from './lib/agent-service.model'
+export * from './lib/builtin-prompts'
 export * from './lib/ai-model'
 export * from './lib/ai-provider-config'
 export * from './lib/ai-thread'

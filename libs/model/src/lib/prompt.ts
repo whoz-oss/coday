@@ -11,10 +11,11 @@
 
 /**
  * Source location for prompt storage
+ * - 'builtin': Built-in system prompt (read-only, not stored in files)
  * - 'local': Stored in ~/.coday/projects/{projectName}/prompts/ (user-specific, not committed)
  * - 'project': Stored in {projectPath}/prompts/ (next to coday.yaml, committable)
  */
-export type PromptSource = 'local' | 'project'
+export type PromptSource = 'builtin' | 'local' | 'project'
 
 export interface Prompt {
   /**
