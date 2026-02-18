@@ -252,6 +252,6 @@ jobs:
       - name: Publish SDK to GitHub Packages
         working-directory: agentos
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
         run: pnpm nx publish agentos-sdk

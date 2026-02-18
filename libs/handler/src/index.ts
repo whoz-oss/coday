@@ -1,7 +1,6 @@
 export * from './lib/add-query.handler'
 export * from './lib/anthropic.client'
 export * from './lib/command-handler'
-export * from './lib/coday-prompt-chains'
 export * from './lib/debug.handler'
 export * from './lib/file-map.handler'
 export * from './lib/generate-thread-name'

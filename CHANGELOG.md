@@ -1,3 +1,31 @@
+## 0.71.0 (2026-02-18)
+
+### 🚀 Features
+
+- #476 builtin system prompts ([#478](https://github.com/whoz-oss/coday/pull/478), [#476](https://github.com/whoz-oss/coday/issues/476))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.70.0 (2026-02-18)
+
+### 🚀 Features
+
+- update AI model definitions to latest versions (Anthropic 4.6, Google Gemini 3, OpenAI GPT-5.2) ([#496](https://github.com/whoz-oss/coday/pull/496))
+
+### 🩹 Fixes
+
+- setup-node in publish-sdk for release workflow ([5a9b2ca](https://github.com/whoz-oss/coday/commit/5a9b2ca))
+- add pnpm install in publish-sdk release workflow ([3479c9f](https://github.com/whoz-oss/coday/commit/3479c9f))
+- use GITHUB_TOKEN for publish sdk ([ac53620](https://github.com/whoz-oss/coday/commit/ac53620))
+- remove --prod on publish-sdk for pnpm install ([d3135ee](https://github.com/whoz-oss/coday/commit/d3135ee))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+- vincent-audibert-whoz
+
 ## 0.69.2 (2026-02-17)
 
 ### 🩹 Fixes
