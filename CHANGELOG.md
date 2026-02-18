@@ -1,3 +1,17 @@
+## 0.71.1 (2026-02-18)
+
+### 🚀 Features
+
+- wz-28719 port case and caseEvent controllers ([#497](https://github.com/whoz-oss/coday/pull/497))
+
+### 🩹 Fixes
+
+- prompt service resolves project path dynamically via project service ([#499](https://github.com/whoz-oss/coday/pull/499))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.71.0 (2026-02-18)
 
 ### 🚀 Features
