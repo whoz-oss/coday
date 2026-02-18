@@ -8,7 +8,7 @@ import io.whozoss.agentos.orchestration.AgentSimple
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.sdk.tool.ToolRegistry
+import io.whozoss.agentos.tool.ToolRegistry
 import mu.KLogging
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
@@ -91,7 +91,7 @@ class AgentServiceImpl(
                 }
             }
 
-        logger.info("Found agent: ${agentModel.name} (${agentModel.id})")
+        logger.info { "Found agent: ${agentModel.name} (${agentModel.id})" }
 
         // Create runtime instance
         return createAgentInstance(agentModel)
@@ -103,7 +103,7 @@ class AgentServiceImpl(
         // Return the first hard-coded agent as default
         val defaultModel = hardCodedAgents.firstOrNull() ?: return null
 
-        logger.info("Using default agent: ${defaultModel.name}")
+        logger.info { "Using default agent: ${defaultModel.name}" }
         return createAgentInstance(defaultModel)
     }
 
@@ -113,7 +113,7 @@ class AgentServiceImpl(
      * Future: Could use factory pattern based on agent configuration.
      */
     private fun createAgentInstance(model: AiModel): Agent {
-        logger.info("[AgentService] Creating agent instance for: ${model.name}")
+        logger.info { "[AgentService] Creating agent instance for: ${model.name}" }
 
         // Load tools from registry
         val tools = toolRegistry.listTools()
@@ -127,7 +127,7 @@ class AgentServiceImpl(
         }
 
         // POC: Use the injected ChatModel (auto-configured by Spring AI)
-        logger.info("[AgentService] Creating ChatClient from injected ChatModel")
+        logger.info { "[AgentService] Creating ChatClient from injected ChatModel" }
         val chatClient =
             chatClientProvider.getChatClient(
                 ModelConfig(
@@ -136,7 +136,7 @@ class AgentServiceImpl(
                     model = model.modelName,
                 ),
             )
-        logger.info("[AgentService] ChatClient created successfully")
+        logger.info { "[AgentService] ChatClient created successfully" }
 
         return AgentSimple(
             metadata = EntityMetadata(id = model.id),
@@ -147,12 +147,12 @@ class AgentServiceImpl(
     }
 
     override suspend fun cleanup() {
-        logger.info("Cleaning up agent resources")
+        logger.info { "Cleaning up agent resources" }
         // TODO: Cleanup any cached agent instances or resources
     }
 
     override suspend fun kill() {
-        logger.info("Killing all agent operations")
+        logger.info { "Killing all agent operations" }
         // TODO: Force stop any running agent operations
     }
 

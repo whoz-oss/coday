@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.sdk.tool.ToolOutput
-import io.whozoss.agentos.sdk.tool.ToolRegistry
+import io.whozoss.agentos.tool.ToolRegistry
 import mu.KLogging
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -88,7 +88,7 @@ class ToolController(
 
     companion object : KLogging()
 
-    fun StandardTool<*>.toOutput(): ToolOutput =
+    private fun StandardTool<*>.toOutput(): ToolOutput =
         ToolOutput(
             name = this.name,
             description = this.description,

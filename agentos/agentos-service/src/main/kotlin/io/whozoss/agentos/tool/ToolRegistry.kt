@@ -1,4 +1,6 @@
-package io.whozoss.agentos.sdk.tool
+package io.whozoss.agentos.tool
+
+import io.whozoss.agentos.sdk.tool.StandardTool
 
 /**
  * Central registry for tool discovery and execution.

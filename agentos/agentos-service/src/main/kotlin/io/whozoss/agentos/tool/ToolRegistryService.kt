@@ -2,7 +2,7 @@ package io.whozoss.agentos.tool
 
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolPlugin
-import io.whozoss.agentos.sdk.tool.ToolRegistry
+import io.whozoss.agentos.tool.ToolRegistry
 import jakarta.annotation.PostConstruct
 import mu.KLogging
 import org.pf4j.PluginManager

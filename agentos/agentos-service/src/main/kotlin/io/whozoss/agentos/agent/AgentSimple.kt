@@ -339,11 +339,10 @@ class AgentSimple(
                         )
                     }
 
-                    // Execute the actual tool
+                    // Execute the actual tool using type-erased execution path
                     val result =
                         try {
-                            @Suppress("UNCHECKED_CAST")
-                            (tool as StandardTool<Any?>).execute(input)
+                            tool.executeWithAny(input)
                         } catch (e: Exception) {
                             runBlocking {
                                 eventChannel.send(

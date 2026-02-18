@@ -1,10 +1,10 @@
 package io.whozoss.agentos.tool
 
 import com.fasterxml.jackson.core.JsonProcessingException
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
-import io.whozoss.agentos.sdk.tool.ToolRegistry
+import io.whozoss.agentos.tool.ToolRegistry
 import mu.KLogging
 import org.springframework.stereotype.Service
 import kotlin.system.measureTimeMillis
@@ -16,11 +16,8 @@ import kotlin.system.measureTimeMillis
 @Service
 class ToolExecutorService(
     private val toolRegistry: ToolRegistry,
+    private val objectMapper: ObjectMapper,
 ) {
-    companion object : KLogging() {
-        private val objectMapper = jacksonObjectMapper()
-    }
-
     /**
      * Execute a tool by name with JSON parameters.
      *
@@ -69,9 +66,9 @@ class ToolExecutorService(
                             null
                         }
 
-                    // Execute tool using reflection to avoid unsafe casting
+                    // Execute tool using type-erased execution path
                     logger.debug { "Executing tool: $toolName" }
-                    output = executeToolSafely(tool, input)
+                    output = tool.executeWithAny(input)
                     logger.debug { "Tool $toolName executed successfully" }
                 } catch (e: Exception) {
                     success = false
@@ -104,22 +101,5 @@ class ToolExecutorService(
         return result
     }
 
-    /**
-     * Execute a tool safely using reflection to avoid unsafe casting with star projection.
-     * This method handles the type erasure issue with StandardTool<*>.
-     */
-    private fun executeToolSafely(
-        tool: StandardTool<*>,
-        input: Any?,
-    ): String =
-        try {
-            // Use reflection to call execute method
-            val executeMethod = tool::class.java.getMethod("execute", Any::class.java)
-            executeMethod.invoke(tool, input) as String
-        } catch (e: Exception) {
-            // If reflection fails, try direct call with unchecked cast as fallback
-            logger.warn { "Reflection-based execution failed, using direct call: ${e.message}" }
-            @Suppress("UNCHECKED_CAST")
-            (tool as StandardTool<Any>).execute(input)
-        }
+    companion object : KLogging()
 }
