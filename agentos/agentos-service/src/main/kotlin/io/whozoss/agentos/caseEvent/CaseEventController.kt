@@ -1,6 +1,6 @@
 package io.whozoss.agentos.caseEvent
 
-import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.caseFlow.CaseServiceImpl
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
@@ -19,11 +19,6 @@ import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 import mu.KLogging
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -41,7 +36,7 @@ import java.util.UUID
 @RestController
 @RequestMapping("/api/cases")
 class CaseEventController(
-    private val caseService: CaseService,
+    private val caseService: CaseServiceImpl,
 ) {
     /**
      * Stream events for a case via SSE.
@@ -57,65 +52,16 @@ class CaseEventController(
     ): SseEmitter {
         logger.info { "Client connecting to event stream for case: $caseId" }
 
-        val emitter = SseEmitter(0L) // Infinite timeout
-
         val case = caseService.getCaseInstance(caseId)
         if (case == null) {
             logger.warn { "Case not found: $caseId" }
+            val emitter = SseEmitter(0L)
             emitter.completeWithError(IllegalArgumentException("Case $caseId not found"))
             return emitter
         }
 
-        // Create a coroutine scope for this SSE connection
-        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
-        // Collect events from the SharedFlow and send via SSE
-        val collectorJob =
-            scope.launch {
-                try {
-                    case.events.collect { event ->
-                        try {
-                            val sseEvent =
-                                SseEmitter
-                                    .event()
-                                    .id(event.id.toString())
-                                    .name(event.type.value)
-                                    .data(event.toEventData())
-
-                            emitter.send(sseEvent)
-                            logger.trace { "Event ${event.type} sent to SSE for case $caseId" }
-                        } catch (e: Exception) {
-                            logger.debug { "Failed to send event to SSE for case $caseId: ${e.message}" }
-                            throw e // Stop collecting
-                        }
-                    }
-                } catch (error: Exception) {
-                    logger.error("Error in event stream for case $caseId", error)
-                    emitter.completeWithError(error)
-                }
-            }
-
-        // Setup cleanup handlers
-        emitter.onCompletion {
-            logger.debug { "SSE emitter completed for case $caseId" }
-            collectorJob.cancel()
-            scope.cancel()
-        }
-
-        emitter.onTimeout {
-            logger.debug { "SSE emitter timed out for case $caseId" }
-            collectorJob.cancel()
-            scope.cancel()
-        }
-
-        emitter.onError { throwable ->
-            logger.warn { "SSE emitter error for case $caseId: ${throwable.message}" }
-            collectorJob.cancel()
-            scope.cancel()
-        }
-
         logger.info { "SSE connection established for case: $caseId" }
-        return emitter
+        return caseService.createSseEmitter(caseId)
     }
 
     companion object : KLogging()

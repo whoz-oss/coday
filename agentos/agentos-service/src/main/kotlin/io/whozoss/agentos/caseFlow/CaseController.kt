@@ -3,7 +3,6 @@ package io.whozoss.agentos.caseFlow
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
-import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -130,38 +129,37 @@ class CaseController(
      * Body: AddMessageRequest
      */
     @PostMapping("/{caseId}/messages")
-    fun addMessage(
+    suspend fun addMessage(
         @PathVariable caseId: UUID,
         @RequestBody request: AddMessageRequest,
-    ): ResponseEntity<Void> =
-        runBlocking {
-            logger.info("Adding message to case: $caseId")
-            logger.debug { "Message: ${request.content}" }
+    ): ResponseEntity<Void> {
+        logger.info("Adding message to case: $caseId")
+        logger.debug { "Message: ${request.content}" }
 
-            val case = caseService.getCaseInstance(caseId)
-            if (case == null) {
-                logger.warn { "Case not found: $caseId" }
-                return@runBlocking ResponseEntity.notFound().build()
-            }
+        val case = caseService.getCaseInstance(caseId)
+        if (case == null) {
+            logger.warn { "Case not found: $caseId" }
+            return ResponseEntity.notFound().build()
+        }
 
-            val actor =
-                Actor(
-                    id = request.userId,
-                    displayName = request.userId,
-                    role = ActorRole.USER,
-                )
-
-            val content = listOf(MessageContent.Text(request.content))
-
-            case.addUserMessage(
-                actor = actor,
-                content = content,
-                answerToEventId = request.answerToEventId,
+        val actor =
+            Actor(
+                id = request.userId,
+                displayName = request.userId,
+                role = ActorRole.USER,
             )
 
-            logger.info("Message added to case: $caseId")
-            ResponseEntity.ok().build()
-        }
+        val content = listOf(MessageContent.Text(request.content))
+
+        case.addUserMessage(
+            actor = actor,
+            content = content,
+            answerToEventId = request.answerToEventId,
+        )
+
+        logger.info("Message added to case: $caseId")
+        return ResponseEntity.ok().build()
+    }
 
     /**
      * Stop a case gracefully.
