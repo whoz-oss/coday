@@ -566,6 +566,22 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/agent/dist:
+    dependencies:
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+      yaml:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/coday-events/dist:
     dependencies:
       tslib:
@@ -573,6 +589,16 @@ importers:
         version: 2.8.1
 
   libs/coday-services:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/coday-services/dist:
     dependencies:
       tslib:
         specifier: 'catalog:'
@@ -592,7 +618,42 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/core/dist:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/function:
+    dependencies:
+      '@vscode/ripgrep':
+        specifier: 'catalog:'
+        version: 1.15.9
+      glob:
+        specifier: 'catalog:'
+        version: 11.1.0
+      pdf2json:
+        specifier: 'catalog:'
+        version: 4.0.0
+      sharp:
+        specifier: 'catalog:'
+        version: 0.34.4
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      '@jest/globals':
+        specifier: catalog:dev
+        version: 30.2.0
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/function/dist:
     dependencies:
       '@vscode/ripgrep':
         specifier: 'catalog:'
@@ -636,7 +697,36 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/handler/dist:
+    dependencies:
+      '@anthropic-ai/sdk':
+        specifier: 'catalog:'
+        version: 0.65.0(zod@4.3.6)
+      openai:
+        specifier: 'catalog:'
+        version: 6.16.0(ws@8.19.0)(zod@4.3.6)
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/handlers/config:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/handlers/config/dist:
     dependencies:
       tslib:
         specifier: 'catalog:'
@@ -656,6 +746,16 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/handlers/load/dist:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/handlers/looper:
     dependencies:
       tslib:
@@ -666,7 +766,27 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/handlers/looper/dist:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/handlers/memory:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/handlers/memory/dist:
     dependencies:
       tslib:
         specifier: 'catalog:'
@@ -689,6 +809,19 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/handlers/openai/dist:
+    dependencies:
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/handlers/stats:
     dependencies:
       tslib:
@@ -699,7 +832,27 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/handlers/stats/dist:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/integration:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integration/dist:
     dependencies:
       tslib:
         specifier: 'catalog:'
@@ -722,7 +875,33 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/integrations/ai/dist:
+    dependencies:
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/integrations/basecamp:
+    dependencies:
+      oauth4webapi:
+        specifier: 'catalog:'
+        version: 3.8.3
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integrations/basecamp/dist:
     dependencies:
       oauth4webapi:
         specifier: 'catalog:'
@@ -754,6 +933,25 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/integrations/confluence/dist:
+    dependencies:
+      axios:
+        specifier: 'catalog:'
+        version: 1.12.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+      turndown:
+        specifier: 'catalog:'
+        version: 7.2.2
+    devDependencies:
+      '@types/turndown':
+        specifier: catalog:dev
+        version: 5.0.6
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/integrations/file:
     dependencies:
       tslib:
@@ -764,7 +962,27 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/integrations/file/dist:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/integrations/git:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integrations/git/dist:
     dependencies:
       tslib:
         specifier: 'catalog:'
@@ -787,7 +1005,42 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/integrations/gitlab/dist:
+    dependencies:
+      axios:
+        specifier: 'catalog:'
+        version: 1.12.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integrations/http:
+    dependencies:
+      axios:
+        specifier: 'catalog:'
+        version: 1.12.2
+      oauth4webapi:
+        specifier: 'catalog:'
+        version: 3.8.3
+
   libs/integrations/jira:
+    dependencies:
+      axios:
+        specifier: 'catalog:'
+        version: 1.12.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integrations/jira/dist:
     dependencies:
       axios:
         specifier: 'catalog:'
@@ -810,7 +1063,30 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/integrations/slack/dist:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/integrations/zendesk-articles:
+    dependencies:
+      axios:
+        specifier: 'catalog:'
+        version: 1.12.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integrations/zendesk-articles/dist:
     dependencies:
       axios:
         specifier: 'catalog:'
@@ -836,6 +1112,19 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/mcp/dist:
+    dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: 'catalog:'
+        version: 1.23.1(zod@4.3.6)
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/model:
     dependencies:
       rxjs:
@@ -849,7 +1138,33 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/model/dist:
+    dependencies:
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/repository:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+      yaml:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/repository/dist:
     dependencies:
       tslib:
         specifier: 'catalog:'
@@ -878,7 +1193,33 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/service/dist:
+    dependencies:
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+      yaml:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/utils:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/utils/dist:
     dependencies:
       tslib:
         specifier: 'catalog:'
