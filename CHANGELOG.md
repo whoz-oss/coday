@@ -1,3 +1,13 @@
+## 0.71.0 (2026-02-18)
+
+### 🚀 Features
+
+- #476 builtin system prompts ([#478](https://github.com/whoz-oss/coday/pull/478), [#476](https://github.com/whoz-oss/coday/issues/476))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.70.0 (2026-02-18)
 
 ### 🚀 Features
