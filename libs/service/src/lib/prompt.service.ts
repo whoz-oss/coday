@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs'
 import { readYamlFile, writeYamlFile } from '@coday/utils'
 import type { Prompt, PromptInfo, PromptSource } from '@coday/model'
+import { BuiltinPrompts } from '@coday/model'
 import { findFilesByName } from '@coday/function'
 import { isUserAdmin } from './user-groups'
 
@@ -452,6 +453,8 @@ export class PromptService {
           console.log(`[PROMPT] Could not access ${source} prompts for ${projectName}:`, error)
         }
       }
+
+      prompts.push(...BuiltinPrompts)
 
       // Sort by creation date (newest first)
       return prompts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())

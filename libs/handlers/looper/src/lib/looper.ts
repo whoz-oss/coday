@@ -1,37 +1,34 @@
 import {
   AddQueryHandler,
-  CodayPromptChains,
   CommandHandler,
   DebugHandler,
   FileMapHandler,
   PromptChainHandler,
-  SlashCommandHandler,
   RunBashHandler,
+  SlashCommandHandler,
 } from '@coday/handler'
-import { CommandContext, Interactor, RunStatus } from '@coday/model'
+import { CommandContext, Interactor, ProjectDescription, PromptChain, RunStatus } from '@coday/model'
 import { AiHandler } from '@coday/handlers-openai'
 import { ConfigHandler } from '@coday/handlers-config'
 import { CodayServices } from '@coday/coday-services'
-import { ProjectDescription } from '@coday/model'
 import { MemoryHandler } from '@coday/handlers-memory'
 import { LoadHandler } from '@coday/handlers-load'
 import { StatsHandler } from '@coday/handlers-stats'
-import { PromptChain } from '@coday/model'
 
 const MAX_ITERATIONS = 100
 
 export class HandlerLooper {
   private handlers: CommandHandler[] = []
 
-  private maxIterations: number = MAX_ITERATIONS
+  private readonly maxIterations: number = MAX_ITERATIONS
   private killed: boolean = false
   private processing: boolean = false
 
   constructor(
-    private interactor: Interactor,
-    private aiHandler: AiHandler,
-    private configHandler: ConfigHandler,
-    private services: CodayServices // unused temporarily...
+    private readonly interactor: Interactor,
+    private readonly aiHandler: AiHandler,
+    private readonly configHandler: ConfigHandler,
+    private readonly services: CodayServices // unused temporarily...
   ) {}
 
   async init(projectDescription: ProjectDescription | null): Promise<void> {
@@ -48,10 +45,6 @@ export class HandlerLooper {
         new LoadHandler(this.interactor),
         new StatsHandler(this.interactor, this.services),
       ]
-
-      CodayPromptChains.forEach((promptChain) =>
-        this.handlers.push(new PromptChainHandler(promptChain, promptChain.name))
-      )
 
       if (projectDescription?.prompts) {
         for (const [promptName, promptChain] of Object.entries(projectDescription.prompts)) {
