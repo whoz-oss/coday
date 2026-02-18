@@ -65,7 +65,7 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier>(
      * @throws ResponseStatusException with 400 status if ids parameter is missing or empty
      */
     @GetMapping
-    fun getByIds(
+    open fun getByIds(
         @RequestParam(required = false) ids: List<UUID>?,
     ): List<EntityType> {
         if (ids.isNullOrEmpty()) {
@@ -100,7 +100,7 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier>(
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    fun create(
+    open fun create(
         @RequestBody entity: EntityType,
     ): EntityType = service.save(entity)
 
@@ -113,7 +113,7 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier>(
      * @throws ResponseStatusException with 404 status if not found
      */
     @PutMapping("/{id}")
-    fun update(
+    open fun update(
         @PathVariable id: UUID,
         @RequestBody entity: EntityType,
     ): EntityType {
@@ -133,7 +133,7 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier>(
      */
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    fun delete(
+    open fun delete(
         @PathVariable id: UUID,
     ) {
         val deleted = service.delete(id)

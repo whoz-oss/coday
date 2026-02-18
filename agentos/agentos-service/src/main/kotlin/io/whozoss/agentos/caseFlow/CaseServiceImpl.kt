@@ -2,7 +2,10 @@ package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.caseEvent.CaseEventService
+import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import jakarta.annotation.PreDestroy
@@ -58,7 +61,24 @@ class CaseServiceImpl(
     // EntityService Implementation (Persistence)
     // ========================================
 
-    override fun save(entity: CaseModel): CaseModel = caseRepository.save(entity)
+    override fun save(entity: CaseModel): CaseModel {
+        val saved = caseRepository.save(entity)
+        // Initialize the runtime Case instance if not already active
+        if (!activeCases.containsKey(saved.id)) {
+            val case = Case(
+                id = saved.id,
+                projectId = saved.projectId,
+                status = saved.status,
+                agentService = agentService,
+                caseService = this,
+                caseEventService = caseEventService,
+                inputEvents = emptyList(),
+            )
+            activeCases[case.id] = case
+            logger.info("[CaseService] Runtime instance created for case: ${saved.id}")
+        }
+        return saved
+    }
 
     override fun findByIds(ids: Collection<UUID>): List<CaseModel> = caseRepository.findByIds(ids)
 
@@ -92,39 +112,26 @@ class CaseServiceImpl(
     // Runtime Instance Management
     // ========================================
 
-    override fun createCaseInstance(
-        projectId: UUID,
-        initialEvents: List<CaseEvent>,
-    ): Case {
-        logger.info("[CaseService] Creating case instance for project $projectId with ${initialEvents.size} initial events")
+    override suspend fun addMessage(
+        caseId: UUID,
+        userId: String,
+        content: String,
+        answerToEventId: UUID?,
+    ) {
+        val case = getCaseInstance(caseId)
+            ?: throw IllegalArgumentException("Case not found: $caseId")
 
-        // Create persistence model
-        val caseModel =
-            CaseModel(
-                metadata = EntityMetadata(),
-                projectId = projectId,
-                status = CaseStatus.PENDING,
-            )
-        save(caseModel)
-        logger.debug("[CaseService] Persistence model saved with id: ${caseModel.id}")
+        val actor = Actor(
+            id = userId,
+            displayName = userId,
+            role = ActorRole.USER,
+        )
 
-        // Create runtime instance
-        val case =
-            Case(
-                id = caseModel.id,
-                projectId = projectId,
-                status = CaseStatus.PENDING,
-                agentService = agentService,
-                caseService = this,
-                caseEventService = caseEventService,
-                inputEvents = initialEvents,
-            )
-
-        activeCases[case.id] = case
-        logger.info("[CaseService] Case instance created and registered: ${case.id} for project $projectId")
-        logger.debug("[CaseService] Total active cases: ${activeCases.size}")
-
-        return case
+        case.addUserMessage(
+            actor = actor,
+            content = listOf(MessageContent.Text(content)),
+            answerToEventId = answerToEventId,
+        )
     }
 
     override fun getCaseInstance(caseId: UUID): Case? {

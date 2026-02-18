@@ -28,17 +28,13 @@ interface CaseService : EntityService<CaseModel, UUID> {
     // ========================================
 
     /**
-     * Create a new case instance for the given project.
-     * This creates both the persistent CaseModel and the runtime Case instance.
+     * Save a CaseModel, creating both the persistent entity and the runtime Case instance.
+     * Overrides EntityService::save to also initialize the runtime.
      *
-     * @param projectId The project this case belongs to
-     * @param initialEvents Optional list of events to initialize the case with (for resumption)
-     * @return The created Case instance (runtime)
+     * @param entity The CaseModel to persist and start
+     * @return The saved CaseModel
      */
-    fun createCaseInstance(
-        projectId: UUID,
-        initialEvents: List<CaseEvent> = emptyList(),
-    ): Case
+    override fun save(entity: CaseModel): CaseModel
 
     /**
      * Retrieve an active case runtime instance by ID.
@@ -47,6 +43,21 @@ interface CaseService : EntityService<CaseModel, UUID> {
      * @return The Case instance, or null if not found or not active
      */
     fun getCaseInstance(caseId: UUID): Case?
+
+    /**
+     * Add a user message to a case, encapsulating actor creation and delegation to the runtime.
+     *
+     * @param caseId The case to add the message to
+     * @param userId The user identifier
+     * @param content The message text
+     * @param answerToEventId Optional ID of the question event this answers
+     */
+    suspend fun addMessage(
+        caseId: UUID,
+        userId: String,
+        content: String,
+        answerToEventId: UUID? = null,
+    )
 
     /**
      * Retrieve all active case instances for a given project.
