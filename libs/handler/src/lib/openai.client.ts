@@ -30,27 +30,15 @@ type AssistantThreadData = {
 
 const OPENAI_DEFAULT_MODELS: AiModel[] = [
   {
-    name: 'gpt-5.1',
-    contextWindow: 1000000,
+    name: 'gpt-5.2',
+    contextWindow: 400000,
     alias: 'BIG',
     temperature: 0.8,
-    maxOutputTokens: 120000,
+    maxOutputTokens: 128000,
     price: {
-      inputMTokens: 1.25,
-      cacheRead: 0.125,
-      outputMTokens: 10.0,
-    },
-  },
-  {
-    name: 'gpt-5-pro',
-    contextWindow: 1000000,
-    alias: 'BIGGEST',
-    temperature: 0.8,
-    maxOutputTokens: 120000,
-    price: {
-      inputMTokens: 15.0,
-      cacheRead: 0, // No cache pricing available
-      outputMTokens: 120.0,
+      inputMTokens: 1.75,
+      cacheRead: 0.175,
+      outputMTokens: 14.0,
     },
   },
   {
