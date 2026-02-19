@@ -313,11 +313,42 @@ It can be summarized as:
     })
   }
 
+  /**
+   * Filters out tool request/response pairs from the message history that are
+   * not part of the current agent's toolset.
+   *
+   * When agents switch in a conversation, the thread may contain tool calls
+   * made by previous agents. Sending those to the current agent's LLM is
+   * confusing: the model thinks it has access to tools it doesn't, and may
+   * try to call them or misinterpret their results.
+   *
+   * Pairs are always removed together to keep request/response consistency.
+   *
+   * @param messages The thread messages to filter
+   * @param allowedToolNames Set of tool names the current agent has access to
+   */
+  protected filterUnknownToolCalls(messages: ThreadMessage[], allowedToolNames: Set<string>): ThreadMessage[] {
+    // Collect IDs of tool requests that are NOT in the allowed set
+    const foreignRequestIds = new Set<string>(
+      messages
+        .filter((msg) => msg instanceof ToolRequestEvent && !allowedToolNames.has(msg.name))
+        .map((msg) => (msg as ToolRequestEvent).toolRequestId)
+    )
+    if (foreignRequestIds.size === 0) return messages
+    // Remove both the foreign requests and their paired responses
+    return messages.filter((msg) => {
+      if (msg instanceof ToolRequestEvent) return !foreignRequestIds.has(msg.toolRequestId)
+      if (msg instanceof ToolResponseEvent) return !foreignRequestIds.has(msg.toolRequestId)
+      return true
+    })
+  }
+
   protected async getMessages(
     thread: AiThread,
     charBudget: number,
     model: string,
-    agentName?: string
+    agentName?: string,
+    allowedToolNames?: Set<string>
   ): Promise<{
     messages: ThreadMessage[]
     compacted: boolean
@@ -325,6 +356,9 @@ It can be summarized as:
     const compactor = this.getCompactor(model, charBudget)
     const result = await thread.getMessages(charBudget, compactor)
     result.messages = this.stripAgentPrefixes(result.messages)
+    if (allowedToolNames) {
+      result.messages = this.filterUnknownToolCalls(result.messages, allowedToolNames)
+    }
     if (agentName) {
       result.messages = this.convertAgentMessages(result.messages, agentName)
     }
