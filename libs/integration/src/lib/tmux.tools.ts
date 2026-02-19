@@ -4,6 +4,15 @@ import { promisify } from 'util'
 
 const execFileAsync = promisify(execFile)
 
+const VALID_SESSION_NAME = /^[a-zA-Z0-9_-]+$/
+
+function validateSession(session: string): string | null {
+  if (!VALID_SESSION_NAME.test(session)) {
+    return `Error: invalid session name '${session}'. Only alphanumeric characters, hyphens and underscores are allowed.`
+  }
+  return null
+}
+
 export class TmuxTools extends AssistantToolFactory {
   name = 'TMUX'
 
@@ -62,6 +71,8 @@ Use clear, stable session names matching the application role: "backend", "front
 
                 case 'status': {
                   if (!session) return 'Error: session name is required for status'
+                  const statusErr = validateSession(session)
+                  if (statusErr) return statusErr
                   try {
                     await execFileAsync('tmux', ['has-session', '-t', session])
                     return 'running'
@@ -73,6 +84,8 @@ Use clear, stable session names matching the application role: "backend", "front
                 case 'start': {
                   if (!session) return 'Error: session name is required for start'
                   if (!command) return 'Error: command is required for start'
+                  const startErr = validateSession(session)
+                  if (startErr) return startErr
                   try {
                     await execFileAsync('tmux', ['new-session', '-d', '-s', session, '-x', '220', '-y', '50'])
                   } catch {
@@ -84,6 +97,8 @@ Use clear, stable session names matching the application role: "backend", "front
 
                 case 'logs': {
                   if (!session) return 'Error: session name is required for logs'
+                  const logsErr = validateSession(session)
+                  if (logsErr) return logsErr
                   try {
                     const { stdout } = await execFileAsync('tmux', ['capture-pane', '-t', session, '-p', '-S', '-200'])
                     return stdout.trim()
@@ -95,6 +110,8 @@ Use clear, stable session names matching the application role: "backend", "front
                 case 'send': {
                   if (!session) return 'Error: session name is required for send'
                   if (!command) return 'Error: command is required for send'
+                  const sendErr = validateSession(session)
+                  if (sendErr) return sendErr
                   try {
                     await execFileAsync('tmux', ['send-keys', '-t', session, command, 'Enter'])
                     return `Command sent to session '${session}'`
@@ -105,6 +122,8 @@ Use clear, stable session names matching the application role: "backend", "front
 
                 case 'stop': {
                   if (!session) return 'Error: session name is required for stop'
+                  const stopErr = validateSession(session)
+                  if (stopErr) return stopErr
                   try {
                     await execFileAsync('tmux', ['kill-session', '-t', session])
                     return `Session '${session}' killed`
