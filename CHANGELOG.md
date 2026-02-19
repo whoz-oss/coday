@@ -1,3 +1,13 @@
+## 0.74.0 (2026-02-19)
+
+### 🚀 Features
+
+- #485 multi agent role and tool tagging ([#510](https://github.com/whoz-oss/coday/pull/510), [#485](https://github.com/whoz-oss/coday/issues/485))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.73.0 (2026-02-19)
 
 ### 🚀 Features
