@@ -263,6 +263,33 @@ It can be summarized as:
    * @param currentAgentName The name of the currently running agent
    * @returns Messages with other-agent messages converted to tagged user messages
    */
+  /**
+   * Strips @agentName prefixes from user messages before sending to the LLM.
+   * The @agent syntax is used for routing in the UI/handler layer but is noise
+   * for the LLM: it doesn't need to know how the message was dispatched.
+   *
+   * Only strips a leading `@word` from text content — leaves the rest intact.
+   */
+  protected stripAgentPrefixes(messages: ThreadMessage[]): ThreadMessage[] {
+    return messages.map((msg) => {
+      if (msg instanceof MessageEvent && msg.role === 'user') {
+        const strippedContent = msg.content.map((c) => {
+          if (c.type === 'text') {
+            const stripped = c.content.replace(/^@\S+\s*/, '')
+            return stripped !== c.content ? { ...c, content: stripped } : c
+          }
+          return c
+        })
+        // Only rebuild the MessageEvent if something actually changed
+        const changed = strippedContent.some((c, i) => c !== msg.content[i])
+        if (changed) {
+          return new MessageEvent({ ...msg, content: strippedContent })
+        }
+      }
+      return msg
+    })
+  }
+
   protected convertAgentMessages(messages: ThreadMessage[], currentAgentName: string): ThreadMessage[] {
     return messages.map((msg) => {
       if (msg instanceof MessageEvent && msg.role === 'assistant' && msg.name && msg.name !== currentAgentName) {
@@ -297,6 +324,7 @@ It can be summarized as:
   }> {
     const compactor = this.getCompactor(model, charBudget)
     const result = await thread.getMessages(charBudget, compactor)
+    result.messages = this.stripAgentPrefixes(result.messages)
     if (agentName) {
       result.messages = this.convertAgentMessages(result.messages, agentName)
     }
