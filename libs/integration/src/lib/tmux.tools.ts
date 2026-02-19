@@ -59,6 +59,11 @@ Use clear, stable session names matching the application role: "backend", "front
           parse: JSON.parse,
           function: async ({ action, session, command }: { action: string; session?: string; command?: string }) => {
             try {
+              if (session !== undefined) {
+                const sessionErr = validateSession(session)
+                if (sessionErr) return sessionErr
+              }
+
               switch (action) {
                 case 'list': {
                   try {
@@ -71,8 +76,6 @@ Use clear, stable session names matching the application role: "backend", "front
 
                 case 'status': {
                   if (!session) return 'Error: session name is required for status'
-                  const statusErr = validateSession(session)
-                  if (statusErr) return statusErr
                   try {
                     await execFileAsync('tmux', ['has-session', '-t', session])
                     return 'running'
@@ -84,8 +87,6 @@ Use clear, stable session names matching the application role: "backend", "front
                 case 'start': {
                   if (!session) return 'Error: session name is required for start'
                   if (!command) return 'Error: command is required for start'
-                  const startErr = validateSession(session)
-                  if (startErr) return startErr
                   try {
                     await execFileAsync('tmux', ['new-session', '-d', '-s', session, '-x', '220', '-y', '50'])
                   } catch {
@@ -97,8 +98,6 @@ Use clear, stable session names matching the application role: "backend", "front
 
                 case 'logs': {
                   if (!session) return 'Error: session name is required for logs'
-                  const logsErr = validateSession(session)
-                  if (logsErr) return logsErr
                   try {
                     const { stdout } = await execFileAsync('tmux', ['capture-pane', '-t', session, '-p', '-S', '-200'])
                     return stdout.trim()
@@ -110,8 +109,6 @@ Use clear, stable session names matching the application role: "backend", "front
                 case 'send': {
                   if (!session) return 'Error: session name is required for send'
                   if (!command) return 'Error: command is required for send'
-                  const sendErr = validateSession(session)
-                  if (sendErr) return sendErr
                   try {
                     await execFileAsync('tmux', ['send-keys', '-t', session, command, 'Enter'])
                     return `Command sent to session '${session}'`
@@ -122,8 +119,6 @@ Use clear, stable session names matching the application role: "backend", "front
 
                 case 'stop': {
                   if (!session) return 'Error: session name is required for stop'
-                  const stopErr = validateSession(session)
-                  if (stopErr) return stopErr
                   try {
                     await execFileAsync('tmux', ['kill-session', '-t', session])
                     return `Session '${session}' killed`
