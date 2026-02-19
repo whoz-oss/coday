@@ -190,6 +190,18 @@ Key aspects:
 - Temporal validity
 - Update mechanisms
 
+## AgentOS Integration
+
+**AgentOS** (Spring Boot + Kotlin) runs in parallel during transition:
+- API proxy: `/api/agentos/*` → AgentOS backend
+- Shared UI: `/agentos/` route with isolated components
+- Generated clients: OpenAPI → Angular services
+
+**Concept mapping**:
+- Coday Project Agent → AgentOS Plugin Agent
+- Coday Technical Agent → AgentOS Orchestrator
+- Coday Tool → AgentOS Capability
+
 ## Domain Relationships
 
 ```mermaid

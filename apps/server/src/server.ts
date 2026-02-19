@@ -159,16 +159,7 @@ if (resolvedProjectName && !codayOptions.forcedProject) {
 
 const projectService = new ProjectService(projectRepository, resolvedProjectName, codayOptions.forcedProject)
 
-// Now initialize prompt service with project path
-let projectPathForPrompts: string | undefined
-if (resolvedProjectName) {
-  const project = projectService.getProject(resolvedProjectName)
-  if (project?.config.path) {
-    projectPathForPrompts = project.config.path
-    debugLog('INIT', `Project path for prompts: ${projectPathForPrompts}`)
-  }
-}
-promptService = new PromptService(codayOptions.configDir, projectPathForPrompts)
+promptService = new PromptService(codayOptions.configDir, projectService)
 debugLog('INIT', 'Prompt service initialized')
 
 // Create prompt execution service

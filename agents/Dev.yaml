@@ -9,8 +9,9 @@ integrations:
   MEMORY:
   GITHUB:
   GIT:
-  PROJECT_SCRIPTS:
   JIRA:
+  DELEGATE:
+    - Runnay
 instructions: |
   You are Dev, the Software Agent who bridges user needs and code implementation.
   

@@ -7,6 +7,7 @@ import type { Prompt, PromptInfo, PromptSource } from '@coday/model'
 import { BuiltinPrompts } from '@coday/model'
 import { findFilesByName } from '@coday/function'
 import { isUserAdmin } from './user-groups'
+import type { ProjectService } from './project.service'
 
 /**
  * PromptService - Manages prompt CRUD operations
@@ -23,12 +24,21 @@ import { isUserAdmin } from './user-groups'
  */
 export class PromptService {
   private readonly codayConfigDir: string
-  private readonly projectPath?: string
+  private readonly projectService?: ProjectService
 
-  constructor(codayConfigPath?: string, projectPath?: string) {
+  constructor(codayConfigPath?: string, projectService?: ProjectService) {
     const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
     this.codayConfigDir = codayConfigPath ?? defaultConfigPath
-    this.projectPath = projectPath
+    this.projectService = projectService
+  }
+
+  /**
+   * Resolve the filesystem path for a given project by name.
+   * Uses the injected ProjectService if available.
+   */
+  private getProjectPath(projectName: string): string | undefined {
+    if (!this.projectService) return undefined
+    return this.projectService.getProject(projectName)?.config.path
   }
 
   /**
@@ -42,18 +52,19 @@ export class PromptService {
       promptsDir = path.join(this.codayConfigDir, 'projects', projectName, 'prompts')
     } else {
       // project source: find coday.yaml and put prompts/ next to it
-      if (!this.projectPath) {
+      const projectPath = this.getProjectPath(projectName)
+      if (!projectPath) {
         throw new Error('Project path not configured, cannot access project prompts')
       }
 
       // Find coday.yaml location (same logic as agent.service.ts)
-      const codayFiles = await findFilesByName({ text: 'coday.yaml', root: this.projectPath })
+      const codayFiles = await findFilesByName({ text: 'coday.yaml', root: projectPath })
       if (codayFiles.length === 0) {
-        throw new Error(`coday.yaml not found in project path: ${this.projectPath}`)
+        throw new Error(`coday.yaml not found in project path: ${projectPath}`)
       }
 
       const codayFolder = path.dirname(codayFiles[0]!)
-      promptsDir = path.join(this.projectPath, codayFolder, 'prompts')
+      promptsDir = path.join(projectPath, codayFolder, 'prompts')
     }
 
     // Create directory if it doesn't exist
@@ -85,10 +96,10 @@ export class PromptService {
     }
 
     // Check project
-    if (this.projectPath) {
+    if (this.projectService) {
       try {
-        const projectPath = await this.getOrCreatePromptFilePath(projectName, id, 'project')
-        if (existsSync(projectPath)) {
+        const projectPromptPath = await this.getOrCreatePromptFilePath(projectName, id, 'project')
+        if (existsSync(projectPromptPath)) {
           return 'project'
         }
       } catch (error) {
@@ -127,7 +138,7 @@ export class PromptService {
       }
 
       // Check project prompts
-      if (this.projectPath) {
+      if (this.projectService) {
         try {
           const projectPromptPath = await this.getOrCreatePromptFilePath(projectName, id, 'project')
           if (existsSync(projectPromptPath)) {
@@ -415,7 +426,7 @@ export class PromptService {
       const prompts: PromptInfo[] = []
       const sources: PromptSource[] = ['local']
 
-      if (this.projectPath) {
+      if (this.projectService) {
         sources.push('project')
       }
 
