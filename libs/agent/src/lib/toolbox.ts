@@ -12,7 +12,7 @@ import {
 } from '@coday/model'
 import { AiTools, DelegateTools } from '@coday/integrations-ai'
 import { McpToolsFactory } from '@coday/mcp'
-import { CoreTools, MemoryTools, ProjectScriptsTools } from '@coday/integration'
+import { CoreTools, MemoryTools, ProjectScriptsTools, TmuxTools } from '@coday/integration'
 import { FileTools } from '@coday/integrations-file'
 import { GitTools } from '@coday/integrations-git'
 import { GitLabTools } from '@coday/integrations-gitlab'
@@ -45,6 +45,7 @@ export class Toolbox implements Killable {
       new FileTools(interactor),
       new GitTools(interactor, services.integration),
       new ProjectScriptsTools(interactor),
+      new TmuxTools(interactor),
       new GitLabTools(interactor, services.integration),
       new MemoryTools(interactor, services.memory),
       new ConfluenceTools(interactor, services.integration),
