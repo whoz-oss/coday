@@ -1,0 +1,6 @@
+name: gemini
+apiType: Gemini
+baseUrl: "https://api.gemini.com"
+defaultApiKey: "****"
+temperature: 0.8
+baseModel: "gemini-3-flash-preview"

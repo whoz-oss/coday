@@ -1,8 +1,18 @@
 spring:
   application:
     name: agentos-service
-  
   ai:
+    chat:
+      client:
+        enabled: false
+    model:
+      chat: none
+      audio:
+        speech: none
+        transcription: none
+      image: none
+      embedding: none
+      moderation: none
     openai:
       api-key: ${OPENAI_API_KEY:}
       chat:
@@ -45,7 +55,7 @@ agentos:
 logging:
   level:
     root: INFO
-    io.biznet.agentos: DEBUG
+    io.whozoss.agentos.service: DEBUG
     org.pf4j: DEBUG
     org.springframework.ai: DEBUG
   pattern:

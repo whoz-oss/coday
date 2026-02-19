@@ -1,7 +1,6 @@
 // Root build file for AgentOS composite build
 // Individual modules (agentos-sdk, agentos-service) are now composite builds
 // with their own settings.gradle.kts and build configurations
-
 plugins {
     id("dev.nx.gradle.project-graph") version ("0.1.10")
     base
@@ -27,3 +26,4 @@ allprojects {
         plugin("dev.nx.gradle.project-graph")
     }
 }
+

@@ -5,7 +5,7 @@ import { UserData } from '@coday/model'
 import { Interactor } from '@coday/model'
 import { IntegrationLocalConfig } from '@coday/model'
 import * as os from 'node:os'
-import { migrateData, readYamlFile, userConfigMigrations, writeYamlFile } from '@coday/utils'
+import { migrateData, readYamlFile, sanitizeUsername, userConfigMigrations, writeYamlFile } from '@coday/utils'
 
 import { ConfigMaskingService } from './config-masking.service'
 
@@ -23,8 +23,8 @@ export class UserService {
     public readonly username: string,
     private readonly interactor: Interactor
   ) {
-    // Format username correctly
-    this.sanitizedUsername = this.sanitizeUsername(username)
+    // Format username correctly using centralized utility
+    this.sanitizedUsername = sanitizeUsername(username)
 
     // Resolve configuration path
     const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
@@ -37,14 +37,17 @@ export class UserService {
     // Load user configuration
     const filePath = path.join(this.userConfigPath, USER_FILENAME)
     if (!existsSync(filePath)) {
+      console.log(`[USER_SERVICE] Creating default config for user '${this.sanitizedUsername}' at ${filePath}`)
       // Add version to default config
       const defaultConfig = { ...DEFAULT_USER_CONFIG, version: 1 }
       writeYamlFile(filePath, defaultConfig)
     }
 
+    console.log(`[USER_SERVICE] Loading config for '${this.sanitizedUsername}' from ${filePath}`)
     const rawUserConfig = readYamlFile(filePath)
 
     if (!rawUserConfig) {
+      console.log(`[USER_SERVICE] ERROR: Failed to read user config at ${filePath}`)
       throw Error(`Could not read user config for username ${this.sanitizedUsername}`)
     }
 
@@ -53,6 +56,7 @@ export class UserService {
 
     // Save the migrated config if reference changed, meaning some migration happened
     if (this.config !== rawUserConfig) {
+      console.log(`[USER_SERVICE] Config migrated for '${this.sanitizedUsername}' to version ${this.config?.version}`)
       writeYamlFile(filePath, this.config)
       this.interactor.displayText(`User configuration migrated to version ${this.config?.version}`)
     }
@@ -88,11 +92,6 @@ export class UserService {
 
     // Save the configuration
     this.save()
-  }
-
-  private sanitizeUsername(username: string): string {
-    // Replaces non-alphanumeric characters with underscores
-    return username.replace(/[^a-zA-Z0-9]/g, '_')
   }
 
   public setBio(bio: string): void {

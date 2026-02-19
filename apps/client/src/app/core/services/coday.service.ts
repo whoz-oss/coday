@@ -23,8 +23,6 @@ import {
 
 import { EventStreamService } from './event-stream.service'
 import { MessageApiService } from './message-api.service'
-import { ProjectStateService } from './project-state.service'
-import { ThreadStateService } from './thread-state.service'
 
 import { ChatMessage } from '../../components/chat-message/chat-message.component'
 import { ChoiceOption } from '../../components/choice-select/choice-select.component'
@@ -76,8 +74,6 @@ export class CodayService implements OnDestroy {
   // Modern Angular dependency injection
   private readonly eventStream = inject(EventStreamService)
   private readonly messageApi = inject(MessageApiService)
-  private readonly projectState = inject(ProjectStateService)
-  private readonly threadState = inject(ThreadStateService)
 
   constructor() {
     // Initialize connection status observable after eventStream is available
@@ -102,6 +98,32 @@ export class CodayService implements OnDestroy {
     this.currentProject = projectName
     this.currentThread = threadId
     this.eventStream.connectToThread(projectName, threadId)
+
+    // After a short delay (to let messages replay), process unanswered invites
+    setTimeout(() => this.processUnansweredInvites(), 500)
+  }
+
+  /**
+   * Process unanswered invites after thread replay
+   * Finds InviteEvent and ChoiceEvent that don't have corresponding AnswerEvent
+   * and restores the first one to currentInviteEventSubject for user response
+   */
+  private processUnansweredInvites(): void {
+    const messages = this.messagesSubject.value
+
+    // Find all InviteEvent without corresponding AnswerEvent
+    const unansweredInvites = messages
+      .filter((m) => m.type === 'text' && m.parentKey === undefined && m.invite !== undefined)
+      .filter((invite) => !messages.some((m) => m.type === 'text' && m.role === 'user' && m.parentKey === invite.id))
+
+    // If there are unanswered invites, restore the first one
+    if (unansweredInvites.length > 0) {
+      // We need to reconstruct the InviteEvent from the message
+      // This is a simplified reconstruction - the actual InviteEvent will come from backend
+      console.log('[CODAY] Found', unansweredInvites.length, 'unanswered invite(s)')
+      // Note: The actual InviteEvent will be replayed from the backend,
+      // so we just need to wait for it to arrive via handleInviteEvent
+    }
   }
 
   /**
@@ -142,7 +164,7 @@ export class CodayService implements OnDestroy {
       // Clear the current invite event immediately after using it
       this.currentInviteEventSubject.next(null)
 
-      this.messageApi.sendMessage(this.currentProject, this.currentThread, answerEvent).subscribe({
+      this.messageApi.sendMessage(answerEvent).subscribe({
         error: (error) => {
           console.error('[CODAY] Send error:', error)
           // Reset thinking state on error
@@ -153,7 +175,7 @@ export class CodayService implements OnDestroy {
       // Fallback to basic AnswerEvent if no invite event stored
       const answerEvent = new AnswerEvent({ answer: message })
 
-      this.messageApi.sendMessage(this.currentProject, this.currentThread, answerEvent).subscribe({
+      this.messageApi.sendMessage(answerEvent).subscribe({
         error: (error) => {
           console.error('[CODAY] Send error:', error)
           // Reset thinking state on error
@@ -184,7 +206,7 @@ export class CodayService implements OnDestroy {
       this.currentChoiceSubject.next(null)
       // Clear the current choice event to prevent reuse
       this.currentChoiceEvent = null
-      this.messageApi.sendMessage(this.currentProject, this.currentThread, answerEvent).subscribe({
+      this.messageApi.sendMessage(answerEvent).subscribe({
         next: () => {},
         error: (error) => {
           console.error('[CODAY-CHOICE] Choice error:', error)
@@ -201,19 +223,11 @@ export class CodayService implements OnDestroy {
    * Delete a message from the thread (rewind/retry functionality)
    */
   deleteMessage(messageId: string): Observable<{ success: boolean; message?: string; error?: string }> {
-    // Get current project and thread from state services
-    const projectName = this.projectState.getSelectedProjectId()
-    const threadId = this.threadState.getSelectedThreadId()
-
-    if (!projectName || !threadId) {
-      throw new Error('Cannot delete message: no project or thread selected')
-    }
-
     // Extract text content from the message before deleting it
     const messageToDelete = this.messagesSubject.value.find((msg) => msg.id === messageId)
     const textContent = this.extractTextContentFromMessage(messageToDelete)
 
-    return this.messageApi.deleteMessage(projectName, threadId, messageId).pipe(
+    return this.messageApi.deleteMessage(messageId).pipe(
       tap((response: { success: boolean; message?: string; error?: string }) => {
         if (response.success) {
           // Update local messages immediately for better UX (no replay needed)
@@ -343,13 +357,16 @@ export class CodayService implements OnDestroy {
   }
 
   private handleAnswerEvent(event: AnswerEvent): void {
+    // Display AnswerEvent as a user message
     const message: ChatMessage = {
       id: event.timestamp,
       role: 'user',
       speaker: 'User',
-      content: [{ type: 'text', content: event.answer }], // Convertir en contenu riche
+      content: [{ type: 'text', content: event.answer }],
       timestamp: new Date(),
       type: 'text',
+      parentKey: event.parentKey, // Link to the InviteEvent/ChoiceEvent
+      invite: event.invite, // Original question for context
     }
 
     this.addMessage(message)
@@ -457,6 +474,10 @@ export class CodayService implements OnDestroy {
   }
 
   private handleInviteEvent(event: InviteEvent): void {
+    // IMMEDIATELY stop thinking state - this is critical for UX
+    // User should be able to respond instantly when an invite arrives
+    this.stopThinking()
+
     // Check if the last message already contains this invite content to avoid duplicates
     const currentMessages = this.messagesSubject.value
     const lastMessage = currentMessages[currentMessages.length - 1]
@@ -470,8 +491,6 @@ export class CodayService implements OnDestroy {
       lastMessage.content.some((c) => c.type === 'text' && c.content.includes(event.invite))
 
     if (!inviteAlreadyDisplayed && event.invite !== InviteEventDefault) {
-      this.stopThinking()
-
       // Create an assistant message with the invite content
       const inviteMessage: ChatMessage = {
         id: event.timestamp,

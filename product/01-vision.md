@@ -40,3 +40,11 @@ agents and internal technical agents to provide sophisticated capabilities while
 - Not a replacement for existing IDE features
 - Not a project management system
 - Not a deployment platform
+
+## AgentOS Evolution
+
+**AgentOS** is the production-ready backend (Spring Boot + Kotlin + Spring AI) that will replace Coday's Node.js backend for enterprise deployment.
+
+- **Coday**: Developer-focused, local workflows, rapid prototyping
+- **AgentOS**: Production orchestration, Docker deployment, plugin system (PF4J)
+- **Transition**: Both coexist during development, shared UI via `/agentos/` route

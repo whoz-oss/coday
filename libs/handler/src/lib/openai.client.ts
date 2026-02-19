@@ -1,7 +1,10 @@
 import OpenAI from 'openai'
 import {
+  AnswerEvent,
+  ChoiceEvent,
   CodayEvent,
   ErrorEvent,
+  InviteEvent,
   MessageEvent,
   SummaryEvent,
   TextChunkEvent,
@@ -27,27 +30,15 @@ type AssistantThreadData = {
 
 const OPENAI_DEFAULT_MODELS: AiModel[] = [
   {
-    name: 'gpt-5.1',
-    contextWindow: 1000000,
+    name: 'gpt-5.2',
+    contextWindow: 400000,
     alias: 'BIG',
     temperature: 0.8,
-    maxOutputTokens: 120000,
+    maxOutputTokens: 128000,
     price: {
-      inputMTokens: 1.25,
-      cacheRead: 0.125,
-      outputMTokens: 10.0,
-    },
-  },
-  {
-    name: 'gpt-5-pro',
-    contextWindow: 1000000,
-    alias: 'BIGGEST',
-    temperature: 0.8,
-    maxOutputTokens: 120000,
-    price: {
-      inputMTokens: 15.0,
-      cacheRead: 0, // No cache pricing available
-      outputMTokens: 120.0,
+      inputMTokens: 1.75,
+      cacheRead: 0.175,
+      outputMTokens: 14.0,
     },
   },
   {
@@ -564,7 +555,44 @@ export class OpenaiClient extends AiClient {
         }
       }
 
-      return [] // Should not happen, but satisfies TypeScript
+      // Handle InviteEvent - represent as assistant question
+      if (msg instanceof InviteEvent) {
+        return [
+          {
+            role: 'assistant' as const,
+            content: msg.invite,
+            name: agent.name,
+          },
+        ]
+      }
+
+      // Handle ChoiceEvent - represent as assistant question with options
+      if (msg instanceof ChoiceEvent) {
+        const optionsText = msg.options.map((opt, i) => `${i + 1}. ${opt}`).join('\n')
+        const content = msg.optionalQuestion
+          ? `${msg.optionalQuestion}\n${msg.invite}\n${optionsText}`
+          : `${msg.invite}\n${optionsText}`
+        return [
+          {
+            role: 'assistant' as const,
+            content,
+            name: agent.name,
+          },
+        ]
+      }
+
+      // Handle AnswerEvent - represent as user response
+      if (msg instanceof AnswerEvent) {
+        return [
+          {
+            role: 'user' as const,
+            content: msg.answer,
+          },
+        ]
+      }
+
+      // This should never happen, but TypeScript requires it
+      throw new Error(`Unknown message type: ${(msg as any).type}`)
     })
 
     return [systemInstructionMessage, ...openaiMessages]
@@ -628,10 +656,43 @@ export class OpenaiClient extends AiClient {
     }
 
     // Handle ToolRequestEvent
-    return {
-      role: 'assistant',
-      content: `${m.name}: Can you provide me the result of this :\n<toolRequestId>${m.toolRequestId}</toolRequestId>\n<function>${m.name}</function>\n<args>${m.args}</args>`,
+    if (m instanceof ToolRequestEvent) {
+      return {
+        role: 'assistant',
+        content: `${m.name}: Can you provide me the result of this :\n<toolRequestId>${m.toolRequestId}</toolRequestId>\n<function>${m.name}</function>\n<args>${m.args}</args>`,
+      }
     }
+
+    // Handle InviteEvent - represent as assistant question
+    if (m instanceof InviteEvent) {
+      return {
+        role: 'assistant',
+        content: m.invite,
+      }
+    }
+
+    // Handle ChoiceEvent - represent as assistant question with options
+    if (m instanceof ChoiceEvent) {
+      const optionsText = m.options.map((opt, i) => `${i + 1}. ${opt}`).join('\n')
+      const content = m.optionalQuestion
+        ? `${m.optionalQuestion}\n${m.invite}\n${optionsText}`
+        : `${m.invite}\n${optionsText}`
+      return {
+        role: 'assistant',
+        content,
+      }
+    }
+
+    // Handle AnswerEvent - represent as user response
+    if (m instanceof AnswerEvent) {
+      return {
+        role: 'user',
+        content: m.answer,
+      }
+    }
+
+    // This should never happen, but TypeScript requires it
+    throw new Error(`Unknown message type: ${(m as any).type}`)
   }
 
   private async processAssistantStream(

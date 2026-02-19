@@ -6,24 +6,30 @@ import { ThreadCodayManager } from './lib/thread-coday-manager'
 import * as os from 'node:os'
 import { debugLog } from './lib/log'
 import { CodayLoggerUtils } from '@coday/utils'
-import { WebhookService } from '@coday/service'
-import { ThreadCleanupService } from '@coday/service'
+import {
+  ThreadCleanupService,
+  PromptService,
+  SchedulerService,
+  PromptExecutionService,
+  ConfigServiceRegistry,
+  ProjectService,
+  ThreadFileService,
+  ThreadService,
+} from '@coday/service'
 import { findAvailablePort } from './lib/find-available-port'
-import { ConfigServiceRegistry } from '@coday/service'
 import { ServerInteractor } from '@coday/model'
 import { registerConfigRoutes } from './lib/config.routes'
-import { registerWebhookRoutes } from './lib/webhook.routes'
 import { registerSlackRoutes, SlackSocketModeManager } from '@coday/integrations-slack'
 import { registerProjectRoutes } from './lib/project.routes'
 import { registerThreadRoutes } from './lib/thread.routes'
 import { registerMessageRoutes } from './lib/message.routes'
 import { registerUserRoutes } from './lib/user.routes'
 import { registerAgentRoutes } from './lib/agent.routes'
-import { ProjectService } from '@coday/service'
+import { registerPromptRoutes } from './lib/prompt.routes'
+import { registerSchedulerRoutes } from './lib/scheduler.routes'
+import { registerPromptExecutionRoutes } from './lib/prompt-execution.routes'
 import { parseCodayOptions } from './lib/coday-options-utils'
 import { ProjectFileRepository } from '@coday/repository'
-import { ThreadFileService } from '@coday/service'
-import { ThreadService } from '@coday/service'
 import { McpInstancePool } from '@coday/mcp'
 
 const app = express()
@@ -50,9 +56,13 @@ debugLog(
   `Usage logging ${loggingEnabled ? 'enabled' : 'disabled'} ${codayOptions.logFolder ? `(custom folder: ${codayOptions.logFolder})` : ''}`
 )
 
-// Create single webhook service instance for all clients
-const webhookService = new WebhookService(codayOptions.configDir)
-debugLog('INIT', 'Webhook service initialized')
+// Create webhook service instance (delegates to prompt execution)
+debugLog('INIT', 'Webhook service initialized (will be initialized with prompt execution service)')
+
+// Create prompt service instance and execution service
+// Note: projectPath will be set after projectService is initialized
+let promptService: PromptService
+let promptExecutionService: PromptExecutionService
 // Middleware to parse JSON bodies with increased limit for image uploads
 app.use(
   express.json({
@@ -157,6 +167,13 @@ if (resolvedProjectName && !codayOptions.forcedProject) {
 
 const projectService = new ProjectService(projectRepository, resolvedProjectName, codayOptions.forcedProject)
 
+promptService = new PromptService(codayOptions.configDir, projectService)
+debugLog('INIT', 'Prompt service initialized')
+
+// Create prompt execution service
+promptExecutionService = new PromptExecutionService(promptService)
+debugLog('INIT', 'Prompt execution service initialized (will be initialized with dependencies after thread manager)')
+
 // Initialize thread file service for REST API endpoints
 const projectsDir = path.join(codayOptions.configDir, 'projects')
 const threadFileService = new ThreadFileService(projectsDir)
@@ -169,7 +186,13 @@ const mcpPool = new McpInstancePool()
 debugLog('INIT', 'MCP instance pool initialized')
 
 // Initialize the thread-based Coday manager for SSE architecture
-const threadCodayManager = new ThreadCodayManager(logger, webhookService, projectService, threadService, mcpPool)
+const threadCodayManager = new ThreadCodayManager(logger, projectService, threadService, promptService, mcpPool)
+
+// Initialize prompt execution dependencies now that thread manager is ready
+promptExecutionService.initialize(threadCodayManager, threadService, codayOptions, logger)
+debugLog('INIT', 'Prompt execution service initialized')
+
+debugLog('INIT', 'Webhook service initialized with prompt execution delegation')
 
 // Initialize config service registry for REST API endpoints
 const configInteractor = new ServerInteractor('config-api')
@@ -231,8 +254,14 @@ registerUserRoutes(app, getUsername)
 // Register configuration management routes
 registerConfigRoutes(app, configRegistry, getUsername)
 
-// Register webhook management routes (including execution endpoint)
-registerWebhookRoutes(app, webhookService, getUsername, threadService, threadCodayManager, codayOptions, logger)
+// Note: Legacy webhook routes removed - use prompt routes instead
+// Webhook execution is now handled by prompt-execution.routes.ts
+
+// Register prompt management routes
+registerPromptRoutes(app, promptService, getUsername)
+
+// Register prompt execution routes (webhook execution)
+registerPromptExecutionRoutes(app, promptExecutionService, getUsername)
 
 // Register Slack integration routes (HTTP webhooks)
 registerSlackRoutes(app, projectService, threadService, threadCodayManager, codayOptions, debugLog)
@@ -262,10 +291,16 @@ registerAgentRoutes(
   getUsername,
   codayOptions.configDir,
   logger,
-  webhookService,
+  promptService,
   threadService,
   codayOptions
 )
+
+// Initialize scheduler service early so routes can be registered before catch-all
+const schedulerService = new SchedulerService(logger, promptService, codayOptions.configDir)
+
+// Register scheduler routes (service will be initialized after server starts)
+registerSchedulerRoutes(app, schedulerService, getUsername)
 
 // Catch-all route for Angular client-side routing (MUST be after all API routes)
 // In production mode, serve index.html for any non-API routes
@@ -354,6 +389,21 @@ PORT_PROMISE.then(async (PORT) => {
   } catch (error) {
     console.error('Failed to start thread cleanup service:', error)
   }
+
+  // Initialize and start scheduler service after server is running
+  // Routes are already registered, just need to initialize the service
+  try {
+    debugLog('SCHEDULER', 'Initializing scheduler service...')
+
+    await schedulerService.initialize()
+
+    // Initialize execution dependencies
+    schedulerService.initializeExecution(promptExecutionService)
+
+    debugLog('SCHEDULER', 'Scheduler service initialized successfully')
+  } catch (error) {
+    console.error('Failed to initialize scheduler service:', error)
+  }
 }).catch((error) => {
   console.error('Failed to start server:', error)
   process.exit(1)
@@ -372,6 +422,10 @@ async function gracefulShutdown(signal: string) {
   console.log(`Received ${signal}, shutting down gracefully...`)
 
   try {
+    // Stop scheduler service
+    console.log('Stopping scheduler service...')
+    schedulerService.stop()
+
     // Stop thread cleanup service
     if (cleanupService) {
       console.log('Stopping thread cleanup service...')

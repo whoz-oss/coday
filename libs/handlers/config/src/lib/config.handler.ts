@@ -6,7 +6,6 @@ import { McpConfigHandler } from './mcp-config/mcp-config.handler'
 import { SelectProjectHandler } from './select-project.handler'
 import { IntegrationHandler } from './integration.handler'
 import { DefaultAgentHandler } from './default-agent.handler'
-import { WebhookHandler } from './webhook.handler'
 import { UserBioHandler } from './user-bio.handler'
 import { CostLimitHandler } from './cost-limit.handler'
 
@@ -31,7 +30,6 @@ export class ConfigHandler extends NestedHandler {
       new AiConfigHandler(this.interactor, this.services),
       new DefaultAgentHandler(this.interactor, this.services),
       new McpConfigHandler(this.interactor, this.services),
-      new WebhookHandler(this.interactor, this.services),
       new UserBioHandler(this.interactor, this.services),
       new CostLimitHandler(this.interactor),
     ]

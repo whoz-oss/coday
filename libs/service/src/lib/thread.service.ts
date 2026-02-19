@@ -242,9 +242,26 @@ export class ThreadService {
   async updateThread(projectName: string, threadId: string, updates: { name?: string }): Promise<AiThread> {
     const repository = this.getThreadRepository(projectName)
 
-    const thread = await repository.getById(projectName, threadId)
+    // Try to get thread from repository
+    let thread = await repository.getById(projectName, threadId)
+
+    // If not found in repository, check if it's in cache (race condition: thread just created)
     if (!thread) {
-      throw new Error(`Thread '${threadId}' not found in project '${projectName}'`)
+      const cached = this.threadListCache.get(projectName)
+      const cachedThread = cached?.data.find((t) => t.id === threadId)
+
+      if (cachedThread) {
+        // Thread exists in cache but not yet on disk - create a minimal AiThread from cache
+        thread = new AiThread({
+          id: cachedThread.id,
+          username: cachedThread.username,
+          projectId: cachedThread.projectId,
+          name: cachedThread.name,
+          price: cachedThread.price,
+        })
+      } else {
+        throw new Error(`Thread '${threadId}' not found in project '${projectName}'`)
+      }
     }
 
     // Apply updates

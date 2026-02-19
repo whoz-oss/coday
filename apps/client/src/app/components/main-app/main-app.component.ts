@@ -1,20 +1,20 @@
 import { AfterViewInit, Component, ElementRef, inject, OnDestroy, OnInit, ViewChild } from '@angular/core'
-import { ActivatedRoute } from '@angular/router'
+import { ActivatedRoute, Router } from '@angular/router'
 import { Subject } from 'rxjs'
 import { takeUntil } from 'rxjs/operators'
 import { animate, style, transition, trigger } from '@angular/animations'
 
 import { ChatTextareaComponent } from '../chat-textarea/chat-textarea.component'
 import { ThreadComponent } from '../thread/thread.component'
-import { WelcomeMessageComponent } from '../welcome-message/welcome-message.component'
-import { SidenavComponent } from '../sidenav/sidenav.component'
+import { WelcomeMessageComponent } from '../welcome-message'
+import { SidenavComponent } from '../sidenav'
 
 import { CodayService } from '../../core/services/coday.service'
 import { TabTitleService } from '../../services/tab-title.service'
 import { PreferencesService } from '../../services/preferences.service'
 import { ThreadApiService } from '../../core/services/thread-api.service'
 import { AgentNotificationService } from '../../services/agent-notification.service'
-import { Router } from '@angular/router'
+import { FirstMessageStateService } from '../../core/services/first-message-state.service'
 
 @Component({
   selector: 'app-main',
@@ -56,6 +56,7 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   private router = inject(Router)
   private threadApiService = inject(ThreadApiService)
   private agentNotificationService = inject(AgentNotificationService)
+  private firstMessageState = inject(FirstMessageStateService)
 
   constructor() {
     console.log('[MAIN-APP] Using new thread-based architecture (no clientId needed)')
@@ -127,14 +128,15 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
     this.isStartingFirstMessage = true
 
     // Create thread WITHOUT a name - the backend will auto-generate a name from the first message
-    this.threadApiService.createThread(this.projectName).subscribe({
+    this.threadApiService.createThread().subscribe({
       next: (response) => {
         console.log('[MAIN-APP] Thread created:', response.thread.id)
 
-        // Navigate to the new thread with the first message in state
-        this.router.navigate(['project', this.projectName, 'thread', response.thread.id], {
-          state: { firstMessage: message },
-        })
+        // Store the first message in the state service
+        this.firstMessageState.setPendingFirstMessage(message)
+
+        // Navigate to the new thread
+        this.router.navigate(['project', this.projectName, 'thread', response.thread.id])
 
         // Note: We don't reset isSessionInitializing here because we're navigating away
         // The ThreadComponent will take over and show its own thinking state

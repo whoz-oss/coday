@@ -1,30 +1,34 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'yaml'
-import { getFormattedDocs } from '@coday/function'
-import { Agent, AgentSummary, MemoryLevel } from '@coday/model'
-import { findFilesByName } from '@coday/function'
-import { Killable } from '@coday/model'
-import { AgentDefinition, CodayAgentDefinition } from '@coday/model'
-import { Interactor } from '@coday/model'
-import { CommandContext } from '@coday/model'
-import { ToolSet } from '@coday/model'
+import { getFormattedDocs, findFilesByName } from '@coday/function'
+import {
+  Agent,
+  AgentDefinition,
+  AgentServiceModel,
+  AgentSummary,
+  CodayAgentDefinition,
+  CommandContext,
+  Interactor,
+  Killable,
+  MemoryLevel,
+  ToolSet,
+} from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
 import { AiClientProvider } from '@coday/integrations-ai'
 import { Toolbox } from './toolbox'
-import { AgentServiceModel } from '@coday/model'
 
 export class AgentService implements Killable, AgentServiceModel {
-  private agentCache: Map<string, Agent> = new Map()
+  private readonly agentCache: Map<string, Agent> = new Map()
   private agentDefinitions: { definition: AgentDefinition; basePath: string }[] = []
   public toolbox: Toolbox
 
   constructor(
-    private interactor: Interactor,
-    private aiClientProvider: AiClientProvider,
-    private services: CodayServices,
-    private projectPath: string,
-    private commandLineAgentFolders: string[] = []
+    private readonly interactor: Interactor,
+    private readonly aiClientProvider: AiClientProvider,
+    private readonly services: CodayServices,
+    private readonly projectPath: string,
+    private readonly commandLineAgentFolders: string[] = []
   ) {
     // Subscribe to project changes to reset agents
     this.services.project.selectedProject$.subscribe(() => {
@@ -34,7 +38,7 @@ export class AgentService implements Killable, AgentServiceModel {
     this.toolbox = new Toolbox(this.interactor, services, this.findAgentByNameStart, this.listAgentSummaries)
   }
 
-  listAgentSummaries(): AgentSummary[] {
+  listAgentSummaries: () => AgentSummary[] = () => {
     return this.agentDefinitions
       .map((entry) => ({
         name: entry.definition.name,
@@ -49,19 +53,12 @@ export class AgentService implements Killable, AgentServiceModel {
    * - project local configuration agents
    * - ~/.coday/[project]/agents/ folder
    */
-  async initialize(context: CommandContext): Promise<void> {
+  initialize: (context: CommandContext) => Promise<void> = async (context) => {
     // Already initialized if we have any definitions
     if (this.agentDefinitions.length > 0) return
 
     const startTime = performance.now()
     this.interactor.debug('🚀 Starting agent initialization...')
-
-    // Pre-initialize tools in parallel (fire-and-forget)
-    this.interactor.debug('🛠️ Pre-initializing tools in parallel...')
-    this.toolbox
-      .getTools({ context, integrations: undefined, agentName: 'pre-init' })
-      .then((_) => this.interactor.debug('🛠️ ...completed pre-initializing tools in parallel'))
-      .catch((error) => this.interactor.debug(`Pre-initialization warning: ${error.message}`))
 
     try {
       // Load from coday.yml agents section first
@@ -73,7 +70,7 @@ export class AgentService implements Killable, AgentServiceModel {
       }
       const codayYmlTime = performance.now() - codayYmlStart
       this.interactor.debug(
-        `📋 Loaded agent definitions from coday.yml: ${codayYmlTime.toFixed(2)}ms (${context.project.agents?.length || 0} agents)`
+        `📋 Loaded agent definitions from coday.yml: ${codayYmlTime.toFixed(2)}ms (${context.project.agents?.length ?? 0} agents)`
       )
 
       // Load from project local configuration
@@ -86,7 +83,7 @@ export class AgentService implements Killable, AgentServiceModel {
       }
       const projectConfigTime = performance.now() - projectConfigStart
       this.interactor.debug(
-        `⚙️ Loaded agent definitions from project local config: ${projectConfigTime.toFixed(2)}ms (${selectedProject?.config.agents?.length || 0} agents)`
+        `⚙️ Loaded agent definitions from project local config: ${projectConfigTime.toFixed(2)}ms (${selectedProject?.config.agents?.length ?? 0} agents)`
       )
 
       // Then load from files
@@ -147,7 +144,10 @@ export class AgentService implements Killable, AgentServiceModel {
     return undefined
   }
 
-  async findAgentByNameStart(nameStart: string | undefined, context: CommandContext): Promise<Agent | undefined> {
+  findAgentByNameStart: (nameStart: string | undefined, context: CommandContext) => Promise<Agent | undefined> = async (
+    nameStart,
+    context
+  ) => {
     if (!nameStart) {
       return
     }
@@ -168,7 +168,7 @@ export class AgentService implements Killable, AgentServiceModel {
     const options = matchingAgents.map((agent) => agent.name)
     try {
       if (context.oneshot) {
-        throw new Error('Agent ambiguous names not allowed in oneshot context')
+        return undefined
       }
       const selection = await this.interactor.chooseOption(
         options,
@@ -403,16 +403,28 @@ ${agentDocs}
 
       const integrations = def.integrations
         ? new Map<string, string[]>(
-            Object.entries(def.integrations).map(([integration, names]: [string, string[]]): [string, string[]] => {
-              const toolNames: string[] = !names || !names.length ? [] : names
-              return [integration, toolNames]
-            })
+            Object.entries(def.integrations).map(
+              ([integration, names]: [string, string[] | null]): [string, string[]] => {
+                // Treat null, undefined, or empty array as "all tools from this integration"
+                const toolNames: string[] = names && names.length > 0 ? names : []
+                return [integration, toolNames]
+              }
+            )
           )
         : undefined
+
+      this.interactor.debug(
+        `Agent '${def.name}' integrations: ${integrations ? Array.from(integrations.keys()).join(', ') : 'ALL (undefined)'}`
+      )
 
       const toolsStart = performance.now()
       const syncTools = await this.toolbox.getTools({ context, integrations, agentName: def.name })
       const toolsTime = performance.now() - toolsStart
+
+      // Debug: log available tools
+      this.interactor.debug(
+        `  📦 Tools available for '${def.name}': ${syncTools.map((t) => t.function.name).join(', ')}`
+      )
 
       const toolset = new ToolSet([...syncTools])
       const agent = new Agent(def, aiClient, toolset)

@@ -8,8 +8,8 @@ import { IntegrationService } from '@coday/service'
 import { IntegrationConfigService } from '@coday/service'
 import { MemoryService } from '@coday/service'
 import { McpConfigService } from '@coday/service'
+import { PromptService } from '@coday/service'
 import { CodayLogger } from '@coday/model'
-import { WebhookService } from '@coday/service'
 import { HeartBeatEvent, ThreadUpdateEvent, OAuthCallbackEvent, MessageEvent, ThinkingEvent } from '@coday/model'
 import { debugLog } from './log'
 import { ProjectService } from '@coday/service'
@@ -40,9 +40,9 @@ class ThreadCodayInstance {
     public readonly username: string,
     private readonly options: CodayOptions,
     private readonly logger: CodayLogger,
-    private readonly webhookService: WebhookService,
     private readonly projectService: ProjectService,
     private readonly threadService: ThreadService,
+    private readonly promptService: PromptService,
     private readonly mcpPool: McpInstancePool,
     private readonly onTimeout: (threadId: string) => void
   ) {
@@ -195,6 +195,9 @@ class ThreadCodayInstance {
     }
 
     debugLog('THREAD_CODAY', `Creating Coday instance for thread ${this.threadId}`)
+    console.log(
+      `[THREAD_CODAY] Preparing instance for thread '${this.threadId}' (project: ${this.projectName}, user: ${this.username})`
+    )
 
     // Create services for this Coday instance
     const interactor = new ServerInteractor(this.threadId)
@@ -220,10 +223,11 @@ class ThreadCodayInstance {
       mcp,
       mcpPool: this.mcpPool,
       thread: this.threadService,
+      prompt: this.promptService,
       logger: this.logger,
-      webhook: this.webhookService,
       options: this.options,
     })
+    console.log(`[THREAD_CODAY] Instance created for thread '${this.threadId}'`)
 
     // Note: toolbox is now accessible via coday.services.agent.toolbox
     // after agent service initialization
@@ -689,9 +693,9 @@ export class ThreadCodayManager {
 
   constructor(
     private readonly logger: CodayLogger,
-    private readonly webhookService: WebhookService,
     private readonly projectService: ProjectService,
     private readonly threadService: ThreadService,
+    private readonly promptService: PromptService,
     private readonly mcpPool: McpInstancePool
   ) {
     // Start global heartbeat mechanism
@@ -744,9 +748,9 @@ export class ThreadCodayManager {
         username,
         options,
         this.logger,
-        this.webhookService,
         this.projectService,
         this.threadService,
+        this.promptService,
         this.mcpPool,
         this.handleInstanceTimeout
       )
@@ -786,9 +790,9 @@ export class ThreadCodayManager {
         username,
         options,
         this.logger,
-        this.webhookService,
         this.projectService,
         this.threadService,
+        this.promptService,
         this.mcpPool,
         this.handleInstanceTimeout
       )

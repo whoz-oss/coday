@@ -41,11 +41,11 @@ export class ProjectStateService {
     const projectConfigPath = path.join(this.projectsConfigPath, name)
     const projectConfigFile = path.join(projectConfigPath, PROJECT_FILENAME)
 
-    // const projectConfig = migrationResult
     const projectConfig = this.projectService.getProject(name)?.config
 
     const projectPath: string | undefined = projectConfig?.path
     if (!projectPath) {
+      console.log(`[PROJECT_STATE_SERVICE] ERROR: No project path in config for '${name}'`)
       this.interactor.error('Invalid selection, project path needed 😢.')
       return
     }
@@ -55,6 +55,7 @@ export class ProjectStateService {
       config: projectConfig!,
       configPath: projectConfigPath,
     }
+    console.log(`[PROJECT_STATE_SERVICE] Selected '${name}' → ${projectConfig!.path}`)
     this.updateSelectedProject(selectedProject)
     this.interactor.displayText(`Project local configuration used: ${projectConfigFile}`)
   }

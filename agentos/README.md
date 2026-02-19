@@ -168,7 +168,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("io.biznet.agentos:agentos-sdk:1.0.0")
+    compileOnly("io.whozoss.agentos:agentos-sdk:1.0.0")
 }
 ```
 
@@ -267,10 +267,10 @@ agentos/
 ## Development
 
 ### Adding a new plugin
-To create a new plugin please read [AgentOS SDK README.md](agentos-sdk/README.md) which describe how 
-to create a new project using AgentOS SDK. 
-A plugin should be deployed in the plugins directory of your AgentOS Service instance. 
-In case you use docker-compose you should ensure the proper location of the directory. 
+To create a new plugin please read [AgentOS SDK README.md](agentos-sdk/README.md) which describe how
+to create a new project using AgentOS SDK.
+A plugin should be deployed in the plugins directory of your AgentOS Service instance.
+In case you use docker-compose you should ensure the proper location of the directory.
 
 ### Modifying the SDK
 

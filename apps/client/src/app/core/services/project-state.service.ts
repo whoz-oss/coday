@@ -34,7 +34,7 @@ export class ProjectStateService {
   selectedProject$ = combineLatest([this.selectedProjectIdSubject, this.forcedProject$]).pipe(
     switchMap(([projectId, forcedProject]) => {
       // Priority: forcedProject > explicit selection
-      const targetProject = forcedProject || projectId
+      const targetProject = forcedProject ?? projectId
 
       if (!targetProject) {
         return of(null)
@@ -69,6 +69,19 @@ export class ProjectStateService {
    */
   getSelectedProjectId(): string | null {
     return this.selectedProjectIdSubject.value
+  }
+
+  /**
+   * Get the currently selected project name or throw an error
+   * @throws Error if no project is selected
+   * @returns Current project name
+   */
+  getSelectedProjectIdOrThrow(): string {
+    const projectName = this.selectedProjectIdSubject.value
+    if (!projectName) {
+      throw new Error('[PROJECT_STATE] No project selected')
+    }
+    return projectName
   }
 
   /**

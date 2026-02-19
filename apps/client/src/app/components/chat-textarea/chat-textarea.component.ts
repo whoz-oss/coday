@@ -20,6 +20,7 @@ import { CodayService } from '../../core/services/coday.service'
 import { MatIconButton } from '@angular/material/button'
 import { MatIcon } from '@angular/material/icon'
 import { AgentApiService, AgentAutocomplete } from '../../core/services/agent-api.service'
+import { PromptApiService, PromptAutocomplete } from '../../core/services/prompt-api.service'
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { HighlightPipe } from '../../pipes/highlight.pipe'
 
@@ -44,12 +45,14 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   isStopping: boolean = false
   // Local flag to immediately disable textarea when message is sent
   isLocallyDisabled: boolean = false
+  @Output() filesPasted = new EventEmitter<File[]>()
   @Output() messageSubmitted = new EventEmitter<string>()
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
   @Output() heightChanged = new EventEmitter<number>()
   @Output() stopRequested = new EventEmitter<void>()
 
   @ViewChild('messageInput', { static: true }) messageInput!: ElementRef<HTMLTextAreaElement>
+  @ViewChild('fileInput') fileInput?: ElementRef<HTMLInputElement>
 
   message: string = ''
   isRecording: boolean = false
@@ -85,6 +88,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   private readonly preferencesService = inject(PreferencesService)
   private readonly codayService = inject(CodayService)
   private readonly agentApiService = inject(AgentApiService)
+  private readonly promptApiService = inject(PromptApiService)
   private readonly projectStateService = inject(ProjectStateService)
 
   ngOnInit(): void {
@@ -253,6 +257,58 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
     // Check for autocomplete triggers
     this.checkForAutocomplete()
+  }
+
+  @HostListener('paste', ['$event'])
+  onPaste(event: ClipboardEvent): void {
+    const items = event.clipboardData?.items
+    if (!items) {
+      return
+    }
+
+    const fileItems = Array.from(items).filter((item) => item.kind === 'file')
+    if (!fileItems.length) {
+      return
+    }
+
+    event.preventDefault()
+
+    const files = fileItems.reduce<File[]>((acc, item) => {
+      const file = item.getAsFile()
+      return file ? [...acc, file] : acc
+    }, [])
+
+    if (files.length) {
+      this.filesPasted.emit(files)
+    }
+  }
+
+  /**
+   * Trigger the hidden file input click
+   */
+  triggerFileUpload(): void {
+    console.log('[CHAT-TEXTAREA] Triggering file upload')
+    this.fileInput?.nativeElement?.click()
+  }
+
+  /**
+   * Handle file input change event
+   */
+  onFileInputChange(event: Event): void {
+    const input = event.target as HTMLInputElement
+    const files = input.files
+
+    if (!files || files.length === 0) {
+      console.log('[CHAT-TEXTAREA] No files selected')
+      return
+    }
+
+    console.log('[CHAT-TEXTAREA] Files selected:', files.length)
+    const fileArray = Array.from(files)
+    this.filesPasted.emit(fileArray)
+
+    // Reset the input so the same file can be selected again
+    input.value = ''
   }
 
   /**
@@ -601,7 +657,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     } else if (this.showWelcome) {
       return 'How can I help you today?'
     } else {
-      return `Select an agent with '@' (optional), type your message here...`
+      return `Type '@' for agents, '/' for commands, or just your message...`
     }
   }
 
@@ -655,16 +711,22 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   private handleInviteEvent(invite: string, defaultValue?: string): void {
     this.currentInvite = invite
 
+    // Reset local disable flag immediately when an invite arrives
+    // This allows the user to respond without waiting for thinking state to clear
+    this.isLocallyDisabled = false
+
     // Set default value if provided
     if (defaultValue) {
       this.message = defaultValue
       setTimeout(() => this.adjustTextareaHeight(), 0)
     }
 
-    // Focus on textarea
-    if (this.messageInput?.nativeElement) {
-      this.messageInput.nativeElement.focus()
-    }
+    // Focus on textarea after a short delay to ensure disabled attribute is removed
+    setTimeout(() => {
+      if (this.messageInput?.nativeElement) {
+        this.messageInput.nativeElement.focus()
+      }
+    }, 50)
   }
 
   /**
@@ -746,17 +808,17 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
       return
     }
 
-    // Commands with / are disabled for now
-    // if (text.startsWith('/')) {
-    //   const afterTrigger = text.substring(1)
-    //   if (afterTrigger.includes(' ')) {
-    //     this.hideAutocomplete()
-    //     return
-    //   }
-    //   const query = afterTrigger
-    //   this.showCommandAutocomplete(query)
-    //   return
-    // }
+    // Check if starts with / (prompts/commands)
+    if (text.startsWith('/')) {
+      const afterTrigger = text.substring(1)
+      // If there's a space after /, close the autocomplete
+      if (afterTrigger.includes(' ')) {
+        this.hideAutocomplete()
+        return
+      }
+      this.showPromptAutocomplete(afterTrigger)
+      return
+    }
 
     // No trigger found, hide autocomplete
     this.hideAutocomplete()
@@ -769,26 +831,55 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   private showAgentAutocomplete(query: string): void {
     this.autocompleteTrigger = '@'
 
-    // Get current project name
-    const projectName = this.projectStateService.getSelectedProjectId()
-    if (!projectName) {
+    try {
+      // Get current project name
+      const projectName = this.projectStateService.getSelectedProjectIdOrThrow()
+
+      // Get filtered agents (uses cache if available)
+      this.agentApiService.getAgentsAutocomplete(projectName, query).subscribe({
+        next: (agents: AgentAutocomplete[]) => {
+          this.autocompleteItems = agents
+          this.autocompleteVisible = agents.length > 0
+          this.selectedAutocompleteIndex = 0
+        },
+        error: (error) => {
+          console.error('[AUTOCOMPLETE] Error loading agents:', error)
+          this.hideAutocomplete()
+        },
+      })
+    } catch (error) {
       console.warn('[AUTOCOMPLETE] No project selected, cannot load agents')
       this.hideAutocomplete()
-      return
     }
+  }
 
-    // Get filtered agents (uses cache if available)
-    this.agentApiService.getAgentsAutocomplete(projectName, query).subscribe({
-      next: (agents: AgentAutocomplete[]) => {
-        this.autocompleteItems = agents
-        this.autocompleteVisible = agents.length > 0
-        this.selectedAutocompleteIndex = 0
-      },
-      error: (error) => {
-        console.error('[AUTOCOMPLETE] Error loading agents:', error)
-        this.hideAutocomplete()
-      },
-    })
+  /**
+   * Show prompt autocomplete filtered by query
+   * Filtering is done client-side from API response
+   */
+  private showPromptAutocomplete(query: string): void {
+    this.autocompleteTrigger = '/'
+
+    try {
+      // Get current project name
+      const projectName = this.projectStateService.getSelectedProjectIdOrThrow()
+
+      // Get filtered prompts
+      this.promptApiService.getPromptsAutocomplete(projectName, query).subscribe({
+        next: (prompts: PromptAutocomplete[]) => {
+          this.autocompleteItems = prompts
+          this.autocompleteVisible = prompts.length > 0
+          this.selectedAutocompleteIndex = 0
+        },
+        error: (error) => {
+          console.error('[AUTOCOMPLETE] Error loading prompts:', error)
+          this.hideAutocomplete()
+        },
+      })
+    } catch (error) {
+      console.warn('[AUTOCOMPLETE] No project selected, cannot load prompts')
+      this.hideAutocomplete()
+    }
   }
 
   /**
@@ -807,18 +898,50 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     const item = this.autocompleteItems[this.selectedAutocompleteIndex]
     if (!item) return
 
-    // Replace @query or /query with @name or /name + space
-    this.message = `${this.autocompleteTrigger}${item.name} `
+    let cursorPosition: number | null = null
+
+    // Build the completed text based on trigger type
+    if (this.autocompleteTrigger === '/') {
+      // For slash commands (prompts), append parameter format if available
+      const promptItem = item as any // Cast to access parameterFormat
+      const paramFormat = promptItem.parameterFormat
+      console.log(promptItem)
+
+      if (paramFormat === undefined) {
+        // No parameters: just command name
+        this.message = `/${item.name}`
+      } else if (paramFormat === '') {
+        // Trailing parameter: add space for user to type
+        this.message = `/${item.name} `
+      } else {
+        // Structured parameters: add format with placeholders
+        this.message = `/${item.name} ${paramFormat}`
+        // Position cursor inside first empty quotes (key1="HERE")
+        const firstQuotePos = this.message.indexOf('=""')
+        if (firstQuotePos !== -1) {
+          cursorPosition = firstQuotePos + 2 // Position between the quotes
+        }
+      }
+    } else {
+      // For @ (agents), just add name + space
+      this.message = `@${item.name} `
+    }
 
     this.hideAutocomplete()
 
-    // Keep focus on textarea
+    // Keep focus on textarea and position cursor
     setTimeout(() => {
       if (this.messageInput?.nativeElement) {
         this.messageInput.nativeElement.focus()
-        // Place cursor at end
-        const length = this.message.length
-        this.messageInput.nativeElement.setSelectionRange(length, length)
+
+        if (cursorPosition !== null) {
+          // Position cursor at specific location (inside first quotes)
+          this.messageInput.nativeElement.setSelectionRange(cursorPosition, cursorPosition)
+        } else {
+          // Place cursor at end (default behavior)
+          const length = this.message.length
+          this.messageInput.nativeElement.setSelectionRange(length, length)
+        }
       }
     }, 0)
   }
@@ -836,6 +959,20 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
    */
   getAutocompleteQuery(): string {
     return this.message.substring(1).split(' ')[0] ?? ''
+  }
+
+  /**
+   * Get parameter format for a prompt item (slash commands only)
+   */
+  getParameterFormat(item: any): string | undefined {
+    return item.parameterFormat
+  }
+
+  /**
+   * Check if item has parameter format defined
+   */
+  hasParameterFormat(item: any): boolean {
+    return this.autocompleteTrigger === '/' && item.parameterFormat !== undefined
   }
 
   /**

@@ -1,0 +1,81 @@
+<div class="scheduler-manager">
+  <div class="header">
+    <h2>Schedulers</h2>
+    <div class="header-actions">
+      <mat-form-field appearance="outline" class="search-field">
+        <mat-label>Search</mat-label>
+        <input matInput [(ngModel)]="searchQuery" (input)="onSearchChange()" placeholder="Name, prompt, author..." />
+        <mat-icon matPrefix>search</mat-icon>
+      </mat-form-field>
+      <mat-slide-toggle [(ngModel)]="showOnlyMine" (change)="applyFilter()" color="primary" class="mine-toggle">
+        Mine
+      </mat-slide-toggle>
+      <button class="btn-create" (click)="createScheduler()">
+        <mat-icon>add</mat-icon>
+        <span>Create Scheduler</span>
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="isLoading" class="loading">Loading schedulers...</div>
+
+  <div *ngIf="errorMessage" class="error">{{ errorMessage }}</div>
+
+  <div *ngIf="!isLoading && schedulers.length === 0" class="empty">
+    No schedulers found. Create your first scheduler to automate prompt execution.
+  </div>
+
+  <div *ngIf="!isLoading && schedulers.length > 0 && filteredSchedulers.length === 0" class="empty">
+    No schedulers match your search.
+  </div>
+
+  <div class="scheduler-list" *ngIf="!isLoading && filteredSchedulers.length > 0">
+    <div *ngFor="let scheduler of filteredSchedulers" class="scheduler-item">
+      <div class="scheduler-info">
+        <h3>
+          {{ scheduler.name }}
+          <span class="status-badge" [class.enabled]="scheduler.enabled">
+            {{ scheduler.enabled ? 'Enabled' : 'Disabled' }}
+          </span>
+          <span
+            *ngIf="scheduler.createdBy !== getCurrentUsername()"
+            class="owner-badge"
+            title="Created by {{ scheduler.createdBy }}"
+          >
+            👤 {{ scheduler.createdBy }}
+          </span>
+        </h3>
+        <div class="details">
+          <div class="detail-row">
+            <span class="label">Prompt:</span>
+            <span class="value">{{ getPromptName(scheduler.promptId) }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="label">Schedule:</span>
+            <span class="value">{{ formatInterval(scheduler.schedule.interval) }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="label">Next Run:</span>
+            <span class="value">{{ formatNextRun(scheduler.nextRun) }}</span>
+          </div>
+          <div class="detail-row" *ngIf="scheduler.lastRun">
+            <span class="label">Last Run:</span>
+            <span class="value">{{ scheduler.lastRun | date: 'short' }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="scheduler-actions">
+        <button (click)="editScheduler(scheduler)" class="btn-primary">Edit</button>
+        <button
+          (click)="toggleEnabled(scheduler)"
+          [class.btn-enabled]="scheduler.enabled"
+          [class.btn-disabled]="!scheduler.enabled"
+        >
+          {{ scheduler.enabled ? 'Disable' : 'Enable' }}
+        </button>
+        <button (click)="runNow(scheduler.id)" class="btn-accent">Run Now</button>
+        <button (click)="deleteScheduler(scheduler.id)" class="btn-danger">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>

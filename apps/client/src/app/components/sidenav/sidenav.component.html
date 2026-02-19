@@ -176,19 +176,6 @@
         </a>
       </div>
 
-      <div class="section-container">
-        <a
-          href="https://github.com/whoz-oss/coday"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="section-toggle contribute-btn"
-          title="Contribute on GitHub"
-        >
-          <img [attr.src]="'CODAY-Logo.png'" alt="Coday" class="contribute-logo" />
-          <span class="section-label">Contribute on GitHub</span>
-        </a>
-      </div>
-
       <!-- Admin only -->
       @if (isAdmin) {
         <!-- Project Config -->
@@ -212,19 +199,65 @@
             </a>
           </div>
         }
-        <!-- Webhooks - Admin only -->
+      }
+
+      <!-- Prompts - Available for all users -->
+      @if (selectedProjectName()) {
         <div class="section-container">
           <a
             class="section-toggle"
-            (click)="openWebhooks(); $event.preventDefault(); $event.stopPropagation()"
+            (click)="openPrompts(); $event.preventDefault(); $event.stopPropagation()"
             role="button"
             tabindex="0"
           >
-            <mat-icon class="section-icon">webhook</mat-icon>
-            <span class="section-label">Webhooks</span>
+            <mat-icon class="section-icon">description</mat-icon>
+            <span class="section-label">Prompts</span>
+          </a>
+        </div>
+      } @else {
+        <div class="section-container">
+          <a class="section-toggle disabled" role="button" tabindex="-1" aria-disabled="true">
+            <mat-icon class="section-icon">description</mat-icon>
+            <span class="section-label">Prompts (No project)</span>
           </a>
         </div>
       }
+
+      <!-- Scheduler - Available for all users -->
+      @if (selectedProjectName()) {
+        <div class="section-container">
+          <a
+            class="section-toggle"
+            (click)="openSchedulers(); $event.preventDefault(); $event.stopPropagation()"
+            role="button"
+            tabindex="0"
+          >
+            <mat-icon class="section-icon">schedule</mat-icon>
+            <span class="section-label">Schedulers</span>
+          </a>
+        </div>
+      } @else {
+        <div class="section-container">
+          <a class="section-toggle disabled" role="button" tabindex="-1" aria-disabled="true">
+            <mat-icon class="section-icon">schedule</mat-icon>
+            <span class="section-label">Schedulers (No project)</span>
+          </a>
+        </div>
+      }
+
+      <!-- Contribute on GitHub - Always at the bottom -->
+      <div class="section-container">
+        <a
+          href="https://github.com/whoz-oss/coday"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="section-toggle contribute-btn"
+          title="Contribute on GitHub"
+        >
+          <img [attr.src]="'CODAY-Logo.png'" alt="Coday" class="contribute-logo" />
+          <span class="section-label">Contribute on GitHub</span>
+        </a>
+      </div>
     </div>
   </mat-sidenav>
 

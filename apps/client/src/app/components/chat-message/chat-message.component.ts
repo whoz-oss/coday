@@ -19,6 +19,8 @@ export interface ChatMessage {
   timestamp: Date
   type: 'text' | 'error' | 'warning' | 'technical'
   eventId?: string // For event detail links
+  parentKey?: string // Link to InviteEvent/ChoiceEvent for question-answer relationship
+  invite?: string // Original question (for context)
 }
 
 @Component({
@@ -80,8 +82,13 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   }
 
   get shouldShowSpeaker(): boolean {
-    // Show speaker for user and assistant, not for others
-    return false
+    // Show speaker for:
+    // - User messages with @agentName (speaker starts with @)
+    // - Assistant messages (always)
+    if (this.message.role === 'user') {
+      return this.message.speaker.startsWith('@')
+    }
+    return this.message.role === 'assistant'
   }
 
   get shouldShowActions(): boolean {

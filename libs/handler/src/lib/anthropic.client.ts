@@ -1,8 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk'
 import {
+  AnswerEvent,
+  ChoiceEvent,
   CodayEvent,
   CodayLogger,
   ErrorEvent,
+  InviteEvent,
   MessageEvent,
   SummaryEvent,
   TextChunkEvent,
@@ -28,7 +31,7 @@ interface RateLimitInfo {
 
 const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
   {
-    name: 'claude-sonnet-4-5',
+    name: 'claude-sonnet-4-6',
     alias: 'BIG',
     contextWindow: 200000,
     temperature: 0.8,
@@ -41,16 +44,16 @@ const ANTHROPIC_DEFAULT_MODELS: AiModel[] = [
     },
   },
   {
-    name: 'claude-opus-4-5',
+    name: 'claude-opus-4-6',
     alias: 'BIGGEST',
     contextWindow: 200000,
     temperature: 0.8,
     maxOutputTokens: 64000,
     price: {
-      inputMTokens: 15,
-      cacheWrite: 18.75,
-      cacheRead: 1.5,
-      outputMTokens: 75,
+      inputMTokens: 5,
+      cacheWrite: 6.25,
+      cacheRead: 0.5,
+      outputMTokens: 25,
     },
   },
   {
@@ -411,6 +414,49 @@ export class AnthropicClient extends AiClient {
                 type: 'tool_result',
                 tool_use_id: msg.toolRequestId,
                 content: toolResultContent,
+                ...(shouldAddCache && { cache_control: { type: 'ephemeral' } }),
+              },
+            ],
+          }
+        }
+        // Handle InviteEvent - represent as assistant question
+        else if (msg instanceof InviteEvent) {
+          claudeMessage = {
+            role: 'assistant',
+            content: [
+              {
+                type: 'text',
+                text: msg.invite,
+                ...(shouldAddCache && { cache_control: { type: 'ephemeral' } }),
+              },
+            ],
+          }
+        }
+        // Handle ChoiceEvent - represent as assistant question with options
+        else if (msg instanceof ChoiceEvent) {
+          const optionsText = msg.options.map((opt, i) => `${i + 1}. ${opt}`).join('\n')
+          const content = msg.optionalQuestion
+            ? `${msg.optionalQuestion}\n${msg.invite}\n${optionsText}`
+            : `${msg.invite}\n${optionsText}`
+          claudeMessage = {
+            role: 'assistant',
+            content: [
+              {
+                type: 'text',
+                text: content,
+                ...(shouldAddCache && { cache_control: { type: 'ephemeral' } }),
+              },
+            ],
+          }
+        }
+        // Handle AnswerEvent - represent as user response
+        else if (msg instanceof AnswerEvent) {
+          claudeMessage = {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: msg.answer,
                 ...(shouldAddCache && { cache_control: { type: 'ephemeral' } }),
               },
             ],

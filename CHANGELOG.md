@@ -1,3 +1,214 @@
+## 0.71.1 (2026-02-18)
+
+### 🚀 Features
+
+- wz-28719 port case and caseEvent controllers ([#497](https://github.com/whoz-oss/coday/pull/497))
+
+### 🩹 Fixes
+
+- prompt service resolves project path dynamically via project service ([#499](https://github.com/whoz-oss/coday/pull/499))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.71.0 (2026-02-18)
+
+### 🚀 Features
+
+- #476 builtin system prompts ([#478](https://github.com/whoz-oss/coday/pull/478), [#476](https://github.com/whoz-oss/coday/issues/476))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.70.0 (2026-02-18)
+
+### 🚀 Features
+
+- update AI model definitions to latest versions (Anthropic 4.6, Google Gemini 3, OpenAI GPT-5.2) ([#496](https://github.com/whoz-oss/coday/pull/496))
+
+### 🩹 Fixes
+
+- setup-node in publish-sdk for release workflow ([5a9b2ca](https://github.com/whoz-oss/coday/commit/5a9b2ca))
+- add pnpm install in publish-sdk release workflow ([3479c9f](https://github.com/whoz-oss/coday/commit/3479c9f))
+- use GITHUB_TOKEN for publish sdk ([ac53620](https://github.com/whoz-oss/coday/commit/ac53620))
+- remove --prod on publish-sdk for pnpm install ([d3135ee](https://github.com/whoz-oss/coday/commit/d3135ee))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+- vincent-audibert-whoz
+
+## 0.69.2 (2026-02-17)
+
+### 🩹 Fixes
+
+- auto-create prompts directory when saving prompt with project source ([#475](https://github.com/whoz-oss/coday/pull/475))
+- **publish-sdk:** #371 add missed needs condition on publish-sdk job ([#371](https://github.com/whoz-oss/coday/issues/371))
+- **publish-sdk:** #371 change test in order to force build and test sdk publishing during release ([#371](https://github.com/whoz-oss/coday/issues/371))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+- vincent.couturier
+
+## 0.69.1 (2026-02-16)
+
+### 🩹 Fixes
+
+- scheduler routes 404 in production mode ([#473](https://github.com/whoz-oss/coday/pull/473))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.69.0 (2026-02-16)
+
+### 🚀 Features
+
+- #411 Scheduled Tasks with interval-based scheduling and per-project webhooks ([#453](https://github.com/whoz-oss/coday/pull/453), [#411](https://github.com/whoz-oss/coday/issues/411))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.68.3 (2026-02-13)
+
+### 🚀 Features
+
+- porting agentos poc core ([#449](https://github.com/whoz-oss/coday/pull/449))
+
+### 🩹 Fixes
+
+- #469 preserve @agentName in user messages ([#471](https://github.com/whoz-oss/coday/pull/471), [#469](https://github.com/whoz-oss/coday/issues/469))
+
+### ❤️ Thank You
+
+- thomas.martin @thomasmartin-whoz
+- vincent-audibert-whoz
+
+## 0.68.2 (2026-02-10)
+
+### 🩹 Fixes
+
+- user config path and first message ([#465](https://github.com/whoz-oss/coday/pull/465))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.68.1 (2026-02-10)
+
+### 🩹 Fixes
+
+- file dates in exchange area ([#464](https://github.com/whoz-oss/coday/pull/464))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.68.0 (2026-02-09)
+
+### 🚀 Features
+
+- save also invite and answers events ([#463](https://github.com/whoz-oss/coday/pull/463))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.67.0 (2026-02-09)
+
+### 🚀 Features
+
+- change choice for button list ([#462](https://github.com/whoz-oss/coday/pull/462))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.66.2 (2026-02-06)
+
+### 🩹 Fixes
+
+- remove tools pre-init ([#461](https://github.com/whoz-oss/coday/pull/461))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.66.1 (2026-02-06)
+
+### 🚀 Features
+
+- wz-28668: max tokens parameter for anthropic models ([e7ae5d9](https://github.com/whoz-oss/coday/commit/e7ae5d9))
+- wz-28668: remove vllm url ([97f588f](https://github.com/whoz-oss/coday/commit/97f588f))
+- wz-28668: max tokens parameter for anthropic models ([#457](https://github.com/whoz-oss/coday/pull/457))
+
+### 🩹 Fixes
+
+- delegation through proper js function injection ([#460](https://github.com/whoz-oss/coday/pull/460))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+- thomas.martin @thomasmartin-whoz
+- vincent-audibert-whoz
+
+## 0.66.0 (2026-02-05)
+
+### 🚀 Features
+
+- wz-28668: add minimal unit test to SDK ([ef877c1](https://github.com/whoz-oss/coday/commit/ef877c1))
+- wz-28668: use kotests for unit tests ([893a2a2](https://github.com/whoz-oss/coday/commit/893a2a2))
+- wz-28668: move package to whoz-oss ([7b24905](https://github.com/whoz-oss/coday/commit/7b24905))
+- wz-28668: annotation processing with kapt to generate extensions.idx file ([23c1779](https://github.com/whoz-oss/coday/commit/23c1779))
+- wz-28668: restore more detailed README.md ([030320a](https://github.com/whoz-oss/coday/commit/030320a))
+- wz-28668: PR review ([bc13be2](https://github.com/whoz-oss/coday/commit/bc13be2))
+- add upload file button ([#454](https://github.com/whoz-oss/coday/pull/454))
+- **agentos:** add logs and fix test ([b4a67f5](https://github.com/whoz-oss/coday/commit/b4a67f5))
+- **agentos:** fix add absolute path of plugins folder in log message ([6c8eea7](https://github.com/whoz-oss/coday/commit/6c8eea7))
+- **agentos:** add AgentOSApplication.xml configuration ([d97b8a9](https://github.com/whoz-oss/coday/commit/d97b8a9))
+
+### ❤️ Thank You
+
+- thomas.martin @thomasmartin-whoz
+- vincent-audibert-whoz
+- vincent.couturier @vincent-couturier-whoz
+
+## 0.65.0 (2026-02-03)
+
+### 🚀 Features
+
+- add clipboard paste support for all file types ([5aa4c4d](https://github.com/whoz-oss/coday/commit/5aa4c4d))
+- add clipboard paste support for all file types ([#451](https://github.com/whoz-oss/coday/pull/451), [#450](https://github.com/whoz-oss/coday/issues/450))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.64.0 (2026-02-03)
+
+### 🚀 Features
+
+- add `clean` to git danger keywords ([#448](https://github.com/whoz-oss/coday/pull/448))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.63.3 (2026-01-30)
+
+### 🩹 Fixes
+
+- client package configuration to allow publish ([dbd2ab8](https://github.com/whoz-oss/coday/commit/dbd2ab8))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.63.2 (2026-01-30)
 
 ### 🩹 Fixes

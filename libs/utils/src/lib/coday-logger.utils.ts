@@ -73,6 +73,23 @@ export class CodayLoggerUtils implements CodayLogger {
     this.pushEntry(entry)
   }
 
+  logTriggerExecution(data: {
+    triggerId: string
+    triggerName: string
+    webhookUuid: string
+    projectName: string
+    success: boolean
+    threadId?: string
+    error?: string
+  }): void {
+    const entry = {
+      ...data,
+      type: 'TRIGGER_EXECUTION',
+      timestamp: new Date().toISOString(),
+    }
+    this.pushEntry(entry)
+  }
+
   private async pushEntry(entry: any): Promise<void> {
     if (!this.enabled) return
     this.buffer.push(entry)
