@@ -8,6 +8,18 @@ interface StandardTool<T> {
     val paramType: Class<*>?
 
     fun execute(input: T?): String
+
+    /**
+     * Type-erased execution path for tools.
+     * This method handles the internal cast from Any? to T?, allowing callers
+     * to invoke tool execution without reflection or unsafe casts.
+     *
+     * @param input The input parameter as Any? (will be cast to T? internally)
+     * @return The execution result as a String
+     * @throws ClassCastException if the input cannot be cast to the expected type T
+     */
+    @Suppress("UNCHECKED_CAST")
+    fun executeWithAny(input: Any?): String = execute(input as? T)
 }
 
 const val NO_ARGS_INPUT = """{
