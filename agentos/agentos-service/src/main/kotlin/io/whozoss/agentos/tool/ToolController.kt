@@ -1,10 +1,9 @@
 package io.whozoss.agentos.tool
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
-import io.whozoss.agentos.tool.ToolOutput
-import io.whozoss.agentos.tool.ToolRegistry
 import mu.KLogging
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -31,11 +30,11 @@ class ToolController(
      * @return List of tool metadata for all registered tools
      */
     @GetMapping
-    fun listTools(): ResponseEntity<List<ToolOutput>> {
+    fun listTools(): List<ToolOutput> {
         logger.debug { "Listing all tools" }
         val tools = toolRegistry.listTools().map { it.toOutput() }
         logger.debug { "Found ${tools.size} tool(s)" }
-        return ResponseEntity.ok(tools)
+        return tools
     }
 
     /**
@@ -47,18 +46,9 @@ class ToolController(
     @GetMapping("/{toolName}")
     fun getTool(
         @PathVariable toolName: String,
-    ): ResponseEntity<ToolOutput> {
+    ): ToolOutput {
         logger.debug { "Getting tool: $toolName" }
-
-        val tool =
-            toolRegistry.findTool(toolName)?.toOutput()
-
-        return if (tool != null) {
-            ResponseEntity.ok(tool)
-        } else {
-            logger.warn { "Tool not found: $toolName" }
-            ResponseEntity.notFound().build()
-        }
+        return toolRegistry.findTool(toolName)?.toOutput() ?: throw ResourceNotFoundException("Tool not found: $toolName")
     }
 
     /**
