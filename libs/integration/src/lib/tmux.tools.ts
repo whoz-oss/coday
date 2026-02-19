@@ -37,7 +37,7 @@ Actions:
 - send <session> <command>: send a command to an already running session
 - stop <session>: kill a session and its processes
 
-Use clear, stable session names matching the application role: "backend", "frontend", "agentos", "worker", "db".`,
+Use clear, stable session names matching the application role, eg: "backend", "frontend", "agentos", "worker", "db".`,
           parameters: {
             type: 'object',
             properties: {

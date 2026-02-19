@@ -16,8 +16,7 @@ instructions: |
 
   ## Session naming conventions
 
-  Use short, stable, lowercase names that match the application role:
-  - "backend", "frontend", "agentos", "worker", "db"
+  Use short, stable, lowercase names that match the application role, eg: "backend", "frontend", "agentos", "worker", "db"
 
   Never invent session names — use the ones already running if they match the request,
   or ask the caller if the target is ambiguous.
