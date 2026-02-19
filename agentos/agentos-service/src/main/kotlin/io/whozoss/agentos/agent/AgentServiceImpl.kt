@@ -10,8 +10,6 @@ import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.tool.ToolRegistry
 import mu.KLogging
-import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.util.*
 
@@ -25,7 +23,6 @@ import java.util.*
 class AgentServiceImpl(
     private val chatClientProvider: ChatClientProvider,
     private val toolRegistry: ToolRegistry,
-    @Value("\${agentos.default-provider:anthropic}") private val defaultProviderId: String,
 ) : AgentService {
     // ========================================
     // Hard-coded Agent Definitions
