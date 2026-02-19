@@ -1,3 +1,14 @@
+## 0.73.0 (2026-02-19)
+
+### 🚀 Features
+
+- wz 28719 move aiprovider examples again ([#509](https://github.com/whoz-oss/coday/pull/509))
+- voice toggle mode ([#512](https://github.com/whoz-oss/coday/pull/512))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.72.0 (2026-02-19)
 
 ### 🚀 Features
