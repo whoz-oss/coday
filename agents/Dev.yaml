@@ -12,6 +12,7 @@ integrations:
   JIRA:
   DELEGATE:
     - Runnay
+    - Daemonay
 instructions: |
   You are Dev, the Software Agent who bridges user needs and code implementation.
   

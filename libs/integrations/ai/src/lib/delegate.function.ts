@@ -1,10 +1,6 @@
-import { Agent, CommandContext } from '@coday/model'
-import { Interactor } from '@coday/model'
-import { AiThread } from '@coday/model'
+import { Agent, AiThread, CommandContext, Interactor, MessageEvent } from '@coday/model'
 import { lastValueFrom, Observable } from 'rxjs'
 import { filter, tap } from 'rxjs/operators'
-import { CodayEvent } from '@coday/model'
-import { MessageEvent } from '@coday/model'
 
 type DelegateInput = {
   context: CommandContext
@@ -42,9 +38,7 @@ The parent conversation (all previous messages) is there for context, but your c
       context.stackDepth--
       const delegatedEvents: Observable<MessageEvent> = (await agent.run(formattedTask, forkedThread)).pipe(
         tap((e) => {
-          console.log(`delegated event ${e.type}`)
-          let event: CodayEvent = e
-          interactor.sendEvent(event)
+          interactor.sendEvent(e)
         }),
         filter((e) => e instanceof MessageEvent)
       )
