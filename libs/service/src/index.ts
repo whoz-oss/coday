@@ -1,3 +1,4 @@
+export * from './lib/agent-crud.service'
 export * from './lib/ai-config.service'
 export * from './lib/config-masking.service'
 export * from './lib/config-service-registry'

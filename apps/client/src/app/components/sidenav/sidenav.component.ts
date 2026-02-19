@@ -16,6 +16,7 @@ import { ThreadSelectorComponent } from '../thread-selector/thread-selector.comp
 import { JsonEditorComponent, JsonEditorData } from '../json-editor/json-editor.component'
 import { PromptManagerComponent } from '../prompt-manager/prompt-manager.component'
 import { SchedulerManagerComponent } from '../scheduler-manager/scheduler-manager.component'
+import { AgentManagerComponent } from '../agent-manager/agent-manager.component'
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { ProjectApiService } from '../../core/services/project-api.service'
@@ -259,6 +260,16 @@ export class SidenavComponent implements OnInit, OnDestroy {
       height: '90vh',
       maxHeight: '900px',
     })
+  }
+
+  /**
+   * Open agent manager dialog
+   */
+  openAgents(): void {
+    if (!this.requireProjectSelection('open agents')) {
+      return
+    }
+    this.openManagerDialog(AgentManagerComponent, 'Opening agent manager dialog')
   }
 
   /**

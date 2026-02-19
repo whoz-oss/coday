@@ -16,26 +16,21 @@ import { loadOrInitProjectDescription } from '@coday/service'
 import { McpInstancePool } from '@coday/mcp'
 import { AgentService } from '@coday/agent'
 import { AiClientProvider } from '@coday/integrations-ai'
-import { ThreadService, PromptService } from '@coday/service'
+import { ThreadService, PromptService, AgentCrudService } from '@coday/service'
+import type { AgentDefinition } from '@coday/model'
+import type { AgentLocation } from '@coday/service'
+import { getParamAsString } from './route-helpers'
 
 /**
  * Agent Management REST API Routes
  *
- * This module provides REST endpoints for agent-related operations.
- *
  * Endpoints:
- * - GET /api/projects/:projectName/agents - List all agents for a project
- */
-
-/**
- * Register agent routes on the Express app
- * @param app - Express application instance
- * @param projectService - ProjectService instance
- * @param getUsernameFn - Function to extract username from request
- * @param configDir - Configuration directory path
- * @param logger - Coday logger instance
- * @param threadService - Thread service instance
- * @param options - Coday options
+ * - GET    /api/projects/:projectName/agents                  - List all agents (read from all sources)
+ * - GET    /api/projects/:projectName/agents/editable         - List editable agents (file-based only)
+ * - GET    /api/projects/:projectName/agents/:agentName       - Get agent definition
+ * - POST   /api/projects/:projectName/agents                  - Create new agent (file-based)
+ * - PUT    /api/projects/:projectName/agents/:agentName       - Update agent (file-based)
+ * - DELETE /api/projects/:projectName/agents/:agentName       - Delete agent (file-based)
  */
 export function registerAgentRoutes(
   app: express.Application,
@@ -47,11 +42,11 @@ export function registerAgentRoutes(
   threadService: ThreadService,
   options: CodayOptions
 ): void {
+  const agentCrudService = new AgentCrudService(configDir, projectService)
+
   /**
    * GET /api/projects/:projectName/agents
-   * List all agents for a project
-   *
-   * Returns: Array<{ name: string, description: string }>
+   * List all agents for a project (all sources, for autocomplete and display)
    */
   app.get('/api/projects/:projectName/agents', async (req: express.Request, res: express.Response) => {
     try {
@@ -65,7 +60,6 @@ export function registerAgentRoutes(
 
       debugLog('AGENT', `GET agents list: project="${projectName}", user="${username}"`)
 
-      // Get project from ProjectService
       const projectData = projectService.getProject(<string>projectName)
       if (!projectData) {
         res.status(404).json({ error: `Project '${projectName}' not found` })
@@ -80,8 +74,6 @@ export function registerAgentRoutes(
       const integrationConfig = new IntegrationConfigService(user, projectState, interactor)
       const memory = new MemoryService(projectState, user)
       const mcp = new McpConfigService(user, projectState, interactor)
-
-      // Create a temporary MCP pool for this request (won't be used but required by CodayServices)
       const mcpPool = new McpInstancePool()
 
       const services: CodayServices = {
@@ -98,10 +90,8 @@ export function registerAgentRoutes(
         options,
       }
 
-      // Select the project in the state service
       projectState.selectProject(<string>projectName)
 
-      // Create temporary AiClientProvider and AgentService
       const aiClientProvider = new AiClientProvider(
         interactor,
         user,
@@ -116,45 +106,217 @@ export function registerAgentRoutes(
         options.agentFolders
       )
 
-      // Load the real project description from coday.yaml
       const projectDescription = await loadOrInitProjectDescription(projectData.config.path, interactor, {
         username,
         bio: user.config.bio,
       })
 
-      // Create a Project object (ProjectDescription + root + name)
       const projectObj: Project = {
         ...projectDescription,
         root: projectData.config.path,
         name: projectName as string,
       }
 
-      // Create a command context with the full project object
       const context = new CommandContext(projectObj, username)
       context.oneshot = true
 
-      // Initialize and get agent summaries
-      debugLog('AGENT', `Initializing AgentService with projectPath: ${projectData.config.path}`)
-      debugLog('AGENT', `Project config agents: ${projectData.config.agents?.length || 0}`)
-      debugLog('AGENT', `AgentFolders from options: ${JSON.stringify(options.agentFolders)}`)
-
-      // Initialize AI client provider before agent service
       aiClientProvider.init(context)
-
       await agentService.initialize(context)
       const allAgents = agentService.listAgentSummaries()
 
-      debugLog('AGENT', `Total agents loaded: ${allAgents.length}`)
-      debugLog('AGENT', `Agent names: ${allAgents.map((a) => a.name).join(', ')}`)
-
-      // Cleanup
       await agentService.kill()
 
       res.status(200).json(allAgents)
     } catch (error) {
-      console.error('Error in agent autocomplete:', error)
+      console.error('Error listing agents:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      res.status(500).json({ error: `Failed to get agent autocomplete: ${errorMessage}` })
+      res.status(500).json({ error: `Failed to list agents: ${errorMessage}` })
+    }
+  })
+
+  /**
+   * GET /api/projects/:projectName/agents/editable
+   * List only file-based (editable) agents with their source metadata
+   */
+  app.get('/api/projects/:projectName/agents/editable', async (req: express.Request, res: express.Response) => {
+    try {
+      const projectName = getParamAsString(req.params.projectName)
+      if (!projectName) {
+        res.status(400).json({ error: 'Project name is required' })
+        return
+      }
+
+      debugLog('AGENT', `GET editable agents: project="${projectName}"`)
+
+      const agents = await agentCrudService.list(projectName)
+      res.status(200).json(agents)
+    } catch (error) {
+      console.error('Error listing editable agents:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: `Failed to list editable agents: ${errorMessage}` })
+    }
+  })
+
+  /**
+   * GET /api/projects/:projectName/agents/:agentName
+   * Get a specific agent definition with source metadata
+   */
+  app.get('/api/projects/:projectName/agents/:agentName', async (req: express.Request, res: express.Response) => {
+    try {
+      const projectName = getParamAsString(req.params.projectName)
+      const agentName = getParamAsString(req.params.agentName)
+
+      if (!projectName) {
+        res.status(400).json({ error: 'Project name is required' })
+        return
+      }
+      if (!agentName) {
+        res.status(400).json({ error: 'Agent name is required' })
+        return
+      }
+
+      debugLog('AGENT', `GET agent: "${agentName}" in project="${projectName}"`)
+
+      const agent = await agentCrudService.get(projectName, agentName)
+      if (!agent) {
+        res.status(404).json({ error: `Agent '${agentName}' not found` })
+        return
+      }
+
+      res.status(200).json(agent)
+    } catch (error) {
+      console.error('Error getting agent:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: `Failed to get agent: ${errorMessage}` })
+    }
+  })
+
+  /**
+   * POST /api/projects/:projectName/agents
+   * Create a new file-based agent
+   * Body: { location: 'project' | 'colocated', definition: AgentDefinition }
+   */
+  app.post('/api/projects/:projectName/agents', async (req: express.Request, res: express.Response) => {
+    try {
+      const projectName = getParamAsString(req.params.projectName)
+      if (!projectName) {
+        res.status(400).json({ error: 'Project name is required' })
+        return
+      }
+
+      const { location, definition } = req.body as { location?: AgentLocation; definition?: AgentDefinition }
+
+      if (!definition || typeof definition !== 'object') {
+        res.status(422).json({ error: 'Agent definition is required' })
+        return
+      }
+      if (!definition.name || typeof definition.name !== 'string') {
+        res.status(422).json({ error: 'Agent name is required' })
+        return
+      }
+      if (!definition.description || typeof definition.description !== 'string') {
+        res.status(422).json({ error: 'Agent description is required' })
+        return
+      }
+
+      const agentLocation: AgentLocation = location === 'colocated' ? 'colocated' : 'project'
+
+      debugLog('AGENT', `POST create agent: "${definition.name}" in ${agentLocation} for project="${projectName}"`)
+
+      const created = await agentCrudService.create(projectName, definition, agentLocation)
+      res.status(201).json(created)
+    } catch (error) {
+      console.error('Error creating agent:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+      if (errorMessage.includes('already exists') || errorMessage.includes('must start with')) {
+        res.status(422).json({ error: errorMessage })
+        return
+      }
+
+      res.status(500).json({ error: `Failed to create agent: ${errorMessage}` })
+    }
+  })
+
+  /**
+   * PUT /api/projects/:projectName/agents/:agentName
+   * Update an existing file-based agent
+   * Body: { definition: AgentDefinition }
+   */
+  app.put('/api/projects/:projectName/agents/:agentName', async (req: express.Request, res: express.Response) => {
+    try {
+      const projectName = getParamAsString(req.params.projectName)
+      const agentName = getParamAsString(req.params.agentName)
+
+      if (!projectName) {
+        res.status(400).json({ error: 'Project name is required' })
+        return
+      }
+      if (!agentName) {
+        res.status(400).json({ error: 'Agent name is required' })
+        return
+      }
+
+      const { definition } = req.body as { definition?: AgentDefinition }
+
+      if (!definition || typeof definition !== 'object') {
+        res.status(422).json({ error: 'Agent definition is required' })
+        return
+      }
+
+      debugLog('AGENT', `PUT update agent: "${agentName}" in project="${projectName}"`)
+
+      const updated = await agentCrudService.update(projectName, agentName, definition)
+      if (!updated) {
+        res.status(404).json({ error: `Agent '${agentName}' not found` })
+        return
+      }
+
+      res.status(200).json(updated)
+    } catch (error) {
+      console.error('Error updating agent:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+      if (errorMessage.includes('cannot be empty')) {
+        res.status(422).json({ error: errorMessage })
+        return
+      }
+
+      res.status(500).json({ error: `Failed to update agent: ${errorMessage}` })
+    }
+  })
+
+  /**
+   * DELETE /api/projects/:projectName/agents/:agentName
+   * Delete a file-based agent
+   */
+  app.delete('/api/projects/:projectName/agents/:agentName', async (req: express.Request, res: express.Response) => {
+    try {
+      const projectName = getParamAsString(req.params.projectName)
+      const agentName = getParamAsString(req.params.agentName)
+
+      if (!projectName) {
+        res.status(400).json({ error: 'Project name is required' })
+        return
+      }
+      if (!agentName) {
+        res.status(400).json({ error: 'Agent name is required' })
+        return
+      }
+
+      debugLog('AGENT', `DELETE agent: "${agentName}" in project="${projectName}"`)
+
+      const deleted = await agentCrudService.delete(projectName, agentName)
+      if (!deleted) {
+        res.status(404).json({ error: `Agent '${agentName}' not found` })
+        return
+      }
+
+      res.status(200).json({ success: true, message: `Agent '${agentName}' deleted successfully` })
+    } catch (error) {
+      console.error('Error deleting agent:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: `Failed to delete agent: ${errorMessage}` })
     }
   })
 }
