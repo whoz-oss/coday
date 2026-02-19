@@ -1,7 +1,8 @@
-import { AssistantToolFactory, Interactor } from '@coday/model'
-import { CodayTool } from '@coday/model'
-import { CommandContext } from '@coday/model'
-import { execSync } from 'child_process'
+import { AssistantToolFactory, CodayTool, CommandContext, Interactor } from '@coday/model'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
+
+const execFileAsync = promisify(execFile)
 
 export class TmuxTools extends AssistantToolFactory {
   name = 'TMUX'
@@ -52,7 +53,8 @@ Use clear, stable session names matching the application role: "backend", "front
               switch (action) {
                 case 'list': {
                   try {
-                    return execSync('tmux list-sessions', { encoding: 'utf8' }).trim()
+                    const { stdout } = await execFileAsync('tmux', ['list-sessions'])
+                    return stdout.trim()
                   } catch {
                     return 'No tmux sessions running'
                   }
@@ -61,7 +63,7 @@ Use clear, stable session names matching the application role: "backend", "front
                 case 'status': {
                   if (!session) return 'Error: session name is required for status'
                   try {
-                    execSync(`tmux has-session -t ${session}`, { encoding: 'utf8' })
+                    await execFileAsync('tmux', ['has-session', '-t', session])
                     return 'running'
                   } catch {
                     return 'stopped'
@@ -72,18 +74,19 @@ Use clear, stable session names matching the application role: "backend", "front
                   if (!session) return 'Error: session name is required for start'
                   if (!command) return 'Error: command is required for start'
                   try {
-                    execSync(`tmux new-session -d -s ${session} -x 220 -y 50`, { encoding: 'utf8' })
+                    await execFileAsync('tmux', ['new-session', '-d', '-s', session, '-x', '220', '-y', '50'])
                   } catch {
                     // Session already exists, that's fine
                   }
-                  execSync(`tmux send-keys -t ${session} ${JSON.stringify(command)} Enter`, { encoding: 'utf8' })
+                  await execFileAsync('tmux', ['send-keys', '-t', session, command, 'Enter'])
                   return `Session '${session}' started`
                 }
 
                 case 'logs': {
                   if (!session) return 'Error: session name is required for logs'
                   try {
-                    return execSync(`tmux capture-pane -t ${session} -p -S -200`, { encoding: 'utf8' }).trim()
+                    const { stdout } = await execFileAsync('tmux', ['capture-pane', '-t', session, '-p', '-S', '-200'])
+                    return stdout.trim()
                   } catch {
                     return `Session '${session}' not found`
                   }
@@ -93,7 +96,7 @@ Use clear, stable session names matching the application role: "backend", "front
                   if (!session) return 'Error: session name is required for send'
                   if (!command) return 'Error: command is required for send'
                   try {
-                    execSync(`tmux send-keys -t ${session} ${JSON.stringify(command)} Enter`, { encoding: 'utf8' })
+                    await execFileAsync('tmux', ['send-keys', '-t', session, command, 'Enter'])
                     return `Command sent to session '${session}'`
                   } catch {
                     return `Session '${session}' not found`
@@ -103,7 +106,7 @@ Use clear, stable session names matching the application role: "backend", "front
                 case 'stop': {
                   if (!session) return 'Error: session name is required for stop'
                   try {
-                    execSync(`tmux kill-session -t ${session}`, { encoding: 'utf8' })
+                    await execFileAsync('tmux', ['kill-session', '-t', session])
                     return `Session '${session}' killed`
                   } catch {
                     return `Session '${session}' not found`

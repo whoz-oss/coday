@@ -53,8 +53,9 @@ export class CoreTools extends AssistantToolFactory {
         type: 'function',
         function: {
           name: 'wait',
-          description: `Wait for a specified number of seconds before continuing.
-Useful after starting a process to give it time to initialize before reading logs or checking status.
+          description: `Pause execution for a specified number of seconds.
+Useful when an operation needs time to complete before the next step: waiting for a process to start,
+an external service to become ready, a file to be written, etc.
 Maximum wait time is 300 seconds (5 minutes).`,
           parameters: {
             type: 'object',
