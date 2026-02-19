@@ -1,6 +1,4 @@
-import { AssistantToolFactory, Interactor } from '@coday/model'
-import { CodayTool } from '@coday/model'
-import { CommandContext } from '@coday/model'
+import { AssistantToolFactory, Interactor, CodayTool, CommandContext } from '@coday/model'
 
 export class CoreTools extends AssistantToolFactory {
   name = 'CORE'
@@ -48,6 +46,33 @@ export class CoreTools extends AssistantToolFactory {
             }
 
             return JSON.stringify(info, null, 2)
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'wait',
+          description: `Wait for a specified number of seconds before continuing.
+Useful after starting a process to give it time to initialize before reading logs or checking status.
+Maximum wait time is 300 seconds (5 minutes).`,
+          parameters: {
+            type: 'object',
+            properties: {
+              seconds: {
+                type: 'number',
+                description: 'Number of seconds to wait (max 300).',
+              },
+            },
+          },
+          parse: JSON.parse,
+          function: async ({ seconds }: { seconds: number }) => {
+            const capped = Math.min(Math.max(1, Math.round(seconds)), 300)
+            if (capped !== seconds) {
+              this.interactor.warn(`Wait time capped to ${capped}s (requested: ${seconds}s)`)
+            }
+            await new Promise((resolve) => setTimeout(resolve, capped * 1000))
+            return `Waited ${capped}s`
           },
         },
       },
