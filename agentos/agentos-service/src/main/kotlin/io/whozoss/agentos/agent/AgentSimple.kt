@@ -52,7 +52,7 @@ class AgentSimple(
     override val metadata: EntityMetadata = EntityMetadata(),
     private val model: AiModel,
     private val chatClient: ChatClient,
-    private val tools: List<StandardTool<*>>,
+    private val tools: Collection<StandardTool<*>>,
 ) : Agent {
     override val name: String get() = model.name
 
@@ -238,7 +238,10 @@ class AgentSimple(
                             .joinToString("\n") { it.content }
 
                     when (event.actor.role) {
-                        ActorRole.USER -> messages.add(UserMessage(textContent))
+                        ActorRole.USER -> {
+                            messages.add(UserMessage(textContent))
+                        }
+
                         ActorRole.AGENT -> {
                             if (event.actor.id == id.toString()) {
                                 messages.add(AssistantMessage(textContent))
@@ -336,11 +339,10 @@ class AgentSimple(
                         )
                     }
 
-                    // Execute the actual tool
+                    // Execute the actual tool using type-erased execution path
                     val result =
                         try {
-                            @Suppress("UNCHECKED_CAST")
-                            (tool as StandardTool<Any?>).execute(input)
+                            tool.executeWithAny(input)
                         } catch (e: Exception) {
                             runBlocking {
                                 eventChannel.send(
