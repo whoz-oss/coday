@@ -2,6 +2,7 @@ import { Observable, of, Subject } from 'rxjs'
 import {
   CodayEvent,
   ErrorEvent,
+  MessageContent,
   MessageEvent,
   SummaryEvent,
   TextContent,
@@ -249,16 +250,57 @@ It can be summarized as:
     }
   }
 
+  /**
+   * Converts messages from other agents into user messages with XML agent tags.
+   * This ensures LLMs can distinguish between the current agent's messages and
+   * messages from other agents in multi-agent conversations.
+   *
+   * Messages from the current agent keep their 'assistant' role.
+   * Messages from other agents are converted to 'user' role with:
+   * `<agent=AgentName>original content</agent>`
+   *
+   * @param messages The thread messages to process
+   * @param currentAgentName The name of the currently running agent
+   * @returns Messages with other-agent messages converted to tagged user messages
+   */
+  protected convertAgentMessages(messages: ThreadMessage[], currentAgentName: string): ThreadMessage[] {
+    return messages.map((msg) => {
+      if (msg instanceof MessageEvent && msg.role === 'assistant' && msg.name && msg.name !== currentAgentName) {
+        // Wrap text content in XML agent tags, preserve images as-is
+        const convertedContent: MessageContent[] = msg.content.map((c) => {
+          if (c.type === 'text') {
+            return {
+              type: 'text' as const,
+              content: `<agent=${msg.name}>${c.content}</agent>`,
+            }
+          }
+          return c
+        })
+        return new MessageEvent({
+          ...msg,
+          role: 'user',
+          content: convertedContent,
+        })
+      }
+      return msg
+    })
+  }
+
   protected async getMessages(
     thread: AiThread,
     charBudget: number,
-    model: string
+    model: string,
+    agentName?: string
   ): Promise<{
     messages: ThreadMessage[]
     compacted: boolean
   }> {
     const compactor = this.getCompactor(model, charBudget)
-    return await thread.getMessages(charBudget, compactor)
+    const result = await thread.getMessages(charBudget, compactor)
+    if (agentName) {
+      result.messages = this.convertAgentMessages(result.messages, agentName)
+    }
+    return result
   }
 
   /**
