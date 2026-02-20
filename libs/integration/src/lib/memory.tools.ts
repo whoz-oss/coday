@@ -73,7 +73,7 @@ export class MemoryTools extends AssistantToolFactory {
     const readMemoriesTool: FunctionTool<{ title?: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_read`,
+        name: `${this.name}__read`,
         description: `Read agent's memories. Without title parameter, returns the list of all memories with their titles and levels. With title parameter, returns the full content of the specified memory.`,
         parameters: {
           type: 'object',
@@ -105,7 +105,7 @@ export class MemoryTools extends AssistantToolFactory {
     const memorizeProjectTool: FunctionTool<{ title: string; content: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_memorizeProject`,
+        name: `${this.name}__memorizeProject`,
         description: `Upsert a PROJECT-level memory entry. PROJECT memories are for:
 - Architectural decisions and core patterns
 - Significant design guidelines
@@ -154,7 +154,7 @@ Do not memorize partial knowledge, single-use information, or minor implementati
     const memorizeUserTool: FunctionTool<{ title: string; content: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_memorizeUser`,
+        name: `${this.name}__memorizeUser`,
         description: `Upsert a USER-level memory entry. USER memories are for:
 - Strong personal preferences
 - User-specific working patterns
@@ -203,7 +203,7 @@ Do not memorize partial knowledge, single-use information, or minor implementati
     const deleteMemoryTool: FunctionTool<{ title: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_delete`,
+        name: `${this.name}__delete`,
         description: 'Delete a memory entry by its title. Works for both PROJECT and USER level memories.',
         parameters: {
           type: 'object',

@@ -53,7 +53,7 @@ export class JiraTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: `${this.name}_getIssue`,
+        name: `${this.name}__getIssue`,
         description: 'Get Jira issue details by ticket ID.',
         parameters: {
           type: 'object',
@@ -74,7 +74,7 @@ export class JiraTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: `${this.name}_searchIssues`,
+        name: `${this.name}__searchIssues`,
         description: `Perform a flexible search across Jira issues using a jql query based on natural language.
         WORKFLOW:
            a) From the fieldMappingInfo get the relevant query keys.
@@ -158,7 +158,7 @@ export class JiraTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: `${this.name}_postComment`,
+        name: `${this.name}__postComment`,
         description:
           'Add a public comment to a Jira ticket. The comment will be visible to customers. For internal notes, use addJiraInternalNote instead.',
         parameters: {
@@ -180,7 +180,7 @@ export class JiraTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: `${this.name}_postInternalNote`,
+        name: `${this.name}__postInternalNote`,
         description:
           'Add an internal note to a Jira ticket. Internal notes are only visible to agents and not to customers.',
         parameters: {
@@ -201,7 +201,7 @@ export class JiraTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: `${this.name}_countIssues`,
+        name: `${this.name}__countIssues`,
         description: `Count the number of jira issues matching the jql.
         WORKFLOW:
            a) From the fieldMappingInfo get the relevant query keys.
@@ -247,7 +247,7 @@ export class JiraTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: `${this.name}_postIssue`,
+        name: `${this.name}__postIssue`,
         description:
           'Create a new Jira issue/ticket without asking for more information from the user, directly call the function to create the ticket',
         parameters: {
@@ -342,7 +342,7 @@ export class JiraTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: `${this.name}_linkIssues`,
+        name: `${this.name}__linkIssues`,
         description: 'Link two Jira issues with a specified relationship type',
         parameters: {
           type: 'object',

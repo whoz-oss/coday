@@ -89,10 +89,7 @@ export class Toolbox implements Killable {
       BasecampTools.TYPE,
       (name, config) => new BasecampTools(interactor, services.integration, services.user, name, config)
     )
-    this.factoryConstructors.set(
-      TmuxTools.TYPE,
-      (name) => new TmuxTools(interactor, name)
-    )
+    this.factoryConstructors.set(TmuxTools.TYPE, (name) => new TmuxTools(interactor, name))
   }
 
   async kill(): Promise<void> {
@@ -128,16 +125,11 @@ export class Toolbox implements Killable {
           continue
         }
 
-        // Otherwise, it's an integration that needs config
-        const config = mergedIntegrations[instanceName]
+        // Look up config from project integrations (may be absent for built-in types)
+        const config = mergedIntegrations[instanceName] ?? {}
 
-        if (!config) {
-          this.interactor.debug(`Integration config '${instanceName}' not found`)
-          continue
-        }
-
-        // Determine type (fallback to instance name for backward compatibility)
-        const type = config.type || instanceName
+        // Determine type: from config if present, otherwise instanceName IS the type (built-in)
+        const type = mergedIntegrations[instanceName]?.type || instanceName
 
         // Find factory constructor for this type
         const constructor = this.factoryConstructors.get(type)
@@ -165,9 +157,13 @@ export class Toolbox implements Killable {
     }
 
     // Get or create MCP factories via pool (lazy initialization)
+    // Only include MCPs that are explicitly listed in the agent's integrations (or all if integrations is undefined)
     const mcpFactories: AssistantToolFactory[] = []
     if (threadId) {
       for (const mcpConfig of this.mcpConfigs) {
+        if (integrations && !integrations.has(mcpConfig.name)) {
+          continue
+        }
         try {
           const factory = await this.services.mcpPool.getOrCreateFactory(
             mcpConfig,

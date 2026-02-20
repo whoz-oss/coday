@@ -68,7 +68,7 @@ export class BasecampTools extends AssistantToolFactory {
     const listProjectsTool: FunctionTool<{ page?: number }> = {
       type: 'function',
       function: {
-        name: `${this.name}_listProjects`,
+        name: `${this.name}__listProjects`,
         description:
           'List all projects in the connected Basecamp account. Will prompt for OAuth authentication if not already connected. ' +
           'Basecamp uses geared pagination: page 1 returns 15 results, page 2 returns 30, page 3 returns 50, and page 4+ return 100 results each. ' +
@@ -92,7 +92,7 @@ export class BasecampTools extends AssistantToolFactory {
     const getMessageBoardTool: FunctionTool<{ projectId: number }> = {
       type: 'function',
       function: {
-        name: `${this.name}_getMessageBoard`,
+        name: `${this.name}__getMessageBoard`,
         description:
           'Get the message board ID for a Basecamp project. You need this ID to retrieve messages from the project.',
         parameters: {
@@ -114,7 +114,7 @@ export class BasecampTools extends AssistantToolFactory {
     const getMessagesTool: FunctionTool<{ projectId: number; messageBoardId: number; page?: number }> = {
       type: 'function',
       function: {
-        name: `${this.name}_getMessages`,
+        name: `${this.name}__getMessages`,
         description:
           'List all messages in a Basecamp message board. Returns a summary of each message with title, author, date, and preview. ' +
           'Basecamp uses geared pagination: page 1 returns 15 results, page 2 returns 30, page 3 returns 50, and page 4+ return 100 results each. ' +
@@ -147,7 +147,7 @@ export class BasecampTools extends AssistantToolFactory {
     const getMessageTool: FunctionTool<{ projectId: number; messageId: number }> = {
       type: 'function',
       function: {
-        name: `${this.name}_getMessage`,
+        name: `${this.name}__getMessage`,
         description:
           'Get the full content of a specific Basecamp message, including title, author, date, and complete text content.',
         parameters: {

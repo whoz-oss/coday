@@ -36,7 +36,7 @@ export class GitTools extends AssistantToolFactory {
     const gitTool: FunctionTool<{ params: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}`, // should be 'GIT' or as explicit
+        name: `${this.name}__git`,
         description: 'Run git command and parameters.',
         parameters: {
           type: 'object',

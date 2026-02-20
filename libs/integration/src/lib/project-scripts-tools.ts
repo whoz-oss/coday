@@ -37,7 +37,7 @@ export class ProjectScriptsTools extends AssistantToolFactory {
           const scriptFunction: FunctionTool<unknown> = {
             type: 'function',
             function: {
-              name: `${this.name}_${entry[0]}`,
+              name: `${this.name}__${entry[0]}`,
               description: entry[1].description,
               parameters: entry[1].parametersDescription
                 ? {

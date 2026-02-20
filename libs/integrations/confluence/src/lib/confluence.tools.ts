@@ -34,7 +34,7 @@ export class ConfluenceTools extends AssistantToolFactory {
     const pageRetrievalFunction: FunctionTool<{ pageId: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_getPage`,
+        name: `${this.name}__getPage`,
         description: 'Get Confluence wiki page by page ID.',
         parameters: {
           type: 'object',
@@ -57,7 +57,7 @@ export class ConfluenceTools extends AssistantToolFactory {
     const searchFunction: FunctionTool<{ query: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_search`,
+        name: `${this.name}__search`,
         description:
           'Search Confluence pages by words, returns list of page matches. If several pages seem relevant, you **should** read them. Use several searches if many words to check.',
         parameters: {

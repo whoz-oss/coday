@@ -34,7 +34,7 @@ export class ZendeskTools extends AssistantToolFactory {
     const articleRetrievalFunction: FunctionTool<{ articleId: string; locale?: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_getArticle`,
+        name: `${this.name}__getArticle`,
         description:
           'Retrieve a Zendesk Help Center article by article ID. Returns the full article content including HTML body.',
         parameters: {
@@ -67,7 +67,7 @@ export class ZendeskTools extends AssistantToolFactory {
     const searchFunction: FunctionTool<{ query: string; locale?: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_searchArticles`,
+        name: `${this.name}__searchArticles`,
         description:
           'Search Zendesk Help Center articles by query text. Returns a list of matching articles with ID, title, snippet, and URL. If several articles seem relevant, you **should** retrieve them using retrieveZendeskArticle. Keep queries simple and focused for best results.',
         parameters: {

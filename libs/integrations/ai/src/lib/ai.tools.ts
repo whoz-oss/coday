@@ -31,7 +31,7 @@ export class AiTools extends AssistantToolFactory {
       const queryUserTool: FunctionTool<{ message: string }> = {
         type: 'function',
         function: {
-          name: `${this.name}_queryUser`,
+          name: `${this.name}__queryUser`,
           description: `Allows to ask the user a question.
 IMPORTANT: Use this tool only when necessary, as it is intrusive for the user.
 
@@ -74,7 +74,7 @@ AVOID closed options unless the user explicitly needs to choose between specific
       const redirectTool: FunctionTool<{ query: string; agentName: string }> = {
         type: 'function',
         function: {
-          name: `${this.name}_redirect`,
+          name: `${this.name}__redirect`,
           description: `Redirect the current query to another available agent among:
 ${agentSummaries}
 

@@ -178,7 +178,7 @@ export class SlackTools extends AssistantToolFactory {
     const listChannelsFunction: FunctionTool<{ types?: string; limit?: number }> = {
       type: 'function',
       function: {
-        name: `${this.name}_list_channels`,
+        name: `${this.name}__list_channels`,
         description:
           'List Slack channels where the bot is a member. Only returns channels the bot has been invited to and can actually read/write. Returns channel ID, name, topic, and member count.',
         parameters: {
@@ -233,7 +233,7 @@ export class SlackTools extends AssistantToolFactory {
     const readChannelFunction: FunctionTool<{ channel: string; limit?: number; oldest?: string; latest?: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_read_channel`,
+        name: `${this.name}__read_channel`,
         description:
           'Read messages from a Slack channel. Returns messages with timestamps, user mentions resolved to names, and thread indicators. Use slack_list_channels first to get channel IDs. The channel parameter is required.',
         parameters: {
@@ -314,7 +314,7 @@ export class SlackTools extends AssistantToolFactory {
     const readThreadFunction: FunctionTool<{ channel: string; thread_ts: string; limit?: number }> = {
       type: 'function',
       function: {
-        name: `${this.name}_read_thread`,
+        name: `${this.name}__read_thread`,
         description:
           'Read replies in a Slack thread. Use the timestamp from slack_read_channel to identify the thread. Returns all messages in the thread including the parent message. Both channel and thread_ts parameters are required.',
         parameters: {
@@ -381,7 +381,7 @@ export class SlackTools extends AssistantToolFactory {
     const postMessageFunction: FunctionTool<{ channel: string; text: string; thread_ts?: string }> = {
       type: 'function',
       function: {
-        name: `${this.name}_post_message`,
+        name: `${this.name}__post_message`,
         description:
           'Post a message to a Slack channel or DM. Can also reply to a thread by providing thread_ts. The bot must be a member of the channel to post. Both channel and text parameters are required.\n\n' +
           '## Message Posting Rules\n' +
@@ -457,7 +457,7 @@ export class SlackTools extends AssistantToolFactory {
     const listUsersFunction: FunctionTool<{ limit?: number }> = {
       type: 'function',
       function: {
-        name: `${this.name}_list_users`,
+        name: `${this.name}__list_users`,
         description:
           'List Slack workspace users. Useful for finding user IDs to send DMs or understanding who is mentioned in messages.',
         parameters: {

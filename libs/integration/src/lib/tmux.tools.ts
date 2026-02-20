@@ -14,10 +14,10 @@ function validateSession(session: string): string | null {
 }
 
 export class TmuxTools extends AssistantToolFactory {
-  name = 'TMUX'
+  static readonly TYPE = 'TMUX' as const
 
-  constructor(interactor: Interactor) {
-    super(interactor)
+  constructor(interactor: Interactor, instanceName: string) {
+    super(interactor, instanceName)
   }
 
   protected async buildTools(_context: CommandContext, _agentName: string): Promise<CodayTool[]> {
@@ -25,7 +25,7 @@ export class TmuxTools extends AssistantToolFactory {
       {
         type: 'function',
         function: {
-          name: 'tmux',
+          name: `${this.name}__run`,
           description: `Manage long-running processes in persistent tmux sessions.
 Sessions survive across agent interactions and can be inspected at any time.
 
