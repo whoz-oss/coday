@@ -53,10 +53,10 @@ import { FunctionTool } from '@coday/model'
  * @extends AssistantToolFactory
  */
 export class FileTools extends AssistantToolFactory {
-  name = 'FILES'
+  static readonly TYPE = 'FILES' as const
 
-  constructor(interactor: Interactor) {
-    super(interactor)
+  constructor(interactor: Interactor, instanceName: string, config: any) {
+    super(interactor, instanceName, config)
   }
 
   protected async buildTools(context: CommandContext, _agentName: string): Promise<CodayTool[]> {
@@ -94,7 +94,7 @@ export class FileTools extends AssistantToolFactory {
       const removeFileFunction: FunctionTool<{ path: string }> = {
         type: 'function',
         function: {
-          name: 'removeFile',
+          name: `${this.name}__remove`,
           description:
             'Remove a file. File path must start with "project://" (for project files) or "exchange://" (for files shared with the user).',
           parameters: {
@@ -148,7 +148,7 @@ export class FileTools extends AssistantToolFactory {
       const writeProjectFileFunction: FunctionTool<{ path: string; content: string }> = {
         type: 'function',
         function: {
-          name: 'writeProjectFile',
+          name: `${this.name}__writeFile`,
           description:
             'Write the content of a file. IMPORTANT: the whole file is written, do not write it partially. ' +
             'Prefer this tool for first writes or really full edits. For partial edits, use `writeFileChunk` tool. ' +
@@ -208,7 +208,7 @@ export class FileTools extends AssistantToolFactory {
       }> = {
         type: 'function',
         function: {
-          name: 'writeFileChunk',
+          name: `${this.name}__writeFileChunk`,
           description:
             'Replace specified parts of an existing file with new parts. The function reads the entire file content, performs the replacements, and writes the modified content back to the file. ' +
             'Useful for handling large files efficiently. File path must start with "project://" or "exchange://".',
@@ -276,7 +276,7 @@ export class FileTools extends AssistantToolFactory {
     const searchProjectFileFunction: FunctionTool<{ text: string; path?: string }> = {
       type: 'function',
       function: {
-        name: 'searchProjectFile',
+        name: `${this.name}__searchFile`,
         description:
           'Search for files by name in both project and conversation files. Returns paths with "project://" or "exchange://" prefix. ' +
           'Prefer this over `searchFilesByText` when searching by filename.',
@@ -317,7 +317,7 @@ export class FileTools extends AssistantToolFactory {
     const listProjectFilesAndDirectoriesFunction: FunctionTool<{ relPath: string }> = {
       type: 'function',
       function: {
-        name: 'listFilesAndDirectories',
+        name: `${this.name}__ls`,
         description:
           'List directories and files in a folder (similar to ls command). Directories end with a slash. ' +
           'Path must start with "project://" or "exchange://" prefix.',
@@ -397,9 +397,9 @@ export class FileTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: 'searchFilesByText',
+        name: `${this.name}__searchFilesByText`,
         description:
-          'Search for files containing text in both project and conversation files. Returns paths with "project://" or "exchange://" prefix. ' +
+          'Search for files containing text in both project and exchange files. Returns paths with "project://" or "exchange://" prefix. ' +
           'This function is slow, restrict scope by giving a path and fileTypes if possible, to avoid a timeout. If searching for a filename, prefer `searchProjectFile`.',
         parameters: {
           type: 'object',
@@ -437,7 +437,7 @@ export class FileTools extends AssistantToolFactory {
     const readFileFunction: FunctionTool<{ filePath: string }> = {
       type: 'function',
       function: {
-        name: 'readFile',
+        name: `${this.name}__read`,
         description:
           'Read content from any file type. Supports text files, PDFs, and image files (PNG, JPEG, GIF, WebP). ' +
           'File path must start with "project://" (for project files) or "exchange://" (for files shared with the user). ' +

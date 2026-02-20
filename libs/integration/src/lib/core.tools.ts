@@ -1,13 +1,15 @@
 import { AssistantToolFactory, Interactor, CodayTool, CommandContext } from '@coday/model'
 
 export class CoreTools extends AssistantToolFactory {
-  name = 'CORE'
+  static readonly TYPE = 'CORE' as const
 
   constructor(
     interactor: Interactor,
+    instanceName: string,
+    config: any,
     private readonly baseUrl?: string
   ) {
-    super(interactor)
+    super(interactor, instanceName, config)
   }
 
   protected async buildTools(context: CommandContext, _agentName: string): Promise<CodayTool[]> {
@@ -15,7 +17,7 @@ export class CoreTools extends AssistantToolFactory {
       {
         type: 'function',
         function: {
-          name: 'get_context_info',
+          name: `${this.name}__get_context_info`,
           description: 'Get current contextual information including time, date, username, and conversation URL',
           parameters: {
             type: 'object',
@@ -52,7 +54,7 @@ export class CoreTools extends AssistantToolFactory {
       {
         type: 'function',
         function: {
-          name: 'wait',
+          name: `${this.name}__wait`,
           description: `Pause execution for a specified number of seconds.
 Useful when an operation needs time to complete before the next step: waiting for a process to start,
 an external service to become ready, a file to be written, etc.

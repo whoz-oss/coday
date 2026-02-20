@@ -10,14 +10,16 @@ import {
 import { delegateFunction } from './delegate.function'
 
 export class DelegateTools extends AssistantToolFactory {
-  name = 'DELEGATE'
+  static readonly TYPE = 'DELEGATE' as const
 
   constructor(
     interactor: Interactor,
     private agentFind: (nameStart: string | undefined, context: CommandContext) => Promise<Agent | undefined>,
-    private agentSummaries: () => AgentSummary[]
+    private agentSummaries: () => AgentSummary[],
+    instanceName: string,
+    config: any
   ) {
-    super(interactor)
+    super(interactor, instanceName, config)
   }
 
   /**
@@ -29,7 +31,7 @@ export class DelegateTools extends AssistantToolFactory {
 
   /**
    * @param context
-   * @param _agentName
+   * @param _agentName not used for this integration
    * @param allowedAgentNames (optional) if provided, only these agent names can be delegated to
    */
   protected async buildTools(
@@ -76,7 +78,7 @@ export class DelegateTools extends AssistantToolFactory {
     const delegateTool: FunctionTool<{ task: string; agentName: string | undefined }> = {
       type: 'function',
       function: {
-        name: 'delegate',
+        name: `${this.name}`, // name should be 'DELEGATE'
         description: cleanContextMode
           ? `Delegate the completion of a task to another available agent among:
 ${agentListText || '(No allowed agents for delegation)'}

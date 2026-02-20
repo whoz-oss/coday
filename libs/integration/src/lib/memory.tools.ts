@@ -6,13 +6,15 @@ import { MemoryLevel } from '@coday/model'
 import { FunctionTool } from '@coday/model'
 
 export class MemoryTools extends AssistantToolFactory {
-  name = 'MEMORY'
+  static readonly TYPE = 'MEMORY' as const
 
   constructor(
     interactor: Interactor,
-    private memoryService: MemoryService
+    private readonly memoryService: MemoryService,
+    instanceName: string,
+    config: any
   ) {
-    super(interactor)
+    super(interactor, instanceName, config)
   }
 
   protected async buildTools(_context: CommandContext, agentName: string): Promise<CodayTool[]> {
@@ -71,7 +73,7 @@ export class MemoryTools extends AssistantToolFactory {
     const readMemoriesTool: FunctionTool<{ title?: string }> = {
       type: 'function',
       function: {
-        name: 'readMemories',
+        name: `${this.name}__read`,
         description: `Read agent's memories. Without title parameter, returns the list of all memories with their titles and levels. With title parameter, returns the full content of the specified memory.`,
         parameters: {
           type: 'object',
@@ -103,7 +105,7 @@ export class MemoryTools extends AssistantToolFactory {
     const memorizeProjectTool: FunctionTool<{ title: string; content: string }> = {
       type: 'function',
       function: {
-        name: 'memorizeProject',
+        name: `${this.name}__memorizeProject`,
         description: `Upsert a PROJECT-level memory entry. PROJECT memories are for:
 - Architectural decisions and core patterns
 - Significant design guidelines
@@ -152,7 +154,7 @@ Do not memorize partial knowledge, single-use information, or minor implementati
     const memorizeUserTool: FunctionTool<{ title: string; content: string }> = {
       type: 'function',
       function: {
-        name: 'memorizeUser',
+        name: `${this.name}__memorizeUser`,
         description: `Upsert a USER-level memory entry. USER memories are for:
 - Strong personal preferences
 - User-specific working patterns
@@ -201,7 +203,7 @@ Do not memorize partial knowledge, single-use information, or minor implementati
     const deleteMemoryTool: FunctionTool<{ title: string }> = {
       type: 'function',
       function: {
-        name: 'deleteMemory',
+        name: `${this.name}__delete`,
         description: 'Delete a memory entry by its title. Works for both PROJECT and USER level memories.',
         parameters: {
           type: 'object',

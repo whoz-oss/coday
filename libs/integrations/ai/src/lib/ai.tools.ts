@@ -6,13 +6,15 @@ import { FunctionTool } from '@coday/model'
 import { redirectFunction } from './redirect.function'
 
 export class AiTools extends AssistantToolFactory {
-  name = 'AI'
+  static readonly TYPE = 'AI' as const
 
   constructor(
     interactor: Interactor,
-    private agentSummaries: () => AgentSummary[]
+    private agentSummaries: () => AgentSummary[],
+    instanceName: string,
+    config: any
   ) {
-    super(interactor)
+    super(interactor, instanceName, config)
   }
 
   protected async buildTools(context: CommandContext, _agentName: string): Promise<CodayTool[]> {
@@ -29,7 +31,7 @@ export class AiTools extends AssistantToolFactory {
       const queryUserTool: FunctionTool<{ message: string }> = {
         type: 'function',
         function: {
-          name: 'queryUser',
+          name: `${this.name}__queryUser`,
           description: `Allows to ask the user a question.
 IMPORTANT: Use this tool only when necessary, as it is intrusive for the user.
 
@@ -72,7 +74,7 @@ AVOID closed options unless the user explicitly needs to choose between specific
       const redirectTool: FunctionTool<{ query: string; agentName: string }> = {
         type: 'function',
         function: {
-          name: 'redirect',
+          name: `${this.name}__redirect`,
           description: `Redirect the current query to another available agent among:
 ${agentSummaries}
 

@@ -30,6 +30,9 @@ export type OAuth2Config = {
  * Base integration configuration
  */
 export type IntegrationConfig = {
+  // Type of integration (e.g., 'jira', 'gitlab', 'confluence', 'http')
+  // Allows multiple instances of the same integration type with different configs
+  type?: string
   // Legacy fields (still used by simple integrations)
   apiUrl?: string
   username?: string
