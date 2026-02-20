@@ -101,7 +101,7 @@ export class AgentCrudService {
    * Find which location contains an agent by name (case-insensitive, .yml/.yaml).
    * Returns location and the resolved file path, or null.
    */
-  private async findAgentFile2(
+  private async findAgentAcrossLocations(
     projectName: string,
     agentName: string
   ): Promise<{ location: AgentLocation; filePath: string } | null> {
@@ -127,6 +127,9 @@ export class AgentCrudService {
   /**
    * Validate agent name format: alphanumeric + hyphens/underscores, no spaces.
    */
+  /** Names reserved by Express routes — cannot be used as agent names. */
+  private static readonly RESERVED_NAMES = new Set(['editable', 'documents'])
+
   private validateAgentName(name: string): void {
     if (!name || typeof name !== 'string') {
       throw new Error('Agent name is required')
@@ -135,6 +138,9 @@ export class AgentCrudService {
       throw new Error(
         'Agent name must start with alphanumeric and contain only letters, digits, hyphens or underscores'
       )
+    }
+    if (AgentCrudService.RESERVED_NAMES.has(name.toLowerCase())) {
+      throw new Error(`Agent name '${name}' is reserved and cannot be used`)
     }
   }
 
@@ -182,7 +188,7 @@ export class AgentCrudService {
    * Get a single agent definition with its metadata.
    */
   async get(projectName: string, agentName: string): Promise<AgentWithMeta | null> {
-    const found = await this.findAgentFile2(projectName, agentName)
+    const found = await this.findAgentAcrossLocations(projectName, agentName)
     if (!found) return null
 
     const definition = readYamlFile<AgentDefinition>(found.filePath)
@@ -202,7 +208,7 @@ export class AgentCrudService {
     }
 
     // Check for name conflict across both locations (case-insensitive)
-    const existing = await this.findAgentFile2(projectName, definition.name)
+    const existing = await this.findAgentAcrossLocations(projectName, definition.name)
     if (existing) {
       throw new Error(`Agent '${definition.name}' already exists in ${existing.location} location`)
     }
@@ -220,7 +226,7 @@ export class AgentCrudService {
    * Location is immutable after creation.
    */
   async update(projectName: string, agentName: string, definition: AgentDefinition): Promise<AgentWithMeta | null> {
-    const found = await this.findAgentFile2(projectName, agentName)
+    const found = await this.findAgentAcrossLocations(projectName, agentName)
     if (!found) return null
 
     if (definition.description !== undefined && !definition.description) {
@@ -316,7 +322,7 @@ export class AgentCrudService {
    * Delete an agent YAML file.
    */
   async delete(projectName: string, agentName: string): Promise<boolean> {
-    const found = await this.findAgentFile2(projectName, agentName)
+    const found = await this.findAgentAcrossLocations(projectName, agentName)
     if (!found) return false
 
     unlinkSync(found.filePath)

@@ -91,50 +91,50 @@
       </div>
     }
 
-    <!-- Mandatory Docs -->
-    <div class="section-title">
-      <span>Mandatory Documents</span>
-      <button mat-icon-button type="button" (click)="addDocRow()" title="Add document path">
-        <mat-icon>add</mat-icon>
-      </button>
-      <label class="upload-btn" [class.uploading]="isUploadingDoc" title="Upload a document to the pool">
-        <mat-icon>upload_file</mat-icon>
-        <input type="file" (change)="onDocFileSelected($event)" [disabled]="isUploadingDoc" hidden />
-      </label>
-    </div>
-
-    @if (availableDocuments.length > 0) {
-      <p class="hint">Available in pool: {{ availableDocuments.join(', ') }}</p>
-    }
-
-    @if (docUploadError) {
-      <p class="doc-upload-error">{{ docUploadError }}</p>
-    }
-
-    @if (mandatoryDocs.length === 0) {
-      <p class="hint">No mandatory documents defined.</p>
-    }
-
-    @for (doc of mandatoryDocs; track $index; let i = $index) {
-      <div class="doc-row">
-        <mat-form-field appearance="outline" class="doc-field">
-          <mat-label>Document path</mat-label>
-          <input
-            matInput
-            [(ngModel)]="mandatoryDocs[i]"
-            [attr.list]="'docs-list-' + i"
-            placeholder="documents/guide.md"
-          />
-          <datalist [id]="'docs-list-' + i">
-            @for (available of availableDocuments; track available) {
-              <option [value]="'documents/' + available"></option>
-            }
-          </datalist>
-        </mat-form-field>
-        <button mat-icon-button type="button" (click)="removeDocRow(i)" title="Remove">
-          <mat-icon>delete</mat-icon>
+    <!-- Mandatory Docs (edit mode only — location must be fixed before managing docs) -->
+    @if (isEditMode) {
+      <div class="section-title">
+        <span>Mandatory Documents</span>
+        <button mat-icon-button type="button" (click)="addDocRow()" title="Add document path">
+          <mat-icon>add</mat-icon>
         </button>
+        <label class="upload-btn" [class.uploading]="isUploadingDoc" title="Upload a document to the pool">
+          <mat-icon>upload_file</mat-icon>
+          <input type="file" (change)="onDocFileSelected($event)" [disabled]="isUploadingDoc" hidden />
+        </label>
       </div>
+
+      @if (docUploadError) {
+        <p class="doc-upload-error">{{ docUploadError }}</p>
+      }
+
+      @if (mandatoryDocs.length === 0) {
+        <p class="hint">No mandatory documents defined.</p>
+      }
+
+      @for (doc of mandatoryDocs; track $index; let i = $index) {
+        <div class="doc-row">
+          <mat-form-field appearance="outline" class="doc-field">
+            <mat-label>Document path</mat-label>
+            <input
+              matInput
+              [(ngModel)]="mandatoryDocs[i]"
+              [attr.list]="'docs-list-' + i"
+              placeholder="documents/guide.md"
+            />
+            <datalist [id]="'docs-list-' + i">
+              @for (available of availableDocuments; track available) {
+                <option [value]="'documents/' + available"></option>
+              }
+            </datalist>
+          </mat-form-field>
+          <button mat-icon-button type="button" (click)="removeDocRow(i)" title="Remove">
+            <mat-icon>delete</mat-icon>
+          </button>
+        </div>
+      }
+    } @else {
+      <p class="hint">💡 Documents can be added after the agent is created.</p>
     }
 
     <!-- Location (creation only) -->

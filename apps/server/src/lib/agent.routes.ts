@@ -24,6 +24,10 @@ import { getParamAsString } from './route-helpers'
 /**
  * Agent Management REST API Routes
  *
+ * Static routes (/documents, /editable) are registered BEFORE the parametric route
+ * (/:agentName) to avoid Express capturing them as agent names. The AgentCrudService
+ * also rejects 'documents' and 'editable' as agent names at creation time.
+ *
  * Endpoints:
  * - GET    /api/projects/:projectName/agents                          - List all agents (all sources, for autocomplete)
  * - GET    /api/projects/:projectName/agents/documents?location=...   - List documents pool
@@ -42,10 +46,9 @@ export function registerAgentRoutes(
   logger: CodayLogger,
   promptService: PromptService,
   threadService: ThreadService,
+  agentCrudService: AgentCrudService,
   options: CodayOptions
 ): void {
-  const agentCrudService = new AgentCrudService(configDir, projectService)
-
   /**
    * GET /api/projects/:projectName/agents
    * List all agents for a project (all sources, for autocomplete and display)

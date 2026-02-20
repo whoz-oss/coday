@@ -1,7 +1,6 @@
 import { Injectable, inject } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
 import { Observable } from 'rxjs'
-import { map } from 'rxjs/operators'
 import { ProjectStateService } from './project-state.service'
 
 export type AgentLocation = 'project' | 'colocated'
@@ -75,24 +74,14 @@ export class AgentCrudApiService {
    * Create a new file-based agent
    */
   createAgent(definition: AgentDefinition, location: AgentLocation): Observable<AgentWithMeta> {
-    return this.http.post<AgentWithMeta>(this.getBaseUrl(), { location, definition }).pipe(
-      map((result) => {
-        this.clearAutocompleteCache()
-        return result
-      })
-    )
+    return this.http.post<AgentWithMeta>(this.getBaseUrl(), { location, definition })
   }
 
   /**
    * Update an existing file-based agent
    */
   updateAgent(agentName: string, definition: AgentDefinition): Observable<AgentWithMeta> {
-    return this.http.put<AgentWithMeta>(`${this.getBaseUrl()}/${agentName}`, { definition }).pipe(
-      map((result) => {
-        this.clearAutocompleteCache()
-        return result
-      })
-    )
+    return this.http.put<AgentWithMeta>(`${this.getBaseUrl()}/${agentName}`, { definition })
   }
 
   /**
@@ -132,23 +121,6 @@ export class AgentCrudApiService {
    * Delete a file-based agent
    */
   deleteAgent(agentName: string): Observable<{ success: boolean; message: string }> {
-    return this.http.delete<{ success: boolean; message: string }>(`${this.getBaseUrl()}/${agentName}`).pipe(
-      map((result) => {
-        this.clearAutocompleteCache()
-        return result
-      })
-    )
-  }
-
-  /**
-   * Clear the autocomplete cache in AgentApiService after mutations.
-   * Imported lazily to avoid circular dependency.
-   */
-  private clearAutocompleteCache(): void {
-    // The autocomplete cache in AgentApiService will be stale after mutations.
-    // We clear it via a simple HTTP-level approach: the next autocomplete call
-    // will fetch fresh data because AgentApiService checks its own cache.
-    // To avoid circular injection, we rely on the cache TTL or manual refresh.
-    // AgentApiService.clearCache() should be called by the component if needed.
+    return this.http.delete<{ success: boolean; message: string }>(`${this.getBaseUrl()}/${agentName}`)
   }
 }

@@ -68,6 +68,7 @@ export class AgentManagerComponent implements OnInit {
   }
 
   editAgent(agent: AgentSummaryWithMeta): void {
+    this.errorMessage = ''
     this.agentCrudApi.getAgent(agent.name).subscribe({
       next: (fullAgent) => {
         const dialogRef = this.dialog.open<AgentFormComponent, AgentFormData, boolean>(AgentFormComponent, {
@@ -81,8 +82,7 @@ export class AgentManagerComponent implements OnInit {
       },
       error: (error) => {
         console.error('Error loading agent:', error)
-        const errorMessage = error?.error?.error ?? error?.message ?? 'Failed to load agent'
-        alert(`Failed to load agent: ${errorMessage}`)
+        this.errorMessage = error?.error?.error ?? error?.message ?? 'Failed to load agent'
       },
     })
   }
@@ -90,12 +90,12 @@ export class AgentManagerComponent implements OnInit {
   deleteAgent(agent: AgentSummaryWithMeta): void {
     if (!confirm(`Are you sure you want to delete agent "${agent.name}"?`)) return
 
+    this.errorMessage = ''
     this.agentCrudApi.deleteAgent(agent.name).subscribe({
       next: () => this.loadAgents(),
       error: (error) => {
         console.error('Error deleting agent:', error)
-        const errorMessage = error?.error?.error ?? error?.message ?? 'Failed to delete agent'
-        alert(`Failed to delete agent: ${errorMessage}`)
+        this.errorMessage = error?.error?.error ?? error?.message ?? 'Failed to delete agent'
       },
     })
   }
