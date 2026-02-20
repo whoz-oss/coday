@@ -1,0 +1,198 @@
+<h2 mat-dialog-title>{{ isEditMode ? 'Edit Agent' : 'Create Agent' }}</h2>
+
+<mat-dialog-content>
+  <div class="form-container">
+    <!-- Name -->
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Name</mat-label>
+      <input matInput [(ngModel)]="name" [readonly]="isEditMode" placeholder="my-agent" required />
+      <mat-hint>Alphanumeric, hyphens and underscores only. Cannot be changed after creation.</mat-hint>
+    </mat-form-field>
+
+    <!-- Description -->
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Description</mat-label>
+      <textarea matInput [(ngModel)]="description" placeholder="What does this agent do?" rows="2" required></textarea>
+    </mat-form-field>
+
+    <!-- Instructions -->
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Instructions</mat-label>
+      <textarea
+        matInput
+        [(ngModel)]="instructions"
+        placeholder="System instructions for the agent..."
+        rows="6"
+      ></textarea>
+      <mat-hint>System prompt / instructions sent to the AI model</mat-hint>
+    </mat-form-field>
+
+    <!-- AI Configuration -->
+    <div class="section-title">AI Configuration</div>
+
+    <div class="row-2col">
+      <mat-form-field appearance="outline">
+        <mat-label>AI Provider</mat-label>
+        <input matInput [(ngModel)]="aiProvider" placeholder="e.g. anthropic, openai" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Model Name</mat-label>
+        <input matInput [(ngModel)]="modelName" placeholder="e.g. claude-sonnet-4-5" />
+      </mat-form-field>
+    </div>
+
+    <div class="row-2col">
+      <mat-form-field appearance="outline">
+        <mat-label>Temperature</mat-label>
+        <input matInput type="number" [(ngModel)]="temperature" min="0" max="2" step="0.1" placeholder="0.0 – 2.0" />
+        <mat-hint>Leave empty for model default</mat-hint>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Max Output Tokens</mat-label>
+        <input matInput type="number" [(ngModel)]="maxOutputTokens" min="1" placeholder="e.g. 4096" />
+        <mat-hint>Leave empty for model default</mat-hint>
+      </mat-form-field>
+    </div>
+
+    <!-- OpenAI Assistant ID -->
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>OpenAI Assistant ID</mat-label>
+      <input matInput [(ngModel)]="openaiAssistantId" placeholder="asst_..." />
+      <mat-hint>If set, forces aiProvider to openai</mat-hint>
+    </mat-form-field>
+
+    <!-- Integrations -->
+    <div class="section-title">
+      <span>Integrations</span>
+      <button mat-icon-button type="button" (click)="addIntegrationRow()" title="Add integration">
+        <mat-icon>add</mat-icon>
+      </button>
+    </div>
+
+    @if (integrationRows.length === 0) {
+      <p class="hint">No integrations defined — agent will have access to all tools.</p>
+    }
+
+    @for (row of integrationRows; track $index; let i = $index) {
+      <div class="integration-row">
+        <mat-form-field appearance="outline" class="integration-name">
+          <mat-label>Integration</mat-label>
+          <input matInput [(ngModel)]="row.integration" placeholder="e.g. GITHUB" />
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="integration-tools">
+          <mat-label>Tools (comma-separated)</mat-label>
+          <input matInput [(ngModel)]="row.tools" placeholder="Leave empty for all tools" />
+        </mat-form-field>
+        <button mat-icon-button type="button" (click)="removeIntegrationRow(i)" title="Remove">
+          <mat-icon>delete</mat-icon>
+        </button>
+      </div>
+    }
+
+    <!-- Mandatory Docs (edit mode only — location must be fixed before managing docs) -->
+    @if (isEditMode) {
+      <div class="section-title">
+        <span>Mandatory Documents</span>
+        <button mat-icon-button type="button" (click)="addDocRow()" title="Add document path">
+          <mat-icon>add</mat-icon>
+        </button>
+        <label class="upload-btn" [class.uploading]="isUploadingDoc" title="Upload a document to the pool">
+          <mat-icon>upload_file</mat-icon>
+          <input type="file" (change)="onDocFileSelected($event)" [disabled]="isUploadingDoc" hidden />
+        </label>
+      </div>
+
+      @if (docUploadError) {
+        <p class="doc-upload-error">{{ docUploadError }}</p>
+      }
+
+      @if (mandatoryDocs.length === 0) {
+        <p class="hint">No mandatory documents defined.</p>
+      }
+
+      @for (doc of mandatoryDocs; track $index; let i = $index) {
+        <div class="doc-row">
+          <mat-form-field appearance="outline" class="doc-field">
+            <mat-label>Document path</mat-label>
+            <input
+              matInput
+              [(ngModel)]="mandatoryDocs[i]"
+              [attr.list]="'docs-list-' + i"
+              placeholder="documents/guide.md"
+            />
+            <datalist [id]="'docs-list-' + i">
+              @for (available of availableDocuments; track available) {
+                <option [value]="'documents/' + available"></option>
+              }
+            </datalist>
+          </mat-form-field>
+          <button mat-icon-button type="button" (click)="removeDocRow(i)" title="Remove">
+            <mat-icon>delete</mat-icon>
+          </button>
+        </div>
+      }
+    } @else {
+      <p class="hint">💡 Documents can be added after the agent is created.</p>
+    }
+
+    <!-- Location (creation only) -->
+    @if (!isEditMode) {
+      <div class="section-title">Save to</div>
+      <div class="source-options">
+        <label class="source-option" [class.selected]="location === 'project'">
+          <input type="radio" name="location" value="project" [(ngModel)]="location" />
+          <div class="source-content">
+            <div class="source-header">
+              <span class="source-icon">👤</span>
+              <span class="source-label">Project config</span>
+            </div>
+            <p class="source-description">~/.coday/projects/{{ '{' }}name{{ '}' }}/agents/ (not committed)</p>
+          </div>
+        </label>
+        <label class="source-option" [class.selected]="location === 'colocated'">
+          <input type="radio" name="location" value="colocated" [(ngModel)]="location" />
+          <div class="source-content">
+            <div class="source-header">
+              <span class="source-icon">📦</span>
+              <span class="source-label">Colocated</span>
+            </div>
+            <p class="source-description">Next to coday.yaml in ./agents/ (committable)</p>
+          </div>
+        </label>
+      </div>
+      <p class="hint">Storage location is permanent and cannot be changed after creation.</p>
+    }
+
+    <!-- Location display (edit mode) -->
+    @if (isEditMode) {
+      <div class="source-display">
+        <span class="section-title">Storage Location</span>
+        <span
+          class="source-badge"
+          [class.badge-project]="location === 'project'"
+          [class.badge-colocated]="location === 'colocated'"
+        >
+          {{ location === 'project' ? '👤 Project config' : '📦 Colocated' }}
+        </span>
+        <p class="hint">Cannot be changed after creation.</p>
+      </div>
+    }
+
+    <!-- Error -->
+    @if (errorMessage) {
+      <div class="error-message">
+        <mat-icon>error</mat-icon>
+        <span>{{ errorMessage }}</span>
+      </div>
+    }
+  </div>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="cancel()" [disabled]="isSaving">Cancel</button>
+  <button mat-raised-button color="primary" (click)="save()" [disabled]="isSaving">
+    {{ isSaving ? 'Saving...' : 'Save' }}
+  </button>
+</mat-dialog-actions>

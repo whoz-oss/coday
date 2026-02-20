@@ -1,0 +1,59 @@
+<div class="agent-manager">
+  <div class="header">
+    <h2>Agents</h2>
+    <div class="header-actions">
+      <mat-form-field appearance="outline" class="search-field">
+        <mat-label>Search</mat-label>
+        <input matInput [(ngModel)]="searchQuery" (input)="onSearchChange()" placeholder="Name or description..." />
+        <mat-icon matPrefix>search</mat-icon>
+      </mat-form-field>
+      <button class="btn-create" (click)="createAgent()">
+        <mat-icon>add</mat-icon>
+        <span>Create Agent</span>
+      </button>
+    </div>
+  </div>
+
+  @if (isLoading) {
+    <div class="loading">Loading agents...</div>
+  }
+
+  @if (errorMessage) {
+    <div class="error">{{ errorMessage }}</div>
+  }
+
+  @if (!isLoading && agents.length === 0) {
+    <div class="empty">No file-based agents found. Create your first agent to get started.</div>
+  }
+
+  @if (!isLoading && agents.length > 0 && filteredAgents.length === 0) {
+    <div class="empty">No agents match your search.</div>
+  }
+
+  @if (!isLoading && filteredAgents.length > 0) {
+    <div class="agent-list">
+      @for (agent of filteredAgents; track agent.name) {
+        <div class="agent-item">
+          <div class="agent-info">
+            <div class="agent-header">
+              <h3>{{ agent.name }}</h3>
+              <span
+                class="source-badge"
+                [class.badge-project]="agent.source === 'project'"
+                [class.badge-colocated]="agent.source === 'colocated'"
+                [title]="agent.source === 'project' ? 'Project config (~/.coday/)' : 'Colocated (next to coday.yaml)'"
+              >
+                {{ agent.source === 'project' ? '👤' : '📦' }}
+              </span>
+            </div>
+            <p class="description">{{ agent.description }}</p>
+          </div>
+          <div class="agent-actions">
+            <button (click)="editAgent(agent)" class="btn-primary">Edit</button>
+            <button (click)="deleteAgent(agent)" class="btn-danger">Delete</button>
+          </div>
+        </div>
+      }
+    </div>
+  }
+</div>
