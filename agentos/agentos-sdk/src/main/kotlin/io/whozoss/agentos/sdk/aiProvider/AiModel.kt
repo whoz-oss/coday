@@ -4,29 +4,26 @@ import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 
 /**
- * Data structure defining an agent's configuration.
+ * Data structure defining an AI model configuration.
  *
- * This is a pure data model that describes what an agent is, separate from how it executes.
- * Similar to AgentDefinition in Coday TypeScript, this allows agents to be defined
- * declaratively (e.g., from YAML/JSON) and shared between different implementations
- * (AgentSimple, AgentAdvanced).
+ * An AiModel combines a reference to an AiProvider with model-specific settings.
+ * It is the unit used to configure an agent's AI backend.
  *
- * @property id Unique identifier for the agent
- * @property name The agent's display name
- * @property description Description of the agent for users and other agents
+ * @property name The model's display name (also used as the agent name)
+ * @property description Description of the model for users and other agents
+ * @property modelName The model identifier to use with the provider (e.g., "gpt-4o", "claude-3-5-sonnet")
+ * @property providerName Name of the AiProvider to use (must match a registered provider)
+ * @property temperature Optional temperature override (0.0 to 2.0); uses provider default if null
+ * @property maxTokens Optional max output tokens override; uses provider default if null
  * @property instructions System instructions/prompt for the agent (optional)
- * @property provider The AI provider to use (null = use default from configuration)
- * @property modelName Explicit model name or alias (e.g., "gpt-4", "claude-3-opus")
- * @property temperature Temperature parameter for LLM (0.0 to 2.0, where 0.2 is deterministic, 0.8 is creative)
- * @property maxOutputTokens Maximum number of output tokens (overrides model's default if specified)
  */
 data class AiModel(
     override val metadata: EntityMetadata = EntityMetadata(),
     val name: String,
     val description: String,
-    val instructions: String? = null,
-    val provider: AiProvider? = null,
-    val modelName: String? = null,
+    val modelName: String,
+    val providerName: String,
     val temperature: Double? = null,
-    val maxOutputTokens: Int? = null,
+    val maxTokens: Int? = null,
+    val instructions: String? = null,
 ) : Entity

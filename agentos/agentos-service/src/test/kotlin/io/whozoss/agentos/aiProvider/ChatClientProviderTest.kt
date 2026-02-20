@@ -2,15 +2,17 @@ package io.whozoss.agentos.aiProvider
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.collections.shouldHaveSize
-import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
-import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.whozoss.agentos.aiModel.AiModelRegistry
+import io.whozoss.agentos.chat.ChatClientProvider
+import io.whozoss.agentos.chat.ChatModelFactory
+import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.ai.chat.model.ChatModel
 import java.util.UUID
 
@@ -19,99 +21,115 @@ class ChatClientProviderTest :
 
         describe("ChatClientProvider") {
 
-            lateinit var discoveryService: AiProviderDiscoveryService
-            lateinit var factory: ChatModelFactory
-            lateinit var provider: ChatClientProvider
+            lateinit var aiModelRegistry: AiModelRegistry
+            lateinit var aiProviderRegistry: AiProviderRegistry
+            lateinit var chatModelFactory: ChatModelFactory
+            lateinit var chatClientProvider: ChatClientProvider
 
             beforeEach {
-                discoveryService = mockk()
-                factory = mockk()
-                provider = ChatClientProvider(discoveryService, factory)
+                aiModelRegistry = mockk()
+                aiProviderRegistry = mockk()
+                chatModelFactory = mockk()
+                chatClientProvider = ChatClientProvider(aiModelRegistry, aiProviderRegistry, chatModelFactory)
             }
 
-            describe("refreshProviders") {
+            describe("getChatClient(modelName)") {
 
-                it("should refresh providers on initialization") {
-                    val providerId = UUID.randomUUID()
-                    val providerName = "test-provider"
-                    val aiProvider = mockk<AiProvider>()
-                    every { aiProvider.id } returns providerId
-                    every { aiProvider.name } returns providerName
-                    every { discoveryService.discoverAiProviders() } returns listOf(aiProvider)
+                it("should resolve model by name and create chat client") {
+                    val model = AiModel(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        name = "gpt-4o",
+                        description = "OpenAI GPT-4o",
+                        modelName = "gpt-4o",
+                        providerName = "openai",
+                        temperature = 0.7,
+                    )
+                    val provider = mockk<AiProvider>()
+                    val chatModel = mockk<ChatModel>(relaxed = true)
 
-                    provider.refreshProviders()
+                    every { aiModelRegistry.findByName("gpt-4o") } returns model
+                    every { aiProviderRegistry.getProviderByName("openai") } returns provider
+                    every {
+                        chatModelFactory.createChatModel(provider, "gpt-4o", null, 0.7, null)
+                    } returns chatModel
 
-                    val result = provider.getProviderMetadata(providerId)
-                    result shouldBe aiProvider
-                    provider.getAllProviders() shouldHaveSize 1
-                }
-
-                it("should replace existing providers on refresh") {
-                    val p1Id = UUID.randomUUID()
-                    val p1Name = "provider-1"
-                    val p1 = mockk<AiProvider>()
-                    every { p1.id } returns p1Id
-                    every { p1.name } returns p1Name
-
-                    val p2Id = UUID.randomUUID()
-                    val p2Name = "provider-2"
-                    val p2 = mockk<AiProvider>()
-                    every { p2.id } returns p2Id
-                    every { p2.name } returns p2Name
-
-                    // First load
-                    every { discoveryService.discoverAiProviders() } returns listOf(p1)
-                    provider.refreshProviders()
-                    provider.getAllProviders() shouldHaveSize 1
-                    provider.getProviderMetadata(p1Id).shouldNotBeNull()
-
-                    // Second load (replace p1 with p2)
-                    every { discoveryService.discoverAiProviders() } returns listOf(p2)
-                    provider.refreshProviders()
-
-                    provider.getAllProviders() shouldHaveSize 1
-                    provider.getProviderMetadata(p2Id).shouldNotBeNull()
-                    provider.getProviderMetadata(p1Id).shouldBeNull()
-                }
-            }
-
-            describe("getChatClient") {
-
-                it("should create chat client for existing provider") {
-                    val providerId = UUID.randomUUID()
-                    val providerName = "some LLM provider"
-                    val apiKey = "sk-runtime"
-                    val modelName = "gpt-4-turbo"
-
-                    val aiProvider = mockk<AiProvider>()
-                    every { aiProvider.id } returns providerId
-                    every { aiProvider.name } returns providerName
-                    every { discoveryService.discoverAiProviders() } returns listOf(aiProvider)
-
-                    val mockChatModel = mockk<ChatModel>(relaxed = true)
-                    every { factory.createChatModel(aiProvider, apiKey, modelName) } returns mockChatModel
-
-                    provider.refreshProviders()
-
-                    val config = ModelConfig(providerName, apiKey, modelName)
-                    val client = provider.getChatClient(config)
+                    val client = chatClientProvider.getChatClient("gpt-4o")
 
                     client.shouldNotBeNull()
-                    verify { factory.createChatModel(aiProvider, apiKey, modelName) }
+                    verify { chatModelFactory.createChatModel(provider, "gpt-4o", null, 0.7, null) }
                 }
 
-                it("should throw exception for unknown provider") {
-                    every { discoveryService.discoverAiProviders() } returns emptyList()
-                    provider.refreshProviders()
+                it("should throw when model name is not registered") {
+                    every { aiModelRegistry.findByName("unknown-model") } returns null
 
-                    val unknownProviderName = "another LLM provider"
-                    val config = ModelConfig(unknownProviderName, null, null)
-
-                    val exception =
-                        shouldThrow<IllegalArgumentException> {
-                            provider.getChatClient(config)
-                        }
+                    val exception = shouldThrow<IllegalArgumentException> {
+                        chatClientProvider.getChatClient("unknown-model")
+                    }
                     exception.message shouldContain "not found"
+                }
+
+                it("should throw when referenced provider is not registered") {
+                    val model = AiModel(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        name = "my-model",
+                        description = "test",
+                        modelName = "some-model",
+                        providerName = "missing-provider",
+                    )
+                    every { aiModelRegistry.findByName("my-model") } returns model
+                    every { aiProviderRegistry.getProviderByName("missing-provider") } returns null
+
+                    val exception = shouldThrow<IllegalArgumentException> {
+                        chatClientProvider.getChatClient("my-model")
+                    }
+                    exception.message shouldContain "missing-provider"
+                }
+            }
+
+            describe("getChatClient(AiModel)") {
+
+                it("should forward model overrides to ChatModelFactory") {
+                    val model = AiModel(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        name = "claude-sonnet",
+                        description = "Anthropic Claude",
+                        modelName = "claude-sonnet-4-5",
+                        providerName = "anthropic",
+                        temperature = 0.3,
+                        maxTokens = 8192,
+                    )
+                    val provider = mockk<AiProvider>()
+                    val chatModel = mockk<ChatModel>(relaxed = true)
+
+                    every { aiProviderRegistry.getProviderByName("anthropic") } returns provider
+                    every {
+                        chatModelFactory.createChatModel(provider, "claude-sonnet-4-5", null, 0.3, 8192)
+                    } returns chatModel
+
+                    val client = chatClientProvider.getChatClient(model)
+
+                    client.shouldNotBeNull()
+                    verify { chatModelFactory.createChatModel(provider, "claude-sonnet-4-5", null, 0.3, 8192) }
+                }
+
+                it("should pass null overrides when model does not specify them") {
+                    val model = AiModel(
+                        metadata = EntityMetadata(id = UUID.randomUUID()),
+                        name = "basic-model",
+                        description = "No overrides",
+                        modelName = "gpt-3.5-turbo",
+                        providerName = "openai",
+                    )
+                    val provider = mockk<AiProvider>()
+                    val chatModel = mockk<ChatModel>(relaxed = true)
+
+                    every { aiProviderRegistry.getProviderByName("openai") } returns provider
+                    every {
+                        chatModelFactory.createChatModel(provider, "gpt-3.5-turbo", null, null, null)
+                    } returns chatModel
+
+                    chatClientProvider.getChatClient(model).shouldNotBeNull()
+                    verify { chatModelFactory.createChatModel(provider, "gpt-3.5-turbo", null, null, null) }
                 }
             }
         }
