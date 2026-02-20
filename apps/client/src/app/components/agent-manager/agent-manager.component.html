@@ -14,38 +14,46 @@
     </div>
   </div>
 
-  <div *ngIf="isLoading" class="loading">Loading agents...</div>
+  @if (isLoading) {
+    <div class="loading">Loading agents...</div>
+  }
 
-  <div *ngIf="errorMessage" class="error">{{ errorMessage }}</div>
+  @if (errorMessage) {
+    <div class="error">{{ errorMessage }}</div>
+  }
 
-  <div *ngIf="!isLoading && agents.length === 0" class="empty">
-    No file-based agents found. Create your first agent to get started.
-  </div>
+  @if (!isLoading && agents.length === 0) {
+    <div class="empty">No file-based agents found. Create your first agent to get started.</div>
+  }
 
-  <div *ngIf="!isLoading && agents.length > 0 && filteredAgents.length === 0" class="empty">
-    No agents match your search.
-  </div>
+  @if (!isLoading && agents.length > 0 && filteredAgents.length === 0) {
+    <div class="empty">No agents match your search.</div>
+  }
 
-  <div class="agent-list" *ngIf="!isLoading && filteredAgents.length > 0">
-    <div *ngFor="let agent of filteredAgents" class="agent-item">
-      <div class="agent-info">
-        <div class="agent-header">
-          <h3>{{ agent.name }}</h3>
-          <span
-            class="source-badge"
-            [class.badge-project]="agent.source === 'project'"
-            [class.badge-colocated]="agent.source === 'colocated'"
-            [title]="agent.source === 'project' ? 'Project config (~/.coday/)' : 'Colocated (next to coday.yaml)'"
-          >
-            {{ agent.source === 'project' ? '👤' : '📦' }}
-          </span>
+  @if (!isLoading && filteredAgents.length > 0) {
+    <div class="agent-list">
+      @for (agent of filteredAgents; track agent.name) {
+        <div class="agent-item">
+          <div class="agent-info">
+            <div class="agent-header">
+              <h3>{{ agent.name }}</h3>
+              <span
+                class="source-badge"
+                [class.badge-project]="agent.source === 'project'"
+                [class.badge-colocated]="agent.source === 'colocated'"
+                [title]="agent.source === 'project' ? 'Project config (~/.coday/)' : 'Colocated (next to coday.yaml)'"
+              >
+                {{ agent.source === 'project' ? '👤' : '📦' }}
+              </span>
+            </div>
+            <p class="description">{{ agent.description }}</p>
+          </div>
+          <div class="agent-actions">
+            <button (click)="editAgent(agent)" class="btn-primary">Edit</button>
+            <button (click)="deleteAgent(agent)" class="btn-danger">Delete</button>
+          </div>
         </div>
-        <p class="description">{{ agent.description }}</p>
-      </div>
-      <div class="agent-actions">
-        <button (click)="editAgent(agent)" class="btn-primary">Edit</button>
-        <button (click)="deleteAgent(agent)" class="btn-danger">Delete</button>
-      </div>
+      }
     </div>
-  </div>
+  }
 </div>

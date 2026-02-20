@@ -1,5 +1,4 @@
 import { Component, inject, OnInit } from '@angular/core'
-import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MatIconModule } from '@angular/material/icon'
 import { MatInputModule } from '@angular/material/input'
@@ -11,7 +10,7 @@ import { AgentFormComponent, AgentFormData } from '../agent-form/agent-form.comp
 @Component({
   selector: 'app-agent-manager',
   standalone: true,
-  imports: [CommonModule, FormsModule, MatIconModule, MatInputModule, MatFormFieldModule],
+  imports: [FormsModule, MatIconModule, MatInputModule, MatFormFieldModule],
   templateUrl: './agent-manager.component.html',
   styleUrls: ['./agent-manager.component.scss'],
 })
