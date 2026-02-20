@@ -1,8 +1,9 @@
 import * as path from 'node:path'
 import * as os from 'node:os'
-import { existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from 'fs'
 import { readYamlFile, writeYamlFile } from '@coday/utils'
 import type { AgentDefinition } from '@coday/model'
+import { MAX_FILE_SIZE, isFileExtensionAllowed } from '@coday/model'
 import { findFilesByName } from '@coday/function'
 import type { ProjectService } from './project.service'
 
@@ -253,6 +254,62 @@ export class AgentCrudService {
     console.log(`[AGENT_CRUD] Updated agent '${agentName}' in ${found.location} for project ${projectName}`)
 
     return { definition: updated, source: found.location, filePath: found.filePath, editable: true }
+  }
+
+  /**
+   * Get the documents directory for a given location (creates it if needed).
+   */
+  async getOrCreateDocumentsDir(projectName: string, location: AgentLocation): Promise<string> {
+    const agentsDir = await this.getOrCreateAgentsDir(projectName, location)
+    const docsDir = path.join(agentsDir, 'documents')
+    if (!existsSync(docsDir)) {
+      mkdirSync(docsDir, { recursive: true })
+    }
+    return docsDir
+  }
+
+  /**
+   * List all files in the documents pool for a given location.
+   */
+  async listDocuments(projectName: string, location: AgentLocation): Promise<string[]> {
+    try {
+      const docsDir = await this.getOrCreateDocumentsDir(projectName, location)
+      return readdirSync(docsDir)
+        .filter((f) => !f.startsWith('.'))
+        .sort()
+    } catch {
+      return []
+    }
+  }
+
+  /**
+   * Save an uploaded document into the documents pool.
+   * Returns the relative path to use in mandatoryDocs (relative to agents/ dir).
+   */
+  async saveDocument(projectName: string, location: AgentLocation, filename: string, buffer: Buffer): Promise<string> {
+    if (buffer.length > MAX_FILE_SIZE) {
+      throw new Error(
+        `File too large: ${(buffer.length / 1024 / 1024).toFixed(2)} MB exceeds maximum of ${MAX_FILE_SIZE / 1024 / 1024} MB`
+      )
+    }
+
+    if (!isFileExtensionAllowed(filename)) {
+      throw new Error(`File type not allowed for: ${filename}`)
+    }
+
+    // Sanitize filename: no path traversal
+    const safeName = path.basename(filename)
+    if (!safeName || safeName !== filename) {
+      throw new Error('Invalid filename')
+    }
+
+    const docsDir = await this.getOrCreateDocumentsDir(projectName, location)
+    const filePath = path.join(docsDir, safeName)
+    writeFileSync(filePath, buffer)
+    console.log(`[AGENT_CRUD] Saved document '${safeName}' in ${location} for project ${projectName}`)
+
+    // Return relative path from agents/ dir
+    return `documents/${safeName}`
   }
 
   /**

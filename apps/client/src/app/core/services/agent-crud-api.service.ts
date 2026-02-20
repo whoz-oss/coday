@@ -16,6 +16,7 @@ export interface AgentDefinition {
   maxOutputTokens?: number
   openaiAssistantId?: string
   integrations?: Record<string, string[]>
+  mandatoryDocs?: string[]
 }
 
 export interface AgentSummaryWithMeta {
@@ -92,6 +93,39 @@ export class AgentCrudApiService {
         return result
       })
     )
+  }
+
+  /**
+   * List documents available in the pool for a given location
+   */
+  listDocuments(location: AgentLocation): Observable<string[]> {
+    return this.http.get<string[]>(`${this.getBaseUrl()}/documents`, { params: { location } })
+  }
+
+  /**
+   * Upload a document to the pool
+   * Returns the relative path to use in mandatoryDocs
+   */
+  uploadDocument(location: AgentLocation, file: File): Observable<{ relativePath: string }> {
+    return new Observable((observer) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(',')[1]
+        this.http
+          .post<{ relativePath: string }>(
+            `${this.getBaseUrl()}/documents`,
+            {
+              filename: file.name,
+              content: base64,
+              mimeType: file.type,
+            },
+            { params: { location } }
+          )
+          .subscribe(observer)
+      }
+      reader.onerror = () => observer.error(reader.error)
+      reader.readAsDataURL(file)
+    })
   }
 
   /**

@@ -25,12 +25,14 @@ import { getParamAsString } from './route-helpers'
  * Agent Management REST API Routes
  *
  * Endpoints:
- * - GET    /api/projects/:projectName/agents                  - List all agents (read from all sources)
- * - GET    /api/projects/:projectName/agents/editable         - List editable agents (file-based only)
- * - GET    /api/projects/:projectName/agents/:agentName       - Get agent definition
- * - POST   /api/projects/:projectName/agents                  - Create new agent (file-based)
- * - PUT    /api/projects/:projectName/agents/:agentName       - Update agent (file-based)
- * - DELETE /api/projects/:projectName/agents/:agentName       - Delete agent (file-based)
+ * - GET    /api/projects/:projectName/agents                          - List all agents (all sources, for autocomplete)
+ * - GET    /api/projects/:projectName/agents/documents?location=...   - List documents pool
+ * - POST   /api/projects/:projectName/agents/documents?location=...   - Upload document to pool
+ * - GET    /api/projects/:projectName/agents/editable                 - List editable agents (file-based only)
+ * - GET    /api/projects/:projectName/agents/:agentName               - Get agent definition
+ * - POST   /api/projects/:projectName/agents                          - Create new agent (file-based)
+ * - PUT    /api/projects/:projectName/agents/:agentName               - Update agent (file-based)
+ * - DELETE /api/projects/:projectName/agents/:agentName               - Delete agent (file-based)
  */
 export function registerAgentRoutes(
   app: express.Application,
@@ -131,6 +133,65 @@ export function registerAgentRoutes(
       console.error('Error listing agents:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       res.status(500).json({ error: `Failed to list agents: ${errorMessage}` })
+    }
+  })
+
+  /**
+   * GET /api/projects/:projectName/agents/documents?location=project|colocated
+   * List files available in the documents pool for a given location
+   */
+  app.get('/api/projects/:projectName/agents/documents', async (req: express.Request, res: express.Response) => {
+    try {
+      const projectName = getParamAsString(req.params.projectName)
+      if (!projectName) {
+        res.status(400).json({ error: 'Project name is required' })
+        return
+      }
+
+      const location: AgentLocation = req.query['location'] === 'colocated' ? 'colocated' : 'project'
+      debugLog('AGENT', `GET documents pool: project="${projectName}", location="${location}"`)
+
+      const files = await agentCrudService.listDocuments(projectName, location)
+      res.status(200).json(files)
+    } catch (error) {
+      console.error('Error listing agent documents:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: `Failed to list documents: ${errorMessage}` })
+    }
+  })
+
+  /**
+   * POST /api/projects/:projectName/agents/documents?location=project|colocated
+   * Upload a document into the pool
+   * Body: { filename: string, content: string (base64), mimeType: string }
+   * Returns: { relativePath: string } — path to use in mandatoryDocs
+   */
+  app.post('/api/projects/:projectName/agents/documents', async (req: express.Request, res: express.Response) => {
+    try {
+      const projectName = getParamAsString(req.params.projectName)
+      if (!projectName) {
+        res.status(400).json({ error: 'Project name is required' })
+        return
+      }
+
+      const location: AgentLocation = req.query['location'] === 'colocated' ? 'colocated' : 'project'
+      const { filename, content } = req.body as { filename?: string; content?: string; mimeType?: string }
+
+      if (!filename || !content) {
+        res.status(400).json({ error: 'filename and content (base64) are required' })
+        return
+      }
+
+      const buffer = Buffer.from(content, 'base64')
+      debugLog('AGENT', `POST upload document: "${filename}" in ${location} for project="${projectName}"`)
+
+      const relativePath = await agentCrudService.saveDocument(projectName, location, filename, buffer)
+      res.status(201).json({ relativePath })
+    } catch (error) {
+      console.error('Error uploading agent document:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      const status = errorMessage.includes('too large') || errorMessage.includes('not allowed') ? 422 : 500
+      res.status(status).json({ error: errorMessage })
     }
   })
 

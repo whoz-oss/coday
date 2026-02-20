@@ -152,6 +152,50 @@
   }
 }
 
+.doc-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+
+  .doc-field {
+    flex: 1;
+  }
+}
+
+.upload-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  transition: background 0.2s;
+
+  &:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-primary);
+  }
+
+  &.uploading {
+    opacity: 0.5;
+    cursor: wait;
+  }
+
+  mat-icon {
+    font-size: 1.25rem;
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+}
+
+.doc-upload-error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-error);
+}
+
 .error-message {
   display: flex;
   align-items: center;

@@ -59,6 +59,12 @@ export class AgentFormComponent implements OnInit {
   // Integrations: list of { integration, tools } rows
   integrationRows: Array<{ integration: string; tools: string }> = []
 
+  // Mandatory docs
+  mandatoryDocs: string[] = []
+  availableDocuments: string[] = []
+  isUploadingDoc = false
+  docUploadError = ''
+
   // Location (creation only)
   location: AgentLocation = 'project'
 
@@ -88,7 +94,47 @@ export class AgentFormComponent implements OnInit {
           tools: tools?.join(', ') ?? '',
         }))
       }
+      this.mandatoryDocs = [...(def.mandatoryDocs ?? [])]
+      this.loadAvailableDocuments()
     }
+  }
+
+  loadAvailableDocuments(): void {
+    this.agentCrudApi.listDocuments(this.location).subscribe({
+      next: (files) => (this.availableDocuments = files),
+      error: () => (this.availableDocuments = []),
+    })
+  }
+
+  addDocRow(): void {
+    this.mandatoryDocs.push('')
+  }
+
+  removeDocRow(index: number): void {
+    this.mandatoryDocs.splice(index, 1)
+  }
+
+  onDocFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement
+    const file = input.files?.[0]
+    if (!file) return
+
+    this.isUploadingDoc = true
+    this.docUploadError = ''
+    this.agentCrudApi.uploadDocument(this.location, file).subscribe({
+      next: (result) => {
+        this.isUploadingDoc = false
+        this.mandatoryDocs.push(result.relativePath)
+        this.loadAvailableDocuments()
+        // Reset input so the same file can be re-uploaded
+        input.value = ''
+      },
+      error: (error) => {
+        this.isUploadingDoc = false
+        this.docUploadError = error?.error?.error ?? error?.message ?? 'Upload failed'
+        input.value = ''
+      },
+    })
   }
 
   addIntegrationRow(): void {
@@ -126,6 +172,8 @@ export class AgentFormComponent implements OnInit {
   }
 
   private buildDefinition(): AgentDefinition {
+    const mandatoryDocs = this.mandatoryDocs.map((d) => d.trim()).filter(Boolean)
+
     const integrations: Record<string, string[]> | undefined =
       this.integrationRows.length > 0
         ? Object.fromEntries(
@@ -151,6 +199,7 @@ export class AgentFormComponent implements OnInit {
       maxOutputTokens: this.maxOutputTokens ?? undefined,
       openaiAssistantId: this.openaiAssistantId.trim() || undefined,
       integrations,
+      mandatoryDocs: mandatoryDocs.length > 0 ? mandatoryDocs : undefined,
     }
   }
 
