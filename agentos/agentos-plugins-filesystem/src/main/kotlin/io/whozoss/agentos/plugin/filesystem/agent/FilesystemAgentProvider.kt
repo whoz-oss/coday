@@ -6,8 +6,8 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.sdk.agent.AgentDefinition
 import io.whozoss.agentos.sdk.agent.AgentPlugin
 import io.whozoss.agentos.sdk.agent.AgentStatus
+import mu.KLogging
 import org.pf4j.Extension
-import org.slf4j.LoggerFactory
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -17,12 +17,7 @@ import java.nio.file.Paths
  */
 @Extension
 class FilesystemAgentProvider : AgentPlugin {
-    private val logger = LoggerFactory.getLogger(FilesystemAgentProvider::class.java)
     private val yamlMapper = ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build())
-
-    companion object {
-        const val DEFAULT_CONTEXT = "general"
-    }
 
     // Configuration - can be overridden via system properties or environment variables
     private val agentsDirectory: String =
@@ -42,16 +37,16 @@ class FilesystemAgentProvider : AgentPlugin {
 
         val agentsPath = Paths.get(agentsDirectory)
         if (!Files.exists(agentsPath)) {
-            logger.warn("Agents directory does not exist: $agentsPath")
+            logger.warn { "Agents directory does not exist: $agentsPath" }
             return emptyList()
         }
 
         if (!Files.isDirectory(agentsPath)) {
-            logger.error("Agents path is not a directory: $agentsPath")
+            logger.error { "Agents path is not a directory: $agentsPath" }
             return emptyList()
         }
 
-        logger.info("Loading agents from directory: $agentsPath")
+        logger.info { "Loading agents from directory: $agentsPath" }
 
         try {
             Files
@@ -60,16 +55,16 @@ class FilesystemAgentProvider : AgentPlugin {
                 .filter { it.toString().endsWith(".yaml") || it.toString().endsWith(".yml") }
                 .forEach { yamlFile ->
                     try {
-                        logger.debug("Processing agent file: $yamlFile")
+                        logger.debug { "Processing agent file: $yamlFile" }
                         val agent = loadAgentFromYaml(yamlFile.toFile())
                         agents.add(agent)
-                        logger.info("Loaded agent '${agent.id}' from ${yamlFile.fileName}")
+                        logger.info { "Loaded agent '${agent.id}' from ${yamlFile.fileName}" }
                     } catch (e: Exception) {
-                        logger.error("Failed to load agent from $yamlFile: ${e.message}", e)
+                        logger.error(e) { "Failed to load agent from $yamlFile: ${e.message}" }
                     }
                 }
         } catch (e: Exception) {
-            logger.error("Failed to scan agents directory: ${e.message}", e)
+            logger.error(e) { "Failed to scan agents directory: ${e.message}" }
         }
 
         return agents
@@ -151,22 +146,26 @@ class FilesystemAgentProvider : AgentPlugin {
         return try {
             AgentStatus.valueOf(statusStr.uppercase())
         } catch (e: IllegalArgumentException) {
-            logger.warn("Unknown status: $statusStr, using ACTIVE")
+            logger.warn { "Unknown status: $statusStr, using ACTIVE" }
             AgentStatus.ACTIVE
         }
     }
 
     override fun initialize() {
-        logger.info("FilesystemAgentProvider initialized")
-        logger.info("Agents directory: $agentsDirectory")
+        logger.info { "FilesystemAgentProvider initialized" }
+        logger.info { "Agents directory: $agentsDirectory" }
         val agents = getAgents()
-        logger.info("Loaded ${agents.size} agent(s) from filesystem")
+        logger.info { "Loaded ${agents.size} agent(s) from filesystem" }
         agents.forEach { agent ->
-            logger.info("  - ${agent.id}: ${agent.name}")
+            logger.info { "  - ${agent.id}: ${agent.name}" }
         }
     }
 
     override fun destroy() {
-        logger.info("FilesystemAgentProvider destroyed")
+        logger.info { "FilesystemAgentProvider destroyed" }
+    }
+
+    companion object : KLogging() {
+        const val DEFAULT_CONTEXT = "general"
     }
 }
