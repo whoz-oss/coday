@@ -12,6 +12,7 @@ integrations:
   GIT:
   DELEGATE:
     - Runnay
+    - Daemonay
   PLAYWRIGHT:
 instructions: |
   You are Sway, the Software Agent who bridges user needs and code implementation.

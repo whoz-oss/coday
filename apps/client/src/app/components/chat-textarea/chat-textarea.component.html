@@ -2,7 +2,7 @@
   @if (isRecording) {
     <div class="recording-indicator">
       <span class="recording-dot"></span>
-      Recording... Release to stop
+      Recording... Click mic to stop
     </div>
   }
 
@@ -96,15 +96,9 @@
           mat-icon-button
           [class.recording]="isRecording"
           [class.hidden]="message.trim()"
-          (mousedown)="onVoiceButtonMouseDown($event)"
-          (mouseup)="onVoiceButtonMouseUp()"
-          (mouseleave)="onVoiceButtonMouseLeave()"
-          (touchstart)="onVoiceButtonTouchStart($event)"
-          (touchend)="onVoiceButtonTouchEnd($event)"
-          (keydown)="onVoiceButtonKeyDown($event)"
-          (keyup)="onVoiceButtonKeyUp($event)"
+          (click)="toggleRecording()"
           tabindex="0"
-          title="Hold mouse click, touch, or spacebar to speak"
+          [title]="isRecording ? 'Click to stop recording' : 'Click to start recording'"
         >
           <mat-icon>{{ isRecording ? 'fiber_manual_record' : 'mic' }}</mat-icon>
         </button>

@@ -1,0 +1,697 @@
+{
+  "info": {
+    "_postman_id": "case-management-collection-v1",
+    "description": "Postman collection for the AgentOS Case Management API.\n\nCovers:\n- **CaseController** (`/api/cases`) — CRUD and lifecycle operations\n- **CaseEventController** (`/api/cases/:caseId/events`) — SSE event stream\n\n## Setup\n1. Import this collection into Postman.\n2. Create an environment (or edit the provided variables) and set:\n   - `baseUrl` → `http://localhost:8123` (default dev server)\n   - `projectId` → a valid project UUID\n   - `caseId` → populated automatically by the \"Create Case\" request via a post-response script\n3. Run **Create Case** first — it captures the returned `caseId` into the `caseId` collection variable.\n4. All other requests use `{{caseId}}` automatically.\n\n## Notes\n- No authentication is required (no Spring Security configured).\n- The SSE endpoint (`Stream Case Events`) keeps the connection open; cancel it manually in Postman.\n- `PUT /api/cases/:caseId` is a placeholder endpoint — it returns the current case unchanged.\n",
+    "name": "AgentOS – Case Management API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "description": "CRUD and lifecycle operations for Cases.\n\nBase path: `{{baseUrl}}/api/cases`",
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response has id and projectId', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.have.property('id');",
+                  "    pm.expect(body).to.have.property('projectId');",
+                  "    pm.expect(body.id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);",
+                  "    pm.expect(body.projectId).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);",
+                  "});",
+                  "",
+                  "// Auto-capture caseId for subsequent requests",
+                  "const body = pm.response.json();",
+                  "if (body && body.id) {",
+                  "    pm.collectionVariables.set('caseId', body.id);",
+                  "    console.log('caseId set to:', body.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Create Case",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"projectId\": \"{{projectId}}\"\n}"
+            },
+            "description": "Creates a new Case for the given project.\n\n**POST** `/api/cases`\n\nReturns `201 Created` with the new case's `id` and `projectId`.\n\nThe response `id` is automatically saved to the `caseId` collection variable by the post-response script.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cases"],
+              "raw": "{{baseUrl}}/api/cases"
+            }
+          },
+          "response": [
+            {
+              "body": "{\n  \"id\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"projectId\": \"00000000-0000-0000-0000-000000000001\"\n}",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "name": "201 Created – Case created successfully",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"projectId\": \"00000000-0000-0000-0000-000000000001\"\n}"
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "cases"],
+                  "raw": "{{baseUrl}}/api/cases"
+                }
+              },
+              "status": "Created"
+            }
+          ]
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has id and projectId', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.have.property('id');",
+                  "    pm.expect(body).to.have.property('projectId');",
+                  "    pm.expect(body.id).to.eql(pm.collectionVariables.get('caseId'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Get Case",
+          "request": {
+            "description": "Retrieves a single Case by its UUID.\n\n**GET** `/api/cases/:caseId`\n\nReturns `200 OK` with case details, or `404 Not Found` if the case does not exist.",
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cases", "{{caseId}}"],
+              "raw": "{{baseUrl}}/api/cases/{{caseId}}"
+            }
+          },
+          "response": [
+            {
+              "body": "{\n  \"id\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"projectId\": \"00000000-0000-0000-0000-000000000001\"\n}",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "name": "200 OK – Case found",
+              "originalRequest": {
+                "header": [],
+                "method": "GET",
+                "url": {
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "cases", "550e8400-e29b-41d4-a716-446655440000"],
+                  "raw": "{{baseUrl}}/api/cases/550e8400-e29b-41d4-a716-446655440000"
+                }
+              },
+              "status": "OK"
+            },
+            {
+              "body": "",
+              "code": 404,
+              "header": [],
+              "name": "404 Not Found – Case does not exist",
+              "originalRequest": {
+                "header": [],
+                "method": "GET",
+                "url": {
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "cases", "00000000-0000-0000-0000-000000000000"],
+                  "raw": "{{baseUrl}}/api/cases/00000000-0000-0000-0000-000000000000"
+                }
+              },
+              "status": "Not Found"
+            }
+          ]
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response is an array', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('Each case has id and projectId', function () {",
+                  "    const body = pm.response.json();",
+                  "    body.forEach(function(c) {",
+                  "        pm.expect(c).to.have.property('id');",
+                  "        pm.expect(c).to.have.property('projectId');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "List Cases (all active)",
+          "request": {
+            "description": "Lists all active (running) cases across all projects.\n\n**GET** `/api/cases`\n\nReturns `200 OK` with an array of cases. Only active cases are returned (completed/stopped cases are excluded).",
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cases"],
+              "raw": "{{baseUrl}}/api/cases"
+            }
+          },
+          "response": [
+            {
+              "body": "[\n  {\n    \"id\": \"550e8400-e29b-41d4-a716-446655440000\",\n    \"projectId\": \"00000000-0000-0000-0000-000000000001\"\n  }\n]",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "name": "200 OK – List of active cases",
+              "originalRequest": {
+                "header": [],
+                "method": "GET",
+                "url": {
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "cases"],
+                  "raw": "{{baseUrl}}/api/cases"
+                }
+              },
+              "status": "OK"
+            }
+          ]
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response is an array', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('All cases belong to the requested project', function () {",
+                  "    const body = pm.response.json();",
+                  "    const expectedProjectId = pm.collectionVariables.get('projectId');",
+                  "    body.forEach(function(c) {",
+                  "        pm.expect(c.projectId).to.eql(expectedProjectId);",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "List Cases (by projectId)",
+          "request": {
+            "description": "Lists active cases filtered by `projectId`.\n\n**GET** `/api/cases?projectId=<uuid>`\n\nReturns `200 OK` with an array of cases belonging to the given project. Only active cases are returned.",
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cases"],
+              "query": [
+                {
+                  "description": "Filter active cases by project UUID",
+                  "key": "projectId",
+                  "value": "{{projectId}}"
+                }
+              ],
+              "raw": "{{baseUrl}}/api/cases?projectId={{projectId}}"
+            }
+          },
+          "response": [
+            {
+              "body": "[\n  {\n    \"id\": \"550e8400-e29b-41d4-a716-446655440000\",\n    \"projectId\": \"00000000-0000-0000-0000-000000000001\"\n  }\n]",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "name": "200 OK – Cases for a project",
+              "originalRequest": {
+                "header": [],
+                "method": "GET",
+                "url": {
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "cases"],
+                  "query": [
+                    {
+                      "key": "projectId",
+                      "value": "00000000-0000-0000-0000-000000000001"
+                    }
+                  ],
+                  "raw": "{{baseUrl}}/api/cases?projectId=00000000-0000-0000-0000-000000000001"
+                }
+              },
+              "status": "OK"
+            }
+          ]
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has id and projectId', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.have.property('id');",
+                  "    pm.expect(body).to.have.property('projectId');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Update Case (placeholder)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"dummy\": \"placeholder\"\n}"
+            },
+            "description": "Updates a case. **Currently a placeholder** — the body is accepted but no changes are applied. Use `stop` or `kill` for lifecycle management.\n\n**PUT** `/api/cases/:caseId`\n\nReturns `200 OK` with the unchanged case, or `404 Not Found`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cases", "{{caseId}}"],
+              "raw": "{{baseUrl}}/api/cases/{{caseId}}"
+            }
+          },
+          "response": [
+            {
+              "body": "{\n  \"id\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"projectId\": \"00000000-0000-0000-0000-000000000001\"\n}",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "name": "200 OK – Case returned unchanged",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"dummy\": \"placeholder\"\n}"
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "PUT",
+                "url": {
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "cases", "550e8400-e29b-41d4-a716-446655440000"],
+                  "raw": "{{baseUrl}}/api/cases/550e8400-e29b-41d4-a716-446655440000"
+                }
+              },
+              "status": "OK"
+            }
+          ]
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('Status is 200 OK', function () {", "    pm.response.to.have.status(200);", "});"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Add Message to Case",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"content\": \"Hello, can you help me with my request?\",\n  \"userId\": \"user-123\",\n  \"answerToEventId\": null\n}"
+            },
+            "description": "Adds a user message to an existing case, triggering agent processing.\n\n**POST** `/api/cases/:caseId/messages`\n\n| Field | Type | Required | Description |\n|---|---|---|---|\n| `content` | string | ✅ | The message text |\n| `userId` | string | ❌ | User identifier (defaults to `\"default-user\"`) |\n| `answerToEventId` | UUID | ❌ | If responding to a `QuestionEvent`, the event's UUID |\n\nReturns `200 OK` (empty body) on success, or `404 Not Found` if the case does not exist.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cases", "{{caseId}}", "messages"],
+              "raw": "{{baseUrl}}/api/cases/{{caseId}}/messages"
+            }
+          },
+          "response": [
+            {
+              "body": "",
+              "code": 200,
+              "header": [],
+              "name": "200 OK – Message added",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"content\": \"Hello, can you help me with my request?\",\n  \"userId\": \"user-123\",\n  \"answerToEventId\": null\n}"
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "cases", "550e8400-e29b-41d4-a716-446655440000", "messages"],
+                  "raw": "{{baseUrl}}/api/cases/550e8400-e29b-41d4-a716-446655440000/messages"
+                }
+              },
+              "status": "OK"
+            },
+            {
+              "body": "",
+              "code": 200,
+              "header": [],
+              "name": "200 OK – Answer to a QuestionEvent",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"content\": \"Option A\",\n  \"userId\": \"user-123\",\n  \"answerToEventId\": \"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\"\n}"
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "url": {
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "cases", "550e8400-e29b-41d4-a716-446655440000", "messages"],
+                  "raw": "{{baseUrl}}/api/cases/550e8400-e29b-41d4-a716-446655440000/messages"
+                }
+              },
+              "status": "OK"
+            }
+          ]
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('Status is 200 OK', function () {", "    pm.response.to.have.status(200);", "});"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Stop Case (graceful)",
+          "request": {
+            "description": "Gracefully stops a running case. The case will finish its current operation before stopping.\n\n**POST** `/api/cases/:caseId/stop`\n\nReturns `200 OK` (empty body) if the case was found and stop was triggered, or `404 Not Found`.",
+            "header": [],
+            "method": "POST",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cases", "{{caseId}}", "stop"],
+              "raw": "{{baseUrl}}/api/cases/{{caseId}}/stop"
+            }
+          },
+          "response": [
+            {
+              "body": "",
+              "code": 200,
+              "header": [],
+              "name": "200 OK – Stop signal sent",
+              "originalRequest": {
+                "header": [],
+                "method": "POST",
+                "url": {
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "cases", "550e8400-e29b-41d4-a716-446655440000", "stop"],
+                  "raw": "{{baseUrl}}/api/cases/550e8400-e29b-41d4-a716-446655440000/stop"
+                }
+              },
+              "status": "OK"
+            },
+            {
+              "body": "",
+              "code": 404,
+              "header": [],
+              "name": "404 Not Found – Case does not exist",
+              "originalRequest": {
+                "header": [],
+                "method": "POST",
+                "url": {
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "cases", "00000000-0000-0000-0000-000000000000", "stop"],
+                  "raw": "{{baseUrl}}/api/cases/00000000-0000-0000-0000-000000000000/stop"
+                }
+              },
+              "status": "Not Found"
+            }
+          ]
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('Status is 200 OK', function () {", "    pm.response.to.have.status(200);", "});"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Kill Case (immediate)",
+          "request": {
+            "description": "Immediately terminates a case, interrupting any in-progress agent execution.\n\n**POST** `/api/cases/:caseId/kill`\n\nReturns `200 OK` (empty body) if the case was found and killed, or `404 Not Found`.",
+            "header": [],
+            "method": "POST",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cases", "{{caseId}}", "kill"],
+              "raw": "{{baseUrl}}/api/cases/{{caseId}}/kill"
+            }
+          },
+          "response": [
+            {
+              "body": "",
+              "code": 200,
+              "header": [],
+              "name": "200 OK – Case killed",
+              "originalRequest": {
+                "header": [],
+                "method": "POST",
+                "url": {
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "cases", "550e8400-e29b-41d4-a716-446655440000", "kill"],
+                  "raw": "{{baseUrl}}/api/cases/550e8400-e29b-41d4-a716-446655440000/kill"
+                }
+              },
+              "status": "OK"
+            },
+            {
+              "body": "",
+              "code": 404,
+              "header": [],
+              "name": "404 Not Found – Case does not exist",
+              "originalRequest": {
+                "header": [],
+                "method": "POST",
+                "url": {
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "cases", "00000000-0000-0000-0000-000000000000", "kill"],
+                  "raw": "{{baseUrl}}/api/cases/00000000-0000-0000-0000-000000000000/kill"
+                }
+              },
+              "status": "Not Found"
+            }
+          ]
+        }
+      ],
+      "name": "CaseController"
+    },
+    {
+      "description": "Server-Sent Events (SSE) stream for real-time case updates.\n\nBase path: `{{baseUrl}}/api/cases/:caseId/events`\n\n## SSE Event Types\n\n| Event name (SSE `event:` field) | Description |\n|---|---|\n| `status` | Case status changed (`PENDING`, `RUNNING`, `STOPPING`, `ERROR`, `STOPPED`) |\n| `agent_selected` | An agent was chosen to handle the case |\n| `agent_running` | Agent has started processing |\n| `agent_finished` | Agent finished its turn |\n| `message` | A message was added (user or agent) |\n| `tool_request` | Agent requested a tool call |\n| `tool_response` | Tool call completed |\n| `tool_selected` | Agent selected a tool to use |\n| `thinking` | Agent is thinking/processing |\n| `text_chunk` | Streaming text fragment from the agent |\n| `question` | Agent is asking the user a question |\n| `answer` | User answered a question |\n| `intention_generated` | Agent generated an intention for the next step |\n| `warning` | A non-fatal warning occurred |\n\n## SSE Frame Format\n```\nid: <event-uuid>\nevent: <event-type>\ndata: <json-payload>\n```",
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Content-Type is text/event-stream', function () {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Stream Case Events (SSE)",
+          "request": {
+            "description": "Opens a Server-Sent Events (SSE) stream for a case. The connection stays open and emits events as the agent processes the request.\n\n**GET** `/api/cases/:caseId/events`\n\n### How to use in Postman\n- Send the request and watch the **Response** panel for incoming events.\n- The connection will remain open until you cancel it or the case finishes.\n- Each SSE frame has an `event:` field matching the event type names listed in the folder description.\n\n### Typical event sequence\n```\nevent: status        → PENDING\nevent: status        → RUNNING\nevent: agent_selected\nevent: agent_running\nevent: thinking\nevent: tool_selected\nevent: tool_request\nevent: tool_response\nevent: text_chunk    (repeated for streaming)\nevent: message       (final agent message)\nevent: agent_finished\nevent: status        → STOPPED\n```\n\n### Error case\nIf the `caseId` does not exist, the SSE connection is immediately completed with an error (no HTTP body).\n\n### Example SSE frames\n```\nid: 550e8400-e29b-41d4-a716-446655440001\nevent: status\ndata: {\"id\":\"550e8400-e29b-41d4-a716-446655440001\",\"caseId\":\"550e8400-e29b-41d4-a716-446655440000\",\"projectId\":\"00000000-0000-0000-0000-000000000001\",\"timestamp\":\"2024-01-01T12:00:00Z\",\"status\":\"RUNNING\"}\n\nid: 550e8400-e29b-41d4-a716-446655440002\nevent: agent_selected\ndata: {\"id\":\"550e8400-e29b-41d4-a716-446655440002\",\"caseId\":\"550e8400-e29b-41d4-a716-446655440000\",\"projectId\":\"00000000-0000-0000-0000-000000000001\",\"timestamp\":\"2024-01-01T12:00:01Z\",\"agentId\":\"aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb\",\"agentName\":\"CodeReviewAgent\"}\n\nid: 550e8400-e29b-41d4-a716-446655440003\nevent: text_chunk\ndata: {\"id\":\"550e8400-e29b-41d4-a716-446655440003\",\"caseId\":\"550e8400-e29b-41d4-a716-446655440000\",\"projectId\":\"00000000-0000-0000-0000-000000000001\",\"timestamp\":\"2024-01-01T12:00:05Z\",\"chunk\":\"Here is my analysis...\"}\n\nid: 550e8400-e29b-41d4-a716-446655440004\nevent: question\ndata: {\"id\":\"550e8400-e29b-41d4-a716-446655440004\",\"caseId\":\"550e8400-e29b-41d4-a716-446655440000\",\"projectId\":\"00000000-0000-0000-0000-000000000001\",\"timestamp\":\"2024-01-01T12:00:10Z\",\"agentId\":\"aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb\",\"agentName\":\"CodeReviewAgent\",\"question\":\"Which branch should I target?\",\"options\":[\"main\",\"develop\",\"release\"]}\n```",
+            "header": [
+              {
+                "description": "Required for SSE",
+                "key": "Accept",
+                "value": "text/event-stream"
+              },
+              {
+                "description": "Prevent caching of the SSE stream",
+                "key": "Cache-Control",
+                "value": "no-cache"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cases", "{{caseId}}", "events"],
+              "raw": "{{baseUrl}}/api/cases/{{caseId}}/events"
+            }
+          },
+          "response": [
+            {
+              "body": "id: 550e8400-e29b-41d4-a716-446655440001\nevent: status\ndata: {\"id\":\"550e8400-e29b-41d4-a716-446655440001\",\"caseId\":\"550e8400-e29b-41d4-a716-446655440000\",\"projectId\":\"00000000-0000-0000-0000-000000000001\",\"timestamp\":\"2024-01-01T12:00:00Z\",\"status\":\"RUNNING\"}\n\nid: 550e8400-e29b-41d4-a716-446655440002\nevent: agent_selected\ndata: {\"id\":\"550e8400-e29b-41d4-a716-446655440002\",\"caseId\":\"550e8400-e29b-41d4-a716-446655440000\",\"projectId\":\"00000000-0000-0000-0000-000000000001\",\"timestamp\":\"2024-01-01T12:00:01Z\",\"agentId\":\"aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb\",\"agentName\":\"CodeReviewAgent\"}\n\nid: 550e8400-e29b-41d4-a716-446655440003\nevent: thinking\ndata: {\"id\":\"550e8400-e29b-41d4-a716-446655440003\",\"caseId\":\"550e8400-e29b-41d4-a716-446655440000\",\"projectId\":\"00000000-0000-0000-0000-000000000001\",\"timestamp\":\"2024-01-01T12:00:02Z\"}\n\nid: 550e8400-e29b-41d4-a716-446655440004\nevent: text_chunk\ndata: {\"id\":\"550e8400-e29b-41d4-a716-446655440004\",\"caseId\":\"550e8400-e29b-41d4-a716-446655440000\",\"projectId\":\"00000000-0000-0000-0000-000000000001\",\"timestamp\":\"2024-01-01T12:00:05Z\",\"chunk\":\"Here is my analysis...\"}\n\nid: 550e8400-e29b-41d4-a716-446655440005\nevent: message\ndata: {\"id\":\"550e8400-e29b-41d4-a716-446655440005\",\"caseId\":\"550e8400-e29b-41d4-a716-446655440000\",\"projectId\":\"00000000-0000-0000-0000-000000000001\",\"timestamp\":\"2024-01-01T12:00:06Z\",\"actor\":{\"id\":\"aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb\",\"displayName\":\"CodeReviewAgent\",\"role\":\"AGENT\"},\"content\":[{\"type\":\"text\",\"text\":\"Here is my full analysis of the code.\"}]}\n\nid: 550e8400-e29b-41d4-a716-446655440006\nevent: agent_finished\ndata: {\"id\":\"550e8400-e29b-41d4-a716-446655440006\",\"caseId\":\"550e8400-e29b-41d4-a716-446655440000\",\"projectId\":\"00000000-0000-0000-0000-000000000001\",\"timestamp\":\"2024-01-01T12:00:07Z\",\"agentId\":\"aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb\",\"agentName\":\"CodeReviewAgent\"}\n\nid: 550e8400-e29b-41d4-a716-446655440007\nevent: status\ndata: {\"id\":\"550e8400-e29b-41d4-a716-446655440007\",\"caseId\":\"550e8400-e29b-41d4-a716-446655440000\",\"projectId\":\"00000000-0000-0000-0000-000000000001\",\"timestamp\":\"2024-01-01T12:00:08Z\",\"status\":\"STOPPED\"}\n",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "text/event-stream"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-cache"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                }
+              ],
+              "name": "200 OK – SSE stream opened (example events)",
+              "originalRequest": {
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "text/event-stream"
+                  },
+                  {
+                    "key": "Cache-Control",
+                    "value": "no-cache"
+                  }
+                ],
+                "method": "GET",
+                "url": {
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "cases", "550e8400-e29b-41d4-a716-446655440000", "events"],
+                  "raw": "{{baseUrl}}/api/cases/550e8400-e29b-41d4-a716-446655440000/events"
+                }
+              },
+              "status": "OK"
+            }
+          ]
+        }
+      ],
+      "name": "CaseEventController"
+    }
+  ],
+  "variable": [
+    {
+      "description": "Base URL of the AgentOS service (default port 8123)",
+      "key": "baseUrl",
+      "type": "string",
+      "value": "http://localhost:8123"
+    },
+    {
+      "description": "UUID of the project to associate cases with",
+      "key": "projectId",
+      "type": "string",
+      "value": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "description": "UUID of the case — auto-populated by the Create Case request",
+      "key": "caseId",
+      "type": "string",
+      "value": ""
+    }
+  ]
+}

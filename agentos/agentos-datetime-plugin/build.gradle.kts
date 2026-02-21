@@ -15,6 +15,8 @@ java {
 }
 
 dependencies {
+    implementation(libs.klogger)
+
     // AgentOS SDK - Contains plugin interfaces
     compileOnly("whoz-oss.agentos:agentos-sdk:${libs.versions.agentosSdk.get()}")
 
