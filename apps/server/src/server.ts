@@ -22,6 +22,7 @@ import { registerConfigRoutes } from './lib/config.routes'
 import { SlackCanal } from '@coday/integrations-slack'
 import { CommunicationCanal } from '@coday/model'
 import { CanalBridgeImpl } from './lib/canal-bridge'
+import { HttpCanal } from './lib/http-canal'
 import { registerProjectRoutes } from './lib/project.routes'
 import { registerThreadRoutes } from './lib/thread.routes'
 import { registerMessageRoutes } from './lib/message.routes'
@@ -268,13 +269,16 @@ registerPromptExecutionRoutes(app, promptExecutionService, getUsername)
 // Initialize communication canal bridge (connects canal adapters to the core)
 const canalBridge = new CanalBridgeImpl(threadCodayManager, threadService, codayOptions)
 
-// Instantiate communication canal adapters
+// Instantiate communication canal adapters.
 // HTTP routes are registered here (before the catch-all route);
 // connection startup happens in initialize() after the server is listening.
 const slackCanal = new SlackCanal(app, projectService, threadService, codayOptions, debugLog)
 slackCanal.registerRoutes()
 
-const canals: CommunicationCanal[] = [slackCanal]
+const httpCanal = new HttpCanal(app, projectService)
+httpCanal.registerRoutes()
+
+const canals: CommunicationCanal[] = [slackCanal, httpCanal]
 
 // Register project management routes
 registerProjectRoutes(app, projectService)
