@@ -8,6 +8,7 @@ type SlackLogger = (scope: string, message: string, ...args: unknown[]) => void
 
 type ThreadCodayInstance = {
   prepareCoday: () => boolean
+  setSlackOriginalMessage: (channel: string, ts: string, isDM?: boolean) => void
   coday?: {
     run: () => Promise<void>
     interactor: {
@@ -103,18 +104,18 @@ export function shouldHandleMessage(
   return { allowed: true }
 }
 
-export function buildThreadKey(channel: string, threadTs?: string, messageTs?: string): string {
-  // For DMs (channel_type === 'im'):
-  // - Top-level messages: use just channel (continuous conversation)
-  // - Threaded replies: use channel:thread_ts (separate thread)
-  // This allows continuous DM conversations while supporting threads when needed
+export function buildThreadKey(channel: string, threadTs?: string, messageTs?: string, channelType?: string): string {
+  // For DMs (channelType === 'im'), always return just the channel ID.
+  // DMs are inherently continuous conversations — thread_ts must not create a new key.
+  if (channelType === 'im') {
+    return channel
+  }
 
-  // If this is a threaded reply (thread_ts exists and is different from message ts)
+  // For non-DM channels: threaded replies get their own key
   if (threadTs && threadTs !== messageTs) {
     return `${channel}:${threadTs}`
   }
 
-  // Otherwise, use just the channel for continuous conversation
   return channel
 }
 
@@ -251,7 +252,7 @@ export class SlackSocketModeManager {
     this.logger('SLACK_SOCKET', 'Message passed filters, proceeding to handle')
 
     const channel = event.channel!
-    const threadKey = buildThreadKey(channel, event.thread_ts, event.ts)
+    const threadKey = buildThreadKey(channel, event.thread_ts, event.ts, event.channel_type)
 
     this.logger('SLACK_SOCKET', `Channel: ${channel}, ThreadKey: ${threadKey}`)
     this.logger('SLACK_SOCKET', `Current threadMap keys: [${Object.keys(config.threadMap || {}).join(', ')}]`)
@@ -398,6 +399,7 @@ export class SlackSocketModeManager {
 
       instance = this.threadCodayManager.createWithoutConnection(threadId, projectName, config.username!, slackOptions)
       instance.prepareCoday()
+      instance.setSlackOriginalMessage(channel, event.ts!, event.channel_type === 'im')
 
       // Start the Coday run in the background
       instance.coday!.run().catch((error) => {
@@ -405,6 +407,8 @@ export class SlackSocketModeManager {
       })
     } else {
       // Instance already exists - need to send message to it
+      instance.setSlackOriginalMessage(channel, event.ts!, event.channel_type === 'im')
+
       if (!instance.coday) {
         this.logger('SLACK_SOCKET', `Failed to get Coday instance for thread ${threadId}`)
         return

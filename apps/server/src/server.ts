@@ -19,7 +19,9 @@ import {
 import { findAvailablePort } from './lib/find-available-port'
 import { ServerInteractor } from '@coday/model'
 import { registerConfigRoutes } from './lib/config.routes'
-import { registerSlackRoutes, SlackSocketModeManager } from '@coday/integrations-slack'
+import { SlackCanal } from '@coday/integrations-slack'
+import { CommunicationCanal } from '@coday/model'
+import { CanalBridgeImpl } from './lib/canal-bridge'
 import { registerProjectRoutes } from './lib/project.routes'
 import { registerThreadRoutes } from './lib/thread.routes'
 import { registerMessageRoutes } from './lib/message.routes'
@@ -263,17 +265,16 @@ registerPromptRoutes(app, promptService, getUsername)
 // Register prompt execution routes (webhook execution)
 registerPromptExecutionRoutes(app, promptExecutionService, getUsername)
 
-// Register Slack integration routes (HTTP webhooks)
-registerSlackRoutes(app, projectService, threadService, threadCodayManager, codayOptions, debugLog)
+// Initialize communication canal bridge (connects canal adapters to the core)
+const canalBridge = new CanalBridgeImpl(threadCodayManager, threadService, codayOptions)
 
-// Initialize Slack Socket Mode manager
-const slackSocketManager = new SlackSocketModeManager(
-  projectService,
-  threadService,
-  threadCodayManager,
-  codayOptions,
-  debugLog
-)
+// Instantiate communication canal adapters
+// HTTP routes are registered here (before the catch-all route);
+// connection startup happens in initialize() after the server is listening.
+const slackCanal = new SlackCanal(app, projectService, threadService, codayOptions, debugLog)
+slackCanal.registerRoutes()
+
+const canals: CommunicationCanal[] = [slackCanal]
 
 // Register project management routes
 registerProjectRoutes(app, projectService)
@@ -369,11 +370,13 @@ PORT_PROMISE.then(async (PORT) => {
   app.listen(PORT, async () => {
     console.log(`Server is running on http://localhost:${PORT}`)
 
-    // Initialize Slack Socket Mode connections
-    try {
-      await slackSocketManager.initialize()
-    } catch (error) {
-      console.error('Failed to initialize Slack Socket Mode:', error)
+    // Initialize communication canals (HTTP routes already registered; now start connections)
+    for (const canal of canals) {
+      try {
+        await canal.initialize(canalBridge)
+      } catch (error) {
+        console.error(`Failed to initialize canal '${canal.name}':`, error)
+      }
     }
   })
 
@@ -432,9 +435,11 @@ async function gracefulShutdown(signal: string) {
       await cleanupService.stop()
     }
 
-    // Disconnect Slack Socket Mode
-    console.log('Disconnecting Slack Socket Mode...')
-    await slackSocketManager.shutdown()
+    // Shutdown communication canals
+    console.log('Shutting down communication canals...')
+    for (const canal of canals) {
+      await canal.shutdown()
+    }
 
     // Cleanup thread-based Coday instances
     console.log('Cleaning up thread Coday instances...')

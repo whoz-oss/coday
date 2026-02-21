@@ -13,6 +13,7 @@ type SlackLogger = (scope: string, message: string, ...args: unknown[]) => void
 
 type ThreadCodayInstance = {
   prepareCoday: () => boolean
+  setSlackOriginalMessage: (channel: string, ts: string, isDM?: boolean) => void
   coday?: {
     run: () => Promise<void>
     interactor: {
@@ -210,7 +211,7 @@ export function registerSlackRoutes(
     logger('SLACK', 'Message passed filters, proceeding to handle')
 
     const channel = event!.channel!
-    const threadKey = buildThreadKey(channel, event!.thread_ts, event!.ts)
+    const threadKey = buildThreadKey(channel, event!.thread_ts, event!.ts, event!.channel_type)
 
     logger('SLACK', `Channel: ${channel}, ThreadKey: ${threadKey}`)
     logger('SLACK', `Current threadMap keys: [${Object.keys(config.threadMap || {}).join(', ')}]`)
@@ -283,6 +284,7 @@ export function registerSlackRoutes(
 
       instance = threadCodayManager.createWithoutConnection(threadId, projectName, config.username, slackOptions)
       instance.prepareCoday()
+      instance.setSlackOriginalMessage(channel, event!.ts!, event!.channel_type === 'im')
 
       // Start the Coday run in the background
       instance.coday!.run().catch((error) => {
@@ -290,6 +292,8 @@ export function registerSlackRoutes(
       })
     } else {
       // Instance already exists - need to send message to it
+      instance.setSlackOriginalMessage(channel, event!.ts!, event!.channel_type === 'im')
+
       if (!instance.coday) {
         logger('SLACK', `Failed to get Coday instance for thread ${threadId}`)
         return
