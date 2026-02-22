@@ -131,10 +131,20 @@ integration:
     token: ghp_...            # Project-level token
     owner: my-org
     repo: my-repo
-  
+
   gitlab:
     token: glpat-...
     projectId: "12345"
+
+  SLACK:
+    apiKey: xoxb-...          # Slack bot token
+    signingSecret: ...        # Slack signing secret
+    username: your-coday-user # Coday username to run as
+    project: my-project       # Optional override (defaults to server default project)
+    botUserId: U123ABC        # Optional: enables mention-only mode
+    requireMention: false     # true = only respond when mentioned (except DMs)
+    respondInThread: true     # reply inside Slack threads
+    channelAllowlist: [C123]  # Optional allowlist of channel IDs
 ```
 
 ### Custom Agents

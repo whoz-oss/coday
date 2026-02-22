@@ -19,6 +19,10 @@ import {
 import { findAvailablePort } from './lib/find-available-port'
 import { ServerInteractor } from '@coday/model'
 import { registerConfigRoutes } from './lib/config.routes'
+import { SlackCanal } from '@coday/integrations-slack'
+import { CommunicationCanal } from '@coday/model'
+import { CanalBridgeImpl } from './lib/canal-bridge'
+import { HttpCanal } from './lib/http-canal'
 import { registerProjectRoutes } from './lib/project.routes'
 import { registerThreadRoutes } from './lib/thread.routes'
 import { registerMessageRoutes } from './lib/message.routes'
@@ -63,7 +67,14 @@ debugLog('INIT', 'Webhook service initialized (will be initialized with prompt e
 let promptService: PromptService
 let promptExecutionService: PromptExecutionService
 // Middleware to parse JSON bodies with increased limit for image uploads
-app.use(express.json({ limit: '20mb' }))
+app.use(
+  express.json({
+    limit: '20mb',
+    verify: (req, _res, buf) => {
+      ;(req as any).rawBody = buf
+    },
+  })
+)
 
 // Development mode: proxy to Angular dev server
 if (process.env.BUILD_ENV === 'development') {
@@ -255,6 +266,20 @@ registerPromptRoutes(app, promptService, getUsername)
 // Register prompt execution routes (webhook execution)
 registerPromptExecutionRoutes(app, promptExecutionService, getUsername)
 
+// Initialize communication canal bridge (connects canal adapters to the core)
+const canalBridge = new CanalBridgeImpl(threadCodayManager, threadService, codayOptions)
+
+// Instantiate communication canal adapters.
+// HTTP routes are registered here (before the catch-all route);
+// connection startup happens in initialize() after the server is listening.
+const slackCanal = new SlackCanal(app, projectService, threadService, codayOptions, debugLog)
+slackCanal.registerRoutes()
+
+const httpCanal = new HttpCanal(app, projectService)
+httpCanal.registerRoutes()
+
+const canals: CommunicationCanal[] = [slackCanal, httpCanal]
+
 // Register project management routes
 registerProjectRoutes(app, projectService)
 
@@ -346,8 +371,17 @@ PORT_PROMISE.then(async (PORT) => {
     debugLog('INIT', `Using configured base URL: ${codayOptions.baseUrl}`)
   }
 
-  app.listen(PORT, () => {
+  app.listen(PORT, async () => {
     console.log(`Server is running on http://localhost:${PORT}`)
+
+    // Initialize communication canals (HTTP routes already registered; now start connections)
+    for (const canal of canals) {
+      try {
+        await canal.initialize(canalBridge)
+      } catch (error) {
+        console.error(`Failed to initialize canal '${canal.name}':`, error)
+      }
+    }
   })
 
   // Start thread cleanup service after server is running
@@ -403,6 +437,12 @@ async function gracefulShutdown(signal: string) {
     if (cleanupService) {
       console.log('Stopping thread cleanup service...')
       await cleanupService.stop()
+    }
+
+    // Shutdown communication canals
+    console.log('Shutting down communication canals...')
+    for (const canal of canals) {
+      await canal.shutdown()
     }
 
     // Cleanup thread-based Coday instances

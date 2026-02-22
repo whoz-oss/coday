@@ -286,7 +286,6 @@ class ThreadCodayInstance {
     // If this is a ThreadUpdateEvent with a name, update the thread service cache
     if (event instanceof ThreadUpdateEvent && event.name) {
       debugLog('THREAD_CODAY', `Updating thread cache for ${this.threadId} with name: ${event.name}`)
-      // Update the thread service cache asynchronously (don't block event broadcasting)
       this.threadService.updateThread(this.projectName, this.threadId, { name: event.name }).catch((error) => {
         debugLog('THREAD_CODAY', `Error updating thread cache:`, error)
       })
@@ -300,7 +299,6 @@ class ThreadCodayInstance {
         if (!connection.writableEnded) {
           connection.write(data)
         } else {
-          // Connection is closed, remove it
           this.connections.delete(connection)
         }
       } catch (error) {

@@ -6,6 +6,8 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
+    "@slack/socket-mode": "2.0.5",
+    "@slack/web-api": "7.13.0",
     "tslib": "catalog:"
   },
   "devDependencies": {
