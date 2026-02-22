@@ -121,7 +121,7 @@ function verifySlackSignature(rawBody: string, signingSecret: string, signature:
 interface SlackThreadState {
   projectName: string
   thinkingMessage?: { channel: string; ts: string; threadTs?: string }
-  originalMessage?: { channel: string; ts: string; isDM: boolean }
+  originalMessage?: { channel: string; ts: string; threadTs?: string; isDM: boolean }
   unsubscribe?: () => void
   handle: CanalThreadHandle
 }
@@ -407,7 +407,7 @@ export class SlackCanal implements CommunicationCanal {
       this.logger('SLACK_CANAL', `Created thread ${threadId} for key "${threadKey}"`)
 
       // Record original message and return — run() already has the prompt via initialPrompt
-      state.originalMessage = { channel, ts: event.ts!, isDM }
+      state.originalMessage = { channel, ts: event.ts!, threadTs: event.thread_ts, isDM }
       return
     } else if (!state) {
       // Thread exists in config but no state (e.g., after server restart) — re-attach without creating a new thread
@@ -417,7 +417,7 @@ export class SlackCanal implements CommunicationCanal {
     }
 
     // Record the original Slack message for threading replies
-    state.originalMessage = { channel, ts: event.ts!, isDM }
+    state.originalMessage = { channel, ts: event.ts!, threadTs: event.thread_ts, isDM }
 
     // Inject the message into the existing running Coday thread
     this.bridge!.sendMessage(threadId, prompt)
@@ -504,14 +504,20 @@ export class SlackCanal implements CommunicationCanal {
         }
       } else {
         try {
+          // For DMs, use thread_ts to keep the thinking indicator in the active chat flow
+          const dmThreadTs =
+            isSlackOriginated && state.originalMessage?.isDM
+              ? state.originalMessage.threadTs || state.originalMessage.ts
+              : undefined
+          const effectiveThreadTs = dmThreadTs || threadTs
           const response = await postSlackMessageWithBlocks(
             config.apiKey,
             channel,
             ':hourglass_flowing_sand: _Thinking_',
             thinkingBlocks,
-            threadTs
+            effectiveThreadTs
           )
-          if (response.ts) state.thinkingMessage = { channel, ts: response.ts, threadTs }
+          if (response.ts) state.thinkingMessage = { channel, ts: response.ts, threadTs: effectiveThreadTs }
         } catch (err) {
           this.logger('SLACK_CANAL', `Error posting thinking message:`, err)
         }
@@ -543,8 +549,22 @@ export class SlackCanal implements CommunicationCanal {
     if (isSlackOriginated) {
       const slackChannel = Object.keys(threadMap).find((key) => threadMap[key] === threadId)
       if (slackChannel) {
-        const replyThreadTs = state.originalMessage?.isDM ? undefined : state.originalMessage?.ts
-        await postSlackMessage(config.apiKey, slackChannel, slackText, replyThreadTs)
+        if (state.originalMessage?.isDM) {
+          // For DMs: reply in the same thread if the user's message was part of a thread,
+          // otherwise post as a new top-level message in the DM.
+          // Using thread_ts keeps the reply visible in the active chat flow.
+          const replyThreadTs = state.originalMessage.threadTs || state.originalMessage.ts
+          try {
+            await postSlackMessage(config.apiKey, slackChannel, slackText, replyThreadTs)
+          } catch (err) {
+            this.logger('SLACK_CANAL', `Error posting DM reply:`, err)
+            await postSlackMessage(config.apiKey, slackChannel, slackText)
+          }
+        } else {
+          // For regular channels/threads, reply in-thread using the original message ts
+          const replyThreadTs = state.originalMessage?.ts
+          await postSlackMessage(config.apiKey, slackChannel, slackText, replyThreadTs)
+        }
       }
       return
     }
