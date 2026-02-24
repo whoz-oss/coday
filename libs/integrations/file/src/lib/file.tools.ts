@@ -233,7 +233,7 @@ export class FileTools extends AssistantToolFactory {
           fileTypes,
           interactor: this.interactor,
         })
-        const result = await buildSearchResult({ files, root: context.threadFilesRoot, prefix: FILE_PREFIXES.EXCHANGE })
+        const result = buildSearchResult({ files, root: context.threadFilesRoot, prefix: FILE_PREFIXES.EXCHANGE })
         results.push(result)
       }
 
@@ -248,7 +248,7 @@ export class FileTools extends AssistantToolFactory {
           fileTypes,
           interactor: this.interactor,
         })
-        const result = await buildSearchResult({ files, root: context.project.root, prefix: FILE_PREFIXES.PROJECT })
+        const result = buildSearchResult({ files, root: context.project.root, prefix: FILE_PREFIXES.PROJECT })
         results.push(result)
       }
 
