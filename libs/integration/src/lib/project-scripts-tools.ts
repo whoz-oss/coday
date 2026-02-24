@@ -1,4 +1,4 @@
-import { AssistantToolFactory, Interactor } from '@coday/model'
+import { AssistantToolFactory, Interactor, IntegrationConfig } from '@coday/model'
 import { CommandContext } from '@coday/model'
 import { CodayTool } from '@coday/model'
 import { Scripts } from '@coday/model'
@@ -10,7 +10,7 @@ const PARAMETERS: string = 'PARAMETERS'
 export class ProjectScriptsTools extends AssistantToolFactory {
   static readonly TYPE = 'PROJECT_SCRIPTS' as const
 
-  constructor(interactor: Interactor, instanceName: string, config: any) {
+  constructor(interactor: Interactor, instanceName: string, config: IntegrationConfig) {
     super(interactor, instanceName, config)
   }
 

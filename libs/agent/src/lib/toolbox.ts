@@ -115,44 +115,11 @@ export class Toolbox implements Killable {
 
     // Process requested integrations (on-demand instantiation)
     if (integrations) {
-      const mergedIntegrations = this.services.integration.integrations
-
       for (const [instanceName] of integrations) {
-        // Check if it's already instantiated
-        if (this.factoryInstances.has(instanceName)) {
-          const factory = this.factoryInstances.get(instanceName)!
+        const factory = this.factoryInstances.get(instanceName) ?? this.createFactory(instanceName)
+        if (factory) {
           allFactories.push(factory)
-          continue
         }
-
-        // Look up config from project integrations (may be absent for built-in types)
-        const config = mergedIntegrations[instanceName] ?? {}
-
-        // Determine type: from config if present, otherwise instanceName IS the type (built-in)
-        const type = mergedIntegrations[instanceName]?.type || instanceName
-
-        // Find factory constructor for this type
-        const constructor = this.factoryConstructors.get(type)
-
-        if (!constructor) {
-          this.interactor.debug(`No factory constructor for integration type '${type}'`)
-          continue
-        }
-
-        // Get or create factory instance (keyed by instanceName, not type)
-        let factory = this.factoryInstances.get(instanceName)
-        if (!factory) {
-          try {
-            factory = constructor(instanceName, config)
-            this.factoryInstances.set(instanceName, factory)
-            this.interactor.debug(`Created integration factory '${instanceName}' of type '${type}'`)
-          } catch (error) {
-            this.interactor.debug(`Error creating factory for '${instanceName}': ${error}`)
-            continue
-          }
-        }
-
-        allFactories.push(factory)
       }
     }
 
@@ -205,11 +172,36 @@ export class Toolbox implements Killable {
   }
 
   /**
-   * Route OAuth callback events to the appropriate integration
+   * Get or create a factory instance by instance name.
+   * Returns undefined if no constructor is registered for the resolved type.
+   */
+  private createFactory(instanceName: string): AssistantToolFactory | undefined {
+    const mergedIntegrations = this.services.integration.integrations
+    const config = mergedIntegrations[instanceName] ?? {}
+    const type = mergedIntegrations[instanceName]?.type || instanceName
+    const constructor = this.factoryConstructors.get(type)
+    if (!constructor) {
+      this.interactor.debug(`No factory constructor for integration type '${type}'`)
+      return undefined
+    }
+    try {
+      const factory = constructor(instanceName, config)
+      this.factoryInstances.set(instanceName, factory)
+      this.interactor.debug(`Created integration factory '${instanceName}' of type '${type}'`)
+      return factory
+    } catch (error) {
+      this.interactor.debug(`Error creating factory for '${instanceName}': ${error}`)
+      return undefined
+    }
+  }
+
+  /**
+   * Route OAuth callback events to the appropriate integration.
+   * If the factory is not yet instantiated, it will be created on-demand.
    */
   async handleOAuthCallback(event: OAuthCallbackEvent): Promise<void> {
-    // Find the factory for this integration
-    const factory = this.factoryInstances.get(event.integrationName)
+    // Get or create factory for this integration
+    const factory = this.factoryInstances.get(event.integrationName) ?? this.createFactory(event.integrationName)
 
     if (!factory) {
       this.interactor.warn(`No integration found for OAuth callback: ${event.integrationName}`)

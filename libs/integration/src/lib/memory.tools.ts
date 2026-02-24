@@ -1,5 +1,5 @@
 import { MemoryService } from '@coday/service'
-import { AssistantToolFactory, Interactor } from '@coday/model'
+import { AssistantToolFactory, Interactor, IntegrationConfig } from '@coday/model'
 import { CommandContext } from '@coday/model'
 import { CodayTool } from '@coday/model'
 import { MemoryLevel } from '@coday/model'
@@ -12,7 +12,7 @@ export class MemoryTools extends AssistantToolFactory {
     interactor: Interactor,
     private readonly memoryService: MemoryService,
     instanceName: string,
-    config: any
+    config: IntegrationConfig
   ) {
     super(interactor, instanceName, config)
   }

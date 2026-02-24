@@ -1,4 +1,4 @@
-import { AssistantToolFactory, Interactor, CodayTool, CommandContext } from '@coday/model'
+import { AssistantToolFactory, Interactor, CodayTool, CommandContext, IntegrationConfig } from '@coday/model'
 
 export class CoreTools extends AssistantToolFactory {
   static readonly TYPE = 'CORE' as const
@@ -6,7 +6,7 @@ export class CoreTools extends AssistantToolFactory {
   constructor(
     interactor: Interactor,
     instanceName: string,
-    config: any,
+    config: IntegrationConfig,
     private readonly baseUrl?: string
   ) {
     super(interactor, instanceName, config)

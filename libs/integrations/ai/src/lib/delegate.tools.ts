@@ -5,6 +5,7 @@ import {
   CodayTool,
   CommandContext,
   FunctionTool,
+  IntegrationConfig,
   Interactor,
 } from '@coday/model'
 import { delegateFunction } from './delegate.function'
@@ -17,7 +18,7 @@ export class DelegateTools extends AssistantToolFactory {
     private agentFind: (nameStart: string | undefined, context: CommandContext) => Promise<Agent | undefined>,
     private agentSummaries: () => AgentSummary[],
     instanceName: string,
-    config: any
+    config: IntegrationConfig
   ) {
     super(interactor, instanceName, config)
   }
@@ -78,7 +79,7 @@ export class DelegateTools extends AssistantToolFactory {
     const delegateTool: FunctionTool<{ task: string; agentName: string | undefined }> = {
       type: 'function',
       function: {
-        name: `${this.name}`, // name should be 'DELEGATE'
+        name: `${this.name}__delegate`,
         description: cleanContextMode
           ? `Delegate the completion of a task to another available agent among:
 ${agentListText || '(No allowed agents for delegation)'}

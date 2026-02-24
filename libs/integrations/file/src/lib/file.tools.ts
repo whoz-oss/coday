@@ -13,6 +13,7 @@ import { Interactor } from '@coday/model'
 import { CommandContext } from '@coday/model'
 import { CodayTool } from '@coday/model'
 import { FunctionTool } from '@coday/model'
+import { IntegrationConfig } from '@coday/model'
 
 /**
  * FileTools: A comprehensive file manipulation tool factory for Coday
@@ -55,7 +56,7 @@ import { FunctionTool } from '@coday/model'
 export class FileTools extends AssistantToolFactory {
   static readonly TYPE = 'FILES' as const
 
-  constructor(interactor: Interactor, instanceName: string, config: any) {
+  constructor(interactor: Interactor, instanceName: string, config: IntegrationConfig) {
     super(interactor, instanceName, config)
   }
 

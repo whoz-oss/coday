@@ -3,6 +3,7 @@ import { Interactor } from '@coday/model'
 import { AssistantToolFactory } from '@coday/model'
 import { CodayTool } from '@coday/model'
 import { FunctionTool } from '@coday/model'
+import { IntegrationConfig } from '@coday/model'
 import { redirectFunction } from './redirect.function'
 
 export class AiTools extends AssistantToolFactory {
@@ -12,7 +13,7 @@ export class AiTools extends AssistantToolFactory {
     interactor: Interactor,
     private agentSummaries: () => AgentSummary[],
     instanceName: string,
-    config: any
+    config: IntegrationConfig
   ) {
     super(interactor, instanceName, config)
   }
