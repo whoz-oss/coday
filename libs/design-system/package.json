@@ -5,17 +5,9 @@
   "repository": "https://github.com/whoz-oss/coday",
   "license": "MIT",
   "type": "module",
-  "dependencies": {
-    "@angular/common": "catalog:",
-    "@angular/core": "catalog:",
-    "@angular/forms": "catalog:",
-    "@angular/material": "catalog:",
-    "@angular/router": "catalog:",
-    "rxjs": "catalog:",
-    "tslib": "catalog:"
-  },
   "devDependencies": {
     "@angular/build": "catalog:dev",
+    "ng-packagr": "catalog:dev",
     "typescript": "catalog:dev"
   },
   "peerDependencies": {
@@ -23,7 +15,9 @@
     "@angular/core": ">=18.0.0",
     "@angular/forms": ">=18.0.0",
     "@angular/material": ">=18.0.0",
-    "@angular/router": ">=18.0.0"
+    "@angular/router": ">=18.0.0",
+    "rxjs": ">=7.0.0",
+    "tslib": ">=2.0.0"
   },
   "publishConfig": {
     "access": "public"

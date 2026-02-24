@@ -75,6 +75,7 @@
     "json-sort-cli": "catalog:dev",
     "jsonc-eslint-parser": "catalog:dev",
     "lint-staged": "catalog:dev",
+    "ng-packagr": "catalog:dev",
     "nodemon": "catalog:dev",
     "nx": "catalog:dev",
     "opn-cli": "catalog:dev",
