@@ -36,6 +36,11 @@ export abstract class AssistantToolFactory implements Killable {
 
   async getTools(context: CommandContext, toolNames: string[], agentName: string): Promise<CodayTool[]> {
     this.tools = await this.buildTools(context, agentName)
-    return this.tools.filter((tool) => !toolNames || !toolNames.length || toolNames.includes(tool.function.name))
+    return this.tools.filter((tool) => {
+      if (!toolNames || !toolNames.length) return true
+      // tool names are 'INTEGRATION__toolName', allowedTools list uses short names ('toolName')
+      const shortName = tool.function.name.split('__')[1] ?? tool.function.name
+      return toolNames.includes(shortName)
+    })
   }
 }
