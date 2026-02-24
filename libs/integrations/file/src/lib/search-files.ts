@@ -1,10 +1,10 @@
-import { exec } from 'child_process'
+import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { Interactor } from '@coday/model'
 import { glob } from 'glob'
 import * as path from 'path'
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 
 const defaultTimeout = 10000
 const defaultMaxBuffer = 10 * 1024 * 1024 // 10MB
@@ -23,8 +23,6 @@ type SearchFilesResult = {
   files: string[] // relative paths from root
 }
 
-const escapeRegExp = (string: string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
 /**
  * Search files by name (glob), content (ripgrep), or both combined.
  * When both criteria are provided, uses ripgrep with a glob pattern to combine them in a single pass.
@@ -41,21 +39,27 @@ export const searchFiles = async ({
   const resolvedSearchPath = searchPath ?? '.'
 
   if (fileContent) {
-    // ripgrep handles content search, optionally filtered by fileName glob pattern
-    const escapedContent = escapeRegExp(fileContent)
+    // ripgrep handles content search, optionally filtered by fileName glob pattern.
+    // Use execFile (not exec) to bypass shell interpretation of glob characters.
+    const args = [fileContent, resolvedSearchPath, '--color', 'never', '-l', '--fixed-strings']
 
-    const fileTypeFlags = fileTypes && fileTypes.length > 0 ? fileTypes.map((t) => `-g "*.${t}"`).join(' ') : ''
+    if (fileTypes && fileTypes.length > 0) {
+      for (const t of fileTypes) {
+        args.push('--glob', `*.${t}`)
+      }
+    }
 
-    // If fileName is also provided, use it as a glob pattern to restrict which files ripgrep searches
-    const fileNameFlag = fileName ? `-g "**/*${fileName}*"` : ''
+    // fileName glob restricts which files ripgrep searches — applied to basename only
+    if (fileName) {
+      args.push('--glob', `*${fileName}*`)
+    }
 
-    const command = `rg "${escapedContent}" ${resolvedSearchPath} ${fileTypeFlags} ${fileNameFlag} --color never -l`
-    interactor.debug(`searchFiles ripgrep command: ${command}`)
+    interactor.debug(`searchFiles ripgrep args: rg ${args.join(' ')}`)
 
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error(`Search timed out after ${timeout}ms`)), timeout)
 
-      execAsync(command, { cwd: root, maxBuffer: defaultMaxBuffer })
+      execFileAsync('rg', args, { cwd: root, maxBuffer: defaultMaxBuffer })
         .then(({ stdout }) => {
           clearTimeout(timer)
           const files = stdout
@@ -64,14 +68,14 @@ export const searchFiles = async ({
             .filter((f) => f.length > 0)
           resolve({ files })
         })
-        .catch(({ code, stderr }) => {
+        .catch((err: any) => {
           clearTimeout(timer)
-          if (code === 1) {
+          if (err.code === 1) {
             // ripgrep exit code 1 = no matches
             resolve({ files: [] })
           } else {
-            interactor.error(`searchFiles ripgrep error: ${stderr}`)
-            reject(new Error(`Search error: ${stderr}`))
+            interactor.error(`searchFiles ripgrep error: ${err.stderr}`)
+            reject(new Error(`Search error: ${err.stderr}`))
           }
         })
     })
