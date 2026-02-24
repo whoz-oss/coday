@@ -113,9 +113,21 @@ export class Toolbox implements Killable {
     // Collect all requested factories
     const allFactories: AssistantToolFactory[] = []
 
-    // Process requested integrations (on-demand instantiation)
     if (integrations) {
+      // Specific integrations requested: instantiate on-demand
       for (const [instanceName] of integrations) {
+        const factory = this.factoryInstances.get(instanceName) ?? this.createFactory(instanceName)
+        if (factory) {
+          allFactories.push(factory)
+        }
+      }
+    } else {
+      // No integrations filter: instantiate all known factories (built-in + project integrations)
+      const allInstanceNames = new Set<string>([
+        ...this.factoryConstructors.keys(),
+        ...Object.keys(this.services.integration.integrations),
+      ])
+      for (const instanceName of allInstanceNames) {
         const factory = this.factoryInstances.get(instanceName) ?? this.createFactory(instanceName)
         if (factory) {
           allFactories.push(factory)
