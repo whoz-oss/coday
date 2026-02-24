@@ -18,5 +18,9 @@ export const appRoutes: Route[] = [
     component: MainAppComponent,
     canActivate: [projectStateGuard, threadStateGuard],
   },
+  {
+    path: 'agentos',
+    loadChildren: () => import('@whoz-oss/agentos-ui').then((m) => m.AGENTOS_ROUTES),
+  },
   { path: '**', redirectTo: '' },
 ]

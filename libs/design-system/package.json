@@ -1,0 +1,29 @@
+{
+  "name": "@whoz-oss/design-system",
+  "version": "0.0.1",
+  "description": "Whoz design system — Angular UI primitives (buttons, inputs, page templates...)",
+  "repository": "https://github.com/whoz-oss/coday",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@angular/common": "catalog:",
+    "@angular/core": "catalog:",
+    "@angular/forms": "catalog:",
+    "@angular/router": "catalog:",
+    "rxjs": "catalog:",
+    "tslib": "catalog:"
+  },
+  "devDependencies": {
+    "@angular/build": "catalog:dev",
+    "typescript": "catalog:dev"
+  },
+  "peerDependencies": {
+    "@angular/common": ">=18.0.0",
+    "@angular/core": ">=18.0.0",
+    "@angular/forms": ">=18.0.0",
+    "@angular/router": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
