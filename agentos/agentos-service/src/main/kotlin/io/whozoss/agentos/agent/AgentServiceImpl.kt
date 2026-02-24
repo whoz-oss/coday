@@ -47,10 +47,10 @@ class AgentServiceImpl(
         logger.info { "[AgentService] Creating agent instance for: ${model.name}" }
 
         val tools = toolRegistry.listTools()
-        logger.info { "[AgentService] Loaded ${tools.size} tool(s) for agent: ${model.name}" }
+        logger.debug { "[AgentService] Loaded ${tools.size} tool(s) for agent: ${model.name}" }
 
-        val chatClient = chatClientProvider.getChatClient(model.modelName)
-        logger.info { "[AgentService] ChatClient created for model: ${model.name} via provider: ${model.providerName}" }
+        val chatClient = chatClientProvider.getChatClient(model.name)
+        logger.debug { "[AgentService] ChatClient created for model: ${model.name} via provider: ${model.providerName}" }
 
         return AgentSimple(
             metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(model.name.toByteArray())),
