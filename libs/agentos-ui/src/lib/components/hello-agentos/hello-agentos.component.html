@@ -12,5 +12,20 @@
       <li>✦ Standalone Angular components</li>
       <li>✦ Signals-first reactive state</li>
     </ul>
+
+    <div class="demo">
+      <p class="demo-label">whoz-icon-button from <code>&#64;whoz-oss/design-system</code></p>
+      <div class="demo-buttons">
+        <whoz-icon-button icon="send" variant="primary" title="Send" (action)="onSend()" />
+        <whoz-icon-button icon="stop" variant="danger" title="Stop" (action)="onStop()" />
+        <whoz-icon-button icon="attach_file" variant="default" title="Attach" (action)="onAttach()" />
+        <whoz-icon-button icon="mic" variant="default" title="Record" [disabled]="true" (action)="onAttach()" />
+      </div>
+      @if (lastAction()) {
+        <p class="demo-feedback">
+          Last action: <strong>{{ lastAction() }}</strong>
+        </p>
+      }
+    </div>
   </div>
 </div>

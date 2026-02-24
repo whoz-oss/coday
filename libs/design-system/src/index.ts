@@ -1,2 +1,1 @@
-// Design system public API
-// Components, directives, pipes and SCSS tokens will be exported from here
+export * from './lib/components/icon-button/icon-button.component'

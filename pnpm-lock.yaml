@@ -490,7 +490,7 @@ importers:
         version: 3.0.5
       jest-preset-angular:
         specifier: catalog:dev
-        version: 15.0.2(e314e866fda17254e6580c7654029251)
+        version: 15.0.2(5ea946fc60640fa121890ebf9d5b7a52)
       typescript:
         specifier: catalog:dev
         version: 5.9.3
@@ -566,13 +566,71 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
-  libs/coday-events/dist:
+  libs/agent/dist:
     dependencies:
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
       tslib:
-        specifier: ^2.3.0
+        specifier: 'catalog:'
         version: 2.8.1
+      yaml:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/agentos-dataflow:
+    dependencies:
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/agentos-ui:
+    dependencies:
+      '@angular/common':
+        specifier: 'catalog:'
+        version: 20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
+      '@angular/core':
+        specifier: 'catalog:'
+        version: 20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)
+      '@angular/router':
+        specifier: 'catalog:'
+        version: 20.3.4(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@20.3.4(@angular/animations@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(rxjs@7.8.2)
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      '@angular/build':
+        specifier: catalog:dev
+        version: 20.3.5(@angular/compiler-cli@20.3.16(@angular/compiler@20.3.4)(typescript@5.9.3))(@angular/compiler@20.3.4)(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@20.3.4(@angular/animations@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(@types/node@25.2.0)(chokidar@4.0.3)(jiti@2.6.1)(less@4.5.1)(postcss@8.5.6)(sass-embedded@1.97.3)(terser@5.46.0)(tslib@2.8.1)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.2)
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
 
   libs/coday-services:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/coday-services/dist:
     dependencies:
       tslib:
         specifier: 'catalog:'
@@ -592,7 +650,73 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/core/dist:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/design-system:
+    dependencies:
+      '@angular/common':
+        specifier: 'catalog:'
+        version: 20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
+      '@angular/core':
+        specifier: 'catalog:'
+        version: 20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)
+      '@angular/forms':
+        specifier: 'catalog:'
+        version: 20.3.4(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@20.3.4(@angular/animations@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(rxjs@7.8.2)
+      '@angular/material':
+        specifier: 'catalog:'
+        version: 20.2.9(b517547b325ffc8400ae4cda6a618bfd)
+      '@angular/router':
+        specifier: 'catalog:'
+        version: 20.3.4(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@20.3.4(@angular/animations@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(rxjs@7.8.2)
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      '@angular/build':
+        specifier: catalog:dev
+        version: 20.3.5(@angular/compiler-cli@20.3.16(@angular/compiler@20.3.4)(typescript@5.9.3))(@angular/compiler@20.3.4)(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@20.3.4(@angular/animations@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(@types/node@25.2.0)(chokidar@4.0.3)(jiti@2.6.1)(less@4.5.1)(postcss@8.5.6)(sass-embedded@1.97.3)(terser@5.46.0)(tslib@2.8.1)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.2)
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/function:
+    dependencies:
+      '@vscode/ripgrep':
+        specifier: 'catalog:'
+        version: 1.15.9
+      glob:
+        specifier: 'catalog:'
+        version: 11.1.0
+      pdf2json:
+        specifier: 'catalog:'
+        version: 4.0.0
+      sharp:
+        specifier: 'catalog:'
+        version: 0.34.4
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      '@jest/globals':
+        specifier: catalog:dev
+        version: 30.2.0
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/function/dist:
     dependencies:
       '@vscode/ripgrep':
         specifier: 'catalog:'
@@ -636,7 +760,36 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/handler/dist:
+    dependencies:
+      '@anthropic-ai/sdk':
+        specifier: 'catalog:'
+        version: 0.65.0(zod@4.3.6)
+      openai:
+        specifier: 'catalog:'
+        version: 6.16.0(ws@8.19.0)(zod@4.3.6)
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/handlers/config:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/handlers/config/dist:
     dependencies:
       tslib:
         specifier: 'catalog:'
@@ -656,6 +809,16 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/handlers/load/dist:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/handlers/looper:
     dependencies:
       tslib:
@@ -666,7 +829,27 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/handlers/looper/dist:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/handlers/memory:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/handlers/memory/dist:
     dependencies:
       tslib:
         specifier: 'catalog:'
@@ -689,6 +872,19 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/handlers/openai/dist:
+    dependencies:
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/handlers/stats:
     dependencies:
       tslib:
@@ -699,7 +895,27 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/handlers/stats/dist:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/integration:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integration/dist:
     dependencies:
       tslib:
         specifier: 'catalog:'
@@ -722,7 +938,33 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/integrations/ai/dist:
+    dependencies:
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/integrations/basecamp:
+    dependencies:
+      oauth4webapi:
+        specifier: 'catalog:'
+        version: 3.8.3
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integrations/basecamp/dist:
     dependencies:
       oauth4webapi:
         specifier: 'catalog:'
@@ -754,7 +996,36 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/integrations/confluence/dist:
+    dependencies:
+      axios:
+        specifier: 'catalog:'
+        version: 1.12.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+      turndown:
+        specifier: 'catalog:'
+        version: 7.2.2
+    devDependencies:
+      '@types/turndown':
+        specifier: catalog:dev
+        version: 5.0.6
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/integrations/file:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integrations/file/dist:
     dependencies:
       tslib:
         specifier: 'catalog:'
@@ -774,7 +1045,30 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/integrations/git/dist:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/integrations/gitlab:
+    dependencies:
+      axios:
+        specifier: 'catalog:'
+        version: 1.12.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integrations/gitlab/dist:
     dependencies:
       axios:
         specifier: 'catalog:'
@@ -800,6 +1094,19 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/integrations/jira/dist:
+    dependencies:
+      axios:
+        specifier: 'catalog:'
+        version: 1.12.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/integrations/slack:
     dependencies:
       tslib:
@@ -810,7 +1117,30 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/integrations/slack/dist:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/integrations/zendesk-articles:
+    dependencies:
+      axios:
+        specifier: 'catalog:'
+        version: 1.12.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/integrations/zendesk-articles/dist:
     dependencies:
       axios:
         specifier: 'catalog:'
@@ -836,6 +1166,19 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/mcp/dist:
+    dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: 'catalog:'
+        version: 1.23.1(zod@4.3.6)
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/model:
     dependencies:
       rxjs:
@@ -849,7 +1192,33 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/model/dist:
+    dependencies:
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/repository:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+      yaml:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/repository/dist:
     dependencies:
       tslib:
         specifier: 'catalog:'
@@ -878,7 +1247,33 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/service/dist:
+    dependencies:
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+      yaml:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/utils:
+    dependencies:
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
+  libs/utils/dist:
     dependencies:
       tslib:
         specifier: 'catalog:'
@@ -10989,44 +11384,20 @@ snapshots:
     dependencies:
       '@babel/core': 7.29.0
 
-  '@babel/plugin-syntax-async-generators@7.8.4(@babel/core@7.28.3)':
-    dependencies:
-      '@babel/core': 7.28.3
-      '@babel/helper-plugin-utils': 7.28.6
-    optional: true
-
   '@babel/plugin-syntax-async-generators@7.8.4(@babel/core@7.29.0)':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/helper-plugin-utils': 7.28.6
-
-  '@babel/plugin-syntax-bigint@7.8.3(@babel/core@7.28.3)':
-    dependencies:
-      '@babel/core': 7.28.3
-      '@babel/helper-plugin-utils': 7.28.6
-    optional: true
 
   '@babel/plugin-syntax-bigint@7.8.3(@babel/core@7.29.0)':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/helper-plugin-utils': 7.28.6
 
-  '@babel/plugin-syntax-class-properties@7.12.13(@babel/core@7.28.3)':
-    dependencies:
-      '@babel/core': 7.28.3
-      '@babel/helper-plugin-utils': 7.28.6
-    optional: true
-
   '@babel/plugin-syntax-class-properties@7.12.13(@babel/core@7.29.0)':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/helper-plugin-utils': 7.28.6
-
-  '@babel/plugin-syntax-class-static-block@7.14.5(@babel/core@7.28.3)':
-    dependencies:
-      '@babel/core': 7.28.3
-      '@babel/helper-plugin-utils': 7.28.6
-    optional: true
 
   '@babel/plugin-syntax-class-static-block@7.14.5(@babel/core@7.29.0)':
     dependencies:
@@ -11043,33 +11414,15 @@ snapshots:
       '@babel/core': 7.29.0
       '@babel/helper-plugin-utils': 7.28.6
 
-  '@babel/plugin-syntax-import-attributes@7.28.6(@babel/core@7.28.3)':
-    dependencies:
-      '@babel/core': 7.28.3
-      '@babel/helper-plugin-utils': 7.28.6
-    optional: true
-
   '@babel/plugin-syntax-import-attributes@7.28.6(@babel/core@7.29.0)':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/helper-plugin-utils': 7.28.6
 
-  '@babel/plugin-syntax-import-meta@7.10.4(@babel/core@7.28.3)':
-    dependencies:
-      '@babel/core': 7.28.3
-      '@babel/helper-plugin-utils': 7.28.6
-    optional: true
-
   '@babel/plugin-syntax-import-meta@7.10.4(@babel/core@7.29.0)':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/helper-plugin-utils': 7.28.6
-
-  '@babel/plugin-syntax-json-strings@7.8.3(@babel/core@7.28.3)':
-    dependencies:
-      '@babel/core': 7.28.3
-      '@babel/helper-plugin-utils': 7.28.6
-    optional: true
 
   '@babel/plugin-syntax-json-strings@7.8.3(@babel/core@7.29.0)':
     dependencies:
@@ -11081,88 +11434,40 @@ snapshots:
       '@babel/core': 7.29.0
       '@babel/helper-plugin-utils': 7.28.6
 
-  '@babel/plugin-syntax-logical-assignment-operators@7.10.4(@babel/core@7.28.3)':
-    dependencies:
-      '@babel/core': 7.28.3
-      '@babel/helper-plugin-utils': 7.28.6
-    optional: true
-
   '@babel/plugin-syntax-logical-assignment-operators@7.10.4(@babel/core@7.29.0)':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/helper-plugin-utils': 7.28.6
-
-  '@babel/plugin-syntax-nullish-coalescing-operator@7.8.3(@babel/core@7.28.3)':
-    dependencies:
-      '@babel/core': 7.28.3
-      '@babel/helper-plugin-utils': 7.28.6
-    optional: true
 
   '@babel/plugin-syntax-nullish-coalescing-operator@7.8.3(@babel/core@7.29.0)':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/helper-plugin-utils': 7.28.6
 
-  '@babel/plugin-syntax-numeric-separator@7.10.4(@babel/core@7.28.3)':
-    dependencies:
-      '@babel/core': 7.28.3
-      '@babel/helper-plugin-utils': 7.28.6
-    optional: true
-
   '@babel/plugin-syntax-numeric-separator@7.10.4(@babel/core@7.29.0)':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/helper-plugin-utils': 7.28.6
-
-  '@babel/plugin-syntax-object-rest-spread@7.8.3(@babel/core@7.28.3)':
-    dependencies:
-      '@babel/core': 7.28.3
-      '@babel/helper-plugin-utils': 7.28.6
-    optional: true
 
   '@babel/plugin-syntax-object-rest-spread@7.8.3(@babel/core@7.29.0)':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/helper-plugin-utils': 7.28.6
 
-  '@babel/plugin-syntax-optional-catch-binding@7.8.3(@babel/core@7.28.3)':
-    dependencies:
-      '@babel/core': 7.28.3
-      '@babel/helper-plugin-utils': 7.28.6
-    optional: true
-
   '@babel/plugin-syntax-optional-catch-binding@7.8.3(@babel/core@7.29.0)':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/helper-plugin-utils': 7.28.6
-
-  '@babel/plugin-syntax-optional-chaining@7.8.3(@babel/core@7.28.3)':
-    dependencies:
-      '@babel/core': 7.28.3
-      '@babel/helper-plugin-utils': 7.28.6
-    optional: true
 
   '@babel/plugin-syntax-optional-chaining@7.8.3(@babel/core@7.29.0)':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/helper-plugin-utils': 7.28.6
 
-  '@babel/plugin-syntax-private-property-in-object@7.14.5(@babel/core@7.28.3)':
-    dependencies:
-      '@babel/core': 7.28.3
-      '@babel/helper-plugin-utils': 7.28.6
-    optional: true
-
   '@babel/plugin-syntax-private-property-in-object@7.14.5(@babel/core@7.29.0)':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/helper-plugin-utils': 7.28.6
-
-  '@babel/plugin-syntax-top-level-await@7.14.5(@babel/core@7.28.3)':
-    dependencies:
-      '@babel/core': 7.28.3
-      '@babel/helper-plugin-utils': 7.28.6
-    optional: true
 
   '@babel/plugin-syntax-top-level-await@7.14.5(@babel/core@7.29.0)':
     dependencies:
@@ -12589,7 +12894,7 @@ snapshots:
       '@jest/schemas': 29.6.3
       '@types/istanbul-lib-coverage': 2.0.6
       '@types/istanbul-reports': 3.0.4
-      '@types/node': 24.7.2
+      '@types/node': 25.2.0
       '@types/yargs': 17.0.35
       chalk: 4.1.2
 
@@ -15367,20 +15672,6 @@ snapshots:
 
   b4a@1.7.3: {}
 
-  babel-jest@30.2.0(@babel/core@7.28.3):
-    dependencies:
-      '@babel/core': 7.28.3
-      '@jest/transform': 30.2.0
-      '@types/babel__core': 7.20.5
-      babel-plugin-istanbul: 7.0.1
-      babel-preset-jest: 30.2.0(@babel/core@7.28.3)
-      chalk: 4.1.2
-      graceful-fs: 4.2.11
-      slash: 3.0.0
-    transitivePeerDependencies:
-      - supports-color
-    optional: true
-
   babel-jest@30.2.0(@babel/core@7.29.0):
     dependencies:
       '@babel/core': 7.29.0
@@ -15469,26 +15760,6 @@ snapshots:
     optionalDependencies:
       '@babel/traverse': 7.29.0
 
-  babel-preset-current-node-syntax@1.2.0(@babel/core@7.28.3):
-    dependencies:
-      '@babel/core': 7.28.3
-      '@babel/plugin-syntax-async-generators': 7.8.4(@babel/core@7.28.3)
-      '@babel/plugin-syntax-bigint': 7.8.3(@babel/core@7.28.3)
-      '@babel/plugin-syntax-class-properties': 7.12.13(@babel/core@7.28.3)
-      '@babel/plugin-syntax-class-static-block': 7.14.5(@babel/core@7.28.3)
-      '@babel/plugin-syntax-import-attributes': 7.28.6(@babel/core@7.28.3)
-      '@babel/plugin-syntax-import-meta': 7.10.4(@babel/core@7.28.3)
-      '@babel/plugin-syntax-json-strings': 7.8.3(@babel/core@7.28.3)
-      '@babel/plugin-syntax-logical-assignment-operators': 7.10.4(@babel/core@7.28.3)
-      '@babel/plugin-syntax-nullish-coalescing-operator': 7.8.3(@babel/core@7.28.3)
-      '@babel/plugin-syntax-numeric-separator': 7.10.4(@babel/core@7.28.3)
-      '@babel/plugin-syntax-object-rest-spread': 7.8.3(@babel/core@7.28.3)
-      '@babel/plugin-syntax-optional-catch-binding': 7.8.3(@babel/core@7.28.3)
-      '@babel/plugin-syntax-optional-chaining': 7.8.3(@babel/core@7.28.3)
-      '@babel/plugin-syntax-private-property-in-object': 7.14.5(@babel/core@7.28.3)
-      '@babel/plugin-syntax-top-level-await': 7.14.5(@babel/core@7.28.3)
-    optional: true
-
   babel-preset-current-node-syntax@1.2.0(@babel/core@7.29.0):
     dependencies:
       '@babel/core': 7.29.0
@@ -15507,13 +15778,6 @@ snapshots:
       '@babel/plugin-syntax-optional-chaining': 7.8.3(@babel/core@7.29.0)
       '@babel/plugin-syntax-private-property-in-object': 7.14.5(@babel/core@7.29.0)
       '@babel/plugin-syntax-top-level-await': 7.14.5(@babel/core@7.29.0)
-
-  babel-preset-jest@30.2.0(@babel/core@7.28.3):
-    dependencies:
-      '@babel/core': 7.28.3
-      babel-plugin-jest-hoist: 30.2.0
-      babel-preset-current-node-syntax: 1.2.0(@babel/core@7.28.3)
-    optional: true
 
   babel-preset-jest@30.2.0(@babel/core@7.29.0):
     dependencies:
@@ -18062,11 +18326,11 @@ snapshots:
 
   istanbul-lib-instrument@6.0.3:
     dependencies:
-      '@babel/core': 7.28.3
+      '@babel/core': 7.29.0
       '@babel/parser': 7.29.0
       '@istanbuljs/schema': 0.1.3
       istanbul-lib-coverage: 3.2.2
-      semver: 7.7.2
+      semver: 7.7.3
     transitivePeerDependencies:
       - supports-color
 
@@ -18333,7 +18597,7 @@ snapshots:
     optionalDependencies:
       jest-resolve: 30.2.0
 
-  jest-preset-angular@15.0.2(e314e866fda17254e6580c7654029251):
+  jest-preset-angular@15.0.2(5ea946fc60640fa121890ebf9d5b7a52):
     dependencies:
       '@angular/compiler-cli': 20.3.16(@angular/compiler@20.3.4)(typescript@5.9.3)
       '@angular/core': 20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)
@@ -18346,7 +18610,7 @@ snapshots:
       jest-util: 30.2.0
       jsdom: 27.0.0
       pretty-format: 30.2.0
-      ts-jest: 29.4.6(@babel/core@7.28.3)(@jest/transform@30.2.0)(@jest/types@30.2.0)(babel-jest@30.2.0(@babel/core@7.28.3))(esbuild@0.27.2)(jest-util@30.2.0)(jest@30.2.0(@types/node@25.2.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.19(@swc/helpers@0.5.17))(@types/node@24.7.2)(typescript@5.9.3)))(typescript@5.9.3)
+      ts-jest: 29.4.6(@babel/core@7.29.0)(@jest/transform@30.2.0)(@jest/types@30.2.0)(babel-jest@30.2.0(@babel/core@7.29.0))(esbuild@0.27.2)(jest-util@30.2.0)(jest@30.2.0(@types/node@25.2.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.19(@swc/helpers@0.5.17))(@types/node@24.7.2)(typescript@5.9.3)))(typescript@5.9.3)
       typescript: 5.9.3
     optionalDependencies:
       esbuild: 0.27.2
@@ -21215,7 +21479,7 @@ snapshots:
       esbuild: 0.25.10
       jest-util: 30.2.0
 
-  ts-jest@29.4.6(@babel/core@7.28.3)(@jest/transform@30.2.0)(@jest/types@30.2.0)(babel-jest@30.2.0(@babel/core@7.28.3))(esbuild@0.27.2)(jest-util@30.2.0)(jest@30.2.0(@types/node@25.2.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.19(@swc/helpers@0.5.17))(@types/node@24.7.2)(typescript@5.9.3)))(typescript@5.9.3):
+  ts-jest@29.4.6(@babel/core@7.29.0)(@jest/transform@30.2.0)(@jest/types@30.2.0)(babel-jest@30.2.0(@babel/core@7.29.0))(esbuild@0.27.2)(jest-util@30.2.0)(jest@30.2.0(@types/node@25.2.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.19(@swc/helpers@0.5.17))(@types/node@24.7.2)(typescript@5.9.3)))(typescript@5.9.3):
     dependencies:
       bs-logger: 0.2.6
       fast-json-stable-stringify: 2.1.0
@@ -21229,10 +21493,10 @@ snapshots:
       typescript: 5.9.3
       yargs-parser: 21.1.1
     optionalDependencies:
-      '@babel/core': 7.28.3
+      '@babel/core': 7.29.0
       '@jest/transform': 30.2.0
       '@jest/types': 30.2.0
-      babel-jest: 30.2.0(@babel/core@7.28.3)
+      babel-jest: 30.2.0(@babel/core@7.29.0)
       esbuild: 0.27.2
       jest-util: 30.2.0
 
@@ -21524,7 +21788,7 @@ snapshots:
 
   vite@7.1.5(@types/node@24.7.2)(jiti@2.6.1)(less@4.5.1)(sass-embedded@1.97.3)(sass@1.90.0)(terser@5.46.0)(tsx@4.20.6)(yaml@2.8.2):
     dependencies:
-      esbuild: 0.25.9
+      esbuild: 0.25.10
       fdir: 6.5.0(picomatch@4.0.3)
       picomatch: 4.0.3
       postcss: 8.5.6
@@ -21544,7 +21808,7 @@ snapshots:
 
   vite@7.1.5(@types/node@25.2.0)(jiti@2.6.1)(less@4.5.1)(sass-embedded@1.97.3)(sass@1.90.0)(terser@5.46.0)(tsx@4.20.6)(yaml@2.8.2):
     dependencies:
-      esbuild: 0.25.9
+      esbuild: 0.25.10
       fdir: 6.5.0(picomatch@4.0.3)
       picomatch: 4.0.3
       postcss: 8.5.6
