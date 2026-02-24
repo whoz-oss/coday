@@ -34,6 +34,9 @@ export class IconButtonComponent {
   @Output() action = new EventEmitter<void>()
 
   protected onClick(): void {
+    // Guard needed: Angular Material's mat-icon-button emits click events even
+    // when the native disabled attribute is set. The [disabled] binding disables
+    // the visual state but does not prevent the event from bubbling.
     if (!this.disabled) {
       this.action.emit()
     }

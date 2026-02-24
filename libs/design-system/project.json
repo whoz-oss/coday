@@ -3,7 +3,7 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "library",
   "sourceRoot": "libs/design-system/src",
-  "prefix": "whoz",
+  "prefix": "ds",
   "tags": ["scope:design-system", "type:ui"],
   "targets": {
     "build": {
