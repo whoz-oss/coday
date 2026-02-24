@@ -15,7 +15,7 @@
     "@angular/core": ">=18.0.0",
     "@angular/material": ">=18.0.0",
     "@angular/router": ">=18.0.0",
-    "@whoz-oss/design-system": ">=0.0.1",
+    "@whoz-oss/design-system": "workspace:*",
     "rxjs": ">=7.0.0",
     "tslib": ">=2.0.0"
   },

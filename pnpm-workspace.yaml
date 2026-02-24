@@ -3,6 +3,8 @@ packages:
   - '!apps/web'
   - libs/*
   - libs/**/*
+  - '!libs/*/dist'
+  - '!libs/**/dist'
   - plugins/*
 
 catalog:
