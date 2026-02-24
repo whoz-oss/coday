@@ -1,5 +1,6 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import { readFileSync } from 'node:fs'
 import { Interactor } from '@coday/model'
 import { glob } from 'glob'
 import * as path from 'path'
@@ -56,39 +57,29 @@ export const searchFiles = async ({
 
     interactor.debug(`searchFiles ripgrep args: rg ${args.join(' ')}`)
 
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`Search timed out after ${timeout}ms`)), timeout)
-
-      execFileAsync('rg', args, { cwd: root, maxBuffer: defaultMaxBuffer })
-        .then(({ stdout }) => {
-          clearTimeout(timer)
-          const files = stdout
-            .trim()
-            .split('\n')
-            .filter((f) => f.length > 0)
-          resolve({ files })
-        })
-        .catch((err: any) => {
-          clearTimeout(timer)
-          if (err.code === 1) {
-            // ripgrep exit code 1 = no matches
-            resolve({ files: [] })
-          } else {
-            interactor.error(`searchFiles ripgrep error: ${err.stderr}`)
-            reject(new Error(`Search error: ${err.stderr}`))
-          }
-        })
-    })
+    return execFileAsync('rg', args, { cwd: root, maxBuffer: defaultMaxBuffer, timeout })
+      .then(({ stdout }) => {
+        const files = stdout
+          .trim()
+          .split('\n')
+          .filter((f) => f.length > 0)
+        return { files }
+      })
+      .catch((err: any) => {
+        if (err.code === 1) {
+          // ripgrep exit code 1 = no matches
+          return { files: [] }
+        }
+        interactor.error(`searchFiles ripgrep error: ${err.stderr}`)
+        throw new Error(`Search error: ${err.stderr}`)
+      })
   }
 
   // fileName only: use glob
-  const fileTypePattern = fileTypes && fileTypes.length > 0 ? `*.{${fileTypes.join(',')}}` : null
+  const base = `${resolvedSearchPath !== '.' ? resolvedSearchPath + '/' : ''}**/*${fileName}*`
+  const expression = fileTypes && fileTypes.length > 0 ? fileTypes.map((t) => base.replace(/\*$/, `*.${t}`)) : base
 
-  const expression = fileTypePattern
-    ? `${resolvedSearchPath !== '.' ? resolvedSearchPath + '/' : ''}**/*${fileName}*.${fileTypePattern}`
-    : `${resolvedSearchPath !== '.' ? resolvedSearchPath + '/' : ''}**/*${fileName}*`
-
-  const results = await glob(expression, {
+  const results = await glob(expression as string | string[], {
     cwd: root,
     absolute: false,
     dotRelative: false,
@@ -106,9 +97,8 @@ export const searchFiles = async ({
 /**
  * Read text content of a file, returning null if the file is binary or unreadable as text.
  */
-export const readFileAsText = async (absolutePath: string): Promise<string | null> => {
+export const readFileAsText = (absolutePath: string): string | null => {
   try {
-    const { readFileSync } = await import('node:fs')
     return readFileSync(absolutePath, { encoding: 'utf8' })
   } catch {
     return null
@@ -120,7 +110,7 @@ export const readFileAsText = async (absolutePath: string): Promise<string | nul
  * If total content size is under the threshold, returns file contents.
  * Otherwise returns only the list of matching paths (prefixed).
  */
-export const buildSearchResult = async ({
+export const buildSearchResult = ({
   files,
   root,
   prefix,
@@ -130,7 +120,7 @@ export const buildSearchResult = async ({
   root: string
   prefix: string
   contentSizeThreshold?: number
-}): Promise<string> => {
+}): string => {
   if (files.length === 0) {
     return 'No matching files found.'
   }
@@ -141,7 +131,7 @@ export const buildSearchResult = async ({
 
   for (const relPath of files) {
     const absolutePath = path.join(root, relPath)
-    const text = await readFileAsText(absolutePath)
+    const text = readFileAsText(absolutePath)
     const size = text ? text.length : 0
     totalSize += size
     contents.push({ relPath, text })
