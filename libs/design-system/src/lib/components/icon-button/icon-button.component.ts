@@ -19,7 +19,7 @@ export type IconButtonVariant = 'default' | 'primary' | 'danger'
  * <whoz-icon-button icon="mic" [disabled]="isRecording" (action)="toggle()" />
  */
 @Component({
-  selector: 'whoz-icon-button',
+  selector: 'ds-icon-button',
   standalone: true,
   imports: [MatIconButton, MatIcon],
   templateUrl: './icon-button.component.html',

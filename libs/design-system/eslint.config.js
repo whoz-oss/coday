@@ -12,7 +12,7 @@ export default [
         'error',
         {
           type: 'attribute',
-          prefix: 'whoz',
+          prefix: 'ds',
           style: 'camelCase',
         },
       ],
@@ -20,7 +20,7 @@ export default [
         'error',
         {
           type: 'element',
-          prefix: 'whoz',
+          prefix: 'ds',
           style: 'kebab-case',
         },
       ],

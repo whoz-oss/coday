@@ -53,7 +53,7 @@
     ></textarea>
     @if (!isSessionInitializing) {
       @if (isThinking) {
-        <whoz-icon-button
+        <ds-icon-button
           class="action-btn"
           icon="stop"
           variant="danger"
@@ -61,7 +61,7 @@
           (action)="onStopClick()"
         />
       } @else {
-        <whoz-icon-button
+        <ds-icon-button
           class="send-btn"
           icon="send"
           variant="primary"
@@ -72,7 +72,7 @@
           (action)="sendMessage()"
         />
         @if (!showWelcome) {
-          <whoz-icon-button
+          <ds-icon-button
             class="upload-btn"
             icon="attach_file"
             variant="default"
@@ -89,7 +89,7 @@
             (change)="onFileInputChange($event)"
           />
         }
-        <whoz-icon-button
+        <ds-icon-button
           class="voice-btn"
           [icon]="isRecording ? 'fiber_manual_record' : 'mic'"
           variant="default"
