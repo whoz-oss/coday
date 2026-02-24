@@ -86,17 +86,18 @@ tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
 // ========================================
 // OpenAPI spec generation
 // ========================================
+val agentosPort = 8123
+
 openApi {
     // Output the spec alongside the agentos root so it can be committed
     outputDir.set(file("${rootDir}/../openapi"))
     outputFileName.set("agentos-openapi.yaml")
-    // The service must start to generate the spec; use the default port
-    apiDocsUrl.set("http://localhost:8123/v3/api-docs.yaml")
+    apiDocsUrl.set("http://localhost:$agentosPort/v3/api-docs.yaml")
     // Wait up to 60s for the app to be ready
     waitTimeInSeconds.set(60)
     // Activate the openapi profile so the app starts without real AI API keys
     customBootRun {
-        args.set(listOf("--spring.profiles.active=openapi"))
+        args.set(listOf("--spring.profiles.active=openapi", "--server.port=$agentosPort"))
     }
 }
 

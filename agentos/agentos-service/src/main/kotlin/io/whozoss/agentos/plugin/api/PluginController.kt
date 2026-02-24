@@ -68,7 +68,7 @@ class PluginController(
                 .body(PluginUploadResponse(false, "File is empty", null))
         }
 
-        if (file.originalFilename?.endsWith(".jar") == true) {
+        if (file.originalFilename?.endsWith(".jar") != true) {
             return ResponseEntity
                 .badRequest()
                 .body(PluginUploadResponse(false, "Only JAR files are allowed", null))

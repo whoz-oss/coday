@@ -52,7 +52,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "inputs": [
-        "{projectRoot}/src/main/kotlin/**/*Controller.kt",
+        "{projectRoot}/src/main/kotlin/**/*.kt",
         "{workspaceRoot}/agentos/openapi/agentos-openapi.yaml"
       ],
       "options": {
