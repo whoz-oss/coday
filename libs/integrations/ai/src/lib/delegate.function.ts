@@ -57,14 +57,17 @@ The parent conversation (all previous messages) is there for context, but your c
         result = await lastValueFrom(delegatedEvents, { defaultValue: undefined })
       } finally {
         clearInterval(stopPropagationInterval)
+        // Always restore stackDepth to avoid corrupting the depth guard on exception
+        context.stackDepth++
       }
-
-      context.stackDepth++
-      context.aiThread!.merge(forkedThread)
 
       if (forkedThread.runStatus === RunStatus.STOPPED) {
         return 'Delegation was interrupted before completion. No result available.'
       }
+
+      // Only merge the forked thread if delegation completed successfully
+      context.aiThread!.merge(forkedThread)
+
       if (!result) {
         return 'Delegation completed but produced no message.'
       }
