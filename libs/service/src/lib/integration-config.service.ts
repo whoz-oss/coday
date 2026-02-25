@@ -222,6 +222,30 @@ export class IntegrationConfigService {
   }
 
   /**
+   * Get all integration configurations at a specific level without any masking.
+   * Intended for internal use by agent tools that need to read and write configs
+   * (e.g. HttpConfigTools). Callers are responsible for not leaking sensitive fields.
+   */
+  getUnmaskedIntegrationsAtLevel(level: ConfigLevel): Record<string, IntegrationConfig> {
+    ConfigLevelValidator.validate(level)
+
+    if (level === ConfigLevel.CODAY) {
+      throw new Error('CODAY level not supported for integrations')
+    }
+
+    if (level === ConfigLevel.PROJECT) {
+      const project = this.projectService.selectedProject
+      return project ? { ...(project.config.integration ?? {}) } : {}
+    }
+
+    // USER level
+    const project = this.projectService.selectedProject
+    if (!project) return {}
+    const userProjects = this.userService.config.projects ?? {}
+    return { ...(userProjects[project.name]?.integration ?? {}) }
+  }
+
+  /**
    * Get the actual (unmasked) integration configuration for internal use
    * This method should only be used when the actual API key is needed (e.g., for API calls)
    */
