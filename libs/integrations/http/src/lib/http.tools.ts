@@ -175,13 +175,26 @@ export class HttpTools extends AssistantToolFactory {
       `[HTTP:${this.name}__${endpoint.name}] oauth=${!!this.oauth}, isAuthenticated=${this.oauth?.isAuthenticated()}`
     )
 
-    const accessToken = await (
-      this.oauth!.isAuthenticated()
-        ? this.oauth!.getAccessToken()
-        : this.oauth!.authenticate().then(() => this.oauth!.getAccessToken())
-    ).catch((err: Error) => {
-      throw new Error(`Authentication failed: ${err.message}`)
-    })
+    // getAccessToken() handles refresh automatically if token is expired.
+    // authenticate() (OAuth flow) is only triggered if no token exists at all.
+    let accessToken: string
+    try {
+      if (this.oauth!.isAuthenticated()) {
+        this.interactor.debug(`[HTTP:${this.name}__${endpoint.name}] token valid, using directly`)
+        accessToken = await this.oauth!.getAccessToken()
+      } else if (this.oauth!.hasToken()) {
+        this.interactor.debug(
+          `[HTTP:${this.name}__${endpoint.name}] token expired, attempting refresh via getAccessToken()`
+        )
+        accessToken = await this.oauth!.getAccessToken()
+      } else {
+        this.interactor.debug(`[HTTP:${this.name}__${endpoint.name}] no token, starting OAuth flow`)
+        await this.oauth!.authenticate()
+        accessToken = await this.oauth!.getAccessToken()
+      }
+    } catch (err: any) {
+      throw new Error(`Authentication failed for ${this.name}: ${err.message}`)
+    }
     this.interactor.debug(`[HTTP:${this.name}__${endpoint.name}] got access token (length=${accessToken.length})`)
 
     // Substitute path params

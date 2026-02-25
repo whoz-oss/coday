@@ -58,6 +58,13 @@ export class GenericOAuth {
     this.clientAuth = oauth.ClientSecretPost(config.clientSecret)
   }
 
+  /** True if we have a token in memory or storage (may be expired) */
+  hasToken(): boolean {
+    if (this.tokenData) return true
+    this.loadTokensFromStorage()
+    return !!this.tokenData
+  }
+
   isAuthenticated(): boolean {
     if (!this.tokenData) {
       this.interactor.debug(`[OAuth:${this.integrationName}] no in-memory token, trying storage`)
@@ -82,8 +89,17 @@ export class GenericOAuth {
     if (!this.tokenData) {
       throw new Error('Not authenticated. Call authenticate() first.')
     }
-    if (!this.isAuthenticated() && this.tokenData.refreshToken) {
-      await this.refreshToken()
+    if (!this.isAuthenticated()) {
+      if (this.tokenData.refreshToken) {
+        this.interactor.debug(`[OAuth:${this.integrationName}] token expired, attempting refresh`)
+        await this.refreshToken()
+        this.interactor.debug(`[OAuth:${this.integrationName}] token refreshed successfully`)
+      } else {
+        this.interactor.debug(`[OAuth:${this.integrationName}] token expired and no refresh_token available`)
+        throw new Error(
+          `Token expired and no refresh_token available for ${this.integrationName}. Please re-authenticate.`
+        )
+      }
     }
     return this.tokenData!.accessToken
   }
