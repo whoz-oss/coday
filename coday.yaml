@@ -36,13 +36,13 @@ scripts:
   nx:
     description: |
       Run Nx commands for the monorepo. Nx is the build system orchestrating all projects.
-      
+
       Common targets:
       - build: Compile a project (e.g., "nx build client")
       - test: Run tests (e.g., "nx test server", "nx test agentos-service")
       - lint: Run linter (e.g., "nx lint client")
       - serve: Start dev server (e.g., "nx serve client")
-      
+
       Common commands:
       - "test agentos-service" - Run all Kotlin tests for AgentOS service
       - "test client" - Run all Angular client tests
@@ -54,12 +54,12 @@ scripts:
       - "graph" - Show project dependency graph
       - "list" - List all projects in workspace
       - "show project client" - Show project configuration
-      
+
       For Kotlin-specific test filtering (e.g., specific test class):
       Use gradle directly: "cd agentos && ./gradlew :agentos-service:test --tests ChatClientProviderTest"
-      
+
       Note: Nx handles both TypeScript (Jest) and Kotlin (Gradle) projects seamlessly.
-      
+
       ⚠️ Do not run interactive commands!
       ⚠️ Commands that modify dependencies require user confirmation.
     command: nx PARAMETERS
@@ -73,7 +73,7 @@ scripts:
   gradle:
     description: |
       Run Gradle commands for Kotlin/Java projects in the agentos/ directory.
-      
+
       Common commands:
       - ":agentos-service:test" - Run all service tests
       - ":agentos-service:test --tests ChatClientProviderTest" - Run specific test class
@@ -81,7 +81,7 @@ scripts:
       - ":agentos-sdk:test" - Run SDK tests
       - "test" - Run all tests in agentos/
       - "build" - Build all Gradle projects
-      
+
       The command runs from agentos/ directory with optimized flags:
       --no-build-cache, --no-configuration-cache, --no-daemon
     command: cd agentos && ./gradlew PARAMETERS --no-build-cache --no-configuration-cache --no-daemon
@@ -95,14 +95,14 @@ scripts:
     description: |
       Run pnpm commands for package management and scripts.
       Use for installing dependencies, running package.json scripts, etc.
-      
+
       Common commands:
       - "install" - Install dependencies
       - "add <package>" - Add a dependency
       - "remove <package>" - Remove a dependency
       - "web" - Start web interface (from package.json)
       - "start" - Start terminal interface
-      
+
       ⚠️ Do not run interactive commands!
       ⚠️ Commands that modify dependencies require user confirmation.
     command: pnpm PARAMETERS
@@ -169,9 +169,9 @@ agents:
       You are Slackay, the agent dedicated to slack integration, used to :
       - pass messages from other agents or users to slack in the right channel
       - transfer a request to the right agent by delegate
-      
+
       ## Memory rules
-      
+
       Remember and keep updated (or create if none) these memories:
       - user email, slack ID.
       - preferences about tone, conciseness, emojis or not.
