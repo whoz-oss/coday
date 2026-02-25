@@ -24,12 +24,13 @@ import {
   CommandContext,
   CodayTool,
   FunctionTool,
+  HttpEndpointConfig,
   IntegrationConfig,
   Interactor,
+  OAuth2Config,
 } from '@coday/model'
 import { IntegrationConfigService, isUserAdmin } from '@coday/service'
 import { ConfigLevel } from '@coday/model'
-import { HttpEndpointConfig } from '@coday/model'
 
 /** Fields that must never be exposed or written by agent tools */
 const SENSITIVE_OAUTH2_FIELDS = ['client_secret', 'tokens'] as const
@@ -52,6 +53,7 @@ export class HttpConfigTools extends AssistantToolFactory {
     }
 
     return [
+      this.buildLetUserFillAuth(),
       this.buildListHttpIntegrations(),
       this.buildGetHttpIntegration(),
       this.buildUpsertHttpIntegration(),
@@ -116,6 +118,83 @@ export class HttpConfigTools extends AssistantToolFactory {
     }
 
     return merged
+  }
+
+  // ---------------------------------------------------------------------------
+  // Auth tools
+  // ---------------------------------------------------------------------------
+
+  private buildLetUserFillAuth(): CodayTool {
+    const tool: FunctionTool<{ integrationName: string }> = {
+      type: 'function',
+      function: {
+        name: `${this.name}__letUserFillAuth`,
+        description:
+          'Interactively ask the user to fill in sensitive authentication credentials for an HTTP integration. ' +
+          'The auth type is inferred from the integration config (e.g. oauth2 → prompts for client_id and client_secret). ' +
+          'Values are saved at PROJECT level, shared across all project users (admin operation).',
+        parameters: {
+          type: 'object',
+          properties: {
+            integrationName: {
+              type: 'string',
+              description: 'Name of the HTTP integration to configure credentials for',
+            },
+          },
+          ...({ required: ['integrationName'] } as object),
+        },
+        parse: JSON.parse,
+        function: async ({ integrationName }) => {
+          // Read existing unmasked PROJECT-level config to infer auth type and show masked placeholders.
+          // client_id and client_secret are PROJECT-level: set by admin, shared across all project users.
+          // Per-user tokens (access_token, refresh_token) live at USER level and are managed separately.
+          const projectIntegrations = this.integrationConfig.getUnmaskedIntegrationsAtLevel(ConfigLevel.PROJECT)
+          const existing = projectIntegrations[integrationName]
+          if (!existing) return { error: `Integration '${integrationName}' not found` }
+
+          if (!existing.oauth2) {
+            return {
+              error: `Integration '${integrationName}' has no oauth2 configuration. Set up the integration first with upsert_http_integration.`,
+            }
+          }
+
+          const existingOauth2: Partial<OAuth2Config> = existing.oauth2 ?? {}
+
+          const clientId = await this.interactor.promptSecretText(
+            `OAuth2 client_id for '${integrationName}' (leave as-is to keep current):`,
+            existingOauth2.client_id
+          )
+
+          const clientSecret = await this.interactor.promptSecretText(
+            `OAuth2 client_secret for '${integrationName}' (leave as-is to keep current):`,
+            existingOauth2.client_secret
+          )
+
+          // Only update if the user provided at least one value
+          if (clientId === undefined && clientSecret === undefined) {
+            return { success: false, message: 'No values provided, nothing was saved.' }
+          }
+
+          const updatedOauth2: Partial<OAuth2Config> = {
+            ...existingOauth2,
+            ...(clientId !== undefined && { client_id: clientId }),
+            ...(clientSecret !== undefined && { client_secret: clientSecret }),
+          }
+
+          const updatedConfig: IntegrationConfig = { ...existing, oauth2: updatedOauth2 as OAuth2Config }
+          await this.integrationConfig.saveIntegration(integrationName, updatedConfig, ConfigLevel.PROJECT)
+
+          return {
+            success: true,
+            updated: [
+              ...(clientId !== undefined ? ['client_id'] : []),
+              ...(clientSecret !== undefined ? ['client_secret'] : []),
+            ],
+          }
+        },
+      },
+    }
+    return tool
   }
 
   // ---------------------------------------------------------------------------
