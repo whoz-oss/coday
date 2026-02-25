@@ -22,6 +22,7 @@ import { ZendeskTools } from '@coday/integrations-zendesk-articles'
 import { JiraTools } from '@coday/integrations-jira'
 import { SlackTools } from '@coday/integrations-slack'
 import { BasecampTools } from '@coday/integrations-basecamp'
+import { HttpTools } from '@coday/integrations-http'
 import { CodayServices } from '@coday/coday-services'
 
 export class Toolbox implements Killable {
@@ -88,6 +89,10 @@ export class Toolbox implements Killable {
     this.factoryConstructors.set(
       BasecampTools.TYPE,
       (name, config) => new BasecampTools(interactor, services.integration, services.user, name, config)
+    )
+    this.factoryConstructors.set(
+      HttpTools.TYPE,
+      (name, config) => new HttpTools(interactor, services.user, name, config)
     )
     this.factoryConstructors.set(TmuxTools.TYPE, (name) => new TmuxTools(interactor, name))
   }

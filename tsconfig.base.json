@@ -45,6 +45,7 @@
       "@coday/integrations-file": ["libs/integrations/file/src/index.ts"],
       "@coday/integrations-git": ["libs/integrations/git/src/index.ts"],
       "@coday/integrations-gitlab": ["libs/integrations/gitlab/src/index.ts"],
+      "@coday/integrations-http": ["libs/integrations/http/src/index.ts"],
       "@coday/integrations-jira": ["libs/integrations/jira/src/index.ts"],
       "@coday/integrations-mcp": ["libs/integrations/mcp/src/index.ts"],
       "@coday/integrations-slack": ["libs/integrations/slack/src/index.ts"],
