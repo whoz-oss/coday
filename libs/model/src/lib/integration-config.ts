@@ -48,6 +48,14 @@ export type HttpEndpointConfig = {
   path: string // e.g. '/calendars/{calendarId}/events'
   description: string
   params?: HttpParamConfig[]
+  // Response filtering: dot-notation paths, supports wildcard *
+  // keepPaths: only these paths are kept (e.g. ["items.*.summary", "items.*.start"])
+  // ignorePaths: these paths are removed (e.g. ["items.*.htmlLink", "etag"])
+  // keepPaths takes precedence over ignorePaths if both are set
+  keepPaths?: string[]
+  ignorePaths?: string[]
+  // Response format sent to the LLM: 'json' (default) or 'yaml' (more compact)
+  responseFormat?: 'json' | 'yaml'
 }
 
 /**

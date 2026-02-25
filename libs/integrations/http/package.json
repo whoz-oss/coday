@@ -7,7 +7,8 @@
   "types": "./src/index.d.ts",
   "dependencies": {
     "oauth4webapi": "catalog:",
-    "tslib": "catalog:"
+    "tslib": "catalog:",
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "typescript": "catalog:dev"

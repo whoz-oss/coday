@@ -8,7 +8,7 @@
  *
  *   integration:
  *     MY_CALENDAR:
- *       type: http
+ *       type: HTTP
  *       http:
  *         baseUrl: "https://www.googleapis.com/calendar/v3"
  *         endpoints:
@@ -16,6 +16,11 @@
  *             method: GET
  *             path: "/calendars/{calendarId}/events"
  *             description: "List events from a Google Calendar"
+ *             responseFormat: yaml        # optional, saves tokens
+ *             keepPaths:                  # optional, only these fields returned
+ *               - "items.*.summary"
+ *               - "items.*.start"
+ *               - "items.*.end"
  *             params:
  *               - name: calendarId
  *                 type: string
@@ -39,17 +44,23 @@
  *         scope:
  *           - "https://www.googleapis.com/auth/calendar.readonly"
  */
-import { AssistantToolFactory } from '@coday/model'
-import { CodayTool, FunctionTool } from '@coday/model'
-import { CommandContext } from '@coday/model'
-import { HttpEndpointConfig, HttpParamConfig, IntegrationConfig } from '@coday/model'
-import { Interactor } from '@coday/model'
-import { OAuthCallbackEvent } from '@coday/model'
+import {
+  AssistantToolFactory,
+  CodayTool,
+  CommandContext,
+  FunctionTool,
+  HttpEndpointConfig,
+  HttpParamConfig,
+  IntegrationConfig,
+  Interactor,
+  OAuthCallbackEvent,
+} from '@coday/model'
 import { UserService } from '@coday/service'
+import * as yaml from 'yaml'
 import { GenericOAuth } from './generic-oauth'
 
 export class HttpTools extends AssistantToolFactory {
-  static readonly TYPE = 'http' as const
+  static readonly TYPE = 'HTTP' as const
 
   private oauth: GenericOAuth | null = null
 
@@ -172,7 +183,7 @@ export class HttpTools extends AssistantToolFactory {
       }
     }
 
-    // Build body params
+    // Build body
     const bodyParams = params.filter((p) => p.location === 'body')
     const body =
       bodyParams.length > 0
@@ -195,6 +206,78 @@ export class HttpTools extends AssistantToolFactory {
       throw new Error(`HTTP ${response.status} from ${endpoint.method} ${resolvedPath}: ${errorBody}`)
     }
 
-    return response.json()
+    const data = await response.json()
+    const filtered = filterResponse(data, endpoint.keepPaths, endpoint.ignorePaths)
+
+    if (endpoint.responseFormat === 'yaml') {
+      return yaml.stringify(filtered)
+    }
+    return filtered
   }
+}
+
+/**
+ * Filters a response object using dot-notation paths with wildcard * support.
+ * keepPaths takes precedence: if set, only matching paths are kept.
+ * Otherwise ignorePaths removes matching paths.
+ */
+export function filterResponse(data: unknown, keepPaths?: string[], ignorePaths?: string[]): unknown {
+  if (!keepPaths?.length && !ignorePaths?.length) return data
+  if (keepPaths?.length) return applyKeep(data, keepPaths)
+  return applyIgnore(data, ignorePaths!)
+}
+
+function applyKeep(data: unknown, paths: string[]): unknown {
+  if (Array.isArray(data)) {
+    return data.map((item) => applyKeep(item, paths))
+  }
+  if (data !== null && typeof data === 'object') {
+    const result: Record<string, unknown> = {}
+    for (const path of paths) {
+      const [head, ...tail] = path.split('.')
+      if (!head) continue
+      const keys = head === '*' ? Object.keys(data as object) : [head]
+      for (const key of keys) {
+        const value = (data as Record<string, unknown>)[key]
+        if (value === undefined) continue
+        if (tail.length === 0) {
+          result[key] = value
+        } else {
+          const sub = applyKeep(value, [tail.join('.')])
+          // Merge into existing key if already present
+          if (key in result && result[key] !== null && typeof result[key] === 'object') {
+            result[key] = { ...(result[key] as object), ...(sub as object) }
+          } else {
+            result[key] = sub
+          }
+        }
+      }
+    }
+    return result
+  }
+  return data
+}
+
+function applyIgnore(data: unknown, paths: string[]): unknown {
+  if (Array.isArray(data)) {
+    return data.map((item) => applyIgnore(item, paths))
+  }
+  if (data !== null && typeof data === 'object') {
+    const result: Record<string, unknown> = { ...(data as Record<string, unknown>) }
+    for (const path of paths) {
+      const [head, ...tail] = path.split('.')
+      if (!head) continue
+      const keys = head === '*' ? Object.keys(result) : [head]
+      for (const key of keys) {
+        if (!(key in result)) continue
+        if (tail.length === 0) {
+          delete result[key]
+        } else {
+          result[key] = applyIgnore(result[key], [tail.join('.')])
+        }
+      }
+    }
+    return result
+  }
+  return data
 }
