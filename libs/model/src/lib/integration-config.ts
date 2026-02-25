@@ -18,7 +18,8 @@ export type OAuth2Config = {
   redirect_uri: string
   authorization_endpoint?: string
   token_endpoint?: string
-  scope?: string
+  // Single string ("openid email") or array joined with spaces at runtime
+  scope?: string | string[]
   tokens?: OAuth2Tokens // Stored tokens (user-level only)
   // Provider-specific data
   account_id?: string

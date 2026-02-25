@@ -20,7 +20,8 @@ export interface GenericOAuthConfig {
   redirectUri: string
   authorizationEndpoint: string
   tokenEndpoint: string
-  scope?: string
+  // Single string or array — joined with spaces per OAuth2 spec
+  scope?: string | string[]
 }
 
 export interface TokenData {
@@ -104,7 +105,8 @@ export class GenericOAuth {
     authorizationUrl.searchParams.set('code_challenge', codeChallenge)
     authorizationUrl.searchParams.set('code_challenge_method', 'S256')
     if (this.config.scope) {
-      authorizationUrl.searchParams.set('scope', this.config.scope)
+      const scope = Array.isArray(this.config.scope) ? this.config.scope.join(' ') : this.config.scope
+      authorizationUrl.searchParams.set('scope', scope)
     }
 
     this.interactor.sendEvent(

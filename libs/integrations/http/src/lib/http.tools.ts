@@ -27,17 +27,16 @@ import { OAuthCallbackEvent } from '@coday/model'
 import { UserService } from '@coday/service'
 import { GenericOAuth } from './generic-oauth'
 
-// Google Calendar OAuth2 endpoints
-const GOOGLE_OAUTH_CONFIG = {
-  authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-  tokenEndpoint: 'https://oauth2.googleapis.com/token',
-  scope: 'https://www.googleapis.com/auth/calendar.readonly',
-}
+// Google Calendar hard-coded values (temporary, for reference while validating the pattern)
+// authorization_endpoint: 'https://accounts.google.com/o/oauth2/v2/auth'
+// token_endpoint: 'https://oauth2.googleapis.com/token'
+// scope: 'https://www.googleapis.com/auth/calendar.readonly'
+// baseUrl: 'https://www.googleapis.com/calendar/v3'
 
 const GOOGLE_CALENDAR_BASE_URL = 'https://www.googleapis.com/calendar/v3'
 
 export class HttpTools extends AssistantToolFactory {
-  static readonly TYPE = 'http' as const
+  static readonly TYPE = 'HTTP' as const
 
   private oauth: GenericOAuth | null = null
 
@@ -69,14 +68,21 @@ export class HttpTools extends AssistantToolFactory {
 
     const projectName = context.project.name
 
+    if (!oauth2Config.authorization_endpoint || !oauth2Config.token_endpoint) {
+      this.interactor.debug(
+        `HTTP integration '${this.name}' requires oauth2.authorization_endpoint and oauth2.token_endpoint`
+      )
+      return result
+    }
+
     this.oauth = new GenericOAuth(
       {
         clientId: oauth2Config.client_id,
         clientSecret: oauth2Config.client_secret,
         redirectUri: oauth2Config.redirect_uri,
-        authorizationEndpoint: GOOGLE_OAUTH_CONFIG.authorizationEndpoint,
-        tokenEndpoint: GOOGLE_OAUTH_CONFIG.tokenEndpoint,
-        scope: GOOGLE_OAUTH_CONFIG.scope,
+        authorizationEndpoint: oauth2Config.authorization_endpoint,
+        tokenEndpoint: oauth2Config.token_endpoint,
+        scope: oauth2Config.scope,
       },
       this.interactor,
       this.userService,
