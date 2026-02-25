@@ -28,12 +28,36 @@ export type OAuth2Config = {
 }
 
 /**
+ * A single parameter for an HTTP endpoint
+ */
+export type HttpParamConfig = {
+  name: string
+  type: 'string' | 'number' | 'boolean'
+  description: string
+  required?: boolean
+  // Where the param is injected (default: query)
+  location?: 'path' | 'query' | 'body'
+}
+
+/**
+ * A single endpoint exposed as an AI tool
+ */
+export type HttpEndpointConfig = {
+  name: string // tool name suffix: ${integrationName}__${name}
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  path: string // e.g. '/calendars/{calendarId}/events'
+  description: string
+  params?: HttpParamConfig[]
+}
+
+/**
  * HTTP-specific configuration block
  */
 export type HttpConfig = {
   // Base URL for all HTTP requests of this integration
   // e.g. 'https://www.googleapis.com/calendar/v3'
   baseUrl: string
+  endpoints?: HttpEndpointConfig[]
 }
 
 /**
