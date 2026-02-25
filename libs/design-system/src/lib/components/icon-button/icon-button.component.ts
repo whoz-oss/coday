@@ -20,7 +20,6 @@ export type IconButtonVariant = 'default' | 'primary' | 'danger'
  */
 @Component({
   selector: 'ds-icon-button',
-  standalone: true,
   imports: [MatIconButton, MatIcon],
   templateUrl: './icon-button.component.html',
   styleUrl: './icon-button.component.scss',

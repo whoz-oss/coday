@@ -12,7 +12,6 @@ import { IconButtonComponent } from '@whoz-oss/design-system'
  */
 @Component({
   selector: 'agentos-hello',
-  standalone: true,
   imports: [IconButtonComponent],
   templateUrl: './hello-agentos.component.html',
   styleUrl: './hello-agentos.component.scss',
