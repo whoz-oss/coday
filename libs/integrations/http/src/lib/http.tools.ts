@@ -172,11 +172,13 @@ export class HttpTools extends AssistantToolFactory {
   ): Promise<unknown> {
     this.interactor.debug(`[HTTP:${this.name}__${endpoint.name}] args=${JSON.stringify(args)}`)
 
-    const accessToken = await this.oauth!.authenticate()
-      .then(() => this.oauth!.getAccessToken())
-      .catch((err: Error) => {
-        throw new Error(`Authentication failed: ${err.message}`)
-      })
+    const accessToken = await (
+      this.oauth!.isAuthenticated()
+        ? this.oauth!.getAccessToken()
+        : this.oauth!.authenticate().then(() => this.oauth!.getAccessToken())
+    ).catch((err: Error) => {
+      throw new Error(`Authentication failed: ${err.message}`)
+    })
 
     // Substitute path params
     let resolvedPath = endpoint.path
