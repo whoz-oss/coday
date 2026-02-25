@@ -101,8 +101,7 @@ export class GenericOAuth {
         await this.refreshToken()
         this.interactor.debug(`[OAuth:${this.integrationName}] token refreshed successfully`)
       } else {
-        // No refresh_token: caller (HttpTools) is responsible for triggering authenticate()
-        // Return current (expired) token — the API call will 401 and the caller handles re-auth
+        // No refresh_token: HttpTools is responsible for calling authenticate() in this case
         this.interactor.debug(
           `[OAuth:${this.integrationName}] token expired and no refresh_token, returning expired token`
         )
@@ -115,11 +114,17 @@ export class GenericOAuth {
    * Initiates the OAuth2 Authorization Code + PKCE flow.
    * Emits an OAuthRequestEvent for the frontend to open the auth URL.
    * Returns a Promise resolved by handleCallback() when the user completes auth.
+   *
+   * Adds access_type=offline and prompt=consent to ensure a refresh_token is returned.
    */
   async authenticate(): Promise<TokenData> {
     if (this.isAuthenticated()) {
       return this.tokenData!
     }
+    // Clear expired/invalid token so the flow starts fresh
+    this.tokenData = null
+    this.clearTokensFromStorage()
+    this.interactor.debug(`[OAuth:${this.integrationName}] starting fresh OAuth flow`)
 
     const state = oauth.generateRandomState()
     const codeVerifier = oauth.generateRandomCodeVerifier()
@@ -135,11 +140,17 @@ export class GenericOAuth {
     authorizationUrl.searchParams.set('state', state)
     authorizationUrl.searchParams.set('code_challenge', codeChallenge)
     authorizationUrl.searchParams.set('code_challenge_method', 'S256')
+    // Request offline access to get a refresh_token; prompt=consent ensures it's always returned
+    authorizationUrl.searchParams.set('access_type', 'offline')
+    authorizationUrl.searchParams.set('prompt', 'consent')
     if (this.config.scope) {
       const scope = Array.isArray(this.config.scope) ? this.config.scope.join(' ') : this.config.scope
       authorizationUrl.searchParams.set('scope', scope)
     }
 
+    this.interactor.debug(
+      `[OAuth:${this.integrationName}] emitting OAuthRequestEvent, authUrl=${authorizationUrl.toString()}`
+    )
     this.interactor.sendEvent(
       new OAuthRequestEvent({
         authUrl: authorizationUrl.toString(),
@@ -147,6 +158,7 @@ export class GenericOAuth {
         integrationName: this.integrationName,
       })
     )
+    this.interactor.debug(`[OAuth:${this.integrationName}] waiting for OAuth callback...`)
 
     return new Promise((resolve, reject) => {
       this.pendingResolve = resolve
@@ -298,7 +310,7 @@ export class GenericOAuth {
     } as OAuth2Tokens
 
     this.userService.save()
-    this.interactor.debug(`Saved OAuth tokens to storage for ${this.integrationName}`)
+    this.interactor.debug(`[OAuth:${this.integrationName}] saved tokens to storage`)
   }
 
   private clearTokensFromStorage(): void {
@@ -307,7 +319,7 @@ export class GenericOAuth {
     if (oauth2Config) {
       delete oauth2Config.tokens
       this.userService.save()
-      this.interactor.debug(`Cleared OAuth tokens from storage for ${this.integrationName}`)
+      this.interactor.debug(`[OAuth:${this.integrationName}] cleared tokens from storage`)
     }
   }
 }
