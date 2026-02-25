@@ -1,3 +1,13 @@
+## 0.77.0 (2026-02-25)
+
+### 🚀 Features
+
+- #443 agent editor ([#513](https://github.com/whoz-oss/coday/pull/513), [#443](https://github.com/whoz-oss/coday/issues/443))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.76.0 (2026-02-25)
 
 ### 🚀 Features
