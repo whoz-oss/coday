@@ -1,3 +1,13 @@
+## 0.78.0 (2026-02-25)
+
+### 🚀 Features
+
+- #444 handle integrations by name and type ([#517](https://github.com/whoz-oss/coday/pull/517), [#444](https://github.com/whoz-oss/coday/issues/444))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.77.0 (2026-02-25)
 
 ### 🚀 Features
