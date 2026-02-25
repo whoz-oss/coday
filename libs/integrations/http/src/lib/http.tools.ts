@@ -182,13 +182,14 @@ export class HttpTools extends AssistantToolFactory {
       if (this.oauth!.isAuthenticated()) {
         this.interactor.debug(`[HTTP:${this.name}__${endpoint.name}] token valid, using directly`)
         accessToken = await this.oauth!.getAccessToken()
-      } else if (this.oauth!.hasToken()) {
-        this.interactor.debug(
-          `[HTTP:${this.name}__${endpoint.name}] token expired, attempting refresh via getAccessToken()`
-        )
+      } else if (this.oauth!.hasRefreshToken()) {
+        this.interactor.debug(`[HTTP:${this.name}__${endpoint.name}] token expired, refreshing`)
         accessToken = await this.oauth!.getAccessToken()
       } else {
-        this.interactor.debug(`[HTTP:${this.name}__${endpoint.name}] no token, starting OAuth flow`)
+        // No valid token and no refresh_token: trigger full OAuth flow
+        this.interactor.debug(
+          `[HTTP:${this.name}__${endpoint.name}] no valid token or refresh_token, starting OAuth flow`
+        )
         await this.oauth!.authenticate()
         accessToken = await this.oauth!.getAccessToken()
       }

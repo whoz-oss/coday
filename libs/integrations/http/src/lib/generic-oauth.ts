@@ -65,6 +65,12 @@ export class GenericOAuth {
     return !!this.tokenData
   }
 
+  /** True if we have a refresh token available */
+  hasRefreshToken(): boolean {
+    if (!this.tokenData) this.loadTokensFromStorage()
+    return !!this.tokenData?.refreshToken
+  }
+
   isAuthenticated(): boolean {
     if (!this.tokenData) {
       this.interactor.debug(`[OAuth:${this.integrationName}] no in-memory token, trying storage`)
@@ -95,9 +101,10 @@ export class GenericOAuth {
         await this.refreshToken()
         this.interactor.debug(`[OAuth:${this.integrationName}] token refreshed successfully`)
       } else {
-        this.interactor.debug(`[OAuth:${this.integrationName}] token expired and no refresh_token available`)
-        throw new Error(
-          `Token expired and no refresh_token available for ${this.integrationName}. Please re-authenticate.`
+        // No refresh_token: caller (HttpTools) is responsible for triggering authenticate()
+        // Return current (expired) token — the API call will 401 and the caller handles re-auth
+        this.interactor.debug(
+          `[OAuth:${this.integrationName}] token expired and no refresh_token, returning expired token`
         )
       }
     }
