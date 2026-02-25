@@ -60,11 +60,19 @@ export class GenericOAuth {
 
   isAuthenticated(): boolean {
     if (!this.tokenData) {
+      this.interactor.debug(`[OAuth:${this.integrationName}] no in-memory token, trying storage`)
       this.loadTokensFromStorage()
     }
-    if (!this.tokenData) return false
-    // Consider token valid if it expires in more than 5 minutes
-    return this.tokenData.expiresAt > Date.now() + 5 * 60 * 1000
+    if (!this.tokenData) {
+      this.interactor.debug(`[OAuth:${this.integrationName}] no token found in storage`)
+      return false
+    }
+    const remainingMs = this.tokenData.expiresAt - Date.now()
+    const valid = remainingMs > 5 * 60 * 1000
+    this.interactor.debug(
+      `[OAuth:${this.integrationName}] token expiresAt=${new Date(this.tokenData.expiresAt).toISOString()}, remainingMs=${remainingMs}, valid=${valid}`
+    )
+    return valid
   }
 
   async getAccessToken(): Promise<string> {
@@ -224,8 +232,14 @@ export class GenericOAuth {
   }
 
   private loadTokensFromStorage(): void {
-    const tokens =
-      this.userService.config.projects?.[this.projectName]?.integration?.[this.integrationName]?.oauth2?.tokens
+    const userProjects = this.userService.config.projects
+    const projectConfig = userProjects?.[this.projectName]
+    const integrationConfig = projectConfig?.integration?.[this.integrationName]
+    const tokens = integrationConfig?.oauth2?.tokens
+
+    this.interactor.debug(
+      `[OAuth:${this.integrationName}] loadTokensFromStorage: projectName=${this.projectName}, hasProjects=${!!userProjects}, hasProjectConfig=${!!projectConfig}, hasIntegrationConfig=${!!integrationConfig}, hasTokens=${!!tokens}`
+    )
 
     if (tokens) {
       this.tokenData = {
@@ -233,7 +247,9 @@ export class GenericOAuth {
         refreshToken: tokens.refresh_token,
         expiresAt: tokens.expires_at,
       }
-      this.interactor.debug(`Loaded OAuth tokens from storage for ${this.integrationName}`)
+      this.interactor.debug(
+        `[OAuth:${this.integrationName}] loaded tokens from storage, expiresAt=${new Date(tokens.expires_at).toISOString()}`
+      )
     }
   }
 
