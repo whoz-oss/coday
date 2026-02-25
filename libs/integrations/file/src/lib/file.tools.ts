@@ -13,6 +13,7 @@ import { CodayTool } from '@coday/model'
 import { FunctionTool } from '@coday/model'
 import { searchFiles, buildSearchResult } from './search-files'
 import { moveFile } from './move-file'
+import { IntegrationConfig } from '@coday/model'
 
 /**
  * FileTools: A comprehensive file manipulation tool factory for Coday
@@ -53,10 +54,10 @@ import { moveFile } from './move-file'
  * @extends AssistantToolFactory
  */
 export class FileTools extends AssistantToolFactory {
-  name = 'FILES'
+  static readonly TYPE = 'FILES' as const
 
-  constructor(interactor: Interactor) {
-    super(interactor)
+  constructor(interactor: Interactor, instanceName: string, config: IntegrationConfig) {
+    super(interactor, instanceName, config)
   }
 
   protected async buildTools(context: CommandContext, _agentName: string): Promise<CodayTool[]> {
@@ -94,7 +95,7 @@ export class FileTools extends AssistantToolFactory {
       const removeFileFunction: FunctionTool<{ path: string }> = {
         type: 'function',
         function: {
-          name: 'removeFile',
+          name: `${this.name}__remove`,
           description:
             'Remove a file. File path must start with "project://" (for project files) or "exchange://" (for files shared with the user).',
           parameters: {
@@ -133,7 +134,7 @@ export class FileTools extends AssistantToolFactory {
     const listProjectFilesAndDirectoriesFunction: FunctionTool<{ relPath: string }> = {
       type: 'function',
       function: {
-        name: 'listFilesAndDirectories',
+        name: `${this.name}__ls`,
         description:
           'List directories and files in a folder (similar to ls command). Directories end with a slash. ' +
           'Path must start with "project://" or "exchange://" prefix.',
@@ -259,7 +260,7 @@ export class FileTools extends AssistantToolFactory {
     return {
       type: 'function',
       function: {
-        name: 'searchFiles',
+        name: `${this.name}__searchFiles`,
         description:
           'Search for files by name pattern and/or content text. ' +
           'At least one of fileName or fileContent must be provided. ' +
@@ -447,7 +448,7 @@ export class FileTools extends AssistantToolFactory {
     return {
       type: 'function',
       function: {
-        name: 'moveFile',
+        name: `${this.name}__moveFile`,
         description:
           'Move or rename a file within the same scope (project or exchange). ' +
           'Fails if the source does not exist or the destination already exists. ' +
