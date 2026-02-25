@@ -597,7 +597,12 @@ export class AnthropicClient extends AiClient {
     })
 
     // Emit text chunks as they arrive for progressive display
+    // Also check if the thread has been stopped and abort the stream if so
     stream.on('text', (text) => {
+      if (!this.shouldProceed(thread)) {
+        stream.abort()
+        return
+      }
       subscriber.next(new TextChunkEvent({ chunk: text }))
     })
 
