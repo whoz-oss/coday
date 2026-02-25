@@ -1,3 +1,13 @@
+## 0.76.0 (2026-02-25)
+
+### 🚀 Features
+
+- #520 propagate stop signal and handle interrupted delegations ([#521](https://github.com/whoz-oss/coday/pull/521), [#520](https://github.com/whoz-oss/coday/issues/520))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.75.0 (2026-02-25)
 
 ### 🚀 Features
