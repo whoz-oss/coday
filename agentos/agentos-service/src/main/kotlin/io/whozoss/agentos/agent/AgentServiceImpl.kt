@@ -47,7 +47,11 @@ class AgentServiceImpl(
         logger.info { "[AgentService] Creating agent instance for: ${model.name}" }
 
         val tools = toolRegistry.listTools()
-        logger.debug { "[AgentService] Loaded ${tools.size} tool(s) for agent: ${model.name}" }
+        logger.info {
+            "[AgentService] Loaded ${tools.size} tool(s) " +
+                "(sample-5 : ${tools.take(5).map { it.name }}) " +
+                "for agent: ${model.name}"
+        }
 
         val chatClient = chatClientProvider.getChatClient(model.name)
         logger.debug { "[AgentService] ChatClient created for model: ${model.name} via provider: ${model.providerName}" }

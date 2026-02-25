@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.runBlocking
+import mu.KLogging
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
@@ -159,6 +160,7 @@ class AgentSimple(
                     ),
                 )
             } catch (e: Exception) {
+                logger.error(e) { "Error during agent execution" }
                 emit(
                     WarnEvent(
                         projectId = projectId,
@@ -260,7 +262,7 @@ class AgentSimple(
                             event.toolRequestId,
                             "function",
                             event.toolName,
-                            event.args,
+                            event.args ?: "",
                         ),
                     )
                 }
@@ -307,6 +309,16 @@ class AgentSimple(
     /**
      * Create a MethodToolCallback that wraps a StandardTool and emits events.
      * Emits ToolRequestEvent before execution and ToolResponseEvent after.
+     *
+     * The wrapper exposes a `invoke(jsonArgs: String)` method to Spring AI instead of
+     * relying on reflection over `execute(Any?)`. This avoids a ClassCastException caused
+     * by Spring AI injecting a ToolContext as the first argument when it detects a
+     * single-parameter method via reflection — the ToolContext class is loaded by the app
+     * classloader while the plugin Input class lives in the plugin classloader.
+     *
+     * By accepting raw JSON and deserializing it ourselves we stay fully within the app
+     * classloader for the method Spring AI calls, and we delegate deserialization to the
+     * plugin's own classloader through [StandardTool.executeWithJson].
      */
     private fun createToolCallbackWithEvents(
         tool: StandardTool<*>,
@@ -314,19 +326,15 @@ class AgentSimple(
         caseId: UUID,
         eventChannel: Channel<CaseEvent>,
     ): MethodToolCallback {
-        // Create a wrapper tool that emits events
-        val wrapperTool =
-            object : StandardTool<Any?> {
-                override val name = tool.name
-                override val description = tool.description
-                override val inputSchema = tool.inputSchema
-                override val version = tool.version
-                override val paramType = tool.paramType
-
-                override fun execute(input: Any?): String {
+        // Wrapper that Spring AI will call via reflection.
+        // It takes a plain String (raw JSON from the LLM) so Spring AI never tries
+        // to inject a ToolContext or cast across classloader boundaries.
+        val wrapper =
+            object {
+                @Suppress("unused") // called by Spring AI via reflection
+                fun invoke(jsonArgs: String?): String {
                     val toolRequestId = UUID.randomUUID().toString()
 
-                    // Emit ToolRequestEvent
                     runBlocking {
                         eventChannel.send(
                             ToolRequestEvent(
@@ -334,15 +342,14 @@ class AgentSimple(
                                 caseId = caseId,
                                 toolRequestId = toolRequestId,
                                 toolName = tool.name,
-                                args = input?.toString() ?: "{}",
+                                args = jsonArgs,
                             ),
                         )
                     }
 
-                    // Execute the actual tool using type-erased execution path
                     val result =
                         try {
-                            tool.executeWithAny(input)
+                            tool.executeWithJson(jsonArgs)
                         } catch (e: Exception) {
                             runBlocking {
                                 eventChannel.send(
@@ -359,7 +366,6 @@ class AgentSimple(
                             throw e
                         }
 
-                    // Emit ToolResponseEvent
                     runBlocking {
                         eventChannel.send(
                             ToolResponseEvent(
@@ -377,24 +383,21 @@ class AgentSimple(
                 }
             }
 
-        val method =
-            if (wrapperTool.paramType == null) {
-                ReflectionUtils.findMethod(wrapperTool::class.java, "execute")!!
-            } else {
-                ReflectionUtils.findMethod(wrapperTool::class.java, "execute", wrapperTool.paramType)!!
-            }
+        val method = ReflectionUtils.findMethod(wrapper::class.java, "invoke", String::class.java)!!
 
         return MethodToolCallback
             .builder()
             .toolDefinition(
                 ToolDefinitions
                     .builder(method)
-                    .description(wrapperTool.description)
-                    .name(wrapperTool.name)
-                    .inputSchema(wrapperTool.inputSchema)
+                    .description(tool.description)
+                    .name(tool.name)
+                    .inputSchema(tool.inputSchema)
                     .build(),
             ).toolMethod(method)
-            .toolObject(wrapperTool)
+            .toolObject(wrapper)
             .build()
     }
+
+    companion object : KLogging()
 }
