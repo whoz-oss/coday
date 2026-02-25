@@ -83,29 +83,41 @@ export class HttpTools extends AssistantToolFactory {
     const oauth2Config = this.config?.oauth2
     if (!oauth2Config?.client_id || !oauth2Config?.client_secret || !oauth2Config?.redirect_uri) {
       this.interactor.debug(
-        `HTTP integration '${this.name}' requires oauth2.client_id, oauth2.client_secret and oauth2.redirect_uri`
+        `[HTTP:${this.name}] missing oauth2 fields: client_id=${!!oauth2Config?.client_id}, client_secret=${!!oauth2Config?.client_secret}, redirect_uri=${!!oauth2Config?.redirect_uri}`
       )
       return []
     }
 
     const baseUrl = this.config?.http?.baseUrl
     if (!baseUrl) {
-      this.interactor.debug(`HTTP integration '${this.name}' requires http.baseUrl`)
+      this.interactor.debug(`[HTTP:${this.name}] missing http.baseUrl`)
       return []
     }
 
     if (!oauth2Config.authorization_endpoint || !oauth2Config.token_endpoint) {
       this.interactor.debug(
-        `HTTP integration '${this.name}' requires oauth2.authorization_endpoint and oauth2.token_endpoint`
+        `[HTTP:${this.name}] missing oauth2 endpoints: authorization_endpoint=${oauth2Config.authorization_endpoint}, token_endpoint=${oauth2Config.token_endpoint}`
       )
       return []
     }
 
     const endpoints = this.config?.http?.endpoints
     if (!endpoints?.length) {
-      this.interactor.debug(`HTTP integration '${this.name}' has no endpoints configured`)
+      this.interactor.debug(`[HTTP:${this.name}] no endpoints configured`)
       return []
     }
+
+    const endpointsSummary = endpoints
+      .map(
+        (e) =>
+          `${e.name}:${e.method} ${e.path}` +
+          ` (${e.params?.length ?? 0} params` +
+          `${e.keepPaths ? ', keepPaths[' + e.keepPaths.length + ']' : ''}` +
+          `${e.ignorePaths ? ', ignorePaths[' + e.ignorePaths.length + ']' : ''}` +
+          `${e.responseFormat ? ', ' + e.responseFormat : ''})`
+      )
+      .join(' | ')
+    this.interactor.debug(`[HTTP:${this.name}] baseUrl=${baseUrl} | endpoints: ${endpointsSummary}`)
 
     this.oauth = new GenericOAuth(
       {
@@ -158,6 +170,8 @@ export class HttpTools extends AssistantToolFactory {
     args: Record<string, unknown>,
     params: HttpParamConfig[]
   ): Promise<unknown> {
+    this.interactor.debug(`[HTTP:${this.name}__${endpoint.name}] args=${JSON.stringify(args)}`)
+
     const accessToken = await this.oauth!.authenticate()
       .then(() => this.oauth!.getAccessToken())
       .catch((err: Error) => {
@@ -192,6 +206,8 @@ export class HttpTools extends AssistantToolFactory {
           )
         : undefined
 
+    this.interactor.debug(`[HTTP:${this.name}__${endpoint.name}] ${endpoint.method} ${url.toString()}`)
+
     const response = await fetch(url.toString(), {
       method: endpoint.method,
       headers: {
@@ -207,7 +223,17 @@ export class HttpTools extends AssistantToolFactory {
     }
 
     const data = await response.json()
+    const rawSize = JSON.stringify(data).length
     const filtered = filterResponse(data, endpoint.keepPaths, endpoint.ignorePaths)
+    const filteredSize = JSON.stringify(filtered).length
+
+    if (endpoint.keepPaths?.length || endpoint.ignorePaths?.length) {
+      this.interactor.debug(
+        `[HTTP:${this.name}__${endpoint.name}] response filtered ${rawSize} → ${filteredSize} chars`
+      )
+    } else {
+      this.interactor.debug(`[HTTP:${this.name}__${endpoint.name}] response ${rawSize} chars (no filter)`)
+    }
 
     if (endpoint.responseFormat === 'yaml') {
       return yaml.stringify(filtered)
