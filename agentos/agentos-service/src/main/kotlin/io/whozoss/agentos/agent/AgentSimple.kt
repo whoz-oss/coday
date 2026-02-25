@@ -31,10 +31,10 @@ import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.tool.method.MethodToolCallback
 import org.springframework.ai.tool.support.ToolDefinitions
-import org.springframework.util.ReflectionUtils
 import java.util.UUID
 import kotlin.collections.firstOrNull
 import kotlin.collections.map
+import kotlin.reflect.jvm.javaMethod
 
 /**
  * Simple agent implementation with single LLM call.
@@ -383,7 +383,7 @@ class AgentSimple(
                 }
             }
 
-        val method = ReflectionUtils.findMethod(wrapper::class.java, "invoke", String::class.java)!!
+        val method = wrapper::invoke.javaMethod
 
         return MethodToolCallback
             .builder()
