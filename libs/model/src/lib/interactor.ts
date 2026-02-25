@@ -15,6 +15,7 @@ export abstract class Interactor {
   private thinking$ = new Subject<null>()
   private subs: Subscription[] = []
   private lastInviteEvent?: InviteEvent
+  private lastChoiceEvent?: ChoiceEvent
 
   debugLevelEnabled: boolean = false
 
@@ -70,6 +71,7 @@ export abstract class Interactor {
 
   async chooseOption(options: string[], question: string, invite?: string): Promise<string> {
     const choiceEvent = new ChoiceEvent({ options, invite: question, optionalQuestion: invite })
+    this.lastChoiceEvent = choiceEvent
     const answer: Observable<string> = this.events.pipe(
       filter((e) => e.parentKey === choiceEvent.timestamp),
       filter((e) => e instanceof AnswerEvent),
@@ -78,9 +80,25 @@ export abstract class Interactor {
     )
     this.sendEvent(choiceEvent)
     try {
-      return await firstValueFrom(answer)
+      const result = await firstValueFrom(answer)
+      // Clear once answered so replayLastChoice cannot re-post it
+      this.lastChoiceEvent = undefined
+      return result
     } catch (error: any) {
       throw new Error(`No answer received over choice ${choiceEvent.timestamp} : ${error.message}`)
+    }
+  }
+
+  /**
+   * Re-emit the last choice event if any.
+   * Used by canal adapters to restore pending choice state after reconnection.
+   * The re-emitted event is marked as replayed so canal adapters skip forwarding it outbound.
+   */
+  replayLastChoice(): void {
+    if (this.lastChoiceEvent) {
+      ;(this.lastChoiceEvent as any)._isReplayed = true
+      this.sendEvent(this.lastChoiceEvent)
+      ;(this.lastChoiceEvent as any)._isReplayed = false
     }
   }
 

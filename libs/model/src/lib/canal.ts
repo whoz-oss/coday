@@ -43,6 +43,14 @@ export interface CanalBridge {
    * Send a message into an existing thread.
    */
   sendMessage(threadId: string, message: string): void
+
+  /**
+   * Send a choice selection into an existing thread.
+   * Used when the thread is waiting for a ChoiceEvent response.
+   * @param threadId The thread to send the choice into
+   * @param choice The selected option value
+   */
+  sendChoice(threadId: string, choice: string): void
 }
 
 /**

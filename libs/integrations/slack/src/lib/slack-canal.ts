@@ -6,6 +6,7 @@ import { ProjectService, ThreadService } from '@coday/service'
 import {
   CanalBridge,
   CanalThreadHandle,
+  ChoiceEvent,
   CommunicationCanal,
   CodayEvent,
   CodayOptions,
@@ -116,6 +117,30 @@ function verifySlackSignature(rawBody: string, signingSecret: string, signature:
   }
 }
 
+// ─── Choice resolution helper ────────────────────────────────────────────────
+
+/**
+ * Resolve a user's Slack reply to a ChoiceEvent option.
+ * Accepts either the option value directly, or a 1-based numeric index.
+ * Falls back to the raw input if no match is found.
+ */
+export function resolveChoice(input: string, options: string[]): string {
+  const trimmed = input.trim()
+
+  // Direct match (case-insensitive)
+  const directMatch = options.find((opt) => opt.toLowerCase() === trimmed.toLowerCase())
+  if (directMatch) return directMatch
+
+  // Numeric index (1-based)
+  const index = parseInt(trimmed, 10)
+  if (!isNaN(index) && index >= 1 && index <= options.length) {
+    return options[index - 1]!
+  }
+
+  // Fallback: return the raw input so the agent can handle it
+  return trimmed
+}
+
 // ─── Per-thread Slack state ───────────────────────────────────────────────────
 
 interface SlackThreadState {
@@ -124,6 +149,10 @@ interface SlackThreadState {
   originalMessage?: { channel: string; ts: string; threadTs?: string; isDM: boolean }
   unsubscribe?: () => void
   handle: CanalThreadHandle
+  /** Pending ChoiceEvent waiting for a user selection, if any */
+  pendingChoiceEvent?: ChoiceEvent
+  /** The Slack message that contains the choice buttons, so we can update it after selection */
+  pendingChoiceMessage?: { channel: string; ts: string }
 }
 
 // ─── SlackCanal ───────────────────────────────────────────────────────────────
@@ -190,6 +219,63 @@ export class SlackCanal implements CommunicationCanal {
     this.logger('SLACK_CANAL', 'Slack canal shut down')
   }
 
+  // ─── Block action interaction handler ─────────────────────────────────────
+
+  /**
+   * Handle a Slack block_actions payload (button click).
+   * Shared between Socket Mode and HTTP webhook paths.
+   * Returns the chosen value if handled, undefined otherwise.
+   */
+  private async handleBlockAction(payload: any, config: SlackIntegrationConfig, _projectName: string): Promise<void> {
+    const actions: any[] = payload.actions || []
+    for (const action of actions) {
+      const actionId: string = action.action_id || ''
+      if (!actionId.startsWith('choice__')) continue
+
+      // action_id format: choice__{threadId}__{optionValue}
+      const withoutPrefix = actionId.slice('choice__'.length)
+      const separatorIndex = withoutPrefix.indexOf('__')
+      if (separatorIndex === -1) continue
+
+      const threadId = withoutPrefix.slice(0, separatorIndex)
+      const chosenValue = action.value as string
+
+      const state = this.threadStates.get(threadId)
+      if (!state) {
+        this.logger('SLACK_CANAL', `No state found for threadId ${threadId} from block action`)
+        continue
+      }
+
+      if (!state.pendingChoiceEvent) {
+        this.logger('SLACK_CANAL', `No pending choice for thread ${threadId}, ignoring button click`)
+        continue
+      }
+
+      this.logger('SLACK_CANAL', `Button clicked: "${chosenValue}" for thread ${threadId}`)
+
+      // Replace the buttons with a plain confirmation message
+      if (state.pendingChoiceMessage && config.apiKey) {
+        const question = state.pendingChoiceEvent.optionalQuestion
+          ? `${state.pendingChoiceEvent.optionalQuestion}\n${state.pendingChoiceEvent.invite}`
+          : state.pendingChoiceEvent.invite
+        try {
+          await updateSlackMessage(
+            config.apiKey,
+            state.pendingChoiceMessage.channel,
+            state.pendingChoiceMessage.ts,
+            `${question}\n✅ *${chosenValue}*`
+          )
+        } catch (err) {
+          this.logger('SLACK_CANAL', `Error updating choice message after selection:`, err)
+        }
+        state.pendingChoiceMessage = undefined
+      }
+
+      state.pendingChoiceEvent = undefined
+      this.bridge!.sendChoice(threadId, chosenValue)
+    }
+  }
+
   // ─── HTTP Webhook ───────────────────────────────────────────────────────────
 
   private registerHttpRoutes(): void {
@@ -197,6 +283,52 @@ export class SlackCanal implements CommunicationCanal {
 
     this.app.get('/api/slack/health', (_req, res) => {
       res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() })
+    })
+
+    // Interactivity endpoint — receives button clicks (block_actions) from Slack
+    // Must be set in Slack App settings: Interactivity & Shortcuts → Request URL
+    this.app.post('/api/slack/interactions', async (req, res) => {
+      // Slack sends interactions as application/x-www-form-urlencoded with a `payload` field
+      let payload: any
+      try {
+        const raw = typeof req.body?.payload === 'string' ? req.body.payload : JSON.stringify(req.body)
+        payload = JSON.parse(raw)
+      } catch {
+        res.status(400).send('Invalid payload')
+        return
+      }
+
+      if (payload.type !== 'block_actions') {
+        res.status(200).send('') // ACK unsupported types
+        return
+      }
+
+      // Verify signature using the team's matching project config
+      const rawBody = getRawBody(req)
+      const signature = req.headers[SLACK_SIGNATURE_HEADER] as string
+      const timestamp = req.headers[SLACK_TIMESTAMP_HEADER] as string
+
+      const projects = this.projectService.listProjects()
+      let matchedProject: string | null = null
+      let matchedConfig: SlackIntegrationConfig | null = null
+      for (const p of projects) {
+        const info = this.projectService.getProject(p.name)
+        const cfg = (info?.config.integration?.SLACK || {}) as SlackIntegrationConfig
+        if (cfg.signingSecret && verifySlackSignature(rawBody, cfg.signingSecret, signature, timestamp)) {
+          matchedProject = p.name
+          matchedConfig = cfg
+          break
+        }
+      }
+
+      // ACK immediately — Slack requires a response within 3 seconds
+      res.status(200).send('')
+
+      if (!matchedProject || !matchedConfig || !this.bridge) return
+
+      await this.handleBlockAction(payload, matchedConfig, matchedProject).catch((err) =>
+        this.logger('SLACK_CANAL', `Error handling block action:`, err)
+      )
     })
 
     this.app.post('/api/slack/events', async (req, res) => {
@@ -295,6 +427,19 @@ export class SlackCanal implements CommunicationCanal {
         await this.handleSocketModeEvent(projectName, currentConfig, body.event, webClient)
       } catch (error) {
         this.logger('SLACK_CANAL', `Error handling Socket Mode message for ${projectName}:`, error)
+      }
+    })
+
+    // Handle button clicks (block_actions) via Socket Mode
+    socketClient.on('interactive', async ({ body, ack }: { body: any; ack: () => Promise<void> }) => {
+      try {
+        await ack()
+        if (body.type !== 'block_actions') return
+        const currentProject = this.projectService.getProject(projectName)
+        const currentConfig = (currentProject?.config.integration?.SLACK || {}) as SlackIntegrationConfig
+        await this.handleBlockAction(body, currentConfig, projectName)
+      } catch (error) {
+        this.logger('SLACK_CANAL', `Error handling Socket Mode block_action for ${projectName}:`, error)
       }
     })
 
@@ -419,8 +564,15 @@ export class SlackCanal implements CommunicationCanal {
     // Record the original Slack message for threading replies
     state.originalMessage = { channel, ts: event.ts!, threadTs: event.thread_ts, isDM }
 
-    // Inject the message into the existing running Coday thread
-    this.bridge!.sendMessage(threadId, prompt)
+    // If there is a pending choice, interpret the user's message as a choice selection
+    if (state.pendingChoiceEvent) {
+      const choice = resolveChoice(prompt, state.pendingChoiceEvent.options)
+      state.pendingChoiceEvent = undefined
+      this.bridge!.sendChoice(threadId, choice)
+    } else {
+      // Inject the message into the existing running Coday thread
+      this.bridge!.sendMessage(threadId, prompt)
+    }
   }
 
   // ─── Thread state & event subscription ───────────────────────────────────
@@ -521,6 +673,77 @@ export class SlackCanal implements CommunicationCanal {
         } catch (err) {
           this.logger('SLACK_CANAL', `Error posting thinking message:`, err)
         }
+      }
+      return
+    }
+
+    // ChoiceEvent — send options as interactive buttons and track pending choice
+    if (event instanceof ChoiceEvent) {
+      let channel: string | undefined
+      let threadTs: string | undefined
+
+      const threadMap = config.threadMap || {}
+
+      if (isSlackOriginated) {
+        channel = Object.keys(threadMap).find((key) => threadMap[key] === threadId)
+        if (state.originalMessage?.isDM) {
+          threadTs = state.originalMessage.threadTs || state.originalMessage.ts
+        }
+      } else {
+        if (!config.forwardEvents) return
+        const existingKey = Object.keys(threadMap).find((key) => threadMap[key] === threadId)
+        if (existingKey) {
+          ;[channel, threadTs] = existingKey.split(':')
+        } else {
+          channel = config.notifyChannel
+        }
+      }
+
+      if (!channel) return
+
+      // Track the pending choice so the button interaction can be routed correctly
+      state.pendingChoiceEvent = event
+
+      // Format question text
+      const question = event.optionalQuestion ? `${event.optionalQuestion}\n${event.invite}` : event.invite
+
+      // Build Block Kit button blocks — each option becomes a button
+      // action_id encodes threadId so the interaction handler can route back
+      // Slack limits: button text max 75 chars, action_id max 255 chars
+      const BUTTON_TEXT_MAX = 75
+      const ACTION_ID_MAX = 255
+      const blocks = [
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: question },
+        },
+        {
+          type: 'actions',
+          elements: event.options.map((opt) => {
+            const buttonText = opt.length > BUTTON_TEXT_MAX ? opt.slice(0, BUTTON_TEXT_MAX - 1) + '…' : opt
+            const rawActionId = `choice__${threadId}__${opt}`
+            const actionId = rawActionId.length > ACTION_ID_MAX ? rawActionId.slice(0, ACTION_ID_MAX) : rawActionId
+            return {
+              type: 'button',
+              text: { type: 'plain_text', text: buttonText, emoji: true },
+              value: opt,
+              action_id: actionId,
+            }
+          }),
+        },
+      ]
+
+      // Fallback text for notifications
+      const fallbackText = `${question}\n${event.options.map((o, i) => `${i + 1}. ${o}`).join('\n')}`
+
+      try {
+        const response = await postSlackMessageWithBlocks(config.apiKey, channel, fallbackText, blocks, threadTs)
+        // Store the message ts so we can replace the buttons with the chosen value after selection
+        if (response.ts) {
+          state.pendingChoiceMessage = { channel, ts: response.ts }
+        }
+      } catch (err) {
+        this.logger('SLACK_CANAL', `Error posting choice buttons to Slack:`, err)
       }
       return
     }

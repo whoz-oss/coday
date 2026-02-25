@@ -76,6 +76,16 @@ app.use(
   })
 )
 
+// Middleware to parse URL-encoded bodies (e.g. Slack interaction payloads sent as application/x-www-form-urlencoded)
+app.use(
+  express.urlencoded({
+    extended: true,
+    verify: (req, _res, buf) => {
+      ;(req as any).rawBody = buf
+    },
+  })
+)
+
 // Development mode: proxy to Angular dev server
 if (process.env.BUILD_ENV === 'development') {
   const ANGULAR_DEV_SERVER = 'http://localhost:4200'

@@ -1,4 +1,12 @@
-import { AnswerEvent, CanalBridge, CanalThreadHandle, CodayEvent, CodayOptions, InviteEvent } from '@coday/model'
+import {
+  AnswerEvent,
+  CanalBridge,
+  CanalThreadHandle,
+  ChoiceEvent,
+  CodayEvent,
+  CodayOptions,
+  InviteEvent,
+} from '@coday/model'
 import { ThreadService } from '@coday/service'
 import { ThreadCodayManager } from './thread-coday-manager'
 import { debugLog } from './log'
@@ -107,6 +115,53 @@ export class CanalBridgeImpl implements CanalBridge {
       .catch(() => {
         debugLog('CANAL_BRIDGE', `No InviteEvent received, sending bare AnswerEvent to thread ${threadId}`)
         interactor.sendEvent(new AnswerEvent({ answer: message }))
+      })
+  }
+
+  /**
+   * Send a choice selection into a running Coday thread.
+   * If the thread has an active ChoiceEvent (waiting for selection), responds to it.
+   * Otherwise falls back to sending a bare AnswerEvent.
+   */
+  sendChoice(threadId: string, choice: string): void {
+    const instance = this.threadCodayManager.get(threadId)
+    if (!instance?.coday) {
+      debugLog('CANAL_BRIDGE', `Cannot send choice: no coday instance for thread ${threadId}`)
+      return
+    }
+
+    const interactor = instance.coday.interactor
+
+    // Subscribe for a ChoiceEvent first, then replay the last invite.
+    // The interactor only replays InviteEvent, so we rely on the canal's tracking
+    // of the pending ChoiceEvent. If available, use its timestamp as parentKey directly.
+    const choicePromise = new Promise<ChoiceEvent>((resolve, reject) => {
+      const timeoutHandle = setTimeout(() => reject(new Error('Timeout waiting for ChoiceEvent')), 1000)
+      interactor.events
+        .pipe(
+          filter((event): event is ChoiceEvent => event instanceof ChoiceEvent),
+          take(1)
+        )
+        .subscribe({
+          next: (choiceEvent) => {
+            clearTimeout(timeoutHandle)
+            resolve(choiceEvent)
+          },
+          error: reject,
+        })
+    })
+
+    // Replay last choice to trigger re-emission of the pending ChoiceEvent
+    interactor.replayLastChoice()
+
+    choicePromise
+      .then((choiceEvent) => {
+        debugLog('CANAL_BRIDGE', `Got ChoiceEvent, sending choice answer to thread ${threadId}`)
+        interactor.sendEvent(choiceEvent.buildAnswer(choice))
+      })
+      .catch(() => {
+        debugLog('CANAL_BRIDGE', `No ChoiceEvent received, sending bare AnswerEvent to thread ${threadId}`)
+        interactor.sendEvent(new AnswerEvent({ answer: choice }))
       })
   }
 
