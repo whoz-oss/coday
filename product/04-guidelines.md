@@ -160,6 +160,23 @@ As testing matures in the project, these guidelines will be updated to reflect e
    - Integration setup help
    - Best practices and examples
 
+## AgentOS Guidelines
+
+1. **Kotlin Code**
+   - Immutability: `val` + data classes
+   - Null safety: explicit `?` and safe calls
+   - Coroutines for async operations
+
+2. **Plugin Development**
+   - Depend only on `agentos-sdk`
+   - Use `@Extension` for plugin classes
+   - YAML agents for rapid iteration, Kotlin for type safety
+
+3. **Build**
+   - Version Catalog: `gradle/libs.versions.toml`
+   - Composite builds: SDK and Service independent
+   - Nx for incremental CI builds
+
 ## Review Guidelines
 
 1. Code Reviews

@@ -201,6 +201,28 @@
         }
       }
 
+      <!-- Agents - Available for all users -->
+      @if (selectedProjectName()) {
+        <div class="section-container">
+          <a
+            class="section-toggle"
+            (click)="openAgents(); $event.preventDefault(); $event.stopPropagation()"
+            role="button"
+            tabindex="0"
+          >
+            <mat-icon class="section-icon">smart_toy</mat-icon>
+            <span class="section-label">Agents</span>
+          </a>
+        </div>
+      } @else {
+        <div class="section-container">
+          <a class="section-toggle disabled" role="button" tabindex="-1" aria-disabled="true">
+            <mat-icon class="section-icon">smart_toy</mat-icon>
+            <span class="section-label">Agents (No project)</span>
+          </a>
+        </div>
+      }
+
       <!-- Prompts - Available for all users -->
       @if (selectedProjectName()) {
         <div class="section-container">

@@ -11,13 +11,15 @@ import { CodayTool } from '@coday/model'
 import { FunctionTool } from '@coday/model'
 
 export class GitLabTools extends AssistantToolFactory {
-  name = 'GITLAB'
+  static readonly TYPE = 'GITLAB' as const
 
   constructor(
     interactor: Interactor,
-    private integrationService: IntegrationService
+    private readonly integrationService: IntegrationService,
+    instanceName: string,
+    config?: any
   ) {
-    super(interactor)
+    super(interactor, instanceName, config)
   }
 
   protected async buildTools(): Promise<CodayTool[]> {
@@ -47,8 +49,8 @@ export class GitLabTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: 'retrieveGitlabMR',
-        description: 'Retrieve GitLab merge request details by merge request ID.',
+        name: `${this.name}__getMR`,
+        description: 'Get GitLab merge request details by merge request ID.',
         parameters: {
           type: 'object',
           properties: {
@@ -69,8 +71,8 @@ export class GitLabTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: 'retrieveGitlabIssue',
-        description: 'Retrieve GitLab issue details by issue ID, usually a number.',
+        name: `${this.name}__getIssue`,
+        description: 'Get GitLab issue details by issue ID, usually a number.',
         parameters: {
           type: 'object',
           properties: {
@@ -89,7 +91,7 @@ export class GitLabTools extends AssistantToolFactory {
     const retrieveGitlabIssuesFunction: FunctionTool<{ criteria: string }> = {
       type: 'function',
       function: {
-        name: 'retrieveGitlabIssues',
+        name: `${this.name}__getIssues`,
         description: `Retrieve GitLab issues by criteria.`,
         parameters: {
           type: 'object',
@@ -121,7 +123,7 @@ export class GitLabTools extends AssistantToolFactory {
     const retrieveGitlabMergeRequestsFunction: FunctionTool<{ criteria: string }> = {
       type: 'function',
       function: {
-        name: 'retrieveGitlabMergeRequests',
+        name: `${this.name}__getMergeRequests`,
         description: `Retrieve GitLab merge requests by criteria.`,
         parameters: {
           type: 'object',
@@ -171,7 +173,7 @@ export class GitLabTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: 'addGlobalComment',
+        name: `${this.name}__addGlobalComment`,
         description: 'Add a global comment to a GitLab merge request. Use only when reviewing a merge request.',
         parameters: {
           type: 'object',
@@ -235,7 +237,7 @@ export class GitLabTools extends AssistantToolFactory {
     }> = {
       type: 'function',
       function: {
-        name: 'addMRThread',
+        name: `${this.name}__addMRThread`,
         description:
           'Use only when reviewing a merge request. Add feedback to a specific change of file of a MR located at a specific line. The file is identified by its old file path and its new file path. The line of code is identified by its old line number and its new line number. For a new line, the old line number should be null and for removed line the new line number should null.',
         parameters: {

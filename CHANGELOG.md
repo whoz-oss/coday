@@ -1,3 +1,110 @@
+## 0.78.0 (2026-02-25)
+
+### 🚀 Features
+
+- #444 handle integrations by name and type ([#517](https://github.com/whoz-oss/coday/pull/517), [#444](https://github.com/whoz-oss/coday/issues/444))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.77.0 (2026-02-25)
+
+### 🚀 Features
+
+- #443 agent editor ([#513](https://github.com/whoz-oss/coday/pull/513), [#443](https://github.com/whoz-oss/coday/issues/443))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.76.0 (2026-02-25)
+
+### 🚀 Features
+
+- #520 propagate stop signal and handle interrupted delegations ([#521](https://github.com/whoz-oss/coday/pull/521), [#520](https://github.com/whoz-oss/coday/issues/520))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.75.0 (2026-02-25)
+
+### 🚀 Features
+
+- wz-28725: KLogging for filesystem plugin ([b736345](https://github.com/whoz-oss/coday/commit/b736345))
+- wz-28725: KLogging for datetime plugin ([7c68553](https://github.com/whoz-oss/coday/commit/7c68553))
+- wz-28725: postman collection for cases endpoints ([bab724a](https://github.com/whoz-oss/coday/commit/bab724a))
+- wz-28725: build plugins before running agentOS ([940d1c6](https://github.com/whoz-oss/coday/commit/940d1c6))
+- wz-28725: build plugins before running agentOS ([#507](https://github.com/whoz-oss/coday/pull/507))
+- wz-28725: KLogging for plugins ([#506](https://github.com/whoz-oss/coday/pull/506))
+- #482 add Frontay frontend agent, split Runnay into Nxay/Gradlay ([#523](https://github.com/whoz-oss/coday/pull/523), [#482](https://github.com/whoz-oss/coday/issues/482))
+- #391 better file tools ([#522](https://github.com/whoz-oss/coday/pull/522), [#391](https://github.com/whoz-oss/coday/issues/391))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+- thomas.martin @thomasmartin-whoz
+- vincent-audibert-whoz
+
+## 0.74.0 (2026-02-19)
+
+### 🚀 Features
+
+- #485 multi agent role and tool tagging ([#510](https://github.com/whoz-oss/coday/pull/510), [#485](https://github.com/whoz-oss/coday/issues/485))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.73.0 (2026-02-19)
+
+### 🚀 Features
+
+- wz 28719 move aiprovider examples again ([#509](https://github.com/whoz-oss/coday/pull/509))
+- voice toggle mode ([#512](https://github.com/whoz-oss/coday/pull/512))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.72.0 (2026-02-19)
+
+### 🚀 Features
+
+- wz-28725: Tool registry system ([5c0cc08](https://github.com/whoz-oss/coday/commit/5c0cc08))
+- wz-28725: Fix Ai provider package mismatch ([cf943f8](https://github.com/whoz-oss/coday/commit/cf943f8))
+- wz-28725: PR review ([faac40b](https://github.com/whoz-oss/coday/commit/faac40b))
+- wz-28725:  Move ToolOutput to agentos-service module ([dfa5897](https://github.com/whoz-oss/coday/commit/dfa5897))
+- #483 add Runnay task runner agent and delegate from Archay and Dev ([#502](https://github.com/whoz-oss/coday/pull/502), [#483](https://github.com/whoz-oss/coday/issues/483))
+- wz-28725: PR review ([422bd08](https://github.com/whoz-oss/coday/commit/422bd08))
+- wz-28719 move default aiProvider definitions as examples ([#504](https://github.com/whoz-oss/coday/pull/504))
+- #484 add Daemonay agent and its tools ([#503](https://github.com/whoz-oss/coday/pull/503), [#484](https://github.com/whoz-oss/coday/issues/484))
+
+### 🩹 Fixes
+
+- **agentos-datetime-plugin:** remove use nx/gradle in project.json ([bf47743](https://github.com/whoz-oss/coday/commit/bf47743))
+
+### ❤️ Thank You
+
+- thomas.martin @thomasmartin-whoz
+- vincent-audibert-whoz
+- vincent.couturier @vincent-couturier-whoz
+
+## 0.71.1 (2026-02-18)
+
+### 🚀 Features
+
+- wz-28719 port case and caseEvent controllers ([#497](https://github.com/whoz-oss/coday/pull/497))
+
+### 🩹 Fixes
+
+- prompt service resolves project path dynamically via project service ([#499](https://github.com/whoz-oss/coday/pull/499))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.71.0 (2026-02-18)
 
 ### 🚀 Features

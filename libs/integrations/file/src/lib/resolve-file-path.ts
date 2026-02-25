@@ -54,7 +54,7 @@ export function resolveFilePath(filePath: string, context: CommandContext): Reso
 
   throw new Error(
     `File path must start with "${FILE_PREFIXES.PROJECT}" or "${FILE_PREFIXES.EXCHANGE}". ` +
-      'Use searchProjectFile or searchFilesByText to find files.'
+      'Use searchFiles to find files.'
   )
 }
 

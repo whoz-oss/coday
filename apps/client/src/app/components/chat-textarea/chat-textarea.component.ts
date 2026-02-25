@@ -352,43 +352,11 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     this.stopRequested.emit()
   }
 
-  // Methods for push-to-talk mode
-  onVoiceButtonMouseDown(event: MouseEvent): void {
-    event.preventDefault()
-    this.startRecording()
-  }
-
-  onVoiceButtonMouseUp(): void {
-    this.stopRecording()
-  }
-
-  onVoiceButtonMouseLeave(): void {
-    this.stopRecording()
-  }
-
-  onVoiceButtonTouchStart(event: TouchEvent): void {
-    event.preventDefault()
-    this.startRecording()
-  }
-
-  onVoiceButtonTouchEnd(event: TouchEvent): void {
-    event.preventDefault()
-    this.stopRecording()
-  }
-
-  onVoiceButtonKeyDown(event: KeyboardEvent): void {
-    if (event.code === 'Space' || event.key === ' ' || event.keyCode === 32) {
-      event.preventDefault()
-      if (!this.isRecording) {
-        this.startRecording()
-      }
-    }
-  }
-
-  onVoiceButtonKeyUp(event: KeyboardEvent): void {
-    if (event.code === 'Space' || event.key === ' ' || event.keyCode === 32) {
-      event.preventDefault()
+  toggleRecording(): void {
+    if (this.isRecording) {
       this.stopRecording()
+    } else {
+      this.startRecording()
     }
   }
 

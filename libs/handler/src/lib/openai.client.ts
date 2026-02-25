@@ -145,7 +145,8 @@ export class OpenaiClient extends AiClient {
 
     const charBudget =
       model.contextWindow * this.charsPerToken - agent.systemInstructions.length - agent.tools.charLength
-    const data = await this.getMessages(thread, charBudget, model.name)
+    const allowedToolNames = new Set(agent.tools.getTools().map((t) => t.function.name))
+    const data = await this.getMessages(thread, charBudget, model.name, agent.name, allowedToolNames)
     if (data.compacted) {
       // then need to reset the assistant thread as all the beginning is compacted
       thread.data.openai.assistantThreadData = {}
@@ -211,7 +212,8 @@ export class OpenaiClient extends AiClient {
       const initialContextCharLength = agent.systemInstructions.length + agent.tools.charLength + 20
       const charBudget = model.contextWindow * this.charsPerToken - initialContextCharLength
 
-      const data = await this.getMessages(thread, charBudget, model.name)
+      const allowedToolNames = new Set(agent.tools.getTools().map((t) => t.function.name))
+      const data = await this.getMessages(thread, charBudget, model.name, agent.name, allowedToolNames)
 
       // Try streaming first, with fallback to non-streaming
       let response: OpenAI.Chat.Completions.ChatCompletion

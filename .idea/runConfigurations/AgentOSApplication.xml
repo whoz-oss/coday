@@ -4,6 +4,7 @@
     <option name="SPRING_BOOT_MAIN_CLASS" value="io.whozoss.agentos.AgentOSApplication" />
     <option name="WORKING_DIRECTORY" value="file://agentos" />
     <method v="2">
+      <option name="Gradle.BeforeRunTask" enabled="true" tasks="deployPlugins" externalProjectPath="$PROJECT_DIR$/agentos" vmOptions="" scriptParameters="" />
       <option name="Make" enabled="true" />
     </method>
   </configuration>

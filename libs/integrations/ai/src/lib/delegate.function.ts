@@ -1,10 +1,6 @@
-import { Agent, CommandContext } from '@coday/model'
-import { Interactor } from '@coday/model'
-import { AiThread } from '@coday/model'
+import { Agent, AiThread, CommandContext, Interactor, MessageEvent, RunStatus } from '@coday/model'
 import { lastValueFrom, Observable } from 'rxjs'
 import { filter, tap } from 'rxjs/operators'
-import { CodayEvent } from '@coday/model'
-import { MessageEvent } from '@coday/model'
 
 type DelegateInput = {
   context: CommandContext
@@ -42,18 +38,39 @@ The parent conversation (all previous messages) is there for context, but your c
       context.stackDepth--
       const delegatedEvents: Observable<MessageEvent> = (await agent.run(formattedTask, forkedThread)).pipe(
         tap((e) => {
-          console.log(`delegated event ${e.type}`)
-          let event: CodayEvent = e
-          interactor.sendEvent(event)
+          interactor.sendEvent(e)
         }),
         filter((e) => e instanceof MessageEvent)
       )
 
-      // Wait for the completion of the delegated task
-      const result = await lastValueFrom(delegatedEvents)
+      // Propagate stop signal from parent thread to forked thread
+      const stopPropagationInterval = setInterval(() => {
+        if (context.aiThread!.runStatus === RunStatus.STOPPED && forkedThread.runStatus !== RunStatus.STOPPED) {
+          interactor.debug('Propagating stop signal to delegated sub-thread')
+          forkedThread.runStatus = RunStatus.STOPPED
+        }
+      }, 1000)
 
-      context.stackDepth++
+      // Wait for the completion of the delegated task
+      let result: MessageEvent | undefined
+      try {
+        result = await lastValueFrom(delegatedEvents, { defaultValue: undefined })
+      } finally {
+        clearInterval(stopPropagationInterval)
+        // Always restore stackDepth to avoid corrupting the depth guard on exception
+        context.stackDepth++
+      }
+
+      if (forkedThread.runStatus === RunStatus.STOPPED) {
+        return 'Delegation was interrupted before completion. No result available.'
+      }
+
+      // Only merge the forked thread if delegation completed successfully
       context.aiThread!.merge(forkedThread)
+
+      if (!result) {
+        return 'Delegation completed but produced no message.'
+      }
       return result.content
     } catch (error: any) {
       console.error('Error in delegate function:', error)

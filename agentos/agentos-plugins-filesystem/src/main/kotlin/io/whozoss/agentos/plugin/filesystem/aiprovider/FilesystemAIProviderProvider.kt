@@ -6,15 +6,14 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.AiProviderPlugin
+import mu.KLogging
 import org.pf4j.Extension
-import org.slf4j.LoggerFactory
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
 
 @Extension
 class FilesystemAIProviderProvider : AiProviderPlugin {
-    private val logger = LoggerFactory.getLogger(FilesystemAIProviderProvider::class.java)
     private val yamlMapper = ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build())
 
     private val aiProviderDirectory: String =
@@ -30,16 +29,16 @@ class FilesystemAIProviderProvider : AiProviderPlugin {
 
         val aiProviderPath = Paths.get(aiProviderDirectory)
         if (!Files.exists(aiProviderPath)) {
-            logger.warn("AI provider directory does not exist: $aiProviderPath")
+            logger.warn { "AI provider directory does not exist: $aiProviderPath" }
             return emptyList()
         }
 
         if (!Files.isDirectory(aiProviderPath)) {
-            logger.error("AI provider path is not a directory: $aiProviderPath")
+            logger.error { "AI provider path is not a directory: $aiProviderPath" }
             return emptyList()
         }
 
-        logger.info("Loading AI provider from directory: $aiProviderPath")
+        logger.info { "Loading AI provider from directory: $aiProviderPath" }
 
         try {
             Files
@@ -48,16 +47,16 @@ class FilesystemAIProviderProvider : AiProviderPlugin {
                 .filter { it.toString().endsWith(".yaml") || it.toString().endsWith(".yml") }
                 .forEach { yamlFile ->
                     try {
-                        logger.debug("Processing aiProvider file: {}", yamlFile)
+                        logger.debug { "Processing aiProvider file: $yamlFile" }
                         val aiProvider = loadAiProviderFromYaml(yamlFile.toFile())
                         aiProviders.add(aiProvider)
-                        logger.info("Loaded AI Provider '${aiProvider.id}' from ${yamlFile.fileName}")
+                        logger.info { "Loaded AI Provider '${aiProvider.id}' from ${yamlFile.fileName}" }
                     } catch (e: Exception) {
-                        logger.error("Failed to load AI Provider from $yamlFile: ${e.message}", e)
+                        logger.error(e) { "Failed to load AI Provider from $yamlFile: ${e.message}" }
                     }
                 }
         } catch (e: Exception) {
-            logger.error("Failed to scan AI Provider directory: ${e.message}", e)
+            logger.error(e) { "Failed to scan AI Provider directory: ${e.message}" }
         }
 
         return aiProviders
@@ -81,16 +80,18 @@ class FilesystemAIProviderProvider : AiProviderPlugin {
     }
 
     override fun initialize() {
-        logger.info("FilesystemAgentProvider initialized")
-        logger.info("Ai providers directory: $aiProviderDirectory")
+        logger.info { "FilesystemAgentProvider initialized" }
+        logger.info { "Ai providers directory: $aiProviderDirectory" }
         val aiProviders = getAiProviders()
-        logger.info("Loaded ${aiProviders.size} Ai Providers(s) from filesystem")
+        logger.info { "Loaded ${aiProviders.size} Ai Providers(s) from filesystem" }
         aiProviders.forEach { aiProvider ->
-            logger.info("  - ${aiProvider.id}: ${aiProvider.name} (type: ${aiProvider.apiType})")
+            logger.info { "  - ${aiProvider.id}: ${aiProvider.name} (type: ${aiProvider.apiType})" }
         }
     }
 
     override fun destroy() {
-        logger.info("FilesystemAgentProvider destroyed")
+        logger.info { "FilesystemAgentProvider destroyed" }
     }
+
+    companion object : KLogging()
 }

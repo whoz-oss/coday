@@ -10,8 +10,10 @@ integrations:
   MEMORY:
   GITHUB:
   GIT:
-  PROJECT_SCRIPTS:
-  PLAYWRIGHT:
+  DELEGATE:
+    - Nxay
+    - Daemonay
+  CHROME:
 instructions: |
   You are Sway, the Software Agent who bridges user needs and code implementation.
   

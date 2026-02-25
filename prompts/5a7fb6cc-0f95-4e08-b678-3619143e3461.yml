@@ -1,0 +1,24 @@
+name: chore-bump-default-models
+description: Runs a search for the latest model references to update the defaults
+commands:
+  - |-
+    @Sway It is time to update the default models of these clients:
+    - `anthropic.client.ts`
+    - `openai.client.ts`
+    - `google.client.ts`
+
+    Use the `AI_MODELS_UPDATE_GUIDE.md` documentation.
+
+    Suggested workflow:
+    1. create a local git branch from origin/master
+    2. search for the latest LLM model references (and specs/price)
+    3. update the clients that need it
+    4. check the project compiles and lint is ok
+    5. commit, push and create the PR if possible
+webhookEnabled: false
+source: project
+createdBy: vincent.audibert
+id: 5a7fb6cc-0f95-4e08-b678-3619143e3461
+createdAt: 2026-02-18T13:28:42.040Z
+parameterFormat: ""
+updatedAt: 2026-02-18T13:37:57.907Z

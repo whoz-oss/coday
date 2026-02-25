@@ -1,10 +1,8 @@
 import { writeFileByPath } from './write-file-by-path'
 import { writeFileChunk } from './write-file-chunk'
-import { findFilesByName } from '@coday/function'
 import { listFilesAndDirectories } from './list-files-and-directories'
-import { findFilesByText } from './find-files-by-text'
 import { readFileUnifiedAsMessageContent } from '@coday/function'
-import { resolveFilePath, prefixSearchResults, FILE_PREFIXES } from './resolve-file-path'
+import { resolveFilePath, FILE_PREFIXES } from './resolve-file-path'
 import { FileEvent } from '@coday/model'
 import { unlinkSync } from 'node:fs'
 import * as pathModule from 'path'
@@ -13,6 +11,9 @@ import { Interactor } from '@coday/model'
 import { CommandContext } from '@coday/model'
 import { CodayTool } from '@coday/model'
 import { FunctionTool } from '@coday/model'
+import { searchFiles, buildSearchResult } from './search-files'
+import { moveFile } from './move-file'
+import { IntegrationConfig } from '@coday/model'
 
 /**
  * FileTools: A comprehensive file manipulation tool factory for Coday
@@ -53,10 +54,10 @@ import { FunctionTool } from '@coday/model'
  * @extends AssistantToolFactory
  */
 export class FileTools extends AssistantToolFactory {
-  name = 'FILES'
+  static readonly TYPE = 'FILES' as const
 
-  constructor(interactor: Interactor) {
-    super(interactor)
+  constructor(interactor: Interactor, instanceName: string, config: IntegrationConfig) {
+    super(interactor, instanceName, config)
   }
 
   protected async buildTools(context: CommandContext, _agentName: string): Promise<CodayTool[]> {
@@ -94,7 +95,7 @@ export class FileTools extends AssistantToolFactory {
       const removeFileFunction: FunctionTool<{ path: string }> = {
         type: 'function',
         function: {
-          name: 'removeFile',
+          name: `${this.name}__remove`,
           description:
             'Remove a file. File path must start with "project://" (for project files) or "exchange://" (for files shared with the user).',
           parameters: {
@@ -112,190 +113,6 @@ export class FileTools extends AssistantToolFactory {
       }
       result.push(removeFileFunction)
     }
-
-    // Only add write tools if not in read-only mode
-    if (!context.fileReadOnly) {
-      const writeProjectFile = ({ path, content }: { path: string; content: string }) => {
-        const resolved = resolveFilePath(path, context)
-
-        // Check permissions for project files
-        if (resolved.scope === 'project' && context.fileReadOnly) {
-          throw new Error('Cannot write to project files in read-only mode')
-        }
-
-        // Use writeFileByPath with root as dirname and relPath as basename
-        const result = writeFileByPath({
-          relPath: pathModule.basename(resolved.absolutePath),
-          root: pathModule.dirname(resolved.absolutePath),
-          interactor: this.interactor,
-          content,
-        })
-
-        // Emit FileEvent for exchange files
-        if (resolved.scope === 'exchange') {
-          const fileSize = Buffer.from(content).length
-          const event = new FileEvent({
-            filename: resolved.relativePath,
-            operation: 'created', // Could be 'updated' if file exists, but we'll keep it simple
-            size: fileSize,
-          })
-          this.interactor.sendEvent(event)
-        }
-
-        return result
-      }
-
-      const writeProjectFileFunction: FunctionTool<{ path: string; content: string }> = {
-        type: 'function',
-        function: {
-          name: 'writeProjectFile',
-          description:
-            'Write the content of a file. IMPORTANT: the whole file is written, do not write it partially. ' +
-            'Prefer this tool for first writes or really full edits. For partial edits, use `writeFileChunk` tool. ' +
-            'File path must start with "project://" (for project files) or "exchange://" (for files shared with the user).',
-          parameters: {
-            type: 'object',
-            properties: {
-              path: {
-                type: 'string',
-                description: 'File path with prefix (e.g., "project://output/report.md" or "exchange://analysis.md")',
-              },
-              content: { type: 'string', description: 'content of the file to write' },
-            },
-          },
-          parse: JSON.parse,
-          function: writeProjectFile,
-        },
-      }
-      result.push(writeProjectFileFunction)
-
-      const writeFileChunkFunction = ({
-        path,
-        replacements,
-      }: {
-        path: string
-        replacements: { oldPart: string; newPart: string }[]
-      }) => {
-        const resolved = resolveFilePath(path, context)
-
-        // Check permissions for project files
-        if (resolved.scope === 'project' && context.fileReadOnly) {
-          throw new Error('Cannot write to project files in read-only mode')
-        }
-
-        const result = writeFileChunk({
-          relPath: pathModule.basename(resolved.absolutePath),
-          root: pathModule.dirname(resolved.absolutePath),
-          interactor: this.interactor,
-          replacements,
-        })
-
-        // Emit FileEvent for exchange files
-        if (resolved.scope === 'exchange') {
-          const event = new FileEvent({
-            filename: resolved.relativePath,
-            operation: 'updated',
-          })
-          this.interactor.sendEvent(event)
-        }
-
-        return result
-      }
-
-      const writeFileChunkTool: FunctionTool<{
-        path: string
-        replacements: { oldPart: string; newPart: string }[]
-      }> = {
-        type: 'function',
-        function: {
-          name: 'writeFileChunk',
-          description:
-            'Replace specified parts of an existing file with new parts. The function reads the entire file content, performs the replacements, and writes the modified content back to the file. ' +
-            'Useful for handling large files efficiently. File path must start with "project://" or "exchange://".',
-          parameters: {
-            type: 'object',
-            properties: {
-              path: {
-                type: 'string',
-                description: 'File path with prefix (e.g., "project://src/main.ts" or "exchange://report.md")',
-              },
-              replacements: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    oldPart: {
-                      type: 'string',
-                      description:
-                        'The part of the file content to be replaced, it should be large enough to be unique.',
-                    },
-                    newPart: { type: 'string', description: 'The new content to replace all the old part.' },
-                  },
-                },
-                description: 'Array of objects specifying the parts to replace and their respective replacements.',
-              },
-            },
-          },
-          parse: JSON.parse,
-          function: writeFileChunkFunction,
-        },
-      }
-      result.push(writeFileChunkTool)
-    }
-
-    const searchProjectFile = async ({ text, path }: { text: string; path?: string }) => {
-      const results: string[] = []
-
-      // Search in exchange workspace if available
-      if (context.threadFilesRoot && (!path || path.startsWith(FILE_PREFIXES.EXCHANGE))) {
-        const exchangePath = path?.replace(FILE_PREFIXES.EXCHANGE, '')
-        const exchangeResults = await findFilesByName({
-          text,
-          path: exchangePath,
-          root: context.threadFilesRoot,
-          limit: 500,
-        })
-        results.push(...prefixSearchResults(exchangeResults, 'exchange'))
-      }
-
-      // Search in project (unless path explicitly starts with exchange://)
-      if (!path?.startsWith(FILE_PREFIXES.EXCHANGE)) {
-        const projectPath = path?.replace('project://', '')
-        const projectResults = await findFilesByName({
-          text,
-          path: projectPath,
-          root: context.project.root,
-          limit: 500,
-        })
-        results.push(...prefixSearchResults(projectResults, 'project'))
-      }
-
-      return results.slice(0, 100) // Limit total results
-    }
-
-    const searchProjectFileFunction: FunctionTool<{ text: string; path?: string }> = {
-      type: 'function',
-      function: {
-        name: 'searchProjectFile',
-        description:
-          'Search for files by name in both project and conversation files. Returns paths with "project://" or "exchange://" prefix. ' +
-          'Prefer this over `searchFilesByText` when searching by filename.',
-        parameters: {
-          type: 'object',
-          properties: {
-            text: { type: 'string', description: 'Part of the name, or full name of files to search for.' },
-            path: {
-              type: 'string',
-              description:
-                'Optional path to start search from. Can use "project://" or "exchange://" prefix to search only in that space.',
-            },
-          },
-        },
-        parse: JSON.parse,
-        function: searchProjectFile,
-      },
-    }
-    result.push(searchProjectFileFunction)
 
     const listProjectFilesAndDirectories = ({ relPath }: { relPath: string }) => {
       // Require explicit prefix for root-level listing
@@ -317,7 +134,7 @@ export class FileTools extends AssistantToolFactory {
     const listProjectFilesAndDirectoriesFunction: FunctionTool<{ relPath: string }> = {
       type: 'function',
       function: {
-        name: 'listFilesAndDirectories',
+        name: `${this.name}__ls`,
         description:
           'List directories and files in a folder (similar to ls command). Directories end with a slash. ' +
           'Path must start with "project://" or "exchange://" prefix.',
@@ -336,94 +153,6 @@ export class FileTools extends AssistantToolFactory {
     }
     result.push(listProjectFilesAndDirectoriesFunction)
 
-    const searchFilesByText = async ({
-      text,
-      path,
-      fileTypes,
-    }: {
-      text: string
-      path?: string
-      fileTypes?: string[]
-    }) => {
-      const resultLines: string[] = []
-
-      // Search in exchange workspace if available
-      if (context.threadFilesRoot && (!path || path.startsWith(FILE_PREFIXES.EXCHANGE))) {
-        const exchangePath = path?.replace(FILE_PREFIXES.EXCHANGE, '')
-        const exchangeResultsRaw = await findFilesByText({
-          text,
-          path: exchangePath,
-          root: context.threadFilesRoot,
-          interactor: this.interactor,
-          fileTypes,
-        })
-
-        if (exchangeResultsRaw && exchangeResultsRaw !== 'No match found') {
-          const exchangeFiles = exchangeResultsRaw
-            .trim()
-            .split('\n')
-            .filter((f) => f)
-          resultLines.push(...prefixSearchResults(exchangeFiles, 'exchange'))
-        }
-      }
-
-      // Search in project (unless path explicitly starts with exchange://)
-      if (!path?.startsWith(FILE_PREFIXES.EXCHANGE)) {
-        const projectPath = path?.replace(FILE_PREFIXES.PROJECT, '')
-        const projectResultsRaw = await findFilesByText({
-          text,
-          path: projectPath,
-          root: context.project.root,
-          interactor: this.interactor,
-          fileTypes,
-        })
-
-        if (projectResultsRaw && projectResultsRaw !== 'No match found') {
-          const projectFiles = projectResultsRaw
-            .trim()
-            .split('\n')
-            .filter((f) => f)
-          resultLines.push(...prefixSearchResults(projectFiles, 'project'))
-        }
-      }
-
-      return resultLines.length > 0 ? resultLines.join('\n') : 'No match found'
-    }
-
-    const searchFilesByTextFunction: FunctionTool<{
-      text: string
-      path?: string
-      fileTypes?: string[]
-    }> = {
-      type: 'function',
-      function: {
-        name: 'searchFilesByText',
-        description:
-          'Search for files containing text in both project and conversation files. Returns paths with "project://" or "exchange://" prefix. ' +
-          'This function is slow, restrict scope by giving a path and fileTypes if possible, to avoid a timeout. If searching for a filename, prefer `searchProjectFile`.',
-        parameters: {
-          type: 'object',
-          properties: {
-            text: { type: 'string', description: 'text to search for inside files' },
-            path: {
-              type: 'string',
-              description:
-                'Optional path to start search from. Can use "project://" or "exchange://" prefix to search only in that space.',
-            },
-            fileTypes: {
-              type: 'array',
-              items: { type: 'string' },
-              description:
-                "optional but highly recommended array of file extensions to limit the search (e.g., ['js', 'ts'])",
-            },
-          },
-        },
-        parse: JSON.parse,
-        function: searchFilesByText,
-      },
-    }
-    result.push(searchFilesByTextFunction)
-
     // Unified file reader tool - handles all file types automatically including images
     const readFileUnified = async ({ filePath }: { filePath: string }) => {
       const resolved = resolveFilePath(filePath, context)
@@ -441,7 +170,7 @@ export class FileTools extends AssistantToolFactory {
         description:
           'Read content from any file type. Supports text files, PDFs, and image files (PNG, JPEG, GIF, WebP). ' +
           'File path must start with "project://" (for project files) or "exchange://" (for files shared with the user). ' +
-          'Use searchProjectFile or searchFilesByText to find files across both spaces.',
+          'Use searchFiles to find files across both spaces.',
         parameters: {
           type: 'object',
           properties: {
@@ -457,6 +186,290 @@ export class FileTools extends AssistantToolFactory {
     }
     result.push(readFileFunction)
 
+    // New tools (#391)
+    result.push(this.buildSearchFilesTool(context))
+    if (!context.fileReadOnly) {
+      result.push(this.buildEditFilesTool(context))
+      result.push(this.buildMoveFileTool(context))
+    }
+
     return result
+  }
+
+  // -------------------------------------------------------------------------
+  // NEW TOOLS (#391)
+  // -------------------------------------------------------------------------
+
+  private buildSearchFilesTool(context: CommandContext): FunctionTool<{
+    fileName?: string
+    fileContent?: string
+    path?: string
+    fileTypes?: string[]
+  }> {
+    const searchFilesHandler = async ({
+      fileName,
+      fileContent,
+      path,
+      fileTypes,
+    }: {
+      fileName?: string
+      fileContent?: string
+      path?: string
+      fileTypes?: string[]
+    }) => {
+      if (!fileName && !fileContent) {
+        return 'At least one of fileName or fileContent must be provided.'
+      }
+
+      const results: string[] = []
+
+      // Search in exchange workspace
+      if (context.threadFilesRoot && (!path || path.startsWith(FILE_PREFIXES.EXCHANGE))) {
+        const exchangePath = path?.replace(FILE_PREFIXES.EXCHANGE, '')
+        const { files } = await searchFiles({
+          fileName,
+          fileContent,
+          searchPath: exchangePath,
+          root: context.threadFilesRoot,
+          fileTypes,
+          interactor: this.interactor,
+        })
+        const result = buildSearchResult({ files, root: context.threadFilesRoot, prefix: FILE_PREFIXES.EXCHANGE })
+        results.push(result)
+      }
+
+      // Search in project
+      if (!path?.startsWith(FILE_PREFIXES.EXCHANGE)) {
+        const projectPath = path?.replace(FILE_PREFIXES.PROJECT, '')
+        const { files } = await searchFiles({
+          fileName,
+          fileContent,
+          searchPath: projectPath,
+          root: context.project.root,
+          fileTypes,
+          interactor: this.interactor,
+        })
+        const result = buildSearchResult({ files, root: context.project.root, prefix: FILE_PREFIXES.PROJECT })
+        results.push(result)
+      }
+
+      const combined = results.filter((r) => r !== 'No matching files found.').join('\n\n')
+      return combined || 'No matching files found.'
+    }
+
+    return {
+      type: 'function',
+      function: {
+        name: `${this.name}__searchFiles`,
+        description:
+          'Search for files by name pattern and/or content text. ' +
+          'At least one of fileName or fileContent must be provided. ' +
+          'When both are provided, only files whose name matches fileName AND whose content matches fileContent are returned. ' +
+          'If the total size of matching files is reasonable, their content is returned directly. ' +
+          'Otherwise, only the list of matching paths is returned. ' +
+          'Paths are prefixed with "project://" or "exchange://".',
+        parameters: {
+          type: 'object',
+          properties: {
+            fileName: {
+              type: 'string',
+              description: 'Partial file name or pattern to match against file names (e.g. "config", "user.service").',
+            },
+            fileContent: {
+              type: 'string',
+              description: 'Text to search for inside file contents.',
+            },
+            path: {
+              type: 'string',
+              description: 'Optional path to restrict the search scope. Use "project://" or "exchange://" prefix.',
+            },
+            fileTypes: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Optional array of file extensions to restrict content search (e.g. ["ts", "json"]).',
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: searchFilesHandler,
+      },
+    }
+  }
+
+  private buildEditFilesTool(context: CommandContext): FunctionTool<{
+    edits: Array<
+      | { operation: 'write'; path: string; content: string }
+      | { operation: 'patch'; path: string; replacements: { oldPart: string; newPart: string }[] }
+    >
+  }> {
+    const editFilesHandler = ({
+      edits,
+    }: {
+      edits: Array<
+        | { operation: 'write'; path: string; content: string }
+        | { operation: 'patch'; path: string; replacements: { oldPart: string; newPart: string }[] }
+      >
+    }) => {
+      if (!edits || !Array.isArray(edits) || edits.length === 0) {
+        return 'No edits provided.'
+      }
+
+      const results: string[] = []
+
+      for (const edit of edits) {
+        try {
+          const resolved = resolveFilePath(edit.path, context)
+
+          if (edit.operation === 'write') {
+            const outcome = writeFileByPath({
+              relPath: pathModule.basename(resolved.absolutePath),
+              root: pathModule.dirname(resolved.absolutePath),
+              interactor: this.interactor,
+              content: edit.content,
+            })
+            if (resolved.scope === 'exchange') {
+              const event = new FileEvent({
+                filename: resolved.relativePath,
+                operation: 'created',
+                size: Buffer.from(edit.content).length,
+              })
+              this.interactor.sendEvent(event)
+            }
+            results.push(`${edit.path}: ${outcome}`)
+          } else if (edit.operation === 'patch') {
+            const outcome = writeFileChunk({
+              relPath: pathModule.basename(resolved.absolutePath),
+              root: pathModule.dirname(resolved.absolutePath),
+              interactor: this.interactor,
+              replacements: edit.replacements,
+            })
+            if (resolved.scope === 'exchange') {
+              const event = new FileEvent({
+                filename: resolved.relativePath,
+                operation: 'updated',
+              })
+              this.interactor.sendEvent(event)
+            }
+            results.push(`${edit.path}: ${outcome}`)
+          } else {
+            results.push(`${(edit as { path: string }).path}: Unknown operation`)
+          }
+        } catch (error) {
+          results.push(`${edit.path}: Error — ${error}`)
+        }
+      }
+
+      return results.join('\n')
+    }
+
+    return {
+      type: 'function',
+      function: {
+        name: 'editFiles',
+        description:
+          'Edit one or more files in a single tool call. ' +
+          'Each edit targets a specific file and specifies an operation: ' +
+          '"write" replaces the entire file content (or creates it), ' +
+          '"patch" replaces specific chunks within an existing file. ' +
+          'Edits are executed independently: a failure on one file does not prevent others from being processed. ' +
+          'File paths must start with "project://" or "exchange://".',
+        parameters: {
+          type: 'object',
+          properties: {
+            edits: {
+              type: 'array',
+              description: 'List of file edits to perform.',
+              items: {
+                type: 'object',
+                properties: {
+                  operation: {
+                    type: 'string',
+                    enum: ['write', 'patch'],
+                    description: '"write" to overwrite/create the file, "patch" to replace specific chunks.',
+                  },
+                  path: {
+                    type: 'string',
+                    description: 'File path with prefix (e.g. "project://src/main.ts" or "exchange://report.md").',
+                  },
+                  content: {
+                    type: 'string',
+                    description: 'Full file content. Required for "write" operation.',
+                  },
+                  replacements: {
+                    type: 'array',
+                    description: 'Required for "patch" operation.',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        oldPart: {
+                          type: 'string',
+                          description: 'Existing content to replace (must be unique and at least 15 chars).',
+                        },
+                        newPart: {
+                          type: 'string',
+                          description: 'Replacement content.',
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: editFilesHandler,
+      },
+    }
+  }
+
+  private buildMoveFileTool(context: CommandContext): FunctionTool<{ from: string; to: string }> {
+    const moveFileHandler = ({ from, to }: { from: string; to: string }) => {
+      const resolvedFrom = resolveFilePath(from, context)
+      const resolvedTo = resolveFilePath(to, context)
+
+      if (resolvedFrom.scope !== resolvedTo.scope) {
+        return `Cannot move files between scopes: "${from}" (${resolvedFrom.scope}) → "${to}" (${resolvedTo.scope}). Use separate copy and delete operations.`
+      }
+
+      const { success, message } = moveFile({
+        fromAbsolute: resolvedFrom.absolutePath,
+        toAbsolute: resolvedTo.absolutePath,
+      })
+
+      if (success && resolvedFrom.scope === 'exchange') {
+        this.interactor.sendEvent(new FileEvent({ filename: resolvedFrom.relativePath, operation: 'deleted' }))
+        this.interactor.sendEvent(new FileEvent({ filename: resolvedTo.relativePath, operation: 'created' }))
+      }
+
+      return message
+    }
+
+    return {
+      type: 'function',
+      function: {
+        name: `${this.name}__moveFile`,
+        description:
+          'Move or rename a file within the same scope (project or exchange). ' +
+          'Fails if the source does not exist or the destination already exists. ' +
+          'Cross-scope moves (project ↔ exchange) are not allowed. ' +
+          'File paths must start with "project://" or "exchange://".',
+        parameters: {
+          type: 'object',
+          properties: {
+            from: {
+              type: 'string',
+              description: 'Source file path with prefix (e.g. "project://old/path.ts").',
+            },
+            to: {
+              type: 'string',
+              description: 'Destination file path with prefix (e.g. "project://new/path.ts").',
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: moveFileHandler,
+      },
+    }
   }
 }

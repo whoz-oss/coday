@@ -576,7 +576,8 @@ export class AnthropicClient extends AiClient {
     subscriber: Subject<CodayEvent>,
     forceUpdateCache: boolean = false
   ): Promise<{ data: Anthropic.Messages.Message; response: Response | undefined }> {
-    const data = await this.getMessages(thread, charBudget, model.name)
+    const allowedToolNames = new Set(agent.tools.getTools().map((t) => t.function.name))
+    const data = await this.getMessages(thread, charBudget, model.name, agent.name, allowedToolNames)
     const messages = this.toClaudeMessage(data.messages, thread, forceUpdateCache)
 
     // Use the streaming helper from the SDK
@@ -596,7 +597,12 @@ export class AnthropicClient extends AiClient {
     })
 
     // Emit text chunks as they arrive for progressive display
+    // Also check if the thread has been stopped and abort the stream if so
     stream.on('text', (text) => {
+      if (!this.shouldProceed(thread)) {
+        stream.abort()
+        return
+      }
       subscriber.next(new TextChunkEvent({ chunk: text }))
     })
 

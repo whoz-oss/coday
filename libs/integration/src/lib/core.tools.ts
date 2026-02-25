@@ -1,15 +1,15 @@
-import { AssistantToolFactory, Interactor } from '@coday/model'
-import { CodayTool } from '@coday/model'
-import { CommandContext } from '@coday/model'
+import { AssistantToolFactory, Interactor, CodayTool, CommandContext, IntegrationConfig } from '@coday/model'
 
 export class CoreTools extends AssistantToolFactory {
-  name = 'CORE'
+  static readonly TYPE = 'CORE' as const
 
   constructor(
     interactor: Interactor,
+    instanceName: string,
+    config: IntegrationConfig,
     private readonly baseUrl?: string
   ) {
-    super(interactor)
+    super(interactor, instanceName, config)
   }
 
   protected async buildTools(context: CommandContext, _agentName: string): Promise<CodayTool[]> {
@@ -17,7 +17,7 @@ export class CoreTools extends AssistantToolFactory {
       {
         type: 'function',
         function: {
-          name: 'get_context_info',
+          name: `${this.name}__get_context_info`,
           description: 'Get current contextual information including time, date, username, and conversation URL',
           parameters: {
             type: 'object',
@@ -48,6 +48,34 @@ export class CoreTools extends AssistantToolFactory {
             }
 
             return JSON.stringify(info, null, 2)
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: `${this.name}__wait`,
+          description: `Pause execution for a specified number of seconds.
+Useful when an operation needs time to complete before the next step: waiting for a process to start,
+an external service to become ready, a file to be written, etc.
+Maximum wait time is 300 seconds (5 minutes).`,
+          parameters: {
+            type: 'object',
+            properties: {
+              seconds: {
+                type: 'number',
+                description: 'Number of seconds to wait (max 300).',
+              },
+            },
+          },
+          parse: JSON.parse,
+          function: async ({ seconds }: { seconds: number }) => {
+            const capped = Math.min(Math.max(1, Math.round(seconds)), 300)
+            if (capped !== seconds) {
+              this.interactor.warn(`Wait time capped to ${capped}s (requested: ${seconds}s)`)
+            }
+            await new Promise((resolve) => setTimeout(resolve, capped * 1000))
+            return `Waited ${capped}s`
           },
         },
       },

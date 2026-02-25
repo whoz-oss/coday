@@ -1,0 +1,65 @@
+{
+  "name": "agentos-datetime-plugin",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "agentos/agentos-datetime-plugin/src",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "{projectRoot}/build.gradle.kts",
+        "{workspaceRoot}/agentos/gradle.properties",
+        "{workspaceRoot}/agentos/settings.gradle.kts"
+      ],
+      "outputs": [
+        "{projectRoot}/build"
+      ],
+      "options": {
+        "command": "./gradlew :agentos-datetime-plugin:build",
+        "cwd": "agentos"
+      },
+      "dependsOn": [
+        {
+          "target": "build",
+          "projects": [
+            "agentos-sdk"
+          ]
+        }
+      ]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "{projectRoot}/build.gradle.kts",
+        "{workspaceRoot}/agentos/gradle.properties",
+        "{workspaceRoot}/agentos/settings.gradle.kts"
+      ],
+      "outputs": [
+        "{projectRoot}/build/test-results",
+        "{projectRoot}/build/reports"
+      ],
+      "options": {
+        "command": "./gradlew clean :agentos-datetime-plugin:test --no-build-cache --no-configuration-cache --no-daemon",
+        "cwd": "agentos",
+        "passWithNoTests": null
+      }
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./gradlew :agentos-datetime-plugin:clean",
+        "cwd": "agentos"
+      }
+    }
+  },
+  "tags": [
+    "type:lib",
+    "platform:jvm",
+    "scope:plugin"
+  ]
+}
