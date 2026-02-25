@@ -41,6 +41,8 @@ export class GenericOAuth {
   private pendingCodeVerifier: string | null = null
   private pendingResolve: ((token: TokenData) => void) | null = null
   private pendingReject: ((error: Error) => void) | null = null
+  // Shared promise for concurrent authenticate() calls during the same flow
+  private pendingAuthPromise: Promise<TokenData> | null = null
 
   constructor(
     private readonly config: GenericOAuthConfig,
@@ -49,8 +51,11 @@ export class GenericOAuth {
     private readonly projectName: string,
     private readonly integrationName: string
   ) {
+    // Use the full authorization endpoint URL as issuer base — supports path-based issuers
+    // (e.g. Keycloak realms: https://auth.example.com/realms/myrealm)
+    const authUrl = new URL(config.authorizationEndpoint)
     this.as = {
-      issuer: new URL(config.authorizationEndpoint).origin,
+      issuer: `${authUrl.origin}${authUrl.pathname.split('/').slice(0, -1).join('/')}`,
       authorization_endpoint: config.authorizationEndpoint,
       token_endpoint: config.tokenEndpoint,
     }
@@ -115,12 +120,20 @@ export class GenericOAuth {
    * Emits an OAuthRequestEvent for the frontend to open the auth URL.
    * Returns a Promise resolved by handleCallback() when the user completes auth.
    *
+   * If a flow is already in progress, returns the same pending Promise (no double flow).
    * Adds access_type=offline and prompt=consent to ensure a refresh_token is returned.
    */
   async authenticate(): Promise<TokenData> {
     if (this.isAuthenticated()) {
       return this.tokenData!
     }
+
+    // Guard: if a flow is already in progress, reuse the same promise
+    if (this.pendingAuthPromise) {
+      this.interactor.debug(`[OAuth:${this.integrationName}] OAuth flow already in progress, reusing pending promise`)
+      return this.pendingAuthPromise
+    }
+
     // Clear expired/invalid token so the flow starts fresh
     this.tokenData = null
     this.clearTokensFromStorage()
@@ -160,16 +173,31 @@ export class GenericOAuth {
     )
     this.interactor.debug(`[OAuth:${this.integrationName}] waiting for OAuth callback...`)
 
-    return new Promise((resolve, reject) => {
+    this.pendingAuthPromise = new Promise((resolve, reject) => {
       this.pendingResolve = resolve
       this.pendingReject = reject
     })
+
+    // Clear the shared promise reference once it settles (success or failure)
+    this.pendingAuthPromise.then(
+      () => {
+        this.pendingAuthPromise = null
+      },
+      () => {
+        this.pendingAuthPromise = null
+      }
+    )
+
+    return this.pendingAuthPromise
   }
 
   async handleCallback(event: OAuthCallbackEvent): Promise<void> {
     if (event.integrationName !== this.integrationName) return
+
     if (event.state !== this.pendingState) {
-      this.interactor.error('Invalid OAuth state')
+      const err = new Error('Invalid OAuth state')
+      this.interactor.error(err.message)
+      this.rejectPending(err)
       return
     }
 
@@ -179,18 +207,14 @@ export class GenericOAuth {
           ? 'OAuth authentication denied by user'
           : `OAuth error: ${event.error}${event.errorDescription ? ' - ' + event.errorDescription : ''}`
       this.interactor.warn(errorMessage)
-      if (this.pendingReject) {
-        this.pendingReject(new Error(errorMessage))
-        this.pendingReject = null
-      }
-      this.pendingResolve = null
-      this.pendingState = null
-      this.pendingCodeVerifier = null
+      this.rejectPending(new Error(errorMessage))
       return
     }
 
     if (!event.code || !this.pendingCodeVerifier || !this.pendingState) {
-      this.interactor.error('No pending OAuth flow or missing code')
+      const err = new Error('No pending OAuth flow or missing code')
+      this.interactor.error(err.message)
+      this.rejectPending(err)
       return
     }
 
@@ -227,14 +251,22 @@ export class GenericOAuth {
       }
     } catch (error: any) {
       this.interactor.error(`OAuth token exchange failed: ${error.message}`)
-      if (this.pendingReject) {
-        this.pendingReject(error)
-        this.pendingReject = null
-      }
+      this.rejectPending(error)
     } finally {
       this.pendingState = null
       this.pendingCodeVerifier = null
     }
+  }
+
+  /** Rejects and clears all pending promise references */
+  private rejectPending(error: Error): void {
+    if (this.pendingReject) {
+      this.pendingReject(error)
+      this.pendingReject = null
+    }
+    this.pendingResolve = null
+    this.pendingState = null
+    this.pendingCodeVerifier = null
   }
 
   private async refreshToken(): Promise<void> {

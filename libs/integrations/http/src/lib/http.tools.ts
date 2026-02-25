@@ -119,20 +119,25 @@ export class HttpTools extends AssistantToolFactory {
       .join(' | ')
     this.interactor.debug(`[HTTP:${this.name}] baseUrl=${baseUrl} | endpoints: ${endpointsSummary}`)
 
-    this.oauth = new GenericOAuth(
-      {
-        clientId: oauth2Config.client_id,
-        clientSecret: oauth2Config.client_secret,
-        redirectUri: oauth2Config.redirect_uri,
-        authorizationEndpoint: oauth2Config.authorization_endpoint,
-        tokenEndpoint: oauth2Config.token_endpoint,
-        scope: oauth2Config.scope,
-      },
-      this.interactor,
-      this.userService,
-      context.project.name,
-      this.name
-    )
+    // Only create GenericOAuth once — it caches token state in memory.
+    // Re-creating it on every buildTools() call would discard any in-memory token,
+    // forcing a full re-auth even when a valid token exists in storage.
+    if (!this.oauth) {
+      this.oauth = new GenericOAuth(
+        {
+          clientId: oauth2Config.client_id,
+          clientSecret: oauth2Config.client_secret,
+          redirectUri: oauth2Config.redirect_uri,
+          authorizationEndpoint: oauth2Config.authorization_endpoint,
+          tokenEndpoint: oauth2Config.token_endpoint,
+          scope: oauth2Config.scope,
+        },
+        this.interactor,
+        this.userService,
+        context.project.name,
+        this.name
+      )
+    }
 
     return endpoints.map((endpoint) => this.buildTool(endpoint, baseUrl))
   }
@@ -175,15 +180,11 @@ export class HttpTools extends AssistantToolFactory {
       `[HTTP:${this.name}__${endpoint.name}] oauth=${!!this.oauth}, isAuthenticated=${this.oauth?.isAuthenticated()}`
     )
 
-    // getAccessToken() handles refresh automatically if token is expired.
-    // authenticate() (OAuth flow) is only triggered if no token exists at all.
+    // getAccessToken() handles refresh automatically when token is expired and refresh_token is available.
+    // authenticate() (full OAuth flow) is only triggered when no token exists at all.
     let accessToken: string
     try {
-      if (this.oauth!.isAuthenticated()) {
-        this.interactor.debug(`[HTTP:${this.name}__${endpoint.name}] token valid, using directly`)
-        accessToken = await this.oauth!.getAccessToken()
-      } else if (this.oauth!.hasRefreshToken()) {
-        this.interactor.debug(`[HTTP:${this.name}__${endpoint.name}] token expired, refreshing`)
+      if (this.oauth!.isAuthenticated() || this.oauth!.hasRefreshToken()) {
         accessToken = await this.oauth!.getAccessToken()
       } else {
         // No valid token and no refresh_token: trigger full OAuth flow
@@ -242,7 +243,22 @@ export class HttpTools extends AssistantToolFactory {
       throw new Error(`HTTP ${response.status} from ${endpoint.method} ${resolvedPath}: ${errorBody}`)
     }
 
-    const data = await response.json()
+    // Parse response body: prefer JSON, fallback to text for non-JSON content-types
+    let data: unknown
+    const contentType = response.headers.get('content-type') ?? ''
+    if (contentType.includes('application/json')) {
+      data = await response.json()
+    } else {
+      const text = await response.text()
+      if (!text) return null
+      // Try to parse as JSON anyway (some APIs omit the content-type header)
+      try {
+        data = JSON.parse(text)
+      } catch {
+        data = text
+      }
+    }
+
     const rawSize = JSON.stringify(data).length
     const filtered = filterResponse(data, endpoint.keepPaths, endpoint.ignorePaths)
     const filteredSize = JSON.stringify(filtered).length
@@ -266,6 +282,10 @@ export class HttpTools extends AssistantToolFactory {
  * Filters a response object using dot-notation paths with wildcard * support.
  * keepPaths takes precedence: if set, only matching paths are kept.
  * Otherwise ignorePaths removes matching paths.
+ *
+ * Wildcard semantics: `items.*.summary`
+ *   - When the value at `items` is an array, `*` iterates over array elements
+ *   - When the value at a key is an object, `*` expands to all keys
  */
 export function filterResponse(data: unknown, keepPaths?: string[], ignorePaths?: string[]): unknown {
   if (!keepPaths?.length && !ignorePaths?.length) return data
@@ -275,6 +295,7 @@ export function filterResponse(data: unknown, keepPaths?: string[], ignorePaths?
 
 function applyKeep(data: unknown, paths: string[]): unknown {
   if (Array.isArray(data)) {
+    // Arrays are always recursed into — the paths apply to each element
     return data.map((item) => applyKeep(item, paths))
   }
   if (data !== null && typeof data === 'object') {
@@ -282,16 +303,17 @@ function applyKeep(data: unknown, paths: string[]): unknown {
     for (const path of paths) {
       const [head, ...tail] = path.split('.')
       if (!head) continue
-      const keys = head === '*' ? Object.keys(data as object) : [head]
+      const obj = data as Record<string, unknown>
+      const keys = head === '*' ? Object.keys(obj) : [head]
       for (const key of keys) {
-        const value = (data as Record<string, unknown>)[key]
+        const value = obj[key]
         if (value === undefined) continue
         if (tail.length === 0) {
           result[key] = value
         } else {
           const sub = applyKeep(value, [tail.join('.')])
           // Merge into existing key if already present
-          if (key in result && result[key] !== null && typeof result[key] === 'object') {
+          if (key in result && result[key] !== null && typeof result[key] === 'object' && !Array.isArray(result[key])) {
             result[key] = { ...(result[key] as object), ...(sub as object) }
           } else {
             result[key] = sub
