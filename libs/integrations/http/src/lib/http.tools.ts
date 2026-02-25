@@ -31,9 +31,7 @@ import { GenericOAuth } from './generic-oauth'
 // authorization_endpoint: 'https://accounts.google.com/o/oauth2/v2/auth'
 // token_endpoint: 'https://oauth2.googleapis.com/token'
 // scope: 'https://www.googleapis.com/auth/calendar.readonly'
-// baseUrl: 'https://www.googleapis.com/calendar/v3'
-
-const GOOGLE_CALENDAR_BASE_URL = 'https://www.googleapis.com/calendar/v3'
+// http.baseUrl: 'https://www.googleapis.com/calendar/v3'
 
 export class HttpTools extends AssistantToolFactory {
   static readonly TYPE = 'HTTP' as const
@@ -67,6 +65,12 @@ export class HttpTools extends AssistantToolFactory {
     }
 
     const projectName = context.project.name
+
+    const baseUrl = this.config?.http?.baseUrl
+    if (!baseUrl) {
+      this.interactor.debug(`HTTP integration '${this.name}' requires http.baseUrl`)
+      return result
+    }
 
     if (!oauth2Config.authorization_endpoint || !oauth2Config.token_endpoint) {
       this.interactor.debug(
@@ -134,7 +138,7 @@ export class HttpTools extends AssistantToolFactory {
               throw new Error(`Authentication failed: ${err.message}`)
             })
 
-          const url = new URL(`${GOOGLE_CALENDAR_BASE_URL}/calendars/${encodeURIComponent(calendarId)}/events`)
+          const url = new URL(`${baseUrl}/calendars/${encodeURIComponent(calendarId)}/events`)
           url.searchParams.set('maxResults', String(Math.min(maxResults, 250)))
           url.searchParams.set('singleEvents', 'true')
           url.searchParams.set('orderBy', 'startTime')

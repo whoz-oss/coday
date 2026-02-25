@@ -28,6 +28,15 @@ export type OAuth2Config = {
 }
 
 /**
+ * HTTP-specific configuration block
+ */
+export type HttpConfig = {
+  // Base URL for all HTTP requests of this integration
+  // e.g. 'https://www.googleapis.com/calendar/v3'
+  baseUrl: string
+}
+
+/**
  * Base integration configuration
  */
 export type IntegrationConfig = {
@@ -39,8 +48,11 @@ export type IntegrationConfig = {
   username?: string
   apiKey?: string
 
-  // OAuth2 configuration (new)
+  // OAuth2 configuration
   oauth2?: OAuth2Config
+
+  // HTTP integration configuration
+  http?: HttpConfig
 
   // Extensible for integration-specific data
   [key: string]: any
