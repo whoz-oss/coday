@@ -12,7 +12,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
  * Implements Entity for standard CRUD operations.
  * No parent entity — namespaces are root-level.
  */
-data class NamespaceModel(
+data class Namespace(
     override val metadata: EntityMetadata = EntityMetadata(),
     val name: String,
     val description: String? = null,

@@ -7,4 +7,4 @@ import io.whozoss.agentos.sdk.entity.EntityRepository
  *
  * Namespaces are root-level entities with no parent, so the parent type is Unit.
  */
-interface NamespaceRepository : EntityRepository<NamespaceModel, Unit>
+interface NamespaceRepository : EntityRepository<Namespace, Unit>

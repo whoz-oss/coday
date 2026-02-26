@@ -22,8 +22,7 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/namespaces")
 class NamespaceController(
     private val namespaceService: NamespaceService,
-) : EntityController<NamespaceModel, Unit>(namespaceService) {
-
+) : EntityController<Namespace, Unit>(namespaceService) {
     /**
      * List all namespaces.
      *
@@ -31,5 +30,5 @@ class NamespaceController(
      */
     @GetMapping
     @ResponseStatus(HttpStatus.OK)
-    fun listAll(): List<NamespaceModel> = namespaceService.findAll()
+    fun listAll(): List<Namespace> = namespaceService.findAll()
 }

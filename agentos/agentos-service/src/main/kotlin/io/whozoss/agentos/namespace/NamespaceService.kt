@@ -9,10 +9,9 @@ import io.whozoss.agentos.sdk.entity.EntityService
  * Exposes an additional [findAll] convenience method since listing all namespaces
  * is the primary use case (vs. listing by parent).
  */
-interface NamespaceService : EntityService<NamespaceModel, Unit> {
-
+interface NamespaceService : EntityService<Namespace, Unit> {
     /**
      * Retrieve all non-removed namespaces.
      */
-    fun findAll(): List<NamespaceModel>
+    fun findAll(): List<Namespace>
 }

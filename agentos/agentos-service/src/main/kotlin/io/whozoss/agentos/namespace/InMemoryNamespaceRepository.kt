@@ -1,7 +1,9 @@
 package io.whozoss.agentos.namespace
 
+import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.entity.InMemoryEntityRepository
 import org.springframework.stereotype.Repository
+import java.util.UUID
 
 /**
  * In-memory implementation of NamespaceRepository.
@@ -13,8 +15,18 @@ import org.springframework.stereotype.Repository
  */
 @Repository
 class InMemoryNamespaceRepository :
-    InMemoryEntityRepository<NamespaceModel, Unit>(
+    InMemoryEntityRepository<Namespace, Unit>(
         parentIdExtractor = { Unit },
         comparator = compareBy { it.name },
     ),
-    NamespaceRepository
+    NamespaceRepository {
+    init {
+        save(
+            Namespace(
+                metadata = EntityMetadata(id = UUID.fromString("00000000-0000-0000-0000-000000000001")),
+                name = "default_namespace",
+                description = "Default namespace",
+            ),
+        )
+    }
+}
