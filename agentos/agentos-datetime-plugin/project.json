@@ -43,7 +43,7 @@
         "{projectRoot}/build/reports"
       ],
       "options": {
-        "command": "./gradlew :agentos-datetime-plugin:clean :agentos-datetime-plugin:test",
+        "command": "./gradlew :agentos-datetime-plugin:test",
         "cwd": "agentos",
         "passWithNoTests": null
       },

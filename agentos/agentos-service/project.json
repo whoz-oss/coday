@@ -43,7 +43,7 @@
         "{projectRoot}/build/reports"
       ],
       "options": {
-        "command": "./gradlew :agentos-service:clean :agentos-service:test",
+        "command": "./gradlew :agentos-service:test",
         "cwd": "agentos",
         "passWithNoTests": null
       },
