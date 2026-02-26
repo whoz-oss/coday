@@ -7,6 +7,8 @@ import io.whozoss.agentos.agent.AgentRegistry
 import io.whozoss.agentos.plugin.api.PluginController
 import org.springframework.http.HttpStatus
 import org.springframework.mock.web.MockMultipartFile
+import java.nio.file.Files
+import java.nio.file.Paths
 
 class PluginControllerTest :
     DescribeSpec({
@@ -14,6 +16,16 @@ class PluginControllerTest :
         val pluginService = mockk<PluginService>(relaxed = true)
         val agentRegistry = mockk<AgentRegistry>(relaxed = true)
         val controller = PluginController(pluginService, agentRegistry)
+
+        afterSpec {
+            // The controller writes to plugins/ relative to the working directory — clean up after tests
+            val pluginsDir = Paths.get("plugins")
+            if (Files.exists(pluginsDir)) {
+                Files.walk(pluginsDir)
+                    .sorted(Comparator.reverseOrder())
+                    .forEach(Files::delete)
+            }
+        }
 
         describe("uploadPlugin") {
 
