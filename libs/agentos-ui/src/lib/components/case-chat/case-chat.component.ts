@@ -50,17 +50,34 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     const url = `/api/agentos/api/cases/${this.caseId}/events`
     this.eventSource = this.zone.runOutsideAngular(() => new EventSource(url))
 
-    this.eventSource.onmessage = (msg: globalThis.MessageEvent<string>) => {
+    // NOTE: the backend sends named SSE events ("event: MessageEvent", "event: CaseStatusEvent", ...)
+    // In that case, `onmessage` is NOT called. We must subscribe to named events.
+    const handler = (msg: globalThis.MessageEvent<string>) => {
       try {
         const event = JSON.parse(msg.data) as CaseEvent
         this.zone.run(() => {
           this.events.update((prev) => [...prev, event])
-          this.isRunning.set(event.type !== 'STATUS')
+          // minimal running heuristic: running unless we explicitly receive STOPPED
+          if (event.type === 'STATUS') {
+            const status = (event as unknown as { status?: string }).status
+            this.isRunning.set(status === 'RUNNING')
+          } else {
+            this.isRunning.set(true)
+          }
         })
       } catch {
         console.warn('[CaseChat] Failed to parse SSE event', msg.data)
       }
     }
+
+    // handle the different event names we see in the SSE stream
+    this.eventSource.addEventListener('MessageEvent', handler)
+    this.eventSource.addEventListener('CaseStatusEvent', handler)
+    this.eventSource.addEventListener('AgentSelectedEvent', handler)
+    this.eventSource.addEventListener('AgentRunningEvent', handler)
+    this.eventSource.addEventListener('AgentFinishedEvent', handler)
+    this.eventSource.addEventListener('ThinkingEvent', handler)
+    this.eventSource.addEventListener('TextChunkEvent', handler)
 
     this.eventSource.onerror = () => {
       this.zone.run(() => this.isRunning.set(false))
