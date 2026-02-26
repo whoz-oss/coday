@@ -90,6 +90,7 @@ publishing {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    outputs.upToDateWhen { false }
 }
 
 allprojects {
