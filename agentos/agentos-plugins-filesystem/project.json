@@ -43,7 +43,7 @@
         "{projectRoot}/build/reports"
       ],
       "options": {
-        "command": "./gradlew :agentos-plugins-filesystem:test --no-build-cache --no-configuration-cache --no-daemon",
+        "command": "./gradlew :agentos-plugins-filesystem:test",
         "cwd": "agentos",
         "passWithNoTests": null
       },
