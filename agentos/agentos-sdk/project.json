@@ -33,7 +33,8 @@
         "command": "./gradlew :agentos-sdk:clean :agentos-sdk:test -Pkotlin.incremental=false --no-build-cache --no-configuration-cache --no-daemon",
         "cwd": "agentos",
         "passWithNoTests": null
-      }
+      },
+      "dependsOn": ["build"]
     },
     "publish": {
       "executor": "nx:run-commands",
