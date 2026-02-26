@@ -22,5 +22,6 @@ export function provideApiConfiguration(rootUrl: string) {
   providedIn: 'root',
 })
 export class ApiConfiguration {
+  // Default points to localhost — consuming apps must call provideApiConfiguration() with the correct root URL
   rootUrl: string = 'http://localhost:8123'
 }

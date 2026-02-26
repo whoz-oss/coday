@@ -15,8 +15,6 @@
     "generate-client": {
       "executor": "nx:run-commands",
       "cache": false,
-      "inputs": ["{workspaceRoot}/agentos/openapi/agentos-openapi.yaml"],
-      "outputs": ["{projectRoot}/src"],
       "options": {
         "command": "ng-openapi-gen --config ng-openapi-gen.json",
         "cwd": "libs/agentos-api-client"

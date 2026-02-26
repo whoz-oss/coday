@@ -88,6 +88,9 @@
     "generate-client": {
       "executor": "nx:run-commands",
       "cache": false,
+      "inputs": [
+        "{workspaceRoot}/agentos/openapi/agentos-openapi.yaml"
+      ],
       "options": {
         "command": "nx run agentos-api-client:generate-client"
       },
