@@ -1,0 +1,26 @@
+{
+  "name": "agentos-dataflow",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/agentos-dataflow/src",
+  "tags": ["scope:agentos-dataflow", "type:dataflow"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "{projectRoot}/dist",
+        "main": "libs/agentos-dataflow/src/index.ts",
+        "tsConfig": "libs/agentos-dataflow/tsconfig.lib.json",
+        "assets": ["libs/agentos-dataflow/*.md"]
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"],
+      "options": {
+        "lintFilePatterns": ["libs/agentos-dataflow/**/*.ts"]
+      }
+    }
+  }
+}

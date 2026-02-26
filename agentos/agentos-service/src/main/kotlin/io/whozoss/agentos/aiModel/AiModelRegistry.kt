@@ -15,12 +15,11 @@ import java.util.concurrent.ConcurrentHashMap
  */
 @Service
 class AiModelRegistry(
-    private val aiModelDiscoveryService: AiModelDiscoveryService,
+    aiModelDiscoveryService: AiModelDiscoveryService,
 ) {
     private val modelsByName = ConcurrentHashMap<String, AiModel>()
 
-    @PostConstruct
-    fun initialize() {
+    init {
         logger.info { "Initializing AiModel Registry" }
         val discovered = aiModelDiscoveryService.discoverAiModels()
         discovered.forEach { register(it) }
@@ -40,7 +39,7 @@ class AiModelRegistry(
 
     fun getAll(): List<AiModel> = modelsByName.values.toList()
 
-    fun getDefault(): AiModel? = modelsByName.values.firstOrNull()
+    fun getDefault(): AiModel? = modelsByName.values.sortedByDescending { it.maxTokens }.firstOrNull()
 
     companion object : KLogging()
 }

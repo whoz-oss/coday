@@ -24,6 +24,7 @@ import { registerThreadRoutes } from './lib/thread.routes'
 import { registerMessageRoutes } from './lib/message.routes'
 import { registerUserRoutes } from './lib/user.routes'
 import { registerAgentRoutes } from './lib/agent.routes'
+import { AgentCrudService } from '@coday/service'
 import { registerPromptRoutes } from './lib/prompt.routes'
 import { registerSchedulerRoutes } from './lib/scheduler.routes'
 import { registerPromptExecutionRoutes } from './lib/prompt-execution.routes'
@@ -265,6 +266,7 @@ registerThreadRoutes(app, threadService, threadFileService, threadCodayManager, 
 registerMessageRoutes(app, threadCodayManager, getUsername)
 
 // Register agent management routes
+const agentCrudService = new AgentCrudService(codayOptions.configDir, projectService)
 registerAgentRoutes(
   app,
   projectService,
@@ -273,6 +275,7 @@ registerAgentRoutes(
   logger,
   promptService,
   threadService,
+  agentCrudService,
   codayOptions
 )
 

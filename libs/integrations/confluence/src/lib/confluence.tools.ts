@@ -7,13 +7,15 @@ import { CodayTool } from '@coday/model'
 import { FunctionTool } from '@coday/model'
 
 export class ConfluenceTools extends AssistantToolFactory {
-  name = 'CONFLUENCE'
+  static readonly TYPE = 'CONFLUENCE' as const
 
   constructor(
     interactor: Interactor,
-    private integrationService: IntegrationService
+    private readonly integrationService: IntegrationService,
+    instanceName: string,
+    config?: any
   ) {
-    super(interactor)
+    super(interactor, instanceName, config)
   }
 
   protected async buildTools(): Promise<CodayTool[]> {
@@ -32,8 +34,8 @@ export class ConfluenceTools extends AssistantToolFactory {
     const pageRetrievalFunction: FunctionTool<{ pageId: string }> = {
       type: 'function',
       function: {
-        name: 'retrieveConfluencePage',
-        description: 'Retrieve Confluence wiki page by page ID.',
+        name: `${this.name}__getPage`,
+        description: 'Get Confluence wiki page by page ID.',
         parameters: {
           type: 'object',
           properties: {
@@ -55,7 +57,7 @@ export class ConfluenceTools extends AssistantToolFactory {
     const searchFunction: FunctionTool<{ query: string }> = {
       type: 'function',
       function: {
-        name: 'searchConfluencePage',
+        name: `${this.name}__search`,
         description:
           'Search Confluence pages by words, returns list of page matches. If several pages seem relevant, you **should** read them. Use several searches if many words to check.',
         parameters: {

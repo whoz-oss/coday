@@ -39,8 +39,4 @@ interface AiModelPlugin : ExtensionPoint {
     fun getAiModels(): List<AiModel>
 
     fun getDescription(): String = ""
-
-    fun initialize() {}
-
-    fun destroy() {}
 }

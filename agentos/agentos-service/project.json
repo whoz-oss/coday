@@ -46,7 +46,44 @@
         "command": "./gradlew clean :agentos-service:test --no-build-cache --no-configuration-cache --no-daemon",
         "cwd": "agentos",
         "passWithNoTests": null
-      }
+      },
+      "dependsOn": [
+        {
+          "target": "build",
+          "projects": [
+            "agentos-sdk"
+          ]
+        }
+      ]
+    },
+    "check-openapi-spec": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "inputs": [
+        "{projectRoot}/src/main/kotlin/**/*.kt",
+        "{workspaceRoot}/agentos/openapi/agentos-openapi.yaml"
+      ],
+      "options": {
+        "command": "./agentos-service/check-openapi-spec.sh",
+        "cwd": "agentos"
+      },
+      "dependsOn": [
+        "build"
+      ]
+    },
+    "generate-openapi-spec": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": [
+        "{workspaceRoot}/agentos/openapi/agentos-openapi.yaml"
+      ],
+      "options": {
+        "command": "./gradlew :agentos-service:generateOpenApiDocs --no-configuration-cache",
+        "cwd": "agentos"
+      },
+      "dependsOn": [
+        "build"
+      ]
     },
     "bootRun": {
       "executor": "nx:run-commands",

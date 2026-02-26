@@ -11,9 +11,9 @@ integrations:
   GITHUB:
   GIT:
   DELEGATE:
-    - Runnay
+    - Nxay
     - Daemonay
-  PLAYWRIGHT:
+  CHROME:
 instructions: |
   You are Sway, the Software Agent who bridges user needs and code implementation.
   

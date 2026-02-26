@@ -88,19 +88,5 @@ class FilesystemAiModelProvider : AiModelPlugin {
         )
     }
 
-    override fun initialize() {
-        logger.info { "FilesystemAiModelProvider initialized" }
-        logger.info { "AI model directory: $aiModelDirectory" }
-        val models = getAiModels()
-        logger.info { "Loaded ${models.size} AI model(s) from filesystem" }
-        models.forEach { model ->
-            logger.info { "  - ${model.name}: ${model.modelName} via ${model.providerName}" }
-        }
-    }
-
-    override fun destroy() {
-        logger.info { "FilesystemAiModelProvider destroyed" }
-    }
-
     companion object : KLogging()
 }
