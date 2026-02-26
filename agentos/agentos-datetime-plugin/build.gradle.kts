@@ -31,6 +31,7 @@ dependencies {
     testImplementation("whoz-oss.agentos:agentos-sdk:${libs.versions.agentosSdk.get()}")
     testImplementation(libs.bundles.jackson)
     testImplementation(libs.bundles.testing.common)
+    testImplementation(libs.pf4j)
     kaptTest(libs.pf4j)
 }
 
