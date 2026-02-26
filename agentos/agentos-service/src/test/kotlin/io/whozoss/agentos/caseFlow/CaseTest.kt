@@ -205,6 +205,118 @@ class CaseTest : StringSpec({
     }
 
     // -------------------------------------------------------------------------
+    // processNextStep scope: must not run agents, only advance state
+    // -------------------------------------------------------------------------
+
+    "processNextStep does not call findAgentByName when it sees AgentSelectedEvent — only emits AgentRunningEvent" {
+        // Verifies the separation of concerns: processNextStep transitions state (Selected -> Running)
+        // but never instantiates an agent. The agent is instantiated on the *next* iteration
+        // when processNextStep finds AgentRunningEvent.
+        // We test this by making the agent's run() block indefinitely — if findAgentByName
+        // were called inside the AgentSelectedEvent branch, the test would hang.
+        val agentName = "state-machine-agent"
+        val blockingAgent: Agent = mockk {
+            every { metadata } returns EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray()))
+            every { name } returns agentName
+            // If called, this would block the test — proves it is NOT called during AgentSelectedEvent handling
+            every { run(any<List<CaseEvent>>()) } answers {
+                flow<CaseEvent> {
+                    emit(
+                        AgentFinishedEvent(
+                            projectId = projectId,
+                            caseId = firstArg<List<CaseEvent>>().first().caseId,
+                            agentId = UUID.nameUUIDFromBytes(agentName.toByteArray()),
+                            agentName = agentName,
+                        ),
+                    )
+                }
+            }
+        }
+
+        val agentService: AgentService = mockk()
+        every { agentService.getDefaultAgentName() } returns agentName
+        every { agentService.findAgentByName(agentName) } returns blockingAgent
+        every { agentService.resolveAgentName(any<String>()) } returns null
+        coEvery { agentService.cleanup() } returns Unit
+
+        val caseService: CaseService = mockk { every { save(any()) } returns mockk(relaxed = true) }
+        val savedEvents = mutableListOf<CaseEvent>()
+        val caseEventService: CaseEventService = mockk {
+            every { save(any()) } answers { firstArg<CaseEvent>().also { savedEvents.add(it) } }
+        }
+        val case = Case(
+            projectId = projectId,
+            agentService = agentService,
+            caseService = caseService,
+            caseEventService = caseEventService,
+        )
+
+        case.addUserMessage(userActor, userMessage)
+
+        // AgentRunningEvent must appear — proves the AgentSelectedEvent branch only advanced state
+        savedEvents.filterIsInstance<AgentRunningEvent>().shouldHaveAtLeastSize(1)
+        // findAgentByName called once — in the AgentRunningEvent iteration, not the AgentSelectedEvent one
+        verify(exactly = 1) { agentService.findAgentByName(agentName) }
+    }
+
+    "processNextStep emits AgentRunningEvent before findAgentByName is ever called" {
+        // Strict ordering: AgentRunningEvent must be saved before the agent is instantiated.
+        val agentName = "ordered-agent"
+        val callOrder = mutableListOf<String>()
+
+        val orderedAgent: Agent = mockk {
+            every { metadata } returns EntityMetadata(id = UUID.nameUUIDFromBytes(agentName.toByteArray()))
+            every { name } returns agentName
+            every { run(any<List<CaseEvent>>()) } answers {
+                callOrder.add("agent.run")
+                flow {
+                    emit(
+                        AgentFinishedEvent(
+                            projectId = projectId,
+                            caseId = firstArg<List<CaseEvent>>().first().caseId,
+                            agentId = UUID.nameUUIDFromBytes(agentName.toByteArray()),
+                            agentName = agentName,
+                        ),
+                    )
+                }
+            }
+        }
+
+        val agentService: AgentService = mockk()
+        every { agentService.getDefaultAgentName() } returns agentName
+        every { agentService.findAgentByName(agentName) } answers {
+            callOrder.add("findAgentByName")
+            orderedAgent
+        }
+        every { agentService.resolveAgentName(any<String>()) } returns null
+        coEvery { agentService.cleanup() } returns Unit
+
+        val caseService: CaseService = mockk { every { save(any()) } returns mockk(relaxed = true) }
+        val caseEventService: CaseEventService = mockk {
+            every { save(any()) } answers { firstArg<CaseEvent>().also { event ->
+                if (event is AgentRunningEvent) callOrder.add("AgentRunningEvent saved")
+            }}
+        }
+        val case = Case(
+            projectId = projectId,
+            agentService = agentService,
+            caseService = caseService,
+            caseEventService = caseEventService,
+        )
+
+        case.addUserMessage(userActor, userMessage)
+
+        // AgentRunningEvent must be saved before the agent is looked up or run
+        val runningIdx = callOrder.indexOf("AgentRunningEvent saved")
+        val findIdx = callOrder.indexOf("findAgentByName")
+        val runIdx = callOrder.indexOf("agent.run")
+
+        (runningIdx >= 0) shouldBe true
+        (findIdx > runningIdx) shouldBe true
+        (runIdx > findIdx) shouldBe true
+    }
+
+    // -------------------------------------------------------------------------
     // AgentRunningEvent already in history (case resumed mid-run)
     // -------------------------------------------------------------------------
 

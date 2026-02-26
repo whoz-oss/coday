@@ -349,7 +349,7 @@ class Case(
                     return
                 }
 
-                // if agent selected, transition to running and immediately execute
+                // if agent selected, transition to running
                 is AgentSelectedEvent -> {
                     logger.info { "[Case $id] Found AgentSelectedEvent for agent: ${event.agentName}, transitioning to running" }
                     val agentRunningEvent =
@@ -360,8 +360,6 @@ class Case(
                             agentName = event.agentName,
                         )
                     storeAndEmitEvent(agentRunningEvent)
-                    val agent = agentService.findAgentByName(event.agentName)
-                    runAgent(agent)
                     return
                 }
 
