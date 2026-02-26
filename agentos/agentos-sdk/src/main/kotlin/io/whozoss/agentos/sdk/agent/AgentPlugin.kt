@@ -88,24 +88,4 @@ interface AgentPlugin : ExtensionPoint {
      * @return Description (default: empty string)
      */
     fun getDescription(): String = ""
-
-    /**
-     * Initialize the plugin.
-     *
-     * Called once after the plugin is loaded.
-     * Use this to set up resources, connections, etc.
-     *
-     * Optional - default implementation does nothing.
-     */
-    fun initialize() {}
-
-    /**
-     * Cleanup plugin resources.
-     *
-     * Called once before the plugin is unloaded.
-     * Use this to close connections, release resources, etc.
-     *
-     * Optional - default implementation does nothing.
-     */
-    fun destroy() {}
 }

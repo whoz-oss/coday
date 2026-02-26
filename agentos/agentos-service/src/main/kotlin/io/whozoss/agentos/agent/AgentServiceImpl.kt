@@ -39,7 +39,7 @@ class AgentServiceImpl(
 
     override fun getDefaultAgent(): Agent? {
         val model = aiModelRegistry.getDefault() ?: return null
-        logger.info { "Using default agent: ${model.name}" }
+        logger.info { "Using default model: ${model.name}" }
         return createAgentInstance(model)
     }
 
