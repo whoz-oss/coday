@@ -14,16 +14,18 @@ class GetCurrentDateTimeTool : StandardTool<GetCurrentDateTimeTool.Input> {
     companion object {
         private val objectMapper = jacksonObjectMapper()
     }
+
     override val name: String = "GetCurrentDateTime"
 
-    override val description: String = """
+    override val description: String =
+        """
         Get the current date and time in a specified timezone.
         Returns ISO-8601 formatted datetime string with timezone information.
-    """.trimIndent()
+        """.trimIndent()
 
     override val version: String = "1.0.0"
 
-    override val paramType: Class<*> = Input::class.java
+    override val paramType: Class<Input> = Input::class.java
 
     override val inputSchema: String =
         """
@@ -55,7 +57,9 @@ class GetCurrentDateTimeTool : StandardTool<GetCurrentDateTimeTool.Input> {
                 try {
                     ZoneId.of(params.timezone)
                 } catch (e: Exception) {
-                    return createErrorResponse("Invalid timezone: ${params.timezone}. Use standard timezone IDs like 'America/New_York' or 'UTC'")
+                    return createErrorResponse(
+                        "Invalid timezone: ${params.timezone}. Use standard timezone IDs like 'America/New_York' or 'UTC'",
+                    )
                 }
 
             // Get current time in timezone

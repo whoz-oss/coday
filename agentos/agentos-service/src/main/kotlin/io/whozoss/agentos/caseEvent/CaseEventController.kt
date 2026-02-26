@@ -149,7 +149,7 @@ class CaseEventController(
  */
 private fun CaseEvent.toEventData(): Any =
     when (this) {
-        is MessageEvent ->
+        is MessageEvent -> {
             MessageEventData(
                 id = id,
                 caseId = caseId,
@@ -158,8 +158,9 @@ private fun CaseEvent.toEventData(): Any =
                 actor = actor,
                 content = content,
             )
+        }
 
-        is ToolRequestEvent ->
+        is ToolRequestEvent -> {
             ToolRequestEventData(
                 id = id,
                 caseId = caseId,
@@ -167,10 +168,11 @@ private fun CaseEvent.toEventData(): Any =
                 timestamp = timestamp.toString(),
                 toolRequestId = toolRequestId,
                 toolName = toolName,
-                args = args,
+                args = args ?: "",
             )
+        }
 
-        is ToolResponseEvent ->
+        is ToolResponseEvent -> {
             ToolResponseEventData(
                 id = id,
                 caseId = caseId,
@@ -181,16 +183,18 @@ private fun CaseEvent.toEventData(): Any =
                 output = output,
                 success = success,
             )
+        }
 
-        is ThinkingEvent ->
+        is ThinkingEvent -> {
             ThinkingEventData(
                 id = id,
                 caseId = caseId,
                 projectId = projectId,
                 timestamp = timestamp.toString(),
             )
+        }
 
-        is AgentSelectedEvent ->
+        is AgentSelectedEvent -> {
             AgentSelectedEventData(
                 id = id,
                 caseId = caseId,
@@ -199,8 +203,9 @@ private fun CaseEvent.toEventData(): Any =
                 agentId = agentId,
                 agentName = agentName,
             )
+        }
 
-        is AgentRunningEvent ->
+        is AgentRunningEvent -> {
             AgentRunningEventData(
                 id = id,
                 caseId = caseId,
@@ -209,8 +214,9 @@ private fun CaseEvent.toEventData(): Any =
                 agentId = agentId,
                 agentName = agentName,
             )
+        }
 
-        is AgentFinishedEvent ->
+        is AgentFinishedEvent -> {
             AgentFinishedEventData(
                 id = id,
                 caseId = caseId,
@@ -219,8 +225,9 @@ private fun CaseEvent.toEventData(): Any =
                 agentId = agentId,
                 agentName = agentName,
             )
+        }
 
-        is CaseStatusEvent ->
+        is CaseStatusEvent -> {
             CaseStatusEventData(
                 id = id,
                 caseId = caseId,
@@ -228,8 +235,9 @@ private fun CaseEvent.toEventData(): Any =
                 timestamp = timestamp.toString(),
                 status = status,
             )
+        }
 
-        is WarnEvent ->
+        is WarnEvent -> {
             WarnEventData(
                 id = id,
                 caseId = caseId,
@@ -237,8 +245,9 @@ private fun CaseEvent.toEventData(): Any =
                 timestamp = timestamp.toString(),
                 message = message,
             )
+        }
 
-        is QuestionEvent ->
+        is QuestionEvent -> {
             QuestionEventData(
                 id = id,
                 caseId = caseId,
@@ -249,8 +258,9 @@ private fun CaseEvent.toEventData(): Any =
                 question = question,
                 options = options,
             )
+        }
 
-        is AnswerEvent ->
+        is AnswerEvent -> {
             AnswerEventData(
                 id = id,
                 caseId = caseId,
@@ -260,8 +270,9 @@ private fun CaseEvent.toEventData(): Any =
                 actor = actor,
                 answer = answer,
             )
+        }
 
-        is IntentionGeneratedEvent ->
+        is IntentionGeneratedEvent -> {
             IntentionGeneratedEventData(
                 id = id,
                 caseId = caseId,
@@ -270,8 +281,9 @@ private fun CaseEvent.toEventData(): Any =
                 agentId = agentId,
                 intention = intention,
             )
+        }
 
-        is ToolSelectedEvent ->
+        is ToolSelectedEvent -> {
             ToolSelectedEventData(
                 id = id,
                 caseId = caseId,
@@ -280,8 +292,9 @@ private fun CaseEvent.toEventData(): Any =
                 agentId = agentId,
                 toolName = toolName,
             )
+        }
 
-        is TextChunkEvent ->
+        is TextChunkEvent -> {
             TextChunkEventData(
                 id = id,
                 caseId = caseId,
@@ -289,6 +302,7 @@ private fun CaseEvent.toEventData(): Any =
                 timestamp = timestamp.toString(),
                 chunk = chunk,
             )
+        }
     }
 
 // Event data classes for SSE transmission

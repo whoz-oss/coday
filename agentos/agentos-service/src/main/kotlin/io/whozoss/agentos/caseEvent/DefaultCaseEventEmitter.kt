@@ -6,7 +6,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import org.slf4j.LoggerFactory
+import mu.KLogging
 
 /**
  * Default implementation of CaseEventEmitter.
@@ -14,8 +14,6 @@ import org.slf4j.LoggerFactory
  * Does NOT handle storage - that's the responsibility of a separate persistence layer.
  */
 class DefaultCaseEventEmitter : CaseEventEmitter {
-    private val logger = LoggerFactory.getLogger(DefaultCaseEventEmitter::class.java)
-
     // Hot observable for case events
     private val _events =
         MutableSharedFlow<CaseEvent>(
@@ -31,10 +29,12 @@ class DefaultCaseEventEmitter : CaseEventEmitter {
      * Non-blocking - uses tryEmit to avoid suspending the case thread.
      */
     override fun emit(event: CaseEvent) {
-        logger.debug("[Case ${event.caseId}] Emitting event: ${event::class.simpleName}")
+        logger.debug { "[Case ${event.caseId}] Emitting event: ${event::class.simpleName}" }
         val emitted = _events.tryEmit(event)
         if (!emitted) {
-            logger.warn("[Case ${event.caseId}] Event dropped due to buffer overflow: ${event::class.simpleName}")
+            logger.warn { "[Case ${event.caseId}] Event dropped due to buffer overflow: ${event::class.simpleName}" }
         }
     }
+
+    companion object : KLogging()
 }
