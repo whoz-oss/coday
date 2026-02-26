@@ -9,21 +9,16 @@ import { RequestBuilder } from '../../request-builder'
 
 import { Namespace } from '../../models/namespace'
 
-export interface ListAll$Params {
-  parentId: string
-  ids: Array<string>
-}
+export interface ListAll$Params {}
 
 export function listAll(
   http: HttpClient,
   rootUrl: string,
-  params: ListAll$Params,
+  params?: ListAll$Params,
   context?: HttpContext
 ): Observable<StrictHttpResponse<Array<Namespace>>> {
   const rb = new RequestBuilder(rootUrl, listAll.PATH, 'get')
   if (params) {
-    rb.query('parentId', params.parentId, {})
-    rb.query('ids', params.ids, {})
   }
 
   return http.request(rb.build({ responseType: 'blob', accept: '*/*', context })).pipe(
@@ -34,4 +29,4 @@ export function listAll(
   )
 }
 
-listAll.PATH = '/api/namespaces'
+listAll.PATH = '/api/namespaces/list'

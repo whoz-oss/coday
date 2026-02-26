@@ -22,8 +22,8 @@ import { Delete2$Params } from '../fn/case-event-rest-controller/delete-2'
 import { getById2 } from '../fn/case-event-rest-controller/get-by-id-2'
 import { GetById2$Params } from '../fn/case-event-rest-controller/get-by-id-2'
 import { IntentionGeneratedEvent } from '../models/intention-generated-event'
-import { listByParent1 } from '../fn/case-event-rest-controller/list-by-parent-1'
-import { ListByParent1$Params } from '../fn/case-event-rest-controller/list-by-parent-1'
+import { listByParent2 } from '../fn/case-event-rest-controller/list-by-parent-2'
+import { ListByParent2$Params } from '../fn/case-event-rest-controller/list-by-parent-2'
 import { MessageEvent } from '../models/message-event'
 import { QuestionEvent } from '../models/question-event'
 import { TextChunkEvent } from '../models/text-chunk-event'
@@ -262,17 +262,17 @@ export class CaseEventRestControllerService extends BaseService {
     return resp.pipe(map((r: StrictHttpResponse<void>): void => r.body))
   }
 
-  /** Path part for operation `listByParent1()` */
-  static readonly ListByParent1Path = '/api/case-events'
+  /** Path part for operation `listByParent2()` */
+  static readonly ListByParent2Path = '/api/case-events'
 
   /**
    * This method provides access to the full `HttpResponse`, allowing access to response headers.
-   * To access only the response body, use `listByParent1()` instead.
+   * To access only the response body, use `listByParent2()` instead.
    *
    * This method doesn't expect any request body.
    */
-  listByParent1$Response(
-    params: ListByParent1$Params,
+  listByParent2$Response(
+    params: ListByParent2$Params,
     context?: HttpContext
   ): Observable<
     StrictHttpResponse<
@@ -294,18 +294,18 @@ export class CaseEventRestControllerService extends BaseService {
       >
     >
   > {
-    const obs = listByParent1(this.http, this.rootUrl, params, context)
+    const obs = listByParent2(this.http, this.rootUrl, params, context)
     return obs
   }
 
   /**
    * This method provides access only to the response body.
-   * To access the full response (for headers, for example), `listByParent1$Response()` instead.
+   * To access the full response (for headers, for example), `listByParent2$Response()` instead.
    *
    * This method doesn't expect any request body.
    */
-  listByParent1(
-    params: ListByParent1$Params,
+  listByParent2(
+    params: ListByParent2$Params,
     context?: HttpContext
   ): Observable<
     Array<
@@ -325,7 +325,7 @@ export class CaseEventRestControllerService extends BaseService {
       | WarnEvent
     >
   > {
-    const resp = this.listByParent1$Response(params, context)
+    const resp = this.listByParent2$Response(params, context)
     return resp.pipe(
       map(
         (

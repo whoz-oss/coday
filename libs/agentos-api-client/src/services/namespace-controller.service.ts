@@ -18,6 +18,8 @@ import { getById } from '../fn/namespace-controller/get-by-id'
 import { GetById$Params } from '../fn/namespace-controller/get-by-id'
 import { listAll } from '../fn/namespace-controller/list-all'
 import { ListAll$Params } from '../fn/namespace-controller/list-all'
+import { listByParent } from '../fn/namespace-controller/list-by-parent'
+import { ListByParent$Params } from '../fn/namespace-controller/list-by-parent'
 import { Namespace } from '../models/namespace'
 import { update } from '../fn/namespace-controller/update'
 import { Update$Params } from '../fn/namespace-controller/update'
@@ -103,28 +105,31 @@ export class NamespaceControllerService extends BaseService {
     return resp.pipe(map((r: StrictHttpResponse<void>): void => r.body))
   }
 
-  /** Path part for operation `listAll()` */
-  static readonly ListAllPath = '/api/namespaces'
+  /** Path part for operation `listByParent()` */
+  static readonly ListByParentPath = '/api/namespaces'
 
   /**
    * This method provides access to the full `HttpResponse`, allowing access to response headers.
-   * To access only the response body, use `listAll()` instead.
+   * To access only the response body, use `listByParent()` instead.
    *
    * This method doesn't expect any request body.
    */
-  listAll$Response(params: ListAll$Params, context?: HttpContext): Observable<StrictHttpResponse<Array<Namespace>>> {
-    const obs = listAll(this.http, this.rootUrl, params, context)
+  listByParent$Response(
+    params: ListByParent$Params,
+    context?: HttpContext
+  ): Observable<StrictHttpResponse<Array<Namespace>>> {
+    const obs = listByParent(this.http, this.rootUrl, params, context)
     return obs
   }
 
   /**
    * This method provides access only to the response body.
-   * To access the full response (for headers, for example), `listAll$Response()` instead.
+   * To access the full response (for headers, for example), `listByParent$Response()` instead.
    *
    * This method doesn't expect any request body.
    */
-  listAll(params: ListAll$Params, context?: HttpContext): Observable<Array<Namespace>> {
-    const resp = this.listAll$Response(params, context)
+  listByParent(params: ListByParent$Params, context?: HttpContext): Observable<Array<Namespace>> {
+    const resp = this.listByParent$Response(params, context)
     return resp.pipe(map((r: StrictHttpResponse<Array<Namespace>>): Array<Namespace> => r.body))
   }
 
@@ -151,5 +156,30 @@ export class NamespaceControllerService extends BaseService {
   create(params: Create$Params, context?: HttpContext): Observable<Namespace> {
     const resp = this.create$Response(params, context)
     return resp.pipe(map((r: StrictHttpResponse<Namespace>): Namespace => r.body))
+  }
+
+  /** Path part for operation `listAll()` */
+  static readonly ListAllPath = '/api/namespaces/list'
+
+  /**
+   * This method provides access to the full `HttpResponse`, allowing access to response headers.
+   * To access only the response body, use `listAll()` instead.
+   *
+   * This method doesn't expect any request body.
+   */
+  listAll$Response(params?: ListAll$Params, context?: HttpContext): Observable<StrictHttpResponse<Array<Namespace>>> {
+    const obs = listAll(this.http, this.rootUrl, params, context)
+    return obs
+  }
+
+  /**
+   * This method provides access only to the response body.
+   * To access the full response (for headers, for example), `listAll$Response()` instead.
+   *
+   * This method doesn't expect any request body.
+   */
+  listAll(params?: ListAll$Params, context?: HttpContext): Observable<Array<Namespace>> {
+    const resp = this.listAll$Response(params, context)
+    return resp.pipe(map((r: StrictHttpResponse<Array<Namespace>>): Array<Namespace> => r.body))
   }
 }
