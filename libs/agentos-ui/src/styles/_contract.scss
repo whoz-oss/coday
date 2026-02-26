@@ -1,0 +1,67 @@
+/**
+ * agentos-ui — CSS Custom Properties Contract
+ *
+ * This file documents the CSS custom properties that agentos-ui components
+ * consume from the host application. It does NOT define them — that is the
+ * host's responsibility.
+ *
+ * All variables include a fallback value so the lib works even without a host
+ * theme, but a proper host stylesheet will produce the best result.
+ *
+ * To use agentos-ui in your application, ensure these variables are defined
+ * at :root (or on a wrapping element):
+ *
+ * ── Typography & Text ──────────────────────────────────────────────────────
+ *   --color-text              Main text color
+ *   --color-text-secondary    Muted / secondary text
+ *   --color-text-inverse      Text on colored backgrounds (e.g. badges)
+ *
+ * ── Backgrounds ────────────────────────────────────────────────────────────
+ *   --color-bg                Page background (can be a gradient)
+ *   --color-bg-solid          Solid fallback for page background
+ *   --color-bg-secondary      Card / panel background
+ *   --color-bg-hover          Hover state background
+ *
+ * ── Interactive ────────────────────────────────────────────────────────────
+ *   --color-primary           Primary brand / action color
+ *   --color-primary-hover     Primary hover state
+ *   --color-accent            Secondary accent color
+ *   --color-link              Link color
+ *
+ * ── Borders ────────────────────────────────────────────────────────────────
+ *   --color-border            Standard border
+ *   --color-border-light      Subtle border
+ *
+ * ── Status ─────────────────────────────────────────────────────────────────
+ *   --color-success
+ *   --color-error
+ *   --color-warning
+ *   --color-info
+ *
+ * ── Code ───────────────────────────────────────────────────────────────────
+ *   --color-code-bg           Inline code background
+ *   --color-code-text         Inline code text color
+ *
+ * ── Glass Morphism ─────────────────────────────────────────────────────────
+ *   --glass-bg                Translucent surface background
+ *   --glass-border            Translucent surface border
+ *   --glass-shadow            Surface drop shadow
+ *   --glass-backdrop-blur     backdrop-filter blur value
+ *
+ * ── Utility ────────────────────────────────────────────────────────────────
+ *   --color-shadow            Box shadow color
+ *   --color-overlay           Modal / overlay background
+ *
+ * Example host setup (minimal):
+ *
+ *   :root {
+ *     --color-text: #1d1d1f;
+ *     --color-primary: #007aff;
+ *     --glass-bg: rgba(255, 255, 255, 0.72);
+ *     // ... etc.
+ *   }
+ *
+ * Coday's own token definitions live in:
+ *   apps/client/src/app/styles/colors.scss
+ * and already satisfy this contract.
+ */

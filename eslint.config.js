@@ -47,12 +47,33 @@ export default [
         {
           allow: [],
           depConstraints: [
+            // design-system: no dependency on other whoz-oss libs
             {
-              onlyDependOnLibsWithTags: ['*'],
+              sourceTag: 'scope:design-system',
+              onlyDependOnLibsWithTags: ['type:model', 'type:utils'],
+            },
+            // agentos-dataflow: no dependency on Angular libs
+            {
+              sourceTag: 'scope:agentos-dataflow',
+              onlyDependOnLibsWithTags: ['type:model', 'type:utils'],
+            },
+            // agentos-ui: can use design-system and agentos-dataflow, not the reverse
+            {
+              sourceTag: 'scope:agentos',
+              onlyDependOnLibsWithTags: [
+                'scope:design-system',
+                'scope:agentos-dataflow',
+                'type:model',
+                'type:utils',
+              ],
+            },
+            // Coday app and libs: no restriction (existing codebase)
+            {
               sourceTag: '*',
+              onlyDependOnLibsWithTags: ['*'],
             },
           ],
-          enforceBuildableLibDependency: false
+          enforceBuildableLibDependency: false,
         },
       ],
     },

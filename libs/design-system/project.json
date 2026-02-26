@@ -1,0 +1,17 @@
+{
+  "name": "design-system",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/design-system/src",
+  "prefix": "ds",
+  "tags": ["scope:design-system", "type:ui"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"],
+      "options": {
+        "lintFilePatterns": ["libs/design-system/**/*.ts", "libs/design-system/**/*.html"]
+      }
+    }
+  }
+}
