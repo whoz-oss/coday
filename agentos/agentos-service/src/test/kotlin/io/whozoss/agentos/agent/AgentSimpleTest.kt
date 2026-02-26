@@ -54,6 +54,8 @@ class AgentSimpleTest : StringSpec({
                 metadata = EntityMetadata(id = agentId),
                 name = "SimpleAgent",
                 description = "A simple test agent",
+                modelName = "gpt-4o",
+                providerName = "openai",
                 instructions = "You are a helpful assistant.",
             )
         val agent =
@@ -136,6 +138,8 @@ class AgentSimpleTest : StringSpec({
                 metadata = EntityMetadata(id = agentId),
                 name = "SimpleAgent",
                 description = "A simple test agent",
+                modelName = "gpt-4o",
+                providerName = "openai",
             )
         val agent =
             AgentSimple(
@@ -205,6 +209,8 @@ class AgentSimpleTest : StringSpec({
                 metadata = EntityMetadata(id = agentId),
                 name = "SimpleAgent",
                 description = "A simple test agent",
+                modelName = "gpt-4o",
+                providerName = "openai",
             )
         val agent =
             AgentSimple(
@@ -261,6 +267,8 @@ class AgentSimpleTest : StringSpec({
                 metadata = EntityMetadata(id = agentId),
                 name = "SimpleAgent",
                 description = "A simple test agent",
+                modelName = "gpt-4o",
+                providerName = "openai",
             )
         val agent =
             AgentSimple(

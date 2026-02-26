@@ -252,26 +252,6 @@ paths:
       responses:
         "200":
           description: OK
-  /ai/generate:
-    post:
-      tags:
-      - ai-controller
-      operationId: generate
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Query"
-        required: true
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                type: object
-                additionalProperties:
-                  type: string
   /api/tools:
     get:
       tags:
@@ -488,27 +468,6 @@ components:
       required:
       - content
       - userId
-    ModelConfig:
-      type: object
-      properties:
-        providerName:
-          type: string
-        apiKey:
-          type: string
-        model:
-          type: string
-      required:
-      - providerName
-    Query:
-      type: object
-      properties:
-        message:
-          type: string
-        modelConfig:
-          $ref: "#/components/schemas/ModelConfig"
-      required:
-      - message
-      - modelConfig
     ToolOutput:
       type: object
       properties:

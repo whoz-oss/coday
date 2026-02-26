@@ -1,3 +1,29 @@
+## 0.79.2 (2026-02-26)
+
+### 🩹 Fixes
+
+- searchFiles fileName-only uses ripgrep instead of glob to prevent timeout ([#532](https://github.com/whoz-oss/coday/pull/532))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.79.1 (2026-02-26)
+
+### 🚀 Features
+
+- #481 setup springdoc openapi spec generation for agentos-service ([#525](https://github.com/whoz-oss/coday/pull/525), [#481](https://github.com/whoz-oss/coday/issues/481))
+- wz-28725: Ai model registry ([#515](https://github.com/whoz-oss/coday/pull/515))
+
+### 🩹 Fixes
+
+- remove inexistent build targets from client build-angular dependsOn ([#528](https://github.com/whoz-oss/coday/pull/528))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+- vincent-audibert-whoz
+
 ## 0.79.0 (2026-02-26)
 
 ### 🚀 Features

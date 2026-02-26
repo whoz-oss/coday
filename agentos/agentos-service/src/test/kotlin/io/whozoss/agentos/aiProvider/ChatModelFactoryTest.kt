@@ -7,6 +7,7 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
 import io.mockk.mockk
+import io.whozoss.agentos.chat.ChatModelFactory
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import org.springframework.ai.anthropic.AnthropicChatModel
@@ -33,7 +34,7 @@ class ChatModelFactoryTest :
                     every { provider.temperature } returns 0.7
                     every { provider.maxTokens } returns null
 
-                    val model = factory.createChatModel(provider, null, null)
+                    val model = factory.createChatModel(provider, runtimeModel = null)
 
                     model.shouldNotBeNull()
                     model.shouldBeInstanceOf<OpenAiChatModel>()
@@ -49,7 +50,7 @@ class ChatModelFactoryTest :
                     every { provider.temperature } returns 0.5
                     every { provider.maxTokens } returns 4000
 
-                    val model = factory.createChatModel(provider, null, null)
+                    val model = factory.createChatModel(provider, runtimeModel = null)
 
                     model.shouldNotBeNull()
                     model.shouldBeInstanceOf<AnthropicChatModel>()
@@ -64,13 +65,13 @@ class ChatModelFactoryTest :
                     every { provider.temperature } returns 0.5
                     every { provider.maxTokens } returns null
 
-                    val model = factory.createChatModel(provider, null, null)
+                    val model = factory.createChatModel(provider, runtimeModel = null)
 
                     model.shouldNotBeNull()
                     model.shouldBeInstanceOf<GoogleGenAiChatModel>()
                 }
 
-                it("should prefer runtime config over default provider config") {
+                it("should prefer runtime model over provider baseModel") {
                     val provider = mockk<AiProvider>()
                     every { provider.id } returns UUID.randomUUID()
                     every { provider.apiType } returns AiApiType.OpenAI
@@ -80,13 +81,35 @@ class ChatModelFactoryTest :
                     every { provider.temperature } returns 0.7
                     every { provider.maxTokens } returns null
 
-                    // Providing runtime key and model
-                    val model = factory.createChatModel(provider, "runtime-key", "gpt-4-runtime")
+                    val model = factory.createChatModel(
+                        provider,
+                        runtimeModel = "gpt-4-runtime",
+                        runtimeApiKey = "runtime-key",
+                    )
 
                     model.shouldNotBeNull()
                     model.shouldBeInstanceOf<OpenAiChatModel>()
-                    // Note: Verifying internal state of OpenAiChatModel is difficult without reflection,
-                    // but no exception means it accepted the parameters.
+                }
+
+                it("should use runtimeTemperature over provider default") {
+                    val provider = mockk<AiProvider>()
+                    every { provider.id } returns UUID.randomUUID()
+                    every { provider.apiType } returns AiApiType.OpenAI
+                    every { provider.baseUrl } returns "https://api.openai.com"
+                    every { provider.defaultApiKey } returns "key"
+                    every { provider.baseModel } returns "gpt-4o"
+                    every { provider.temperature } returns 1.0
+                    every { provider.maxTokens } returns null
+
+                    // Should not throw - runtime temperature takes precedence
+                    val model = factory.createChatModel(
+                        provider,
+                        runtimeModel = null,
+                        runtimeTemperature = 0.2,
+                    )
+
+                    model.shouldNotBeNull()
+                    model.shouldBeInstanceOf<OpenAiChatModel>()
                 }
             }
 
@@ -95,12 +118,12 @@ class ChatModelFactoryTest :
                 it("should throw exception when API key is missing") {
                     val provider = mockk<AiProvider>()
                     every { provider.id } returns UUID.randomUUID()
-                    every { provider.defaultApiKey } returns null // No default key
+                    every { provider.defaultApiKey } returns null
                     every { provider.maxTokens } returns null
 
                     val exception =
                         shouldThrow<IllegalArgumentException> {
-                            factory.createChatModel(provider, null, "gpt-4") // No runtime key
+                            factory.createChatModel(provider, runtimeModel = "gpt-4")
                         }
                     exception.message shouldContain "No API key provided"
                 }
@@ -109,12 +132,12 @@ class ChatModelFactoryTest :
                     val provider = mockk<AiProvider>()
                     every { provider.id } returns UUID.randomUUID()
                     every { provider.defaultApiKey } returns "key"
-                    every { provider.baseModel } returns null // No default model
+                    every { provider.baseModel } returns null
                     every { provider.maxTokens } returns null
 
                     val exception =
                         shouldThrow<IllegalArgumentException> {
-                            factory.createChatModel(provider, null, null) // No runtime model
+                            factory.createChatModel(provider, runtimeModel = null)
                         }
                     exception.message shouldContain "No model name provided"
                 }
