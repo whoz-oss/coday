@@ -6,7 +6,7 @@ export class ConfigMaskingService {
   private readonly MASK_PATTERN = '****'
 
   // Field names that should be masked (case-insensitive)
-  private readonly SENSITIVE_FIELD_NAMES = ['apikey', 'api_key', 'password', 'token', 'secret', 'auth']
+  private readonly SENSITIVE_FIELD_NAMES = ['apikey', 'api_key', 'password', 'token', 'secret', 'auth', 'client_id']
 
   /**
    * Check if a field name indicates sensitive data
