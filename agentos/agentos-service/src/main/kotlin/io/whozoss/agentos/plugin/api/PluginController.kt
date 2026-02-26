@@ -1,11 +1,15 @@
 package io.whozoss.agentos.plugin.api
 
+import io.swagger.v3.oas.annotations.parameters.RequestBody as SwaggerRequestBody
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
 import io.whozoss.agentos.agent.AgentRegistry
 import io.whozoss.agentos.plugin.PluginDebugService
 import io.whozoss.agentos.plugin.PluginInfo
 import io.whozoss.agentos.plugin.PluginService
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.multipart.MultipartFile
@@ -53,7 +57,8 @@ class PluginController(
     /**
      * Upload and load a new plugin
      */
-    @PostMapping("/upload")
+    @SwaggerRequestBody(content = [Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE, schema = Schema(type = "object", requiredProperties = ["file"]))])
+    @PostMapping("/upload", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun uploadPlugin(
         @RequestParam("file") file: MultipartFile,
     ): ResponseEntity<PluginUploadResponse> {
@@ -63,7 +68,7 @@ class PluginController(
                 .body(PluginUploadResponse(false, "File is empty", null))
         }
 
-        if (file.originalFilename?.endsWith(".jar") == true) {
+        if (file.originalFilename?.endsWith(".jar") != true) {
             return ResponseEntity
                 .badRequest()
                 .body(PluginUploadResponse(false, "Only JAR files are allowed", null))
