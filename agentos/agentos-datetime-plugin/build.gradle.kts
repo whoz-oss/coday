@@ -32,6 +32,7 @@ dependencies {
     testImplementation(libs.bundles.jackson)
     testImplementation(libs.bundles.testing.common)
     testImplementation(libs.pf4j)
+    testRuntimeOnly(libs.junit.platform.launcher)
     kaptTest(libs.pf4j)
 }
 
@@ -50,7 +51,6 @@ kotlin {
 
 tasks.withType<Test> {
     useJUnitPlatform()
-    outputs.upToDateWhen { false }
 }
 
 allprojects {
