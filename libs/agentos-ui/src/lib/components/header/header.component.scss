@@ -15,9 +15,16 @@
   &__brand {
     display: flex;
     align-items: center;
+    gap: 0.5rem;
   }
 
-  &__logo {
+  &__logo-img {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+  }
+
+  &__logo-text {
     font-size: 1rem;
     font-weight: 600;
     letter-spacing: -0.02em;
