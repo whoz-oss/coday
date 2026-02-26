@@ -2,7 +2,7 @@ package io.whozoss.agentos.caseEvent
 
 import io.whozoss.agentos.orchestration.CaseEventList
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
-import org.slf4j.LoggerFactory
+import mu.KLogging
 import java.util.*
 
 /**
@@ -14,8 +14,6 @@ import java.util.*
 class InMemoryCaseEventList(
     inputEvents: List<CaseEvent> = emptyList(),
 ) : CaseEventList {
-    private val logger = LoggerFactory.getLogger(InMemoryCaseEventList::class.java)
-
     /**
      * List sorted by timestamp of the events. Sort order must be maintained.
      */
@@ -44,7 +42,7 @@ class InMemoryCaseEventList(
         }
         events.add(insertIndex, event)
         eventsById[event.id] = event
-        logger.debug("[Case ${event.caseId}] Event added at index $insertIndex: ${event::class.simpleName}")
+        logger.debug { "[Case ${event.caseId}] Event added at index $insertIndex: ${event::class.simpleName}" }
     }
 
     /**
@@ -57,4 +55,6 @@ class InMemoryCaseEventList(
      * @return The event if found, null otherwise.
      */
     override fun getById(id: UUID): CaseEvent? = eventsById[id]
+
+    companion object : KLogging()
 }

@@ -120,20 +120,24 @@ class AgentSimple(
 
                 // Collect streamed chunks
                 val contentBuilder = StringBuilder()
-                var finalTurnLogged = false
+                var currentTurnLogged = false
 
                 // Convert stream to Flow
                 streamSpec.content().asFlow().collect { chunk ->
-                    // Emit any pending tool events
+                    // Emit any pending tool events and reset the text-turn log flag so the
+                    // next text chunk after a tool call is correctly recognised as a new turn.
                     var toolEvent = toolEventChannel.tryReceive().getOrNull()
                     while (toolEvent != null) {
                         emit(toolEvent)
+                        if (toolEvent is ToolResponseEvent) {
+                            currentTurnLogged = false
+                        }
                         toolEvent = toolEventChannel.tryReceive().getOrNull()
                     }
 
-                    // Log LLM thinking time for the final turn (text response) on first chunk
-                    if (!finalTurnLogged) {
-                        finalTurnLogged = true
+                    // Log LLM thinking time once per turn on the first text chunk of that turn
+                    if (!currentTurnLogged) {
+                        currentTurnLogged = true
                         logger.info { "[AgentSimple] $name LLM turn ${llmTurnIndex.get()} answered in ${llmTurnMark.get().elapsedNow()}" }
                     }
 
