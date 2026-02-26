@@ -63,6 +63,34 @@ p {
   }
 }
 
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary, #6e6e73);
+  margin-bottom: 1.5rem;
+
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+
+    &.online {
+      background: var(--color-success, #34c759);
+    }
+    &.offline {
+      background: var(--color-danger, #ff3b30);
+    }
+    &.checking {
+      background: var(--color-text-secondary, #6e6e73);
+      opacity: 0.5;
+    }
+  }
+}
+
 .principles {
   list-style: none;
   margin: 0 0 1.5rem 0;

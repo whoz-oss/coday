@@ -6,6 +6,20 @@
       This component lives in <code>libs/agentos-ui</code> — isolated from Coday internals, ready to be published as
       <code>&#64;whoz-oss/agentos-ui</code>.
     </p>
+    <div class="status">
+      @switch (agentosOnline()) {
+        @case (true) {
+          <span class="dot online"></span> AgentOS online
+        }
+        @case (false) {
+          <span class="dot offline"></span> AgentOS offline
+        }
+        @default {
+          <span class="dot checking"></span> checking…
+        }
+      }
+    </div>
+
     <ul class="principles">
       <li>✦ No imports from Coday app</li>
       <li>✦ CSS custom properties as host contract</li>
