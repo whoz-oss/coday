@@ -16,28 +16,27 @@ class PluginControllerTest : StringSpec({
     val agentRegistry = mockk<AgentRegistry>(relaxed = true)
     val controller = PluginController(pluginService, agentRegistry)
 
+    val testJarFilename = "test-plugin-upload.jar"
+    val testNonJarFilename = "test-plugin-upload.txt"
+
     afterSpec {
-        // The controller writes to plugins/ relative to the working directory — clean up after tests
-        val pluginsDir = Paths.get("plugins")
-        if (Files.exists(pluginsDir)) {
-            Files.walk(pluginsDir)
-                .sorted(Comparator.reverseOrder())
-                .forEach(Files::delete)
-        }
+        // The controller writes to plugins/ relative to the working directory — clean up only files created by these tests
+        Files.deleteIfExists(Paths.get("plugins", testJarFilename))
+        Files.deleteIfExists(Paths.get("plugins", testNonJarFilename))
     }
 
     "uploadPlugin should reject an empty file" {
-        val file = MockMultipartFile("file", "plugin.jar", "application/java-archive", ByteArray(0))
+        val file = MockMultipartFile("file", testJarFilename, "application/java-archive", ByteArray(0))
         controller.uploadPlugin(file).statusCode shouldBe HttpStatus.BAD_REQUEST
     }
 
     "uploadPlugin should reject a non-JAR file" {
-        val file = MockMultipartFile("file", "plugin.txt", "text/plain", "not a jar".toByteArray())
+        val file = MockMultipartFile("file", testNonJarFilename, "text/plain", "not a jar".toByteArray())
         controller.uploadPlugin(file).statusCode shouldBe HttpStatus.BAD_REQUEST
     }
 
     "uploadPlugin should accept a valid JAR file" {
-        val file = MockMultipartFile("file", "plugin.jar", "application/java-archive", "jar content".toByteArray())
+        val file = MockMultipartFile("file", testJarFilename, "application/java-archive", "jar content".toByteArray())
         controller.uploadPlugin(file).statusCode shouldBe HttpStatus.CREATED
     }
 })
