@@ -1,0 +1,6 @@
+{
+  "name": "@whoz-oss/design-system",
+  "version": "0.0.1",
+  "description": "Whoz design system — Angular UI primitives (buttons, inputs, page templates...)",
+  "license": "MIT"
+}

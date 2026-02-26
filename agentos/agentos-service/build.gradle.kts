@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.spring)
     alias(libs.plugins.spring.boot)
     alias(libs.plugins.spring.dependency.management)
+    alias(libs.plugins.springdoc.openapi)
 }
 
 group = "whoz-oss.agentos"
@@ -30,6 +31,9 @@ dependencies {
     // Spring Boot dependencies
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.actuator)
+
+    // OpenAPI / Swagger UI
+    implementation(libs.springdoc.openapi.starter)
     implementation(libs.klogger)
 
     // Jackson for JSON processing
@@ -77,6 +81,24 @@ tasks.withType<Test> {
 // Configure the bootJar task
 tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
     archiveFileName.set("agentos-service.jar")
+}
+
+// ========================================
+// OpenAPI spec generation
+// ========================================
+val agentosPort = 8123
+
+openApi {
+    // Output the spec alongside the agentos root so it can be committed
+    outputDir.set(file("${rootDir}/../openapi"))
+    outputFileName.set("agentos-openapi.yaml")
+    apiDocsUrl.set("http://localhost:$agentosPort/v3/api-docs.yaml")
+    // Wait up to 60s for the app to be ready
+    waitTimeInSeconds.set(60)
+    // Activate the openapi profile so the app starts without real AI API keys
+    customBootRun {
+        args.set(listOf("--spring.profiles.active=openapi", "--server.port=$agentosPort"))
+    }
 }
 
 allprojects {

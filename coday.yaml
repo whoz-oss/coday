@@ -325,6 +325,7 @@ agents:
       FILES:
       AI:
       DELEGATE:
+      CHROME:
 
 mcp:
   servers:

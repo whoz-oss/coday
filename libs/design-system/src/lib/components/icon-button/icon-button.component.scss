@@ -1,0 +1,67 @@
+/*
+ * WhozIconButton styles
+ *
+ * Uses only CSS custom properties from the host theme contract.
+ * Contextual animations (pulse, gradient...) are intentionally left
+ * to the host component — this is the base primitive only.
+ */
+
+.icon-button {
+  transition:
+    color 0.2s ease,
+    background 0.2s ease,
+    transform 0.12s ease,
+    opacity 0.2s ease;
+
+  // --- Shared interaction states (all variants) ---
+
+  &:hover:not(:disabled) {
+    transform: scale(1.1);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(1.15);
+  }
+
+  // --- Disabled state ---
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  // --- Variants ---
+
+  &.variant-default {
+    color: var(--color-text-secondary, #6e6e73);
+
+    &:hover:not(:disabled) {
+      color: var(--color-primary, #007aff);
+    }
+  }
+
+  // primary and danger share the same interaction pattern:
+  // colored icon at rest → white icon on colored background on hover
+  &.variant-primary,
+  &.variant-danger {
+    &:hover:not(:disabled) {
+      color: var(--color-text-inverse, #ffffff);
+      box-shadow: 0 4px 14px var(--icon-button-shadow-color);
+      background: var(--icon-button-accent-color);
+    }
+  }
+
+  &.variant-primary {
+    --icon-button-accent-color: var(--color-primary, #007aff);
+    --icon-button-shadow-color: rgba(0, 122, 255, 0.3);
+
+    color: var(--color-primary, #007aff);
+  }
+
+  &.variant-danger {
+    --icon-button-accent-color: var(--color-error, #ff3b30);
+    --icon-button-shadow-color: rgba(255, 59, 48, 0.3);
+
+    color: var(--color-error, #ff3b30);
+  }
+}

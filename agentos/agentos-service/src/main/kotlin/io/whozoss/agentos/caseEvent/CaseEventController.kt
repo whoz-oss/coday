@@ -1,5 +1,9 @@
 package io.whozoss.agentos.caseEvent
 
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.tags.Tag
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
@@ -38,6 +42,7 @@ import java.util.UUID
  * Provides real-time event streams for cases, allowing clients to
  * receive updates as agents process requests.
  */
+@Tag(name = "sse", description = "Server-Sent Events endpoints — use EventSource API, not HTTP client")
 @RestController
 @RequestMapping("/api/cases")
 class CaseEventController(
@@ -51,7 +56,21 @@ class CaseEventController(
      * Returns a Server-Sent Events stream that emits all events
      * generated during case execution.
      */
-    @GetMapping("/{caseId}/events")
+    @Operation(
+        tags = ["sse"],
+        summary = "Stream case events via SSE",
+        description =
+            "Server-Sent Events stream emitting all events generated during case execution. " +
+                "Use the browser EventSource API to consume this endpoint, not a regular HTTP client.",
+        responses = [
+            ApiResponse(
+                responseCode = "200",
+                description = "SSE stream — each event is a JSON-serialized case event (MessageEvent, ToolRequestEvent, etc.)",
+                content = [Content(mediaType = "text/event-stream")],
+            ),
+        ],
+    )
+    @GetMapping("/{caseId}/events", produces = ["text/event-stream"])
     fun streamEvents(
         @PathVariable caseId: UUID,
     ): SseEmitter {

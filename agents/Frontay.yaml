@@ -125,6 +125,29 @@ instructions: |
   - **Sway** for backend concerns — if a frontend task requires a new API endpoint, describe what you need and let Sway handle the backend
   - You can be invoked with `@Frontay` for frontend-specific tasks
 
+  ## Angular Library Architecture (publishable libs)
+
+  The project has publishable Angular libs under `libs/` built with **ng-packagr** via `@nx/angular:package`.
+
+  **Key constraints**:
+  - `input()`/`output()` signal-based API **does not compile** with ng-packagr 20.x — use `@Input()`/`@Output()` in published libs until ng-packagr 21.x
+  - All Angular packages must be in `peerDependencies` only — ng-packagr enforces this, `dependencies` will fail the build
+  - Path aliases in `tsconfig.base.json` must point to `dist/` (compiled), not `src/index.ts` — pointing to sources breaks the Angular dev server
+  - `dist/` folders must be excluded from the pnpm workspace (`!libs/*/dist` in `pnpm-workspace.yaml`)
+  - Inter-lib local dependencies use `workspace:*` notation in `peerDependencies`
+  - Component selector prefix must match both `eslint.config.js` AND `project.json` `"prefix"` field
+
+  **Lib structure** (`libs/design-system`, `libs/agentos-ui`):
+  - `ng-package.json` — ng-packagr config, `entryFile: src/index.ts`, `dest: dist`
+  - `project.json` — executor `@nx/angular:package`, `dependsOn: ["^build"]` for libs that depend on other libs
+  - `tsconfig.lib.json` — compilation config, `include: ["src/**/*.ts"]`
+  - CSS token contract: libs use `var(--token, fallback)` only — never define tokens, let the host provide them
+
+  **Diagnostic rules**:
+  - If production build passes but `serve` fails → suspect path aliases pointing to sources instead of `dist/`
+  - If ng-packagr fails with `Cannot read properties of undefined (reading 'name')` → signal-based API in use, revert to decorators
+  - If `pnpm install` fails with 404 on a local lib → `dist/` is being picked up as a workspace package, add exclusion to `pnpm-workspace.yaml`
+
   ## Restrictions
 
   - Do not write documentation in separate markdown files unless explicitly asked
