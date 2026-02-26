@@ -123,9 +123,9 @@ export class GenericOAuth {
    * If a flow is already in progress, returns the same pending Promise (no double flow).
    * Adds access_type=offline and prompt=consent to ensure a refresh_token is returned.
    */
-  async authenticate(): Promise<TokenData> {
+  authenticate(): Promise<TokenData> {
     if (this.isAuthenticated()) {
-      return this.tokenData!
+      return Promise.resolve(this.tokenData!)
     }
 
     // Guard: if a flow is already in progress, reuse the same promise
@@ -134,6 +134,29 @@ export class GenericOAuth {
       return this.pendingAuthPromise
     }
 
+    // Create the shared promise immediately so concurrent calls get the same reference
+    this.pendingAuthPromise = new Promise((resolve, reject) => {
+      this.pendingResolve = resolve
+      this.pendingReject = reject
+    })
+
+    // Clear the shared promise reference once it settles (success or failure)
+    this.pendingAuthPromise.then(
+      () => {
+        this.pendingAuthPromise = null
+      },
+      () => {
+        this.pendingAuthPromise = null
+      }
+    )
+
+    // Kick off the async flow separately
+    this.startAuthFlow().catch((err) => this.rejectPending(err))
+
+    return this.pendingAuthPromise
+  }
+
+  private async startAuthFlow(): Promise<void> {
     // Clear expired/invalid token so the flow starts fresh
     this.tokenData = null
     this.clearTokensFromStorage()
@@ -172,23 +195,6 @@ export class GenericOAuth {
       })
     )
     this.interactor.debug(`[OAuth:${this.integrationName}] waiting for OAuth callback...`)
-
-    this.pendingAuthPromise = new Promise((resolve, reject) => {
-      this.pendingResolve = resolve
-      this.pendingReject = reject
-    })
-
-    // Clear the shared promise reference once it settles (success or failure)
-    this.pendingAuthPromise.then(
-      () => {
-        this.pendingAuthPromise = null
-      },
-      () => {
-        this.pendingAuthPromise = null
-      }
-    )
-
-    return this.pendingAuthPromise
   }
 
   async handleCallback(event: OAuthCallbackEvent): Promise<void> {
