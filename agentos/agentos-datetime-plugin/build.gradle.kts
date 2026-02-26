@@ -48,6 +48,7 @@ kotlin {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    outputs.upToDateWhen { false }
 }
 
 allprojects {
