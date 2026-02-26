@@ -17,6 +17,9 @@ java {
 }
 
 dependencies {
+    // Jackson annotations for JSON polymorphism on CaseEvent
+    api(libs.jackson.annotations)
+
     // PF4J Plugin Framework - Only dependency for SDK
     api(libs.pf4j) {
         exclude(group = "org.slf4j", module = "slf4j-reload4j")
