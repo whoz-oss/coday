@@ -12,8 +12,9 @@ import java.util.UUID
 class NamespaceServiceImpl(
     private val namespaceRepository: NamespaceRepository,
 ) : NamespaceService {
+    override fun create(entity: NamespaceModel): NamespaceModel = namespaceRepository.save(entity)
 
-    override fun save(entity: NamespaceModel): NamespaceModel = namespaceRepository.save(entity)
+    override fun update(entity: NamespaceModel): NamespaceModel = namespaceRepository.save(entity)
 
     override fun findByIds(ids: Collection<UUID>): List<NamespaceModel> = namespaceRepository.findByIds(ids)
 

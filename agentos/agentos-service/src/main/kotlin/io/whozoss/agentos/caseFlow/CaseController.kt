@@ -11,7 +11,6 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
@@ -40,7 +39,6 @@ import java.util.UUID
 class CaseController(
     private val caseService: CaseService,
 ) : EntityController<CaseModel, UUID>(caseService) {
-
     /**
      * POST /api/cases/{caseId}/messages — add a user message to a running case.
      */
@@ -51,8 +49,9 @@ class CaseController(
     ) = runBlocking {
         logger.info { "Adding message to case: $caseId" }
 
-        val case = caseService.getCaseInstance(caseId)
-            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Case not found: $caseId")
+        val case =
+            caseService.getCaseInstance(caseId)
+                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Case not found: $caseId")
 
         val actor = Actor(id = request.userId, displayName = request.userId, role = ActorRole.USER)
         val content = listOf(MessageContent.Text(request.content))

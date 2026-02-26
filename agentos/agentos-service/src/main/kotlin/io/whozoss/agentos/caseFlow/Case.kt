@@ -1,3 +1,4 @@
+
 package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.agent.AgentService
@@ -5,7 +6,8 @@ import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.DefaultCaseEventEmitter
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventList
 import io.whozoss.agentos.orchestration.CaseEventEmitter
-import io.whozoss.agentos.sdk.actor.*
+import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
@@ -20,7 +22,7 @@ import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import kotlinx.coroutines.flow.catch
 import mu.KLogging
-import java.util.*
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -29,12 +31,12 @@ import java.util.concurrent.atomic.AtomicBoolean
  * execution even if no collectors are attached (hot observable) to the output events.
  */
 class Case(
+    // TODO: remove, held by caseModel, need a getter on
     val id: UUID = UUID.randomUUID(),
     val projectId: UUID,
-    @Volatile
-    private var status: CaseStatus = CaseStatus.PENDING,
     private val agentService: AgentService,
     private val caseService: CaseService,
+    private var caseModel: CaseModel,
     private val caseEventService: CaseEventService,
     /**
      * List sorted by timestamp of the events on the case. Sort order to keep.
@@ -59,7 +61,7 @@ class Case(
             // do only store here the events of this case.
             // Sub-case events that bubble up are expected to be saved by their case instance
             logger.debug { "[Case $id] Saving event: ${event::class.simpleName}" }
-            val savedEvent = caseEventService.save(event)
+            val savedEvent = caseEventService.create(event)
             eventList.add(savedEvent)
             logger.debug { "[Case $id] Emitting event to flow: ${event::class.simpleName}" }
             emit(savedEvent)
@@ -112,21 +114,22 @@ class Case(
     }
 
     fun save() {
-        caseService.save(
-            CaseModel(
-                // fixme: this looses all other audit fields, not good
-                metadata = EntityMetadata(id = id),
-                projectId = projectId,
-                status = status,
-            ),
-        )
+        caseService.update(caseModel)
+    }
+
+    fun updateModel(caseModel: CaseModel) {
+        this.caseModel = caseModel
+    }
+
+    fun pushEvents(events: Collection<CaseEvent>) {
+        events.forEach { eventList.add(it) }
     }
 
     private fun updateStatus(newStatus: CaseStatus) {
-        val oldStatus = status
-        status = newStatus
+        val oldStatus = caseModel.status
+        caseModel = caseModel.copy(status = newStatus)
         save()
-        emit(CaseStatusEvent(metadata = EntityMetadata(), caseId = id, projectId = projectId, status = status))
+        emit(CaseStatusEvent(metadata = EntityMetadata(), caseId = id, projectId = projectId, status = caseModel.status))
         if (newStatus == CaseStatus.ERROR) {
             logger.error { "Case $id status: $oldStatus -> $newStatus" }
         } else {
@@ -142,7 +145,7 @@ class Case(
         logger.info {
             "[Case $id] addUserMessage called - actor: ${actor.displayName}, content size: ${content.size}, answerTo: $answerToEventId"
         }
-        logger.debug { "[Case $id] Current status: $status" }
+        logger.debug { "[Case $id] Current status: ${caseModel.status}" }
         // If this is an answer to a question, create an AnswerEvent
         if (answerToEventId != null) {
             val questionEvent = eventList.getById(answerToEventId)
@@ -236,10 +239,10 @@ class Case(
      * It should be called in a dedicated thread by the CaseService.
      */
     suspend fun run() {
-        logger.info { "[Case $id] run() called - current status: $status" }
+        logger.info { "[Case $id] run() called - current status: ${caseModel.status}" }
 
         // Case is already running, do nothing
-        if (status == CaseStatus.RUNNING) {
+        if (caseModel.status == CaseStatus.RUNNING) {
             logger.warn { "[Case $id] Already running, skipping run()" }
             return
         }

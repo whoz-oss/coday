@@ -73,7 +73,7 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier>(
     @ResponseStatus(HttpStatus.CREATED)
     open fun create(
         @RequestBody entity: EntityType,
-    ): EntityType = service.save(entity)
+    ): EntityType = service.create(entity)
 
     /**
      * PUT /{id} — update an existing entity.
@@ -85,7 +85,7 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier>(
     ): EntityType {
         service.findById(id)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found: $id")
-        return service.save(entity)
+        return service.update(entity)
     }
 
     /**

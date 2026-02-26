@@ -20,18 +20,9 @@ import java.util.UUID
 class CaseEventServiceImpl(
     private val repository: CaseEventRepository,
 ) : CaseEventService {
-    /**
-     * Save an event with validation.
-     * Ensures events are valid before persisting.
-     */
-    override fun save(entity: CaseEvent): CaseEvent {
-        // Future: Add validation logic here
-        // - Check event integrity
-        // - Validate relationships (case exists, etc.)
-        // - Enforce business rules
+    override fun create(entity: CaseEvent): CaseEvent = repository.save(entity)
 
-        return repository.save(entity)
-    }
+    override fun update(entity: CaseEvent): CaseEvent = repository.save(entity)
 
     /**
      * Find multiple events by their IDs.
