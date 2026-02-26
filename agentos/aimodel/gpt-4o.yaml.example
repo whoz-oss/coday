@@ -1,0 +1,9 @@
+name: gpt-4o
+description: OpenAI GPT-4o general assistant
+modelName: gpt-4o
+providerName: openai
+temperature: 0.7
+maxTokens: 4096
+instructions: |
+  You are a helpful, accurate, and concise AI assistant.
+  Answer questions clearly and ask for clarification when needed.

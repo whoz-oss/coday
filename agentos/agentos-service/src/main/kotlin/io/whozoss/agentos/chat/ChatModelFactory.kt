@@ -1,4 +1,4 @@
-package io.whozoss.agentos.aiProvider
+package io.whozoss.agentos.chat
 
 import com.google.genai.Client
 import io.micrometer.observation.ObservationRegistry
@@ -22,8 +22,10 @@ import org.springframework.stereotype.Component
 class ChatModelFactory {
     fun createChatModel(
         provider: AiProvider,
-        runtimeApiKey: String?,
         runtimeModel: String?,
+        runtimeApiKey: String? = null,
+        runtimeTemperature: Double? = null,
+        runtimeMaxTokens: Int? = null,
     ): ChatModel {
         val apiKey =
             runtimeApiKey.takeIf { !it.isNullOrBlank() }
@@ -34,13 +36,17 @@ class ChatModelFactory {
             runtimeModel.takeIf { !it.isNullOrBlank() } ?: provider.baseModel
                 ?: throw IllegalArgumentException("No model name provided for provider '${provider.id}'.")
 
+        // Model-level overrides take precedence over provider defaults
+        val temperature = runtimeTemperature ?: provider.temperature
+        val maxTokens = runtimeMaxTokens ?: provider.maxTokens
+
         return when (provider.apiType) {
             AiApiType.OpenAI -> {
                 createOpenAiModel(
                     baseUrl = provider.baseUrl,
                     apiKey = apiKey,
                     model = modelName,
-                    temp = provider.temperature,
+                    temp = temperature,
                 )
             }
 
@@ -49,13 +55,13 @@ class ChatModelFactory {
                     baseUrl = provider.baseUrl,
                     apiKey = apiKey,
                     model = modelName,
-                    temp = provider.temperature,
-                    maxTokens = provider.maxTokens,
+                    temp = temperature,
+                    maxTokens = maxTokens,
                 )
             }
 
             AiApiType.Gemini -> {
-                createGeminiModel(apiKey = apiKey, model = modelName, temp = provider.temperature)
+                createGeminiModel(apiKey = apiKey, model = modelName, temp = temperature)
             }
         }
     }
