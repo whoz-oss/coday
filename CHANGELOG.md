@@ -1,3 +1,13 @@
+## 0.79.0 (2026-02-26)
+
+### 🚀 Features
+
+- #480 front-end route and component structure for AgentOS ([#524](https://github.com/whoz-oss/coday/pull/524), [#480](https://github.com/whoz-oss/coday/issues/480))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.78.0 (2026-02-25)
 
 ### 🚀 Features
