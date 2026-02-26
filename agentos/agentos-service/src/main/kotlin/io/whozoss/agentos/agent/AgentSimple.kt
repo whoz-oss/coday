@@ -383,7 +383,7 @@ class AgentSimple(
                 }
             }
 
-        val method = wrapper::invoke.javaMethod
+        val method = wrapper::invoke.javaMethod ?: throw IllegalStateException("Cannot invoke wrapper method")
 
         return MethodToolCallback
             .builder()
