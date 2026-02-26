@@ -1,18 +1,11 @@
-import { Component, signal } from '@angular/core'
+import { Component } from '@angular/core'
 import { RouterOutlet } from '@angular/router'
 
 /**
- * AgentosShellComponent — layout shell and initialization gate.
+ * AgentosShellComponent — layout shell.
  *
- * Sits at path '' (no URL segment contributed).
- * Responsibilities:
- * - Initialize shared context (userId, namespace loading) once services are available
- * - Show a loader while initialization is in progress
- * - Render <router-outlet> only when ready
- *
- * TODO: inject NamespaceStateService once agentos-dataflow is available
- *   - call namespaceState.init() here
- *   - derive `ready` from namespaceState.initialized$
+ * Thin wrapper, renders the router-outlet directly.
+ * Initialization concerns are handled per-route (NamespaceListComponent calls init()).
  */
 @Component({
   selector: 'agentos-shell',
@@ -21,7 +14,4 @@ import { RouterOutlet } from '@angular/router'
   templateUrl: './agentos-shell.component.html',
   styleUrl: './agentos-shell.component.scss',
 })
-export class AgentosShellComponent {
-  // TODO: replace with signal derived from NamespaceStateService.initialized$
-  protected ready = signal(true)
-}
+export class AgentosShellComponent {}

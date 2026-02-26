@@ -3,8 +3,24 @@
     <h2>Namespaces</h2>
   </header>
 
-  <div class="namespace-list__empty">
-    <!-- TODO: replace with @for (ns of namespaces()) once NamespaceStateService is wired -->
-    <p>No namespaces available.</p>
-  </div>
+  @if (namespaces$ | async; as namespaces) {
+    @if (namespaces.length === 0) {
+      <div class="namespace-list__empty">
+        <p>No namespaces available.</p>
+      </div>
+    } @else {
+      <ul class="namespace-list__items">
+        @for (ns of namespaces; track trackById($index, ns)) {
+          <li class="namespace-list__item">
+            <button class="namespace-list__item-btn" (click)="select(ns)" type="button">
+              <span class="namespace-list__item-name">{{ ns.name }}</span>
+              @if (ns.description) {
+                <span class="namespace-list__item-desc">{{ ns.description }}</span>
+              }
+            </button>
+          </li>
+        }
+      </ul>
+    }
+  }
 </div>

@@ -337,7 +337,7 @@ paths:
     get:
       tags:
       - namespace-controller
-      operationId: listAll
+      operationId: listByParent
       parameters:
       - name: parentId
         in: query
@@ -379,11 +379,25 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/Namespace"
+  /api/namespaces/list:
+    post:
+      tags:
+      - namespace-controller
+      operationId: listAll
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Namespace"
   /api/cases:
     get:
       tags:
       - case-controller
-      operationId: listByParent
+      operationId: listByParent_1
       parameters:
       - name: parentId
         in: query
@@ -480,7 +494,7 @@ paths:
     get:
       tags:
       - case-event-rest-controller
-      operationId: listByParent_1
+      operationId: listByParent_2
       parameters:
       - name: parentId
         in: query
@@ -884,10 +898,10 @@ components:
         timestamp:
           type: string
           format: date-time
-        projectId:
+        caseId:
           type: string
           format: uuid
-        caseId:
+        projectId:
           type: string
           format: uuid
         id:

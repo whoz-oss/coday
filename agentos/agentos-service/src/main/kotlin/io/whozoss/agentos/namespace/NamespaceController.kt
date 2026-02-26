@@ -1,6 +1,7 @@
 package io.whozoss.agentos.namespace
 
 import io.whozoss.agentos.entity.EntityController
+import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
@@ -26,9 +27,14 @@ class NamespaceController(
     /**
      * List all namespaces.
      *
-     * GET /api/namespaces
+     * GET /api/namespaces/list
      */
-    @GetMapping
+    @GetMapping("/list")
     @ResponseStatus(HttpStatus.OK)
-    fun listAll(): List<Namespace> = namespaceService.findAll()
+    fun listAll(): List<Namespace> {
+        logger.info { "calling all namespaces" }
+        return namespaceService.findAll()
+    }
+
+    companion object : KLogging()
 }
