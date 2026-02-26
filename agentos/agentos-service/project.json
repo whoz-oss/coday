@@ -85,6 +85,16 @@
         "build"
       ]
     },
+    "generate-client": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "nx run agentos-api-client:generate-client"
+      },
+      "dependsOn": [
+        "generate-openapi-spec"
+      ]
+    },
     "bootRun": {
       "executor": "nx:run-commands",
       "cache": false,

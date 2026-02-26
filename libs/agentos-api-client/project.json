@@ -1,0 +1,26 @@
+{
+  "name": "agentos-api-client",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/agentos-api-client/src",
+  "tags": ["scope:agentos", "type:api-client"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"],
+      "options": {
+        "lintFilePatterns": ["libs/agentos-api-client/**/*.ts"]
+      }
+    },
+    "generate-client": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "inputs": ["{workspaceRoot}/agentos/openapi/agentos-openapi.yaml"],
+      "outputs": ["{projectRoot}/src"],
+      "options": {
+        "command": "ng-openapi-gen --config ng-openapi-gen.json",
+        "cwd": "libs/agentos-api-client"
+      }
+    }
+  }
+}
