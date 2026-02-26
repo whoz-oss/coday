@@ -57,12 +57,13 @@ export default [
               sourceTag: 'scope:agentos-dataflow',
               onlyDependOnLibsWithTags: ['type:model', 'type:utils'],
             },
-            // agentos-ui: can use design-system and agentos-dataflow, not the reverse
+            // agentos-ui: can use design-system, agentos-dataflow and agentos-api-client, not the reverse
             {
               sourceTag: 'scope:agentos',
               onlyDependOnLibsWithTags: [
                 'scope:design-system',
                 'scope:agentos-dataflow',
+                'type:api-client',
                 'type:model',
                 'type:utils',
               ],
