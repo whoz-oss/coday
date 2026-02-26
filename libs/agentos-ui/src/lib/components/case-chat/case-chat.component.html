@@ -1,11 +1,22 @@
 <div class="case-chat">
   <div class="case-chat__messages">
-    <!-- TODO: replace with @for (event of events()) once CaseStateService is wired -->
-    <div class="case-chat__empty">
-      <p>No messages yet.</p>
-    </div>
+    @if (messages().length === 0) {
+      <div class="case-chat__empty">
+        <p>No messages yet.</p>
+      </div>
+    } @else {
+      @for (msg of messages(); track msg.id) {
+        <div
+          class="case-chat__message"
+          [class.case-chat__message--user]="msg.actor?.role === 'USER'"
+          [class.case-chat__message--agent]="msg.actor?.role === 'AGENT'"
+        >
+          <span class="case-chat__message-author">{{ msg.actor?.displayName }}</span>
+          <p class="case-chat__message-text">{{ extractText(msg) }}</p>
+        </div>
+      }
+    }
 
-    <!-- Thinking indicator -->
     @if (isRunning()) {
       <div class="case-chat__thinking">
         <span class="thinking-dot"></span>
