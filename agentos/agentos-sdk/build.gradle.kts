@@ -29,6 +29,9 @@ dependencies {
     // Kotlin standard library
     implementation(libs.kotlin.stdlib)
 
+    // Jackson for JSON deserialization in executeWithJson
+    api(libs.jackson.module.kotlin)
+
     // Kotlin Coroutines
     api(libs.kotlinx.coroutines.core)
 

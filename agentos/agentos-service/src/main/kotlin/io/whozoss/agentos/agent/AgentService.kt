@@ -24,6 +24,20 @@ interface AgentService {
     fun getDefaultAgent(): Agent?
 
     /**
+     * Get the name of the default agent without instantiating a full Agent.
+     * Use this when only the agent's identity is needed (e.g. to emit an AgentSelectedEvent).
+     * Returns null if no default is configured.
+     */
+    fun getDefaultAgentName(): String?
+
+    /**
+     * Resolve an agent's canonical name by partial name match, without instantiating a full Agent.
+     * Use this when only the agent's identity is needed (e.g. to emit an AgentSelectedEvent).
+     * Returns null if no match is found.
+     */
+    fun resolveAgentName(namePart: String): String?
+
+    /**
      * Cleanup all agents and their resources.
      */
     suspend fun cleanup()

@@ -148,7 +148,7 @@ data class ToolRequestEvent(
     override val timestamp: Instant = Instant.now(),
     val toolRequestId: String,
     val toolName: String,
-    val args: String,
+    val args: String?,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.TOOL_REQUEST
 }

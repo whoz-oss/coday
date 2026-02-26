@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.runBlocking
+import mu.KLogging
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
@@ -30,10 +31,14 @@ import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.tool.method.MethodToolCallback
 import org.springframework.ai.tool.support.ToolDefinitions
-import org.springframework.util.ReflectionUtils
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.collections.firstOrNull
 import kotlin.collections.map
+import kotlin.reflect.jvm.javaMethod
+import kotlin.time.TimeSource
+import kotlin.time.measureTime
 
 /**
  * Simple agent implementation with single LLM call.
@@ -87,10 +92,16 @@ class AgentSimple(
 
                 emit(ThinkingEvent(projectId = projectId, caseId = caseId))
 
+                // Shared timer: reset to markNow() each time the LLM hands back control
+                // (prompt sent, or tool response returned). Measures pure LLM thinking time
+                // per turn, including both tool-calling turns and the final text turn.
+                val llmTurnMark = AtomicReference(TimeSource.Monotonic.markNow())
+                val llmTurnIndex = AtomicInteger(1)
+
                 // Convert StandardTool to ToolCallback with event emission
                 val toolCallbacks =
                     tools.map { tool ->
-                        createToolCallbackWithEvents(tool, projectId, caseId, toolEventChannel)
+                        createToolCallbackWithEvents(tool, projectId, caseId, toolEventChannel, llmTurnMark, llmTurnIndex)
                     }
 
                 // Make single LLM call with tools
@@ -109,14 +120,25 @@ class AgentSimple(
 
                 // Collect streamed chunks
                 val contentBuilder = StringBuilder()
+                var currentTurnLogged = false
 
                 // Convert stream to Flow
                 streamSpec.content().asFlow().collect { chunk ->
-                    // Emit any pending tool events
+                    // Emit any pending tool events and reset the text-turn log flag so the
+                    // next text chunk after a tool call is correctly recognised as a new turn.
                     var toolEvent = toolEventChannel.tryReceive().getOrNull()
                     while (toolEvent != null) {
                         emit(toolEvent)
+                        if (toolEvent is ToolResponseEvent) {
+                            currentTurnLogged = false
+                        }
                         toolEvent = toolEventChannel.tryReceive().getOrNull()
+                    }
+
+                    // Log LLM thinking time once per turn on the first text chunk of that turn
+                    if (!currentTurnLogged) {
+                        currentTurnLogged = true
+                        logger.info { "[AgentSimple] $name LLM turn ${llmTurnIndex.get()} answered in ${llmTurnMark.get().elapsedNow()}" }
                     }
 
                     contentBuilder.append(chunk)
@@ -159,6 +181,7 @@ class AgentSimple(
                     ),
                 )
             } catch (e: Exception) {
+                logger.error(e) { "Error during agent execution" }
                 emit(
                     WarnEvent(
                         projectId = projectId,
@@ -260,7 +283,7 @@ class AgentSimple(
                             event.toolRequestId,
                             "function",
                             event.toolName,
-                            event.args,
+                            event.args ?: "",
                         ),
                     )
                 }
@@ -307,26 +330,42 @@ class AgentSimple(
     /**
      * Create a MethodToolCallback that wraps a StandardTool and emits events.
      * Emits ToolRequestEvent before execution and ToolResponseEvent after.
+     *
+     * The wrapper exposes a `invoke(jsonArgs: String)` method to Spring AI instead of
+     * relying on reflection over `execute(Any?)`. This avoids a ClassCastException caused
+     * by Spring AI injecting a ToolContext as the first argument when it detects a
+     * single-parameter method via reflection — the ToolContext class is loaded by the app
+     * classloader while the plugin Input class lives in the plugin classloader.
+     *
+     * By accepting raw JSON and deserializing it ourselves we stay fully within the app
+     * classloader for the method Spring AI calls, and we delegate deserialization to the
+     * plugin's own classloader through [StandardTool.executeWithJson].
+     *
+     * [llmTurnMark] and [llmTurnIndex] are shared with the stream collector so that
+     * LLM thinking time can be measured per turn (i.e. per tool-calling round-trip).
      */
     private fun createToolCallbackWithEvents(
         tool: StandardTool<*>,
         projectId: UUID,
         caseId: UUID,
         eventChannel: Channel<CaseEvent>,
+        llmTurnMark: AtomicReference<TimeSource.Monotonic.ValueTimeMark>,
+        llmTurnIndex: AtomicInteger,
     ): MethodToolCallback {
-        // Create a wrapper tool that emits events
-        val wrapperTool =
-            object : StandardTool<Any?> {
-                override val name = tool.name
-                override val description = tool.description
-                override val inputSchema = tool.inputSchema
-                override val version = tool.version
-                override val paramType = tool.paramType
-
-                override fun execute(input: Any?): String {
+        // Wrapper that Spring AI will call via reflection.
+        // It takes a plain String (raw JSON from the LLM) so Spring AI never tries
+        // to inject a ToolContext or cast across classloader boundaries.
+        val wrapper =
+            object {
+                @Suppress("unused") // called by Spring AI via reflection
+                fun invoke(jsonArgs: String?): String {
                     val toolRequestId = UUID.randomUUID().toString()
 
-                    // Emit ToolRequestEvent
+                    // The LLM decided to call this tool: log how long it thought since
+                    // the prompt was sent (or since the previous tool response was returned).
+                    val turn = llmTurnIndex.get()
+                    logger.info { "[AgentSimple] $name LLM turn $turn answered in ${llmTurnMark.get().elapsedNow()}" }
+
                     runBlocking {
                         eventChannel.send(
                             ToolRequestEvent(
@@ -334,32 +373,40 @@ class AgentSimple(
                                 caseId = caseId,
                                 toolRequestId = toolRequestId,
                                 toolName = tool.name,
-                                args = input?.toString() ?: "{}",
+                                args = jsonArgs,
                             ),
                         )
                     }
 
-                    // Execute the actual tool using type-erased execution path
-                    val result =
-                        try {
-                            tool.executeWithAny(input)
-                        } catch (e: Exception) {
-                            runBlocking {
-                                eventChannel.send(
-                                    ToolResponseEvent(
-                                        projectId = projectId,
-                                        caseId = caseId,
-                                        toolRequestId = toolRequestId,
-                                        toolName = tool.name,
-                                        output = MessageContent.Text("Error: ${e.message}"),
-                                        success = false,
-                                    ),
-                                )
-                            }
-                            throw e
+                    val result: String
+                    val toolDuration =
+                        measureTime {
+                            result =
+                                try {
+                                    tool.executeWithJson(jsonArgs)
+                                } catch (e: Exception) {
+                                    runBlocking {
+                                        eventChannel.send(
+                                            ToolResponseEvent(
+                                                projectId = projectId,
+                                                caseId = caseId,
+                                                toolRequestId = toolRequestId,
+                                                toolName = tool.name,
+                                                output = MessageContent.Text("Error: ${e.message}"),
+                                                success = false,
+                                            ),
+                                        )
+                                    }
+                                    throw e
+                                }
                         }
+                    logger.info { "[AgentSimple] tool ${tool.name} executed in $toolDuration" }
 
-                    // Emit ToolResponseEvent
+                    // Reset the turn mark so the next measurement starts from when
+                    // we hand the tool result back to the LLM.
+                    llmTurnMark.set(TimeSource.Monotonic.markNow())
+                    llmTurnIndex.incrementAndGet()
+
                     runBlocking {
                         eventChannel.send(
                             ToolResponseEvent(
@@ -377,24 +424,21 @@ class AgentSimple(
                 }
             }
 
-        val method =
-            if (wrapperTool.paramType == null) {
-                ReflectionUtils.findMethod(wrapperTool::class.java, "execute")!!
-            } else {
-                ReflectionUtils.findMethod(wrapperTool::class.java, "execute", wrapperTool.paramType)!!
-            }
+        val method = wrapper::invoke.javaMethod ?: throw IllegalStateException("Cannot invoke wrapper method")
 
         return MethodToolCallback
             .builder()
             .toolDefinition(
                 ToolDefinitions
                     .builder(method)
-                    .description(wrapperTool.description)
-                    .name(wrapperTool.name)
-                    .inputSchema(wrapperTool.inputSchema)
+                    .description(tool.description)
+                    .name(tool.name)
+                    .inputSchema(tool.inputSchema)
                     .build(),
             ).toolMethod(method)
-            .toolObject(wrapperTool)
+            .toolObject(wrapper)
             .build()
     }
+
+    companion object : KLogging()
 }

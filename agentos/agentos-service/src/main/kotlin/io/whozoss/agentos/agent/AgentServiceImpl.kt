@@ -39,15 +39,25 @@ class AgentServiceImpl(
 
     override fun getDefaultAgent(): Agent? {
         val model = aiModelRegistry.getDefault() ?: return null
-        logger.info { "Using default model: ${model.name}" }
+        logger.info { "Using default agent: ${model.name}" }
         return createAgentInstance(model)
     }
+
+    override fun getDefaultAgentName(): String? = aiModelRegistry.getDefault()?.name
+
+    override fun resolveAgentName(namePart: String): String? =
+        (aiModelRegistry.findByName(namePart)
+            ?: aiModelRegistry.getAll().firstOrNull { it.name.contains(namePart, ignoreCase = true) })?.name
 
     private fun createAgentInstance(model: AiModel): Agent {
         logger.info { "[AgentService] Creating agent instance for: ${model.name}" }
 
         val tools = toolRegistry.listTools()
-        logger.debug { "[AgentService] Loaded ${tools.size} tool(s) for agent: ${model.name}" }
+        logger.info {
+            "[AgentService] Loaded ${tools.size} tool(s) " +
+                "(sample-5 : ${tools.take(5).map { it.name }}) " +
+                "for agent: ${model.name}"
+        }
 
         val chatClient = chatClientProvider.getChatClient(model.name)
         logger.debug { "[AgentService] ChatClient created for model: ${model.name} via provider: ${model.providerName}" }
