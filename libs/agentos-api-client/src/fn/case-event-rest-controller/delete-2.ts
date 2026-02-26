@@ -7,29 +7,27 @@ import { filter, map } from 'rxjs/operators'
 import { StrictHttpResponse } from '../../strict-http-response'
 import { RequestBuilder } from '../../request-builder'
 
-import { CaseResponse } from '../../models/case-response'
-
-export interface ListCases$Params {
-  projectId?: string
+export interface Delete2$Params {
+  id: string
 }
 
-export function listCases(
+export function delete2(
   http: HttpClient,
   rootUrl: string,
-  params?: ListCases$Params,
+  params: Delete2$Params,
   context?: HttpContext
-): Observable<StrictHttpResponse<Array<CaseResponse>>> {
-  const rb = new RequestBuilder(rootUrl, listCases.PATH, 'get')
+): Observable<StrictHttpResponse<void>> {
+  const rb = new RequestBuilder(rootUrl, delete2.PATH, 'delete')
   if (params) {
-    rb.query('projectId', params.projectId, {})
+    rb.path('id', params.id, {})
   }
 
-  return http.request(rb.build({ responseType: 'blob', accept: '*/*', context })).pipe(
+  return http.request(rb.build({ responseType: 'text', accept: '*/*', context })).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<Array<CaseResponse>>
+      return (r as HttpResponse<any>).clone({ body: undefined }) as StrictHttpResponse<void>
     })
   )
 }
 
-listCases.PATH = '/api/cases'
+delete2.PATH = '/api/case-events/{id}'

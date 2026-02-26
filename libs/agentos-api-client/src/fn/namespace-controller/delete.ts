@@ -7,29 +7,27 @@ import { filter, map } from 'rxjs/operators'
 import { StrictHttpResponse } from '../../strict-http-response'
 import { RequestBuilder } from '../../request-builder'
 
-import { CaseResponse } from '../../models/case-response'
-
-export interface GetCase$Params {
-  caseId: string
+export interface Delete$Params {
+  id: string
 }
 
-export function getCase(
+export function delete$(
   http: HttpClient,
   rootUrl: string,
-  params: GetCase$Params,
+  params: Delete$Params,
   context?: HttpContext
-): Observable<StrictHttpResponse<CaseResponse>> {
-  const rb = new RequestBuilder(rootUrl, getCase.PATH, 'get')
+): Observable<StrictHttpResponse<void>> {
+  const rb = new RequestBuilder(rootUrl, delete$.PATH, 'delete')
   if (params) {
-    rb.path('caseId', params.caseId, {})
+    rb.path('id', params.id, {})
   }
 
-  return http.request(rb.build({ responseType: 'blob', accept: '*/*', context })).pipe(
+  return http.request(rb.build({ responseType: 'text', accept: '*/*', context })).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<CaseResponse>
+      return (r as HttpResponse<any>).clone({ body: undefined }) as StrictHttpResponse<void>
     })
   )
 }
 
-getCase.PATH = '/api/cases/{caseId}'
+delete$.PATH = '/api/namespaces/{id}'

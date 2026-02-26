@@ -12,19 +12,21 @@ import { StrictHttpResponse } from '../strict-http-response'
 
 import { addMessage } from '../fn/case-controller/add-message'
 import { AddMessage$Params } from '../fn/case-controller/add-message'
-import { CaseResponse } from '../models/case-response'
-import { createCase } from '../fn/case-controller/create-case'
-import { CreateCase$Params } from '../fn/case-controller/create-case'
-import { getCase } from '../fn/case-controller/get-case'
-import { GetCase$Params } from '../fn/case-controller/get-case'
+import { CaseModel } from '../models/case-model'
+import { create1 } from '../fn/case-controller/create-1'
+import { Create1$Params } from '../fn/case-controller/create-1'
+import { delete1 } from '../fn/case-controller/delete-1'
+import { Delete1$Params } from '../fn/case-controller/delete-1'
+import { getById1 } from '../fn/case-controller/get-by-id-1'
+import { GetById1$Params } from '../fn/case-controller/get-by-id-1'
 import { killCase } from '../fn/case-controller/kill-case'
 import { KillCase$Params } from '../fn/case-controller/kill-case'
-import { listCases } from '../fn/case-controller/list-cases'
-import { ListCases$Params } from '../fn/case-controller/list-cases'
+import { listByParent } from '../fn/case-controller/list-by-parent'
+import { ListByParent$Params } from '../fn/case-controller/list-by-parent'
 import { stopCase } from '../fn/case-controller/stop-case'
 import { StopCase$Params } from '../fn/case-controller/stop-case'
-import { updateCase } from '../fn/case-controller/update-case'
-import { UpdateCase$Params } from '../fn/case-controller/update-case'
+import { update1 } from '../fn/case-controller/update-1'
+import { Update1$Params } from '../fn/case-controller/update-1'
 
 @Injectable({ providedIn: 'root' })
 export class CaseControllerService extends BaseService {
@@ -32,107 +34,132 @@ export class CaseControllerService extends BaseService {
     super(config, http)
   }
 
-  /** Path part for operation `getCase()` */
-  static readonly GetCasePath = '/api/cases/{caseId}'
+  /** Path part for operation `getById1()` */
+  static readonly GetById1Path = '/api/cases/{id}'
 
   /**
    * This method provides access to the full `HttpResponse`, allowing access to response headers.
-   * To access only the response body, use `getCase()` instead.
+   * To access only the response body, use `getById1()` instead.
    *
    * This method doesn't expect any request body.
    */
-  getCase$Response(params: GetCase$Params, context?: HttpContext): Observable<StrictHttpResponse<CaseResponse>> {
-    const obs = getCase(this.http, this.rootUrl, params, context)
+  getById1$Response(params: GetById1$Params, context?: HttpContext): Observable<StrictHttpResponse<CaseModel>> {
+    const obs = getById1(this.http, this.rootUrl, params, context)
     return obs
   }
 
   /**
    * This method provides access only to the response body.
-   * To access the full response (for headers, for example), `getCase$Response()` instead.
+   * To access the full response (for headers, for example), `getById1$Response()` instead.
    *
    * This method doesn't expect any request body.
    */
-  getCase(params: GetCase$Params, context?: HttpContext): Observable<CaseResponse> {
-    const resp = this.getCase$Response(params, context)
-    return resp.pipe(map((r: StrictHttpResponse<CaseResponse>): CaseResponse => r.body))
+  getById1(params: GetById1$Params, context?: HttpContext): Observable<CaseModel> {
+    const resp = this.getById1$Response(params, context)
+    return resp.pipe(map((r: StrictHttpResponse<CaseModel>): CaseModel => r.body))
   }
 
-  /** Path part for operation `updateCase()` */
-  static readonly UpdateCasePath = '/api/cases/{caseId}'
+  /** Path part for operation `update1()` */
+  static readonly Update1Path = '/api/cases/{id}'
 
   /**
    * This method provides access to the full `HttpResponse`, allowing access to response headers.
-   * To access only the response body, use `updateCase()` instead.
+   * To access only the response body, use `update1()` instead.
    *
    * This method sends `application/json` and handles request body of type `application/json`.
    */
-  updateCase$Response(params: UpdateCase$Params, context?: HttpContext): Observable<StrictHttpResponse<CaseResponse>> {
-    const obs = updateCase(this.http, this.rootUrl, params, context)
+  update1$Response(params: Update1$Params, context?: HttpContext): Observable<StrictHttpResponse<CaseModel>> {
+    const obs = update1(this.http, this.rootUrl, params, context)
     return obs
   }
 
   /**
    * This method provides access only to the response body.
-   * To access the full response (for headers, for example), `updateCase$Response()` instead.
+   * To access the full response (for headers, for example), `update1$Response()` instead.
    *
    * This method sends `application/json` and handles request body of type `application/json`.
    */
-  updateCase(params: UpdateCase$Params, context?: HttpContext): Observable<CaseResponse> {
-    const resp = this.updateCase$Response(params, context)
-    return resp.pipe(map((r: StrictHttpResponse<CaseResponse>): CaseResponse => r.body))
+  update1(params: Update1$Params, context?: HttpContext): Observable<CaseModel> {
+    const resp = this.update1$Response(params, context)
+    return resp.pipe(map((r: StrictHttpResponse<CaseModel>): CaseModel => r.body))
   }
 
-  /** Path part for operation `listCases()` */
-  static readonly ListCasesPath = '/api/cases'
+  /** Path part for operation `delete1()` */
+  static readonly Delete1Path = '/api/cases/{id}'
 
   /**
    * This method provides access to the full `HttpResponse`, allowing access to response headers.
-   * To access only the response body, use `listCases()` instead.
+   * To access only the response body, use `delete1()` instead.
    *
    * This method doesn't expect any request body.
    */
-  listCases$Response(
-    params?: ListCases$Params,
+  delete1$Response(params: Delete1$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
+    const obs = delete1(this.http, this.rootUrl, params, context)
+    return obs
+  }
+
+  /**
+   * This method provides access only to the response body.
+   * To access the full response (for headers, for example), `delete1$Response()` instead.
+   *
+   * This method doesn't expect any request body.
+   */
+  delete1(params: Delete1$Params, context?: HttpContext): Observable<void> {
+    const resp = this.delete1$Response(params, context)
+    return resp.pipe(map((r: StrictHttpResponse<void>): void => r.body))
+  }
+
+  /** Path part for operation `listByParent()` */
+  static readonly ListByParentPath = '/api/cases'
+
+  /**
+   * This method provides access to the full `HttpResponse`, allowing access to response headers.
+   * To access only the response body, use `listByParent()` instead.
+   *
+   * This method doesn't expect any request body.
+   */
+  listByParent$Response(
+    params: ListByParent$Params,
     context?: HttpContext
-  ): Observable<StrictHttpResponse<Array<CaseResponse>>> {
-    const obs = listCases(this.http, this.rootUrl, params, context)
+  ): Observable<StrictHttpResponse<Array<CaseModel>>> {
+    const obs = listByParent(this.http, this.rootUrl, params, context)
     return obs
   }
 
   /**
    * This method provides access only to the response body.
-   * To access the full response (for headers, for example), `listCases$Response()` instead.
+   * To access the full response (for headers, for example), `listByParent$Response()` instead.
    *
    * This method doesn't expect any request body.
    */
-  listCases(params?: ListCases$Params, context?: HttpContext): Observable<Array<CaseResponse>> {
-    const resp = this.listCases$Response(params, context)
-    return resp.pipe(map((r: StrictHttpResponse<Array<CaseResponse>>): Array<CaseResponse> => r.body))
+  listByParent(params: ListByParent$Params, context?: HttpContext): Observable<Array<CaseModel>> {
+    const resp = this.listByParent$Response(params, context)
+    return resp.pipe(map((r: StrictHttpResponse<Array<CaseModel>>): Array<CaseModel> => r.body))
   }
 
-  /** Path part for operation `createCase()` */
-  static readonly CreateCasePath = '/api/cases'
+  /** Path part for operation `create1()` */
+  static readonly Create1Path = '/api/cases'
 
   /**
    * This method provides access to the full `HttpResponse`, allowing access to response headers.
-   * To access only the response body, use `createCase()` instead.
+   * To access only the response body, use `create1()` instead.
    *
    * This method sends `application/json` and handles request body of type `application/json`.
    */
-  createCase$Response(params: CreateCase$Params, context?: HttpContext): Observable<StrictHttpResponse<CaseResponse>> {
-    const obs = createCase(this.http, this.rootUrl, params, context)
+  create1$Response(params: Create1$Params, context?: HttpContext): Observable<StrictHttpResponse<CaseModel>> {
+    const obs = create1(this.http, this.rootUrl, params, context)
     return obs
   }
 
   /**
    * This method provides access only to the response body.
-   * To access the full response (for headers, for example), `createCase$Response()` instead.
+   * To access the full response (for headers, for example), `create1$Response()` instead.
    *
    * This method sends `application/json` and handles request body of type `application/json`.
    */
-  createCase(params: CreateCase$Params, context?: HttpContext): Observable<CaseResponse> {
-    const resp = this.createCase$Response(params, context)
-    return resp.pipe(map((r: StrictHttpResponse<CaseResponse>): CaseResponse => r.body))
+  create1(params: Create1$Params, context?: HttpContext): Observable<CaseModel> {
+    const resp = this.create1$Response(params, context)
+    return resp.pipe(map((r: StrictHttpResponse<CaseModel>): CaseModel => r.body))
   }
 
   /** Path part for operation `stopCase()` */

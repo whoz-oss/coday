@@ -7,30 +7,31 @@ import { filter, map } from 'rxjs/operators'
 import { StrictHttpResponse } from '../../strict-http-response'
 import { RequestBuilder } from '../../request-builder'
 
-import { CaseResponse } from '../../models/case-response'
-import { CreateCaseRequest } from '../../models/create-case-request'
+import { Namespace } from '../../models/namespace'
 
-export interface CreateCase$Params {
-  body: CreateCaseRequest
+export interface Update$Params {
+  id: string
+  body: Namespace
 }
 
-export function createCase(
+export function update(
   http: HttpClient,
   rootUrl: string,
-  params: CreateCase$Params,
+  params: Update$Params,
   context?: HttpContext
-): Observable<StrictHttpResponse<CaseResponse>> {
-  const rb = new RequestBuilder(rootUrl, createCase.PATH, 'post')
+): Observable<StrictHttpResponse<Namespace>> {
+  const rb = new RequestBuilder(rootUrl, update.PATH, 'put')
   if (params) {
+    rb.path('id', params.id, {})
     rb.body(params.body, 'application/json')
   }
 
   return http.request(rb.build({ responseType: 'blob', accept: '*/*', context })).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<CaseResponse>
+      return r as StrictHttpResponse<Namespace>
     })
   )
 }
 
-createCase.PATH = '/api/cases'
+update.PATH = '/api/namespaces/{id}'
