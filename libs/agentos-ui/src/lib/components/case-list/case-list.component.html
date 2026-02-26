@@ -1,0 +1,22 @@
+<div class="case-list">
+  <header class="case-list__header">
+    <h2>Cases</h2>
+  </header>
+
+  <div class="case-list__items">
+    <!-- TODO: replace with @for (case of cases()) once CaseStateService is wired -->
+    <p class="case-list__empty">No cases yet. Start one below.</p>
+  </div>
+
+  <div class="case-list__composer">
+    <textarea
+      class="case-list__input"
+      placeholder="Start a new case…"
+      rows="3"
+      [value]="inputValue()"
+      (input)="onInput($event)"
+      (keydown)="onKeydown($event)"
+    ></textarea>
+    <p class="case-list__hint">Press Enter to send, Shift+Enter for new line</p>
+  </div>
+</div>

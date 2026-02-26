@@ -1,0 +1,109 @@
+.case-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  gap: 1rem;
+
+  &__messages {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding-bottom: 0.5rem;
+  }
+
+  &__empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+
+    p {
+      color: var(--color-text-secondary, #6e6e73);
+      font-size: 0.9rem;
+      margin: 0;
+    }
+  }
+
+  // Thinking indicator (three bouncing dots)
+  &__thinking {
+    display: flex;
+    gap: 0.3rem;
+    padding: 0.75rem 1rem;
+    align-self: flex-start;
+  }
+
+  &__composer {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+    background: var(--glass-bg, rgba(255, 255, 255, 0.72));
+    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.18));
+    backdrop-filter: var(--glass-backdrop-blur, blur(20px));
+    -webkit-backdrop-filter: var(--glass-backdrop-blur, blur(20px));
+    border-radius: 16px;
+    padding: 0.5rem 0.5rem 0.5rem 1rem;
+  }
+
+  &__input {
+    flex: 1;
+    resize: none;
+    padding: 0.5rem 0;
+    border: none;
+    background: transparent;
+    color: var(--color-text, #1d1d1f);
+    font-size: 0.95rem;
+    font-family: inherit;
+    line-height: 1.5;
+    outline: none;
+    min-height: 40px;
+
+    &::placeholder {
+      color: var(--color-text-secondary, #6e6e73);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+}
+
+// Thinking dots animation
+.thinking-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-text-secondary, #6e6e73);
+  animation: thinking-bounce 1.2s ease-in-out infinite;
+
+  &:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+  &:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+}
+
+@keyframes thinking-bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  40% {
+    transform: translateY(-6px);
+    opacity: 1;
+  }
+}

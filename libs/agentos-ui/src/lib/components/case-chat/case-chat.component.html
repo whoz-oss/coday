@@ -1,0 +1,36 @@
+<div class="case-chat">
+  <div class="case-chat__messages">
+    <!-- TODO: replace with @for (event of events()) once CaseStateService is wired -->
+    <div class="case-chat__empty">
+      <p>No messages yet.</p>
+    </div>
+
+    <!-- Thinking indicator -->
+    @if (isRunning()) {
+      <div class="case-chat__thinking">
+        <span class="thinking-dot"></span>
+        <span class="thinking-dot"></span>
+        <span class="thinking-dot"></span>
+      </div>
+    }
+  </div>
+
+  <div class="case-chat__composer">
+    <textarea
+      class="case-chat__input"
+      placeholder="Reply…"
+      rows="3"
+      [value]="inputValue()"
+      [disabled]="isRunning()"
+      (input)="onInput($event)"
+      (keydown)="onKeydown($event)"
+    ></textarea>
+    <div class="case-chat__actions">
+      @if (isRunning()) {
+        <ds-icon-button icon="stop" variant="danger" title="Stop" (action)="stop()" />
+      } @else {
+        <ds-icon-button icon="send" variant="primary" title="Send (Enter)" [disabled]="!canSend" (action)="submit()" />
+      }
+    </div>
+  </div>
+</div>

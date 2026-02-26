@@ -1,0 +1,32 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
+  height: 56px;
+  background: var(--glass-bg, rgba(255, 255, 255, 0.72));
+  border-bottom: 1px solid var(--glass-border, rgba(255, 255, 255, 0.18));
+  backdrop-filter: var(--glass-backdrop-blur, blur(20px));
+  -webkit-backdrop-filter: var(--glass-backdrop-blur, blur(20px));
+  position: sticky;
+  top: 0;
+  z-index: 100;
+
+  &__brand {
+    display: flex;
+    align-items: center;
+  }
+
+  &__logo {
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--color-text, #1d1d1f);
+  }
+
+  &__nav {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+}

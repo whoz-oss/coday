@@ -1,6 +1,6 @@
-import { Component, inject, OnInit, signal } from '@angular/core'
-import { PluginControllerService } from '@whoz-oss/agentos-api-client'
+import { Component, signal } from '@angular/core'
 import { IconButtonComponent } from '@whoz-oss/design-system'
+import { BackendStatusComponent } from '../backend-status/backend-status.component'
 
 /**
  * Hello AgentOS — entry point component for the agentos-ui lib.
@@ -13,22 +13,12 @@ import { IconButtonComponent } from '@whoz-oss/design-system'
  */
 @Component({
   selector: 'agentos-hello',
-  imports: [IconButtonComponent],
+  imports: [IconButtonComponent, BackendStatusComponent],
   templateUrl: './hello-agentos.component.html',
   styleUrl: './hello-agentos.component.scss',
 })
-export class HelloAgentosComponent implements OnInit {
-  private readonly pluginService = inject(PluginControllerService)
-
+export class HelloAgentosComponent {
   protected lastAction = signal<string | null>(null)
-  protected agentosOnline = signal<boolean | null>(null)
-
-  ngOnInit(): void {
-    this.pluginService.getAllPlugins().subscribe({
-      next: () => this.agentosOnline.set(true),
-      error: () => this.agentosOnline.set(false),
-    })
-  }
 
   protected onSend(): void {
     this.lastAction.set('send')

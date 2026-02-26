@@ -1,0 +1,8 @@
+@if (ready()) {
+  <router-outlet />
+} @else {
+  <div class="shell-loader">
+    <div class="spinner"></div>
+    <p>Initializing…</p>
+  </div>
+}
