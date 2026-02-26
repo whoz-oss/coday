@@ -18,6 +18,10 @@
       "options": {
         "command": "ng-openapi-gen --config ng-openapi-gen.json",
         "cwd": "libs/agentos-api-client"
+      },
+      "configurations": {},
+      "metadata": {
+        "description": "Regenerates src/index.ts and src/models+services from the OpenAPI spec. Safe to run at any time. src/public-api.ts and src/custom/ are NOT touched by this command — they are the hand-written layer. See src/public-api.ts for the full entry-point strategy."
       }
     }
   }

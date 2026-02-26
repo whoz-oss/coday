@@ -62,7 +62,7 @@
       "@coday/stats": ["libs/stats/src/index.ts"],
       "@coday/utils": ["libs/utils/src/index.ts"],
       "@coday/zendesk-articles": ["libs/zendesk-articles/src/index.ts"],
-      "@whoz-oss/agentos-api-client": ["libs/agentos-api-client/src/index.ts"],
+      "@whoz-oss/agentos-api-client": ["libs/agentos-api-client/src/public-api.ts"],
       "@whoz-oss/agentos-dataflow": ["libs/agentos-dataflow/src/index.ts"],
       "@whoz-oss/agentos-ui": ["libs/agentos-ui/src/index.ts"],
       "@whoz-oss/design-system": ["libs/design-system/src/index.ts"]
