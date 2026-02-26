@@ -58,7 +58,19 @@ class CaseServiceImpl(
     // EntityService Implementation (Persistence)
     // ========================================
 
-    override fun save(entity: CaseModel): CaseModel = caseRepository.save(entity)
+    /**
+     * Save a CaseModel.
+     * If no runtime instance exists for this case yet, creates one via createCaseInstance.
+     * This allows EntityController.create(CaseModel) to work without override.
+     */
+    override fun save(entity: CaseModel): CaseModel {
+        if (!activeCases.containsKey(entity.metadata.id)) {
+            return createCaseInstance(projectId = entity.projectId).let {
+                caseRepository.findByIds(listOf(it.id)).first()
+            }
+        }
+        return caseRepository.save(entity)
+    }
 
     override fun findByIds(ids: Collection<UUID>): List<CaseModel> = caseRepository.findByIds(ids)
 
