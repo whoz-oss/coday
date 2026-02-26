@@ -1,6 +1,6 @@
 package io.whozoss.agentos.plugin
 
-import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.mockk
 import io.whozoss.agentos.agent.AgentRegistry
@@ -10,41 +10,34 @@ import org.springframework.mock.web.MockMultipartFile
 import java.nio.file.Files
 import java.nio.file.Paths
 
-class PluginControllerTest :
-    DescribeSpec({
+class PluginControllerTest : StringSpec({
 
-        val pluginService = mockk<PluginService>(relaxed = true)
-        val agentRegistry = mockk<AgentRegistry>(relaxed = true)
-        val controller = PluginController(pluginService, agentRegistry)
+    val pluginService = mockk<PluginService>(relaxed = true)
+    val agentRegistry = mockk<AgentRegistry>(relaxed = true)
+    val controller = PluginController(pluginService, agentRegistry)
 
-        afterSpec {
-            // The controller writes to plugins/ relative to the working directory — clean up after tests
-            val pluginsDir = Paths.get("plugins")
-            if (Files.exists(pluginsDir)) {
-                Files.walk(pluginsDir)
-                    .sorted(Comparator.reverseOrder())
-                    .forEach(Files::delete)
-            }
+    afterSpec {
+        // The controller writes to plugins/ relative to the working directory — clean up after tests
+        val pluginsDir = Paths.get("plugins")
+        if (Files.exists(pluginsDir)) {
+            Files.walk(pluginsDir)
+                .sorted(Comparator.reverseOrder())
+                .forEach(Files::delete)
         }
+    }
 
-        describe("uploadPlugin") {
+    "uploadPlugin should reject an empty file" {
+        val file = MockMultipartFile("file", "plugin.jar", "application/java-archive", ByteArray(0))
+        controller.uploadPlugin(file).statusCode shouldBe HttpStatus.BAD_REQUEST
+    }
 
-            it("should reject an empty file") {
-                val file = MockMultipartFile("file", "plugin.jar", "application/java-archive", ByteArray(0))
-                val response = controller.uploadPlugin(file)
-                response.statusCode shouldBe HttpStatus.BAD_REQUEST
-            }
+    "uploadPlugin should reject a non-JAR file" {
+        val file = MockMultipartFile("file", "plugin.txt", "text/plain", "not a jar".toByteArray())
+        controller.uploadPlugin(file).statusCode shouldBe HttpStatus.BAD_REQUEST
+    }
 
-            it("should reject a non-JAR file") {
-                val file = MockMultipartFile("file", "plugin.txt", "text/plain", "not a jar".toByteArray())
-                val response = controller.uploadPlugin(file)
-                response.statusCode shouldBe HttpStatus.BAD_REQUEST
-            }
-
-            it("should accept a valid JAR file") {
-                val file = MockMultipartFile("file", "plugin.jar", "application/java-archive", "jar content".toByteArray())
-                val response = controller.uploadPlugin(file)
-                response.statusCode shouldBe HttpStatus.CREATED
-            }
-        }
-    })
+    "uploadPlugin should accept a valid JAR file" {
+        val file = MockMultipartFile("file", "plugin.jar", "application/java-archive", "jar content".toByteArray())
+        controller.uploadPlugin(file).statusCode shouldBe HttpStatus.CREATED
+    }
+})
