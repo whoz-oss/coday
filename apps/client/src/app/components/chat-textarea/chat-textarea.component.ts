@@ -17,8 +17,7 @@ import { FormsModule } from '@angular/forms'
 import { Subscription } from 'rxjs'
 import { PreferencesService } from '../../services/preferences.service'
 import { CodayService } from '../../core/services/coday.service'
-import { MatIconButton } from '@angular/material/button'
-import { MatIcon } from '@angular/material/icon'
+import { IconButtonComponent } from '@whoz-oss/design-system'
 import { AgentApiService, AgentAutocomplete } from '../../core/services/agent-api.service'
 import { PromptApiService, PromptAutocomplete } from '../../core/services/prompt-api.service'
 import { ProjectStateService } from '../../core/services/project-state.service'
@@ -27,7 +26,7 @@ import { HighlightPipe } from '../../pipes/highlight.pipe'
 @Component({
   selector: 'app-chat-textarea',
   standalone: true,
-  imports: [FormsModule, MatIconButton, MatIcon, HighlightPipe],
+  imports: [FormsModule, IconButtonComponent, HighlightPipe],
   templateUrl: './chat-textarea.component.html',
   styleUrl: './chat-textarea.component.scss',
 })

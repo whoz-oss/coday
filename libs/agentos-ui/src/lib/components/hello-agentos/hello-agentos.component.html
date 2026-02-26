@@ -1,0 +1,31 @@
+<div class="hello-agentos">
+  <div class="card">
+    <div class="badge">AgentOS UI</div>
+    <h1>Hello AgentOS</h1>
+    <p>
+      This component lives in <code>libs/agentos-ui</code> — isolated from Coday internals, ready to be published as
+      <code>&#64;whoz-oss/agentos-ui</code>.
+    </p>
+    <ul class="principles">
+      <li>✦ No imports from Coday app</li>
+      <li>✦ CSS custom properties as host contract</li>
+      <li>✦ Standalone Angular components</li>
+      <li>✦ Signals-first reactive state</li>
+    </ul>
+
+    <div class="demo">
+      <p class="demo-label">ds-icon-button from <code>&#64;whoz-oss/design-system</code></p>
+      <div class="demo-buttons">
+        <ds-icon-button icon="send" variant="primary" title="Send" (action)="onSend()" />
+        <ds-icon-button icon="stop" variant="danger" title="Stop" (action)="onStop()" />
+        <ds-icon-button icon="attach_file" variant="default" title="Attach" (action)="onAttach()" />
+        <ds-icon-button icon="mic" variant="default" title="Record" [disabled]="true" (action)="onAttach()" />
+      </div>
+      @if (lastAction()) {
+        <p class="demo-feedback">
+          Last action: <strong>{{ lastAction() }}</strong>
+        </p>
+      }
+    </div>
+  </div>
+</div>

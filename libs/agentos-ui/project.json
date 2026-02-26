@@ -1,0 +1,17 @@
+{
+  "name": "agentos-ui",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/agentos-ui/src",
+  "prefix": "agentos",
+  "tags": ["scope:agentos", "type:ui"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"],
+      "options": {
+        "lintFilePatterns": ["libs/agentos-ui/**/*.ts", "libs/agentos-ui/**/*.html"]
+      }
+    }
+  }
+}
