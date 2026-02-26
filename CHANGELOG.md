@@ -1,3 +1,13 @@
+## 0.79.2 (2026-02-26)
+
+### 🩹 Fixes
+
+- searchFiles fileName-only uses ripgrep instead of glob to prevent timeout ([#532](https://github.com/whoz-oss/coday/pull/532))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.79.1 (2026-02-26)
 
 ### 🚀 Features
