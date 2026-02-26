@@ -52,10 +52,10 @@ export default [
               sourceTag: 'scope:design-system',
               onlyDependOnLibsWithTags: ['type:model', 'type:utils'],
             },
-            // agentos-dataflow: no dependency on Angular libs
+            // agentos-dataflow: can depend on agentos-api-client (types) but not on agentos-ui
             {
               sourceTag: 'scope:agentos-dataflow',
-              onlyDependOnLibsWithTags: ['type:model', 'type:utils'],
+              onlyDependOnLibsWithTags: ['type:model', 'type:utils', 'type:api-client'],
             },
             // agentos-ui: can use design-system, agentos-dataflow and agentos-api-client, not the reverse
             {

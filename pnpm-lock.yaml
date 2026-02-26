@@ -588,39 +588,7 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
-  libs/agentos-api-client:
-    dependencies:
-      '@angular/common':
-        specifier: 'catalog:'
-        version: 20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
-      '@angular/core':
-        specifier: 'catalog:'
-        version: 20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)
-      rxjs:
-        specifier: 'catalog:'
-        version: 7.8.2
-      tslib:
-        specifier: 'catalog:'
-        version: 2.8.1
-    devDependencies:
-      typescript:
-        specifier: catalog:dev
-        version: 5.9.3
-
-  libs/agentos-dataflow:
-    dependencies:
-      rxjs:
-        specifier: 'catalog:'
-        version: 7.8.2
-      tslib:
-        specifier: 'catalog:'
-        version: 2.8.1
-    devDependencies:
-      typescript:
-        specifier: catalog:dev
-        version: 5.9.3
-
-  libs/agentos-ui: {}
+  libs/agentos-api-client: {}
 
   libs/coday-services:
     dependencies:
@@ -661,8 +629,6 @@ importers:
       typescript:
         specifier: catalog:dev
         version: 5.9.3
-
-  libs/design-system: {}
 
   libs/function:
     dependencies:
