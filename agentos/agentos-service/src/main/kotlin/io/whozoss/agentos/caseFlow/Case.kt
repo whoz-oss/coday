@@ -207,18 +207,20 @@ class Case(
         val agentName = matchResult.groupValues[1]
         logger.debug("[Case $id] Agent mention detected: @$agentName")
 
-        try {
-            val agent = agentService.findAgentByName(agentName)
+        val resolvedName = agentService.resolveAgentName(agentName)
+        if (resolvedName != null) {
+            // Derive a stable id from the name, consistent with AgentServiceImpl.createAgentInstance
+            val agentId = UUID.nameUUIDFromBytes(resolvedName.toByteArray())
             val agentSelectedEvent =
                 AgentSelectedEvent(
                     projectId = projectId,
                     caseId = id,
-                    agentId = agent.metadata.id,
-                    agentName = agent.name,
+                    agentId = agentId,
+                    agentName = resolvedName,
                 )
             storeAndEmitEvent(agentSelectedEvent)
-            logger.info("[Case $id] Agent selected: ${agent.name}")
-        } catch (e: Exception) {
+            logger.info("[Case $id] Agent selected: $resolvedName")
+        } else {
             val warnEvent =
                 WarnEvent(
                     projectId = projectId,
@@ -226,7 +228,7 @@ class Case(
                     message = "Agent '$agentName' not found",
                 )
             storeAndEmitEvent(warnEvent)
-            logger.warn("[Case $id] Agent '@$agentName' not found: ${e.message}")
+            logger.warn("[Case $id] Agent '@$agentName' not found")
         }
     }
 
@@ -348,7 +350,7 @@ class Case(
                     return
                 }
 
-                // if agent selected, make it run
+                // if agent selected, transition to running and immediately execute
                 is AgentSelectedEvent -> {
                     logger.info("[Case $id] Found AgentSelectedEvent for agent: ${event.agentName}, transitioning to running")
                     val agentRunningEvent =
@@ -359,6 +361,8 @@ class Case(
                             agentName = event.agentName,
                         )
                     storeAndEmitEvent(agentRunningEvent)
+                    val agent = agentService.findAgentByName(event.agentName)
+                    runAgent(agent)
                     return
                 }
 
@@ -376,19 +380,21 @@ class Case(
 
     private fun selectDefaultAgent() {
         logger.info("[Case $id] Selecting default agent")
-        val defaultAgent = agentService.getDefaultAgent()
-        if (defaultAgent != null) {
-            logger.info("[Case $id] Default agent found: ${defaultAgent.name} (id: ${defaultAgent.metadata.id})")
+        val defaultAgentName = agentService.getDefaultAgentName()
+        if (defaultAgentName != null) {
+            // Use nameUUIDFromBytes to derive a stable id from the name, consistent with createAgentInstance
+            val agentId = UUID.nameUUIDFromBytes(defaultAgentName.toByteArray())
+            logger.info("[Case $id] Default agent found: $defaultAgentName (id: $agentId)")
             val agentSelectedEvent =
                 AgentSelectedEvent(
                     projectId = projectId,
                     caseId = id,
-                    agentId = defaultAgent.metadata.id,
-                    agentName = defaultAgent.name,
+                    agentId = agentId,
+                    agentName = defaultAgentName,
                 )
             logger.debug("[Case $id] Emitting AgentSelectedEvent")
             storeAndEmitEvent(agentSelectedEvent)
-            logger.info("[Case $id] AgentSelectedEvent emitted for ${defaultAgent.name}")
+            logger.info("[Case $id] AgentSelectedEvent emitted for $defaultAgentName")
         } else {
             logger.error("[Case $id] No default agent configured, stopping case")
             stopRequested.set(true)

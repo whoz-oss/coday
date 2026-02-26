@@ -43,6 +43,12 @@ class AgentServiceImpl(
         return createAgentInstance(model)
     }
 
+    override fun getDefaultAgentName(): String? = aiModelRegistry.getDefault()?.name
+
+    override fun resolveAgentName(namePart: String): String? =
+        (aiModelRegistry.findByName(namePart)
+            ?: aiModelRegistry.getAll().firstOrNull { it.name.contains(namePart, ignoreCase = true) })?.name
+
     private fun createAgentInstance(model: AiModel): Agent {
         logger.info { "[AgentService] Creating agent instance for: ${model.name}" }
 
