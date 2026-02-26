@@ -66,6 +66,21 @@ let promptExecutionService: PromptExecutionService
 // Middleware to parse JSON bodies with increased limit for image uploads
 app.use(express.json({ limit: '20mb' }))
 
+// Proxy /api/agentos/* → AgentOS Spring backend
+const AGENTOS_PORT = process.env.AGENTOS_PORT ? parseInt(process.env.AGENTOS_PORT) : 8123
+const AGENTOS_URL = `http://localhost:${AGENTOS_PORT}`
+import('http-proxy-middleware').then(({ createProxyMiddleware }) => {
+  app.use(
+    '/api/agentos',
+    createProxyMiddleware({
+      target: AGENTOS_URL,
+      changeOrigin: true,
+      pathRewrite: { '^/api/agentos/api': '/api' },
+    })
+  )
+  debugLog('INIT', `AgentOS proxy configured: /api/agentos → ${AGENTOS_URL}`)
+})
+
 // Development mode: proxy to Angular dev server
 if (process.env.BUILD_ENV === 'development') {
   const ANGULAR_DEV_SERVER = 'http://localhost:4200'
