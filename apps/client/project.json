@@ -24,7 +24,6 @@
     "build-angular": {
       "executor": "@angular/build:application",
       "outputs": ["{options.outputPath}"],
-      "dependsOn": ["design-system:build", "agentos-ui:build"],
       "options": {
         "outputPath": "{projectRoot}/dist",
         "baseHref": "/",
