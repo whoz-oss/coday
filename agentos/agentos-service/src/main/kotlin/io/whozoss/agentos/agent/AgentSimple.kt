@@ -33,10 +33,12 @@ import org.springframework.ai.tool.method.MethodToolCallback
 import org.springframework.ai.tool.support.ToolDefinitions
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.collections.firstOrNull
 import kotlin.collections.map
 import kotlin.reflect.jvm.javaMethod
+import kotlin.time.TimeSource
+import kotlin.time.measureTime
 
 /**
  * Simple agent implementation with single LLM call.
@@ -90,16 +92,16 @@ class AgentSimple(
 
                 emit(ThinkingEvent(projectId = projectId, caseId = caseId))
 
-                // Shared timer: reset to now() each time the LLM hands back control
+                // Shared timer: reset to markNow() each time the LLM hands back control
                 // (prompt sent, or tool response returned). Measures pure LLM thinking time
                 // per turn, including both tool-calling turns and the final text turn.
-                val llmTurnStartMs = AtomicLong(System.currentTimeMillis())
+                val llmTurnMark = AtomicReference(TimeSource.Monotonic.markNow())
                 val llmTurnIndex = AtomicInteger(1)
 
                 // Convert StandardTool to ToolCallback with event emission
                 val toolCallbacks =
                     tools.map { tool ->
-                        createToolCallbackWithEvents(tool, projectId, caseId, toolEventChannel, llmTurnStartMs, llmTurnIndex)
+                        createToolCallbackWithEvents(tool, projectId, caseId, toolEventChannel, llmTurnMark, llmTurnIndex)
                     }
 
                 // Make single LLM call with tools
@@ -132,7 +134,7 @@ class AgentSimple(
                     // Log LLM thinking time for the final turn (text response) on first chunk
                     if (!finalTurnLogged) {
                         finalTurnLogged = true
-                        logger.info { "[AgentSimple] $name LLM turn ${llmTurnIndex.get()} answered in ${System.currentTimeMillis() - llmTurnStartMs.get()}ms" }
+                        logger.info { "[AgentSimple] $name LLM turn ${llmTurnIndex.get()} answered in ${llmTurnMark.get().elapsedNow()}" }
                     }
 
                     contentBuilder.append(chunk)
@@ -335,7 +337,7 @@ class AgentSimple(
      * classloader for the method Spring AI calls, and we delegate deserialization to the
      * plugin's own classloader through [StandardTool.executeWithJson].
      *
-     * [llmTurnStartMs] and [llmTurnIndex] are shared with the stream collector so that
+     * [llmTurnMark] and [llmTurnIndex] are shared with the stream collector so that
      * LLM thinking time can be measured per turn (i.e. per tool-calling round-trip).
      */
     private fun createToolCallbackWithEvents(
@@ -343,7 +345,7 @@ class AgentSimple(
         projectId: UUID,
         caseId: UUID,
         eventChannel: Channel<CaseEvent>,
-        llmTurnStartMs: AtomicLong,
+        llmTurnMark: AtomicReference<TimeSource.Monotonic.ValueTimeMark>,
         llmTurnIndex: AtomicInteger,
     ): MethodToolCallback {
         // Wrapper that Spring AI will call via reflection.
@@ -358,7 +360,7 @@ class AgentSimple(
                     // The LLM decided to call this tool: log how long it thought since
                     // the prompt was sent (or since the previous tool response was returned).
                     val turn = llmTurnIndex.get()
-                    logger.info { "[AgentSimple] $name LLM turn $turn answered in ${System.currentTimeMillis() - llmTurnStartMs.get()}ms" }
+                    logger.info { "[AgentSimple] $name LLM turn $turn answered in ${llmTurnMark.get().elapsedNow()}" }
 
                     runBlocking {
                         eventChannel.send(
@@ -372,31 +374,33 @@ class AgentSimple(
                         )
                     }
 
-                    val toolStartMs = System.currentTimeMillis()
-                    val result =
-                        try {
-                            tool.executeWithJson(jsonArgs)
-                        } catch (e: Exception) {
-                            runBlocking {
-                                eventChannel.send(
-                                    ToolResponseEvent(
-                                        projectId = projectId,
-                                        caseId = caseId,
-                                        toolRequestId = toolRequestId,
-                                        toolName = tool.name,
-                                        output = MessageContent.Text("Error: ${e.message}"),
-                                        success = false,
-                                    ),
-                                )
-                            }
-                            throw e
+                    val result: String
+                    val toolDuration =
+                        measureTime {
+                            result =
+                                try {
+                                    tool.executeWithJson(jsonArgs)
+                                } catch (e: Exception) {
+                                    runBlocking {
+                                        eventChannel.send(
+                                            ToolResponseEvent(
+                                                projectId = projectId,
+                                                caseId = caseId,
+                                                toolRequestId = toolRequestId,
+                                                toolName = tool.name,
+                                                output = MessageContent.Text("Error: ${e.message}"),
+                                                success = false,
+                                            ),
+                                        )
+                                    }
+                                    throw e
+                                }
                         }
+                    logger.info { "[AgentSimple] tool ${tool.name} executed in $toolDuration" }
 
-                    logger.info { "[AgentSimple] tool ${tool.name} executed in ${System.currentTimeMillis() - toolStartMs}ms" }
-
-                    // Reset the turn timer so the next measurement starts from when
+                    // Reset the turn mark so the next measurement starts from when
                     // we hand the tool result back to the LLM.
-                    llmTurnStartMs.set(System.currentTimeMillis())
+                    llmTurnMark.set(TimeSource.Monotonic.markNow())
                     llmTurnIndex.incrementAndGet()
 
                     runBlocking {
