@@ -48,11 +48,10 @@
         "passWithNoTests": null
       },
       "dependsOn": [
+        "build",
         {
           "target": "build",
-          "projects": [
-            "agentos-sdk"
-          ]
+          "projects": ["agentos-sdk"]
         }
       ]
     },

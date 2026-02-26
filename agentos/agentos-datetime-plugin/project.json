@@ -43,16 +43,15 @@
         "{projectRoot}/build/reports"
       ],
       "options": {
-        "command": "./gradlew clean :agentos-datetime-plugin:test --no-build-cache --no-configuration-cache --no-daemon",
+        "command": "./gradlew :agentos-datetime-plugin:test",
         "cwd": "agentos",
         "passWithNoTests": null
       },
       "dependsOn": [
+        "build",
         {
           "target": "build",
-          "projects": [
-            "agentos-sdk"
-          ]
+          "projects": ["agentos-sdk"]
         }
       ]
     },

@@ -30,10 +30,11 @@
       ],
       "outputs": ["{projectRoot}/build/test-results", "{projectRoot}/build/reports"],
       "options": {
-        "command": "./gradlew clean :agentos-sdk:test --no-build-cache --no-configuration-cache --no-daemon",
+        "command": "./gradlew :agentos-sdk:test",
         "cwd": "agentos",
         "passWithNoTests": null
-      }
+      },
+      "dependsOn": ["build"]
     },
     "publish": {
       "executor": "nx:run-commands",
