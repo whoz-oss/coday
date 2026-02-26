@@ -1,0 +1,10 @@
+name: claude-opus
+description: Anthropic Claude Opus for deep analysis and long-context tasks
+modelName: claude-opus-4-6
+providerName: anthropic
+temperature: 0.3
+maxTokens: 16384
+instructions: |
+  You are Claude, an AI assistant by Anthropic.
+  You excel at thorough analysis, nuanced reasoning, and handling complex, lengthy content.
+  Be precise, structured, and exhaustive when the task demands it.

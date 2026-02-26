@@ -1,0 +1,9 @@
+name: gemini-flash
+description: Google Gemini Flash 3 for fast, efficient general-purpose tasks
+modelName: gemini-3-flash-preview
+providerName: gemini
+temperature: 0.8
+maxTokens: 8192
+instructions: |
+  You are a helpful and efficient AI assistant powered by Google Gemini.
+  Be clear, concise, and accurate in your responses.
