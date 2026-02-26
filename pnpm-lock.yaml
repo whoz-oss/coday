@@ -241,6 +241,9 @@ catalogs:
     lint-staged:
       specifier: 16.2.4
       version: 16.2.4
+    ng-openapi-gen:
+      specifier: 1.0.5
+      version: 1.0.5
     nodemon:
       specifier: 3.1.10
       version: 3.1.10
@@ -409,6 +412,9 @@ importers:
       lint-staged:
         specifier: catalog:dev
         version: 16.2.4
+      ng-openapi-gen:
+        specifier: catalog:dev
+        version: 1.0.5(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(@types/json-schema@7.0.15)(rxjs@7.8.2)
       nodemon:
         specifier: catalog:dev
         version: 3.1.10
@@ -582,6 +588,25 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  libs/agentos-api-client:
+    dependencies:
+      '@angular/common':
+        specifier: 'catalog:'
+        version: 20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
+      '@angular/core':
+        specifier: 'catalog:'
+        version: 20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)
+      rxjs:
+        specifier: 'catalog:'
+        version: 7.8.2
+      tslib:
+        specifier: 'catalog:'
+        version: 2.8.1
+    devDependencies:
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   libs/agentos-dataflow:
     dependencies:
       rxjs:
@@ -596,30 +621,6 @@ importers:
         version: 5.9.3
 
   libs/agentos-ui: {}
-
-  libs/agentos-ui/dist:
-    dependencies:
-      '@angular/common':
-        specifier: '>=18.0.0'
-        version: 20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
-      '@angular/core':
-        specifier: '>=18.0.0'
-        version: 20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)
-      '@angular/material':
-        specifier: '>=18.0.0'
-        version: 20.2.9(b517547b325ffc8400ae4cda6a618bfd)
-      '@angular/router':
-        specifier: '>=18.0.0'
-        version: 20.3.4(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@20.3.4(@angular/animations@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(rxjs@7.8.2)
-      '@whoz-oss/design-system':
-        specifier: workspace:*
-        version: link:../../design-system/dist
-      rxjs:
-        specifier: '>=7.0.0'
-        version: 7.8.2
-      tslib:
-        specifier: '>=2.0.0'
-        version: 2.8.1
 
   libs/coday-services:
     dependencies:
@@ -662,30 +663,6 @@ importers:
         version: 5.9.3
 
   libs/design-system: {}
-
-  libs/design-system/dist:
-    dependencies:
-      '@angular/common':
-        specifier: '>=18.0.0'
-        version: 20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
-      '@angular/core':
-        specifier: '>=18.0.0'
-        version: 20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)
-      '@angular/forms':
-        specifier: '>=18.0.0'
-        version: 20.3.4(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@20.3.4(@angular/animations@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(rxjs@7.8.2)
-      '@angular/material':
-        specifier: '>=18.0.0'
-        version: 20.2.9(b517547b325ffc8400ae4cda6a618bfd)
-      '@angular/router':
-        specifier: '>=18.0.0'
-        version: 20.3.4(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@20.3.4(@angular/animations@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(rxjs@7.8.2)
-      rxjs:
-        specifier: '>=7.0.0'
-        version: 7.8.2
-      tslib:
-        specifier: '>=2.0.0'
-        version: 2.8.1
 
   libs/function:
     dependencies:
@@ -1509,6 +1486,12 @@ packages:
     peerDependenciesMeta:
       zod:
         optional: true
+
+  '@apidevtools/json-schema-ref-parser@14.2.1':
+    resolution: {integrity: sha512-HmdFw9CDYqM6B25pqGBpNeLCKvGPlIx1EbLrVL0zPvj50CJQUHyBNBw45Muk0kEIkogo1VZvOKHajdMuAzSxRg==}
+    engines: {node: '>= 20'}
+    peerDependencies:
+      '@types/json-schema': ^7.0.15
 
   '@asamuzakjp/css-color@3.2.0':
     resolution: {integrity: sha512-K1A6z8tS3XsmCMM86xoWdn7Fkdn9m6RSVtocUrJYIwZnFVkng/PvkEoWtOWmP+Scc6saYWHWZYbndEEXxl24jw==}
@@ -6293,6 +6276,9 @@ packages:
     resolution: {integrity: sha512-xUtoPkMggbz0MPyPiIWr1Kp4aeWJjDZ6SMvURhimjdZgsRuDplF5/s9hcgGhyXMhs+6vpnuoiZ2kFiu3FMnS8Q==}
     engines: {node: '>=18'}
 
+  eol@0.10.0:
+    resolution: {integrity: sha512-+w3ktYrOphcIqC1XKmhQYvM+o2uxgQFiimL7B6JPZJlWVxf7Lno9e/JWLPIgbHo7DoZ+b7jsf/NzrUcNe6ZTZQ==}
+
   err-code@2.0.3:
     resolution: {integrity: sha512-2bmlRpNKBxT/CRmPOlyISQpNj+qSeYvcym/uT0Jx2bMOlKLtSy1ZmLuVxSEKKyor/N5yhvp/ZiG1oE3DEYMSFA==}
 
@@ -8351,6 +8337,13 @@ packages:
   neo-async@2.6.2:
     resolution: {integrity: sha512-Yd3UES5mWCSqR+qNT93S3UoYUkqAZ9lLg8a7g9rimsWmYGK8cVToA4/sF3RrshdyV3sAGMXVUmpMYOw+dLpOuw==}
 
+  ng-openapi-gen@1.0.5:
+    resolution: {integrity: sha512-wosZ/3maujBVhezNC+bw9PgT3I//hVZzF27CIi4FJc3uq3ibDciEB+GyRZflcLm3AE84kAKrD6cRBIAQVyrnnA==}
+    hasBin: true
+    peerDependencies:
+      '@angular/core': '>=16.0.0'
+      rxjs: '>=6.5.0'
+
   ng-packagr@20.3.0:
     resolution: {integrity: sha512-hwPZNeV/6C3pWojK70AHxe6uk1rz2bzoe+WdH+GIWouUcyXrjYQjOFyLfOGD0ia9D+yWVzjsi4CKVK/dQFDQ6Q==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
@@ -8536,6 +8529,9 @@ packages:
         optional: true
       zod:
         optional: true
+
+  openapi-types@12.1.3:
+    resolution: {integrity: sha512-N4YtSYJqghVu4iek2ZUvcN/0aqH1kRDuNqzcycDxhOUpg7GdvLa2F3DgS6yBNhInhv2r/6I0Flkn7CqL8+nIcw==}
 
   opener@1.5.2:
     resolution: {integrity: sha512-ur5UIdyw5Y7yEj9wLzhqXiy6GZ3Mwx0yGI+5sMn2r0N0v3cKJvUmFH5yPP+WXh9e0xfyzyJX95D8l088DNFj7A==}
@@ -8740,6 +8736,7 @@ packages:
     resolution: {integrity: sha512-WkezNsLK8sGpuFC7+PPP0DsXROwdoOxmXPBTtUWWkCwCi/Vi97MRC52Ly6FWIJjOKIywpm/L2oaUgSrmtU+7ZQ==}
     engines: {node: '>=20.18.0'}
     hasBin: true
+    bundledDependencies: []
 
   pe-library@0.4.1:
     resolution: {integrity: sha512-eRWB5LBz7PpDu4PUlwT0PhnQfTQJlDDdPa35urV4Osrm0t0AqQFGn+UIkU3klZvwJ8KPO3VbBFsXquA6p6kqZw==}
@@ -11181,6 +11178,11 @@ snapshots:
       json-schema-to-ts: 3.1.1
     optionalDependencies:
       zod: 4.3.6
+
+  '@apidevtools/json-schema-ref-parser@14.2.1(@types/json-schema@7.0.15)':
+    dependencies:
+      '@types/json-schema': 7.0.15
+      js-yaml: 4.1.1
 
   '@asamuzakjp/css-color@3.2.0':
     dependencies:
@@ -17042,6 +17044,8 @@ snapshots:
 
   environment@1.1.0: {}
 
+  eol@0.10.0: {}
+
   err-code@2.0.3: {}
 
   errno@0.1.8:
@@ -19707,6 +19711,21 @@ snapshots:
 
   neo-async@2.6.2: {}
 
+  ng-openapi-gen@1.0.5(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(@types/json-schema@7.0.15)(rxjs@7.8.2):
+    dependencies:
+      '@angular/core': 20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)
+      '@apidevtools/json-schema-ref-parser': 14.2.1(@types/json-schema@7.0.15)
+      argparse: 2.0.1
+      eol: 0.10.0
+      fs-extra: 11.3.3
+      handlebars: 4.7.8
+      jsesc: 3.1.0
+      lodash: 4.17.23
+      openapi-types: 12.1.3
+      rxjs: 7.8.2
+    transitivePeerDependencies:
+      - '@types/json-schema'
+
   ng-packagr@20.3.0(@angular/compiler-cli@20.3.16(@angular/compiler@20.3.4)(typescript@5.9.3))(tslib@2.8.1)(typescript@5.9.3):
     dependencies:
       '@ampproject/remapping': 2.3.0
@@ -19952,6 +19971,8 @@ snapshots:
     optionalDependencies:
       ws: 8.19.0
       zod: 4.3.6
+
+  openapi-types@12.1.3: {}
 
   opener@1.5.2: {}
 
