@@ -3,8 +3,6 @@ packages:
   - '!apps/web'
   - libs/*
   - libs/**/*
-  - '!libs/*/dist'
-  - '!libs/**/dist'
   - plugins/*
 
 catalog:
@@ -107,7 +105,6 @@ catalogs:
     json-sort-cli: 4.0.21
     jsonc-eslint-parser: 2.4.1
     lint-staged: 16.2.4
-    ng-packagr: 20.3.0
     nodemon: 3.1.10
     nx: 22.2.3
     opn-cli: 5.0.0

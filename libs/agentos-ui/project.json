@@ -6,25 +6,11 @@
   "prefix": "agentos",
   "tags": ["scope:agentos", "type:ui"],
   "targets": {
-    "build": {
-      "executor": "@nx/angular:package",
-      "outputs": ["{projectRoot}/dist"],
-      "dependsOn": ["^build"],
-      "options": {
-        "project": "libs/agentos-ui/ng-package.json",
-        "tsConfig": "libs/agentos-ui/tsconfig.lib.json"
-      }
-    },
     "lint": {
       "executor": "@nx/eslint:lint",
       "outputs": ["{options.outputFile}"],
       "options": {
         "lintFilePatterns": ["libs/agentos-ui/**/*.ts", "libs/agentos-ui/**/*.html"]
-      }
-    },
-    "nx-release-publish": {
-      "options": {
-        "packageRoot": "libs/agentos-ui/dist"
       }
     }
   }

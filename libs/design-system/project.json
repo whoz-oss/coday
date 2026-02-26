@@ -6,24 +6,11 @@
   "prefix": "ds",
   "tags": ["scope:design-system", "type:ui"],
   "targets": {
-    "build": {
-      "executor": "@nx/angular:package",
-      "outputs": ["{projectRoot}/dist"],
-      "options": {
-        "project": "libs/design-system/ng-package.json",
-        "tsConfig": "libs/design-system/tsconfig.lib.json"
-      }
-    },
     "lint": {
       "executor": "@nx/eslint:lint",
       "outputs": ["{options.outputFile}"],
       "options": {
         "lintFilePatterns": ["libs/design-system/**/*.ts", "libs/design-system/**/*.html"]
-      }
-    },
-    "nx-release-publish": {
-      "options": {
-        "packageRoot": "libs/design-system/dist"
       }
     }
   }
