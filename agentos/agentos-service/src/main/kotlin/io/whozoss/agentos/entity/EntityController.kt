@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
@@ -49,9 +48,9 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier>(
     /**
      * GET ?ids=a,b,c — get multiple entities by their IDs.
      */
-    @GetMapping(params = ["ids"])
+    @PostMapping("/by-ids")
     open fun getByIds(
-        @RequestParam ids: List<UUID>,
+        @RequestBody ids: List<UUID>,
     ): List<EntityType> = service.findByIds(ids)
 
     /**
@@ -61,10 +60,10 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier>(
      * The ParentIdentifier is passed as a UUID — subclasses with non-UUID parent types
      * must override this method entirely.
      */
-    @GetMapping(params = ["parentId"])
+    @GetMapping("/by-parentId/{parentId}")
     open fun listByParent(
-        @RequestParam parentId: UUID,
-    ): List<EntityType> = service.findByParent(parentId as ParentIdentifier)
+        @PathVariable parentId: ParentIdentifier,
+    ): List<EntityType> = service.findByParent(parentId)
 
     /**
      * POST — create a new entity.
