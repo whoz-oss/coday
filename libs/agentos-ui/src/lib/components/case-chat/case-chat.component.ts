@@ -1,15 +1,30 @@
 import { HttpClient } from '@angular/common/http'
 import { Component, computed, inject, NgZone, OnDestroy, OnInit, signal } from '@angular/core'
 import { ActivatedRoute } from '@angular/router'
-import { CaseEvent, MessageEvent as CaseMessageEvent } from '@whoz-oss/agentos-api-client'
+import {
+  CaseEvent,
+  MessageEvent as CaseMessageEvent,
+  ToolRequestEvent,
+  ToolResponseEvent,
+} from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
+
+export interface ToolCall {
+  requestId: string
+  toolName: string
+  args: string | null
+  /** undefined = pending, defined = done */
+  response?: ToolResponseEvent
+}
+
+export type TimelineItem = { kind: 'message'; event: CaseMessageEvent } | { kind: 'tool'; call: ToolCall }
 
 /**
  * CaseChatComponent — real-time chat view for an active case.
  *
  * Connexion SSE directe sur /api/agentos/api/cases/:caseId/events.
- * Accumule tous les CaseEvent reçus, affiche les MessageEvent,
- * indique le thinking quand des events non-terminaux arrivent.
+ * Accumule tous les CaseEvent reçus, affiche les MessageEvent
+ * et les ToolRequestEvent/ToolResponseEvent intercalés chronologiquement.
  */
 @Component({
   selector: 'agentos-case-chat',
@@ -32,7 +47,67 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected inputValue = signal('')
   protected isRunning = signal(false)
 
-  protected readonly messages = computed(() => this.events().filter((e): e is CaseMessageEvent => e.type === 'MESSAGE'))
+  /** Collapsed state per toolRequestId */
+  protected readonly collapsedTools = signal<Set<string>>(new Set())
+
+  /**
+   * Unified chronological timeline: messages and tool calls interleaved
+   * in the order they first appeared in the event stream.
+   *
+   * Two-pass approach:
+   * 1. Build a complete ToolCall map (request merged with its response)
+   * 2. Walk events in order to emit timeline items, deduplicating tool entries
+   *    so TOOL_RESPONSE doesn't create a second item — it's already merged.
+   *
+   * The computed re-runs fully on every events() change, so the merged
+   * ToolCall objects are always fresh — no mutation needed.
+   */
+  protected readonly timeline = computed<TimelineItem[]>(() => {
+    const allEvents = this.events()
+
+    // Pass 1: build complete tool call map (request + optional response)
+    const toolCallMap = new Map<string, ToolCall>()
+    for (const e of allEvents) {
+      if (e.type === 'TOOL_REQUEST') {
+        const req = e as unknown as ToolRequestEvent
+        const requestId = req.toolRequestId ?? e.id
+        const existing = toolCallMap.get(requestId)
+        toolCallMap.set(requestId, {
+          requestId,
+          toolName: req.toolName ?? 'unknown',
+          args: req.args ?? null,
+          response: existing?.response, // preserve response if already seen
+        })
+      } else if (e.type === 'TOOL_RESPONSE') {
+        const res = e as unknown as ToolResponseEvent
+        const requestId = res.toolRequestId ?? e.id
+        const existing = toolCallMap.get(requestId)
+        toolCallMap.set(requestId, {
+          requestId,
+          toolName: existing?.toolName ?? res.toolName ?? 'unknown',
+          args: existing?.args ?? null,
+          response: res,
+        })
+      }
+    }
+
+    // Pass 2: walk events in order, emit one timeline item per message or tool call
+    const items: TimelineItem[] = []
+    const seenToolIds = new Set<string>()
+    for (const e of allEvents) {
+      if (e.type === 'MESSAGE') {
+        items.push({ kind: 'message', event: e as CaseMessageEvent })
+      } else if (e.type === 'TOOL_REQUEST' || e.type === 'TOOL_RESPONSE') {
+        const raw = e as unknown as ToolRequestEvent | ToolResponseEvent
+        const requestId = raw.toolRequestId ?? e.id
+        if (!seenToolIds.has(requestId)) {
+          seenToolIds.add(requestId)
+          items.push({ kind: 'tool', call: toolCallMap.get(requestId)! })
+        }
+      }
+    }
+    return items
+  })
 
   protected get canSend(): boolean {
     return !!this.inputValue().trim() && !this.isRunning()
@@ -78,6 +153,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.eventSource.addEventListener('AgentFinishedEvent', handler)
     this.eventSource.addEventListener('ThinkingEvent', handler)
     this.eventSource.addEventListener('TextChunkEvent', handler)
+    this.eventSource.addEventListener('ToolRequestEvent', handler)
+    this.eventSource.addEventListener('ToolResponseEvent', handler)
 
     this.eventSource.onerror = () => {
       this.zone.run(() => this.isRunning.set(false))
@@ -128,6 +205,31 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         .map((c) => c.content)
         .join('') ?? ''
     )
+  }
+
+  protected extractToolOutput(call: ToolCall): string | null {
+    if (!call.response) return null
+    const output = call.response.output
+    if (!output) return null
+    if ('content' in output) return output.content ?? null
+    return null
+  }
+
+  protected toggleToolCall(requestId: string): void {
+    this.collapsedTools.update((set) => {
+      const next = new Set(set)
+      if (next.has(requestId)) {
+        next.delete(requestId)
+      } else {
+        next.add(requestId)
+      }
+      return next
+    })
+  }
+
+  /** Collapsed by default: a tool call is expanded only when its id is in the set */
+  protected isToolCallExpanded(requestId: string): boolean {
+    return this.collapsedTools().has(requestId)
   }
 
   protected readonly _namespaceId = this.namespaceId
