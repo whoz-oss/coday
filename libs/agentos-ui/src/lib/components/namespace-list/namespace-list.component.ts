@@ -1,9 +1,7 @@
 import { AsyncPipe } from '@angular/common'
-import { HttpClient } from '@angular/common/http'
 import { Component, inject } from '@angular/core'
 import { Router } from '@angular/router'
-import { Namespace } from '@whoz-oss/agentos-api-client'
-import { Observable } from 'rxjs'
+import { Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
 
 /**
  * NamespaceListComponent — lists available namespaces.
@@ -19,12 +17,15 @@ import { Observable } from 'rxjs'
   styleUrl: './namespace-list.component.scss',
 })
 export class NamespaceListComponent {
-  private readonly http = inject(HttpClient)
+  // private readonly http = inject(HttpClient)
   private readonly router = inject(Router)
+  private readonly namespaceController = inject(NamespaceControllerService)
 
-  protected readonly namespaces$: Observable<Namespace[]> = this.http.get<Namespace[]>(
-    '/api/agentos/api/namespaces/list'
-  )
+  // protected readonly namespaces$: Observable<Namespace[]> = this.http.get<Namespace[]>(
+  //   '/api/agentos/api/namespaces/list'
+  // )
+
+  protected readonly namespaces$ = this.namespaceController.listAll()
 
   protected select(ns: Namespace): void {
     this.router.navigate(['/agentos', ns.id, 'cases'])
