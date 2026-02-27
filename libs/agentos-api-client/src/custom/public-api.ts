@@ -27,7 +27,7 @@
  */
 
 // ── Generated (do not edit src/index.ts directly) ──────────────────────────
-export * from './index'
+export * from '../index';
 
 // ── Custom (hand-written, safe from regeneration) ───────────────────────────
-export { CaseEventSseService } from './custom/case-event-sse.service'
+export { CaseEventSseService } from './case-event-sse.service';
