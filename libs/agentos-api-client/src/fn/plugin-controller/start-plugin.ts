@@ -13,18 +13,15 @@ export interface StartPlugin$Params {
   pluginId: string;
 }
 
-export function startPlugin(
-  http: HttpClient,
-  rootUrl: string,
-  params: StartPlugin$Params,
-  context?: HttpContext
-): Observable<StrictHttpResponse<PluginActionResponse>> {
+export function startPlugin(http: HttpClient, rootUrl: string, params: StartPlugin$Params, context?: HttpContext): Observable<StrictHttpResponse<PluginActionResponse>> {
   const rb = new RequestBuilder(rootUrl, startPlugin.PATH, 'post');
   if (params) {
     rb.path('pluginId', params.pluginId, {});
   }
 
-  return http.request(rb.build({ responseType: 'blob', accept: '*/*', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'blob', accept: '*/*', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<PluginActionResponse>;

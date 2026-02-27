@@ -24,71 +24,22 @@ import { WarnEvent } from '../../models/warn-event';
 
 export interface Update2$Params {
   id: string;
-  body:
-    | AgentFinishedEvent
-    | AgentRunningEvent
-    | AgentSelectedEvent
-    | AnswerEvent
-    | CaseStatusEvent
-    | IntentionGeneratedEvent
-    | MessageEvent
-    | QuestionEvent
-    | TextChunkEvent
-    | ThinkingEvent
-    | ToolRequestEvent
-    | ToolResponseEvent
-    | ToolSelectedEvent
-    | WarnEvent;
+      body: (AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)
 }
 
-export function update2(
-  http: HttpClient,
-  rootUrl: string,
-  params: Update2$Params,
-  context?: HttpContext
-): Observable<
-  StrictHttpResponse<
-    | AgentFinishedEvent
-    | AgentRunningEvent
-    | AgentSelectedEvent
-    | AnswerEvent
-    | CaseStatusEvent
-    | IntentionGeneratedEvent
-    | MessageEvent
-    | QuestionEvent
-    | TextChunkEvent
-    | ThinkingEvent
-    | ToolRequestEvent
-    | ToolResponseEvent
-    | ToolSelectedEvent
-    | WarnEvent
-  >
-> {
+export function update2(http: HttpClient, rootUrl: string, params: Update2$Params, context?: HttpContext): Observable<StrictHttpResponse<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)>> {
   const rb = new RequestBuilder(rootUrl, update2.PATH, 'put');
   if (params) {
     rb.path('id', params.id, {});
     rb.body(params.body, 'application/json');
   }
 
-  return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'json', accept: 'application/json', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<
-        | AgentFinishedEvent
-        | AgentRunningEvent
-        | AgentSelectedEvent
-        | AnswerEvent
-        | CaseStatusEvent
-        | IntentionGeneratedEvent
-        | MessageEvent
-        | QuestionEvent
-        | TextChunkEvent
-        | ThinkingEvent
-        | ToolRequestEvent
-        | ToolResponseEvent
-        | ToolSelectedEvent
-        | WarnEvent
-      >;
+      return r as StrictHttpResponse<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)>;
     })
   );
 }

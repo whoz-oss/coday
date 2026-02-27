@@ -6,6 +6,7 @@ import { CaseEvent } from '../models/case-event';
 import { Image } from '../models/image';
 import { Text } from '../models/text';
 export type MessageEvent = CaseEvent & {
-  actor?: Actor;
-  content?: Array<Image | Text>;
+'actor'?: Actor;
+'content'?: Array<(Image | Text)>;
 };
+

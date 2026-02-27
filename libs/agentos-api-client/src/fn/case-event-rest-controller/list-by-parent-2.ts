@@ -26,57 +26,18 @@ export interface ListByParent2$Params {
   parentId: string;
 }
 
-export function listByParent2(
-  http: HttpClient,
-  rootUrl: string,
-  params: ListByParent2$Params,
-  context?: HttpContext
-): Observable<
-  StrictHttpResponse<
-    Array<
-      | AgentFinishedEvent
-      | AgentRunningEvent
-      | AgentSelectedEvent
-      | AnswerEvent
-      | CaseStatusEvent
-      | IntentionGeneratedEvent
-      | MessageEvent
-      | QuestionEvent
-      | TextChunkEvent
-      | ThinkingEvent
-      | ToolRequestEvent
-      | ToolResponseEvent
-      | ToolSelectedEvent
-      | WarnEvent
-    >
-  >
-> {
+export function listByParent2(http: HttpClient, rootUrl: string, params: ListByParent2$Params, context?: HttpContext): Observable<StrictHttpResponse<Array<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)>>> {
   const rb = new RequestBuilder(rootUrl, listByParent2.PATH, 'get');
   if (params) {
     rb.path('parentId', params.parentId, {});
   }
 
-  return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'json', accept: 'application/json', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<
-        Array<
-          | AgentFinishedEvent
-          | AgentRunningEvent
-          | AgentSelectedEvent
-          | AnswerEvent
-          | CaseStatusEvent
-          | IntentionGeneratedEvent
-          | MessageEvent
-          | QuestionEvent
-          | TextChunkEvent
-          | ThinkingEvent
-          | ToolRequestEvent
-          | ToolResponseEvent
-          | ToolSelectedEvent
-          | WarnEvent
-        >
-      >;
+      return r as StrictHttpResponse<Array<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)>>;
     })
   );
 }

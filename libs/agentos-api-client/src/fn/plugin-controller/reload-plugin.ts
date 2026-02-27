@@ -13,18 +13,15 @@ export interface ReloadPlugin$Params {
   pluginId: string;
 }
 
-export function reloadPlugin(
-  http: HttpClient,
-  rootUrl: string,
-  params: ReloadPlugin$Params,
-  context?: HttpContext
-): Observable<StrictHttpResponse<PluginActionResponse>> {
+export function reloadPlugin(http: HttpClient, rootUrl: string, params: ReloadPlugin$Params, context?: HttpContext): Observable<StrictHttpResponse<PluginActionResponse>> {
   const rb = new RequestBuilder(rootUrl, reloadPlugin.PATH, 'post');
   if (params) {
     rb.path('pluginId', params.pluginId, {});
   }
 
-  return http.request(rb.build({ responseType: 'blob', accept: '*/*', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'blob', accept: '*/*', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<PluginActionResponse>;

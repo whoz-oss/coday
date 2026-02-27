@@ -13,18 +13,15 @@ export interface ListByParent1$Params {
   parentId: string;
 }
 
-export function listByParent1(
-  http: HttpClient,
-  rootUrl: string,
-  params: ListByParent1$Params,
-  context?: HttpContext
-): Observable<StrictHttpResponse<Array<CaseModel>>> {
+export function listByParent1(http: HttpClient, rootUrl: string, params: ListByParent1$Params, context?: HttpContext): Observable<StrictHttpResponse<Array<CaseModel>>> {
   const rb = new RequestBuilder(rootUrl, listByParent1.PATH, 'get');
   if (params) {
     rb.path('parentId', params.parentId, {});
   }
 
-  return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'json', accept: 'application/json', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<Array<CaseModel>>;

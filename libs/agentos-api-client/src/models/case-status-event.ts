@@ -3,5 +3,6 @@
 
 import { CaseEvent } from '../models/case-event';
 export type CaseStatusEvent = CaseEvent & {
-  status?: 'PENDING' | 'RUNNING' | 'STOPPING' | 'ERROR' | 'STOPPED';
+'status'?: 'PENDING' | 'RUNNING' | 'STOPPING' | 'ERROR' | 'STOPPED';
 };
+

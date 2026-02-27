@@ -3,5 +3,6 @@
 
 import { CaseEvent } from '../models/case-event';
 export type WarnEvent = CaseEvent & {
-  message?: string;
+'message'?: string;
 };
+

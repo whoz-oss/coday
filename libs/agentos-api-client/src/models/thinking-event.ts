@@ -3,3 +3,4 @@
 
 import { CaseEvent } from '../models/case-event';
 export type ThinkingEvent = CaseEvent;
+

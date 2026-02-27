@@ -10,21 +10,18 @@ import { RequestBuilder } from '../../request-builder';
 import { Namespace } from '../../models/namespace';
 
 export interface GetByIds$Params {
-  body: Array<string>;
+      body: Array<string>
 }
 
-export function getByIds(
-  http: HttpClient,
-  rootUrl: string,
-  params: GetByIds$Params,
-  context?: HttpContext
-): Observable<StrictHttpResponse<Array<Namespace>>> {
+export function getByIds(http: HttpClient, rootUrl: string, params: GetByIds$Params, context?: HttpContext): Observable<StrictHttpResponse<Array<Namespace>>> {
   const rb = new RequestBuilder(rootUrl, getByIds.PATH, 'post');
   if (params) {
     rb.body(params.body, 'application/json');
   }
 
-  return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'json', accept: 'application/json', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<Array<Namespace>>;

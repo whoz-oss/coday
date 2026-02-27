@@ -34,10 +34,7 @@ export class ToolControllerService extends BaseService {
    *
    * This method sends `application/json` and handles request body of type `application/json`.
    */
-  executeTool$Response(
-    params: ExecuteTool$Params,
-    context?: HttpContext
-  ): Observable<StrictHttpResponse<ToolExecutionResult>> {
+  executeTool$Response(params: ExecuteTool$Params, context?: HttpContext): Observable<StrictHttpResponse<ToolExecutionResult>> {
     const obs = executeTool(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -50,7 +47,9 @@ export class ToolControllerService extends BaseService {
    */
   executeTool(params: ExecuteTool$Params, context?: HttpContext): Observable<ToolExecutionResult> {
     const resp = this.executeTool$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<ToolExecutionResult>): ToolExecutionResult => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<ToolExecutionResult>): ToolExecutionResult => r.body)
+    );
   }
 
   /** Path part for operation `listTools()` */
@@ -62,10 +61,7 @@ export class ToolControllerService extends BaseService {
    *
    * This method doesn't expect any request body.
    */
-  listTools$Response(
-    params?: ListTools$Params,
-    context?: HttpContext
-  ): Observable<StrictHttpResponse<Array<ToolOutput>>> {
+  listTools$Response(params?: ListTools$Params, context?: HttpContext): Observable<StrictHttpResponse<Array<ToolOutput>>> {
     const obs = listTools(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -78,7 +74,9 @@ export class ToolControllerService extends BaseService {
    */
   listTools(params?: ListTools$Params, context?: HttpContext): Observable<Array<ToolOutput>> {
     const resp = this.listTools$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<Array<ToolOutput>>): Array<ToolOutput> => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<Array<ToolOutput>>): Array<ToolOutput> => r.body)
+    );
   }
 
   /** Path part for operation `getTool()` */
@@ -103,6 +101,9 @@ export class ToolControllerService extends BaseService {
    */
   getTool(params: GetTool$Params, context?: HttpContext): Observable<ToolOutput> {
     const resp = this.getTool$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<ToolOutput>): ToolOutput => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<ToolOutput>): ToolOutput => r.body)
+    );
   }
+
 }

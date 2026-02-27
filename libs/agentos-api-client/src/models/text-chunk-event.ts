@@ -3,5 +3,6 @@
 
 import { CaseEvent } from '../models/case-event';
 export type TextChunkEvent = CaseEvent & {
-  chunk?: string;
+'chunk'?: string;
 };
+

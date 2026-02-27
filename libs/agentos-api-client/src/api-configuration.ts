@@ -11,7 +11,7 @@ export function provideApiConfiguration(rootUrl: string) {
   config.rootUrl = rootUrl;
   return {
     provide: ApiConfiguration,
-    useValue: config,
+    useValue: config
   };
 }
 
@@ -24,3 +24,4 @@ export function provideApiConfiguration(rootUrl: string) {
 export class ApiConfiguration {
   rootUrl: string = 'http://localhost:8123';
 }
+

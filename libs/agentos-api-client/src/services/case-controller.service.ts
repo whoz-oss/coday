@@ -58,7 +58,9 @@ export class CaseControllerService extends BaseService {
    */
   getById1(params: GetById1$Params, context?: HttpContext): Observable<CaseModel> {
     const resp = this.getById1$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<CaseModel>): CaseModel => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<CaseModel>): CaseModel => r.body)
+    );
   }
 
   /** Path part for operation `update1()` */
@@ -83,7 +85,9 @@ export class CaseControllerService extends BaseService {
    */
   update1(params: Update1$Params, context?: HttpContext): Observable<CaseModel> {
     const resp = this.update1$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<CaseModel>): CaseModel => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<CaseModel>): CaseModel => r.body)
+    );
   }
 
   /** Path part for operation `delete1()` */
@@ -108,7 +112,9 @@ export class CaseControllerService extends BaseService {
    */
   delete1(params: Delete1$Params, context?: HttpContext): Observable<void> {
     const resp = this.delete1$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<void>): void => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<void>): void => r.body)
+    );
   }
 
   /** Path part for operation `create1()` */
@@ -133,7 +139,9 @@ export class CaseControllerService extends BaseService {
    */
   create1(params: Create1$Params, context?: HttpContext): Observable<CaseModel> {
     const resp = this.create1$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<CaseModel>): CaseModel => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<CaseModel>): CaseModel => r.body)
+    );
   }
 
   /** Path part for operation `stopCase()` */
@@ -158,7 +166,9 @@ export class CaseControllerService extends BaseService {
    */
   stopCase(params: StopCase$Params, context?: HttpContext): Observable<void> {
     const resp = this.stopCase$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<void>): void => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<void>): void => r.body)
+    );
   }
 
   /** Path part for operation `addMessage()` */
@@ -183,7 +193,9 @@ export class CaseControllerService extends BaseService {
    */
   addMessage(params: AddMessage$Params, context?: HttpContext): Observable<void> {
     const resp = this.addMessage$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<void>): void => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<void>): void => r.body)
+    );
   }
 
   /** Path part for operation `killCase()` */
@@ -208,7 +220,9 @@ export class CaseControllerService extends BaseService {
    */
   killCase(params: KillCase$Params, context?: HttpContext): Observable<void> {
     const resp = this.killCase$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<void>): void => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<void>): void => r.body)
+    );
   }
 
   /** Path part for operation `getByIds1()` */
@@ -220,10 +234,7 @@ export class CaseControllerService extends BaseService {
    *
    * This method sends `application/json` and handles request body of type `application/json`.
    */
-  getByIds1$Response(
-    params: GetByIds1$Params,
-    context?: HttpContext
-  ): Observable<StrictHttpResponse<Array<CaseModel>>> {
+  getByIds1$Response(params: GetByIds1$Params, context?: HttpContext): Observable<StrictHttpResponse<Array<CaseModel>>> {
     const obs = getByIds1(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -236,7 +247,9 @@ export class CaseControllerService extends BaseService {
    */
   getByIds1(params: GetByIds1$Params, context?: HttpContext): Observable<Array<CaseModel>> {
     const resp = this.getByIds1$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<Array<CaseModel>>): Array<CaseModel> => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<Array<CaseModel>>): Array<CaseModel> => r.body)
+    );
   }
 
   /** Path part for operation `listByParent1()` */
@@ -248,10 +261,7 @@ export class CaseControllerService extends BaseService {
    *
    * This method doesn't expect any request body.
    */
-  listByParent1$Response(
-    params: ListByParent1$Params,
-    context?: HttpContext
-  ): Observable<StrictHttpResponse<Array<CaseModel>>> {
+  listByParent1$Response(params: ListByParent1$Params, context?: HttpContext): Observable<StrictHttpResponse<Array<CaseModel>>> {
     const obs = listByParent1(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -264,6 +274,9 @@ export class CaseControllerService extends BaseService {
    */
   listByParent1(params: ListByParent1$Params, context?: HttpContext): Observable<Array<CaseModel>> {
     const resp = this.listByParent1$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<Array<CaseModel>>): Array<CaseModel> => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<Array<CaseModel>>): Array<CaseModel> => r.body)
+    );
   }
+
 }

@@ -11,22 +11,19 @@ import { Namespace } from '../../models/namespace';
 
 export interface Update$Params {
   id: string;
-  body: Namespace;
+      body: Namespace
 }
 
-export function update(
-  http: HttpClient,
-  rootUrl: string,
-  params: Update$Params,
-  context?: HttpContext
-): Observable<StrictHttpResponse<Namespace>> {
+export function update(http: HttpClient, rootUrl: string, params: Update$Params, context?: HttpContext): Observable<StrictHttpResponse<Namespace>> {
   const rb = new RequestBuilder(rootUrl, update.PATH, 'put');
   if (params) {
     rb.path('id', params.id, {});
     rb.body(params.body, 'application/json');
   }
 
-  return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'json', accept: 'application/json', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<Namespace>;

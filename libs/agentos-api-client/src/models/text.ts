@@ -3,5 +3,6 @@
 
 import { MessageContent } from '../models/message-content';
 export type Text = MessageContent & {
-  content?: string;
+'content'?: string;
 };
+

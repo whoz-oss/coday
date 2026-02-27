@@ -8,20 +8,5 @@ export interface CaseEvent {
   metadata: EntityMetadata;
   projectId: string;
   timestamp: string;
-  type:
-    | 'STATUS'
-    | 'AGENT_SELECTED'
-    | 'MESSAGE'
-    | 'TOOL_REQUEST'
-    | 'TOOL_RESPONSE'
-    | 'THINKING'
-    | 'AGENT_FINISHED'
-    | 'AGENT_RUNNING'
-    | 'WARN'
-    | 'ERROR'
-    | 'QUESTION'
-    | 'ANSWER'
-    | 'INTENTION_GENERATED'
-    | 'TOOL_SELECTED'
-    | 'TEXT_CHUNK';
+  type: 'STATUS' | 'AGENT_SELECTED' | 'MESSAGE' | 'TOOL_REQUEST' | 'TOOL_RESPONSE' | 'THINKING' | 'AGENT_FINISHED' | 'AGENT_RUNNING' | 'WARN' | 'ERROR' | 'QUESTION' | 'ANSWER' | 'INTENTION_GENERATED' | 'TOOL_SELECTED' | 'TEXT_CHUNK';
 }

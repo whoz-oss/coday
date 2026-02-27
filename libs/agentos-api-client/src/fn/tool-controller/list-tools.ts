@@ -9,19 +9,17 @@ import { RequestBuilder } from '../../request-builder';
 
 import { ToolOutput } from '../../models/tool-output';
 
-export interface ListTools$Params {}
+export interface ListTools$Params {
+}
 
-export function listTools(
-  http: HttpClient,
-  rootUrl: string,
-  params?: ListTools$Params,
-  context?: HttpContext
-): Observable<StrictHttpResponse<Array<ToolOutput>>> {
+export function listTools(http: HttpClient, rootUrl: string, params?: ListTools$Params, context?: HttpContext): Observable<StrictHttpResponse<Array<ToolOutput>>> {
   const rb = new RequestBuilder(rootUrl, listTools.PATH, 'get');
   if (params) {
   }
 
-  return http.request(rb.build({ responseType: 'blob', accept: '*/*', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'blob', accept: '*/*', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<Array<ToolOutput>>;

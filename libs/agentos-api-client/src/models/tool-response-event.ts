@@ -5,8 +5,9 @@ import { CaseEvent } from '../models/case-event';
 import { Image } from '../models/image';
 import { Text } from '../models/text';
 export type ToolResponseEvent = CaseEvent & {
-  toolRequestId?: string;
-  toolName?: string;
-  output?: Image | Text;
-  success?: boolean;
+'toolRequestId'?: string;
+'toolName'?: string;
+'output'?: (Image | Text);
+'success'?: boolean;
 };
+

@@ -3,8 +3,9 @@
 
 import { MessageContent } from '../models/message-content';
 export type Image = MessageContent & {
-  content?: string;
-  mimeType?: string;
-  width?: number;
-  height?: number;
+'content'?: string;
+'mimeType'?: string;
+'width'?: number;
+'height'?: number;
 };
+

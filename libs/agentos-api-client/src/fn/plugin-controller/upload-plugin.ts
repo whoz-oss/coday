@@ -10,21 +10,19 @@ import { RequestBuilder } from '../../request-builder';
 import { PluginUploadResponse } from '../../models/plugin-upload-response';
 
 export interface UploadPlugin$Params {
-  body?: {};
+      body?: {
+}
 }
 
-export function uploadPlugin(
-  http: HttpClient,
-  rootUrl: string,
-  params?: UploadPlugin$Params,
-  context?: HttpContext
-): Observable<StrictHttpResponse<PluginUploadResponse>> {
+export function uploadPlugin(http: HttpClient, rootUrl: string, params?: UploadPlugin$Params, context?: HttpContext): Observable<StrictHttpResponse<PluginUploadResponse>> {
   const rb = new RequestBuilder(rootUrl, uploadPlugin.PATH, 'post');
   if (params) {
     rb.body(params.body, 'multipart/form-data');
   }
 
-  return http.request(rb.build({ responseType: 'blob', accept: '*/*', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'blob', accept: '*/*', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<PluginUploadResponse>;

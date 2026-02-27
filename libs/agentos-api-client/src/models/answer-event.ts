@@ -4,7 +4,8 @@
 import { Actor } from '../models/actor';
 import { CaseEvent } from '../models/case-event';
 export type AnswerEvent = CaseEvent & {
-  questionId?: string;
-  actor?: Actor;
-  answer?: string;
+'questionId'?: string;
+'actor'?: Actor;
+'answer'?: string;
 };
+

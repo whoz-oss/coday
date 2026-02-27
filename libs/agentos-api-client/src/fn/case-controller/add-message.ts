@@ -11,22 +11,19 @@ import { AddMessageRequest } from '../../models/add-message-request';
 
 export interface AddMessage$Params {
   caseId: string;
-  body: AddMessageRequest;
+      body: AddMessageRequest
 }
 
-export function addMessage(
-  http: HttpClient,
-  rootUrl: string,
-  params: AddMessage$Params,
-  context?: HttpContext
-): Observable<StrictHttpResponse<void>> {
+export function addMessage(http: HttpClient, rootUrl: string, params: AddMessage$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
   const rb = new RequestBuilder(rootUrl, addMessage.PATH, 'post');
   if (params) {
     rb.path('caseId', params.caseId, {});
     rb.body(params.body, 'application/json');
   }
 
-  return http.request(rb.build({ responseType: 'text', accept: '*/*', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'text', accept: '*/*', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return (r as HttpResponse<any>).clone({ body: undefined }) as StrictHttpResponse<void>;

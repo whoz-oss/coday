@@ -9,19 +9,17 @@ import { RequestBuilder } from '../../request-builder';
 
 import { PluginInfo } from '../../models/plugin-info';
 
-export interface GetAllPlugins$Params {}
+export interface GetAllPlugins$Params {
+}
 
-export function getAllPlugins(
-  http: HttpClient,
-  rootUrl: string,
-  params?: GetAllPlugins$Params,
-  context?: HttpContext
-): Observable<StrictHttpResponse<Array<PluginInfo>>> {
+export function getAllPlugins(http: HttpClient, rootUrl: string, params?: GetAllPlugins$Params, context?: HttpContext): Observable<StrictHttpResponse<Array<PluginInfo>>> {
   const rb = new RequestBuilder(rootUrl, getAllPlugins.PATH, 'get');
   if (params) {
   }
 
-  return http.request(rb.build({ responseType: 'blob', accept: '*/*', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'blob', accept: '*/*', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<Array<PluginInfo>>;

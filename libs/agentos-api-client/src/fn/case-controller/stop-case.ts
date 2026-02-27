@@ -7,22 +7,20 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
+
 export interface StopCase$Params {
   caseId: string;
 }
 
-export function stopCase(
-  http: HttpClient,
-  rootUrl: string,
-  params: StopCase$Params,
-  context?: HttpContext
-): Observable<StrictHttpResponse<void>> {
+export function stopCase(http: HttpClient, rootUrl: string, params: StopCase$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
   const rb = new RequestBuilder(rootUrl, stopCase.PATH, 'post');
   if (params) {
     rb.path('caseId', params.caseId, {});
   }
 
-  return http.request(rb.build({ responseType: 'text', accept: '*/*', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'text', accept: '*/*', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return (r as HttpResponse<any>).clone({ body: undefined }) as StrictHttpResponse<void>;

@@ -52,27 +52,7 @@ export class CaseEventRestControllerService extends BaseService {
    *
    * This method doesn't expect any request body.
    */
-  getById2$Response(
-    params: GetById2$Params,
-    context?: HttpContext
-  ): Observable<
-    StrictHttpResponse<
-      | AgentFinishedEvent
-      | AgentRunningEvent
-      | AgentSelectedEvent
-      | AnswerEvent
-      | CaseStatusEvent
-      | IntentionGeneratedEvent
-      | MessageEvent
-      | QuestionEvent
-      | TextChunkEvent
-      | ThinkingEvent
-      | ToolRequestEvent
-      | ToolResponseEvent
-      | ToolSelectedEvent
-      | WarnEvent
-    >
-  > {
+  getById2$Response(params: GetById2$Params, context?: HttpContext): Observable<StrictHttpResponse<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)>> {
     const obs = getById2(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -83,61 +63,10 @@ export class CaseEventRestControllerService extends BaseService {
    *
    * This method doesn't expect any request body.
    */
-  getById2(
-    params: GetById2$Params,
-    context?: HttpContext
-  ): Observable<
-    | AgentFinishedEvent
-    | AgentRunningEvent
-    | AgentSelectedEvent
-    | AnswerEvent
-    | CaseStatusEvent
-    | IntentionGeneratedEvent
-    | MessageEvent
-    | QuestionEvent
-    | TextChunkEvent
-    | ThinkingEvent
-    | ToolRequestEvent
-    | ToolResponseEvent
-    | ToolSelectedEvent
-    | WarnEvent
-  > {
+  getById2(params: GetById2$Params, context?: HttpContext): Observable<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)> {
     const resp = this.getById2$Response(params, context);
     return resp.pipe(
-      map(
-        (
-          r: StrictHttpResponse<
-            | AgentFinishedEvent
-            | AgentRunningEvent
-            | AgentSelectedEvent
-            | AnswerEvent
-            | CaseStatusEvent
-            | IntentionGeneratedEvent
-            | MessageEvent
-            | QuestionEvent
-            | TextChunkEvent
-            | ThinkingEvent
-            | ToolRequestEvent
-            | ToolResponseEvent
-            | ToolSelectedEvent
-            | WarnEvent
-          >
-        ):
-          | AgentFinishedEvent
-          | AgentRunningEvent
-          | AgentSelectedEvent
-          | AnswerEvent
-          | CaseStatusEvent
-          | IntentionGeneratedEvent
-          | MessageEvent
-          | QuestionEvent
-          | TextChunkEvent
-          | ThinkingEvent
-          | ToolRequestEvent
-          | ToolResponseEvent
-          | ToolSelectedEvent
-          | WarnEvent => r.body
-      )
+      map((r: StrictHttpResponse<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)>): (AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent) => r.body)
     );
   }
 
@@ -150,27 +79,7 @@ export class CaseEventRestControllerService extends BaseService {
    *
    * This method sends `application/json` and handles request body of type `application/json`.
    */
-  update2$Response(
-    params: Update2$Params,
-    context?: HttpContext
-  ): Observable<
-    StrictHttpResponse<
-      | AgentFinishedEvent
-      | AgentRunningEvent
-      | AgentSelectedEvent
-      | AnswerEvent
-      | CaseStatusEvent
-      | IntentionGeneratedEvent
-      | MessageEvent
-      | QuestionEvent
-      | TextChunkEvent
-      | ThinkingEvent
-      | ToolRequestEvent
-      | ToolResponseEvent
-      | ToolSelectedEvent
-      | WarnEvent
-    >
-  > {
+  update2$Response(params: Update2$Params, context?: HttpContext): Observable<StrictHttpResponse<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)>> {
     const obs = update2(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -181,61 +90,10 @@ export class CaseEventRestControllerService extends BaseService {
    *
    * This method sends `application/json` and handles request body of type `application/json`.
    */
-  update2(
-    params: Update2$Params,
-    context?: HttpContext
-  ): Observable<
-    | AgentFinishedEvent
-    | AgentRunningEvent
-    | AgentSelectedEvent
-    | AnswerEvent
-    | CaseStatusEvent
-    | IntentionGeneratedEvent
-    | MessageEvent
-    | QuestionEvent
-    | TextChunkEvent
-    | ThinkingEvent
-    | ToolRequestEvent
-    | ToolResponseEvent
-    | ToolSelectedEvent
-    | WarnEvent
-  > {
+  update2(params: Update2$Params, context?: HttpContext): Observable<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)> {
     const resp = this.update2$Response(params, context);
     return resp.pipe(
-      map(
-        (
-          r: StrictHttpResponse<
-            | AgentFinishedEvent
-            | AgentRunningEvent
-            | AgentSelectedEvent
-            | AnswerEvent
-            | CaseStatusEvent
-            | IntentionGeneratedEvent
-            | MessageEvent
-            | QuestionEvent
-            | TextChunkEvent
-            | ThinkingEvent
-            | ToolRequestEvent
-            | ToolResponseEvent
-            | ToolSelectedEvent
-            | WarnEvent
-          >
-        ):
-          | AgentFinishedEvent
-          | AgentRunningEvent
-          | AgentSelectedEvent
-          | AnswerEvent
-          | CaseStatusEvent
-          | IntentionGeneratedEvent
-          | MessageEvent
-          | QuestionEvent
-          | TextChunkEvent
-          | ThinkingEvent
-          | ToolRequestEvent
-          | ToolResponseEvent
-          | ToolSelectedEvent
-          | WarnEvent => r.body
-      )
+      map((r: StrictHttpResponse<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)>): (AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent) => r.body)
     );
   }
 
@@ -261,7 +119,9 @@ export class CaseEventRestControllerService extends BaseService {
    */
   delete2(params: Delete2$Params, context?: HttpContext): Observable<void> {
     const resp = this.delete2$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<void>): void => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<void>): void => r.body)
+    );
   }
 
   /** Path part for operation `create2()` */
@@ -273,27 +133,7 @@ export class CaseEventRestControllerService extends BaseService {
    *
    * This method sends `application/json` and handles request body of type `application/json`.
    */
-  create2$Response(
-    params: Create2$Params,
-    context?: HttpContext
-  ): Observable<
-    StrictHttpResponse<
-      | AgentFinishedEvent
-      | AgentRunningEvent
-      | AgentSelectedEvent
-      | AnswerEvent
-      | CaseStatusEvent
-      | IntentionGeneratedEvent
-      | MessageEvent
-      | QuestionEvent
-      | TextChunkEvent
-      | ThinkingEvent
-      | ToolRequestEvent
-      | ToolResponseEvent
-      | ToolSelectedEvent
-      | WarnEvent
-    >
-  > {
+  create2$Response(params: Create2$Params, context?: HttpContext): Observable<StrictHttpResponse<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)>> {
     const obs = create2(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -304,61 +144,10 @@ export class CaseEventRestControllerService extends BaseService {
    *
    * This method sends `application/json` and handles request body of type `application/json`.
    */
-  create2(
-    params: Create2$Params,
-    context?: HttpContext
-  ): Observable<
-    | AgentFinishedEvent
-    | AgentRunningEvent
-    | AgentSelectedEvent
-    | AnswerEvent
-    | CaseStatusEvent
-    | IntentionGeneratedEvent
-    | MessageEvent
-    | QuestionEvent
-    | TextChunkEvent
-    | ThinkingEvent
-    | ToolRequestEvent
-    | ToolResponseEvent
-    | ToolSelectedEvent
-    | WarnEvent
-  > {
+  create2(params: Create2$Params, context?: HttpContext): Observable<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)> {
     const resp = this.create2$Response(params, context);
     return resp.pipe(
-      map(
-        (
-          r: StrictHttpResponse<
-            | AgentFinishedEvent
-            | AgentRunningEvent
-            | AgentSelectedEvent
-            | AnswerEvent
-            | CaseStatusEvent
-            | IntentionGeneratedEvent
-            | MessageEvent
-            | QuestionEvent
-            | TextChunkEvent
-            | ThinkingEvent
-            | ToolRequestEvent
-            | ToolResponseEvent
-            | ToolSelectedEvent
-            | WarnEvent
-          >
-        ):
-          | AgentFinishedEvent
-          | AgentRunningEvent
-          | AgentSelectedEvent
-          | AnswerEvent
-          | CaseStatusEvent
-          | IntentionGeneratedEvent
-          | MessageEvent
-          | QuestionEvent
-          | TextChunkEvent
-          | ThinkingEvent
-          | ToolRequestEvent
-          | ToolResponseEvent
-          | ToolSelectedEvent
-          | WarnEvent => r.body
-      )
+      map((r: StrictHttpResponse<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)>): (AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent) => r.body)
     );
   }
 
@@ -371,29 +160,7 @@ export class CaseEventRestControllerService extends BaseService {
    *
    * This method sends `application/json` and handles request body of type `application/json`.
    */
-  getByIds2$Response(
-    params: GetByIds2$Params,
-    context?: HttpContext
-  ): Observable<
-    StrictHttpResponse<
-      Array<
-        | AgentFinishedEvent
-        | AgentRunningEvent
-        | AgentSelectedEvent
-        | AnswerEvent
-        | CaseStatusEvent
-        | IntentionGeneratedEvent
-        | MessageEvent
-        | QuestionEvent
-        | TextChunkEvent
-        | ThinkingEvent
-        | ToolRequestEvent
-        | ToolResponseEvent
-        | ToolSelectedEvent
-        | WarnEvent
-      >
-    >
-  > {
+  getByIds2$Response(params: GetByIds2$Params, context?: HttpContext): Observable<StrictHttpResponse<Array<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)>>> {
     const obs = getByIds2(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -404,66 +171,10 @@ export class CaseEventRestControllerService extends BaseService {
    *
    * This method sends `application/json` and handles request body of type `application/json`.
    */
-  getByIds2(
-    params: GetByIds2$Params,
-    context?: HttpContext
-  ): Observable<
-    Array<
-      | AgentFinishedEvent
-      | AgentRunningEvent
-      | AgentSelectedEvent
-      | AnswerEvent
-      | CaseStatusEvent
-      | IntentionGeneratedEvent
-      | MessageEvent
-      | QuestionEvent
-      | TextChunkEvent
-      | ThinkingEvent
-      | ToolRequestEvent
-      | ToolResponseEvent
-      | ToolSelectedEvent
-      | WarnEvent
-    >
-  > {
+  getByIds2(params: GetByIds2$Params, context?: HttpContext): Observable<Array<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)>> {
     const resp = this.getByIds2$Response(params, context);
     return resp.pipe(
-      map(
-        (
-          r: StrictHttpResponse<
-            Array<
-              | AgentFinishedEvent
-              | AgentRunningEvent
-              | AgentSelectedEvent
-              | AnswerEvent
-              | CaseStatusEvent
-              | IntentionGeneratedEvent
-              | MessageEvent
-              | QuestionEvent
-              | TextChunkEvent
-              | ThinkingEvent
-              | ToolRequestEvent
-              | ToolResponseEvent
-              | ToolSelectedEvent
-              | WarnEvent
-            >
-          >
-        ): Array<
-          | AgentFinishedEvent
-          | AgentRunningEvent
-          | AgentSelectedEvent
-          | AnswerEvent
-          | CaseStatusEvent
-          | IntentionGeneratedEvent
-          | MessageEvent
-          | QuestionEvent
-          | TextChunkEvent
-          | ThinkingEvent
-          | ToolRequestEvent
-          | ToolResponseEvent
-          | ToolSelectedEvent
-          | WarnEvent
-        > => r.body
-      )
+      map((r: StrictHttpResponse<Array<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)>>): Array<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)> => r.body)
     );
   }
 
@@ -476,29 +187,7 @@ export class CaseEventRestControllerService extends BaseService {
    *
    * This method doesn't expect any request body.
    */
-  listByParent2$Response(
-    params: ListByParent2$Params,
-    context?: HttpContext
-  ): Observable<
-    StrictHttpResponse<
-      Array<
-        | AgentFinishedEvent
-        | AgentRunningEvent
-        | AgentSelectedEvent
-        | AnswerEvent
-        | CaseStatusEvent
-        | IntentionGeneratedEvent
-        | MessageEvent
-        | QuestionEvent
-        | TextChunkEvent
-        | ThinkingEvent
-        | ToolRequestEvent
-        | ToolResponseEvent
-        | ToolSelectedEvent
-        | WarnEvent
-      >
-    >
-  > {
+  listByParent2$Response(params: ListByParent2$Params, context?: HttpContext): Observable<StrictHttpResponse<Array<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)>>> {
     const obs = listByParent2(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -509,66 +198,11 @@ export class CaseEventRestControllerService extends BaseService {
    *
    * This method doesn't expect any request body.
    */
-  listByParent2(
-    params: ListByParent2$Params,
-    context?: HttpContext
-  ): Observable<
-    Array<
-      | AgentFinishedEvent
-      | AgentRunningEvent
-      | AgentSelectedEvent
-      | AnswerEvent
-      | CaseStatusEvent
-      | IntentionGeneratedEvent
-      | MessageEvent
-      | QuestionEvent
-      | TextChunkEvent
-      | ThinkingEvent
-      | ToolRequestEvent
-      | ToolResponseEvent
-      | ToolSelectedEvent
-      | WarnEvent
-    >
-  > {
+  listByParent2(params: ListByParent2$Params, context?: HttpContext): Observable<Array<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)>> {
     const resp = this.listByParent2$Response(params, context);
     return resp.pipe(
-      map(
-        (
-          r: StrictHttpResponse<
-            Array<
-              | AgentFinishedEvent
-              | AgentRunningEvent
-              | AgentSelectedEvent
-              | AnswerEvent
-              | CaseStatusEvent
-              | IntentionGeneratedEvent
-              | MessageEvent
-              | QuestionEvent
-              | TextChunkEvent
-              | ThinkingEvent
-              | ToolRequestEvent
-              | ToolResponseEvent
-              | ToolSelectedEvent
-              | WarnEvent
-            >
-          >
-        ): Array<
-          | AgentFinishedEvent
-          | AgentRunningEvent
-          | AgentSelectedEvent
-          | AnswerEvent
-          | CaseStatusEvent
-          | IntentionGeneratedEvent
-          | MessageEvent
-          | QuestionEvent
-          | TextChunkEvent
-          | ThinkingEvent
-          | ToolRequestEvent
-          | ToolResponseEvent
-          | ToolSelectedEvent
-          | WarnEvent
-        > => r.body
-      )
+      map((r: StrictHttpResponse<Array<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)>>): Array<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)> => r.body)
     );
   }
+
 }

@@ -11,24 +11,21 @@ import { ToolExecutionResult } from '../../models/tool-execution-result';
 
 export interface ExecuteTool$Params {
   toolName: string;
-  body: {
-    [key: string]: any;
-  };
+      body: {
+[key: string]: any;
+}
 }
 
-export function executeTool(
-  http: HttpClient,
-  rootUrl: string,
-  params: ExecuteTool$Params,
-  context?: HttpContext
-): Observable<StrictHttpResponse<ToolExecutionResult>> {
+export function executeTool(http: HttpClient, rootUrl: string, params: ExecuteTool$Params, context?: HttpContext): Observable<StrictHttpResponse<ToolExecutionResult>> {
   const rb = new RequestBuilder(rootUrl, executeTool.PATH, 'post');
   if (params) {
     rb.path('toolName', params.toolName, {});
     rb.body(params.body, 'application/json');
   }
 
-  return http.request(rb.build({ responseType: 'blob', accept: '*/*', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'blob', accept: '*/*', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<ToolExecutionResult>;

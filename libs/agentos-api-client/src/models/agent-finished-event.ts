@@ -3,6 +3,7 @@
 
 import { CaseEvent } from '../models/case-event';
 export type AgentFinishedEvent = CaseEvent & {
-  agentId?: string;
-  agentName?: string;
+'agentId'?: string;
+'agentName'?: string;
 };
+

@@ -10,21 +10,18 @@ import { RequestBuilder } from '../../request-builder';
 import { CaseModel } from '../../models/case-model';
 
 export interface GetByIds1$Params {
-  body: Array<string>;
+      body: Array<string>
 }
 
-export function getByIds1(
-  http: HttpClient,
-  rootUrl: string,
-  params: GetByIds1$Params,
-  context?: HttpContext
-): Observable<StrictHttpResponse<Array<CaseModel>>> {
+export function getByIds1(http: HttpClient, rootUrl: string, params: GetByIds1$Params, context?: HttpContext): Observable<StrictHttpResponse<Array<CaseModel>>> {
   const rb = new RequestBuilder(rootUrl, getByIds1.PATH, 'post');
   if (params) {
     rb.body(params.body, 'application/json');
   }
 
-  return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'json', accept: 'application/json', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<Array<CaseModel>>;

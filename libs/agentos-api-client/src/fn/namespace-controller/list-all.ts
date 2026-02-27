@@ -9,19 +9,17 @@ import { RequestBuilder } from '../../request-builder';
 
 import { Namespace } from '../../models/namespace';
 
-export interface ListAll$Params {}
+export interface ListAll$Params {
+}
 
-export function listAll(
-  http: HttpClient,
-  rootUrl: string,
-  params?: ListAll$Params,
-  context?: HttpContext
-): Observable<StrictHttpResponse<Array<Namespace>>> {
+export function listAll(http: HttpClient, rootUrl: string, params?: ListAll$Params, context?: HttpContext): Observable<StrictHttpResponse<Array<Namespace>>> {
   const rb = new RequestBuilder(rootUrl, listAll.PATH, 'get');
   if (params) {
   }
 
-  return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'json', accept: 'application/json', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<Array<Namespace>>;

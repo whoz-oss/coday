@@ -9,19 +9,17 @@ import { RequestBuilder } from '../../request-builder';
 
 import { PluginActionResponse } from '../../models/plugin-action-response';
 
-export interface ReloadAllAgents$Params {}
+export interface ReloadAllAgents$Params {
+}
 
-export function reloadAllAgents(
-  http: HttpClient,
-  rootUrl: string,
-  params?: ReloadAllAgents$Params,
-  context?: HttpContext
-): Observable<StrictHttpResponse<PluginActionResponse>> {
+export function reloadAllAgents(http: HttpClient, rootUrl: string, params?: ReloadAllAgents$Params, context?: HttpContext): Observable<StrictHttpResponse<PluginActionResponse>> {
   const rb = new RequestBuilder(rootUrl, reloadAllAgents.PATH, 'post');
   if (params) {
   }
 
-  return http.request(rb.build({ responseType: 'blob', accept: '*/*', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'blob', accept: '*/*', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<PluginActionResponse>;

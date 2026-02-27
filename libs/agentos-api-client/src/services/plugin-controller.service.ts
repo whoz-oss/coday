@@ -49,10 +49,7 @@ export class PluginControllerService extends BaseService {
    *
    * This method doesn't expect any request body.
    */
-  stopPlugin$Response(
-    params: StopPlugin$Params,
-    context?: HttpContext
-  ): Observable<StrictHttpResponse<PluginActionResponse>> {
+  stopPlugin$Response(params: StopPlugin$Params, context?: HttpContext): Observable<StrictHttpResponse<PluginActionResponse>> {
     const obs = stopPlugin(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -65,7 +62,9 @@ export class PluginControllerService extends BaseService {
    */
   stopPlugin(params: StopPlugin$Params, context?: HttpContext): Observable<PluginActionResponse> {
     const resp = this.stopPlugin$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<PluginActionResponse>): PluginActionResponse => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<PluginActionResponse>): PluginActionResponse => r.body)
+    );
   }
 
   /** Path part for operation `startPlugin()` */
@@ -77,10 +76,7 @@ export class PluginControllerService extends BaseService {
    *
    * This method doesn't expect any request body.
    */
-  startPlugin$Response(
-    params: StartPlugin$Params,
-    context?: HttpContext
-  ): Observable<StrictHttpResponse<PluginActionResponse>> {
+  startPlugin$Response(params: StartPlugin$Params, context?: HttpContext): Observable<StrictHttpResponse<PluginActionResponse>> {
     const obs = startPlugin(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -93,7 +89,9 @@ export class PluginControllerService extends BaseService {
    */
   startPlugin(params: StartPlugin$Params, context?: HttpContext): Observable<PluginActionResponse> {
     const resp = this.startPlugin$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<PluginActionResponse>): PluginActionResponse => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<PluginActionResponse>): PluginActionResponse => r.body)
+    );
   }
 
   /** Path part for operation `reloadPlugin()` */
@@ -105,10 +103,7 @@ export class PluginControllerService extends BaseService {
    *
    * This method doesn't expect any request body.
    */
-  reloadPlugin$Response(
-    params: ReloadPlugin$Params,
-    context?: HttpContext
-  ): Observable<StrictHttpResponse<PluginActionResponse>> {
+  reloadPlugin$Response(params: ReloadPlugin$Params, context?: HttpContext): Observable<StrictHttpResponse<PluginActionResponse>> {
     const obs = reloadPlugin(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -121,7 +116,9 @@ export class PluginControllerService extends BaseService {
    */
   reloadPlugin(params: ReloadPlugin$Params, context?: HttpContext): Observable<PluginActionResponse> {
     const resp = this.reloadPlugin$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<PluginActionResponse>): PluginActionResponse => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<PluginActionResponse>): PluginActionResponse => r.body)
+    );
   }
 
   /** Path part for operation `uploadPlugin()` */
@@ -133,10 +130,7 @@ export class PluginControllerService extends BaseService {
    *
    * This method sends `multipart/form-data` and handles request body of type `multipart/form-data`.
    */
-  uploadPlugin$Response(
-    params?: UploadPlugin$Params,
-    context?: HttpContext
-  ): Observable<StrictHttpResponse<PluginUploadResponse>> {
+  uploadPlugin$Response(params?: UploadPlugin$Params, context?: HttpContext): Observable<StrictHttpResponse<PluginUploadResponse>> {
     const obs = uploadPlugin(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -149,7 +143,9 @@ export class PluginControllerService extends BaseService {
    */
   uploadPlugin(params?: UploadPlugin$Params, context?: HttpContext): Observable<PluginUploadResponse> {
     const resp = this.uploadPlugin$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<PluginUploadResponse>): PluginUploadResponse => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<PluginUploadResponse>): PluginUploadResponse => r.body)
+    );
   }
 
   /** Path part for operation `reloadAllAgents()` */
@@ -161,10 +157,7 @@ export class PluginControllerService extends BaseService {
    *
    * This method doesn't expect any request body.
    */
-  reloadAllAgents$Response(
-    params?: ReloadAllAgents$Params,
-    context?: HttpContext
-  ): Observable<StrictHttpResponse<PluginActionResponse>> {
+  reloadAllAgents$Response(params?: ReloadAllAgents$Params, context?: HttpContext): Observable<StrictHttpResponse<PluginActionResponse>> {
     const obs = reloadAllAgents(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -177,7 +170,9 @@ export class PluginControllerService extends BaseService {
    */
   reloadAllAgents(params?: ReloadAllAgents$Params, context?: HttpContext): Observable<PluginActionResponse> {
     const resp = this.reloadAllAgents$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<PluginActionResponse>): PluginActionResponse => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<PluginActionResponse>): PluginActionResponse => r.body)
+    );
   }
 
   /** Path part for operation `getAllPlugins()` */
@@ -189,10 +184,7 @@ export class PluginControllerService extends BaseService {
    *
    * This method doesn't expect any request body.
    */
-  getAllPlugins$Response(
-    params?: GetAllPlugins$Params,
-    context?: HttpContext
-  ): Observable<StrictHttpResponse<Array<PluginInfo>>> {
+  getAllPlugins$Response(params?: GetAllPlugins$Params, context?: HttpContext): Observable<StrictHttpResponse<Array<PluginInfo>>> {
     const obs = getAllPlugins(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -205,7 +197,9 @@ export class PluginControllerService extends BaseService {
    */
   getAllPlugins(params?: GetAllPlugins$Params, context?: HttpContext): Observable<Array<PluginInfo>> {
     const resp = this.getAllPlugins$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<Array<PluginInfo>>): Array<PluginInfo> => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<Array<PluginInfo>>): Array<PluginInfo> => r.body)
+    );
   }
 
   /** Path part for operation `getPlugin()` */
@@ -230,7 +224,9 @@ export class PluginControllerService extends BaseService {
    */
   getPlugin(params: GetPlugin$Params, context?: HttpContext): Observable<PluginInfo> {
     const resp = this.getPlugin$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<PluginInfo>): PluginInfo => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<PluginInfo>): PluginInfo => r.body)
+    );
   }
 
   /** Path part for operation `unloadPlugin()` */
@@ -242,10 +238,7 @@ export class PluginControllerService extends BaseService {
    *
    * This method doesn't expect any request body.
    */
-  unloadPlugin$Response(
-    params: UnloadPlugin$Params,
-    context?: HttpContext
-  ): Observable<StrictHttpResponse<PluginActionResponse>> {
+  unloadPlugin$Response(params: UnloadPlugin$Params, context?: HttpContext): Observable<StrictHttpResponse<PluginActionResponse>> {
     const obs = unloadPlugin(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -258,7 +251,9 @@ export class PluginControllerService extends BaseService {
    */
   unloadPlugin(params: UnloadPlugin$Params, context?: HttpContext): Observable<PluginActionResponse> {
     const resp = this.unloadPlugin$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<PluginActionResponse>): PluginActionResponse => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<PluginActionResponse>): PluginActionResponse => r.body)
+    );
   }
 
   /** Path part for operation `debugPlugin()` */
@@ -270,10 +265,7 @@ export class PluginControllerService extends BaseService {
    *
    * This method doesn't expect any request body.
    */
-  debugPlugin$Response(
-    params: DebugPlugin$Params,
-    context?: HttpContext
-  ): Observable<StrictHttpResponse<PluginActionResponse>> {
+  debugPlugin$Response(params: DebugPlugin$Params, context?: HttpContext): Observable<StrictHttpResponse<PluginActionResponse>> {
     const obs = debugPlugin(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -286,7 +278,9 @@ export class PluginControllerService extends BaseService {
    */
   debugPlugin(params: DebugPlugin$Params, context?: HttpContext): Observable<PluginActionResponse> {
     const resp = this.debugPlugin$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<PluginActionResponse>): PluginActionResponse => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<PluginActionResponse>): PluginActionResponse => r.body)
+    );
   }
 
   /** Path part for operation `debugAllPlugins()` */
@@ -298,10 +292,7 @@ export class PluginControllerService extends BaseService {
    *
    * This method doesn't expect any request body.
    */
-  debugAllPlugins$Response(
-    params?: DebugAllPlugins$Params,
-    context?: HttpContext
-  ): Observable<StrictHttpResponse<PluginActionResponse>> {
+  debugAllPlugins$Response(params?: DebugAllPlugins$Params, context?: HttpContext): Observable<StrictHttpResponse<PluginActionResponse>> {
     const obs = debugAllPlugins(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -314,6 +305,9 @@ export class PluginControllerService extends BaseService {
    */
   debugAllPlugins(params?: DebugAllPlugins$Params, context?: HttpContext): Observable<PluginActionResponse> {
     const resp = this.debugAllPlugins$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<PluginActionResponse>): PluginActionResponse => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<PluginActionResponse>): PluginActionResponse => r.body)
+    );
   }
+
 }

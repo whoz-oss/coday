@@ -3,8 +3,9 @@
 
 import { CaseEvent } from '../models/case-event';
 export type QuestionEvent = CaseEvent & {
-  agentId?: string;
-  agentName?: string;
-  question?: string;
-  options?: Array<string>;
+'agentId'?: string;
+'agentName'?: string;
+'question'?: string;
+'options'?: Array<string>;
 };
+

@@ -3,6 +3,7 @@
 
 import { CaseEvent } from '../models/case-event';
 export type IntentionGeneratedEvent = CaseEvent & {
-  agentId?: string;
-  intention?: string;
+'agentId'?: string;
+'intention'?: string;
 };
+

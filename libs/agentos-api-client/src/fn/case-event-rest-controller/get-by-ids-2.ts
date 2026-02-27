@@ -23,60 +23,21 @@ import { ToolSelectedEvent } from '../../models/tool-selected-event';
 import { WarnEvent } from '../../models/warn-event';
 
 export interface GetByIds2$Params {
-  body: Array<string>;
+      body: Array<string>
 }
 
-export function getByIds2(
-  http: HttpClient,
-  rootUrl: string,
-  params: GetByIds2$Params,
-  context?: HttpContext
-): Observable<
-  StrictHttpResponse<
-    Array<
-      | AgentFinishedEvent
-      | AgentRunningEvent
-      | AgentSelectedEvent
-      | AnswerEvent
-      | CaseStatusEvent
-      | IntentionGeneratedEvent
-      | MessageEvent
-      | QuestionEvent
-      | TextChunkEvent
-      | ThinkingEvent
-      | ToolRequestEvent
-      | ToolResponseEvent
-      | ToolSelectedEvent
-      | WarnEvent
-    >
-  >
-> {
+export function getByIds2(http: HttpClient, rootUrl: string, params: GetByIds2$Params, context?: HttpContext): Observable<StrictHttpResponse<Array<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)>>> {
   const rb = new RequestBuilder(rootUrl, getByIds2.PATH, 'post');
   if (params) {
     rb.body(params.body, 'application/json');
   }
 
-  return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'json', accept: 'application/json', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<
-        Array<
-          | AgentFinishedEvent
-          | AgentRunningEvent
-          | AgentSelectedEvent
-          | AnswerEvent
-          | CaseStatusEvent
-          | IntentionGeneratedEvent
-          | MessageEvent
-          | QuestionEvent
-          | TextChunkEvent
-          | ThinkingEvent
-          | ToolRequestEvent
-          | ToolResponseEvent
-          | ToolSelectedEvent
-          | WarnEvent
-        >
-      >;
+      return r as StrictHttpResponse<Array<(AgentFinishedEvent | AgentRunningEvent | AgentSelectedEvent | AnswerEvent | CaseStatusEvent | IntentionGeneratedEvent | MessageEvent | QuestionEvent | TextChunkEvent | ThinkingEvent | ToolRequestEvent | ToolResponseEvent | ToolSelectedEvent | WarnEvent)>>;
     })
   );
 }

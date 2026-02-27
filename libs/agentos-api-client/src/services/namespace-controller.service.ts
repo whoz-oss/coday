@@ -54,7 +54,9 @@ export class NamespaceControllerService extends BaseService {
    */
   getById(params: GetById$Params, context?: HttpContext): Observable<Namespace> {
     const resp = this.getById$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<Namespace>): Namespace => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<Namespace>): Namespace => r.body)
+    );
   }
 
   /** Path part for operation `update()` */
@@ -79,7 +81,9 @@ export class NamespaceControllerService extends BaseService {
    */
   update(params: Update$Params, context?: HttpContext): Observable<Namespace> {
     const resp = this.update$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<Namespace>): Namespace => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<Namespace>): Namespace => r.body)
+    );
   }
 
   /** Path part for operation `delete()` */
@@ -104,7 +108,9 @@ export class NamespaceControllerService extends BaseService {
    */
   delete(params: Delete$Params, context?: HttpContext): Observable<void> {
     const resp = this.delete$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<void>): void => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<void>): void => r.body)
+    );
   }
 
   /** Path part for operation `create()` */
@@ -129,7 +135,9 @@ export class NamespaceControllerService extends BaseService {
    */
   create(params: Create$Params, context?: HttpContext): Observable<Namespace> {
     const resp = this.create$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<Namespace>): Namespace => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<Namespace>): Namespace => r.body)
+    );
   }
 
   /** Path part for operation `getByIds()` */
@@ -154,7 +162,9 @@ export class NamespaceControllerService extends BaseService {
    */
   getByIds(params: GetByIds$Params, context?: HttpContext): Observable<Array<Namespace>> {
     const resp = this.getByIds$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<Array<Namespace>>): Array<Namespace> => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<Array<Namespace>>): Array<Namespace> => r.body)
+    );
   }
 
   /** Path part for operation `listAll()` */
@@ -179,7 +189,9 @@ export class NamespaceControllerService extends BaseService {
    */
   listAll(params?: ListAll$Params, context?: HttpContext): Observable<Array<Namespace>> {
     const resp = this.listAll$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<Array<Namespace>>): Array<Namespace> => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<Array<Namespace>>): Array<Namespace> => r.body)
+    );
   }
 
   /** Path part for operation `listByParent()` */
@@ -191,10 +203,7 @@ export class NamespaceControllerService extends BaseService {
    *
    * This method doesn't expect any request body.
    */
-  listByParent$Response(
-    params: ListByParent$Params,
-    context?: HttpContext
-  ): Observable<StrictHttpResponse<Array<Namespace>>> {
+  listByParent$Response(params: ListByParent$Params, context?: HttpContext): Observable<StrictHttpResponse<Array<Namespace>>> {
     const obs = listByParent(this.http, this.rootUrl, params, context);
     return obs;
   }
@@ -207,6 +216,9 @@ export class NamespaceControllerService extends BaseService {
    */
   listByParent(params: ListByParent$Params, context?: HttpContext): Observable<Array<Namespace>> {
     const resp = this.listByParent$Response(params, context);
-    return resp.pipe(map((r: StrictHttpResponse<Array<Namespace>>): Array<Namespace> => r.body));
+    return resp.pipe(
+      map((r: StrictHttpResponse<Array<Namespace>>): Array<Namespace> => r.body)
+    );
   }
+
 }

@@ -3,7 +3,8 @@
 
 import { CaseEvent } from '../models/case-event';
 export type ToolRequestEvent = CaseEvent & {
-  toolRequestId?: string;
-  toolName?: string;
-  args?: string;
+'toolRequestId'?: string;
+'toolName'?: string;
+'args'?: string;
 };
+

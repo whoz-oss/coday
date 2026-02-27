@@ -13,18 +13,15 @@ export interface GetTool$Params {
   toolName: string;
 }
 
-export function getTool(
-  http: HttpClient,
-  rootUrl: string,
-  params: GetTool$Params,
-  context?: HttpContext
-): Observable<StrictHttpResponse<ToolOutput>> {
+export function getTool(http: HttpClient, rootUrl: string, params: GetTool$Params, context?: HttpContext): Observable<StrictHttpResponse<ToolOutput>> {
   const rb = new RequestBuilder(rootUrl, getTool.PATH, 'get');
   if (params) {
     rb.path('toolName', params.toolName, {});
   }
 
-  return http.request(rb.build({ responseType: 'blob', accept: '*/*', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'blob', accept: '*/*', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<ToolOutput>;

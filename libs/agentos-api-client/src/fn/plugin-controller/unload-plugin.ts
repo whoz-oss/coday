@@ -13,18 +13,15 @@ export interface UnloadPlugin$Params {
   pluginId: string;
 }
 
-export function unloadPlugin(
-  http: HttpClient,
-  rootUrl: string,
-  params: UnloadPlugin$Params,
-  context?: HttpContext
-): Observable<StrictHttpResponse<PluginActionResponse>> {
+export function unloadPlugin(http: HttpClient, rootUrl: string, params: UnloadPlugin$Params, context?: HttpContext): Observable<StrictHttpResponse<PluginActionResponse>> {
   const rb = new RequestBuilder(rootUrl, unloadPlugin.PATH, 'delete');
   if (params) {
     rb.path('pluginId', params.pluginId, {});
   }
 
-  return http.request(rb.build({ responseType: 'blob', accept: '*/*', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'blob', accept: '*/*', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<PluginActionResponse>;

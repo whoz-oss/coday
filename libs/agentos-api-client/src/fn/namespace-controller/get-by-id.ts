@@ -13,18 +13,15 @@ export interface GetById$Params {
   id: string;
 }
 
-export function getById(
-  http: HttpClient,
-  rootUrl: string,
-  params: GetById$Params,
-  context?: HttpContext
-): Observable<StrictHttpResponse<Namespace>> {
+export function getById(http: HttpClient, rootUrl: string, params: GetById$Params, context?: HttpContext): Observable<StrictHttpResponse<Namespace>> {
   const rb = new RequestBuilder(rootUrl, getById.PATH, 'get');
   if (params) {
     rb.path('id', params.id, {});
   }
 
-  return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'json', accept: 'application/json', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<Namespace>;

@@ -11,22 +11,19 @@ import { CaseModel } from '../../models/case-model';
 
 export interface Update1$Params {
   id: string;
-  body: CaseModel;
+      body: CaseModel
 }
 
-export function update1(
-  http: HttpClient,
-  rootUrl: string,
-  params: Update1$Params,
-  context?: HttpContext
-): Observable<StrictHttpResponse<CaseModel>> {
+export function update1(http: HttpClient, rootUrl: string, params: Update1$Params, context?: HttpContext): Observable<StrictHttpResponse<CaseModel>> {
   const rb = new RequestBuilder(rootUrl, update1.PATH, 'put');
   if (params) {
     rb.path('id', params.id, {});
     rb.body(params.body, 'application/json');
   }
 
-  return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
+  return http.request(
+    rb.build({ responseType: 'json', accept: 'application/json', context })
+  ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<CaseModel>;

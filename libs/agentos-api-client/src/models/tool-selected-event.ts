@@ -3,6 +3,7 @@
 
 import { CaseEvent } from '../models/case-event';
 export type ToolSelectedEvent = CaseEvent & {
-  agentId?: string;
-  toolName?: string;
+'agentId'?: string;
+'toolName'?: string;
 };
+
