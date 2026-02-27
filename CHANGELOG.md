@@ -1,3 +1,15 @@
+## 0.80.0 (2026-02-27)
+
+### 🚀 Features
+
+- wz-28725: tool execute ([#531](https://github.com/whoz-oss/coday/pull/531))
+- wz-28719 simple agentos chat in coday ([#533](https://github.com/whoz-oss/coday/pull/533), [#480](https://github.com/whoz-oss/coday/issues/480))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+- vincent-audibert-whoz
+
 ## 0.79.2 (2026-02-26)
 
 ### 🩹 Fixes
