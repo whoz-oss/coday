@@ -21,12 +21,18 @@ class GetCurrentDateTimeTool : StandardTool<GetCurrentDateTimeTool.Input> {
         """
         Get the current date and time in a specified timezone.
         Returns ISO-8601 formatted datetime string with timezone information.
+        IMPORTANT: Always pass the 'timezone' parameter using a valid IANA timezone ID
+        (e.g. 'America/New_York', 'Europe/Paris', 'Asia/Tokyo', 'UTC').
+        When the user asks for the time in a specific city or region, derive the
+        correct IANA timezone and pass it directly — do NOT call this tool with an
+        empty argument and then convert the UTC result manually.
         """.trimIndent()
 
     override val version: String = "1.0.0"
 
     override val paramType: Class<Input> = Input::class.java
 
+    // language=JSON
     override val inputSchema: String =
         """
         {
@@ -35,11 +41,10 @@ class GetCurrentDateTimeTool : StandardTool<GetCurrentDateTimeTool.Input> {
             "properties": {
                 "timezone": {
                     "type": "string",
-                    "description": "Timezone identifier (e.g., 'America/New_York', 'Europe/Paris', 'UTC')",
+                    "description": "IANA timezone identifier for the desired local time. Examples: 'America/New_York', 'America/Los_Angeles', 'Europe/Paris', 'Europe/London', 'Asia/Tokyo', 'Asia/Shanghai', 'Australia/Sydney', 'UTC'. Always provide this when the user mentions a city, country, or timezone — never leave it empty and convert manually.",
                     "default": "UTC"
                 }
             },
-            "required": [],
             "additionalProperties": false
         }
         """.trimIndent()

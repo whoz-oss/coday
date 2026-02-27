@@ -29,14 +29,13 @@ import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.ToolResponseMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
-import org.springframework.ai.tool.method.MethodToolCallback
-import org.springframework.ai.tool.support.ToolDefinitions
+import org.springframework.ai.tool.ToolCallback
+import org.springframework.ai.tool.definition.DefaultToolDefinition
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.collections.firstOrNull
 import kotlin.collections.map
-import kotlin.reflect.jvm.javaMethod
 import kotlin.time.TimeSource
 import kotlin.time.measureTime
 
@@ -277,13 +276,17 @@ class AgentSimple(
                 }
 
                 is ToolRequestEvent -> {
-                    // Accumulate tool calls to attach to next AssistantMessage
+                    // Accumulate tool calls to attach to next AssistantMessage.
+                    // Spring AI's AnthropicChatModel calls ModelOptionsUtils.jsonToMap() on
+                    // the args string when rebuilding history — it crashes on blank/empty input.
+                    // Normalise null or blank args to "{}" (valid JSON, safe empty object).
+                    val safeArgs = event.args?.takeIf { it.isNotBlank() } ?: "{}"
                     toolCallsForCurrentMessage.add(
                         AssistantMessage.ToolCall(
                             event.toolRequestId,
                             "function",
                             event.toolName,
-                            event.args ?: "",
+                            safeArgs,
                         ),
                     )
                 }
@@ -296,7 +299,8 @@ class AgentSimple(
             i++
         }
 
-        // Handle any remaining tool calls at the end
+        // Handle any remaining tool calls at the end.
+        // Note: args are already normalised to "{}" in the accumulation loop above.
         if (toolCallsForCurrentMessage.isNotEmpty()) {
             messages.add(
                 AssistantMessage
@@ -328,18 +332,20 @@ class AgentSimple(
     }
 
     /**
-     * Create a MethodToolCallback that wraps a StandardTool and emits events.
+     * Create a [ToolCallback] that wraps a StandardTool and emits events.
      * Emits ToolRequestEvent before execution and ToolResponseEvent after.
      *
-     * The wrapper exposes a `invoke(jsonArgs: String)` method to Spring AI instead of
-     * relying on reflection over `execute(Any?)`. This avoids a ClassCastException caused
-     * by Spring AI injecting a ToolContext as the first argument when it detects a
-     * single-parameter method via reflection — the ToolContext class is loaded by the app
-     * classloader while the plugin Input class lives in the plugin classloader.
+     * We implement [ToolCallback] directly rather than using [MethodToolCallback] because
+     * [MethodToolCallback] generates its input schema by introspecting the Java method
+     * signature (here: `invoke(jsonArgs: String?)`) and ignores the schema we pass via
+     * `.inputSchema(...)`. The LLM therefore received a schema with a single opaque
+     * `jsonArgs` property instead of the tool's real parameters (e.g. `timezone`), which
+     * caused it to send empty arguments every time.
      *
-     * By accepting raw JSON and deserializing it ourselves we stay fully within the app
-     * classloader for the method Spring AI calls, and we delegate deserialization to the
-     * plugin's own classloader through [StandardTool.executeWithJson].
+     * By implementing [ToolCallback] directly we fully control the [ToolDefinition] —
+     * name, description, and inputSchema — that Spring AI sends to the LLM, while the
+     * `call(String)` method receives the raw JSON the LLM produced and passes it straight
+     * to [StandardTool.executeWithJson] for plugin-classloader-safe deserialization.
      *
      * [llmTurnMark] and [llmTurnIndex] are shared with the stream collector so that
      * LLM thinking time can be measured per turn (i.e. per tool-calling round-trip).
@@ -351,94 +357,83 @@ class AgentSimple(
         eventChannel: Channel<CaseEvent>,
         llmTurnMark: AtomicReference<TimeSource.Monotonic.ValueTimeMark>,
         llmTurnIndex: AtomicInteger,
-    ): MethodToolCallback {
-        // Wrapper that Spring AI will call via reflection.
-        // It takes a plain String (raw JSON from the LLM) so Spring AI never tries
-        // to inject a ToolContext or cast across classloader boundaries.
-        val wrapper =
-            object {
-                @Suppress("unused") // called by Spring AI via reflection
-                fun invoke(jsonArgs: String?): String {
-                    val toolRequestId = UUID.randomUUID().toString()
-
-                    // The LLM decided to call this tool: log how long it thought since
-                    // the prompt was sent (or since the previous tool response was returned).
-                    val turn = llmTurnIndex.get()
-                    logger.info { "[AgentSimple] $name LLM turn $turn answered in ${llmTurnMark.get().elapsedNow()}" }
-
-                    runBlocking {
-                        eventChannel.send(
-                            ToolRequestEvent(
-                                projectId = projectId,
-                                caseId = caseId,
-                                toolRequestId = toolRequestId,
-                                toolName = tool.name,
-                                args = jsonArgs,
-                            ),
-                        )
-                    }
-
-                    val result: String
-                    val toolDuration =
-                        measureTime {
-                            result =
-                                try {
-                                    tool.executeWithJson(jsonArgs)
-                                } catch (e: Exception) {
-                                    runBlocking {
-                                        eventChannel.send(
-                                            ToolResponseEvent(
-                                                projectId = projectId,
-                                                caseId = caseId,
-                                                toolRequestId = toolRequestId,
-                                                toolName = tool.name,
-                                                output = MessageContent.Text("Error: ${e.message}"),
-                                                success = false,
-                                            ),
-                                        )
-                                    }
-                                    throw e
-                                }
-                        }
-                    logger.info { "[AgentSimple] tool ${tool.name} executed in $toolDuration" }
-
-                    // Reset the turn mark so the next measurement starts from when
-                    // we hand the tool result back to the LLM.
-                    llmTurnMark.set(TimeSource.Monotonic.markNow())
-                    llmTurnIndex.incrementAndGet()
-
-                    runBlocking {
-                        eventChannel.send(
-                            ToolResponseEvent(
-                                projectId = projectId,
-                                caseId = caseId,
-                                toolRequestId = toolRequestId,
-                                toolName = tool.name,
-                                output = MessageContent.Text(result),
-                                success = true,
-                            ),
-                        )
-                    }
-
-                    return result
-                }
-            }
-
-        val method = wrapper::invoke.javaMethod ?: throw IllegalStateException("Cannot invoke wrapper method")
-
-        return MethodToolCallback
-            .builder()
-            .toolDefinition(
-                ToolDefinitions
-                    .builder(method)
-                    .description(tool.description)
+    ): ToolCallback =
+        object : ToolCallback {
+            // Expose the tool's own schema verbatim — no reflection-based generation.
+            private val definition =
+                DefaultToolDefinition.builder()
                     .name(tool.name)
+                    .description(tool.description)
                     .inputSchema(tool.inputSchema)
-                    .build(),
-            ).toolMethod(method)
-            .toolObject(wrapper)
-            .build()
-    }
+                    .build()
+
+            override fun getToolDefinition() = definition
+
+            override fun call(toolInput: String): String {
+                val toolRequestId = UUID.randomUUID().toString()
+
+                // The LLM decided to call this tool: log how long it thought since
+                // the prompt was sent (or since the previous tool response was returned).
+                val turn = llmTurnIndex.get()
+                logger.info { "[AgentSimple] $name LLM turn $turn answered in ${llmTurnMark.get().elapsedNow()}" }
+
+                runBlocking {
+                    eventChannel.send(
+                        ToolRequestEvent(
+                            projectId = projectId,
+                            caseId = caseId,
+                            toolRequestId = toolRequestId,
+                            toolName = tool.name,
+                            args = toolInput,
+                        ),
+                    )
+                }
+
+                val result: String
+                val toolDuration =
+                    measureTime {
+                        result =
+                            try {
+                                tool.executeWithJson(toolInput)
+                            } catch (e: Exception) {
+                                runBlocking {
+                                    eventChannel.send(
+                                        ToolResponseEvent(
+                                            projectId = projectId,
+                                            caseId = caseId,
+                                            toolRequestId = toolRequestId,
+                                            toolName = tool.name,
+                                            output = MessageContent.Text("Error: ${e.message}"),
+                                            success = false,
+                                        ),
+                                    )
+                                }
+                                throw e
+                            }
+                    }
+                logger.info { "[AgentSimple] tool ${tool.name} executed in $toolDuration" }
+
+                // Reset the turn mark so the next measurement starts from when
+                // we hand the tool result back to the LLM.
+                llmTurnMark.set(TimeSource.Monotonic.markNow())
+                llmTurnIndex.incrementAndGet()
+
+                runBlocking {
+                    eventChannel.send(
+                        ToolResponseEvent(
+                            projectId = projectId,
+                            caseId = caseId,
+                            toolRequestId = toolRequestId,
+                            toolName = tool.name,
+                            output = MessageContent.Text(result),
+                            success = true,
+                        ),
+                    )
+                }
+
+                return result
+            }
+        }
 
     companion object : KLogging()
 }
