@@ -3,6 +3,7 @@ package io.whozoss.agentos.namespace
 import io.whozoss.agentos.entity.EntityController
 import mu.KLogging
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
@@ -20,7 +21,11 @@ import org.springframework.web.bind.annotation.RestController
  * Overrides the list endpoint to return all namespaces (no parent filter needed).
  */
 @RestController
-@RequestMapping("/api/namespaces")
+@RequestMapping(
+    "/api/namespaces",
+    produces = [MediaType.APPLICATION_JSON_VALUE],
+)
+
 class NamespaceController(
     private val namespaceService: NamespaceService,
 ) : EntityController<Namespace, Unit>(namespaceService) {

@@ -7,6 +7,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -35,7 +36,10 @@ import java.util.UUID
  * - POST   /api/cases/{caseId}/kill    — kill a case immediately
  */
 @RestController
-@RequestMapping("/api/cases")
+@RequestMapping(
+    "/api/cases",
+    produces = [MediaType.APPLICATION_JSON_VALUE],
+)
 class CaseController(
     private val caseService: CaseService,
 ) : EntityController<CaseModel, UUID>(caseService) {

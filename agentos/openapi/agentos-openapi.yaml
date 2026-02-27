@@ -379,20 +379,6 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/Namespace"
-  /api/namespaces/list:
-    post:
-      tags:
-      - namespace-controller
-      operationId: listAll
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Namespace"
   /api/cases:
     get:
       tags:
@@ -689,6 +675,20 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/PluginActionResponse"
+  /api/namespaces/list:
+    get:
+      tags:
+      - namespace-controller
+      operationId: listAll
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Namespace"
   /api/cases/{caseId}/events:
     get:
       tags:
@@ -898,10 +898,10 @@ components:
         timestamp:
           type: string
           format: date-time
-        caseId:
+        projectId:
           type: string
           format: uuid
-        projectId:
+        caseId:
           type: string
           format: uuid
         id:

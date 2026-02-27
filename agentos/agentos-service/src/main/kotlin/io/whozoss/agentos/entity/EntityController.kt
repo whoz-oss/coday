@@ -3,6 +3,7 @@ package io.whozoss.agentos.entity
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityService
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -38,7 +39,7 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier>(
     /**
      * GET /{id} — get a single entity by its ID.
      */
-    @GetMapping("/{id}")
+    @GetMapping("/{id}", produces = [MediaType.APPLICATION_JSON_VALUE])
     open fun getById(
         @PathVariable id: UUID,
     ): EntityType =
@@ -48,7 +49,11 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier>(
     /**
      * GET ?ids=a,b,c — get multiple entities by their IDs.
      */
-    @PostMapping("/by-ids")
+    @PostMapping(
+        "/by-ids",
+        consumes = [MediaType.APPLICATION_JSON_VALUE],
+        produces = [MediaType.APPLICATION_JSON_VALUE],
+    )
     open fun getByIds(
         @RequestBody ids: List<UUID>,
     ): List<EntityType> = service.findByIds(ids)
@@ -60,7 +65,7 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier>(
      * The ParentIdentifier is passed as a UUID — subclasses with non-UUID parent types
      * must override this method entirely.
      */
-    @GetMapping("/by-parentId/{parentId}")
+    @GetMapping("/by-parentId/{parentId}", produces = [MediaType.APPLICATION_JSON_VALUE])
     open fun listByParent(
         @PathVariable parentId: ParentIdentifier,
     ): List<EntityType> = service.findByParent(parentId)
@@ -68,7 +73,10 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier>(
     /**
      * POST — create a new entity.
      */
-    @PostMapping
+    @PostMapping(
+        consumes = [MediaType.APPLICATION_JSON_VALUE],
+        produces = [MediaType.APPLICATION_JSON_VALUE],
+    )
     @ResponseStatus(HttpStatus.CREATED)
     open fun create(
         @RequestBody entity: EntityType,
@@ -77,7 +85,11 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier>(
     /**
      * PUT /{id} — update an existing entity.
      */
-    @PutMapping("/{id}")
+    @PutMapping(
+        "/{id}",
+        consumes = [MediaType.APPLICATION_JSON_VALUE],
+        produces = [MediaType.APPLICATION_JSON_VALUE],
+    )
     open fun update(
         @PathVariable id: UUID,
         @RequestBody entity: EntityType,

@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:filename")
+
 package io.whozoss.agentos.caseEvent
 
 import io.whozoss.agentos.entity.EntityController
