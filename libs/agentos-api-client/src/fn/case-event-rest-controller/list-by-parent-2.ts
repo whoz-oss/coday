@@ -24,7 +24,6 @@ import { WarnEvent } from '../../models/warn-event'
 
 export interface ListByParent2$Params {
   parentId: string
-  ids: Array<string>
 }
 
 export function listByParent2(
@@ -54,11 +53,10 @@ export function listByParent2(
 > {
   const rb = new RequestBuilder(rootUrl, listByParent2.PATH, 'get')
   if (params) {
-    rb.query('parentId', params.parentId, {})
-    rb.query('ids', params.ids, {})
+    rb.path('parentId', params.parentId, {})
   }
 
-  return http.request(rb.build({ responseType: 'blob', accept: '*/*', context })).pipe(
+  return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<
@@ -83,4 +81,4 @@ export function listByParent2(
   )
 }
 
-listByParent2.PATH = '/api/case-events'
+listByParent2.PATH = '/api/case-events/by-parentId/{parentId}'

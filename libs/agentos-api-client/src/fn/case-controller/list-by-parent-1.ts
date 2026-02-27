@@ -11,7 +11,6 @@ import { CaseModel } from '../../models/case-model'
 
 export interface ListByParent1$Params {
   parentId: string
-  ids: Array<string>
 }
 
 export function listByParent1(
@@ -22,11 +21,10 @@ export function listByParent1(
 ): Observable<StrictHttpResponse<Array<CaseModel>>> {
   const rb = new RequestBuilder(rootUrl, listByParent1.PATH, 'get')
   if (params) {
-    rb.query('parentId', params.parentId, {})
-    rb.query('ids', params.ids, {})
+    rb.path('parentId', params.parentId, {})
   }
 
-  return http.request(rb.build({ responseType: 'blob', accept: '*/*', context })).pipe(
+  return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<Array<CaseModel>>
@@ -34,4 +32,4 @@ export function listByParent1(
   )
 }
 
-listByParent1.PATH = '/api/cases'
+listByParent1.PATH = '/api/cases/by-parentId/{parentId}'

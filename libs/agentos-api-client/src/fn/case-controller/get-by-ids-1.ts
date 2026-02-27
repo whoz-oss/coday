@@ -9,17 +9,17 @@ import { RequestBuilder } from '../../request-builder'
 
 import { CaseModel } from '../../models/case-model'
 
-export interface Create1$Params {
-  body: CaseModel
+export interface GetByIds1$Params {
+  body: Array<string>
 }
 
-export function create1(
+export function getByIds1(
   http: HttpClient,
   rootUrl: string,
-  params: Create1$Params,
+  params: GetByIds1$Params,
   context?: HttpContext
-): Observable<StrictHttpResponse<CaseModel>> {
-  const rb = new RequestBuilder(rootUrl, create1.PATH, 'post')
+): Observable<StrictHttpResponse<Array<CaseModel>>> {
+  const rb = new RequestBuilder(rootUrl, getByIds1.PATH, 'post')
   if (params) {
     rb.body(params.body, 'application/json')
   }
@@ -27,9 +27,9 @@ export function create1(
   return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<CaseModel>
+      return r as StrictHttpResponse<Array<CaseModel>>
     })
   )
 }
 
-create1.PATH = '/api/cases'
+getByIds1.PATH = '/api/cases/by-ids'

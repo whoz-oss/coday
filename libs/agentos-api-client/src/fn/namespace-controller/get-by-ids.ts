@@ -7,19 +7,19 @@ import { filter, map } from 'rxjs/operators'
 import { StrictHttpResponse } from '../../strict-http-response'
 import { RequestBuilder } from '../../request-builder'
 
-import { CaseModel } from '../../models/case-model'
+import { Namespace } from '../../models/namespace'
 
-export interface Create1$Params {
-  body: CaseModel
+export interface GetByIds$Params {
+  body: Array<string>
 }
 
-export function create1(
+export function getByIds(
   http: HttpClient,
   rootUrl: string,
-  params: Create1$Params,
+  params: GetByIds$Params,
   context?: HttpContext
-): Observable<StrictHttpResponse<CaseModel>> {
-  const rb = new RequestBuilder(rootUrl, create1.PATH, 'post')
+): Observable<StrictHttpResponse<Array<Namespace>>> {
+  const rb = new RequestBuilder(rootUrl, getByIds.PATH, 'post')
   if (params) {
     rb.body(params.body, 'application/json')
   }
@@ -27,9 +27,9 @@ export function create1(
   return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<CaseModel>
+      return r as StrictHttpResponse<Array<Namespace>>
     })
   )
 }
 
-create1.PATH = '/api/cases'
+getByIds.PATH = '/api/namespaces/by-ids'

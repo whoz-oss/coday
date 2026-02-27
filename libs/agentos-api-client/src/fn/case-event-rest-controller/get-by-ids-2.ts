@@ -22,51 +22,37 @@ import { ToolResponseEvent } from '../../models/tool-response-event'
 import { ToolSelectedEvent } from '../../models/tool-selected-event'
 import { WarnEvent } from '../../models/warn-event'
 
-export interface Update2$Params {
-  id: string
-  body:
-    | AgentFinishedEvent
-    | AgentRunningEvent
-    | AgentSelectedEvent
-    | AnswerEvent
-    | CaseStatusEvent
-    | IntentionGeneratedEvent
-    | MessageEvent
-    | QuestionEvent
-    | TextChunkEvent
-    | ThinkingEvent
-    | ToolRequestEvent
-    | ToolResponseEvent
-    | ToolSelectedEvent
-    | WarnEvent
+export interface GetByIds2$Params {
+  body: Array<string>
 }
 
-export function update2(
+export function getByIds2(
   http: HttpClient,
   rootUrl: string,
-  params: Update2$Params,
+  params: GetByIds2$Params,
   context?: HttpContext
 ): Observable<
   StrictHttpResponse<
-    | AgentFinishedEvent
-    | AgentRunningEvent
-    | AgentSelectedEvent
-    | AnswerEvent
-    | CaseStatusEvent
-    | IntentionGeneratedEvent
-    | MessageEvent
-    | QuestionEvent
-    | TextChunkEvent
-    | ThinkingEvent
-    | ToolRequestEvent
-    | ToolResponseEvent
-    | ToolSelectedEvent
-    | WarnEvent
+    Array<
+      | AgentFinishedEvent
+      | AgentRunningEvent
+      | AgentSelectedEvent
+      | AnswerEvent
+      | CaseStatusEvent
+      | IntentionGeneratedEvent
+      | MessageEvent
+      | QuestionEvent
+      | TextChunkEvent
+      | ThinkingEvent
+      | ToolRequestEvent
+      | ToolResponseEvent
+      | ToolSelectedEvent
+      | WarnEvent
+    >
   >
 > {
-  const rb = new RequestBuilder(rootUrl, update2.PATH, 'put')
+  const rb = new RequestBuilder(rootUrl, getByIds2.PATH, 'post')
   if (params) {
-    rb.path('id', params.id, {})
     rb.body(params.body, 'application/json')
   }
 
@@ -74,23 +60,25 @@ export function update2(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<
-        | AgentFinishedEvent
-        | AgentRunningEvent
-        | AgentSelectedEvent
-        | AnswerEvent
-        | CaseStatusEvent
-        | IntentionGeneratedEvent
-        | MessageEvent
-        | QuestionEvent
-        | TextChunkEvent
-        | ThinkingEvent
-        | ToolRequestEvent
-        | ToolResponseEvent
-        | ToolSelectedEvent
-        | WarnEvent
+        Array<
+          | AgentFinishedEvent
+          | AgentRunningEvent
+          | AgentSelectedEvent
+          | AnswerEvent
+          | CaseStatusEvent
+          | IntentionGeneratedEvent
+          | MessageEvent
+          | QuestionEvent
+          | TextChunkEvent
+          | ThinkingEvent
+          | ToolRequestEvent
+          | ToolResponseEvent
+          | ToolSelectedEvent
+          | WarnEvent
+        >
       >
     })
   )
 }
 
-update2.PATH = '/api/case-events/{id}'
+getByIds2.PATH = '/api/case-events/by-ids'

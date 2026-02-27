@@ -19,6 +19,8 @@ import { delete1 } from '../fn/case-controller/delete-1'
 import { Delete1$Params } from '../fn/case-controller/delete-1'
 import { getById1 } from '../fn/case-controller/get-by-id-1'
 import { GetById1$Params } from '../fn/case-controller/get-by-id-1'
+import { getByIds1 } from '../fn/case-controller/get-by-ids-1'
+import { GetByIds1$Params } from '../fn/case-controller/get-by-ids-1'
 import { killCase } from '../fn/case-controller/kill-case'
 import { KillCase$Params } from '../fn/case-controller/kill-case'
 import { listByParent1 } from '../fn/case-controller/list-by-parent-1'
@@ -107,34 +109,6 @@ export class CaseControllerService extends BaseService {
   delete1(params: Delete1$Params, context?: HttpContext): Observable<void> {
     const resp = this.delete1$Response(params, context)
     return resp.pipe(map((r: StrictHttpResponse<void>): void => r.body))
-  }
-
-  /** Path part for operation `listByParent1()` */
-  static readonly ListByParent1Path = '/api/cases'
-
-  /**
-   * This method provides access to the full `HttpResponse`, allowing access to response headers.
-   * To access only the response body, use `listByParent1()` instead.
-   *
-   * This method doesn't expect any request body.
-   */
-  listByParent1$Response(
-    params: ListByParent1$Params,
-    context?: HttpContext
-  ): Observable<StrictHttpResponse<Array<CaseModel>>> {
-    const obs = listByParent1(this.http, this.rootUrl, params, context)
-    return obs
-  }
-
-  /**
-   * This method provides access only to the response body.
-   * To access the full response (for headers, for example), `listByParent1$Response()` instead.
-   *
-   * This method doesn't expect any request body.
-   */
-  listByParent1(params: ListByParent1$Params, context?: HttpContext): Observable<Array<CaseModel>> {
-    const resp = this.listByParent1$Response(params, context)
-    return resp.pipe(map((r: StrictHttpResponse<Array<CaseModel>>): Array<CaseModel> => r.body))
   }
 
   /** Path part for operation `create1()` */
@@ -235,5 +209,61 @@ export class CaseControllerService extends BaseService {
   killCase(params: KillCase$Params, context?: HttpContext): Observable<void> {
     const resp = this.killCase$Response(params, context)
     return resp.pipe(map((r: StrictHttpResponse<void>): void => r.body))
+  }
+
+  /** Path part for operation `getByIds1()` */
+  static readonly GetByIds1Path = '/api/cases/by-ids'
+
+  /**
+   * This method provides access to the full `HttpResponse`, allowing access to response headers.
+   * To access only the response body, use `getByIds1()` instead.
+   *
+   * This method sends `application/json` and handles request body of type `application/json`.
+   */
+  getByIds1$Response(
+    params: GetByIds1$Params,
+    context?: HttpContext
+  ): Observable<StrictHttpResponse<Array<CaseModel>>> {
+    const obs = getByIds1(this.http, this.rootUrl, params, context)
+    return obs
+  }
+
+  /**
+   * This method provides access only to the response body.
+   * To access the full response (for headers, for example), `getByIds1$Response()` instead.
+   *
+   * This method sends `application/json` and handles request body of type `application/json`.
+   */
+  getByIds1(params: GetByIds1$Params, context?: HttpContext): Observable<Array<CaseModel>> {
+    const resp = this.getByIds1$Response(params, context)
+    return resp.pipe(map((r: StrictHttpResponse<Array<CaseModel>>): Array<CaseModel> => r.body))
+  }
+
+  /** Path part for operation `listByParent1()` */
+  static readonly ListByParent1Path = '/api/cases/by-parentId/{parentId}'
+
+  /**
+   * This method provides access to the full `HttpResponse`, allowing access to response headers.
+   * To access only the response body, use `listByParent1()` instead.
+   *
+   * This method doesn't expect any request body.
+   */
+  listByParent1$Response(
+    params: ListByParent1$Params,
+    context?: HttpContext
+  ): Observable<StrictHttpResponse<Array<CaseModel>>> {
+    const obs = listByParent1(this.http, this.rootUrl, params, context)
+    return obs
+  }
+
+  /**
+   * This method provides access only to the response body.
+   * To access the full response (for headers, for example), `listByParent1$Response()` instead.
+   *
+   * This method doesn't expect any request body.
+   */
+  listByParent1(params: ListByParent1$Params, context?: HttpContext): Observable<Array<CaseModel>> {
+    const resp = this.listByParent1$Response(params, context)
+    return resp.pipe(map((r: StrictHttpResponse<Array<CaseModel>>): Array<CaseModel> => r.body))
   }
 }

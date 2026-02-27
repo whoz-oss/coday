@@ -26,7 +26,7 @@ paths:
         "200":
           description: OK
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/Namespace"
     put:
@@ -50,7 +50,7 @@ paths:
         "200":
           description: OK
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/Namespace"
     delete:
@@ -83,7 +83,7 @@ paths:
         "200":
           description: OK
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/CaseModel"
     put:
@@ -107,7 +107,7 @@ paths:
         "200":
           description: OK
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/CaseModel"
     delete:
@@ -140,7 +140,7 @@ paths:
         "200":
           description: OK
           content:
-            '*/*':
+            application/json:
               schema:
                 oneOf:
                 - $ref: "#/components/schemas/AgentFinishedEvent"
@@ -192,7 +192,7 @@ paths:
         "200":
           description: OK
           content:
-            '*/*':
+            application/json:
               schema:
                 oneOf:
                 - $ref: "#/components/schemas/AgentFinishedEvent"
@@ -334,34 +334,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/PluginActionResponse"
   /api/namespaces:
-    get:
-      tags:
-      - namespace-controller
-      operationId: listByParent
-      parameters:
-      - name: parentId
-        in: query
-        required: true
-        schema:
-          type: string
-          format: uuid
-      - name: ids
-        in: query
-        required: true
-        schema:
-          type: array
-          items:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Namespace"
     post:
       tags:
       - namespace-controller
@@ -376,38 +348,33 @@ paths:
         "201":
           description: Created
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/Namespace"
-  /api/cases:
-    get:
+  /api/namespaces/by-ids:
+    post:
       tags:
-      - case-controller
-      operationId: listByParent_1
-      parameters:
-      - name: parentId
-        in: query
+      - namespace-controller
+      operationId: getByIds
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+                format: uuid
         required: true
-        schema:
-          type: string
-          format: uuid
-      - name: ids
-        in: query
-        required: true
-        schema:
-          type: array
-          items:
-            type: string
-            format: uuid
       responses:
         "200":
           description: OK
           content:
-            '*/*':
+            application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/CaseModel"
+                  $ref: "#/components/schemas/Namespace"
+  /api/cases:
     post:
       tags:
       - case-controller
@@ -422,7 +389,7 @@ paths:
         "201":
           description: Created
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/CaseModel"
   /api/cases/{caseId}/stop:
@@ -476,49 +443,30 @@ paths:
       responses:
         "200":
           description: OK
-  /api/case-events:
-    get:
+  /api/cases/by-ids:
+    post:
       tags:
-      - case-event-rest-controller
-      operationId: listByParent_2
-      parameters:
-      - name: parentId
-        in: query
+      - case-controller
+      operationId: getByIds_1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+                format: uuid
         required: true
-        schema:
-          type: string
-          format: uuid
-      - name: ids
-        in: query
-        required: true
-        schema:
-          type: array
-          items:
-            type: string
-            format: uuid
       responses:
         "200":
           description: OK
           content:
-            '*/*':
+            application/json:
               schema:
                 type: array
                 items:
-                  oneOf:
-                  - $ref: "#/components/schemas/AgentFinishedEvent"
-                  - $ref: "#/components/schemas/AgentRunningEvent"
-                  - $ref: "#/components/schemas/AgentSelectedEvent"
-                  - $ref: "#/components/schemas/AnswerEvent"
-                  - $ref: "#/components/schemas/CaseStatusEvent"
-                  - $ref: "#/components/schemas/IntentionGeneratedEvent"
-                  - $ref: "#/components/schemas/MessageEvent"
-                  - $ref: "#/components/schemas/QuestionEvent"
-                  - $ref: "#/components/schemas/TextChunkEvent"
-                  - $ref: "#/components/schemas/ThinkingEvent"
-                  - $ref: "#/components/schemas/ToolRequestEvent"
-                  - $ref: "#/components/schemas/ToolResponseEvent"
-                  - $ref: "#/components/schemas/ToolSelectedEvent"
-                  - $ref: "#/components/schemas/WarnEvent"
+                  $ref: "#/components/schemas/CaseModel"
+  /api/case-events:
     post:
       tags:
       - case-event-rest-controller
@@ -547,7 +495,7 @@ paths:
         "201":
           description: Created
           content:
-            '*/*':
+            application/json:
               schema:
                 oneOf:
                 - $ref: "#/components/schemas/AgentFinishedEvent"
@@ -564,6 +512,43 @@ paths:
                 - $ref: "#/components/schemas/ToolResponseEvent"
                 - $ref: "#/components/schemas/ToolSelectedEvent"
                 - $ref: "#/components/schemas/WarnEvent"
+  /api/case-events/by-ids:
+    post:
+      tags:
+      - case-event-rest-controller
+      operationId: getByIds_2
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+                format: uuid
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  oneOf:
+                  - $ref: "#/components/schemas/AgentFinishedEvent"
+                  - $ref: "#/components/schemas/AgentRunningEvent"
+                  - $ref: "#/components/schemas/AgentSelectedEvent"
+                  - $ref: "#/components/schemas/AnswerEvent"
+                  - $ref: "#/components/schemas/CaseStatusEvent"
+                  - $ref: "#/components/schemas/IntentionGeneratedEvent"
+                  - $ref: "#/components/schemas/MessageEvent"
+                  - $ref: "#/components/schemas/QuestionEvent"
+                  - $ref: "#/components/schemas/TextChunkEvent"
+                  - $ref: "#/components/schemas/ThinkingEvent"
+                  - $ref: "#/components/schemas/ToolRequestEvent"
+                  - $ref: "#/components/schemas/ToolResponseEvent"
+                  - $ref: "#/components/schemas/ToolSelectedEvent"
+                  - $ref: "#/components/schemas/WarnEvent"
   /api/tools:
     get:
       tags:
@@ -684,7 +669,25 @@ paths:
         "200":
           description: OK
           content:
-            '*/*':
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Namespace"
+  /api/namespaces/by-parentId/{parentId}:
+    get:
+      tags:
+      - namespace-controller
+      operationId: listByParent
+      parameters:
+      - name: parentId
+        in: path
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
               schema:
                 type: array
                 items:
@@ -712,6 +715,62 @@ paths:
             \ field."
           content:
             text/event-stream: {}
+  /api/cases/by-parentId/{parentId}:
+    get:
+      tags:
+      - case-controller
+      operationId: listByParent_1
+      parameters:
+      - name: parentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CaseModel"
+  /api/case-events/by-parentId/{parentId}:
+    get:
+      tags:
+      - case-event-rest-controller
+      operationId: listByParent_2
+      parameters:
+      - name: parentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  oneOf:
+                  - $ref: "#/components/schemas/AgentFinishedEvent"
+                  - $ref: "#/components/schemas/AgentRunningEvent"
+                  - $ref: "#/components/schemas/AgentSelectedEvent"
+                  - $ref: "#/components/schemas/AnswerEvent"
+                  - $ref: "#/components/schemas/CaseStatusEvent"
+                  - $ref: "#/components/schemas/IntentionGeneratedEvent"
+                  - $ref: "#/components/schemas/MessageEvent"
+                  - $ref: "#/components/schemas/QuestionEvent"
+                  - $ref: "#/components/schemas/TextChunkEvent"
+                  - $ref: "#/components/schemas/ThinkingEvent"
+                  - $ref: "#/components/schemas/ToolRequestEvent"
+                  - $ref: "#/components/schemas/ToolResponseEvent"
+                  - $ref: "#/components/schemas/ToolSelectedEvent"
+                  - $ref: "#/components/schemas/WarnEvent"
 components:
   schemas:
     EntityMetadata:

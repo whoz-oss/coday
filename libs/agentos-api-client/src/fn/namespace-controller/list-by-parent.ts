@@ -10,8 +10,7 @@ import { RequestBuilder } from '../../request-builder'
 import { Namespace } from '../../models/namespace'
 
 export interface ListByParent$Params {
-  parentId: string
-  ids: Array<string>
+  parentId: any
 }
 
 export function listByParent(
@@ -22,11 +21,10 @@ export function listByParent(
 ): Observable<StrictHttpResponse<Array<Namespace>>> {
   const rb = new RequestBuilder(rootUrl, listByParent.PATH, 'get')
   if (params) {
-    rb.query('parentId', params.parentId, {})
-    rb.query('ids', params.ids, {})
+    rb.path('parentId', params.parentId, {})
   }
 
-  return http.request(rb.build({ responseType: 'blob', accept: '*/*', context })).pipe(
+  return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
       return r as StrictHttpResponse<Array<Namespace>>
@@ -34,4 +32,4 @@ export function listByParent(
   )
 }
 
-listByParent.PATH = '/api/namespaces'
+listByParent.PATH = '/api/namespaces/by-parentId/{parentId}'

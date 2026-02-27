@@ -21,6 +21,8 @@ import { delete2 } from '../fn/case-event-rest-controller/delete-2'
 import { Delete2$Params } from '../fn/case-event-rest-controller/delete-2'
 import { getById2 } from '../fn/case-event-rest-controller/get-by-id-2'
 import { GetById2$Params } from '../fn/case-event-rest-controller/get-by-id-2'
+import { getByIds2 } from '../fn/case-event-rest-controller/get-by-ids-2'
+import { GetByIds2$Params } from '../fn/case-event-rest-controller/get-by-ids-2'
 import { IntentionGeneratedEvent } from '../models/intention-generated-event'
 import { listByParent2 } from '../fn/case-event-rest-controller/list-by-parent-2'
 import { ListByParent2$Params } from '../fn/case-event-rest-controller/list-by-parent-2'
@@ -262,8 +264,211 @@ export class CaseEventRestControllerService extends BaseService {
     return resp.pipe(map((r: StrictHttpResponse<void>): void => r.body))
   }
 
+  /** Path part for operation `create2()` */
+  static readonly Create2Path = '/api/case-events'
+
+  /**
+   * This method provides access to the full `HttpResponse`, allowing access to response headers.
+   * To access only the response body, use `create2()` instead.
+   *
+   * This method sends `application/json` and handles request body of type `application/json`.
+   */
+  create2$Response(
+    params: Create2$Params,
+    context?: HttpContext
+  ): Observable<
+    StrictHttpResponse<
+      | AgentFinishedEvent
+      | AgentRunningEvent
+      | AgentSelectedEvent
+      | AnswerEvent
+      | CaseStatusEvent
+      | IntentionGeneratedEvent
+      | MessageEvent
+      | QuestionEvent
+      | TextChunkEvent
+      | ThinkingEvent
+      | ToolRequestEvent
+      | ToolResponseEvent
+      | ToolSelectedEvent
+      | WarnEvent
+    >
+  > {
+    const obs = create2(this.http, this.rootUrl, params, context)
+    return obs
+  }
+
+  /**
+   * This method provides access only to the response body.
+   * To access the full response (for headers, for example), `create2$Response()` instead.
+   *
+   * This method sends `application/json` and handles request body of type `application/json`.
+   */
+  create2(
+    params: Create2$Params,
+    context?: HttpContext
+  ): Observable<
+    | AgentFinishedEvent
+    | AgentRunningEvent
+    | AgentSelectedEvent
+    | AnswerEvent
+    | CaseStatusEvent
+    | IntentionGeneratedEvent
+    | MessageEvent
+    | QuestionEvent
+    | TextChunkEvent
+    | ThinkingEvent
+    | ToolRequestEvent
+    | ToolResponseEvent
+    | ToolSelectedEvent
+    | WarnEvent
+  > {
+    const resp = this.create2$Response(params, context)
+    return resp.pipe(
+      map(
+        (
+          r: StrictHttpResponse<
+            | AgentFinishedEvent
+            | AgentRunningEvent
+            | AgentSelectedEvent
+            | AnswerEvent
+            | CaseStatusEvent
+            | IntentionGeneratedEvent
+            | MessageEvent
+            | QuestionEvent
+            | TextChunkEvent
+            | ThinkingEvent
+            | ToolRequestEvent
+            | ToolResponseEvent
+            | ToolSelectedEvent
+            | WarnEvent
+          >
+        ):
+          | AgentFinishedEvent
+          | AgentRunningEvent
+          | AgentSelectedEvent
+          | AnswerEvent
+          | CaseStatusEvent
+          | IntentionGeneratedEvent
+          | MessageEvent
+          | QuestionEvent
+          | TextChunkEvent
+          | ThinkingEvent
+          | ToolRequestEvent
+          | ToolResponseEvent
+          | ToolSelectedEvent
+          | WarnEvent => r.body
+      )
+    )
+  }
+
+  /** Path part for operation `getByIds2()` */
+  static readonly GetByIds2Path = '/api/case-events/by-ids'
+
+  /**
+   * This method provides access to the full `HttpResponse`, allowing access to response headers.
+   * To access only the response body, use `getByIds2()` instead.
+   *
+   * This method sends `application/json` and handles request body of type `application/json`.
+   */
+  getByIds2$Response(
+    params: GetByIds2$Params,
+    context?: HttpContext
+  ): Observable<
+    StrictHttpResponse<
+      Array<
+        | AgentFinishedEvent
+        | AgentRunningEvent
+        | AgentSelectedEvent
+        | AnswerEvent
+        | CaseStatusEvent
+        | IntentionGeneratedEvent
+        | MessageEvent
+        | QuestionEvent
+        | TextChunkEvent
+        | ThinkingEvent
+        | ToolRequestEvent
+        | ToolResponseEvent
+        | ToolSelectedEvent
+        | WarnEvent
+      >
+    >
+  > {
+    const obs = getByIds2(this.http, this.rootUrl, params, context)
+    return obs
+  }
+
+  /**
+   * This method provides access only to the response body.
+   * To access the full response (for headers, for example), `getByIds2$Response()` instead.
+   *
+   * This method sends `application/json` and handles request body of type `application/json`.
+   */
+  getByIds2(
+    params: GetByIds2$Params,
+    context?: HttpContext
+  ): Observable<
+    Array<
+      | AgentFinishedEvent
+      | AgentRunningEvent
+      | AgentSelectedEvent
+      | AnswerEvent
+      | CaseStatusEvent
+      | IntentionGeneratedEvent
+      | MessageEvent
+      | QuestionEvent
+      | TextChunkEvent
+      | ThinkingEvent
+      | ToolRequestEvent
+      | ToolResponseEvent
+      | ToolSelectedEvent
+      | WarnEvent
+    >
+  > {
+    const resp = this.getByIds2$Response(params, context)
+    return resp.pipe(
+      map(
+        (
+          r: StrictHttpResponse<
+            Array<
+              | AgentFinishedEvent
+              | AgentRunningEvent
+              | AgentSelectedEvent
+              | AnswerEvent
+              | CaseStatusEvent
+              | IntentionGeneratedEvent
+              | MessageEvent
+              | QuestionEvent
+              | TextChunkEvent
+              | ThinkingEvent
+              | ToolRequestEvent
+              | ToolResponseEvent
+              | ToolSelectedEvent
+              | WarnEvent
+            >
+          >
+        ): Array<
+          | AgentFinishedEvent
+          | AgentRunningEvent
+          | AgentSelectedEvent
+          | AnswerEvent
+          | CaseStatusEvent
+          | IntentionGeneratedEvent
+          | MessageEvent
+          | QuestionEvent
+          | TextChunkEvent
+          | ThinkingEvent
+          | ToolRequestEvent
+          | ToolResponseEvent
+          | ToolSelectedEvent
+          | WarnEvent
+        > => r.body
+      )
+    )
+  }
+
   /** Path part for operation `listByParent2()` */
-  static readonly ListByParent2Path = '/api/case-events'
+  static readonly ListByParent2Path = '/api/case-events/by-parentId/{parentId}'
 
   /**
    * This method provides access to the full `HttpResponse`, allowing access to response headers.
@@ -363,104 +568,6 @@ export class CaseEventRestControllerService extends BaseService {
           | ToolSelectedEvent
           | WarnEvent
         > => r.body
-      )
-    )
-  }
-
-  /** Path part for operation `create2()` */
-  static readonly Create2Path = '/api/case-events'
-
-  /**
-   * This method provides access to the full `HttpResponse`, allowing access to response headers.
-   * To access only the response body, use `create2()` instead.
-   *
-   * This method sends `application/json` and handles request body of type `application/json`.
-   */
-  create2$Response(
-    params: Create2$Params,
-    context?: HttpContext
-  ): Observable<
-    StrictHttpResponse<
-      | AgentFinishedEvent
-      | AgentRunningEvent
-      | AgentSelectedEvent
-      | AnswerEvent
-      | CaseStatusEvent
-      | IntentionGeneratedEvent
-      | MessageEvent
-      | QuestionEvent
-      | TextChunkEvent
-      | ThinkingEvent
-      | ToolRequestEvent
-      | ToolResponseEvent
-      | ToolSelectedEvent
-      | WarnEvent
-    >
-  > {
-    const obs = create2(this.http, this.rootUrl, params, context)
-    return obs
-  }
-
-  /**
-   * This method provides access only to the response body.
-   * To access the full response (for headers, for example), `create2$Response()` instead.
-   *
-   * This method sends `application/json` and handles request body of type `application/json`.
-   */
-  create2(
-    params: Create2$Params,
-    context?: HttpContext
-  ): Observable<
-    | AgentFinishedEvent
-    | AgentRunningEvent
-    | AgentSelectedEvent
-    | AnswerEvent
-    | CaseStatusEvent
-    | IntentionGeneratedEvent
-    | MessageEvent
-    | QuestionEvent
-    | TextChunkEvent
-    | ThinkingEvent
-    | ToolRequestEvent
-    | ToolResponseEvent
-    | ToolSelectedEvent
-    | WarnEvent
-  > {
-    const resp = this.create2$Response(params, context)
-    return resp.pipe(
-      map(
-        (
-          r: StrictHttpResponse<
-            | AgentFinishedEvent
-            | AgentRunningEvent
-            | AgentSelectedEvent
-            | AnswerEvent
-            | CaseStatusEvent
-            | IntentionGeneratedEvent
-            | MessageEvent
-            | QuestionEvent
-            | TextChunkEvent
-            | ThinkingEvent
-            | ToolRequestEvent
-            | ToolResponseEvent
-            | ToolSelectedEvent
-            | WarnEvent
-          >
-        ):
-          | AgentFinishedEvent
-          | AgentRunningEvent
-          | AgentSelectedEvent
-          | AnswerEvent
-          | CaseStatusEvent
-          | IntentionGeneratedEvent
-          | MessageEvent
-          | QuestionEvent
-          | TextChunkEvent
-          | ThinkingEvent
-          | ToolRequestEvent
-          | ToolResponseEvent
-          | ToolSelectedEvent
-          | WarnEvent => r.body
       )
     )
   }
