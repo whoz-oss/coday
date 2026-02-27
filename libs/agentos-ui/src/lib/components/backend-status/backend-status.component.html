@@ -1,0 +1,13 @@
+<div class="backend-status">
+  @switch (online()) {
+    @case (true) {
+      <span class="dot dot--online" title="AgentOS online"></span>
+    }
+    @case (false) {
+      <span class="dot dot--offline" title="AgentOS offline"></span>
+    }
+    @default {
+      <span class="dot dot--checking" title="Checking…"></span>
+    }
+  }
+</div>

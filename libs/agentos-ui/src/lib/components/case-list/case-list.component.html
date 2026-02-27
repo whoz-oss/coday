@@ -1,0 +1,32 @@
+<div class="case-list">
+  <header class="case-list__header">
+    <h2>Cases</h2>
+  </header>
+
+  <div class="case-list__items">
+    @if (cases$ | async; as cases) {
+      @if (cases.length === 0) {
+        <p class="case-list__empty">No cases yet. Start one below.</p>
+      } @else {
+        @for (c of cases; track trackById($index, c)) {
+          <div class="case-list__item">
+            <span class="case-list__item-id">{{ c.id }}</span>
+            <span class="case-list__item-status">{{ c.status }}</span>
+          </div>
+        }
+      }
+    }
+  </div>
+
+  <div class="case-list__composer">
+    <textarea
+      class="case-list__input"
+      placeholder="Start a new case…"
+      rows="3"
+      [value]="inputValue()"
+      (input)="onInput($event)"
+      (keydown)="onKeydown($event)"
+    ></textarea>
+    <p class="case-list__hint">Press Enter to send, Shift+Enter for new line</p>
+  </div>
+</div>
