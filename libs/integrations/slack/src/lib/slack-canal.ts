@@ -656,12 +656,8 @@ export class SlackCanal implements CommunicationCanal {
         }
       } else {
         try {
-          // For DMs, use thread_ts to keep the thinking indicator in the active chat flow
-          const dmThreadTs =
-            isSlackOriginated && state.originalMessage?.isDM
-              ? state.originalMessage.threadTs || state.originalMessage.ts
-              : undefined
-          const effectiveThreadTs = dmThreadTs || threadTs
+          // For DMs, post as top-level message (no thread_ts) so it's visible in the main DM view
+          const effectiveThreadTs = isSlackOriginated && state.originalMessage?.isDM ? undefined : threadTs
           const response = await postSlackMessageWithBlocks(
             config.apiKey,
             channel,
@@ -686,8 +682,9 @@ export class SlackCanal implements CommunicationCanal {
 
       if (isSlackOriginated) {
         channel = Object.keys(threadMap).find((key) => threadMap[key] === threadId)
-        if (state.originalMessage?.isDM) {
-          threadTs = state.originalMessage.threadTs || state.originalMessage.ts
+        // For DMs, do NOT set threadTs — post as top-level message so it's visible in the main DM view
+        if (!state.originalMessage?.isDM && state.originalMessage?.ts) {
+          threadTs = state.originalMessage.threadTs
         }
       } else {
         if (!config.forwardEvents) return
@@ -773,16 +770,8 @@ export class SlackCanal implements CommunicationCanal {
       const slackChannel = Object.keys(threadMap).find((key) => threadMap[key] === threadId)
       if (slackChannel) {
         if (state.originalMessage?.isDM) {
-          // For DMs: reply in the same thread if the user's message was part of a thread,
-          // otherwise post as a new top-level message in the DM.
-          // Using thread_ts keeps the reply visible in the active chat flow.
-          const replyThreadTs = state.originalMessage.threadTs || state.originalMessage.ts
-          try {
-            await postSlackMessage(config.apiKey, slackChannel, slackText, replyThreadTs)
-          } catch (err) {
-            this.logger('SLACK_CANAL', `Error posting DM reply:`, err)
-            await postSlackMessage(config.apiKey, slackChannel, slackText)
-          }
+          // For DMs: post as top-level message (no thread_ts) so it's visible in the main DM view on all devices
+          await postSlackMessage(config.apiKey, slackChannel, slackText)
         } else {
           // For regular channels/threads, reply in-thread using the original message ts
           const replyThreadTs = state.originalMessage?.ts
