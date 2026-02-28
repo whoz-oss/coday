@@ -682,7 +682,11 @@ paths:
       parameters:
       - name: parentId
         in: path
+        description: Parent entity ID
         required: true
+        schema:
+          type: string
+          format: uuid
       responses:
         "200":
           description: OK
@@ -723,6 +727,7 @@ paths:
       parameters:
       - name: parentId
         in: path
+        description: Parent entity ID
         required: true
         schema:
           type: string
@@ -744,6 +749,7 @@ paths:
       parameters:
       - name: parentId
         in: path
+        description: Parent entity ID
         required: true
         schema:
           type: string
@@ -957,10 +963,10 @@ components:
         timestamp:
           type: string
           format: date-time
-        projectId:
+        caseId:
           type: string
           format: uuid
-        caseId:
+        projectId:
           type: string
           format: uuid
         id:

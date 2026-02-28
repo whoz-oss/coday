@@ -1,17 +1,16 @@
 import { inject, Injectable, NgZone } from '@angular/core'
 import { Observable } from 'rxjs'
-import { ApiConfiguration } from '../api-configuration'
-import { CaseEvent } from '../models/case-event'
+import { Configuration } from '../lib/configuration'
+import { CaseEvent } from '../lib/model/case-event'
 
 /**
  * CaseEventSseService — wraps the SSE endpoint for case event streaming.
  *
  * The SSE endpoint (GET /api/cases/{caseId}/events) is intentionally excluded
- * from OpenAPI generation (tag "sse" in ng-openapi-gen.json) because EventSource
+ * from OpenAPI generation (tag "sse" in openapitools.json) because EventSource
  * cannot be expressed as a standard HTTP operation.
  *
- * This service is maintained manually in src/custom/ and exported via public-api.ts.
- * It must NOT be placed in src/ root, which is owned by ng-openapi-gen.
+ * This service is maintained manually in src/custom/ and exported via src/index.ts.
  *
  * Protocol (from CaseEventSseController.kt):
  * - SSE event id   → CaseEvent UUID
@@ -28,7 +27,7 @@ import { CaseEvent } from '../models/case-event'
  */
 @Injectable({ providedIn: 'root' })
 export class CaseEventSseService {
-  private readonly config = inject(ApiConfiguration)
+  private readonly config = inject(Configuration)
   private readonly zone = inject(NgZone)
 
   /**
@@ -41,7 +40,7 @@ export class CaseEventSseService {
    * then re-enters the zone to emit — ensuring Angular change detection fires.
    */
   connect(caseId: string): Observable<CaseEvent> {
-    const url = `${this.config.rootUrl}/api/cases/${caseId}/events`
+    const url = `${this.config.basePath}/api/cases/${caseId}/events`
 
     return new Observable<CaseEvent>((subscriber) => {
       const source = this.zone.runOutsideAngular(() => new EventSource(url))
@@ -56,7 +55,6 @@ export class CaseEventSseService {
       }
 
       source.onerror = (_event: Event) => {
-        // EventSource readyState 2 = CLOSED: the stream ended (normal or error)
         if (source.readyState === EventSource.CLOSED) {
           this.zone.run(() => subscriber.complete())
         } else {
@@ -65,7 +63,6 @@ export class CaseEventSseService {
         source.close()
       }
 
-      // Teardown: close the EventSource when the Observable is unsubscribed
       return () => source.close()
     })
   }

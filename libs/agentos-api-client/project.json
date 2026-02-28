@@ -16,12 +16,11 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "ng-openapi-gen --config ng-openapi-gen.json",
+        "command": "openapi-generator-cli generate -c openapitools.json -o src/lib",
         "cwd": "libs/agentos-api-client"
       },
-      "configurations": {},
       "metadata": {
-        "description": "Regenerates src/index.ts and src/models+services from the OpenAPI spec. Safe to run at any time. src/public-api.ts and src/custom/ are NOT touched by this command — they are the hand-written layer. See src/public-api.ts for the full entry-point strategy."
+        "description": "Low-level target: regenerates the Angular TypeScript client from the OpenAPI spec using openapi-generator-cli. Safe to run at any time. src/custom/ and src/public-api.ts are NOT touched — they are the hand-written layer. NOTE: to regenerate from scratch (spec + client), use the high-level 'agentos-service:generate-client' target which orchestrates generate-openapi-spec → this target."
       }
     }
   }
