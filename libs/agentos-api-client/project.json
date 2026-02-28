@@ -20,7 +20,7 @@
         "cwd": "libs/agentos-api-client"
       },
       "metadata": {
-        "description": "Low-level target: regenerates the Angular TypeScript client from the OpenAPI spec using openapi-generator-cli. Safe to run at any time. src/custom/ and src/public-api.ts are NOT touched — they are the hand-written layer. NOTE: to regenerate from scratch (spec + client), use the high-level 'agentos-service:generate-client' target which orchestrates generate-openapi-spec → this target."
+        "description": "Regenerates the Angular TypeScript client from the OpenAPI spec using openapi-generator-cli. Safe to run at any time. src/custom/ is NOT touched — it is the hand-written layer. NOTE: to regenerate from scratch (spec + client), use 'agentos-service:regenerate' which orchestrates generate-openapi-spec → this target."
       }
     }
   }
