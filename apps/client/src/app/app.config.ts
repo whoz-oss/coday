@@ -55,7 +55,7 @@ export const appConfig: ApplicationConfig = {
       deps: [OAuthService],
       multi: true,
     },
-    provideApi('/api/agentos'),
+    provideApi({ basePath: '/api/agentos' }),
     {
       provide: MAT_DIALOG_DEFAULT_OPTIONS,
       useValue: {

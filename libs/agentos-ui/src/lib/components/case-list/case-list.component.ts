@@ -2,7 +2,7 @@ import { AsyncPipe } from '@angular/common'
 import { HttpClient } from '@angular/common/http'
 import { Component, inject, signal } from '@angular/core'
 import { ActivatedRoute, Router } from '@angular/router'
-import { CaseControllerService, CaseModel } from '@whoz-oss/agentos-api-client'
+import { CaseControllerService, CaseModel, Configuration } from '@whoz-oss/agentos-api-client'
 import { Observable } from 'rxjs'
 
 /**
@@ -24,6 +24,7 @@ export class CaseListComponent {
   private readonly http = inject(HttpClient)
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
+  private readonly config = inject(Configuration)
   private readonly caseController = inject(CaseControllerService)
 
   private readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
@@ -48,7 +49,7 @@ export class CaseListComponent {
     if (!content) return
 
     this.http
-      .post<CaseModel>('/api/agentos/api/cases', { projectId: this.namespaceId, metadata: {} })
+      .post<CaseModel>(`${this.config.basePath}/api/cases`, { projectId: this.namespaceId, metadata: {} })
       .subscribe((createdCase) => {
         this.inputValue.set('')
         this.router.navigate(['/agentos', this.namespaceId, 'cases', createdCase.id])

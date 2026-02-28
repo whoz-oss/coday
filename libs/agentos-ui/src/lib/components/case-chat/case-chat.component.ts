@@ -3,6 +3,7 @@ import { Component, computed, inject, NgZone, OnDestroy, OnInit, signal } from '
 import { ActivatedRoute } from '@angular/router'
 import {
   CaseEvent,
+  Configuration,
   MessageEvent as CaseMessageEvent,
   ToolRequestEvent,
   ToolResponseEvent,
@@ -38,6 +39,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient)
   private readonly zone = inject(NgZone)
 
+  private readonly config = inject(Configuration)
   private readonly caseId = this.route.snapshot.params['caseId'] as string
   private readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
@@ -122,7 +124,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   private connectSse(): void {
-    const url = `/api/agentos/api/cases/${this.caseId}/events`
+    const url = `${this.config.basePath}/api/cases/${this.caseId}/events`
     this.eventSource = this.zone.runOutsideAngular(() => new EventSource(url))
 
     // NOTE: the backend sends named SSE events ("event: MessageEvent", "event: CaseStatusEvent", ...)
@@ -179,7 +181,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.isRunning.set(true)
 
     this.http
-      .post(`/api/agentos/api/cases/${this.caseId}/messages`, {
+      .post(`${this.config.basePath}/api/cases/${this.caseId}/messages`, {
         content,
         userId: 'default-user',
       })
@@ -192,7 +194,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   protected stop(): void {
-    this.http.post(`/api/agentos/api/cases/${this.caseId}/stop`, {}).subscribe({
+    this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/stop`, {}).subscribe({
       next: () => this.isRunning.set(false),
       error: (err) => console.error('[CaseChat] Failed to stop case', err),
     })
