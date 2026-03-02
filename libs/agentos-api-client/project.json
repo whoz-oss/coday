@@ -16,12 +16,11 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "ng-openapi-gen --config ng-openapi-gen.json",
+        "command": "TS_POST_PROCESS_FILE='prettier --write' openapi-generator-cli generate -c openapitools.json -o src/lib --enable-post-process-file",
         "cwd": "libs/agentos-api-client"
       },
-      "configurations": {},
       "metadata": {
-        "description": "Regenerates src/index.ts and src/models+services from the OpenAPI spec. Safe to run at any time. src/public-api.ts and src/custom/ are NOT touched by this command — they are the hand-written layer. See src/public-api.ts for the full entry-point strategy."
+        "description": "Regenerates the Angular TypeScript client from the OpenAPI spec using openapi-generator-cli. Safe to run at any time. src/custom/ is NOT touched — it is the hand-written layer. NOTE: to regenerate from scratch (spec + client), use 'agentos-service:regenerate' which orchestrates generate-openapi-spec → this target."
       }
     }
   }
