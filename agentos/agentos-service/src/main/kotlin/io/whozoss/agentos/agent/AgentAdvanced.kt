@@ -283,9 +283,7 @@ Generate the JSON parameters for this tool call.
                 )
 
         return try {
-            // TODO: Parse parameters based on tool.paramType
-            // For now, pass null as we need proper parameter parsing
-            val result = tool.execute(null)
+            val result = tool.executeWithJson(toolRequest.args)
 
             ToolResponseEvent(
                 projectId = projectId,

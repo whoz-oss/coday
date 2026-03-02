@@ -38,9 +38,11 @@ interface StandardTool<T> {
     fun executeWithJson(json: String?): String {
         val type = paramType
         val input: T? =
-            if (type == null || json.isNullOrBlank() || json == "{}") {
+            if (type == null || json.isNullOrBlank()) {
+                // No paramType or truly empty args — fall back to tool defaults via execute(null)
                 null
             } else {
+                // Parse JSON (including "{}" so that Kotlin data-class defaults kick in)
                 objectMapper.readValue(json, type)
             }
         return execute(input)
