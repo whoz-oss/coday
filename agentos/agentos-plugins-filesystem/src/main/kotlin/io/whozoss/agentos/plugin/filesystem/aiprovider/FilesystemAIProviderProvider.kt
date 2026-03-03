@@ -79,19 +79,5 @@ class FilesystemAIProviderProvider : AiProviderPlugin {
         )
     }
 
-    override fun initialize() {
-        logger.info { "FilesystemAgentProvider initialized" }
-        logger.info { "Ai providers directory: $aiProviderDirectory" }
-        val aiProviders = getAiProviders()
-        logger.info { "Loaded ${aiProviders.size} Ai Providers(s) from filesystem" }
-        aiProviders.forEach { aiProvider ->
-            logger.info { "  - ${aiProvider.id}: ${aiProvider.name} (type: ${aiProvider.apiType})" }
-        }
-    }
-
-    override fun destroy() {
-        logger.info { "FilesystemAgentProvider destroyed" }
-    }
-
     companion object : KLogging()
 }

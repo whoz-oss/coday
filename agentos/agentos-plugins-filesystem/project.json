@@ -46,7 +46,14 @@
         "command": "./gradlew :agentos-plugins-filesystem:test",
         "cwd": "agentos",
         "passWithNoTests": null
-      }
+      },
+      "dependsOn": [
+        "build",
+        {
+          "target": "build",
+          "projects": ["agentos-sdk"]
+        }
+      ]
     },
     "jar": {
       "executor": "nx:run-commands",

@@ -53,35 +53,33 @@
     ></textarea>
     @if (!isSessionInitializing) {
       @if (isThinking) {
-        <button class="stop-btn" mat-icon-button (click)="onStopClick()" title="Stop generation" type="button">
-          <mat-icon>stop</mat-icon>
-        </button>
+        <ds-icon-button
+          class="action-btn"
+          icon="stop"
+          variant="danger"
+          title="Stop generation"
+          (action)="onStopClick()"
+        />
       } @else {
-        <button
+        <ds-icon-button
           class="send-btn"
-          mat-icon-button
-          (click)="sendMessage()"
+          icon="send"
+          variant="primary"
+          [title]="getSendButtonTooltip()"
           [disabled]="isDisabled || !message.trim() || isLocallyDisabled"
           [class.hidden]="isDisabled || !message.trim() || isLocallyDisabled"
           [class.active]="!!message.trim() && !isDisabled && !isLocallyDisabled"
-          [title]="getSendButtonTooltip()"
-          type="button"
-        >
-          <mat-icon>send</mat-icon>
-        </button>
-        <!-- Upload button - hidden on welcome screen (no threadId yet) -->
+          (action)="sendMessage()"
+        />
         @if (!showWelcome) {
-          <button
+          <ds-icon-button
             class="upload-btn"
-            mat-icon-button
-            (click)="triggerFileUpload()"
-            [disabled]="isDisabled || isLocallyDisabled"
+            icon="attach_file"
+            variant="default"
             title="Upload files (images or documents)"
-            type="button"
-          >
-            <mat-icon>attach_file</mat-icon>
-          </button>
-          <!-- Hidden file input -->
+            [disabled]="isDisabled || isLocallyDisabled"
+            (action)="triggerFileUpload()"
+          />
           <input
             #fileInput
             type="file"
@@ -91,17 +89,15 @@
             (change)="onFileInputChange($event)"
           />
         }
-        <button
+        <ds-icon-button
           class="voice-btn"
-          mat-icon-button
+          [icon]="isRecording ? 'fiber_manual_record' : 'mic'"
+          variant="default"
           [class.recording]="isRecording"
           [class.hidden]="message.trim()"
-          (click)="toggleRecording()"
-          tabindex="0"
           [title]="isRecording ? 'Click to stop recording' : 'Click to start recording'"
-        >
-          <mat-icon>{{ isRecording ? 'fiber_manual_record' : 'mic' }}</mat-icon>
-        </button>
+          (action)="toggleRecording()"
+        />
       }
     }
   </div>

@@ -43,10 +43,59 @@
         "{projectRoot}/build/reports"
       ],
       "options": {
-        "command": "./gradlew clean :agentos-service:test --no-build-cache --no-configuration-cache --no-daemon",
+        "command": "./gradlew :agentos-service:test",
         "cwd": "agentos",
         "passWithNoTests": null
-      }
+      },
+      "dependsOn": [
+        "build",
+        {
+          "target": "build",
+          "projects": ["agentos-sdk"]
+        }
+      ]
+    },
+    "check-openapi-spec": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "inputs": [
+        "{projectRoot}/src/main/kotlin/**/*.kt",
+        "{workspaceRoot}/agentos/openapi/agentos-openapi.yaml"
+      ],
+      "options": {
+        "command": "./agentos-service/check-openapi-spec.sh",
+        "cwd": "agentos"
+      },
+      "dependsOn": [
+        "build"
+      ]
+    },
+    "generate-openapi-spec": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": [
+        "{workspaceRoot}/agentos/openapi/agentos-openapi.yaml"
+      ],
+      "options": {
+        "command": "./gradlew :agentos-service:generateOpenApiDocs --no-configuration-cache",
+        "cwd": "agentos"
+      },
+      "dependsOn": [
+        "build"
+      ]
+    },
+    "generate-client": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/agentos/openapi/agentos-openapi.yaml"
+      ],
+      "options": {
+        "command": "nx run agentos-api-client:generate-client"
+      },
+      "dependsOn": [
+        "generate-openapi-spec"
+      ]
     },
     "bootRun": {
       "executor": "nx:run-commands",

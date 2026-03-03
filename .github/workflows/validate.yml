@@ -42,3 +42,6 @@ jobs:
 
       - name: Run tests and lint
         run: npx nx affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --target="lint,test" --parallel=$NX_MAX_WORKERS --verbose
+
+      - name: Check OpenAPI spec is up to date
+        run: npx nx affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --target="check-openapi-spec" --verbose

@@ -151,20 +151,6 @@ class FilesystemAgentProvider : AgentPlugin {
         }
     }
 
-    override fun initialize() {
-        logger.info { "FilesystemAgentProvider initialized" }
-        logger.info { "Agents directory: $agentsDirectory" }
-        val agents = getAgents()
-        logger.info { "Loaded ${agents.size} agent(s) from filesystem" }
-        agents.forEach { agent ->
-            logger.info { "  - ${agent.id}: ${agent.name}" }
-        }
-    }
-
-    override fun destroy() {
-        logger.info { "FilesystemAgentProvider destroyed" }
-    }
-
     companion object : KLogging() {
         const val DEFAULT_CONTEXT = "general"
     }

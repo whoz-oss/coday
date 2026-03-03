@@ -13,5 +13,5 @@ import java.util.UUID
 data class CaseModel(
     override val metadata: EntityMetadata = EntityMetadata(),
     val projectId: UUID,
-    val status: CaseStatus,
+    val status: CaseStatus = CaseStatus.PENDING,
 ) : Entity

@@ -1,0 +1,16 @@
+{
+  "name": "agentos-dataflow",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/agentos-dataflow/src",
+  "tags": ["scope:agentos-dataflow", "type:dataflow"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"],
+      "options": {
+        "lintFilePatterns": ["libs/agentos-dataflow/**/*.ts"]
+      }
+    }
+  }
+}

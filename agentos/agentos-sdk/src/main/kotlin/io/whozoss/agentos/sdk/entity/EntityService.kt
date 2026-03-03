@@ -17,15 +17,9 @@ import java.util.UUID
  * @param ParentIdentifier The parent identifier type (typically UUID for projectId, caseId, etc.)
  */
 interface EntityService<EntityType : Entity, ParentIdentifier> {
-    /**
-     * Save an entity (create if new, update if exists).
-     *
-     * Spring Data will handle automatic timestamp updates (modified field).
-     *
-     * @param entity The entity to save
-     * @return The saved entity (may include generated fields like ID, timestamps)
-     */
-    fun save(entity: EntityType): EntityType
+    fun create(entity: EntityType): EntityType
+
+    fun update(entity: EntityType): EntityType
 
     /**
      * Find a single entity by its identifier.

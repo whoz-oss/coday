@@ -8,8 +8,4 @@ interface AiProviderPlugin : ExtensionPoint {
     fun getAiProviders(): List<AiProvider>
 
     fun getDescription(): String = ""
-
-    fun initialize() {}
-
-    fun destroy() {}
 }

@@ -1,0 +1,14 @@
+# Spring profile used only during OpenAPI spec generation (generateOpenApiDocs task).
+# Disables all AI providers so the app starts without requiring API keys.
+spring:
+  ai:
+    openai:
+      api-key: "dummy"
+    anthropic:
+      api-key: "dummy"
+    google:
+      genai:
+        api-key: "dummy"
+    mcp:
+      client:
+        enabled: false
