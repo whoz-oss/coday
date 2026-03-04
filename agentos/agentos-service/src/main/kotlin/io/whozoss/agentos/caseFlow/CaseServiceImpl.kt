@@ -77,8 +77,30 @@ class CaseServiceImpl(
     // ========================================
 
     override fun getCaseInstance(caseId: UUID): Case =
-        activeCases[caseId]
-            ?: throw ResourceNotFoundException("No active case instance found: $caseId")
+        activeCases.getOrPut(caseId) { rehydrate(caseId) }
+
+    /**
+     * Rehydrates a [Case] from the repository for a case that exists on disk
+     * but has no live runtime instance (e.g. after a restart or for a past case
+     * that is being resumed).
+     *
+     * @throws ResourceNotFoundException if no persisted [CaseModel] exists for [caseId]
+     */
+    private fun rehydrate(caseId: UUID): Case {
+        val caseModel = caseRepository.findByIds(listOf(caseId)).firstOrNull()
+            ?: throw ResourceNotFoundException("Case not found: $caseId")
+        val pastEvents = caseEventService.findByParent(caseId)
+        logger.info { "[CaseService] Rehydrating case $caseId with ${pastEvents.size} past events" }
+        return Case(
+            id = caseId,
+            projectId = caseModel.projectId,
+            agentService = agentService,
+            caseService = this,
+            caseEventService = caseEventService,
+            inputEvents = pastEvents,
+            caseModel = caseModel,
+        )
+    }
 
     override fun getActiveCasesByProject(projectId: UUID): List<Case> = activeCases.values.filter { it.projectId == projectId }
 

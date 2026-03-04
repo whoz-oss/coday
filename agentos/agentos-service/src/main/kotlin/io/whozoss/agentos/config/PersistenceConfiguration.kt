@@ -1,8 +1,11 @@
-package io.whozoss.agentos.persistence
+package io.whozoss.agentos.config
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.caseEvent.CaseEventRepository
+import io.whozoss.agentos.caseEvent.FilesystemCaseEventRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
+import io.whozoss.agentos.caseFlow.FilesystemCaseRepository
+import io.whozoss.agentos.namespace.FilesystemNamespaceRepository
 import io.whozoss.agentos.namespace.NamespaceRepository
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty

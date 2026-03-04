@@ -9,13 +9,14 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.caseFlow.CaseModel
+import io.whozoss.agentos.caseFlow.FilesystemCaseRepository
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.nio.file.Files
 import java.util.*
 
 /**
- * Unit tests for [FilesystemCaseRepository].
+ * Unit tests for [io.whozoss.agentos.caseFlow.FilesystemCaseRepository].
  *
  * Each test uses an isolated temporary directory so tests do not interfere
  * with each other and no cleanup is needed at the project level.
@@ -23,7 +24,7 @@ import java.util.*
  * These tests validate:
  * - CRUD lifecycle with real file I/O
  * - Persistence across repository instance restarts (simulated by creating a
- *   new [FilesystemCaseRepository] pointing at the same directory)
+ *   new [io.whozoss.agentos.caseFlow.FilesystemCaseRepository] pointing at the same directory)
  * - Soft-delete semantics
  * - Parent-scoped queries
  */

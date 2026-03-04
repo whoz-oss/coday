@@ -1,4 +1,4 @@
-package io.whozoss.agentos.persistence
+package io.whozoss.agentos.config
 
 import org.springframework.boot.context.properties.ConfigurationProperties
 
