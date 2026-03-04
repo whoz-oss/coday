@@ -22,7 +22,7 @@ import java.util.UUID
  * Unit tests for [FilesystemCaseEventRepository].
  *
  * Validates:
- * - Polymorphic (de)serialisation of [CaseEvent] subtypes
+ * - Polymorphic (de)serialisation of [io.whozoss.agentos.sdk.caseEvent.CaseEvent] subtypes
  * - Ordering by timestamp within a case
  * - Persistence across repository restarts
  * - Soft-delete semantics
