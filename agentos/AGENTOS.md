@@ -75,6 +75,36 @@ class MyPlugin : AgentPlugin() {
 }
 ```
 
+## Persistence (WZ-28667)
+
+AgentOS uses **file-system persistence by default**. Data survives restarts.
+
+```
+data/                                  # PERSISTENCE_DATA_DIR (default: data/)
+  cases/<projectId>/<caseId>.json
+  case-events/<caseId>/<eventId>.json
+  namespaces/kotlin.Unit/<namespaceId>.json
+```
+
+To switch to **in-memory** mode (data lost on restart):
+
+```bash
+# env var
+export PERSISTENCE_IN_MEMORY=true
+
+# or application.yml
+agentos.persistence.in-memory: true
+```
+
+### Metrics
+
+CRUD operations are tracked via Micrometer:
+- `agentos.case.operations{operation, namespace}` — counter per op + namespace
+- `agentos.case.storage.bytes` — distribution summary of total data directory size
+
+Available at `/actuator/metrics/agentos.case.operations` and
+`/actuator/prometheus`.
+
 ## Configuration Spring AI
 
 ```yaml
@@ -116,9 +146,7 @@ Plugins custom Whoz créés en Kotlin pour accéder aux données métier.
 
 ## Documentation Détaillée
 
-- **Architecture complète** : [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- **Système de plugins** : [docs/PLUGIN_SYSTEM.md](docs/PLUGIN_SYSTEM.md)
-- **Exemples** : [docs/EXAMPLES.md](docs/EXAMPLES.md)
+- **Architecture complète** : [docs/ARCHITECTURE.md](docs/to-rework/ARCHITECTURE.md)
 
 ---
 

@@ -1,21 +1,18 @@
 package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.sdk.entity.InMemoryEntityRepository
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Repository
 import java.util.UUID
 
 /**
  * In-memory implementation of CaseRepository.
  *
- * Uses the generic InMemoryEntityRepository with:
- * - Entity ID: case.metadata.id (automatic via Entity interface)
- * - Parent ID: case.projectId
- * - Ordering: by ID (arbitrary but consistent)
- *
- * This implementation is suitable for development and testing.
- * For production, consider a persistent implementation (database, file system).
+ * Active only when `agentos.persistence.in-memory=true` (or the `in-memory` profile).
+ * The default mode is file-system persistence via [io.whozoss.agentos.persistence.FilesystemCaseRepository].
  */
 @Repository
+@ConditionalOnProperty(prefix = "agentos.persistence", name = ["in-memory"], havingValue = "true")
 class InMemoryCaseRepository :
     InMemoryEntityRepository<CaseModel, UUID>(
         parentIdExtractor = { it.projectId },
