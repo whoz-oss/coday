@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -67,20 +68,21 @@ class CaseEventSseController(
 
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+        fun sendEvent(event: CaseEvent) =
+            emitter.send(
+                SseEmitter
+                    .event()
+                    .id(event.id.toString())
+                    .name(event.type.value)
+                    .data(event),
+            )
+
         val collectorJob =
             scope.launch {
                 try {
                     // Replay persisted history first so clients connecting mid-run
                     // or reconnecting after a disconnect receive the full sequence.
-                    caseEventService.findByParent(caseId).forEach { event ->
-                        emitter.send(
-                            SseEmitter
-                                .event()
-                                .id(event.id.toString())
-                                .name(event.type.value)
-                                .data(event),
-                        )
-                    }
+                    caseEventService.findByParent(caseId).forEach { sendEvent(it) }
 
                     // If the case is still active, subscribe to the live flow.
                     // If it is a past/completed case the history above is all there is
@@ -88,13 +90,7 @@ class CaseEventSseController(
                     val activeCase = runCatching { caseService.getCaseInstance(caseId) }.getOrNull()
                     activeCase?.events?.collect { event ->
                         try {
-                            emitter.send(
-                                SseEmitter
-                                    .event()
-                                    .id(event.id.toString())
-                                    .name(event.type.value)
-                                    .data(event),
-                            )
+                            sendEvent(event)
                             logger.trace { "Event ${event.type} sent to SSE for case $caseId" }
                         } catch (e: Exception) {
                             logger.debug { "Failed to send event to SSE for case $caseId: ${e.message}" }
