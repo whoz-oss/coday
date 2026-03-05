@@ -1,3 +1,4 @@
+
 package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.agent.AgentService
@@ -5,7 +6,8 @@ import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.DefaultCaseEventEmitter
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventList
 import io.whozoss.agentos.orchestration.CaseEventEmitter
-import io.whozoss.agentos.sdk.actor.*
+import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
@@ -19,8 +21,8 @@ import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import kotlinx.coroutines.flow.catch
-import org.slf4j.LoggerFactory
-import java.util.*
+import mu.KLogging
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -29,12 +31,12 @@ import java.util.concurrent.atomic.AtomicBoolean
  * execution even if no collectors are attached (hot observable) to the output events.
  */
 class Case(
+    // TODO: remove, held by caseModel, need a getter on
     val id: UUID = UUID.randomUUID(),
     val projectId: UUID,
-    @Volatile
-    private var status: CaseStatus = CaseStatus.PENDING,
     private val agentService: AgentService,
     private val caseService: CaseService,
+    private var caseModel: CaseModel,
     private val caseEventService: CaseEventService,
     /**
      * List sorted by timestamp of the events on the case. Sort order to keep.
@@ -42,8 +44,6 @@ class Case(
     inputEvents: List<CaseEvent> = emptyList(),
 ) : CaseEventEmitter by DefaultCaseEventEmitter() {
     private val eventList = InMemoryCaseEventList(inputEvents)
-
-    private val logger = LoggerFactory.getLogger(Case::class.java)
 
     // Stop flag for graceful shutdown
     private val stopRequested = AtomicBoolean(false)
@@ -56,19 +56,19 @@ class Case(
     private var iterationCount = 0
 
     private fun storeAndEmitEvent(event: CaseEvent) {
-        logger.trace("[Case $id] storeAndEmitEvent - event type: ${event::class.simpleName}, event caseId: ${event.caseId}")
+        logger.trace { "[Case $id] storeAndEmitEvent - event type: ${event::class.simpleName}, event caseId: ${event.caseId}" }
         if (id == event.caseId) {
             // do only store here the events of this case.
             // Sub-case events that bubble up are expected to be saved by their case instance
-            logger.debug("[Case $id] Saving event: ${event::class.simpleName}")
-            val savedEvent = caseEventService.save(event)
+            logger.debug { "[Case $id] Saving event: ${event::class.simpleName}" }
+            val savedEvent = caseEventService.create(event)
             eventList.add(savedEvent)
-            logger.debug("[Case $id] Emitting event to flow: ${event::class.simpleName}")
+            logger.debug { "[Case $id] Emitting event to flow: ${event::class.simpleName}" }
             emit(savedEvent)
-            logger.trace("[Case $id] Event emitted successfully")
+            logger.trace { "[Case $id] Event emitted successfully" }
         } else {
             // let the event bubble up.
-            logger.debug("[Case $id] Bubbling up event from different case: ${event.caseId}")
+            logger.debug { "[Case $id] Bubbling up event from different case: ${event.caseId}" }
             emit(event)
         }
     }
@@ -78,7 +78,7 @@ class Case(
      * Preserves case state and allows clean completion of current operation.
      */
     fun stop() {
-        logger.info("[Case $id] Stop requested")
+        logger.info { "[Case $id] Stop requested" }
         updateStatus(CaseStatus.STOPPING)
         stopRequested.set(true)
     }
@@ -88,11 +88,11 @@ class Case(
      * Called when case completes normally.
      */
     suspend fun cleanup() {
-        logger.info("[Case $id] Cleaning up resources")
+        logger.info { "[Case $id] Cleaning up resources" }
         try {
             agentService.cleanup()
         } catch (e: Exception) {
-            logger.error("[Case $id] Error during cleanup", e)
+            logger.error(e) { "[Case $id] Error during cleanup" }
             // Don't throw - cleanup should be best-effort
         }
     }
@@ -102,37 +102,38 @@ class Case(
      * Unlike stop(), this method does not preserve state.
      */
     suspend fun kill() {
-        logger.info("[Case $id] Kill requested")
+        logger.info { "[Case $id] Kill requested" }
         killRequested.set(true)
         stop()
         try {
             agentService.kill()
             cleanup()
         } catch (e: Exception) {
-            logger.error("[Case $id] Error during kill", e)
+            logger.error(e) { "[Case $id] Error during kill" }
         }
     }
 
     fun save() {
-        caseService.save(
-            CaseModel(
-                // fixme: this looses all other audit fields, not good
-                metadata = EntityMetadata(id = id),
-                projectId = projectId,
-                status = status,
-            ),
-        )
+        caseService.update(caseModel)
+    }
+
+    fun updateModel(caseModel: CaseModel) {
+        this.caseModel = caseModel
+    }
+
+    fun pushEvents(events: Collection<CaseEvent>) {
+        events.forEach { eventList.add(it) }
     }
 
     private fun updateStatus(newStatus: CaseStatus) {
-        val oldStatus = status
-        status = newStatus
+        val oldStatus = caseModel.status
+        caseModel = caseModel.copy(status = newStatus)
         save()
-        emit(CaseStatusEvent(metadata = EntityMetadata(), caseId = id, projectId = projectId, status = status))
+        emit(CaseStatusEvent(metadata = EntityMetadata(), caseId = id, projectId = projectId, status = caseModel.status))
         if (newStatus == CaseStatus.ERROR) {
-            logger.error("Case $id status: $oldStatus -> $newStatus")
+            logger.error { "Case $id status: $oldStatus -> $newStatus" }
         } else {
-            logger.info("Case $id status: $oldStatus -> $newStatus")
+            logger.info { "Case $id status: $oldStatus -> $newStatus" }
         }
     }
 
@@ -141,20 +142,20 @@ class Case(
         content: List<MessageContent>,
         answerToEventId: UUID? = null,
     ) {
-        logger.info(
-            "[Case $id] addUserMessage called - actor: ${actor.displayName}, content size: ${content.size}, answerTo: $answerToEventId",
-        )
-        logger.debug("[Case $id] Current status: $status")
+        logger.info {
+            "[Case $id] addUserMessage called - actor: ${actor.displayName}, content size: ${content.size}, answerTo: $answerToEventId"
+        }
+        logger.debug { "[Case $id] Current status: ${caseModel.status}" }
         // If this is an answer to a question, create an AnswerEvent
         if (answerToEventId != null) {
             val questionEvent = eventList.getById(answerToEventId)
 
             if (questionEvent == null) {
-                logger.warn("[Case $id] Question event $answerToEventId not found, treating as regular message")
+                logger.warn { "[Case $id] Question event $answerToEventId not found, treating as regular message" }
             } else if (questionEvent !is QuestionEvent) {
-                logger.warn(
-                    "[Case $id] Event $answerToEventId is not a QuestionEvent (${questionEvent::class.simpleName}), treating as regular message",
-                )
+                logger.warn {
+                    "[Case $id] Event $answerToEventId is not a QuestionEvent (${questionEvent::class.simpleName}), treating as regular message"
+                }
             } else {
                 // Extract answer text from content
                 val answerText =
@@ -163,11 +164,11 @@ class Case(
                         .joinToString(" ") { it.content }
 
                 if (answerText.isBlank()) {
-                    logger.warn("[Case $id] Answer text is blank for question $answerToEventId")
+                    logger.warn { "[Case $id] Answer text is blank for question $answerToEventId" }
                 } else {
                     val answerEvent = questionEvent.createAnswer(actor, answerText)
                     storeAndEmitEvent(answerEvent)
-                    logger.info("[Case $id] Answer added for question: ${questionEvent.question}")
+                    logger.info { "[Case $id] Answer added for question: ${questionEvent.question}" }
                     // Don't run() here - answer is passive, waits for agent to process it
                     return
                 }
@@ -175,7 +176,7 @@ class Case(
         }
 
         // Regular message flow
-        logger.debug("[Case $id] Creating MessageEvent")
+        logger.debug { "[Case $id] Creating MessageEvent" }
         val userMessageEvent =
             MessageEvent(
                 caseId = id,
@@ -183,11 +184,11 @@ class Case(
                 actor = actor,
                 content = content,
             )
-        logger.debug("[Case $id] Storing and emitting MessageEvent")
+        logger.debug { "[Case $id] Storing and emitting MessageEvent" }
         storeAndEmitEvent(userMessageEvent)
-        logger.debug("[Case $id] Detecting agent selection")
+        logger.debug { "[Case $id] Detecting agent selection" }
         detectAgentSelection(content)
-        logger.info("[Case $id] Starting case run()")
+        logger.info { "[Case $id] Starting case run()" }
         run()
     }
 
@@ -205,20 +206,22 @@ class Case(
         val matchResult = mentionPattern.find(firstText) ?: return
 
         val agentName = matchResult.groupValues[1]
-        logger.debug("[Case $id] Agent mention detected: @$agentName")
+        logger.debug { "[Case $id] Agent mention detected: @$agentName" }
 
-        try {
-            val agent = agentService.findAgentByName(agentName)
+        val resolvedName = agentService.resolveAgentName(agentName)
+        if (resolvedName != null) {
+            // Derive a stable id from the name, consistent with AgentServiceImpl.createAgentInstance
+            val agentId = UUID.nameUUIDFromBytes(resolvedName.toByteArray())
             val agentSelectedEvent =
                 AgentSelectedEvent(
                     projectId = projectId,
                     caseId = id,
-                    agentId = agent.metadata.id,
-                    agentName = agent.name,
+                    agentId = agentId,
+                    agentName = resolvedName,
                 )
             storeAndEmitEvent(agentSelectedEvent)
-            logger.info("[Case $id] Agent selected: ${agent.name}")
-        } catch (e: Exception) {
+            logger.info { "[Case $id] Agent selected: $resolvedName" }
+        } else {
             val warnEvent =
                 WarnEvent(
                     projectId = projectId,
@@ -226,7 +229,7 @@ class Case(
                     message = "Agent '$agentName' not found",
                 )
             storeAndEmitEvent(warnEvent)
-            logger.warn("[Case $id] Agent '@$agentName' not found: ${e.message}")
+            logger.warn { "[Case $id] Agent '@$agentName' not found" }
         }
     }
 
@@ -236,15 +239,15 @@ class Case(
      * It should be called in a dedicated thread by the CaseService.
      */
     suspend fun run() {
-        logger.info("[Case $id] run() called - current status: $status")
+        logger.info { "[Case $id] run() called - current status: ${caseModel.status}" }
 
         // Case is already running, do nothing
-        if (status == CaseStatus.RUNNING) {
-            logger.warn("[Case $id] Already running, skipping run()")
+        if (caseModel.status == CaseStatus.RUNNING) {
+            logger.warn { "[Case $id] Already running, skipping run()" }
             return
         }
 
-        logger.info("[Case $id] Starting case execution")
+        logger.info { "[Case $id] Starting case execution" }
 
         // Reset stop flags when restarting
         stopRequested.set(false)
@@ -254,19 +257,19 @@ class Case(
         iterationCount = 0
 
         try {
-            logger.debug("[Case $id] Entering main processing loop")
+            logger.debug { "[Case $id] Entering main processing loop" }
             // Main processing loop
             while (!stopRequested.get() && !killRequested.get() && iterationCount < maxIterations) {
-                logger.debug("[Case $id] Processing iteration $iterationCount")
+                logger.debug { "[Case $id] Processing iteration $iterationCount" }
                 processNextStep()
                 iterationCount++
             }
-            logger.info(
-                "[Case $id] Exited main loop - iterations: $iterationCount, stopRequested: ${stopRequested.get()}, killRequested: ${killRequested.get()}",
-            )
+            logger.info {
+                "[Case $id] Exited main loop - iterations: $iterationCount, stopRequested: ${stopRequested.get()}, killRequested: ${killRequested.get()}"
+            }
 
             if (iterationCount >= maxIterations) {
-                logger.error("[Case $id] Maximum iterations ($maxIterations) reached")
+                logger.error { "[Case $id] Maximum iterations ($maxIterations) reached" }
                 updateStatus(CaseStatus.ERROR)
             } else if (killRequested.get()) {
                 updateStatus(CaseStatus.STOPPED)
@@ -277,7 +280,7 @@ class Case(
                 updateStatus(CaseStatus.STOPPED)
             }
         } catch (e: Exception) {
-            logger.error("[Case $id] Error during execution", e)
+            logger.error(e) { "[Case $id] Error during execution" }
             updateStatus(CaseStatus.ERROR)
         } finally {
             cleanup()
@@ -285,12 +288,12 @@ class Case(
     }
 
     private suspend fun runAgent(agent: Agent) {
-        logger.info("[Case $id] Running agent: ${agent.name}")
+        logger.info { "[Case $id] Running agent: ${agent.name}" }
 
         agent
             .run(eventList.getAll())
             .catch { error ->
-                logger.error("[Case $id] Error in agent ${agent.name}", error)
+                logger.error(error) { "[Case $id] Error in agent ${agent.name}" }
                 // Emit error event but continue processing
                 storeAndEmitEvent(
                     WarnEvent(
@@ -303,7 +306,7 @@ class Case(
                 storeAndEmitEvent(event)
             }
 
-        logger.info("[Case $id] Agent ${agent.name} finished")
+        logger.info { "[Case $id] Agent ${agent.name} finished" }
     }
 
     /**
@@ -316,41 +319,42 @@ class Case(
      */
     private suspend fun processNextStep() {
         val events = eventList.getAll()
-        logger.debug("[Case $id] processNextStep - total events: ${events.size}")
+        logger.debug { "[Case $id] processNextStep - total events: ${events.size}" }
 
         // Find the last user message to know where to start looking for agent events
         val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER }
-        logger.debug("[Case $id] Last user message at index: $lastUserMessageIndex")
+        logger.debug { "[Case $id] Last user message at index: $lastUserMessageIndex" }
 
         // get through events by last one, but only after the last user message
         for (i in events.lastIndex downTo 0) {
             val event = events[i]
-            logger.trace("[Case $id] Checking event $i: ${event::class.simpleName}")
+            logger.trace { "[Case $id] Checking event $i: ${event::class.simpleName}" }
 
             // Skip AgentFinishedEvent if it's before the last user message (old conversation)
             if (event is AgentFinishedEvent && i < lastUserMessageIndex) {
-                logger.debug("[Case $id] Skipping old AgentFinishedEvent at index $i (before last user message)")
+                logger.debug { "[Case $id] Skipping old AgentFinishedEvent at index $i (before last user message)" }
                 continue
             }
 
             when (event) {
                 // if agent finished, just stop
                 is AgentFinishedEvent -> {
-                    logger.info("[Case $id] Found AgentFinishedEvent, stopping case")
+                    logger.info { "[Case $id] Found AgentFinishedEvent, stopping case" }
                     stopRequested.set(true)
                     return
                 }
+
                 // if agent running, make it run
                 is AgentRunningEvent -> {
-                    logger.info("[Case $id] Found AgentRunningEvent for agent: ${event.agentName}")
+                    logger.info { "[Case $id] Found AgentRunningEvent for agent: ${event.agentName}" }
                     val agent = agentService.findAgentByName(event.agentName)
                     runAgent(agent)
                     return
                 }
 
-                // if agent selected, make it run
+                // if agent selected, transition to running
                 is AgentSelectedEvent -> {
-                    logger.info("[Case $id] Found AgentSelectedEvent for agent: ${event.agentName}, transitioning to running")
+                    logger.info { "[Case $id] Found AgentSelectedEvent for agent: ${event.agentName}, transitioning to running" }
                     val agentRunningEvent =
                         AgentRunningEvent(
                             projectId = projectId,
@@ -369,29 +373,33 @@ class Case(
             }
         }
 
-        logger.debug("[Case $id] No relevant events found, selecting default agent")
+        logger.debug { "[Case $id] No relevant events found, selecting default agent" }
 
         selectDefaultAgent()
     }
 
     private fun selectDefaultAgent() {
-        logger.info("[Case $id] Selecting default agent")
-        val defaultAgent = agentService.getDefaultAgent()
-        if (defaultAgent != null) {
-            logger.info("[Case $id] Default agent found: ${defaultAgent.name} (id: ${defaultAgent.metadata.id})")
+        logger.info { "[Case $id] Selecting default agent" }
+        val defaultAgentName = agentService.getDefaultAgentName()
+        if (defaultAgentName != null) {
+            // Use nameUUIDFromBytes to derive a stable id from the name, consistent with createAgentInstance
+            val agentId = UUID.nameUUIDFromBytes(defaultAgentName.toByteArray())
+            logger.info { "[Case $id] Default agent found: $defaultAgentName (id: $agentId)" }
             val agentSelectedEvent =
                 AgentSelectedEvent(
                     projectId = projectId,
                     caseId = id,
-                    agentId = defaultAgent.metadata.id,
-                    agentName = defaultAgent.name,
+                    agentId = agentId,
+                    agentName = defaultAgentName,
                 )
-            logger.debug("[Case $id] Emitting AgentSelectedEvent")
+            logger.debug { "[Case $id] Emitting AgentSelectedEvent" }
             storeAndEmitEvent(agentSelectedEvent)
-            logger.info("[Case $id] AgentSelectedEvent emitted for ${defaultAgent.name}")
+            logger.info { "[Case $id] AgentSelectedEvent emitted for $defaultAgentName" }
         } else {
-            logger.error("[Case $id] No default agent configured, stopping case")
+            logger.error { "[Case $id] No default agent configured, stopping case" }
             stopRequested.set(true)
         }
     }
+
+    companion object : KLogging()
 }

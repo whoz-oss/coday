@@ -1,0 +1,10 @@
+.layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+
+  &__content {
+    flex: 1;
+    overflow-y: auto;
+  }
+}

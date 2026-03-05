@@ -1,0 +1,14 @@
+{
+  "$schema": "../../node_modules/ng-openapi-gen/ng-openapi-gen-schema.json",
+  "apiService": "AgentosApi",
+  "enumArray": true,
+  "enumStyle": "alias",
+  "excludeTags": ["sse"],
+  "ignoreUnusedModels": false,
+  "indexFile": true,
+  "input": "../../agentos/openapi/agentos-openapi.yaml",
+  "module": false,
+  "output": "src",
+  "promises": false,
+  "services": true
+}

@@ -10,13 +10,13 @@ tags:
 - name: sse
   description: "Server-Sent Events endpoints — use EventSource API, not HTTP client"
 paths:
-  /api/cases/{caseId}:
+  /api/namespaces/{id}:
     get:
       tags:
-      - case-controller
-      operationId: getCase
+      - namespace-controller
+      operationId: getById
       parameters:
-      - name: caseId
+      - name: id
         in: path
         required: true
         schema:
@@ -26,15 +26,15 @@ paths:
         "200":
           description: OK
           content:
-            '*/*':
+            application/json:
               schema:
-                $ref: "#/components/schemas/CaseResponse"
+                $ref: "#/components/schemas/Namespace"
     put:
       tags:
-      - case-controller
-      operationId: updateCase
+      - namespace-controller
+      operationId: update
       parameters:
-      - name: caseId
+      - name: id
         in: path
         required: true
         schema:
@@ -44,15 +44,185 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpdateCaseRequest"
+              $ref: "#/components/schemas/Namespace"
         required: true
       responses:
         "200":
           description: OK
           content:
-            '*/*':
+            application/json:
               schema:
-                $ref: "#/components/schemas/CaseResponse"
+                $ref: "#/components/schemas/Namespace"
+    delete:
+      tags:
+      - namespace-controller
+      operationId: delete
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+  /api/cases/{id}:
+    get:
+      tags:
+      - case-controller
+      operationId: getById_1
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseModel"
+    put:
+      tags:
+      - case-controller
+      operationId: update_1
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CaseModel"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseModel"
+    delete:
+      tags:
+      - case-controller
+      operationId: delete_1
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+  /api/case-events/{id}:
+    get:
+      tags:
+      - case-event-rest-controller
+      operationId: getById_2
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: "#/components/schemas/AgentFinishedEvent"
+                - $ref: "#/components/schemas/AgentRunningEvent"
+                - $ref: "#/components/schemas/AgentSelectedEvent"
+                - $ref: "#/components/schemas/AnswerEvent"
+                - $ref: "#/components/schemas/CaseStatusEvent"
+                - $ref: "#/components/schemas/IntentionGeneratedEvent"
+                - $ref: "#/components/schemas/MessageEvent"
+                - $ref: "#/components/schemas/QuestionEvent"
+                - $ref: "#/components/schemas/TextChunkEvent"
+                - $ref: "#/components/schemas/ThinkingEvent"
+                - $ref: "#/components/schemas/ToolRequestEvent"
+                - $ref: "#/components/schemas/ToolResponseEvent"
+                - $ref: "#/components/schemas/ToolSelectedEvent"
+                - $ref: "#/components/schemas/WarnEvent"
+    put:
+      tags:
+      - case-event-rest-controller
+      operationId: update_2
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: "#/components/schemas/AgentFinishedEvent"
+              - $ref: "#/components/schemas/AgentRunningEvent"
+              - $ref: "#/components/schemas/AgentSelectedEvent"
+              - $ref: "#/components/schemas/AnswerEvent"
+              - $ref: "#/components/schemas/CaseStatusEvent"
+              - $ref: "#/components/schemas/IntentionGeneratedEvent"
+              - $ref: "#/components/schemas/MessageEvent"
+              - $ref: "#/components/schemas/QuestionEvent"
+              - $ref: "#/components/schemas/TextChunkEvent"
+              - $ref: "#/components/schemas/ThinkingEvent"
+              - $ref: "#/components/schemas/ToolRequestEvent"
+              - $ref: "#/components/schemas/ToolResponseEvent"
+              - $ref: "#/components/schemas/ToolSelectedEvent"
+              - $ref: "#/components/schemas/WarnEvent"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: "#/components/schemas/AgentFinishedEvent"
+                - $ref: "#/components/schemas/AgentRunningEvent"
+                - $ref: "#/components/schemas/AgentSelectedEvent"
+                - $ref: "#/components/schemas/AnswerEvent"
+                - $ref: "#/components/schemas/CaseStatusEvent"
+                - $ref: "#/components/schemas/IntentionGeneratedEvent"
+                - $ref: "#/components/schemas/MessageEvent"
+                - $ref: "#/components/schemas/QuestionEvent"
+                - $ref: "#/components/schemas/TextChunkEvent"
+                - $ref: "#/components/schemas/ThinkingEvent"
+                - $ref: "#/components/schemas/ToolRequestEvent"
+                - $ref: "#/components/schemas/ToolResponseEvent"
+                - $ref: "#/components/schemas/ToolSelectedEvent"
+                - $ref: "#/components/schemas/WarnEvent"
+    delete:
+      tags:
+      - case-event-rest-controller
+      operationId: delete_2
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
   /api/tools/{toolName}/execute:
     post:
       tags:
@@ -163,44 +333,65 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/PluginActionResponse"
-  /api/cases:
-    get:
-      tags:
-      - case-controller
-      operationId: listCases
-      parameters:
-      - name: projectId
-        in: query
-        required: false
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/CaseResponse"
+  /api/namespaces:
     post:
       tags:
-      - case-controller
-      operationId: createCase
+      - namespace-controller
+      operationId: create
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateCaseRequest"
+              $ref: "#/components/schemas/Namespace"
         required: true
       responses:
         "201":
           description: Created
           content:
-            '*/*':
+            application/json:
               schema:
-                $ref: "#/components/schemas/CaseResponse"
+                $ref: "#/components/schemas/Namespace"
+  /api/namespaces/by-ids:
+    post:
+      tags:
+      - namespace-controller
+      operationId: getByIds
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+                format: uuid
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Namespace"
+  /api/cases:
+    post:
+      tags:
+      - case-controller
+      operationId: create_1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CaseModel"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseModel"
   /api/cases/{caseId}/stop:
     post:
       tags:
@@ -252,26 +443,112 @@ paths:
       responses:
         "200":
           description: OK
-  /ai/generate:
+  /api/cases/by-ids:
     post:
       tags:
-      - ai-controller
-      operationId: generate
+      - case-controller
+      operationId: getByIds_1
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Query"
+              type: array
+              items:
+                type: string
+                format: uuid
         required: true
       responses:
         "200":
           description: OK
           content:
-            '*/*':
+            application/json:
               schema:
-                type: object
-                additionalProperties:
-                  type: string
+                type: array
+                items:
+                  $ref: "#/components/schemas/CaseModel"
+  /api/case-events:
+    post:
+      tags:
+      - case-event-rest-controller
+      operationId: create_2
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: "#/components/schemas/AgentFinishedEvent"
+              - $ref: "#/components/schemas/AgentRunningEvent"
+              - $ref: "#/components/schemas/AgentSelectedEvent"
+              - $ref: "#/components/schemas/AnswerEvent"
+              - $ref: "#/components/schemas/CaseStatusEvent"
+              - $ref: "#/components/schemas/IntentionGeneratedEvent"
+              - $ref: "#/components/schemas/MessageEvent"
+              - $ref: "#/components/schemas/QuestionEvent"
+              - $ref: "#/components/schemas/TextChunkEvent"
+              - $ref: "#/components/schemas/ThinkingEvent"
+              - $ref: "#/components/schemas/ToolRequestEvent"
+              - $ref: "#/components/schemas/ToolResponseEvent"
+              - $ref: "#/components/schemas/ToolSelectedEvent"
+              - $ref: "#/components/schemas/WarnEvent"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: "#/components/schemas/AgentFinishedEvent"
+                - $ref: "#/components/schemas/AgentRunningEvent"
+                - $ref: "#/components/schemas/AgentSelectedEvent"
+                - $ref: "#/components/schemas/AnswerEvent"
+                - $ref: "#/components/schemas/CaseStatusEvent"
+                - $ref: "#/components/schemas/IntentionGeneratedEvent"
+                - $ref: "#/components/schemas/MessageEvent"
+                - $ref: "#/components/schemas/QuestionEvent"
+                - $ref: "#/components/schemas/TextChunkEvent"
+                - $ref: "#/components/schemas/ThinkingEvent"
+                - $ref: "#/components/schemas/ToolRequestEvent"
+                - $ref: "#/components/schemas/ToolResponseEvent"
+                - $ref: "#/components/schemas/ToolSelectedEvent"
+                - $ref: "#/components/schemas/WarnEvent"
+  /api/case-events/by-ids:
+    post:
+      tags:
+      - case-event-rest-controller
+      operationId: getByIds_2
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+                format: uuid
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  oneOf:
+                  - $ref: "#/components/schemas/AgentFinishedEvent"
+                  - $ref: "#/components/schemas/AgentRunningEvent"
+                  - $ref: "#/components/schemas/AgentSelectedEvent"
+                  - $ref: "#/components/schemas/AnswerEvent"
+                  - $ref: "#/components/schemas/CaseStatusEvent"
+                  - $ref: "#/components/schemas/IntentionGeneratedEvent"
+                  - $ref: "#/components/schemas/MessageEvent"
+                  - $ref: "#/components/schemas/QuestionEvent"
+                  - $ref: "#/components/schemas/TextChunkEvent"
+                  - $ref: "#/components/schemas/ThinkingEvent"
+                  - $ref: "#/components/schemas/ToolRequestEvent"
+                  - $ref: "#/components/schemas/ToolResponseEvent"
+                  - $ref: "#/components/schemas/ToolSelectedEvent"
+                  - $ref: "#/components/schemas/WarnEvent"
   /api/tools:
     get:
       tags:
@@ -383,6 +660,38 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/PluginActionResponse"
+  /api/namespaces/list:
+    get:
+      tags:
+      - namespace-controller
+      operationId: listAll
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Namespace"
+  /api/namespaces/by-parentId/{parentId}:
+    get:
+      tags:
+      - namespace-controller
+      operationId: listByParent
+      parameters:
+      - name: parentId
+        in: path
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Namespace"
   /api/cases/{caseId}/events:
     get:
       tags:
@@ -401,29 +710,499 @@ paths:
           format: uuid
       responses:
         "200":
-          description: "SSE stream — each event is a JSON-serialized case event (MessageEvent,\
-            \ ToolRequestEvent, etc.)"
+          description: "SSE stream — each event is a JSON-serialized CaseEvent subtype\
+            \ (MessageEvent, ToolRequestEvent, etc.) with a \"type\" discriminant\
+            \ field."
           content:
             text/event-stream: {}
+  /api/cases/by-parentId/{parentId}:
+    get:
+      tags:
+      - case-controller
+      operationId: listByParent_1
+      parameters:
+      - name: parentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CaseModel"
+  /api/case-events/by-parentId/{parentId}:
+    get:
+      tags:
+      - case-event-rest-controller
+      operationId: listByParent_2
+      parameters:
+      - name: parentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  oneOf:
+                  - $ref: "#/components/schemas/AgentFinishedEvent"
+                  - $ref: "#/components/schemas/AgentRunningEvent"
+                  - $ref: "#/components/schemas/AgentSelectedEvent"
+                  - $ref: "#/components/schemas/AnswerEvent"
+                  - $ref: "#/components/schemas/CaseStatusEvent"
+                  - $ref: "#/components/schemas/IntentionGeneratedEvent"
+                  - $ref: "#/components/schemas/MessageEvent"
+                  - $ref: "#/components/schemas/QuestionEvent"
+                  - $ref: "#/components/schemas/TextChunkEvent"
+                  - $ref: "#/components/schemas/ThinkingEvent"
+                  - $ref: "#/components/schemas/ToolRequestEvent"
+                  - $ref: "#/components/schemas/ToolResponseEvent"
+                  - $ref: "#/components/schemas/ToolSelectedEvent"
+                  - $ref: "#/components/schemas/WarnEvent"
 components:
   schemas:
-    UpdateCaseRequest:
-      type: object
-      properties:
-        dummy:
-          type: string
-    CaseResponse:
+    EntityMetadata:
       type: object
       properties:
         id:
           type: string
           format: uuid
-        projectId:
+        created:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        modified:
+          type: string
+          format: date-time
+        modifiedBy:
+          type: string
+        removed:
+          type: boolean
+      required:
+      - created
+      - id
+      - modified
+      - removed
+    Namespace:
+      type: object
+      properties:
+        metadata:
+          $ref: "#/components/schemas/EntityMetadata"
+        name:
+          type: string
+        description:
+          type: string
+        id:
           type: string
           format: uuid
       required:
       - id
+      - metadata
+      - name
+    CaseModel:
+      type: object
+      properties:
+        metadata:
+          $ref: "#/components/schemas/EntityMetadata"
+        projectId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - PENDING
+          - RUNNING
+          - STOPPING
+          - ERROR
+          - STOPPED
+        id:
+          type: string
+          format: uuid
+      required:
+      - id
+      - metadata
       - projectId
+      - status
+    Actor:
+      type: object
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        role:
+          type: string
+          enum:
+          - USER
+          - AGENT
+      required:
+      - displayName
+      - id
+      - role
+    AgentFinishedEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          agentId:
+            type: string
+            format: uuid
+          agentName:
+            type: string
+      required:
+      - agentId
+      - agentName
+      - caseId
+      - id
+      - metadata
+      - projectId
+      - timestamp
+      - type
+    AgentRunningEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          agentId:
+            type: string
+            format: uuid
+          agentName:
+            type: string
+      required:
+      - agentId
+      - agentName
+      - caseId
+      - id
+      - metadata
+      - projectId
+      - timestamp
+      - type
+    AgentSelectedEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          agentId:
+            type: string
+            format: uuid
+          agentName:
+            type: string
+      required:
+      - agentId
+      - agentName
+      - caseId
+      - id
+      - metadata
+      - projectId
+      - timestamp
+      - type
+    AnswerEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          questionId:
+            type: string
+            format: uuid
+          actor:
+            $ref: "#/components/schemas/Actor"
+          answer:
+            type: string
+      required:
+      - actor
+      - answer
+      - caseId
+      - id
+      - metadata
+      - projectId
+      - questionId
+      - timestamp
+      - type
+    CaseEvent:
+      type: object
+      discriminator:
+        propertyName: type
+      properties:
+        type:
+          type: string
+          enum:
+          - STATUS
+          - AGENT_SELECTED
+          - MESSAGE
+          - TOOL_REQUEST
+          - TOOL_RESPONSE
+          - THINKING
+          - AGENT_FINISHED
+          - AGENT_RUNNING
+          - WARN
+          - ERROR
+          - QUESTION
+          - ANSWER
+          - INTENTION_GENERATED
+          - TOOL_SELECTED
+          - TEXT_CHUNK
+        timestamp:
+          type: string
+          format: date-time
+        projectId:
+          type: string
+          format: uuid
+        caseId:
+          type: string
+          format: uuid
+        id:
+          type: string
+          format: uuid
+        metadata:
+          $ref: "#/components/schemas/EntityMetadata"
+      required:
+      - caseId
+      - id
+      - metadata
+      - projectId
+      - timestamp
+      - type
+    CaseStatusEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          status:
+            type: string
+            enum:
+            - PENDING
+            - RUNNING
+            - STOPPING
+            - ERROR
+            - STOPPED
+      required:
+      - caseId
+      - id
+      - metadata
+      - projectId
+      - status
+      - timestamp
+      - type
+    Image:
+      allOf:
+      - $ref: "#/components/schemas/MessageContent"
+      - type: object
+        properties:
+          content:
+            type: string
+          mimeType:
+            type: string
+          width:
+            type: integer
+            format: int32
+          height:
+            type: integer
+            format: int32
+      required:
+      - content
+      - mimeType
+    IntentionGeneratedEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          agentId:
+            type: string
+            format: uuid
+          intention:
+            type: string
+      required:
+      - agentId
+      - caseId
+      - id
+      - intention
+      - metadata
+      - projectId
+      - timestamp
+      - type
+    MessageContent:
+      discriminator:
+        propertyName: type
+      properties:
+        type:
+          type: string
+      required:
+      - type
+    MessageEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          actor:
+            $ref: "#/components/schemas/Actor"
+          content:
+            type: array
+            items:
+              oneOf:
+              - $ref: "#/components/schemas/Image"
+              - $ref: "#/components/schemas/Text"
+      required:
+      - actor
+      - caseId
+      - content
+      - id
+      - metadata
+      - projectId
+      - timestamp
+      - type
+    QuestionEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          agentId:
+            type: string
+            format: uuid
+          agentName:
+            type: string
+          question:
+            type: string
+          options:
+            type: array
+            items:
+              type: string
+      required:
+      - agentId
+      - agentName
+      - caseId
+      - id
+      - metadata
+      - projectId
+      - question
+      - timestamp
+      - type
+    Text:
+      allOf:
+      - $ref: "#/components/schemas/MessageContent"
+      - type: object
+        properties:
+          content:
+            type: string
+      required:
+      - content
+    TextChunkEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          chunk:
+            type: string
+      required:
+      - caseId
+      - chunk
+      - id
+      - metadata
+      - projectId
+      - timestamp
+      - type
+    ThinkingEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      required:
+      - caseId
+      - id
+      - metadata
+      - projectId
+      - timestamp
+      - type
+    ToolRequestEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          toolRequestId:
+            type: string
+          toolName:
+            type: string
+          args:
+            type: string
+      required:
+      - caseId
+      - id
+      - metadata
+      - projectId
+      - timestamp
+      - toolName
+      - toolRequestId
+      - type
+    ToolResponseEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          toolRequestId:
+            type: string
+          toolName:
+            type: string
+          output:
+            oneOf:
+            - $ref: "#/components/schemas/Image"
+            - $ref: "#/components/schemas/Text"
+          success:
+            type: boolean
+      required:
+      - caseId
+      - id
+      - metadata
+      - output
+      - projectId
+      - success
+      - timestamp
+      - toolName
+      - toolRequestId
+      - type
+    ToolSelectedEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          agentId:
+            type: string
+            format: uuid
+          toolName:
+            type: string
+      required:
+      - agentId
+      - caseId
+      - id
+      - metadata
+      - projectId
+      - timestamp
+      - toolName
+      - type
+    WarnEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          message:
+            type: string
+      required:
+      - caseId
+      - id
+      - message
+      - metadata
+      - projectId
+      - timestamp
+      - type
     ToolExecutionResult:
       type: object
       properties:
@@ -467,14 +1246,6 @@ components:
       required:
       - message
       - success
-    CreateCaseRequest:
-      type: object
-      properties:
-        projectId:
-          type: string
-          format: uuid
-      required:
-      - projectId
     AddMessageRequest:
       type: object
       properties:
@@ -488,27 +1259,6 @@ components:
       required:
       - content
       - userId
-    ModelConfig:
-      type: object
-      properties:
-        providerName:
-          type: string
-        apiKey:
-          type: string
-        model:
-          type: string
-      required:
-      - providerName
-    Query:
-      type: object
-      properties:
-        message:
-          type: string
-        modelConfig:
-          $ref: "#/components/schemas/ModelConfig"
-      required:
-      - message
-      - modelConfig
     ToolOutput:
       type: object
       properties:

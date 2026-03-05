@@ -24,7 +24,6 @@
     "build-angular": {
       "executor": "@angular/build:application",
       "outputs": ["{options.outputPath}"],
-      "dependsOn": ["design-system:build", "agentos-ui:build"],
       "options": {
         "outputPath": "{projectRoot}/dist",
         "baseHref": "/",
@@ -69,7 +68,8 @@
       "executor": "@angular/build:dev-server",
       "options": {
         "port": 4200,
-        "host": "localhost"
+        "host": "localhost",
+        "proxyConfig": "apps/client/proxy.conf.json"
       },
       "configurations": {
         "production": {

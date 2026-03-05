@@ -1,0 +1,11 @@
+{
+  "/api/agentos": {
+    "changeOrigin": true,
+    "logLevel": "debug",
+    "pathRewrite": {
+      "^/api/agentos/api": "/api"
+    },
+    "secure": false,
+    "target": "http://localhost:8123"
+  }
+}

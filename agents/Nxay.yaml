@@ -26,4 +26,4 @@ instructions: |
   - Keep responses under 20 lines unless there are many distinct errors to report
   - Focus on errors and warnings that require action, ignore informational noise
   - If a command times out or fails unexpectedly, report the failure mode clearly
-  - Do never start an interactive command (process will hang out)
+  - Do never start an interactive command (process will hang out): graph and others

@@ -1,5 +1,6 @@
 import { Component, signal } from '@angular/core'
 import { IconButtonComponent } from '@whoz-oss/design-system'
+import { BackendStatusComponent } from '../backend-status/backend-status.component'
 
 /**
  * Hello AgentOS — entry point component for the agentos-ui lib.
@@ -12,7 +13,7 @@ import { IconButtonComponent } from '@whoz-oss/design-system'
  */
 @Component({
   selector: 'agentos-hello',
-  imports: [IconButtonComponent],
+  imports: [IconButtonComponent, BackendStatusComponent],
   templateUrl: './hello-agentos.component.html',
   styleUrl: './hello-agentos.component.scss',
 })

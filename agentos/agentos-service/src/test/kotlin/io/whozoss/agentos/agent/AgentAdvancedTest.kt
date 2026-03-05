@@ -67,6 +67,8 @@ class AgentAdvancedTest : StringSpec({
                 metadata = EntityMetadata(id = agentId),
                 name = "TestAgent",
                 description = "Test agent for advanced orchestration",
+                modelName = "gpt-4o",
+                providerName = "openai",
             )
         val agent =
             AgentAdvanced(

@@ -1,7 +1,7 @@
 package io.whozoss.agentos.caseEvent
 
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
-import org.slf4j.LoggerFactory
+import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -20,20 +20,9 @@ import java.util.UUID
 class CaseEventServiceImpl(
     private val repository: CaseEventRepository,
 ) : CaseEventService {
-    private val logger = LoggerFactory.getLogger(CaseEventServiceImpl::class.java)
+    override fun create(entity: CaseEvent): CaseEvent = repository.save(entity)
 
-    /**
-     * Save an event with validation.
-     * Ensures events are valid before persisting.
-     */
-    override fun save(entity: CaseEvent): CaseEvent {
-        // Future: Add validation logic here
-        // - Check event integrity
-        // - Validate relationships (case exists, etc.)
-        // - Enforce business rules
-
-        return repository.save(entity)
-    }
+    override fun update(entity: CaseEvent): CaseEvent = repository.save(entity)
 
     /**
      * Find multiple events by their IDs.
@@ -62,4 +51,6 @@ class CaseEventServiceImpl(
      * Useful for cascade deletion when a case is removed.
      */
     override fun deleteByParent(parentId: UUID): Int = repository.deleteByParent(parentId)
+
+    companion object : KLogging()
 }

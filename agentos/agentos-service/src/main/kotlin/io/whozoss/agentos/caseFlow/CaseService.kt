@@ -28,19 +28,6 @@ interface CaseService : EntityService<CaseModel, UUID> {
     // ========================================
 
     /**
-     * Create a new case instance for the given project.
-     * This creates both the persistent CaseModel and the runtime Case instance.
-     *
-     * @param projectId The project this case belongs to
-     * @param initialEvents Optional list of events to initialize the case with (for resumption)
-     * @return The created Case instance (runtime)
-     */
-    fun createCaseInstance(
-        projectId: UUID,
-        initialEvents: List<CaseEvent> = emptyList(),
-    ): Case
-
-    /**
      * Retrieve an active case runtime instance by ID.
      *
      * @param caseId The unique identifier of the case

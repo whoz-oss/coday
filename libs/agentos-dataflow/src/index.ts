@@ -1,7 +1,9 @@
 // agentos-dataflow public API
 //
-// This lib handles typed data flow from the AgentOS API to the UI layer:
-// thread modelling, event streams, derived observables and signals.
+// Typed data flow from the AgentOS API to the UI layer:
+// namespace and case state, event streams, derived observables.
 //
-// Future dependency: @whoz-oss/agentos-api-client (generated, separate chantier)
-// Source of truth migration: progressively pulls from @coday/model as needed
+// Depends on @whoz-oss/agentos-api-client for generated types and services.
+
+export { NamespaceState } from './lib/namespace.state'
+export { NamespaceStateService } from './lib/namespace-state.service'

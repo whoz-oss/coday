@@ -363,6 +363,47 @@ This script will:
 - ✅ Test independent builds
 - ✅ Verify generated artifacts
 
+## Tool Registration for Plugins
+
+When registering a `StandardTool` from a plugin with Spring AI, always implement `ToolCallback` directly using `DefaultToolDefinition`. **Do not use `MethodToolCallback`.**
+
+### Why
+
+`MethodToolCallback` generates the LLM-facing JSON schema by reflecting on the Java method signature. If your wrapper method is `invoke(jsonArgs: String?)`, the LLM receives a schema with a single opaque `jsonArgs` property — not your tool's real parameters (e.g. `timezone`). The LLM therefore sends empty arguments and cannot use the tool correctly.
+
+### Correct pattern
+
+```kotlin
+fun wrapTool(tool: StandardTool<*>): ToolCallback =
+    object : ToolCallback {
+        private val definition =
+            DefaultToolDefinition.builder()
+                .name(tool.name)
+                .description(tool.description)
+                .inputSchema(tool.inputSchema)  // verbatim — no reflection override
+                .build()
+
+        override fun getToolDefinition() = definition
+
+        override fun call(toolInput: String): String =
+            tool.executeWithJson(toolInput)  // plugin-classloader-safe deserialization
+    }
+```
+
+This ensures:
+- The schema the LLM sees matches exactly what the tool declares in `inputSchema`
+- Deserialization stays inside the plugin classloader via `executeWithJson`
+- Works with Spring AI 1.1.x (Spring Boot 3.x) and is forward-compatible with 2.x
+
+### Conversation history safety
+
+When replaying history that contains `ToolRequestEvent` entries, normalise `null` or blank `args` to `"{}"` before constructing `AssistantMessage.ToolCall`. Spring AI's `AnthropicChatModel` calls `ModelOptionsUtils.jsonToMap()` on the arguments string, which throws `MismatchedInputException` on an empty string:
+
+```kotlin
+val safeArgs = event.args?.takeIf { it.isNotBlank() } ?: "{}"
+AssistantMessage.ToolCall(event.toolRequestId, "function", event.toolName, safeArgs)
+```
+
 ## Troubleshooting
 
 ### Nx command not found

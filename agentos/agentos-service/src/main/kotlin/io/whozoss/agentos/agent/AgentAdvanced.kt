@@ -18,6 +18,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import mu.KLogging
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
@@ -115,6 +116,7 @@ class AgentAdvanced(
                     ),
                 )
             } catch (e: Exception) {
+                logger.error(e) { "Error during agent execution" }
                 emit(
                     WarnEvent(
                         projectId = projectId,
@@ -281,9 +283,7 @@ Generate the JSON parameters for this tool call.
                 )
 
         return try {
-            // TODO: Parse parameters based on tool.paramType
-            // For now, pass null as we need proper parameter parsing
-            val result = tool.execute(null)
+            val result = tool.executeWithJson(toolRequest.args)
 
             ToolResponseEvent(
                 projectId = projectId,
@@ -320,7 +320,10 @@ Generate the JSON parameters for this tool call.
                         .joinToString("\n") { it.content }
 
                 when (messageEvent.actor.role) {
-                    ActorRole.USER -> UserMessage(textContent)
+                    ActorRole.USER -> {
+                        UserMessage(textContent)
+                    }
+
                     ActorRole.AGENT -> {
                         if (messageEvent.actor.id == id.toString()) {
                             AssistantMessage(textContent)
@@ -331,4 +334,6 @@ Generate the JSON parameters for this tool call.
                     }
                 }
             }
+
+    companion object : KLogging()
 }
