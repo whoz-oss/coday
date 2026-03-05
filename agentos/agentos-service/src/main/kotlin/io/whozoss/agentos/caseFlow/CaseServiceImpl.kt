@@ -3,15 +3,15 @@ package io.whozoss.agentos.caseFlow
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
+import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import io.whozoss.agentos.sdk.entity.EntityMetadata
 import jakarta.annotation.PreDestroy
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import mu.KLogging
 import org.springframework.stereotype.Service
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -22,6 +22,7 @@ class CaseServiceImpl(
     private val agentService: AgentService,
     private val caseRepository: CaseRepository,
     private val caseEventService: CaseEventService,
+    private val caseService: CaseService,
 ) : CaseService {
     private val executor: ExecutorService =
         Executors.newCachedThreadPool { runnable ->
@@ -29,50 +30,40 @@ class CaseServiceImpl(
         }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val activeCases = ConcurrentHashMap<UUID, Case>()
+    private val activeRuntimes = ConcurrentHashMap<UUID, CaseRuntime>()
 
     // ========================================
     // EntityService
     // ========================================
 
-    override fun create(entity: CaseModel): CaseModel {
-        val saved = caseRepository.save(CaseModel(metadata = entity.metadata, projectId = entity.projectId))
-        val case =
-            Case(
-                projectId = entity.projectId,
-                agentService = agentService,
-                caseService = this,
-                caseEventService = caseEventService,
-                inputEvents = emptyList(),
-                caseModel = saved,
-            )
-        activeCases[case.id] = case
-        logger.info { "[CaseService] Case created: ${case.id} for project ${entity.projectId}" }
+    override fun create(entity: Case): Case {
+        val saved = caseRepository.save(Case(metadata = entity.metadata, projectId = entity.projectId))
+        val runtime = buildRuntime(saved)
+        activeRuntimes[runtime.id] = runtime
+        logger.info { "[CaseService] Case created: ${runtime.id} for project ${entity.projectId}" }
         return saved
     }
 
-    override fun update(entity: CaseModel): CaseModel {
+    override fun update(entity: Case): Case {
         val saved = caseRepository.save(entity)
         if (saved.status.isTerminal()) {
-            activeCases.remove(saved.id)
-            logger.info { "[CaseService] Case ${saved.id} reached terminal status ${saved.status}, evicted from active cases" }
-        } else {
-            activeCases[saved.id]?.updateModel(saved)
+            activeRuntimes.remove(saved.id)
+            logger.info { "[CaseService] Case ${saved.id} reached terminal status ${saved.status}, evicted from active runtimes" }
         }
         return saved
     }
 
-    override fun findByIds(ids: Collection<UUID>): List<CaseModel> = caseRepository.findByIds(ids)
+    override fun findByIds(ids: Collection<UUID>): List<Case> = caseRepository.findByIds(ids)
 
-    override fun findByParent(parentId: UUID): List<CaseModel> = caseRepository.findByParent(parentId)
+    override fun findByParent(parentId: UUID): List<Case> = caseRepository.findByParent(parentId)
 
     override fun delete(id: UUID): Boolean {
-        activeCases.remove(id)?.stop()
+        activeRuntimes.remove(id)?.stop()
         return caseRepository.delete(id)
     }
 
     override fun deleteByParent(parentId: UUID): Int {
-        findByParent(parentId).forEach { activeCases.remove(it.id)?.stop() }
+        findByParent(parentId).forEach { activeRuntimes.remove(it.id)?.stop() }
         return caseRepository.deleteByParent(parentId)
     }
 
@@ -80,53 +71,116 @@ class CaseServiceImpl(
     // Runtime Instance Management
     // ========================================
 
-    override fun getCaseInstance(caseId: UUID): Case =
-        activeCases.computeIfAbsent(caseId) { rehydrate(it) }
+    override fun getCaseRuntime(caseId: UUID): CaseRuntime = activeRuntimes.computeIfAbsent(caseId) { rehydrate(it) }
 
     /**
-     * Rehydrates a [Case] from the repository for a case that exists on disk
+     * Rehydrates a [CaseRuntime] from the repository for a case that exists on disk
      * but has no live runtime instance (e.g. after a restart or for a past case
      * that is being resumed).
      *
-     * @throws ResourceNotFoundException if no persisted [CaseModel] exists for [caseId]
+     * @throws ResourceNotFoundException if no persisted [Case] exists for [caseId]
      */
-    private fun rehydrate(caseId: UUID): Case {
-        val caseModel = caseRepository.findByIds(listOf(caseId)).firstOrNull()
-            ?: throw ResourceNotFoundException("Case not found: $caseId")
+    private fun rehydrate(caseId: UUID): CaseRuntime {
+        val case =
+            caseRepository.findByIds(listOf(caseId)).firstOrNull()
+                ?: throw ResourceNotFoundException("Case not found: $caseId")
         val pastEvents = caseEventService.findByParent(caseId)
         logger.info { "[CaseService] Rehydrating case $caseId with ${pastEvents.size} past events" }
-        return Case(
-            projectId = caseModel.projectId,
-            agentService = agentService,
-            caseService = this,
-            caseEventService = caseEventService,
-            inputEvents = pastEvents,
-            caseModel = caseModel,
-        )
+        return buildRuntime(case, pastEvents)
     }
 
-    override fun getActiveCasesByProject(projectId: UUID): List<Case> = activeCases.values.filter { it.projectId == projectId }
+    /**
+     * Constructs a [CaseRuntime] wired with the service callbacks for status changes and event storage.
+     */
+    private fun buildRuntime(
+        case: Case,
+        inputEvents: List<CaseEvent> = emptyList(),
+    ): CaseRuntime =
+        CaseRuntime(
+            id = case.id,
+            projectId = case.projectId,
+            agentService = agentService,
+            updateStatus = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
+            emitAndStoreEvent = { event, caseRuntime -> handleEvent(event, caseRuntime) },
+            inputEvents = inputEvents,
+        )
 
-    override fun getAllActiveCases(): List<Case> = activeCases.values.toList()
+    /**
+     * Persists the new status and emits a [CaseStatusEvent] on the runtime's flow.
+     * Called by the runtime via the [CaseRuntime.updateStatus] callback.
+     */
+    private fun handleStatusChange(
+        caseId: UUID,
+        newStatus: CaseStatus,
+    ) {
+        val case = getById(caseId)
+        val oldStatus = case.status
+        val updated = caseRepository.save(case.copy(status = newStatus))
+        if (newStatus.isTerminal()) {
+            activeRuntimes.remove(caseId)
+            logger.info { "[CaseService] Case $caseId reached terminal status $newStatus, evicted from active runtimes" }
+        }
+        val statusEvent =
+            CaseStatusEvent(
+                metadata = EntityMetadata(),
+                caseId = caseId,
+                projectId = updated.projectId,
+                status = newStatus,
+            )
+        // Emit the status event through the runtime's own flow so SSE clients receive it
+        activeRuntimes[caseId]?.let { handleEvent(statusEvent, it) }
+        if (newStatus == CaseStatus.ERROR) {
+            logger.error { "Case $caseId status: $oldStatus -> $newStatus" }
+        } else {
+            logger.info { "Case $caseId status: $oldStatus -> $newStatus" }
+        }
+    }
+
+    /**
+     * Persists the event via [CaseEventService], emit into the case runtime and returns the saved copy.
+     */
+    private fun handleEvent(
+        event: CaseEvent,
+        caseRuntime: CaseRuntime,
+    ) {
+        val id = caseRuntime.id
+        logger.trace { "[CaseRuntime $id] storeAndEmitEvent - event type: ${event::class.simpleName}, event caseId: ${event.caseId}" }
+        if (id == event.caseId) {
+            // Only store events that belong to this case.
+            // Sub-case events that bubble up are expected to be saved by their own runtime.
+            logger.debug { "[CaseRuntime $id] Saving event: ${event::class.simpleName}" }
+            val savedEvent = caseEventService.create(event)
+            caseRuntime.emitEventFromThisCase(savedEvent)
+            logger.trace { "[CaseRuntime $id] Event emitted successfully" }
+        } else {
+            // Let the event bubble up to a parent case.
+            logger.debug { "[CaseRuntime $id] Bubbling up event from different case: ${event.caseId}" }
+            caseRuntime.emitEventFromOtherCase(event)
+        }
+    }
+
+    override fun getActiveCasesByProject(projectId: UUID): List<CaseRuntime> = activeRuntimes.values.filter { it.projectId == projectId }
+
+    override fun getAllActiveCases(): List<CaseRuntime> = activeRuntimes.values.toList()
 
     // ========================================
     // Execution Control
     // ========================================
 
     override fun stopCase(caseId: UUID) {
-        val case =
-            activeCases[caseId]
-                ?: throw ResourceNotFoundException("No active case instance found: $caseId")
+        val runtime =
+            activeRuntimes[caseId]
+                ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
         logger.info { "Stopping case: $caseId" }
-        case.stop()
+        runtime.stop()
     }
 
     override fun killCase(caseId: UUID) {
-        val case =
-            activeCases.remove(caseId)
-                ?: throw ResourceNotFoundException("No active case instance found: $caseId")
+        val runtime =
+            activeRuntimes.remove(caseId)
+                ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
         logger.info { "Killing case: $caseId" }
-        runBlocking { case.kill() }
+        runBlocking { runtime.kill() }
     }
 
     // ========================================
@@ -136,9 +190,8 @@ class CaseServiceImpl(
     @PreDestroy
     fun shutdown() {
         logger.info { "Shutting down CaseService..." }
-        // Iterate activeCases directly — stopCase throws for missing IDs so we don't use it here
-        activeCases.values.forEach { it.stop() }
-        activeCases.clear()
+        activeRuntimes.values.forEach { it.stop() }
+        activeRuntimes.clear()
         scope.cancel()
         executor.shutdown()
         try {
