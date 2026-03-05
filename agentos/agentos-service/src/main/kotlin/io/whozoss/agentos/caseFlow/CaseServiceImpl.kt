@@ -16,14 +16,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 @Service
 class CaseServiceImpl(
@@ -31,12 +28,12 @@ class CaseServiceImpl(
     private val caseRepository: CaseRepository,
     private val caseEventService: CaseEventService,
 ) : CaseService {
-    private val executor: ExecutorService =
-        Executors.newCachedThreadPool { runnable ->
-            Thread(runnable, "case-executor").apply { isDaemon = true }
-        }
-
+    /**
+     * Coroutine scope used to run case execution loops in the background.
+     * Each [run] call is launched here so HTTP threads are never blocked.
+     */
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
     private val activeRuntimes = ConcurrentHashMap<UUID, CaseRuntime>()
 
     // ========================================
@@ -45,20 +42,12 @@ class CaseServiceImpl(
 
     override fun create(entity: Case): Case {
         val saved = caseRepository.save(Case(metadata = entity.metadata, projectId = entity.projectId))
-        val runtime = buildRuntime(saved)
-        activeRuntimes[runtime.id] = runtime
-        logger.info { "[CaseService] Case created: ${runtime.id} for project ${entity.projectId}" }
+        activeRuntimes[saved.id] = buildRuntime(saved)
+        logger.info { "[CaseService] Case created: ${saved.id} for project ${entity.projectId}" }
         return saved
     }
 
-    override fun update(entity: Case): Case {
-        val saved = caseRepository.save(entity)
-        if (saved.status.isTerminal()) {
-            activeRuntimes.remove(saved.id)
-            logger.info { "[CaseService] Case ${saved.id} reached terminal status ${saved.status}, evicted from active runtimes" }
-        }
-        return saved
-    }
+    override fun update(entity: Case): Case = caseRepository.save(entity)
 
     override fun findByIds(ids: Collection<UUID>): List<Case> = caseRepository.findByIds(ids)
 
@@ -75,15 +64,14 @@ class CaseServiceImpl(
     }
 
     // ========================================
-    // Runtime Instance Management
+    // Runtime lifecycle
     // ========================================
 
     override fun getCaseRuntime(caseId: UUID): CaseRuntime = activeRuntimes.computeIfAbsent(caseId) { rehydrate(it) }
 
     /**
-     * Rehydrates a [CaseRuntime] from the repository for a case that exists on disk
-     * but has no live runtime instance (e.g. after a restart or for a past case
-     * that is being resumed).
+     * Rehydrates a [CaseRuntime] for a case that exists on disk but has no live
+     * runtime instance (e.g. after a restart or reconnection to a past case).
      *
      * @throws ResourceNotFoundException if no persisted [Case] exists for [caseId]
      */
@@ -96,9 +84,7 @@ class CaseServiceImpl(
         return buildRuntime(case, pastEvents)
     }
 
-    /**
-     * Constructs a [CaseRuntime] wired with all service callbacks.
-     */
+    /** Constructs a [CaseRuntime] wired with all service callbacks. */
     private fun buildRuntime(
         case: Case,
         inputEvents: List<CaseEvent> = emptyList(),
@@ -107,47 +93,38 @@ class CaseServiceImpl(
             id = case.id,
             projectId = case.projectId,
             updateStatus = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
-            emitAndStoreEvent = { event, caseRuntime -> handleEvent(event, caseRuntime) },
+            storeEvent = { event -> persistAndRoute(event) },
             selectAgent = { content -> selectAgent(content, case.projectId, case.id) },
-            runAgent = { agentName, events, caseRuntime -> runAgent(agentName, caseRuntime, events) },
+            runAgent = { agentName, events -> runAgent(agentName, case.id, events) },
             inputEvents = inputEvents,
         )
 
-    private suspend fun runAgent(
-        agentName: String,
-        caseRuntime: CaseRuntime,
-        events: List<CaseEvent>,
+    // ========================================
+    // Message handling (called by controller)
+    // ========================================
+
+    override fun addMessage(
+        caseId: UUID,
+        actor: io.whozoss.agentos.sdk.actor.Actor,
+        content: List<MessageContent>,
+        answerToEventId: UUID?,
     ) {
-        logger.info { "[CaseService] Running agent: $agentName for case ${caseRuntime.id}" }
-        agentService
-            .findAgentByName(agentName)
-            .run(events)
-            .catch { error ->
-                logger.error(error) { "[CaseService] Error in agent $agentName for case ${caseRuntime.id}" }
-                handleEvent(
-                    WarnEvent(
-                        projectId = caseRuntime.projectId,
-                        caseId = caseRuntime.id,
-                        message = "Agent $agentName error: ${error.message}",
-                    ),
-                    caseRuntime,
-                )
-            }.collect { event ->
-                handleEvent(event, caseRuntime)
-            }
-        logger.info { "[CaseService] Agent $agentName finished for case ${caseRuntime.id}" }
+        val runtime = getCaseRuntime(caseId)
+        runtime.addUserMessage(actor, content, answerToEventId)
+        scope.launch { runtime.run() }
     }
 
+    // ========================================
+    // Agent selection (business logic)
+    // ========================================
+
     /**
-     * Resolves which agent should handle a message and returns the ordered list of events
-     * to store+emit on the runtime (e.g. an optional [WarnEvent] + an [AgentSelectedEvent],
-     * or just an [AgentSelectedEvent] for the default agent).
+     * Resolves which agent should handle a message and returns the ordered list of
+     * events to store+emit on the runtime.
      *
-     * An empty list signals that no agent is configured and the runtime should stop.
+     * Returns an empty list when no agent is configured (signals the runtime to stop).
      *
      * @param content the message content to inspect for @mention syntax.
-     *   Pass an empty list when called from [CaseRuntime.processNextStep] with no new message
-     *   (i.e. to select the default agent at loop start).
      */
     private fun selectAgent(
         content: List<MessageContent>,
@@ -161,59 +138,93 @@ class CaseServiceImpl(
                 ?.content
                 ?.trim()
 
-        val mentionedName =
-            firstText
-                ?.let { """^@(\S+)""".toRegex().find(it)?.groupValues?.get(1) }
+        val mentionedName = firstText?.let { """^@(\S+)""".toRegex().find(it)?.groupValues?.get(1) }
 
         if (mentionedName != null) {
             val resolvedName = agentService.resolveAgentName(mentionedName)
             if (resolvedName != null) {
                 logger.info { "[CaseService] Agent mention resolved: @$mentionedName -> $resolvedName" }
-                return listOf(
-                    AgentSelectedEvent(
-                        projectId = projectId,
-                        caseId = caseId,
-                        agentId = UUID.nameUUIDFromBytes(resolvedName.toByteArray()),
-                        agentName = resolvedName,
-                    ),
-                )
+                return listOf(agentSelectedEvent(resolvedName, projectId, caseId))
             } else {
                 logger.warn { "[CaseService] Agent '@$mentionedName' not found, falling back to default" }
                 val warn =
                     WarnEvent(projectId = projectId, caseId = caseId, message = "Agent '$mentionedName' not found")
-                val defaultName =
-                    agentService.getDefaultAgentName()
-                        ?: return listOf(warn)
-                return listOf(
-                    warn,
-                    AgentSelectedEvent(
-                        projectId = projectId,
-                        caseId = caseId,
-                        agentId = UUID.nameUUIDFromBytes(defaultName.toByteArray()),
-                        agentName = defaultName,
-                    ),
-                )
+                val defaultName = agentService.getDefaultAgentName() ?: return listOf(warn)
+                return listOf(warn, agentSelectedEvent(defaultName, projectId, caseId))
             }
         }
 
-        // No mention — pick the default agent.
-        val defaultName =
-            agentService.getDefaultAgentName()
-                ?: return emptyList()
+        val defaultName = agentService.getDefaultAgentName() ?: return emptyList()
         logger.info { "[CaseService] Selecting default agent: $defaultName" }
-        return listOf(
-            AgentSelectedEvent(
-                projectId = projectId,
-                caseId = caseId,
-                agentId = UUID.nameUUIDFromBytes(defaultName.toByteArray()),
-                agentName = defaultName,
-            ),
-        )
+        return listOf(agentSelectedEvent(defaultName, projectId, caseId))
     }
 
+    private fun agentSelectedEvent(
+        agentName: String,
+        projectId: UUID,
+        caseId: UUID,
+    ) = AgentSelectedEvent(
+        projectId = projectId,
+        caseId = caseId,
+        agentId = UUID.nameUUIDFromBytes(agentName.toByteArray()),
+        agentName = agentName,
+    )
+
+    // ========================================
+    // Agent execution (business logic)
+    // ========================================
+
+    private suspend fun runAgent(
+        agentName: String,
+        caseId: UUID,
+        events: List<CaseEvent>,
+    ) {
+        val runtime = activeRuntimes[caseId] ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
+        logger.info { "[CaseService] Running agent: $agentName for case $caseId" }
+        agentService
+            .findAgentByName(agentName)
+            .run(events)
+            .catch { error ->
+                logger.error(error) { "[CaseService] Error in agent $agentName for case $caseId" }
+                persistAndRoute(
+                    WarnEvent(
+                        projectId = runtime.projectId,
+                        caseId = caseId,
+                        message = "Agent $agentName error: ${error.message}",
+                    ),
+                ).also { saved ->
+                    runtime.emitEventFromOtherCase(saved)
+                }
+            }.collect { event ->
+                val saved = persistAndRoute(event)
+                // Events belonging to this case are already emitted by storeAndEmitEvent
+                // inside the runtime. Sub-case events need to bubble up explicitly.
+                if (event.caseId != caseId) runtime.emitEventFromOtherCase(saved)
+            }
+        logger.info { "[CaseService] Agent $agentName finished for case $caseId" }
+    }
+
+    // ========================================
+    // Event persistence and routing
+    // ========================================
+
     /**
-     * Persists the new status and emits a [CaseStatusEvent] on the runtime's flow.
-     * Called by the runtime via the [CaseRuntime.updateStatus] callback.
+     * Persists an event via [CaseEventService] and returns the saved copy.
+     * Called by the runtime's [CaseRuntime.storeEvent] callback —
+     * the runtime itself handles adding to its list and emitting on the SSE flow.
+     */
+    private fun persistAndRoute(event: CaseEvent): CaseEvent = caseEventService.create(event)
+
+    // ========================================
+    // Status transitions
+    // ========================================
+
+    /**
+     * Persists the new status, emits a [CaseStatusEvent] to SSE clients,
+     * and evicts the runtime when a terminal status is reached.
+     *
+     * The runtime is evicted *after* the status event is emitted so SSE clients
+     * always receive the final status before the stream closes.
      */
     private fun handleStatusChange(
         caseId: UUID,
@@ -222,11 +233,15 @@ class CaseServiceImpl(
         val case = getById(caseId)
         val oldStatus = case.status
         val updated = caseRepository.save(case.copy(status = newStatus))
-        if (newStatus.isTerminal()) {
-            activeRuntimes.remove(caseId)
-            logger.info { "[CaseService] Case $caseId reached terminal status $newStatus, evicted from active runtimes" }
-            cleanup(caseId)
+
+        if (newStatus == CaseStatus.ERROR) {
+            logger.error { "Case $caseId status: $oldStatus -> $newStatus" }
+        } else {
+            logger.info { "Case $caseId status: $oldStatus -> $newStatus" }
         }
+
+        // Emit the status event before eviction so SSE clients receive it.
+        val runtime = activeRuntimes[caseId]
         val statusEvent =
             CaseStatusEvent(
                 metadata = EntityMetadata(),
@@ -234,45 +249,23 @@ class CaseServiceImpl(
                 projectId = updated.projectId,
                 status = newStatus,
             )
-        // Emit the status event through the runtime's own flow so SSE clients receive it
-        activeRuntimes[caseId]?.let { handleEvent(statusEvent, it) }
-        if (newStatus == CaseStatus.ERROR) {
-            logger.error { "Case $caseId status: $oldStatus -> $newStatus" }
-        } else {
-            logger.info { "Case $caseId status: $oldStatus -> $newStatus" }
+        val savedStatusEvent = caseEventService.create(statusEvent)
+        runtime?.let {
+            it.emitEventFromOtherCase(savedStatusEvent)
+            if (newStatus.isTerminal()) {
+                activeRuntimes.remove(caseId)
+                logger.info { "[CaseService] Case $caseId reached terminal status $newStatus, evicted" }
+            }
         }
     }
 
-    /**
-     * Persists the event via [CaseEventService], emit into the case runtime and returns the saved copy.
-     */
-    private fun handleEvent(
-        event: CaseEvent,
-        caseRuntime: CaseRuntime,
-    ) {
-        val id = caseRuntime.id
-        logger.trace { "[CaseRuntime $id] storeAndEmitEvent - event type: ${event::class.simpleName}, event caseId: ${event.caseId}" }
-        if (id == event.caseId) {
-            // Only store events that belong to this case.
-            // Sub-case events that bubble up are expected to be saved by their own runtime.
-            logger.debug { "[CaseRuntime $id] Saving event: ${event::class.simpleName}" }
-            val savedEvent = caseEventService.create(event)
-            caseRuntime.emitEventFromThisCase(savedEvent)
-            logger.trace { "[CaseRuntime $id] Event emitted successfully" }
-        } else {
-            // Let the event bubble up to a parent case.
-            logger.debug { "[CaseRuntime $id] Bubbling up event from different case: ${event.caseId}" }
-            caseRuntime.emitEventFromOtherCase(event)
-        }
-    }
+    // ========================================
+    // Execution control
+    // ========================================
 
     override fun getActiveCasesByProject(projectId: UUID): List<CaseRuntime> = activeRuntimes.values.filter { it.projectId == projectId }
 
     override fun getAllActiveCases(): List<CaseRuntime> = activeRuntimes.values.toList()
-
-    // ========================================
-    // Execution Control
-    // ========================================
 
     override fun stopCase(caseId: UUID) {
         val runtime =
@@ -285,30 +278,13 @@ class CaseServiceImpl(
 
     override fun killCase(caseId: UUID) {
         val runtime =
-            activeRuntimes.remove(caseId)
+            activeRuntimes[caseId]
                 ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
         logger.info { "Killing case: $caseId" }
+        // Set flags; the run() loop will call updateStatus(STOPPED/ERROR)
+        // which triggers handleStatusChange — that performs eviction.
         runtime.requestKill()
         runtime.requestStop()
-        runBlocking {
-            try {
-                agentService.kill()
-                agentService.cleanup()
-            } catch (e: Exception) {
-                logger.error(e) { "Error during kill/cleanup for case $caseId" }
-            }
-        }
-    }
-
-    private fun cleanup(caseId: UUID) {
-        logger.info { "Cleaning up resources for case $caseId" }
-        runBlocking {
-            try {
-                agentService.cleanup()
-            } catch (e: Exception) {
-                logger.error(e) { "Error during cleanup for case $caseId" }
-            }
-        }
     }
 
     // ========================================
@@ -318,20 +294,15 @@ class CaseServiceImpl(
     @PreDestroy
     fun shutdown() {
         logger.info { "Shutting down CaseService..." }
-        activeRuntimes.keys.toList().forEach { stopCase(it) }
+        activeRuntimes.keys.toList().forEach {
+            try {
+                stopCase(it)
+            } catch (e: Exception) {
+                logger.warn(e) { "Error stopping case $it during shutdown" }
+            }
+        }
         activeRuntimes.clear()
         scope.cancel()
-        executor.shutdown()
-        try {
-            if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
-                logger.warn { "Executor did not terminate in time, forcing shutdown" }
-                executor.shutdownNow()
-            }
-        } catch (e: InterruptedException) {
-            logger.error(e) { "Interrupted while waiting for executor shutdown" }
-            executor.shutdownNow()
-            Thread.currentThread().interrupt()
-        }
         logger.info { "CaseService shutdown complete" }
     }
 

@@ -36,14 +36,4 @@ interface AgentService {
      * Returns null if no match is found.
      */
     fun resolveAgentName(namePart: String): String?
-
-    /**
-     * Cleanup all agents and their resources.
-     */
-    suspend fun cleanup()
-
-    /**
-     * Immediately terminate all agents.
-     */
-    suspend fun kill()
 }
