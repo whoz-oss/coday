@@ -939,21 +939,21 @@ components:
         type:
           type: string
           enum:
-          - STATUS
-          - AGENT_SELECTED
-          - MESSAGE
-          - TOOL_REQUEST
-          - TOOL_RESPONSE
-          - THINKING
-          - AGENT_FINISHED
-          - AGENT_RUNNING
-          - WARN
-          - ERROR
-          - QUESTION
-          - ANSWER
-          - INTENTION_GENERATED
-          - TOOL_SELECTED
-          - TEXT_CHUNK
+          - CaseStatusEvent
+          - AgentSelectedEvent
+          - MessageEvent
+          - ToolRequestEvent
+          - ToolResponseEvent
+          - ThinkingEvent
+          - AgentFinishedEvent
+          - AgentRunningEvent
+          - WarnEvent
+          - ErrorEvent
+          - QuestionEvent
+          - AnswerEvent
+          - IntentionGeneratedEvent
+          - ToolSelectedEvent
+          - TextChunkEvent
         timestamp:
           type: string
           format: date-time
