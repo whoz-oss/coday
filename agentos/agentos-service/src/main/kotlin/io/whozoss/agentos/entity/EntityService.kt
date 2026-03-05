@@ -1,7 +1,8 @@
 package io.whozoss.agentos.entity
 
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.entity.Entity
-import java.util.UUID
+import java.util.*
 
 /**
  * Base interface for services managing entities with hierarchical relationships.
@@ -52,6 +53,16 @@ interface EntityService<EntityType : Entity, ParentIdentifier> {
      * @return List of entities belonging to the parent
      */
     fun findByParent(parentId: ParentIdentifier): List<EntityType>
+
+    /**
+     * Get a single entity by its identifier.
+     * Excludes removed entities by default.
+     *
+     * @param id The unique identifier
+     * @return The entity
+     * @throws io.whozoss.agentos.exception.ResourceNotFoundException if not found
+     */
+    fun getById(id: UUID): EntityType = findById(id) ?: throw ResourceNotFoundException("Entity $id not found")
 
     /**
      * Soft delete a single entity by its identifier.

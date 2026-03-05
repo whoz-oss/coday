@@ -87,7 +87,7 @@ class CaseEventSseController(
                     // If the case is still active, subscribe to the live flow.
                     // If it is a past/completed case the history above is all there is
                     // and the emitter will complete at the end of the try block.
-                    val activeCase = runCatching { caseService.getCaseInstance(caseId) }.getOrNull()
+                    val activeCase = runCatching { caseService.getCaseRuntime(caseId) }.getOrNull()
                     activeCase?.events?.collect { event ->
                         try {
                             sendEvent(event)

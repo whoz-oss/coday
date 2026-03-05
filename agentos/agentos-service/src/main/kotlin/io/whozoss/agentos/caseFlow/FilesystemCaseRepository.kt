@@ -15,9 +15,9 @@ class FilesystemCaseRepository(
     dataDir: Path,
     objectMapper: ObjectMapper,
 ) : CaseRepository,
-    EntityRepository<CaseModel, UUID> by FilesystemEntityRepository(
+    EntityRepository<Case, UUID> by FilesystemEntityRepository(
         rootDir = dataDir.resolve("cases"),
-        entityClass = CaseModel::class.java,
+        entityClass = Case::class.java,
         objectMapper = objectMapper,
         parentIdExtractor = { it.projectId },
         comparator = compareBy { it.metadata.created },

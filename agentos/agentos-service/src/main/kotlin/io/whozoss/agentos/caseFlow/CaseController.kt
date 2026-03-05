@@ -21,7 +21,7 @@ import java.util.UUID
 )
 class CaseController(
     private val caseService: CaseService,
-) : EntityController<CaseModel, UUID>(caseService) {
+) : EntityController<Case, UUID>(caseService) {
     /** POST /api/cases/{caseId}/messages — add a user message to a running case. */
     @PostMapping("/{caseId}/messages")
     fun addMessage(
@@ -29,7 +29,7 @@ class CaseController(
         @RequestBody request: AddMessageRequest,
     ) = runBlocking {
         logger.info { "Adding message to case: $caseId" }
-        val case = caseService.getCaseInstance(caseId)
+        val case = caseService.getCaseRuntime(caseId)
         val userActor = Actor(id = request.userId, displayName = request.userId, role = ActorRole.USER)
         case.addUserMessage(
             actor = userActor,

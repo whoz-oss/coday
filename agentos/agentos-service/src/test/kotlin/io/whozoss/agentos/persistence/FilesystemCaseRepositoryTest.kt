@@ -8,7 +8,7 @@ import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
-import io.whozoss.agentos.caseFlow.CaseModel
+import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.FilesystemCaseRepository
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -16,7 +16,7 @@ import java.nio.file.Files
 import java.util.*
 
 /**
- * Unit tests for [io.whozoss.agentos.caseFlow.FilesystemCaseRepository].
+ * Unit tests for [FilesystemCaseRepository].
  *
  * Each test uses an isolated temporary directory so tests do not interfere
  * with each other and no cleanup is needed at the project level.
@@ -35,8 +35,8 @@ class FilesystemCaseRepositoryTest : StringSpec() {
 
     fun tmpDir(): java.nio.file.Path = Files.createTempDirectory("agentos-test-cases")
 
-    fun case(projectId: UUID = UUID.randomUUID()): CaseModel =
-        CaseModel(
+    fun case(projectId: UUID = UUID.randomUUID()): Case =
+        Case(
             metadata = EntityMetadata(),
             projectId = projectId,
             status = CaseStatus.PENDING,
