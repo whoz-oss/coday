@@ -21,27 +21,29 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Runtime execution engine for a case.
  *
  * Owns only execution state: the event list, the SSE flow, and the stop/kill flags.
- * All business logic is delegated back to [CaseService] through callbacks:
+ * All business logic is delegated back to [CaseService] through four callbacks:
  *
  * @param updateStatus called whenever the runtime transitions to a new [CaseStatus].
- * @param emitAndStoreEvent called for every event produced by this runtime.
- *   The service persists the event; the runtime then adds it to its list and emits it on the flow.
+ * @param storeEvent called for every event produced by this runtime.
+ *   The service persists the event and returns the saved copy (with stable id).
+ *   The runtime then adds it to its list and emits it on the SSE flow itself —
+ *   no reference to the runtime is ever passed outward.
  * @param selectAgent resolves which agent should handle the current message.
  *   Receives the message content and returns an ordered list of events to store+emit
  *   (e.g. an optional [io.whozoss.agentos.sdk.caseEvent.WarnEvent] followed by an
  *   [AgentSelectedEvent], or just an [AgentSelectedEvent] for the default agent).
  *   Returns an empty list when no agent is configured and the loop should stop.
  * @param runAgent fetches the named agent, runs it against the current event history,
- *   and pipes each produced event through [emitAndStoreEvent]. Error handling is the
+ *   and pipes each produced event through [storeEvent]. Error handling is the
  *   responsibility of the service implementation.
  */
 class CaseRuntime(
     val id: UUID,
     val projectId: UUID,
     private val updateStatus: (UUID, CaseStatus) -> Unit,
-    private val emitAndStoreEvent: (CaseEvent, CaseRuntime) -> Unit,
+    private val storeEvent: (CaseEvent) -> CaseEvent,
     private val selectAgent: (content: List<MessageContent>) -> List<CaseEvent>,
-    private val runAgent: suspend (agentName: String, events: List<CaseEvent>, caseRuntime: CaseRuntime) -> Unit,
+    private val runAgent: suspend (agentName: String, events: List<CaseEvent>) -> Unit,
     inputEvents: List<CaseEvent> = emptyList(),
 ) : CaseEventEmitter by DefaultCaseEventEmitter() {
     private val eventList = InMemoryCaseEventList(inputEvents)
@@ -71,33 +73,44 @@ class CaseRuntime(
     }
 
     // -------------------------------------------------------------------------
-    // Event emission
+    // Event emission — internal only
     // -------------------------------------------------------------------------
 
-    fun emitEventFromThisCase(event: CaseEvent) {
-        eventList.add(event)
-        emit(event)
+    /**
+     * Persist an event via the service callback, then add it to the local list and
+     * emit it on the SSE flow. The runtime never passes itself to the service.
+     */
+    private fun storeAndEmitEvent(event: CaseEvent) {
+        val saved = storeEvent(event)
+        eventList.add(saved)
+        emit(saved)
     }
 
+    /**
+     * Emit an event that belongs to a different (sub-)case on this runtime's SSE flow
+     * without persisting or adding it to the local event list.
+     */
     fun emitEventFromOtherCase(event: CaseEvent) {
         emit(event)
-    }
-
-    private fun storeAndEmitEvent(event: CaseEvent) {
-        emitAndStoreEvent(event, this)
     }
 
     // -------------------------------------------------------------------------
     // User message entry point
     // -------------------------------------------------------------------------
 
-    suspend fun addUserMessage(
+    /**
+     * Store a user message and emit the agent-selection events.
+     * Does NOT start the execution loop — the caller ([CaseService]) is responsible
+     * for launching [run] in a background coroutine.
+     */
+    fun addUserMessage(
         actor: Actor,
         content: List<MessageContent>,
         answerToEventId: UUID? = null,
     ) {
         logger.info {
-            "[CaseRuntime $id] addUserMessage - actor: ${actor.displayName}, content: ${content.size} part(s), answerTo: $answerToEventId"
+            "[CaseRuntime $id] addUserMessage - actor: ${actor.displayName}, " +
+                "content: ${content.size} part(s), answerTo: $answerToEventId"
         }
 
         if (answerToEventId != null) {
@@ -109,12 +122,14 @@ class CaseRuntime(
 
                 questionEvent !is QuestionEvent -> {
                     logger.warn {
-                        "[CaseRuntime $id] Event $answerToEventId is not a QuestionEvent (${questionEvent::class.simpleName}), treating as regular message"
+                        "[CaseRuntime $id] Event $answerToEventId is not a QuestionEvent " +
+                            "(${questionEvent::class.simpleName}), treating as regular message"
                     }
                 }
 
                 else -> {
-                    val answerText = content.filterIsInstance<MessageContent.Text>().joinToString(" ") { it.content }
+                    val answerText =
+                        content.filterIsInstance<MessageContent.Text>().joinToString(" ") { it.content }
                     if (answerText.isBlank()) {
                         logger.warn { "[CaseRuntime $id] Answer text is blank for question $answerToEventId" }
                     } else {
@@ -128,12 +143,10 @@ class CaseRuntime(
 
         storeAndEmitEvent(MessageEvent(caseId = id, projectId = projectId, actor = actor, content = content))
         selectAgent(content).forEach { storeAndEmitEvent(it) }
-        logger.info { "[CaseRuntime $id] Starting run()" }
-        run()
     }
 
     // -------------------------------------------------------------------------
-    // Main execution loop
+    // Main execution loop — must be called by the service in a background coroutine
     // -------------------------------------------------------------------------
 
     suspend fun run() {
@@ -194,12 +207,15 @@ class CaseRuntime(
 
                 is AgentRunningEvent -> {
                     logger.info { "[CaseRuntime $id] Found AgentRunningEvent for agent: ${event.agentName}" }
-                    runAgent(event.agentName, eventList.getAll(), this)
+                    runAgent(event.agentName, eventList.getAll())
                     return
                 }
 
                 is AgentSelectedEvent -> {
-                    logger.info { "[CaseRuntime $id] Found AgentSelectedEvent for agent: ${event.agentName}, transitioning to running" }
+                    logger.info {
+                        "[CaseRuntime $id] Found AgentSelectedEvent for agent: ${event.agentName}, " +
+                            "transitioning to running"
+                    }
                     storeAndEmitEvent(
                         AgentRunningEvent(
                             projectId = projectId,
@@ -216,16 +232,11 @@ class CaseRuntime(
             }
         }
 
-        // No relevant event found: ask the service to select an agent.
-        // An empty result means no agent is configured — stop the loop.
-        logger.debug { "[CaseRuntime $id] No relevant events found, requesting agent selection" }
-        val selectionEvents = selectAgent(emptyList())
-        if (selectionEvents.isEmpty()) {
-            logger.error { "[CaseRuntime $id] No default agent configured, stopping" }
-            stopRequested.set(true)
-        } else {
-            selectionEvents.forEach { storeAndEmitEvent(it) }
-        }
+        // No relevant event found in history — this should not happen in normal flow
+        // (addUserMessage always stores an AgentSelectedEvent before run() is called).
+        // Treat it as a configuration error and stop.
+        logger.error { "[CaseRuntime $id] No agent selection found in history, stopping" }
+        stopRequested.set(true)
     }
 
     companion object : KLogging()

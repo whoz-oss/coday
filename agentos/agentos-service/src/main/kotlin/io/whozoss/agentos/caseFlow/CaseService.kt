@@ -47,6 +47,21 @@ interface CaseService : EntityService<Case, UUID> {
     fun getAllActiveCases(): List<CaseRuntime>
 
     // ========================================
+    // Message handling
+    // ========================================
+
+    /**
+     * Store a user message on the case and launch the execution loop in the background.
+     * Returns immediately — the caller is never blocked by agent execution.
+     */
+    fun addMessage(
+        caseId: UUID,
+        actor: io.whozoss.agentos.sdk.actor.Actor,
+        content: List<io.whozoss.agentos.sdk.caseEvent.MessageContent>,
+        answerToEventId: UUID? = null,
+    )
+
+    // ========================================
     // Execution Control
     // ========================================
 

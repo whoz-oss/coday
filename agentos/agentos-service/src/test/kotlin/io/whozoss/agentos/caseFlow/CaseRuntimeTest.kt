@@ -32,9 +32,7 @@ class CaseRuntimeTest :
         val userActor = Actor(id = "user-123", displayName = "Test User", role = ActorRole.USER)
         val userMessage = listOf(MessageContent.Text("hello"))
 
-        /**
-         * Build a mock Agent whose run() immediately emits AgentFinishedEvent.
-         */
+        /** Build a mock Agent whose run() immediately emits AgentFinishedEvent. */
         fun finishingAgent(name: String): Agent {
             val agentId = UUID.nameUUIDFromBytes(name.toByteArray())
             return mockk<Agent>(name = "agent-$name") {
@@ -56,9 +54,7 @@ class CaseRuntimeTest :
             }
         }
 
-        /**
-         * Convenience: build an [AgentSelectedEvent] the way [CaseServiceImpl.selectAgent] would.
-         */
+        /** Convenience: build an [AgentSelectedEvent] the way [CaseServiceImpl.selectAgent] would. */
         fun agentSelectedEvent(
             caseId: UUID,
             agentName: String,
@@ -72,17 +68,16 @@ class CaseRuntimeTest :
         /**
          * Build a [CaseRuntime] with controlled callbacks.
          *
-         * [selectAgent] and [runAgent] are MockK lambdas so tests can use [verify]/[coVerify] on them.
-         * [savedEvents] captures everything passed to [emitAndStoreEvent].
-         *
-         * [runAgent] mirrors what [CaseServiceImpl] does: drives the agent flow and feeds each event
-         * back through [CaseRuntime.emitEventFromThisCase] so the event list is updated and the
-         * loop can detect [AgentFinishedEvent] and stop.
+         * - [storeEvent] records each event and returns it unchanged (no real persistence).
+         *   The runtime adds it to its list and emits it on the SSE flow as normal.
+         * - [runAgent] mirrors what [CaseServiceImpl] does: drives the agent flow and feeds each
+         *   produced event back through the same [storeEvent] path so the event list is
+         *   updated and the loop can detect [AgentFinishedEvent] and stop.
          */
         data class TestFixture(
             val runtime: CaseRuntime,
             val selectAgent: (List<MessageContent>) -> List<CaseEvent>,
-            val runAgent: suspend (String, List<CaseEvent>, CaseRuntime) -> Unit,
+            val runAgent: suspend (String, List<CaseEvent>) -> Unit,
             val savedEvents: MutableList<CaseEvent>,
         )
 
@@ -96,25 +91,29 @@ class CaseRuntimeTest :
             val selectAgentFn = mockk<(List<MessageContent>) -> List<CaseEvent>>()
             every { selectAgentFn(any()) } returns listOf(agentSelectedEvent(runtimeId, agentName))
 
-            val runAgentFn = mockk<suspend (String, List<CaseEvent>, CaseRuntime) -> Unit>()
+            val runAgentFn = mockk<suspend (String, List<CaseEvent>) -> Unit>()
 
-            var runtime =
+            val runtime =
                 CaseRuntime(
                     id = runtimeId,
                     projectId = projectId,
                     updateStatus = { _, _ -> },
-                    emitAndStoreEvent = { event, caseRuntime ->
+                    storeEvent = { event ->
                         savedEvents.add(event)
-                        caseRuntime.emitEventFromThisCase(event)
+                        event // return unchanged (no real persistence in tests)
                     },
                     selectAgent = selectAgentFn,
                     runAgent = runAgentFn,
                 )
 
-            coEvery { runAgentFn(agentName, any(), runtime) } coAnswers {
+            // runAgent drives the agent flow and records events via the same emitAndStoreEvent path,
+            // mirroring what CaseServiceImpl.runAgent does.
+            coEvery { runAgentFn(agentName, any()) } coAnswers {
                 agent.run(secondArg<List<CaseEvent>>()).collect { event ->
-                    savedEvents.add(event)
-                    runtime.emitEventFromThisCase(event)
+                    val saved = event.also { savedEvents.add(it) }
+                    runtime.emitEventFromOtherCase(saved) // bubble as sub-case event would
+                    // Also push into the runtime's event list so processNextStep can see it.
+                    runtime.pushEvents(listOf(saved))
                 }
             }
 
@@ -129,8 +128,9 @@ class CaseRuntimeTest :
             val (runtime, _, runAgent) = buildRuntime()
 
             runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
 
-            coVerify(exactly = 1) { runAgent(any(), any(), runtime) }
+            coVerify(exactly = 1) { runAgent(any(), any()) }
         }
 
         "selectAgent is called exactly once per user message" {
@@ -149,6 +149,7 @@ class CaseRuntimeTest :
             val (runtime, _, _, savedEvents) = buildRuntime()
 
             runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
 
             val agentEvents =
                 savedEvents.filter {
@@ -164,6 +165,7 @@ class CaseRuntimeTest :
             val (runtime, _, _, savedEvents) = buildRuntime(agentName = "gemini-flash")
 
             runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
 
             val selected = savedEvents.filterIsInstance<AgentSelectedEvent>().first()
             val running = savedEvents.filterIsInstance<AgentRunningEvent>().first()
@@ -182,17 +184,16 @@ class CaseRuntimeTest :
             val agent = finishingAgent(agentName)
             val savedEvents = mutableListOf<CaseEvent>()
             val runtimeId = UUID.randomUUID()
-            lateinit var runtime: CaseRuntime
 
-            val runAgentFn = mockk<suspend (String, List<CaseEvent>, CaseRuntime) -> Unit>()
-            runtime =
+            val runAgentFn = mockk<suspend (String, List<CaseEvent>) -> Unit>()
+            val runtime =
                 CaseRuntime(
                     id = runtimeId,
                     projectId = projectId,
                     updateStatus = { _, _ -> },
-                    emitAndStoreEvent = { event, caseRuntime ->
+                    storeEvent = { event ->
                         savedEvents.add(event)
-                        caseRuntime.emitEventFromThisCase(event)
+                        event
                     },
                     selectAgent = {
                         listOf(
@@ -202,14 +203,15 @@ class CaseRuntimeTest :
                     },
                     runAgent = runAgentFn,
                 )
-            coEvery { runAgentFn(agentName, any(), runtime) } coAnswers {
+            coEvery { runAgentFn(agentName, any()) } coAnswers {
                 agent.run(secondArg<List<CaseEvent>>()).collect { event ->
                     savedEvents.add(event)
-                    runtime.emitEventFromThisCase(event)
+                    runtime.pushEvents(listOf(event))
                 }
             }
 
             runtime.addUserMessage(userActor, listOf(MessageContent.Text("@unknown hello")))
+            runtime.run()
 
             val warn = savedEvents.filterIsInstance<WarnEvent>().firstOrNull()
             warn.shouldNotBeNull()
@@ -218,13 +220,14 @@ class CaseRuntimeTest :
         }
 
         // -------------------------------------------------------------------------
-        // processNextStep: AgentSelectedEvent -> AgentRunningEvent transition
+        // processNextStep: AgentSelectedEvent -> AgentRunningEvent ordering
         // -------------------------------------------------------------------------
 
         "processNextStep emits AgentRunningEvent before runAgent is ever called" {
             val agentName = "ordered-agent"
             val callOrder = mutableListOf<String>()
             val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val runtimeId = UUID.randomUUID()
 
             val orderedAgent: Agent =
                 mockk {
@@ -245,27 +248,27 @@ class CaseRuntimeTest :
                     }
                 }
 
-            val runtimeId = UUID.randomUUID()
             lateinit var runtime: CaseRuntime
             runtime =
                 CaseRuntime(
                     id = runtimeId,
                     projectId = projectId,
                     updateStatus = { _, _ -> },
-                    emitAndStoreEvent = { event, caseRuntime ->
+                    storeEvent = { event ->
                         if (event is AgentRunningEvent) callOrder.add("AgentRunningEvent saved")
-                        caseRuntime.emitEventFromThisCase(event)
+                        event
                     },
                     selectAgent = { listOf(agentSelectedEvent(runtimeId, agentName)) },
-                    runAgent = { name, events, caseRuntime ->
+                    runAgent = { _, events ->
                         callOrder.add("runAgent")
                         orderedAgent.run(events).collect { event ->
-                            runtime.emitEventFromThisCase(event)
+                            runtime.pushEvents(listOf(event))
                         }
                     },
                 )
 
             runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
 
             val runningIdx = callOrder.indexOf("AgentRunningEvent saved")
             val runIdx = callOrder.indexOf("runAgent")
@@ -279,17 +282,13 @@ class CaseRuntimeTest :
         // -------------------------------------------------------------------------
 
         "runAgent is called exactly once when AgentRunningEvent is already in the event list" {
-            // Simulates a case being resumed mid-run: history already contains a MessageEvent
-            // and an AgentRunningEvent. Calling run() directly (not addUserMessage) skips
-            // agent selection and goes straight to executing the in-progress agent.
             val agentName = "gemini-flash"
             val caseId = UUID.randomUUID()
             val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
             val agent = finishingAgent(agentName)
 
             val savedEvents = mutableListOf<CaseEvent>()
-            lateinit var runtime: CaseRuntime
-            val runAgentFn = mockk<suspend (String, List<CaseEvent>, CaseRuntime) -> Unit>()
+            val runAgentFn = mockk<suspend (String, List<CaseEvent>) -> Unit>()
 
             val existingUserMessage =
                 MessageEvent(
@@ -308,22 +307,22 @@ class CaseRuntimeTest :
                     agentName = agentName,
                 )
 
-            runtime =
+            val runtime =
                 CaseRuntime(
                     id = caseId,
                     projectId = projectId,
                     updateStatus = { _, _ -> },
-                    emitAndStoreEvent = { event, caseRuntime ->
+                    storeEvent = { event ->
                         savedEvents.add(event)
-                        caseRuntime.emitEventFromThisCase(event)
+                        event
                     },
                     selectAgent = { listOf(agentSelectedEvent(caseId, agentName)) },
                     runAgent = runAgentFn,
                 )
-            coEvery { runAgentFn(agentName, any(), runtime) } coAnswers {
+            coEvery { runAgentFn(agentName, any()) } coAnswers {
                 agent.run(secondArg<List<CaseEvent>>()).collect { event ->
                     savedEvents.add(event)
-                    runtime.emitEventFromThisCase(event)
+                    runtime.pushEvents(listOf(event))
                 }
             }
             runtime.pushEvents(listOf(existingUserMessage, existingRunningEvent))
@@ -331,7 +330,7 @@ class CaseRuntimeTest :
             // Resume directly — no new message, no agent selection.
             runtime.run()
 
-            coVerify(exactly = 1) { runAgentFn(agentName, any(), runtime) }
+            coVerify(exactly = 1) { runAgentFn(agentName, any()) }
             savedEvents.filterIsInstance<AgentSelectedEvent>() shouldBe emptyList()
         }
     })
