@@ -12,7 +12,6 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
-import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
@@ -81,17 +80,12 @@ class AgentSimpleTest : StringSpec({
         val events = agent.run(initialEvents).toList()
 
         // Then - Verify event sequence
-        // Should emit: AgentRunningEvent, ThinkingEvent, TextChunkEvent(s), MessageEvent, AgentFinishedEvent
+        // Should emit: ThinkingEvent, TextChunkEvent(s), MessageEvent, AgentFinishedEvent
+        // AgentRunningEvent is emitted by CaseRuntime, not the agent itself.
         events shouldHaveAtLeastSize 4
 
-        // Event 0: AgentRunningEvent
-        val runningEvent = events[0] as? AgentRunningEvent
-        runningEvent shouldNotBe null
-        runningEvent!!.agentId shouldBe agentId
-        runningEvent.agentName shouldBe "SimpleAgent"
-
-        // Event 1: ThinkingEvent
-        val thinkingEvent = events[1] as? ThinkingEvent
+        // Event 0: ThinkingEvent
+        val thinkingEvent = events[0] as? ThinkingEvent
         thinkingEvent shouldNotBe null
 
         // TextChunkEvents

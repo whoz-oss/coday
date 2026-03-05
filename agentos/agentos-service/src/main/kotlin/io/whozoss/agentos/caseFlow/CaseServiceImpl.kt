@@ -69,6 +69,8 @@ class CaseServiceImpl(
 
     override fun getCaseRuntime(caseId: UUID): CaseRuntime = activeRuntimes.computeIfAbsent(caseId) { rehydrate(it) }
 
+    override fun findActiveRuntime(caseId: UUID): CaseRuntime? = activeRuntimes[caseId]
+
     /**
      * Rehydrates a [CaseRuntime] for a case that exists on disk but has no live
      * runtime instance (e.g. after a restart or reconnection to a past case).
@@ -111,7 +113,11 @@ class CaseServiceImpl(
     ) {
         val runtime = getCaseRuntime(caseId)
         runtime.addUserMessage(actor, content, answerToEventId)
-        scope.launch { runtime.run() }
+        if (runtime.markLaunched()) {
+            scope.launch { runtime.run() }
+        } else {
+            logger.debug { "[CaseService] run() already in-flight for case $caseId, skipping launch" }
+        }
     }
 
     // ========================================
@@ -230,7 +236,11 @@ class CaseServiceImpl(
         caseId: UUID,
         newStatus: CaseStatus,
     ) {
-        val case = getById(caseId)
+        val case = findById(caseId) ?: run {
+            logger.warn { "[CaseService] handleStatusChange: case $caseId not found, skipping status update to $newStatus" }
+            activeRuntimes.remove(caseId)
+            return
+        }
         val oldStatus = case.status
         val updated = caseRepository.save(case.copy(status = newStatus))
 

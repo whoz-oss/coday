@@ -29,12 +29,20 @@ interface CaseService : EntityService<Case, UUID> {
     /**
      * Retrieve an active [CaseRuntime] instance by ID.
      * Rehydrates from persistence if no live instance exists.
+     * Use this only when you intend to interact with the case (send a message, stop it).
      *
      * @param caseId The unique identifier of the case
      * @return The active [CaseRuntime] instance
      * @throws ResourceNotFoundException if no persisted [Case] exists for [caseId]
      */
     fun getCaseRuntime(caseId: UUID): CaseRuntime
+
+    /**
+     * Return the live [CaseRuntime] for [caseId] if one exists in memory, or null.
+     * Never rehydrates from persistence — safe to call for observation purposes
+     * (e.g. SSE streaming) without creating unintended side effects.
+     */
+    fun findActiveRuntime(caseId: UUID): CaseRuntime?
 
     /**
      * Retrieve all active [CaseRuntime] instances for a given project.

@@ -5,7 +5,6 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
-import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
@@ -67,15 +66,6 @@ class AgentSimple(
 
             // Channel to collect tool events from callbacks
             val toolEventChannel = Channel<CaseEvent>(Channel.UNLIMITED)
-
-            emit(
-                AgentRunningEvent(
-                    projectId = projectId,
-                    caseId = caseId,
-                    agentId = id,
-                    agentName = name,
-                ),
-            )
 
             try {
                 // Convert events to messages
