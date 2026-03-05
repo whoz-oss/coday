@@ -83,8 +83,9 @@ class CaseRuntimeTest :
                     projectId = projectId,
                     agentService = agentService,
                     updateStatus = { _, _ -> },
-                    emitAndStoreEvent = { event, case ->
+                    emitAndStoreEvent = { event, caseRuntime ->
                         savedEvents.add(event)
+                        caseRuntime.emitEventFromThisCase(event)
                     },
                 )
             return TestFixture(runtime, agentService, savedEvents)
@@ -224,7 +225,10 @@ class CaseRuntimeTest :
                     projectId = projectId,
                     agentService = agentService,
                     updateStatus = { _, _ -> },
-                    emitAndStoreEvent = { event, case -> savedEvents.add(event) },
+                    emitAndStoreEvent = { event, caseRuntime ->
+                        savedEvents.add(event)
+                        caseRuntime.emitEventFromThisCase(event)
+                    },
                 )
 
             runtime.addUserMessage(userActor, userMessage)
@@ -271,10 +275,9 @@ class CaseRuntimeTest :
                     projectId = projectId,
                     agentService = agentService,
                     updateStatus = { _, _ -> },
-                    emitAndStoreEvent = { event, case ->
-                        if (event is AgentRunningEvent) {
-                            callOrder.add("AgentRunningEvent saved")
-                        }
+                    emitAndStoreEvent = { event, caseRuntime ->
+                        if (event is AgentRunningEvent) callOrder.add("AgentRunningEvent saved")
+                        caseRuntime.emitEventFromThisCase(event)
                     },
                 )
 
@@ -330,7 +333,10 @@ class CaseRuntimeTest :
                     projectId = projectId,
                     agentService = agentService,
                     updateStatus = { _, _ -> },
-                    emitAndStoreEvent = { event, case -> savedEvents.add(event) },
+                    emitAndStoreEvent = { event, caseRuntime ->
+                        savedEvents.add(event)
+                        caseRuntime.emitEventFromThisCase(event)
+                    },
                 )
             runtime.pushEvents(listOf(existingUserMessage, existingRunningEvent))
 

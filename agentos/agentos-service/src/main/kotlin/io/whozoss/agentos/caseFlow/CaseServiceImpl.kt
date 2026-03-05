@@ -22,7 +22,6 @@ class CaseServiceImpl(
     private val agentService: AgentService,
     private val caseRepository: CaseRepository,
     private val caseEventService: CaseEventService,
-    private val caseService: CaseService,
 ) : CaseService {
     private val executor: ExecutorService =
         Executors.newCachedThreadPool { runnable ->
