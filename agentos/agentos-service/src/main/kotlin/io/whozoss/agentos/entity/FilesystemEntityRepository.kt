@@ -2,19 +2,18 @@ package io.whozoss.agentos.entity
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.entity.Entity
-import io.whozoss.agentos.sdk.entity.EntityRepository
 import mu.KLogging
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
-import java.util.UUID
+import java.util.*
 import kotlin.io.path.exists
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.nameWithoutExtension
 
 /**
- * Generic file-system implementation of [io.whozoss.agentos.sdk.entity.EntityRepository].
+ * Generic file-system implementation of [EntityRepository].
  *
  * Storage layout on disk:
  * ```
@@ -67,53 +66,54 @@ class FilesystemEntityRepository<T : Entity, P>(
             .mapNotNull { id -> findFileById(id)?.let { readEntity(it) } }
             .filter { !it.metadata.removed }
 
-    override fun findByParent(parentId: P): List<T> {
+    override fun findByParent(parentId: P): List<T> =
+        listEntityFiles(parentId)
+            .mapNotNull { readEntity(it) }
+            .filter { !it.metadata.removed }
+            .sortedWith(comparator)
+
+    override fun delete(id: UUID): Boolean {
+        val file = findFileById(id)
+        require(file != null) { "No data stored for id $id" }
+        val entity = readEntity(file)
+        check(entity != null) { "Cannot read data stored for id $id" }
+        return if (entity.metadata.removed) {
+            false
+        } else {
+            entity.metadata.removed = true
+            writeAtomic(file, entity)
+            logger.debug { "[${entityClass.simpleName}Repository] Soft-deleted $id" }
+            true
+        }
+    }
+
+    override fun deleteByParent(parentId: P): Int {
+        val count =
+            listEntityFiles(parentId)
+                .mapNotNull { file -> readEntity(file)?.takeIf { !it.metadata.removed }?.let { file to it } }
+                .onEach { (file, entity) ->
+                    entity.metadata.removed = true
+                    writeAtomic(file, entity)
+                }.count()
+        logger.debug { "[${entityClass.simpleName}Repository] Soft-deleted $count entities under parent $parentId" }
+        return count
+    }
+
+    /** Lists all non-tmp JSON files directly under the parent directory. */
+    private fun listEntityFiles(parentId: P): List<Path> {
         val parentDir = rootDir.resolve(parentId.toString())
         if (!parentDir.exists()) return emptyList()
         return Files
             .list(parentDir)
             .filter { it.isRegularFile() && it.fileName.toString().endsWith(".json") }
-            .map { readEntity(it) }
-            .filter { it != null && !it.metadata.removed }
-            .map { it!! }
-            .sorted(comparator)
             .toList()
-    }
-
-    override fun delete(id: UUID): Boolean {
-        val file = findFileById(id) ?: return false
-        val entity = readEntity(file) ?: return false
-        if (entity.metadata.removed) return false
-        entity.metadata.removed = true
-        writeAtomic(file, entity)
-        logger.debug { "[${entityClass.simpleName}Repository] Soft-deleted $id" }
-        return true
-    }
-
-    override fun deleteByParent(parentId: P): Int {
-        val parentDir = rootDir.resolve(parentId.toString())
-        if (!parentDir.exists()) return 0
-        var count = 0
-        Files
-            .list(parentDir)
-            .filter { it.isRegularFile() && it.fileName.toString().endsWith(".json") }
-            .forEach { file ->
-                val entity = readEntity(file)
-                if (entity != null && !entity.metadata.removed) {
-                    entity.metadata.removed = true
-                    writeAtomic(file, entity)
-                    count++
-                }
-            }
-        logger.debug { "[${entityClass.simpleName}Repository] Soft-deleted $count entities under parent $parentId" }
-        return count
     }
 
     private fun findFileById(id: UUID): Path? =
         findFileByIdFn?.invoke(id) ?: run {
             if (!rootDir.exists()) return null
             Files
-                .walk(rootDir, 2)
+                .walk(rootDir, 2) // project, then parent, then entity file
                 .filter { it.isRegularFile() && it.nameWithoutExtension == id.toString() }
                 .findFirst()
                 .orElse(null)

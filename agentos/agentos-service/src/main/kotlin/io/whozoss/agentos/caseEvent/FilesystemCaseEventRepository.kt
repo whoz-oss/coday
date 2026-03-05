@@ -1,9 +1,9 @@
 package io.whozoss.agentos.caseEvent
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.entity.EntityRepository
 import io.whozoss.agentos.entity.FilesystemEntityRepository
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
-import io.whozoss.agentos.sdk.entity.EntityRepository
 import java.nio.file.Path
 import java.util.UUID
 

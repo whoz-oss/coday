@@ -39,7 +39,6 @@ class CaseServiceImpl(
         val saved = caseRepository.save(CaseModel(metadata = entity.metadata, projectId = entity.projectId))
         val case =
             Case(
-                id = saved.metadata.id,
                 projectId = entity.projectId,
                 agentService = agentService,
                 caseService = this,
@@ -54,7 +53,12 @@ class CaseServiceImpl(
 
     override fun update(entity: CaseModel): CaseModel {
         val saved = caseRepository.save(entity)
-        activeCases[saved.id]?.updateModel(saved)
+        if (saved.status.isTerminal()) {
+            activeCases.remove(saved.id)
+            logger.info { "[CaseService] Case ${saved.id} reached terminal status ${saved.status}, evicted from active cases" }
+        } else {
+            activeCases[saved.id]?.updateModel(saved)
+        }
         return saved
     }
 
@@ -77,7 +81,7 @@ class CaseServiceImpl(
     // ========================================
 
     override fun getCaseInstance(caseId: UUID): Case =
-        activeCases.getOrPut(caseId) { rehydrate(caseId) }
+        activeCases.computeIfAbsent(caseId) { rehydrate(it) }
 
     /**
      * Rehydrates a [Case] from the repository for a case that exists on disk
@@ -92,7 +96,6 @@ class CaseServiceImpl(
         val pastEvents = caseEventService.findByParent(caseId)
         logger.info { "[CaseService] Rehydrating case $caseId with ${pastEvents.size} past events" }
         return Case(
-            id = caseId,
             projectId = caseModel.projectId,
             agentService = agentService,
             caseService = this,

@@ -2,8 +2,8 @@ package io.whozoss.agentos.persistence
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
@@ -123,11 +123,11 @@ class FilesystemCaseRepositoryTest : StringSpec() {
             repo.findByParent(c.projectId).shouldBeEmpty()
         }
 
-        "delete returns false for unknown id" {
+        "delete returns illegalargumentexception for unknown id" {
             val dir = tmpDir()
             val repo = newRepo(dir)
 
-            repo.delete(UUID.randomUUID()).shouldBeFalse()
+            shouldThrow<IllegalArgumentException> { repo.delete(UUID.randomUUID()) }
         }
 
         "deleteByParent soft-deletes all cases for a project" {

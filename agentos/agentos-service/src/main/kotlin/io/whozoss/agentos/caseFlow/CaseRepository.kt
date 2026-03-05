@@ -1,6 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
-import io.whozoss.agentos.sdk.entity.EntityRepository
+import io.whozoss.agentos.entity.EntityRepository
 import java.util.UUID
 
 /**

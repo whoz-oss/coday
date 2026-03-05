@@ -1,6 +1,6 @@
 package io.whozoss.agentos.namespace
 
-import io.whozoss.agentos.sdk.entity.EntityService
+import io.whozoss.agentos.entity.EntityService
 
 /**
  * Service for managing Namespace entities.

@@ -1,7 +1,7 @@
 package io.whozoss.agentos.caseFlow
 
+import io.whozoss.agentos.entity.EntityService
 import io.whozoss.agentos.exception.ResourceNotFoundException
-import io.whozoss.agentos.sdk.entity.EntityService
 import java.util.UUID
 
 /**

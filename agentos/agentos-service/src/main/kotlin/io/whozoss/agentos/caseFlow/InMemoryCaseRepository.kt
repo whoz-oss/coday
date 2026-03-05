@@ -1,7 +1,7 @@
 package io.whozoss.agentos.caseFlow
 
+import io.whozoss.agentos.entity.EntityRepository
 import io.whozoss.agentos.entity.InMemoryEntityRepository
-import io.whozoss.agentos.sdk.entity.EntityRepository
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Repository
 import java.util.UUID

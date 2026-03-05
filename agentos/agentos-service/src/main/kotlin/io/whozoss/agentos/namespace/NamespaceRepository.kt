@@ -1,6 +1,6 @@
 package io.whozoss.agentos.namespace
 
-import io.whozoss.agentos.sdk.entity.EntityRepository
+import io.whozoss.agentos.entity.EntityRepository
 
 /**
  * Repository for NamespaceModel persistence.
