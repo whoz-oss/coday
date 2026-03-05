@@ -1,6 +1,5 @@
 package io.whozoss.agentos.caseFlow
 
-import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.caseEvent.DefaultCaseEventEmitter
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventList
 import io.whozoss.agentos.orchestration.CaseEventEmitter
@@ -17,90 +16,72 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Runtime execution engine for a case.
  *
- * Runs independently in its own coroutine (managed by [CaseService]) and continues
- * execution even if no collectors are attached to the output events (hot observable).
- *
- * All business logic (persistence, status tracking) is delegated back to the service
- * through two callbacks:
+ * Owns only execution state: the event list, the SSE flow, and the stop/kill flags.
+ * All business logic is delegated back to [CaseService] through callbacks:
  *
  * @param updateStatus called whenever the runtime transitions to a new [CaseStatus].
- *   The service is responsible for persisting the change and emitting a [CaseStatusEvent].
  * @param emitAndStoreEvent called for every event produced by this runtime.
- *   The service persists the event and returns the saved copy (with a stable id);
- *   the runtime then emits that copy on its hot [events] flow.
+ *   The service persists the event; the runtime then adds it to its list and emits it on the flow.
+ * @param resolveAgent resolves an agent @mention to its canonical name, or null if not found.
+ * @param getDefaultAgentName returns the name of the default agent, or null if none configured.
+ * @param findAgent instantiates an [Agent] by canonical name for execution.
  */
 class CaseRuntime(
     val id: UUID,
     val projectId: UUID,
-    private val agentService: AgentService,
     private val updateStatus: (UUID, CaseStatus) -> Unit,
     private val emitAndStoreEvent: (CaseEvent, CaseRuntime) -> Unit,
+    private val resolveAgent: (String) -> String?,
+    private val getDefaultAgentName: () -> String?,
+    private val findAgent: (String) -> Agent,
     inputEvents: List<CaseEvent> = emptyList(),
 ) : CaseEventEmitter by DefaultCaseEventEmitter() {
     private val eventList = InMemoryCaseEventList(inputEvents)
 
-    // Stop flag for graceful shutdown
     private val stopRequested = AtomicBoolean(false)
-
-    // Kill flag for immediate termination
     private val killRequested = AtomicBoolean(false)
 
-    // Maximum iterations to prevent infinite loops
     private val maxIterations = 100
     private var iterationCount = 0
 
-    private fun storeAndEmitEvent(event: CaseEvent) {
-        emitAndStoreEvent(event, this)
-    }
+    // -------------------------------------------------------------------------
+    // Public state
+    // -------------------------------------------------------------------------
 
-    /**
-     * Request the runtime to stop gracefully.
-     * Preserves case state and allows clean completion of the current operation.
-     */
-    fun stop() {
-        logger.info { "[CaseRuntime $id] Stop requested" }
-        updateStatus(id, CaseStatus.STOPPING)
+    fun requestStop() {
         stopRequested.set(true)
     }
 
-    /**
-     * Cleanup resources used by this runtime (agents, etc.).
-     * Called when the case completes normally.
-     */
-    suspend fun cleanup() {
-        logger.info { "[CaseRuntime $id] Cleaning up resources" }
-        try {
-            agentService.cleanup()
-        } catch (e: Exception) {
-            logger.error(e) { "[CaseRuntime $id] Error during cleanup" }
-            // Don't throw - cleanup should be best-effort
-        }
+    fun requestKill() {
+        killRequested.set(true)
     }
 
-    /**
-     * Immediately terminate case execution and cleanup resources.
-     * Unlike [stop], this method does not preserve state.
-     */
-    suspend fun kill() {
-        logger.info { "[CaseRuntime $id] Kill requested" }
-        killRequested.set(true)
-        stop()
-        try {
-            agentService.kill()
-            cleanup()
-        } catch (e: Exception) {
-            logger.error(e) { "[CaseRuntime $id] Error during kill" }
-        }
-    }
+    fun isRunning(): Boolean = !stopRequested.get() && !killRequested.get() && iterationCount > 0
 
     fun pushEvents(events: Collection<CaseEvent>) {
         events.forEach { eventList.add(it) }
     }
 
-    private fun updateStatus(newStatus: CaseStatus) {
-        logger.info { "CaseRuntime $id status -> $newStatus" }
-        updateStatus(id, newStatus)
+    // -------------------------------------------------------------------------
+    // Event emission
+    // -------------------------------------------------------------------------
+
+    fun emitEventFromThisCase(event: CaseEvent) {
+        eventList.add(event)
+        emit(event)
     }
+
+    fun emitEventFromOtherCase(event: CaseEvent) {
+        emit(event)
+    }
+
+    private fun storeAndEmitEvent(event: CaseEvent) {
+        emitAndStoreEvent(event, this)
+    }
+
+    // -------------------------------------------------------------------------
+    // User message entry point
+    // -------------------------------------------------------------------------
 
     suspend fun addUserMessage(
         actor: Actor,
@@ -108,95 +89,76 @@ class CaseRuntime(
         answerToEventId: UUID? = null,
     ) {
         logger.info {
-            "[CaseRuntime $id] addUserMessage called - actor: ${actor.displayName}, content size: ${content.size}, answerTo: $answerToEventId"
+            "[CaseRuntime $id] addUserMessage - actor: ${actor.displayName}, content: ${content.size} part(s), answerTo: $answerToEventId"
         }
-        // If this is an answer to a question, create an AnswerEvent
+
         if (answerToEventId != null) {
             val questionEvent = eventList.getById(answerToEventId)
-
-            if (questionEvent == null) {
-                logger.warn { "[CaseRuntime $id] Question event $answerToEventId not found, treating as regular message" }
-            } else if (questionEvent !is QuestionEvent) {
-                logger.warn {
-                    "[CaseRuntime $id] Event $answerToEventId is not a QuestionEvent (${questionEvent::class.simpleName}), treating as regular message"
+            when {
+                questionEvent == null -> {
+                    logger.warn { "[CaseRuntime $id] Question event $answerToEventId not found, treating as regular message" }
                 }
-            } else {
-                val answerText =
-                    content
-                        .filterIsInstance<MessageContent.Text>()
-                        .joinToString(" ") { it.content }
 
-                if (answerText.isBlank()) {
-                    logger.warn { "[CaseRuntime $id] Answer text is blank for question $answerToEventId" }
-                } else {
-                    val answerEvent = questionEvent.createAnswer(actor, answerText)
-                    storeAndEmitEvent(answerEvent)
-                    logger.info { "[CaseRuntime $id] Answer added for question: ${questionEvent.question}" }
-                    // Don't run() here — answer is passive, waits for agent to process it
-                    return
+                questionEvent !is QuestionEvent -> {
+                    logger.warn {
+                        "[CaseRuntime $id] Event $answerToEventId is not a QuestionEvent (${questionEvent::class.simpleName}), treating as regular message"
+                    }
+                }
+
+                else -> {
+                    val answerText = content.filterIsInstance<MessageContent.Text>().joinToString(" ") { it.content }
+                    if (answerText.isBlank()) {
+                        logger.warn { "[CaseRuntime $id] Answer text is blank for question $answerToEventId" }
+                    } else {
+                        storeAndEmitEvent(questionEvent.createAnswer(actor, answerText))
+                        logger.info { "[CaseRuntime $id] Answer added for question: ${questionEvent.question}" }
+                        return // answer is passive — waits for agent to process it
+                    }
                 }
             }
         }
 
-        // Regular message flow
-        val userMessageEvent =
-            MessageEvent(
-                caseId = id,
-                projectId = projectId,
-                actor = actor,
-                content = content,
-            )
-        storeAndEmitEvent(userMessageEvent)
+        storeAndEmitEvent(MessageEvent(caseId = id, projectId = projectId, actor = actor, content = content))
         detectAgentSelection(content)
         logger.info { "[CaseRuntime $id] Starting run()" }
         run()
     }
 
-    /**
-     * Parse message content to detect agent mentions (@agentName) and handle them.
-     * If an agent is mentioned and found, emits an [AgentSelectedEvent].
-     * If an agent is mentioned but not found, emits a [WarnEvent].
-     */
+    // -------------------------------------------------------------------------
+    // Agent selection
+    // -------------------------------------------------------------------------
+
     private fun detectAgentSelection(content: List<MessageContent>) {
-        val textContent = content.filterIsInstance<MessageContent.Text>()
-        if (textContent.isEmpty()) return
+        val firstText =
+            content
+                .filterIsInstance<MessageContent.Text>()
+                .firstOrNull()
+                ?.content
+                ?.trim() ?: return
+        val agentName = """^@(\S+)""".toRegex().find(firstText)?.groupValues?.get(1) ?: return
 
-        val firstText = textContent.first().content.trim()
-        val mentionPattern = """^@(\S+)""".toRegex()
-        val matchResult = mentionPattern.find(firstText) ?: return
-
-        val agentName = matchResult.groupValues[1]
         logger.debug { "[CaseRuntime $id] Agent mention detected: @$agentName" }
-
-        val resolvedName = agentService.resolveAgentName(agentName)
+        val resolvedName = resolveAgent(agentName)
         if (resolvedName != null) {
-            val agentId = UUID.nameUUIDFromBytes(resolvedName.toByteArray())
-            val agentSelectedEvent =
+            storeAndEmitEvent(
                 AgentSelectedEvent(
                     projectId = projectId,
                     caseId = id,
-                    agentId = agentId,
+                    agentId = UUID.nameUUIDFromBytes(resolvedName.toByteArray()),
                     agentName = resolvedName,
-                )
-            storeAndEmitEvent(agentSelectedEvent)
+                ),
+            )
             logger.info { "[CaseRuntime $id] Agent selected: $resolvedName" }
         } else {
-            val warnEvent =
-                WarnEvent(
-                    projectId = projectId,
-                    caseId = id,
-                    message = "Agent '$agentName' not found",
-                )
-            storeAndEmitEvent(warnEvent)
+            storeAndEmitEvent(WarnEvent(projectId = projectId, caseId = id, message = "Agent '$agentName' not found"))
             logger.warn { "[CaseRuntime $id] Agent '@$agentName' not found" }
         }
     }
 
-    /**
-     * Main execution loop for the case.
-     * Blocks until the case is resolved, stopped, or hits the iteration limit.
-     * Should be called in a dedicated coroutine by [CaseService].
-     */
+    // -------------------------------------------------------------------------
+    // Main execution loop
+    // -------------------------------------------------------------------------
+
     suspend fun run() {
         logger.info { "[CaseRuntime $id] run() called" }
 
@@ -207,8 +169,7 @@ class CaseRuntime(
 
         stopRequested.set(false)
         killRequested.set(false)
-
-        updateStatus(CaseStatus.RUNNING)
+        updateStatus(id, CaseStatus.RUNNING)
         iterationCount = 0
 
         try {
@@ -218,60 +179,26 @@ class CaseRuntime(
                 iterationCount++
             }
             logger.info {
-                "[CaseRuntime $id] Exited main loop - iterations: $iterationCount, " +
-                    "stopRequested: ${stopRequested.get()}, killRequested: ${killRequested.get()}"
+                "[CaseRuntime $id] Exited loop - iterations: $iterationCount, " +
+                    "stop: ${stopRequested.get()}, kill: ${killRequested.get()}"
             }
-
             if (iterationCount >= maxIterations) {
                 logger.error { "[CaseRuntime $id] Maximum iterations ($maxIterations) reached" }
-                updateStatus(CaseStatus.ERROR)
+                updateStatus(id, CaseStatus.ERROR)
             } else {
-                updateStatus(CaseStatus.STOPPED)
+                updateStatus(id, CaseStatus.STOPPED)
             }
         } catch (e: Exception) {
             logger.error(e) { "[CaseRuntime $id] Error during execution" }
-            updateStatus(CaseStatus.ERROR)
-        } finally {
-            cleanup()
+            updateStatus(id, CaseStatus.ERROR)
         }
     }
 
-    private fun isRunning(): Boolean = !stopRequested.get() && !killRequested.get() && iterationCount > 0
-
-    private suspend fun runAgent(agent: Agent) {
-        logger.info { "[CaseRuntime $id] Running agent: ${agent.name}" }
-
-        agent
-            .run(eventList.getAll())
-            .catch { error ->
-                logger.error(error) { "[CaseRuntime $id] Error in agent ${agent.name}" }
-                storeAndEmitEvent(
-                    WarnEvent(
-                        projectId = projectId,
-                        caseId = id,
-                        message = "Agent ${agent.name} error: ${error.message}",
-                    ),
-                )
-            }.collect { event ->
-                storeAndEmitEvent(event)
-            }
-
-        logger.info { "[CaseRuntime $id] Agent ${agent.name} finished" }
-    }
-
-    /**
-     * Determines the next step based on the current event history:
-     * - [AgentFinishedEvent] → stop the loop
-     * - [AgentRunningEvent]  → retrieve the agent and run it
-     * - [AgentSelectedEvent] → transition to running by emitting [AgentRunningEvent]
-     * - nothing relevant     → select the default agent
-     */
     private suspend fun processNextStep() {
         val events = eventList.getAll()
         logger.debug { "[CaseRuntime $id] processNextStep - total events: ${events.size}" }
 
         val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER }
-        logger.debug { "[CaseRuntime $id] Last user message at index: $lastUserMessageIndex" }
 
         for (i in events.lastIndex downTo 0) {
             val event = events[i]
@@ -290,8 +217,7 @@ class CaseRuntime(
 
                 is AgentRunningEvent -> {
                     logger.info { "[CaseRuntime $id] Found AgentRunningEvent for agent: ${event.agentName}" }
-                    val agent = agentService.findAgentByName(event.agentName)
-                    runAgent(agent)
+                    runAgent(findAgent(event.agentName))
                     return
                 }
 
@@ -318,11 +244,10 @@ class CaseRuntime(
     }
 
     private fun selectDefaultAgent() {
-        logger.info { "[CaseRuntime $id] Selecting default agent" }
-        val defaultAgentName = agentService.getDefaultAgentName()
+        val defaultAgentName = getDefaultAgentName()
         if (defaultAgentName != null) {
             val agentId = UUID.nameUUIDFromBytes(defaultAgentName.toByteArray())
-            logger.info { "[CaseRuntime $id] Default agent found: $defaultAgentName (id: $agentId)" }
+            logger.info { "[CaseRuntime $id] Selecting default agent: $defaultAgentName (id: $agentId)" }
             storeAndEmitEvent(
                 AgentSelectedEvent(
                     projectId = projectId,
@@ -337,13 +262,23 @@ class CaseRuntime(
         }
     }
 
-    fun emitEventFromThisCase(event: CaseEvent) {
-        eventList.add(event)
-        emit(event)
-    }
-
-    fun emitEventFromOtherCase(event: CaseEvent) {
-        emit(event)
+    private suspend fun runAgent(agent: Agent) {
+        logger.info { "[CaseRuntime $id] Running agent: ${agent.name}" }
+        agent
+            .run(eventList.getAll())
+            .catch { error ->
+                logger.error(error) { "[CaseRuntime $id] Error in agent ${agent.name}" }
+                storeAndEmitEvent(
+                    WarnEvent(
+                        projectId = projectId,
+                        caseId = id,
+                        message = "Agent ${agent.name} error: ${error.message}",
+                    ),
+                )
+            }.collect { event ->
+                storeAndEmitEvent(event)
+            }
+        logger.info { "[CaseRuntime $id] Agent ${agent.name} finished" }
     }
 
     companion object : KLogging()
