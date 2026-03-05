@@ -52,11 +52,12 @@ class CaseRuntime(
     private val killRequested = AtomicBoolean(false)
 
     /**
-     * True from the moment [CaseService] launches a [run] coroutine until [run] returns.
-     * Set *before* the coroutine is launched (in [CaseService.addMessage]) via [markLaunched],
-     * so the guard is effective even if the scheduler hasn't started the coroutine yet.
+     * Guards against concurrent [run] invocations.
+     * Claimed atomically at the top of [run] via [AtomicBoolean.compareAndSet];
+     * released in the finally block. Callers launch [run] unconditionally —
+     * the second invocation returns immediately without doing any work.
      */
-    private val runLaunched = AtomicBoolean(false)
+    private val runInFlight = AtomicBoolean(false)
 
     private val maxIterations = 100
     private var iterationCount = 0
@@ -65,27 +66,18 @@ class CaseRuntime(
     // Public state
     // -------------------------------------------------------------------------
 
-    fun requestStop() {
-        stopRequested.set(true)
-    }
+    fun requestStop() { stopRequested.set(true) }
 
-    fun requestKill() {
-        killRequested.set(true)
-    }
+    fun requestKill() { killRequested.set(true) }
 
-    /**
-     * Atomically claim the run slot.
-     * Returns true if this call successfully claimed it (caller should launch [run]).
-     * Returns false if a run is already in-flight (caller should skip launching).
-     */
-    fun markLaunched(): Boolean = runLaunched.compareAndSet(false, true)
+    fun isRunning(): Boolean = runInFlight.get()
 
     fun pushEvents(events: Collection<CaseEvent>) {
         events.forEach { eventList.add(it) }
     }
 
     // -------------------------------------------------------------------------
-    // Event emission — internal only
+    // Event emission
     // -------------------------------------------------------------------------
 
     /**
@@ -158,12 +150,23 @@ class CaseRuntime(
     }
 
     // -------------------------------------------------------------------------
-    // Main execution loop — must be called by the service in a background coroutine
+    // Main execution loop
     // -------------------------------------------------------------------------
 
+    /**
+     * Run the execution loop.
+     *
+     * Self-guarding: if a run is already in-flight, returns immediately.
+     * Callers do not need to check [isRunning] before launching — launching
+     * unconditionally via a coroutine scope is the intended pattern.
+     */
     suspend fun run() {
-        logger.info { "[CaseRuntime $id] run() called" }
+        if (!runInFlight.compareAndSet(false, true)) {
+            logger.debug { "[CaseRuntime $id] run() already in-flight, skipping" }
+            return
+        }
 
+        logger.info { "[CaseRuntime $id] run() started" }
         stopRequested.set(false)
         killRequested.set(false)
         updateStatus(id, CaseStatus.RUNNING)
@@ -189,7 +192,7 @@ class CaseRuntime(
             logger.error(e) { "[CaseRuntime $id] Error during execution" }
             updateStatus(id, CaseStatus.ERROR)
         } finally {
-            runLaunched.set(false)
+            runInFlight.set(false)
         }
     }
 

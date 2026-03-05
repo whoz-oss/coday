@@ -47,14 +47,32 @@ class CaseServiceImpl(
         return saved
     }
 
-    override fun update(entity: Case): Case = caseRepository.save(entity)
+    override fun update(entity: Case): Case {
+        val current = findById(entity.id)
+            ?: throw ResourceNotFoundException("Case not found: ${entity.id}")
+        return if (entity.status != current.status) {
+            // Route status changes through handleStatusChange so the runtime and
+            // SSE clients stay consistent with the persisted state.
+            handleStatusChange(entity.id, entity.status)
+            // handleStatusChange already persisted the new status; return fresh view.
+            findById(entity.id) ?: entity
+        } else {
+            caseRepository.save(entity)
+        }
+    }
 
     override fun findByIds(ids: Collection<UUID>): List<Case> = caseRepository.findByIds(ids)
 
     override fun findByParent(parentId: UUID): List<Case> = caseRepository.findByParent(parentId)
 
     override fun delete(id: UUID): Boolean {
-        activeRuntimes.remove(id)?.requestStop()
+        // Drive active cases to STOPPED before deletion so SSE clients receive the
+        // terminal event and the runtime is evicted cleanly. handleStatusChange
+        // removes the runtime from activeRuntimes on terminal status.
+        if (activeRuntimes.containsKey(id)) {
+            handleStatusChange(id, CaseStatus.STOPPED)
+            activeRuntimes[id]?.requestStop()
+        }
         return caseRepository.delete(id)
     }
 
@@ -113,11 +131,8 @@ class CaseServiceImpl(
     ) {
         val runtime = getCaseRuntime(caseId)
         runtime.addUserMessage(actor, content, answerToEventId)
-        if (runtime.markLaunched()) {
-            scope.launch { runtime.run() }
-        } else {
-            logger.debug { "[CaseService] run() already in-flight for case $caseId, skipping launch" }
-        }
+        // run() is self-guarding via an AtomicBoolean — launch unconditionally.
+        scope.launch { runtime.run() }
     }
 
     // ========================================
