@@ -77,7 +77,7 @@ class CaseEventSseControllerTest : StringSpec() {
 
             latch.await(2, TimeUnit.SECONDS)
             verify(exactly = 1) { caseEventService.findByParent(caseId) }
-            verify(exactly = 1) { caseService.getCaseRuntime(caseId) }
+            verify(timeout = 2000, exactly = 1) { caseService.getCaseRuntime(caseId) }
         }
 
         "past case with no events: completes the emitter without error" {
