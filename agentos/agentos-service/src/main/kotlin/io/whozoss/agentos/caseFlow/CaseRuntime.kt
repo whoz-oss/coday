@@ -51,6 +51,13 @@ class CaseRuntime(
     private val stopRequested = AtomicBoolean(false)
     private val killRequested = AtomicBoolean(false)
 
+    /**
+     * True from the moment [CaseService] launches a [run] coroutine until [run] returns.
+     * Set *before* the coroutine is launched (in [CaseService.addMessage]) via [markLaunched],
+     * so the guard is effective even if the scheduler hasn't started the coroutine yet.
+     */
+    private val runLaunched = AtomicBoolean(false)
+
     private val maxIterations = 100
     private var iterationCount = 0
 
@@ -66,7 +73,12 @@ class CaseRuntime(
         killRequested.set(true)
     }
 
-    fun isRunning(): Boolean = !stopRequested.get() && !killRequested.get() && iterationCount > 0
+    /**
+     * Atomically claim the run slot.
+     * Returns true if this call successfully claimed it (caller should launch [run]).
+     * Returns false if a run is already in-flight (caller should skip launching).
+     */
+    fun markLaunched(): Boolean = runLaunched.compareAndSet(false, true)
 
     fun pushEvents(events: Collection<CaseEvent>) {
         events.forEach { eventList.add(it) }
@@ -152,11 +164,6 @@ class CaseRuntime(
     suspend fun run() {
         logger.info { "[CaseRuntime $id] run() called" }
 
-        if (isRunning()) {
-            logger.warn { "[CaseRuntime $id] Already running, skipping run()" }
-            return
-        }
-
         stopRequested.set(false)
         killRequested.set(false)
         updateStatus(id, CaseStatus.RUNNING)
@@ -181,6 +188,8 @@ class CaseRuntime(
         } catch (e: Exception) {
             logger.error(e) { "[CaseRuntime $id] Error during execution" }
             updateStatus(id, CaseStatus.ERROR)
+        } finally {
+            runLaunched.set(false)
         }
     }
 

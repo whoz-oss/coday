@@ -85,9 +85,10 @@ class CaseEventSseController(
                     caseEventService.findByParent(caseId).forEach { sendEvent(it) }
 
                     // If the case is still active, subscribe to the live flow.
-                    // If it is a past/completed case the history above is all there is
-                    // and the emitter will complete at the end of the try block.
-                    val activeCase = runCatching { caseService.getCaseRuntime(caseId) }.getOrNull()
+                    // findActiveRuntime never rehydrates — safe for observation only.
+                    // If the case is completed, the history replay above is sufficient
+                    // and the emitter completes at the end of the try block.
+                    val activeCase = caseService.findActiveRuntime(caseId)
                     activeCase?.events?.collect { event ->
                         try {
                             sendEvent(event)
