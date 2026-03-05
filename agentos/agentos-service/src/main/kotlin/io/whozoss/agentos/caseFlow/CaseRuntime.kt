@@ -5,10 +5,14 @@ import io.whozoss.agentos.caseEvent.InMemoryCaseEventList
 import io.whozoss.agentos.orchestration.CaseEventEmitter
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
-import io.whozoss.agentos.sdk.agent.Agent
-import io.whozoss.agentos.sdk.caseEvent.*
+import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
+import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
-import kotlinx.coroutines.flow.catch
 import mu.KLogging
 import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
@@ -22,18 +26,22 @@ import java.util.concurrent.atomic.AtomicBoolean
  * @param updateStatus called whenever the runtime transitions to a new [CaseStatus].
  * @param emitAndStoreEvent called for every event produced by this runtime.
  *   The service persists the event; the runtime then adds it to its list and emits it on the flow.
- * @param resolveAgent resolves an agent @mention to its canonical name, or null if not found.
- * @param getDefaultAgentName returns the name of the default agent, or null if none configured.
- * @param findAgent instantiates an [Agent] by canonical name for execution.
+ * @param selectAgent resolves which agent should handle the current message.
+ *   Receives the message content and returns an ordered list of events to store+emit
+ *   (e.g. an optional [io.whozoss.agentos.sdk.caseEvent.WarnEvent] followed by an
+ *   [AgentSelectedEvent], or just an [AgentSelectedEvent] for the default agent).
+ *   Returns an empty list when no agent is configured and the loop should stop.
+ * @param runAgent fetches the named agent, runs it against the current event history,
+ *   and pipes each produced event through [emitAndStoreEvent]. Error handling is the
+ *   responsibility of the service implementation.
  */
 class CaseRuntime(
     val id: UUID,
     val projectId: UUID,
     private val updateStatus: (UUID, CaseStatus) -> Unit,
     private val emitAndStoreEvent: (CaseEvent, CaseRuntime) -> Unit,
-    private val resolveAgent: (String) -> String?,
-    private val getDefaultAgentName: () -> String?,
-    private val findAgent: (String) -> Agent,
+    private val selectAgent: (content: List<MessageContent>) -> List<CaseEvent>,
+    private val runAgent: suspend (agentName: String, events: List<CaseEvent>, caseRuntime: CaseRuntime) -> Unit,
     inputEvents: List<CaseEvent> = emptyList(),
 ) : CaseEventEmitter by DefaultCaseEventEmitter() {
     private val eventList = InMemoryCaseEventList(inputEvents)
@@ -119,40 +127,9 @@ class CaseRuntime(
         }
 
         storeAndEmitEvent(MessageEvent(caseId = id, projectId = projectId, actor = actor, content = content))
-        detectAgentSelection(content)
+        selectAgent(content).forEach { storeAndEmitEvent(it) }
         logger.info { "[CaseRuntime $id] Starting run()" }
         run()
-    }
-
-    // -------------------------------------------------------------------------
-    // Agent selection
-    // -------------------------------------------------------------------------
-
-    private fun detectAgentSelection(content: List<MessageContent>) {
-        val firstText =
-            content
-                .filterIsInstance<MessageContent.Text>()
-                .firstOrNull()
-                ?.content
-                ?.trim() ?: return
-        val agentName = """^@(\S+)""".toRegex().find(firstText)?.groupValues?.get(1) ?: return
-
-        logger.debug { "[CaseRuntime $id] Agent mention detected: @$agentName" }
-        val resolvedName = resolveAgent(agentName)
-        if (resolvedName != null) {
-            storeAndEmitEvent(
-                AgentSelectedEvent(
-                    projectId = projectId,
-                    caseId = id,
-                    agentId = UUID.nameUUIDFromBytes(resolvedName.toByteArray()),
-                    agentName = resolvedName,
-                ),
-            )
-            logger.info { "[CaseRuntime $id] Agent selected: $resolvedName" }
-        } else {
-            storeAndEmitEvent(WarnEvent(projectId = projectId, caseId = id, message = "Agent '$agentName' not found"))
-            logger.warn { "[CaseRuntime $id] Agent '@$agentName' not found" }
-        }
     }
 
     // -------------------------------------------------------------------------
@@ -217,7 +194,7 @@ class CaseRuntime(
 
                 is AgentRunningEvent -> {
                     logger.info { "[CaseRuntime $id] Found AgentRunningEvent for agent: ${event.agentName}" }
-                    runAgent(findAgent(event.agentName))
+                    runAgent(event.agentName, eventList.getAll(), this)
                     return
                 }
 
@@ -239,46 +216,16 @@ class CaseRuntime(
             }
         }
 
-        logger.debug { "[CaseRuntime $id] No relevant events found, selecting default agent" }
-        selectDefaultAgent()
-    }
-
-    private fun selectDefaultAgent() {
-        val defaultAgentName = getDefaultAgentName()
-        if (defaultAgentName != null) {
-            val agentId = UUID.nameUUIDFromBytes(defaultAgentName.toByteArray())
-            logger.info { "[CaseRuntime $id] Selecting default agent: $defaultAgentName (id: $agentId)" }
-            storeAndEmitEvent(
-                AgentSelectedEvent(
-                    projectId = projectId,
-                    caseId = id,
-                    agentId = agentId,
-                    agentName = defaultAgentName,
-                ),
-            )
-        } else {
+        // No relevant event found: ask the service to select an agent.
+        // An empty result means no agent is configured — stop the loop.
+        logger.debug { "[CaseRuntime $id] No relevant events found, requesting agent selection" }
+        val selectionEvents = selectAgent(emptyList())
+        if (selectionEvents.isEmpty()) {
             logger.error { "[CaseRuntime $id] No default agent configured, stopping" }
             stopRequested.set(true)
+        } else {
+            selectionEvents.forEach { storeAndEmitEvent(it) }
         }
-    }
-
-    private suspend fun runAgent(agent: Agent) {
-        logger.info { "[CaseRuntime $id] Running agent: ${agent.name}" }
-        agent
-            .run(eventList.getAll())
-            .catch { error ->
-                logger.error(error) { "[CaseRuntime $id] Error in agent ${agent.name}" }
-                storeAndEmitEvent(
-                    WarnEvent(
-                        projectId = projectId,
-                        caseId = id,
-                        message = "Agent ${agent.name} error: ${error.message}",
-                    ),
-                )
-            }.collect { event ->
-                storeAndEmitEvent(event)
-            }
-        logger.info { "[CaseRuntime $id] Agent ${agent.name} finished" }
     }
 
     companion object : KLogging()

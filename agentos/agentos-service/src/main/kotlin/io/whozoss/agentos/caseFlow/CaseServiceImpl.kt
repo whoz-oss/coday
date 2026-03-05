@@ -3,12 +3,20 @@ package io.whozoss.agentos.caseFlow
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import jakarta.annotation.PreDestroy
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.*
@@ -100,11 +108,108 @@ class CaseServiceImpl(
             projectId = case.projectId,
             updateStatus = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             emitAndStoreEvent = { event, caseRuntime -> handleEvent(event, caseRuntime) },
-            resolveAgent = { name -> agentService.resolveAgentName(name) },
-            getDefaultAgentName = { agentService.getDefaultAgentName() },
-            findAgent = { name -> agentService.findAgentByName(name) },
+            selectAgent = { content -> selectAgent(content, case.projectId, case.id) },
+            runAgent = { agentName, events, caseRuntime -> runAgent(agentName, caseRuntime, events) },
             inputEvents = inputEvents,
         )
+
+    private suspend fun runAgent(
+        agentName: String,
+        caseRuntime: CaseRuntime,
+        events: List<CaseEvent>,
+    ) {
+        logger.info { "[CaseService] Running agent: $agentName for case ${caseRuntime.id}" }
+        agentService
+            .findAgentByName(agentName)
+            .run(events)
+            .catch { error ->
+                logger.error(error) { "[CaseService] Error in agent $agentName for case ${caseRuntime.id}" }
+                handleEvent(
+                    WarnEvent(
+                        projectId = caseRuntime.projectId,
+                        caseId = caseRuntime.id,
+                        message = "Agent $agentName error: ${error.message}",
+                    ),
+                    caseRuntime,
+                )
+            }.collect { event ->
+                handleEvent(event, caseRuntime)
+            }
+        logger.info { "[CaseService] Agent $agentName finished for case ${caseRuntime.id}" }
+    }
+
+    /**
+     * Resolves which agent should handle a message and returns the ordered list of events
+     * to store+emit on the runtime (e.g. an optional [WarnEvent] + an [AgentSelectedEvent],
+     * or just an [AgentSelectedEvent] for the default agent).
+     *
+     * An empty list signals that no agent is configured and the runtime should stop.
+     *
+     * @param content the message content to inspect for @mention syntax.
+     *   Pass an empty list when called from [CaseRuntime.processNextStep] with no new message
+     *   (i.e. to select the default agent at loop start).
+     */
+    private fun selectAgent(
+        content: List<MessageContent>,
+        projectId: UUID,
+        caseId: UUID,
+    ): List<CaseEvent> {
+        val firstText =
+            content
+                .filterIsInstance<MessageContent.Text>()
+                .firstOrNull()
+                ?.content
+                ?.trim()
+
+        val mentionedName =
+            firstText
+                ?.let { """^@(\S+)""".toRegex().find(it)?.groupValues?.get(1) }
+
+        if (mentionedName != null) {
+            val resolvedName = agentService.resolveAgentName(mentionedName)
+            if (resolvedName != null) {
+                logger.info { "[CaseService] Agent mention resolved: @$mentionedName -> $resolvedName" }
+                return listOf(
+                    AgentSelectedEvent(
+                        projectId = projectId,
+                        caseId = caseId,
+                        agentId = UUID.nameUUIDFromBytes(resolvedName.toByteArray()),
+                        agentName = resolvedName,
+                    ),
+                )
+            } else {
+                logger.warn { "[CaseService] Agent '@$mentionedName' not found, falling back to default" }
+                val warn =
+                    WarnEvent(projectId = projectId, caseId = caseId, message = "Agent '$mentionedName' not found")
+                val defaultName =
+                    agentService.getDefaultAgentName()
+                        ?: return listOf(warn)
+                return listOf(
+                    warn,
+                    AgentSelectedEvent(
+                        projectId = projectId,
+                        caseId = caseId,
+                        agentId = UUID.nameUUIDFromBytes(defaultName.toByteArray()),
+                        agentName = defaultName,
+                    ),
+                )
+            }
+        }
+
+        // No mention — pick the default agent.
+        val defaultName =
+            agentService.getDefaultAgentName()
+                ?: return emptyList()
+        logger.info { "[CaseService] Selecting default agent: $defaultName" }
+        return listOf(
+            AgentSelectedEvent(
+                projectId = projectId,
+                caseId = caseId,
+                agentId = UUID.nameUUIDFromBytes(defaultName.toByteArray()),
+                agentName = defaultName,
+            ),
+        )
+    }
 
     /**
      * Persists the new status and emits a [CaseStatusEvent] on the runtime's flow.
