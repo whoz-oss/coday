@@ -57,12 +57,12 @@ class CaseServiceImpl(
     override fun findByParent(parentId: UUID): List<Case> = caseRepository.findByParent(parentId)
 
     override fun delete(id: UUID): Boolean {
-        activeRuntimes.remove(id)?.stop()
+        activeRuntimes.remove(id)?.requestStop()
         return caseRepository.delete(id)
     }
 
     override fun deleteByParent(parentId: UUID): Int {
-        findByParent(parentId).forEach { activeRuntimes.remove(it.id)?.stop() }
+        findByParent(parentId).forEach { activeRuntimes.remove(it.id)?.requestStop() }
         return caseRepository.deleteByParent(parentId)
     }
 
@@ -89,7 +89,7 @@ class CaseServiceImpl(
     }
 
     /**
-     * Constructs a [CaseRuntime] wired with the service callbacks for status changes and event storage.
+     * Constructs a [CaseRuntime] wired with all service callbacks.
      */
     private fun buildRuntime(
         case: Case,
@@ -98,9 +98,11 @@ class CaseServiceImpl(
         CaseRuntime(
             id = case.id,
             projectId = case.projectId,
-            agentService = agentService,
             updateStatus = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             emitAndStoreEvent = { event, caseRuntime -> handleEvent(event, caseRuntime) },
+            resolveAgent = { name -> agentService.resolveAgentName(name) },
+            getDefaultAgentName = { agentService.getDefaultAgentName() },
+            findAgent = { name -> agentService.findAgentByName(name) },
             inputEvents = inputEvents,
         )
 
@@ -118,6 +120,7 @@ class CaseServiceImpl(
         if (newStatus.isTerminal()) {
             activeRuntimes.remove(caseId)
             logger.info { "[CaseService] Case $caseId reached terminal status $newStatus, evicted from active runtimes" }
+            cleanup(caseId)
         }
         val statusEvent =
             CaseStatusEvent(
@@ -171,7 +174,8 @@ class CaseServiceImpl(
             activeRuntimes[caseId]
                 ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
         logger.info { "Stopping case: $caseId" }
-        runtime.stop()
+        handleStatusChange(caseId, CaseStatus.STOPPING)
+        runtime.requestStop()
     }
 
     override fun killCase(caseId: UUID) {
@@ -179,7 +183,27 @@ class CaseServiceImpl(
             activeRuntimes.remove(caseId)
                 ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
         logger.info { "Killing case: $caseId" }
-        runBlocking { runtime.kill() }
+        runtime.requestKill()
+        runtime.requestStop()
+        runBlocking {
+            try {
+                agentService.kill()
+                agentService.cleanup()
+            } catch (e: Exception) {
+                logger.error(e) { "Error during kill/cleanup for case $caseId" }
+            }
+        }
+    }
+
+    private fun cleanup(caseId: UUID) {
+        logger.info { "Cleaning up resources for case $caseId" }
+        runBlocking {
+            try {
+                agentService.cleanup()
+            } catch (e: Exception) {
+                logger.error(e) { "Error during cleanup for case $caseId" }
+            }
+        }
     }
 
     // ========================================
@@ -189,7 +213,7 @@ class CaseServiceImpl(
     @PreDestroy
     fun shutdown() {
         logger.info { "Shutting down CaseService..." }
-        activeRuntimes.values.forEach { it.stop() }
+        activeRuntimes.keys.toList().forEach { stopCase(it) }
         activeRuntimes.clear()
         scope.cancel()
         executor.shutdown()
