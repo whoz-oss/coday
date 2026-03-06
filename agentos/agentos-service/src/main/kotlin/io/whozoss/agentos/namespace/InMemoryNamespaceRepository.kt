@@ -18,7 +18,7 @@ import java.util.UUID
 class InMemoryNamespaceRepository :
     NamespaceRepository,
     EntityRepository<Namespace, String> by InMemoryEntityRepository(
-        parentIdExtractor = { "all" },
+        parentIdExtractor = { NamespaceRepository.NAMESPACE_PARENT_KEY },
         comparator = compareBy { it.name },
     ) {
     init {

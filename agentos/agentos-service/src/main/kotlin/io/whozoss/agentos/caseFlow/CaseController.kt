@@ -22,13 +22,13 @@ import java.util.UUID
 class CaseController(
     private val caseService: CaseService,
 ) : EntityController<CaseModel, UUID>(caseService) {
-
     /** POST /api/cases/{caseId}/messages — add a user message to a running case. */
     @PostMapping("/{caseId}/messages")
     fun addMessage(
         @PathVariable caseId: UUID,
         @RequestBody request: AddMessageRequest,
     ) = runBlocking {
+        logger.info { "Adding message to case: $caseId" }
         val case = caseService.getCaseInstance(caseId)
         val userActor = Actor(id = request.userId, displayName = request.userId, role = ActorRole.USER)
         case.addUserMessage(
@@ -41,14 +41,20 @@ class CaseController(
 
     /** POST /api/cases/{caseId}/stop — stop a case gracefully. */
     @PostMapping("/{caseId}/stop")
-    fun stopCase(@PathVariable caseId: UUID) {
+    fun stopCase(
+        @PathVariable caseId: UUID,
+    ) {
+        logger.info { "Stopping case: $caseId" }
         caseService.stopCase(caseId)
         logger.info { "Case stopped: $caseId" }
     }
 
     /** POST /api/cases/{caseId}/kill — kill a case immediately. */
     @PostMapping("/{caseId}/kill")
-    fun killCase(@PathVariable caseId: UUID) {
+    fun killCase(
+        @PathVariable caseId: UUID,
+    ) {
+        logger.info { "Killing case: $caseId" }
         caseService.killCase(caseId)
         logger.info { "Case killed: $caseId" }
     }

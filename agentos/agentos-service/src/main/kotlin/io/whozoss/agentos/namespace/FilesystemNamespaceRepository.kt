@@ -22,10 +22,10 @@ class FilesystemNamespaceRepository(
         rootDir = dataDir.resolve("namespaces"),
         entityClass = Namespace::class.java,
         objectMapper = objectMapper,
-        parentIdExtractor = { "all" },
+        parentIdExtractor = { NamespaceRepository.NAMESPACE_PARENT_KEY },
         comparator = compareBy { it.name },
         findFileByIdFn = { id ->
-            val file = dataDir.resolve("namespaces").resolve("all").resolve("$id.json")
+            val file = dataDir.resolve("namespaces").resolve(NamespaceRepository.NAMESPACE_PARENT_KEY).resolve("$id.json")
             file.takeIf { it.exists() }
         },
     )
