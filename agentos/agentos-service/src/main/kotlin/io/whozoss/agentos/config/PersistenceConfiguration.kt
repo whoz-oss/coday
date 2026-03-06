@@ -17,16 +17,15 @@ import java.nio.file.Path
 /**
  * Registers file-system repository beans.
  *
- * Active by default (when `agentos.persistence.in-memory` is absent or false).
- * Deactivated by setting `agentos.persistence.in-memory=true`, which lets the
+ * Active by default (when `agentos.persistence.mode` is absent or set to `filesystem`).
+ * Deactivated by setting `agentos.persistence.mode=in-memory`, which lets the
  * in-memory [org.springframework.stereotype.Repository]-annotated classes take over instead.
  */
 @Configuration
 @EnableConfigurationProperties(PersistenceConfigProperties::class)
 @ConditionalOnProperty(
-    prefix = "agentos.persistence",
-    name = ["in-memory"],
-    havingValue = "false",
+    name = ["agentos.persistence.mode"],
+    havingValue = "filesystem",
     matchIfMissing = true,
 )
 class PersistenceConfiguration(

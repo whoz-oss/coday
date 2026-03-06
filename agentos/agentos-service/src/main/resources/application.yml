@@ -53,9 +53,11 @@ agentos:
     dir: ${PLUGINS_DIR:plugins/}
   persistence:
     # Root directory for persisted JSON files. Relative to the working directory.
-    data-dir: ${PERSISTENCE_DATA_DIR:data/}
-    # Set to true to switch to in-memory repositories (no persistence across restarts).
-    in-memory: ${PERSISTENCE_IN_MEMORY:false}
+    # Override with env var: AGENTOS_PERSISTENCE_DATA_DIR
+    data-dir: data/
+    # Persistence mode: 'filesystem' (default) or 'in-memory' (no persistence across restarts).
+    # Override with env var: AGENTOS_PERSISTENCE_MODE
+    mode: filesystem
 
 logging:
   level:

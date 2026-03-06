@@ -10,11 +10,11 @@ import java.util.UUID
 /**
  * In-memory implementation of [CaseEventRepository].
  *
- * Active only when `agentos.persistence.in-memory=true`.
+ * Active only when `agentos.persistence.mode=in-memory`.
  * The default mode is file-system persistence via [FilesystemCaseEventRepository].
  */
 @Repository
-@ConditionalOnProperty(prefix = "agentos.persistence", name = ["in-memory"], havingValue = "true")
+@ConditionalOnProperty(name = ["agentos.persistence.mode"], havingValue = "in-memory")
 class InMemoryCaseEventRepository :
     CaseEventRepository,
     EntityRepository<CaseEvent, UUID> by InMemoryEntityRepository(

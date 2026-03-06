@@ -1,68 +1,68 @@
 # AgentOS
 
-## C'est quoi ?
+## What is it?
 
-**AgentOS** = Système d'orchestration d'agents IA avec Spring Boot + Spring AI + Kotlin.
+**AgentOS** = AI agent orchestration system built with Spring Boot + Spring AI + Kotlin.
 
-Conçu pour être réutilisé via Docker dans des produits comme Whoz (solution de staffing).
+Designed to be reused via Docker in products like Whoz (staffing solution).
 
 ## Architecture
 
 ```
-API REST (Controllers)
+REST API (Controllers)
     ↓
-Orchestrateur + Spring AI (OpenAI, Anthropic, vLLM)
+Orchestrator + Spring AI (OpenAI, Anthropic, vLLM)
     ↓
-Plugins + Outils (Code Kotlin ou YAML)
+Plugins + Tools (Kotlin code or YAML)
 ```
 
-## Concepts Clés
+## Key Concepts
 
 ### Agent Registry
 
-Découverte d'agents basée sur contextes, capacités, priorités, tags.
+Agent discovery based on contexts, capabilities, priorities, tags.
 
-### Orchestrateur
+### Orchestrator
 
-Gestion de conversations multi-tours :
+Multi-turn conversation management:
 
-1. Génère une **intention** (ce que l'agent veut faire)
-2. Sélectionne l'**outil** approprié
-3. Génère les **paramètres**
-4. Exécute et enregistre le **résultat**
+1. Generates an **intention** (what the agent wants to do)
+2. Selects the appropriate **tool**
+3. Generates **parameters**
+4. Executes and records the **result**
 
-### Système de Plugins
+### Plugin System
 
-- **Code-Based** : Agents en Kotlin (type-safe)
-- **Filesystem** : Agents en YAML (hot reload)
+- **Code-Based**: Agents in Kotlin (type-safe)
+- **Filesystem**: Agents in YAML (hot reload)
 
-## Démarrage Rapide
+## Quick Start
 
 ```bash
-# Avec agents built-in
+# With built-in agents
 ./gradlew bootRun
 
-# Avec plugin YAML
+# With YAML plugin
 ./run-filesystem.sh
 ```
 
-API : `http://localhost:8080`
+API: `http://localhost:8080`
 
-## Créer un Agent YAML
+## Create a YAML Agent
 
 ```yaml
 # agents/my-agent.yaml
-name: Mon Agent
-description: Ce que fait l'agent
+name: My Agent
+description: What the agent does
 capabilities: [ capability-1 ]
 contexts: [ GENERAL ]
 tags: [ custom ]
 priority: 8
 ```
 
-Recharger : `curl -X POST http://localhost:8080/api/plugins/filesystem-agents/reload`
+Reload: `curl -X POST http://localhost:8080/api/plugins/filesystem-agents/reload`
 
-## Créer un Plugin Kotlin
+## Create a Kotlin Plugin
 
 ```kotlin
 @Extension
@@ -70,7 +70,7 @@ class MyPlugin : AgentPlugin() {
     override fun getAgents(): List<Agent> = listOf(
         Agent(
             id = "my-agent",
-            name = "Mon Agent",
+            name = "My Agent",
             capabilities = listOf("custom"),
             requiredContext = listOf(ContextType.GENERAL),
             priority = 8
@@ -84,23 +84,23 @@ class MyPlugin : AgentPlugin() {
 AgentOS uses **file-system persistence by default**. Data survives restarts.
 
 ```
-data/                                  # PERSISTENCE_DATA_DIR (default: data/)
+data/                                  # AGENTOS_PERSISTENCE_DATA_DIR (default: data/)
   cases/<projectId>/<caseId>.json
   case-events/<caseId>/<eventId>.json
-  namespaces/kotlin.Unit/<namespaceId>.json
+  namespaces/all/<namespaceId>.json
 ```
 
 To switch to **in-memory** mode (data lost on restart):
 
 ```bash
 # env var
-export PERSISTENCE_IN_MEMORY=true
+export AGENTOS_PERSISTENCE_MODE=in-memory
 
 # or application.yml
-agentos.persistence.in-memory: true
+agentos.persistence.mode: in-memory
 ```
 
-## Configuration Spring AI
+## Spring AI Configuration
 
 ```yaml
 spring:
@@ -120,16 +120,16 @@ EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
 
-## Intégration Whoz
+## Whoz Integration
 
-AgentOS peut être déployé comme service indépendant dans Whoz pour :
+AgentOS can be deployed as an independent service in Whoz for:
 
-- **Affectation intelligente** de consultants (matching compétences/disponibilités)
-- **Optimisation de planning** (maximiser l'utilisation)
-- **Analyse de compétences** (identifier les gaps)
-- **Reporting automatique** (génération de rapports)
+- **Smart consultant assignment** (skills/availability matching)
+- **Schedule optimization** (maximize utilization)
+- **Skills analysis** (identify gaps)
+- **Automated reporting** (report generation)
 
-Via Docker Compose :
+Via Docker Compose:
 
 ```yaml
 services:
@@ -139,12 +139,12 @@ services:
       - WHOZ_API_URL=http://whoz-app:8080/api
 ```
 
-Plugins custom Whoz créés en Kotlin pour accéder aux données métier.
+Custom Whoz plugins written in Kotlin to access business data.
 
-## Documentation Détaillée
+## Detailed Documentation
 
-- **Architecture complète** : [docs/ARCHITECTURE.md](docs/to-rework/ARCHITECTURE.md)
+- **Full architecture**: [docs/ARCHITECTURE.md](docs/to-rework/ARCHITECTURE.md)
 
 ---
 
-**Stack** : Spring Boot 3.5 + Spring AI + Kotlin + PF4J
+**Stack**: Spring Boot 3.5 + Spring AI + Kotlin + PF4J

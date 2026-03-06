@@ -43,7 +43,7 @@ class CasePersistenceLifecycleTest : StringSpec() {
             .findAndRegisterModules()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
 
-    fun tmpDir(): Path = Files.createTempDirectory("agentos-e2e")!!
+    fun tmpDir(): Path = Files.createTempDirectory("agentos-persistence-test")!!
 
     init {
 
