@@ -19,16 +19,20 @@ Plugins + Outils (Code Kotlin ou YAML)
 ## Concepts Clés
 
 ### Agent Registry
+
 Découverte d'agents basée sur contextes, capacités, priorités, tags.
 
 ### Orchestrateur
+
 Gestion de conversations multi-tours :
+
 1. Génère une **intention** (ce que l'agent veut faire)
 2. Sélectionne l'**outil** approprié
 3. Génère les **paramètres**
 4. Exécute et enregistre le **résultat**
 
 ### Système de Plugins
+
 - **Code-Based** : Agents en Kotlin (type-safe)
 - **Filesystem** : Agents en YAML (hot reload)
 
@@ -50,9 +54,9 @@ API : `http://localhost:8080`
 # agents/my-agent.yaml
 name: Mon Agent
 description: Ce que fait l'agent
-capabilities: [capability-1]
-contexts: [GENERAL]
-tags: [custom]
+capabilities: [ capability-1 ]
+contexts: [ GENERAL ]
+tags: [ custom ]
 priority: 8
 ```
 
@@ -96,15 +100,6 @@ export PERSISTENCE_IN_MEMORY=true
 agentos.persistence.in-memory: true
 ```
 
-### Metrics
-
-CRUD operations are tracked via Micrometer:
-- `agentos.case.operations{operation, namespace}` — counter per op + namespace
-- `agentos.case.storage.bytes` — distribution summary of total data directory size
-
-Available at `/actuator/metrics/agentos.case.operations` and
-`/actuator/prometheus`.
-
 ## Configuration Spring AI
 
 ```yaml
@@ -128,12 +123,14 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 ## Intégration Whoz
 
 AgentOS peut être déployé comme service indépendant dans Whoz pour :
+
 - **Affectation intelligente** de consultants (matching compétences/disponibilités)
 - **Optimisation de planning** (maximiser l'utilisation)
 - **Analyse de compétences** (identifier les gaps)
 - **Reporting automatique** (génération de rapports)
 
 Via Docker Compose :
+
 ```yaml
 services:
   agentos:
