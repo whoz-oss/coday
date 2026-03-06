@@ -1,7 +1,8 @@
-package io.whozoss.agentos.sdk.entity
+package io.whozoss.agentos.entity
 
-import org.slf4j.LoggerFactory
-import java.util.UUID
+import io.whozoss.agentos.sdk.entity.Entity
+import mu.KLogging
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -24,12 +25,10 @@ import java.util.concurrent.ConcurrentHashMap
  * @param parentIdExtractor Function to extract the parent ID from the entity
  * @param comparator Comparator for ordering entities within a parent
  */
-abstract class InMemoryEntityRepository<T : Entity, P>(
+class InMemoryEntityRepository<T : Entity, P>(
     private val parentIdExtractor: (T) -> P,
     private val comparator: Comparator<T>,
 ) : EntityRepository<T, P> {
-    private val logger = LoggerFactory.getLogger(this::class.java)
-
     /**
      * Primary storage: entity ID -> entity
      */
@@ -76,7 +75,7 @@ abstract class InMemoryEntityRepository<T : Entity, P>(
             parentEntityIds.add(insertIndex, entityId)
         }
 
-        logger.debug("[Parent $parentId] Entity saved (id=$entityId)")
+        logger.debug { "[Parent $parentId] Entity saved (id=$entityId)" }
         return entity
     }
 
@@ -109,7 +108,7 @@ abstract class InMemoryEntityRepository<T : Entity, P>(
         val entity = entitiesById[id]
         return if (entity != null && !entity.metadata.removed) {
             entity.metadata.removed = true
-            logger.debug("Entity soft deleted (id=$id)")
+            logger.debug { "Entity soft deleted (id=$id)" }
             true
         } else {
             false
@@ -124,13 +123,15 @@ abstract class InMemoryEntityRepository<T : Entity, P>(
     override fun deleteByParent(parentId: P): Int {
         val entityIds = entityIdsByParentId[parentId] ?: return 0
         var deletedCount = 0
-        
+
         entityIds.forEach { id ->
             if (delete(id)) {
                 deletedCount++
             }
         }
-        
+
         return deletedCount
     }
+
+    companion object : KLogging()
 }

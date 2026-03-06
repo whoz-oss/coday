@@ -28,7 +28,7 @@ import org.springframework.web.bind.annotation.RestController
 
 class NamespaceController(
     private val namespaceService: NamespaceService,
-) : EntityController<Namespace, Unit>(namespaceService) {
+) : EntityController<Namespace, String>(namespaceService) {
     /**
      * List all namespaces.
      *

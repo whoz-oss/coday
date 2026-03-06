@@ -1,7 +1,9 @@
 package io.whozoss.agentos.sdk.caseEvent
 
+import com.fasterxml.jackson.annotation.JsonCreator
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
+import com.fasterxml.jackson.annotation.JsonValue
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.Entity
@@ -14,7 +16,9 @@ import java.util.UUID
  * Values match the simple class names of each CaseEvent subtype,
  * used as the Jackson discriminant for polymorphic (de)serialization.
  */
-enum class CaseEventType(val value: String) {
+enum class CaseEventType(
+    @JsonValue val value: String,
+) {
     STATUS("CaseStatusEvent"),
     AGENT_SELECTED("AgentSelectedEvent"),
     MESSAGE("MessageEvent"),
@@ -29,7 +33,15 @@ enum class CaseEventType(val value: String) {
     ANSWER("AnswerEvent"),
     INTENTION_GENERATED("IntentionGeneratedEvent"),
     TOOL_SELECTED("ToolSelectedEvent"),
-    TEXT_CHUNK("TextChunkEvent"),
+    TEXT_CHUNK("TextChunkEvent");
+
+    companion object {
+        @JvmStatic
+        @JsonCreator
+        fun fromValue(value: String): CaseEventType =
+            entries.firstOrNull { it.value == value }
+                ?: throw IllegalArgumentException("Unknown CaseEventType value: $value")
+    }
 }
 
 /**

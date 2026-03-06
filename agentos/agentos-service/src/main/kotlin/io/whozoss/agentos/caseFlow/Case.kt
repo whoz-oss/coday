@@ -31,18 +31,14 @@ import java.util.concurrent.atomic.AtomicBoolean
  * execution even if no collectors are attached (hot observable) to the output events.
  */
 class Case(
-    // TODO: remove, held by caseModel, need a getter on
-    val id: UUID = UUID.randomUUID(),
     val projectId: UUID,
     private val agentService: AgentService,
     private val caseService: CaseService,
     private var caseModel: CaseModel,
     private val caseEventService: CaseEventService,
-    /**
-     * List sorted by timestamp of the events on the case. Sort order to keep.
-     */
     inputEvents: List<CaseEvent> = emptyList(),
 ) : CaseEventEmitter by DefaultCaseEventEmitter() {
+    val id: UUID get() = caseModel.id
     private val eventList = InMemoryCaseEventList(inputEvents)
 
     // Stop flag for graceful shutdown
