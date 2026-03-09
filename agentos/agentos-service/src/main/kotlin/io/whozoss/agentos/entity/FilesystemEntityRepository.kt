@@ -103,20 +103,22 @@ class FilesystemEntityRepository<T : Entity, P>(
     private fun listEntityFiles(parentId: P): List<Path> {
         val parentDir = rootDir.resolve(parentId.toString())
         if (!parentDir.exists()) return emptyList()
-        return Files
-            .list(parentDir)
-            .filter { it.isRegularFile() && it.fileName.toString().endsWith(".json") }
-            .toList()
+        return Files.list(parentDir).use { stream ->
+            stream
+                .filter { it.isRegularFile() && it.fileName.toString().endsWith(".json") }
+                .toList()
+        }
     }
 
     private fun findFileById(id: UUID): Path? =
         findFileByIdFn?.invoke(id) ?: run {
             if (!rootDir.exists()) return null
-            Files
-                .walk(rootDir, 2) // project, then parent, then entity file
-                .filter { it.isRegularFile() && it.nameWithoutExtension == id.toString() }
-                .findFirst()
-                .orElse(null)
+            Files.walk(rootDir, 2).use { stream -> // rootDir, then parent dir, then entity file
+                stream
+                    .filter { it.isRegularFile() && it.nameWithoutExtension == id.toString() }
+                    .findFirst()
+                    .orElse(null)
+            }
         }
 
     private fun readEntity(file: Path): T? =

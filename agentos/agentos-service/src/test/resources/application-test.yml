@@ -15,7 +15,7 @@ agentos:
   plugins:
     dir: build/test-plugins
   persistence:
-    in-memory: true
+    mode: in-memory
 
 logging:
   level:
