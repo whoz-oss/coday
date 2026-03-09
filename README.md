@@ -92,7 +92,6 @@ This command will:
 
 ### 🆘 Help
 - [Troubleshooting](docs/troubleshooting.md)
-- [Architecture](docs/to-rework/ARCHITECTURE.md) (technical)
 - [Development Workflow](docs/to-rework/DEV_WORKFLOW.md) (contributors)
 
 ## Configuration Example
@@ -123,7 +122,6 @@ agents:
 
 We welcome contributions! Please see:
 - [Development Workflow](docs/to-rework/DEV_WORKFLOW.md) - Contribution guidelines
-- [Architecture](docs/to-rework/ARCHITECTURE.md) - System architecture
 
 ### Release Process
 

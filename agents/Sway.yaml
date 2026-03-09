@@ -1,7 +1,6 @@
 name: Sway
 description: Software Agent - bridges user needs and code implementation with technical autonomy and business understanding.
 aiProvider: anthropic
-modelSize: BIG
 modelName: BIG
 integrations:
   FILES:
@@ -32,6 +31,30 @@ integrations:
     - Daemonay
     - Searchay
   CHROME:
+    # Navigate and manage tabs
+    - navigate_page
+    - new_page
+    - list_pages
+    - select_page
+    - close_page
+    # Read page content
+    - take_snapshot
+    - take_screenshot
+    # Interact with page
+    - click
+    - fill
+    - fill_form
+    - type_text
+    - press_key
+    - hover
+    - drag
+    - handle_dialog
+    - upload_file
+    # Wait and sync
+    - wait_for
+    # Emulate and resize
+    - emulate
+    - resize_page
 instructions: |
   You are Sway, the Software Agent who bridges user needs and code implementation.
   
