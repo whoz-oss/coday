@@ -3,6 +3,7 @@ import { Component, computed, inject, NgZone, OnDestroy, OnInit, signal } from '
 import { ActivatedRoute } from '@angular/router'
 import {
   CaseEvent,
+  Configuration,
   MessageEvent as CaseMessageEvent,
   ToolRequestEvent,
   ToolResponseEvent,
@@ -38,6 +39,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient)
   private readonly zone = inject(NgZone)
 
+  private readonly config = inject(Configuration)
   private readonly caseId = this.route.snapshot.params['caseId'] as string
   private readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
@@ -68,18 +70,18 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     // Pass 1: build complete tool call map (request + optional response)
     const toolCallMap = new Map<string, ToolCall>()
     for (const e of allEvents) {
-      if (e.type === 'TOOL_REQUEST') {
-        const req = e as unknown as ToolRequestEvent
+      if (e.type === 'ToolRequestEvent') {
+        const req = e as ToolRequestEvent
         const requestId = req.toolRequestId ?? e.id
         const existing = toolCallMap.get(requestId)
         toolCallMap.set(requestId, {
           requestId,
           toolName: req.toolName ?? 'unknown',
           args: req.args ?? null,
-          response: existing?.response, // preserve response if already seen
+          response: existing?.response,
         })
-      } else if (e.type === 'TOOL_RESPONSE') {
-        const res = e as unknown as ToolResponseEvent
+      } else if (e.type === 'ToolResponseEvent') {
+        const res = e as ToolResponseEvent
         const requestId = res.toolRequestId ?? e.id
         const existing = toolCallMap.get(requestId)
         toolCallMap.set(requestId, {
@@ -95,10 +97,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     const items: TimelineItem[] = []
     const seenToolIds = new Set<string>()
     for (const e of allEvents) {
-      if (e.type === 'MESSAGE') {
+      if (e.type === 'MessageEvent') {
         items.push({ kind: 'message', event: e as CaseMessageEvent })
-      } else if (e.type === 'TOOL_REQUEST' || e.type === 'TOOL_RESPONSE') {
-        const raw = e as unknown as ToolRequestEvent | ToolResponseEvent
+      } else if (e.type === 'ToolRequestEvent' || e.type === 'ToolResponseEvent') {
+        const raw = e as ToolRequestEvent | ToolResponseEvent
         const requestId = raw.toolRequestId ?? e.id
         if (!seenToolIds.has(requestId)) {
           seenToolIds.add(requestId)
@@ -122,7 +124,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   private connectSse(): void {
-    const url = `/api/agentos/api/cases/${this.caseId}/events`
+    const url = `${this.config.basePath}/api/cases/${this.caseId}/events`
     this.eventSource = this.zone.runOutsideAngular(() => new EventSource(url))
 
     // NOTE: the backend sends named SSE events ("event: MessageEvent", "event: CaseStatusEvent", ...)
@@ -133,8 +135,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         this.zone.run(() => {
           this.events.update((prev) => [...prev, event])
           // minimal running heuristic: running unless we explicitly receive STOPPED
-          if (event.type === 'STATUS') {
-            const status = (event as unknown as { status?: string }).status
+          if (event.type === 'CaseStatusEvent') {
+            const status = (event as import('@whoz-oss/agentos-api-client').CaseStatusEvent).status
             this.isRunning.set(status === 'RUNNING')
           } else {
             this.isRunning.set(true)
@@ -179,7 +181,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.isRunning.set(true)
 
     this.http
-      .post(`/api/agentos/api/cases/${this.caseId}/messages`, {
+      .post(`${this.config.basePath}/api/cases/${this.caseId}/messages`, {
         content,
         userId: 'default-user',
       })
@@ -192,7 +194,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   protected stop(): void {
-    this.http.post(`/api/agentos/api/cases/${this.caseId}/stop`, {}).subscribe({
+    this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/stop`, {}).subscribe({
       next: () => this.isRunning.set(false),
       error: (err) => console.error('[CaseChat] Failed to stop case', err),
     })
@@ -209,10 +211,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected extractToolOutput(call: ToolCall): string | null {
     if (!call.response) return null
-    const output = call.response.output
+    const output = call.response.output as { content?: string } | null
     if (!output) return null
-    if ('content' in output) return output.content ?? null
-    return null
+    return output.content ?? null
   }
 
   protected toggleToolCall(requestId: string): void {
