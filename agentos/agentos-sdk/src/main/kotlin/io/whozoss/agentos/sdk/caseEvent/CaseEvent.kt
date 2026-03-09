@@ -1,7 +1,6 @@
 package io.whozoss.agentos.sdk.caseEvent
 
 import com.fasterxml.jackson.annotation.JsonCreator
-import com.fasterxml.jackson.annotation.JsonCreator
 import com.fasterxml.jackson.annotation.JsonPropertyOrder
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
@@ -35,7 +34,8 @@ enum class CaseEventType(
     ANSWER("AnswerEvent"),
     INTENTION_GENERATED("IntentionGeneratedEvent"),
     TOOL_SELECTED("ToolSelectedEvent"),
-    TEXT_CHUNK("TextChunkEvent");
+    TEXT_CHUNK("TextChunkEvent"),
+    ;
 
     companion object {
         @JvmStatic
@@ -215,7 +215,10 @@ data class QuestionEvent(
     /**
      * Create an AnswerEvent that references this question.
      */
-    fun createAnswer(actor: Actor, answer: String): AnswerEvent =
+    fun createAnswer(
+        actor: Actor,
+        answer: String,
+    ): AnswerEvent =
         AnswerEvent(
             projectId = projectId,
             caseId = caseId,
