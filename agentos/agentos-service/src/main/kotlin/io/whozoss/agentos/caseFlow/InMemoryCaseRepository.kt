@@ -9,14 +9,14 @@ import java.util.UUID
 /**
  * In-memory implementation of [CaseRepository].
  *
- * Active only when `agentos.persistence.in-memory=true`.
+ * Active only when `agentos.persistence.mode=in-memory`.
  * The default mode is file-system persistence via [FilesystemCaseRepository].
  */
 @Repository
-@ConditionalOnProperty(prefix = "agentos.persistence", name = ["in-memory"], havingValue = "true")
+@ConditionalOnProperty(name = ["agentos.persistence.mode"], havingValue = "in-memory")
 class InMemoryCaseRepository :
     CaseRepository,
-    EntityRepository<Case, UUID> by InMemoryEntityRepository(
+    EntityRepository<CaseModel, UUID> by InMemoryEntityRepository(
         parentIdExtractor = { it.projectId },
         comparator = compareBy { it.metadata.id },
     )

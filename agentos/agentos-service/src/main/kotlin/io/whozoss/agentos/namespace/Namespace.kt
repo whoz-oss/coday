@@ -1,5 +1,6 @@
 package io.whozoss.agentos.namespace
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 
@@ -12,6 +13,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
  * Implements Entity for standard CRUD operations.
  * No parent entity — namespaces are root-level.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 data class Namespace(
     override val metadata: EntityMetadata = EntityMetadata(),
     val name: String,

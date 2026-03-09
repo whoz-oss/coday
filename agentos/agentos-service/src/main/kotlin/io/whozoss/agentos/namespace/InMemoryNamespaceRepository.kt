@@ -10,15 +10,15 @@ import java.util.UUID
 /**
  * In-memory implementation of [NamespaceRepository].
  *
- * Active only when `agentos.persistence.in-memory=true`.
+ * Active only when `agentos.persistence.mode=in-memory`.
  * The default mode is file-system persistence via [FilesystemNamespaceRepository].
  */
 @Repository
-@ConditionalOnProperty(prefix = "agentos.persistence", name = ["in-memory"], havingValue = "true")
+@ConditionalOnProperty(name = ["agentos.persistence.mode"], havingValue = "in-memory")
 class InMemoryNamespaceRepository :
     NamespaceRepository,
-    EntityRepository<Namespace, Unit> by InMemoryEntityRepository(
-        parentIdExtractor = { },
+    EntityRepository<Namespace, String> by InMemoryEntityRepository(
+        parentIdExtractor = { NamespaceRepository.NAMESPACE_PARENT_KEY },
         comparator = compareBy { it.name },
     ) {
     init {

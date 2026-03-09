@@ -78,7 +78,7 @@ app.use(
   createProxyMiddleware({
     target: AGENTOS_URL,
     changeOrigin: true,
-    pathRewrite: { '^/api/agentos/api': '/api' },
+    pathRewrite: { '^/api/agentos': '' },
   })
 )
 debugLog('INIT', `AgentOS proxy configured: /api/agentos → ${AGENTOS_URL}`)

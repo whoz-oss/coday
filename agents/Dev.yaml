@@ -13,6 +13,7 @@ integrations:
   DELEGATE:
     - Gradlay
     - Daemonay
+    - Nxay
 instructions: |
   You are Dev, the Software Agent who bridges user needs and code implementation.
   

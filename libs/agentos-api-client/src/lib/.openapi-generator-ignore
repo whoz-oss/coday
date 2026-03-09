@@ -1,0 +1,11 @@
+# Files manually patched to fix unused imports — do not regenerate
+api/case-controller.service.ts
+api/case-event-rest-controller.service.ts
+api/namespace-controller.service.ts
+api/plugin-controller.service.ts
+api/sse.service.ts
+api/tool-controller.service.ts
+model/case-event.ts
+model/get-by-id2200-response.ts
+model/message-event-all-of-content.ts
+model/tool-response-event-all-of-output.ts
