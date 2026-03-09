@@ -682,9 +682,11 @@ paths:
       parameters:
       - name: parentId
         in: path
+        description: Parent entity ID
         required: true
         schema:
           type: string
+          format: uuid
       responses:
         "200":
           description: OK
@@ -725,6 +727,7 @@ paths:
       parameters:
       - name: parentId
         in: path
+        description: Parent entity ID
         required: true
         schema:
           type: string
@@ -746,6 +749,7 @@ paths:
       parameters:
       - name: parentId
         in: path
+        description: Parent entity ID
         required: true
         schema:
           type: string
@@ -916,13 +920,13 @@ components:
       - $ref: "#/components/schemas/CaseEvent"
       - type: object
         properties:
-          questionId:
-            type: string
-            format: uuid
           actor:
             $ref: "#/components/schemas/Actor"
           answer:
             type: string
+          questionId:
+            type: string
+            format: uuid
       required:
       - actor
       - answer
@@ -938,6 +942,20 @@ components:
       discriminator:
         propertyName: type
       properties:
+        caseId:
+          type: string
+          format: uuid
+        id:
+          type: string
+          format: uuid
+        metadata:
+          $ref: "#/components/schemas/EntityMetadata"
+        projectId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
         type:
           type: string
           enum:
@@ -1075,12 +1093,12 @@ components:
             format: uuid
           agentName:
             type: string
-          question:
-            type: string
           options:
             type: array
             items:
               type: string
+          question:
+            type: string
       required:
       - agentId
       - agentName
@@ -1130,11 +1148,11 @@ components:
       - $ref: "#/components/schemas/CaseEvent"
       - type: object
         properties:
-          toolRequestId:
+          args:
             type: string
           toolName:
             type: string
-          args:
+          toolRequestId:
             type: string
       required:
       - caseId
@@ -1150,16 +1168,16 @@ components:
       - $ref: "#/components/schemas/CaseEvent"
       - type: object
         properties:
-          toolRequestId:
-            type: string
-          toolName:
-            type: string
           output:
             oneOf:
             - $ref: "#/components/schemas/Image"
             - $ref: "#/components/schemas/Text"
           success:
             type: boolean
+          toolName:
+            type: string
+          toolRequestId:
+            type: string
       required:
       - caseId
       - id

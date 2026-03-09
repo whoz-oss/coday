@@ -1,5 +1,7 @@
 package io.whozoss.agentos.entity
 
+import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.Schema
 import io.whozoss.agentos.sdk.entity.Entity
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -66,6 +68,7 @@ abstract class EntityController<EntityType : Entity, ParentIdentifier>(
      */
     @GetMapping("/by-parentId/{parentId}", produces = [MediaType.APPLICATION_JSON_VALUE])
     open fun listByParent(
+        @Parameter(description = "Parent entity ID", schema = Schema(type = "string", format = "uuid"))
         @PathVariable parentId: ParentIdentifier,
     ): List<EntityType> = service.findByParent(parentId)
 

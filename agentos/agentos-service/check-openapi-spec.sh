@@ -10,7 +10,7 @@ echo "Regenerating OpenAPI spec..."
 ./gradlew :agentos-service:generateOpenApiDocs --no-configuration-cache -q
 
 echo "Checking for diff..."
-if ! git diff --exit-code --stat openapi/agentos-openapi.yaml; then
+if ! git diff --exit-code openapi/agentos-openapi.yaml; then
   echo ""
   echo "❌ OpenAPI spec is out of date."
   echo "   Please run: nx run agentos-service:generate-openapi-spec"

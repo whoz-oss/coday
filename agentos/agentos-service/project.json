@@ -84,7 +84,7 @@
         "build"
       ]
     },
-    "generate-client": {
+    "regenerate": {
       "executor": "nx:run-commands",
       "cache": false,
       "inputs": [
