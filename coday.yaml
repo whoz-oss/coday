@@ -62,7 +62,7 @@ scripts:
       
       ⚠️ Do not run interactive commands!
       ⚠️ Commands that modify dependencies require user confirmation.
-    command: nx PARAMETERS
+    command: pnpm nx PARAMETERS
     parametersDescription: |
       Nx command with arguments. Examples:
       - "test agentos-service"

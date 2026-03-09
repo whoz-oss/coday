@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/@openapitools/openapi-generator-cli/config.schema.json",
+  "additionalProperties": {
+    "enumPropertyNaming": "original",
+    "fileNaming": "kebab-case",
+    "modelPropertyNaming": "original",
+    "ngVersion": "20.0.0",
+    "providedIn": "root",
+    "stringEnums": true,
+    "supportsES6": true,
+    "taggedUnions": true,
+    "withInterfaces": false
+  },
+  "generator-cli": {
+    "version": "7.14.0"
+  },
+  "generatorName": "typescript-angular",
+  "globalProperty": {
+    "skipFormModel": "false"
+  },
+  "inputSpec": "../../agentos/openapi/agentos-openapi.yaml",
+  "spaces": 2
+}

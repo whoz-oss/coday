@@ -1,5 +1,8 @@
 package io.whozoss.agentos.sdk.caseEvent
 
+import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import com.fasterxml.jackson.annotation.JsonSubTypes
+import com.fasterxml.jackson.annotation.JsonTypeInfo
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.Entity
@@ -9,26 +12,25 @@ import java.util.UUID
 
 /**
  * Type identifier for case events.
- * Used for indexation and deserialization.
+ * Values match the simple class names of each CaseEvent subtype,
+ * used as the Jackson discriminant for polymorphic (de)serialization.
  */
-enum class CaseEventType(
-    val value: String,
-) {
-    STATUS("status"),
-    AGENT_SELECTED("agent_selected"),
-    MESSAGE("message"),
-    TOOL_REQUEST("tool_request"),
-    TOOL_RESPONSE("tool_response"),
-    THINKING("thinking"),
-    AGENT_FINISHED("agent_finished"),
-    AGENT_RUNNING("agent_running"),
-    WARN("warning"),
-    ERROR("error"),
-    QUESTION("question"),
-    ANSWER("answer"),
-    INTENTION_GENERATED("intention_generated"),
-    TOOL_SELECTED("tool_selected"),
-    TEXT_CHUNK("text_chunk"),
+enum class CaseEventType(val value: String) {
+    STATUS("CaseStatusEvent"),
+    AGENT_SELECTED("AgentSelectedEvent"),
+    MESSAGE("MessageEvent"),
+    TOOL_REQUEST("ToolRequestEvent"),
+    TOOL_RESPONSE("ToolResponseEvent"),
+    THINKING("ThinkingEvent"),
+    AGENT_FINISHED("AgentFinishedEvent"),
+    AGENT_RUNNING("AgentRunningEvent"),
+    WARN("WarnEvent"),
+    ERROR("ErrorEvent"),
+    QUESTION("QuestionEvent"),
+    ANSWER("AnswerEvent"),
+    INTENTION_GENERATED("IntentionGeneratedEvent"),
+    TOOL_SELECTED("ToolSelectedEvent"),
+    TEXT_CHUNK("TextChunkEvent"),
 }
 
 /**
@@ -36,8 +38,28 @@ enum class CaseEventType(
  * Events are emitted during case execution to provide real-time updates.
  *
  * Implements Entity interface for standard CRUD operations.
- * Event metadata is derived from event-specific fields for backward compatibility.
+ *
+ * Jackson polymorphism: the `type` field (CaseEventType.value = class name)
+ * is used as discriminant for serialization and deserialization.
  */
+@JsonPropertyOrder(alphabetic = true)
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.EXISTING_PROPERTY, property = "type")
+@JsonSubTypes(
+    JsonSubTypes.Type(value = CaseStatusEvent::class, name = "CaseStatusEvent"),
+    JsonSubTypes.Type(value = AgentSelectedEvent::class, name = "AgentSelectedEvent"),
+    JsonSubTypes.Type(value = MessageEvent::class, name = "MessageEvent"),
+    JsonSubTypes.Type(value = ToolRequestEvent::class, name = "ToolRequestEvent"),
+    JsonSubTypes.Type(value = ToolResponseEvent::class, name = "ToolResponseEvent"),
+    JsonSubTypes.Type(value = ThinkingEvent::class, name = "ThinkingEvent"),
+    JsonSubTypes.Type(value = AgentFinishedEvent::class, name = "AgentFinishedEvent"),
+    JsonSubTypes.Type(value = AgentRunningEvent::class, name = "AgentRunningEvent"),
+    JsonSubTypes.Type(value = WarnEvent::class, name = "WarnEvent"),
+    JsonSubTypes.Type(value = QuestionEvent::class, name = "QuestionEvent"),
+    JsonSubTypes.Type(value = AnswerEvent::class, name = "AnswerEvent"),
+    JsonSubTypes.Type(value = IntentionGeneratedEvent::class, name = "IntentionGeneratedEvent"),
+    JsonSubTypes.Type(value = ToolSelectedEvent::class, name = "ToolSelectedEvent"),
+    JsonSubTypes.Type(value = TextChunkEvent::class, name = "TextChunkEvent"),
+)
 sealed interface CaseEvent : Entity {
     val projectId: UUID
     val caseId: UUID
@@ -128,7 +150,7 @@ data class ToolRequestEvent(
     override val timestamp: Instant = Instant.now(),
     val toolRequestId: String,
     val toolName: String,
-    val args: String,
+    val args: String?,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.TOOL_REQUEST
 }
@@ -173,17 +195,14 @@ data class QuestionEvent(
     val agentId: UUID,
     val agentName: String,
     val question: String,
-    val options: List<String>? = null, // Optional choices for the user
+    val options: List<String>? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.QUESTION
 
     /**
      * Create an AnswerEvent that references this question.
      */
-    fun createAnswer(
-        actor: Actor,
-        answer: String,
-    ): AnswerEvent =
+    fun createAnswer(actor: Actor, answer: String): AnswerEvent =
         AnswerEvent(
             projectId = projectId,
             caseId = caseId,

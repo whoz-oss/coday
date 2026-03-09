@@ -1,0 +1,27 @@
+{
+  "name": "agentos-api-client",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/agentos-api-client/src",
+  "tags": ["scope:agentos", "type:api-client"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"],
+      "options": {
+        "lintFilePatterns": ["libs/agentos-api-client/**/*.ts"]
+      }
+    },
+    "generate-client": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "TS_POST_PROCESS_FILE='prettier --write' openapi-generator-cli generate -c openapitools.json -o src/lib --enable-post-process-file",
+        "cwd": "libs/agentos-api-client"
+      },
+      "metadata": {
+        "description": "Regenerates the Angular TypeScript client from the OpenAPI spec using openapi-generator-cli. Safe to run at any time. src/custom/ is NOT touched — it is the hand-written layer. NOTE: to regenerate from scratch (spec + client), use 'agentos-service:regenerate' which orchestrates generate-openapi-spec → this target."
+      }
+    }
+  }
+}

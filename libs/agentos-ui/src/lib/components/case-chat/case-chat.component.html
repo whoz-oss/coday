@@ -1,0 +1,98 @@
+<div class="case-chat">
+  <div class="case-chat__messages">
+    @if (timeline().length === 0) {
+      <div class="case-chat__empty">
+        <p>No messages yet.</p>
+      </div>
+    } @else {
+      @for (item of timeline(); track item.kind === 'message' ? item.event.id : item.call.requestId) {
+        @if (item.kind === 'message') {
+          <div
+            class="case-chat__message"
+            [class.case-chat__message--user]="item.event.actor?.role === 'USER'"
+            [class.case-chat__message--agent]="item.event.actor?.role === 'AGENT'"
+          >
+            <span class="case-chat__message-author">{{ item.event.actor?.displayName }}</span>
+            <p class="case-chat__message-text">{{ extractText(item.event) }}</p>
+          </div>
+        } @else {
+          <div
+            class="case-chat__tool-call"
+            [class.case-chat__tool-call--pending]="!item.call.response"
+            [class.case-chat__tool-call--success]="item.call.response?.success === true"
+            [class.case-chat__tool-call--error]="item.call.response?.success === false"
+          >
+            <button
+              type="button"
+              class="case-chat__tool-call-header"
+              (click)="toggleToolCall(item.call.requestId)"
+              [attr.aria-expanded]="isToolCallExpanded(item.call.requestId)"
+            >
+              <span class="case-chat__tool-call-icon">
+                @if (!item.call.response) {
+                  ⏳
+                } @else if (item.call.response.success) {
+                  ✅
+                } @else {
+                  ❌
+                }
+              </span>
+              <span class="case-chat__tool-call-name">{{ item.call.toolName }}</span>
+              <span class="case-chat__tool-call-chevron">{{
+                isToolCallExpanded(item.call.requestId) ? '▼' : '▶'
+              }}</span>
+            </button>
+
+            @if (isToolCallExpanded(item.call.requestId)) {
+              <div class="case-chat__tool-call-output">
+                @if (item.call.args) {
+                  <div class="case-chat__tool-call-section">
+                    <span class="case-chat__tool-call-label">Payload</span>
+                    <pre>{{ item.call.args }}</pre>
+                  </div>
+                }
+                <div class="case-chat__tool-call-section">
+                  <span class="case-chat__tool-call-label">Output</span>
+                  @if (extractToolOutput(item.call); as output) {
+                    <pre>{{ output }}</pre>
+                  } @else if (!item.call.response) {
+                    <span class="case-chat__tool-call-pending">Running…</span>
+                  } @else {
+                    <span class="case-chat__tool-call-empty">No output</span>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        }
+      }
+    }
+
+    @if (isRunning()) {
+      <div class="case-chat__thinking">
+        <span class="thinking-dot"></span>
+        <span class="thinking-dot"></span>
+        <span class="thinking-dot"></span>
+      </div>
+    }
+  </div>
+
+  <div class="case-chat__composer">
+    <textarea
+      class="case-chat__input"
+      placeholder="Reply…"
+      rows="3"
+      [value]="inputValue()"
+      [disabled]="isRunning()"
+      (input)="onInput($event)"
+      (keydown)="onKeydown($event)"
+    ></textarea>
+    <div class="case-chat__actions">
+      @if (isRunning()) {
+        <ds-icon-button icon="stop" variant="danger" title="Stop" (action)="stop()" />
+      } @else {
+        <ds-icon-button icon="send" variant="primary" title="Send (Enter)" [disabled]="!canSend" (action)="submit()" />
+      }
+    </div>
+  </div>
+</div>

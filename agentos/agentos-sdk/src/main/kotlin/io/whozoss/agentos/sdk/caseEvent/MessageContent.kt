@@ -1,9 +1,17 @@
 package io.whozoss.agentos.sdk.caseEvent
 
+import com.fasterxml.jackson.annotation.JsonSubTypes
+import com.fasterxml.jackson.annotation.JsonTypeInfo
+
 /**
  * Structured content for messages.
  * Can represent text or image content in a message.
  */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
+@JsonSubTypes(
+    JsonSubTypes.Type(value = MessageContent.Text::class, name = "Text"),
+    JsonSubTypes.Type(value = MessageContent.Image::class, name = "Image"),
+)
 sealed interface MessageContent {
     /**
      * Plain text content.

@@ -62,6 +62,13 @@ instructions: |
   - `pnpm server` — Express server only
   - `pnpm web` — published release only, NOT for testing local changes
 
+  To start the **AgentOS Spring backend** (required for agentos-api-client features):
+  - Command: `./gradlew :agentos-service:bootRun` from the `agentos/` directory
+  - Session name: `agentos`
+  - Listens on port **8123** by default
+  - Ready when logs show: `Started AgentOSApplicationKt` or `Tomcat started on port 8123`
+  - The Express server proxies `/api/agentos/*` → `http://localhost:8123`
+
   ## Limits
 
   - Do not guess commands to start applications — if not provided by the caller or

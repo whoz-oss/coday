@@ -68,7 +68,8 @@
       "executor": "@angular/build:dev-server",
       "options": {
         "port": 4200,
-        "host": "localhost"
+        "host": "localhost",
+        "proxyConfig": "apps/client/proxy.conf.json"
       },
       "configurations": {
         "production": {

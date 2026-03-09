@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "declaration": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "outDir": "../../dist/out-tsc",
+    "types": []
+  },
+  "exclude": ["node_modules", "dist", "**/*.spec.ts", "**/*.test.ts"],
+  "extends": "./tsconfig.json",
+  "include": ["src/**/*.ts"]
+}

@@ -31,6 +31,7 @@ import { registerPromptExecutionRoutes } from './lib/prompt-execution.routes'
 import { parseCodayOptions } from './lib/coday-options-utils'
 import { ProjectFileRepository } from '@coday/repository'
 import { McpInstancePool } from '@coday/mcp'
+import { createProxyMiddleware } from 'http-proxy-middleware'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT
@@ -63,6 +64,25 @@ debugLog('INIT', 'Webhook service initialized (will be initialized with prompt e
 // Note: projectPath will be set after projectService is initialized
 let promptService: PromptService
 let promptExecutionService: PromptExecutionService
+// Proxy /api/agentos/* → AgentOS Spring backend
+// Registered synchronously and BEFORE express.json() to avoid body-parser
+// consuming the request body before it can be forwarded.
+const AGENTOS_PORT = process.env.AGENTOS_PORT ? parseInt(process.env.AGENTOS_PORT) : 8123
+const AGENTOS_URL = `http://localhost:${AGENTOS_PORT}`
+app.use(
+  '/api/agentos',
+  (req, _res, next) => {
+    console.log(`[AGENTOS PROXY] ${req.method} ${req.path}`)
+    next()
+  },
+  createProxyMiddleware({
+    target: AGENTOS_URL,
+    changeOrigin: true,
+    pathRewrite: { '^/api/agentos': '' },
+  })
+)
+debugLog('INIT', `AgentOS proxy configured: /api/agentos → ${AGENTOS_URL}`)
+
 // Middleware to parse JSON bodies with increased limit for image uploads
 app.use(express.json({ limit: '20mb' }))
 
@@ -73,9 +93,9 @@ if (process.env.BUILD_ENV === 'development') {
 
   // Import http-proxy-middleware dynamically
   import('http-proxy-middleware')
-    .then(({ createProxyMiddleware }) => {
+    .then(({ createProxyMiddleware: devProxyMiddleware }) => {
       // Proxy all non-API requests to Angular dev server
-      const proxyMiddleware = createProxyMiddleware({
+      const proxyMiddleware = devProxyMiddleware({
         target: ANGULAR_DEV_SERVER,
         changeOrigin: true,
         ws: true, // Enable WebSocket proxying for Angular HMR
@@ -86,7 +106,7 @@ if (process.env.BUILD_ENV === 'development') {
         if (req.path.startsWith('/api') || req.path.startsWith('/events')) {
           next()
         } else {
-          proxyMiddleware(req, res, next)
+          proxyMiddleware(req, res, next as any)
         }
       })
 
