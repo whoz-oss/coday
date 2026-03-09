@@ -30,6 +30,7 @@ integrations:
   DELEGATE:
     - Nxay
     - Daemonay
+    - Searchay
   CHROME:
 instructions: |
   You are Sway, the Software Agent who bridges user needs and code implementation.
