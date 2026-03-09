@@ -381,12 +381,11 @@ class CaseTest :
 
             val case =
                 Case(
-                    id = caseId,
                     projectId = projectId,
                     agentService = agentService,
                     caseService = caseService,
                     caseEventService = caseEventService,
-                    caseModel = CaseModel(projectId = projectId),
+                    caseModel = CaseModel(metadata = EntityMetadata(id = caseId), projectId = projectId),
                 )
             case.pushEvents(listOf(existingUserMessage, existingRunningEvent))
 

@@ -1,8 +1,7 @@
 package io.whozoss.agentos.caseFlow
 
-import io.whozoss.agentos.sdk.caseEvent.CaseEvent
-import io.whozoss.agentos.sdk.entity.EntityService
-import kotlinx.coroutines.flow.SharedFlow
+import io.whozoss.agentos.entity.EntityService
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import java.util.UUID
 
 /**
@@ -31,37 +30,20 @@ interface CaseService : EntityService<CaseModel, UUID> {
      * Retrieve an active case runtime instance by ID.
      *
      * @param caseId The unique identifier of the case
-     * @return The Case instance, or null if not found or not active
+     * @return The active Case instance
+     * @throws ResourceNotFoundException if no active instance exists for [caseId]
      */
-    fun getCaseInstance(caseId: UUID): Case?
+    fun getCaseInstance(caseId: UUID): Case
 
     /**
      * Retrieve all active case instances for a given project.
-     *
-     * @param projectId The project ID to filter by
-     * @return List of active Case instances belonging to the project
      */
     fun getActiveCasesByProject(projectId: UUID): List<Case>
 
     /**
      * Retrieve all active case instances.
-     *
-     * @return List of all active Case instances currently managed by the service
      */
     fun getAllActiveCases(): List<Case>
-
-    // ========================================
-    // Event Stream Access
-    // ========================================
-
-    /**
-     * Get the event stream for a specific case.
-     * This allows controllers to subscribe to case events and stream them to clients.
-     *
-     * @param caseId The unique identifier of the case
-     * @return SharedFlow of CaseEvents, or null if case not found or not active
-     */
-    fun getCaseEventStream(caseId: UUID): SharedFlow<CaseEvent>?
 
     // ========================================
     // Execution Control
@@ -72,16 +54,16 @@ interface CaseService : EntityService<CaseModel, UUID> {
      * Preserves case state and allows clean completion of current operation.
      *
      * @param caseId The unique identifier of the case to stop
-     * @return true if the case was found and stop was requested, false otherwise
+     * @throws ResourceNotFoundException if no active instance exists for [caseId]
      */
-    fun stopCase(caseId: UUID): Boolean
+    fun stopCase(caseId: UUID)
 
     /**
      * Immediately terminate a case and cleanup resources.
      * Unlike stop(), this method does not preserve state.
      *
      * @param caseId The unique identifier of the case to kill
-     * @return true if the case was found and killed, false otherwise
+     * @throws ResourceNotFoundException if no active instance exists for [caseId]
      */
-    fun killCase(caseId: UUID): Boolean
+    fun killCase(caseId: UUID)
 }

@@ -51,6 +51,13 @@ management:
 agentos:
   plugins:
     dir: ${PLUGINS_DIR:plugins/}
+  persistence:
+    # Root directory for persisted JSON files. Relative to the working directory.
+    # Override with env var: AGENTOS_PERSISTENCE_DATA_DIR
+    data-dir: data/
+    # Persistence mode: 'filesystem' (default) or 'in-memory' (no persistence across restarts).
+    # Override with env var: AGENTOS_PERSISTENCE_MODE
+    mode: filesystem
 
 logging:
   level:
