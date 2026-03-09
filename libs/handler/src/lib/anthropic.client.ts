@@ -603,7 +603,7 @@ export class AnthropicClient extends AiClient {
         stream.abort()
         return
       }
-      subscriber.next(new TextChunkEvent({ chunk: text }))
+      subscriber.next(new TextChunkEvent({ chunk: text, threadId: thread.id }))
     })
 
     // Wait for the complete message

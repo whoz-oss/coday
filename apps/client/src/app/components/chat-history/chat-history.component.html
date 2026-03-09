@@ -1,11 +1,16 @@
 <div class="chat-history">
   @for (message of messages; track message.id; let i = $index) {
-    <app-chat-message
-      [message]="message"
-      [canDelete]="canDeleteMessage(i)"
-      (copyRequested)="onCopyMessage($event)"
-      (deleteRequested)="onDeleteMessage($event)"
-    ></app-chat-message>
+    @if (message.type === 'delegation') {
+      <app-delegation-inline [subThreadId]="message.subThreadId!" [agentName]="message.delegationAgentName!">
+      </app-delegation-inline>
+    } @else {
+      <app-chat-message
+        [message]="message"
+        [canDelete]="canDeleteMessage(i)"
+        (copyRequested)="onCopyMessage($event)"
+        (deleteRequested)="onDeleteMessage($event)"
+      ></app-chat-message>
+    }
   }
 
   <!-- Streaming Message (separate from persisted messages) -->

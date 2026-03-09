@@ -13,6 +13,7 @@ import {
   inject,
 } from '@angular/core'
 import { ChatMessageComponent, ChatMessage } from '../chat-message/chat-message.component'
+import { DelegationInlineComponent } from '../delegation-inline/delegation-inline.component'
 import { UnreadMessagesService } from '../../services/unread-messages.service'
 import { VoiceSynthesisService } from '../../services/voice-synthesis.service'
 import { PreferencesService } from '../../services/preferences.service'
@@ -27,7 +28,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 @Component({
   selector: 'app-chat-history',
   standalone: true,
-  imports: [ChatMessageComponent, MatIcon, ThinkingLoaderComponent, MatFabButton],
+  imports: [ChatMessageComponent, MatIcon, ThinkingLoaderComponent, MatFabButton, DelegationInlineComponent],
   templateUrl: './chat-history.component.html',
   styleUrl: './chat-history.component.scss',
 })

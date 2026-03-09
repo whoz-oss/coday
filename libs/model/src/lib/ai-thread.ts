@@ -8,6 +8,7 @@ import {
   AnswerEvent,
   buildCodayEvent,
   ChoiceEvent,
+  DelegationEvent,
   InviteEvent,
   MessageContent,
   MessageEvent,
@@ -32,6 +33,7 @@ const THREAD_MESSAGE_TYPES = [
   InviteEvent.type,
   ChoiceEvent.type,
   AnswerEvent.type,
+  DelegationEvent.type,
 ]
 
 /**
@@ -82,8 +84,14 @@ export class AiThread {
   /** Track depth of thread delegations (not serializable) */
   delegationDepth: number = 0
 
+  /** Parent relationship fields for sub-threads created by delegation */
+  parentThreadId?: string
+  parentEventId?: string
+  delegatedAgentName?: string
+  delegatedTask?: string
+
   /** Store forked threads for specific agents */
-  private forkedThreads: Map<string | null, AiThread> = new Map()
+  private forkedThreads: Map<string, AiThread> = new Map()
 
   private parentThread: AiThread | undefined
 
@@ -110,6 +118,10 @@ export class AiThread {
     this.createdDate = thread.createdDate ?? new Date().toISOString()
     this.modifiedDate = thread.modifiedDate ?? this.createdDate
     this.price = thread.price ?? 0
+    this.parentThreadId = thread.parentThreadId
+    this.parentEventId = thread.parentEventId
+    this.delegatedAgentName = thread.delegatedAgentName
+    this.delegatedTask = thread.delegatedTask
 
     // Filter on type first, then build events
     // Ensure messages is always initialized as an array, even if empty
@@ -406,6 +418,19 @@ export class AiThread {
   }
 
   /**
+   * Adds a delegation event to the thread history.
+   * This is an immutable branch marker — emitted once per sub-thread.
+   * Duplicate events for the same subThreadId are ignored.
+   */
+  addDelegationEvent(event: DelegationEvent): void {
+    // Only add if no DelegationEvent already exists for this subThreadId
+    const exists = this.messages.some((msg) => msg instanceof DelegationEvent && msg.subThreadId === event.subThreadId)
+    if (!exists) {
+      this.add(event)
+    }
+  }
+
+  /**
    * Adds an AI agent message to the thread.
    * @param agentName - The name of the AI agent sending the message
    * @param content - The content of the message
@@ -435,35 +460,31 @@ export class AiThread {
   }
 
   /**
-   * Fork a thread for a specific agent delegation
+   * Fork a thread for a specific agent delegation.
+   * Creates a new persisted sub-thread with a unique ID and clean context.
    * @param agentName Name of the agent to delegate to
+   * @param task Task description for display
+   * @param parentEventId Timestamp of the ToolRequestEvent that spawned this delegation
    * @returns Forked AiThread instance
    */
-  /**
-   * Fork a thread, optionally for a specific agent
-   * @param agentName Optional name of the agent to delegate to
-   * @param cleanContext If true, create an empty thread without parent messages (default: false)
-   * @returns Forked AiThread instance
-   */
-  fork(agentName?: string | null, cleanContext: boolean = false): AiThread {
-    // Check if a forked thread for this agent already exists
-    const existingForkedThread = this.forkedThreads.get(agentName ?? null)
-    if (existingForkedThread) {
-      existingForkedThread.runStatus = RunStatus.RUNNING
-      return existingForkedThread
-    }
-
-    // Create a new forked thread with destructured properties
+  fork(agentName: string, task: string, parentEventId: string): AiThread {
+    // Create a new sub-thread with a unique ID and parent relationship
+    // Each fork always creates a new thread — no caching by agent name,
+    // since parallel delegations may delegate to the same agent multiple times.
     const forkedThread = new AiThread({
-      id: this.id, // Reuse parent thread ID as we don't save this
+      id: crypto.randomUUID(), // NEW unique ID — not the parent's
       username: this.username,
       projectId: this.projectId,
-      name: agentName ? `${this.name} - Delegated to ${agentName}` : `${this.name} - Forked`,
-      summary: cleanContext ? '' : this.summary, // Empty summary in clean context mode
-      createdDate: this.createdDate,
+      name: agentName,
+      summary: '',
+      createdDate: new Date().toISOString(),
       modifiedDate: new Date().toISOString(),
       price: 0,
-      messages: cleanContext ? [] : [...this.messages], // Empty messages in clean context mode
+      messages: [], // always clean context
+      parentThreadId: this.id,
+      parentEventId,
+      delegatedAgentName: agentName,
+      delegatedTask: task,
     })
 
     // Increment delegation depth (non-serializable)
@@ -471,8 +492,8 @@ export class AiThread {
     forkedThread.parentThread = this
     forkedThread.runStatus = RunStatus.RUNNING
 
-    // Store the forked thread
-    this.forkedThreads.set(agentName ?? null, forkedThread)
+    // Store in runtime cache keyed by thread ID for stop propagation tracking
+    this.forkedThreads.set(forkedThread.id, forkedThread)
 
     return forkedThread
   }
@@ -638,5 +659,29 @@ export class AiThread {
         })
       )
     })
+  }
+
+  /**
+   * Serialize the thread to a plain object suitable for persistence (YAML/JSON).
+   * Only includes persistable fields — excludes runtime-only state like
+   * parentThread (circular ref), forkedThreads (Map), runStatus, usage, etc.
+   */
+  serialize(): ThreadSerialized {
+    return {
+      id: this.id,
+      username: this.username,
+      projectId: this.projectId,
+      name: this.name,
+      summary: this.summary,
+      createdDate: this.createdDate,
+      modifiedDate: this.modifiedDate,
+      price: this.price,
+      starring: this.starring,
+      parentThreadId: this.parentThreadId,
+      parentEventId: this.parentEventId,
+      delegatedAgentName: this.delegatedAgentName,
+      delegatedTask: this.delegatedTask,
+      messages: this.messages,
+    }
   }
 }

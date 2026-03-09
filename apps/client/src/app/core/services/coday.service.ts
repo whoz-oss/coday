@@ -5,6 +5,7 @@ import {
   AnswerEvent,
   ChoiceEvent,
   CodayEvent,
+  DelegationEvent,
   ErrorEvent,
   HeartBeatEvent,
   InviteEvent,
@@ -55,6 +56,23 @@ export class CodayService implements OnDestroy {
   // Text chunk accumulation for streaming (separate from messages)
   private accumulatedChunks: string = ''
   private readonly streamingTextSubject = new BehaviorSubject<string>('')
+
+  // Sub-thread event routing: events tagged with a threadId are forwarded here
+  // keyed by threadId, so DelegationInlineComponent can subscribe to its own sub-thread
+  private readonly subThreadEventsSubject = new Subject<CodayEvent>()
+  subThreadEvents$ = this.subThreadEventsSubject.asObservable()
+
+  // Buffer of sub-thread events keyed by threadId.
+  // Events may arrive before the DelegationInlineComponent is instantiated by Angular,
+  // so we buffer them here and replay on subscription.
+  private readonly subThreadEventBuffers = new Map<string, CodayEvent[]>()
+
+  /**
+   * Get buffered events for a sub-thread that arrived before the component subscribed.
+   */
+  getBufferedSubThreadEvents(threadId: string): CodayEvent[] {
+    return this.subThreadEventBuffers.get(threadId) ?? []
+  }
 
   // Public observables
   messages$ = this.messagesSubject.asObservable()
@@ -138,6 +156,7 @@ export class CodayService implements OnDestroy {
     this.currentChoiceEvent = null
     this.accumulatedChunks = ''
     this.streamingTextSubject.next('')
+    this.subThreadEventBuffers.clear()
     this.stopThinking()
   }
 
@@ -280,6 +299,21 @@ export class CodayService implements OnDestroy {
    * Handle incoming Coday events
    */
   private handleEvent(event: CodayEvent): void {
+    // Route events tagged with a sub-thread ID to the sub-thread stream
+    // so DelegationInlineComponent can pick them up in real-time.
+    // Root thread events have threadId === currentThread or undefined.
+    if (event.threadId && event.threadId !== this.currentThread) {
+      // Buffer the event so late-subscribing components can replay it
+      const buffer = this.subThreadEventBuffers.get(event.threadId)
+      if (buffer) {
+        buffer.push(event)
+      } else {
+        this.subThreadEventBuffers.set(event.threadId, [event])
+      }
+      this.subThreadEventsSubject.next(event)
+      return
+    }
+
     if (event instanceof MessageEvent) {
       this.handleMessageEvent(event)
     } else if (event instanceof TextChunkEvent) {
@@ -306,10 +340,33 @@ export class CodayService implements OnDestroy {
       this.handleInviteEvent(event)
     } else if (event instanceof ThreadUpdateEvent) {
       this.handleThreadUpdateEvent(event)
+    } else if (event instanceof DelegationEvent) {
+      this.handleDelegationEvent(event)
     } else if (event instanceof OAuthRequestEvent || event instanceof OAuthCallbackEvent) {
       // OAuth events are handled by OAuthService, no action needed here
     } else {
       console.warn('[CODAY] Unhandled event type:', event.type)
+    }
+  }
+
+  private handleDelegationEvent(event: DelegationEvent): void {
+    console.log('[CODAY] DelegationEvent received:', event.subThreadId, event.agentName)
+    const currentMessages = this.messagesSubject.value
+    const existingIndex = currentMessages.findIndex((m) => m.subThreadId === event.subThreadId)
+
+    // DelegationEvent is now an immutable branch marker — only add once
+    if (existingIndex === -1) {
+      const message: ChatMessage = {
+        id: event.timestamp,
+        role: 'system',
+        speaker: event.agentName,
+        content: [{ type: 'text', content: '' }],
+        timestamp: new Date(),
+        type: 'delegation',
+        subThreadId: event.subThreadId,
+        delegationAgentName: event.agentName,
+      }
+      this.addMessage(message)
     }
   }
 

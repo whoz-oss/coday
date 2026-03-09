@@ -4,6 +4,7 @@ import { listFilesAndDirectories } from './list-files-and-directories'
 import { readFileUnifiedAsMessageContent } from '@coday/function'
 import { resolveFilePath, FILE_PREFIXES } from './resolve-file-path'
 import { FileEvent } from '@coday/model'
+import { existsSync } from 'node:fs'
 import { unlinkSync } from 'node:fs'
 import * as pathModule from 'path'
 import { AssistantToolFactory } from '@coday/model'
@@ -223,8 +224,12 @@ export class FileTools extends AssistantToolFactory {
 
       const results: string[] = []
 
-      // Search in exchange workspace
-      if (context.threadFilesRoot && (!path || path.startsWith(FILE_PREFIXES.EXCHANGE))) {
+      // Search in exchange workspace (only if the directory actually exists on disk)
+      if (
+        context.threadFilesRoot &&
+        existsSync(context.threadFilesRoot) &&
+        (!path || path.startsWith(FILE_PREFIXES.EXCHANGE))
+      ) {
         const exchangePath = path?.replace(FILE_PREFIXES.EXCHANGE, '')
         const { files } = await searchFiles({
           fileName,
