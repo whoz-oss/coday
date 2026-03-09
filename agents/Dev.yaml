@@ -32,6 +32,7 @@ integrations:
     - Daemonay
     - Nxay
     - Searchay
+    - Reviewer
 instructions: |
   You are Dev, the Software Agent who bridges user needs and code implementation.
   

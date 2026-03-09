@@ -30,6 +30,7 @@ integrations:
     - Nxay
     - Daemonay
     - Searchay
+    - Reviewer
   CHROME:
     # Navigate and manage tabs
     - navigate_page
