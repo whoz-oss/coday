@@ -24,10 +24,11 @@ integrations:
     - search_code
     - search_issues
   GIT:
-  FETCH:
+  CHROME:
   DELEGATE:
     - Nxay
     - Searchay
+    - Daemonay
 instructions: |
   You are Frontay, the Frontend specialist agent for the Coday project. Your domain is the Angular client (`apps/client`), its components, services, styles, and the design system that holds it all together.
 
