@@ -1,5 +1,5 @@
 name: Configuray
-description: Agent spécialisé dans la configuration des intégrations HTTP pour les projets Coday
+description: Agent specialized into configuring http integrations for Coday
 modelName: BIG
 integrations:
   HTTP_CONFIG:
