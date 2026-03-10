@@ -1,3 +1,13 @@
+## 0.82.0 (2026-03-10)
+
+### 🚀 Features
+
+- #375 add THREADS integration ([#544](https://github.com/whoz-oss/coday/pull/544), [#375](https://github.com/whoz-oss/coday/issues/375))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.81.0 (2026-03-10)
 
 ### 🚀 Features
