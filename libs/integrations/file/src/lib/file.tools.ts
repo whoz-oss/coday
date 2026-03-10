@@ -166,7 +166,7 @@ export class FileTools extends AssistantToolFactory {
     const readFileFunction: FunctionTool<{ filePath: string }> = {
       type: 'function',
       function: {
-        name: 'readFile',
+        name: `${this.name}__readFile`,
         description:
           'Read content from any file type. Supports text files, PDFs, and image files (PNG, JPEG, GIF, WebP). ' +
           'File path must start with "project://" (for project files) or "exchange://" (for files shared with the user). ' +
