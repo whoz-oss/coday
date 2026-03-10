@@ -28,7 +28,7 @@ class CaseRuntimeTest :
     StringSpec({
         timeout = 5000
 
-        val projectId: UUID = UUID.randomUUID()
+        val namespaceId: UUID = UUID.randomUUID()
         val userActor = Actor(id = "user-123", displayName = "Test User", role = ActorRole.USER)
         val userMessage = listOf(MessageContent.Text("hello"))
 
@@ -43,7 +43,7 @@ class CaseRuntimeTest :
                     flow {
                         emit(
                             AgentFinishedEvent(
-                                projectId = projectId,
+                                projectId = namespaceId,
                                 caseId = caseId,
                                 agentId = agentId,
                                 agentName = name,
@@ -59,7 +59,7 @@ class CaseRuntimeTest :
             caseId: UUID,
             agentName: String,
         ) = AgentSelectedEvent(
-            projectId = projectId,
+            projectId = namespaceId,
             caseId = caseId,
             agentId = UUID.nameUUIDFromBytes(agentName.toByteArray()),
             agentName = agentName,
@@ -96,7 +96,7 @@ class CaseRuntimeTest :
             val runtime =
                 CaseRuntime(
                     id = runtimeId,
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     updateStatus = { _, _ -> },
                     storeEvent = { event ->
                         savedEvents.add(event)
@@ -189,7 +189,7 @@ class CaseRuntimeTest :
             val runtime =
                 CaseRuntime(
                     id = runtimeId,
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     updateStatus = { _, _ -> },
                     storeEvent = { event ->
                         savedEvents.add(event)
@@ -197,7 +197,7 @@ class CaseRuntimeTest :
                     },
                     selectAgent = {
                         listOf(
-                            WarnEvent(projectId = projectId, caseId = runtimeId, message = "Agent 'unknown' not found"),
+                            WarnEvent(projectId = namespaceId, caseId = runtimeId, message = "Agent 'unknown' not found"),
                             agentSelectedEvent(runtimeId, agentName),
                         )
                     },
@@ -238,7 +238,7 @@ class CaseRuntimeTest :
                         flow {
                             emit(
                                 AgentFinishedEvent(
-                                    projectId = projectId,
+                                    projectId = namespaceId,
                                     caseId = firstArg<List<CaseEvent>>().first().caseId,
                                     agentId = agentId,
                                     agentName = agentName,
@@ -252,7 +252,7 @@ class CaseRuntimeTest :
             runtime =
                 CaseRuntime(
                     id = runtimeId,
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     updateStatus = { _, _ -> },
                     storeEvent = { event ->
                         if (event is AgentRunningEvent) callOrder.add("AgentRunningEvent saved")
@@ -293,7 +293,7 @@ class CaseRuntimeTest :
             val existingUserMessage =
                 MessageEvent(
                     metadata = EntityMetadata(id = UUID.randomUUID()),
-                    projectId = projectId,
+                    projectId = namespaceId,
                     caseId = caseId,
                     actor = userActor,
                     content = userMessage,
@@ -301,7 +301,7 @@ class CaseRuntimeTest :
             val existingRunningEvent =
                 AgentRunningEvent(
                     metadata = EntityMetadata(id = UUID.randomUUID()),
-                    projectId = projectId,
+                    projectId = namespaceId,
                     caseId = caseId,
                     agentId = agentId,
                     agentName = agentName,
@@ -310,7 +310,7 @@ class CaseRuntimeTest :
             val runtime =
                 CaseRuntime(
                     id = caseId,
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     updateStatus = { _, _ -> },
                     storeEvent = { event ->
                         savedEvents.add(event)

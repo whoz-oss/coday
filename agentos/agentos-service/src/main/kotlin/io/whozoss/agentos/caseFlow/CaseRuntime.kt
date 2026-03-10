@@ -39,7 +39,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class CaseRuntime(
     val id: UUID,
-    val projectId: UUID,
+    val namespaceId: UUID,
     private val updateStatus: (UUID, CaseStatus) -> Unit,
     private val storeEvent: (CaseEvent) -> CaseEvent,
     private val selectAgent: (content: List<MessageContent>) -> List<CaseEvent>,
@@ -142,7 +142,7 @@ class CaseRuntime(
             }
         }
 
-        storeAndEmitEvent(MessageEvent(caseId = id, projectId = projectId, actor = actor, content = content))
+        storeAndEmitEvent(MessageEvent(caseId = id, projectId = namespaceId, actor = actor, content = content))
         selectAgent(content).forEach { storeAndEmitEvent(it) }
     }
 
@@ -226,7 +226,7 @@ class CaseRuntime(
                     }
                     storeAndEmitEvent(
                         AgentRunningEvent(
-                            projectId = projectId,
+                            projectId = namespaceId,
                             caseId = id,
                             agentId = event.agentId,
                             agentName = event.agentName,
