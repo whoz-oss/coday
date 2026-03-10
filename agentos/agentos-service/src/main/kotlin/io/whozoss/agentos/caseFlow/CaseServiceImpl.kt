@@ -66,7 +66,7 @@ class CaseServiceImpl(
 
     override fun findByIds(ids: Collection<UUID>): List<Case> = caseRepository.findByIds(ids)
 
-    override fun findByParent(namespaceId: UUID): List<Case> = caseRepository.findByParent(namespaceId)
+    override fun findByParent(parentId: UUID): List<Case> = caseRepository.findByParent(parentId)
 
     override fun delete(id: UUID): Boolean {
         // Drive active cases to STOPPED before deletion so SSE clients receive the
@@ -78,9 +78,9 @@ class CaseServiceImpl(
         return caseRepository.delete(id)
     }
 
-    override fun deleteByParent(namespaceId: UUID): Int {
-        findByParent(namespaceId).forEach { activeRuntimes.remove(it.id)?.requestStop() }
-        return caseRepository.deleteByParent(namespaceId)
+    override fun deleteByParent(parentId: UUID): Int {
+        findByParent(parentId).forEach { activeRuntimes.remove(it.id)?.requestStop() }
+        return caseRepository.deleteByParent(parentId)
     }
 
     // ========================================
@@ -282,7 +282,11 @@ class CaseServiceImpl(
     // Execution control
     // ========================================
 
-    override fun getActiveCasesByNamespace(namespaceId: UUID): List<CaseRuntime> = activeRuntimes.values.filter { it.namespaceId == namespaceId }
+    override fun getActiveCasesByNamespace(namespaceId: UUID): List<CaseRuntime> =
+        activeRuntimes.values.filter {
+            it.namespaceId ==
+                namespaceId
+        }
 
     override fun getAllActiveCases(): List<CaseRuntime> = activeRuntimes.values.toList()
 
