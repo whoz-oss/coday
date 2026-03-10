@@ -1,3 +1,18 @@
+## 0.80.1 (2026-03-10)
+
+### 🚀 Features
+
+- wz-28725: fix tool param discovery and call ([#534](https://github.com/whoz-oss/coday/pull/534))
+
+### 🩹 Fixes
+
+- improve a little the prompt form following feedbacks ([#543](https://github.com/whoz-oss/coday/pull/543))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+- vincent-audibert-whoz
+
 ## 0.80.0 (2026-02-27)
 
 ### 🚀 Features
