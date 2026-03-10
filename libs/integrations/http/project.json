@@ -8,6 +8,12 @@
     "type:core"
   ],
   "targets": {
+    "test": {
+      "executor": "@nx/jest:jest",
+      "options": {
+        "jestConfig": "libs/integrations/http/jest.config.ts"
+      }
+    },
     "build": {
       "executor": "@nx/js:tsc",
       "outputs": [
