@@ -3,6 +3,7 @@ package io.whozoss.agentos.caseFlow
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
@@ -19,7 +20,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import mu.KLogging
 import org.springframework.stereotype.Service
-import java.util.*
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 @Service
@@ -48,8 +49,9 @@ class CaseServiceImpl(
     }
 
     override fun update(entity: Case): Case {
-        val current = findById(entity.id)
-            ?: throw ResourceNotFoundException("Case not found: ${entity.id}")
+        val current =
+            findById(entity.id)
+                ?: throw ResourceNotFoundException("Case not found: ${entity.id}")
         return if (entity.status != current.status) {
             // Route status changes through handleStatusChange so the runtime and
             // SSE clients stay consistent with the persisted state.
@@ -113,7 +115,7 @@ class CaseServiceImpl(
             id = case.id,
             projectId = case.projectId,
             updateStatus = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
-            storeEvent = { event -> persistAndRoute(event) },
+            storeEvent = { event -> storeEvent(event) },
             selectAgent = { content -> selectAgent(content, case.projectId, case.id) },
             runAgent = { agentName, events -> runAgent(agentName, case.id, events) },
             inputEvents = inputEvents,
@@ -125,7 +127,7 @@ class CaseServiceImpl(
 
     override fun addMessage(
         caseId: UUID,
-        actor: io.whozoss.agentos.sdk.actor.Actor,
+        actor: Actor,
         content: List<MessageContent>,
         answerToEventId: UUID?,
     ) {
@@ -207,7 +209,7 @@ class CaseServiceImpl(
             .run(events)
             .catch { error ->
                 logger.error(error) { "[CaseService] Error in agent $agentName for case $caseId" }
-                persistAndRoute(
+                storeEvent(
                     WarnEvent(
                         projectId = runtime.projectId,
                         caseId = caseId,
@@ -217,7 +219,7 @@ class CaseServiceImpl(
                     runtime.emitEventFromOtherCase(saved)
                 }
             }.collect { event ->
-                val saved = persistAndRoute(event)
+                val saved = storeEvent(event)
                 // Events belonging to this case are already emitted by storeAndEmitEvent
                 // inside the runtime. Sub-case events need to bubble up explicitly.
                 if (event.caseId != caseId) runtime.emitEventFromOtherCase(saved)
@@ -225,16 +227,12 @@ class CaseServiceImpl(
         logger.info { "[CaseService] Agent $agentName finished for case $caseId" }
     }
 
-    // ========================================
-    // Event persistence and routing
-    // ========================================
-
     /**
      * Persists an event via [CaseEventService] and returns the saved copy.
      * Called by the runtime's [CaseRuntime.storeEvent] callback —
      * the runtime itself handles adding to its list and emitting on the SSE flow.
      */
-    private fun persistAndRoute(event: CaseEvent): CaseEvent = caseEventService.create(event)
+    private fun storeEvent(event: CaseEvent): CaseEvent = caseEventService.create(event)
 
     // ========================================
     // Status transitions
@@ -251,11 +249,7 @@ class CaseServiceImpl(
         caseId: UUID,
         newStatus: CaseStatus,
     ) {
-        val case = findById(caseId) ?: run {
-            logger.warn { "[CaseService] handleStatusChange: case $caseId not found, skipping status update to $newStatus" }
-            activeRuntimes.remove(caseId)
-            return
-        }
+        val case = getById(caseId)
         val oldStatus = case.status
         val updated = caseRepository.save(case.copy(status = newStatus))
 
@@ -265,8 +259,6 @@ class CaseServiceImpl(
             logger.info { "Case $caseId status: $oldStatus -> $newStatus" }
         }
 
-        // Emit the status event before eviction so SSE clients receive it.
-        val runtime = activeRuntimes[caseId]
         val statusEvent =
             CaseStatusEvent(
                 metadata = EntityMetadata(),
@@ -275,7 +267,9 @@ class CaseServiceImpl(
                 status = newStatus,
             )
         val savedStatusEvent = caseEventService.create(statusEvent)
-        runtime?.let {
+
+        // Emit the status event before eviction so SSE clients receive it.
+        activeRuntimes[caseId]?.let {
             it.emitEventFromOtherCase(savedStatusEvent)
             if (newStatus.isTerminal()) {
                 activeRuntimes.remove(caseId)

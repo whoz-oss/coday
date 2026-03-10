@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.entity.EntityService
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.sdk.actor.Actor
 import java.util.UUID
 
 /**
@@ -64,7 +65,7 @@ interface CaseService : EntityService<Case, UUID> {
      */
     fun addMessage(
         caseId: UUID,
-        actor: io.whozoss.agentos.sdk.actor.Actor,
+        actor: Actor,
         content: List<io.whozoss.agentos.sdk.caseEvent.MessageContent>,
         answerToEventId: UUID? = null,
     )
