@@ -31,13 +31,13 @@ import java.util.UUID
  * - Namespace data (ID, name) persists across restarts
  */
 class NamespacePersistenceLifecycleTest : StringSpec() {
-    val mapper =
+    private val mapper =
         ObjectMapper()
             .registerKotlinModule()
             .findAndRegisterModules()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
 
-    fun tmpDir(): Path = Files.createTempDirectory("agentos-namespace-lifecycle-test")!!
+    fun tmpDir(): Path = Files.createTempDirectory("agentos-namespace-lifecycle-test")
 
     init {
 
