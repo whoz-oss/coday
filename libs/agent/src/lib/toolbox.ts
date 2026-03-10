@@ -13,7 +13,7 @@ import {
 } from '@coday/model'
 import { AiTools, DelegateTools } from '@coday/integrations-ai'
 import { McpToolsFactory } from '@coday/mcp'
-import { CoreTools, MemoryTools, ProjectScriptsTools, TmuxTools } from '@coday/integration'
+import { CoreTools, MemoryTools, ProjectScriptsTools, ThreadTools, TmuxTools } from '@coday/integration'
 import { FileTools } from '@coday/integrations-file'
 import { GitTools } from '@coday/integrations-git'
 import { GitLabTools } from '@coday/integrations-gitlab'
@@ -59,6 +59,7 @@ export class Toolbox implements Killable {
     this.factoryConstructors.set(FileTools.TYPE, (name, config) => new FileTools(interactor, name, config))
     this.factoryConstructors.set(ProjectScriptsTools.TYPE, (name) => new ProjectScriptsTools(interactor, name, {}))
     this.factoryConstructors.set(MemoryTools.TYPE, (name) => new MemoryTools(interactor, services.memory, name, {}))
+    this.factoryConstructors.set(ThreadTools.TYPE, (name) => new ThreadTools(interactor, services.thread, name, {}))
 
     // Integration tools (require config)
     this.factoryConstructors.set(

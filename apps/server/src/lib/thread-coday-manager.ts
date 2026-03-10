@@ -284,12 +284,14 @@ class ThreadCodayInstance {
    */
   private broadcastEvent(event: any): void {
     // If this is a ThreadUpdateEvent with a name, update the thread service cache
-    if (event instanceof ThreadUpdateEvent && event.name) {
-      debugLog('THREAD_CODAY', `Updating thread cache for ${this.threadId} with name: ${event.name}`)
+    if (event instanceof ThreadUpdateEvent && (event.name || event.summary)) {
+      debugLog('THREAD_CODAY', `Updating thread cache for ${this.threadId} name/summary`)
       // Update the thread service cache asynchronously (don't block event broadcasting)
-      this.threadService.updateThread(this.projectName, this.threadId, { name: event.name }).catch((error) => {
-        debugLog('THREAD_CODAY', `Error updating thread cache:`, error)
-      })
+      this.threadService
+        .updateThread(this.projectName, this.threadId, { name: event.name, summary: event.summary })
+        .catch((error) => {
+          debugLog('THREAD_CODAY', `Error updating thread cache:`, error)
+        })
     }
 
     const data = `data: ${JSON.stringify(event)}\n\n`
