@@ -54,7 +54,7 @@ export class Toolbox implements Killable {
     this.factoryConstructors.set(AiTools.TYPE, (name) => new AiTools(interactor, agentSummaries, name, {}))
     this.factoryConstructors.set(
       DelegateTools.TYPE,
-      (name) => new DelegateTools(interactor, agentFind, agentSummaries, name, {})
+      (name) => new DelegateTools(interactor, agentFind, agentSummaries, name, {}, services.thread)
     )
     this.factoryConstructors.set(FileTools.TYPE, (name, config) => new FileTools(interactor, name, config))
     this.factoryConstructors.set(ProjectScriptsTools.TYPE, (name) => new ProjectScriptsTools(interactor, name, {}))

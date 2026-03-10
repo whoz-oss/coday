@@ -218,81 +218,90 @@ describe('AiThread', () => {
   })
 
   describe('thread forking', () => {
-    it('should fork a thread without an agent name', async () => {
-      // Add some initial messages
+    it('should fork a thread for a specific agent', async () => {
+      // Add some initial messages to parent
       thread.addUserMessage('user1', { type: 'text', content: 'Initial message' })
       thread.addAgentMessage('agent1', { type: 'text', content: 'Agent response' })
 
       // Fork the thread
-      const forkedThread = thread.fork()
+      const forkedThread = thread.fork('agent2', 'Do some work', 'event-123')
 
       // Check forked thread properties
       expect(forkedThread).not.toBe(thread)
-      expect(forkedThread.id).toBe(thread.id)
+      expect(forkedThread.id).not.toBe(thread.id) // NEW: unique ID
       expect(forkedThread.username).toBe(thread.username)
-      expect(forkedThread.name).toContain('Forked')
+      expect(forkedThread.name).toBe('agent2')
       expect(forkedThread.delegationDepth).toBe(1)
+      expect(forkedThread.parentThreadId).toBe(thread.id)
+      expect(forkedThread.parentEventId).toBe('event-123')
+      expect(forkedThread.delegatedAgentName).toBe('agent2')
+      expect(forkedThread.delegatedTask).toBe('Do some work')
 
-      // Check messages were copied
+      // Check messages are empty (always clean context)
       const forkedMessages = (await forkedThread.getMessages(undefined, undefined)).messages
-      expect(forkedMessages).toHaveLength(2)
-      expect(forkedMessages[0]?.type).toBe(MessageEvent.type)
-      expect(forkedMessages[1]?.type).toBe(MessageEvent.type)
+      expect(forkedMessages).toHaveLength(0)
     })
 
-    it('should fork a thread with an agent name', () => {
-      // Add some initial messages
-      thread.addUserMessage('user1', { type: 'text', content: 'Initial message' })
-      thread.addAgentMessage('agent1', { type: 'text', content: 'Agent response' })
+    it('should create a new thread for each fork call (parallel delegation support)', () => {
+      // Each fork always creates a new thread — no caching by agent name
+      // This allows the same agent to be delegated to multiple tasks in parallel
+      const forkedThread1 = thread.fork('agent2', 'Task 1', 'event-1')
+      const forkedThread2 = thread.fork('agent2', 'Task 2', 'event-2')
 
-      // Fork the thread for a specific agent
-      const forkedThread = thread.fork('agent2')
-
-      // Check forked thread properties
-      expect(forkedThread.id).toBe(thread.id)
-      expect(forkedThread.username).toBe(thread.username)
-      expect(forkedThread.name).toContain('Delegated to agent2')
-      expect(forkedThread.delegationDepth).toBe(1)
-    })
-
-    it('should return existing forked thread for an agent', () => {
-      // Fork a thread for an agent
-      const forkedThread1 = thread.fork('agent2')
-      const forkedThread2 = thread.fork('agent2')
-
-      // Check they are the same instance
-      expect(forkedThread1).toBe(forkedThread2)
+      // Check they are different instances with different IDs
+      expect(forkedThread1).not.toBe(forkedThread2)
+      expect(forkedThread1.id).not.toBe(forkedThread2.id)
+      expect(forkedThread1.delegatedTask).toBe('Task 1')
+      expect(forkedThread2.delegatedTask).toBe('Task 2')
     })
 
     it('should support multiple forked threads for different agents', () => {
-      const forkedThread1 = thread.fork('agent1')
-      const forkedThread2 = thread.fork('agent2')
+      const forkedThread1 = thread.fork('agent1', 'Task for agent1', 'event-1')
+      const forkedThread2 = thread.fork('agent2', 'Task for agent2', 'event-2')
 
-      // Check they are different threads
+      // Check they are different threads with different unique IDs
       expect(forkedThread1).not.toBe(forkedThread2)
-      expect(forkedThread1.id).toBe(thread.id)
-      expect(forkedThread2.id).toBe(thread.id)
+      expect(forkedThread1.id).not.toBe(thread.id) // unique IDs
+      expect(forkedThread2.id).not.toBe(thread.id)
+      expect(forkedThread1.id).not.toBe(forkedThread2.id)
     })
 
-    it('should copy thread price when forking', () => {
+    it('should always use clean context (empty messages)', async () => {
+      // Add messages to parent
+      thread.addUserMessage('user1', { type: 'text', content: 'Initial message' })
+      thread.addAgentMessage('agent1', { type: 'text', content: 'Agent response' })
+
+      // Fork the thread
+      const forkedThread = thread.fork('agent2', 'Do some work', 'event-123')
+
+      // Forked thread must have empty messages
+      const forkedMessages = (await forkedThread.getMessages(undefined, undefined)).messages
+      expect(forkedMessages).toHaveLength(0)
+
+      // Parent thread unchanged
+      const parentMessages = (await thread.getMessages(undefined, undefined)).messages
+      expect(parentMessages).toHaveLength(2)
+    })
+
+    it('should start with zero price when forking', () => {
       // Set a price on the original thread
       thread.price = 1.5
 
       // Fork the thread
-      const forkedThread = thread.fork('agent2')
+      const forkedThread = thread.fork('agent2', 'Some task', 'event-123')
       forkedThread.addUsage({ price: 0.5 })
 
-      // Check price is copied
+      // Forked thread starts at 0, parent price unchanged until merge
       expect(forkedThread.price).toBe(0.5)
-      expect(forkedThread.totalPrice).toBe(2)
+      expect(forkedThread.totalPrice).toBe(2) // includes parent price via parentThread ref
     })
 
-    it('should create a new messages array when forking', async () => {
+    it('should not affect parent messages when forked thread adds messages', async () => {
       // Add messages to original thread
       thread.addUserMessage('user1', { type: 'text', content: 'Initial message' })
 
       // Fork the thread
-      const forkedThread = thread.fork('agent2')
+      const forkedThread = thread.fork('agent2', 'Some task', 'event-123')
 
       // Modify messages in forked thread
       forkedThread.addAgentMessage('agent2', { type: 'text', content: 'Forked response' })
@@ -309,7 +318,7 @@ describe('AiThread', () => {
       thread.price = 1.5
 
       // Fork and add price to forked thread
-      const forkedThread = thread.fork('agent2')
+      const forkedThread = thread.fork('agent2', 'Some task', 'event-123')
       forkedThread.addUsage({ price: 0.5 })
 
       // Merge the forked thread
@@ -318,19 +327,59 @@ describe('AiThread', () => {
       // Check total price is updated
       expect(thread.totalPrice).toBe(2)
 
-      // Check forked thread is still in the registry
-      expect(thread['forkedThreads'].get('agent2')).toBe(forkedThread)
+      // Check forked thread is in the registry keyed by thread ID
+      expect(thread['forkedThreads'].get(forkedThread.id)).toBe(forkedThread)
     })
 
     it('should handle merging threads with zero price', () => {
       const initialPrice = thread.price
 
       // Create and merge a forked thread with zero price
-      const forkedThread = thread.fork('agent2')
+      const forkedThread = thread.fork('agent2', 'Some task', 'event-123')
       thread.merge(forkedThread)
 
       // Price should remain unchanged
       expect(thread.price).toBe(initialPrice)
+    })
+  })
+
+  describe('serialization', () => {
+    it('should serialize only persistable fields', () => {
+      thread.addUserMessage('user1', { type: 'text', content: 'test message' })
+      thread.price = 1.5
+
+      // Fork to create parentThread reference (would cause circular ref if spread)
+      const forkedThread = thread.fork('agent2', 'Some task', 'event-123')
+
+      const serialized = forkedThread.serialize()
+
+      // Should include persistable fields
+      expect(serialized.id).toBe(forkedThread.id)
+      expect(serialized.username).toBe(forkedThread.username)
+      expect(serialized.parentThreadId).toBe(thread.id)
+      expect(serialized.parentEventId).toBe('event-123')
+      expect(serialized.delegatedAgentName).toBe('agent2')
+      expect(serialized.delegatedTask).toBe('Some task')
+      expect(serialized.messages).toEqual([])
+
+      // Should NOT include runtime-only fields
+      expect((serialized as any).runStatus).toBeUndefined()
+      expect((serialized as any).usage).toBeUndefined()
+      expect((serialized as any).data).toBeUndefined()
+      expect((serialized as any).delegationDepth).toBeUndefined()
+      expect((serialized as any).forkedThreads).toBeUndefined()
+      expect((serialized as any).parentThread).toBeUndefined()
+    })
+
+    it('should produce output that can be used to reconstruct an AiThread', () => {
+      thread.addUserMessage('user1', { type: 'text', content: 'hello' })
+      const serialized = thread.serialize()
+      const reconstructed = new AiThread(serialized)
+
+      expect(reconstructed.id).toBe(thread.id)
+      expect(reconstructed.username).toBe(thread.username)
+      expect(reconstructed.name).toBe(thread.name)
+      expect(reconstructed.messagesLength).toBe(1)
     })
   })
 

@@ -1,0 +1,40 @@
+<div class="delegation-inline">
+  <div
+    class="delegation-header"
+    role="button"
+    tabindex="0"
+    (click)="toggle()"
+    (keydown.enter)="toggle()"
+    (keydown.space)="toggle()"
+  >
+    <mat-icon class="expand-icon">{{ isExpanded ? 'expand_more' : 'chevron_right' }}</mat-icon>
+    <span class="agent-name">{{ agentName }}</span>
+    @if (taskSummary) {
+      <span class="task-summary">{{ taskSummary }}</span>
+    }
+  </div>
+
+  @if (isExpanded) {
+    <div class="delegation-body">
+      @if (isLoading) {
+        <div class="loading">
+          <mat-spinner [diameter]="16"></mat-spinner>
+          <span>Loading...</span>
+        </div>
+      }
+      @for (msg of subMessages; track msg.id) {
+        @if (msg.type === 'delegation') {
+          <app-delegation-inline [subThreadId]="msg.subThreadId!" [agentName]="msg.delegationAgentName!">
+          </app-delegation-inline>
+        } @else {
+          <app-chat-message [message]="msg" [canDelete]="false"> </app-chat-message>
+        }
+      }
+      @if (streamingText) {
+        <div class="streaming-message">
+          <div class="content">{{ streamingText }}</div>
+        </div>
+      }
+    </div>
+  }
+</div>

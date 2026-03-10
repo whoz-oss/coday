@@ -3,6 +3,7 @@ import {
   AnswerEvent,
   ChoiceEvent,
   CodayEvent,
+  DelegationEvent,
   ErrorEvent,
   InviteEvent,
   MessageEvent,
@@ -301,7 +302,7 @@ export class OpenaiClient extends AiClient {
       // Emit text chunks progressively
       if (delta?.content) {
         fullContent += delta.content
-        subscriber.next(new TextChunkEvent({ chunk: delta.content }))
+        subscriber.next(new TextChunkEvent({ chunk: delta.content, threadId: thread.id }))
       }
 
       // Accumulate tool calls
@@ -593,6 +594,11 @@ export class OpenaiClient extends AiClient {
         ]
       }
 
+      // DelegationEvent is a branch marker for the UI — skip it in AI context
+      if (msg instanceof DelegationEvent) {
+        return []
+      }
+
       // This should never happen, but TypeScript requires it
       throw new Error(`Unknown message type: ${(msg as any).type}`)
     })
@@ -690,6 +696,14 @@ export class OpenaiClient extends AiClient {
       return {
         role: 'user',
         content: m.answer,
+      }
+    }
+
+    // DelegationEvent is a branch marker for the UI — skip it in assistant context
+    if (m instanceof DelegationEvent) {
+      return {
+        role: 'user',
+        content: '[Sub-thread delegation occurred here]',
       }
     }
 

@@ -385,6 +385,36 @@ export class ThreadService {
   }
 
   /**
+   * Save a thread (create or update) with its full content.
+   * Used for persisting sub-threads created by delegation.
+   * @param projectName Project name
+   * @param thread The AiThread instance to persist
+   * @returns Saved thread
+   */
+  async saveThread(projectName: string, thread: AiThread): Promise<AiThread> {
+    const repository = this.getThreadRepository(projectName)
+    const saved = await repository.save(projectName, thread)
+
+    // Update thread list cache
+    this.updateThreadInCache(projectName, {
+      id: saved.id,
+      username: saved.username,
+      projectId: saved.projectId,
+      name: saved.name,
+      summary: saved.summary,
+      createdDate: saved.createdDate,
+      modifiedDate: saved.modifiedDate,
+      price: saved.price,
+      starring: saved.starring,
+      parentThreadId: saved.parentThreadId,
+      parentEventId: saved.parentEventId,
+      delegatedAgentName: saved.delegatedAgentName,
+      delegatedTask: saved.delegatedTask,
+    })
+
+    return saved
+  }
+  /**
    * Check if a thread exists
    * @param projectName Project name
    * @param threadId Thread identifier

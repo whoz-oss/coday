@@ -17,10 +17,12 @@ export interface ChatMessage {
   speaker: string
   content: MessageContent[] // Always rich content now
   timestamp: Date
-  type: 'text' | 'error' | 'warning' | 'technical'
+  type: 'text' | 'error' | 'warning' | 'technical' | 'delegation'
   eventId?: string // For event detail links
   parentKey?: string // Link to InviteEvent/ChoiceEvent for question-answer relationship
   invite?: string // Original question (for context)
+  subThreadId?: string
+  delegationAgentName?: string
 }
 
 @Component({
