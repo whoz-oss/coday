@@ -70,4 +70,4 @@ mandatoryDocs:
   - ./agentos/docs/architecture.md
   - ./agentos/docs/entity-framework.md
   - ./agentos/docs/plugin-system.md
-  - ./agentos/docs/openapid-and-client.md
+  - ./agentos/docs/openapi-and-client.md
