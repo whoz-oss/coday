@@ -261,9 +261,3 @@ All existing prompts (created before this feature) will:
 - **Git conflicts**: Users must manage merge conflicts in project prompts
 - **Permissions**: No file-level permissions (OS handles this)
 - **Sync**: No automatic sync between sources (intentional)
-
-## Related Documentation
-
-- [Prompt System Documentation](./prompts.md)
-- [Architecture Overview](../to-rework/ARCHITECTURE.md)
-- [Handler Design Patterns](../to-rework/HANDLER_DESIGN.md)

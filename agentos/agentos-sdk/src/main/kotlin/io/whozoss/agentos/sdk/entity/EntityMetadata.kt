@@ -1,5 +1,6 @@
 package io.whozoss.agentos.sdk.entity
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import java.time.Instant
 import java.util.UUID
 
@@ -13,7 +14,11 @@ import java.util.UUID
  *
  * This class will be annotated with Spring Data annotations when we add database persistence.
  * Spring Data will handle automatic timestamp updates on save.
+ *
+ * @JsonIgnoreProperties(ignoreUnknown = true) allows forward-compatible deserialization
+ * when new fields are added to the metadata in future versions.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 data class EntityMetadata(
     val id: UUID = UUID.randomUUID(),
     val created: Instant = Instant.now(),

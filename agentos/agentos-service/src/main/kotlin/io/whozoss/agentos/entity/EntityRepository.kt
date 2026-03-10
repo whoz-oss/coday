@@ -1,5 +1,6 @@
-package io.whozoss.agentos.sdk.entity
+package io.whozoss.agentos.entity
 
+import io.whozoss.agentos.sdk.entity.Entity
 import java.util.UUID
 
 /**

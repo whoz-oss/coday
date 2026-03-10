@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,6 +30,7 @@ import java.util.UUID
 @RequestMapping("/api/cases")
 class CaseEventSseController(
     private val caseService: CaseService,
+    private val caseEventService: CaseEventService,
 ) {
     /**
      * Stream events for a case via SSE.
@@ -64,33 +66,38 @@ class CaseEventSseController(
 
         val emitter = SseEmitter(0L) // Infinite timeout
 
-        val case = caseService.getCaseInstance(caseId)
-        if (case == null) {
-            logger.warn { "Case not found: $caseId" }
-            emitter.completeWithError(IllegalArgumentException("Case $caseId not found"))
-            return emitter
-        }
-
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+        fun sendEvent(event: CaseEvent) =
+            emitter.send(
+                SseEmitter
+                    .event()
+                    .id(event.id.toString())
+                    .name(event.type.value)
+                    .data(event),
+            )
 
         val collectorJob =
             scope.launch {
                 try {
-                    case.events.collect { event ->
+                    // Replay persisted history first so clients connecting mid-run
+                    // or reconnecting after a disconnect receive the full sequence.
+                    caseEventService.findByParent(caseId).forEach { sendEvent(it) }
+
+                    // If the case is still active, subscribe to the live flow.
+                    // If it is a past/completed case the history above is all there is
+                    // and the emitter will complete at the end of the try block.
+                    val activeCase = runCatching { caseService.getCaseInstance(caseId) }.getOrNull()
+                    activeCase?.events?.collect { event ->
                         try {
-                            emitter.send(
-                                SseEmitter
-                                    .event()
-                                    .id(event.id.toString())
-                                    .name(event.type.value)
-                                    .data(event),
-                            )
+                            sendEvent(event)
                             logger.trace { "Event ${event.type} sent to SSE for case $caseId" }
                         } catch (e: Exception) {
                             logger.debug { "Failed to send event to SSE for case $caseId: ${e.message}" }
                             throw e
                         }
                     }
+                    emitter.complete()
                 } catch (error: Exception) {
                     logger.error("Error in event stream for case $caseId", error)
                     emitter.completeWithError(error)

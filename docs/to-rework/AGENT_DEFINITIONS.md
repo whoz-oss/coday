@@ -86,8 +86,7 @@ instructions: "System prompt"   # Optional: Detailed instructions for the agent'
 
 # AI Provider configuration (optional)
 aiProvider: "anthropic"         # Default: "anthropic". Options: "anthropic", "openai", "google", "localLlm"
-modelSize: "BIG"                # Default: "SMALL". Options: "BIG" or "SMALL"
-modelName: "specific-model"     # Optional: Override with a specific model name
+modelName: "specific-model"     # Optional: Override with a specific model name or alias (usually BIG or SMALL)
 temperature: 0.7                # Default: provider-specific. Controls randomness (0.0-2.0)
 
 # OpenAI Assistant integration (optional)
