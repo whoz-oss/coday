@@ -59,12 +59,10 @@ export class NamespaceListComponent {
   protected submitCreate(): void {
     if (this.nameControl.invalid || this.isSubmitting()) return
 
-    const payload: Namespace = {
-      id: '',
-      metadata: { id: '', created: '', modified: '', removed: false },
+    const payload = {
       name: this.nameControl.value.trim(),
       ...(this.descriptionControl.value.trim() ? { description: this.descriptionControl.value.trim() } : {}),
-    }
+    } as Namespace
 
     this.isSubmitting.set(true)
     this.namespaceController
