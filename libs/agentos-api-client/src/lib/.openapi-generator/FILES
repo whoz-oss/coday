@@ -16,7 +16,6 @@ model/answer-event.ts
 model/case-status-event.ts
 model/case.ts
 model/entity-metadata.ts
-model/get-by-ids2200-response-inner.ts
 model/image.ts
 model/intention-generated-event.ts
 model/message-content.ts
