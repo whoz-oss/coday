@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core'
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core'
 import { Namespace } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
 
@@ -17,16 +17,16 @@ import { IconButtonComponent } from '@whoz-oss/design-system'
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceItemComponent {
-  readonly namespace = input.required<Namespace>()
+  @Input({ required: true }) namespace!: Namespace
 
-  readonly selected = output<Namespace>()
-  readonly deleteRequested = output<Namespace>()
+  @Output() selected = new EventEmitter<Namespace>()
+  @Output() deleteRequested = new EventEmitter<Namespace>()
 
   protected onSelect(): void {
-    this.selected.emit(this.namespace())
+    this.selected.emit(this.namespace)
   }
 
   protected onDelete(): void {
-    this.deleteRequested.emit(this.namespace())
+    this.deleteRequested.emit(this.namespace)
   }
 }
