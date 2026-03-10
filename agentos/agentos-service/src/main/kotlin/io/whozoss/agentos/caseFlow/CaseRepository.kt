@@ -6,6 +6,6 @@ import java.util.UUID
 /**
  * Repository for [Case] persistence.
  *
- * Parent type is UUID representing the projectId.
+ * Parent type is UUID representing the namespaceId.
  */
 interface CaseRepository : EntityRepository<Case, UUID>

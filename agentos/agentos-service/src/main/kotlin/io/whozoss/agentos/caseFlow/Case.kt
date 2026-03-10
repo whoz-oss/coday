@@ -19,6 +19,6 @@ import java.util.UUID
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class Case(
     override val metadata: EntityMetadata = EntityMetadata(),
-    val projectId: UUID,
+    val namespaceId: UUID,
     val status: CaseStatus = CaseStatus.PENDING,
 ) : Entity
