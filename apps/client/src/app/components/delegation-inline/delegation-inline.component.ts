@@ -1,12 +1,15 @@
 import { Component, Input, OnInit, OnDestroy, inject } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { MatIconModule } from '@angular/material/icon'
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
 import { ChatMessageComponent, ChatMessage } from '../chat-message/chat-message.component'
 import { CodayService } from '../../core/services/coday.service'
+import { ThreadApiService } from '../../core/services/thread-api.service'
 import { Subscription } from 'rxjs'
 import { filter } from 'rxjs/operators'
 import {
   AnswerEvent,
+  buildCodayEvent,
   CodayEvent,
   MessageEvent,
   TextEvent,
@@ -19,7 +22,7 @@ import {
 @Component({
   selector: 'app-delegation-inline',
   standalone: true,
-  imports: [CommonModule, MatIconModule, ChatMessageComponent],
+  imports: [CommonModule, MatIconModule, MatProgressSpinnerModule, ChatMessageComponent],
   templateUrl: './delegation-inline.component.html',
   styleUrl: './delegation-inline.component.scss',
 })
@@ -28,11 +31,14 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
   @Input() agentName!: string
 
   isExpanded = false
+  isLoading = false
   subMessages: ChatMessage[] = []
   streamingText = ''
 
+  private hasLoadedFromRest = false
   private eventSubscription?: Subscription
   private readonly codayService = inject(CodayService)
+  private readonly threadApi = inject(ThreadApiService)
 
   get taskSummary(): string {
     const firstUser = this.subMessages.find((m) => m.role === 'user')
@@ -64,6 +70,35 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
 
   toggle(): void {
     this.isExpanded = !this.isExpanded
+
+    // On first expand, if no messages from live session, fetch from REST
+    if (this.isExpanded && this.subMessages.length === 0 && !this.hasLoadedFromRest) {
+      this.loadSubThreadMessages()
+    }
+  }
+
+  private loadSubThreadMessages(): void {
+    this.isLoading = true
+    this.hasLoadedFromRest = true
+
+    this.threadApi.getThreadMessages(this.subThreadId).subscribe({
+      next: (response) => {
+        // Only populate if still no messages (SSE might have arrived in the meantime)
+        if (this.subMessages.length === 0 && response.messages) {
+          for (const rawMsg of response.messages) {
+            const event = buildCodayEvent(rawMsg)
+            if (event) {
+              this.handleSubThreadEvent(event)
+            }
+          }
+        }
+        this.isLoading = false
+      },
+      error: (err) => {
+        console.error('[DELEGATION-INLINE] Failed to load sub-thread messages:', err)
+        this.isLoading = false
+      },
+    })
   }
 
   private handleSubThreadEvent(event: CodayEvent): void {

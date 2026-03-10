@@ -16,6 +16,12 @@
 
   @if (isExpanded) {
     <div class="delegation-body">
+      @if (isLoading) {
+        <div class="loading">
+          <mat-spinner [diameter]="16"></mat-spinner>
+          <span>Loading...</span>
+        </div>
+      }
       @for (msg of subMessages; track msg.id) {
         @if (msg.type === 'delegation') {
           <app-delegation-inline [subThreadId]="msg.subThreadId!" [agentName]="msg.delegationAgentName!">
