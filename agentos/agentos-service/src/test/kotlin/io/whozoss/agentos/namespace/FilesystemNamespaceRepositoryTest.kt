@@ -18,7 +18,7 @@ import java.util.UUID
  * Each test uses an isolated temporary directory to avoid inter-test interference.
  */
 class FilesystemNamespaceRepositoryTest : StringSpec() {
-    val mapper = ObjectMapper().registerKotlinModule().findAndRegisterModules()
+    private val mapper = ObjectMapper().registerKotlinModule().findAndRegisterModules()
 
     fun newRepo(dir: java.nio.file.Path) = FilesystemNamespaceRepository(dir, mapper)
 
