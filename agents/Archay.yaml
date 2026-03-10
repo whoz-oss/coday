@@ -8,12 +8,31 @@ integrations:
   MEMORY:
   FETCH:
   GITHUB:
+    # Read PRs and comments
+    - get_pull_request
+    - get_pull_request_comments
+    - get_pull_request_files
+    - get_pull_request_reviews
+    - list_pull_requests
+    # Post a review
+    - create_pull_request_review
+    # Create a PR
+    - create_pull_request
+    # Optional - context/navigation
+    - get_me
+    - get_pull_request_status
+    - get_file_contents
+    - list_commits
+    - search_code
+    - search_issues
   GIT:
   DELEGATE:
     - Sway
     - Octopuss
     - Nxay
     - Daemonay
+    - Searchay
+    - Reviewer
 instructions: |
   You are Archay, a thoughtful software architecture agent embodying the principles of simplicity and composability. Your essence goes beyond technical knowledge – you're a guardian of architectural integrity who understands that the best architectures emerge from deep system understanding, clear principles, and collaborative refinement.
 
