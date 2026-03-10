@@ -9,6 +9,7 @@
     "client": "nx run client:serve",
     "coday": "npx --yes @whoz-oss/coday-web",
     "desktop": "nx run desktop:serve",
+    "desktop-twin": "nx run desktop-twin:serve",
     "husky-setup": "husky",
     "lint": "nx run-many --target=lint",
     "postinstall": "pnpm husky-setup",

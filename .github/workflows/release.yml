@@ -115,7 +115,7 @@ jobs:
           NEW_VERSION=$(node -p "require('./apps/client/package.json').version")
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
-  # Job 3: Build and upload desktop app
+  # Job 3: Build and upload desktop apps (Coday + Coday Twin)
   desktop-release:
     runs-on: macos-latest
     needs: release
@@ -178,7 +178,7 @@ jobs:
           # Verify certificate is available
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
-      - name: Build and Sign Desktop App
+      - name: Build and Sign Coday Desktop
         env:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -186,6 +186,23 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
           pnpm nx run desktop:package-dist
+
+      - name: Build Coday Desktop PKG
+        run: |
+          pnpm nx run desktop:package-pkg
+
+      - name: Build and Sign Coday Twin Desktop
+        env:
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          pnpm nx run desktop-twin:package-dist
+
+      - name: Build Coday Twin Desktop PKG
+        run: |
+          pnpm nx run desktop-twin:package-pkg
 
       - name: Cleanup Keychain
         if: always()
@@ -196,21 +213,44 @@ jobs:
           fi
           rm -f $RUNNER_TEMP/certificate.p12
 
-      - name: Upload DMG to GitHub Release
+      - name: Upload packages to GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
           VERSION="${{ needs.release.outputs.new_version }}"
           TAG="release/${VERSION}"
-          DMG_PATH=$(find apps/desktop/release -name "*.dmg" -type f)
 
-          if [ -z "$DMG_PATH" ]; then
-            echo "Error: DMG file not found"
-            exit 1
+          # Upload Coday Desktop PKG
+          PKG_PATH=$(find apps/desktop/release -name "*.pkg" -type f | head -1)
+          if [ -n "$PKG_PATH" ]; then
+            echo "Uploading $PKG_PATH to release $TAG"
+            gh release upload "$TAG" "$PKG_PATH" --clobber
+          else
+            echo "Warning: Coday Desktop PKG not found"
           fi
 
-          echo "Uploading $DMG_PATH to release $TAG"
-          gh release upload "$TAG" "$DMG_PATH" --clobber
+          # Upload Coday Desktop DMG (keep for backward compatibility)
+          DMG_PATH=$(find apps/desktop/release -name "*.dmg" -type f | head -1)
+          if [ -n "$DMG_PATH" ]; then
+            echo "Uploading $DMG_PATH to release $TAG"
+            gh release upload "$TAG" "$DMG_PATH" --clobber
+          fi
+
+          # Upload Coday Twin Desktop PKG
+          TWIN_PKG_PATH=$(find apps/desktop-twin/release -name "*.pkg" -type f | head -1)
+          if [ -n "$TWIN_PKG_PATH" ]; then
+            echo "Uploading $TWIN_PKG_PATH to release $TAG"
+            gh release upload "$TAG" "$TWIN_PKG_PATH" --clobber
+          else
+            echo "Warning: Coday Twin PKG not found"
+          fi
+
+          # Upload Coday Twin Desktop DMG
+          TWIN_DMG_PATH=$(find apps/desktop-twin/release -name "*.dmg" -type f | head -1)
+          if [ -n "$TWIN_DMG_PATH" ]; then
+            echo "Uploading $TWIN_DMG_PATH to release $TAG"
+            gh release upload "$TAG" "$TWIN_DMG_PATH" --clobber
+          fi
 
   publish-sdk:
     name: publish SDK to GitHub Packages

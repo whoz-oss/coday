@@ -16,13 +16,14 @@ let serverProcess: ChildProcess | null = null
 let serverUrl: string | null | undefined = null
 let pendingDeepLink: string | null = null
 
-const PROTOCOL_NAME = 'coday'
+const PROTOCOL_NAME = 'coday-twin'
+const DEFAULT_TWIN_PROJECT_PATH = join(app.getPath('home'), 'CodayTwin')
 
 // Storage file path
 const STORAGE_FILE = join(app.getPath('userData'), 'preferences.json')
 
 // Log file path for packaged app
-const LOG_FILE = join(app.getPath('userData'), 'coday-desktop.log')
+const LOG_FILE = join(app.getPath('userData'), 'coday-twin-desktop.log')
 
 /**
  * Enhanced logging that writes to both console and log file
@@ -54,7 +55,7 @@ function log(level: 'INFO' | 'ERROR' | 'WARN', ...args: any[]): void {
 // Initialize log file
 if (app.isPackaged) {
   try {
-    const logHeader = `\n\n${'='.repeat(80)}\nCoday Desktop Log - Started at ${new Date().toISOString()}\n${'='.repeat(80)}\n`
+    const logHeader = `\n\n${'='.repeat(80)}\nCoday Twin Desktop Log - Started at ${new Date().toISOString()}\n${'='.repeat(80)}\n`
     fs.appendFileSync(LOG_FILE, logHeader, 'utf8')
     log('INFO', 'Log file initialized at:', LOG_FILE)
   } catch (error) {
@@ -169,11 +170,12 @@ function findNpxExecutable(): string | null {
 }
 
 /**
- * Start the Coday web server
+ * Start the Coday web server pointing at the Twin project path
  */
 async function startCodayServer(): Promise<void> {
   try {
-    log('INFO', 'Starting Coday server...')
+    log('INFO', 'Starting Coday Twin server...')
+    log('INFO', 'Twin project path:', DEFAULT_TWIN_PROJECT_PATH)
 
     // Find node and run the installed package via npx
     log('INFO', 'Finding node executable...')
@@ -204,10 +206,12 @@ async function startCodayServer(): Promise<void> {
     }
 
     log('INFO', 'Found npx at:', npxPath)
-    const command = npxPath
-    const args = ['--yes', '@whoz-oss/coday-web', '--base-url=coday://']
 
-    log('INFO', 'Spawning:', command, args.join(' '))
+    const twinProjectPath = DEFAULT_TWIN_PROJECT_PATH
+    const args = ['--yes', '@whoz-oss/coday-web', '--base-url=coday-twin://']
+
+    log('INFO', 'Spawning:', npxPath, args.join(' '))
+    log('INFO', 'With CODAY_PROJECT_PATH:', twinProjectPath)
 
     // Set up environment
     const env = { ...process.env }
@@ -223,7 +227,7 @@ async function startCodayServer(): Promise<void> {
     log('INFO', 'Using npx cwd:', npxCwd)
 
     // Start the server
-    serverProcess = spawn(command, args, {
+    serverProcess = spawn(npxPath, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env,
       cwd: npxCwd,
@@ -269,7 +273,7 @@ async function startCodayServer(): Promise<void> {
 
       serverProcess!.on('error', (error: Error) => {
         log('ERROR', 'Failed to start server:', error)
-        const wrappedError: any = new Error(`Failed to start Coday server: ${error.message}`)
+        const wrappedError: any = new Error(`Failed to start Coday Twin server: ${error.message}`)
         wrappedError.userFacing = true
         settle(() => reject(wrappedError))
       })
@@ -300,7 +304,7 @@ async function startCodayServer(): Promise<void> {
  */
 function stopCodayServer(): void {
   if (serverProcess) {
-    log('INFO', 'Stopping Coday server...')
+    log('INFO', 'Stopping Coday Twin server...')
     serverProcess.kill()
     serverProcess = null
   }
@@ -389,14 +393,12 @@ function createWindow(): void {
       contextIsolation: true,
       webSecurity: true,
     },
-    title: 'Coday Desktop',
+    title: 'Coday Twin',
     show: false, // Don't show until ready
   })
 
   // Prevent navigation away from the Coday server
-  // This fixes the reload issue where Cmd+R would show "Something went wrong"
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    // Allow navigation within the same origin (server URL)
     if (!url.startsWith(serverUrl!)) {
       log('WARN', 'Blocked navigation to external URL:', url)
       event.preventDefault()
@@ -406,7 +408,6 @@ function createWindow(): void {
   // Handle failed loads by reloading the correct URL
   mainWindow.webContents.on('did-fail-load', (_, errorCode, errorDescription, validatedURL) => {
     log('ERROR', 'Failed to load:', validatedURL, 'Error:', errorCode, errorDescription)
-    // Reload the main server URL if load fails
     if (mainWindow && serverUrl) {
       log('INFO', 'Reloading server URL:', serverUrl)
       void mainWindow.loadURL(serverUrl)
@@ -415,7 +416,6 @@ function createWindow(): void {
 
   // Intercept reload attempts to ensure we reload the root URL
   mainWindow.webContents.on('before-input-event', (event, input) => {
-    // Cmd+R or F5 reload
     if ((input.meta && input.key.toLowerCase() === 'r') || input.key === 'F5') {
       if (input.type === 'keyDown' && mainWindow && serverUrl) {
         event.preventDefault()
@@ -452,7 +452,6 @@ function createWindow(): void {
   })
 
   // On macOS, prevent the window from actually closing, just hide it
-  // This prevents the need to recreate the window and avoids the blank page issue
   mainWindow.on('close', (event) => {
     if (process.platform === 'darwin' && !app.isQuitting) {
       event.preventDefault()
@@ -559,8 +558,8 @@ function handleDeepLink(url: string): void {
   log('INFO', 'Handling deeplink:', url)
 
   try {
-    // Parse URL: coday://project/my-project/thread/abc-123
-    const match = url.match(/coday:\/\/project\/([^/]+)\/thread\/([^/?#]+)/)
+    // Parse URL: coday-twin://project/my-project/thread/abc-123
+    const match = url.match(/coday-twin:\/\/project\/([^/]+)\/thread\/([^/?#]+)/)
 
     if (!match) {
       log('WARN', 'Invalid deeplink format:', url)
@@ -609,7 +608,7 @@ async function initialize(): Promise<void> {
   let loadingWindow: BrowserWindowType | null = null
 
   try {
-    log('INFO', 'Initializing Coday Desktop...')
+    log('INFO', 'Initializing Coday Twin Desktop...')
 
     // Setup storage handlers
     setupStorageHandlers()
@@ -643,11 +642,11 @@ async function initialize(): Promise<void> {
     const isUserFacing = error && typeof error === 'object' && (error as any).userFacing
 
     if (isUserFacing) {
-      showErrorDialog('Coday Desktop - Startup Error', errorMessage)
+      showErrorDialog('Coday Twin - Startup Error', errorMessage)
     } else {
       showErrorDialog(
-        'Coday Desktop - Unexpected Error',
-        `An unexpected error occurred while starting Coday:\n\n${errorMessage}\n\nPlease check the console logs for more details.`
+        'Coday Twin - Unexpected Error',
+        `An unexpected error occurred while starting Coday Twin:\n\n${errorMessage}\n\nPlease check the console logs for more details.`
       )
     }
 
@@ -755,7 +754,7 @@ app.on('before-quit', () => {
 process.on('uncaughtException', (error: Error) => {
   log('ERROR', 'Uncaught exception:', error)
   showErrorDialog(
-    'Coday Desktop - Fatal Error',
+    'Coday Twin - Fatal Error',
     `A fatal error occurred:\n\n${error.message}\n\nThe application will now close.`
   )
   stopCodayServer()
