@@ -312,12 +312,14 @@ export class MessageEvent extends CodayEvent {
 export class ThreadUpdateEvent extends CodayEvent {
   threadId: string
   name?: string
+  summary?: string
   static override type = 'thread_update'
 
   constructor(event: Partial<ThreadUpdateEvent>) {
     super(event, ThreadUpdateEvent.type)
     this.threadId = event.threadId!
     this.name = event.name
+    this.summary = event.summary
   }
 }
 

@@ -239,7 +239,11 @@ export class ThreadService {
    * @returns Updated thread
    * @throws Error if thread doesn't exist
    */
-  async updateThread(projectName: string, threadId: string, updates: { name?: string }): Promise<AiThread> {
+  async updateThread(
+    projectName: string,
+    threadId: string,
+    updates: { name?: string; summary?: string }
+  ): Promise<AiThread> {
     const repository = this.getThreadRepository(projectName)
 
     // Try to get thread from repository
@@ -267,6 +271,9 @@ export class ThreadService {
     // Apply updates
     if (updates.name !== undefined) {
       thread.name = updates.name
+    }
+    if (updates.summary !== undefined) {
+      thread.summary = updates.summary
     }
 
     const updatedThread = await repository.save(projectName, thread)

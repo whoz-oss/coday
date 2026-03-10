@@ -51,7 +51,6 @@ scripts:
       - "run-many --target=test --all" - Run all tests in monorepo
       - "run-many --target=build --all" - Build all projects
       - "affected --target=test" - Test only affected projects
-      - "graph" - Show project dependency graph
       - "list" - List all projects in workspace
       - "show project client" - Show project configuration
 
@@ -62,7 +61,7 @@ scripts:
 
       ⚠️ Do not run interactive commands!
       ⚠️ Commands that modify dependencies require user confirmation.
-    command: nx PARAMETERS
+    command: pnpm nx PARAMETERS
     parametersDescription: |
       Nx command with arguments. Examples:
       - "test agentos-service"

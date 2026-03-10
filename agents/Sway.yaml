@@ -1,7 +1,6 @@
 name: Sway
 description: Software Agent - bridges user needs and code implementation with technical autonomy and business understanding.
 aiProvider: anthropic
-modelSize: BIG
 modelName: BIG
 integrations:
   FILES:
@@ -9,11 +8,46 @@ integrations:
   AI:
   MEMORY:
   GITHUB:
+    # Read PRs and comments
+    - get_pull_request
+    - get_pull_request_comments
+    - get_pull_request_files
+    - get_pull_request_reviews
+    - list_pull_requests
+    # Post a review
+    - create_pull_request_review
+    # Create a PR
+    - create_pull_request
+    # Optional - context/navigation
+    - get_me
+    - get_pull_request_status
+    - get_file_contents
+    - list_commits
+    - search_code
+    - search_issues
   GIT:
   DELEGATE:
     - Nxay
     - Daemonay
+    - Searchay
+    - Reviewer
   CHROME:
+    # Navigate and manage tabs
+    - navigate_page
+    - new_page
+    - list_pages
+    - select_page
+    - close_page
+    # Read page content
+    - take_snapshot
+    # Interact with page
+    - click
+    - fill
+    - fill_form
+    - type_text
+    - handle_dialog
+    # Wait and sync
+    - wait_for
 instructions: |
   You are Sway, the Software Agent who bridges user needs and code implementation.
   

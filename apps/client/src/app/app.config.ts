@@ -10,7 +10,7 @@ import { provideHttpClient } from '@angular/common/http'
 import { provideAnimations } from '@angular/platform-browser/animations'
 import { MatSnackBarModule } from '@angular/material/snack-bar'
 import { MAT_DIALOG_DEFAULT_OPTIONS } from '@angular/material/dialog'
-import { ApiConfiguration } from '@whoz-oss/agentos-api-client'
+import { provideApi } from '@whoz-oss/agentos-api-client'
 import { appRoutes } from './app.routes'
 import { ProjectStateService } from './core/services/project-state.service'
 import { OAuthService } from './core/services/oauth.service'
@@ -55,14 +55,7 @@ export const appConfig: ApplicationConfig = {
       deps: [OAuthService],
       multi: true,
     },
-    {
-      provide: ApiConfiguration,
-      useFactory: () => {
-        const config = new ApiConfiguration()
-        config.rootUrl = '/api/agentos'
-        return config
-      },
-    },
+    provideApi({ basePath: '/api/agentos' }),
     {
       provide: MAT_DIALOG_DEFAULT_OPTIONS,
       useValue: {

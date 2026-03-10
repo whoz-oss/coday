@@ -1,3 +1,38 @@
+## 0.82.0 (2026-03-10)
+
+### 🚀 Features
+
+- #375 add THREADS integration ([#544](https://github.com/whoz-oss/coday/pull/544), [#375](https://github.com/whoz-oss/coday/issues/375))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.81.0 (2026-03-10)
+
+### 🚀 Features
+
+- #444 generic HTTP integration with OAuth2 and declarative endpoints ([#526](https://github.com/whoz-oss/coday/pull/526), [#444](https://github.com/whoz-oss/coday/issues/444))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.80.1 (2026-03-10)
+
+### 🚀 Features
+
+- wz-28725: fix tool param discovery and call ([#534](https://github.com/whoz-oss/coday/pull/534))
+
+### 🩹 Fixes
+
+- improve a little the prompt form following feedbacks ([#543](https://github.com/whoz-oss/coday/pull/543))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+- vincent-audibert-whoz
+
 ## 0.80.0 (2026-02-27)
 
 ### 🚀 Features

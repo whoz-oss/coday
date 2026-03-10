@@ -45,6 +45,7 @@
       "@coday/integrations-file": ["libs/integrations/file/src/index.ts"],
       "@coday/integrations-git": ["libs/integrations/git/src/index.ts"],
       "@coday/integrations-gitlab": ["libs/integrations/gitlab/src/index.ts"],
+      "@coday/integrations-http": ["libs/integrations/http/src/index.ts"],
       "@coday/integrations-jira": ["libs/integrations/jira/src/index.ts"],
       "@coday/integrations-mcp": ["libs/integrations/mcp/src/index.ts"],
       "@coday/integrations-slack": ["libs/integrations/slack/src/index.ts"],
@@ -62,7 +63,7 @@
       "@coday/stats": ["libs/stats/src/index.ts"],
       "@coday/utils": ["libs/utils/src/index.ts"],
       "@coday/zendesk-articles": ["libs/zendesk-articles/src/index.ts"],
-      "@whoz-oss/agentos-api-client": ["libs/agentos-api-client/src/custom/public-api.ts"],
+      "@whoz-oss/agentos-api-client": ["libs/agentos-api-client/src/index.ts"],
       "@whoz-oss/agentos-dataflow": ["libs/agentos-dataflow/src/index.ts"],
       "@whoz-oss/agentos-ui": ["libs/agentos-ui/src/index.ts"],
       "@whoz-oss/design-system": ["libs/design-system/src/index.ts"]

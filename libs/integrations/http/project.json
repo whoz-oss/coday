@@ -1,0 +1,30 @@
+{
+  "name": "integrations-http",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/integrations/http",
+  "tags": [
+    "scope:libs",
+    "type:core"
+  ],
+  "targets": {
+    "test": {
+      "executor": "@nx/jest:jest",
+      "options": {
+        "jestConfig": "libs/integrations/http/jest.config.ts"
+      }
+    },
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "libs/integrations/http/dist",
+        "main": "libs/integrations/http/src/index.ts",
+        "tsConfig": "libs/integrations/http/tsconfig.lib.json",
+        "assets": []
+      }
+    }
+  }
+}

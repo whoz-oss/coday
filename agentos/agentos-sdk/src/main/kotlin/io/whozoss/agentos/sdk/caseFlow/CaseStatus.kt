@@ -27,5 +27,8 @@ enum class CaseStatus {
     /**
      * Case was manually stopped
      */
-    STOPPED,
+    STOPPED;
+
+    /** Returns true if the case has reached a final state and will no longer produce events. */
+    fun isTerminal(): Boolean = this == STOPPED || this == ERROR
 }

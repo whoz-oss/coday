@@ -14,6 +14,7 @@ module.exports = {
   modulePathIgnorePatterns: [
     '<rootDir>/dist/',
     '<rootDir>/.nx/',
+    '<rootDir>/libs/.*/dist/',
   ],
 
   // Don't watch these directories

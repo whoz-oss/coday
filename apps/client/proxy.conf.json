@@ -3,7 +3,7 @@
     "changeOrigin": true,
     "logLevel": "debug",
     "pathRewrite": {
-      "^/api/agentos/api": "/api"
+      "^/api/agentos": ""
     },
     "secure": false,
     "target": "http://localhost:8123"

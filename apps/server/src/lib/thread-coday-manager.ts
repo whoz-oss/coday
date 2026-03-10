@@ -1,19 +1,27 @@
 import { Response } from 'express'
 import { Coday } from '@coday/core'
-import { ServerInteractor } from '@coday/model'
-import { CodayOptions } from '@coday/model'
-import { UserService } from '@coday/service'
-import { ProjectStateService } from '@coday/service'
-import { IntegrationService } from '@coday/service'
-import { IntegrationConfigService } from '@coday/service'
-import { MemoryService } from '@coday/service'
-import { McpConfigService } from '@coday/service'
-import { PromptService } from '@coday/service'
-import { CodayLogger } from '@coday/model'
-import { HeartBeatEvent, ThreadUpdateEvent, OAuthCallbackEvent } from '@coday/model'
+import { AiClientProvider } from '@coday/integrations-ai'
+import {
+  ServerInteractor,
+  CodayOptions,
+  CodayLogger,
+  HeartBeatEvent,
+  ThreadUpdateEvent,
+  OAuthCallbackEvent,
+} from '@coday/model'
+import {
+  UserService,
+  ProjectStateService,
+  IntegrationService,
+  IntegrationConfigService,
+  MemoryService,
+  McpConfigService,
+  PromptService,
+  ProjectService,
+  ThreadService,
+} from '@coday/service'
+import { ThreadPostProcessor } from './thread-post-processor'
 import { debugLog } from './log'
-import { ProjectService } from '@coday/service'
-import { ThreadService } from '@coday/service'
 import { McpInstancePool } from '@coday/mcp'
 import { AgentService } from '@coday/agent'
 
@@ -284,11 +292,13 @@ class ThreadCodayInstance {
    */
   private broadcastEvent(event: any): void {
     // If this is a ThreadUpdateEvent with a name, update the thread service cache
-    if (event instanceof ThreadUpdateEvent && event.name) {
-      debugLog('THREAD_CODAY', `Updating thread cache for ${this.threadId} with name: ${event.name}`)
-      this.threadService.updateThread(this.projectName, this.threadId, { name: event.name }).catch((error) => {
-        debugLog('THREAD_CODAY', `Error updating thread cache:`, error)
-      })
+    if (event instanceof ThreadUpdateEvent && (event.name || event.summary)) {
+      debugLog('THREAD_CODAY', `Updating thread cache for ${this.threadId} name/summary`)
+      this.threadService
+        .updateThread(this.projectName, this.threadId, { name: event.name, summary: event.summary })
+        .catch((error) => {
+          debugLog('THREAD_CODAY', `Error updating thread cache:`, error)
+        })
     }
 
     const data = `data: ${JSON.stringify(event)}\n\n`
@@ -366,6 +376,19 @@ class ThreadCodayInstance {
       }
     }
     this.connections.clear()
+
+    // Run post-processing before killing Coday (need AiClient + thread still alive)
+    if (this.coday) {
+      const thread = this.coday.context?.aiThread
+      const aiClientProvider: AiClientProvider | undefined = this.coday.aiClientProvider
+      const aiClient = aiClientProvider?.getClient(undefined, 'SMALL') ?? aiClientProvider?.getClient(undefined)
+      if (thread && aiClient) {
+        const processor = new ThreadPostProcessor(aiClient, this.threadService)
+        processor.process(thread, this.projectName)
+      } else {
+        debugLog('THREAD_CODAY', `Skipping post-processing for thread ${this.threadId}: no thread or AI client`)
+      }
+    }
 
     // Kill Coday instance (this will trigger cleanup of agents and MCP servers)
     if (this.coday) {

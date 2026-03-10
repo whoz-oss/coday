@@ -6,6 +6,7 @@ import { MatButtonModule } from '@angular/material/button'
 import { MatInputModule } from '@angular/material/input'
 import { MatFormFieldModule } from '@angular/material/form-field'
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
+import { MatTooltipModule } from '@angular/material/tooltip'
 
 import { SessionState } from '@coday/model'
 import { ThreadStateService } from '../../core/services/thread-state.service'
@@ -26,6 +27,7 @@ import { UserService } from '../../core/services/user.service'
     MatInputModule,
     MatFormFieldModule,
     MatProgressSpinnerModule,
+    MatTooltipModule,
   ],
   templateUrl: './thread-selector.component.html',
   styleUrl: './thread-selector.component.scss',
@@ -80,7 +82,7 @@ export class ThreadSelectorComponent implements OnInit {
    */
   getGroupedThreads(): Array<{
     label: string
-    threads: Array<{ id: string; name: string; modifiedDate: string; starring: string[] }>
+    threads: Array<{ id: string; name: string; summary: string; modifiedDate: string; starring: string[] }>
   }> {
     let threadsToGroup = this.threads()
     if (!threadsToGroup?.length) {
@@ -90,7 +92,10 @@ export class ThreadSelectorComponent implements OnInit {
     // Apply search filter if searchQuery is provided
     if (this.searchQuery && this.searchQuery.trim()) {
       const query = this.searchQuery.toLowerCase().trim()
-      threadsToGroup = threadsToGroup.filter((thread) => thread.name.toLowerCase().includes(query))
+      threadsToGroup = threadsToGroup.filter(
+        (thread) =>
+          thread.name.toLowerCase().includes(query) || (thread.summary && thread.summary.toLowerCase().includes(query))
+      )
     }
 
     // If no threads after filtering, return empty
@@ -111,7 +116,10 @@ export class ThreadSelectorComponent implements OnInit {
       (thread) => !thread.starring || !thread.starring.includes(currentUsername)
     )
 
-    const groups = new Map<string, Array<{ id: string; name: string; modifiedDate: string; starring: string[] }>>()
+    const groups = new Map<
+      string,
+      Array<{ id: string; name: string; summary: string; modifiedDate: string; starring: string[] }>
+    >()
     const now = new Date()
     now.setHours(0, 0, 0, 0)
 
@@ -146,7 +154,7 @@ export class ThreadSelectorComponent implements OnInit {
     // Build result array with starred section first
     const result: Array<{
       label: string
-      threads: Array<{ id: string; name: string; modifiedDate: string; starring: string[] }>
+      threads: Array<{ id: string; name: string; summary: string; modifiedDate: string; starring: string[] }>
     }> = []
 
     // Add starred section if there are starred threads

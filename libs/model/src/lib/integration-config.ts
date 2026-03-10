@@ -18,12 +18,54 @@ export type OAuth2Config = {
   redirect_uri: string
   authorization_endpoint?: string
   token_endpoint?: string
-  scope?: string
+  // Single string ("openid email") or array joined with spaces at runtime
+  scope?: string | string[]
   tokens?: OAuth2Tokens // Stored tokens (user-level only)
   // Provider-specific data
   account_id?: string
   account_name?: string
   account_href?: string // Base URL for API calls
+}
+
+/**
+ * A single parameter for an HTTP endpoint
+ */
+export type HttpParamConfig = {
+  name: string
+  type: 'string' | 'number' | 'boolean'
+  description: string
+  required?: boolean
+  // Where the param is injected (default: query)
+  location?: 'path' | 'query' | 'body'
+}
+
+/**
+ * A single endpoint exposed as an AI tool
+ */
+export type HttpEndpointConfig = {
+  name: string // tool name suffix: ${integrationName}__${name}
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  path: string // e.g. '/calendars/{calendarId}/events'
+  description: string
+  params?: HttpParamConfig[]
+  // Response filtering: dot-notation paths, supports wildcard *
+  // keepPaths: only these paths are kept (e.g. ["items.*.summary", "items.*.start"])
+  // ignorePaths: these paths are removed (e.g. ["items.*.htmlLink", "etag"])
+  // keepPaths takes precedence over ignorePaths if both are set
+  keepPaths?: string[]
+  ignorePaths?: string[]
+  // Response format sent to the LLM: 'json' (default) or 'yaml' (more compact)
+  responseFormat?: 'json' | 'yaml'
+}
+
+/**
+ * HTTP-specific configuration block
+ */
+export type HttpConfig = {
+  // Base URL for all HTTP requests of this integration
+  // e.g. 'https://www.googleapis.com/calendar/v3'
+  baseUrl: string
+  endpoints?: HttpEndpointConfig[]
 }
 
 /**
@@ -38,8 +80,11 @@ export type IntegrationConfig = {
   username?: string
   apiKey?: string
 
-  // OAuth2 configuration (new)
+  // OAuth2 configuration
   oauth2?: OAuth2Config
+
+  // HTTP integration configuration
+  http?: HttpConfig
 
   // Extensible for integration-specific data
   [key: string]: any
