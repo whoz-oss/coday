@@ -73,8 +73,7 @@ class CaseServiceImpl(
         // terminal event and the runtime is evicted cleanly. handleStatusChange
         // removes the runtime from activeRuntimes on terminal status.
         if (activeRuntimes.containsKey(id)) {
-            handleStatusChange(id, CaseStatus.STOPPED)
-            activeRuntimes[id]?.requestStop()
+            killCase(id)
         }
         return caseRepository.delete(id)
     }
@@ -297,14 +296,8 @@ class CaseServiceImpl(
     }
 
     override fun killCase(caseId: UUID) {
-        val runtime =
-            activeRuntimes[caseId]
-                ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
         logger.info { "Killing case: $caseId" }
-        // Set flags; the run() loop will call updateStatus(STOPPED/ERROR)
-        // which triggers handleStatusChange — that performs eviction.
-        runtime.requestKill()
-        runtime.requestStop()
+        handleStatusChange(caseId, CaseStatus.STOPPED)
     }
 
     // ========================================
@@ -316,9 +309,9 @@ class CaseServiceImpl(
         logger.info { "Shutting down CaseService..." }
         activeRuntimes.keys.toList().forEach {
             try {
-                stopCase(it)
+                killCase(it)
             } catch (e: Exception) {
-                logger.warn(e) { "Error stopping case $it during shutdown" }
+                logger.warn(e) { "Error killing case $it during shutdown" }
             }
         }
         activeRuntimes.clear()

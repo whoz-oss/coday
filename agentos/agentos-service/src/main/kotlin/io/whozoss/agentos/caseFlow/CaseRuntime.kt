@@ -14,7 +14,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import mu.KLogging
-import java.util.*
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -49,7 +49,6 @@ class CaseRuntime(
     private val eventList = InMemoryCaseEventList(inputEvents)
 
     private val stopRequested = AtomicBoolean(false)
-    private val killRequested = AtomicBoolean(false)
 
     /**
      * Guards against concurrent [run] invocations.
@@ -66,9 +65,7 @@ class CaseRuntime(
     // Public state
     // -------------------------------------------------------------------------
 
-    fun requestStop() { stopRequested.set(true) }
-
-    fun requestKill() { killRequested.set(true) }
+    fun requestStop() = stopRequested.set(true)
 
     fun isRunning(): Boolean = runInFlight.get()
 
@@ -168,19 +165,18 @@ class CaseRuntime(
 
         logger.info { "[CaseRuntime $id] run() started" }
         stopRequested.set(false)
-        killRequested.set(false)
         updateStatus(id, CaseStatus.RUNNING)
         iterationCount = 0
 
         try {
-            while (!stopRequested.get() && !killRequested.get() && iterationCount < maxIterations) {
+            while (!stopRequested.get() && iterationCount < maxIterations) {
                 logger.debug { "[CaseRuntime $id] Processing iteration $iterationCount" }
                 processNextStep()
                 iterationCount++
             }
             logger.info {
                 "[CaseRuntime $id] Exited loop - iterations: $iterationCount, " +
-                    "stop: ${stopRequested.get()}, kill: ${killRequested.get()}"
+                    "stop: ${stopRequested.get()}"
             }
             if (iterationCount >= maxIterations) {
                 logger.error { "[CaseRuntime $id] Maximum iterations ($maxIterations) reached" }
