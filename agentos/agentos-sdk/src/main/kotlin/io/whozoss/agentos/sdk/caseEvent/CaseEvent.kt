@@ -34,7 +34,8 @@ enum class CaseEventType(
     ANSWER("AnswerEvent"),
     INTENTION_GENERATED("IntentionGeneratedEvent"),
     TOOL_SELECTED("ToolSelectedEvent"),
-    TEXT_CHUNK("TextChunkEvent");
+    TEXT_CHUNK("TextChunkEvent"),
+    ;
 
     companion object {
         @JvmStatic
@@ -214,7 +215,10 @@ data class QuestionEvent(
     /**
      * Create an AnswerEvent that references this question.
      */
-    fun createAnswer(actor: Actor, answer: String): AnswerEvent =
+    fun createAnswer(
+        actor: Actor,
+        answer: String,
+    ): AnswerEvent =
         AnswerEvent(
             projectId = projectId,
             caseId = caseId,

@@ -70,13 +70,5 @@ class AgentServiceImpl(
         )
     }
 
-    override suspend fun cleanup() {
-        logger.info { "Cleaning up agent resources" }
-    }
-
-    override suspend fun kill() {
-        logger.info { "Killing all agent operations" }
-    }
-
     companion object : KLogging()
 }

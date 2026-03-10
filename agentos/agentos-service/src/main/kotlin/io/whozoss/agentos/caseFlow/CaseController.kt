@@ -4,7 +4,6 @@ import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
-import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.PathVariable
@@ -21,17 +20,17 @@ import java.util.UUID
 )
 class CaseController(
     private val caseService: CaseService,
-) : EntityController<CaseModel, UUID>(caseService) {
+) : EntityController<Case, UUID>(caseService) {
     /** POST /api/cases/{caseId}/messages — add a user message to a running case. */
     @PostMapping("/{caseId}/messages")
     fun addMessage(
         @PathVariable caseId: UUID,
         @RequestBody request: AddMessageRequest,
-    ) = runBlocking {
+    ) {
         logger.info { "Adding message to case: $caseId" }
-        val case = caseService.getCaseInstance(caseId)
         val userActor = Actor(id = request.userId, displayName = request.userId, role = ActorRole.USER)
-        case.addUserMessage(
+        caseService.addMessage(
+            caseId = caseId,
             actor = userActor,
             content = listOf(MessageContent.Text(request.content)),
             answerToEventId = request.answerToEventId,

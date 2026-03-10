@@ -4,9 +4,8 @@ import io.kotest.core.spec.style.StringSpec
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import io.whozoss.agentos.caseFlow.Case
+import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
-import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -16,7 +15,7 @@ import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import kotlinx.coroutines.flow.MutableSharedFlow
 import java.time.Instant
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -62,37 +61,41 @@ class CaseEventSseControllerTest : StringSpec() {
             val history = listOf(msgEvent(caseId, Instant.ofEpochMilli(1000)), warnEvent(caseId))
             val latch = CountDownLatch(1)
 
-            val caseService = mockk<CaseService> {
-                every { getCaseInstance(caseId) } throws ResourceNotFoundException("not active")
-            }
-            val caseEventService = mockk<CaseEventService> {
-                every { findByParent(caseId) } answers {
-                    latch.countDown()
-                    history
+            val caseService =
+                mockk<CaseService> {
+                    every { findActiveRuntime(caseId) } returns null
                 }
-            }
+            val caseEventService =
+                mockk<CaseEventService> {
+                    every { findByParent(caseId) } answers {
+                        latch.countDown()
+                        history
+                    }
+                }
 
             val controller = CaseEventSseController(caseService, caseEventService)
             controller.streamEvents(caseId)
 
             latch.await(2, TimeUnit.SECONDS)
             verify(exactly = 1) { caseEventService.findByParent(caseId) }
-            verify(exactly = 1) { caseService.getCaseInstance(caseId) }
+            verify(timeout = 2000, exactly = 1) { caseService.findActiveRuntime(caseId) }
         }
 
         "past case with no events: completes the emitter without error" {
             val caseId = UUID.randomUUID()
             val latch = CountDownLatch(1)
 
-            val caseService = mockk<CaseService> {
-                every { getCaseInstance(caseId) } throws ResourceNotFoundException("not active")
-            }
-            val caseEventService = mockk<CaseEventService> {
-                every { findByParent(caseId) } answers {
-                    latch.countDown()
-                    emptyList()
+            val caseService =
+                mockk<CaseService> {
+                    every { findActiveRuntime(caseId) } returns null
                 }
-            }
+            val caseEventService =
+                mockk<CaseEventService> {
+                    every { findByParent(caseId) } answers {
+                        latch.countDown()
+                        emptyList()
+                    }
+                }
 
             val controller = CaseEventSseController(caseService, caseEventService)
             controller.streamEvents(caseId)
@@ -111,25 +114,28 @@ class CaseEventSseControllerTest : StringSpec() {
             val latch = CountDownLatch(1)
             val liveFlow = MutableSharedFlow<CaseEvent>()
 
-            val activeCase = mockk<Case> {
-                every { events } returns liveFlow
-            }
-            val caseService = mockk<CaseService> {
-                every { getCaseInstance(caseId) } answers {
-                    latch.countDown()
-                    activeCase
+            val activeCase =
+                mockk<CaseRuntime> {
+                    every { events } returns liveFlow
                 }
-            }
-            val caseEventService = mockk<CaseEventService> {
-                every { findByParent(caseId) } returns history
-            }
+            val caseService =
+                mockk<CaseService> {
+                    every { findActiveRuntime(caseId) } answers {
+                        latch.countDown()
+                        activeCase
+                    }
+                }
+            val caseEventService =
+                mockk<CaseEventService> {
+                    every { findByParent(caseId) } returns history
+                }
 
             val controller = CaseEventSseController(caseService, caseEventService)
             controller.streamEvents(caseId)
 
             latch.await(2, TimeUnit.SECONDS)
             verify(exactly = 1) { caseEventService.findByParent(caseId) }
-            verify(exactly = 1) { caseService.getCaseInstance(caseId) }
+            verify(exactly = 1) { caseService.findActiveRuntime(caseId) }
         }
 
         "active case with no history: subscribes to live flow without error" {
@@ -137,25 +143,28 @@ class CaseEventSseControllerTest : StringSpec() {
             val latch = CountDownLatch(1)
             val liveFlow = MutableSharedFlow<CaseEvent>()
 
-            val activeCase = mockk<Case> {
-                every { events } returns liveFlow
-            }
-            val caseService = mockk<CaseService> {
-                every { getCaseInstance(caseId) } answers {
-                    latch.countDown()
-                    activeCase
+            val activeCase =
+                mockk<CaseRuntime> {
+                    every { events } returns liveFlow
                 }
-            }
-            val caseEventService = mockk<CaseEventService> {
-                every { findByParent(caseId) } returns emptyList()
-            }
+            val caseService =
+                mockk<CaseService> {
+                    every { findActiveRuntime(caseId) } answers {
+                        latch.countDown()
+                        activeCase
+                    }
+                }
+            val caseEventService =
+                mockk<CaseEventService> {
+                    every { findByParent(caseId) } returns emptyList()
+                }
 
             val controller = CaseEventSseController(caseService, caseEventService)
             controller.streamEvents(caseId)
 
             latch.await(2, TimeUnit.SECONDS)
             verify(exactly = 1) { caseEventService.findByParent(caseId) }
-            verify(exactly = 1) { caseService.getCaseInstance(caseId) }
+            verify(exactly = 1) { caseService.findActiveRuntime(caseId) }
         }
     }
 }
