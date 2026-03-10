@@ -42,6 +42,7 @@ class CaseServiceImpl(
     // ========================================
 
     override fun create(entity: Case): Case {
+        require(findById(entity.id) == null) { "Duplicate entity id: ${entity.id}" }
         val saved = caseRepository.save(Case(metadata = entity.metadata, projectId = entity.projectId))
         activeRuntimes[saved.id] = buildRuntime(saved)
         logger.info { "[CaseService] Case created: ${saved.id} for project ${entity.projectId}" }
