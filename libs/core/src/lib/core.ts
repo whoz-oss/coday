@@ -33,7 +33,7 @@ export class Coday {
   initialPrompts: string[] = []
   aiThreadService: ThreadStateService
   private killed: boolean = false
-  private readonly aiClientProvider: AiClientProvider
+  readonly aiClientProvider: AiClientProvider
 
   constructor(
     public readonly interactor: Interactor,

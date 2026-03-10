@@ -44,7 +44,9 @@
                   <!-- View mode -->
                   <a
                     class="thread-item"
-                    [title]="thread.name || 'Generating name...'"
+                    [matTooltip]="thread.name ? thread.name + '\n\n' + (thread.summary || '') : thread.summary || ''"
+                    matTooltipShowDelay="1000"
+                    [matTooltipDisabled]="!thread.summary"
                     (click)="selectThread(thread.id); $event.preventDefault()"
                     (keydown.enter)="selectThread(thread.id); $event.preventDefault()"
                     (keydown.space)="selectThread(thread.id); $event.preventDefault()"
