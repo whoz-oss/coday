@@ -11,13 +11,13 @@ import { EntityMetadata } from './entity-metadata'
 import { Actor } from './actor'
 
 export interface AnswerEvent {
-  type: 'AnswerEvent'
-  timestamp: string
   caseId: string
-  projectId: string
   id: string
   metadata: EntityMetadata
-  questionId: string
+  projectId: string
+  timestamp: string
+  type: 'AnswerEvent'
   actor: Actor
   answer: string
+  questionId: string
 }

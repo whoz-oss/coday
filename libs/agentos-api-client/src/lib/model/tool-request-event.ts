@@ -10,13 +10,13 @@
 import { EntityMetadata } from './entity-metadata'
 
 export interface ToolRequestEvent {
-  type: 'ToolRequestEvent'
-  timestamp: string
   caseId: string
-  projectId: string
   id: string
   metadata: EntityMetadata
-  toolRequestId: string
-  toolName: string
+  projectId: string
+  timestamp: string
+  type: 'ToolRequestEvent'
   args?: string
+  toolName: string
+  toolRequestId: string
 }

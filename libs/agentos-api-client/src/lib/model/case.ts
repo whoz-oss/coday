@@ -9,13 +9,16 @@
  */
 import { EntityMetadata } from './entity-metadata'
 
-export interface AgentSelectedEvent {
-  caseId: string
-  id: string
+export interface Case {
   metadata: EntityMetadata
-  projectId: string
-  timestamp: string
-  type: 'AgentSelectedEvent'
-  agentId: string
-  agentName: string
+  namespaceId: string
+  status: CaseStatusEnum
+  id: string
+}
+export enum CaseStatusEnum {
+  PENDING = 'PENDING',
+  RUNNING = 'RUNNING',
+  STOPPING = 'STOPPING',
+  ERROR = 'ERROR',
+  STOPPED = 'STOPPED',
 }

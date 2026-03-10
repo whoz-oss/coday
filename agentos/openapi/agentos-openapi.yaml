@@ -710,7 +710,7 @@ components:
       properties:
         metadata:
           $ref: "#/components/schemas/EntityMetadata"
-        projectId:
+        namespaceId:
           type: string
           format: uuid
         status:
@@ -727,7 +727,7 @@ components:
       required:
       - id
       - metadata
-      - projectId
+      - namespaceId
       - status
     ToolExecutionResult:
       type: object

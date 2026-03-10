@@ -13,9 +13,10 @@ model/agent-finished-event.ts
 model/agent-running-event.ts
 model/agent-selected-event.ts
 model/answer-event.ts
-model/case-model.ts
 model/case-status-event.ts
+model/case.ts
 model/entity-metadata.ts
+model/get-by-ids2200-response-inner.ts
 model/image.ts
 model/intention-generated-event.ts
 model/message-content.ts

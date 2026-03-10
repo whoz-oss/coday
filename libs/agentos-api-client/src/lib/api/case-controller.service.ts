@@ -16,7 +16,7 @@ import { Observable } from 'rxjs'
 // @ts-ignore
 import { AddMessageRequest } from '../model/add-message-request'
 // @ts-ignore
-import { CaseModel } from '../model/case-model'
+import { Case as CaseModel } from '../model/case'
 
 // @ts-ignore
 import { BASE_PATH, COLLECTION_FORMATS } from '../variables'
