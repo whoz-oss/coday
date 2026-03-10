@@ -1,3 +1,13 @@
+## 0.81.0 (2026-03-10)
+
+### 🚀 Features
+
+- #444 generic HTTP integration with OAuth2 and declarative endpoints ([#526](https://github.com/whoz-oss/coday/pull/526), [#444](https://github.com/whoz-oss/coday/issues/444))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.80.1 (2026-03-10)
 
 ### 🚀 Features
