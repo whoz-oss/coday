@@ -9,10 +9,10 @@
         @if (item.kind === 'message') {
           <div
             class="case-chat__message"
-            [class.case-chat__message--user]="item.event.actor?.role === 'USER'"
-            [class.case-chat__message--agent]="item.event.actor?.role === 'AGENT'"
+            [class.case-chat__message--user]="item.event.actor.role === 'USER'"
+            [class.case-chat__message--agent]="item.event.actor.role === 'AGENT'"
           >
-            <span class="case-chat__message-author">{{ item.event.actor?.displayName }}</span>
+            <span class="case-chat__message-author">{{ item.event.actor.displayName }}</span>
             <p class="case-chat__message-text">{{ extractText(item.event) }}</p>
           </div>
         } @else {
