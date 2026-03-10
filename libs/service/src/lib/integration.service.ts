@@ -54,6 +54,23 @@ export class IntegrationService {
             merged.oauth2 = { ...currentProjectIntegration.oauth2, ...userIntegration.oauth2 }
           }
 
+          // If both have http, merge deeply: preserve PROJECT endpoints, merge USER overrides
+          if (currentProjectIntegration.http && userIntegration.http) {
+            const projectHttp = currentProjectIntegration.http
+            const userHttp = userIntegration.http
+            // Merge top-level http fields (e.g. baseUrl), then reconcile endpoints by name
+            merged.http = { ...projectHttp, ...userHttp }
+            if (projectHttp.endpoints?.length) {
+              const userEndpoints = userHttp.endpoints ?? []
+              const userEndpointMap = new Map(userEndpoints.map((e) => [e.name, e]))
+              // PROJECT endpoints as base, USER endpoints override by name, new USER endpoints appended
+              merged.http.endpoints = [
+                ...projectHttp.endpoints.map((e) => ({ ...e, ...(userEndpointMap.get(e.name) ?? {}) })),
+                ...userEndpoints.filter((e) => !projectHttp.endpoints!.find((pe) => pe.name === e.name)),
+              ]
+            }
+          }
+
           this.integrations[key] = merged
         }
       })

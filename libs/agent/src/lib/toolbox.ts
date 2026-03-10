@@ -22,6 +22,7 @@ import { ZendeskTools } from '@coday/integrations-zendesk-articles'
 import { JiraTools } from '@coday/integrations-jira'
 import { SlackTools } from '@coday/integrations-slack'
 import { BasecampTools } from '@coday/integrations-basecamp'
+import { HttpConfigTools, HttpTools } from '@coday/integrations-http'
 import { CodayServices } from '@coday/coday-services'
 
 export class Toolbox implements Killable {
@@ -89,6 +90,14 @@ export class Toolbox implements Killable {
       BasecampTools.TYPE,
       (name, config) => new BasecampTools(interactor, services.integration, services.user, name, config)
     )
+    this.factoryConstructors.set(
+      HttpTools.TYPE,
+      (name, config) => new HttpTools(interactor, services.user, name, config)
+    )
+    this.factoryConstructors.set(
+      HttpConfigTools.TYPE,
+      () => new HttpConfigTools(interactor, services.integrationConfig)
+    )
     this.factoryConstructors.set(TmuxTools.TYPE, (name) => new TmuxTools(interactor, name))
   }
 
@@ -123,8 +132,18 @@ export class Toolbox implements Killable {
       }
     } else {
       // No integrations filter: instantiate all known factories (built-in + project integrations)
+      // Note: factoryConstructors keys are TYPE names (e.g. "HTTP", "GIT") while
+      // integration keys are INSTANCE names (e.g. "CALENDAR", "MY_JIRA").
+      // Built-in types that have no matching instance config are still instantiated
+      // (e.g. FILES, CORE) but integration types (HTTP, JIRA...) should only be
+      // instantiated when an actual named instance exists in the project config.
+      const integrationTypes = new Set(
+        Object.values(this.services.integration.integrations)
+          .map((cfg) => cfg?.type)
+          .filter(Boolean)
+      )
       const allInstanceNames = new Set<string>([
-        ...this.factoryConstructors.keys(),
+        ...Array.from(this.factoryConstructors.keys()).filter((type) => !integrationTypes.has(type)),
         ...Object.keys(this.services.integration.integrations),
       ])
       for (const instanceName of allInstanceNames) {

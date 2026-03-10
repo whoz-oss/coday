@@ -24,6 +24,7 @@ export default {
     '.e2e-spec.(ts|js)$',
     '/apps/client-e2e/',
     '/apps/client/src/',
+    '/libs/integrations/http/',
   ],
 
   // Useful for debugging
