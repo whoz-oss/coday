@@ -1,4 +1,5 @@
 export * from './lib/agent'
+export * from './lib/canal'
 export * from './lib/agent-definition'
 export * from './lib/agent-service.model'
 export * from './lib/builtin-prompts'
