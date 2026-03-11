@@ -132,6 +132,13 @@ class CaseServiceImpl(
         answerToEventId: UUID?,
     ) {
         val runtime = getCaseRuntime(caseId)
+        // Reset status to PENDING so the case is visibly "waiting to run" from the
+        // moment a new message arrives, even if the previous run already reached STOPPED.
+        // run() will immediately transition it to RUNNING when the loop starts.
+        val currentStatus = getById(caseId).status
+        if (currentStatus.isTerminal()) {
+            caseRepository.save(getById(caseId).copy(status = CaseStatus.PENDING))
+        }
         runtime.addUserMessage(actor, content, answerToEventId)
         // run() is self-guarding via an AtomicBoolean — launch unconditionally.
         scope.launch { runtime.run() }
@@ -220,9 +227,15 @@ class CaseServiceImpl(
                 }
             }.collect { event ->
                 val saved = storeEvent(event)
-                // Events belonging to this case are already emitted by storeAndEmitEvent
-                // inside the runtime. Sub-case events need to bubble up explicitly.
-                if (event.caseId != caseId) runtime.emitEventFromOtherCase(saved)
+                if (event.caseId == caseId) {
+                    // Push into the runtime's event list so processNextStep can see it
+                    // (e.g. AgentFinishedEvent stops the loop). Then emit on the SSE flow.
+                    runtime.pushEvents(listOf(saved))
+                    runtime.emitEventFromOtherCase(saved)
+                } else {
+                    // Sub-case events: bubble up on the SSE flow only.
+                    runtime.emitEventFromOtherCase(saved)
+                }
             }
         logger.info { "[CaseService] Agent $agentName finished for case $caseId" }
     }

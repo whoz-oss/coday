@@ -201,8 +201,12 @@ class CaseRuntime(
         for (i in events.lastIndex downTo 0) {
             val event = events[i]
 
-            if (event is AgentFinishedEvent && i < lastUserMessageIndex) {
-                logger.debug { "[CaseRuntime $id] Skipping old AgentFinishedEvent at index $i" }
+            // Skip orchestration events that predate the most recent user message:
+            // they belong to a previous turn and must not re-trigger execution.
+            if (i < lastUserMessageIndex &&
+                (event is AgentFinishedEvent || event is AgentRunningEvent || event is AgentSelectedEvent)
+            ) {
+                logger.debug { "[CaseRuntime $id] Skipping prior-turn ${event::class.simpleName} at index $i (lastUserMsg=$lastUserMessageIndex)" }
                 continue
             }
 

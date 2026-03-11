@@ -5,11 +5,8 @@ import io.kotest.matchers.collections.shouldHaveAtLeastSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
-import io.mockk.coEvery
-import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
@@ -22,7 +19,47 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import kotlinx.coroutines.flow.flow
-import java.util.*
+import java.util.UUID
+
+/**
+ * A simple recording wrapper for the runAgent callback.
+ *
+ * MockK's interception of suspend function-type lambdas
+ * (`mockk<suspend (A, B) -> C>()`) is unreliable: the Kotlin compiler
+ * mangles suspend lambdas at the JVM level, so `coEvery { fn(a, b) }` may not
+ * intercept the actual call that [CaseRuntime] makes. A plain recording class
+ * avoids that fragility while still letting tests verify call counts and arguments.
+ */
+class RecordingRunAgent(
+    private val delegate: suspend (String, List<CaseEvent>) -> Unit,
+) {
+    private val _calls = mutableListOf<Pair<String, List<CaseEvent>>>()
+    val calls: List<Pair<String, List<CaseEvent>>> get() = _calls
+    val callCount: Int get() = _calls.size
+
+    /** Expose as the function type [CaseRuntime] expects. */
+    val asCallback: suspend (String, List<CaseEvent>) -> Unit = { name, events ->
+        _calls += name to events
+        delegate(name, events)
+    }
+}
+
+/**
+ * A simple recording wrapper for the selectAgent callback, avoiding MockK entirely.
+ * MockK global state can bleed between specs when stubs from one spec are still
+ * registered when the next spec runs. A plain wrapper has no such risk.
+ */
+class RecordingSelectAgent(
+    private val delegate: (List<MessageContent>) -> List<CaseEvent>,
+) {
+    private val _calls = mutableListOf<List<MessageContent>>()
+    val callCount: Int get() = _calls.size
+
+    val asCallback: (List<MessageContent>) -> List<CaseEvent> = { content ->
+        _calls += content
+        delegate(content)
+    }
+}
 
 class CaseRuntimeTest :
     StringSpec({
@@ -65,22 +102,27 @@ class CaseRuntimeTest :
             agentName = agentName,
         )
 
-        /**
-         * Build a [CaseRuntime] with controlled callbacks.
-         *
-         * - [storeEvent] records each event and returns it unchanged (no real persistence).
-         *   The runtime adds it to its list and emits it on the SSE flow as normal.
-         * - [runAgent] mirrors what [CaseServiceImpl] does: drives the agent flow and feeds each
-         *   produced event back through the same [storeEvent] path so the event list is
-         *   updated and the loop can detect [AgentFinishedEvent] and stop.
-         */
         data class TestFixture(
             val runtime: CaseRuntime,
-            val selectAgent: (List<MessageContent>) -> List<CaseEvent>,
-            val runAgent: suspend (String, List<CaseEvent>) -> Unit,
+            val selectAgent: RecordingSelectAgent,
+            val runAgent: RecordingRunAgent,
             val savedEvents: MutableList<CaseEvent>,
         )
 
+        /**
+         * Build a [CaseRuntime] with controlled callbacks.
+         *
+         * Both [selectAgent] and [runAgent] are plain recording wrappers rather than
+         * MockK mocks. MockK's global stub registry can bleed between specs when
+         * multiple specs run in the same JVM: stubs registered in one spec may still
+         * be active when the next spec starts, causing false mismatches. Plain
+         * wrappers carry no such risk.
+         *
+         * - [storeEvent] records each event and returns it unchanged (no real persistence).
+         * - [runAgent] mirrors what [CaseServiceImpl] does: drives the agent flow and
+         *   feeds each produced event back through pushEvents so the loop can detect
+         *   [AgentFinishedEvent] and stop.
+         */
         fun buildRuntime(
             agentName: String = "default-agent",
             agent: Agent = finishingAgent(agentName),
@@ -88,36 +130,32 @@ class CaseRuntimeTest :
             val savedEvents = mutableListOf<CaseEvent>()
             val runtimeId = UUID.randomUUID()
 
-            val selectAgentFn = mockk<(List<MessageContent>) -> List<CaseEvent>>()
-            every { selectAgentFn(any()) } returns listOf(agentSelectedEvent(runtimeId, agentName))
+            val selectAgent = RecordingSelectAgent { listOf(agentSelectedEvent(runtimeId, agentName)) }
 
-            val runAgentFn = mockk<suspend (String, List<CaseEvent>) -> Unit>()
+            lateinit var runtime: CaseRuntime
+            val runAgent =
+                RecordingRunAgent { _, events ->
+                    agent.run(events).collect { event ->
+                        savedEvents.add(event)
+                        runtime.emitEventFromOtherCase(event)
+                        runtime.pushEvents(listOf(event))
+                    }
+                }
 
-            val runtime =
+            runtime =
                 CaseRuntime(
                     id = runtimeId,
                     projectId = projectId,
                     updateStatus = { _, _ -> },
                     storeEvent = { event ->
                         savedEvents.add(event)
-                        event // return unchanged (no real persistence in tests)
+                        event
                     },
-                    selectAgent = selectAgentFn,
-                    runAgent = runAgentFn,
+                    selectAgent = selectAgent.asCallback,
+                    runAgent = runAgent.asCallback,
                 )
 
-            // runAgent drives the agent flow and records events via the same emitAndStoreEvent path,
-            // mirroring what CaseServiceImpl.runAgent does.
-            coEvery { runAgentFn(agentName, any()) } coAnswers {
-                agent.run(secondArg<List<CaseEvent>>()).collect { event ->
-                    val saved = event.also { savedEvents.add(it) }
-                    runtime.emitEventFromOtherCase(saved) // bubble as sub-case event would
-                    // Also push into the runtime's event list so processNextStep can see it.
-                    runtime.pushEvents(listOf(saved))
-                }
-            }
-
-            return TestFixture(runtime, selectAgentFn, runAgentFn, savedEvents)
+            return TestFixture(runtime, selectAgent, runAgent, savedEvents)
         }
 
         // -------------------------------------------------------------------------
@@ -130,7 +168,7 @@ class CaseRuntimeTest :
             runtime.addUserMessage(userActor, userMessage)
             runtime.run()
 
-            coVerify(exactly = 1) { runAgent(any(), any()) }
+            runAgent.callCount shouldBe 1
         }
 
         "selectAgent is called exactly once per user message" {
@@ -138,7 +176,7 @@ class CaseRuntimeTest :
 
             runtime.addUserMessage(userActor, userMessage)
 
-            verify(exactly = 1) { selectAgent(any()) }
+            selectAgent.callCount shouldBe 1
         }
 
         // -------------------------------------------------------------------------
@@ -185,8 +223,8 @@ class CaseRuntimeTest :
             val savedEvents = mutableListOf<CaseEvent>()
             val runtimeId = UUID.randomUUID()
 
-            val runAgentFn = mockk<suspend (String, List<CaseEvent>) -> Unit>()
-            val runtime =
+            lateinit var runtime: CaseRuntime
+            runtime =
                 CaseRuntime(
                     id = runtimeId,
                     projectId = projectId,
@@ -201,14 +239,13 @@ class CaseRuntimeTest :
                             agentSelectedEvent(runtimeId, agentName),
                         )
                     },
-                    runAgent = runAgentFn,
+                    runAgent = { _, events ->
+                        agent.run(events).collect { event ->
+                            savedEvents.add(event)
+                            runtime.pushEvents(listOf(event))
+                        }
+                    },
                 )
-            coEvery { runAgentFn(agentName, any()) } coAnswers {
-                agent.run(secondArg<List<CaseEvent>>()).collect { event ->
-                    savedEvents.add(event)
-                    runtime.pushEvents(listOf(event))
-                }
-            }
 
             runtime.addUserMessage(userActor, listOf(MessageContent.Text("@unknown hello")))
             runtime.run()
@@ -286,9 +323,7 @@ class CaseRuntimeTest :
             val caseId = UUID.randomUUID()
             val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
             val agent = finishingAgent(agentName)
-
             val savedEvents = mutableListOf<CaseEvent>()
-            val runAgentFn = mockk<suspend (String, List<CaseEvent>) -> Unit>()
 
             val existingUserMessage =
                 MessageEvent(
@@ -307,7 +342,16 @@ class CaseRuntimeTest :
                     agentName = agentName,
                 )
 
-            val runtime =
+            lateinit var runtime: CaseRuntime
+            val recorder =
+                RecordingRunAgent { _, events ->
+                    agent.run(events).collect { event ->
+                        savedEvents.add(event)
+                        runtime.pushEvents(listOf(event))
+                    }
+                }
+
+            runtime =
                 CaseRuntime(
                     id = caseId,
                     projectId = projectId,
@@ -317,20 +361,14 @@ class CaseRuntimeTest :
                         event
                     },
                     selectAgent = { listOf(agentSelectedEvent(caseId, agentName)) },
-                    runAgent = runAgentFn,
+                    runAgent = recorder.asCallback,
                 )
-            coEvery { runAgentFn(agentName, any()) } coAnswers {
-                agent.run(secondArg<List<CaseEvent>>()).collect { event ->
-                    savedEvents.add(event)
-                    runtime.pushEvents(listOf(event))
-                }
-            }
             runtime.pushEvents(listOf(existingUserMessage, existingRunningEvent))
 
             // Resume directly — no new message, no agent selection.
             runtime.run()
 
-            coVerify(exactly = 1) { runAgentFn(agentName, any()) }
+            recorder.callCount shouldBe 1
             savedEvents.filterIsInstance<AgentSelectedEvent>() shouldBe emptyList()
         }
     })
