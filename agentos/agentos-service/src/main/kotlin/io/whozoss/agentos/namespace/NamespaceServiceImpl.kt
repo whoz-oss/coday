@@ -4,8 +4,6 @@ import org.springframework.stereotype.Service
 import java.util.UUID
 
 /**
- * In-memory implementation of NamespaceService.
- *
  * Delegates all persistence operations to NamespaceRepository.
  */
 @Service
