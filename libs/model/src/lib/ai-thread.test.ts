@@ -326,9 +326,6 @@ describe('AiThread', () => {
 
       // Check total price is updated
       expect(thread.totalPrice).toBe(2)
-
-      // Check forked thread is in the registry keyed by thread ID
-      expect(thread['forkedThreads'].get(forkedThread.id)).toBe(forkedThread)
     })
 
     it('should handle merging threads with zero price', () => {

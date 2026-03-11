@@ -32,7 +32,7 @@ export class CommandContext {
   /**
    * Depth of the stack of threads for delegation
    */
-  stackDepth: number = 3
+  stackDepth: number = 10
 
   /**
    * Garbage object for each handling implementation to add specific data

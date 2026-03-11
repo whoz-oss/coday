@@ -90,9 +90,6 @@ export class AiThread {
   delegatedAgentName?: string
   delegatedTask?: string
 
-  /** Store forked threads for specific agents */
-  private forkedThreads: Map<string, AiThread> = new Map()
-
   private parentThread: AiThread | undefined
 
   /** Internal storage of thread messages in chronological order */
@@ -491,9 +488,6 @@ export class AiThread {
     forkedThread.delegationDepth = this.delegationDepth + 1
     forkedThread.parentThread = this
     forkedThread.runStatus = RunStatus.RUNNING
-
-    // Store in runtime cache keyed by thread ID for stop propagation tracking
-    this.forkedThreads.set(forkedThread.id, forkedThread)
 
     return forkedThread
   }
