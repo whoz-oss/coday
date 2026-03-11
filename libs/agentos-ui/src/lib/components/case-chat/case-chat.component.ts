@@ -156,7 +156,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       try {
         const event = JSON.parse(msg.data) as CaseEvent
         this.zone.run(() => {
-          this.events.update((prev) => [...prev, event])
+          this.events.update((prev) => (prev.some((e) => e.id === event.id) ? prev : [...prev, event]))
 
           if (event.type === 'CaseStatusEvent') {
             // Source of truth for running/terminal states.
