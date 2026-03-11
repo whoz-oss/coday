@@ -372,7 +372,7 @@ export class NamespaceControllerService extends BaseService {
       }
     }
 
-    let localVarPath = `/api/namespaces/list`
+    let localVarPath = `/api/namespaces`
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<Array<Namespace>>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
