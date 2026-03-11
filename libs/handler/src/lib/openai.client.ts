@@ -750,7 +750,7 @@ export class OpenaiClient extends AiClient {
                 let responseEvent: ToolResponseEvent
                 try {
                   this.interactor.sendEvent(request)
-                  responseEvent = await agent.tools.run(request)
+                  responseEvent = await agent.tools.run(request, thread)
                 } catch (error: any) {
                   const errorMessage = `Error running tool ${request.name}: ${error}`
                   console.error(errorMessage)

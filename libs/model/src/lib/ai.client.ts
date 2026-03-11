@@ -448,7 +448,7 @@ It can be summarized as:
         try {
           request.threadId = thread.id
           this.interactor.sendEvent(request)
-          responseEvent = await agent.tools.run(request)
+          responseEvent = await agent.tools.run(request, thread)
         } catch (error: any) {
           const errorMessage = `Error running tool ${request.name}: ${error}`
           console.error(errorMessage)

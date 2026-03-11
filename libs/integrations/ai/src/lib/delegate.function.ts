@@ -27,9 +27,11 @@ type DelegateInput = {
 export function delegateFunction(input: DelegateInput) {
   const { context, interactor, agentFind, threadService } = input
 
-  return async ({ delegations }: { delegations: Delegation[] }) => {
-    // Use currentThread (top of stack) instead of aiThread (always root)
-    const parentThread = context.currentThread
+  return async ({ delegations }: { delegations: Delegation[] }, thread?: AiThread) => {
+    // Use the thread passed by ToolSet.run() — this is the thread the calling agent
+    // is actually running in, which is always the correct parent for sub-threads.
+    // Falls back to context.aiThread for backward compatibility (root-level calls).
+    const parentThread = thread ?? context.aiThread
     interactor.debug(`Delegating ${delegations.length} task(s) with stackDepth: ${context.stackDepth}`)
 
     if (context.stackDepth <= 0) {
@@ -66,7 +68,7 @@ export function delegateFunction(input: DelegateInput) {
         if (result.status === 'fulfilled') {
           return `[${agentName}]: ${result.value}`
         }
-        return `[${agentName}]: Error — ${result.reason?.message ?? result.reason}`
+        return `[${agentName}]: Error \u2014 ${result.reason?.message ?? result.reason}`
       })
       .join('\n\n---\n\n')
   }
@@ -83,7 +85,7 @@ async function runSingleDelegation(
 ): Promise<string> {
   const { agentName, task } = delegation
 
-  // Use a placeholder parentEventId — in a full implementation this would be the ToolRequestEvent timestamp
+  // Use a placeholder parentEventId \u2014 in a full implementation this would be the ToolRequestEvent timestamp
   const parentEventId = new Date().toISOString()
 
   // Create the sub-thread from the CURRENT parent thread (not always root)
@@ -98,8 +100,8 @@ async function runSingleDelegation(
 
   // Emit a single, immutable DelegationEvent as a branch marker.
   // Tag it with the parent thread's ID so the frontend routes it correctly:
-  // - Root-level delegations: threadId is undefined/root → displayed in main chat
-  // - Nested delegations: threadId is the parent sub-thread → routed to the
+  // - Root-level delegations: threadId is undefined/root \u2192 displayed in main chat
+  // - Nested delegations: threadId is the parent sub-thread \u2192 routed to the
   //   parent's DelegationInlineComponent via subThreadEvents$
   const delegationEvent = new DelegationEvent({
     subThreadId: subThread.id,
@@ -125,10 +127,6 @@ async function runSingleDelegation(
   let result: string = 'Delegation did not produce a result.'
 
   try {
-    // Push the sub-thread onto the context stack so that any nested
-    // delegation from this agent correctly forks from the sub-thread.
-    context.pushThread(subThread)
-
     // Emit the task as an AnswerEvent tagged with the sub-thread ID so the
     // DelegationInlineComponent can show what was asked to the agent.
     // agent.run() adds it to the thread history but does NOT broadcast it.
@@ -139,8 +137,8 @@ async function runSingleDelegation(
       })
     )
 
-    // Run the agent — sub-thread events are NOT forwarded to parent interactor
-    // We only filter for the final MessageEvent result
+    // Run the agent \u2014 the AI client will pass subThread to ToolSet.run(),
+    // so any nested delegation from this agent will correctly use subThread as parent.
     const agentEvents: Observable<MessageEvent> = (await agent.run(task, subThread)).pipe(
       filter((e) => e instanceof MessageEvent)
     )
@@ -169,8 +167,6 @@ async function runSingleDelegation(
     console.error(`Error in delegation for agent ${agentName}:`, error)
     interactor.error(result)
   } finally {
-    // Always pop the sub-thread from the stack, even on error
-    context.popThread()
     clearInterval(stopPropagationInterval)
   }
 

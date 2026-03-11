@@ -41,42 +41,11 @@ export class CommandContext {
   data: any = {}
 
   /**
-   * Instance of the AiThread currently selected
+   * Instance of the AiThread currently selected by the user (root thread).
+   * For delegation, the correct parent thread is passed directly via ToolSet.run()
+   * to the delegate tool function, avoiding shared mutable state.
    */
   aiThread?: AiThread
-
-  /**
-   * Stack of threads for delegation depth tracking.
-   * When a delegation runs, the sub-thread is pushed onto this stack.
-   * The delegate tool reads from the top of the stack (or falls back to aiThread)
-   * to correctly resolve the "current" thread at any delegation depth.
-   */
-  private threadStack: AiThread[] = []
-
-  /**
-   * Returns the thread at the current delegation depth.
-   * If a delegation is running, returns the sub-thread on top of the stack.
-   * Otherwise, returns the root aiThread.
-   */
-  get currentThread(): AiThread | undefined {
-    return this.threadStack.length > 0 ? this.threadStack[this.threadStack.length - 1] : this.aiThread
-  }
-
-  /**
-   * Push a sub-thread onto the stack before running a delegated agent.
-   * Must be paired with popThread() after the delegation completes.
-   */
-  pushThread(thread: AiThread): void {
-    this.threadStack.push(thread)
-  }
-
-  /**
-   * Pop the sub-thread from the stack after a delegation completes.
-   * Returns the popped thread, or undefined if the stack was empty.
-   */
-  popThread(): AiThread | undefined {
-    return this.threadStack.pop()
-  }
 
   constructor(
     readonly project: Project,
