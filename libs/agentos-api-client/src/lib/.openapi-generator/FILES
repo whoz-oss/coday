@@ -3,6 +3,11 @@ README.md
 api.base.service.ts
 api.module.ts
 api/api.ts
+api/case-controller.service.ts
+api/namespace-controller.service.ts
+api/plugin-controller.service.ts
+api/sse.service.ts
+api/tool-controller.service.ts
 configuration.ts
 encoder.ts
 git_push.sh
