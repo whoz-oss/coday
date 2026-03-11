@@ -6,11 +6,9 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
-import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
-import io.whozoss.agentos.sdk.entity.EntityMetadata
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -69,9 +67,6 @@ class CaseServiceImpl(
     override fun findByParent(parentId: UUID): List<Case> = caseRepository.findByParent(parentId)
 
     override fun delete(id: UUID): Boolean {
-        // Drive active cases to STOPPED before deletion so SSE clients receive the
-        // terminal event and the runtime is evicted cleanly. handleStatusChange
-        // removes the runtime from activeRuntimes on terminal status.
         if (activeRuntimes.containsKey(id)) {
             killCase(id)
         }
@@ -79,7 +74,7 @@ class CaseServiceImpl(
     }
 
     override fun deleteByParent(parentId: UUID): Int {
-        findByParent(parentId).forEach { activeRuntimes.remove(it.id)?.requestStop() }
+        findByParent(parentId).forEach { killCase(it.id) }
         return caseRepository.deleteByParent(parentId)
     }
 
@@ -132,13 +127,6 @@ class CaseServiceImpl(
         answerToEventId: UUID?,
     ) {
         val runtime = getCaseRuntime(caseId)
-        // Reset status to PENDING so the case is visibly "waiting to run" from the
-        // moment a new message arrives, even if the previous run already reached STOPPED.
-        // run() will immediately transition it to RUNNING when the loop starts.
-        val currentStatus = getById(caseId).status
-        if (currentStatus.isTerminal()) {
-            caseRepository.save(getById(caseId).copy(status = CaseStatus.PENDING))
-        }
         runtime.addUserMessage(actor, content, answerToEventId)
         // run() is self-guarding via an AtomicBoolean — launch unconditionally.
         scope.launch { runtime.run() }
@@ -272,22 +260,11 @@ class CaseServiceImpl(
             logger.info { "Case $caseId status: $oldStatus -> $newStatus" }
         }
 
-        val statusEvent =
-            CaseStatusEvent(
-                metadata = EntityMetadata(),
-                caseId = caseId,
-                projectId = updated.projectId,
-                status = newStatus,
-            )
-        val savedStatusEvent = caseEventService.create(statusEvent)
-
-        // Emit the status event before eviction so SSE clients receive it.
-        activeRuntimes[caseId]?.let {
-            it.emitEventFromOtherCase(savedStatusEvent)
-            if (newStatus.isTerminal()) {
-                activeRuntimes.remove(caseId)
-                logger.info { "[CaseService] Case $caseId reached terminal status $newStatus, evicted" }
-            }
+        // Status is a REST concern — poll GET /cases/:id. Do not push status events
+        // into the SSE flow; that would cause the frontend EventSource to close.
+        if (newStatus.isTerminal()) {
+            activeRuntimes.remove(caseId)
+            logger.info { "[CaseService] Case $caseId reached terminal status $newStatus, evicted" }
         }
     }
 
@@ -299,18 +276,20 @@ class CaseServiceImpl(
 
     override fun getAllActiveCases(): List<CaseRuntime> = activeRuntimes.values.toList()
 
-    override fun stopCase(caseId: UUID) {
+    override fun interruptCase(caseId: UUID) {
         val runtime =
             activeRuntimes[caseId]
                 ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
-        logger.info { "Stopping case: $caseId" }
-        handleStatusChange(caseId, CaseStatus.STOPPING)
-        runtime.requestStop()
+        logger.info { "Interrupting case: $caseId" }
+        runtime.requestInterrupt()
     }
 
     override fun killCase(caseId: UUID) {
         logger.info { "Killing case: $caseId" }
-        handleStatusChange(caseId, CaseStatus.STOPPED)
+        // Signal the runtime loop to exit cleanly if it is currently running,
+        // then let handleStatusChange evict it via the isTerminal() path.
+        activeRuntimes[caseId]?.requestKill()
+        handleStatusChange(caseId, CaseStatus.KILLED)
     }
 
     // ========================================
