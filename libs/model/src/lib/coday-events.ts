@@ -62,6 +62,22 @@ export abstract class CodayEvent {
     this.parentKey = event.parentKey
     this.length = 0
   }
+
+  /**
+   * Parse the timestamp string to a Date.
+   * Timestamps may carry a random 5-char alphanumeric suffix to avoid collisions
+   * (e.g. "2026-02-09T16:57:20.839Z-x81ku"). The suffix is stripped before parsing.
+   */
+  get date(): Date {
+    const lastDash = this.timestamp.lastIndexOf('-')
+    if (lastDash > 0) {
+      const suffix = this.timestamp.substring(lastDash + 1)
+      if (suffix.length === 5 && /^[a-z0-9]+$/.test(suffix)) {
+        return new Date(this.timestamp.substring(0, lastDash))
+      }
+    }
+    return new Date(this.timestamp)
+  }
 }
 
 export abstract class QuestionEvent extends CodayEvent {
