@@ -83,16 +83,18 @@
       placeholder="Reply…"
       rows="3"
       [value]="inputValue()"
-      [disabled]="isRunning()"
+      [disabled]="isRunning() || isTerminal()"
       (input)="onInput($event)"
       (keydown)="onKeydown($event)"
     ></textarea>
     <div class="case-chat__actions">
       @if (isRunning()) {
-        <ds-icon-button icon="stop" variant="danger" title="Stop" (action)="stop()" />
+        <ds-icon-button icon="stop" variant="danger" title="Interrupt" (action)="interrupt()" />
       } @else {
         <ds-icon-button icon="send" variant="primary" title="Send (Enter)" [disabled]="!canSend" (action)="submit()" />
       }
+
+      <ds-icon-button icon="trash" variant="danger" title="Kill" [disabled]="isTerminal()" (action)="kill()" />
     </div>
   </div>
 </div>
