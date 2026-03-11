@@ -34,7 +34,6 @@ class RecordingRunAgent(
     private val delegate: suspend (String, List<CaseEvent>) -> Unit,
 ) {
     private val _calls = mutableListOf<Pair<String, List<CaseEvent>>>()
-    val calls: List<Pair<String, List<CaseEvent>>> get() = _calls
     val callCount: Int get() = _calls.size
 
     /** Expose as the function type [CaseRuntime] expects. */
@@ -61,102 +60,101 @@ class RecordingSelectAgent(
     }
 }
 
-class CaseRuntimeTest :
-    StringSpec({
-        timeout = 5000
+class CaseRuntimeSpec : StringSpec() {
+    val projectId: UUID = UUID.randomUUID()
+    val userActor = Actor(id = "user-123", displayName = "Test User", role = ActorRole.USER)
+    val userMessage = listOf(MessageContent.Text("hello"))
 
-        val projectId: UUID = UUID.randomUUID()
-        val userActor = Actor(id = "user-123", displayName = "Test User", role = ActorRole.USER)
-        val userMessage = listOf(MessageContent.Text("hello"))
-
-        /** Build a mock Agent whose run() immediately emits AgentFinishedEvent. */
-        fun finishingAgent(name: String): Agent {
-            val agentId = UUID.nameUUIDFromBytes(name.toByteArray())
-            return mockk<Agent>(name = "agent-$name") {
-                every { metadata } returns EntityMetadata(id = agentId)
-                every { this@mockk.name } returns name
-                every { run(any<List<CaseEvent>>()) } answers {
-                    val caseId = firstArg<List<CaseEvent>>().first().caseId
-                    flow {
-                        emit(
-                            AgentFinishedEvent(
-                                projectId = projectId,
-                                caseId = caseId,
-                                agentId = agentId,
-                                agentName = name,
-                            ),
-                        )
-                    }
+    /** Build a mock Agent whose run() immediately emits AgentFinishedEvent. */
+    fun finishingAgent(name: String): Agent {
+        val agentId = UUID.nameUUIDFromBytes(name.toByteArray())
+        return mockk<Agent>(name = "agent-$name") {
+            every { metadata } returns EntityMetadata(id = agentId)
+            every { this@mockk.name } returns name
+            every { run(any<List<CaseEvent>>()) } answers {
+                val caseId = firstArg<List<CaseEvent>>().first().caseId
+                flow {
+                    emit(
+                        AgentFinishedEvent(
+                            projectId = projectId,
+                            caseId = caseId,
+                            agentId = agentId,
+                            agentName = name,
+                        ),
+                    )
                 }
             }
         }
+    }
 
-        /** Convenience: build an [AgentSelectedEvent] the way [CaseServiceImpl.selectAgent] would. */
-        fun agentSelectedEvent(
-            caseId: UUID,
-            agentName: String,
-        ) = AgentSelectedEvent(
-            projectId = projectId,
-            caseId = caseId,
-            agentId = UUID.nameUUIDFromBytes(agentName.toByteArray()),
-            agentName = agentName,
-        )
+    /** Convenience: build an [AgentSelectedEvent] the way [CaseServiceImpl.selectAgent] would. */
+    fun agentSelectedEvent(
+        caseId: UUID,
+        agentName: String,
+    ) = AgentSelectedEvent(
+        projectId = projectId,
+        caseId = caseId,
+        agentId = UUID.nameUUIDFromBytes(agentName.toByteArray()),
+        agentName = agentName,
+    )
 
-        data class TestFixture(
-            val runtime: CaseRuntime,
-            val selectAgent: RecordingSelectAgent,
-            val runAgent: RecordingRunAgent,
-            val savedEvents: MutableList<CaseEvent>,
-        )
+    data class TestFixture(
+        val runtime: CaseRuntime,
+        val selectAgent: RecordingSelectAgent,
+        val runAgent: RecordingRunAgent,
+        val savedEvents: MutableList<CaseEvent>,
+    )
 
-        /**
-         * Build a [CaseRuntime] with controlled callbacks.
-         *
-         * Both [selectAgent] and [runAgent] are plain recording wrappers rather than
-         * MockK mocks. MockK's global stub registry can bleed between specs when
-         * multiple specs run in the same JVM: stubs registered in one spec may still
-         * be active when the next spec starts, causing false mismatches. Plain
-         * wrappers carry no such risk.
-         *
-         * - [storeEvent] records each event and returns it unchanged (no real persistence).
-         * - [runAgent] mirrors what [CaseServiceImpl] does: drives the agent flow and
-         *   feeds each produced event back through pushEvents so the loop can detect
-         *   [AgentFinishedEvent] and stop.
-         */
-        fun buildRuntime(
-            agentName: String = "default-agent",
-            agent: Agent = finishingAgent(agentName),
-        ): TestFixture {
-            val savedEvents = mutableListOf<CaseEvent>()
-            val runtimeId = UUID.randomUUID()
+    /**
+     * Build a [CaseRuntime] with controlled callbacks.
+     *
+     * Both [selectAgent] and [runAgent] are plain recording wrappers rather than
+     * MockK mocks. MockK's global stub registry can bleed between specs when
+     * multiple specs run in the same JVM: stubs registered in one spec may still
+     * be active when the next spec starts, causing false mismatches. Plain
+     * wrappers carry no such risk.
+     *
+     * - [storeEvent] records each event and returns it unchanged (no real persistence).
+     * - [runAgent] mirrors what [CaseServiceImpl] does: drives the agent flow and
+     *   feeds each produced event back through pushEvents so the loop can detect
+     *   [AgentFinishedEvent] and stop.
+     */
+    fun buildRuntime(
+        agentName: String = "default-agent",
+        agent: Agent = finishingAgent(agentName),
+    ): TestFixture {
+        val savedEvents = mutableListOf<CaseEvent>()
+        val runtimeId = UUID.randomUUID()
 
-            val selectAgent = RecordingSelectAgent { listOf(agentSelectedEvent(runtimeId, agentName)) }
+        val selectAgent = RecordingSelectAgent { listOf(agentSelectedEvent(runtimeId, agentName)) }
 
-            lateinit var runtime: CaseRuntime
-            val runAgent =
-                RecordingRunAgent { _, events ->
-                    agent.run(events).collect { event ->
-                        savedEvents.add(event)
-                        runtime.emitEventFromOtherCase(event)
-                        runtime.pushEvents(listOf(event))
-                    }
+        lateinit var runtime: CaseRuntime
+        val runAgent =
+            RecordingRunAgent { _, events ->
+                agent.run(events).collect { event ->
+                    savedEvents.add(event)
+                    runtime.emitEvent(event)
+                    runtime.pushEvents(listOf(event))
                 }
+            }
 
-            runtime =
-                CaseRuntime(
-                    id = runtimeId,
-                    projectId = projectId,
-                    updateStatus = { _, _ -> },
-                    storeEvent = { event ->
-                        savedEvents.add(event)
-                        event
-                    },
-                    selectAgent = selectAgent.asCallback,
-                    runAgent = runAgent.asCallback,
-                )
+        runtime =
+            CaseRuntime(
+                id = runtimeId,
+                projectId = projectId,
+                updateStatus = { _, _ -> },
+                storeEvent = { event ->
+                    savedEvents.add(event)
+                    event
+                },
+                selectAgent = selectAgent.asCallback,
+                runAgent = runAgent.asCallback,
+            )
 
-            return TestFixture(runtime, selectAgent, runAgent, savedEvents)
-        }
+        return TestFixture(runtime, selectAgent, runAgent, savedEvents)
+    }
+
+    init {
 
         // -------------------------------------------------------------------------
         // Core regression: runAgent called exactly once per run
@@ -371,4 +369,5 @@ class CaseRuntimeTest :
             recorder.callCount shouldBe 1
             savedEvents.filterIsInstance<AgentSelectedEvent>() shouldBe emptyList()
         }
-    })
+    }
+}

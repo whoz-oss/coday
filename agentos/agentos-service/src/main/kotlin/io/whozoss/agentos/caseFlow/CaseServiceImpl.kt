@@ -6,9 +6,11 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import io.whozoss.agentos.sdk.entity.EntityMetadata
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -211,19 +213,17 @@ class CaseServiceImpl(
                         message = "Agent $agentName error: ${error.message}",
                     ),
                 ).also { saved ->
-                    runtime.emitEventFromOtherCase(saved)
+                    runtime.emitEvent(saved)
                 }
             }.collect { event ->
                 val saved = storeEvent(event)
                 if (event.caseId == caseId) {
                     // Push into the runtime's event list so processNextStep can see it
-                    // (e.g. AgentFinishedEvent stops the loop). Then emit on the SSE flow.
+                    // (e.g. AgentFinishedEvent stops the loop)
                     runtime.pushEvents(listOf(saved))
-                    runtime.emitEventFromOtherCase(saved)
-                } else {
-                    // Sub-case events: bubble up on the SSE flow only.
-                    runtime.emitEventFromOtherCase(saved)
                 }
+                // emit on the SSE flow.
+                runtime.emitEvent(saved)
             }
         logger.info { "[CaseService] Agent $agentName finished for case $caseId" }
     }
@@ -260,11 +260,22 @@ class CaseServiceImpl(
             logger.info { "Case $caseId status: $oldStatus -> $newStatus" }
         }
 
-        // Status is a REST concern — poll GET /cases/:id. Do not push status events
-        // into the SSE flow; that would cause the frontend EventSource to close.
-        if (newStatus.isTerminal()) {
-            activeRuntimes.remove(caseId)
-            logger.info { "[CaseService] Case $caseId reached terminal status $newStatus, evicted" }
+        val statusEvent =
+            CaseStatusEvent(
+                metadata = EntityMetadata(),
+                caseId = caseId,
+                projectId = updated.projectId,
+                status = newStatus,
+            )
+        val savedStatusEvent = caseEventService.create(statusEvent)
+
+        // Emit the status event before eviction so SSE clients receive it.
+        activeRuntimes[caseId]?.let {
+            it.emitEvent(savedStatusEvent)
+            if (newStatus.isTerminal()) {
+                activeRuntimes.remove(caseId)
+                logger.info { "[CaseService] Case $caseId reached terminal status $newStatus, evicted" }
+            }
         }
     }
 

@@ -126,10 +126,10 @@ class CaseRuntime(
     }
 
     /**
-     * Emit an event that belongs to a different (sub-)case on this runtime's SSE flow
+     * Emit an event on this runtime's SSE flow
      * without persisting or adding it to the local event list.
      */
-    fun emitEventFromOtherCase(event: CaseEvent) {
+    fun emitEvent(event: CaseEvent) {
         emit(event)
     }
 
@@ -230,10 +230,12 @@ class CaseRuntime(
                     logger.error { "[CaseRuntime $id] Maximum iterations ($maxIterations) reached" }
                     updateStatus(id, CaseStatus.ERROR)
                 }
+
                 killRequested.get() -> {
                     // Explicit kill: permanent termination. Service will evict the runtime.
                     updateStatus(id, CaseStatus.KILLED)
                 }
+
                 else -> {
                     // Normal turn-end: agent finished, waiting for next user message.
                     // Non-terminal — runtime stays alive, SSE flow stays open.
@@ -262,7 +264,9 @@ class CaseRuntime(
             if (i < lastUserMessageIndex &&
                 (event is AgentFinishedEvent || event is AgentRunningEvent || event is AgentSelectedEvent)
             ) {
-                logger.debug { "[CaseRuntime $id] Skipping prior-turn ${event::class.simpleName} at index $i (lastUserMsg=$lastUserMessageIndex)" }
+                logger.debug {
+                    "[CaseRuntime $id] Skipping prior-turn ${event::class.simpleName} at index $i (lastUserMsg=$lastUserMessageIndex)"
+                }
                 continue
             }
 
