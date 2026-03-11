@@ -817,7 +817,7 @@ components:
       - caseId
       - id
       - metadata
-      - projectId
+      - namespaceId
       - timestamp
       - type
     AgentRunningEvent:
@@ -836,7 +836,7 @@ components:
       - caseId
       - id
       - metadata
-      - projectId
+      - namespaceId
       - timestamp
       - type
     AgentSelectedEvent:
@@ -855,7 +855,7 @@ components:
       - caseId
       - id
       - metadata
-      - projectId
+      - namespaceId
       - timestamp
       - type
     AnswerEvent:
@@ -876,7 +876,7 @@ components:
       - caseId
       - id
       - metadata
-      - projectId
+      - namespaceId
       - questionId
       - timestamp
       - type
@@ -893,7 +893,7 @@ components:
           format: uuid
         metadata:
           $ref: "#/components/schemas/EntityMetadata"
-        projectId:
+        namespaceId:
           type: string
           format: uuid
         timestamp:
@@ -921,7 +921,7 @@ components:
       - caseId
       - id
       - metadata
-      - projectId
+      - namespaceId
       - timestamp
       - type
     CaseStatusEvent:
@@ -941,7 +941,7 @@ components:
       - caseId
       - id
       - metadata
-      - projectId
+      - namespaceId
       - status
       - timestamp
       - type
@@ -979,7 +979,7 @@ components:
       - id
       - intention
       - metadata
-      - projectId
+      - namespaceId
       - timestamp
       - type
     MessageContent:
@@ -1009,7 +1009,7 @@ components:
       - content
       - id
       - metadata
-      - projectId
+      - namespaceId
       - timestamp
       - type
     QuestionEvent:
@@ -1034,7 +1034,7 @@ components:
       - caseId
       - id
       - metadata
-      - projectId
+      - namespaceId
       - question
       - timestamp
       - type
@@ -1059,7 +1059,7 @@ components:
       - chunk
       - id
       - metadata
-      - projectId
+      - namespaceId
       - timestamp
       - type
     ThinkingEvent:
@@ -1069,7 +1069,7 @@ components:
       - caseId
       - id
       - metadata
-      - projectId
+      - namespaceId
       - timestamp
       - type
     ToolRequestEvent:
@@ -1087,7 +1087,7 @@ components:
       - caseId
       - id
       - metadata
-      - projectId
+      - namespaceId
       - timestamp
       - toolName
       - toolRequestId
@@ -1111,8 +1111,8 @@ components:
       - caseId
       - id
       - metadata
+      - namespaceId
       - output
-      - projectId
       - success
       - timestamp
       - toolName
@@ -1133,7 +1133,7 @@ components:
       - caseId
       - id
       - metadata
-      - projectId
+      - namespaceId
       - timestamp
       - toolName
       - type
@@ -1149,7 +1149,7 @@ components:
       - id
       - message
       - metadata
-      - projectId
+      - namespaceId
       - timestamp
       - type
     ToolOutput:

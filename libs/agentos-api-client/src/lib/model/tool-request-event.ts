@@ -13,7 +13,7 @@ export interface ToolRequestEvent {
   caseId: string
   id: string
   metadata: EntityMetadata
-  projectId: string
+  namespaceId: string
   timestamp: string
   type: 'ToolRequestEvent'
   args?: string

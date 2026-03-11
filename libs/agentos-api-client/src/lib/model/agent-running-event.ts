@@ -13,7 +13,7 @@ export interface AgentRunningEvent {
   caseId: string
   id: string
   metadata: EntityMetadata
-  projectId: string
+  namespaceId: string
   timestamp: string
   type: 'AgentRunningEvent'
   agentId: string

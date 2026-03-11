@@ -14,7 +14,7 @@ export interface ToolResponseEvent {
   caseId: string
   id: string
   metadata: EntityMetadata
-  projectId: string
+  namespaceId: string
   timestamp: string
   type: 'ToolResponseEvent'
   output: ToolResponseEventAllOfOutput

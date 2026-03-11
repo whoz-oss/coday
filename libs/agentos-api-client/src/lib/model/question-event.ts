@@ -13,7 +13,7 @@ export interface QuestionEvent {
   caseId: string
   id: string
   metadata: EntityMetadata
-  projectId: string
+  namespaceId: string
   timestamp: string
   type: 'QuestionEvent'
   agentId: string

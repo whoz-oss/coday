@@ -13,7 +13,7 @@ export interface CaseStatusEvent {
   caseId: string
   id: string
   metadata: EntityMetadata
-  projectId: string
+  namespaceId: string
   timestamp: string
   type: 'CaseStatusEvent'
   status: CaseStatusEventStatusEnum

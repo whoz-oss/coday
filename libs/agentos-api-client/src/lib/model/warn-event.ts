@@ -13,7 +13,7 @@ export interface WarnEvent {
   caseId: string
   id: string
   metadata: EntityMetadata
-  projectId: string
+  namespaceId: string
   timestamp: string
   type: 'WarnEvent'
   message: string

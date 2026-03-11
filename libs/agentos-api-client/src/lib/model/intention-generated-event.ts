@@ -13,7 +13,7 @@ export interface IntentionGeneratedEvent {
   caseId: string
   id: string
   metadata: EntityMetadata
-  projectId: string
+  namespaceId: string
   timestamp: string
   type: 'IntentionGeneratedEvent'
   agentId: string

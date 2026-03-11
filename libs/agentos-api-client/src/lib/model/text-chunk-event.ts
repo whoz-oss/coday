@@ -13,7 +13,7 @@ export interface TextChunkEvent {
   caseId: string
   id: string
   metadata: EntityMetadata
-  projectId: string
+  namespaceId: string
   timestamp: string
   type: 'TextChunkEvent'
   chunk: string

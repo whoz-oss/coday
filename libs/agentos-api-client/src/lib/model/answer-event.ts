@@ -14,7 +14,7 @@ export interface AnswerEvent {
   caseId: string
   id: string
   metadata: EntityMetadata
-  projectId: string
+  namespaceId: string
   timestamp: string
   type: 'AnswerEvent'
   actor: Actor
