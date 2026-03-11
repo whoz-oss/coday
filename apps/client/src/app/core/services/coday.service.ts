@@ -330,7 +330,7 @@ export class CodayService implements OnDestroy {
       role: event.role,
       speaker: event.name,
       content: event.content,
-      timestamp: new Date(),
+      timestamp: event.date,
       type: 'text',
     }
 
@@ -349,7 +349,7 @@ export class CodayService implements OnDestroy {
       role: event.speaker ? 'assistant' : 'system',
       speaker: event.speaker ?? 'System',
       content: [{ type: 'text', content: event.text }], // Convertir en contenu riche
-      timestamp: new Date(),
+      timestamp: event.date,
       type: event.speaker ? 'text' : 'technical',
     }
 
@@ -363,7 +363,7 @@ export class CodayService implements OnDestroy {
       role: 'user',
       speaker: 'User',
       content: [{ type: 'text', content: event.answer }],
-      timestamp: new Date(),
+      timestamp: event.date,
       type: 'text',
       parentKey: event.parentKey, // Link to the InviteEvent/ChoiceEvent
       invite: event.invite, // Original question for context
@@ -378,7 +378,7 @@ export class CodayService implements OnDestroy {
       role: 'system',
       speaker: 'System',
       content: [{ type: 'text', content: `Error: ${JSON.stringify(event.error)}` }], // Convertir en contenu riche
-      timestamp: new Date(),
+      timestamp: event.date,
       type: 'error',
     }
 
@@ -391,7 +391,7 @@ export class CodayService implements OnDestroy {
       role: 'system',
       speaker: 'System',
       content: [{ type: 'text', content: `Warning: ${JSON.stringify(event.warning)}` }], // Convertir en contenu riche
-      timestamp: new Date(),
+      timestamp: event.date,
       type: 'warning',
     }
 
@@ -430,7 +430,7 @@ export class CodayService implements OnDestroy {
       role: 'system',
       speaker: 'System',
       content: [{ type: 'text', content: event.toSingleLineString() }], // Convertir en contenu riche
-      timestamp: new Date(),
+      timestamp: event.date,
       type: 'technical',
       eventId: event.timestamp,
     }
@@ -444,7 +444,7 @@ export class CodayService implements OnDestroy {
       role: 'system',
       speaker: 'System',
       content: [{ type: 'text', content: event.toSingleLineString() }], // Convertir en contenu riche
-      timestamp: new Date(),
+      timestamp: event.date,
       type: 'technical',
       eventId: event.timestamp,
     }
@@ -497,7 +497,7 @@ export class CodayService implements OnDestroy {
         role: 'assistant',
         speaker: 'Assistant',
         content: [{ type: 'text', content: event.invite }],
-        timestamp: new Date(),
+        timestamp: event.date,
         type: 'text',
       }
 
