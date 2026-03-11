@@ -1,6 +1,11 @@
 import { BasecampOAuth } from './basecamp-oauth'
 
-export async function getBasecampForwards(oauth: BasecampOAuth, inboxId: number, page?: number): Promise<string> {
+export async function getBasecampForwards(
+  oauth: BasecampOAuth,
+  projectId: number,
+  inboxId: number,
+  page?: number
+): Promise<string> {
   try {
     if (!oauth.isAuthenticated()) {
       await oauth.authenticate()
@@ -9,9 +14,10 @@ export async function getBasecampForwards(oauth: BasecampOAuth, inboxId: number,
     const accessToken = await oauth.getAccessToken()
     const baseUrl = oauth.getApiBaseUrl()
 
+    // Use project-scoped route (more reliable than flat route)
     const url = page
-      ? `${baseUrl}/inboxes/${inboxId}/forwards.json?page=${page}`
-      : `${baseUrl}/inboxes/${inboxId}/forwards.json`
+      ? `${baseUrl}/buckets/${projectId}/inboxes/${inboxId}/forwards.json?page=${page}`
+      : `${baseUrl}/buckets/${projectId}/inboxes/${inboxId}/forwards.json`
 
     const response = await fetch(url, {
       headers: {
@@ -69,7 +75,7 @@ export async function getBasecampForwards(oauth: BasecampOAuth, inboxId: number,
   }
 }
 
-export async function getBasecampForward(oauth: BasecampOAuth, forwardId: number): Promise<string> {
+export async function getBasecampForward(oauth: BasecampOAuth, projectId: number, forwardId: number): Promise<string> {
   try {
     if (!oauth.isAuthenticated()) {
       await oauth.authenticate()
@@ -78,7 +84,7 @@ export async function getBasecampForward(oauth: BasecampOAuth, forwardId: number
     const accessToken = await oauth.getAccessToken()
     const baseUrl = oauth.getApiBaseUrl()
 
-    const response = await fetch(`${baseUrl}/inbox_forwards/${forwardId}.json`, {
+    const response = await fetch(`${baseUrl}/buckets/${projectId}/inbox_forwards/${forwardId}.json`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'User-Agent': 'Coday (https://github.com/whoz-oss/coday)',

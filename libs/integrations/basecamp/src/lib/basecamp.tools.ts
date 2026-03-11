@@ -201,17 +201,21 @@ export class BasecampTools extends AssistantToolFactory {
 
     result.push(getCommentsTool)
 
-    const getForwardsTool: FunctionTool<{ inboxId: number; page?: number }> = {
+    const getForwardsTool: FunctionTool<{ projectId: number; inboxId: number; page?: number }> = {
       type: 'function',
       function: {
         name: `${this.name}__getForwards`,
         description:
           'List forwarded emails in a Basecamp inbox. ' +
-          'The inboxId is available in the project dock (tool name: inbox) from listProjects. ' +
+          'The projectId comes from listProjects. The inboxId is the ID of the inbox tool (name: "inbox") from listProjects — it is listed even when disabled. ' +
           'Basecamp uses geared pagination: page 1 returns 15 results, page 2 returns 30, page 3 returns 50, and page 4+ return 100 results each.',
         parameters: {
           type: 'object',
           properties: {
+            projectId: {
+              type: 'number',
+              description: 'The project ID (from listProjects)',
+            },
             inboxId: {
               type: 'number',
               description: 'The inbox ID (from the project dock, tool name: inbox)',
@@ -223,13 +227,13 @@ export class BasecampTools extends AssistantToolFactory {
           },
         },
         parse: JSON.parse,
-        function: async ({ inboxId, page }) => getBasecampForwards(this.oauth!, inboxId, page),
+        function: async ({ projectId, inboxId, page }) => getBasecampForwards(this.oauth!, projectId, inboxId, page),
       },
     }
 
     result.push(getForwardsTool)
 
-    const getForwardTool: FunctionTool<{ forwardId: number }> = {
+    const getForwardTool: FunctionTool<{ projectId: number; forwardId: number }> = {
       type: 'function',
       function: {
         name: `${this.name}__getForward`,
@@ -237,6 +241,10 @@ export class BasecampTools extends AssistantToolFactory {
         parameters: {
           type: 'object',
           properties: {
+            projectId: {
+              type: 'number',
+              description: 'The project ID (from listProjects)',
+            },
             forwardId: {
               type: 'number',
               description: 'The forward ID (from getForwards)',
@@ -244,7 +252,7 @@ export class BasecampTools extends AssistantToolFactory {
           },
         },
         parse: JSON.parse,
-        function: async ({ forwardId }) => getBasecampForward(this.oauth!, forwardId),
+        function: async ({ projectId, forwardId }) => getBasecampForward(this.oauth!, projectId, forwardId),
       },
     }
 

@@ -43,8 +43,7 @@ export async function listBasecampProjects(oauth: BasecampOAuth, page?: number):
     const projectList = projects
       .map((p: any) => {
         const dockItems = (p.dock || [])
-          .filter((d: any) => d.enabled)
-          .map((d: any) => `    - ${d.title} (ID: ${d.id}, type: ${d.name})`)
+          .map((d: any) => `    - ${d.title} (ID: ${d.id}, type: ${d.name})${d.enabled ? '' : ' [disabled]'}`)
           .join('\n')
         return `- ${p.name} (ID: ${p.id})${p.description ? `: ${p.description}` : ''}${
           dockItems ? `\n  Tools:\n${dockItems}` : ''
