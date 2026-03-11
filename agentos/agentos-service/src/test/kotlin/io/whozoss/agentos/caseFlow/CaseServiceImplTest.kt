@@ -87,7 +87,7 @@ class CaseServiceImplTest : StringSpec({
     // Regression: AgentFinishedEvent must be pushed into the runtime event list
     // -------------------------------------------------------------------------
 
-    "agent runs exactly once and case reaches STOPPED after a single message" {
+    "agent runs exactly once and case reaches IDLE after a single message" {
         // This is the direct regression test for the infinite-loop bug.
         //
         // Before the fix, CaseServiceImpl.runAgent collected agent events and persisted
@@ -132,12 +132,12 @@ class CaseServiceImplTest : StringSpec({
         val deadline = System.currentTimeMillis() + 5_000
         while (System.currentTimeMillis() < deadline) {
             val current = service.getById(case.id)
-            if (current.status == CaseStatus.STOPPED || current.status == CaseStatus.ERROR) break
+            if (current.status == CaseStatus.IDLE || current.status == CaseStatus.ERROR) break
             Thread.sleep(50)
         }
 
         runCallCount shouldBe 1
-        service.getById(case.id).status shouldBe CaseStatus.STOPPED
+        service.getById(case.id).status shouldBe CaseStatus.IDLE
     }
 
     // -------------------------------------------------------------------------
@@ -162,7 +162,7 @@ class CaseServiceImplTest : StringSpec({
 
         val deadline = System.currentTimeMillis() + 5_000
         while (System.currentTimeMillis() < deadline) {
-            if (service.getById(case.id).status == CaseStatus.STOPPED) break
+            if (service.getById(case.id).status == CaseStatus.IDLE) break
             Thread.sleep(50)
         }
 
@@ -221,27 +221,24 @@ class CaseServiceImplTest : StringSpec({
         )
         val deadline1 = System.currentTimeMillis() + 5_000
         while (System.currentTimeMillis() < deadline1) {
-            if (service.getById(case.id).status == CaseStatus.STOPPED) break
+            if (service.getById(case.id).status == CaseStatus.IDLE) break
             Thread.sleep(50)
         }
-        service.getById(case.id).status shouldBe CaseStatus.STOPPED
+        service.getById(case.id).status shouldBe CaseStatus.IDLE
         runCallCount shouldBe 1
 
-        // Wait until the runtime is fully evicted from activeRuntimes before sending the
-        // second message. The runtime is evicted synchronously in handleStatusChange when
-        // STOPPED is reached, but run()'s finally block (which clears runInFlight) executes
-        // after that. If addMessage reuses the same runtime instance while runInFlight is
-        // still true, run() exits immediately via the AtomicBoolean guard and the second
-        // agent call never happens.
-        val evictDeadline = System.currentTimeMillis() + 5_000
-        while (System.currentTimeMillis() < evictDeadline) {
-            if (service.findActiveRuntime(case.id) == null) break
+        // Wait until runInFlight is cleared (run()'s finally block) before sending the
+        // second message. The runtime stays alive (IDLE is non-terminal), but run() must
+        // have fully exited so the AtomicBoolean guard allows re-entry.
+        val idleDeadline = System.currentTimeMillis() + 5_000
+        while (System.currentTimeMillis() < idleDeadline) {
+            if (!service.getCaseRuntime(case.id).isRunning()) break
             Thread.sleep(10)
         }
 
-        // Second message — the case is STOPPED; addMessage must restart it.
+        // Second message — the runtime is still alive (IDLE is non-terminal).
         // We wait for runCallCount to reach 2 rather than polling status, which avoids
-        // a race where the status briefly reads STOPPED from the previous run before
+        // a race where the status briefly reads IDLE from the previous run before
         // the second run transitions it to RUNNING.
         service.addMessage(
             caseId = case.id,
@@ -254,12 +251,12 @@ class CaseServiceImplTest : StringSpec({
             Thread.sleep(50)
         }
         runCallCount shouldBe 2
-        // Give the second run a moment to complete and persist STOPPED
+        // Give the second run a moment to complete and reach IDLE
         val deadline3 = System.currentTimeMillis() + 5_000
         while (System.currentTimeMillis() < deadline3) {
-            if (service.getById(case.id).status == CaseStatus.STOPPED) break
+            if (service.getById(case.id).status == CaseStatus.IDLE) break
             Thread.sleep(50)
         }
-        service.getById(case.id).status shouldBe CaseStatus.STOPPED
+        service.getById(case.id).status shouldBe CaseStatus.IDLE
     }
 })
