@@ -27,8 +27,8 @@ import { McpServerConfig } from '@coday/model'
  * @returns A SHA-256 hash string (64 hex characters)
  */
 export function computeMcpConfigHash(config: McpServerConfig): string {
-  // If noShare is true, return a unique hash to prevent sharing
-  if (config.noShare) {
+  // oauth2 and noShare both prevent sharing across users/threads
+  if (config.noShare || config.oauth2) {
     return `no-share-${Date.now()}-${Math.random().toString(36).substring(2)}`
   }
 

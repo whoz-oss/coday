@@ -167,7 +167,14 @@ export class Toolbox implements Killable {
           const factory = await this.services.mcpPool.getOrCreateFactory(
             mcpConfig,
             threadId,
-            () => new McpToolsFactory(mcpConfig)
+            () =>
+              new McpToolsFactory(
+                mcpConfig,
+                this.interactor,
+                this.services.user,
+                context.project.name,
+                this.services.options?.baseUrl
+              )
           )
           mcpFactories.push(factory)
         } catch (error) {
@@ -242,27 +249,39 @@ export class Toolbox implements Killable {
   }
 
   /**
-   * Route OAuth callback events to the appropriate integration.
-   * If the factory is not yet instantiated, it will be created on-demand.
+   * Route OAuth callback events to the appropriate integration or MCP factory.
+   * Checks both regular integration factories and pooled MCP factories.
    */
   async handleOAuthCallback(event: OAuthCallbackEvent): Promise<void> {
-    // Get or create factory for this integration
+    // Check regular integration factories first
     const factory = this.factoryInstances.get(event.integrationName) ?? this.createFactory(event.integrationName)
-
-    if (!factory) {
-      this.interactor.warn(`No integration found for OAuth callback: ${event.integrationName}`)
+    if (factory) {
+      if ('handleOAuthCallback' in factory && typeof factory.handleOAuthCallback === 'function') {
+        try {
+          await factory.handleOAuthCallback(event)
+        } catch (error) {
+          this.interactor.error(`Error handling OAuth callback for ${event.integrationName}: ${error}`)
+        }
+      } else {
+        this.interactor.warn(`Integration ${event.integrationName} does not support OAuth callbacks`)
+      }
       return
     }
 
-    // Check if the factory has a handleOAuthCallback method
-    if ('handleOAuthCallback' in factory && typeof factory.handleOAuthCallback === 'function') {
-      try {
-        await factory.handleOAuthCallback(event)
-      } catch (error) {
-        this.interactor.error(`Error handling OAuth callback for ${event.integrationName}: ${error}`)
+    // Check MCP factories via pool (matched by MCP server id)
+    const mcpConfig = this.mcpConfigs.find((c) => c.id === event.integrationName)
+    if (mcpConfig) {
+      const mcpFactory = await this.services.mcpPool.getMcpFactory(mcpConfig)
+      if (mcpFactory && 'handleOAuthCallback' in mcpFactory && typeof mcpFactory.handleOAuthCallback === 'function') {
+        try {
+          await mcpFactory.handleOAuthCallback(event)
+        } catch (error) {
+          this.interactor.error(`Error handling OAuth callback for MCP ${event.integrationName}: ${error}`)
+        }
+        return
       }
-    } else {
-      this.interactor.warn(`Integration ${event.integrationName} does not support OAuth callbacks`)
     }
+
+    this.interactor.warn(`No integration or MCP found for OAuth callback: ${event.integrationName}`)
   }
 }

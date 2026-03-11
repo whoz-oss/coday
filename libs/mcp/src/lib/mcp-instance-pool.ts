@@ -148,6 +148,15 @@ export class McpInstancePool {
   }
 
   /**
+   * Get an existing MCP factory by config (without creating one).
+   * Returns undefined if no instance exists for this config.
+   */
+  getMcpFactory(config: McpServerConfig): McpToolsFactory | undefined {
+    const hash = computeMcpConfigHash(config)
+    return this.instances.get(hash)?.mcpFactory
+  }
+
+  /**
    * Get statistics about the pool for monitoring/debugging.
    *
    * @returns Pool statistics

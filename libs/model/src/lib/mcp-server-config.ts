@@ -48,7 +48,14 @@ export interface McpServerConfig {
    */
   noShare?: boolean
 
-  // Note: OAuth authentication support might be added in the future
+  /**
+   * Enable OAuth 2.1 authentication for remote MCP servers.
+   * When true, the MCP client will use the full OAuth 2.1 flow with
+   * dynamic authorization server discovery (RFC9728 Protected Resource Metadata).
+   * Tokens are stored per-user in user config.
+   * Only relevant when `url` is set.
+   */
+  oauth2?: boolean
 }
 
 export const McpServerConfigArgs = [

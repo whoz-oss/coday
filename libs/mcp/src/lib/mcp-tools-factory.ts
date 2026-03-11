@@ -1,13 +1,16 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { ResourceTemplate, ToolInfo } from './types'
 import { ChildProcess, spawn } from 'child_process'
-import { ServerInteractor } from '@coday/model'
+import { Interactor, OAuthCallbackEvent, ServerInteractor } from '@coday/model'
 import { AssistantToolFactory } from '@coday/model'
 import { CodayTool } from '@coday/model'
 import { McpServerConfig } from '@coday/model'
 import { CommandContext } from '@coday/model'
+import { UserService } from '@coday/service'
+import { McpOAuthProvider } from './mcp-oauth-provider'
 
 const MCP_CONNECT_TIMEOUT = 15000 // in ms
 
@@ -54,9 +57,35 @@ export class McpToolsFactory extends AssistantToolFactory {
    */
   lastUsed: number = Date.now()
 
-  constructor(private readonly serverConfig: McpServerConfig) {
+  /** OAuth provider instance for remote MCP servers with oauth2: true */
+  private oauthProvider: McpOAuthProvider | undefined
+
+  private readonly mcpInteractor?: Interactor
+  private readonly mcpUserService?: UserService
+  private readonly mcpProjectName?: string
+  private readonly mcpBaseUrl?: string
+
+  constructor(
+    private readonly serverConfig: McpServerConfig,
+    mcpInteractor?: Interactor,
+    mcpUserService?: UserService,
+    mcpProjectName?: string,
+    mcpBaseUrl?: string
+  ) {
     super(new ServerInteractor('not used'), serverConfig.name)
     this.name = serverConfig.name
+    this.mcpInteractor = mcpInteractor
+    this.mcpUserService = mcpUserService
+    this.mcpProjectName = mcpProjectName
+    this.mcpBaseUrl = mcpBaseUrl
+  }
+
+  /**
+   * Route an OAuth callback to the embedded McpOAuthProvider.
+   * Called by Toolbox when an OAuthCallbackEvent arrives for this MCP server id.
+   */
+  async handleOAuthCallback(event: OAuthCallbackEvent): Promise<void> {
+    await this.oauthProvider?.handleCallback(event)
   }
 
   async kill(): Promise<void> {
@@ -160,10 +189,8 @@ export class McpToolsFactory extends AssistantToolFactory {
     )
 
     // Create the appropriate transport based on the server configuration
-
-    // For now, only support command-based stdio transport
     if (this.serverConfig.url) {
-      throw new Error(`Remote HTTP/HTTPS MCP servers are not supported yet. Use local command-based servers instead.`)
+      this.transport = this.buildRemoteTransport()
     } else if (this.serverConfig.command) {
       // Stdio transport - launch the command as a child process
       const transportOptions: any = {}
@@ -223,9 +250,7 @@ export class McpToolsFactory extends AssistantToolFactory {
         this.serverProcessPid = null
       }
     } else {
-      throw new Error(
-        `MCP server ${this.serverConfig.name} has no command configured. Only local command-based servers are supported.`
-      )
+      throw new Error(`MCP server ${this.serverConfig.name} has neither url nor command configured.`)
     }
     // Connect to the server with timeout and better error handling
     try {
@@ -282,6 +307,54 @@ export class McpToolsFactory extends AssistantToolFactory {
 
       throw new Error(`MCP server ${this.serverConfig.name} connection failed: ${errorMessage}`)
     }
+  }
+
+  /**
+   * Build the transport for a remote (HTTP/SSE) MCP server.
+   *
+   * Priority:
+   * 1. oauth2: true  -> StreamableHTTPClientTransport + McpOAuthProvider (full OAuth 2.1)
+   * 2. authToken set -> StreamableHTTPClientTransport with static Bearer header
+   * 3. otherwise     -> unauthenticated StreamableHTTPClientTransport
+   *
+   * Each case falls back to SSEClientTransport if the Streamable HTTP constructor throws
+   * (e.g. server only supports legacy SSE transport).
+   */
+  private buildRemoteTransport(): Transport {
+    const url = new URL(this.serverConfig.url!)
+
+    if (this.serverConfig.oauth2) {
+      if (!this.mcpInteractor || !this.mcpUserService || !this.mcpProjectName) {
+        throw new Error(
+          `MCP server ${this.serverConfig.name}: oauth2 requires interactor, userService and projectName — ` +
+            `pass them to McpToolsFactory constructor`
+        )
+      }
+      const redirectUri = `${this.mcpBaseUrl ?? 'http://localhost:3000'}/oauth/callback`
+      this.oauthProvider = new McpOAuthProvider(
+        this.mcpInteractor,
+        this.mcpUserService,
+        this.mcpProjectName,
+        this.serverConfig.id,
+        redirectUri
+      )
+      this.mcpInteractor.debug(`[MCP:${this.serverConfig.name}] using OAuth 2.1 transport`)
+      const transport = new StreamableHTTPClientTransport(url, { authProvider: this.oauthProvider })
+      // Wire finishAuth so handleCallback() can complete the code exchange
+      this.oauthProvider.setFinishAuth((code) => transport.finishAuth(code))
+      return transport
+    }
+
+    if (this.serverConfig.authToken) {
+      const requestInit: RequestInit = {
+        headers: { Authorization: `Bearer ${this.serverConfig.authToken}` },
+      }
+      console.log(`[MCP] ${this.serverConfig.name}: using static Bearer token`)
+      return new StreamableHTTPClientTransport(url, { requestInit })
+    }
+
+    console.log(`[MCP] ${this.serverConfig.name}: connecting without authentication`)
+    return new StreamableHTTPClientTransport(url)
   }
 
   /**
