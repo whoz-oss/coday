@@ -17,8 +17,9 @@
       "cache": false,
       "options": {
         "commands": [
-          "TS_POST_PROCESS_FILE='prettier --write' openapi-generator-cli generate -c openapitools.json -o src/lib --enable-post-process-file",
-          "eslint --fix --no-ignore 'src/lib/**/*.ts'"
+          "openapi-generator-cli generate -c openapitools.json -o src/lib",
+          "eslint --fix --no-ignore 'src/lib/**/*.ts'",
+          "prettier --write 'src/lib/**/*.ts'"
         ],
         "parallel": false,
         "cwd": "libs/agentos-api-client"
