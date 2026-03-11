@@ -16,7 +16,11 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "TS_POST_PROCESS_FILE='prettier --write' openapi-generator-cli generate -c openapitools.json -o src/lib --enable-post-process-file",
+        "commands": [
+          "TS_POST_PROCESS_FILE='prettier --write' openapi-generator-cli generate -c openapitools.json -o src/lib --enable-post-process-file",
+          "eslint --fix --no-ignore 'src/lib/**/*.ts'"
+        ],
+        "parallel": false,
         "cwd": "libs/agentos-api-client"
       },
       "metadata": {
