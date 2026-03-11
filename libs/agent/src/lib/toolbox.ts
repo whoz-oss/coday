@@ -205,21 +205,35 @@ export class Toolbox implements Killable {
 
   /**
    * Get or create a factory instance by instance name.
-   * Returns undefined if no constructor is registered for the resolved type.
+   * Resolution order:
+   *   1. instanceName itself (exact match in registry)
+   *   2. config.type field (allows HTTP integrations with custom names)
+   * This prevents a user-level config merge from overwriting the 'type' field
+   * of a named integration (e.g. BASECAMP gaining type="HTTP" from a merge)
+   * and accidentally routing it to the wrong factory.
    */
   private createFactory(instanceName: string): AssistantToolFactory | undefined {
     const mergedIntegrations = this.services.integration.integrations
     const config = mergedIntegrations[instanceName] ?? {}
-    const type = mergedIntegrations[instanceName]?.type || instanceName
-    const constructor = this.factoryConstructors.get(type)
+
+    // Prefer the declared type field (e.g. MY_CALENDAR with type=HTTP → HttpTools)
+    // Fall back to instanceName as type (e.g. BASECAMP with no type or corrupted type)
+    const declaredType = mergedIntegrations[instanceName]?.type
+    const byType = declaredType ? this.factoryConstructors.get(declaredType) : undefined
+    const byName = this.factoryConstructors.get(instanceName)
+    const constructor = byType ?? byName
+    const resolvedType = byType ? declaredType : instanceName
+
     if (!constructor) {
-      this.interactor.debug(`No factory constructor for integration type '${type}'`)
+      this.interactor.debug(
+        `No factory constructor for integration '${instanceName}' (type='${declaredType ?? 'none'}')`
+      )
       return undefined
     }
     try {
       const factory = constructor(instanceName, config)
       this.factoryInstances.set(instanceName, factory)
-      this.interactor.debug(`Created integration factory '${instanceName}' of type '${type}'`)
+      this.interactor.debug(`Created integration factory '${instanceName}' of type '${resolvedType}'`)
       return factory
     } catch (error) {
       this.interactor.debug(`Error creating factory for '${instanceName}': ${error}`)
