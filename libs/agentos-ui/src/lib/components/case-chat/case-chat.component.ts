@@ -1,5 +1,16 @@
 import { HttpClient } from '@angular/common/http'
-import { Component, computed, inject, NgZone, OnDestroy, OnInit, signal } from '@angular/core'
+import {
+  Component,
+  computed,
+  effect,
+  ElementRef,
+  inject,
+  NgZone,
+  OnDestroy,
+  OnInit,
+  signal,
+  ViewChild,
+} from '@angular/core'
 import { ActivatedRoute } from '@angular/router'
 import {
   CaseEvent,
@@ -45,6 +56,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   private eventSource: EventSource | null = null
 
+  @ViewChild('composerInput') private composerInput?: ElementRef<HTMLTextAreaElement>
+
   protected readonly events = signal<CaseEvent[]>([])
   protected inputValue = signal('')
   protected isRunning = signal(false)
@@ -52,6 +65,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Collapsed state per toolRequestId */
   protected readonly collapsedTools = signal<Set<string>>(new Set())
+
+  constructor() {
+    // Restore focus to the composer whenever we return to an interactive state.
+    // (Agent turn finished → AgentFinishedEvent, or status becomes IDLE.)
+    effect(() => {
+      if (this.isRunning() || this.isTerminal()) return
+      queueMicrotask(() => this.composerInput?.nativeElement.focus())
+    })
+  }
 
   /**
    * Unified chronological timeline: messages and tool calls interleaved
@@ -152,9 +174,18 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             } else {
               this.isRunning.set(status === 'RUNNING')
             }
+            return
           }
-          // For non-status events: do not force isRunning=true.
-          // We rely on CaseStatusEvent transitions to avoid flicker and premature disabling.
+
+          // In practice, the SSE stream currently does NOT emit CaseStatusEvent.
+          // So we treat AgentFinishedEvent as the end-of-turn signal.
+          if (event.type === 'AgentFinishedEvent') {
+            this.isRunning.set(false)
+            return
+          }
+
+          // For other events: don't force isRunning=true.
+          // submit() sets isRunning=true, and we flip it back on AgentFinishedEvent.
         })
       } catch {
         console.warn('[CaseChat] Failed to parse SSE event', msg.data)
