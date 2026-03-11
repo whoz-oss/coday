@@ -142,7 +142,7 @@ class CaseRuntime(
             }
         }
 
-        storeAndEmitEvent(MessageEvent(caseId = id, namespaceId = namespaceId, actor = actor, content = content)) // namespaceId is the SDK field name — carries namespaceId (SDK contract is stable)
+        storeAndEmitEvent(MessageEvent(caseId = id, namespaceId = namespaceId, actor = actor, content = content))
         selectAgent(content).forEach { storeAndEmitEvent(it) }
     }
 
@@ -226,7 +226,7 @@ class CaseRuntime(
                     }
                     storeAndEmitEvent(
                         AgentRunningEvent(
-                            namespaceId = namespaceId, // namespaceId is the SDK field name — carries namespaceId (SDK contract is stable)
+                            namespaceId = namespaceId,
                             caseId = id,
                             agentId = event.agentId,
                             agentName = event.agentName,

@@ -263,7 +263,7 @@ class CaseServiceImpl(
             CaseStatusEvent(
                 metadata = EntityMetadata(),
                 caseId = caseId,
-                namespaceId = updated.namespaceId, // namespaceId is the SDK field name — carries namespaceId (SDK contract is stable)
+                namespaceId = updated.namespaceId,
                 status = newStatus,
             )
         val savedStatusEvent = caseEventService.create(statusEvent)
@@ -283,10 +283,7 @@ class CaseServiceImpl(
     // ========================================
 
     override fun getActiveCasesByNamespace(namespaceId: UUID): List<CaseRuntime> =
-        activeRuntimes.values.filter {
-            it.namespaceId ==
-                namespaceId
-        }
+        activeRuntimes.values.filter { it.namespaceId == namespaceId }
 
     override fun getAllActiveCases(): List<CaseRuntime> = activeRuntimes.values.toList()
 
