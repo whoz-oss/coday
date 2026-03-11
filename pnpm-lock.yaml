@@ -214,6 +214,9 @@ catalogs:
     eslint-plugin-prettier:
       specifier: 5.5.4
       version: 5.5.4
+    eslint-plugin-unused-imports:
+      specifier: 4.4.1
+      version: 4.4.1
     http-proxy-middleware:
       specifier: 3.0.5
       version: 3.0.5
@@ -392,7 +395,7 @@ importers:
         specifier: catalog:dev
         version: 5.5.4(@types/eslint@9.6.1)(eslint-config-prettier@10.1.8(eslint@9.37.0(jiti@2.6.1)))(eslint@9.37.0(jiti@2.6.1))(prettier@3.6.2)
       eslint-plugin-unused-imports:
-        specifier: ^4.4.1
+        specifier: catalog:dev
         version: 4.4.1(@typescript-eslint/eslint-plugin@8.54.0(@typescript-eslint/parser@8.54.0(eslint@9.37.0(jiti@2.6.1))(typescript@5.9.3))(eslint@9.37.0(jiti@2.6.1))(typescript@5.9.3))(eslint@9.37.0(jiti@2.6.1))
       husky:
         specifier: catalog:dev
@@ -591,30 +594,6 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
-  libs/agentos-ui/dist:
-    dependencies:
-      '@angular/common':
-        specifier: '>=18.0.0'
-        version: 20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
-      '@angular/core':
-        specifier: '>=18.0.0'
-        version: 20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)
-      '@angular/material':
-        specifier: '>=18.0.0'
-        version: 20.2.9(b517547b325ffc8400ae4cda6a618bfd)
-      '@angular/router':
-        specifier: '>=18.0.0'
-        version: 20.3.4(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@20.3.4(@angular/animations@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(rxjs@7.8.2)
-      '@whoz-oss/design-system':
-        specifier: workspace:*
-        version: link:../../design-system/dist
-      rxjs:
-        specifier: '>=7.0.0'
-        version: 7.8.2
-      tslib:
-        specifier: '>=2.0.0'
-        version: 2.8.1
-
   libs/coday-services:
     dependencies:
       tslib:
@@ -654,30 +633,6 @@ importers:
       typescript:
         specifier: catalog:dev
         version: 5.9.3
-
-  libs/design-system/dist:
-    dependencies:
-      '@angular/common':
-        specifier: '>=18.0.0'
-        version: 20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
-      '@angular/core':
-        specifier: '>=18.0.0'
-        version: 20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)
-      '@angular/forms':
-        specifier: '>=18.0.0'
-        version: 20.3.4(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@20.3.4(@angular/animations@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(rxjs@7.8.2)
-      '@angular/material':
-        specifier: '>=18.0.0'
-        version: 20.2.9(b517547b325ffc8400ae4cda6a618bfd)
-      '@angular/router':
-        specifier: '>=18.0.0'
-        version: 20.3.4(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@20.3.4(@angular/animations@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(@angular/common@20.3.4(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.4(@angular/compiler@20.3.4)(rxjs@7.8.2)(zone.js@0.15.1)))(rxjs@7.8.2)
-      rxjs:
-        specifier: '>=7.0.0'
-        version: 7.8.2
-      tslib:
-        specifier: '>=2.0.0'
-        version: 2.8.1
 
   libs/function:
     dependencies:
