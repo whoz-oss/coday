@@ -2,7 +2,7 @@ import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, inject } fro
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { MessageContent } from '@coday/model'
 import { MessageContextMenuComponent, MenuAction } from '../message-context-menu/message-context-menu.component'
-import { NgClass } from '@angular/common'
+import { DatePipe, NgClass } from '@angular/common'
 import { NotificationService } from '../../services/notification.service'
 import { PreferencesService } from '../../services/preferences.service'
 import { ProjectStateService } from '../../core/services/project-state.service'
@@ -27,6 +27,7 @@ export interface ChatMessage {
   selector: 'app-chat-message',
   standalone: true,
   imports: [MessageContextMenuComponent, NgClass],
+  providers: [DatePipe],
   templateUrl: './chat-message.component.html',
   styleUrl: './chat-message.component.scss',
 })
@@ -99,6 +100,14 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   get isSimplified(): boolean {
     // Simplified messages for everything except user/assistant
     return this.message.role !== 'user' && this.message.role !== 'assistant'
+  }
+
+  private readonly datePipe = inject(DatePipe)
+
+  get formattedTimestamp(): string | null {
+    if (this.message.role !== 'user' || !this.message.timestamp) return null
+    const isToday = new Date().toDateString() === this.message.timestamp.toDateString()
+    return this.datePipe.transform(this.message.timestamp, isToday ? 'HH:mm' : 'dd/MM HH:mm')
   }
 
   get isLongMessage(): boolean {
