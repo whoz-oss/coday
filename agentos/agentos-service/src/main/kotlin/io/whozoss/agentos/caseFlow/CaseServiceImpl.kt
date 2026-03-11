@@ -171,7 +171,7 @@ class CaseServiceImpl(
             } else {
                 logger.warn { "[CaseService] Agent '@$mentionedName' not found, falling back to default" }
                 val warn =
-                    WarnEvent(projectId = namespaceId, caseId = caseId, message = "Agent '$mentionedName' not found") // projectId is the SDK field name — carries namespaceId (SDK contract is stable)
+                    WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$mentionedName' not found")
                 val defaultName = agentService.getDefaultAgentName() ?: return listOf(warn)
                 return listOf(warn, agentSelectedEvent(defaultName, namespaceId, caseId))
             }
@@ -187,7 +187,7 @@ class CaseServiceImpl(
         namespaceId: UUID,
         caseId: UUID,
     ) = AgentSelectedEvent(
-        projectId = namespaceId, // projectId is the SDK field name — carries namespaceId (SDK contract is stable)
+        namespaceId = namespaceId,
         caseId = caseId,
         agentId = UUID.nameUUIDFromBytes(agentName.toByteArray()),
         agentName = agentName,
@@ -211,7 +211,7 @@ class CaseServiceImpl(
                 logger.error(error) { "[CaseService] Error in agent $agentName for case $caseId" }
                 storeEvent(
                     WarnEvent(
-                        projectId = runtime.namespaceId,
+                        namespaceId = runtime.namespaceId,
                         caseId = caseId,
                         message = "Agent $agentName error: ${error.message}",
                     ),
@@ -263,7 +263,7 @@ class CaseServiceImpl(
             CaseStatusEvent(
                 metadata = EntityMetadata(),
                 caseId = caseId,
-                projectId = updated.namespaceId, // projectId is the SDK field name — carries namespaceId (SDK contract is stable)
+                namespaceId = updated.namespaceId, // namespaceId is the SDK field name — carries namespaceId (SDK contract is stable)
                 status = newStatus,
             )
         val savedStatusEvent = caseEventService.create(statusEvent)
@@ -282,7 +282,11 @@ class CaseServiceImpl(
     // Execution control
     // ========================================
 
-    override fun getActiveCasesByNamespace(namespaceId: UUID): List<CaseRuntime> = activeRuntimes.values.filter { it.namespaceId == namespaceId }
+    override fun getActiveCasesByNamespace(namespaceId: UUID): List<CaseRuntime> =
+        activeRuntimes.values.filter {
+            it.namespaceId ==
+                namespaceId
+        }
 
     override fun getAllActiveCases(): List<CaseRuntime> = activeRuntimes.values.toList()
 

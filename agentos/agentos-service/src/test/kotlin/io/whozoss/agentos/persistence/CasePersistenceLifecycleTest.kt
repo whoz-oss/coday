@@ -99,14 +99,14 @@ class CasePersistenceLifecycleTest : StringSpec() {
 
         "case events persist across restarts" {
             val dataDir = tmpDir()
-            val projectId = UUID.randomUUID()
+            val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
 
             val eventRepo1 = FilesystemCaseEventRepository(dataDir, mapper)
             val event =
                 MessageEvent(
                     metadata = EntityMetadata(),
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     caseId = caseId,
                     actor = Actor(id = "u1", displayName = "User", role = ActorRole.USER),
                     content = listOf(MessageContent.Text("hello from session 1")),

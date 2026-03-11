@@ -16,7 +16,7 @@ import java.util.*
  *
  * Type parameters:
  * @param EntityType The entity type (must implement Entity)
- * @param ParentIdentifier The parent identifier type (typically UUID for projectId, caseId, etc.)
+ * @param ParentIdentifier The parent identifier type (typically UUID for namespaceId, caseId, etc.)
  */
 interface EntityService<EntityType : Entity, ParentIdentifier> {
     fun create(entity: EntityType): EntityType
@@ -49,7 +49,7 @@ interface EntityService<EntityType : Entity, ParentIdentifier> {
      *
      * Excludes removed entities by default.
      *
-     * @param parentId The parent identifier (e.g., projectId for cases, caseId for events)
+     * @param parentId The parent identifier (e.g., namespaceId for cases, caseId for events)
      * @return List of entities belonging to the parent
      */
     fun findByParent(parentId: ParentIdentifier): List<EntityType>
