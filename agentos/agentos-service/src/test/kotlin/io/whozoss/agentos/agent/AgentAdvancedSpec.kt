@@ -24,7 +24,7 @@ import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
 import java.util.UUID
 
-class AgentAdvancedTest :
+class AgentAdvancedSpec :
     StringSpec({
         timeout = 5000
 

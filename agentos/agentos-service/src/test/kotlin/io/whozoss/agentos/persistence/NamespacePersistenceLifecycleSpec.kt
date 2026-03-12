@@ -30,7 +30,7 @@ import java.util.UUID
  * - A user can delete a namespace
  * - Namespace data (ID, name) persists across restarts
  */
-class NamespacePersistenceLifecycleTest : StringSpec() {
+class NamespacePersistenceLifecycleSpec : StringSpec() {
     private val mapper =
         ObjectMapper()
             .registerKotlinModule()
