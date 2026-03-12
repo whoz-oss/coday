@@ -16,12 +16,12 @@ import java.time.Instant
 import java.util.UUID
 
 class InsertChronologicallySpec : StringSpec() {
-    val projectId: UUID = UUID.randomUUID()
+    val namespaceId: UUID = UUID.randomUUID()
     val caseId: UUID = UUID.randomUUID()
 
     fun event(epochMilli: Long): MessageEvent =
         MessageEvent(
-            projectId = projectId,
+            namespaceId = namespaceId,
             caseId = caseId,
             timestamp = Instant.ofEpochMilli(epochMilli),
             actor = Actor(id = "u", displayName = "U", role = ActorRole.USER),
@@ -60,7 +60,7 @@ class InsertChronologicallySpec : StringSpec() {
             val e3 = event(3000)
             val late =
                 MessageEvent(
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     caseId = caseId,
                     timestamp = Instant.ofEpochMilli(2000),
                     actor = Actor(id = "u", displayName = "U", role = ActorRole.USER),
@@ -82,7 +82,7 @@ class InsertChronologicallySpec : StringSpec() {
             val t = Instant.ofEpochMilli(1000)
             val e1 =
                 MessageEvent(
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     caseId = caseId,
                     timestamp = t,
                     actor = Actor(id = "u", displayName = "U", role = ActorRole.USER),
@@ -90,7 +90,7 @@ class InsertChronologicallySpec : StringSpec() {
                 )
             val e2 =
                 MessageEvent(
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     caseId = caseId,
                     timestamp = t,
                     actor = Actor(id = "u", displayName = "U", role = ActorRole.USER),
@@ -98,7 +98,7 @@ class InsertChronologicallySpec : StringSpec() {
                 )
             val e3 =
                 MessageEvent(
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     caseId = caseId,
                     timestamp = t,
                     actor = Actor(id = "u", displayName = "U", role = ActorRole.USER),
