@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
+import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -201,8 +202,9 @@ class CaseServiceImpl(
     ) {
         val runtime = activeRuntimes[caseId] ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
         logger.info { "[CaseService] Running agent: $agentName for case $caseId" }
+        val context = AgentExecutionContext(namespaceId = runtime.namespaceId, caseId = caseId)
         agentService
-            .findAgentByName(agentName)
+            .findAgentByName(agentName, context)
             .run(events)
             .catch { error ->
                 logger.error(error) { "[CaseService] Error in agent $agentName for case $caseId" }
