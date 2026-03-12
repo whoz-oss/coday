@@ -21,4 +21,5 @@ data class Case(
     override val metadata: EntityMetadata = EntityMetadata(),
     val projectId: UUID,
     val status: CaseStatus = CaseStatus.PENDING,
+    val title: String = "Case ${metadata.id}",
 ) : Entity
