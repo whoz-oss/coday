@@ -86,29 +86,23 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
   ngOnChanges(changes: SimpleChanges): void {
     // Auto-focus when isVisible changes to true
     if (changes['isVisible']) {
-      console.log(
-        '[CHOICE-SELECT] isVisible changed:',
-        changes['isVisible'].previousValue,
-        '->',
-        changes['isVisible'].currentValue
-      )
       if (changes['isVisible'].currentValue && !changes['isVisible'].previousValue) {
-        console.log('[CHOICE-SELECT] Component becoming visible, setting focus...')
         this.highlightedIndex = 0 // Reset to first option
         setTimeout(() => this.focusContainer(), 150)
       }
     }
 
-    // Reset highlighted index if options change
+    // Reset local state if options change
     if (changes['options'] && !changes['options'].firstChange) {
       this.highlightedIndex = 0
+      this.searchText = ''
+      this.freeTextValue = ''
     }
   }
 
   private focusContainer(): void {
     if (this.buttonContainer?.nativeElement) {
       this.buttonContainer.nativeElement.focus()
-      console.log('[CHOICE-SELECT] Focus set on button container')
     }
   }
 
@@ -254,14 +248,12 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
   }
 
   onOptionClick(value: string): void {
-    console.log('[CHOICE-SELECT] Choice selected:', value)
     this.choiceSelected.emit(value)
   }
 
   onFreeTextSubmit(): void {
     const trimmed = this.freeTextValue.trim()
     if (!trimmed) return
-    console.log('[CHOICE-SELECT] Free text submitted:', trimmed)
     this.freeTextValue = ''
     this.choiceSelected.emit(trimmed)
   }
