@@ -28,6 +28,7 @@ import { AgentCrudService } from '@coday/service'
 import { registerPromptRoutes } from './lib/prompt.routes'
 import { registerSchedulerRoutes } from './lib/scheduler.routes'
 import { registerPromptExecutionRoutes } from './lib/prompt-execution.routes'
+import { registerTokenUsageRoutes } from './lib/token-usage.routes'
 import { parseCodayOptions } from './lib/coday-options-utils'
 import { ProjectFileRepository } from '@coday/repository'
 import { McpInstancePool } from '@coday/mcp'
@@ -304,6 +305,9 @@ const schedulerService = new SchedulerService(logger, promptService, codayOption
 
 // Register scheduler routes (service will be initialized after server starts)
 registerSchedulerRoutes(app, schedulerService, getUsername)
+
+// Register token usage reporting routes
+registerTokenUsageRoutes(app, logger, getUsername)
 
 // Catch-all route for Angular client-side routing (MUST be after all API routes)
 // In production mode, serve index.html for any non-API routes
