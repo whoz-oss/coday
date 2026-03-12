@@ -104,8 +104,7 @@ class AgentServiceImpl(
         val namespaceBlock =
             buildString {
                 appendLine()
-                appendLine("## Namespace context")
-                appendLine("You are operating inside the namespace **${namespace?.name ?: context.namespaceId}**.")
+                appendLine("## ${namespace?.name ?: context.namespaceId}")
                 if (!namespace?.description.isNullOrBlank()) {
                     appendLine(namespace!!.description!!)
                 }
