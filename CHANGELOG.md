@@ -1,3 +1,13 @@
+## 0.84.0 (2026-03-12)
+
+### 🚀 Features
+
+- expand Basecamp integration with forwards, cards and factory fix ([#549](https://github.com/whoz-oss/coday/pull/549))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.83.0 (2026-03-11)
 
 ### 🚀 Features
