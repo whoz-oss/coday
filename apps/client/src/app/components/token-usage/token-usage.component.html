@@ -1,0 +1,144 @@
+<section class="page">
+  <!-- number pipe used below -->
+  <header class="page__header">
+    <div class="page__title-block">
+      <button class="page__logo-btn" type="button" (click)="navigateBackToProject()" title="Back to project">
+        <img [attr.src]="'CODAY-Logo.png'" alt="Coday" class="page__logo" />
+      </button>
+
+      <div>
+        <h1 class="page__title">Token Usage</h1>
+        <p class="page__subtitle">Track prompt and completion token usage by agent and model.</p>
+      </div>
+    </div>
+
+    <div class="filters">
+      <label class="filters__field">
+        <span class="filters__label">From</span>
+        <div class="filters__control">
+          <input
+            class="filters__input"
+            type="date"
+            [ngModel]="state.draftFilters().from"
+            (ngModelChange)="onFromChange($event)"
+          />
+          <button class="filters__clear" type="button" (click)="clearFrom()" [disabled]="!state.draftFilters().from">
+            Clear
+          </button>
+        </div>
+      </label>
+
+      <label class="filters__field">
+        <span class="filters__label">To</span>
+        <div class="filters__control">
+          <input
+            class="filters__input"
+            type="date"
+            [ngModel]="state.draftFilters().to"
+            (ngModelChange)="onToChange($event)"
+          />
+          <button class="filters__clear" type="button" (click)="clearTo()" [disabled]="!state.draftFilters().to">
+            Clear
+          </button>
+        </div>
+      </label>
+
+      <label class="filters__field">
+        <span class="filters__label">View</span>
+        <select class="filters__select" [ngModel]="view()" (ngModelChange)="view.set($event)">
+          <option value="byModel">By model</option>
+          <option value="byAgent">By agent</option>
+        </select>
+      </label>
+
+      <button class="filters__apply" type="button" (click)="apply()" [disabled]="state.loading()">Apply</button>
+    </div>
+  </header>
+
+  @if (totalRow()) {
+    <div class="kpis">
+      <div class="kpi">
+        <div class="kpi__label">Total tokens</div>
+        <div class="kpi__value">{{ totalRow()!.totalTokens | number: '1.0-2' }}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi__label">Total calls</div>
+        <div class="kpi__value">{{ totalRow()!.callCount }}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi__label">Total cost</div>
+        <div class="kpi__value">${{ totalCost() | number: '1.2-2' }}</div>
+      </div>
+    </div>
+  }
+
+  @if (state.loading()) {
+    <div class="card">
+      <div class="muted">Loading token usage…</div>
+    </div>
+  } @else if (state.error()) {
+    <div class="card card--error">
+      <div class="card__title">Failed to load</div>
+      <div class="muted">{{ state.error() }}</div>
+    </div>
+  } @else if (isEmpty()) {
+    <div class="card">
+      <div class="card__title">No data</div>
+      <div class="muted">No token usage recorded yet for this period.</div>
+    </div>
+  } @else {
+    <div class="grid">
+      <section class="card">
+        <div class="card__title">Summary</div>
+
+        <div class="table">
+          <div class="table__head">
+            <div class="table__cell">modelName</div>
+            <div class="table__cell">providerName</div>
+            <div class="table__cell">modelId</div>
+            <div class="table__cell table__cell--num">promptTokens</div>
+            <div class="table__cell table__cell--num">completionTokens</div>
+            <div class="table__cell table__cell--num">totalTokens</div>
+            <div class="table__cell table__cell--num">callCount</div>
+            <div class="table__cell table__cell--num">cost</div>
+          </div>
+
+          <div class="table__body">
+            @for (row of rows(); track trackRow($index, row)) {
+              <div class="table__row">
+                <div class="table__cell">{{ row.modelName }}</div>
+                <div class="table__cell">{{ row.providerName }}</div>
+                <div class="table__cell">{{ row.modelId }}</div>
+                <div class="table__cell table__cell--num">{{ row.promptTokens | number: '1.0-2' }}</div>
+                <div class="table__cell table__cell--num">{{ row.completionTokens | number: '1.0-2' }}</div>
+                <div class="table__cell table__cell--num">{{ row.totalTokens | number: '1.0-2' }}</div>
+                <div class="table__cell table__cell--num">{{ row.callCount }}</div>
+                <div class="table__cell table__cell--num">${{ (row.cost ?? 0) | number: '1.2-2' }}</div>
+              </div>
+            }
+
+            @if (totalRow()) {
+              <div class="table__row table__row--total">
+                <div class="table__cell">{{ totalRow()!.modelName }}</div>
+                <div class="table__cell">{{ totalRow()!.providerName }}</div>
+                <div class="table__cell">{{ totalRow()!.modelId }}</div>
+                <div class="table__cell table__cell--num">{{ totalRow()!.promptTokens | number: '1.0-2' }}</div>
+                <div class="table__cell table__cell--num">{{ totalRow()!.completionTokens | number: '1.0-2' }}</div>
+                <div class="table__cell table__cell--num">{{ totalRow()!.totalTokens | number: '1.0-2' }}</div>
+                <div class="table__cell table__cell--num">{{ totalRow()!.callCount }}</div>
+                <div class="table__cell table__cell--num">${{ (totalRow()!.cost ?? 0) | number: '1.2-2' }}</div>
+              </div>
+            }
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card__title">Daily series</div>
+        <div class="muted">
+          Chart coming soon. (Series is already fetched: {{ (state.series()?.length ?? 0) }} points.)
+        </div>
+      </section>
+    </div>
+  }
+</section>

@@ -127,6 +127,12 @@ export class SidenavComponent implements OnInit, OnDestroy {
   /**
    * Open user configuration editor
    */
+  openTokenUsage(): void {
+    this.configErrorMessage = ''
+    void this.router.navigate(['/token-usage'])
+    this.close()
+  }
+
   openUserConfig(): void {
     console.log('[SIDENAV] openUserConfig called')
     this.configErrorMessage = ''
