@@ -20,7 +20,8 @@ export class TmuxTools extends AssistantToolFactory {
     super(interactor, instanceName)
   }
 
-  protected async buildTools(_context: CommandContext, _agentName: string): Promise<CodayTool[]> {
+  protected async buildTools(context: CommandContext, _agentName: string): Promise<CodayTool[]> {
+    const projectRoot = context.project.root
     return [
       {
         type: 'function',
@@ -37,7 +38,8 @@ Actions:
 - send <session> <command>: send a command to an already running session
 - stop <session>: kill a session and its processes
 
-Use clear, stable session names matching the application role, eg: "backend", "frontend", "agentos", "worker", "db".`,
+Use clear, stable session names matching the application role, eg: "backend", "frontend", "agentos", "worker", "db".
+New sessions always start from the project root directory.`,
           parameters: {
             type: 'object',
             properties: {
@@ -88,7 +90,18 @@ Use clear, stable session names matching the application role, eg: "backend", "f
                   if (!session) return 'Error: session name is required for start'
                   if (!command) return 'Error: command is required for start'
                   try {
-                    await execFileAsync('tmux', ['new-session', '-d', '-s', session, '-x', '220', '-y', '50'])
+                    await execFileAsync('tmux', [
+                      'new-session',
+                      '-d',
+                      '-s',
+                      session,
+                      '-x',
+                      '220',
+                      '-y',
+                      '50',
+                      '-c',
+                      projectRoot,
+                    ])
                   } catch {
                     // Session already exists, that's fine
                   }

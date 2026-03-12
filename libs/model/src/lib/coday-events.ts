@@ -171,12 +171,18 @@ export class ErrorEvent extends CodayEvent {
 export class ChoiceEvent extends QuestionEvent {
   options: string[]
   optionalQuestion: string | undefined
+  /**
+   * When true, the user can also type a free-text answer beyond the provided options.
+   * Defaults to false to preserve backward-compatible closed-choice behaviour.
+   */
+  allowFreeText: boolean
   static override type = 'choice'
 
   constructor(event: Partial<ChoiceEvent>) {
     super(event, ChoiceEvent.type)
     this.options = event.options!!
     this.optionalQuestion = event.optionalQuestion
+    this.allowFreeText = event.allowFreeText ?? false
   }
 }
 

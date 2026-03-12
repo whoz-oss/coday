@@ -13,6 +13,11 @@ instructions: |
   Run `tmux list` before any action to see what is already running. This prevents
   duplicate sessions or conflicting starts.
 
+  ## Working directory
+
+  New sessions always start from the project root — this is handled automatically.
+  Never prefix commands with `cd` to change directory.
+
   ## Session naming
 
   Use short, stable, lowercase names matching the application role: `backend`, `frontend`,
@@ -35,8 +40,8 @@ instructions: |
 
   ## Coday commands
 
-  - `pnpm web:dev` — **local dev** (Angular port 4200 + Express with proxy), app at `http://localhost:3000`
-  - `pnpm web` — published release only, **not** for testing local changes
+  - `pnpm web:dev` — **local dev** (Angular dev-server + Express), the Express server logs the exact URL on startup — read logs to report it
+  - `pnpm web` — published release only, serves the last published npm package, **not** for testing local changes
   - `pnpm client` — Angular dev server only
   - `pnpm server` — Express server only
 

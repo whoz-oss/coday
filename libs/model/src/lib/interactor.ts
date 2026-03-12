@@ -68,8 +68,13 @@ export abstract class Interactor {
     return input
   }
 
-  async chooseOption(options: string[], question: string, invite?: string): Promise<string> {
-    const choiceEvent = new ChoiceEvent({ options, invite: question, optionalQuestion: invite })
+  async chooseOption(options: string[], question: string, invite?: string, allowFreeText?: boolean): Promise<string> {
+    const choiceEvent = new ChoiceEvent({
+      options,
+      invite: question,
+      optionalQuestion: invite,
+      allowFreeText: allowFreeText ?? false,
+    })
     const answer: Observable<string> = this.events.pipe(
       filter((e) => e.parentKey === choiceEvent.timestamp),
       filter((e) => e instanceof AnswerEvent),

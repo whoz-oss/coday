@@ -24,7 +24,7 @@ export class AiTools extends AssistantToolFactory {
     if (!context.oneshot) {
       const queryUser = async ({ message, options }: { message: string; options?: string[] }) => {
         const userAnswer = options?.length
-          ? await this.interactor.chooseOption(options, message)
+          ? await this.interactor.chooseOption(options, message, undefined, true)
           : await this.interactor.promptText(message)
         return `User answered: ${userAnswer}`
       }
