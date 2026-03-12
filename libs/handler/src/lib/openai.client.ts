@@ -124,7 +124,7 @@ export class OpenaiClient extends AiClient {
         this.showAgentAndUsage(agent, this.aiProviderConfig.name, model.name, thread)
         // Log usage after the complete response cycle
         const cost = thread.usage?.price || 0
-        this.logAgentUsage(agent, model.name, cost)
+        this.logAgentUsage(agent, model.name, cost, thread)
         outputSubject.complete()
       })
     return outputSubject
@@ -175,7 +175,7 @@ export class OpenaiClient extends AiClient {
         this.showAgentAndUsage(agent, this.aiProviderConfig.name, model.name, thread)
         // Log usage after the complete response cycle
         const cost = thread.usage?.price || 0
-        this.logAgentUsage(agent, model.name, cost)
+        this.logAgentUsage(agent, model.name, cost, thread)
         outputSubject.complete()
       })
     return outputSubject

@@ -55,11 +55,9 @@ function groupKey(agent: string, provider: string, model: string): string {
  *
  * GET /api/token-usage?from=yyyy-MM-dd&to=yyyy-MM-dd
  *   Returns aggregated totals per (agent, provider, model) plus a grand total.
- *   Only includes entries belonging to the authenticated user.
  *
  * GET /api/token-usage/series?from=yyyy-MM-dd&to=yyyy-MM-dd
  *   Returns per-day, per-(agent, provider, model) rows.
- *   Only includes entries belonging to the authenticated user.
  */
 export function registerTokenUsageRoutes(
   app: express.Application,
@@ -78,7 +76,9 @@ export function registerTokenUsageRoutes(
       debugLog('TOKEN_USAGE', `GET /api/token-usage from=${from.toISOString()} to=${to.toISOString()} user=${username}`)
 
       const allEntries = await logger.readLogs(from, to)
-      const entries: AgentUsageEntry[] = allEntries.filter((e) => e.type === 'AGENT_USAGE' && e.username === username)
+      const entries: AgentUsageEntry[] = allEntries.filter(
+        (e) => e.type === 'AGENT_USAGE' && (e.username === username || e.username === 'no_username')
+      )
 
       const map = new Map<string, ModelAggregate>()
 
@@ -141,10 +141,15 @@ export function registerTokenUsageRoutes(
       const to = parseDate(req.query['to'], false) ?? new Date()
       const username = getUsernameFn(req)
 
-      debugLog('TOKEN_USAGE', `GET /api/token-usage/series from=${from.toISOString()} to=${to.toISOString()} user=${username}`)
+      debugLog(
+        'TOKEN_USAGE',
+        `GET /api/token-usage/series from=${from.toISOString()} to=${to.toISOString()} user=${username}`
+      )
 
       const allEntries = await logger.readLogs(from, to)
-      const entries: AgentUsageEntry[] = allEntries.filter((e) => e.type === 'AGENT_USAGE' && e.username === username)
+      const entries: AgentUsageEntry[] = allEntries.filter(
+        (e) => e.type === 'AGENT_USAGE' && (e.username === username || e.username === 'no_username')
+      )
 
       // Group by date + (agent, provider, model)
       const map = new Map<string, SeriesEntry>()
