@@ -59,7 +59,7 @@
     <div class="kpis">
       <div class="kpi">
         <div class="kpi__label">Total tokens</div>
-        <div class="kpi__value">{{ totalRow()!.totalTokens | number: '1.0-2' }}</div>
+        <div class="kpi__value">{{ totalRow()!.totalTokens | call: formatTokenValue }}</div>
       </div>
       <div class="kpi">
         <div class="kpi__label">Total calls</div>
@@ -67,9 +67,24 @@
       </div>
       <div class="kpi">
         <div class="kpi__label">Total cost</div>
-        <div class="kpi__value">${{ totalCost() | number: '1.2-2' }}</div>
+        <div class="kpi__value">{{ formatCostValue | apply: isMissingPeriod() : totalRow()!.cost }}</div>
       </div>
     </div>
+
+    @if (isPartialPeriod()) {
+      <div
+        class="hint"
+        title="Some calls in this period were recorded before token tracking was enabled. Token counts reflect only the portion where data was collected."
+      >
+        Partial data — token counts may not cover the full period
+      </div>
+    }
+
+    @if (isMissingPeriod()) {
+      <div class="hint" title="No token usage data was collected for this period.">
+        No token data collected for this period
+      </div>
+    }
   }
 
   @if (state.loading()) {
@@ -93,7 +108,7 @@
 
         <div class="table">
           <div class="table__head">
-            <div class="table__cell">modelName</div>
+            <div class="table__cell">agentName</div>
             <div class="table__cell">providerName</div>
             <div class="table__cell">modelId</div>
             <div class="table__cell table__cell--num">promptTokens</div>
@@ -106,27 +121,33 @@
           <div class="table__body">
             @for (row of rows(); track trackRow($index, row)) {
               <div class="table__row">
-                <div class="table__cell">{{ row.modelName }}</div>
+                <div class="table__cell">{{ row.agentName }}</div>
                 <div class="table__cell">{{ row.providerName }}</div>
                 <div class="table__cell">{{ row.modelId }}</div>
-                <div class="table__cell table__cell--num">{{ row.promptTokens | number: '1.0-2' }}</div>
-                <div class="table__cell table__cell--num">{{ row.completionTokens | number: '1.0-2' }}</div>
-                <div class="table__cell table__cell--num">{{ row.totalTokens | number: '1.0-2' }}</div>
+                <div class="table__cell table__cell--num">{{ row.promptTokens | call: formatTokenValue }}</div>
+                <div class="table__cell table__cell--num">{{ row.completionTokens | call: formatTokenValue }}</div>
+                <div class="table__cell table__cell--num">{{ row.totalTokens | call: formatTokenValue }}</div>
                 <div class="table__cell table__cell--num">{{ row.callCount }}</div>
-                <div class="table__cell table__cell--num">${{ (row.cost ?? 0) | number: '1.2-2' }}</div>
+                <div class="table__cell table__cell--num">
+                  {{ formatCostValue | apply: isMissingPeriod() : row.cost }}
+                </div>
               </div>
             }
 
             @if (totalRow()) {
               <div class="table__row table__row--total">
-                <div class="table__cell">{{ totalRow()!.modelName }}</div>
+                <div class="table__cell">{{ totalRow()!.agentName }}</div>
                 <div class="table__cell">{{ totalRow()!.providerName }}</div>
                 <div class="table__cell">{{ totalRow()!.modelId }}</div>
-                <div class="table__cell table__cell--num">{{ totalRow()!.promptTokens | number: '1.0-2' }}</div>
-                <div class="table__cell table__cell--num">{{ totalRow()!.completionTokens | number: '1.0-2' }}</div>
-                <div class="table__cell table__cell--num">{{ totalRow()!.totalTokens | number: '1.0-2' }}</div>
+                <div class="table__cell table__cell--num">{{ totalRow()!.promptTokens | call: formatTokenValue }}</div>
+                <div class="table__cell table__cell--num">
+                  {{ totalRow()!.completionTokens | call: formatTokenValue }}
+                </div>
+                <div class="table__cell table__cell--num">{{ totalRow()!.totalTokens | call: formatTokenValue }}</div>
                 <div class="table__cell table__cell--num">{{ totalRow()!.callCount }}</div>
-                <div class="table__cell table__cell--num">${{ (totalRow()!.cost ?? 0) | number: '1.2-2' }}</div>
+                <div class="table__cell table__cell--num">
+                  {{ formatCostValue | apply: isMissingPeriod() : totalRow()!.cost }}
+                </div>
               </div>
             }
           </div>
@@ -135,9 +156,7 @@
 
       <section class="card">
         <div class="card__title">Daily series</div>
-        <div class="muted">
-          Chart coming soon. (Series is already fetched: {{ (state.series()?.length ?? 0) }} points.)
-        </div>
+        <app-daily-series-chart [points]="chartPoints()" />
       </section>
     </div>
   }
