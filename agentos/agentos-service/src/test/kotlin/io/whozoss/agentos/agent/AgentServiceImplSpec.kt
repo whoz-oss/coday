@@ -3,6 +3,8 @@ package io.whozoss.agentos.agent
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -10,6 +12,7 @@ import io.whozoss.agentos.aiModel.AiModelRegistry
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.orchestration.AgentSimple
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.tool.ToolRegistry
@@ -96,7 +99,7 @@ class AgentServiceImplSpec : StringSpec() {
         // Namespace context injection into instructions
         // -------------------------------------------------------------------------
 
-        "findAgentByName appends namespace context to model instructions" {
+        "findAgentByName appends namespace name and description to existing model instructions" {
             val model = AiModel(
                 metadata = EntityMetadata(id = UUID.randomUUID()),
                 name = "my-agent",
@@ -109,13 +112,14 @@ class AgentServiceImplSpec : StringSpec() {
             every { aiModelRegistry.findByName("my-agent") } returns model
             every { chatClientProvider.getChatClient("my-agent") } returns chatClient
 
-            val agent = agentService.findAgentByName("my-agent", context)
+            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
-            // The agent's name is derived from the model — verify it was built at all
-            agent.name shouldBe "my-agent"
+            agent.instructions!! shouldContain "You are a helpful assistant."
+            agent.instructions!! shouldContain namespace.name
+            agent.instructions!! shouldContain namespace.description!!
         }
 
-        "findAgentByName produces namespace context block when model has no instructions" {
+        "findAgentByName uses namespace context as sole instructions when model has none" {
             val model = AiModel(
                 metadata = EntityMetadata(id = UUID.randomUUID()),
                 name = "my-agent",
@@ -128,8 +132,37 @@ class AgentServiceImplSpec : StringSpec() {
             every { aiModelRegistry.findByName("my-agent") } returns model
             every { chatClientProvider.getChatClient("my-agent") } returns chatClient
 
-            // Should not throw — namespace context becomes the sole instructions
-            agentService.findAgentByName("my-agent", context)
+            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
+
+            agent.instructions!! shouldContain namespace.name
+            agent.instructions!! shouldContain namespace.description!!
+        }
+
+        "findAgentByName includes namespace name but not a blank description when namespace has no description" {
+            val namespaceWithoutDescription = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "engineering",
+                description = null,
+            )
+            every { namespaceService.findById(namespaceId) } returns namespaceWithoutDescription
+            val model = AiModel(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                name = "my-agent",
+                description = "desc",
+                modelName = "gpt-4o",
+                providerName = "openai",
+                instructions = "Base instructions.",
+            )
+            val chatClient = mockk<ChatClient>(relaxed = true)
+            every { aiModelRegistry.findByName("my-agent") } returns model
+            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
+
+            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
+
+            agent.instructions!! shouldContain "engineering"
+            agent.instructions!! shouldNotContain "null"
+            // Restore the default stub for subsequent tests
+            every { namespaceService.findById(namespaceId) } returns namespace
         }
 
         "findAgentByName resolves namespace by namespaceId from context" {

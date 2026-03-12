@@ -31,7 +31,10 @@ class AgentServiceImpl(
     private val aiModelRegistry: AiModelRegistry,
     private val namespaceService: NamespaceService,
 ) : AgentService {
-    override fun findAgentByName(namePart: String, context: AgentExecutionContext): Agent {
+    override fun findAgentByName(
+        namePart: String,
+        context: AgentExecutionContext,
+    ): Agent {
         val model =
             aiModelRegistry.findByName(namePart)
                 ?: aiModelRegistry.getAll().firstOrNull { it.name.contains(namePart, ignoreCase = true) }
@@ -52,8 +55,10 @@ class AgentServiceImpl(
     override fun getDefaultAgentName(): String? = aiModelRegistry.getDefault()?.name
 
     override fun resolveAgentName(namePart: String): String? =
-        (aiModelRegistry.findByName(namePart)
-            ?: aiModelRegistry.getAll().firstOrNull { it.name.contains(namePart, ignoreCase = true) })?.name
+        (
+            aiModelRegistry.findByName(namePart)
+                ?: aiModelRegistry.getAll().firstOrNull { it.name.contains(namePart, ignoreCase = true) }
+        )?.name
 
     /**
      * Build a live [AgentSimple] instance from [model].
@@ -66,7 +71,10 @@ class AgentServiceImpl(
      * When [context] is null (e.g. [listAgents] for registry inspection) the model's
      * instructions are used as-is.
      */
-    private fun createAgentInstance(model: AiModel, context: AgentExecutionContext?): Agent {
+    private fun createAgentInstance(
+        model: AiModel,
+        context: AgentExecutionContext?,
+    ): Agent {
         logger.info { "[AgentService] Creating agent instance for: ${model.name}, context: $context" }
 
         val tools = toolRegistry.listTools()
@@ -97,14 +105,17 @@ class AgentServiceImpl(
      * The namespace name is always included so the agent knows where it is operating
      * even if no description has been written yet.
      */
-    private fun buildInstructions(model: AiModel, context: AgentExecutionContext?): String? {
+    private fun buildInstructions(
+        model: AiModel,
+        context: AgentExecutionContext?,
+    ): String? {
         if (context == null) return model.instructions
 
         val namespace = namespaceService.findById(context.namespaceId)
         val namespaceBlock =
             buildString {
                 appendLine()
-                appendLine("## ${namespace?.name ?: context.namespaceId}")
+                appendLine("## Context: ${namespace?.name ?: context.namespaceId}")
                 if (!namespace?.description.isNullOrBlank()) {
                     appendLine(namespace!!.description!!)
                 }

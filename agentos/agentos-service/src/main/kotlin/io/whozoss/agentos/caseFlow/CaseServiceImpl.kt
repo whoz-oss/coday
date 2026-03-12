@@ -175,7 +175,17 @@ class CaseServiceImpl(
             }
         }
 
-        val defaultName = agentService.getDefaultAgentName() ?: return emptyList()
+        val defaultName = agentService.getDefaultAgentName()
+        if (defaultName == null) {
+            logger.warn { "[CaseService] No AI model configured — cannot select a default agent" }
+            return listOf(
+                WarnEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    message = "No AI model is configured. Load a plugin that provides an AiModel.",
+                ),
+            )
+        }
         logger.info { "[CaseService] Selecting default agent: $defaultName" }
         return listOf(agentSelectedEvent(defaultName, namespaceId, caseId))
     }

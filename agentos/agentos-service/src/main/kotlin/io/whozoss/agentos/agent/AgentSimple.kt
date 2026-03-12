@@ -59,6 +59,9 @@ class AgentSimple(
 ) : Agent {
     override val name: String get() = model.name
 
+    /** The effective system instructions passed to the LLM, after namespace context injection. */
+    val instructions: String? get() = model.instructions
+
     override fun run(events: List<CaseEvent>): Flow<CaseEvent> =
         flow {
             val namespaceId = events.firstOrNull()?.namespaceId ?: throw IllegalArgumentException("No events provided")
