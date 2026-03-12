@@ -27,7 +27,16 @@ export class CodayLoggerUtils implements CodayLogger {
   /**
    * Log an agent interaction
    */
-  logAgentUsage(username: string, agent: string, model: string, cost: number): void {
+  logAgentUsage(
+    username: string,
+    agent: string,
+    model: string,
+    cost: number,
+    providerName?: string,
+    promptTokens?: number,
+    completionTokens?: number,
+    totalTokens?: number
+  ): void {
     const entry = {
       type: 'AGENT_USAGE',
       timestamp: new Date().toISOString(),
@@ -35,8 +44,12 @@ export class CodayLoggerUtils implements CodayLogger {
       agent,
       model,
       cost,
+      providerName,
+      promptTokens,
+      completionTokens,
+      totalTokens,
     }
-    this.pushEntry(entry)
+    void this.pushEntry(entry)
   }
 
   logWebhook(data: Record<string, any>): void {

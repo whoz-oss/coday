@@ -46,13 +46,26 @@ export abstract class AiClient {
     protected aiProviderConfig: AiProviderConfig,
     protected logger?: CodayLogger
   ) {
-    // merge the models in, ovewrite the models by aliases
     this.apiKey = aiProviderConfig.apiKey
   }
 
-  protected mergeModels(models: AiModel[]): void {
-    const modelsByAliasOrName = new Map<string, AiModel>(models.map((m) => [m.alias ?? m.name, m]))
-    this.aiProviderConfig.models?.forEach((m) => modelsByAliasOrName.set(m.alias ?? m.name, m))
+  protected mergeModels(defaults: AiModel[]): void {
+    const modelsByAliasOrName = new Map<string, AiModel>(defaults.map((m) => [m.alias ?? m.name, m]))
+    this.aiProviderConfig.models?.forEach((userModel) => {
+      const key = userModel.alias ?? userModel.name
+      const existing = modelsByAliasOrName.get(key)
+      if (existing) {
+        // Deep-merge: user fields override defaults, but missing user fields keep the default value.
+        // Critically, this preserves the default `price` block when the user omits it.
+        modelsByAliasOrName.set(key, {
+          ...existing,
+          ...userModel,
+          price: userModel.price ?? existing.price,
+        })
+      } else {
+        modelsByAliasOrName.set(key, userModel)
+      }
+    })
     this.models = Array.from(modelsByAliasOrName.values())
   }
 
@@ -186,7 +199,9 @@ export abstract class AiClient {
 
       this.interactor.debug(
         `📊 Compaction budget: summary=${summaryBudget} chars, ` +
-          `max transcript=${maxTranscriptChars} chars (overhead=${promptTemplateOverhead}, margin=${Math.round(safetyMargin * 100)}%)`
+          `max transcript=${maxTranscriptChars} chars (overhead=${promptTemplateOverhead}, margin=${Math.round(
+            safetyMargin * 100
+          )}%)`
       )
 
       // Limit transcript size to prevent context window overflow
@@ -533,9 +548,22 @@ It can be summarized as:
   }
 
   /**
-   * Log agent usage after a complete response cycle
+   * Log agent usage after a complete response cycle.
+   * Passes token counts from thread.usage (input/output) and the provider name.
    */
-  protected logAgentUsage(agent: Agent, model: string, cost: number): void {
-    this.logger?.logAgentUsage(this.username ?? 'no_username', agent.name, model, cost)
+  protected logAgentUsage(agent: Agent, model: string, cost: number, thread?: AiThread): void {
+    const promptTokens = thread?.usage?.input ?? 0
+    const completionTokens = thread?.usage?.output ?? 0
+    const totalTokens = promptTokens + completionTokens
+    this.logger?.logAgentUsage(
+      thread?.username ?? this.username ?? 'no_username',
+      agent.name,
+      model,
+      cost,
+      this.name,
+      promptTokens,
+      completionTokens,
+      totalTokens
+    )
   }
 }

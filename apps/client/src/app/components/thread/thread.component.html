@@ -81,6 +81,7 @@
                   [options]="currentChoice.options"
                   [labelHtml]="currentChoice.label"
                   [isVisible]="!!currentChoice"
+                  [allowFreeText]="currentChoice.allowFreeText"
                   (choiceSelected)="onChoiceSelected($event)"
                   class="choice-overlay"
                 ></app-choice-select>

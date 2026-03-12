@@ -1,3 +1,27 @@
+## 0.86.0 (2026-03-12)
+
+### 🚀 Features
+
+- add free text option on agent choices ([#550](https://github.com/whoz-oss/coday/pull/550))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.85.0 (2026-03-12)
+
+### 🚀 Features
+
+- #551 token usage UI cost formatting ($, 2 decimals) + back-to-project logo button ([#551](https://github.com/whoz-oss/coday/issues/551))
+- #551 filter token usage by username (multi-user support) ([#551](https://github.com/whoz-oss/coday/issues/551))
+- #551 format token usage cost in UI and add back-button navigation ([#551](https://github.com/whoz-oss/coday/issues/551))
+- #551 token usage dashboard ([#552](https://github.com/whoz-oss/coday/pull/552), [#551](https://github.com/whoz-oss/coday/issues/551))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.84.0 (2026-03-12)
 
 ### 🚀 Features
