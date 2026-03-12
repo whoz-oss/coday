@@ -4,7 +4,7 @@ info:
   description: REST API for AgentOS — orchestration of AI agents via plugins
   version: 0.0.1
 servers:
-- url: http://localhost:8123
+- url: http://localhost:8124
   description: Generated server url
 tags:
 - name: sse
@@ -306,21 +306,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Case"
-  /api/cases/{caseId}/stop:
-    post:
-      tags:
-      - case-controller
-      operationId: stopCase
-      parameters:
-      - name: caseId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "200":
-          description: OK
   /api/cases/{caseId}/messages:
     post:
       tags:
@@ -347,6 +332,21 @@ paths:
       tags:
       - case-controller
       operationId: killCase
+      parameters:
+      - name: caseId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+  /api/cases/{caseId}/interrupt:
+    post:
+      tags:
+      - case-controller
+      operationId: interruptCase
       parameters:
       - name: caseId
         in: path
@@ -717,9 +717,11 @@ components:
           enum:
           - PENDING
           - RUNNING
-          - STOPPING
+          - IDLE
+          - KILLED
           - ERROR
-          - STOPPED
+        title:
+          type: string
         id:
           type: string
           format: uuid
@@ -728,6 +730,7 @@ components:
       - metadata
       - namespaceId
       - status
+      - title
     ToolExecutionResult:
       type: object
       properties:
@@ -933,9 +936,9 @@ components:
             enum:
             - PENDING
             - RUNNING
-            - STOPPING
+            - IDLE
+            - KILLED
             - ERROR
-            - STOPPED
       required:
       - caseId
       - id

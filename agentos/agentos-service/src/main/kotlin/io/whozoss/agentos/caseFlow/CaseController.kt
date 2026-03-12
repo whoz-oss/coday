@@ -38,17 +38,23 @@ class CaseController(
         logger.info { "Message added to case: $caseId" }
     }
 
-    /** POST /api/cases/{caseId}/stop — stop a case gracefully. */
-    @PostMapping("/{caseId}/stop")
-    fun stopCase(
+    /**
+     * POST /api/cases/{caseId}/interrupt
+     *
+     * Interrupt the current agent turn and return the case to IDLE.
+     * The runtime and SSE connection stay open — the user can send a corrective
+     * message immediately. Use this when the agent is going in the wrong direction.
+     */
+    @PostMapping("/{caseId}/interrupt")
+    fun interruptCase(
         @PathVariable caseId: UUID,
     ) {
-        logger.info { "Stopping case: $caseId" }
-        caseService.stopCase(caseId)
-        logger.info { "Case stopped: $caseId" }
+        logger.info { "Interrupting case: $caseId" }
+        caseService.interruptCase(caseId)
+        logger.info { "Case interrupted: $caseId" }
     }
 
-    /** POST /api/cases/{caseId}/kill — kill a case immediately. */
+    /** POST /api/cases/{caseId}/kill — permanently terminate a case and evict its runtime. */
     @PostMapping("/{caseId}/kill")
     fun killCase(
         @PathVariable caseId: UUID,

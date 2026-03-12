@@ -1,3 +1,25 @@
+## 0.84.0 (2026-03-12)
+
+### 🚀 Features
+
+- expand Basecamp integration with forwards, cards and factory fix ([#549](https://github.com/whoz-oss/coday/pull/549))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.83.0 (2026-03-11)
+
+### 🚀 Features
+
+- WZ-28667: single responsability for case runtime ([#541](https://github.com/whoz-oss/coday/pull/541))
+- display send timestamp on user messages in chat ([#547](https://github.com/whoz-oss/coday/pull/547))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+- vincent-audibert-whoz
+
 ## 0.82.0 (2026-03-10)
 
 ### 🚀 Features

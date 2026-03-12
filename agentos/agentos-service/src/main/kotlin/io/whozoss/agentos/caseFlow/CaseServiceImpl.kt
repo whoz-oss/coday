@@ -69,9 +69,6 @@ class CaseServiceImpl(
     override fun findByParent(parentId: UUID): List<Case> = caseRepository.findByParent(parentId)
 
     override fun delete(id: UUID): Boolean {
-        // Drive active cases to STOPPED before deletion so SSE clients receive the
-        // terminal event and the runtime is evicted cleanly. handleStatusChange
-        // removes the runtime from activeRuntimes on terminal status.
         if (activeRuntimes.containsKey(id)) {
             killCase(id)
         }
@@ -79,7 +76,7 @@ class CaseServiceImpl(
     }
 
     override fun deleteByParent(parentId: UUID): Int {
-        findByParent(parentId).forEach { activeRuntimes.remove(it.id)?.requestStop() }
+        findByParent(parentId).forEach { killCase(it.id) }
         return caseRepository.deleteByParent(parentId)
     }
 
@@ -216,13 +213,17 @@ class CaseServiceImpl(
                         message = "Agent $agentName error: ${error.message}",
                     ),
                 ).also { saved ->
-                    runtime.emitEventFromOtherCase(saved)
+                    runtime.emitEvent(saved)
                 }
             }.collect { event ->
                 val saved = storeEvent(event)
-                // Events belonging to this case are already emitted by storeAndEmitEvent
-                // inside the runtime. Sub-case events need to bubble up explicitly.
-                if (event.caseId != caseId) runtime.emitEventFromOtherCase(saved)
+                if (event.caseId == caseId) {
+                    // Push into the runtime's event list so processNextStep can see it
+                    // (e.g. AgentFinishedEvent stops the loop)
+                    runtime.pushEvents(listOf(saved))
+                }
+                // emit on the SSE flow.
+                runtime.emitEvent(saved)
             }
         logger.info { "[CaseService] Agent $agentName finished for case $caseId" }
     }
@@ -270,7 +271,7 @@ class CaseServiceImpl(
 
         // Emit the status event before eviction so SSE clients receive it.
         activeRuntimes[caseId]?.let {
-            it.emitEventFromOtherCase(savedStatusEvent)
+            it.emitEvent(savedStatusEvent)
             if (newStatus.isTerminal()) {
                 activeRuntimes.remove(caseId)
                 logger.info { "[CaseService] Case $caseId reached terminal status $newStatus, evicted" }
@@ -287,18 +288,20 @@ class CaseServiceImpl(
 
     override fun getAllActiveCases(): List<CaseRuntime> = activeRuntimes.values.toList()
 
-    override fun stopCase(caseId: UUID) {
+    override fun interruptCase(caseId: UUID) {
         val runtime =
             activeRuntimes[caseId]
                 ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
-        logger.info { "Stopping case: $caseId" }
-        handleStatusChange(caseId, CaseStatus.STOPPING)
-        runtime.requestStop()
+        logger.info { "Interrupting case: $caseId" }
+        runtime.requestInterrupt()
     }
 
     override fun killCase(caseId: UUID) {
         logger.info { "Killing case: $caseId" }
-        handleStatusChange(caseId, CaseStatus.STOPPED)
+        // Signal the runtime loop to exit cleanly if it is currently running,
+        // then let handleStatusChange evict it via the isTerminal() path.
+        activeRuntimes[caseId]?.requestKill()
+        handleStatusChange(caseId, CaseStatus.KILLED)
     }
 
     // ========================================

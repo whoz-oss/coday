@@ -29,21 +29,14 @@ class InMemoryCaseEventList(
 
     /**
      * Add an event, maintaining chronological (timestamp-ascending) order.
-     * Inserts from the end for efficiency since new events are typically the most recent.
+     * Uses binary search for O(log n) index discovery; equal-timestamp events are appended
+     * after existing ones (stable insertion order).
      */
     override fun add(event: CaseEvent): Unit =
         lock.write {
-            var insertIndex = events.size
-            for (i in events.lastIndex downTo 0) {
-                if (events[i].timestamp <= event.timestamp) {
-                    insertIndex = i + 1
-                    break
-                }
-                insertIndex = i
-            }
-            events.add(insertIndex, event)
+            events.insertChronologically(event)
             eventsById[event.id] = event
-            logger.debug { "[Case ${event.caseId}] Event added at index $insertIndex: ${event::class.simpleName}" }
+            logger.debug { "[Case ${event.caseId}] Event added: ${event::class.simpleName}" }
         }
 
     override fun getAll(): List<CaseEvent> = lock.read { events.toList() }

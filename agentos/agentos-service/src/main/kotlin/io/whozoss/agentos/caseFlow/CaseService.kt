@@ -75,20 +75,32 @@ interface CaseService : EntityService<Case, UUID> {
     // ========================================
 
     /**
-     * Request a case to stop gracefully.
-     * Preserves case state and allows clean completion of the current operation.
+     * Interrupt the current agent turn and return the case to
+     * [io.whozoss.agentos.sdk.caseFlow.CaseStatus.IDLE].
      *
-     * @param caseId The unique identifier of the case to stop
+     * The runtime stays alive and the SSE connection stays open, so the user can
+     * immediately send a corrective message. Use this when the agent is going in the
+     * wrong direction and you want to redirect it without ending the conversation.
+     *
+     * Note: if the agent is mid-LLM-stream the interrupt takes effect after the
+     * current stream completes. The next iteration of the run loop is what is
+     * prevented.
+     *
+     * @param caseId The unique identifier of the case to interrupt
      * @throws ResourceNotFoundException if no active runtime exists for [caseId]
      */
-    fun stopCase(caseId: UUID)
+    fun interruptCase(caseId: UUID)
 
     /**
-     * Immediately terminate a case and cleanup resources.
-     * Unlike [stopCase], this method does not preserve state.
+     * Permanently terminate a case and clean up its runtime.
+     * Sets the case status to [io.whozoss.agentos.sdk.caseFlow.CaseStatus.KILLED],
+     * evicts the runtime from memory, and allows the SSE connection to close.
+     *
+     * Note: between agent turns the case is in [io.whozoss.agentos.sdk.caseFlow.CaseStatus.IDLE]
+     * with its runtime still alive — that is the normal resting state, not a stopped one.
+     * Only call this when the conversation should be permanently ended.
      *
      * @param caseId The unique identifier of the case to kill
-     * @throws ResourceNotFoundException if no active runtime exists for [caseId]
      */
     fun killCase(caseId: UUID)
 }
