@@ -3,18 +3,19 @@ import {
   Component,
   ElementRef,
   EventEmitter,
+  inject,
   Input,
   OnChanges,
   OnDestroy,
   Output,
   SimpleChanges,
   ViewChild,
-  inject,
 } from '@angular/core'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { BehaviorSubject, Observable, Subject } from 'rxjs'
 import { AsyncPipe } from '@angular/common'
 import { MatIconModule } from '@angular/material/icon'
+import { FormsModule } from '@angular/forms'
 import { MarkdownService } from '../../services/markdown.service'
 
 export interface ChoiceOption {
@@ -26,12 +27,15 @@ export interface ChoiceOption {
 @Component({
   selector: 'app-choice-select',
   standalone: true,
-  imports: [AsyncPipe, MatIconModule],
+  imports: [AsyncPipe, MatIconModule, FormsModule],
   templateUrl: './choice-select.component.html',
   styleUrl: './choice-select.component.scss',
 })
 export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input() options: ChoiceOption[] = []
+  /** When true, shows a free-text input below the option buttons */
+  @Input() allowFreeText: boolean = false
+
   @Input() set labelHtml(value: string | SafeHtml) {
     // If it's already SafeHtml, use it directly
     if (typeof value === 'object') {
@@ -41,14 +45,17 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
       this.renderLabelMarkdown(value as string)
     }
   }
+
   @Input() isVisible: boolean = false
 
   @Output() choiceSelected = new EventEmitter<string>()
 
   @ViewChild('buttonContainer') buttonContainer!: ElementRef<HTMLDivElement>
+  @ViewChild('freeTextInput') freeTextInput?: ElementRef<HTMLInputElement>
 
   highlightedIndex: number = 0
   searchText: string = ''
+  freeTextValue: string = ''
   private searchTimeout?: ReturnType<typeof setTimeout>
   private destroy$ = new Subject<void>()
 
@@ -249,6 +256,21 @@ export class ChoiceSelectComponent implements AfterViewInit, OnChanges, OnDestro
   onOptionClick(value: string): void {
     console.log('[CHOICE-SELECT] Choice selected:', value)
     this.choiceSelected.emit(value)
+  }
+
+  onFreeTextSubmit(): void {
+    const trimmed = this.freeTextValue.trim()
+    if (!trimmed) return
+    console.log('[CHOICE-SELECT] Free text submitted:', trimmed)
+    this.freeTextValue = ''
+    this.choiceSelected.emit(trimmed)
+  }
+
+  onFreeTextKeyDown(event: KeyboardEvent): void {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      this.onFreeTextSubmit()
+    }
   }
 
   /**

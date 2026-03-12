@@ -40,7 +40,11 @@ export class CodayService implements OnDestroy {
   // State subjects
   private readonly messagesSubject = new BehaviorSubject<ChatMessage[]>([])
   private readonly isThinkingSubject = new BehaviorSubject<boolean>(false)
-  private readonly currentChoiceSubject = new BehaviorSubject<{ options: ChoiceOption[]; label: string } | null>(null)
+  private readonly currentChoiceSubject = new BehaviorSubject<{
+    options: ChoiceOption[]
+    label: string
+    allowFreeText: boolean
+  } | null>(null)
   private readonly projectTitleSubject = new BehaviorSubject<string>('Coday')
   private readonly currentInviteEventSubject = new BehaviorSubject<InviteEvent | null>(null)
   private readonly messageToRestoreSubject = new BehaviorSubject<string>('')
@@ -466,7 +470,7 @@ export class CodayService implements OnDestroy {
 
     const label = event.optionalQuestion ? `${event.optionalQuestion} ${event.invite}` : event.invite
 
-    this.currentChoiceSubject.next({ options, label })
+    this.currentChoiceSubject.next({ options, label, allowFreeText: event.allowFreeText })
   }
 
   private handleHeartBeatEvent(_event: HeartBeatEvent): void {

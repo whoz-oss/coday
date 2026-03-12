@@ -78,7 +78,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   messages: ChatMessage[] = []
   streamingText: string = ''
   isThinking: boolean = false
-  currentChoice: { options: ChoiceOption[]; label: string } | null = null
+  currentChoice: { options: ChoiceOption[]; label: string; allowFreeText: boolean } | null = null
   connectionStatus: ConnectionStatus | null = null
   isConnected: boolean = false
   showConnectionStatus: boolean = false

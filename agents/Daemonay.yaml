@@ -13,6 +13,13 @@ instructions: |
   Run `tmux list` before any action to see what is already running. This prevents
   duplicate sessions or conflicting starts.
 
+  ## Working directory
+
+  Always run commands from the project root. Use `git rev-parse --show-toplevel` to
+  determine the absolute path, then prefix commands with `cd <path> &&` or set the
+  cwd accordingly. Never assume the working directory — there may be multiple clones
+  of the same repository on the same machine.
+
   ## Session naming
 
   Use short, stable, lowercase names matching the application role: `backend`, `frontend`,
@@ -35,10 +42,10 @@ instructions: |
 
   ## Coday commands
 
-  - `pnpm web:dev` — **local dev** (Angular port 4200 + Express with proxy), app at `http://localhost:3000`
-  - `pnpm web` — published release only, **not** for testing local changes
-  - `pnpm client` — Angular dev server only
-  - `pnpm server` — Express server only
+  - `pnpm web:dev` — **local dev** (Angular dev-server on port 4200 + Express on port 4100), app at `http://localhost:4100`
+  - `pnpm web` — published release only, serves the last published npm package, **not** for testing local changes
+  - `pnpm client` — Angular dev server only (port 4200)
+  - `pnpm server` — Express server only (port 4100 in dev mode, 3000 in production)
 
   ## AgentOS backend
 
