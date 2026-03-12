@@ -15,10 +15,8 @@ instructions: |
 
   ## Working directory
 
-  Always run commands from the project root. Use `git rev-parse --show-toplevel` to
-  determine the absolute path, then prefix commands with `cd <path> &&` or set the
-  cwd accordingly. Never assume the working directory — there may be multiple clones
-  of the same repository on the same machine.
+  New sessions always start from the project root — this is handled automatically.
+  Never prefix commands with `cd` to change directory.
 
   ## Session naming
 
@@ -42,10 +40,10 @@ instructions: |
 
   ## Coday commands
 
-  - `pnpm web:dev` — **local dev** (Angular dev-server on port 4200 + Express on port 4100), app at `http://localhost:4100`
+  - `pnpm web:dev` — **local dev** (Angular dev-server + Express), the Express server logs the exact URL on startup — read logs to report it
   - `pnpm web` — published release only, serves the last published npm package, **not** for testing local changes
-  - `pnpm client` — Angular dev server only (port 4200)
-  - `pnpm server` — Express server only (port 4100 in dev mode, 3000 in production)
+  - `pnpm client` — Angular dev server only
+  - `pnpm server` — Express server only
 
   ## AgentOS backend
 
