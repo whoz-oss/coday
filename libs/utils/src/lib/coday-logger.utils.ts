@@ -44,12 +44,12 @@ export class CodayLoggerUtils implements CodayLogger {
       agent,
       model,
       cost,
-      ...(providerName !== undefined && { providerName }),
-      ...(promptTokens !== undefined && { promptTokens }),
-      ...(completionTokens !== undefined && { completionTokens }),
-      ...(totalTokens !== undefined && { totalTokens }),
+      providerName,
+      promptTokens,
+      completionTokens,
+      totalTokens,
     }
-    this.pushEntry(entry)
+    void this.pushEntry(entry)
   }
 
   logWebhook(data: Record<string, any>): void {
