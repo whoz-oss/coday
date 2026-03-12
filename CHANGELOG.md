@@ -1,3 +1,13 @@
+## 0.86.0 (2026-03-12)
+
+### 🚀 Features
+
+- add free text option on agent choices ([#550](https://github.com/whoz-oss/coday/pull/550))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.85.0 (2026-03-12)
 
 ### 🚀 Features
