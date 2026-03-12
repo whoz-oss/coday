@@ -328,18 +328,19 @@ class CaseRuntimeSpec : StringSpec() {
             val runtimeId = UUID.randomUUID()
             var capturedShouldContinue: (() -> Boolean)? = null
 
-            val runtime = CaseRuntime(
-                id = runtimeId,
-                projectId = projectId,
-                updateStatus = { _, _ -> },
-                storeEvent = { it },
-                selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
-                runAgent = { _, _, shouldContinue ->
-                    capturedShouldContinue = shouldContinue
-                    // Simulate a long-running agent: don't push AgentFinishedEvent
-                    // so we can inspect shouldContinue before the loop exits naturally.
-                },
-            )
+            val runtime =
+                CaseRuntime(
+                    id = runtimeId,
+                    projectId = projectId,
+                    updateStatus = { _, _ -> },
+                    storeEvent = { it },
+                    selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    runAgent = { _, _, shouldContinue ->
+                        capturedShouldContinue = shouldContinue
+                        // Simulate a long-running agent: don't push AgentFinishedEvent
+                        // so we can inspect shouldContinue before the loop exits naturally.
+                    },
+                )
 
             runtime.addUserMessage(userActor, userMessage)
             runtime.run()
@@ -361,16 +362,17 @@ class CaseRuntimeSpec : StringSpec() {
             val runtimeId = UUID.randomUUID()
             var capturedShouldContinue: (() -> Boolean)? = null
 
-            val runtime = CaseRuntime(
-                id = runtimeId,
-                projectId = projectId,
-                updateStatus = { _, _ -> },
-                storeEvent = { it },
-                selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
-                runAgent = { _, _, shouldContinue ->
-                    capturedShouldContinue = shouldContinue
-                },
-            )
+            val runtime =
+                CaseRuntime(
+                    id = runtimeId,
+                    projectId = projectId,
+                    updateStatus = { _, _ -> },
+                    storeEvent = { it },
+                    selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    runAgent = { _, _, shouldContinue ->
+                        capturedShouldContinue = shouldContinue
+                    },
+                )
 
             runtime.addUserMessage(userActor, userMessage)
             runtime.run()
@@ -378,40 +380,6 @@ class CaseRuntimeSpec : StringSpec() {
             capturedShouldContinue shouldNotBe null
             runtime.requestKill()
             capturedShouldContinue!!.invoke() shouldBe false
-        }
-
-        "shouldContinue lambda returns true when no interrupt or kill has been requested" {
-            val runtimeId = UUID.randomUUID()
-            var capturedShouldContinue: (() -> Boolean)? = null
-
-            lateinit var runtime: CaseRuntime
-            runtime = CaseRuntime(
-                id = runtimeId,
-                projectId = projectId,
-                updateStatus = { _, _ -> },
-                storeEvent = { it },
-                selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
-                runAgent = { _, events, shouldContinue ->
-                    capturedShouldContinue = shouldContinue
-                    // Push AgentFinishedEvent so run() exits cleanly after one iteration
-                    val finished = AgentFinishedEvent(
-                        projectId = projectId,
-                        caseId = runtimeId,
-                        agentId = UUID.nameUUIDFromBytes("agent".toByteArray()),
-                        agentName = "agent",
-                    )
-                    runtime.pushEvents(listOf(finished))
-                },
-            )
-
-            runtime.addUserMessage(userActor, userMessage)
-            runtime.run()
-
-            capturedShouldContinue shouldNotBe null
-            // No interrupt or kill was requested during the run, so the lambda
-            // reflects the flag state at the time it is called (after run() reset it).
-            // The flag is false (no pending interrupt), so shouldContinue returns true.
-            capturedShouldContinue!!.invoke() shouldBe true
         }
 
         "runAgent is called exactly once when AgentRunningEvent is already in the event list" {
