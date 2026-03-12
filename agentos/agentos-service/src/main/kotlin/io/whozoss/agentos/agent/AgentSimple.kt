@@ -18,6 +18,7 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.runBlocking
 import mu.KLogging
@@ -59,7 +60,7 @@ class AgentSimple(
 ) : Agent {
     override val name: String get() = model.name
 
-    override fun run(events: List<CaseEvent>): Flow<CaseEvent> =
+    override fun run(events: List<CaseEvent>, shouldContinue: () -> Boolean): Flow<CaseEvent> =
         flow {
             val projectId = events.firstOrNull()?.projectId ?: throw IllegalArgumentException("No events provided")
             val caseId = events.firstOrNull()?.caseId ?: throw IllegalArgumentException("No events provided")
@@ -78,6 +79,21 @@ class AgentSimple(
                     } else {
                         messages
                     }
+
+                // Bail out immediately if an interrupt/kill was requested before
+                // the LLM call even starts (e.g. kill fired while the previous
+                // tool response was being stored).
+                if (!shouldContinue()) {
+                    emit(
+                        AgentFinishedEvent(
+                            projectId = projectId,
+                            caseId = caseId,
+                            agentId = id,
+                            agentName = name,
+                        ),
+                    )
+                    return@flow
+                }
 
                 emit(ThinkingEvent(projectId = projectId, caseId = caseId))
 
@@ -111,8 +127,11 @@ class AgentSimple(
                 val contentBuilder = StringBuilder()
                 var currentTurnLogged = false
 
-                // Convert stream to Flow
-                streamSpec.content().asFlow().collect { chunk ->
+                // Convert stream to Flow.
+                // takeWhile cancels the upstream reactive stream as soon as shouldContinue()
+                // returns false, so we stop consuming the LLM HTTP stream immediately
+                // rather than merely skipping chunks with return@collect.
+                streamSpec.content().asFlow().takeWhile { shouldContinue() }.collect { chunk ->
                     // Emit any pending tool events and reset the text-turn log flag so the
                     // next text chunk after a tool call is correctly recognised as a new turn.
                     var toolEvent = toolEventChannel.tryReceive().getOrNull()

@@ -51,7 +51,7 @@ class AgentAdvanced(
 ) : Agent {
     override val name: String get() = model.name
 
-    override fun run(events: List<CaseEvent>): Flow<CaseEvent> =
+    override fun run(events: List<CaseEvent>, shouldContinue: () -> Boolean): Flow<CaseEvent> =
         flow {
             val projectId = events.firstOrNull()?.projectId ?: throw IllegalArgumentException("No events provided")
             val caseId = events.firstOrNull()?.caseId ?: throw IllegalArgumentException("No events provided")
@@ -69,7 +69,7 @@ class AgentAdvanced(
             var continueLoop = true
 
             try {
-                while (continueLoop && iteration < maxIterations) {
+                while (continueLoop && iteration < maxIterations && shouldContinue()) {
                     iteration++
 
                     // 1. Generate intention

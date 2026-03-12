@@ -66,7 +66,7 @@ class CaseServiceImplSpec :
             mockk<Agent> {
                 every { metadata } returns EntityMetadata(id = agentId)
                 every { name } returns agentName
-                every { run(any<List<CaseEvent>>()) } answers {
+                every { run(any<List<CaseEvent>>(), any()) } answers {
                     val caseId = firstArg<List<CaseEvent>>().first().caseId
                     flow {
                         emit(
@@ -113,7 +113,7 @@ class CaseServiceImplSpec :
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = agentId)
                     every { name } returns agentName
-                    every { run(any<List<CaseEvent>>()) } answers {
+                    every { run(any<List<CaseEvent>>(), any()) } answers {
                         runCallCount++
                         val caseId = firstArg<List<CaseEvent>>().first().caseId
                         flow {
@@ -338,7 +338,7 @@ class CaseServiceImplSpec :
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = agentId)
                     every { name } returns agentName
-                    every { run(any<List<CaseEvent>>()) } answers {
+                    every { run(any<List<CaseEvent>>(), any()) } answers {
                         runCallCount++
                         val caseId = firstArg<List<CaseEvent>>().first().caseId
                         flow {
@@ -404,4 +404,3 @@ class CaseServiceImplSpec :
             service.getById(case.id).status shouldBe CaseStatus.IDLE
         }
     })
-
