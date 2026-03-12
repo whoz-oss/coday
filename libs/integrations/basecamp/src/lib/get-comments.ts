@@ -1,6 +1,6 @@
 import { BasecampOAuth } from './basecamp-oauth'
 
-export async function listBasecampProjects(oauth: BasecampOAuth, page?: number): Promise<string> {
+export async function getBasecampComments(oauth: BasecampOAuth, recordingId: number, page?: number): Promise<string> {
   try {
     if (!oauth.isAuthenticated()) {
       await oauth.authenticate()
@@ -9,7 +9,9 @@ export async function listBasecampProjects(oauth: BasecampOAuth, page?: number):
     const accessToken = await oauth.getAccessToken()
     const baseUrl = oauth.getApiBaseUrl()
 
-    const url = page ? `${baseUrl}/projects.json?page=${page}` : `${baseUrl}/projects.json`
+    const url = page
+      ? `${baseUrl}/recordings/${recordingId}/comments.json?page=${page}`
+      : `${baseUrl}/recordings/${recordingId}/comments.json`
 
     const response = await fetch(url, {
       headers: {
@@ -19,12 +21,11 @@ export async function listBasecampProjects(oauth: BasecampOAuth, page?: number):
     })
 
     if (!response.ok) {
-      return `Error fetching projects: ${response.status} ${response.statusText}`
+      return `Error fetching comments: ${response.status} ${response.statusText}`
     }
 
-    const projects = await response.json()
+    const comments = await response.json()
 
-    // Extract pagination info from headers
     const totalCount = response.headers.get('X-Total-Count')
     const linkHeader = response.headers.get('Link')
     let nextPage: number | null = null
@@ -36,29 +37,27 @@ export async function listBasecampProjects(oauth: BasecampOAuth, page?: number):
       }
     }
 
-    if (projects.length === 0) {
-      return 'No projects found in this Basecamp account.'
+    if (comments.length === 0) {
+      return 'No comments found for this recording.'
     }
 
-    const projectList = projects
-      .map((p: any) => {
-        const dockItems = (p.dock || [])
-          .map((d: any) => `    - ${d.title} (ID: ${d.id}, type: ${d.name})${d.enabled ? '' : ' [disabled]'}`)
-          .join('\n')
-        return `- ${p.name} (ID: ${p.id})${p.description ? `: ${p.description}` : ''}${
-          dockItems ? `\n  Tools:\n${dockItems}` : ''
-        }`
+    const commentList = comments
+      .map((c: any) => {
+        const creator = c.creator ? c.creator.name : 'Unknown'
+        const createdAt = new Date(c.created_at).toLocaleString()
+        const content = c.content ? c.content.replace(/<[^>]*>/g, '') : 'No content'
+        return `- **${creator}** (${createdAt}) [ID: ${c.id}]\n  ${content}`
       })
       .join('\n\n')
 
-    let result = `Found ${projects.length} project(s) on this page`
+    let result = `Found ${comments.length} comment(s) on this page`
     if (totalCount) {
       result += ` (Total: ${totalCount})`
     }
     if (page) {
       result += ` [Page ${page}]`
     }
-    result += `:\n${projectList}`
+    result += `:\n\n${commentList}`
 
     if (nextPage) {
       result += `\n\n📄 More results available. Use page=${nextPage} to get the next page.`
