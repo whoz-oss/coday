@@ -26,6 +26,31 @@
     </form>
   }
 
+  @if (editingNamespace(); as editing) {
+    <form class="namespace-list__create-form namespace-list__edit-form" (ngSubmit)="submitEdit()">
+      <p class="namespace-list__edit-label">
+        Editing: <strong>{{ editing.name }}</strong>
+      </p>
+      <input class="namespace-list__input" type="text" placeholder="Namespace name *" [formControl]="editNameControl" />
+      <input
+        class="namespace-list__input"
+        type="text"
+        placeholder="Description (optional)"
+        [formControl]="editDescriptionControl"
+      />
+      <div class="namespace-list__create-actions">
+        <ds-icon-button
+          icon="check"
+          variant="primary"
+          title="Save changes"
+          [disabled]="editNameControl.invalid || isEditSubmitting()"
+          (action)="submitEdit()"
+        />
+        <ds-icon-button icon="close" title="Cancel" (action)="cancelEdit()" />
+      </div>
+    </form>
+  }
+
   @if (namespaces$ | async; as namespaces) {
     @if (namespaces.length === 0) {
       <div class="namespace-list__empty">
@@ -37,6 +62,7 @@
           <agentos-namespace-item
             [namespace]="ns"
             (selected)="select($event)"
+            (editRequested)="openEditForm($event)"
             (deleteRequested)="deleteNamespace($event)"
           />
         }

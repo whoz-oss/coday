@@ -7,6 +7,13 @@
   </button>
 
   <div class="namespace-item__actions">
-    <ds-icon-button icon="delete" variant="danger" title="Delete namespace" (action)="onDelete()" />
+    @if (pendingDelete()) {
+      <span class="namespace-item__confirm-label">Delete?</span>
+      <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
+      <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
+    } @else {
+      <ds-icon-button icon="edit" title="Edit namespace" (action)="onEdit()" />
+      <ds-icon-button icon="delete" variant="danger" title="Delete namespace" (action)="onDeleteArmed()" />
+    }
   </div>
 </div>

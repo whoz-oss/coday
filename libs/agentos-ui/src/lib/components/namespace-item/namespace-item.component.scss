@@ -53,6 +53,7 @@
     flex-shrink: 0;
     display: flex;
     align-items: center;
+    gap: 0.125rem;
     opacity: 0;
     transition: opacity 0.15s ease;
   }
@@ -60,5 +61,13 @@
   &:hover &__actions,
   &:focus-within &__actions {
     opacity: 1;
+  }
+
+  &__confirm-label {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--color-error, #ff3b30);
+    margin-right: 0.25rem;
+    white-space: nowrap;
   }
 }

@@ -14,7 +14,8 @@ import { NamespaceItemComponent } from '../namespace-item/namespace-item.compone
  * Responsibilities:
  * - Load and display the list of namespaces (via NamespaceItemComponent)
  * - Inline creation form (name + optional description)
- * - Deletion with immediate list refresh
+ * - Inline edit form (pre-filled with existing values)
+ * - Deletion with immediate list refresh (confirmation handled by NamespaceItemComponent)
  */
 @Component({
   selector: 'agentos-namespace-list',
@@ -33,6 +34,8 @@ export class NamespaceListComponent {
 
   protected readonly namespaces$ = this.refresh$.pipe(switchMap(() => this.namespaceController.listAll()))
 
+  // --- Create form ---
+
   protected readonly nameControl = new FormControl<string>('', {
     nonNullable: true,
     validators: [Validators.required, Validators.minLength(1)],
@@ -42,14 +45,30 @@ export class NamespaceListComponent {
   protected readonly isCreating = signal(false)
   protected readonly isSubmitting = signal(false)
 
+  // --- Edit form ---
+
+  protected readonly editNameControl = new FormControl<string>('', {
+    nonNullable: true,
+    validators: [Validators.required, Validators.minLength(1)],
+  })
+  protected readonly editDescriptionControl = new FormControl<string>('', { nonNullable: true })
+
+  protected readonly editingNamespace = signal<Namespace | null>(null)
+  protected readonly isEditSubmitting = signal(false)
+
+  // --- Navigation ---
+
   protected select(ns: Namespace): void {
     this.router.navigate(['/agentos', ns.id, 'cases'])
   }
+
+  // --- Create ---
 
   protected openCreateForm(): void {
     this.nameControl.reset()
     this.descriptionControl.reset()
     this.isCreating.set(true)
+    this.editingNamespace.set(null)
   }
 
   protected cancelCreate(): void {
@@ -77,6 +96,45 @@ export class NamespaceListComponent {
         error: () => this.isSubmitting.set(false),
       })
   }
+
+  // --- Edit ---
+
+  protected openEditForm(ns: Namespace): void {
+    this.editNameControl.setValue(ns.name)
+    this.editDescriptionControl.setValue(ns.description ?? '')
+    this.editingNamespace.set(ns)
+    this.isCreating.set(false)
+  }
+
+  protected cancelEdit(): void {
+    this.editingNamespace.set(null)
+  }
+
+  protected submitEdit(): void {
+    const ns = this.editingNamespace()
+    if (!ns || this.editNameControl.invalid || this.isEditSubmitting()) return
+
+    const payload: Namespace = {
+      ...ns,
+      name: this.editNameControl.value.trim(),
+      description: this.editDescriptionControl.value.trim() || undefined,
+    }
+
+    this.isEditSubmitting.set(true)
+    this.namespaceController
+      .update(ns.id, payload)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.editingNamespace.set(null)
+          this.isEditSubmitting.set(false)
+          this.refresh$.next()
+        },
+        error: () => this.isEditSubmitting.set(false),
+      })
+  }
+
+  // --- Delete ---
 
   protected deleteNamespace(ns: Namespace): void {
     this.namespaceController

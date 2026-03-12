@@ -68,6 +68,20 @@
     gap: 0.5rem;
   }
 
+  &__edit-form {
+    border-color: var(--color-text-secondary, #6e6e73);
+  }
+
+  &__edit-label {
+    margin: 0 0 0.25rem;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary, #6e6e73);
+
+    strong {
+      color: var(--color-text, #1d1d1f);
+    }
+  }
+
   &__empty {
     p {
       color: var(--color-text-secondary, #6e6e73);
