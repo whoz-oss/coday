@@ -111,10 +111,12 @@ export function registerAgentRoutes(
         options.agentFolders
       )
 
-      const projectDescription = await loadOrInitProjectDescription(projectData.config.path, interactor, {
-        username,
-        bio: user.config.bio,
-      })
+      const projectDescription = await loadOrInitProjectDescription(
+        projectData.config.path,
+        interactor,
+        { username, bio: user.config.bio },
+        projectData.config.configPath
+      )
 
       const projectObj: Project = {
         ...projectDescription,

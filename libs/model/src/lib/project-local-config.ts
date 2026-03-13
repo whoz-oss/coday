@@ -10,6 +10,12 @@ export type IntegrationLocalConfig = {
 export type ProjectLocalConfig = {
   version: number
   path: string
+  /**
+   * Optional explicit path to the coday.yaml file.
+   * When set, overrides the default search within `path`.
+   * Useful for git worktrees, monorepos, or custom project layouts.
+   */
+  configPath?: string
   ai?: AiProviderConfig[]
   integration: IntegrationLocalConfig
   storage?: StorageConfig

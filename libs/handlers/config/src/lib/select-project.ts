@@ -10,7 +10,12 @@ export async function buildFirstCommandContext(
 ): Promise<CommandContext> {
   const project = services.project.selectedProject!
   const userData: UserData = services.user.getUserData(project.name)
-  const projectConfig = await loadOrInitProjectDescription(project.config.path, interactor, userData)
+  const projectConfig = await loadOrInitProjectDescription(
+    project.config.path,
+    interactor,
+    userData,
+    project.config.configPath
+  )
 
   const context = new CommandContext(
     {

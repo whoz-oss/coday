@@ -113,10 +113,10 @@ instructions: |
 
 
 mandatoryDocs:
-  - ./docs/to-rework/DEV_WORKFLOW.md
-  - ./docs/to-rework/ARCHITECTURE.md
-  - ./apps/client/docs/angular-guidelines.md
-  - ./apps/client/docs/architecture.md
-  - ./agentos/docs/architecture.md
-  - ./agentos/README.md
-  - ./agentos/agentos-sdk/README.md
+  - ../docs/to-rework/DEV_WORKFLOW.md
+  - ../docs/to-rework/ARCHITECTURE.md
+  - ../apps/client/docs/angular-guidelines.md
+  - ../apps/client/docs/architecture.md
+  - ../agentos/docs/architecture.md
+  - ../agentos/README.md
+  - ../agentos/agentos-sdk/README.md

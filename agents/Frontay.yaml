@@ -74,11 +74,11 @@ instructions: |
   - Do not use git to fake running tests
 
 mandatoryDocs:
-  - ./docs/to-rework/DEV_WORKFLOW.md
-  - ./apps/client/docs/architecture.md
-  - ./apps/client/docs/angular-guidelines.md
-  - ./apps/client/docs/nx-tasks.md
-  - ./apps/client/docs/running.md
-  - ./libs/design-system/GUIDELINES.md
-  - ./libs/agentos-ui/GUIDELINES.md
-  - ./libs/agentos-api-client/GUIDELINES.md
+  - ../docs/to-rework/DEV_WORKFLOW.md
+  - ../apps/client/docs/architecture.md
+  - ../apps/client/docs/angular-guidelines.md
+  - ../apps/client/docs/nx-tasks.md
+  - ../apps/client/docs/running.md
+  - ../libs/design-system/GUIDELINES.md
+  - ../libs/agentos-ui/GUIDELINES.md
+  - ../libs/agentos-api-client/GUIDELINES.md

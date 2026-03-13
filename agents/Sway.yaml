@@ -71,6 +71,6 @@ instructions: |
 
 
 mandatoryDocs:
-  - ./docs/to-rework/ARCHITECTURE.md
-  - ./docs/to-rework/DEV_WORKFLOW.md
-  - ./docs/to-rework/HANDLER_DESIGN.md
+  - ../docs/to-rework/ARCHITECTURE.md
+  - ../docs/to-rework/DEV_WORKFLOW.md
+  - ../docs/to-rework/HANDLER_DESIGN.md
