@@ -1,4 +1,4 @@
-package io.whozoss.agentos.orchestration
+package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole

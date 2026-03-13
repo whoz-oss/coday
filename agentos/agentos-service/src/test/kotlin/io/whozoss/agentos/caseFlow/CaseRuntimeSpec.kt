@@ -382,6 +382,51 @@ class CaseRuntimeSpec : StringSpec() {
             capturedShouldContinue!!.invoke() shouldBe false
         }
 
+        "shouldContinue lambda returns true during execution when neither interrupt nor kill has been requested" {
+            // Positive-path test: the lambda must return true while runAgent is executing
+            // and no interrupt or kill has been signalled.
+            //
+            // Note on lifecycle: processNextStep sets interruptRequested=true when it finds
+            // AgentFinishedEvent (to break the while-loop). run() resets interruptRequested
+            // to false at the START of each invocation. So the lambda returns true only
+            // while runAgent is executing BEFORE AgentFinishedEvent is pushed — that is
+            // the window we sample here.
+            val runtimeId = UUID.randomUUID()
+            var lambdaResultDuringRun: Boolean? = null
+
+            lateinit var runtime: CaseRuntime
+            runtime =
+                CaseRuntime(
+                    id = runtimeId,
+                    projectId = projectId,
+                    updateStatus = { _, _ -> },
+                    storeEvent = { it },
+                    selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    runAgent = { _, _, shouldContinue ->
+                        // Sample BEFORE pushing AgentFinishedEvent: interruptRequested is
+                        // still false at this point, so shouldContinue() must return true.
+                        lambdaResultDuringRun = shouldContinue()
+                        // Now push AgentFinishedEvent so the loop exits cleanly.
+                        runtime.pushEvents(
+                            listOf(
+                                AgentFinishedEvent(
+                                    projectId = projectId,
+                                    caseId = runtimeId,
+                                    agentId = UUID.nameUUIDFromBytes("agent".toByteArray()),
+                                    agentName = "agent",
+                                ),
+                            ),
+                        )
+                    },
+                )
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
+
+            // The lambda returned true while runAgent was executing with no interrupt/kill
+            lambdaResultDuringRun shouldBe true
+        }
+
         "runAgent is called exactly once when AgentRunningEvent is already in the event list" {
             val agentName = "gemini-flash"
             val caseId = UUID.randomUUID()
