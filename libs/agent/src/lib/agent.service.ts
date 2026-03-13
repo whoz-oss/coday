@@ -60,12 +60,17 @@ export class AgentService implements Killable, AgentServiceModel {
     const startTime = performance.now()
     this.interactor.debug('🚀 Starting agent initialization...')
 
+    // The base directory for resolving doc paths: coday.yaml's directory when configPath
+    // is set (possibly a different worktree), otherwise the local project path.
+    const selectedConfig = this.services.project.selectedProject?.config
+    const configDir = selectedConfig?.configPath ? path.dirname(selectedConfig.configPath) : this.projectPath
+
     try {
       // Load from coday.yml agents section first
       const codayYmlStart = performance.now()
       if (context.project.agents?.length) {
         for (const def of context.project.agents) {
-          this.addDefinition(def, this.projectPath)
+          this.addDefinition(def, configDir)
         }
       }
       const codayYmlTime = performance.now() - codayYmlStart
@@ -78,7 +83,7 @@ export class AgentService implements Killable, AgentServiceModel {
       const selectedProject = this.services.project.selectedProject
       if (selectedProject?.config.agents?.length) {
         for (const def of selectedProject.config.agents) {
-          this.addDefinition(def, this.projectPath)
+          this.addDefinition(def, configDir)
         }
       }
       const projectConfigTime = performance.now() - projectConfigStart
@@ -337,6 +342,13 @@ export class AgentService implements Killable, AgentServiceModel {
     const scanTime = performance.now() - scanStart
     this.interactor.debug(`  📂 Scanned agent directories: ${scanTime.toFixed(2)}ms (found ${agentFiles.length} files)`)
 
+    // The root for doc resolution is the coday.yaml directory (or projectPath as fallback)
+    const configDir = (() => {
+      const cfg = this.services.project.selectedProject?.config
+      if (cfg?.configPath) return path.dirname(cfg.configPath)
+      return this.projectPath
+    })()
+
     const parseStart = performance.now()
     await Promise.all(
       agentFiles.map(async (agentFilePath) => {
@@ -344,12 +356,13 @@ export class AgentService implements Killable, AgentServiceModel {
           const content = await fs.readFile(agentFilePath, 'utf-8')
           const data = yaml.parse(content)
 
-          // Determine the base path for document resolution
+          // Determine the base path for document resolution.
+          // Agent files inside the coday.yaml directory tree use configDir as root
+          // (so relative doc paths like ./doc/... resolve correctly).
+          // Agent files outside (e.g. ~/.coday/.../agents/) use their own directory.
           const agentDirPath = path.dirname(agentFilePath)
-          const isInProject = agentDirPath.startsWith(this.projectPath)
-
-          // Add definition with the appropriate base path
-          const basePath = isInProject ? this.projectPath : agentDirPath
+          const isColocated = agentDirPath.startsWith(configDir)
+          const basePath = isColocated ? configDir : agentDirPath
           this.addDefinition(data, basePath)
         } catch (e) {
           console.error(e)
