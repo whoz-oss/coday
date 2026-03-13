@@ -18,6 +18,8 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.reactive.asFlow
 import mu.KLogging
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
@@ -37,13 +39,18 @@ import java.util.UUID
  * 5. Repeat until Answer tool is called
  *
  * Each step emits events for observability and potential resumption.
+ *
+ * All LLM calls use the streaming API (`stream().content()`) collected
+ * to a single string via [streamToText]. This makes every LLM step
+ * cancellable: coroutine cancellation propagates into the Reactor
+ * subscription and aborts the in-flight HTTP request, so neither
+ * interrupt nor kill leave orphaned API calls consuming quota.
  */
 class AgentAdvanced(
     override val metadata: EntityMetadata = EntityMetadata(),
     private val model: AiModel,
     private val chatClient: ChatClient,
     private val tools: List<StandardTool<*>>,
-    private val agentService: AgentService,
     private val maxIterations: Int = 20,
 ) : Agent {
     override val name: String get() = model.name
@@ -73,9 +80,9 @@ class AgentAdvanced(
                     iteration++
 
                     // 1. Generate intention
-                    // Guard before each blocking LLM call so an interrupt/kill that
-                    // arrives mid-iteration is honoured without waiting for the full
-                    // iteration to complete.
+                    // Each guard before a network call lets an interrupt/kill that arrives
+                    // mid-iteration be honoured at the earliest possible point, rather than
+                    // waiting for all remaining LLM round-trips to complete.
                     if (!shouldContinue()) break
                     emit(ThinkingEvent(projectId = projectId, caseId = caseId))
                     val intention = generateIntention(events, projectId, caseId)
@@ -136,9 +143,35 @@ class AgentAdvanced(
         }
 
     /**
+     * Collect a streaming LLM response into a plain String.
+     *
+     * Using `stream()` instead of `call()` means:
+     * - The coroutine suspends on each chunk rather than blocking a thread.
+     * - Coroutine cancellation propagates into the Reactor subscription,
+     *   aborting the underlying HTTP request immediately.
+     *
+     * Replacing `.call().content() ?: fallback` with `streamToText(prompt, fallback)`
+     * is a drop-in substitution — the returned String is identical.
+     */
+    private suspend fun streamToText(
+        prompt: Prompt,
+        fallback: String = "",
+    ): String {
+        val chunks =
+            chatClient
+                .prompt(prompt)
+                .stream()
+                .content()
+                .asFlow()
+                .toList()
+        val result = chunks.joinToString("")
+        return result.ifEmpty { fallback }
+    }
+
+    /**
      * Generate the intention for the next step based on conversation history.
      */
-    private fun generateIntention(
+    private suspend fun generateIntention(
         events: List<CaseEvent>,
         projectId: UUID,
         caseId: UUID,
@@ -180,10 +213,10 @@ Based on all previous steps, make a concise explanation of what is the next logi
             }
 
         val intention =
-            chatClient
-                .prompt(Prompt(messages + UserMessage(intentionPrompt)))
-                .call()
-                .content() ?: "Unable to generate intention"
+            streamToText(
+                Prompt(messages + UserMessage(intentionPrompt)),
+                fallback = "Unable to generate intention",
+            )
 
         return IntentionGeneratedEvent(
             projectId = projectId,
@@ -196,7 +229,7 @@ Based on all previous steps, make a concise explanation of what is the next logi
     /**
      * Select the appropriate tool based on the intention.
      */
-    private fun selectTool(
+    private suspend fun selectTool(
         events: List<CaseEvent>,
         intentionEvent: IntentionGeneratedEvent,
         projectId: UUID,
@@ -215,11 +248,10 @@ Respond with just the tool name.
             """.trimIndent()
 
         val toolName =
-            chatClient
-                .prompt(Prompt(messages + UserMessage(intentionEvent.intention) + UserMessage(selectionPrompt)))
-                .call()
-                .content()
-                ?.trim() ?: "Answer"
+            streamToText(
+                Prompt(messages + UserMessage(intentionEvent.intention) + UserMessage(selectionPrompt)),
+                fallback = "Answer",
+            ).trim()
 
         return ToolSelectedEvent(
             projectId = projectId,
@@ -232,7 +264,7 @@ Respond with just the tool name.
     /**
      * Generate parameters for the selected tool.
      */
-    private fun generateParameters(
+    private suspend fun generateParameters(
         events: List<CaseEvent>,
         intentionEvent: IntentionGeneratedEvent,
         toolSelectedEvent: ToolSelectedEvent,
@@ -257,10 +289,10 @@ Generate the JSON parameters for this tool call.
             """.trimIndent()
 
         val parameters =
-            chatClient
-                .prompt(Prompt(messages + UserMessage(intentionEvent.intention) + UserMessage(parametersPrompt)))
-                .call()
-                .content() ?: "{}"
+            streamToText(
+                Prompt(messages + UserMessage(intentionEvent.intention) + UserMessage(parametersPrompt)),
+                fallback = "{}",
+            )
 
         return ToolRequestEvent(
             projectId = projectId,
