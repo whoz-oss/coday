@@ -38,9 +38,9 @@ instructions: |
   - Do not attempt to implement anything — your job ends at finding and reporting
 
 mandatoryDocs:
-  - ./apps/client/docs/architecture.md
-  - ./agentos/docs/architecture.md
-  - ./libs/agentos-api-client/GUIDELINES.md
-  - ./libs/agentos-ui/GUIDELINES.md
-  - ./libs/design-system/GUIDELINES.md
-  - ./product/03-glossary.md
+  - ../apps/client/docs/architecture.md
+  - ../agentos/docs/architecture.md
+  - ../libs/agentos-api-client/GUIDELINES.md
+  - ../libs/agentos-ui/GUIDELINES.md
+  - ../libs/design-system/GUIDELINES.md
+  - ../product/03-glossary.md

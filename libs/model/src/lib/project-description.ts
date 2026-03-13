@@ -1,5 +1,4 @@
 import { Scripts } from './scripts'
-import { AgentDefinition } from './agent-definition'
 import { WithDocs } from './with-docs'
 import { AiProviderConfig } from './ai-provider-config'
 import { PromptChain } from './prompt-chain'
@@ -29,13 +28,6 @@ export interface ProjectDescription extends WithDocs {
    * Custom scripts exposed as tools to the LLM
    */
   scripts?: Scripts
-
-  /**
-   * Agent definitions for the project.
-   * Can be a single agent or an array of agents.
-   * These are loaded first, before any agents defined in ~/.coday/[project]/agents/
-   */
-  agents?: AgentDefinition[]
 
   /**
    * Additional folders where agent definitions can be found.

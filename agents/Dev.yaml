@@ -64,10 +64,10 @@ instructions: |
 
 
 mandatoryDocs:
-  - ./docs/to-rework/DEV_WORKFLOW.md
-  - ./agentos/README.md
-  - ./agentos/agentos-sdk/README.md
-  - ./agentos/docs/architecture.md
-  - ./agentos/docs/entity-framework.md
-  - ./agentos/docs/plugin-system.md
-  - ./agentos/docs/openapid-and-client.md
+  - ../docs/to-rework/DEV_WORKFLOW.md
+  - ../agentos/README.md
+  - ../agentos/agentos-sdk/README.md
+  - ../agentos/docs/architecture.md
+  - ../agentos/docs/entity-framework.md
+  - ../agentos/docs/plugin-system.md
+  - ../agentos/docs/openapid-and-client.md

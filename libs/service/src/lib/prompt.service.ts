@@ -49,12 +49,17 @@ export class PromptService {
         throw new Error('Project path not configured, cannot access project prompts')
       }
 
-      // Always resolve prompts/ folder relative to the local project path
-      const codayFiles = await findFilesByName({ text: 'coday.yaml', root: projectPath })
-      if (codayFiles.length === 0) {
-        throw new Error(`coday.yaml not found in project path: ${projectPath}`)
+      // Resolve coday.yaml directory: use explicit configPath if set, otherwise search
+      let codayDir: string
+      if (projectConfig?.configPath) {
+        codayDir = path.dirname(projectConfig.configPath)
+      } else {
+        const codayFiles = await findFilesByName({ text: 'coday.yaml', root: projectPath })
+        if (codayFiles.length === 0) {
+          throw new Error(`coday.yaml not found in project path: ${projectPath}`)
+        }
+        codayDir = path.join(projectPath, path.dirname(codayFiles[0]!))
       }
-      const codayDir = path.join(projectPath, path.dirname(codayFiles[0]!))
       promptsDir = path.join(codayDir, 'prompts')
     }
 

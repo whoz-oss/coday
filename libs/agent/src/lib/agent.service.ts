@@ -49,9 +49,8 @@ export class AgentService implements Killable, AgentServiceModel {
 
   /**
    * Initialize agent definitions from all sources if not already initialized:
-   * - coday.yml agents section
-   * - project local configuration agents
-   * - ~/.coday/[project]/agents/ folder
+   * - YAML files in agents/ folders
+   * - virtual agents generated from available AI models
    */
   initialize: (context: CommandContext) => Promise<void> = async (context) => {
     // Already initialized if we have any definitions
@@ -60,37 +59,8 @@ export class AgentService implements Killable, AgentServiceModel {
     const startTime = performance.now()
     this.interactor.debug('🚀 Starting agent initialization...')
 
-    // The base directory for resolving doc paths is always the local project path.
-    // configPath only determines WHICH config file to read, not WHERE referenced files live.
-    const configDir = this.projectPath
-
     try {
-      // Load from coday.yml agents section first
-      const codayYmlStart = performance.now()
-      if (context.project.agents?.length) {
-        for (const def of context.project.agents) {
-          this.addDefinition(def, configDir)
-        }
-      }
-      const codayYmlTime = performance.now() - codayYmlStart
-      this.interactor.debug(
-        `📋 Loaded agent definitions from coday.yml: ${codayYmlTime.toFixed(2)}ms (${context.project.agents?.length ?? 0} agents)`
-      )
-
-      // Load from project local configuration
-      const projectConfigStart = performance.now()
-      const selectedProject = this.services.project.selectedProject
-      if (selectedProject?.config.agents?.length) {
-        for (const def of selectedProject.config.agents) {
-          this.addDefinition(def, configDir)
-        }
-      }
-      const projectConfigTime = performance.now() - projectConfigStart
-      this.interactor.debug(
-        `⚙️ Loaded agent definitions from project local config: ${projectConfigTime.toFixed(2)}ms (${selectedProject?.config.agents?.length ?? 0} agents)`
-      )
-
-      // Then load from files
+      // Load from files
       const filesStart = performance.now()
       await this.loadFromFiles(context)
       const filesTime = performance.now() - filesStart
@@ -297,11 +267,16 @@ export class AgentService implements Killable, AgentServiceModel {
     const selectedConfig = this.services.project.selectedProject?.config
     const projectPath = selectedConfig?.path
     if (projectPath) {
-      // Always resolve agents/ folder relative to the local project path
-      const codayFiles = await findFilesByName({ text: 'coday.yaml', root: projectPath })
-      if (codayFiles.length > 0) {
-        const codayDir = path.join(projectPath, path.dirname(codayFiles[0]!))
-        agentsPaths.push(path.join(codayDir, 'agents'))
+      // When configPath is set, use its sibling agents/ folder.
+      // Otherwise, search for coday.yaml within projectPath.
+      if (selectedConfig?.configPath) {
+        agentsPaths.push(path.join(path.dirname(selectedConfig.configPath), 'agents'))
+      } else {
+        const codayFiles = await findFilesByName({ text: 'coday.yaml', root: projectPath })
+        if (codayFiles.length > 0) {
+          const codayDir = path.join(projectPath, path.dirname(codayFiles[0]!))
+          agentsPaths.push(path.join(codayDir, 'agents'))
+        }
       }
       if (context.project.agentFolders?.length) {
         agentsPaths.push(...context.project.agentFolders)
@@ -334,25 +309,16 @@ export class AgentService implements Killable, AgentServiceModel {
     const scanTime = performance.now() - scanStart
     this.interactor.debug(`  📂 Scanned agent directories: ${scanTime.toFixed(2)}ms (found ${agentFiles.length} files)`)
 
-    // The root for doc resolution is always the local project path.
-    // configPath only determines WHICH config file to read, not WHERE referenced files live.
-    const configDir = this.projectPath
-
     const parseStart = performance.now()
     await Promise.all(
       agentFiles.map(async (agentFilePath) => {
         try {
           const content = await fs.readFile(agentFilePath, 'utf-8')
           const data = yaml.parse(content)
-
-          // Determine the base path for document resolution.
-          // Agent files inside the coday.yaml directory tree use configDir as root
-          // (so relative doc paths like ./doc/... resolve correctly).
-          // Agent files outside (e.g. ~/.coday/.../agents/) use their own directory.
-          const agentDirPath = path.dirname(agentFilePath)
-          const isColocated = agentDirPath.startsWith(configDir)
-          const basePath = isColocated ? configDir : agentDirPath
+          // Doc paths in agent files always resolve relative to the agent file's own directory
+          const basePath = path.dirname(agentFilePath)
           this.addDefinition(data, basePath)
+          this.interactor.debug(`  📄 Loaded agent '${data.name}' from ${agentFilePath}`)
         } catch (e) {
           console.error(e)
         }

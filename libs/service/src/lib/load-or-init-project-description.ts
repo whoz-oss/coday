@@ -43,17 +43,17 @@ export const loadOrInitProjectDescription = async (
     }
   }
 
-  // The base directory for resolving relative paths in coday.yaml (docs, agents, etc.)
-  // Always use projectPath: configPath only determines WHICH file to read,
-  // not WHERE referenced files live.
-  const configDir = projectPath
+  // The base directory for resolving relative paths in coday.yaml (docs, etc.)
+  // Uses the directory containing the config file: docs in coday.yaml are authored
+  // relative to the yaml file's location, not the project working directory.
+  const configDir = absoluteProjectDescriptionPath ? path.dirname(absoluteProjectDescriptionPath) : projectPath
 
   try {
     if (absoluteProjectDescriptionPath && existsSync(absoluteProjectDescriptionPath)) {
       const fileContent = readFileSync(absoluteProjectDescriptionPath, 'utf-8')
       projectDescription = yaml.parse(fileContent) as ProjectDescription
       console.log(
-        `[LOAD_PROJECT_DESC] Loaded ${CONFIG_FILENAME_YAML}: ${projectDescription.agents?.length || 0} agents, ${projectDescription.description?.length || 0} chars desc`
+        `[LOAD_PROJECT_DESC] Loaded ${CONFIG_FILENAME_YAML}: ${projectDescription.description?.length || 0} chars desc`
       )
       interactor.displayText?.(`Project configuration used: ${absoluteProjectDescriptionPath}`)
     }

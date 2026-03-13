@@ -57,6 +57,6 @@ instructions: |
   - Do not kill sessions unless explicitly asked.
 
 mandatoryDocs:
-  - ./agentos/docs/running.md
-  - ./agentos/docs/nx-tasks.md
-  - ./apps/client/docs/nx-tasks.md
+  - ../agentos/docs/running.md
+  - ../agentos/docs/nx-tasks.md
+  - ../apps/client/docs/nx-tasks.md
