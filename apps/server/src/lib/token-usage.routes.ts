@@ -8,7 +8,7 @@ interface AgentUsageEntry {
   username: string
   agent: string
   model: string
-  cost: number
+  cost?: number
   providerName?: string
   promptTokens?: number
   completionTokens?: number
@@ -16,14 +16,24 @@ interface AgentUsageEntry {
 }
 
 interface ModelAggregate {
-  modelName: string
+  agentName: string
   providerName: string
   modelId: string
-  promptTokens: number
-  completionTokens: number
-  totalTokens: number
+  promptTokens: number | null
+  completionTokens: number | null
+  totalTokens: number | null
   callCount: number
   cost: number
+  tokenDataPartial: boolean
+}
+
+/**
+ * Add a nullable token value into an accumulator, tracking whether any value was missing.
+ * Returns the new accumulated value (null if all contributions so far are null).
+ */
+function addTokens(acc: number | null, incoming: number | undefined): number | null {
+  if (incoming === undefined) return acc // no contribution: keep existing acc (null or sum)
+  return (acc ?? 0) + incoming
 }
 
 interface SeriesEntry extends ModelAggregate {
@@ -88,40 +98,52 @@ export function registerTokenUsageRoutes(
         let agg = map.get(key)
         if (!agg) {
           agg = {
-            modelName: e.agent,
+            agentName: e.agent,
             providerName: provider,
             modelId: e.model,
-            promptTokens: 0,
-            completionTokens: 0,
-            totalTokens: 0,
+            promptTokens: null,
+            completionTokens: null,
+            totalTokens: null,
             callCount: 0,
             cost: 0,
+            tokenDataPartial: false,
           }
           map.set(key, agg)
         }
-        agg.promptTokens += e.promptTokens ?? 0
-        agg.completionTokens += e.completionTokens ?? 0
-        agg.totalTokens += e.totalTokens ?? 0
+        agg.promptTokens = addTokens(agg.promptTokens, e.promptTokens)
+        agg.completionTokens = addTokens(agg.completionTokens, e.completionTokens)
+        agg.totalTokens = addTokens(agg.totalTokens, e.totalTokens)
         agg.callCount += 1
         agg.cost += e.cost ?? 0
+        if (e.promptTokens === undefined || e.completionTokens === undefined || e.totalTokens === undefined) {
+          agg.tokenDataPartial = true
+        }
       }
 
       const models = Array.from(map.values())
+      const tokenDataPartial = models.some((m) => m.tokenDataPartial)
+
+      const sumOrNull = (vals: (number | null)[]): number | null => {
+        const known = vals.filter((v): v is number => v !== null)
+        return known.length > 0 ? known.reduce((s, v) => s + v, 0) : null
+      }
 
       const total = {
-        modelName: 'total',
+        agentName: 'total',
         providerName: 'all',
         modelId: 'all',
-        promptTokens: models.reduce((s, m) => s + m.promptTokens, 0),
-        completionTokens: models.reduce((s, m) => s + m.completionTokens, 0),
-        totalTokens: models.reduce((s, m) => s + m.totalTokens, 0),
+        promptTokens: sumOrNull(models.map((m) => m.promptTokens)),
+        completionTokens: sumOrNull(models.map((m) => m.completionTokens)),
+        totalTokens: sumOrNull(models.map((m) => m.totalTokens)),
         callCount: models.reduce((s, m) => s + m.callCount, 0),
         cost: models.reduce((s, m) => s + m.cost, 0),
+        tokenDataPartial,
       }
 
       res.status(200).json({
         from: from.toISOString(),
         to: to.toISOString(),
+        tokenDataPartial,
         models,
         total,
       })
@@ -162,31 +184,42 @@ export function registerTokenUsageRoutes(
         if (!row) {
           row = {
             date,
-            modelName: e.agent,
+            agentName: e.agent,
             providerName: provider,
             modelId: e.model,
-            promptTokens: 0,
-            completionTokens: 0,
-            totalTokens: 0,
+            promptTokens: null,
+            completionTokens: null,
+            totalTokens: null,
             callCount: 0,
             cost: 0,
+            tokenDataPartial: false,
           }
           map.set(key, row)
         }
-        row.promptTokens += e.promptTokens ?? 0
-        row.completionTokens += e.completionTokens ?? 0
-        row.totalTokens += e.totalTokens ?? 0
+        row.promptTokens = addTokens(row.promptTokens, e.promptTokens)
+        row.completionTokens = addTokens(row.completionTokens, e.completionTokens)
+        row.totalTokens = addTokens(row.totalTokens, e.totalTokens)
         row.callCount += 1
         row.cost += e.cost ?? 0
+        if (e.promptTokens === undefined || e.completionTokens === undefined || e.totalTokens === undefined) {
+          row.tokenDataPartial = true
+        }
       }
 
-      // Sort by date ascending, then modelName
+      // Sort by date ascending, then agentName
       const series = Array.from(map.values()).sort((a, b) => {
         const d = a.date.localeCompare(b.date)
-        return d !== 0 ? d : a.modelName.localeCompare(b.modelName)
+        return d !== 0 ? d : a.agentName.localeCompare(b.agentName)
       })
 
-      res.status(200).json(series)
+      const tokenDataPartial = series.some((s) => s.tokenDataPartial)
+
+      res.status(200).json({
+        from: from.toISOString(),
+        to: to.toISOString(),
+        tokenDataPartial,
+        points: series,
+      })
     } catch (error) {
       console.error('Error reading token usage series:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'

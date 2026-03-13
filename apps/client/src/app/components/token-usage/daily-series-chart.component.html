@@ -1,0 +1,121 @@
+@if (safePoints().length === 0) {
+  <div class="muted">No daily data points for this period.</div>
+} @else {
+  <div class="chart">
+    <svg
+      class="chart__svg"
+      [attr.viewBox]="viewBox"
+      preserveAspectRatio="none"
+      role="img"
+      aria-label="Daily token and cost usage"
+    >
+      <!-- Plot grid -->
+      <line x1="0" [attr.y1]="yTop" [attr.x2]="720" [attr.y2]="yTop" class="chart__grid" />
+      <line x1="0" [attr.y1]="yBase" [attr.x2]="720" [attr.y2]="yBase" class="chart__grid" />
+
+      <!-- Bars -->
+      @for (b of bars(); track b.date) {
+        <!-- Hover target per day (covers both bars) -->
+        <g
+          class="chart__day"
+          [attr.transform]="'translate(' + b.xGroup + ',0)'"
+          (mouseenter)="showTooltip($event, b.point)"
+          (mousemove)="showTooltip($event, b.point)"
+          (mouseleave)="hideTooltip()"
+        >
+          <rect class="chart__hover" x="0" [attr.y]="yTop" [attr.width]="b.groupW" [attr.height]="yBase - yTop" />
+
+          <!-- Cost bar -->
+          <rect
+            class="chart__bar chart__bar--cost"
+            x="0"
+            [attr.y]="yBase - b.costH"
+            [attr.width]="b.w"
+            [attr.height]="b.costH"
+          />
+
+          <!-- Tokens bar: either stacked prompt/completion, or dashed stub when missing -->
+          @if (b.tokensStubH !== null) {
+            <rect
+              class="chart__bar chart__bar--tokens-missing"
+              [attr.x]="b.w + 6"
+              [attr.y]="yBase - b.tokensStubH"
+              [attr.width]="b.w"
+              [attr.height]="b.tokensStubH"
+            />
+          } @else {
+            <!-- prompt (bottom of stack) -->
+            <rect
+              class="chart__bar chart__bar--prompt"
+              [attr.x]="b.w + 6"
+              [attr.y]="yBase - (b.promptH ?? 0)"
+              [attr.width]="b.w"
+              [attr.height]="b.promptH ?? 0"
+            />
+
+            <!-- completion (top of stack) -->
+            <rect
+              class="chart__bar chart__bar--completion"
+              [attr.x]="b.w + 6"
+              [attr.y]="yBase - ((b.promptH ?? 0) + (b.completionH ?? 0))"
+              [attr.width]="b.w"
+              [attr.height]="b.completionH ?? 0"
+            />
+          }
+        </g>
+      }
+
+      <!-- X axis labels -->
+      @for (l of axisLabels(); track l.x) {
+        <text class="chart__axis-label" [attr.x]="l.x" [attr.y]="yAxis" text-anchor="middle">{{ l.label }}</text>
+      }
+    </svg>
+
+    @if (tooltip().visible && tooltip().data) {
+      <div class="chart__tooltip" [style.left.px]="tooltip().x + 12" [style.top.px]="tooltip().y + 12">
+        <div class="chart__tooltip-title">{{ tooltip().data!.date }}</div>
+
+        <div class="chart__tooltip-grid">
+          @for (line of tooltipLines(); track line.label) {
+            <div class="chart__tooltip-label">{{ line.label }}</div>
+            <div class="chart__tooltip-value">{{ line.value }}</div>
+          }
+        </div>
+      </div>
+    }
+
+    <div class="chart__legend">
+      <div class="chart__legend-item">
+        <span class="chart__legend-swatch chart__legend-swatch--cost" aria-hidden="true"></span>
+        <span class="chart__legend-label">Cost (per day)</span>
+        <span class="chart__legend-value">max {{ maxCostLabel() }}</span>
+      </div>
+
+      <div class="chart__legend-item">
+        <span class="chart__legend-swatch chart__legend-swatch--prompt" aria-hidden="true"></span>
+        <span class="chart__legend-label">Prompt tokens</span>
+      </div>
+
+      <div class="chart__legend-item">
+        <span class="chart__legend-swatch chart__legend-swatch--completion" aria-hidden="true"></span>
+        <span class="chart__legend-label">Completion tokens</span>
+      </div>
+
+      <div class="chart__legend-item">
+        <span class="chart__legend-swatch chart__legend-swatch--tokens-missing" aria-hidden="true"></span>
+        <span class="chart__legend-label">Tokens missing</span>
+      </div>
+
+      <div class="chart__legend-item">
+        <span class="chart__legend-label">Tokens scale</span>
+        <span class="chart__legend-value">max {{ maxTokensLabel() }}</span>
+      </div>
+
+      @if (tokenCoverageLabel()) {
+        <div class="chart__legend-item">
+          <span class="chart__legend-label">{{ tokenCoverageLabel() }}</span>
+        </div>
+      }
+    </div>
+  </div>
+}
