@@ -60,10 +60,9 @@ export class AgentService implements Killable, AgentServiceModel {
     const startTime = performance.now()
     this.interactor.debug('🚀 Starting agent initialization...')
 
-    // The base directory for resolving doc paths: coday.yaml's directory when configPath
-    // is set (possibly a different worktree), otherwise the local project path.
-    const selectedConfig = this.services.project.selectedProject?.config
-    const configDir = selectedConfig?.configPath ? path.dirname(selectedConfig.configPath) : this.projectPath
+    // The base directory for resolving doc paths is always the local project path.
+    // configPath only determines WHICH config file to read, not WHERE referenced files live.
+    const configDir = this.projectPath
 
     try {
       // Load from coday.yml agents section first
@@ -298,17 +297,10 @@ export class AgentService implements Killable, AgentServiceModel {
     const selectedConfig = this.services.project.selectedProject?.config
     const projectPath = selectedConfig?.path
     if (projectPath) {
-      // Resolve coday.yaml directory: use explicit configPath if set, otherwise search
-      let codayDir: string | undefined
-      if (selectedConfig?.configPath) {
-        codayDir = path.dirname(selectedConfig.configPath)
-      } else {
-        const codayFiles = await findFilesByName({ text: 'coday.yaml', root: projectPath })
-        if (codayFiles.length > 0) {
-          codayDir = path.join(projectPath, path.dirname(codayFiles[0]!))
-        }
-      }
-      if (codayDir) {
+      // Always resolve agents/ folder relative to the local project path
+      const codayFiles = await findFilesByName({ text: 'coday.yaml', root: projectPath })
+      if (codayFiles.length > 0) {
+        const codayDir = path.join(projectPath, path.dirname(codayFiles[0]!))
         agentsPaths.push(path.join(codayDir, 'agents'))
       }
       if (context.project.agentFolders?.length) {
@@ -342,12 +334,9 @@ export class AgentService implements Killable, AgentServiceModel {
     const scanTime = performance.now() - scanStart
     this.interactor.debug(`  📂 Scanned agent directories: ${scanTime.toFixed(2)}ms (found ${agentFiles.length} files)`)
 
-    // The root for doc resolution is the coday.yaml directory (or projectPath as fallback)
-    const configDir = (() => {
-      const cfg = this.services.project.selectedProject?.config
-      if (cfg?.configPath) return path.dirname(cfg.configPath)
-      return this.projectPath
-    })()
+    // The root for doc resolution is always the local project path.
+    // configPath only determines WHICH config file to read, not WHERE referenced files live.
+    const configDir = this.projectPath
 
     const parseStart = performance.now()
     await Promise.all(

@@ -61,17 +61,12 @@ export class AgentCrudService {
         throw new Error('Project path not configured, cannot access colocated agents')
       }
 
-      // Resolve coday.yaml directory: use explicit configPath if set, otherwise search
-      let codayDir: string
-      if (projectConfig?.configPath) {
-        codayDir = path.dirname(projectConfig.configPath)
-      } else {
-        const codayFiles = await findFilesByName({ text: 'coday.yaml', root: projectPath })
-        if (codayFiles.length === 0) {
-          throw new Error(`coday.yaml not found in project path: ${projectPath}`)
-        }
-        codayDir = path.join(projectPath, path.dirname(codayFiles[0]!))
+      // Always resolve agents/ folder relative to the local project path
+      const codayFiles = await findFilesByName({ text: 'coday.yaml', root: projectPath })
+      if (codayFiles.length === 0) {
+        throw new Error(`coday.yaml not found in project path: ${projectPath}`)
       }
+      const codayDir = path.join(projectPath, path.dirname(codayFiles[0]!))
       agentsDir = path.join(codayDir, 'agents')
     }
 

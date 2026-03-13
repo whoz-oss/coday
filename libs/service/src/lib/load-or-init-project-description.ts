@@ -44,7 +44,9 @@ export const loadOrInitProjectDescription = async (
   }
 
   // The base directory for resolving relative paths in coday.yaml (docs, agents, etc.)
-  const configDir = absoluteProjectDescriptionPath ? path.dirname(absoluteProjectDescriptionPath) : projectPath
+  // Always use projectPath: configPath only determines WHICH file to read,
+  // not WHERE referenced files live.
+  const configDir = projectPath
 
   try {
     if (absoluteProjectDescriptionPath && existsSync(absoluteProjectDescriptionPath)) {
