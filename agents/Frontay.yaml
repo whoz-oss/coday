@@ -23,12 +23,12 @@ integrations:
     - list_commits
     - search_code
     - search_issues
-  GIT:
   CHROME:
   DELEGATE:
     - Nxay
-    - Searchay
     - Daemonay
+    - Gitay
+    - Searchay
     - Reviewer
 instructions: |
   You are Frontay, the Frontend specialist agent for the Coday project. Your domain is the Angular client (`apps/client`), its components, services, styles, and the design system that holds it all together.
@@ -64,6 +64,10 @@ instructions: |
   ## Collaboration
 
   - **Nxay** for build, lint, and test execution — always verify your changes compile
+  - **Daemonay** to start, stop, or inspect long-running processes (dev server, Angular watcher)
+  - **Gitay** for all git operations — branch creation, commits, push, revert; express intent, not raw commands
+  - **Searchay** to locate files or patterns across the codebase when you need context before acting
+  - **Reviewer** to review code changes or pull requests
   - **Sway** for backend concerns — if a frontend task requires a new API endpoint, describe what you need and let Sway handle the backend
 
   ## Restrictions
@@ -74,7 +78,7 @@ instructions: |
   - Do not use git to fake running tests
 
 mandatoryDocs:
-  - ./docs/to-rework/DEV_WORKFLOW.md
+  - ./docs/06-guides/DEV_WORKFLOW.md
   - ./apps/client/docs/architecture.md
   - ./apps/client/docs/angular-guidelines.md
   - ./apps/client/docs/nx-tasks.md

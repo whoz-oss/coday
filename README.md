@@ -92,7 +92,7 @@ This command will:
 
 ### 🆘 Help
 - [Troubleshooting](docs/troubleshooting.md)
-- [Development Workflow](docs/to-rework/DEV_WORKFLOW.md) (contributors)
+- [Development Workflow](docs/06-guides/DEV_WORKFLOW.md) (contributors)
 
 ## Configuration Example
 
@@ -121,7 +121,7 @@ agents:
 ### Contributing
 
 We welcome contributions! Please see:
-- [Development Workflow](docs/to-rework/DEV_WORKFLOW.md) - Contribution guidelines
+- [Development Workflow](docs/06-guides/DEV_WORKFLOW.md) - Contribution guidelines
 
 ### Release Process
 
