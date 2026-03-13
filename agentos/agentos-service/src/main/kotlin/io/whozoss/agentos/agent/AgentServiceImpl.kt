@@ -108,25 +108,20 @@ class AgentServiceImpl(
     private fun buildInstructions(
         model: AiModel,
         context: AgentExecutionContext?,
-    ): String? {
-        if (context == null) return model.instructions
+    ): String? =
+        context?.let {
+            val namespace = namespaceService.findById(it.namespaceId)
+            val namespaceBlock =
+                buildString {
+                    appendLine()
+                    appendLine("## Context: ${namespace?.name ?: it.namespaceId}")
+                    if (!namespace?.description.isNullOrBlank()) {
+                        appendLine(namespace!!.description!!)
+                    }
+                }.trimEnd()
 
-        val namespace = namespaceService.findById(context.namespaceId)
-        val namespaceBlock =
-            buildString {
-                appendLine()
-                appendLine("## Context: ${namespace?.name ?: context.namespaceId}")
-                if (!namespace?.description.isNullOrBlank()) {
-                    appendLine(namespace!!.description!!)
-                }
-            }.trimEnd()
-
-        return if (model.instructions.isNullOrBlank()) {
-            namespaceBlock
-        } else {
-            "${model.instructions}\n$namespaceBlock"
-        }
-    }
+            if (model.instructions.isNullOrBlank()) namespaceBlock else "${model.instructions}\n$namespaceBlock"
+        } ?: model.instructions
 
     companion object : KLogging()
 }
