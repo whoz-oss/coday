@@ -1,0 +1,44 @@
+description: |
+  # TODO: Replace this with a brief description of who you are and what you do.
+  # Example: "Sarah Chen is Head of Product at Acme Corp, leading a team of 12 PMs across 3 product lines."
+  Your name and role here.
+
+ai:
+  - name: anthropic
+    # Add your Anthropic API key via environment variable ANTHROPIC_API_KEY
+    # or configure it in Coday's settings
+    models:
+      - name: claude-opus-4-6
+        alias: opus
+        contextWindow: 200000
+        price:
+          inputMTokens: 5
+          cacheWrite: 6.25
+          cacheRead: 0.5
+          outputMTokens: 25
+      - name: claude-haiku-4-5
+        alias: haiku
+        contextWindow: 200000
+        price:
+          inputMTokens: 0.8
+          cacheWrite: 1
+          cacheRead: 0.08
+          outputMTokens: 4
+
+  # Optional: OpenAI models
+  # - name: openai
+  #   models:
+  #     - name: gpt-5-mini-2025-08-07
+  #       alias: gpt-mini
+  #       contextWindow: 400000
+
+# Optional: Add MCP servers for additional capabilities
+# mcp:
+#   servers:
+#     - id: mcp_fetch
+#       name: FETCH
+#       enabled: true
+#       args:
+#         - mcp-server-fetch
+#         - --ignore-robots-txt
+#       command: uvx

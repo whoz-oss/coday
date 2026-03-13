@@ -7,7 +7,7 @@
   "scripts": {
     "_bump": "1",
     "client": "nx run client:serve",
-    "coday": "npx --yes @whoz-oss/coday-web",
+    "coday": "pnpm dlx @whoz-oss/coday-web",
     "desktop": "nx run desktop:serve",
     "desktop-twin": "nx run desktop-twin:serve",
     "husky-setup": "husky",

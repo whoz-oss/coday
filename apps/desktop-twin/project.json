@@ -72,6 +72,8 @@
           "nx run desktop-twin:build",
           "nx run desktop-twin:build-preload",
           "cp apps/desktop-twin/src/loader.html apps/desktop-twin/dist/loader.html",
+          "cp apps/desktop-twin/src/setup.html apps/desktop-twin/dist/setup.html",
+          "cp apps/desktop-twin/src/preferences.html apps/desktop-twin/dist/preferences.html",
           "test -f apps/desktop-twin/assets/icon.png && cp apps/desktop-twin/assets/icon.png apps/desktop-twin/dist/icon.png || echo 'No icon.png found, skipping'",
           "echo Desktop Twin app built successfully"
         ],

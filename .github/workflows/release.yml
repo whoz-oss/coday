@@ -173,10 +173,10 @@ jobs:
 
           # Set keychain for codesign to use
           security list-keychain -d user -s "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign:,productsign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-          # Verify certificate is available
-          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          # Verify certificates are available
+          security find-identity -v "$KEYCHAIN_PATH"
 
       - name: Build and Sign Coday Desktop
         env:

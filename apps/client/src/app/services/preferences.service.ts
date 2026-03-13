@@ -59,6 +59,9 @@ export class PreferencesService {
   private browserNotificationEnabledSubject = new BehaviorSubject<boolean>(false)
   public browserNotificationEnabled$ = this.browserNotificationEnabledSubject.asObservable()
 
+  private themeSubject = new BehaviorSubject<string>('light')
+  public theme$ = this.themeSubject.asObservable()
+
   constructor() {
     console.log('[PREFERENCES] Initializing preferences service')
 
@@ -127,6 +130,9 @@ export class PreferencesService {
       this.getPreferenceSync<boolean>('browserNotificationEnabled', false) ?? false
     this.browserNotificationEnabledSubject.next(storedBrowserNotificationEnabled)
 
+    const storedTheme = this.getPreferenceSync<string>('theme', 'light') ?? 'light'
+    this.themeSubject.next(storedTheme)
+
     console.log('[PREFERENCES] All preferences initialized successfully')
   }
 
@@ -179,6 +185,9 @@ export class PreferencesService {
     const storedBrowserNotificationEnabled =
       (await this.getPreferenceAsync<boolean>('browserNotificationEnabled', false)) ?? false
     this.browserNotificationEnabledSubject.next(storedBrowserNotificationEnabled)
+
+    const storedTheme = (await this.getPreferenceAsync<string>('theme', 'light')) ?? 'light'
+    this.themeSubject.next(storedTheme)
 
     console.log('[PREFERENCES] All preferences initialized successfully (async)')
   }
@@ -300,6 +309,9 @@ export class PreferencesService {
     }
     if (key === 'browserNotificationEnabled') {
       this.browserNotificationEnabledSubject.next(value as boolean)
+    }
+    if (key === 'theme') {
+      this.themeSubject.next(value as string)
     }
   }
 

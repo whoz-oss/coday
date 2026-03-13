@@ -218,7 +218,7 @@ productbuild \
 SIGNING_IDENTITY="Developer ID Installer: BIZNET.IO (7DPGXLTDQS)"
 PKG_OUTPUT="$RELEASE_DIR/Coday-${VERSION}.pkg"
 
-if security find-identity -v -p basic | grep -q "$SIGNING_IDENTITY"; then
+if security find-identity -v | grep -q "$SIGNING_IDENTITY"; then
     echo "Signing package with: $SIGNING_IDENTITY"
     productsign \
         --sign "$SIGNING_IDENTITY" \

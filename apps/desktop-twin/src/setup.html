@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coday Twin Setup</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: #1a1a2e;
+        color: #e0e0e0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 40px;
+        -webkit-app-region: drag;
+        user-select: none;
+      }
+
+      .container {
+        max-width: 520px;
+        width: 100%;
+        -webkit-app-region: no-drag;
+      }
+
+      h1 {
+        font-size: 28px;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: #ffffff;
+      }
+
+      .subtitle {
+        font-size: 14px;
+        color: #888;
+        margin-bottom: 32px;
+      }
+
+      .option {
+        background: #16213e;
+        border: 2px solid #0f3460;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 12px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .option:hover {
+        border-color: #533483;
+        background: #1a2744;
+      }
+
+      .option.selected {
+        border-color: #533483;
+        background: #1e2d50;
+      }
+
+      .option-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #ffffff;
+        margin-bottom: 4px;
+      }
+
+      .option-desc {
+        font-size: 13px;
+        color: #999;
+      }
+
+      .option-path {
+        font-size: 12px;
+        color: #666;
+        font-family: 'SF Mono', 'Menlo', monospace;
+        margin-top: 8px;
+        padding: 6px 10px;
+        background: #0d1b2a;
+        border-radius: 6px;
+        word-break: break-all;
+      }
+
+      .custom-path-display {
+        display: none;
+      }
+
+      .option.selected .custom-path-display {
+        display: block;
+      }
+
+      .btn-row {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 24px;
+        gap: 12px;
+      }
+
+      button {
+        padding: 10px 28px;
+        border-radius: 8px;
+        border: none;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .btn-primary {
+        background: #533483;
+        color: #ffffff;
+      }
+
+      .btn-primary:hover {
+        background: #6b44a0;
+      }
+
+      .btn-primary:disabled {
+        background: #333;
+        color: #666;
+        cursor: not-allowed;
+      }
+
+      .btn-secondary {
+        background: transparent;
+        color: #999;
+        border: 1px solid #333;
+      }
+
+      .btn-secondary:hover {
+        background: #1a2744;
+        color: #ccc;
+      }
+
+      /* Step 2: API key styles */
+      .section {
+        background: #16213e;
+        border: 2px solid #0f3460;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 16px;
+      }
+
+      .section-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 12px;
+      }
+
+      .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 500;
+        margin-bottom: 12px;
+      }
+
+      .status-badge.configured {
+        background: #0d2818;
+        color: #4caf50;
+        border: 1px solid #1b5e20;
+      }
+
+      .status-badge.missing {
+        background: #2d1a00;
+        color: #ff9800;
+        border: 1px solid #e65100;
+      }
+
+      .api-key-input {
+        width: 100%;
+        padding: 10px 14px;
+        background: #0d1b2a;
+        border: 1px solid #0f3460;
+        border-radius: 8px;
+        color: #e0e0e0;
+        font-family: 'SF Mono', 'Menlo', monospace;
+        font-size: 13px;
+        outline: none;
+        transition: border-color 0.2s ease;
+        margin-top: 8px;
+      }
+
+      .api-key-input:focus {
+        border-color: #533483;
+      }
+
+      .api-key-input::placeholder {
+        color: #555;
+      }
+
+      .help-text {
+        font-size: 12px;
+        color: #666;
+        margin-top: 8px;
+        line-height: 1.5;
+      }
+
+      .step {
+        display: none;
+      }
+      .step.active {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Step 1: Folder Selection -->
+      <div class="step active" id="step-1">
+        <h1>Welcome to Coday Twin</h1>
+        <p class="subtitle">Choose where to store your digital twin workspace.</p>
+
+        <div class="option selected" id="option-default" onclick="selectOption('default')">
+          <div class="option-title">Default Location</div>
+          <div class="option-desc">Use the standard location in your home folder.</div>
+          <div class="option-path" id="default-path">~/CodayTwin</div>
+        </div>
+
+        <div class="option" id="option-custom" onclick="selectOption('custom')">
+          <div class="option-title">Custom Location</div>
+          <div class="option-desc">Choose a specific folder — local, cloud drive, or external storage.</div>
+          <div class="custom-path-display">
+            <div class="option-path" id="custom-path">Click "Browse" to select a folder...</div>
+            <div style="margin-top: 8px; text-align: right">
+              <button class="btn-secondary" onclick="event.stopPropagation(); browsePath()">Browse…</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn-primary" id="btn-continue" onclick="goToStep2()">Continue</button>
+        </div>
+      </div>
+
+      <!-- Step 2: API Key Configuration -->
+      <div class="step" id="step-2">
+        <h1>AI Configuration</h1>
+        <p class="subtitle">Coday Twin needs an Anthropic API key to power your digital twin.</p>
+
+        <div class="section">
+          <div class="section-title">Anthropic API Key</div>
+
+          <div id="api-key-status"></div>
+
+          <div id="api-key-input-section">
+            <input
+              type="password"
+              class="api-key-input"
+              id="api-key-input"
+              placeholder="sk-ant-..."
+              oninput="onApiKeyInput()"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <div class="help-text">
+              Get your API key from console.anthropic.com. It will be stored locally in your user configuration.
+            </div>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn-secondary" onclick="goToStep1()">Back</button>
+          <button class="btn-primary" id="btn-finish" onclick="finish()">Finish Setup</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let selectedOption = 'default'
+      let customPath = null
+      let hasExistingApiKey = false
+
+      function selectOption(option) {
+        selectedOption = option
+        document.getElementById('option-default').classList.toggle('selected', option === 'default')
+        document.getElementById('option-custom').classList.toggle('selected', option === 'custom')
+        updateContinueButton()
+      }
+
+      function updateContinueButton() {
+        const btn = document.getElementById('btn-continue')
+        btn.disabled = selectedOption === 'custom' && !customPath
+      }
+
+      async function browsePath() {
+        const result = await window.electronAPI.browseFolder()
+        if (result) {
+          customPath = result
+          document.getElementById('custom-path').textContent = result
+          updateContinueButton()
+        }
+      }
+
+      async function goToStep2() {
+        document.getElementById('step-1').classList.remove('active')
+        document.getElementById('step-2').classList.add('active')
+
+        try {
+          const status = await window.electronAPI.checkAnthropicApiKey()
+          hasExistingApiKey = status.configured
+          updateApiKeyStatus(status)
+        } catch (error) {
+          updateApiKeyStatus({ configured: false, source: null })
+        }
+      }
+
+      function goToStep1() {
+        document.getElementById('step-2').classList.remove('active')
+        document.getElementById('step-1').classList.add('active')
+      }
+
+      function updateApiKeyStatus(status) {
+        const statusEl = document.getElementById('api-key-status')
+        const finishBtn = document.getElementById('btn-finish')
+
+        if (status.configured) {
+          let sourceText = 'user configuration'
+          if (status.source === 'env') sourceText = 'environment variable (ANTHROPIC_API_KEY)'
+          statusEl.innerHTML =
+            '<div class="status-badge configured">✓ Configured</div>' +
+            '<div class="help-text">API key found in ' +
+            sourceText +
+            '. You can override it below or continue.</div>'
+          finishBtn.disabled = false
+        } else {
+          statusEl.innerHTML =
+            '<div class="status-badge missing">⚠ Not configured</div>' +
+            '<div class="help-text" style="margin-bottom: 4px;">Enter your Anthropic API key to get started.</div>'
+          finishBtn.disabled = true
+        }
+      }
+
+      function onApiKeyInput() {
+        const input = document.getElementById('api-key-input').value.trim()
+        document.getElementById('btn-finish').disabled = input.length === 0 && !hasExistingApiKey
+      }
+
+      async function finish() {
+        const apiKeyInput = document.getElementById('api-key-input').value.trim()
+
+        if (apiKeyInput) {
+          try {
+            await window.electronAPI.saveAnthropicApiKey(apiKeyInput)
+          } catch (error) {
+            console.error('Failed to save API key:', error)
+          }
+        }
+
+        const path = selectedOption === 'default' ? null : customPath
+        await window.electronAPI.confirmSetup(path)
+      }
+
+      updateContinueButton()
+    </script>
+  </body>
+</html>

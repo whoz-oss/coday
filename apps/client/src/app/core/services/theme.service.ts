@@ -1,5 +1,5 @@
-import { Injectable, inject } from '@angular/core'
-import { BehaviorSubject } from 'rxjs'
+import { Injectable, inject, OnDestroy } from '@angular/core'
+import { BehaviorSubject, Subscription } from 'rxjs'
 import { PreferencesService } from '../../services/preferences.service'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
@@ -7,12 +7,12 @@ export type ThemeMode = 'light' | 'dark' | 'system'
 @Injectable({
   providedIn: 'root',
 })
-export class ThemeService {
+export class ThemeService implements OnDestroy {
   private currentThemeSubject = new BehaviorSubject<ThemeMode>('light')
   currentTheme$ = this.currentThemeSubject.asObservable()
 
-  // Modern Angular dependency injection
   private preferences = inject(PreferencesService)
+  private subscription: Subscription | null = null
 
   constructor() {
     console.log('[THEME] Initializing theme service')
@@ -20,21 +20,18 @@ export class ThemeService {
     this.setupSystemThemeListener()
   }
 
-  private initializeTheme(): void {
-    // Check if running in desktop app - preferences will be loaded asynchronously
-    // For now, apply default theme and let the preference service update it
-    const savedTheme = this.preferences.getPreference<ThemeMode>('theme', 'light') ?? 'light'
-    console.log('[THEME] Loaded saved theme:', savedTheme)
-    this.applyTheme(savedTheme)
+  ngOnDestroy(): void {
+    this.subscription?.unsubscribe()
+  }
 
-    // Subscribe to theme preference changes (useful for desktop app async loading)
-    setTimeout(() => {
-      const currentTheme = this.preferences.getPreference<ThemeMode>('theme', 'light') ?? 'light'
-      if (currentTheme !== savedTheme) {
-        console.log('[THEME] Theme updated after async load:', currentTheme)
-        this.applyTheme(currentTheme)
-      }
-    }, 100)
+  private initializeTheme(): void {
+    // Subscribe to theme preference reactively.
+    // On desktop, loadPreferencesAsync() will emit the saved value from Electron storage
+    // once the IPC call completes, automatically applying the correct theme without polling.
+    this.subscription = this.preferences.theme$.subscribe((theme) => {
+      console.log('[THEME] Theme preference changed to:', theme)
+      this.applyTheme(theme as ThemeMode)
+    })
   }
 
   setTheme(theme: ThemeMode): void {
@@ -51,14 +48,12 @@ export class ThemeService {
     this.currentThemeSubject.next(theme)
 
     if (theme === 'system') {
-      // Use system preference (check if matchMedia is available)
       if (typeof window !== 'undefined' && window.matchMedia) {
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
         const resolvedTheme = prefersDark ? 'dark' : 'light'
         console.log('[THEME] System theme resolved to:', resolvedTheme)
         this.setDocumentTheme(resolvedTheme)
       } else {
-        // Fallback to light theme in test environment
         console.log('[THEME] matchMedia not available, defaulting to light theme')
         this.setDocumentTheme('light')
       }
@@ -69,7 +64,6 @@ export class ThemeService {
 
   private setDocumentTheme(theme: 'light' | 'dark'): void {
     console.log('[THEME] Setting document theme to:', theme)
-    // Check if document is available (not always available in test environment)
     if (typeof document !== 'undefined' && document.documentElement) {
       if (theme === 'dark') {
         document.documentElement.setAttribute('data-theme', 'dark')
@@ -80,7 +74,6 @@ export class ThemeService {
   }
 
   private setupSystemThemeListener(): void {
-    // Check if matchMedia is available (not available in test environment)
     if (typeof window !== 'undefined' && window.matchMedia) {
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
         const currentTheme = this.getCurrentTheme()

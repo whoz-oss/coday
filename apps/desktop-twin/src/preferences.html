@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coday Twin Preferences</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: #1a1a2e;
+        color: #e0e0e0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 40px;
+        -webkit-app-region: drag;
+        user-select: none;
+      }
+
+      .container {
+        max-width: 520px;
+        width: 100%;
+        -webkit-app-region: no-drag;
+      }
+
+      h1 {
+        font-size: 24px;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: #ffffff;
+      }
+
+      .subtitle {
+        font-size: 14px;
+        color: #888;
+        margin-bottom: 32px;
+      }
+
+      .section {
+        background: #16213e;
+        border: 2px solid #0f3460;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 16px;
+      }
+
+      .section-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 12px;
+      }
+
+      .setting-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .setting-label {
+        font-size: 15px;
+        font-weight: 500;
+        color: #ffffff;
+      }
+
+      .path-display {
+        font-size: 12px;
+        color: #999;
+        font-family: 'SF Mono', 'Menlo', monospace;
+        margin-top: 8px;
+        padding: 8px 12px;
+        background: #0d1b2a;
+        border-radius: 6px;
+        word-break: break-all;
+        line-height: 1.4;
+      }
+
+      .new-path-section {
+        display: none;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid #0f3460;
+      }
+
+      .new-path-section.visible {
+        display: block;
+      }
+
+      .new-path-label {
+        font-size: 12px;
+        color: #533483;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+
+      .btn-row {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 24px;
+        gap: 12px;
+      }
+
+      button {
+        padding: 8px 20px;
+        border-radius: 8px;
+        border: none;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .btn-primary {
+        background: #533483;
+        color: #ffffff;
+      }
+
+      .btn-primary:hover {
+        background: #6b44a0;
+      }
+
+      .btn-primary:disabled {
+        background: #333;
+        color: #666;
+        cursor: not-allowed;
+      }
+
+      .btn-secondary {
+        background: transparent;
+        color: #999;
+        border: 1px solid #333;
+      }
+
+      .btn-secondary:hover {
+        background: #1a2744;
+        color: #ccc;
+      }
+
+      .btn-change {
+        padding: 6px 16px;
+        font-size: 13px;
+      }
+
+      .status-message {
+        display: none;
+        margin-top: 12px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 13px;
+      }
+
+      .status-message.success {
+        display: block;
+        background: #0d2818;
+        color: #4caf50;
+        border: 1px solid #1b5e20;
+      }
+
+      .status-message.error {
+        display: block;
+        background: #2d0a0a;
+        color: #ef5350;
+        border: 1px solid #b71c1c;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Preferences</h1>
+      <p class="subtitle">Manage your Coday Twin settings.</p>
+
+      <div class="section">
+        <div class="section-title">Workspace Location</div>
+        <div class="setting-row">
+          <div class="setting-label">Current folder</div>
+          <button class="btn-secondary btn-change" onclick="browsePath()">Change…</button>
+        </div>
+        <div class="path-display" id="current-path">Loading...</div>
+
+        <div class="new-path-section" id="new-path-section">
+          <div class="new-path-label">New location</div>
+          <div class="path-display" id="new-path"></div>
+        </div>
+      </div>
+
+      <div class="status-message" id="status-message"></div>
+
+      <div class="btn-row">
+        <button class="btn-secondary" onclick="closeWindow()">Close</button>
+        <button class="btn-primary" id="btn-save" onclick="save()" disabled>Save</button>
+      </div>
+    </div>
+
+    <script>
+      let currentPath = null
+      let newPath = null
+
+      async function init() {
+        try {
+          currentPath = await window.electronAPI.preferencesGetCurrentPath()
+          document.getElementById('current-path').textContent = currentPath || 'Not configured'
+        } catch (error) {
+          document.getElementById('current-path').textContent = 'Error loading path'
+        }
+      }
+
+      async function browsePath() {
+        try {
+          const result = await window.electronAPI.preferencesBrowseFolder()
+          if (result && result !== currentPath) {
+            newPath = result
+            document.getElementById('new-path').textContent = result
+            document.getElementById('new-path-section').classList.add('visible')
+            document.getElementById('btn-save').disabled = false
+            hideStatus()
+          }
+        } catch (error) {
+          showStatus('Failed to open folder picker.', 'error')
+        }
+      }
+
+      async function save() {
+        if (!newPath) return
+
+        document.getElementById('btn-save').disabled = true
+        hideStatus()
+
+        try {
+          await window.electronAPI.preferencesSave(newPath)
+          currentPath = newPath
+          newPath = null
+          document.getElementById('current-path').textContent = currentPath
+          document.getElementById('new-path-section').classList.remove('visible')
+          showStatus('Workspace location updated successfully. The app will reload.', 'success')
+        } catch (error) {
+          document.getElementById('btn-save').disabled = false
+          showStatus('Failed to update workspace location.', 'error')
+        }
+      }
+
+      function closeWindow() {
+        window.electronAPI.preferencesClose()
+      }
+
+      function showStatus(message, type) {
+        const el = document.getElementById('status-message')
+        el.textContent = message
+        el.className = 'status-message ' + type
+      }
+
+      function hideStatus() {
+        const el = document.getElementById('status-message')
+        el.className = 'status-message'
+      }
+
+      init()
+    </script>
+  </body>
+</html>

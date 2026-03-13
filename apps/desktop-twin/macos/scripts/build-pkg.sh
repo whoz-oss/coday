@@ -148,20 +148,20 @@ BREW_PATH=$(run_as_user "command -v brew" 2>/dev/null || echo "/opt/homebrew/bin
 # Step 4: Install Node.js LTS if not present
 if ! run_as_user "command -v node" &>/dev/null; then
     echo "Installing Node.js LTS..."
-    run_as_user "$BREW_PATH install node@22"
-    run_as_user "$BREW_PATH link node@22"
+    run_as_user "$BREW_PATH install node@24"
+    run_as_user "$BREW_PATH link node@24"
     echo "Node.js installed successfully"
 else
     echo "Node.js already installed: $(run_as_user 'node --version')"
 fi
 
-# Step 5: Install tmux if not present
-if ! run_as_user "command -v tmux" &>/dev/null; then
-    echo "Installing tmux..."
-    run_as_user "$BREW_PATH install tmux"
-    echo "tmux installed successfully"
+# Step 5: Install ripgrep if not present
+if ! run_as_user "command -v rg" &>/dev/null; then
+    echo "Installing ripgrep..."
+    run_as_user "$BREW_PATH install ripgrep"
+    echo "ripgrep installed successfully"
 else
-    echo "tmux already installed: $(run_as_user 'tmux -V')"
+    echo "ripgrep already installed: $(run_as_user 'rg --version' | head -1)"
 fi
 
 # Step 6: Install Obsidian if not present
@@ -173,24 +173,8 @@ else
     echo "Obsidian already installed"
 fi
 
-# Step 7: Setup CodayTwin vault directory
-TWIN_DIR="$ACTUAL_HOME/CodayTwin"
-if [ ! -d "$TWIN_DIR" ]; then
-    echo "Creating CodayTwin vault at $TWIN_DIR..."
-    TEMPLATE_DIR="$APP_DST/Contents/Resources/vault-template"
-    if [ -d "$TEMPLATE_DIR" ]; then
-        run_as_user "cp -R '$TEMPLATE_DIR' '$TWIN_DIR'"
-        echo "CodayTwin vault created from template"
-    else
-        echo "Template not found at $TEMPLATE_DIR, creating basic structure..."
-        run_as_user "mkdir -p '$TWIN_DIR/.obsidian' '$TWIN_DIR/inbox' '$TWIN_DIR/notes' '$TWIN_DIR/projects'"
-        run_as_user "echo '# Coday Twin Vault' > '$TWIN_DIR/README.md'"
-        run_as_user "echo 'description: Coday Twin digital workspace' > '$TWIN_DIR/coday.yml'"
-        echo "CodayTwin vault created with basic structure"
-    fi
-else
-    echo "CodayTwin vault already exists at $TWIN_DIR"
-fi
+# Vault directory creation is handled by the Coday Twin app on first launch,
+# after the user chooses their preferred location (default or custom path).
 
 echo "=== Coday Twin Desktop Post-Install Complete ==="
 exit 0
@@ -240,7 +224,7 @@ cat > "$PKG_BUILD_DIR/welcome.html" << EOF
 <p>This installer will:</p>
 <ul>
 <li>Install Coday Twin to your Applications folder</li>
-<li>Install required dependencies (Homebrew, Node.js, tmux) if not already present</li>
+<li>Install required dependencies (Homebrew, Node.js, ripgrep) if not already present</li>
 <li>Install Obsidian if not already present</li>
 <li>Create your CodayTwin workspace at ~/CodayTwin/ (if it doesn't exist)</li>
 </ul>
@@ -261,7 +245,7 @@ productbuild \
 SIGNING_IDENTITY="Developer ID Installer: BIZNET.IO (7DPGXLTDQS)"
 PKG_OUTPUT="$RELEASE_DIR/CodayTwin-${VERSION}.pkg"
 
-if security find-identity -v -p basic | grep -q "$SIGNING_IDENTITY"; then
+if security find-identity -v | grep -q "$SIGNING_IDENTITY"; then
     echo "Signing package with: $SIGNING_IDENTITY"
     productsign \
         --sign "$SIGNING_IDENTITY" \
