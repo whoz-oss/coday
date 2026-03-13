@@ -16,10 +16,10 @@ import { Observable } from 'rxjs'
 // @ts-ignore
 import { AddMessageRequest } from '../model/add-message-request'
 // @ts-ignore
-import { CaseModel } from '../model/case-model'
+import { Case } from '../model/case'
 
 // @ts-ignore
-import { BASE_PATH, COLLECTION_FORMATS } from '../variables'
+import { BASE_PATH } from '../variables'
 import { Configuration } from '../configuration'
 import { BaseService } from '../api.base.service'
 
@@ -121,36 +121,36 @@ export class CaseControllerService extends BaseService {
   }
 
   /**
-   * @param caseModel
+   * @param _case
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public create1(
-    caseModel: CaseModel,
+    _case: Case,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<CaseModel>
+  ): Observable<Case>
   public create1(
-    caseModel: CaseModel,
+    _case: Case,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<CaseModel>>
+  ): Observable<HttpResponse<Case>>
   public create1(
-    caseModel: CaseModel,
+    _case: Case,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<CaseModel>>
+  ): Observable<HttpEvent<Case>>
   public create1(
-    caseModel: CaseModel,
+    _case: Case,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<any> {
-    if (caseModel === null || caseModel === undefined) {
-      throw new Error('Required parameter caseModel was null or undefined when calling create1.')
+    if (_case === null || _case === undefined) {
+      throw new Error('Required parameter _case was null or undefined when calling create1.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -185,9 +185,9 @@ export class CaseControllerService extends BaseService {
 
     let localVarPath = `/api/cases`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<CaseModel>('post', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<Case>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      body: caseModel,
+      body: _case,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,
@@ -276,19 +276,19 @@ export class CaseControllerService extends BaseService {
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<CaseModel>
+  ): Observable<Case>
   public getById1(
     id: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<CaseModel>>
+  ): Observable<HttpResponse<Case>>
   public getById1(
     id: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<CaseModel>>
+  ): Observable<HttpEvent<Case>>
   public getById1(
     id: string,
     observe: any = 'body',
@@ -324,7 +324,7 @@ export class CaseControllerService extends BaseService {
 
     let localVarPath = `/api/cases/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<CaseModel>('get', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<Case>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
@@ -345,19 +345,19 @@ export class CaseControllerService extends BaseService {
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<Array<CaseModel>>
+  ): Observable<Array<Case>>
   public getByIds1(
     requestBody: Array<string>,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<Array<CaseModel>>>
+  ): Observable<HttpResponse<Array<Case>>>
   public getByIds1(
     requestBody: Array<string>,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<Array<CaseModel>>>
+  ): Observable<HttpEvent<Array<Case>>>
   public getByIds1(
     requestBody: Array<string>,
     observe: any = 'body',
@@ -400,7 +400,7 @@ export class CaseControllerService extends BaseService {
 
     let localVarPath = `/api/cases/by-ids`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<Array<CaseModel>>('post', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<Array<Case>>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       body: requestBody,
       responseType: <any>responseType_,
@@ -491,19 +491,19 @@ export class CaseControllerService extends BaseService {
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<Array<CaseModel>>
+  ): Observable<Array<Case>>
   public listByParent1(
     parentId: string,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<Array<CaseModel>>>
+  ): Observable<HttpResponse<Array<Case>>>
   public listByParent1(
     parentId: string,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<Array<CaseModel>>>
+  ): Observable<HttpEvent<Array<Case>>>
   public listByParent1(
     parentId: string,
     observe: any = 'body',
@@ -539,7 +539,7 @@ export class CaseControllerService extends BaseService {
 
     let localVarPath = `/api/cases/by-parentId/${this.configuration.encodeParam({ name: 'parentId', value: parentId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<Array<CaseModel>>('get', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<Array<Case>>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
@@ -621,34 +621,34 @@ export class CaseControllerService extends BaseService {
 
   /**
    * @param id
-   * @param caseModel
+   * @param _case
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public update1(
     id: string,
-    caseModel: CaseModel,
+    _case: Case,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<CaseModel>
+  ): Observable<Case>
   public update1(
     id: string,
-    caseModel: CaseModel,
+    _case: Case,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpResponse<CaseModel>>
+  ): Observable<HttpResponse<Case>>
   public update1(
     id: string,
-    caseModel: CaseModel,
+    _case: Case,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
-  ): Observable<HttpEvent<CaseModel>>
+  ): Observable<HttpEvent<Case>>
   public update1(
     id: string,
-    caseModel: CaseModel,
+    _case: Case,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
@@ -656,8 +656,8 @@ export class CaseControllerService extends BaseService {
     if (id === null || id === undefined) {
       throw new Error('Required parameter id was null or undefined when calling update1.')
     }
-    if (caseModel === null || caseModel === undefined) {
-      throw new Error('Required parameter caseModel was null or undefined when calling update1.')
+    if (_case === null || _case === undefined) {
+      throw new Error('Required parameter _case was null or undefined when calling update1.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -692,9 +692,9 @@ export class CaseControllerService extends BaseService {
 
     let localVarPath = `/api/cases/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}`
     const { basePath, withCredentials } = this.configuration
-    return this.httpClient.request<CaseModel>('put', `${basePath}${localVarPath}`, {
+    return this.httpClient.request<Case>('put', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      body: caseModel,
+      body: _case,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,

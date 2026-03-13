@@ -5,23 +5,34 @@ import io.whozoss.agentos.sdk.agent.Agent
 /**
  * Service for managing agent runtime instances.
  *
- * For now, works with hard-coded agent definitions.
- * Future: May integrate with plugin system or external configuration.
+ * Agent-instantiating methods require an [AgentExecutionContext] so the constructed
+ * agent is aware of the namespace and case it is running for. This context is used
+ * today to inject the namespace description into the agent's system instructions;
+ * it will also be used to scope tool resolution per namespace and user.
+ *
+ * Name-resolution methods ([getDefaultAgentName], [resolveAgentName]) do not
+ * instantiate agents and therefore do not need a context.
  */
 interface AgentService {
     /**
-     * Find an agent by exact or partial name match.
-     * Throws exception if not found or ambiguous.
+     * Find and instantiate an agent by exact or partial name match.
+     * The agent is built with [context] so its instructions and tool set
+     * are scoped to the given namespace and case.
+     * Throws if no model matches [namePart].
      */
-    fun findAgentByName(namePart: String): Agent
+    fun findAgentByName(namePart: String, context: AgentExecutionContext): Agent
 
+    /**
+     * Instantiate all registered agents without any execution context.
+     * Intended for registry inspection only — not for running agents.
+     */
     fun listAgents(): List<Agent>
 
     /**
      * Get the default agent for cases where no agent is explicitly selected.
      * Returns null if no default is configured.
      */
-    fun getDefaultAgent(): Agent?
+    fun getDefaultAgent(context: AgentExecutionContext): Agent?
 
     /**
      * Get the name of the default agent without instantiating a full Agent.

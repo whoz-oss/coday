@@ -10,12 +10,12 @@
 import { EntityMetadata } from './entity-metadata'
 
 export interface IntentionGeneratedEvent {
-  type: 'IntentionGeneratedEvent'
-  timestamp: string
   caseId: string
-  projectId: string
   id: string
   metadata: EntityMetadata
+  namespaceId: string
+  timestamp: string
+  type: 'IntentionGeneratedEvent'
   agentId: string
   intention: string
 }

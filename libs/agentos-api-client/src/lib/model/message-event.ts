@@ -12,12 +12,12 @@ import { Actor } from './actor'
 import { MessageEventAllOfContent } from './message-event-all-of-content'
 
 export interface MessageEvent {
-  type: 'MessageEvent'
-  timestamp: string
   caseId: string
-  projectId: string
   id: string
   metadata: EntityMetadata
+  namespaceId: string
+  timestamp: string
+  type: 'MessageEvent'
   actor: Actor
   content: Array<MessageEventAllOfContent>
 }

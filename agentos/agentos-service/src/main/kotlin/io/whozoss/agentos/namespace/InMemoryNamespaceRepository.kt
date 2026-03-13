@@ -22,6 +22,9 @@ class InMemoryNamespaceRepository :
         comparator = compareBy { it.name },
     ) {
     init {
+        // Seed a well-known default namespace so in-memory mode (dev/test) is usable
+        // out of the box without requiring an explicit creation step.
+        // The fixed UUID makes the seed deterministic and idempotent across restarts.
         save(
             Namespace(
                 metadata = EntityMetadata(id = UUID.fromString("00000000-0000-0000-0000-000000000001")),

@@ -56,7 +56,7 @@ class CaseServiceImplSpec :
     StringSpec({
         timeout = 10_000
 
-        val projectId: UUID = UUID.randomUUID()
+        val namespaceId: UUID = UUID.randomUUID()
         val userActor = Actor(id = "user-1", displayName = "Test User", role = ActorRole.USER)
         val agentName = "test-agent"
         val agentId: UUID = UUID.nameUUIDFromBytes(agentName.toByteArray())
@@ -71,7 +71,7 @@ class CaseServiceImplSpec :
                     flow {
                         emit(
                             AgentFinishedEvent(
-                                projectId = projectId,
+                                namespaceId = namespaceId,
                                 caseId = caseId,
                                 agentId = agentId,
                                 agentName = agentName,
@@ -86,7 +86,7 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     every { getDefaultAgentName() } returns agentName
-                    every { findAgentByName(agentName) } returns agent
+                    every { findAgentByName(agentName, any()) } returns agent
                 }
             val caseRepository = InMemoryCaseRepository()
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
@@ -119,7 +119,7 @@ class CaseServiceImplSpec :
                         flow {
                             emit(
                                 AgentFinishedEvent(
-                                    projectId = projectId,
+                                    namespaceId = namespaceId,
                                     caseId = caseId,
                                     agentId = agentId,
                                     agentName = agentName,
@@ -130,7 +130,7 @@ class CaseServiceImplSpec :
                 }
 
             val service = buildService(countingAgent)
-            val case = service.create(Case(projectId = projectId))
+            val case = service.create(Case(namespaceId = namespaceId))
 
             service.addMessage(
                 caseId = case.id,
@@ -159,10 +159,10 @@ class CaseServiceImplSpec :
             val agentService =
                 mockk<AgentService> {
                     every { getDefaultAgentName() } returns agentName
-                    every { findAgentByName(agentName) } returns finishingAgent()
+                    every { findAgentByName(agentName, any()) } returns finishingAgent()
                 }
             val service = CaseServiceImpl(agentService, InMemoryCaseRepository(), caseEventService)
-            val case = service.create(Case(projectId = projectId))
+            val case = service.create(Case(namespaceId = namespaceId))
 
             service.addMessage(
                 caseId = case.id,
@@ -218,7 +218,7 @@ class CaseServiceImplSpec :
             // (the persistence-based assertion `status == IDLE` would still pass).
 
             val service = buildService()
-            val case = service.create(Case(projectId = projectId))
+            val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
 
             val collectedStatuses = mutableListOf<CaseStatus>()
@@ -234,8 +234,7 @@ class CaseServiceImplSpec :
                             .takeWhile { event ->
                                 collectedStatuses.add(event.status)
                                 event.status != CaseStatus.IDLE
-                            }
-                            .toList()
+                            }.toList()
                         // Add IDLE itself: takeWhile consumed it without adding.
                         collectedStatuses.add(CaseStatus.IDLE)
                     }
@@ -267,10 +266,12 @@ class CaseServiceImplSpec :
             // handleStatusChange, because the KILLED event would never arrive on the Flow.
 
             val service = buildService()
-            val case = service.create(Case(projectId = projectId))
+            val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
 
-            val killedEventReceived = java.util.concurrent.atomic.AtomicBoolean(false)
+            val killedEventReceived =
+                java.util.concurrent.atomic
+                    .AtomicBoolean(false)
             val collectorScope = CoroutineScope(Dispatchers.IO)
             val collectJob: Job =
                 collectorScope.launch {
@@ -301,10 +302,12 @@ class CaseServiceImplSpec :
             // handleStatusChange, because the ERROR event would never arrive on the Flow.
 
             val service = buildService()
-            val case = service.create(Case(projectId = projectId))
+            val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
 
-            val errorEventReceived = java.util.concurrent.atomic.AtomicBoolean(false)
+            val errorEventReceived =
+                java.util.concurrent.atomic
+                    .AtomicBoolean(false)
             val collectorScope = CoroutineScope(Dispatchers.IO)
             val collectJob: Job =
                 collectorScope.launch {
@@ -344,7 +347,7 @@ class CaseServiceImplSpec :
                         flow {
                             emit(
                                 AgentFinishedEvent(
-                                    projectId = projectId,
+                                    namespaceId = namespaceId,
                                     caseId = caseId,
                                     agentId = agentId,
                                     agentName = agentName,
@@ -355,7 +358,7 @@ class CaseServiceImplSpec :
                 }
 
             val service = buildService(countingAgent)
-            val case = service.create(Case(projectId = projectId))
+            val case = service.create(Case(namespaceId = namespaceId))
 
             // First message
             service.addMessage(
@@ -404,4 +407,3 @@ class CaseServiceImplSpec :
             service.getById(case.id).status shouldBe CaseStatus.IDLE
         }
     })
-

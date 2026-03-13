@@ -3,6 +3,11 @@ README.md
 api.base.service.ts
 api.module.ts
 api/api.ts
+api/case-controller.service.ts
+api/namespace-controller.service.ts
+api/plugin-controller.service.ts
+api/sse.service.ts
+api/tool-controller.service.ts
 configuration.ts
 encoder.ts
 git_push.sh
@@ -13,8 +18,8 @@ model/agent-finished-event.ts
 model/agent-running-event.ts
 model/agent-selected-event.ts
 model/answer-event.ts
-model/case-model.ts
 model/case-status-event.ts
+model/case.ts
 model/entity-metadata.ts
 model/image.ts
 model/intention-generated-event.ts

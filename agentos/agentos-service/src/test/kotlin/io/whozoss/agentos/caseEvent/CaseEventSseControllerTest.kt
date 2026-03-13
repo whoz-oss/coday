@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit
  * 3. Unknown case — history is empty and no active instance; emitter completed immediately.
  */
 class CaseEventSseControllerTest : StringSpec() {
-    val projectId: UUID = UUID.randomUUID()
+    val namespaceId: UUID = UUID.randomUUID()
     val userActor = Actor(id = "u1", displayName = "User", role = ActorRole.USER)
 
     fun msgEvent(
@@ -36,7 +36,7 @@ class CaseEventSseControllerTest : StringSpec() {
         timestamp: Instant = Instant.now(),
     ) = MessageEvent(
         metadata = EntityMetadata(),
-        projectId = projectId,
+        namespaceId = namespaceId,
         caseId = caseId,
         timestamp = timestamp,
         actor = userActor,
@@ -46,7 +46,7 @@ class CaseEventSseControllerTest : StringSpec() {
     fun warnEvent(caseId: UUID) =
         WarnEvent(
             metadata = EntityMetadata(),
-            projectId = projectId,
+            namespaceId = namespaceId,
             caseId = caseId,
             message = "something happened",
         )

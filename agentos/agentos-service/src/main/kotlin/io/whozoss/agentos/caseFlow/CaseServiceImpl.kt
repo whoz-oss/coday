@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
+import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -43,9 +44,9 @@ class CaseServiceImpl(
 
     override fun create(entity: Case): Case {
         require(findById(entity.id) == null) { "Duplicate entity id: ${entity.id}" }
-        val saved = caseRepository.save(Case(metadata = entity.metadata, projectId = entity.projectId))
+        val saved = caseRepository.save(Case(metadata = entity.metadata, namespaceId = entity.namespaceId))
         activeRuntimes[saved.id] = buildRuntime(saved)
-        logger.info { "[CaseService] Case created: ${saved.id} for project ${entity.projectId}" }
+        logger.info { "[CaseService] Case created: ${saved.id} for namespace ${entity.namespaceId}" }
         return saved
     }
 
@@ -110,10 +111,10 @@ class CaseServiceImpl(
     ): CaseRuntime =
         CaseRuntime(
             id = case.id,
-            projectId = case.projectId,
+            namespaceId = case.namespaceId,
             updateStatus = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
-            selectAgent = { content -> selectAgent(content, case.projectId, case.id) },
+            selectAgent = { content -> selectAgent(content, case.namespaceId, case.id) },
             runAgent = { agentName, events -> runAgent(agentName, case.id, events) },
             inputEvents = inputEvents,
         )
@@ -148,7 +149,7 @@ class CaseServiceImpl(
      */
     private fun selectAgent(
         content: List<MessageContent>,
-        projectId: UUID,
+        namespaceId: UUID,
         caseId: UUID,
     ): List<CaseEvent> {
         val firstText =
@@ -164,27 +165,37 @@ class CaseServiceImpl(
             val resolvedName = agentService.resolveAgentName(mentionedName)
             if (resolvedName != null) {
                 logger.info { "[CaseService] Agent mention resolved: @$mentionedName -> $resolvedName" }
-                return listOf(agentSelectedEvent(resolvedName, projectId, caseId))
+                return listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
             } else {
                 logger.warn { "[CaseService] Agent '@$mentionedName' not found, falling back to default" }
                 val warn =
-                    WarnEvent(projectId = projectId, caseId = caseId, message = "Agent '$mentionedName' not found")
+                    WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "Agent '$mentionedName' not found")
                 val defaultName = agentService.getDefaultAgentName() ?: return listOf(warn)
-                return listOf(warn, agentSelectedEvent(defaultName, projectId, caseId))
+                return listOf(warn, agentSelectedEvent(defaultName, namespaceId, caseId))
             }
         }
 
-        val defaultName = agentService.getDefaultAgentName() ?: return emptyList()
+        val defaultName = agentService.getDefaultAgentName()
+            ?: run {
+                logger.warn { "[CaseService] No AI model configured — cannot select a default agent" }
+                return listOf(
+                    WarnEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        message = "No AI model is configured. Load a plugin that provides an AiModel.",
+                    ),
+                )
+            }
         logger.info { "[CaseService] Selecting default agent: $defaultName" }
-        return listOf(agentSelectedEvent(defaultName, projectId, caseId))
+        return listOf(agentSelectedEvent(defaultName, namespaceId, caseId))
     }
 
     private fun agentSelectedEvent(
         agentName: String,
-        projectId: UUID,
+        namespaceId: UUID,
         caseId: UUID,
     ) = AgentSelectedEvent(
-        projectId = projectId,
+        namespaceId = namespaceId,
         caseId = caseId,
         agentId = UUID.nameUUIDFromBytes(agentName.toByteArray()),
         agentName = agentName,
@@ -201,14 +212,15 @@ class CaseServiceImpl(
     ) {
         val runtime = activeRuntimes[caseId] ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
         logger.info { "[CaseService] Running agent: $agentName for case $caseId" }
+        val context = AgentExecutionContext(namespaceId = runtime.namespaceId, caseId = caseId)
         agentService
-            .findAgentByName(agentName)
+            .findAgentByName(agentName, context)
             .run(events)
             .catch { error ->
                 logger.error(error) { "[CaseService] Error in agent $agentName for case $caseId" }
                 storeEvent(
                     WarnEvent(
-                        projectId = runtime.projectId,
+                        namespaceId = runtime.namespaceId,
                         caseId = caseId,
                         message = "Agent $agentName error: ${error.message}",
                     ),
@@ -264,7 +276,7 @@ class CaseServiceImpl(
             CaseStatusEvent(
                 metadata = EntityMetadata(),
                 caseId = caseId,
-                projectId = updated.projectId,
+                namespaceId = updated.namespaceId,
                 status = newStatus,
             )
         val savedStatusEvent = caseEventService.create(statusEvent)
@@ -283,7 +295,8 @@ class CaseServiceImpl(
     // Execution control
     // ========================================
 
-    override fun getActiveCasesByProject(projectId: UUID): List<CaseRuntime> = activeRuntimes.values.filter { it.projectId == projectId }
+    override fun getActiveCasesByNamespace(namespaceId: UUID): List<CaseRuntime> =
+        activeRuntimes.values.filter { it.namespaceId == namespaceId }
 
     override fun getAllActiveCases(): List<CaseRuntime> = activeRuntimes.values.toList()
 

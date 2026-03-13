@@ -1,0 +1,9 @@
+name: gpt-5-mini
+description: OpenAI GPT-5-mini general assistant
+modelName: gpt-5-mini
+providerName: openai
+temperature: 1.0
+maxTokens: 8000
+instructions: |
+  You are a helpful, accurate, and concise AI assistant.
+  Answer questions clearly and ask for clarification when needed.

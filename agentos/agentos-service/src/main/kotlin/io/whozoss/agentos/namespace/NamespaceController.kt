@@ -25,19 +25,18 @@ import org.springframework.web.bind.annotation.RestController
     "/api/namespaces",
     produces = [MediaType.APPLICATION_JSON_VALUE],
 )
-
 class NamespaceController(
     private val namespaceService: NamespaceService,
 ) : EntityController<Namespace, String>(namespaceService) {
     /**
      * List all namespaces.
      *
-     * GET /api/namespaces/list
+     * GET /api/namespaces
      */
-    @GetMapping("/list")
+    @GetMapping
     @ResponseStatus(HttpStatus.OK)
     fun listAll(): List<Namespace> {
-        logger.info { "calling all namespaces" }
+        logger.info { "listing all namespaces" }
         return namespaceService.findAll()
     }
 

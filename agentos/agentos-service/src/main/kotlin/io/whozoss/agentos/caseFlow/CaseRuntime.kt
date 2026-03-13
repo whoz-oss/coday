@@ -39,7 +39,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class CaseRuntime(
     val id: UUID,
-    val projectId: UUID,
+    val namespaceId: UUID,
     private val updateStatus: (UUID, CaseStatus) -> Unit,
     private val storeEvent: (CaseEvent) -> CaseEvent,
     private val selectAgent: (content: List<MessageContent>) -> List<CaseEvent>,
@@ -180,7 +180,7 @@ class CaseRuntime(
             }
         }
 
-        storeAndEmitEvent(MessageEvent(caseId = id, projectId = projectId, actor = actor, content = content))
+        storeAndEmitEvent(MessageEvent(caseId = id, namespaceId = namespaceId, actor = actor, content = content))
         selectAgent(content).forEach { storeAndEmitEvent(it) }
     }
 
@@ -293,7 +293,7 @@ class CaseRuntime(
                     }
                     storeAndEmitEvent(
                         AgentRunningEvent(
-                            projectId = projectId,
+                            namespaceId = namespaceId,
                             caseId = id,
                             agentId = event.agentId,
                             agentName = event.agentName,
@@ -307,10 +307,11 @@ class CaseRuntime(
             }
         }
 
-        // No relevant event found in history — this should not happen in normal flow
-        // (addUserMessage always stores an AgentSelectedEvent before run() is called).
-        // Treat it as a configuration error and stop.
-        logger.error { "[CaseRuntime $id] No agent selection found in history, stopping" }
+        // No AgentSelectedEvent found after the last user message.
+        // This happens when selectAgent could not resolve any agent (e.g. no AI model
+        // configured) and stored only a WarnEvent. Stop cleanly so the case returns
+        // to IDLE — the WarnEvent has already been streamed to the client.
+        logger.warn { "[CaseRuntime $id] No agent selection found in history, stopping" }
         interruptRequested.set(true)
     }
 

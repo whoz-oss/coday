@@ -1,24 +1,70 @@
 <div class="namespace-list">
   <header class="namespace-list__header">
     <h2>Namespaces</h2>
+    <ds-icon-button icon="add" variant="primary" title="Create namespace" (action)="openCreateForm()" />
   </header>
+
+  @if (isCreating()) {
+    <form class="namespace-list__create-form" (ngSubmit)="submitCreate()">
+      <input class="namespace-list__input" type="text" placeholder="Namespace name *" [formControl]="nameControl" />
+      <input
+        class="namespace-list__input"
+        type="text"
+        placeholder="Description (optional)"
+        [formControl]="descriptionControl"
+      />
+      <div class="namespace-list__create-actions">
+        <ds-icon-button
+          icon="check"
+          variant="primary"
+          title="Confirm"
+          [disabled]="nameControl.invalid || isSubmitting()"
+          (action)="submitCreate()"
+        />
+        <ds-icon-button icon="close" title="Cancel" (action)="cancelCreate()" />
+      </div>
+    </form>
+  }
+
+  @if (editingNamespace(); as editing) {
+    <form class="namespace-list__create-form namespace-list__edit-form" (ngSubmit)="submitEdit()">
+      <p class="namespace-list__edit-label">
+        Editing: <strong>{{ editing.name }}</strong>
+      </p>
+      <input class="namespace-list__input" type="text" placeholder="Namespace name *" [formControl]="editNameControl" />
+      <input
+        class="namespace-list__input"
+        type="text"
+        placeholder="Description (optional)"
+        [formControl]="editDescriptionControl"
+      />
+      <div class="namespace-list__create-actions">
+        <ds-icon-button
+          icon="check"
+          variant="primary"
+          title="Save changes"
+          [disabled]="editNameControl.invalid || isEditSubmitting()"
+          (action)="submitEdit()"
+        />
+        <ds-icon-button icon="close" title="Cancel" (action)="cancelEdit()" />
+      </div>
+    </form>
+  }
 
   @if (namespaces$ | async; as namespaces) {
     @if (namespaces.length === 0) {
       <div class="namespace-list__empty">
-        <p>No namespaces available.</p>
+        <p>No namespaces yet. Create one above.</p>
       </div>
     } @else {
-      <ul class="namespace-list__items">
+      <ul class="namespace-list__items" role="list">
         @for (ns of namespaces; track trackById($index, ns)) {
-          <li class="namespace-list__item">
-            <button class="namespace-list__item-btn" (click)="select(ns)" type="button">
-              <span class="namespace-list__item-name">{{ ns.name }}</span>
-              @if (ns.description) {
-                <span class="namespace-list__item-desc">{{ ns.description }}</span>
-              }
-            </button>
-          </li>
+          <agentos-namespace-item
+            [namespace]="ns"
+            (selected)="select($event)"
+            (editRequested)="openEditForm($event)"
+            (deleteRequested)="deleteNamespace($event)"
+          />
         }
       </ul>
     }
