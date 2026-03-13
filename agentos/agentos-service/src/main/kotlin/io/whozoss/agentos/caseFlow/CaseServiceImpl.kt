@@ -114,7 +114,7 @@ class CaseServiceImpl(
             updateStatus = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
             selectAgent = { content -> selectAgent(content, case.projectId, case.id) },
-            runAgent = { agentName, events -> runAgent(agentName, case.id, events) },
+            runAgent = { agentName, events, shouldContinue -> runAgent(agentName, case.id, events, shouldContinue) },
             inputEvents = inputEvents,
         )
 
@@ -198,12 +198,13 @@ class CaseServiceImpl(
         agentName: String,
         caseId: UUID,
         events: List<CaseEvent>,
+        shouldContinue: () -> Boolean,
     ) {
         val runtime = activeRuntimes[caseId] ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
         logger.info { "[CaseService] Running agent: $agentName for case $caseId" }
         agentService
             .findAgentByName(agentName)
-            .run(events)
+            .run(events, shouldContinue)
             .catch { error ->
                 logger.error(error) { "[CaseService] Error in agent $agentName for case $caseId" }
                 storeEvent(

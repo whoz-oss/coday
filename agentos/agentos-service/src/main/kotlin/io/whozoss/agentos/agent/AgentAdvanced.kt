@@ -25,9 +25,6 @@ import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import java.util.UUID
-import kotlin.collections.firstOrNull
-import kotlin.collections.joinToString
-import kotlin.collections.map
 
 /**
  * Advanced agent implementation with multi-step orchestration loop.
@@ -51,7 +48,10 @@ class AgentAdvanced(
 ) : Agent {
     override val name: String get() = model.name
 
-    override fun run(events: List<CaseEvent>): Flow<CaseEvent> =
+    override fun run(
+        events: List<CaseEvent>,
+        shouldContinue: () -> Boolean,
+    ): Flow<CaseEvent> =
         flow {
             val projectId = events.firstOrNull()?.projectId ?: throw IllegalArgumentException("No events provided")
             val caseId = events.firstOrNull()?.caseId ?: throw IllegalArgumentException("No events provided")
@@ -69,30 +69,38 @@ class AgentAdvanced(
             var continueLoop = true
 
             try {
-                while (continueLoop && iteration < maxIterations) {
+                while (continueLoop && iteration < maxIterations && shouldContinue()) {
                     iteration++
 
                     // 1. Generate intention
+                    // Guard before each blocking LLM call so an interrupt/kill that
+                    // arrives mid-iteration is honoured without waiting for the full
+                    // iteration to complete.
+                    if (!shouldContinue()) break
                     emit(ThinkingEvent(projectId = projectId, caseId = caseId))
                     val intention = generateIntention(events, projectId, caseId)
                     emit(intention)
 
                     // 2. Select tool
+                    if (!shouldContinue()) break
                     val toolSelected = selectTool(events, intention, projectId, caseId)
                     emit(toolSelected)
 
-                    // Check if we should stop
+                    // Check if we should stop (Answer tool = done)
                     if (toolSelected.toolName == "Answer") {
                         continueLoop = false
                         continue
                     }
 
                     // 3. Generate parameters
+                    if (!shouldContinue()) break
                     val toolRequestId = UUID.randomUUID().toString()
-                    val parameters = generateParameters(events, intention, toolSelected, projectId, caseId, toolRequestId)
+                    val parameters =
+                        generateParameters(events, intention, toolSelected, projectId, caseId, toolRequestId)
                     emit(parameters)
 
                     // 4. Execute tool
+                    if (!shouldContinue()) break
                     val response = executeTool(parameters, projectId, caseId)
                     emit(response)
                 }

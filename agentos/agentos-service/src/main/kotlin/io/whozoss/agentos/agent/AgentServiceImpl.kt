@@ -4,14 +4,13 @@ package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.aiModel.AiModelRegistry
 import io.whozoss.agentos.chat.ChatClientProvider
-import io.whozoss.agentos.orchestration.AgentSimple
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.tool.ToolRegistry
 import mu.KLogging
 import org.springframework.stereotype.Service
-import java.util.*
+import java.util.UUID
 
 /**
  * Implementation of AgentService that builds runtime agents from registered AiModels.
@@ -46,8 +45,10 @@ class AgentServiceImpl(
     override fun getDefaultAgentName(): String? = aiModelRegistry.getDefault()?.name
 
     override fun resolveAgentName(namePart: String): String? =
-        (aiModelRegistry.findByName(namePart)
-            ?: aiModelRegistry.getAll().firstOrNull { it.name.contains(namePart, ignoreCase = true) })?.name
+        (
+            aiModelRegistry.findByName(namePart)
+                ?: aiModelRegistry.getAll().firstOrNull { it.name.contains(namePart, ignoreCase = true) }
+        )?.name
 
     private fun createAgentInstance(model: AiModel): Agent {
         logger.info { "[AgentService] Creating agent instance for: ${model.name}" }
