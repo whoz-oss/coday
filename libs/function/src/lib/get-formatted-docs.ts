@@ -1,7 +1,7 @@
 import { WithDocs } from '@coday/model'
 import * as path from 'node:path'
 import { Interactor } from '@coday/model'
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import * as fs from 'node:fs/promises'
 import { FileContent } from './file-content'
 import { readFileUnified } from './read-file-unified'
 
@@ -19,20 +19,23 @@ export async function getFormattedDocs(
     // Resolve each mandatoryDocs entry into one or more {docPath, content} results
     type DocResult = { content: string | null; error: string | null }
 
+    const pathExists = (p: string): Promise<boolean> =>
+      fs.access(p).then(
+        () => true,
+        () => false
+      )
+
     const resolveEntry = async (entry: string): Promise<DocResult[]> => {
       // Format 1: ends with '/' → directory listing (first level only)
       if (entry.endsWith('/')) {
         const dirPath = path.resolve(projectPath, entry)
-        if (!existsSync(dirPath)) {
+        if (!(await pathExists(dirPath))) {
           return [{ content: null, error: `Mandatory directory not found: ${entry}` }]
         }
         try {
-          const items = readdirSync(dirPath).sort()
-          const lines = items.map((item) => {
-            const fullItem = path.join(dirPath, item)
-            const isDir = statSync(fullItem).isDirectory()
-            return `  - ${item}${isDir ? '/' : ''}`
-          })
+          const items = (await fs.readdir(dirPath)).sort()
+          const stats = await Promise.all(items.map((item) => fs.stat(path.join(dirPath, item))))
+          const lines = items.map((item, i) => `  - ${item}${stats[i]?.isDirectory() ? '/' : ''}`)
           const listing = `Contents of ${entry}:\n${lines.join('\n')}`
           return [{ content: listing, error: null }]
         } catch (e: any) {
@@ -44,15 +47,13 @@ export async function getFormattedDocs(
       if (entry.endsWith('/*')) {
         const dirEntry = entry.slice(0, -2) // strip trailing '/*'
         const dirPath = path.resolve(projectPath, dirEntry)
-        if (!existsSync(dirPath)) {
+        if (!(await pathExists(dirPath))) {
           return [{ content: null, error: `Mandatory directory not found: ${entry}` }]
         }
         try {
-          const items = readdirSync(dirPath).sort()
-          const fileItems = items.filter((item) => {
-            const fullItem = path.join(dirPath, item)
-            return statSync(fullItem).isFile()
-          })
+          const items = (await fs.readdir(dirPath)).sort()
+          const stats = await Promise.all(items.map((item) => fs.stat(path.join(dirPath, item))))
+          const fileItems = items.filter((_, i) => stats[i]?.isFile())
           if (fileItems.length === 0) {
             return [{ content: null, error: `No files found in: ${entry}` }]
           }
@@ -141,17 +142,17 @@ export async function getFormattedDocs(
     }
 
     // Check all optional docs, log a warning if they are missing
-    let optionalDocsDescription = withDocs.optionalDocs
-      ?.map((doc) => {
-        if (doc.path.startsWith('http') || existsSync(path.resolve(projectPath, doc.path))) {
+    const optionalDocLines = await Promise.all(
+      (withDocs.optionalDocs ?? []).map(async (doc) => {
+        if (doc.path.startsWith('http') || (await pathExists(path.resolve(projectPath, doc.path)))) {
           return `  - ${doc.path}\n    ${doc.description}`
         } else {
           warnings += `\n  - Optional document not found: ${doc.path}`
           return undefined
         }
       })
-      .filter((text) => !!text)
-      .join('\n')
+    )
+    let optionalDocsDescription = optionalDocLines.filter((text): text is string => !!text).join('\n')
 
     if (optionalDocsDescription) {
       formattedDocs += `\n\nOptional documents or resources to refer for more details:\n${optionalDocsDescription}`
