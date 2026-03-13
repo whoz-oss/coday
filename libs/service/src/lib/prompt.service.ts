@@ -33,15 +33,6 @@ export class PromptService {
   }
 
   /**
-   * Resolve the filesystem path for a given project by name.
-   * Uses the injected ProjectService if available.
-   */
-  private getProjectPath(projectName: string): string | undefined {
-    if (!this.projectService) return undefined
-    return this.projectService.getProject(projectName)?.config.path
-  }
-
-  /**
    * Get prompts directory path for a specific source
    * Creates the directory if it doesn't exist (for both local and project sources)
    */
@@ -52,19 +43,24 @@ export class PromptService {
       promptsDir = path.join(this.codayConfigDir, 'projects', projectName, 'prompts')
     } else {
       // project source: find coday.yaml and put prompts/ next to it
-      const projectPath = this.getProjectPath(projectName)
+      const projectConfig = this.projectService?.getProject(projectName)?.config
+      const projectPath = projectConfig?.path
       if (!projectPath) {
         throw new Error('Project path not configured, cannot access project prompts')
       }
 
-      // Find coday.yaml location (same logic as agent.service.ts)
-      const codayFiles = await findFilesByName({ text: 'coday.yaml', root: projectPath })
-      if (codayFiles.length === 0) {
-        throw new Error(`coday.yaml not found in project path: ${projectPath}`)
+      // Resolve coday.yaml directory: use explicit configPath if set, otherwise search
+      let codayDir: string
+      if (projectConfig?.configPath) {
+        codayDir = path.dirname(projectConfig.configPath)
+      } else {
+        const codayFiles = await findFilesByName({ text: 'coday.yaml', root: projectPath })
+        if (codayFiles.length === 0) {
+          throw new Error(`coday.yaml not found in project path: ${projectPath}`)
+        }
+        codayDir = path.join(projectPath, path.dirname(codayFiles[0]!))
       }
-
-      const codayFolder = path.dirname(codayFiles[0]!)
-      promptsDir = path.join(projectPath, codayFolder, 'prompts')
+      promptsDir = path.join(codayDir, 'prompts')
     }
 
     // Create directory if it doesn't exist

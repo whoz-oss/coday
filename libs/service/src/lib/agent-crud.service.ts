@@ -45,14 +45,6 @@ export class AgentCrudService {
   }
 
   /**
-   * Resolve the filesystem path for a given project by name.
-   */
-  private getProjectPath(projectName: string): string | undefined {
-    if (!this.projectService) return undefined
-    return this.projectService.getProject(projectName)?.config.path
-  }
-
-  /**
    * Get agents directory path for a specific location.
    * Creates the directory if it doesn't exist.
    */
@@ -63,18 +55,24 @@ export class AgentCrudService {
       agentsDir = path.join(this.codayConfigDir, 'projects', projectName, 'agents')
     } else {
       // colocated: find coday.yaml and put agents/ next to it
-      const projectPath = this.getProjectPath(projectName)
+      const projectConfig = this.projectService?.getProject(projectName)?.config
+      const projectPath = projectConfig?.path
       if (!projectPath) {
         throw new Error('Project path not configured, cannot access colocated agents')
       }
 
-      const codayFiles = await findFilesByName({ text: 'coday.yaml', root: projectPath })
-      if (codayFiles.length === 0) {
-        throw new Error(`coday.yaml not found in project path: ${projectPath}`)
+      // Resolve coday.yaml directory: use explicit configPath if set, otherwise search
+      let codayDir: string
+      if (projectConfig?.configPath) {
+        codayDir = path.dirname(projectConfig.configPath)
+      } else {
+        const codayFiles = await findFilesByName({ text: 'coday.yaml', root: projectPath })
+        if (codayFiles.length === 0) {
+          throw new Error(`coday.yaml not found in project path: ${projectPath}`)
+        }
+        codayDir = path.join(projectPath, path.dirname(codayFiles[0]!))
       }
-
-      const codayFolder = path.dirname(codayFiles[0]!)
-      agentsDir = path.join(projectPath, codayFolder, 'agents')
+      agentsDir = path.join(codayDir, 'agents')
     }
 
     if (!existsSync(agentsDir)) {

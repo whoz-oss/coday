@@ -290,12 +290,21 @@ export class AgentService implements Killable, AgentServiceModel {
     }
 
     // Add path from project (next to coday.yaml)
-    const projectPath = this.services.project.selectedProject?.config.path
+    const selectedConfig = this.services.project.selectedProject?.config
+    const projectPath = selectedConfig?.path
     if (projectPath) {
-      const codayFiles = await findFilesByName({ text: 'coday.yaml', root: projectPath })
-      if (codayFiles.length > 0) {
-        const codayFolder = path.dirname(codayFiles[0]!)
-        agentsPaths.push(path.join(projectPath, codayFolder, 'agents'))
+      // Resolve coday.yaml directory: use explicit configPath if set, otherwise search
+      let codayDir: string | undefined
+      if (selectedConfig?.configPath) {
+        codayDir = path.dirname(selectedConfig.configPath)
+      } else {
+        const codayFiles = await findFilesByName({ text: 'coday.yaml', root: projectPath })
+        if (codayFiles.length > 0) {
+          codayDir = path.join(projectPath, path.dirname(codayFiles[0]!))
+        }
+      }
+      if (codayDir) {
+        agentsPaths.push(path.join(codayDir, 'agents'))
       }
       if (context.project.agentFolders?.length) {
         agentsPaths.push(...context.project.agentFolders)

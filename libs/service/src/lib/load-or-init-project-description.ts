@@ -13,21 +13,38 @@ const CONFIG_FILENAME_YAML = 'coday.yaml'
 export const loadOrInitProjectDescription = async (
   projectPath: string,
   interactor: Interactor,
-  userData: UserData
+  userData: UserData,
+  configPath?: string
 ): Promise<ProjectDescription> => {
-  const foundFiles = await findFilesByName({ text: CONFIG_FILENAME_YAML, root: projectPath })
   let absoluteProjectDescriptionPath: string | null = null
   let projectDescription: ProjectDescription | undefined
 
-  if (foundFiles.length > 1) {
-    console.log(`[LOAD_PROJECT_DESC] ERROR: Multiple ${CONFIG_FILENAME_YAML} files found in ${projectPath}`)
-    throw new Error(
-      `Multiple files found for ${CONFIG_FILENAME_YAML}. Please ensure there is only one file with this name.`
-    )
+  if (configPath) {
+    // Explicit path provided: use it directly
+    absoluteProjectDescriptionPath = configPath
+    if (!existsSync(absoluteProjectDescriptionPath)) {
+      interactor.warn?.(
+        `Explicit configPath not found: ${absoluteProjectDescriptionPath}. Using default configuration.`
+      )
+      absoluteProjectDescriptionPath = null
+    }
+  } else {
+    // Default: search for coday.yaml within projectPath
+    const foundFiles = await findFilesByName({ text: CONFIG_FILENAME_YAML, root: projectPath })
+
+    if (foundFiles.length > 1) {
+      console.log(`[LOAD_PROJECT_DESC] ERROR: Multiple ${CONFIG_FILENAME_YAML} files found in ${projectPath}`)
+      throw new Error(
+        `Multiple files found for ${CONFIG_FILENAME_YAML}. Please ensure there is only one file with this name.`
+      )
+    }
+    if (foundFiles.length === 1) {
+      absoluteProjectDescriptionPath = path.join(projectPath, foundFiles[0]!)
+    }
   }
-  if (foundFiles.length === 1) {
-    absoluteProjectDescriptionPath = path.join(projectPath, foundFiles[0]!)
-  }
+
+  // The base directory for resolving relative paths in coday.yaml (docs, agents, etc.)
+  const configDir = absoluteProjectDescriptionPath ? path.dirname(absoluteProjectDescriptionPath) : projectPath
 
   try {
     if (absoluteProjectDescriptionPath && existsSync(absoluteProjectDescriptionPath)) {
@@ -48,7 +65,7 @@ export const loadOrInitProjectDescription = async (
     projectDescription.description += await getFormattedDocs(
       projectDescription,
       interactor,
-      projectPath,
+      configDir,
       CONFIG_FILENAME_YAML
     )
     // Enhanced user context building
