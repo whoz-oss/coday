@@ -1,5 +1,5 @@
 {
-  "name": "desktop",
+  "name": "desktop-twin",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "sourceRoot": "{projectRoot}",
@@ -8,7 +8,7 @@
     "nx-release-publish": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "echo 'Skipping npm publish for desktop - DMG will be uploaded to GitHub Release'"
+        "command": "echo 'Skipping npm publish for desktop-twin - PKG will be uploaded to GitHub Release'"
       }
     },
     "build": {
@@ -67,13 +67,15 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "rm -rf apps/desktop/dist apps/desktop/release",
-          "mkdir -p apps/desktop/dist",
-          "nx run desktop:build",
-          "nx run desktop:build-preload",
-          "cp apps/desktop/src/loader.html apps/desktop/dist/loader.html",
-          "cp apps/desktop/assets/icon.png apps/desktop/dist/icon.png",
-          "echo Desktop app built successfully"
+          "rm -rf apps/desktop-twin/dist apps/desktop-twin/release",
+          "mkdir -p apps/desktop-twin/dist",
+          "nx run desktop-twin:build",
+          "nx run desktop-twin:build-preload",
+          "cp apps/desktop-twin/src/loader.html apps/desktop-twin/dist/loader.html",
+          "cp apps/desktop-twin/src/setup.html apps/desktop-twin/dist/setup.html",
+          "cp apps/desktop-twin/src/preferences.html apps/desktop-twin/dist/preferences.html",
+          "test -f apps/desktop-twin/assets/icon.png && cp apps/desktop-twin/assets/icon.png apps/desktop-twin/dist/icon.png || echo 'No icon.png found, skipping'",
+          "echo Desktop Twin app built successfully"
         ],
         "parallel": false
       }
@@ -82,7 +84,7 @@
       "executor": "nx:run-commands",
       "dependsOn": ["build-all"],
       "options": {
-        "commands": ["electron apps/desktop/dist/main.js"],
+        "commands": ["electron apps/desktop-twin/dist/main.js"],
         "parallel": false
       }
     },
@@ -111,8 +113,8 @@
       "dependsOn": ["package-dist"],
       "options": {
         "commands": [
-          "chmod +x apps/desktop/macos/scripts/build-pkg.sh",
-          "bash apps/desktop/macos/scripts/build-pkg.sh"
+          "chmod +x apps/desktop-twin/macos/scripts/build-pkg.sh",
+          "bash apps/desktop-twin/macos/scripts/build-pkg.sh"
         ],
         "parallel": false
       }

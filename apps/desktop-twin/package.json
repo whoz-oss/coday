@@ -1,7 +1,7 @@
 {
-  "name": "@whoz-oss/coday-desktop",
+  "name": "@whoz-oss/coday-desktop-twin",
   "version": "0.82.0",
-  "description": "Coday Desktop - Electron-based desktop application",
+  "description": "Coday Twin Desktop - Digital Twin Electron application",
   "repository": "https://github.com/whoz-oss/coday",
   "license": "MIT",
   "author": "Whoz OSS",
@@ -18,7 +18,7 @@
     "access": "public"
   },
   "build": {
-    "appId": "com.whoz.coday",
+    "appId": "com.whoz.coday-twin",
     "directories": {
       "buildResources": "assets",
       "output": "release"
@@ -50,7 +50,7 @@
       ]
     },
     "npmRebuild": false,
-    "productName": "Coday",
+    "productName": "Coday Twin",
     "win": {
       "icon": "assets/icon.jpg",
       "target": [

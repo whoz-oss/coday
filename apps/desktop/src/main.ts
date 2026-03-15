@@ -174,27 +174,9 @@ function findNpxExecutable(): string | null {
 async function startCodayServer(): Promise<void> {
   try {
     log('INFO', 'Starting Coday server...')
-    log('INFO', 'App packaged:', app.isPackaged)
 
-    // Determine if we're in development or production
-    const isDev = process.env['NODE_ENV'] === 'development' || !app.isPackaged
-
-    if (isDev) {
-      // Development: connect to local server on port 4100
-      log('INFO', 'Development mode: connecting to local server on port 4100')
-      serverUrl = 'http://localhost:4100'
-
-      // Wait a bit to ensure the server is ready, then resolve
-      return new Promise<void>((resolve) => {
-        setTimeout(() => {
-          log('INFO', 'Using development server at:', serverUrl)
-          resolve()
-        }, 500)
-      })
-    }
-
-    // Production: find node and run the installed package
-    log('INFO', 'Production mode: finding node executable')
+    // Find node and run the installed package via npx
+    log('INFO', 'Finding node executable...')
 
     const nodePath = findNodeExecutable()
 
@@ -236,15 +218,28 @@ async function startCodayServer(): Promise<void> {
       env['PATH'] = '/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'
     }
 
+    // Use a temp directory as cwd to prevent npx from resolving to local workspace packages
+    const npxCwd = app.getPath('temp')
+    log('INFO', 'Using npx cwd:', npxCwd)
+
     // Start the server
     serverProcess = spawn(command, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env,
+      cwd: npxCwd,
       shell: false,
     })
 
     return new Promise<void>((resolve, reject) => {
       let serverReady = false
+      let settled = false
+
+      const settle = (fn: () => void) => {
+        if (!settled) {
+          settled = true
+          fn()
+        }
+      }
 
       if (serverProcess!.stdout) {
         serverProcess!.stdout.on('data', (data: Buffer) => {
@@ -260,7 +255,7 @@ async function startCodayServer(): Promise<void> {
             if (!serverReady) {
               serverReady = true
               // Give the server a moment to fully initialize
-              setTimeout(() => resolve(), 500)
+              setTimeout(() => settle(() => resolve()), 500)
             }
           }
         })
@@ -276,31 +271,24 @@ async function startCodayServer(): Promise<void> {
         log('ERROR', 'Failed to start server:', error)
         const wrappedError: any = new Error(`Failed to start Coday server: ${error.message}`)
         wrappedError.userFacing = true
-        reject(wrappedError)
+        settle(() => reject(wrappedError))
       })
 
       serverProcess!.on('exit', (code: number | null) => {
         log('INFO', 'Server process exited with code:', code)
         serverProcess = null
-      })
-
-      // Fallback timeout in case we don't detect server ready message
-      setTimeout(() => {
-        if (!serverProcess) {
-          log('ERROR', 'Server process does not exists')
-          const error: any = new Error('Failed to find server process.')
-          error.userFacing = true
-          reject(error)
-        }
+        // Only reject if the server exited before it was ready
         if (!serverReady) {
-          log('ERROR', 'Server start timeout reached - could not detect server URL')
           const error: any = new Error(
-            'Failed to start server: timeout waiting for server URL. The server may be taking too long to start.'
+            `Server process exited unexpectedly with code ${code}.\n\nCheck logs for details.`
           )
           error.userFacing = true
-          reject(error)
+          settle(() => reject(error))
         }
-      }, 10000) // 10 seconds timeout for npx to download and start
+      })
+
+      // No hard timeout — the loading screen stays visible while npx downloads.
+      // The promise only settles when the server URL is detected or the process exits/errors.
     })
   } catch (error) {
     throw error
