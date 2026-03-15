@@ -280,6 +280,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # TODO: Add Windows code signing (Authenticode) to prevent SmartScreen warnings
+      # Requires: signing certificate in secrets, signtool.exe configuration in electron-builder
+      # See: https://www.electron.build/code-signing.html
+
       - name: Build and Package Coday Desktop for Windows
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
