@@ -252,6 +252,71 @@ jobs:
             gh release upload "$TAG" "$TWIN_DMG_PATH" --clobber
           fi
 
+  # Job 4: Build and upload Windows desktop apps (Coday + Coday Twin)
+  windows-desktop-release:
+    runs-on: windows-latest
+    needs: release
+    if: needs.release.outputs.new_version != ''
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and Package Coday Desktop for Windows
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          pnpm nx run desktop:package-dist
+
+      - name: Build and Package Coday Twin Desktop for Windows
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          pnpm nx run desktop-twin:package-dist
+
+      - name: Upload Windows packages to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          VERSION="${{ needs.release.outputs.new_version }}"
+          TAG="release/${VERSION}"
+
+          # Upload Coday Desktop Windows installer
+          EXE_PATH=$(find apps/desktop/release -name "*.exe" -type f | head -1)
+          if [ -n "$EXE_PATH" ]; then
+            echo "Uploading $EXE_PATH to release $TAG"
+            gh release upload "$TAG" "$EXE_PATH" --clobber
+          else
+            echo "Warning: Coday Desktop Windows installer not found"
+          fi
+
+          # Upload Coday Twin Desktop Windows installer
+          TWIN_EXE_PATH=$(find apps/desktop-twin/release -name "*.exe" -type f | head -1)
+          if [ -n "$TWIN_EXE_PATH" ]; then
+            echo "Uploading $TWIN_EXE_PATH to release $TAG"
+            gh release upload "$TAG" "$TWIN_EXE_PATH" --clobber
+          else
+            echo "Warning: Coday Twin Desktop Windows installer not found"
+          fi
+
   publish-sdk:
     name: publish SDK to GitHub Packages
     runs-on: ubuntu-latest

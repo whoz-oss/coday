@@ -74,7 +74,51 @@ function findNodeExecutable(): string | null {
   const { execSync } = require('child_process') as typeof import('child_process')
   const { existsSync } = require('fs') as typeof import('fs')
 
-  // Common node installation paths on macOS
+  if (process.platform === 'win32') {
+    // Windows-specific paths
+    const possiblePaths: string[] = []
+
+    // Check nvm-windows
+    const nvmSymlink = process.env['NVM_SYMLINK']
+    if (nvmSymlink && existsSync(join(nvmSymlink, 'node.exe'))) {
+      possiblePaths.push(join(nvmSymlink, 'node.exe'))
+    }
+
+    // Check fnm (Fast Node Manager)
+    const fnmDir = process.env['FNM_MULTISHELL_PATH']
+    if (fnmDir && existsSync(join(fnmDir, 'node.exe'))) {
+      possiblePaths.push(join(fnmDir, 'node.exe'))
+    }
+
+    // Standard installation paths
+    possiblePaths.push(
+      join(process.env['ProgramFiles'] ?? 'C:\\Program Files', 'nodejs', 'node.exe'),
+      join(process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)', 'nodejs', 'node.exe'),
+      join(process.env['LOCALAPPDATA'] ?? '', 'Programs', 'nodejs', 'node.exe')
+    )
+
+    for (const nodePath of possiblePaths) {
+      if (nodePath && existsSync(nodePath)) {
+        console.log('Found node at:', nodePath)
+        return nodePath
+      }
+    }
+
+    // Try using 'where node' as last resort
+    try {
+      const whereNode = execSync('where node', { encoding: 'utf8' }).trim().split('\r\n')[0]
+      if (whereNode && existsSync(whereNode)) {
+        console.log('Found node via where:', whereNode)
+        return whereNode
+      }
+    } catch (e) {
+      // where command failed
+    }
+
+    return null
+  }
+
+  // macOS/Linux paths
   const possiblePaths = [
     '/usr/local/bin/node',
     '/opt/homebrew/bin/node', // Apple Silicon Homebrew
@@ -130,8 +174,37 @@ function findNodeExecutable(): string | null {
 function findNpxExecutable(): string | null {
   const { execSync } = require('child_process') as typeof import('child_process')
   const { existsSync } = require('fs') as typeof import('fs')
+  const isWindows = process.platform === 'win32'
+  const npxName = isWindows ? 'npx.cmd' : 'npx'
 
-  // First, try to find npx using 'which'
+  if (isWindows) {
+    // Try 'where npx' first on Windows
+    try {
+      const whereNpx = execSync('where npx', { encoding: 'utf8' }).trim().split('\r\n')[0]
+      if (whereNpx && existsSync(whereNpx)) {
+        console.log('Found npx via where:', whereNpx)
+        return whereNpx
+      }
+    } catch (e) {
+      // where command failed
+    }
+
+    // Try alongside node
+    const nodePath = findNodeExecutable()
+    if (nodePath) {
+      const { dirname } = require('path') as typeof import('path')
+      const nodeDir = dirname(nodePath)
+      const npxPath = join(nodeDir, npxName)
+      if (existsSync(npxPath)) {
+        console.log('Found npx alongside node at:', npxPath)
+        return npxPath
+      }
+    }
+
+    return null
+  }
+
+  // macOS/Linux: try to find npx using 'which'
   try {
     const whichNpx = execSync('which npx', { encoding: 'utf8' }).trim()
     if (whichNpx && existsSync(whichNpx)) {
@@ -711,31 +784,38 @@ function showPreferencesWindow(): void {
 }
 
 /**
- * Setup native macOS application menu with Preferences entry
+ * Setup application menu with Preferences entry (cross-platform)
  */
 function setupApplicationMenu(): void {
+  const isMac = process.platform === 'darwin'
+
+  const appSubmenu: any[] = [
+    ...(isMac ? [{ role: 'about', label: 'About Coday Twin' }, { type: 'separator' }] : []),
+    {
+      label: 'Preferences...',
+      accelerator: 'CmdOrCtrl+,',
+      click: () => {
+        showPreferencesWindow()
+      },
+    },
+    { type: 'separator' },
+    ...(isMac
+      ? [
+          { role: 'services', label: 'Services' },
+          { type: 'separator' },
+          { role: 'hide', label: 'Hide Coday Twin' },
+          { role: 'hideOthers', label: 'Hide Others' },
+          { role: 'unhide', label: 'Show All' },
+          { type: 'separator' },
+        ]
+      : []),
+    { role: 'quit', label: isMac ? 'Quit Coday Twin' : 'Exit' },
+  ]
+
   const template = [
     {
-      label: 'Coday Twin',
-      submenu: [
-        { role: 'about', label: 'About Coday Twin' },
-        { type: 'separator' },
-        {
-          label: 'Preferences...',
-          accelerator: 'CmdOrCtrl+,',
-          click: () => {
-            showPreferencesWindow()
-          },
-        },
-        { type: 'separator' },
-        { role: 'services', label: 'Services' },
-        { type: 'separator' },
-        { role: 'hide', label: 'Hide Coday Twin' },
-        { role: 'hideOthers', label: 'Hide Others' },
-        { role: 'unhide', label: 'Show All' },
-        { type: 'separator' },
-        { role: 'quit', label: 'Quit Coday Twin' },
-      ],
+      label: isMac ? 'Coday Twin' : 'File',
+      submenu: appSubmenu,
     },
     {
       label: 'Edit',
@@ -761,8 +841,7 @@ function setupApplicationMenu(): void {
       submenu: [
         { role: 'minimize', label: 'Minimize' },
         { role: 'zoom', label: 'Zoom' },
-        { type: 'separator' },
-        { role: 'front', label: 'Bring All to Front' },
+        ...(isMac ? [{ type: 'separator' }, { role: 'front', label: 'Bring All to Front' }] : []),
       ],
     },
   ]
@@ -787,7 +866,9 @@ async function startCodayServer(): Promise<void> {
 
     if (!nodePath) {
       const error = new Error(
-        'Node.js not found. Please install Node.js from https://nodejs.org/ or use a package manager like Homebrew.'
+        process.platform === 'win32'
+          ? 'Node.js not found. Please install Node.js from https://nodejs.org/ or run: winget install OpenJS.NodeJS.LTS'
+          : 'Node.js not found. Please install Node.js from https://nodejs.org/ or use a package manager like Homebrew.'
       )
       ;(error as any).userFacing = true
       throw error
@@ -801,7 +882,9 @@ async function startCodayServer(): Promise<void> {
     if (!npxPath) {
       const error = new Error(
         'npx not found. Please ensure Node.js and npm are properly installed.\n\n' +
-          'You can install Node.js from https://nodejs.org/ or use a package manager like Homebrew.\n\n' +
+          (process.platform === 'win32'
+            ? 'You can install Node.js from https://nodejs.org/ or run: winget install OpenJS.NodeJS.LTS\n\n'
+            : 'You can install Node.js from https://nodejs.org/ or use a package manager like Homebrew.\n\n') +
           'After installation, verify with: npx --version'
       )
       ;(error as any).userFacing = true
@@ -821,13 +904,22 @@ async function startCodayServer(): Promise<void> {
     log('INFO', 'Spawning:', npxPath, args.join(' '))
     log('INFO', 'Twin project path:', twinProjectPath)
 
-    // Set up environment
+    // Set up environment with platform-appropriate PATH
     const env = { ...process.env }
-    try {
-      const userPath = execSync('/usr/bin/env echo $PATH', { shell: '/bin/zsh' }).toString().trim()
-      env['PATH'] = `${userPath}:/usr/local/bin:/opt/homebrew/bin:${process.env['PATH']}`
-    } catch {
-      env['PATH'] = '/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'
+    if (process.platform === 'win32') {
+      // On Windows, ensure common Node.js paths are included
+      const additionalPaths = [
+        join(process.env['ProgramFiles'] ?? 'C:\\Program Files', 'nodejs'),
+        join(process.env['APPDATA'] ?? '', 'npm'),
+      ].filter((p) => p)
+      env['PATH'] = `${additionalPaths.join(';')};${process.env['PATH'] ?? ''}`
+    } else {
+      try {
+        const userPath = execSync('/usr/bin/env echo $PATH', { shell: '/bin/zsh' }).toString().trim()
+        env['PATH'] = `${userPath}:/usr/local/bin:/opt/homebrew/bin:${process.env['PATH']}`
+      } catch {
+        env['PATH'] = '/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'
+      }
     }
 
     // Use a temp directory as cwd to prevent npx from resolving to local workspace packages
@@ -839,7 +931,8 @@ async function startCodayServer(): Promise<void> {
       stdio: ['ignore', 'pipe', 'pipe'],
       env,
       cwd: npxCwd,
-      shell: false,
+      // On Windows, .cmd scripts require shell: true to execute properly
+      shell: process.platform === 'win32',
     })
 
     return new Promise<void>((resolve, reject) => {

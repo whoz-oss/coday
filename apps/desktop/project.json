@@ -67,12 +67,12 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "rm -rf apps/desktop/dist apps/desktop/release",
-          "mkdir -p apps/desktop/dist",
+          "node -e \"const fs=require('fs'); ['apps/desktop/dist','apps/desktop/release'].forEach(p=>{if(fs.existsSync(p))fs.rmSync(p,{recursive:true,force:true})})\"",
+          "node -e \"require('fs').mkdirSync('apps/desktop/dist',{recursive:true})\"",
           "nx run desktop:build",
           "nx run desktop:build-preload",
-          "cp apps/desktop/src/loader.html apps/desktop/dist/loader.html",
-          "cp apps/desktop/assets/icon.png apps/desktop/dist/icon.png",
+          "node -e \"require('fs').copyFileSync('apps/desktop/src/loader.html','apps/desktop/dist/loader.html')\"",
+          "node -e \"const fs=require('fs'); if(fs.existsSync('apps/desktop/assets/icon.png')) fs.copyFileSync('apps/desktop/assets/icon.png','apps/desktop/dist/icon.png')\"",
           "echo Desktop app built successfully"
         ],
         "parallel": false

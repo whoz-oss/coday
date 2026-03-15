@@ -67,14 +67,14 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "rm -rf apps/desktop-twin/dist apps/desktop-twin/release",
-          "mkdir -p apps/desktop-twin/dist",
+          "node -e \"const fs=require('fs'); ['apps/desktop-twin/dist','apps/desktop-twin/release'].forEach(p=>{if(fs.existsSync(p))fs.rmSync(p,{recursive:true,force:true})})\"",
+          "node -e \"require('fs').mkdirSync('apps/desktop-twin/dist',{recursive:true})\"",
           "nx run desktop-twin:build",
           "nx run desktop-twin:build-preload",
-          "cp apps/desktop-twin/src/loader.html apps/desktop-twin/dist/loader.html",
-          "cp apps/desktop-twin/src/setup.html apps/desktop-twin/dist/setup.html",
-          "cp apps/desktop-twin/src/preferences.html apps/desktop-twin/dist/preferences.html",
-          "test -f apps/desktop-twin/assets/icon.png && cp apps/desktop-twin/assets/icon.png apps/desktop-twin/dist/icon.png || echo 'No icon.png found, skipping'",
+          "node -e \"require('fs').copyFileSync('apps/desktop-twin/src/loader.html','apps/desktop-twin/dist/loader.html')\"",
+          "node -e \"require('fs').copyFileSync('apps/desktop-twin/src/setup.html','apps/desktop-twin/dist/setup.html')\"",
+          "node -e \"require('fs').copyFileSync('apps/desktop-twin/src/preferences.html','apps/desktop-twin/dist/preferences.html')\"",
+          "node -e \"const fs=require('fs'); if(fs.existsSync('apps/desktop-twin/assets/icon.png')) fs.copyFileSync('apps/desktop-twin/assets/icon.png','apps/desktop-twin/dist/icon.png')\"",
           "echo Desktop Twin app built successfully"
         ],
         "parallel": false

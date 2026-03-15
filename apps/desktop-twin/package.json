@@ -24,6 +24,15 @@
       "output": "release"
     },
     "electronVersion": "38.3.0",
+    "extraResources": [
+      {
+        "filter": [
+          "**/*"
+        ],
+        "from": "macos/vault-template",
+        "to": "vault-template"
+      }
+    ],
     "files": [
       "dist/**/*",
       "assets/**/*"
@@ -50,9 +59,14 @@
       ]
     },
     "npmRebuild": false,
+    "nsis": {
+      "allowToChangeInstallationDirectory": true,
+      "include": "windows/scripts/installer.nsh",
+      "oneClick": false
+    },
     "productName": "Coday Twin",
     "win": {
-      "icon": "assets/icon.jpg",
+      "icon": "assets/icon.png",
       "target": [
         "nsis",
         "portable"

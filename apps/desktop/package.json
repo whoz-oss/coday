@@ -50,9 +50,14 @@
       ]
     },
     "npmRebuild": false,
+    "nsis": {
+      "allowToChangeInstallationDirectory": true,
+      "include": "windows/scripts/installer.nsh",
+      "oneClick": false
+    },
     "productName": "Coday",
     "win": {
-      "icon": "assets/icon.jpg",
+      "icon": "assets/icon.png",
       "target": [
         "nsis",
         "portable"
