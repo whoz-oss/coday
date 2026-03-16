@@ -286,15 +286,8 @@ export class ProjectService {
       }
     }
 
-    // deleteProject is currently a no-op in the file repo; remove config file directly
-    const configFile = path.join(projectInfo.configPath, 'project.yaml')
-    if (fs.existsSync(configFile)) fs.unlinkSync(configFile)
-
-    try {
-      fs.rmdirSync(projectInfo.configPath)
-    } catch {
-      // not empty — leave it
-    }
+    // deleteProject is currently a no-op in the file repo; remove the whole config directory
+    fs.rmSync(projectInfo.configPath, { recursive: true, force: true })
   }
 
   /**
