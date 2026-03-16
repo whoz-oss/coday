@@ -252,7 +252,7 @@ export class ProjectService {
     if (projectInfo) {
       const worktreeInfo = this.repository.getProjectInfo(projectName)
       if (worktreeInfo) {
-        for (const dir of ['agents', 'prompts', 'schedulers', 'memories']) {
+        for (const dir of ['agents', 'prompts', 'schedulers', 'memories', 'threads']) {
           const parentDir = path.join(projectInfo.configPath, dir)
           const targetLink = path.join(worktreeInfo.configPath, dir)
           if (fs.existsSync(parentDir) && !fs.existsSync(targetLink)) {
@@ -276,7 +276,7 @@ export class ProjectService {
     const projectInfo = this.repository.getProjectInfo(projectName)
     if (!projectInfo) return
 
-    for (const dir of ['agents', 'prompts', 'schedulers', 'memories']) {
+    for (const dir of ['agents', 'prompts', 'schedulers', 'memories', 'threads']) {
       const link = path.join(projectInfo.configPath, dir)
       try {
         fs.lstatSync(link)
@@ -295,13 +295,6 @@ export class ProjectService {
     } catch {
       // not empty — leave it
     }
-  }
-
-  /**
-   * Check whether a project is already registered.
-   */
-  isProjectRegistered(projectName: string): boolean {
-    return this.repository.exists(projectName)
   }
 
   /**

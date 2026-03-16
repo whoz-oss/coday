@@ -90,19 +90,19 @@ export class GitWorktreeTools extends AssistantToolFactory {
             entries.push({ path: wtPath, branch })
           }
 
+          // git worktree list always puts the main worktree first
+          const mainWorktreePath = entries[0]?.path
+
           return JSON.stringify(
             entries.map((e) => {
-              const isMainWorktree = e.path === projectRoot
+              const isMain = e.path === mainWorktreePath
               const sanitized = sanitizeBranchName(e.branch)
-              const projectName = isMainWorktree
-                ? parentProjectName
-                : deriveWorktreeProjectName(parentProjectName, sanitized)
+              const projectName = isMain ? parentProjectName : deriveWorktreeProjectName(parentProjectName, sanitized)
               return {
                 branch: e.branch,
                 path: e.path,
                 projectName,
-                isMain: isMainWorktree,
-                registered: this.projectService?.isProjectRegistered(projectName) ?? false,
+                isMain,
               }
             }),
             null,
@@ -139,27 +139,24 @@ export class GitWorktreeTools extends AssistantToolFactory {
             }
 
             // Try creating a new branch first; if it already exists, check it out instead.
-            // Clean up the directory if git created it before failing, so the fallback can succeed.
+            // Clean up any empty directory git may have created before failing so the fallback can succeed.
             let addResult = await runBash({
               command: `git worktree add "${worktreePath}" -b "${branch}"`,
               root: projectRoot,
               interactor: this.interactor,
             })
-            if (addResult.toLowerCase().includes('error') || addResult.toLowerCase().includes('fatal')) {
-              // Remove the directory git may have created before failing
-              if (fs.existsSync(worktreePath)) {
-                try {
-                  fs.rmdirSync(worktreePath)
-                } catch {
-                  /* ignore */
-                }
+            if (addResult.startsWith('Command failed:')) {
+              try {
+                fs.rmdirSync(worktreePath)
+              } catch {
+                /* ignore */
               }
               addResult = await runBash({
                 command: `git worktree add "${worktreePath}" "${branch}"`,
                 root: projectRoot,
                 interactor: this.interactor,
               })
-              if (addResult.toLowerCase().includes('error') || addResult.toLowerCase().includes('fatal')) {
+              if (addResult.startsWith('Command failed:')) {
                 return `Failed to create worktree:\n${addResult}`
               }
             }
@@ -196,6 +193,10 @@ export class GitWorktreeTools extends AssistantToolFactory {
           const worktreePath = path.join(worktreesRoot, `${parentProjectName}__${sanitized}`)
           const projectName = deriveWorktreeProjectName(parentProjectName, sanitized)
 
+          if (worktreePath === projectRoot) {
+            return `Error: cannot remove the main worktree`
+          }
+
           if (!fs.existsSync(worktreePath)) {
             return `Error: worktree path does not exist: ${worktreePath}`
           }
@@ -205,7 +206,7 @@ export class GitWorktreeTools extends AssistantToolFactory {
             root: projectRoot,
             interactor: this.interactor,
           })
-          if (removeResult.toLowerCase().includes('error') || removeResult.toLowerCase().includes('fatal')) {
+          if (removeResult.startsWith('Command failed:')) {
             return `Failed to remove worktree:\n${removeResult}`
           }
 
