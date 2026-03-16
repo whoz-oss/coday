@@ -20,13 +20,17 @@ export const loadOrInitProjectDescription = async (
   let projectDescription: ProjectDescription | undefined
 
   if (configPath) {
-    // Explicit path provided: use it directly
-    absoluteProjectDescriptionPath = configPath
-    if (!existsSync(absoluteProjectDescriptionPath)) {
-      interactor.warn?.(
-        `Explicit configPath not found: ${absoluteProjectDescriptionPath}. Using default configuration.`
-      )
-      absoluteProjectDescriptionPath = null
+    // Explicit path provided: validate and use it directly
+    if (!path.isAbsolute(configPath)) {
+      interactor.warn?.(`configPath must be an absolute path, got: "${configPath}". Using default configuration.`)
+    } else {
+      absoluteProjectDescriptionPath = configPath
+      if (!existsSync(absoluteProjectDescriptionPath)) {
+        interactor.warn?.(
+          `Explicit configPath not found: ${absoluteProjectDescriptionPath}. Using default configuration.`
+        )
+        absoluteProjectDescriptionPath = null
+      }
     }
   } else {
     // Default: search for coday.yaml within projectPath
