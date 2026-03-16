@@ -17,6 +17,6 @@ import java.util.UUID
 class InMemoryCaseRepository :
     CaseRepository,
     EntityRepository<Case, UUID> by InMemoryEntityRepository(
-        parentIdExtractor = { it.projectId },
+        parentIdExtractor = { it.namespaceId },
         comparator = compareBy { it.metadata.id },
     )

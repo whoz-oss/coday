@@ -2,6 +2,7 @@
   <configuration default="false" name="web" type="CompoundRunConfigurationType">
     <toRun name="client" type="js.build_tools.npm" />
     <toRun name="server" type="js.build_tools.npm" />
+    <toRun name="agentos-service:bootRun" type="NxRunConfigurationType" />
     <method v="2" />
   </configuration>
 </component>

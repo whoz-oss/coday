@@ -1,3 +1,20 @@
+## 0.87.0 (2026-03-16)
+
+### 🚀 Features
+
+- parallel delegation with inline sub-threads ([0811f443](https://github.com/whoz-oss/coday/commit/0811f443))
+- load subThread content when uncollapsing ([50ba2dae](https://github.com/whoz-oss/coday/commit/50ba2dae))
+- pass thread explicitly to delegate tool via ToolSet.run(), removing broken threadStack ([4c6e5d3e](https://github.com/whoz-oss/coday/commit/4c6e5d3e))
+- removing broken threadStack; bump stackDepth to 10; remove unused forkedThreads Map ([af83b0c1](https://github.com/whoz-oss/coday/commit/af83b0c1))
+- WZ-30688 namespace registry ([#546](https://github.com/whoz-oss/coday/pull/546))
+- update lock file ([66c27664](https://github.com/whoz-oss/coday/commit/66c27664))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+- thomas.martin @thomasmartin-whoz
+- vincent-audibert-whoz
+
 ## 0.86.0 (2026-03-12)
 
 ### 🚀 Features

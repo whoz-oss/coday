@@ -10,14 +10,14 @@
 import { EntityMetadata } from './entity-metadata'
 
 export interface QuestionEvent {
-  type: 'QuestionEvent'
-  timestamp: string
   caseId: string
-  projectId: string
   id: string
   metadata: EntityMetadata
+  namespaceId: string
+  timestamp: string
+  type: 'QuestionEvent'
   agentId: string
   agentName: string
-  question: string
   options?: Array<string>
+  question: string
 }

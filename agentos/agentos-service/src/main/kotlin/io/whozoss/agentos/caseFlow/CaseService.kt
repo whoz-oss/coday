@@ -20,7 +20,7 @@ import java.util.UUID
  * This service acts as the bridge between the HTTP layer and the [CaseRuntime],
  * owning all business logic (persistence, status transitions, event storage).
  *
- * Parent type is UUID representing the projectId.
+ * Parent type is UUID representing the namespaceId.
  */
 interface CaseService : EntityService<Case, UUID> {
     // ========================================
@@ -46,9 +46,9 @@ interface CaseService : EntityService<Case, UUID> {
     fun findActiveRuntime(caseId: UUID): CaseRuntime?
 
     /**
-     * Retrieve all active [CaseRuntime] instances for a given project.
+     * Retrieve all active [CaseRuntime] instances for a given namespace.
      */
-    fun getActiveCasesByProject(projectId: UUID): List<CaseRuntime>
+    fun getActiveCasesByNamespace(namespaceId: UUID): List<CaseRuntime>
 
     /**
      * Retrieve all active [CaseRuntime] instances.

@@ -45,7 +45,7 @@ import { ToolSelectedEvent } from '../model/tool-selected-event'
 import { WarnEvent } from '../model/warn-event'
 
 // @ts-ignore
-import { BASE_PATH, COLLECTION_FORMATS } from '../variables'
+import { BASE_PATH } from '../variables'
 import { Configuration } from '../configuration'
 import { BaseService } from '../api.base.service'
 

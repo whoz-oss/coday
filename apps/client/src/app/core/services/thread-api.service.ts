@@ -135,4 +135,12 @@ export class ThreadApiService {
   stopThread(threadId: string): Observable<{ success: boolean; message: string }> {
     return this.http.post<{ success: boolean; message: string }>(`${this.getBaseUrl()}/${threadId}/stop`, {})
   }
+
+  /**
+   * Get all messages for a specific thread (used for lazy-loading sub-thread content)
+   * @param threadId Thread identifier
+   */
+  getThreadMessages(threadId: string): Observable<{ messages: any[] }> {
+    return this.http.get<{ messages: any[] }>(`${this.getBaseUrl()}/${threadId}/messages`)
+  }
 }

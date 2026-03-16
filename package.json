@@ -68,6 +68,7 @@
     "eslint-plugin-playwright": "catalog:dev",
     "eslint-plugin-prefer-arrow": "catalog:dev",
     "eslint-plugin-prettier": "catalog:dev",
+    "eslint-plugin-unused-imports": "catalog:dev",
     "husky": "catalog:dev",
     "jest": "catalog:dev",
     "jest-environment-jsdom": "catalog:dev",

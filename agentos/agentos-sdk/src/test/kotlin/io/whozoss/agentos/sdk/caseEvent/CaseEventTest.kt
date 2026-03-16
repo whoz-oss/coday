@@ -10,13 +10,13 @@ class CaseEventTest {
     @Test
     fun `QuestionEvent should create AnswerEvent with correct references`() {
         // Given
-        val projectId = UUID.randomUUID()
+        val namespaceId = UUID.randomUUID()
         val caseId = UUID.randomUUID()
         val agentId = UUID.randomUUID()
 
         val questionEvent =
             QuestionEvent(
-                projectId = projectId,
+                namespaceId = namespaceId,
                 caseId = caseId,
                 agentId = agentId,
                 agentName = "TestAgent",
@@ -39,7 +39,7 @@ class CaseEventTest {
 
         // Then Assert answer event properties
         Assertions.assertEquals(questionEvent.id, answerEvent.questionId)
-        Assertions.assertEquals(projectId, answerEvent.projectId)
+        Assertions.assertEquals(namespaceId, answerEvent.namespaceId)
         Assertions.assertEquals(caseId, answerEvent.caseId)
         Assertions.assertEquals(actor, answerEvent.actor)
         Assertions.assertEquals("Yes", answerEvent.answer)
@@ -49,13 +49,13 @@ class CaseEventTest {
     @Test
     fun `QuestionEvent without options should work for free text responses`() {
         // Arrange
-        val projectId = UUID.randomUUID()
+        val namespaceId = UUID.randomUUID()
         val caseId = UUID.randomUUID()
         val agentId = UUID.randomUUID()
 
         val questionEvent =
             QuestionEvent(
-                projectId = projectId,
+                namespaceId = namespaceId,
                 caseId = caseId,
                 agentId = agentId,
                 agentName = "TestAgent",

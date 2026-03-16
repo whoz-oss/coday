@@ -9,7 +9,7 @@ import java.util.UUID
 /**
  * File-system implementation of [CaseRepository].
  *
- * Storage layout: `<dataDir>/cases/<projectId>/<caseId>.json`
+ * Storage layout: `<dataDir>/cases/<namespaceId>/<caseId>.json`
  */
 class FilesystemCaseRepository(
     dataDir: Path,
@@ -19,6 +19,6 @@ class FilesystemCaseRepository(
         rootDir = dataDir.resolve("cases"),
         entityClass = Case::class.java,
         objectMapper = objectMapper,
-        parentIdExtractor = { it.projectId },
+        parentIdExtractor = { it.namespaceId },
         comparator = compareBy { it.metadata.created },
     )

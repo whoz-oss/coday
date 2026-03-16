@@ -17,7 +17,7 @@ import { Observable } from 'rxjs'
 import { Namespace } from '../model/namespace'
 
 // @ts-ignore
-import { BASE_PATH, COLLECTION_FORMATS } from '../variables'
+import { BASE_PATH } from '../variables'
 import { Configuration } from '../configuration'
 import { BaseService } from '../api.base.service'
 
@@ -372,7 +372,7 @@ export class NamespaceControllerService extends BaseService {
       }
     }
 
-    let localVarPath = `/api/namespaces/list`
+    let localVarPath = `/api/namespaces`
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<Array<Namespace>>('get', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
