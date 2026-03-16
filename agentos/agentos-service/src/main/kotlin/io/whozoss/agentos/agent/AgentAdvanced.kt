@@ -16,6 +16,8 @@ import io.whozoss.agentos.sdk.caseEvent.ToolSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
@@ -45,6 +47,11 @@ import java.util.UUID
  * cancellable: coroutine cancellation propagates into the Reactor
  * subscription and aborts the in-flight HTTP request, so neither
  * interrupt nor kill leave orphaned API calls consuming quota.
+ *
+ * Cancellation is the primary stop mechanism. [shouldContinue] is accepted
+ * in the signature for SDK compatibility but is not used internally —
+ * [ensureActive] at each step gives the same cooperative-stop guarantee
+ * through standard coroutine machinery.
  */
 class AgentAdvanced(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -57,6 +64,8 @@ class AgentAdvanced(
 
     override fun run(
         events: List<CaseEvent>,
+        // Accepted for SDK backward compatibility; not used internally.
+        // Cancellation is the primary stop mechanism via ensureActive().
         shouldContinue: () -> Boolean,
     ): Flow<CaseEvent> =
         flow {
@@ -76,20 +85,22 @@ class AgentAdvanced(
             var continueLoop = true
 
             try {
-                while (continueLoop && iteration < maxIterations && shouldContinue()) {
+                while (continueLoop && iteration < maxIterations) {
+                    // Honour coroutine cancellation (interrupt or kill) at the top of
+                    // every iteration — before any network call is made. This is the
+                    // idiomatic replacement for the old `if (!shouldContinue()) break`
+                    // guards: ensureActive() throws CancellationException if the
+                    // coroutine has been cancelled, which unwinds the flow cleanly.
+                    currentCoroutineContext().ensureActive()
                     iteration++
 
-                    // 1. Generate intention
-                    // Each guard before a network call lets an interrupt/kill that arrives
-                    // mid-iteration be honoured at the earliest possible point, rather than
-                    // waiting for all remaining LLM round-trips to complete.
-                    if (!shouldContinue()) break
+                    // 1. Generate intention (suspends on streaming; cancellable)
                     emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
                     val intention = generateIntention(events, namespaceId, caseId)
                     emit(intention)
 
-                    // 2. Select tool
-                    if (!shouldContinue()) break
+                    // 2. Select tool (suspends on streaming; cancellable)
+                    currentCoroutineContext().ensureActive()
                     val toolSelected = selectTool(events, intention, namespaceId, caseId)
                     emit(toolSelected)
 
@@ -99,15 +110,15 @@ class AgentAdvanced(
                         continue
                     }
 
-                    // 3. Generate parameters
-                    if (!shouldContinue()) break
+                    // 3. Generate parameters (suspends on streaming; cancellable)
+                    currentCoroutineContext().ensureActive()
                     val toolRequestId = UUID.randomUUID().toString()
                     val parameters =
                         generateParameters(events, intention, toolSelected, namespaceId, caseId, toolRequestId)
                     emit(parameters)
 
-                    // 4. Execute tool
-                    if (!shouldContinue()) break
+                    // 4. Execute tool (synchronous; ensureActive guards before the call)
+                    currentCoroutineContext().ensureActive()
                     val response = executeTool(parameters, namespaceId, caseId)
                     emit(response)
                 }

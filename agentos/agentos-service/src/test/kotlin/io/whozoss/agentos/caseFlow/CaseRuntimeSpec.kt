@@ -18,18 +18,21 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
+import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import kotlinx.coroutines.flow.flow
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * A simple recording wrapper for the runAgent callback.
  *
- * MockK's interception of suspend function-type lambdas
- * (`mockk<suspend (A, B) -> C>()`) is unreliable: the Kotlin compiler
- * mangles suspend lambdas at the JVM level, so `coEvery { fn(a, b) }` may not
- * intercept the actual call that [CaseRuntime] makes. A plain recording class
- * avoids that fragility while still letting tests verify call counts and arguments.
+ * MockK's interception of suspend function-type lambdas is unreliable.
+ * A plain recording class avoids that fragility.
  */
 class RecordingRunAgent(
     private val delegate: suspend (String, List<CaseEvent>) -> Unit,
@@ -37,18 +40,12 @@ class RecordingRunAgent(
     private val _calls = mutableListOf<Pair<String, List<CaseEvent>>>()
     val callCount: Int get() = _calls.size
 
-    /** Expose as the function type [CaseRuntime] expects. */
     val asCallback: suspend (String, List<CaseEvent>, () -> Boolean) -> Unit = { name, events, _ ->
         _calls += name to events
         delegate(name, events)
     }
 }
 
-/**
- * A simple recording wrapper for the selectAgent callback, avoiding MockK entirely.
- * MockK global state can bleed between specs when stubs from one spec are still
- * registered when the next spec runs. A plain wrapper has no such risk.
- */
 class RecordingSelectAgent(
     private val delegate: (List<MessageContent>) -> List<CaseEvent>,
 ) {
@@ -66,7 +63,6 @@ class CaseRuntimeSpec : StringSpec() {
     val userActor = Actor(id = "user-123", displayName = "Test User", role = ActorRole.USER)
     val userMessage = listOf(MessageContent.Text("hello"))
 
-    /** Build a mock Agent whose run() immediately emits AgentFinishedEvent. */
     fun finishingAgent(name: String): Agent {
         val agentId = UUID.nameUUIDFromBytes(name.toByteArray())
         return mockk<Agent>(name = "agent-$name") {
@@ -88,7 +84,6 @@ class CaseRuntimeSpec : StringSpec() {
         }
     }
 
-    /** Convenience: build an [AgentSelectedEvent] the way [CaseServiceImpl.selectAgent] would. */
     fun agentSelectedEvent(
         caseId: UUID,
         agentName: String,
@@ -104,27 +99,21 @@ class CaseRuntimeSpec : StringSpec() {
         val selectAgent: RecordingSelectAgent,
         val runAgent: RecordingRunAgent,
         val savedEvents: MutableList<CaseEvent>,
+        val statusHistory: MutableList<CaseStatus>,
     )
 
     /**
-     * Build a [CaseRuntime] with controlled callbacks.
+     * Build a [CaseRuntime] and immediately call [CaseRuntime.startLoop].
      *
-     * Both [selectAgent] and [runAgent] are plain recording wrappers rather than
-     * MockK mocks. MockK's global stub registry can bleed between specs when
-     * multiple specs run in the same JVM: stubs registered in one spec may still
-     * be active when the next spec starts, causing false mismatches. Plain
-     * wrappers carry no such risk.
-     *
-     * - [storeEvent] records each event and returns it unchanged (no real persistence).
-     * - [runAgent] mirrors what [CaseServiceImpl] does: drives the agent flow and
-     *   feeds each produced event back through pushEvents so the loop can detect
-     *   [AgentFinishedEvent] and stop.
+     * The loop runs in the background. Use [awaitIdle] to wait for IDLE transition
+     * before asserting.
      */
     fun buildRuntime(
         agentName: String = "default-agent",
         agent: Agent = finishingAgent(agentName),
     ): TestFixture {
         val savedEvents = mutableListOf<CaseEvent>()
+        val statusHistory = mutableListOf<CaseStatus>()
         val runtimeId = UUID.randomUUID()
 
         val selectAgent = RecordingSelectAgent { listOf(agentSelectedEvent(runtimeId, agentName)) }
@@ -143,7 +132,7 @@ class CaseRuntimeSpec : StringSpec() {
             CaseRuntime(
                 id = runtimeId,
                 namespaceId = namespaceId,
-                updateStatus = { _, _ -> },
+                updateStatus = { _, status -> synchronized(statusHistory) { statusHistory.add(status) } },
                 storeEvent = { event ->
                     savedEvents.add(event)
                     event
@@ -151,29 +140,48 @@ class CaseRuntimeSpec : StringSpec() {
                 selectAgent = selectAgent.asCallback,
                 runAgent = runAgent.asCallback,
             )
+        runtime.startLoop()
 
-        return TestFixture(runtime, selectAgent, runAgent, savedEvents)
+        return TestFixture(runtime, selectAgent, runAgent, savedEvents, statusHistory)
+    }
+
+    /**
+     * Wait until the runtime's status history contains [expectedStatus] or the deadline passes.
+     * Returns true if the status was observed.
+     */
+    fun awaitStatus(
+        statusHistory: MutableList<CaseStatus>,
+        expectedStatus: CaseStatus,
+        timeoutMs: Long = 5_000,
+    ): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (synchronized(statusHistory) { statusHistory.contains(expectedStatus) }) return true
+            Thread.sleep(20)
+        }
+        return false
     }
 
     init {
 
         // -------------------------------------------------------------------------
-        // Core regression: runAgent called exactly once per run
+        // Core regression: runAgent called exactly once per turn
         // -------------------------------------------------------------------------
 
         "runAgent is called exactly once when using the default agent" {
-            val (runtime, _, runAgent) = buildRuntime()
+            val (runtime, _, runAgent, _, statusHistory) = buildRuntime()
 
             runtime.addUserMessage(userActor, userMessage)
-            runtime.run()
+            awaitStatus(statusHistory, CaseStatus.IDLE) shouldBe true
 
             runAgent.callCount shouldBe 1
         }
 
         "selectAgent is called exactly once per user message" {
-            val (runtime, selectAgent) = buildRuntime()
+            val (runtime, selectAgent, _, _, statusHistory) = buildRuntime()
 
             runtime.addUserMessage(userActor, userMessage)
+            awaitStatus(statusHistory, CaseStatus.IDLE) shouldBe true
 
             selectAgent.callCount shouldBe 1
         }
@@ -183,10 +191,10 @@ class CaseRuntimeSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "AgentSelectedEvent then AgentRunningEvent then AgentFinishedEvent are saved in order" {
-            val (runtime, _, _, savedEvents) = buildRuntime()
+            val (runtime, _, _, savedEvents, statusHistory) = buildRuntime()
 
             runtime.addUserMessage(userActor, userMessage)
-            runtime.run()
+            awaitStatus(statusHistory, CaseStatus.IDLE) shouldBe true
 
             val agentEvents =
                 savedEvents.filter {
@@ -199,10 +207,10 @@ class CaseRuntimeSpec : StringSpec() {
         }
 
         "AgentSelectedEvent and AgentRunningEvent carry the same agentId and agentName" {
-            val (runtime, _, _, savedEvents) = buildRuntime(agentName = "gemini-flash")
+            val (runtime, _, _, savedEvents, statusHistory) = buildRuntime(agentName = "gemini-flash")
 
             runtime.addUserMessage(userActor, userMessage)
-            runtime.run()
+            awaitStatus(statusHistory, CaseStatus.IDLE) shouldBe true
 
             val selected = savedEvents.filterIsInstance<AgentSelectedEvent>().first()
             val running = savedEvents.filterIsInstance<AgentRunningEvent>().first()
@@ -220,6 +228,7 @@ class CaseRuntimeSpec : StringSpec() {
             val agentName = "default-agent"
             val agent = finishingAgent(agentName)
             val savedEvents = mutableListOf<CaseEvent>()
+            val statusHistory = mutableListOf<CaseStatus>()
             val runtimeId = UUID.randomUUID()
 
             lateinit var runtime: CaseRuntime
@@ -227,7 +236,7 @@ class CaseRuntimeSpec : StringSpec() {
                 CaseRuntime(
                     id = runtimeId,
                     namespaceId = namespaceId,
-                    updateStatus = { _, _ -> },
+                    updateStatus = { _, status -> synchronized(statusHistory) { statusHistory.add(status) } },
                     storeEvent = { event ->
                         savedEvents.add(event)
                         event
@@ -249,9 +258,10 @@ class CaseRuntimeSpec : StringSpec() {
                         }
                     },
                 )
+            runtime.startLoop()
 
             runtime.addUserMessage(userActor, listOf(MessageContent.Text("@unknown hello")))
-            runtime.run()
+            awaitStatus(statusHistory, CaseStatus.IDLE) shouldBe true
 
             val warn = savedEvents.filterIsInstance<WarnEvent>().firstOrNull()
             warn.shouldNotBeNull()
@@ -260,7 +270,7 @@ class CaseRuntimeSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // processNextStep: AgentSelectedEvent -> AgentRunningEvent ordering
+        // processNextStep ordering
         // -------------------------------------------------------------------------
 
         "processNextStep emits AgentRunningEvent before runAgent is ever called" {
@@ -268,6 +278,7 @@ class CaseRuntimeSpec : StringSpec() {
             val callOrder = mutableListOf<String>()
             val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
             val runtimeId = UUID.randomUUID()
+            val statusHistory = mutableListOf<CaseStatus>()
 
             val orderedAgent: Agent =
                 mockk {
@@ -293,7 +304,7 @@ class CaseRuntimeSpec : StringSpec() {
                 CaseRuntime(
                     id = runtimeId,
                     namespaceId = namespaceId,
-                    updateStatus = { _, _ -> },
+                    updateStatus = { _, status -> synchronized(statusHistory) { statusHistory.add(status) } },
                     storeEvent = { event ->
                         if (event is AgentRunningEvent) callOrder.add("AgentRunningEvent saved")
                         event
@@ -306,9 +317,10 @@ class CaseRuntimeSpec : StringSpec() {
                         }
                     },
                 )
+            runtime.startLoop()
 
             runtime.addUserMessage(userActor, userMessage)
-            runtime.run()
+            awaitStatus(statusHistory, CaseStatus.IDLE) shouldBe true
 
             val runningIdx = callOrder.indexOf("AgentRunningEvent saved")
             val runIdx = callOrder.indexOf("runAgent")
@@ -318,99 +330,101 @@ class CaseRuntimeSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // AgentRunningEvent already in history (case resumed mid-run)
-        // -------------------------------------------------------------------------
-
-        // -------------------------------------------------------------------------
         // shouldContinue lambda contract
         // -------------------------------------------------------------------------
 
         "shouldContinue lambda returns false after requestInterrupt is called" {
-            // Verifies that the lambda CaseRuntime passes to runAgent correctly reflects
-            // the interruptRequested flag. The runAgent callback captures the lambda and
-            // can poll it to decide whether to keep going.
+            // The lambda passed to runAgent must reflect the interrupt flag.
             val runtimeId = UUID.randomUUID()
-            var capturedShouldContinue: (() -> Boolean)? = null
+            val capturedShouldContinue = AtomicReference<(() -> Boolean)?>(null)
+            val statusHistory = mutableListOf<CaseStatus>()
+            val runAgentStarted = CountDownLatch(1)
 
             val runtime =
                 CaseRuntime(
                     id = runtimeId,
                     namespaceId = namespaceId,
-                    updateStatus = { _, _ -> },
+                    updateStatus = { _, status -> synchronized(statusHistory) { statusHistory.add(status) } },
                     storeEvent = { it },
                     selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
                     runAgent = { _, _, shouldContinue ->
-                        capturedShouldContinue = shouldContinue
-                        // Simulate a long-running agent: don't push AgentFinishedEvent
-                        // so we can inspect shouldContinue before the loop exits naturally.
+                        capturedShouldContinue.set(shouldContinue)
+                        runAgentStarted.countDown()
+                        // Do not push AgentFinishedEvent — we want to interrupt mid-turn.
                     },
                 )
+            runtime.startLoop()
 
             runtime.addUserMessage(userActor, userMessage)
-            runtime.run()
+            // Wait for runAgent to be entered before interrupting.
+            runAgentStarted.await(5, TimeUnit.SECONDS) shouldBe true
 
-            // After run() returns the loop has exited. The lambda was captured during
-            // execution; reset flags and verify the expected behaviour.
-            // requestInterrupt sets interruptRequested = true; run() clears it at the
-            // start of the next run(), but we can verify via a fresh interrupt call.
-            capturedShouldContinue shouldNotBe null
+            // shouldContinue must be true before the interrupt
+            capturedShouldContinue.get()!!.invoke() shouldBe true
 
-            // Before any interrupt the runtime is idle — shouldContinue reads the flag
-            // which was reset to false at the top of run().
-            // Trigger a new interrupt and verify the lambda reflects it.
             runtime.requestInterrupt()
-            capturedShouldContinue!!.invoke() shouldBe false
+            // Lambda should now return false
+            capturedShouldContinue.get()!!.invoke() shouldBe false
+            // Runtime should return to IDLE
+            awaitStatus(statusHistory, CaseStatus.IDLE) shouldBe true
         }
 
         "shouldContinue lambda returns false after requestKill is called" {
             val runtimeId = UUID.randomUUID()
-            var capturedShouldContinue: (() -> Boolean)? = null
+            val capturedShouldContinue = AtomicReference<(() -> Boolean)?>(null)
+            val statusHistory = mutableListOf<CaseStatus>()
+            val runAgentStarted = CountDownLatch(1)
+            val killedStatus = AtomicBoolean(false)
 
             val runtime =
                 CaseRuntime(
                     id = runtimeId,
                     namespaceId = namespaceId,
-                    updateStatus = { _, _ -> },
+                    updateStatus = { _, status ->
+                        synchronized(statusHistory) { statusHistory.add(status) }
+                        if (status == CaseStatus.KILLED) killedStatus.set(true)
+                    },
                     storeEvent = { it },
                     selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    onKilled = { _ ->
+                        killedStatus.set(true)
+                    },
                     runAgent = { _, _, shouldContinue ->
-                        capturedShouldContinue = shouldContinue
+                        capturedShouldContinue.set(shouldContinue)
+                        runAgentStarted.countDown()
                     },
                 )
+            runtime.startLoop()
 
             runtime.addUserMessage(userActor, userMessage)
-            runtime.run()
+            runAgentStarted.await(5, TimeUnit.SECONDS) shouldBe true
 
-            capturedShouldContinue shouldNotBe null
+            capturedShouldContinue.get()!!.invoke() shouldBe true
+
             runtime.requestKill()
-            capturedShouldContinue!!.invoke() shouldBe false
+            capturedShouldContinue.get()!!.invoke() shouldBe false
+            // onKilled was called
+            killedStatus.get() shouldBe true
         }
 
         "shouldContinue lambda returns true during execution when neither interrupt nor kill has been requested" {
-            // Positive-path test: the lambda must return true while runAgent is executing
+            // Positive-path: lambda must return true while runAgent is executing
             // and no interrupt or kill has been signalled.
-            //
-            // Note on lifecycle: processNextStep sets interruptRequested=true when it finds
-            // AgentFinishedEvent (to break the while-loop). run() resets interruptRequested
-            // to false at the START of each invocation. So the lambda returns true only
-            // while runAgent is executing BEFORE AgentFinishedEvent is pushed — that is
-            // the window we sample here.
             val runtimeId = UUID.randomUUID()
-            var lambdaResultDuringRun: Boolean? = null
+            val lambdaResultDuringRun = AtomicReference<Boolean?>(null)
+            val statusHistory = mutableListOf<CaseStatus>()
 
             lateinit var runtime: CaseRuntime
             runtime =
                 CaseRuntime(
                     id = runtimeId,
                     namespaceId = namespaceId,
-                    updateStatus = { _, _ -> },
+                    updateStatus = { _, status -> synchronized(statusHistory) { statusHistory.add(status) } },
                     storeEvent = { it },
                     selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
                     runAgent = { _, _, shouldContinue ->
-                        // Sample BEFORE pushing AgentFinishedEvent: interruptRequested is
-                        // still false at this point, so shouldContinue() must return true.
-                        lambdaResultDuringRun = shouldContinue()
-                        // Now push AgentFinishedEvent so the loop exits cleanly.
+                        // Sample BEFORE pushing AgentFinishedEvent: no interrupt/kill yet.
+                        lambdaResultDuringRun.set(shouldContinue())
                         runtime.pushEvents(
                             listOf(
                                 AgentFinishedEvent(
@@ -423,13 +437,83 @@ class CaseRuntimeSpec : StringSpec() {
                         )
                     },
                 )
+            runtime.startLoop()
 
             runtime.addUserMessage(userActor, userMessage)
-            runtime.run()
+            awaitStatus(statusHistory, CaseStatus.IDLE) shouldBe true
 
-            // The lambda returned true while runAgent was executing with no interrupt/kill
-            lambdaResultDuringRun shouldBe true
+            lambdaResultDuringRun.get() shouldBe true
         }
+
+        // -------------------------------------------------------------------------
+        // Interrupt: runtime returns to IDLE and accepts a second message
+        // -------------------------------------------------------------------------
+
+        "after interrupt the runtime accepts a second message and runs again" {
+            val runtimeId = UUID.randomUUID()
+            val runAgentCallCount = AtomicInteger(0)
+            val statusHistory = mutableListOf<CaseStatus>()
+            val firstRunStarted = CountDownLatch(1)
+            val interruptDone = CountDownLatch(1)
+
+            lateinit var runtime: CaseRuntime
+            runtime =
+                CaseRuntime(
+                    id = runtimeId,
+                    projectId = projectId,
+                    updateStatus = { _, status -> synchronized(statusHistory) { statusHistory.add(status) } },
+                    storeEvent = { it },
+                    selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    runAgent = { _, _, _ ->
+                        val count = runAgentCallCount.incrementAndGet()
+                        if (count == 1) {
+                            firstRunStarted.countDown()
+                            // Wait for interrupt signal before completing
+                            interruptDone.await(5, TimeUnit.SECONDS)
+                        } else {
+                            // Second run: finish immediately
+                            runtime.pushEvents(
+                                listOf(
+                                    AgentFinishedEvent(
+                                        projectId = projectId,
+                                        caseId = runtimeId,
+                                        agentId = UUID.nameUUIDFromBytes("agent".toByteArray()),
+                                        agentName = "agent",
+                                    ),
+                                ),
+                            )
+                        }
+                    },
+                )
+            runtime.startLoop()
+
+            // First message: agent starts but hangs
+            runtime.addUserMessage(userActor, userMessage)
+            firstRunStarted.await(5, TimeUnit.SECONDS) shouldBe true
+
+            // Interrupt the first run
+            runtime.requestInterrupt()
+            interruptDone.countDown()
+
+            // Wait for IDLE
+            awaitStatus(statusHistory, CaseStatus.IDLE) shouldBe true
+
+            // Second message: should run cleanly to IDLE again
+            val idleCountBefore = synchronized(statusHistory) { statusHistory.count { it == CaseStatus.IDLE } }
+            runtime.addUserMessage(userActor, userMessage)
+            val deadline = System.currentTimeMillis() + 5_000
+            while (System.currentTimeMillis() < deadline) {
+                if (synchronized(statusHistory) { statusHistory.count { it == CaseStatus.IDLE } } > idleCountBefore) break
+                Thread.sleep(20)
+            }
+
+            runAgentCallCount.get() shouldBe 2
+            synchronized(statusHistory) { statusHistory.count { it == CaseStatus.IDLE } } shouldBe (idleCountBefore + 1)
+        }
+
+        // -------------------------------------------------------------------------
+        // Rehydration: AgentRunningEvent already in history
+        // -------------------------------------------------------------------------
 
         "runAgent is called exactly once when AgentRunningEvent is already in the event list" {
             val agentName = "gemini-flash"
@@ -437,6 +521,7 @@ class CaseRuntimeSpec : StringSpec() {
             val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
             val agent = finishingAgent(agentName)
             val savedEvents = mutableListOf<CaseEvent>()
+            val statusHistory = mutableListOf<CaseStatus>()
 
             val existingUserMessage =
                 MessageEvent(
@@ -468,18 +553,18 @@ class CaseRuntimeSpec : StringSpec() {
                 CaseRuntime(
                     id = caseId,
                     namespaceId = namespaceId,
-                    updateStatus = { _, _ -> },
+                    updateStatus = { _, status -> synchronized(statusHistory) { statusHistory.add(status) } },
                     storeEvent = { event ->
                         savedEvents.add(event)
                         event
                     },
                     selectAgent = { listOf(agentSelectedEvent(caseId, agentName)) },
                     runAgent = recorder.asCallback,
+                    inputEvents = listOf(existingUserMessage, existingRunningEvent),
                 )
-            runtime.pushEvents(listOf(existingUserMessage, existingRunningEvent))
+            runtime.startLoop() // hasPendingWork() detects AgentRunningEvent -> signals workChannel
 
-            // Resume directly — no new message, no agent selection.
-            runtime.run()
+            awaitStatus(statusHistory, CaseStatus.IDLE) shouldBe true
 
             recorder.callCount shouldBe 1
             savedEvents.filterIsInstance<AgentSelectedEvent>() shouldBe emptyList()

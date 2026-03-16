@@ -16,9 +16,12 @@ import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.runBlocking
 import mu.KLogging
@@ -84,20 +87,12 @@ class AgentSimple(
                         messages
                     }
 
-                // Bail out immediately if an interrupt/kill was requested before
-                // the LLM call even starts (e.g. kill fired while the previous
-                // tool response was being stored).
-                if (!shouldContinue()) {
-                    emit(
-                        AgentFinishedEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            agentId = id,
-                            agentName = name,
-                        ),
-                    )
-                    return@flow
-                }
+                // Bail out cleanly if the coroutine was cancelled before the LLM
+                // call starts (e.g. kill or interrupt fired while the previous tool
+                // response was being stored). ensureActive() is the idiomatic way to
+                // check — it throws CancellationException which the outer catch block
+                // handles, then re-emits AgentFinishedEvent.
+                currentCoroutineContext().ensureActive()
 
                 emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
 
@@ -139,10 +134,13 @@ class AgentSimple(
                 var currentTurnLogged = false
 
                 // Convert stream to Flow.
-                // takeWhile cancels the upstream reactive stream as soon as shouldContinue()
-                // returns false, so we stop consuming the LLM HTTP stream immediately
-                // rather than merely skipping chunks with return@collect.
-                streamSpec.content().asFlow().takeWhile { shouldContinue() }.collect { chunk ->
+                // The coroutine is already cancellable via the turn job; however, we also
+                // need to cancel the upstream Reactor subscription proactively when the
+                // coroutine is cancelled, so that the HTTP stream is aborted rather than
+                // merely left to drain. takeWhile with ensureActive() achieves this:
+                // when the coroutine is cancelled, isActive becomes false, takeWhile
+                // completes the flow, and the Reactor subscription is cancelled upstream.
+                streamSpec.content().asFlow().takeWhile { currentCoroutineContext().isActive }.collect { chunk ->
                     // Emit any pending tool events and reset the text-turn log flag so the
                     // next text chunk after a tool call is correctly recognised as a new turn.
                     var toolEvent = toolEventChannel.tryReceive().getOrNull()

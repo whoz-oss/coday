@@ -8,6 +8,7 @@ import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -193,70 +194,42 @@ class AgentSimpleTest :
         }
 
         // -------------------------------------------------------------------------
-        // shouldContinue contract
+        // Cancellation / shouldContinue compatibility
         // -------------------------------------------------------------------------
+        //
+        // AgentSimple now uses coroutine cancellation (ensureActive + takeWhile with
+        // currentCoroutineContext().isActive) rather than a home-made shouldContinue
+        // flag. The shouldContinue parameter is kept in the SDK interface for external
+        // plugin backward compatibility only; it has no effect on the internal flow.
+        //
+        // Full cancellation-path coverage (interrupt/kill mid-stream) lives in
+        // CaseRuntimeSpec and CaseServiceImplSpec, which exercise the actual per-turn
+        // job cancellation through the real runtime lifecycle.
 
-        "should emit AgentFinishedEvent immediately and skip the LLM call when shouldContinue is false on entry" {
-            // Verifies the pre-call guard in AgentSimple: when shouldContinue() is already
-            // false before the LLM streaming call starts, the agent must bail out without
-            // touching the ChatClient and still emit AgentFinishedEvent so the runtime
-            // loop can terminate cleanly.
+        "shouldContinue parameter is accepted for compatibility but does not affect execution" {
+            // AgentSimple no longer reads shouldContinue internally; passing { false }
+            // must not prevent the agent from completing a normal run.
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
-
-            val mockChatClient = mockk<ChatClient>(relaxed = true)
-            val agent = makeAgent(agentId, mockChatClient)
-
-            val events =
-                agent
-                    .run(
-                        listOf(userMessage(namespaceId, caseId, "hello")),
-                        shouldContinue = { false },
-                    ).toList()
-
-            // Must terminate cleanly
-            events.filterIsInstance<AgentFinishedEvent>().size shouldBe 1
-            // ThinkingEvent is emitted only after the guard — it must not appear
-            events.filterIsInstance<ThinkingEvent>().size shouldBe 0
-            // The LLM must never have been called
-            verify(exactly = 0) { mockChatClient.prompt(any<Prompt>()) }
-        }
-
-        "should stop collecting chunks and still emit AgentFinishedEvent when shouldContinue flips to false mid-stream" {
-            // Verifies the mid-stream guard: takeWhile { shouldContinue() } cancels the
-            // upstream reactive stream as soon as the flag flips. Chunks produced after
-            // the flip must not appear in the event list.
-            val namespaceId = UUID.randomUUID()
-            val caseId = UUID.randomUUID()
-            val agentId = UUID.randomUUID()
-
-            // Allow the first 2 takeWhile evaluations (i.e. the first 2 chunks pass through),
-            // then return false so the stream is cancelled.
-            var calls = 0
-            val shouldContinue: () -> Boolean = { calls++ < 2 }
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            // Provide 5 chunks — only the first 2 should ever be collected
-            every { mockStreamSpec.content() } returns Flux.just("A ", "B ", "C ", "D ", "E")
+            every { mockStreamSpec.content() } returns Flux.just("hello")
 
             val agent = makeAgent(agentId, mockChatClient)
 
             val events =
                 agent
                     .run(
-                        listOf(userMessage(namespaceId, caseId, "hello")),
-                        shouldContinue = shouldContinue,
+                        listOf(userMessage(namespaceId, caseId, "hi")),
+                        shouldContinue = { false }, // ignored internally
                     ).toList()
 
-            val chunks = events.filterIsInstance<TextChunkEvent>()
-            // At most 2 chunks were emitted before the stream was cancelled
-            (chunks.size <= 2) shouldBe true
-            // Later chunks must not have leaked through
-            chunks.none { it.chunk.contains("C") || it.chunk.contains("D") || it.chunk.contains("E") } shouldBe true
-            // AgentFinishedEvent must still be emitted so the runtime can exit
+            // Agent runs normally and terminates cleanly
             events.filterIsInstance<AgentFinishedEvent>().size shouldBe 1
+            events.filterIsInstance<ThinkingEvent>().size shouldBe 1
+            verify(exactly = 1) { mockChatClient.prompt(any<Prompt>()) }
         }
     })

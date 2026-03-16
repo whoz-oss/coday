@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.UUID
 
 /**
@@ -373,15 +374,6 @@ class CaseServiceImplSpec :
             }
             service.getById(case.id).status shouldBe CaseStatus.IDLE
             runCallCount shouldBe 1
-
-            // Wait until runInFlight is cleared (run()'s finally block) before sending the
-            // second message. The runtime stays alive (IDLE is non-terminal), but run() must
-            // have fully exited so the AtomicBoolean guard allows re-entry.
-            val idleDeadline = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < idleDeadline) {
-                if (!service.getCaseRuntime(case.id).isRunning()) break
-                Thread.sleep(10)
-            }
 
             // Second message — the runtime is still alive (IDLE is non-terminal).
             // We wait for runCallCount to reach 2 rather than polling status, which avoids

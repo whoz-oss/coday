@@ -13,12 +13,7 @@ import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import jakarta.annotation.PreDestroy
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.launch
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -30,11 +25,6 @@ class CaseServiceImpl(
     private val caseRepository: CaseRepository,
     private val caseEventService: CaseEventService,
 ) : CaseService {
-    /**
-     * Coroutine scope used to run case execution loops in the background.
-     * Each [run] call is launched here so HTTP threads are never blocked.
-     */
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val activeRuntimes = ConcurrentHashMap<UUID, CaseRuntime>()
 
@@ -45,7 +35,9 @@ class CaseServiceImpl(
     override fun create(entity: Case): Case {
         require(findById(entity.id) == null) { "Duplicate entity id: ${entity.id}" }
         val saved = caseRepository.save(Case(metadata = entity.metadata, namespaceId = entity.namespaceId))
-        activeRuntimes[saved.id] = buildRuntime(saved)
+        val runtime = buildRuntime(saved)
+        activeRuntimes[saved.id] = runtime
+        runtime.startLoop()
         logger.info { "[CaseService] Case created: ${saved.id} for namespace ${entity.namespaceId}" }
         return saved
     }
@@ -55,10 +47,7 @@ class CaseServiceImpl(
             findById(entity.id)
                 ?: throw ResourceNotFoundException("Case not found: ${entity.id}")
         return if (entity.status != current.status) {
-            // Route status changes through handleStatusChange so the runtime and
-            // SSE clients stay consistent with the persisted state.
             handleStatusChange(entity.id, entity.status)
-            // handleStatusChange already persisted the new status; return fresh view.
             findById(entity.id) ?: entity
         } else {
             caseRepository.save(entity)
@@ -89,22 +78,17 @@ class CaseServiceImpl(
 
     override fun findActiveRuntime(caseId: UUID): CaseRuntime? = activeRuntimes[caseId]
 
-    /**
-     * Rehydrates a [CaseRuntime] for a case that exists on disk but has no live
-     * runtime instance (e.g. after a restart or reconnection to a past case).
-     *
-     * @throws ResourceNotFoundException if no persisted [Case] exists for [caseId]
-     */
     private fun rehydrate(caseId: UUID): CaseRuntime {
         val case =
             caseRepository.findByIds(listOf(caseId)).firstOrNull()
                 ?: throw ResourceNotFoundException("Case not found: $caseId")
         val pastEvents = caseEventService.findByParent(caseId)
         logger.info { "[CaseService] Rehydrating case $caseId with ${pastEvents.size} past events" }
-        return buildRuntime(case, pastEvents)
+        val runtime = buildRuntime(case, pastEvents)
+        runtime.startLoop()
+        return runtime
     }
 
-    /** Constructs a [CaseRuntime] wired with all service callbacks. */
     private fun buildRuntime(
         case: Case,
         inputEvents: List<CaseEvent> = emptyList(),
@@ -116,11 +100,12 @@ class CaseServiceImpl(
             storeEvent = { event -> storeEvent(event) },
             selectAgent = { content -> selectAgent(content, case.namespaceId, case.id) },
             runAgent = { agentName, events, shouldContinue -> runAgent(agentName, case.id, events, shouldContinue) },
+            onKilled = { caseId -> handleStatusChange(caseId, CaseStatus.KILLED) },
             inputEvents = inputEvents,
         )
 
     // ========================================
-    // Message handling (called by controller)
+    // Message handling
     // ========================================
 
     override fun addMessage(
@@ -130,23 +115,15 @@ class CaseServiceImpl(
         answerToEventId: UUID?,
     ) {
         val runtime = getCaseRuntime(caseId)
+        // addUserMessage stores the event and signals the case loop via workChannel.
+        // No coroutine is launched here — the loop is already running inside the runtime.
         runtime.addUserMessage(actor, content, answerToEventId)
-        // run() is self-guarding via an AtomicBoolean — launch unconditionally.
-        scope.launch { runtime.run() }
     }
 
     // ========================================
-    // Agent selection (business logic)
+    // Agent selection
     // ========================================
 
-    /**
-     * Resolves which agent should handle a message and returns the ordered list of
-     * events to store+emit on the runtime.
-     *
-     * Returns an empty list when no agent is configured (signals the runtime to stop).
-     *
-     * @param content the message content to inspect for @mention syntax.
-     */
     private fun selectAgent(
         content: List<MessageContent>,
         namespaceId: UUID,
@@ -202,7 +179,7 @@ class CaseServiceImpl(
     )
 
     // ========================================
-    // Agent execution (business logic)
+    // Agent execution
     // ========================================
 
     private suspend fun runAgent(
@@ -225,27 +202,17 @@ class CaseServiceImpl(
                         caseId = caseId,
                         message = "Agent $agentName error: ${error.message}",
                     ),
-                ).also { saved ->
-                    runtime.emitEvent(saved)
-                }
+                ).also { saved -> runtime.emitEvent(saved) }
             }.collect { event ->
                 val saved = storeEvent(event)
                 if (event.caseId == caseId) {
-                    // Push into the runtime's event list so processNextStep can see it
-                    // (e.g. AgentFinishedEvent stops the loop)
                     runtime.pushEvents(listOf(saved))
                 }
-                // emit on the SSE flow.
                 runtime.emitEvent(saved)
             }
         logger.info { "[CaseService] Agent $agentName finished for case $caseId" }
     }
 
-    /**
-     * Persists an event via [CaseEventService] and returns the saved copy.
-     * Called by the runtime's [CaseRuntime.storeEvent] callback —
-     * the runtime itself handles adding to its list and emitting on the SSE flow.
-     */
     private fun storeEvent(event: CaseEvent): CaseEvent = caseEventService.create(event)
 
     // ========================================
@@ -253,8 +220,8 @@ class CaseServiceImpl(
     // ========================================
 
     /**
-     * Persists the new status, emits a [CaseStatusEvent] to SSE clients,
-     * and evicts the runtime when a terminal status is reached.
+     * Persists the new status, emits a [CaseStatusEvent] to SSE clients, and evicts
+     * the runtime when a terminal status is reached.
      *
      * The runtime is evicted *after* the status event is emitted so SSE clients
      * always receive the final status before the stream closes.
@@ -282,11 +249,13 @@ class CaseServiceImpl(
             )
         val savedStatusEvent = caseEventService.create(statusEvent)
 
-        // Emit the status event before eviction so SSE clients receive it.
-        activeRuntimes[caseId]?.let {
-            it.emitEvent(savedStatusEvent)
+        activeRuntimes[caseId]?.let { runtime ->
+            runtime.emitEvent(savedStatusEvent)
             if (newStatus.isTerminal()) {
                 activeRuntimes.remove(caseId)
+                // Cancel the runtime scope to release all coroutine resources.
+                // Safe to call even if already cancelled (no-op).
+                runtime.cancel()
                 logger.info { "[CaseService] Case $caseId reached terminal status $newStatus, evicted" }
             }
         }
@@ -311,10 +280,11 @@ class CaseServiceImpl(
 
     override fun killCase(caseId: UUID) {
         logger.info { "Killing case: $caseId" }
-        // Signal the runtime loop to exit cleanly if it is currently running,
-        // then let handleStatusChange evict it via the isTerminal() path.
+        // requestKill() calls onKilled (-> handleStatusChange(KILLED)) before cancelling
+        // the scope, so the KILLED status event is emitted while the runtime is still
+        // in activeRuntimes.
         activeRuntimes[caseId]?.requestKill()
-        handleStatusChange(caseId, CaseStatus.KILLED)
+            ?: handleStatusChange(caseId, CaseStatus.KILLED)
     }
 
     // ========================================
@@ -332,7 +302,6 @@ class CaseServiceImpl(
             }
         }
         activeRuntimes.clear()
-        scope.cancel()
         logger.info { "CaseService shutdown complete" }
     }
 

@@ -73,16 +73,16 @@ class AgentAdvancedTest : StringSpec({
         )
     }
 
-    fun userMessage(projectId: UUID, caseId: UUID, text: String) =
+    fun userMessage(namespaceId: UUID, caseId: UUID, text: String) =
         MessageEvent(
-            projectId = projectId,
+            namespaceId = namespaceId,
             caseId = caseId,
             actor = Actor("user1", "User One", ActorRole.USER),
             content = listOf(MessageContent.Text(text)),
         )
 
     "should complete full orchestration loop with Answer tool" {
-        val projectId = UUID.randomUUID()
+        val namespaceId = UUID.randomUUID()
         val caseId = UUID.randomUUID()
         val agentId = UUID.randomUUID()
 
@@ -105,7 +105,7 @@ class AgentAdvancedTest : StringSpec({
 
         val agent = makeAgent(agentId, mockChatClient, tools = listOf(answerTool))
 
-        val events = agent.run(listOf(userMessage(projectId, caseId, "Hello, can you help me?"))).toList()
+        val events = agent.run(listOf(userMessage(namespaceId, caseId, "Hello, can you help me?"))).toList()
 
         events shouldHaveSize 5
 
@@ -132,63 +132,42 @@ class AgentAdvancedTest : StringSpec({
         finishedEvent.agentName shouldBe "TestAgent"
     }
 
-    "should stop immediately when shouldContinue is false on entry" {
-        // Verifies that AgentAdvanced honours the pre-loop shouldContinue guard.
-        // The LLM must never be called.
-        val projectId = UUID.randomUUID()
+    "shouldContinue parameter is accepted for compatibility but does not affect execution" {
+        // AgentAdvanced now relies on coroutine cancellation (ensureActive) rather than
+        // the shouldContinue lambda. Passing { false } must not prevent a normal run.
+        val namespaceId = UUID.randomUUID()
         val caseId = UUID.randomUUID()
         val agentId = UUID.randomUUID()
 
         val mockChatClient = mockk<ChatClient>(relaxed = true)
-        // No stubs needed — LLM should not be called at all.
+        stubStreamResponses(
+            mockChatClient,
+            "I should call the Answer tool",
+            "Answer",
+        )
 
-        val agent = makeAgent(agentId, mockChatClient)
+        val answerTool = mockk<StandardTool<Nothing>>()
+        every { answerTool.name } returns "Answer"
+        every { answerTool.description } returns "Provides the final answer"
+        every { answerTool.inputSchema } returns "{}"
+        every { answerTool.version } returns "1.0"
+        every { answerTool.paramType } returns null
+        every { answerTool.execute(null) } returns "Done"
 
+        val agent = makeAgent(agentId, mockChatClient, tools = listOf(answerTool))
+
+        // shouldContinue = { false } is ignored; the agent runs normally
         val events = agent.run(
-            listOf(userMessage(projectId, caseId, "hello")),
+            listOf(userMessage(namespaceId, caseId, "hello")),
             shouldContinue = { false },
         ).toList()
 
-        // AgentRunningEvent is emitted before the while-loop guard, so it appears.
-        // Nothing else should be emitted except AgentFinishedEvent.
         events.filterIsInstance<AgentFinishedEvent>().size shouldBe 1
-        events.filterIsInstance<ThinkingEvent>().size shouldBe 0
-        events.filterIsInstance<IntentionGeneratedEvent>().size shouldBe 0
-    }
-
-    "should stop mid-iteration when shouldContinue flips to false after first intention" {
-        // The shouldContinue lambda returns true for the first check (entering the loop)
-        // but false after that, so the agent stops after emitting the intention but
-        // before calling selectTool.
-        val projectId = UUID.randomUUID()
-        val caseId = UUID.randomUUID()
-        val agentId = UUID.randomUUID()
-
-        var checks = 0
-        // true  -> while condition (enters loop)
-        // true  -> first if (!shouldContinue()) check (before generateIntention)
-        // false -> second if (!shouldContinue()) check (before selectTool)
-        val shouldContinue: () -> Boolean = { checks++ < 2 }
-
-        val mockChatClient = mockk<ChatClient>(relaxed = true)
-        // Only generateIntention calls the LLM before the guard fires.
-        stubStreamResponses(mockChatClient, "I will look up the answer")
-
-        val agent = makeAgent(agentId, mockChatClient)
-
-        val events = agent.run(
-            listOf(userMessage(projectId, caseId, "hello")),
-            shouldContinue = shouldContinue,
-        ).toList()
-
-        // Intention was generated, but selectTool was never called.
         events.filterIsInstance<IntentionGeneratedEvent>().size shouldBe 1
-        events.filterIsInstance<ToolSelectedEvent>().size shouldBe 0
-        events.filterIsInstance<AgentFinishedEvent>().size shouldBe 1
     }
 
     "should emit WarnEvent and finish on LLM error" {
-        val projectId = UUID.randomUUID()
+        val namespaceId = UUID.randomUUID()
         val caseId = UUID.randomUUID()
         val agentId = UUID.randomUUID()
 
@@ -199,7 +178,7 @@ class AgentAdvancedTest : StringSpec({
 
         val agent = makeAgent(agentId, mockChatClient)
 
-        val events = agent.run(listOf(userMessage(projectId, caseId, "hello"))).toList()
+        val events = agent.run(listOf(userMessage(namespaceId, caseId, "hello"))).toList()
 
         events.filterIsInstance<WarnEvent>().first().message shouldContain "Error"
         // AgentFinishedEvent is NOT emitted by AgentAdvanced when an exception escapes
