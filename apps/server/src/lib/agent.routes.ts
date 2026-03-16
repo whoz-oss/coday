@@ -84,6 +84,7 @@ export function registerAgentRoutes(
       const services: CodayServices = {
         user,
         project: projectState,
+        projectService,
         integration,
         integrationConfig,
         memory,

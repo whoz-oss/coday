@@ -15,7 +15,7 @@ import { AiTools, DelegateTools } from '@coday/integrations-ai'
 import { McpToolsFactory } from '@coday/mcp'
 import { CoreTools, MemoryTools, ProjectScriptsTools, ThreadTools, TmuxTools } from '@coday/integration'
 import { FileTools } from '@coday/integrations-file'
-import { GitTools } from '@coday/integrations-git'
+import { GitTools, GitWorktreeTools } from '@coday/integrations-git'
 import { GitLabTools } from '@coday/integrations-gitlab'
 import { ConfluenceTools } from '@coday/integrations-confluence'
 import { ZendeskTools } from '@coday/integrations-zendesk-articles'
@@ -66,6 +66,10 @@ export class Toolbox implements Killable {
     this.factoryConstructors.set(
       GitTools.TYPE,
       (name, config) => new GitTools(interactor, services.integration, name, config)
+    )
+    this.factoryConstructors.set(
+      GitWorktreeTools.TYPE,
+      (name, config) => new GitWorktreeTools(interactor, services.integration, name, config, services.projectService)
     )
     this.factoryConstructors.set(
       GitLabTools.TYPE,

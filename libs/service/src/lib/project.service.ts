@@ -1,6 +1,7 @@
 import { ProjectLocalConfig } from '@coday/model'
 import { ConfigMaskingService } from './config-masking.service'
 import * as crypto from 'crypto'
+import * as fs from 'node:fs'
 import * as path from 'path'
 import { ProjectRepository } from '@coday/repository'
 
@@ -225,6 +226,82 @@ export class ProjectService {
     }
 
     return projectId
+  }
+
+  /**
+   * Register a worktree as a Coday project, copying the parent project's configuration
+   * and overriding only the path. Symlinks shared config artifacts from the parent.
+   * @param projectName Name for the new worktree project
+   * @param worktreePath Filesystem path of the worktree
+   * @param parentProjectName Name of the parent project to copy config from
+   */
+  registerWorktreeProject(projectName: string, worktreePath: string, parentProjectName: string): void {
+    // Copy parent config, override path, strip volatile/worktree-specific fields
+    const parentConfig = this.repository.getConfig(parentProjectName)
+    const worktreeConfig: ProjectLocalConfig = parentConfig
+      ? { ...parentConfig, path: worktreePath, volatile: undefined, createdAt: undefined }
+      : { version: 1, path: worktreePath, integration: {}, storage: { type: 'file' }, agents: [] }
+
+    // createProject is idempotent on the directory; it won't overwrite an existing config file
+    this.repository.createProject(projectName, worktreePath)
+    // Overwrite the config with the properly derived one
+    this.repository.saveConfig(projectName, worktreeConfig)
+
+    // Symlink shared config artifacts from parent project config dir
+    const projectInfo = this.repository.getProjectInfo(parentProjectName)
+    if (projectInfo) {
+      const worktreeInfo = this.repository.getProjectInfo(projectName)
+      if (worktreeInfo) {
+        for (const dir of ['agents', 'prompts', 'schedulers', 'memories']) {
+          const parentDir = path.join(projectInfo.configPath, dir)
+          const targetLink = path.join(worktreeInfo.configPath, dir)
+          if (fs.existsSync(parentDir) && !fs.existsSync(targetLink)) {
+            try {
+              fs.symlinkSync(parentDir, targetLink)
+            } catch {
+              // best-effort
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Unregister a worktree project: removes symlinks and the project config file,
+   * then removes the config directory if empty.
+   * @param projectName Name of the worktree project to remove
+   */
+  unregisterWorktreeProject(projectName: string): void {
+    const projectInfo = this.repository.getProjectInfo(projectName)
+    if (!projectInfo) return
+
+    for (const dir of ['agents', 'prompts', 'schedulers', 'memories']) {
+      const link = path.join(projectInfo.configPath, dir)
+      try {
+        fs.lstatSync(link)
+        fs.unlinkSync(link)
+      } catch {
+        // not present, skip
+      }
+    }
+
+    // deleteProject is currently a no-op in the file repo; remove config file directly
+    const configFile = path.join(projectInfo.configPath, 'project.yaml')
+    if (fs.existsSync(configFile)) fs.unlinkSync(configFile)
+
+    try {
+      fs.rmdirSync(projectInfo.configPath)
+    } catch {
+      // not empty — leave it
+    }
+  }
+
+  /**
+   * Check whether a project is already registered.
+   */
+  isProjectRegistered(projectName: string): boolean {
+    return this.repository.exists(projectName)
   }
 
   /**
