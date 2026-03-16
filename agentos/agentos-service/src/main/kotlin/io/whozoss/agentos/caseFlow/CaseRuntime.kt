@@ -13,29 +13,56 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import mu.KLogging
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Runtime execution engine for a case.
  *
- * Owns only execution state: the event list, the SSE flow, and the kill flag.
+ * ## Coroutine model
+ *
+ * Each [CaseRuntime] owns a [caseScope] ([SupervisorJob] + [Dispatchers.IO]).
+ * A single long-lived "case loop" coroutine runs inside that scope for the
+ * lifetime of the runtime, waiting on [workChannel] between turns.
+ *
+ * When a turn starts, it is launched as a **child job** ([turnJob]) of [caseScope]:
+ *
+ * - **Interrupt** cancels only [turnJob]. The case loop catches [CancellationException],
+ *   sees that [caseScope] is still active (so this was not a kill), transitions to
+ *   [CaseStatus.IDLE], and resumes waiting for the next message.
+ *
+ * - **Kill** cancels [caseScope] itself. Every child job (including any in-flight
+ *   [turnJob]) is cancelled. [onKilled] is invoked before the scope is cancelled so
+ *   the service can persist [CaseStatus.KILLED] and evict the runtime while it is
+ *   still reachable.
+ *
+ * ## shouldContinue
+ *
+ * The [shouldContinue] lambda passed to [runAgent] is derived purely from the
+ * [turnJob]'s [Job.isActive] flag — no separate [AtomicBoolean] is needed.
+ * When [turnJob] is cancelled (by either interrupt or kill), [Job.isActive] becomes
+ * false inside the job, so agents stop cooperatively at the same time coroutine
+ * cancellation propagates through suspend points.
+ *
+ * ## Callbacks
+ *
  * All business logic is delegated back to [CaseService] through four callbacks:
  *
  * @param updateStatus called whenever the runtime transitions to a new [CaseStatus].
  * @param storeEvent called for every event produced by this runtime.
- *   The service persists the event and returns the saved copy (with stable id).
- *   The runtime then adds it to its list and emits it on the SSE flow itself —
- *   no reference to the runtime is ever passed outward.
  * @param selectAgent resolves which agent should handle the current message.
- *   Receives the message content and returns an ordered list of events to store+emit
- *   (e.g. an optional [io.whozoss.agentos.sdk.caseEvent.WarnEvent] followed by an
- *   [AgentSelectedEvent], or just an [AgentSelectedEvent] for the default agent).
- *   Returns an empty list when no agent is configured and the loop should stop.
- * @param runAgent fetches the named agent, runs it against the current event history,
- *   and pipes each produced event through [storeEvent]. Error handling is the
- *   responsibility of the service implementation.
+ * @param runAgent fetches the named agent, runs it, and pipes events through [storeEvent].
+ * @param onKilled called by [requestKill] before the scope is cancelled, so the service
+ *   can persist [CaseStatus.KILLED] and evict the runtime while it is still reachable.
  */
 class CaseRuntime(
     val id: UUID,
@@ -44,68 +71,74 @@ class CaseRuntime(
     private val storeEvent: (CaseEvent) -> CaseEvent,
     private val selectAgent: (content: List<MessageContent>) -> List<CaseEvent>,
     private val runAgent: suspend (agentName: String, events: List<CaseEvent>, shouldContinue: () -> Boolean) -> Unit,
+    private val onKilled: (UUID) -> Unit = {},
     inputEvents: List<CaseEvent> = emptyList(),
 ) : CaseEventEmitter by DefaultCaseEventEmitter() {
+
     private val eventList = InMemoryCaseEventList(inputEvents)
 
-    /**
-     * Set by [processNextStep] when it finds an [AgentFinishedEvent] for the current
-     * turn (exits the loop, transitions to [CaseStatus.IDLE]), by [requestInterrupt]
-     * (same exit path, also transitions to [CaseStatus.IDLE]), and by [requestKill]
-     * (exits the loop, transitions to [CaseStatus.KILLED]).
-     * [killRequested] distinguishes the kill path from the idle path.
-     */
-    private val interruptRequested = AtomicBoolean(false)
+    // -------------------------------------------------------------------------
+    // Coroutine infrastructure
+    // -------------------------------------------------------------------------
 
     /**
-     * Set only by [requestKill]. Lets [run] distinguish a normal turn-end
-     * (transition to [CaseStatus.IDLE], runtime stays alive) from an explicit kill
-     * (transition to [CaseStatus.KILLED], service evicts the runtime).
+     * Long-lived scope for this case. Cancelling it kills all work permanently.
+     * Uses [SupervisorJob] so a failing [turnJob] does not cancel the case loop itself.
      */
-    private val killRequested = AtomicBoolean(false)
+    private val caseScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     /**
-     * Guards against concurrent [run] invocations.
-     * Claimed atomically at the top of [run] via [AtomicBoolean.compareAndSet];
-     * released in the finally block. Callers launch [run] unconditionally —
-     * the second invocation returns immediately without doing any work.
+     * The currently running agent-turn job, or null between turns.
+     * Cancelling this job interrupts the current turn without killing the case scope.
      */
-    private val runInFlight = AtomicBoolean(false)
+    @Volatile
+    private var turnJob: Job? = null
+
+    /**
+     * Signals the case loop that new work is available.
+     * [Channel.CONFLATED] means if the loop hasn't consumed the previous signal yet
+     * the new one replaces it — no duplicate runs.
+     */
+    private val workChannel = Channel<Unit>(capacity = Channel.CONFLATED)
 
     private val maxIterations = 100
-    private var iterationCount = 0
 
     // -------------------------------------------------------------------------
-    // Public state
+    // Public API
     // -------------------------------------------------------------------------
 
     /**
      * Interrupt the current agent turn and return to [CaseStatus.IDLE].
      *
-     * Sets [stopRequested] so the while-loop exits after the current [processNextStep]
-     * returns. [killRequested] is NOT set, so [run] transitions to [CaseStatus.IDLE]
-     * rather than [CaseStatus.KILLED] — the runtime stays alive and the SSE flow
-     * stays open for the next user message.
-     *
-     * Note: if [runAgent] is currently suspended mid-LLM-stream, the interrupt takes
-     * effect only after that stream completes. True mid-stream cancellation would
-     * require coroutine cancellation propagated into the agent flow.
+     * Cancels [turnJob] if one is running. The case loop catches [CancellationException],
+     * checks that [caseScope] is still active (confirming this is an interrupt, not a kill),
+     * transitions to IDLE, and resumes waiting. The runtime and SSE flow stay alive.
      */
     fun requestInterrupt() {
-        interruptRequested.set(true)
+        logger.info { "[CaseRuntime $id] Interrupt requested" }
+        turnJob?.cancel(CancellationException("interrupt"))
     }
 
     /**
-     * Request permanent termination of this runtime.
-     * Sets both [stopRequested] (to break the run loop) and [killRequested] (so
-     * [run] transitions to [CaseStatus.KILLED] rather than [CaseStatus.IDLE]).
+     * Permanently terminate this runtime.
+     *
+     * [onKilled] is called first so the service can emit [CaseStatus.KILLED] and evict
+     * the runtime while it is still in `activeRuntimes`. Then [caseScope] is cancelled,
+     * which cancels every child job including any in-flight [turnJob].
      */
     fun requestKill() {
-        killRequested.set(true)
-        interruptRequested.set(true)
+        logger.info { "[CaseRuntime $id] Kill requested" }
+        // onKilled must be called BEFORE caseScope.cancel() so the service can emit
+        // the KILLED status event while the runtime is still in activeRuntimes.
+        onKilled(id)
+        caseScope.cancel(CancellationException("kill"))
     }
 
-    fun isRunning(): Boolean = runInFlight.get()
+    /** True while the case-loop coroutine is active (not yet killed). */
+    fun isAlive(): Boolean = caseScope.isActive
+
+    /** True while a turn is executing (i.e. [turnJob] is active). */
+    fun isRunning(): Boolean = turnJob?.isActive == true
 
     fun pushEvents(events: Collection<CaseEvent>) {
         events.forEach { eventList.add(it) }
@@ -115,20 +148,12 @@ class CaseRuntime(
     // Event emission
     // -------------------------------------------------------------------------
 
-    /**
-     * Persist an event via the service callback, then add it to the local list and
-     * emit it on the SSE flow. The runtime never passes itself to the service.
-     */
     private fun storeAndEmitEvent(event: CaseEvent) {
         val saved = storeEvent(event)
         eventList.add(saved)
         emit(saved)
     }
 
-    /**
-     * Emit an event on this runtime's SSE flow
-     * without persisting or adding it to the local event list.
-     */
     fun emitEvent(event: CaseEvent) {
         emit(event)
     }
@@ -138,9 +163,10 @@ class CaseRuntime(
     // -------------------------------------------------------------------------
 
     /**
-     * Store a user message and emit the agent-selection events.
-     * Does NOT start the execution loop — the caller ([CaseService]) is responsible
-     * for launching [run] in a background coroutine.
+     * Store a user message, emit agent-selection events, and signal the case loop.
+     *
+     * The case loop wakes up on [workChannel] and starts a new turn. This method
+     * returns immediately — no coroutine is launched here.
      */
     fun addUserMessage(
         actor: Actor,
@@ -174,7 +200,7 @@ class CaseRuntime(
                     } else {
                         storeAndEmitEvent(questionEvent.createAnswer(actor, answerText))
                         logger.info { "[CaseRuntime $id] Answer added for question: ${questionEvent.question}" }
-                        return // answer is passive — waits for agent to process it
+                        return
                     }
                 }
             }
@@ -182,75 +208,120 @@ class CaseRuntime(
 
         storeAndEmitEvent(MessageEvent(caseId = id, projectId = projectId, actor = actor, content = content))
         selectAgent(content).forEach { storeAndEmitEvent(it) }
+
+        // Wake the case loop.
+        workChannel.trySend(Unit)
     }
 
     // -------------------------------------------------------------------------
-    // Main execution loop
+    // Case loop
     // -------------------------------------------------------------------------
 
     /**
-     * Run the execution loop for one agent turn.
+     * Start the long-lived case loop inside [caseScope].
      *
-     * Self-guarding: if a run is already in-flight, returns immediately.
-     * Callers do not need to check [isRunning] before launching — launching
-     * unconditionally via a coroutine scope is the intended pattern.
+     * Called once by [CaseServiceImpl] when the runtime is created or rehydrated.
+     * If the scope is already cancelled (killed runtime) the call is a no-op.
      *
-     * ## Lifecycle
-     * - Normal turn-end ([AgentFinishedEvent] found): transitions to [CaseStatus.IDLE].
-     *   The runtime stays in `activeRuntimes` and the SSE flow stays open, ready for
-     *   the next user message.
-     * - Kill requested ([requestKill] called): transitions to [CaseStatus.KILLED].
-     *   Terminal — the service evicts the runtime.
-     * - Max iterations reached: transitions to [CaseStatus.ERROR]. Terminal.
+     * Loop lifecycle:
+     * 1. Waits on [workChannel] for a signal from [addUserMessage].
+     * 2. Launches a child [turnJob] and suspends until it completes or is cancelled.
+     * 3. Normal completion → IDLE, wait for next signal.
+     * 4. [CancellationException] while [caseScope] is still active → interrupt path → IDLE.
+     * 5. [CancellationException] while [caseScope] is cancelled → kill path → exit.
      */
-    suspend fun run() {
-        if (!runInFlight.compareAndSet(false, true)) {
-            logger.debug { "[CaseRuntime $id] run() already in-flight, skipping" }
+    fun startLoop() {
+        if (!caseScope.isActive) {
+            logger.warn { "[CaseRuntime $id] startLoop() called on a killed runtime, ignoring" }
             return
         }
+        caseScope.launch {
+            logger.info { "[CaseRuntime $id] Case loop started" }
+            try {
+                if (hasPendingWork()) workChannel.trySend(Unit)
+                while (isActive) {
+                    workChannel.receive()
+                    if (!isActive) break
 
-        logger.info { "[CaseRuntime $id] run() started" }
-        interruptRequested.set(false)
-        killRequested.set(false)
-        updateStatus(id, CaseStatus.RUNNING)
-        iterationCount = 0
+                    logger.info { "[CaseRuntime $id] Work signal received, starting turn" }
+                    updateStatus(id, CaseStatus.RUNNING)
 
-        try {
-            while (!interruptRequested.get() && iterationCount < maxIterations) {
-                logger.debug { "[CaseRuntime $id] Processing iteration $iterationCount" }
-                processNextStep()
-                iterationCount++
-            }
-            logger.info {
-                "[CaseRuntime $id] Exited loop - iterations: $iterationCount, " +
-                    "interrupt: ${interruptRequested.get()}, kill: ${killRequested.get()}"
-            }
-            when {
-                iterationCount >= maxIterations -> {
-                    logger.error { "[CaseRuntime $id] Maximum iterations ($maxIterations) reached" }
-                    updateStatus(id, CaseStatus.ERROR)
+                    try {
+                        runTurn()
+                        if (isActive) {
+                            logger.info { "[CaseRuntime $id] Turn complete, transitioning to IDLE" }
+                            updateStatus(id, CaseStatus.IDLE)
+                        }
+                    } catch (e: CancellationException) {
+                        // Distinguish interrupt (caseScope still active) from kill.
+                        if (isActive) {
+                            logger.info { "[CaseRuntime $id] Turn interrupted, transitioning to IDLE" }
+                            updateStatus(id, CaseStatus.IDLE)
+                        } else {
+                            throw e // kill path: exit the loop
+                        }
+                    } catch (e: Exception) {
+                        logger.error(e) { "[CaseRuntime $id] Turn error" }
+                        if (isActive) updateStatus(id, CaseStatus.ERROR)
+                    }
                 }
-
-                killRequested.get() -> {
-                    // Explicit kill: permanent termination. Service will evict the runtime.
-                    updateStatus(id, CaseStatus.KILLED)
-                }
-
-                else -> {
-                    // Normal turn-end: agent finished, waiting for next user message.
-                    // Non-terminal — runtime stays alive, SSE flow stays open.
-                    updateStatus(id, CaseStatus.IDLE)
-                }
+            } catch (e: CancellationException) {
+                logger.info { "[CaseRuntime $id] Case loop exiting due to cancellation (kill)" }
             }
-        } catch (e: Exception) {
-            logger.error(e) { "[CaseRuntime $id] Error during execution" }
-            updateStatus(id, CaseStatus.ERROR)
-        } finally {
-            runInFlight.set(false)
+            logger.info { "[CaseRuntime $id] Case loop terminated" }
         }
     }
 
-    private suspend fun processNextStep() {
+    /**
+     * Run one complete agent turn as a cancellable child [Job] of [caseScope].
+     *
+     * [shouldContinue] is derived from [Job.isActive] of the [turnJob] itself —
+     * no separate flag is required. When [turnJob] is cancelled (by either
+     * [requestInterrupt] or [requestKill]), [Job.isActive] becomes false inside the
+     * job, so agents stop cooperatively at the same time coroutine cancellation
+     * propagates through their suspend points.
+     *
+     * Throws [CancellationException] if [turnJob] was cancelled, so the case loop
+     * can handle the IDLE/kill transition.
+     */
+    private suspend fun runTurn() {
+        var iterationCount = 0
+
+        val job =
+            caseScope.launch {
+                // Capture the Job reference from inside the coroutine context so the
+                // shouldContinue lambda can read its isActive flag without needing a
+                // separate AtomicBoolean.
+                val turnJobRef = coroutineContext[Job]!!
+                val shouldContinue: () -> Boolean = { turnJobRef.isActive }
+
+                while (isActive && iterationCount < maxIterations) {
+                    logger.debug { "[CaseRuntime $id] Turn iteration $iterationCount" }
+                    val finished = processNextStep(shouldContinue)
+                    if (finished) break
+                    iterationCount++
+                }
+                if (iterationCount >= maxIterations) {
+                    logger.error { "[CaseRuntime $id] Maximum iterations ($maxIterations) reached" }
+                    updateStatus(id, CaseStatus.ERROR)
+                }
+            }
+        turnJob = job
+
+        try {
+            job.join()
+        } finally {
+            turnJob = null
+        }
+
+        // Propagate cancellation so the case loop can handle the IDLE/kill transition.
+        if (job.isCancelled) throw CancellationException("turn cancelled")
+    }
+
+    /**
+     * Process one step of the event list and return true when the turn is complete.
+     */
+    private suspend fun processNextStep(shouldContinue: () -> Boolean): Boolean {
         val events = eventList.getAll()
         logger.debug { "[CaseRuntime $id] processNextStep - total events: ${events.size}" }
 
@@ -259,38 +330,30 @@ class CaseRuntime(
         for (i in events.lastIndex downTo 0) {
             val event = events[i]
 
-            // Skip orchestration events that predate the most recent user message:
-            // they belong to a previous turn and must not re-trigger execution.
             if (i < lastUserMessageIndex &&
                 (event is AgentFinishedEvent || event is AgentRunningEvent || event is AgentSelectedEvent)
             ) {
                 logger.debug {
-                    "[CaseRuntime $id] Skipping prior-turn ${event::class.simpleName} at index $i (lastUserMsg=$lastUserMessageIndex)"
+                    "[CaseRuntime $id] Skipping prior-turn ${event::class.simpleName} at index $i " +
+                        "(lastUserMsg=$lastUserMessageIndex)"
                 }
                 continue
             }
 
             when (event) {
                 is AgentFinishedEvent -> {
-                    // Agent turn complete. Signal the while-loop to exit by setting
-                    // interruptRequested. killRequested is intentionally NOT set here,
-                    // so run() transitions to IDLE rather than KILLED.
-                    logger.info { "[CaseRuntime $id] Agent finished turn, yielding until next user message" }
-                    interruptRequested.set(true)
-                    return
+                    logger.info { "[CaseRuntime $id] Agent finished turn" }
+                    return true
                 }
 
                 is AgentRunningEvent -> {
-                    logger.info { "[CaseRuntime $id] Found AgentRunningEvent for agent: ${event.agentName}" }
-                    runAgent(event.agentName, eventList.getAll()) { !interruptRequested.get() }
-                    return
+                    logger.info { "[CaseRuntime $id] Running agent: ${event.agentName}" }
+                    runAgent(event.agentName, eventList.getAll(), shouldContinue)
+                    return false
                 }
 
                 is AgentSelectedEvent -> {
-                    logger.info {
-                        "[CaseRuntime $id] Found AgentSelectedEvent for agent: ${event.agentName}, " +
-                            "transitioning to running"
-                    }
+                    logger.info { "[CaseRuntime $id] Agent selected: ${event.agentName}" }
                     storeAndEmitEvent(
                         AgentRunningEvent(
                             projectId = projectId,
@@ -299,19 +362,35 @@ class CaseRuntime(
                             agentName = event.agentName,
                         ),
                     )
-                    return
+                    return false
                 }
 
-                else -> { // keep scanning
-                }
+                else -> {}
             }
         }
 
-        // No relevant event found in history — this should not happen in normal flow
-        // (addUserMessage always stores an AgentSelectedEvent before run() is called).
-        // Treat it as a configuration error and stop.
-        logger.error { "[CaseRuntime $id] No agent selection found in history, stopping" }
-        interruptRequested.set(true)
+        logger.error { "[CaseRuntime $id] No agent selection found in history, stopping turn" }
+        return true
+    }
+
+    /**
+     * Returns true if the event list already contains an [AgentRunningEvent] or
+     * [AgentSelectedEvent] after the last user message (rehydration path).
+     */
+    private fun hasPendingWork(): Boolean {
+        val events = eventList.getAll()
+        val lastUserIdx = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER }
+        if (lastUserIdx < 0) return false
+        return events.drop(lastUserIdx).any { it is AgentSelectedEvent || it is AgentRunningEvent }
+    }
+
+    /**
+     * Cancel the case scope and release all coroutine resources.
+     * Called by [CaseServiceImpl] after terminal status transitions and on shutdown.
+     * Safe to call multiple times (subsequent calls are no-ops).
+     */
+    fun cancel() {
+        caseScope.cancel()
     }
 
     companion object : KLogging()
