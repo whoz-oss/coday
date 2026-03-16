@@ -113,7 +113,7 @@ instructions: |
 
 
 mandatoryDocs:
-  - ./docs/to-rework/DEV_WORKFLOW.md
+  - ./docs/06-guides/DEV_WORKFLOW.md
   - ./docs/to-rework/ARCHITECTURE.md
   - ./apps/client/docs/angular-guidelines.md
   - ./apps/client/docs/architecture.md

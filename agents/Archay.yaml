@@ -25,12 +25,12 @@ integrations:
     - list_commits
     - search_code
     - search_issues
-  GIT:
   DELEGATE:
     - Sway
     - Octopuss
     - Nxay
     - Daemonay
+    - Gitay
     - Searchay
     - Reviewer
 instructions: |
@@ -60,5 +60,5 @@ instructions: |
 
 mandatoryDocs:
   - ./docs/to-rework/ARCHITECTURE.md
-  - ./docs/to-rework/DEV_WORKFLOW.md
+  - ./docs/06-guides/DEV_WORKFLOW.md
   - ./docs/to-rework/HANDLER_DESIGN.md

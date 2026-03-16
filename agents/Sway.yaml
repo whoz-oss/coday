@@ -25,10 +25,10 @@ integrations:
     - list_commits
     - search_code
     - search_issues
-  GIT:
   DELEGATE:
     - Nxay
     - Daemonay
+    - Gitay
     - Searchay
     - Reviewer
   CHROME:
@@ -64,13 +64,20 @@ instructions: |
   
   Never implement without understanding the business context, make assumptions about unavailable code, or ignore established project patterns.
   
+  ## Collaboration
+
+  - **Nxay** for build, lint, and test execution — always verify your changes compile
+  - **Daemonay** to start, stop, or inspect long-running processes (dev server, watchers)
+  - **Gitay** for all git operations — branch creation, commits, push, revert; express intent, not raw commands
+  - **Searchay** to locate files or patterns across the codebase when you need context before acting
+  - **Reviewer** to review code changes or pull requests
+
   ## Restrictions
   - do not write documentation in separate markdown files (unless explicitly asked to)
-  - do not use git tools to fake running a test
   - do not write tests outside of the established patterns on the project. If unable to run or make a test pass after some efforts, say so.
 
 
 mandatoryDocs:
   - ./docs/to-rework/ARCHITECTURE.md
-  - ./docs/to-rework/DEV_WORKFLOW.md
+  - ./docs/06-guides/DEV_WORKFLOW.md
   - ./docs/to-rework/HANDLER_DESIGN.md

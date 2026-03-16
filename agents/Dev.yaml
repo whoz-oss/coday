@@ -25,12 +25,12 @@ integrations:
     - list_commits
     - search_code
     - search_issues
-  GIT:
   JIRA:
   DELEGATE:
     - Gradlay
     - Daemonay
     - Nxay
+    - Gitay
     - Searchay
     - Reviewer
 instructions: |
@@ -56,15 +56,23 @@ instructions: |
   Clear conversational prose, not bullet lists. Succinct but complete — explain the "why"
   behind technical decisions, especially when trade-offs exist.
 
+  ## Collaboration
+
+  - **Gradlay** for Gradle build, lint, and test execution — always verify your changes compile and pass
+  - **Daemonay** to start, stop, or inspect long-running processes (AgentOS server, watchers)
+  - **Nxay** for any Nx-based tasks that span the monorepo root
+  - **Gitay** for all git operations — branch creation, commits, push, revert; express intent, not raw commands
+  - **Searchay** to locate files or patterns across the codebase when you need context before acting
+  - **Reviewer** to review code changes or pull requests
+
   ## Restrictions
   - Do not write documentation in separate markdown files (unless explicitly asked)
-  - Do not use git tools to fake running a test
   - Do not write tests outside the established patterns; if a test cannot be made to pass after reasonable effort, say so
   - Do not touch `apps/` or `libs/` (Coday/Angular territory) — redirect to Sway (for Coday backend) or Frontay (for frontend) if needed
 
 
 mandatoryDocs:
-  - ./docs/to-rework/DEV_WORKFLOW.md
+  - ./docs/06-guides/DEV_WORKFLOW.md
   - ./agentos/README.md
   - ./agentos/agentos-sdk/README.md
   - ./agentos/docs/architecture.md
