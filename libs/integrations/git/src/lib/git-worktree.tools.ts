@@ -59,6 +59,12 @@ export class GitWorktreeTools extends AssistantToolFactory {
       return result
     }
 
+    if (!this.projectService) {
+      this.interactor.debug('[WORKTREE] ProjectService not available, worktree tools disabled')
+      return result
+    }
+    const projectService = this.projectService
+
     const projectRoot = context.project.root
     const parentProjectName = context.project.name
     const worktreesRoot = path.dirname(projectRoot)
@@ -168,9 +174,7 @@ export class GitWorktreeTools extends AssistantToolFactory {
               }
             }
 
-            if (this.projectService) {
-              await this.projectService.registerWorktreeProject(projectName, worktreePath, parentProjectName)
-            }
+            await projectService.registerWorktreeProject(projectName, worktreePath, parentProjectName)
             this.interactor.debug(`[WORKTREE] Registered project '${projectName}' at ${worktreePath}`)
             return JSON.stringify({ projectName, worktreePath, branch })
           },
@@ -223,9 +227,7 @@ export class GitWorktreeTools extends AssistantToolFactory {
           }
 
           await runBash({ command: 'git worktree prune', root: projectRoot, interactor: this.interactor })
-          if (this.projectService) {
-            await this.projectService.unregisterWorktreeProject(projectName)
-          }
+          await projectService.unregisterWorktreeProject(projectName)
           this.interactor.debug(`[WORKTREE] Unregistered project '${projectName}'`)
           return JSON.stringify({ removed: true, projectName, worktreePath, branch })
         },
