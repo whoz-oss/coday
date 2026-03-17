@@ -1,7 +1,7 @@
 import { ProjectLocalConfig } from '@coday/model'
 import { ConfigMaskingService } from './config-masking.service'
 import * as crypto from 'crypto'
-import * as fs from 'node:fs'
+import * as fsp from 'node:fs/promises'
 import * as path from 'path'
 import { ProjectRepository } from '@coday/repository'
 
@@ -235,7 +235,7 @@ export class ProjectService {
    * @param worktreePath Filesystem path of the worktree
    * @param parentProjectName Name of the parent project to copy config from
    */
-  registerWorktreeProject(projectName: string, worktreePath: string, parentProjectName: string): void {
+  async registerWorktreeProject(projectName: string, worktreePath: string, parentProjectName: string): Promise<void> {
     // Copy parent config, override path, strip volatile/worktree-specific fields
     const parentConfig = this.repository.getConfig(parentProjectName)
     const worktreeConfig: ProjectLocalConfig = parentConfig
@@ -255,12 +255,11 @@ export class ProjectService {
         for (const dir of ['agents', 'prompts', 'schedulers', 'memories', 'threads']) {
           const parentDir = path.join(projectInfo.configPath, dir)
           const targetLink = path.join(worktreeInfo.configPath, dir)
-          if (fs.existsSync(parentDir) && !fs.existsSync(targetLink)) {
-            try {
-              fs.symlinkSync(parentDir, targetLink)
-            } catch {
-              // best-effort
-            }
+          try {
+            await fsp.access(parentDir)
+            await fsp.symlink(parentDir, targetLink)
+          } catch {
+            // parent dir doesn't exist or symlink already exists — skip
           }
         }
       }
@@ -272,22 +271,12 @@ export class ProjectService {
    * then removes the config directory if empty.
    * @param projectName Name of the worktree project to remove
    */
-  unregisterWorktreeProject(projectName: string): void {
+  async unregisterWorktreeProject(projectName: string): Promise<void> {
     const projectInfo = this.repository.getProjectInfo(projectName)
     if (!projectInfo) return
 
-    for (const dir of ['agents', 'prompts', 'schedulers', 'memories', 'threads']) {
-      const link = path.join(projectInfo.configPath, dir)
-      try {
-        fs.lstatSync(link)
-        fs.unlinkSync(link)
-      } catch {
-        // not present, skip
-      }
-    }
-
     // deleteProject is currently a no-op in the file repo; remove the whole config directory
-    fs.rmSync(projectInfo.configPath, { recursive: true, force: true })
+    await fsp.rm(projectInfo.configPath, { recursive: true, force: true })
   }
 
   /**

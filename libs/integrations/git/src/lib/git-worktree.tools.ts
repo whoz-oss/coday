@@ -1,5 +1,5 @@
 import * as path from 'node:path'
-import * as fs from 'node:fs'
+import * as fsp from 'node:fs/promises'
 import { AssistantToolFactory, CommandContext, CodayTool, FunctionTool, Interactor } from '@coday/model'
 import { IntegrationService, ProjectService } from '@coday/service'
 import { runBash } from '@coday/function'
@@ -25,10 +25,11 @@ export function sanitizeBranchName(branch: string): string {
  * Checks whether the current project is inside a git worktree
  * (i.e. .git is a file rather than a directory).
  */
-export function isInsideWorktree(projectRoot: string): boolean {
+export async function isInsideWorktree(projectRoot: string): Promise<boolean> {
   const gitPath = path.join(projectRoot, '.git')
   try {
-    return fs.existsSync(gitPath) && fs.lstatSync(gitPath).isFile()
+    const stat = await fsp.lstat(gitPath)
+    return stat.isFile()
   } catch {
     return false
   }
@@ -61,7 +62,7 @@ export class GitWorktreeTools extends AssistantToolFactory {
     const projectRoot = context.project.root
     const parentProjectName = context.project.name
     const worktreesRoot = path.dirname(projectRoot)
-    const inWorktree = isInsideWorktree(projectRoot)
+    const inWorktree = await isInsideWorktree(projectRoot)
 
     // list_worktrees — always available
     const listWorktreesTool: FunctionTool<Record<string, never>> = {
@@ -134,8 +135,11 @@ export class GitWorktreeTools extends AssistantToolFactory {
             const worktreePath = path.join(worktreesRoot, `${parentProjectName}__${sanitized}`)
             const projectName = deriveWorktreeProjectName(parentProjectName, sanitized)
 
-            if (fs.existsSync(worktreePath)) {
+            try {
+              await fsp.access(worktreePath)
               return `Error: worktree path already exists: ${worktreePath}`
+            } catch {
+              /* doesn't exist, proceed */
             }
 
             // Try creating a new branch first; if it already exists, check it out instead.
@@ -147,7 +151,7 @@ export class GitWorktreeTools extends AssistantToolFactory {
             })
             if (addResult.startsWith('Command failed:')) {
               try {
-                fs.rmdirSync(worktreePath)
+                await fsp.rmdir(worktreePath)
               } catch {
                 /* ignore */
               }
@@ -162,7 +166,7 @@ export class GitWorktreeTools extends AssistantToolFactory {
             }
 
             if (this.projectService) {
-              this.projectService.registerWorktreeProject(projectName, worktreePath, parentProjectName)
+              await this.projectService.registerWorktreeProject(projectName, worktreePath, parentProjectName)
             }
             this.interactor.debug(`[WORKTREE] Registered project '${projectName}' at ${worktreePath}`)
             return JSON.stringify({ projectName, worktreePath, branch })
@@ -197,7 +201,9 @@ export class GitWorktreeTools extends AssistantToolFactory {
             return `Error: cannot remove the main worktree`
           }
 
-          if (!fs.existsSync(worktreePath)) {
+          try {
+            await fsp.access(worktreePath)
+          } catch {
             return `Error: worktree path does not exist: ${worktreePath}`
           }
 
@@ -212,7 +218,7 @@ export class GitWorktreeTools extends AssistantToolFactory {
 
           await runBash({ command: 'git worktree prune', root: projectRoot, interactor: this.interactor })
           if (this.projectService) {
-            this.projectService.unregisterWorktreeProject(projectName)
+            await this.projectService.unregisterWorktreeProject(projectName)
           }
           this.interactor.debug(`[WORKTREE] Unregistered project '${projectName}'`)
           return JSON.stringify({ removed: true, projectName, worktreePath, branch })
