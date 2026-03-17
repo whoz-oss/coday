@@ -217,8 +217,8 @@ export function registerThreadRoutes(
       // Only the owner can modify the users list
       let resolvedUsers: ThreadUser[] | undefined = undefined
       if (users !== undefined) {
-        if (existingThread.username !== username) {
-          res.status(403).json({ error: 'Access denied: only the thread owner can modify participants' })
+        if (!hasAccess(existingThread, username)) {
+          res.status(403).json({ error: 'Access denied: only thread participants can modify the users list' })
           return
         }
         // Validate users array: must be an array of objects with non-empty string userId
@@ -286,8 +286,8 @@ export function registerThreadRoutes(
           return
         }
 
-        // Verify user owns this thread
-        if (thread.username !== username) {
+        // Verify user has access to this thread
+        if (!hasAccess(thread, username)) {
           res.status(403).json({ error: 'Access denied: thread belongs to another user' })
           return
         }
