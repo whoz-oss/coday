@@ -131,6 +131,9 @@ export class GitWorktreeTools extends AssistantToolFactory {
           },
           parse: JSON.parse,
           function: async ({ branch }: { branch: string }): Promise<string> => {
+            if (!/^[a-zA-Z0-9._\/-]+$/.test(branch)) {
+              return `Error: branch name contains invalid characters: ${branch}`
+            }
             const sanitized = sanitizeBranchName(branch)
             const worktreePath = path.join(worktreesRoot, `${parentProjectName}__${sanitized}`)
             const projectName = deriveWorktreeProjectName(parentProjectName, sanitized)
@@ -193,6 +196,9 @@ export class GitWorktreeTools extends AssistantToolFactory {
         },
         parse: JSON.parse,
         function: async ({ branch, force }: { branch: string; force?: boolean }): Promise<string> => {
+          if (!/^[a-zA-Z0-9._\/-]+$/.test(branch)) {
+            return `Error: branch name contains invalid characters: ${branch}`
+          }
           const sanitized = sanitizeBranchName(branch)
           const worktreePath = path.join(worktreesRoot, `${parentProjectName}__${sanitized}`)
           const projectName = deriveWorktreeProjectName(parentProjectName, sanitized)

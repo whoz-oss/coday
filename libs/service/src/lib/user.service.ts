@@ -73,7 +73,7 @@ export class UserService {
    *   "my-project__feat-my-feature"  → "my-project"
    */
   public resolveProjectName(projectName: string): string {
-    const separatorIndex = projectName.indexOf('__')
+    const separatorIndex = projectName.lastIndexOf('__')
     return separatorIndex !== -1 ? projectName.substring(0, separatorIndex) : projectName
   }
 
