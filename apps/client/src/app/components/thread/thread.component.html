@@ -30,7 +30,7 @@
         <!-- Share Button -->
         @if (!isSharePanelOpen) {
           <button
-            mat-fab
+            matFab
             class="share-toggle-btn"
             (click)="toggleSharePanel()"
             [class.has-shared-users]="(threadDetails?.users?.length ?? 0) > 1"
