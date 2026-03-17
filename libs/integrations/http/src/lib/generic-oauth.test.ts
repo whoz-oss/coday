@@ -50,6 +50,7 @@ function makeUserService(tokens?: { access_token: string; refresh_token?: string
   return {
     config,
     save: jest.fn(),
+    resolveProjectName: jest.fn((name: string) => name),
   } as any
 }
 
@@ -448,7 +449,7 @@ describe('GenericOAuth', () => {
     })
 
     it('should handle missing projects config gracefully', () => {
-      const userService = { config: {}, save: jest.fn() } as any
+      const userService = { config: {}, save: jest.fn(), resolveProjectName: jest.fn((name: string) => name) } as any
       const instance = makeGenericOAuth(userService)
       expect(instance.hasToken()).toBe(false)
     })
@@ -457,6 +458,7 @@ describe('GenericOAuth', () => {
       const userService = {
         config: { projects: { testProject: {} } },
         save: jest.fn(),
+        resolveProjectName: jest.fn((name: string) => name),
       } as any
       const instance = makeGenericOAuth(userService)
       expect(instance.hasToken()).toBe(false)
