@@ -58,6 +58,9 @@ export class ThreadSelectorComponent implements OnInit {
   isRenamingThread: boolean = false
   renameErrorMessage: string = ''
 
+  // Sub-thread collapse/expand state (keyed by parent thread ID)
+  expandedParents = new Set<string>()
+
   ngOnInit(): void {
     // Load current user on component initialization
     this.userService.fetchCurrentUser().subscribe({
@@ -78,27 +81,61 @@ export class ThreadSelectorComponent implements OnInit {
   }
 
   /**
-   * Group threads by date categories, with starred threads in a separate section
+   * Group threads by date categories, with starred threads in a separate section.
+   * Sub-threads (those with parentThreadId) are excluded from the main list
+   * and instead attached to their parent thread for inline display.
    */
   getGroupedThreads(): Array<{
     label: string
-    threads: Array<{ id: string; name: string; summary: string; modifiedDate: string; starring: string[] }>
+    threads: Array<{
+      id: string
+      name: string
+      modifiedDate: string
+      starring: string[]
+      summary: string
+      parentThreadId?: string
+      delegatedAgentName?: string
+      delegatedTask?: string
+      subThreads?: Array<{
+        id: string
+        name: string
+        modifiedDate: string
+        starring: string[]
+        summary: string
+        delegatedAgentName?: string
+        delegatedTask?: string
+      }>
+    }>
   }> {
-    let threadsToGroup = this.threads()
-    if (!threadsToGroup?.length) {
+    let allThreads = this.threads()
+    if (!allThreads?.length) {
       return []
     }
 
-    // Apply search filter if searchQuery is provided
+    // Separate root threads from sub-threads
+    const rootThreads = allThreads.filter((t: any) => !t.parentThreadId)
+    const subThreads = allThreads.filter((t: any) => !!t.parentThreadId)
+
+    // Build a map of parentThreadId -> sub-threads
+    const subThreadMap = new Map<string, any[]>()
+    for (const sub of subThreads) {
+      const parentId = (sub as any).parentThreadId
+      if (!subThreadMap.has(parentId)) {
+        subThreadMap.set(parentId, [])
+      }
+      subThreadMap.get(parentId)!.push(sub)
+    }
+
+    // Apply search filter to root threads
+    let threadsToGroup = rootThreads
     if (this.searchQuery && this.searchQuery.trim()) {
       const query = this.searchQuery.toLowerCase().trim()
       threadsToGroup = threadsToGroup.filter(
-        (thread) =>
+        (thread: any) =>
           thread.name.toLowerCase().includes(query) || (thread.summary && thread.summary.toLowerCase().includes(query))
       )
     }
 
-    // If no threads after filtering, return empty
     if (!threadsToGroup.length) {
       return []
     }
@@ -108,17 +145,43 @@ export class ThreadSelectorComponent implements OnInit {
       return []
     }
 
+    // Attach sub-threads to their parent and enrich
+    const enrichedThreads = threadsToGroup.map((thread: any) => ({
+      ...thread,
+      subThreads: (subThreadMap.get(thread.id) || []).sort((a: any, b: any) =>
+        a.modifiedDate > b.modifiedDate ? -1 : 1
+      ),
+    }))
+
     // Separate starred and non-starred threads
-    const starredThreads = threadsToGroup.filter(
-      (thread) => thread.starring && thread.starring.includes(currentUsername)
+    const starredThreads = enrichedThreads.filter(
+      (thread: any) => thread.starring && thread.starring.includes(currentUsername)
     )
-    const nonStarredThreads = threadsToGroup.filter(
-      (thread) => !thread.starring || !thread.starring.includes(currentUsername)
+    const nonStarredThreads = enrichedThreads.filter(
+      (thread: any) => !thread.starring || !thread.starring.includes(currentUsername)
     )
 
     const groups = new Map<
       string,
-      Array<{ id: string; name: string; summary: string; modifiedDate: string; starring: string[] }>
+      Array<{
+        id: string
+        name: string
+        modifiedDate: string
+        starring: string[]
+        summary: string
+        parentThreadId?: string
+        delegatedAgentName?: string
+        delegatedTask?: string
+        subThreads?: Array<{
+          id: string
+          name: string
+          modifiedDate: string
+          starring: string[]
+          summary: string
+          delegatedAgentName?: string
+          delegatedTask?: string
+        }>
+      }>
     >()
     const now = new Date()
     now.setHours(0, 0, 0, 0)
@@ -154,13 +217,30 @@ export class ThreadSelectorComponent implements OnInit {
     // Build result array with starred section first
     const result: Array<{
       label: string
-      threads: Array<{ id: string; name: string; summary: string; modifiedDate: string; starring: string[] }>
+      threads: Array<{
+        id: string
+        name: string
+        modifiedDate: string
+        starring: string[]
+        summary: string
+        parentThreadId?: string
+        delegatedAgentName?: string
+        delegatedTask?: string
+        subThreads?: Array<{
+          id: string
+          name: string
+          modifiedDate: string
+          starring: string[]
+          summary: string
+          delegatedAgentName?: string
+          delegatedTask?: string
+        }>
+      }>
     }> = []
 
     // Add starred section if there are starred threads
     if (starredThreads.length > 0) {
-      // Sort starred threads by modification date (newest first)
-      const sortedStarred = [...starredThreads].sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
+      const sortedStarred = [...starredThreads].sort((a: any, b: any) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
       result.push({
         label: 'Starred',
         threads: sortedStarred,
@@ -179,6 +259,32 @@ export class ThreadSelectorComponent implements OnInit {
       })
 
     return result
+  }
+
+  /**
+   * Check if a parent thread's sub-threads are expanded
+   */
+  isParentExpanded(threadId: string): boolean {
+    return this.expandedParents.has(threadId)
+  }
+
+  /**
+   * Toggle sub-thread list visibility for a parent thread
+   */
+  toggleSubThreads(event: Event, threadId: string): void {
+    event.stopPropagation()
+    if (this.expandedParents.has(threadId)) {
+      this.expandedParents.delete(threadId)
+    } else {
+      this.expandedParents.add(threadId)
+    }
+  }
+
+  /**
+   * Check if a thread is a sub-thread (has parentThreadId)
+   */
+  isSubThread(thread: any): boolean {
+    return !!thread.parentThreadId
   }
 
   /**

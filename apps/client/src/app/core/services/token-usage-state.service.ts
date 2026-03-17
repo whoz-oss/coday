@@ -6,6 +6,7 @@ import {
   TimeSeriesPointDto,
   TokenUsageAggregationDto,
   TokenUsageApiService,
+  TokenUsageSeriesDto,
 } from './token-usage-api.service'
 
 export interface TokenUsageFilters {
@@ -47,7 +48,10 @@ export class TokenUsageStateService {
   readonly error = signal<string | null>(null)
 
   readonly aggregation = signal<TokenUsageAggregationDto | null>(null)
+  readonly seriesResponse = signal<TokenUsageSeriesDto | null>(null)
+  /** Convenience: just the points array from the series response */
   readonly series = signal<TimeSeriesPointDto[] | null>(null)
+  readonly tokenDataPartial = signal<boolean>(false)
 
   /** Aggregated view by underlying modelId (across agents/providers) */
   readonly aggregationByModelId = signal<ModelUsageSummaryDto[] | null>(null)
@@ -80,6 +84,11 @@ export class TokenUsageStateService {
     this.reload()
   }
 
+  private addNullableTokens(a: number | null, b: number | null): number | null {
+    if (a === null && b === null) return null
+    return (a ?? 0) + (b ?? 0)
+  }
+
   private aggregateByModelId(rows: ModelUsageSummaryDto[]): ModelUsageSummaryDto[] {
     const map = new Map<string, ModelUsageSummaryDto>()
 
@@ -88,19 +97,19 @@ export class TokenUsageStateService {
       const prev = map.get(key)
       if (!prev) {
         map.set(key, {
-          modelName: 'All agents',
+          agentName: 'All agents',
           providerName: 'all',
           modelId: r.modelId,
-          promptTokens: r.promptTokens ?? 0,
-          completionTokens: r.completionTokens ?? 0,
-          totalTokens: r.totalTokens ?? 0,
+          promptTokens: r.promptTokens,
+          completionTokens: r.completionTokens,
+          totalTokens: r.totalTokens,
           callCount: r.callCount ?? 0,
           cost: r.cost ?? 0,
         })
       } else {
-        prev.promptTokens += r.promptTokens ?? 0
-        prev.completionTokens += r.completionTokens ?? 0
-        prev.totalTokens += r.totalTokens ?? 0
+        prev.promptTokens = this.addNullableTokens(prev.promptTokens, r.promptTokens)
+        prev.completionTokens = this.addNullableTokens(prev.completionTokens, r.completionTokens)
+        prev.totalTokens = this.addNullableTokens(prev.totalTokens, r.totalTokens)
         prev.callCount += r.callCount ?? 0
         prev.cost = (prev.cost ?? 0) + (r.cost ?? 0)
       }
@@ -118,19 +127,19 @@ export class TokenUsageStateService {
       if (!prev) {
         map.set(key, {
           date: p.date,
-          modelName: 'All agents',
+          agentName: 'All agents',
           providerName: 'all',
           modelId: p.modelId,
-          promptTokens: p.promptTokens ?? 0,
-          completionTokens: p.completionTokens ?? 0,
-          totalTokens: p.totalTokens ?? 0,
+          promptTokens: p.promptTokens,
+          completionTokens: p.completionTokens,
+          totalTokens: p.totalTokens,
           callCount: p.callCount ?? 0,
           cost: p.cost ?? 0,
         })
       } else {
-        prev.promptTokens += p.promptTokens ?? 0
-        prev.completionTokens += p.completionTokens ?? 0
-        prev.totalTokens += p.totalTokens ?? 0
+        prev.promptTokens = this.addNullableTokens(prev.promptTokens, p.promptTokens)
+        prev.completionTokens = this.addNullableTokens(prev.completionTokens, p.completionTokens)
+        prev.totalTokens = this.addNullableTokens(prev.totalTokens, p.totalTokens)
         prev.callCount += p.callCount ?? 0
         prev.cost = (prev.cost ?? 0) + (p.cost ?? 0)
       }
@@ -153,18 +162,23 @@ export class TokenUsageStateService {
       .subscribe({
         next: ({ aggregation, series }) => {
           this.aggregation.set(aggregation)
-          this.series.set(series)
+          this.seriesResponse.set(series)
+          const points = series.points ?? []
+          this.series.set(points)
+          this.tokenDataPartial.set(aggregation.tokenDataPartial || series.tokenDataPartial)
 
           const byModelId = this.aggregateByModelId(aggregation.models ?? [])
           this.aggregationByModelId.set(byModelId)
-          this.seriesByModelId.set(this.aggregateSeriesByModelId(series))
+          this.seriesByModelId.set(this.aggregateSeriesByModelId(points))
 
           this.loading.set(false)
         },
         error: (err: unknown) => {
           this.loading.set(false)
           this.aggregation.set(null)
+          this.seriesResponse.set(null)
           this.series.set(null)
+          this.tokenDataPartial.set(false)
           this.aggregationByModelId.set(null)
           this.seriesByModelId.set(null)
           this.error.set(err instanceof Error ? err.message : 'Failed to load token usage')

@@ -1,3 +1,58 @@
+## 0.89.1 (2026-03-17)
+
+### 🩹 Fixes
+
+- #576 add missing users field when updating thread cache ([#576](https://github.com/whoz-oss/coday/issues/576))
+- #576 add missing users field when updating thread cache ([#577](https://github.com/whoz-oss/coday/pull/577), [#576](https://github.com/whoz-oss/coday/issues/576))
+
+### ❤️ Thank You
+
+- Mathieu De Armey
+- mathieu_dearmey
+
+## 0.89.0 (2026-03-17)
+
+### 🚀 Features
+
+- #563 thread access model — users field & shared ownership ([#563](https://github.com/whoz-oss/coday/issues/563))
+- #563 thread access model — users field & shared ownership ([#569](https://github.com/whoz-oss/coday/pull/569), [#563](https://github.com/whoz-oss/coday/issues/563), [#567](https://github.com/whoz-oss/coday/issues/567), [#564](https://github.com/whoz-oss/coday/issues/564), [#565](https://github.com/whoz-oss/coday/issues/565), [#566](https://github.com/whoz-oss/coday/issues/566), [#568](https://github.com/whoz-oss/coday/issues/568))
+
+### 🩹 Fixes
+
+- #563 include users field in AiThread.serialize() output ([#563](https://github.com/whoz-oss/coday/issues/563))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+- m1
+
+## 0.88.0 (2026-03-16)
+
+### 🚀 Features
+
+- update pnpm workspace to have fixed version ([#570](https://github.com/whoz-oss/coday/pull/570))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+
+## 0.87.0 (2026-03-16)
+
+### 🚀 Features
+
+- parallel delegation with inline sub-threads ([0811f443](https://github.com/whoz-oss/coday/commit/0811f443))
+- load subThread content when uncollapsing ([50ba2dae](https://github.com/whoz-oss/coday/commit/50ba2dae))
+- pass thread explicitly to delegate tool via ToolSet.run(), removing broken threadStack ([4c6e5d3e](https://github.com/whoz-oss/coday/commit/4c6e5d3e))
+- removing broken threadStack; bump stackDepth to 10; remove unused forkedThreads Map ([af83b0c1](https://github.com/whoz-oss/coday/commit/af83b0c1))
+- WZ-30688 namespace registry ([#546](https://github.com/whoz-oss/coday/pull/546))
+- update lock file ([66c27664](https://github.com/whoz-oss/coday/commit/66c27664))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+- thomas.martin @thomasmartin-whoz
+- vincent-audibert-whoz
+
 ## 0.86.0 (2026-03-12)
 
 ### 🚀 Features

@@ -1,4 +1,12 @@
-import { ThreadMessage } from './ai-thread.types'
+import { ThreadMessage, ThreadUser } from './ai-thread.types'
+
+/**
+ * Returns true if the given username has access to the thread.
+ * Access is granted to the owner (username) or any participant.
+ */
+export function hasAccess(thread: { users: ThreadUser[] }, username: string): boolean {
+  return thread.users.some((u) => u.userId === username)
+}
 
 export function partition(
   messages: ThreadMessage[],

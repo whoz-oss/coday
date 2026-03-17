@@ -45,8 +45,8 @@ describe('AI Thread migrations', () => {
       // Apply migration
       const result = migrateData(aiThread, aiThreadMigrations)
 
-      // Check that version is set (2 migrations applied)
-      expect(result.version).toBe(3)
+      // Check that version is set (3 migrations applied)
+      expect(result.version).toBe(4)
 
       // Check that message events are migrated
       expect(result.messages).toHaveLength(4)
@@ -105,7 +105,7 @@ describe('AI Thread migrations', () => {
       const result = migrateData(aiThread, aiThreadMigrations)
 
       // Check that version is set
-      expect(result.version).toBe(3)
+      expect(result.version).toBe(4)
 
       // Check that messages array is still empty
       expect(result.messages).toHaveLength(0)
@@ -125,7 +125,7 @@ describe('AI Thread migrations', () => {
 
       // Apply migration
       const result1 = migrateData(aiThreadWithoutMessages, aiThreadMigrations)
-      expect(result1.version).toBe(3)
+      expect(result1.version).toBe(4)
       expect(result1.messages).toEqual([])
 
       // Create a sample AI thread with null messages
@@ -142,7 +142,7 @@ describe('AI Thread migrations', () => {
 
       // Apply migration
       const result2 = migrateData(aiThreadWithNullMessages, aiThreadMigrations)
-      expect(result2.version).toBe(3)
+      expect(result2.version).toBe(4)
       expect(result2.messages).toEqual([])
 
       // Create a sample AI thread with non-array messages
@@ -159,7 +159,7 @@ describe('AI Thread migrations', () => {
 
       // Apply migration
       const result3 = migrateData(aiThreadWithInvalidMessages, aiThreadMigrations)
-      expect(result3.version).toBe(3)
+      expect(result3.version).toBe(4)
       expect(result3.messages).toEqual([])
     })
 
@@ -194,7 +194,7 @@ describe('AI Thread migrations', () => {
       const result = migrateData(aiThread, aiThreadMigrations)
 
       // Check that version is set
-      expect(result.version).toBe(3)
+      expect(result.version).toBe(4)
 
       // Check that tool events are unchanged
       expect(result.messages).toHaveLength(2)
@@ -249,7 +249,7 @@ describe('AI Thread migrations', () => {
       const result = migrateData(aiThread, aiThreadMigrations)
 
       // Check that version is set
-      expect(result.version).toBe(3)
+      expect(result.version).toBe(4)
 
       // Check that all messages are present
       expect(result.messages).toHaveLength(4)
@@ -321,6 +321,7 @@ describe('AI Thread migrations', () => {
         source: 'web',
         priority: 'high',
       })
+      expect(result.version).toBe(4)
 
       // Check that content is properly migrated
       expect(message.content.content).toEqual([
@@ -329,6 +330,53 @@ describe('AI Thread migrations', () => {
           content: 'Test message with extra properties',
         },
       ])
+    })
+  })
+
+  describe('addUsersField migration', () => {
+    it('should initialize users from username when present', () => {
+      const aiThread = {
+        id: 'test-thread-id',
+        username: 'alice@example.com',
+        messages: [],
+      }
+      const result = migrateData(aiThread, aiThreadMigrations)
+      expect(result.users).toEqual([{ userId: 'alice@example.com' }])
+      expect(result.version).toBe(4)
+    })
+
+    it('should initialize users as empty array when username is absent', () => {
+      const aiThread = {
+        id: 'test-thread-id',
+        messages: [],
+      }
+      const result = migrateData(aiThread, aiThreadMigrations)
+      expect(result.users).toEqual([])
+      expect(result.version).toBe(4)
+    })
+
+    it('should preserve existing users field without overwriting', () => {
+      const aiThread = {
+        id: 'test-thread-id',
+        username: 'alice@example.com',
+        users: [{ userId: 'alice@example.com' }, { userId: 'bob@example.com' }],
+        messages: [],
+      }
+      const result = migrateData(aiThread, aiThreadMigrations)
+      expect(result.users).toEqual([{ userId: 'alice@example.com' }, { userId: 'bob@example.com' }])
+      expect(result.version).toBe(4)
+    })
+
+    it('should normalize plain string users array to object array', () => {
+      const aiThread = {
+        id: 'test-thread-id',
+        username: 'alice@example.com',
+        users: ['alice@example.com', 'bob@example.com'],
+        messages: [],
+      }
+      const result = migrateData(aiThread, aiThreadMigrations)
+      expect(result.users).toEqual([{ userId: 'alice@example.com' }, { userId: 'bob@example.com' }])
+      expect(result.version).toBe(4)
     })
   })
 
@@ -351,7 +399,7 @@ describe('AI Thread migrations', () => {
 
       // Check that starring field is added
       expect(result.starring).toEqual([])
-      expect(result.version).toBe(3)
+      expect(result.version).toBe(4)
     })
 
     it('should preserve existing starring field', () => {
@@ -373,7 +421,7 @@ describe('AI Thread migrations', () => {
 
       // Check that starring field is preserved
       expect(result.starring).toEqual(['user1@example.com', 'user2@example.com'])
-      expect(result.version).toBe(3)
+      expect(result.version).toBe(4)
     })
   })
 })

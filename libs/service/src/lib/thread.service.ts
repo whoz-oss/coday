@@ -1,4 +1,4 @@
-import { AiThread, ThreadSummary } from '@coday/model'
+import { AiThread, hasAccess, ThreadSummary } from '@coday/model'
 import { ProjectRepository, ThreadFileRepository, ThreadRepository } from '@coday/repository'
 import { ThreadFileService } from './thread-file.service'
 
@@ -100,7 +100,7 @@ export class ThreadService {
     // Return cached data if still valid, filtered by user
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL_MS) {
       return cached.data
-        .filter((t) => t.username === username)
+        .filter((t) => hasAccess(t, username))
         .sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
     }
 
@@ -121,9 +121,7 @@ export class ThreadService {
       // Wait for loading to complete
       const allThreads = await loadingPromise
       // Return filtered and sorted for this user
-      return allThreads
-        .filter((t) => t.username === username)
-        .sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
+      return allThreads.filter((t) => hasAccess(t, username)).sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
     } catch (error) {
       // On error, invalidate cache to allow retry on next request
       this.threadListCache.delete(projectName)
@@ -226,6 +224,7 @@ export class ThreadService {
       modifiedDate: savedThread.modifiedDate,
       price: savedThread.price,
       starring: savedThread.starring,
+      users: savedThread.users,
     })
 
     return savedThread
@@ -289,6 +288,7 @@ export class ThreadService {
       modifiedDate: updatedThread.modifiedDate,
       price: updatedThread.price,
       starring: updatedThread.starring,
+      users: updatedThread.users,
     })
 
     return updatedThread
@@ -328,6 +328,7 @@ export class ThreadService {
       modifiedDate: updatedThread.modifiedDate,
       price: updatedThread.price,
       starring: updatedThread.starring,
+      users: updatedThread.users,
     })
 
     return updatedThread
@@ -365,6 +366,7 @@ export class ThreadService {
       modifiedDate: updatedThread.modifiedDate,
       price: updatedThread.price,
       starring: updatedThread.starring,
+      users: updatedThread.users,
     })
 
     return updatedThread
@@ -391,6 +393,37 @@ export class ThreadService {
     return deleted
   }
 
+  /**
+   * Save a thread (create or update) with its full content.
+   * Used for persisting sub-threads created by delegation.
+   * @param projectName Project name
+   * @param thread The AiThread instance to persist
+   * @returns Saved thread
+   */
+  async saveThread(projectName: string, thread: AiThread): Promise<AiThread> {
+    const repository = this.getThreadRepository(projectName)
+    const saved = await repository.save(projectName, thread)
+
+    // Update thread list cache
+    this.updateThreadInCache(projectName, {
+      createdDate: saved.createdDate,
+      delegatedAgentName: saved.delegatedAgentName,
+      delegatedTask: saved.delegatedTask,
+      id: saved.id,
+      modifiedDate: saved.modifiedDate,
+      name: saved.name,
+      parentEventId: saved.parentEventId,
+      parentThreadId: saved.parentThreadId,
+      price: saved.price,
+      projectId: saved.projectId,
+      starring: saved.starring,
+      summary: saved.summary,
+      username: saved.username,
+      users: saved.users,
+    })
+
+    return saved
+  }
   /**
    * Check if a thread exists
    * @param projectName Project name

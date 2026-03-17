@@ -146,6 +146,7 @@
   display: grid;
   grid-template-columns: 1.5fr 1fr;
   gap: 1rem;
+  align-items: start;
 }
 
 @media (max-width: 1100px) {
@@ -217,4 +218,10 @@
 .table__cell--num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  margin: 0.25rem 0 1rem;
+  color: var(--color-text-secondary, rgba(29, 29, 31, 0.7));
+  font-size: 0.85rem;
 }

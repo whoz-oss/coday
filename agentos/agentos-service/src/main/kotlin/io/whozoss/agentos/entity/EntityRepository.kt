@@ -16,7 +16,7 @@ import java.util.UUID
  *
  * Type parameters:
  * @param T The entity type (must implement Entity)
- * @param P The parent identifier type (typically UUID for projectId, caseId, etc.)
+ * @param P The parent identifier type (typically UUID for namespaceId, caseId, etc.)
  */
 interface EntityRepository<T : Entity, P> {
     /**
