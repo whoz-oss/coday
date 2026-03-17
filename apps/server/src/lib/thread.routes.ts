@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'fs'
 import { debugLog } from './log'
 import { ThreadCodayManager } from './thread-coday-manager'
 import { getParamAsString } from './route-helpers'
-import { ImageContent } from '@coday/model'
+import { ImageContent, ThreadUser } from '@coday/model'
 import { processImageBuffer } from '@coday/function'
 import { CodayOptions } from '@coday/model'
 import { MAX_FILE_SIZE, isFileExtensionAllowed, getAllowedExtensionsString } from '@coday/model'
@@ -170,6 +170,7 @@ export function registerThreadRoutes(
         modifiedDate: thread.modifiedDate,
         price: thread.price,
         messageCount: thread.messagesLength,
+        users: thread.users,
       })
     } catch (error) {
       console.error('Error retrieving thread:', error)
@@ -199,9 +200,9 @@ export function registerThreadRoutes(
         return
       }
 
-      const { name } = req.body
+      const { name, users } = req.body as { name?: string; users?: ThreadUser[] }
 
-      // Verify thread exists and user owns it
+      // Verify thread exists and user has access
       const existingThread = await threadService.getThread(projectName, threadId)
       if (!existingThread) {
         res.status(404).json({ error: `Thread '${threadId}' not found in project '${projectName}'` })
@@ -213,8 +214,32 @@ export function registerThreadRoutes(
         return
       }
 
+      // Only the owner can modify the users list
+      let resolvedUsers: ThreadUser[] | undefined = undefined
+      if (users !== undefined) {
+        if (existingThread.username !== username) {
+          res.status(403).json({ error: 'Access denied: only the thread owner can modify participants' })
+          return
+        }
+        // Validate users array: must be an array of objects with non-empty string userId
+        if (!Array.isArray(users)) {
+          res.status(400).json({ error: 'Invalid users format: must be an array' })
+          return
+        }
+        for (const u of users) {
+          if (!u || typeof u.userId !== 'string' || u.userId.trim() === '') {
+            res.status(400).json({ error: 'Invalid users format: each user must have a non-empty userId string' })
+            return
+          }
+        }
+        // Ensure owner is always in the users list
+        const ownerUserId = existingThread.username
+        const ownerInList = users.some((u) => u.userId === ownerUserId)
+        resolvedUsers = ownerInList ? users : [{ userId: ownerUserId }, ...users]
+      }
+
       debugLog('THREAD', `PUT update thread: ${threadId} in project: ${projectName}`)
-      const updatedThread = await threadService.updateThread(projectName, threadId, { name })
+      const updatedThread = await threadService.updateThread(projectName, threadId, { name, users: resolvedUsers })
 
       res.status(200).json({
         success: true,

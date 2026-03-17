@@ -19,6 +19,7 @@ import { ChatMessage } from '../chat-message/chat-message.component'
 import { ChatTextareaComponent } from '../chat-textarea/chat-textarea.component'
 import { ChoiceOption, ChoiceSelectComponent } from '../choice-select/choice-select.component'
 import { FileExchangeDrawerComponent } from '../file-exchange-drawer/file-exchange-drawer.component'
+import { ThreadShareComponent } from '../thread-share/thread-share.component'
 import { MatSidenavModule } from '@angular/material/sidenav'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
@@ -29,9 +30,11 @@ import { ConnectionStatus } from '../../core/services/event-stream.service'
 import { PreferencesService } from '../../services/preferences.service'
 import { TabTitleService } from '../../services/tab-title.service'
 import { ThreadStateService } from '../../core/services/thread-state.service'
+import { ThreadDetails } from '../../core/services/thread-api.service'
 import { ImageUploadService } from '../../services/image-upload.service'
 import { FileExchangeStateService } from '../../core/services/file-exchange-state.service'
 import { FirstMessageStateService } from '../../core/services/first-message-state.service'
+import { UserService } from '../../core/services/user.service'
 
 /**
  * ThreadComponent - Dedicated component for displaying and interacting with a conversation thread
@@ -57,6 +60,7 @@ import { FirstMessageStateService } from '../../core/services/first-message-stat
     ChatTextareaComponent,
     ChoiceSelectComponent,
     FileExchangeDrawerComponent,
+    ThreadShareComponent,
     MatSidenavModule,
     MatIconModule,
     MatButtonModule,
@@ -96,9 +100,19 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   // File exchange drawer state
   isFileDrawerOpen: boolean = false
 
+  // Share panel state
+  isSharePanelOpen: boolean = false
+  threadDetails: ThreadDetails | null = null
+
+  @ViewChild(ThreadShareComponent) private threadShareRef?: ThreadShareComponent
+
   // Connect to file exchange state for file count
   get fileCount(): number {
     return this.fileExchangeState.fileCount()
+  }
+
+  get currentUsername(): string {
+    return this.userService.getUsername() ?? ''
   }
 
   // First message from implicit thread creation
@@ -112,6 +126,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   private readonly elementRef = inject(ElementRef)
 
   private readonly threadState = inject(ThreadStateService)
+  private readonly userService = inject(UserService)
   private readonly imageUploadService = inject(ImageUploadService)
   private readonly fileExchangeState = inject(FileExchangeStateService)
   private readonly firstMessageState = inject(FirstMessageStateService)
@@ -214,6 +229,11 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
         // Refresh the thread list to show the updated name
         this.threadState.refreshThreadList()
       }
+    })
+
+    // Subscribe to selected thread details for share panel
+    this.threadState.selectedThread$.pipe(takeUntil(this.destroy$)).subscribe((thread) => {
+      this.threadDetails = thread
     })
 
     // Reset messages when switching threads
@@ -325,6 +345,69 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   closeFileDrawer(): void {
     console.log('[THREAD] Closing file drawer')
     this.isFileDrawerOpen = false
+  }
+
+  // Share panel methods
+  toggleSharePanel(): void {
+    this.isSharePanelOpen = !this.isSharePanelOpen
+    if (this.isSharePanelOpen) {
+      // Focus overlay for keyboard (Escape) support
+      setTimeout(() => {
+        const overlay = this.elementRef.nativeElement.querySelector('.share-panel-overlay') as HTMLElement | null
+        overlay?.focus()
+      }, 0)
+    }
+  }
+
+  onUserAdded(userId: string): void {
+    console.log('[THREAD] Adding user to thread:', userId)
+    if (!this.threadDetails) return
+
+    // Optimistic: derive new list from local threadDetails — avoids race condition
+    const currentUsers = this.threadDetails.users || []
+    if (currentUsers.some((u) => u.userId === userId)) {
+      this.threadShareRef?.setError('User already has access to this thread')
+      return
+    }
+
+    this.threadShareRef?.setAdding(true)
+    const updatedUsers = [...currentUsers, { userId }]
+
+    this.threadState
+      .updateThreadUsers(this.threadId, updatedUsers)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          console.log('[THREAD] User added successfully')
+          this.threadShareRef?.setAdding(false)
+          this.threadState.selectThread(this.threadId)
+        },
+        error: (error) => {
+          console.error('[THREAD] Error adding user:', error)
+          this.threadShareRef?.setError(error?.error?.error || 'Failed to add user')
+        },
+      })
+  }
+
+  onUserRemoved(userId: string): void {
+    console.log('[THREAD] Removing user from thread:', userId)
+    if (!this.threadDetails) return
+
+    // Optimistic: derive new list from local threadDetails — avoids race condition
+    const updatedUsers = (this.threadDetails.users || []).filter((u) => u.userId !== userId)
+
+    this.threadState
+      .updateThreadUsers(this.threadId, updatedUsers)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          console.log('[THREAD] User removed successfully')
+          this.threadState.selectThread(this.threadId)
+        },
+        error: (error) => {
+          console.error('[THREAD] Error removing user:', error)
+        },
+      })
   }
 
   // Drag and Drop Event Handlers for image uploads

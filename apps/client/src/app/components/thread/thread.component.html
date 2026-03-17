@@ -27,6 +27,48 @@
           </button>
         }
 
+        <!-- Share Button -->
+        @if (!isSharePanelOpen) {
+          <button
+            mat-fab
+            class="share-toggle-btn"
+            (click)="toggleSharePanel()"
+            [class.has-shared-users]="(threadDetails?.users?.length ?? 0) > 1"
+            title="Share thread"
+            type="button"
+          >
+            <mat-icon>group</mat-icon>
+          </button>
+        }
+
+        <!-- Share Panel -->
+        @if (isSharePanelOpen && threadDetails) {
+          <div
+            class="share-panel-overlay"
+            (click)="toggleSharePanel()"
+            (keydown.escape)="toggleSharePanel()"
+            tabindex="-1"
+            role="dialog"
+            aria-label="Share thread panel"
+          >
+            <div
+              class="share-panel"
+              (click)="$event.stopPropagation()"
+              (keydown)="$event.stopPropagation()"
+              role="document"
+            >
+              <app-thread-share
+                [threadId]="threadId"
+                [users]="threadDetails.users || []"
+                [ownerUsername]="threadDetails.username"
+                [currentUsername]="currentUsername"
+                (userAdded)="onUserAdded($event)"
+                (userRemoved)="onUserRemoved($event)"
+              />
+            </div>
+          </div>
+        }
+
         <!-- Connection Status -->
         @if (showConnectionStatus && connectionStatus && !connectionStatus.connected) {
           <div class="connection-status">

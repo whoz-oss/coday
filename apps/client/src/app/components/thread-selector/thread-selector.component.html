@@ -59,6 +59,9 @@
                       <mat-spinner class="thread-name-spinner" [diameter]="16"></mat-spinner>
                       <span class="thread-name thread-name-generating">Generating name...</span>
                     }
+                    @if (isSharedThread(thread)) {
+                      <mat-icon class="shared-indicator" matTooltip="Shared thread">group</mat-icon>
+                    }
                   </a>
                 }
 

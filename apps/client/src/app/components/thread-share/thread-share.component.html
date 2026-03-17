@@ -1,0 +1,52 @@
+<div class="thread-share">
+  <div class="share-header">
+    <mat-icon>group</mat-icon>
+    <span>Participants</span>
+  </div>
+
+  <!-- Add user input (owner only) -->
+  @if (isOwner) {
+    <div class="add-user-section">
+      <mat-form-field appearance="outline" class="username-field">
+        <input
+          matInput
+          placeholder="Enter username"
+          [value]="newUsername()"
+          (input)="newUsername.set($any($event.target).value)"
+          (keydown.enter)="addUser()"
+          [disabled]="isAdding()"
+        />
+      </mat-form-field>
+      <button
+        mat-icon-button
+        class="add-button"
+        (click)="addUser()"
+        [disabled]="!newUsername().trim() || isAdding()"
+        title="Add user"
+      >
+        <mat-icon>person_add</mat-icon>
+      </button>
+    </div>
+    @if (errorMessage()) {
+      <div class="error-message">{{ errorMessage() }}</div>
+    }
+  }
+
+  <!-- Users list -->
+  <div class="users-list">
+    @for (user of users; track user.userId) {
+      <div class="user-item" [class.owner]="user.userId === ownerUsername">
+        <mat-icon class="user-icon">person</mat-icon>
+        <span class="user-name">{{ user.userId }}</span>
+        @if (user.userId === ownerUsername) {
+          <span class="owner-badge">owner</span>
+        }
+        @if (isOwner && user.userId !== ownerUsername) {
+          <button mat-icon-button class="remove-button" (click)="removeUser(user.userId)" title="Remove user">
+            <mat-icon>close</mat-icon>
+          </button>
+        }
+      </div>
+    }
+  </div>
+</div>

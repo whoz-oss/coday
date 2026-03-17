@@ -288,6 +288,13 @@ export class ThreadSelectorComponent implements OnInit {
   }
 
   /**
+   * Check if a thread is shared (has more than 1 user)
+   */
+  isSharedThread(thread: any): boolean {
+    return thread.users && thread.users.length > 1
+  }
+
+  /**
    * Check if a thread is starred by the current user
    */
   isStarred(thread: { starring: string[] }): boolean {

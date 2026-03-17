@@ -26,6 +26,53 @@
   }
 }
 
+// Share toggle button (positioned to the left of file exchange button)
+.share-toggle-btn {
+  position: fixed !important;
+  top: 1rem !important;
+  right: 5rem !important;
+  z-index: 100 !important;
+  background: var(--glass-bg) !important;
+  backdrop-filter: var(--glass-backdrop-blur);
+  -webkit-backdrop-filter: var(--glass-backdrop-blur);
+  border: 1px solid var(--glass-border-color) !important;
+  color: var(--color-text) !important;
+  box-shadow: var(--glass-shadow);
+  width: 48px !important;
+  height: 48px !important;
+
+  &.has-shared-users {
+    color: var(--color-primary) !important;
+  }
+}
+
+// Share panel overlay (click outside to close)
+.share-panel-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+// Share panel (popover)
+.share-panel {
+  position: absolute;
+  top: 4.5rem;
+  right: 1rem;
+  width: 320px;
+  max-height: 400px;
+  overflow-y: auto;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-backdrop-blur);
+  -webkit-backdrop-filter: var(--glass-backdrop-blur);
+  border: 1px solid var(--glass-border-color);
+  border-radius: 12px;
+  box-shadow: var(--glass-shadow);
+}
+
 @keyframes pulse-subtle {
   0%,
   100% {
@@ -223,6 +270,8 @@
   .input-section,
   .drag-overlay,
   .file-drawer-toggle-btn,
+  .share-toggle-btn,
+  .share-panel-overlay,
   .file-drawer-container {
     display: none !important;
   }

@@ -18,12 +18,13 @@ export interface ThreadDetails {
   id: string
   name: string
   projectId: string
-  username: string
+  username: string // the owner
   summary: string
   createdDate: string
   modifiedDate: string
   price: number
   messageCount: number
+  users: { userId: string }[]
 }
 
 /**
@@ -102,6 +103,15 @@ export class ThreadApiService {
    */
   updateThread(threadId: string, name: string): Observable<ThreadUpdateResponse> {
     return this.http.put<ThreadUpdateResponse>(`${this.getBaseUrl()}/${threadId}`, { name })
+  }
+
+  /**
+   * Update the users list for a thread
+   * @param threadId Thread identifier
+   * @param users Updated list of thread users
+   */
+  updateThreadUsers(threadId: string, users: { userId: string }[]): Observable<ThreadUpdateResponse> {
+    return this.http.put<ThreadUpdateResponse>(`${this.getBaseUrl()}/${threadId}`, { users })
   }
 
   /**

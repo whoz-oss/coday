@@ -1,4 +1,4 @@
-import { AiThread, hasAccess, ThreadSummary } from '@coday/model'
+import { AiThread, hasAccess, ThreadSummary, ThreadUser } from '@coday/model'
 import { ProjectRepository, ThreadFileRepository, ThreadRepository } from '@coday/repository'
 import { ThreadFileService } from './thread-file.service'
 
@@ -231,7 +231,7 @@ export class ThreadService {
   }
 
   /**
-   * Update a thread (rename)
+   * Update a thread (rename, summary, users)
    * @param projectName Project name
    * @param threadId Thread identifier
    * @param updates Partial thread updates
@@ -241,7 +241,7 @@ export class ThreadService {
   async updateThread(
     projectName: string,
     threadId: string,
-    updates: { name?: string; summary?: string }
+    updates: { name?: string; summary?: string; users?: ThreadUser[] }
   ): Promise<AiThread> {
     const repository = this.getThreadRepository(projectName)
 
@@ -273,6 +273,9 @@ export class ThreadService {
     }
     if (updates.summary !== undefined) {
       thread.summary = updates.summary
+    }
+    if (updates.users !== undefined) {
+      thread.users = updates.users
     }
 
     const updatedThread = await repository.save(projectName, thread)

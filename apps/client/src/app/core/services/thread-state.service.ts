@@ -194,6 +194,26 @@ export class ThreadStateService {
   }
 
   /**
+   * Update the users list for a thread.
+   * The caller is responsible for computing the new list from the locally-held
+   * threadDetails to avoid GET-then-PUT race conditions.
+   * @param threadId Thread identifier
+   * @param users Full replacement users list
+   * @returns Observable that emits the update response
+   */
+  updateThreadUsers(threadId: string, users: { userId: string }[]): Observable<ThreadUpdateResponse> {
+    return this.threadApi.updateThreadUsers(threadId, users).pipe(
+      tap(() => {
+        this.refreshThreadList()
+      }),
+      catchError((error) => {
+        console.error('[THREAD_STATE] Error updating thread users:', error)
+        return throwError(() => error)
+      })
+    )
+  }
+
+  /**
    * Rename a thread
    * @param threadId Thread identifier
    * @param newName New thread name

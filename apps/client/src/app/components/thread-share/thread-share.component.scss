@@ -1,0 +1,129 @@
+.thread-share {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.share-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text);
+
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    color: var(--color-text-secondary);
+  }
+}
+
+.add-user-section {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.username-field {
+  flex: 1;
+
+  // Reduce default Material form field height
+  ::ng-deep .mat-mdc-form-field-infix {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+    min-height: unset;
+  }
+
+  ::ng-deep .mat-mdc-text-field-wrapper {
+    padding: 0 0.75rem;
+  }
+
+  ::ng-deep .mdc-notched-outline__notch {
+    border-right: none;
+  }
+}
+
+.add-button {
+  flex-shrink: 0;
+
+  &:not([disabled]) {
+    color: var(--color-primary);
+  }
+}
+
+.error-message {
+  color: var(--color-error);
+  font-size: 0.75rem;
+  margin-top: -0.5rem;
+}
+
+.users-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.user-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: var(--color-bg-hover);
+  }
+
+  &.owner {
+    background: rgba(var(--color-primary-rgb, 25, 118, 210), 0.05);
+  }
+}
+
+.user-icon {
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.user-name {
+  flex: 1;
+  font-size: 0.875rem;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-badge {
+  font-size: 0.7rem;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  padding: 0.1rem 0.5rem;
+  border-radius: 10px;
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.remove-button {
+  flex-shrink: 0;
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    color: var(--color-text-secondary);
+  }
+
+  &:hover mat-icon {
+    color: #ef4444;
+  }
+}

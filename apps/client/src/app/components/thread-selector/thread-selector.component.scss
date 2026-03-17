@@ -448,6 +448,15 @@
   }
 }
 
+.shared-indicator {
+  font-size: 14px;
+  width: 14px;
+  height: 14px;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+  margin-left: 0.25rem;
+}
+
 // Responsive adjustments
 @media (max-width: 768px) {
   .thread-item {
