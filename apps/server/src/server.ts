@@ -249,6 +249,11 @@ const FORBIDDEN_USERNAMES = [
 function getUsername(req: express.Request): string {
   const username = codayOptions.auth ? (req.headers[EMAIL_HEADER] as string) : os.userInfo().username
 
+  // In auth mode, username may be absent if the header is missing
+  if (!username) {
+    return ''
+  }
+
   // Security check: prevent running as system/service accounts
   if (FORBIDDEN_USERNAMES.includes(username.toLowerCase() as any)) {
     throw new Error(
