@@ -16,7 +16,7 @@ check_binary() {
   if ! command -v "$name" &>/dev/null; then
     missing+=("$name")
   else
-    echo "  ✓ $name $("$name" --version 2>&1 | head -1)"
+    echo "  ✓ $name"
   fi
 }
 
