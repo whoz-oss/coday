@@ -144,3 +144,4 @@ mandatoryDocs:
   - ./product/03-stakeholder-views.md
   - ./product/04-guidelines.md
   - ./docs/to-rework/INTEGRATIONS.md
+  - ./docs/to-rework/DEV_WORKFLOW.md

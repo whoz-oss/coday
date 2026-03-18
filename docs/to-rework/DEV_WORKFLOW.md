@@ -72,6 +72,26 @@ build: #XXXX short description     # For build system changes
 6. Commit and push
 7. Create PR with conventional commit format as title (e.g., "feat: #XXXX short description")
 
+## Worktree Workflow
+
+Worktrees allow parallel work on multiple branches without switching the main project directory. Each worktree is registered as a Coday sub-project, enabling agents to work in isolation per issue.
+
+**Naming**: worktree directories and their derived project names follow the branch name sanitized with `-` replacing `/`.
+Example: branch `feature/username/issue-0585-worktree-workflow` → project `coday__feature-username-issue-0585-worktree-workflow`.
+
+**Lifecycle**:
+1. PM creates the worktree via the `GIT_WORKTREE` integration when initiating work on an issue.
+2. Implementation agents (Sway, Dev…) work within the worktree's Coday sub-project.
+3. PM removes the worktree once the linked PR is merged or the issue is closed.
+
+**Commands** (run from the main project root):
+```bash
+git worktree list                              # list active worktrees
+git worktree add ../coday__feat-xxx feat/xxx   # create (handled by PM via tools)
+git worktree remove ../coday__feat-xxx         # remove (handled by PM via tools)
+git worktree prune                             # clean up stale references
+```
+
 ## Pull Request Requirements
 
 1. PR title must follow conventional commit format
