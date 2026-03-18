@@ -247,12 +247,14 @@ export class ProjectService {
     // Overwrite the config with the properly derived one
     this.repository.saveConfig(projectName, worktreeConfig)
 
-    // Symlink shared config artifacts from parent project config dir
+    // Symlink shared config artifacts from parent project config dir.
+    // Threads are intentionally excluded: each worktree keeps its own isolated thread list.
+    // When a worktree is removed, its threads are migrated back to the parent project.
     const projectInfo = this.repository.getProjectInfo(parentProjectName)
     if (projectInfo) {
       const worktreeInfo = this.repository.getProjectInfo(projectName)
       if (worktreeInfo) {
-        for (const dir of ['agents', 'prompts', 'schedulers', 'memories', 'threads']) {
+        for (const dir of ['agents', 'prompts', 'schedulers', 'memories']) {
           const parentDir = path.join(projectInfo.configPath, dir)
           const targetLink = path.join(worktreeInfo.configPath, dir)
           try {
@@ -267,16 +269,61 @@ export class ProjectService {
   }
 
   /**
-   * Unregister a worktree project: removes symlinks and the project config file,
-   * then removes the config directory if empty.
+   * Unregister a worktree project: migrates its threads to the parent project,
+   * then removes the worktree config directory.
    * @param projectName Name of the worktree project to remove
    */
   async unregisterWorktreeProject(projectName: string): Promise<void> {
     const projectInfo = this.repository.getProjectInfo(projectName)
     if (!projectInfo) return
 
+    // Derive parent project name by stripping the "__<branch>" suffix
+    const separatorIndex = projectName.lastIndexOf('__')
+    if (separatorIndex !== -1) {
+      const parentProjectName = projectName.substring(0, separatorIndex)
+      const parentInfo = this.repository.getProjectInfo(parentProjectName)
+      if (parentInfo) {
+        await this.migrateThreadsToParent(projectInfo.configPath, parentInfo.configPath)
+      }
+    }
+
     // deleteProject is currently a no-op in the file repo; remove the whole config directory
     await fsp.rm(projectInfo.configPath, { recursive: true, force: true })
+  }
+
+  /**
+   * Migrates thread YAML files from a worktree project config dir to the parent project config dir.
+   * Thread files directory (${threadId}-files/) are left in place since the worktree filesystem
+   * will be removed anyway by git worktree remove.
+   * @param worktreeConfigPath Config directory of the worktree project
+   * @param parentConfigPath Config directory of the parent project
+   */
+  private async migrateThreadsToParent(worktreeConfigPath: string, parentConfigPath: string): Promise<void> {
+    const worktreeThreadsDir = path.join(worktreeConfigPath, 'threads')
+    const parentThreadsDir = path.join(parentConfigPath, 'threads')
+
+    try {
+      await fsp.access(worktreeThreadsDir)
+    } catch {
+      // No threads directory in worktree — nothing to migrate
+      return
+    }
+
+    // Ensure parent threads directory exists
+    await fsp.mkdir(parentThreadsDir, { recursive: true })
+
+    const entries = await fsp.readdir(worktreeThreadsDir)
+    for (const entry of entries) {
+      if (!entry.endsWith('.yml')) continue
+      const src = path.join(worktreeThreadsDir, entry)
+      const dest = path.join(parentThreadsDir, entry)
+      try {
+        // Skip if a thread with the same ID already exists in parent (shouldn't happen, but safe)
+        await fsp.access(dest)
+      } catch {
+        await fsp.rename(src, dest)
+      }
+    }
   }
 
   /**
