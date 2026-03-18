@@ -414,6 +414,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     this.recognition.onend = () => {
       console.log('[SPEECH] Recognition ended. Was recording:', this.isRecording)
       this.isRecording = false
+      this.lastProcessedResultIndex = 0
       this.voiceRecordingToggled.emit(this.isRecording)
     }
 
@@ -425,6 +426,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
         timeStamp: event.timeStamp,
       })
       this.isRecording = false
+      this.lastProcessedResultIndex = 0
       this.clearPendingLineBreaks()
       this.voiceRecordingToggled.emit(this.isRecording)
     }
