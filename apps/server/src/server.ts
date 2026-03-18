@@ -29,6 +29,7 @@ import { registerPromptRoutes } from './lib/prompt.routes'
 import { registerSchedulerRoutes } from './lib/scheduler.routes'
 import { registerPromptExecutionRoutes } from './lib/prompt-execution.routes'
 import { registerTokenUsageRoutes } from './lib/token-usage.routes'
+import { registerProjectPreviewRoutes } from './lib/project-preview.routes'
 import { parseCodayOptions } from './lib/coday-options-utils'
 import { ProjectFileRepository } from '@coday/repository'
 import { McpInstancePool } from '@coday/mcp'
@@ -281,6 +282,9 @@ registerPromptExecutionRoutes(app, promptExecutionService, getUsername)
 
 // Register project management routes
 registerProjectRoutes(app, projectService)
+
+// Register project preview routes
+registerProjectPreviewRoutes(app, projectService, configRegistry, getUsername)
 
 // Register thread management routes
 registerThreadRoutes(app, threadService, threadFileService, threadCodayManager, getUsername, codayOptions)

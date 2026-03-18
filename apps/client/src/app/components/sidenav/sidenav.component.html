@@ -279,6 +279,31 @@
         </div>
       }
 
+      <!-- Preview Server - visible when project has preview.command configured -->
+      @if (hasPreviewConfig()) {
+        <div class="section-container" [class.expanded]="expandedSections['preview']">
+          <a
+            class="section-toggle"
+            [class.active]="expandedSections['preview']"
+            (click)="toggleSection('preview'); $event.preventDefault(); $event.stopPropagation()"
+            role="button"
+            tabindex="0"
+          >
+            @if (expandedSections['preview']) {
+              <mat-icon class="arrow-icon expanded">keyboard_arrow_up</mat-icon>
+            } @else {
+              <mat-icon class="section-icon">rocket_launch</mat-icon>
+            }
+            <span class="section-label">Preview Server</span>
+          </a>
+          @if (expandedSections['preview']) {
+            <div class="section-content">
+              <app-preview-panel></app-preview-panel>
+            </div>
+          }
+        </div>
+      }
+
       <!-- Contribute on GitHub - Always at the bottom -->
       <div class="section-container">
         <a

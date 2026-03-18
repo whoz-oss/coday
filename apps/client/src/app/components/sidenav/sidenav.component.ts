@@ -13,6 +13,7 @@ import { ConfigApiService } from '../../core/services/config-api.service'
 import { PreferencesService } from '../../services/preferences.service'
 import { OptionsPanelComponent } from '../options-panel'
 import { ThreadSelectorComponent } from '../thread-selector/thread-selector.component'
+import { PreviewPanelComponent } from '../preview-panel/preview-panel.component'
 import { JsonEditorComponent, JsonEditorData } from '../json-editor/json-editor.component'
 import { PromptManagerComponent } from '../prompt-manager/prompt-manager.component'
 import { SchedulerManagerComponent } from '../scheduler-manager/scheduler-manager.component'
@@ -34,6 +35,7 @@ import { ThreadStateService } from '../../core/services/thread-state.service'
     MatProgressBarModule,
     OptionsPanelComponent,
     ThreadSelectorComponent,
+    PreviewPanelComponent,
   ],
   templateUrl: './sidenav.component.html',
   styleUrl: './sidenav.component.scss',
@@ -52,6 +54,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
   expandedSections: Record<string, boolean> = {
     threads: true,
     config: false,
+    preview: false,
   }
 
   // Thread search state
@@ -77,6 +80,10 @@ export class SidenavComponent implements OnInit, OnDestroy {
     this.projectStateService.selectedProject$.pipe(map((project) => project?.config?.volatile || false))
   )
   forcedProject = toSignal(this.projectStateService.forcedProject$)
+  hasPreviewConfig = toSignal(
+    this.projectStateService.selectedProject$.pipe(map((project) => !!project?.config?.['preview']?.['command'])),
+    { initialValue: false }
+  )
 
   ngOnInit(): void {
     // Load saved sidenav state from preferences
