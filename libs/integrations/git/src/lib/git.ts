@@ -4,10 +4,10 @@ import { runBash } from '@coday/function'
 const dangerKeywords = ['push', 'push -f', 'push --force', 'push --tags', 'reset', '&&', 'clean']
 
 /**
- * Worktree mutating subcommands are blocked: use the dedicated GIT_WORKTREE tools instead.
- * Read-only worktree commands (list, lock, unlock, repair) are still allowed.
+ * All worktree subcommands are blocked except 'list'.
+ * Use the dedicated GIT_WORKTREE tools (list_worktrees, create_worktree, remove_worktree) instead.
  */
-const blockedWorktreeSubcommands = ['add', 'move', 'remove', 'prune']
+const allowedWorktreeSubcommands = ['list']
 
 export const git = async ({
   params,
@@ -21,7 +21,7 @@ export const git = async ({
   const trimmed = params.trimStart()
   if (trimmed.startsWith('worktree ')) {
     const subcommand = trimmed.slice('worktree '.length).trimStart().split(/\s+/)[0] ?? ''
-    if (blockedWorktreeSubcommands.includes(subcommand)) {
+    if (!allowedWorktreeSubcommands.includes(subcommand)) {
       return `Error: 'git worktree ${subcommand}' is not allowed via the generic git tool. Use the dedicated worktree tools (list_worktrees, create_worktree, remove_worktree) instead.`
     }
   }
