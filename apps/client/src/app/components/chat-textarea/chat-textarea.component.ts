@@ -61,6 +61,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   private recognition: any = null
   private sessionHadTranscript: boolean = false
   private pendingLineBreaksTimeout: number | null = null
+  // Index of the last processed final result — guards against Chrome mobile replaying all results
+  private lastProcessedResultIndex: number = 0
 
   // Enter behavior preference
   private useEnterToSend: boolean = false
@@ -388,10 +390,15 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     this.recognition.onresult = (event: any) => {
       let finalTranscript = ''
 
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript
+      // Start from the greater of event.resultIndex and lastProcessedResultIndex to avoid
+      // replaying already-processed results. Chrome mobile sometimes resets resultIndex to 0
+      // for subsequent events, which causes incremental duplication ("Je. Je parle. Je parle en.").
+      const startIndex = Math.max(event.resultIndex, this.lastProcessedResultIndex)
+
+      for (let i = startIndex; i < event.results.length; i++) {
         if (event.results[i].isFinal) {
-          finalTranscript += transcript
+          finalTranscript += event.results[i][0].transcript
+          this.lastProcessedResultIndex = i + 1
         }
       }
 
@@ -442,6 +449,7 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     try {
       this.isRecording = true
       this.sessionHadTranscript = false // Reset at beginning of new session
+      this.lastProcessedResultIndex = 0 // Reset processed index for new session
       this.clearPendingLineBreaks() // Clear pending timeouts from previous session
       this.voiceRecordingToggled.emit(this.isRecording)
       this.recognition.start()
