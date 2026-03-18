@@ -292,9 +292,8 @@ export class ProjectService {
   }
 
   /**
-   * Migrates thread YAML files from a worktree project config dir to the parent project config dir.
-   * Thread files directory (${threadId}-files/) are left in place since the worktree filesystem
-   * will be removed anyway by git worktree remove.
+   * Migrates the entire threads/ directory content (YAML files and file directories)
+   * from a worktree project config dir to the parent project config dir.
    * @param worktreeConfigPath Config directory of the worktree project
    * @param parentConfigPath Config directory of the parent project
    */
@@ -314,11 +313,10 @@ export class ProjectService {
 
     const entries = await fsp.readdir(worktreeThreadsDir)
     for (const entry of entries) {
-      if (!entry.endsWith('.yml')) continue
       const src = path.join(worktreeThreadsDir, entry)
       const dest = path.join(parentThreadsDir, entry)
       try {
-        // Skip if a thread with the same ID already exists in parent (shouldn't happen, but safe)
+        // Skip if an entry with the same name already exists in parent (shouldn't happen, but safe)
         await fsp.access(dest)
       } catch {
         await fsp.rename(src, dest)
