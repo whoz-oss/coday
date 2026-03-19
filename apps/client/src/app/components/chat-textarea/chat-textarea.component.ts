@@ -334,8 +334,11 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     const canSend = !this.isDisabled && !this.isLocallyDisabled && (allowEmpty || messageToSend)
 
     if (canSend) {
-      // Immediately set local disable flag to prevent any further input
-      this.isLocallyDisabled = true
+      // Only set local disable flag when NOT thinking (invite/response flow).
+      // When thinking (agent running), the textarea stays enabled for free-form posting.
+      if (!this.isThinking) {
+        this.isLocallyDisabled = true
+      }
 
       // Send the trimmed message (can be empty string if allowEmpty=true)
       this.messageSubmitted.emit(messageToSend)

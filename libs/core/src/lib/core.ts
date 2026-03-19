@@ -17,6 +17,7 @@ import {
   ToolRequestEvent,
   ToolResponseEvent,
 } from '@coday/model'
+import { filter } from 'rxjs'
 import { AgentService } from '@coday/agent'
 import { AiConfigService, ThreadStateService } from '@coday/service'
 import { AiClientProvider } from '@coday/integrations-ai'
@@ -33,6 +34,8 @@ export class Coday {
   initialPrompts: string[] = []
   aiThreadService: ThreadStateService
   private killed: boolean = false
+  private pendingInviteEvent: InviteEvent | null = null
+  private messageQueue: Array<{ username: string; message: string }> = []
   readonly aiClientProvider: AiClientProvider
 
   constructor(
@@ -61,6 +64,43 @@ export class Coday {
       this.services.project,
       this.services.logger
     )
+
+    // Track pending invite events so addUserMessage can answer them
+    this.interactor.events.pipe(filter((e) => e instanceof InviteEvent)).subscribe((e) => {
+      this.pendingInviteEvent = e as InviteEvent
+    })
+    this.interactor.events.pipe(filter((e) => e instanceof AnswerEvent)).subscribe((e) => {
+      const answer = e as AnswerEvent
+      if (this.pendingInviteEvent && answer.parentKey === this.pendingInviteEvent.timestamp) {
+        this.pendingInviteEvent = null
+      }
+    })
+  }
+
+  /**
+   * Add a user message to the thread.
+   * If the agent is idle (waiting for input), the message answers the pending invite
+   * and triggers processing immediately. If the agent is running, the message is queued
+   * for the next loop iteration.
+   */
+  addUserMessage(username: string, message: string): void {
+    if (this.pendingInviteEvent) {
+      // Answer the pending invite to unblock the promptText await.
+      // agent.run() will add the AnswerEvent to AiThread and emit it via SSE.
+      const answerEvent = this.pendingInviteEvent.buildAnswer(message)
+      this.pendingInviteEvent = null
+      this.interactor.sendEvent(answerEvent)
+    } else {
+      // Agent is running — queue the message for the next initCommand() iteration.
+      // Emit a MessageEvent immediately so the UI shows the message without delay.
+      const messageEvent = new MessageEvent({
+        role: 'user',
+        content: [{ type: 'text', content: message }],
+        name: username,
+      })
+      this.interactor.sendEvent(messageEvent)
+      this.messageQueue.push({ username, message })
+    }
   }
 
   /**
@@ -327,6 +367,11 @@ export class Coday {
         this.context?.addCommands(...this.initialPrompts)
         this.initialPrompts = [] // clear the prompts as consumed, will not be re-used even on context reset
       }
+    } else if (this.messageQueue.length > 0) {
+      // Consume a queued message instead of waiting for user input
+      const queued = this.messageQueue.shift()!
+      this.interactor.debug(`[CODAY] Consuming queued message from ${queued.username}`)
+      userCommand = queued.message
     } else if (!this.options.oneshot) {
       // allow user input
       this.interactor.debug(`[CODAY] No initial prompts, waiting for user input`)

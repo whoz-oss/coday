@@ -173,14 +173,13 @@ export class CodayService implements OnDestroy {
       return
     }
 
-    // Immediately set thinking state to true to disable textarea
-    // This prevents users from sending multiple messages before server responds
-    this.isThinkingSubject.next(true)
-    this.tabTitleService?.setSystemActive()
-
     const currentInviteEvent = this.currentInviteEventSubject.value
 
     if (currentInviteEvent) {
+      // Invite/response flow: set thinking state to disable textarea while agent processes
+      this.isThinkingSubject.next(true)
+      this.tabTitleService?.setSystemActive()
+
       // Use the original InviteEvent to build proper answer with parentKey
       const answerEvent = currentInviteEvent.buildAnswer(message)
 
@@ -195,14 +194,12 @@ export class CodayService implements OnDestroy {
         },
       })
     } else {
-      // Fallback to basic AnswerEvent if no invite event stored
-      const answerEvent = new AnswerEvent({ answer: message })
-
-      this.messageApi.sendMessage(answerEvent).subscribe({
+      // Free-form message: agent is running or no invite pending.
+      // Do NOT set thinking state — the agent is already running (or the backend will handle it).
+      // The textarea stays enabled so the user can post multiple messages.
+      this.messageApi.sendFreeMessage(message).subscribe({
         error: (error) => {
-          console.error('[CODAY] Send error:', error)
-          // Reset thinking state on error
-          this.stopThinking()
+          console.error('[CODAY] Free message send error:', error)
         },
       })
     }

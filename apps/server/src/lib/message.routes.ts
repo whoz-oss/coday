@@ -155,6 +155,14 @@ export function registerMessageRoutes(
           }
         }
 
+        // Handle free-form message posting (no invite required)
+        if (payload.message && !payload.type) {
+          debugLog('MESSAGE', `Free-form message from ${username}: ${payload.message.substring(0, 50)}`)
+          instance.coday.addUserMessage(username, payload.message)
+          res.status(200).json({ queued: true })
+          return
+        }
+
         // Default behavior: send as AnswerEvent
         instance.coday.interactor.sendEvent(new AnswerEvent(payload))
 

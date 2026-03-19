@@ -47,7 +47,7 @@
       [placeholder]="getPlaceholder()"
       (keydown)="onKeyDown($event)"
       (input)="onInput()"
-      [disabled]="isDisabled || isThinking || isLocallyDisabled"
+      [disabled]="isDisabled || isLocallyDisabled"
       (focus)="isFocused = true"
       (blur)="isFocused = false"
     ></textarea>
@@ -60,7 +60,8 @@
           title="Stop generation"
           (action)="onStopClick()"
         />
-      } @else {
+      }
+      @if (!isThinking || message.trim()) {
         <ds-icon-button
           class="send-btn"
           icon="send"
@@ -71,6 +72,8 @@
           [class.active]="!!message.trim() && !isDisabled && !isLocallyDisabled"
           (action)="sendMessage()"
         />
+      }
+      @if (!isThinking) {
         @if (!showWelcome) {
           <ds-icon-button
             class="upload-btn"
