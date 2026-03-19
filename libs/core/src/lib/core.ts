@@ -34,6 +34,7 @@ export class Coday {
   initialPrompts: string[] = []
   aiThreadService: ThreadStateService
   private killed: boolean = false
+  private isReplaying: boolean = false
   private pendingInviteEvent: InviteEvent | null = null
   private messageQueue: Array<{ username: string; message: string }> = []
   readonly aiClientProvider: AiClientProvider
@@ -65,16 +66,27 @@ export class Coday {
       this.services.logger
     )
 
-    // Track pending invite events so addUserMessage can answer them
-    this.interactor.events.pipe(filter((e) => e instanceof InviteEvent)).subscribe((e) => {
-      this.pendingInviteEvent = e as InviteEvent
-    })
-    this.interactor.events.pipe(filter((e) => e instanceof AnswerEvent)).subscribe((e) => {
-      const answer = e as AnswerEvent
-      if (this.pendingInviteEvent && answer.parentKey === this.pendingInviteEvent.timestamp) {
-        this.pendingInviteEvent = null
-      }
-    })
+    // Track pending invite events so addUserMessage can answer them.
+    // Skip events during replay to avoid stale historical events polluting state.
+    this.interactor.events
+      .pipe(
+        filter((e) => e instanceof InviteEvent),
+        filter(() => !this.isReplaying)
+      )
+      .subscribe((e) => {
+        this.pendingInviteEvent = e as InviteEvent
+      })
+    this.interactor.events
+      .pipe(
+        filter((e) => e instanceof AnswerEvent),
+        filter(() => !this.isReplaying)
+      )
+      .subscribe((e) => {
+        const answer = e as AnswerEvent
+        if (this.pendingInviteEvent && answer.parentKey === this.pendingInviteEvent.timestamp) {
+          this.pendingInviteEvent = null
+        }
+      })
   }
 
   /**
@@ -224,6 +236,8 @@ export class Coday {
       this.context = null
       this.handlerLooper = undefined
       this.aiHandler = undefined
+      this.messageQueue = []
+      this.pendingInviteEvent = null
     } catch (error) {
       console.error('Error during agent cleanup:', error)
       // Don't throw - cleanup should be best-effort
@@ -259,29 +273,34 @@ export class Coday {
    * Replay messages from an AiThread through the interactor
    */
   private async replayThread(aiThread: AiThread): Promise<void> {
-    const messages: ThreadMessage[] = (await aiThread.getMessages(undefined, undefined)).messages
-    if (!messages?.length) return
-    // Sort messages by timestamp to maintain chronological order
-    const sortedMessages = [...messages].sort(
-      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-    )
+    this.isReplaying = true
+    try {
+      const messages: ThreadMessage[] = (await aiThread.getMessages(undefined, undefined)).messages
+      if (!messages?.length) return
+      // Sort messages by timestamp to maintain chronological order
+      const sortedMessages = [...messages].sort(
+        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      )
 
-    // Send messages directly - no conversion needed
-    for (const message of sortedMessages) {
-      if (
-        message instanceof MessageEvent ||
-        message instanceof ToolRequestEvent ||
-        message instanceof ToolResponseEvent ||
-        message instanceof InviteEvent ||
-        message instanceof ChoiceEvent ||
-        message instanceof AnswerEvent
-      ) {
-        this.interactor.sendEvent(message)
+      // Send messages directly - no conversion needed
+      for (const message of sortedMessages) {
+        if (
+          message instanceof MessageEvent ||
+          message instanceof ToolRequestEvent ||
+          message instanceof ToolResponseEvent ||
+          message instanceof InviteEvent ||
+          message instanceof ChoiceEvent ||
+          message instanceof AnswerEvent
+        ) {
+          this.interactor.sendEvent(message)
+        }
       }
-    }
 
-    // Always emit the thread selection message last
-    this.interactor.displayText(`Selected thread '${aiThread.name}'`)
+      // Always emit the thread selection message last
+      this.interactor.displayText(`Selected thread '${aiThread.name}'`)
+    } finally {
+      this.isReplaying = false
+    }
   }
 
   private async initContext(): Promise<void> {

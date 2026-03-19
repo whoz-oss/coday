@@ -173,36 +173,24 @@ export class CodayService implements OnDestroy {
       return
     }
 
-    const currentInviteEvent = this.currentInviteEventSubject.value
-
-    if (currentInviteEvent) {
-      // Invite/response flow: set thinking state to disable textarea while agent processes
+    // Clear pending invite if any (UI state cleanup only — server is the source of truth)
+    const hadInvite = !!this.currentInviteEventSubject.value
+    if (hadInvite) {
+      this.currentInviteEventSubject.next(null)
       this.isThinkingSubject.next(true)
       this.tabTitleService?.setSystemActive()
-
-      // Use the original InviteEvent to build proper answer with parentKey
-      const answerEvent = currentInviteEvent.buildAnswer(message)
-
-      // Clear the current invite event immediately after using it
-      this.currentInviteEventSubject.next(null)
-
-      this.messageApi.sendMessage(answerEvent).subscribe({
-        error: (error) => {
-          console.error('[CODAY] Send error:', error)
-          // Reset thinking state on error
-          this.stopThinking()
-        },
-      })
-    } else {
-      // Free-form message: agent is running or no invite pending.
-      // Do NOT set thinking state — the agent is already running (or the backend will handle it).
-      // The textarea stays enabled so the user can post multiple messages.
-      this.messageApi.sendFreeMessage(message).subscribe({
-        error: (error) => {
-          console.error('[CODAY] Free message send error:', error)
-        },
-      })
     }
+
+    // Always use the free-form endpoint — server decides how to handle it
+    // (answers pending invite, or queues if agent is running)
+    this.messageApi.sendFreeMessage(message).subscribe({
+      error: (error) => {
+        console.error('[CODAY] Send error:', error)
+        if (hadInvite) {
+          this.stopThinking()
+        }
+      },
+    })
   }
 
   /**

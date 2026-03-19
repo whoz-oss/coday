@@ -155,18 +155,23 @@ export function registerMessageRoutes(
           }
         }
 
-        // Handle free-form message posting (no invite required)
-        if (payload.message && !payload.type) {
+        // Handle legacy AnswerEvent flow (has type === 'answer')
+        if (payload.type === 'answer') {
+          instance.coday.interactor.sendEvent(new AnswerEvent(payload))
+          res.status(200).send('Message received successfully!')
+          return
+        }
+
+        // Handle free-form message posting (no type, has message field)
+        if (payload.message) {
           debugLog('MESSAGE', `Free-form message from ${username}: ${payload.message.substring(0, 50)}`)
           instance.coday.addUserMessage(username, payload.message)
           res.status(200).json({ queued: true })
           return
         }
 
-        // Default behavior: send as AnswerEvent
-        instance.coday.interactor.sendEvent(new AnswerEvent(payload))
-
-        res.status(200).send('Message received successfully!')
+        // Unknown payload type
+        res.status(400).send('Invalid message payload: must include either type or message field')
       } catch (error) {
         console.error('Error processing event:', error)
         res.status(400).send('Invalid event data!')
