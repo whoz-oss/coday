@@ -6,7 +6,7 @@ const { contextBridge, ipcRenderer } = require('electron') as {
 }
 
 /**
- * Preload script for Coday Twin Desktop
+ * Preload script for CodayTwin Desktop
  *
  * This script runs in a privileged context and can expose
  * safe APIs to the renderer process through contextBridge.
@@ -70,7 +70,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   preferencesClose: () => ipcRenderer.invoke('preferences:close'),
 } as CodayDesktopSetupAPI)
 
-console.log('Coday Twin Desktop preload script loaded')
+console.log('CodayTwin Desktop preload script loaded')
 
 // Extend the Window interface for TypeScript
 declare global {

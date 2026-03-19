@@ -15,6 +15,7 @@ let mainWindow: BrowserWindowType | null = null
 let serverProcess: ChildProcess | null = null
 let serverUrl: string | null | undefined = null
 let pendingDeepLink: string | null = null
+let storageHandlersRegistered = false
 
 const PROTOCOL_NAME = 'coday'
 
@@ -63,105 +64,43 @@ if (app.isPackaged) {
 }
 
 /**
- * Find node executable by checking common installation locations
+ * Find node/npx executable using 'which' via a login shell, with fallback to
+ * keg-only Homebrew versioned installs (e.g. node@24, node@22...)
  */
-function findNodeExecutable(): string | null {
+function findExecutable(executable: 'node' | 'npx'): string | null {
   const { execSync } = require('child_process') as typeof import('child_process')
-  const { existsSync } = require('fs') as typeof import('fs')
+  const { existsSync, readdirSync } = require('fs') as typeof import('fs')
 
-  // Common node installation paths on macOS
-  const possiblePaths = [
-    '/usr/local/bin/node',
-    '/opt/homebrew/bin/node', // Apple Silicon Homebrew
-    '/usr/bin/node',
-    '/opt/local/bin/node', // MacPorts
-  ]
-
-  // Check if NVM is installed
-  const homeDir = process.env['HOME']
-  if (homeDir) {
-    const nvmDir = join(homeDir, '.nvm')
-    if (existsSync(nvmDir)) {
-      try {
-        // Try to get the default node from NVM
-        const nvmNodePath = execSync('. ~/.nvm/nvm.sh && nvm which default', {
-          encoding: 'utf8',
-          shell: '/bin/bash',
-        }).trim()
-        if (nvmNodePath && existsSync(nvmNodePath)) {
-          possiblePaths.unshift(nvmNodePath)
-        }
-      } catch (e) {
-        // NVM command failed, continue with other paths
+  // Try login shells (-l) so ~/.zprofile, ~/.bash_profile etc. are sourced
+  for (const cmd of [`/bin/zsh -lc 'which ${executable}'`, `/bin/bash -lc 'which ${executable}'`]) {
+    try {
+      const result = execSync(cmd, { encoding: 'utf8' }).trim()
+      if (result && existsSync(result)) {
+        log('INFO', `${executable} found: ${result}`)
+        return result
       }
+    } catch {
+      // try next
     }
   }
 
-  // Try each possible path
-  for (const nodePath of possiblePaths) {
-    if (existsSync(nodePath)) {
-      console.log('Found node at:', nodePath)
-      return nodePath
-    }
-  }
-
-  // Try using 'which node' as last resort
-  try {
-    const whichNode = execSync('which node', { encoding: 'utf8' }).trim()
-    if (whichNode && existsSync(whichNode)) {
-      console.log('Found node via which:', whichNode)
-      return whichNode
-    }
-  } catch (e) {
-    // which command failed
-  }
-
-  return null
-}
-
-/**
- * Check if npx is available
- */
-function findNpxExecutable(): string | null {
-  const { execSync } = require('child_process') as typeof import('child_process')
-  const { existsSync } = require('fs') as typeof import('fs')
-
-  // First, try to find npx using 'which'
-  try {
-    const whichNpx = execSync('which npx', { encoding: 'utf8' }).trim()
-    if (whichNpx && existsSync(whichNpx)) {
-      console.log('Found npx via which:', whichNpx)
-      return whichNpx
-    }
-  } catch (e) {
-    // which command failed, continue with other methods
-  }
-
-  // Try to find npx alongside node
-  const nodePath = findNodeExecutable()
-  if (nodePath) {
-    const { dirname } = require('path') as typeof import('path')
-    const nodeDir = dirname(nodePath)
-    const npxPath = join(nodeDir, 'npx')
-
-    if (existsSync(npxPath)) {
-      console.log('Found npx alongside node at:', npxPath)
-      return npxPath
-    }
-  }
-
-  // Common npx installation paths
-  const possiblePaths = [
-    '/usr/local/bin/npx',
-    '/opt/homebrew/bin/npx', // Apple Silicon Homebrew
-    '/usr/bin/npx',
-    '/opt/local/bin/npx', // MacPorts
-  ]
-
-  for (const npxPath of possiblePaths) {
-    if (existsSync(npxPath)) {
-      console.log('Found npx at:', npxPath)
-      return npxPath
+  // Fallback: scan Homebrew opt for keg-only versioned node installs (e.g. node@24)
+  for (const brewPrefix of ['/opt/homebrew/opt', '/usr/local/opt']) {
+    if (!existsSync(brewPrefix)) continue
+    try {
+      const entries = readdirSync(brewPrefix)
+        .filter((e) => /^node(@\d+)?$/.test(e))
+        .sort()
+        .reverse() // prefer highest version
+      for (const entry of entries) {
+        const candidate = `${brewPrefix}/${entry}/bin/${executable}`
+        if (existsSync(candidate)) {
+          log('INFO', `${executable} found via Homebrew keg-only: ${candidate}`)
+          return candidate
+        }
+      }
+    } catch {
+      // continue
     }
   }
 
@@ -178,7 +117,7 @@ async function startCodayServer(): Promise<void> {
     // Find node and run the installed package via npx
     log('INFO', 'Finding node executable...')
 
-    const nodePath = findNodeExecutable()
+    const nodePath = findExecutable('node')
 
     if (!nodePath) {
       const error = new Error(
@@ -191,7 +130,7 @@ async function startCodayServer(): Promise<void> {
     log('INFO', 'Using node at:', nodePath)
 
     // Check for npx
-    const npxPath = findNpxExecutable()
+    const npxPath = findExecutable('npx')
 
     if (!npxPath) {
       const error = new Error(
@@ -473,6 +412,12 @@ function showErrorDialog(title: string, message: string): void {
  * Setup IPC handlers for storage
  */
 function setupStorageHandlers(): void {
+  if (storageHandlersRegistered) {
+    log('INFO', 'Storage handlers already registered, skipping')
+    return
+  }
+  storageHandlersRegistered = true
+
   // Get storage data
   ipcMain.handle('storage:get', (_event: IpcMainInvokeEvent, key: string): string | null => {
     try {

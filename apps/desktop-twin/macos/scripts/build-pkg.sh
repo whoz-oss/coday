@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build macOS .pkg installer for Coday Twin Desktop
+# Build macOS .pkg installer for CodayTwin Desktop
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -7,17 +7,17 @@ APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RELEASE_DIR="$APP_DIR/release"
 PKG_BUILD_DIR="$RELEASE_DIR/pkg-build"
 
-# Find the .app bundle - note the name is "Coday Twin.app"
-APP_BUNDLE=$(find "$RELEASE_DIR" -name "Coday Twin.app" -type d | head -1)
+# Find the .app bundle - note the name is "CodayTwin.app"
+APP_BUNDLE=$(find "$RELEASE_DIR" -name "CodayTwin.app" -type d | head -1)
 if [ -z "$APP_BUNDLE" ]; then
-    APP_BUNDLE=$(find "$RELEASE_DIR/mac" -name "Coday Twin.app" -type d 2>/dev/null | head -1)
+    APP_BUNDLE=$(find "$RELEASE_DIR/mac" -name "CodayTwin.app" -type d 2>/dev/null | head -1)
     if [ -z "$APP_BUNDLE" ]; then
-        APP_BUNDLE=$(find "$RELEASE_DIR/mac-arm64" -name "Coday Twin.app" -type d 2>/dev/null | head -1)
+        APP_BUNDLE=$(find "$RELEASE_DIR/mac-arm64" -name "CodayTwin.app" -type d 2>/dev/null | head -1)
     fi
 fi
 
 if [ -z "$APP_BUNDLE" ]; then
-    echo "Error: Coday Twin.app not found in $RELEASE_DIR"
+    echo "Error: CodayTwin.app not found in $RELEASE_DIR"
     exit 1
 fi
 
@@ -40,150 +40,13 @@ if [ -d "$VAULT_TEMPLATE_SRC" ]; then
     cp -R "$VAULT_TEMPLATE_SRC" "$VAULT_TEMPLATE_DST"
 fi
 
-# Create the postinstall script that installs the app AND runs dependency setup
-cat > "$PKG_BUILD_DIR/scripts/postinstall" << 'POSTINSTALL_SCRIPT'
-#!/bin/bash
-set -e
-
-LOG_FILE="/tmp/coday-twin-postinstall.log"
-exec > >(tee -a "$LOG_FILE") 2>&1
-
-echo "=== Coday Twin Desktop Post-Install ==="
-echo "Date: $(date)"
-echo "Installer temp dir: $1"
-echo "Install destination: $2"
-echo "Install volume: $3"
-echo "System root: $4"
-
-# The .app is embedded in the pkg scripts dir alongside this postinstall script
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-APP_SRC="$SCRIPT_DIR/Coday Twin.app"
-APP_DST="/Applications/Coday Twin.app"
-
-# Step 1: Install the app
-if [ -d "$APP_SRC" ]; then
-    echo "Installing Coday Twin.app to /Applications/..."
-    # Remove existing installation if present
-    if [ -d "$APP_DST" ]; then
-        echo "Removing existing installation..."
-        rm -rf "$APP_DST"
-    fi
-    cp -R "$APP_SRC" "$APP_DST"
-    echo "Coday Twin.app installed successfully"
-else
-    echo "ERROR: Coday Twin.app not found at $APP_SRC"
-    echo "Contents of script dir:"
-    ls -la "$SCRIPT_DIR"
-    # Don't exit — still run dependency setup
-fi
-
-# Step 2: Get the actual user (not root)
-ACTUAL_USER="${USER}"
-if [ "$EUID" -eq 0 ]; then
-    ACTUAL_USER=$(stat -f "%Su" /dev/console 2>/dev/null || echo "$USER")
-fi
-ACTUAL_HOME=$(eval echo "~$ACTUAL_USER")
-
-echo "Actual user: $ACTUAL_USER"
-echo "Actual home: $ACTUAL_HOME"
-
-run_as_user() {
-    if [ "$EUID" -eq 0 ]; then
-        sudo -u "$ACTUAL_USER" --login bash -c "$1"
-    else
-        eval "$1"
-    fi
-}
-
-# Step 3: Install Homebrew if not present
-if ! run_as_user "command -v brew" &>/dev/null; then
-    echo "Installing Homebrew..."
-
-    # Pre-create ALL Homebrew directories as root with correct ownership.
-    # This allows the Homebrew installer to run without needing sudo access.
-    BREW_PREFIX="/opt/homebrew"
-    if [ "$(uname -m)" = "x86_64" ]; then
-        BREW_PREFIX="/usr/local"
-    fi
-
-    for dir in bin etc include lib sbin share var/homebrew/linked Cellar Caskroom Frameworks; do
-        mkdir -p "$BREW_PREFIX/$dir"
-    done
-    chown -R "$ACTUAL_USER:admin" "$BREW_PREFIX"
-
-    # Create /etc/paths.d entry so brew is in PATH for all shells
-    if [ -d /etc/paths.d ] && [ "$BREW_PREFIX" != "/usr/local" ]; then
-        echo "$BREW_PREFIX/bin" > /etc/paths.d/homebrew
-    fi
-
-    # Cache sudo credentials for the user so Homebrew's sudo check passes.
-    # We're already root, so we can update the user's sudo timestamp directly.
-    sudo -u "$ACTUAL_USER" sudo -v 2>/dev/null || {
-        # If that fails, create a sudoers.d entry temporarily
-        echo "$ACTUAL_USER ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/coday-tmp-brew
-        chmod 0440 /etc/sudoers.d/coday-tmp-brew
-    }
-
-    # Download and run the installer as the user.
-    curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh -o /tmp/brew-install.sh
-    chmod +x /tmp/brew-install.sh
-    sudo -u "$ACTUAL_USER" NONINTERACTIVE=1 /bin/bash /tmp/brew-install.sh
-    rm -f /tmp/brew-install.sh
-
-    # Remove temporary sudoers entry if we created one
-    rm -f /etc/sudoers.d/coday-tmp-brew
-
-    if [ -f "$BREW_PREFIX/bin/brew" ]; then
-        # Ensure brew is in user's shell profile
-        run_as_user "echo 'eval \"\$($BREW_PREFIX/bin/brew shellenv)\"' >> ~/.zprofile"
-        eval "$($BREW_PREFIX/bin/brew shellenv)"
-    fi
-    echo "Homebrew installed successfully"
-else
-    echo "Homebrew already installed"
-fi
-
-BREW_PATH=$(run_as_user "command -v brew" 2>/dev/null || echo "/opt/homebrew/bin/brew")
-
-# Step 4: Install Node.js LTS if not present
-if ! run_as_user "command -v node" &>/dev/null; then
-    echo "Installing Node.js LTS..."
-    run_as_user "$BREW_PATH install node@24"
-    run_as_user "$BREW_PATH link node@24"
-    echo "Node.js installed successfully"
-else
-    echo "Node.js already installed: $(run_as_user 'node --version')"
-fi
-
-# Step 5: Install ripgrep if not present
-if ! run_as_user "command -v rg" &>/dev/null; then
-    echo "Installing ripgrep..."
-    run_as_user "$BREW_PATH install ripgrep"
-    echo "ripgrep installed successfully"
-else
-    echo "ripgrep already installed: $(run_as_user 'rg --version' | head -1)"
-fi
-
-# Step 6: Install Obsidian if not present
-if [ ! -d "/Applications/Obsidian.app" ] && [ ! -d "$ACTUAL_HOME/Applications/Obsidian.app" ]; then
-    echo "Installing Obsidian..."
-    run_as_user "$BREW_PATH install --cask obsidian"
-    echo "Obsidian installed successfully"
-else
-    echo "Obsidian already installed"
-fi
-
-# Vault directory creation is handled by the Coday Twin app on first launch,
-# after the user chooses their preferred location (default or custom path).
-
-echo "=== Coday Twin Desktop Post-Install Complete ==="
-exit 0
-POSTINSTALL_SCRIPT
+# Copy the postinstall script into the pkg scripts directory
+cp "$SCRIPT_DIR/postinstall.sh" "$PKG_BUILD_DIR/scripts/postinstall"
 chmod +x "$PKG_BUILD_DIR/scripts/postinstall"
 
 # Copy the .app bundle into the scripts directory so postinstall can find it
 echo "Copying app bundle into pkg scripts directory..."
-cp -R "$APP_BUNDLE" "$PKG_BUILD_DIR/scripts/Coday Twin.app"
+cp -R "$APP_BUNDLE" "$PKG_BUILD_DIR/scripts/CodayTwin.app"
 
 # Build component package with NO payload — the postinstall script handles app installation
 # We use an empty payload dir so pkgbuild still creates a valid pkg structure
@@ -200,7 +63,7 @@ pkgbuild \
 cat > "$PKG_BUILD_DIR/distribution.xml" << EOF
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
-    <title>Coday Twin Desktop</title>
+    <title>CodayTwin Desktop</title>
     <welcome file="welcome.html" mime-type="text/html"/>
     <options customize="never" require-scripts="false" hostArchitectures="x86_64,arm64"/>
     <choices-outline>
@@ -220,10 +83,10 @@ EOF
 cat > "$PKG_BUILD_DIR/welcome.html" << EOF
 <html>
 <body>
-<h1>Welcome to Coday Twin</h1>
+<h1>Welcome to CodayTwin</h1>
 <p>This installer will:</p>
 <ul>
-<li>Install Coday Twin to your Applications folder</li>
+<li>Install CodayTwin to your Applications folder</li>
 <li>Install required dependencies (Homebrew, Node.js, ripgrep) if not already present</li>
 <li>Install Obsidian if not already present</li>
 <li>Create your CodayTwin workspace at ~/CodayTwin/ (if it doesn't exist)</li>

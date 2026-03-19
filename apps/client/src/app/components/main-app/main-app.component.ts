@@ -1,7 +1,7 @@
 import { AfterViewInit, Component, ElementRef, inject, OnDestroy, OnInit, ViewChild } from '@angular/core'
 import { ActivatedRoute, Router } from '@angular/router'
-import { Subject } from 'rxjs'
-import { takeUntil } from 'rxjs/operators'
+import { combineLatest, Subject } from 'rxjs'
+import { filter, take, takeUntil } from 'rxjs/operators'
 import { animate, style, transition, trigger } from '@angular/animations'
 
 import { ChatTextareaComponent } from '../chat-textarea/chat-textarea.component'
@@ -15,6 +15,7 @@ import { PreferencesService } from '../../services/preferences.service'
 import { ThreadApiService } from '../../core/services/thread-api.service'
 import { AgentNotificationService } from '../../services/agent-notification.service'
 import { FirstMessageStateService } from '../../core/services/first-message-state.service'
+import { ThreadStateService } from '../../core/services/thread-state.service'
 
 @Component({
   selector: 'app-main',
@@ -45,6 +46,9 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   isSessionInitializing: boolean = false
   isStartingFirstMessage: boolean = false
 
+  // Prevent auto-prompt from firing more than once per session
+  private hasAutoTriggered: boolean = false
+
   // Input height management for welcome view
   inputSectionHeight: number = 80 // Default height
 
@@ -57,6 +61,7 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   private threadApiService = inject(ThreadApiService)
   private agentNotificationService = inject(AgentNotificationService)
   private firstMessageState = inject(FirstMessageStateService)
+  private threadStateService = inject(ThreadStateService)
 
   constructor() {
     console.log('[MAIN-APP] Using new thread-based architecture (no clientId needed)')
@@ -96,11 +101,33 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   /**
-   * Initialize the welcome view when no thread is selected
+   * Initialize the welcome view when no thread is selected.
+   * On first launch (empty thread list), auto-sends a setup prompt.
    */
   private initializeWelcomeView(): void {
     // Connect services (to avoid circular dependency)
     this.codayService.setTabTitleService(this.titleService)
+
+    // Auto-trigger setup prompt on first launch (empty thread list), only once per session
+    if (this.hasAutoTriggered) {
+      return
+    }
+
+    combineLatest([this.threadStateService.isLoadingThreadList$, this.threadStateService.threadList$])
+      .pipe(
+        filter(([isLoading, threads]) => !isLoading && threads.length === 0),
+        take(1),
+        takeUntil(this.destroy$)
+      )
+      .subscribe(() => {
+        // Guard again: only fire if still on welcome view and not already triggered
+        if (this.threadId || this.hasAutoTriggered) {
+          return
+        }
+        console.log('[MAIN-APP] First launch detected — auto-sending setup prompt')
+        this.hasAutoTriggered = true
+        this.onMessageSubmitted('Please help me setup myself!')
+      })
   }
 
   ngAfterViewInit(): void {

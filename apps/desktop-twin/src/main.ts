@@ -1,12 +1,14 @@
 import type { BrowserWindow as BrowserWindowType, App, IpcMainInvokeEvent } from 'electron'
 import { execSync, type ChildProcess } from 'child_process'
 
-const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron') as {
+const { app, BrowserWindow, dialog, ipcMain, Menu, session, protocol } = require('electron') as {
   app: App & { isQuitting?: boolean }
   BrowserWindow: typeof import('electron').BrowserWindow
   dialog: typeof import('electron').dialog
   ipcMain: typeof import('electron').ipcMain
   Menu: typeof import('electron').Menu
+  session: typeof import('electron').session
+  protocol: typeof import('electron').protocol
 }
 const { spawn } = require('child_process') as typeof import('child_process')
 const { join } = require('path') as typeof import('path')
@@ -18,6 +20,7 @@ let serverUrl: string | null | undefined = null
 let pendingDeepLink: string | null = null
 let isSetupWindowOpen = false
 let isPreferencesWindowOpen = false
+let storageHandlersRegistered = false
 
 const PROTOCOL_NAME = 'coday-twin'
 const DEFAULT_TWIN_PROJECT_PATH = join(app.getPath('home'), 'CodayTwin')
@@ -59,7 +62,7 @@ function log(level: 'INFO' | 'ERROR' | 'WARN', ...args: any[]): void {
 // Initialize log file
 if (app.isPackaged) {
   try {
-    const logHeader = `\n\n${'='.repeat(80)}\nCoday Twin Desktop Log - Started at ${new Date().toISOString()}\n${'='.repeat(80)}\n`
+    const logHeader = `\n\n${'='.repeat(80)}\nCodayTwin Desktop Log - Started at ${new Date().toISOString()}\n${'='.repeat(80)}\n`
     fs.appendFileSync(LOG_FILE, logHeader, 'utf8')
     log('INFO', 'Log file initialized at:', LOG_FILE)
   } catch (error) {
@@ -68,109 +71,49 @@ if (app.isPackaged) {
 }
 
 /**
- * Find node executable by checking common installation locations
+ * Find node/npx executable using 'which' via a login shell, with fallback to
+ * keg-only Homebrew versioned installs (e.g. node@24, node@22...)
  */
-function findNodeExecutable(): string | null {
+function findExecutable(executable: 'node' | 'npx'): string {
   const { execSync } = require('child_process') as typeof import('child_process')
-  const { existsSync } = require('fs') as typeof import('fs')
+  const { existsSync, readdirSync } = require('fs') as typeof import('fs')
 
-  // Common node installation paths on macOS
-  const possiblePaths = [
-    '/usr/local/bin/node',
-    '/opt/homebrew/bin/node', // Apple Silicon Homebrew
-    '/usr/bin/node',
-    '/opt/local/bin/node', // MacPorts
-  ]
-
-  // Check if NVM is installed
-  const homeDir = process.env['HOME']
-  if (homeDir) {
-    const nvmDir = join(homeDir, '.nvm')
-    if (existsSync(nvmDir)) {
-      try {
-        // Try to get the default node from NVM
-        const nvmNodePath = execSync('. ~/.nvm/nvm.sh && nvm which default', {
-          encoding: 'utf8',
-          shell: '/bin/bash',
-        }).trim()
-        if (nvmNodePath && existsSync(nvmNodePath)) {
-          possiblePaths.unshift(nvmNodePath)
-        }
-      } catch (e) {
-        // NVM command failed, continue with other paths
+  // Try login shells (-l) so ~/.zprofile, ~/.bash_profile etc. are sourced
+  for (const cmd of [`/bin/zsh -lc 'which ${executable}'`, `/bin/bash -lc 'which ${executable}'`]) {
+    try {
+      const result = execSync(cmd, { encoding: 'utf8' }).trim()
+      if (result && existsSync(result)) {
+        log('INFO', `${executable} found: ${result}`)
+        return result
       }
+    } catch {
+      // try next
     }
   }
 
-  // Try each possible path
-  for (const nodePath of possiblePaths) {
-    if (existsSync(nodePath)) {
-      console.log('Found node at:', nodePath)
-      return nodePath
+  // Fallback: scan Homebrew opt for keg-only versioned node installs (e.g. node@24)
+  for (const brewPrefix of ['/opt/homebrew/opt', '/usr/local/opt']) {
+    if (!existsSync(brewPrefix)) continue
+    try {
+      const entries = readdirSync(brewPrefix)
+        .filter((e) => /^node(@\d+)?$/.test(e))
+        .sort()
+        .reverse() // prefer highest version
+      for (const entry of entries) {
+        const candidate = `${brewPrefix}/${entry}/bin/${executable}`
+        if (existsSync(candidate)) {
+          log('INFO', `${executable} found via Homebrew keg-only: ${candidate}`)
+          return candidate
+        }
+      }
+    } catch {
+      // continue
     }
   }
 
-  // Try using 'which node' as last resort
-  try {
-    const whichNode = execSync('which node', { encoding: 'utf8' }).trim()
-    if (whichNode && existsSync(whichNode)) {
-      console.log('Found node via which:', whichNode)
-      return whichNode
-    }
-  } catch (e) {
-    // which command failed
-  }
-
-  return null
-}
-
-/**
- * Check if npx is available
- */
-function findNpxExecutable(): string | null {
-  const { execSync } = require('child_process') as typeof import('child_process')
-  const { existsSync } = require('fs') as typeof import('fs')
-
-  // First, try to find npx using 'which'
-  try {
-    const whichNpx = execSync('which npx', { encoding: 'utf8' }).trim()
-    if (whichNpx && existsSync(whichNpx)) {
-      console.log('Found npx via which:', whichNpx)
-      return whichNpx
-    }
-  } catch (e) {
-    // which command failed, continue with other methods
-  }
-
-  // Try to find npx alongside node
-  const nodePath = findNodeExecutable()
-  if (nodePath) {
-    const { dirname } = require('path') as typeof import('path')
-    const nodeDir = dirname(nodePath)
-    const npxPath = join(nodeDir, 'npx')
-
-    if (existsSync(npxPath)) {
-      console.log('Found npx alongside node at:', npxPath)
-      return npxPath
-    }
-  }
-
-  // Common npx installation paths
-  const possiblePaths = [
-    '/usr/local/bin/npx',
-    '/opt/homebrew/bin/npx', // Apple Silicon Homebrew
-    '/usr/bin/npx',
-    '/opt/local/bin/npx', // MacPorts
-  ]
-
-  for (const npxPath of possiblePaths) {
-    if (existsSync(npxPath)) {
-      console.log('Found npx at:', npxPath)
-      return npxPath
-    }
-  }
-
-  return null
+  throw new Error(
+    `${executable} not found. Please install Node.js from https://nodejs.org/ or use a package manager like Homebrew.`
+  )
 }
 
 /**
@@ -268,13 +211,13 @@ function initializeVault(vaultPath: string): void {
     for (const dir of ['.obsidian', 'inbox', 'notes', 'projects']) {
       fs.mkdirSync(join(vaultPath, dir), { recursive: true })
     }
-    fs.writeFileSync(join(vaultPath, 'README.md'), '# Coday Twin Vault\n\nYour digital twin workspace.\n', 'utf8')
+    fs.writeFileSync(join(vaultPath, 'README.md'), '# CodayTwin Vault\n\nYour digital twin workspace.\n', 'utf8')
     fs.writeFileSync(
       join(vaultPath, '.obsidian', 'app.json'),
       JSON.stringify({ alwaysUpdateLinks: true, newFileLocation: 'folder', newFileFolderPath: 'inbox' }, null, 2),
       'utf8'
     )
-    fs.writeFileSync(join(vaultPath, 'coday.yml'), 'description: "Coday Twin digital workspace"\n', 'utf8')
+    fs.writeFileSync(join(vaultPath, 'coday.yml'), 'description: "CodayTwin digital workspace"\n', 'utf8')
   }
 
   log('INFO', 'Vault initialized at:', vaultPath)
@@ -311,20 +254,7 @@ function ensureTwinProjectConfig(twinProjectPath: string): void {
   fs.mkdirSync(configDir, { recursive: true })
 
   if (fs.existsSync(configFile)) {
-    // Config exists — check if the path matches and update if needed
-    const content = fs.readFileSync(configFile, 'utf8')
-    const pathMatch = content.match(/^path:\s*["']?(.+?)["']?$/m)
-    const existingPath = pathMatch ? pathMatch[1] : null
-
-    if (existingPath === twinProjectPath) {
-      log('INFO', 'Twin project config already up to date at:', configFile)
-      return
-    }
-
-    log('INFO', 'Updating Twin project config path from', existingPath, 'to', twinProjectPath)
-    const updatedContent = content.replace(/^path:.*$/m, `path: "${twinProjectPath}"`)
-    fs.writeFileSync(configFile, updatedContent, 'utf8')
-    log('INFO', 'Twin project config path updated successfully')
+    log('INFO', 'Twin project config already exists at:', configFile)
     return
   }
 
@@ -716,9 +646,9 @@ function showPreferencesWindow(): void {
 function setupApplicationMenu(): void {
   const template = [
     {
-      label: 'Coday Twin',
+      label: 'CodayTwin',
       submenu: [
-        { role: 'about', label: 'About Coday Twin' },
+        { role: 'about', label: 'About CodayTwin' },
         { type: 'separator' },
         {
           label: 'Preferences...',
@@ -730,11 +660,11 @@ function setupApplicationMenu(): void {
         { type: 'separator' },
         { role: 'services', label: 'Services' },
         { type: 'separator' },
-        { role: 'hide', label: 'Hide Coday Twin' },
+        { role: 'hide', label: 'Hide CodayTwin' },
         { role: 'hideOthers', label: 'Hide Others' },
         { role: 'unhide', label: 'Show All' },
         { type: 'separator' },
-        { role: 'quit', label: 'Quit Coday Twin' },
+        { role: 'quit', label: 'Quit CodayTwin' },
       ],
     },
     {
@@ -777,13 +707,13 @@ function setupApplicationMenu(): void {
  */
 async function startCodayServer(): Promise<void> {
   try {
-    log('INFO', 'Starting Coday Twin server...')
+    log('INFO', 'Starting CodayTwin server...')
     log('INFO', 'Twin project path:', DEFAULT_TWIN_PROJECT_PATH)
 
     // Find node and run the installed package via npx
     log('INFO', 'Finding node executable...')
 
-    const nodePath = findNodeExecutable()
+    const nodePath = findExecutable('node')
 
     if (!nodePath) {
       const error = new Error(
@@ -796,7 +726,7 @@ async function startCodayServer(): Promise<void> {
     log('INFO', 'Using node at:', nodePath)
 
     // Check for npx
-    const npxPath = findNpxExecutable()
+    const npxPath = findExecutable('npx')
 
     if (!npxPath) {
       const error = new Error(
@@ -881,7 +811,7 @@ async function startCodayServer(): Promise<void> {
 
       serverProcess!.on('error', (error: Error) => {
         log('ERROR', 'Failed to start server:', error)
-        const wrappedError: any = new Error(`Failed to start Coday Twin server: ${error.message}`)
+        const wrappedError: any = new Error(`Failed to start CodayTwin server: ${error.message}`)
         wrappedError.userFacing = true
         settle(() => reject(wrappedError))
       })
@@ -912,7 +842,7 @@ async function startCodayServer(): Promise<void> {
  */
 function stopCodayServer(): void {
   if (serverProcess) {
-    log('INFO', 'Stopping Coday Twin server...')
+    log('INFO', 'Stopping CodayTwin server...')
     serverProcess.kill()
     serverProcess = null
   }
@@ -979,6 +909,91 @@ async function isServerResponsive(): Promise<boolean> {
 }
 
 /**
+ * Register a custom 'coday-asset' protocol and an HTTP interceptor so that
+ * favicon / logo requests from the Angular client are served from the local
+ * bundled icon.png.
+ *
+ * Strategy:
+ *  1. Register a privilege-bearing custom scheme 'coday-asset' that is
+ *     treated as secure and supports fetch/CORS so the renderer can load it.
+ *  2. After app.whenReady(), handle 'coday-asset://icon' by reading and
+ *     returning icon.png bytes directly — no file:// cross-origin issues.
+ *  3. Intercept HTTP requests for known favicon paths and redirect them to
+ *     'coday-asset://icon' instead of file://.
+ *
+ * registerFaviconScheme() must be called BEFORE app.whenReady() (scheme
+ * privileges must be set before the app is ready).
+ * registerFaviconInterceptor() must be called AFTER app.whenReady().
+ */
+function registerFaviconScheme(): void {
+  protocol.registerSchemesAsPrivileged([
+    {
+      scheme: 'coday-asset',
+      privileges: {
+        secure: true,
+        standard: true,
+        supportFetchAPI: true,
+        corsEnabled: true,
+        bypassCSP: true,
+      },
+    },
+  ])
+  log('INFO', 'coday-asset scheme registered as privileged')
+}
+
+function registerFaviconInterceptor(): void {
+  const iconPath = join(__dirname, 'icon.png')
+
+  if (!fs.existsSync(iconPath)) {
+    log('WARN', 'registerFaviconInterceptor: icon.png not found at', iconPath)
+    return
+  }
+
+  // Handle coday-asset://icon — serve the bundled icon.png bytes
+  protocol.handle('coday-asset', (request) => {
+    const url = new URL(request.url)
+    if (url.hostname === 'icon') {
+      try {
+        const data = fs.readFileSync(iconPath)
+        return new Response(data, {
+          headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' },
+        })
+      } catch (err) {
+        log('ERROR', 'Failed to read icon.png:', err)
+        return new Response('Not found', { status: 404 })
+      }
+    }
+    return new Response('Not found', { status: 404 })
+  })
+
+  // Intercept HTTP requests for known favicon / logo paths and redirect to
+  // our custom scheme so the renderer receives the local icon.
+  session.defaultSession.webRequest.onBeforeRequest({ urls: ['http://*/*'] }, (details, callback) => {
+    try {
+      const url = new URL(details.url)
+      const pathname = url.pathname.toLowerCase()
+
+      const isFaviconRequest =
+        pathname === '/favicon.ico' ||
+        pathname === '/favicon.png' ||
+        pathname.endsWith('/coday-logo.png') ||
+        pathname.endsWith('/coday-logo.ico')
+
+      if (isFaviconRequest) {
+        log('INFO', 'Redirecting favicon request to local icon:', details.url)
+        callback({ redirectURL: 'coday-asset://icon' })
+        return
+      }
+    } catch {
+      // Ignore URL parse errors
+    }
+    callback({})
+  })
+
+  log('INFO', 'Favicon interceptor registered, serving:', iconPath)
+}
+
+/**
  * Create the main Electron window
  */
 function createWindow(): void {
@@ -1001,7 +1016,7 @@ function createWindow(): void {
       contextIsolation: true,
       webSecurity: true,
     },
-    title: 'Coday Twin',
+    title: 'CodayTwin',
     show: false, // Don't show until ready
   })
 
@@ -1034,6 +1049,13 @@ function createWindow(): void {
         void mainWindow.loadURL(serverUrl)
       }
     }
+  })
+
+  // Flag the renderer as running inside desktop-twin by adding a CSS class
+  // on <body>. Angular SCSS can then use `body.desktop-twin` selectors for
+  // app-specific overrides without touching the shared client source.
+  mainWindow.webContents.on('did-finish-load', () => {
+    void mainWindow!.webContents.executeJavaScript(`document.body.classList.add('desktop-twin');`)
   })
 
   // Load the Coday web interface
@@ -1083,6 +1105,12 @@ function showErrorDialog(title: string, message: string): void {
  * Setup IPC handlers for storage
  */
 function setupStorageHandlers(): void {
+  if (storageHandlersRegistered) {
+    log('INFO', 'Storage handlers already registered, skipping')
+    return
+  }
+  storageHandlersRegistered = true
+
   // Get storage data
   ipcMain.handle('storage:get', (_event: IpcMainInvokeEvent, key: string): string | null => {
     try {
@@ -1219,7 +1247,7 @@ async function initialize(): Promise<void> {
   let loadingWindow: BrowserWindowType | null = null
 
   try {
-    log('INFO', 'Initializing Coday Twin Desktop...')
+    log('INFO', 'Initializing CodayTwin Desktop...')
 
     // Setup storage handlers
     setupStorageHandlers()
@@ -1260,11 +1288,11 @@ async function initialize(): Promise<void> {
     const isUserFacing = error && typeof error === 'object' && (error as any).userFacing
 
     if (isUserFacing) {
-      showErrorDialog('Coday Twin - Startup Error', errorMessage)
+      showErrorDialog('CodayTwin - Startup Error', errorMessage)
     } else {
       showErrorDialog(
-        'Coday Twin - Unexpected Error',
-        `An unexpected error occurred while starting Coday Twin:\n\n${errorMessage}\n\nPlease check the console logs for more details.`
+        'CodayTwin - Unexpected Error',
+        `An unexpected error occurred while starting CodayTwin:\n\n${errorMessage}\n\nPlease check the console logs for more details.`
       )
     }
 
@@ -1284,6 +1312,9 @@ if (process.defaultApp) {
 }
 
 log('INFO', 'Registered protocol handler for:', PROTOCOL_NAME)
+
+// Register custom asset scheme privileges before app is ready
+registerFaviconScheme()
 
 // Handle deeplinks on macOS
 app.on('open-url', (event, url) => {
@@ -1321,7 +1352,12 @@ if (!gotTheLock) {
 }
 
 // App event handlers
-void app.whenReady().then(() => void initialize())
+void app.whenReady().then(() => {
+  // Register favicon interceptor before any window is created so the
+  // Angular client receives our local icon.png for all favicon requests.
+  registerFaviconInterceptor()
+  void initialize()
+})
 
 app.on('window-all-closed', () => {
   // On macOS, don't quit when all windows are closed
@@ -1372,7 +1408,7 @@ app.on('before-quit', () => {
 process.on('uncaughtException', (error: Error) => {
   log('ERROR', 'Uncaught exception:', error)
   showErrorDialog(
-    'Coday Twin - Fatal Error',
+    'CodayTwin - Fatal Error',
     `A fatal error occurred:\n\n${error.message}\n\nThe application will now close.`
   )
   stopCodayServer()

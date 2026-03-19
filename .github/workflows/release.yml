@@ -229,13 +229,6 @@ jobs:
             echo "Warning: Coday Desktop PKG not found"
           fi
 
-          # Upload Coday Desktop DMG (keep for backward compatibility)
-          DMG_PATH=$(find apps/desktop/release -name "*.dmg" -type f | head -1)
-          if [ -n "$DMG_PATH" ]; then
-            echo "Uploading $DMG_PATH to release $TAG"
-            gh release upload "$TAG" "$DMG_PATH" --clobber
-          fi
-
           # Upload Coday Twin Desktop PKG
           TWIN_PKG_PATH=$(find apps/desktop-twin/release -name "*.pkg" -type f | head -1)
           if [ -n "$TWIN_PKG_PATH" ]; then
@@ -243,13 +236,6 @@ jobs:
             gh release upload "$TAG" "$TWIN_PKG_PATH" --clobber
           else
             echo "Warning: Coday Twin PKG not found"
-          fi
-
-          # Upload Coday Twin Desktop DMG
-          TWIN_DMG_PATH=$(find apps/desktop-twin/release -name "*.dmg" -type f | head -1)
-          if [ -n "$TWIN_DMG_PATH" ]; then
-            echo "Uploading $TWIN_DMG_PATH to release $TAG"
-            gh release upload "$TAG" "$TWIN_DMG_PATH" --clobber
           fi
 
   publish-sdk:
