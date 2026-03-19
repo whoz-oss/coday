@@ -1,3 +1,193 @@
+## 0.96.0 (2026-03-19)
+
+### 🚀 Features
+
+- #590 user autocomplete for thread sharing with generic ds-autocomplete-input ([#590](https://github.com/whoz-oss/coday/issues/590))
+
+### 🩹 Fixes
+
+- #590 live refresh of participant list and share panel as drawer ([#590](https://github.com/whoz-oss/coday/issues/590))
+- #590 remove low-value console.log statements per PR review ([#590](https://github.com/whoz-oss/coday/issues/590))
+
+### ❤️ Thank You
+
+- m1
+
+## 0.95.0 (2026-03-19)
+
+### 🚀 Features
+
+- #571 thread-targeted delegation ([#571](https://github.com/whoz-oss/coday/issues/571))
+- #571 add list_sub_threads tool and fix thread passthrough in allow-list wrapper ([#571](https://github.com/whoz-oss/coday/issues/571))
+- #571 thread-targeted delegation ([#594](https://github.com/whoz-oss/coday/pull/594), [#571](https://github.com/whoz-oss/coday/issues/571))
+
+### 🩹 Fixes
+
+- #571 sharpen tool descriptions to prevent context re-injection on resumption ([#571](https://github.com/whoz-oss/coday/issues/571))
+- #571 add threadId to delegation JSON schema ([#571](https://github.com/whoz-oss/coday/issues/571))
+- #571 delegation header shows latest task on resumed threads ([#571](https://github.com/whoz-oss/coday/issues/571))
+- #571 clarify that any agent can resume an existing sub-thread ([#571](https://github.com/whoz-oss/coday/issues/571))
+- #571 prevent new thread creation when resuming with different agent ([#571](https://github.com/whoz-oss/coday/issues/571))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.94.0 (2026-03-18)
+
+### 🚀 Features
+
+- #584 isolate worktree threads and migrate on removal ([#587](https://github.com/whoz-oss/coday/pull/587), [#584](https://github.com/whoz-oss/coday/issues/584))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.93.0 (2026-03-18)
+
+### 🚀 Features
+
+- #585 move PM agent to dedicated file with GIT_WORKTREE integration ([#586](https://github.com/whoz-oss/coday/pull/586), [#585](https://github.com/whoz-oss/coday/issues/585))
+- #583 restrict worktree mutating commands in generic git tool ([#588](https://github.com/whoz-oss/coday/pull/588), [#583](https://github.com/whoz-oss/coday/issues/583))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.92.1 (2026-03-18)
+
+### 🩹 Fixes
+
+- #589 exclude no_username logs from per-user token usage in auth mode ([#589](https://github.com/whoz-oss/coday/issues/589))
+- #589 exclude no_username logs from per-user token usage in auth mode ([#591](https://github.com/whoz-oss/coday/pull/591), [#589](https://github.com/whoz-oss/coday/issues/589))
+
+### ❤️ Thank You
+
+- Mathieu De Armey
+- mathieu_dearmey
+
+## 0.92.0 (2026-03-17)
+
+### 🚀 Features
+
+- #567 thread sharing UI and API ([#578](https://github.com/whoz-oss/coday/pull/578), [#567](https://github.com/whoz-oss/coday/issues/567))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+- m1
+
+## 0.91.1 (2026-03-17)
+
+### 🩹 Fixes
+
+- project-level AI config ignored when no user-level config defined ([#580](https://github.com/whoz-oss/coday/pull/580))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.91.0 (2026-03-17)
+
+### 🚀 Features
+
+- #572 Git Worktree Tool ([#574](https://github.com/whoz-oss/coday/pull/574), [#572](https://github.com/whoz-oss/coday/issues/572))
+
+### ❤️ Thank You
+
+- mathieu_dearmey
+- vincent-audibert-whoz
+
+## 0.90.0 (2026-03-17)
+
+### 🚀 Features
+
+- #556 flexible mandatory docs — directory listing and glob patterns ([#558](https://github.com/whoz-oss/coday/pull/558), [#556](https://github.com/whoz-oss/coday/issues/556))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.89.1 (2026-03-17)
+
+### 🩹 Fixes
+
+- #576 add missing users field when updating thread cache ([#576](https://github.com/whoz-oss/coday/issues/576))
+- #576 add missing users field when updating thread cache ([#577](https://github.com/whoz-oss/coday/pull/577), [#576](https://github.com/whoz-oss/coday/issues/576))
+
+### ❤️ Thank You
+
+- Mathieu De Armey
+- mathieu_dearmey
+
+## 0.89.0 (2026-03-17)
+
+### 🚀 Features
+
+- #563 thread access model — users field & shared ownership ([#563](https://github.com/whoz-oss/coday/issues/563))
+- #563 thread access model — users field & shared ownership ([#569](https://github.com/whoz-oss/coday/pull/569), [#563](https://github.com/whoz-oss/coday/issues/563), [#567](https://github.com/whoz-oss/coday/issues/567), [#564](https://github.com/whoz-oss/coday/issues/564), [#565](https://github.com/whoz-oss/coday/issues/565), [#566](https://github.com/whoz-oss/coday/issues/566), [#568](https://github.com/whoz-oss/coday/issues/568))
+
+### 🩹 Fixes
+
+- #563 include users field in AiThread.serialize() output ([#563](https://github.com/whoz-oss/coday/issues/563))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+- m1
+
+## 0.88.0 (2026-03-16)
+
+### 🚀 Features
+
+- update pnpm workspace to have fixed version ([#570](https://github.com/whoz-oss/coday/pull/570))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+
+## 0.87.0 (2026-03-16)
+
+### 🚀 Features
+
+- parallel delegation with inline sub-threads ([0811f443](https://github.com/whoz-oss/coday/commit/0811f443))
+- load subThread content when uncollapsing ([50ba2dae](https://github.com/whoz-oss/coday/commit/50ba2dae))
+- pass thread explicitly to delegate tool via ToolSet.run(), removing broken threadStack ([4c6e5d3e](https://github.com/whoz-oss/coday/commit/4c6e5d3e))
+- removing broken threadStack; bump stackDepth to 10; remove unused forkedThreads Map ([af83b0c1](https://github.com/whoz-oss/coday/commit/af83b0c1))
+- WZ-30688 namespace registry ([#546](https://github.com/whoz-oss/coday/pull/546))
+- update lock file ([66c27664](https://github.com/whoz-oss/coday/commit/66c27664))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+- thomas.martin @thomasmartin-whoz
+- vincent-audibert-whoz
+
+## 0.86.0 (2026-03-12)
+
+### 🚀 Features
+
+- add free text option on agent choices ([#550](https://github.com/whoz-oss/coday/pull/550))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.85.0 (2026-03-12)
+
+### 🚀 Features
+
+- #551 token usage UI cost formatting ($, 2 decimals) + back-to-project logo button ([#551](https://github.com/whoz-oss/coday/issues/551))
+- #551 filter token usage by username (multi-user support) ([#551](https://github.com/whoz-oss/coday/issues/551))
+- #551 format token usage cost in UI and add back-button navigation ([#551](https://github.com/whoz-oss/coday/issues/551))
+- #551 token usage dashboard ([#552](https://github.com/whoz-oss/coday/pull/552), [#551](https://github.com/whoz-oss/coday/issues/551))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.84.0 (2026-03-12)
 
 ### 🚀 Features

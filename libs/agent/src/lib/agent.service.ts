@@ -227,7 +227,7 @@ export class AgentService implements Killable, AgentServiceModel {
     if (!projectName) return undefined
 
     const userConfig = this.services.user.config
-    return userConfig.projects?.[projectName]?.defaultAgent
+    return userConfig.projects?.[this.services.user.resolveProjectName(projectName)]?.defaultAgent
   }
 
   async kill(): Promise<void> {

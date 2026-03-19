@@ -225,6 +225,7 @@ class ThreadCodayInstance {
     this.coday = new Coday(interactor, this.options, {
       user,
       project,
+      projectService: this.projectService,
       integration,
       integrationConfig,
       memory,

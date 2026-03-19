@@ -5,6 +5,7 @@
 export const Integrations: Record<string, string[]> = {
   CONFLUENCE: [],
   GIT: [],
+  GIT_WORKTREE: [],
   GITLAB: [],
   JIRA: [],
   SLACK: [],

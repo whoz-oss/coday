@@ -167,6 +167,18 @@
       <div class="section-container">
         <a
           class="section-toggle"
+          (click)="openTokenUsage(); $event.preventDefault(); $event.stopPropagation()"
+          role="button"
+          tabindex="0"
+        >
+          <mat-icon class="section-icon">data_usage</mat-icon>
+          <span class="section-label">Token Usage</span>
+        </a>
+      </div>
+
+      <div class="section-container">
+        <a
+          class="section-toggle"
           (click)="openUserConfig(); $event.preventDefault(); $event.stopPropagation()"
           role="button"
           tabindex="0"

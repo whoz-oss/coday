@@ -21,7 +21,7 @@ import { PluginInfo } from '../model/plugin-info'
 import { PluginUploadResponse } from '../model/plugin-upload-response'
 
 // @ts-ignore
-import { BASE_PATH, COLLECTION_FORMATS } from '../variables'
+import { BASE_PATH } from '../variables'
 import { Configuration } from '../configuration'
 import { BaseService } from '../api.base.service'
 

@@ -75,10 +75,8 @@ instructions: |
 
 mandatoryDocs:
   - ./docs/to-rework/DEV_WORKFLOW.md
-  - ./apps/client/docs/architecture.md
-  - ./apps/client/docs/angular-guidelines.md
-  - ./apps/client/docs/nx-tasks.md
-  - ./apps/client/docs/running.md
+  - ./apps/client/docs/*
+  - ./libs/
   - ./libs/design-system/GUIDELINES.md
   - ./libs/agentos-ui/GUIDELINES.md
   - ./libs/agentos-api-client/GUIDELINES.md

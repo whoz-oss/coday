@@ -19,6 +19,10 @@ export const appRoutes: Route[] = [
     canActivate: [projectStateGuard, threadStateGuard],
   },
   {
+    path: 'token-usage',
+    loadComponent: () => import('./components/token-usage/token-usage.component').then((m) => m.TokenUsageComponent),
+  },
+  {
     path: 'agentos',
     loadChildren: () => import('@whoz-oss/agentos-ui').then((m) => m.AGENTOS_ROUTES),
   },

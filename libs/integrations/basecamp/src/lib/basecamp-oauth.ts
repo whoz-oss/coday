@@ -45,6 +45,8 @@ export class BasecampOAuth {
   private pendingCodeVerifier: string | null = null
   private pendingResolve: ((token: TokenData) => void) | null = null
   private pendingReject: ((error: Error) => void) | null = null
+  // Resolved project name: strips worktree suffix (e.g. "proj__feat-x" → "proj")
+  private readonly resolvedProjectName: string
 
   constructor(
     clientId: string,
@@ -52,9 +54,10 @@ export class BasecampOAuth {
     private redirectUri: string,
     private interactor: Interactor,
     private userService: UserService,
-    private projectName: string,
+    projectName: string,
     private integrationName: string = 'BASECAMP'
   ) {
+    this.resolvedProjectName = userService.resolveProjectName(projectName)
     // Basecamp has no OIDC discovery endpoint
     this.as = {
       issuer: 'https://launchpad.37signals.com',
@@ -318,7 +321,7 @@ export class BasecampOAuth {
    */
   private loadTokensFromStorage(): void {
     const userConfig = this.userService.config
-    const oauth2 = userConfig.projects?.[this.projectName]?.integration?.[this.integrationName]?.oauth2
+    const oauth2 = userConfig.projects?.[this.resolvedProjectName]?.integration?.[this.integrationName]?.oauth2
     const tokens = oauth2?.tokens
     const accountHref = oauth2?.account_href
     const accountName = oauth2?.account_name
@@ -361,17 +364,19 @@ export class BasecampOAuth {
 
     // Ensure nested configuration structure exists
     if (!userConfig.projects) userConfig.projects = {}
-    if (!userConfig.projects[this.projectName]) userConfig.projects[this.projectName] = { integration: {} }
-    if (!userConfig.projects[this.projectName]!.integration) userConfig.projects[this.projectName]!.integration = {}
-    if (!userConfig.projects[this.projectName]!.integration![this.integrationName]) {
-      userConfig.projects[this.projectName]!.integration![this.integrationName] = {}
+    if (!userConfig.projects[this.resolvedProjectName])
+      userConfig.projects[this.resolvedProjectName] = { integration: {} }
+    if (!userConfig.projects[this.resolvedProjectName]!.integration)
+      userConfig.projects[this.resolvedProjectName]!.integration = {}
+    if (!userConfig.projects[this.resolvedProjectName]!.integration![this.integrationName]) {
+      userConfig.projects[this.resolvedProjectName]!.integration![this.integrationName] = {}
     }
-    if (!userConfig.projects[this.projectName]!.integration![this.integrationName]!.oauth2) {
-      userConfig.projects[this.projectName]!.integration![this.integrationName]!.oauth2 = {} as any
+    if (!userConfig.projects[this.resolvedProjectName]!.integration![this.integrationName]!.oauth2) {
+      userConfig.projects[this.resolvedProjectName]!.integration![this.integrationName]!.oauth2 = {} as any
     }
 
     // Save tokens and selected account information
-    const oauth2Config = userConfig.projects[this.projectName]!.integration![this.integrationName]!.oauth2!
+    const oauth2Config = userConfig.projects[this.resolvedProjectName]!.integration![this.integrationName]!.oauth2!
     oauth2Config.tokens = {
       access_token: this.tokenData.accessToken,
       refresh_token: this.tokenData.refreshToken,
@@ -407,7 +412,7 @@ export class BasecampOAuth {
    */
   private clearTokensFromStorage(): void {
     const userConfig = this.userService.config
-    const oauth2Config = userConfig.projects?.[this.projectName]?.integration?.[this.integrationName]?.oauth2
+    const oauth2Config = userConfig.projects?.[this.resolvedProjectName]?.integration?.[this.integrationName]?.oauth2
 
     if (oauth2Config) {
       delete oauth2Config.tokens

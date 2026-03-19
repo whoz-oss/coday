@@ -53,18 +53,18 @@ class AgentSimpleTest :
             )
         }
 
-        fun userMessage(
+            fun userMessage(
             projectId: UUID,
-            caseId: UUID,
+                caseId: UUID,
             text: String,
         ) = MessageEvent(
-            projectId = projectId,
+            namespaceId = namespaceId,
             caseId = caseId,
             actor = Actor("user1", "User One", ActorRole.USER),
             content = listOf(MessageContent.Text(text)),
         )
 
-        "should complete with single LLM call" {
+            "should complete with single LLM call" {
             val projectId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
@@ -82,7 +82,7 @@ class AgentSimpleTest :
             events[0] as? ThinkingEvent shouldNotBe null
             events.filterIsInstance<TextChunkEvent>().size shouldBe 3
 
-            val messageEvent = events.filterIsInstance<MessageEvent>().firstOrNull()
+                val messageEvent = events.filterIsInstance<MessageEvent>().firstOrNull()
             messageEvent shouldNotBe null
             messageEvent!!.actor.role shouldBe ActorRole.AGENT
             messageEvent.actor.id shouldBe agentId.toString()
@@ -92,18 +92,18 @@ class AgentSimpleTest :
                 .first()
                 .content shouldContain "Hello"
 
-            val finishedEvent = events.last() as? AgentFinishedEvent
+                val finishedEvent = events.last() as? AgentFinishedEvent
             finishedEvent shouldNotBe null
             finishedEvent!!.agentId shouldBe agentId
             finishedEvent.agentName shouldBe "SimpleAgent"
         }
 
         "should handle conversation with multiple messages" {
-            val projectId = UUID.randomUUID()
+            val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            val mockChatClient = mockk<ChatClient>(relaxed = true)
+                val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
             every { mockStreamSpec.content() } returns
@@ -121,7 +121,7 @@ class AgentSimpleTest :
                         listOf(
                             userMessage(projectId, caseId, "First question"),
                             MessageEvent(
-                                projectId = projectId,
+                                namespaceId = namespaceId,
                                 caseId = caseId,
                                 actor = Actor(agentId.toString(), "SimpleAgent", ActorRole.AGENT),
                                 content = listOf(MessageContent.Text("First answer")),
@@ -130,7 +130,7 @@ class AgentSimpleTest :
                         ),
                     ).toList()
 
-            events shouldHaveAtLeastSize 4
+                events shouldHaveAtLeastSize 4
             events
                 .filterIsInstance<MessageEvent>()
                 .first()
@@ -141,26 +141,26 @@ class AgentSimpleTest :
         }
 
         "should handle error gracefully" {
-            val projectId = UUID.randomUUID()
+            val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            val mockChatClient = mockk<ChatClient>(relaxed = true)
+                val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
             every { mockStreamSpec.content() } returns Flux.error(RuntimeException("API Error"))
 
             val agent = makeAgent(agentId, mockChatClient)
 
-            val events = agent.run(listOf(userMessage(projectId, caseId, "Hello"))).toList()
+            val events = agent.run(listOf(userMessage(projectId = namespaceId, caseId = caseId, text = "Hello"))).toList()
 
-            events shouldHaveAtLeastSize 3
+                events shouldHaveAtLeastSize 3
             events.filterIsInstance<WarnEvent>().first().message shouldContain "Error"
             events.filterIsInstance<AgentFinishedEvent>().firstOrNull() shouldNotBe null
         }
 
         "should convert other agents to user messages" {
-            val projectId = UUID.randomUUID()
+            val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
             val otherAgentId = UUID.randomUUID()
@@ -178,7 +178,7 @@ class AgentSimpleTest :
                         listOf(
                             userMessage(projectId, caseId, "Question"),
                             MessageEvent(
-                                projectId = projectId,
+                                namespaceId = projectId,
                                 caseId = caseId,
                                 actor = Actor(otherAgentId.toString(), "OtherAgent", ActorRole.AGENT),
                                 content = listOf(MessageContent.Text("Other agent's response")),

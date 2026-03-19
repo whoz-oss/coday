@@ -58,7 +58,7 @@ export class Coday {
     this.aiClientProvider = new AiClientProvider(
       this.interactor,
       this.services.user,
-      this.services.project.selectedProject?.config?.ai || [],
+      this.services.project,
       this.services.logger
     )
   }

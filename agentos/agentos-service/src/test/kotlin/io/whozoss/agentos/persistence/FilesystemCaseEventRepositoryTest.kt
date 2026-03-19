@@ -39,7 +39,7 @@ class FilesystemCaseEventRepositoryTest : StringSpec() {
 
     fun tmpDir(): java.nio.file.Path = Files.createTempDirectory("agentos-test-events")
 
-    val projectId: UUID = UUID.randomUUID()
+    val namespaceId: UUID = UUID.randomUUID()
     val caseId: UUID = UUID.randomUUID()
     val userActor = Actor(id = "u1", displayName = "User", role = ActorRole.USER)
 
@@ -48,7 +48,7 @@ class FilesystemCaseEventRepositoryTest : StringSpec() {
         cId: UUID = caseId,
     ) = MessageEvent(
         metadata = EntityMetadata(),
-        projectId = projectId,
+        namespaceId = namespaceId,
         caseId = cId,
         timestamp = timestamp,
         actor = userActor,
@@ -58,7 +58,7 @@ class FilesystemCaseEventRepositoryTest : StringSpec() {
     fun warnEvent(timestamp: Instant = Instant.now()) =
         WarnEvent(
             metadata = EntityMetadata(),
-            projectId = projectId,
+            namespaceId = namespaceId,
             caseId = caseId,
             timestamp = timestamp,
             message = "something went wrong",

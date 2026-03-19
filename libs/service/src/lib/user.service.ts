@@ -62,6 +62,21 @@ export class UserService {
     }
   }
 
+  /**
+   * Resolves the effective project name for user config lookups.
+   * When running inside a git worktree, the project name is suffixed with
+   * "__<sanitized-branch>". We strip that suffix so that worktree sub-projects
+   * transparently share the parent project's user configuration.
+   *
+   * Examples:
+   *   "my-project"                   → "my-project"
+   *   "my-project__feat-my-feature"  → "my-project"
+   */
+  public resolveProjectName(projectName: string): string {
+    const separatorIndex = projectName.lastIndexOf('__')
+    return separatorIndex !== -1 ? projectName.substring(0, separatorIndex) : projectName
+  }
+
   public save() {
     if (this.config) {
       const filePath = path.join(this.userConfigPath, USER_FILENAME)
@@ -77,16 +92,17 @@ export class UserService {
    * @param integrations Integration configurations to save
    */
   public setProjectIntegration(projectName: string, integrations: IntegrationLocalConfig) {
+    const resolvedName = this.resolveProjectName(projectName)
     // Ensure projects object exists
     this.config.projects ??= {}
 
     // Create/update project-specific user integrations
-    this.config.projects[projectName] ??= {
+    this.config.projects[resolvedName] ??= {
       integration: {},
     }
 
-    this.config.projects[projectName].integration = {
-      ...this.config.projects[projectName].integration,
+    this.config.projects[resolvedName].integration = {
+      ...this.config.projects[resolvedName].integration,
       ...integrations,
     }
 
@@ -105,14 +121,15 @@ export class UserService {
 
   // Project-level bio methods
   public setProjectBio(projectName: string, bio: string): void {
+    const resolvedName = this.resolveProjectName(projectName)
     this.config.projects ??= {}
-    this.config.projects[projectName] ??= { integration: {} }
-    this.config.projects[projectName].bio = bio?.trim() || undefined
+    this.config.projects[resolvedName] ??= { integration: {} }
+    this.config.projects[resolvedName].bio = bio?.trim() || undefined
     this.save()
   }
 
   public getProjectBio(projectName: string): string | undefined {
-    return this.config.projects?.[projectName]?.bio
+    return this.config.projects?.[this.resolveProjectName(projectName)]?.bio
   }
 
   // Combined bio (USER + PROJECT)

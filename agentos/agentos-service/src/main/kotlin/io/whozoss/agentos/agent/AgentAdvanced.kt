@@ -53,12 +53,12 @@ class AgentAdvanced(
         shouldContinue: () -> Boolean,
     ): Flow<CaseEvent> =
         flow {
-            val projectId = events.firstOrNull()?.projectId ?: throw IllegalArgumentException("No events provided")
+            val namespaceId = events.firstOrNull()?.namespaceId ?: throw IllegalArgumentException("No events provided")
             val caseId = events.firstOrNull()?.caseId ?: throw IllegalArgumentException("No events provided")
 
             emit(
                 AgentRunningEvent(
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     caseId = caseId,
                     agentId = id,
                     agentName = name,
@@ -77,13 +77,13 @@ class AgentAdvanced(
                     // arrives mid-iteration is honoured without waiting for the full
                     // iteration to complete.
                     if (!shouldContinue()) break
-                    emit(ThinkingEvent(projectId = projectId, caseId = caseId))
-                    val intention = generateIntention(events, projectId, caseId)
+                    emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
+                    val intention = generateIntention(events, namespaceId, caseId)
                     emit(intention)
 
                     // 2. Select tool
                     if (!shouldContinue()) break
-                    val toolSelected = selectTool(events, intention, projectId, caseId)
+                    val toolSelected = selectTool(events, intention, namespaceId, caseId)
                     emit(toolSelected)
 
                     // Check if we should stop (Answer tool = done)
@@ -96,19 +96,19 @@ class AgentAdvanced(
                     if (!shouldContinue()) break
                     val toolRequestId = UUID.randomUUID().toString()
                     val parameters =
-                        generateParameters(events, intention, toolSelected, projectId, caseId, toolRequestId)
+                        generateParameters(events, intention, toolSelected, namespaceId, caseId, toolRequestId)
                     emit(parameters)
 
                     // 4. Execute tool
                     if (!shouldContinue()) break
-                    val response = executeTool(parameters, projectId, caseId)
+                    val response = executeTool(parameters, namespaceId, caseId)
                     emit(response)
                 }
 
                 if (iteration >= maxIterations) {
                     emit(
                         WarnEvent(
-                            projectId = projectId,
+                            namespaceId = namespaceId,
                             caseId = caseId,
                             message = "Agent reached maximum iterations ($maxIterations) without completing",
                         ),
@@ -117,7 +117,7 @@ class AgentAdvanced(
 
                 emit(
                     AgentFinishedEvent(
-                        projectId = projectId,
+                        namespaceId = namespaceId,
                         caseId = caseId,
                         agentId = id,
                         agentName = name,
@@ -127,7 +127,7 @@ class AgentAdvanced(
                 logger.error(e) { "Error during agent execution" }
                 emit(
                     WarnEvent(
-                        projectId = projectId,
+                        namespaceId = namespaceId,
                         caseId = caseId,
                         message = "Error during agent execution: ${e.message}",
                     ),
@@ -140,7 +140,7 @@ class AgentAdvanced(
      */
     private fun generateIntention(
         events: List<CaseEvent>,
-        projectId: UUID,
+        namespaceId: UUID,
         caseId: UUID,
     ): IntentionGeneratedEvent {
         val messages = convertEventsToMessages(events)
@@ -186,7 +186,7 @@ Based on all previous steps, make a concise explanation of what is the next logi
                 .content() ?: "Unable to generate intention"
 
         return IntentionGeneratedEvent(
-            projectId = projectId,
+            namespaceId = namespaceId,
             caseId = caseId,
             agentId = id,
             intention = intention,
@@ -199,7 +199,7 @@ Based on all previous steps, make a concise explanation of what is the next logi
     private fun selectTool(
         events: List<CaseEvent>,
         intentionEvent: IntentionGeneratedEvent,
-        projectId: UUID,
+        namespaceId: UUID,
         caseId: UUID,
     ): ToolSelectedEvent {
         val messages = convertEventsToMessages(events)
@@ -222,7 +222,7 @@ Respond with just the tool name.
                 ?.trim() ?: "Answer"
 
         return ToolSelectedEvent(
-            projectId = projectId,
+            namespaceId = namespaceId,
             caseId = caseId,
             agentId = id,
             toolName = toolName,
@@ -236,7 +236,7 @@ Respond with just the tool name.
         events: List<CaseEvent>,
         intentionEvent: IntentionGeneratedEvent,
         toolSelectedEvent: ToolSelectedEvent,
-        projectId: UUID,
+        namespaceId: UUID,
         caseId: UUID,
         toolRequestId: String,
     ): ToolRequestEvent {
@@ -263,7 +263,7 @@ Generate the JSON parameters for this tool call.
                 .content() ?: "{}"
 
         return ToolRequestEvent(
-            projectId = projectId,
+            namespaceId = namespaceId,
             caseId = caseId,
             toolRequestId = toolRequestId,
             toolName = tool.name,
@@ -276,13 +276,13 @@ Generate the JSON parameters for this tool call.
      */
     private fun executeTool(
         toolRequest: ToolRequestEvent,
-        projectId: UUID,
+        namespaceId: UUID,
         caseId: UUID,
     ): ToolResponseEvent {
         val tool =
             tools.firstOrNull { it.name == toolRequest.toolName }
                 ?: return ToolResponseEvent(
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     caseId = caseId,
                     toolRequestId = toolRequest.toolRequestId,
                     toolName = toolRequest.toolName,
@@ -294,7 +294,7 @@ Generate the JSON parameters for this tool call.
             val result = tool.executeWithJson(toolRequest.args)
 
             ToolResponseEvent(
-                projectId = projectId,
+                namespaceId = namespaceId,
                 caseId = caseId,
                 toolRequestId = toolRequest.toolRequestId,
                 toolName = toolRequest.toolName,
@@ -303,7 +303,7 @@ Generate the JSON parameters for this tool call.
             )
         } catch (e: Exception) {
             ToolResponseEvent(
-                projectId = projectId,
+                namespaceId = namespaceId,
                 caseId = caseId,
                 toolRequestId = toolRequest.toolRequestId,
                 toolName = toolRequest.toolName,

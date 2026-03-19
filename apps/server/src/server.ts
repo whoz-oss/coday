@@ -28,6 +28,7 @@ import { AgentCrudService } from '@coday/service'
 import { registerPromptRoutes } from './lib/prompt.routes'
 import { registerSchedulerRoutes } from './lib/scheduler.routes'
 import { registerPromptExecutionRoutes } from './lib/prompt-execution.routes'
+import { registerTokenUsageRoutes } from './lib/token-usage.routes'
 import { parseCodayOptions } from './lib/coday-options-utils'
 import { ProjectFileRepository } from '@coday/repository'
 import { McpInstancePool } from '@coday/mcp'
@@ -54,7 +55,9 @@ const loggingEnabled = !codayOptions.noLog
 const logger = new CodayLoggerUtils(loggingEnabled, codayOptions.logFolder)
 debugLog(
   'INIT',
-  `Usage logging ${loggingEnabled ? 'enabled' : 'disabled'} ${codayOptions.logFolder ? `(custom folder: ${codayOptions.logFolder})` : ''}`
+  `Usage logging ${loggingEnabled ? 'enabled' : 'disabled'} ${
+    codayOptions.logFolder ? `(custom folder: ${codayOptions.logFolder})` : ''
+  }`
 )
 
 // Create webhook service instance (delegates to prompt execution)
@@ -262,7 +265,7 @@ function getUsername(req: express.Request): string {
 }
 
 // Register user information routes
-registerUserRoutes(app, getUsername)
+registerUserRoutes(app, getUsername, codayOptions.configDir)
 
 // Register configuration management routes
 registerConfigRoutes(app, configRegistry, getUsername)
@@ -304,6 +307,9 @@ const schedulerService = new SchedulerService(logger, promptService, codayOption
 
 // Register scheduler routes (service will be initialized after server starts)
 registerSchedulerRoutes(app, schedulerService, getUsername)
+
+// Register token usage reporting routes
+registerTokenUsageRoutes(app, logger, getUsername, codayOptions.auth)
 
 // Catch-all route for Angular client-side routing (MUST be after all API routes)
 // In production mode, serve index.html for any non-API routes

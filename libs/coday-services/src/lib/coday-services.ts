@@ -4,6 +4,7 @@ import type {
   IntegrationService,
   McpConfigService,
   MemoryService,
+  ProjectService,
   ProjectStateService,
   PromptService,
   UserService,
@@ -15,6 +16,7 @@ import { AgentServiceModel, CodayLogger, CodayOptions } from '@coday/model'
 export type CodayServices = {
   user: UserService
   project: ProjectStateService
+  projectService?: ProjectService
   integration: IntegrationService
   thread: ThreadService
   integrationConfig: IntegrationConfigService

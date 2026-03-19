@@ -37,7 +37,8 @@ export class GitTools extends AssistantToolFactory {
       type: 'function',
       function: {
         name: `${this.name}__git`,
-        description: 'Run git command and parameters.',
+        description:
+          'Run git command and parameters. Note: worktree subcommands are blocked except "list" — use the dedicated worktree tools instead.',
         parameters: {
           type: 'object',
           properties: {

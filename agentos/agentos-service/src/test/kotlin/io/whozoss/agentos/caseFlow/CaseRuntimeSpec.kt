@@ -62,7 +62,7 @@ class RecordingSelectAgent(
 }
 
 class CaseRuntimeSpec : StringSpec() {
-    val projectId: UUID = UUID.randomUUID()
+    val namespaceId: UUID = UUID.randomUUID()
     val userActor = Actor(id = "user-123", displayName = "Test User", role = ActorRole.USER)
     val userMessage = listOf(MessageContent.Text("hello"))
 
@@ -77,7 +77,7 @@ class CaseRuntimeSpec : StringSpec() {
                 flow {
                     emit(
                         AgentFinishedEvent(
-                            projectId = projectId,
+                            namespaceId = namespaceId,
                             caseId = caseId,
                             agentId = agentId,
                             agentName = name,
@@ -93,7 +93,7 @@ class CaseRuntimeSpec : StringSpec() {
         caseId: UUID,
         agentName: String,
     ) = AgentSelectedEvent(
-        projectId = projectId,
+        namespaceId = namespaceId,
         caseId = caseId,
         agentId = UUID.nameUUIDFromBytes(agentName.toByteArray()),
         agentName = agentName,
@@ -142,7 +142,7 @@ class CaseRuntimeSpec : StringSpec() {
         runtime =
             CaseRuntime(
                 id = runtimeId,
-                projectId = projectId,
+                namespaceId = namespaceId,
                 updateStatus = { _, _ -> },
                 storeEvent = { event ->
                     savedEvents.add(event)
@@ -226,7 +226,7 @@ class CaseRuntimeSpec : StringSpec() {
             runtime =
                 CaseRuntime(
                     id = runtimeId,
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     updateStatus = { _, _ -> },
                     storeEvent = { event ->
                         savedEvents.add(event)
@@ -234,7 +234,11 @@ class CaseRuntimeSpec : StringSpec() {
                     },
                     selectAgent = {
                         listOf(
-                            WarnEvent(projectId = projectId, caseId = runtimeId, message = "Agent 'unknown' not found"),
+                            WarnEvent(
+                                namespaceId = namespaceId,
+                                caseId = runtimeId,
+                                message = "Agent 'unknown' not found",
+                            ),
                             agentSelectedEvent(runtimeId, agentName),
                         )
                     },
@@ -274,7 +278,7 @@ class CaseRuntimeSpec : StringSpec() {
                         flow {
                             emit(
                                 AgentFinishedEvent(
-                                    projectId = projectId,
+                                    namespaceId = namespaceId,
                                     caseId = firstArg<List<CaseEvent>>().first().caseId,
                                     agentId = agentId,
                                     agentName = agentName,
@@ -288,7 +292,7 @@ class CaseRuntimeSpec : StringSpec() {
             runtime =
                 CaseRuntime(
                     id = runtimeId,
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     updateStatus = { _, _ -> },
                     storeEvent = { event ->
                         if (event is AgentRunningEvent) callOrder.add("AgentRunningEvent saved")
@@ -437,7 +441,7 @@ class CaseRuntimeSpec : StringSpec() {
             val existingUserMessage =
                 MessageEvent(
                     metadata = EntityMetadata(id = UUID.randomUUID()),
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     caseId = caseId,
                     actor = userActor,
                     content = userMessage,
@@ -445,7 +449,7 @@ class CaseRuntimeSpec : StringSpec() {
             val existingRunningEvent =
                 AgentRunningEvent(
                     metadata = EntityMetadata(id = UUID.randomUUID()),
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     caseId = caseId,
                     agentId = agentId,
                     agentName = agentName,
@@ -463,7 +467,7 @@ class CaseRuntimeSpec : StringSpec() {
             runtime =
                 CaseRuntime(
                     id = caseId,
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     updateStatus = { _, _ -> },
                     storeEvent = { event ->
                         savedEvents.add(event)
