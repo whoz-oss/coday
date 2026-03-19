@@ -53,9 +53,9 @@ class AgentSimpleTest :
             )
         }
 
-            fun userMessage(
-            projectId: UUID,
-                caseId: UUID,
+        fun userMessage(
+            namespaceId: UUID,
+            caseId: UUID,
             text: String,
         ) = MessageEvent(
             namespaceId = namespaceId,
@@ -64,8 +64,8 @@ class AgentSimpleTest :
             content = listOf(MessageContent.Text(text)),
         )
 
-            "should complete with single LLM call" {
-            val projectId = UUID.randomUUID()
+        "should complete with single LLM call" {
+            val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
@@ -76,13 +76,13 @@ class AgentSimpleTest :
 
             val agent = makeAgent(agentId, mockChatClient, instructions = "You are a helpful assistant.")
 
-            val events = agent.run(listOf(userMessage(projectId, caseId, "Hello, can you help me?"))).toList()
+            val events = agent.run(listOf(userMessage(namespaceId, caseId, "Hello, can you help me?"))).toList()
 
             events shouldHaveAtLeastSize 4
             events[0] as? ThinkingEvent shouldNotBe null
             events.filterIsInstance<TextChunkEvent>().size shouldBe 3
 
-                val messageEvent = events.filterIsInstance<MessageEvent>().firstOrNull()
+            val messageEvent = events.filterIsInstance<MessageEvent>().firstOrNull()
             messageEvent shouldNotBe null
             messageEvent!!.actor.role shouldBe ActorRole.AGENT
             messageEvent.actor.id shouldBe agentId.toString()
@@ -92,7 +92,7 @@ class AgentSimpleTest :
                 .first()
                 .content shouldContain "Hello"
 
-                val finishedEvent = events.last() as? AgentFinishedEvent
+            val finishedEvent = events.last() as? AgentFinishedEvent
             finishedEvent shouldNotBe null
             finishedEvent!!.agentId shouldBe agentId
             finishedEvent.agentName shouldBe "SimpleAgent"
@@ -103,7 +103,7 @@ class AgentSimpleTest :
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-                val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
             every { mockStreamSpec.content() } returns
@@ -119,18 +119,18 @@ class AgentSimpleTest :
                 agent
                     .run(
                         listOf(
-                            userMessage(projectId, caseId, "First question"),
+                            userMessage(namespaceId, caseId, "First question"),
                             MessageEvent(
                                 namespaceId = namespaceId,
                                 caseId = caseId,
                                 actor = Actor(agentId.toString(), "SimpleAgent", ActorRole.AGENT),
                                 content = listOf(MessageContent.Text("First answer")),
                             ),
-                            userMessage(projectId, caseId, "Follow-up question"),
+                            userMessage(namespaceId, caseId, "Follow-up question"),
                         ),
                     ).toList()
 
-                events shouldHaveAtLeastSize 4
+            events shouldHaveAtLeastSize 4
             events
                 .filterIsInstance<MessageEvent>()
                 .first()
@@ -145,16 +145,17 @@ class AgentSimpleTest :
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-                val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
             every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
             every { mockStreamSpec.content() } returns Flux.error(RuntimeException("API Error"))
 
             val agent = makeAgent(agentId, mockChatClient)
 
-            val events = agent.run(listOf(userMessage(projectId = namespaceId, caseId = caseId, text = "Hello"))).toList()
+            val events =
+                agent.run(listOf(userMessage(namespaceId = namespaceId, caseId = caseId, text = "Hello"))).toList()
 
-                events shouldHaveAtLeastSize 3
+            events shouldHaveAtLeastSize 3
             events.filterIsInstance<WarnEvent>().first().message shouldContain "Error"
             events.filterIsInstance<AgentFinishedEvent>().firstOrNull() shouldNotBe null
         }
@@ -176,14 +177,14 @@ class AgentSimpleTest :
                 agent
                     .run(
                         listOf(
-                            userMessage(projectId, caseId, "Question"),
+                            userMessage(namespaceId, caseId, "Question"),
                             MessageEvent(
-                                namespaceId = projectId,
+                                namespaceId = namespaceId,
                                 caseId = caseId,
                                 actor = Actor(otherAgentId.toString(), "OtherAgent", ActorRole.AGENT),
                                 content = listOf(MessageContent.Text("Other agent's response")),
                             ),
-                            userMessage(projectId, caseId, "Follow-up"),
+                            userMessage(namespaceId, caseId, "Follow-up"),
                         ),
                     ).toList()
 
@@ -200,7 +201,7 @@ class AgentSimpleTest :
             // false before the LLM streaming call starts, the agent must bail out without
             // touching the ChatClient and still emit AgentFinishedEvent so the runtime
             // loop can terminate cleanly.
-            val projectId = UUID.randomUUID()
+            val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
@@ -210,7 +211,7 @@ class AgentSimpleTest :
             val events =
                 agent
                     .run(
-                        listOf(userMessage(projectId, caseId, "hello")),
+                        listOf(userMessage(namespaceId, caseId, "hello")),
                         shouldContinue = { false },
                     ).toList()
 
@@ -226,7 +227,7 @@ class AgentSimpleTest :
             // Verifies the mid-stream guard: takeWhile { shouldContinue() } cancels the
             // upstream reactive stream as soon as the flag flips. Chunks produced after
             // the flip must not appear in the event list.
-            val projectId = UUID.randomUUID()
+            val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
@@ -246,7 +247,7 @@ class AgentSimpleTest :
             val events =
                 agent
                     .run(
-                        listOf(userMessage(projectId, caseId, "hello")),
+                        listOf(userMessage(namespaceId, caseId, "hello")),
                         shouldContinue = shouldContinue,
                     ).toList()
 

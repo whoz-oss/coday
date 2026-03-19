@@ -34,8 +34,6 @@ import org.springframework.ai.tool.definition.DefaultToolDefinition
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
-import kotlin.collections.firstOrNull
-import kotlin.collections.map
 import kotlin.time.TimeSource
 import kotlin.time.measureTime
 
@@ -63,7 +61,10 @@ class AgentSimple(
     /** The effective system instructions passed to the LLM, after namespace context injection. */
     val instructions: String? get() = model.instructions
 
-    override fun run(events: List<CaseEvent>, shouldContinue: () -> Boolean): Flow<CaseEvent> =
+    override fun run(
+        events: List<CaseEvent>,
+        shouldContinue: () -> Boolean,
+    ): Flow<CaseEvent> =
         flow {
             val namespaceId = events.firstOrNull()?.namespaceId ?: throw IllegalArgumentException("No events provided")
             val caseId = events.firstOrNull()?.caseId ?: throw IllegalArgumentException("No events provided")
@@ -89,7 +90,7 @@ class AgentSimple(
                 if (!shouldContinue()) {
                     emit(
                         AgentFinishedEvent(
-                            projectId = projectId,
+                            namespaceId = namespaceId,
                             caseId = caseId,
                             agentId = id,
                             agentName = name,
@@ -109,7 +110,14 @@ class AgentSimple(
                 // Convert StandardTool to ToolCallback with event emission
                 val toolCallbacks =
                     tools.map { tool ->
-                        createToolCallbackWithEvents(tool, namespaceId, caseId, toolEventChannel, llmTurnMark, llmTurnIndex)
+                        createToolCallbackWithEvents(
+                            tool,
+                            namespaceId,
+                            caseId,
+                            toolEventChannel,
+                            llmTurnMark,
+                            llmTurnIndex,
+                        )
                     }
 
                 // Make single LLM call with tools
@@ -149,7 +157,11 @@ class AgentSimple(
                     // Log LLM thinking time once per turn on the first text chunk of that turn
                     if (!currentTurnLogged) {
                         currentTurnLogged = true
-                        logger.info { "[AgentSimple] $name LLM turn ${llmTurnIndex.get()} answered in ${llmTurnMark.get().elapsedNow()}" }
+                        logger.info {
+                            "[AgentSimple] $name LLM turn ${llmTurnIndex.get()} answered in ${
+                                llmTurnMark.get().elapsedNow()
+                            }"
+                        }
                     }
 
                     contentBuilder.append(chunk)

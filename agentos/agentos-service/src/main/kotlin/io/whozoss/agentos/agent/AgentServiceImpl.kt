@@ -3,7 +3,6 @@ package io.whozoss.agentos.agent
 import io.whozoss.agentos.aiModel.AiModelRegistry
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.namespace.NamespaceService
-import io.whozoss.agentos.orchestration.AgentSimple
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata

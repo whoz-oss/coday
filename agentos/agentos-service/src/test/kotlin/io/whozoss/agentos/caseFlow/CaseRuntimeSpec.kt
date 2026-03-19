@@ -335,7 +335,7 @@ class CaseRuntimeSpec : StringSpec() {
             val runtime =
                 CaseRuntime(
                     id = runtimeId,
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     updateStatus = { _, _ -> },
                     storeEvent = { it },
                     selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
@@ -369,7 +369,7 @@ class CaseRuntimeSpec : StringSpec() {
             val runtime =
                 CaseRuntime(
                     id = runtimeId,
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     updateStatus = { _, _ -> },
                     storeEvent = { it },
                     selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
@@ -402,7 +402,7 @@ class CaseRuntimeSpec : StringSpec() {
             runtime =
                 CaseRuntime(
                     id = runtimeId,
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     updateStatus = { _, _ -> },
                     storeEvent = { it },
                     selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
@@ -414,7 +414,7 @@ class CaseRuntimeSpec : StringSpec() {
                         runtime.pushEvents(
                             listOf(
                                 AgentFinishedEvent(
-                                    projectId = projectId,
+                                    namespaceId = namespaceId,
                                     caseId = runtimeId,
                                     agentId = UUID.nameUUIDFromBytes("agent".toByteArray()),
                                     agentName = "agent",
