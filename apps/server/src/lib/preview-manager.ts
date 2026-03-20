@@ -9,12 +9,17 @@ export interface PreviewState {
   url?: string
 }
 
+const MAX_SESSION_NAME_LENGTH = 50
+
 /**
  * Sanitize a project name into a valid tmux session name.
- * Replaces any non-alphanumeric character with a dash.
+ * Replaces any non-alphanumeric character with a dash and truncates to 50 chars
+ * (keeping the trailing portion which is most distinctive).
  */
 function toSessionName(projectName: string): string {
-  return `preview-${projectName.replace(/[^a-zA-Z0-9]/g, '-')}`
+  const sanitized = projectName.replace(/[^a-zA-Z0-9]/g, '-')
+  const full = `preview-${sanitized}`
+  return full.length > MAX_SESSION_NAME_LENGTH ? full.slice(full.length - MAX_SESSION_NAME_LENGTH) : full
 }
 
 /**
@@ -28,7 +33,7 @@ class PreviewManager {
    * Start a preview server for the given project.
    * Launches the command inside a detached tmux session via `sh -c` so that
    * shell features (env vars, pnpm scripts, pipes) work correctly.
-   * PORT and HOST environment variables are injected into the command string when provided.
+   * HOST environment variable is injected into the command string when provided.
    */
   async start(projectName: string, projectRoot: string, command: string, host?: string): Promise<PreviewState> {
     // Stop any existing session first
@@ -43,14 +48,14 @@ class PreviewManager {
 
     debugLog('PREVIEW', `Starting tmux session '${sessionName}' in '${projectRoot}': ${fullCommand}`)
 
-    // Use 'sh -c' so the command is parsed by a shell — required for pnpm scripts,
+    // Use 'sh -c' so the command is parsed by a shell - required for pnpm scripts,
     // env var injection, and any shell syntax in the configured command.
     execFileSync('tmux', ['new-session', '-d', '-s', sessionName, '-c', projectRoot, 'sh', '-c', fullCommand])
 
     // Brief pause then verify the session is still alive (catches immediate command failures)
     await new Promise<void>((resolve) => setTimeout(resolve, 500))
     if (!this.sessionExists(sessionName)) {
-      throw new Error(`tmux session '${sessionName}' exited immediately — check the preview command`)
+      throw new Error(`tmux session '${sessionName}' exited immediately - check the preview command`)
     }
 
     return { status: 'running' }
@@ -66,7 +71,7 @@ class PreviewManager {
       try {
         execFileSync('tmux', ['kill-session', '-t', sessionName])
       } catch {
-        // Session may have already exited — ignore
+        // Session may have already exited - ignore
       }
     }
     return { status: 'stopped' }
@@ -87,7 +92,7 @@ class PreviewManager {
   async getLogs(projectName: string): Promise<string> {
     const sessionName = toSessionName(projectName)
     if (!this.sessionExists(sessionName)) {
-      return '(no logs — session is not running)'
+      return '(no logs - session is not running)'
     }
     try {
       const output = execFileSync('tmux', ['capture-pane', '-t', sessionName, '-p'], {
