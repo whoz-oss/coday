@@ -37,9 +37,16 @@ export type ProjectLocalConfig = {
 }
 
 export type PreviewConfig = {
-  /** Shell command to start the preview server, e.g. "pnpm web:dev" */
+  /** Shell command to start the preview server, e.g. "pnpm web:dev:tmux" */
   command: string
-  /** Host to bind to AND display in the clickable URL, e.g. "172.16.4.4". Defaults to "0.0.0.0" for binding. */
+  /**
+   * Host shown in the clickable preview URL, e.g. "172.16.4.4".
+   * When omitted (or set to "0.0.0.0") the server auto-detects the first
+   * non-loopback IPv4 address of the machine, which is useful when accessing
+   * the dev server from a remote browser.
+   * Note: this does NOT control the bind address of the preview command itself;
+   * that is the responsibility of the command (e.g. web-dev-tmux.sh binds to all interfaces).
+   */
   host?: string
 }
 

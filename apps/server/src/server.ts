@@ -92,7 +92,8 @@ app.use(express.json({ limit: '20mb' }))
 
 // Development mode: proxy to Angular dev server
 if (process.env.BUILD_ENV === 'development') {
-  const ANGULAR_DEV_SERVER = 'http://localhost:4200'
+  const angularClientPort = process.env.ANGULAR_CLIENT_PORT ?? '4200'
+  const ANGULAR_DEV_SERVER = `http://localhost:${angularClientPort}`
   debugLog('INIT', `Development mode: proxying to Angular dev server at ${ANGULAR_DEV_SERVER}`)
 
   // Import http-proxy-middleware dynamically
@@ -284,7 +285,7 @@ registerPromptExecutionRoutes(app, promptExecutionService, getUsername)
 registerProjectRoutes(app, projectService)
 
 // Register project preview routes
-registerProjectPreviewRoutes(app, projectService, configRegistry, getUsername)
+registerProjectPreviewRoutes(app, projectService)
 
 // Register thread management routes
 registerThreadRoutes(app, threadService, threadFileService, threadCodayManager, getUsername, codayOptions)

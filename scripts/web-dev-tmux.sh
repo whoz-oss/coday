@@ -4,13 +4,9 @@
 # multiple worktrees on the same machine never collide.
 #
 # Port allocation:
-#   offset  = sum of ASCII codes of dir basename  mod 100
-#   server  = 4100 + offset
-#   client  = 4200 + offset
-#
-# The two processes run in separate tmux windows inside the same session.
-# The server proxies non-API requests to the Angular dev server, so the
-# entry point for the browser is the SERVER port, not the client port.
+#   offset      = sum of ASCII codes of dir basename  mod 100
+#   server port = 4100 + offset
+#   client port = 5100 + offset  (kept 1000 apart to avoid HMR port conflicts)
 #
 # Usage: pnpm run web:dev:tmux
 
@@ -29,7 +25,7 @@ done
 OFFSET=$(( OFFSET % 100 ))
 
 SERVER_PORT=$(( 4100 + OFFSET ))
-CLIENT_PORT=$(( 4200 + OFFSET ))
+CLIENT_PORT=$(( 5100 + OFFSET ))
 SESSION="coday-dev-${DIR_NAME}"
 
 echo "Working directory : $(pwd)"
@@ -43,9 +39,9 @@ if tmux has-session -t "${SESSION}" 2>/dev/null; then
   tmux kill-session -t "${SESSION}"
 fi
 
-# Window 0: server (reads PORT from env)
+# Window 0: server (reads PORT and ANGULAR_CLIENT_PORT from env)
 tmux new-session -d -s "${SESSION}" -n server \
-  "PORT=${SERVER_PORT} BUILD_ENV=development tsx watch apps/server/src/server.ts"
+  "PORT=${SERVER_PORT} BUILD_ENV=development ANGULAR_CLIENT_PORT=${CLIENT_PORT} pnpm nx run server:serve"
 
 # Window 1: Angular dev server (--port flag passed directly to ng serve)
 tmux new-window -t "${SESSION}" -n client \
@@ -55,3 +51,10 @@ echo
 echo "Started. Open: http://localhost:${SERVER_PORT}"
 echo "Attach with : tmux attach -t ${SESSION}"
 echo "Stop with   : tmux kill-session -t ${SESSION}"
+
+# Keep this process alive so the caller (e.g. preview-manager) can track
+# liveness via tmux has-session. We block until the inner session exits.
+while tmux has-session -t "${SESSION}" 2>/dev/null; do
+  sleep 5
+done
+echo "Session '${SESSION}' ended."
