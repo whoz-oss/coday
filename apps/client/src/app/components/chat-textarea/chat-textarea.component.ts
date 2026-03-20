@@ -390,10 +390,11 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     this.recognition.onresult = (event: any) => {
       let finalTranscript = ''
 
-      // Start from the greater of event.resultIndex and lastProcessedResultIndex to avoid
-      // replaying already-processed results. Chrome mobile sometimes resets resultIndex to 0
-      // for subsequent events, which causes incremental duplication ("Je. Je parle. Je parle en.").
-      const startIndex = Math.max(event.resultIndex, this.lastProcessedResultIndex)
+      // Always start from lastProcessedResultIndex, ignoring event.resultIndex entirely.
+      // Chrome mobile resets resultIndex to 0 on each new onresult callback, which would cause
+      // incremental duplication ("Ceci. Ceci est. Ceci est un texte.") if we used event.resultIndex.
+      // Using only lastProcessedResultIndex ensures each final result is consumed exactly once.
+      const startIndex = this.lastProcessedResultIndex
 
       for (let i = startIndex; i < event.results.length; i++) {
         if (event.results[i].isFinal) {
