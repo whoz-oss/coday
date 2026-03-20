@@ -16,6 +16,10 @@
 
 set -euo pipefail
 
+# Unset TMUX so we can create a new top-level session even when this script
+# is called from inside an existing tmux session (e.g. via the preview panel).
+unset TMUX
+
 # Compute a stable offset from the current directory's basename
 DIR_NAME="$(basename "$(pwd)")"
 OFFSET=0
