@@ -47,14 +47,6 @@ import java.util.UUID
  *   the service can persist [CaseStatus.KILLED] and evict the runtime while it is
  *   still reachable.
  *
- * ## shouldContinue
- *
- * The [shouldContinue] lambda passed to [runAgent] is derived purely from the
- * [turnJob]'s [Job.isActive] flag — no separate [AtomicBoolean] is needed.
- * When [turnJob] is cancelled (by either interrupt or kill), [Job.isActive] becomes
- * false inside the job, so agents stop cooperatively at the same time coroutine
- * cancellation propagates through suspend points.
- *
  * ## Callbacks
  *
  * All business logic is delegated back to [CaseService] through four callbacks:
@@ -72,11 +64,10 @@ class CaseRuntime(
     private val updateStatus: (UUID, CaseStatus) -> Unit,
     private val storeEvent: (CaseEvent) -> CaseEvent,
     private val selectAgent: (content: List<MessageContent>) -> List<CaseEvent>,
-    private val runAgent: suspend (agentName: String, events: List<CaseEvent>, shouldContinue: () -> Boolean) -> Unit,
+    private val runAgent: suspend (agentName: String, events: List<CaseEvent>) -> Unit,
     private val onKilled: (UUID) -> Unit = {},
     inputEvents: List<CaseEvent> = emptyList(),
 ) : CaseEventEmitter by DefaultCaseEventEmitter() {
-
     private val eventList = InMemoryCaseEventList(inputEvents)
 
     // -------------------------------------------------------------------------
@@ -277,12 +268,6 @@ class CaseRuntime(
     /**
      * Run one complete agent turn as a cancellable child [Job] of [caseScope].
      *
-     * [shouldContinue] is derived from [Job.isActive] of the [turnJob] itself —
-     * no separate flag is required. When [turnJob] is cancelled (by either
-     * [requestInterrupt] or [requestKill]), [Job.isActive] becomes false inside the
-     * job, so agents stop cooperatively at the same time coroutine cancellation
-     * propagates through their suspend points.
-     *
      * Throws [CancellationException] if [turnJob] was cancelled, so the case loop
      * can handle the IDLE/kill transition.
      */
@@ -323,8 +308,6 @@ class CaseRuntime(
     /**
      * Process one step of the event list and return true when the turn is complete.
      *
-     * The [shouldContinue] lambda passed to [runAgent] is derived directly from the
-     * coroutine context — no captured Job reference or AtomicBoolean needed.
      */
     private suspend fun processNextStep(): Boolean {
         val events = eventList.getAll()
@@ -357,7 +340,7 @@ class CaseRuntime(
                     // which runs in the turn job's coroutine context, so
                     // currentCoroutineContext() is valid there.
                     val ctx = currentCoroutineContext()
-                    runAgent(event.agentName, eventList.getAll()) { ctx.isActive }
+                    runAgent(event.agentName, eventList.getAll())
                     return false
                 }
 

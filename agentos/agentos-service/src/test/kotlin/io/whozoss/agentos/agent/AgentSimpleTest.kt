@@ -7,7 +7,6 @@ import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -192,43 +191,5 @@ class AgentSimpleTest :
 
             events shouldHaveAtLeastSize 4
             events.last() as? AgentFinishedEvent shouldNotBe null
-        }
-
-        // -------------------------------------------------------------------------
-        // Cancellation / shouldContinue compatibility
-        // -------------------------------------------------------------------------
-        //
-        // AgentSimple now uses coroutine cancellation (ensureActive + takeWhile with
-        // currentCoroutineContext().isActive) rather than a home-made shouldContinue
-        // flag. The shouldContinue parameter is kept in the SDK interface for external
-        // plugin backward compatibility only; it has no effect on the internal flow.
-        //
-        // Full cancellation-path coverage (interrupt/kill mid-stream) lives in
-        // CaseRuntimeSpec and CaseServiceImplSpec, which exercise the actual per-turn
-        // job cancellation through the real runtime lifecycle.
-
-        "shouldContinue parameter is accepted for compatibility but does not affect execution" {
-            // AgentSimple no longer reads shouldContinue internally; passing { false }
-            // must not prevent the agent from completing a normal run.
-            val namespaceId = UUID.randomUUID()
-            val caseId = UUID.randomUUID()
-            val agentId = UUID.randomUUID()
-
-            val mockChatClient = mockk<ChatClient>(relaxed = true)
-            stubChatResponseStream(mockChatClient, "hello")
-
-            val agent = makeAgent(agentId, mockChatClient)
-
-            val events =
-                agent
-                    .run(
-                        listOf(userMessage(namespaceId, caseId, "hi")),
-                        shouldContinue = { false }, // ignored internally
-                    ).toList()
-
-            // Agent runs normally and terminates cleanly
-            events.filterIsInstance<AgentFinishedEvent>().size shouldBe 1
-            events.filterIsInstance<ThinkingEvent>().size shouldBe 1
-            verify(exactly = 1) { mockChatClient.prompt(any<Prompt>()) }
         }
     })

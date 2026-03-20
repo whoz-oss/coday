@@ -25,7 +25,6 @@ class CaseServiceImpl(
     private val caseRepository: CaseRepository,
     private val caseEventService: CaseEventService,
 ) : CaseService {
-
     private val activeRuntimes = ConcurrentHashMap<UUID, CaseRuntime>()
 
     // ========================================
@@ -99,7 +98,7 @@ class CaseServiceImpl(
             updateStatus = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
             selectAgent = { content -> selectAgent(content, case.namespaceId, case.id) },
-            runAgent = { agentName, events, shouldContinue -> runAgent(agentName, case.id, events, shouldContinue) },
+            runAgent = { agentName, events -> runAgent(agentName, case.id, events) },
             onKilled = { caseId -> handleStatusChange(caseId, CaseStatus.KILLED) },
             inputEvents = inputEvents,
         )
@@ -152,17 +151,18 @@ class CaseServiceImpl(
             }
         }
 
-        val defaultName = agentService.getDefaultAgentName()
-            ?: run {
-                logger.warn { "[CaseService] No AI model configured — cannot select a default agent" }
-                return listOf(
-                    WarnEvent(
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        message = "No AI model is configured. Load a plugin that provides an AiModel.",
-                    ),
-                )
-            }
+        val defaultName =
+            agentService.getDefaultAgentName()
+                ?: run {
+                    logger.warn { "[CaseService] No AI model configured — cannot select a default agent" }
+                    return listOf(
+                        WarnEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            message = "No AI model is configured. Load a plugin that provides an AiModel.",
+                        ),
+                    )
+                }
         logger.info { "[CaseService] Selecting default agent: $defaultName" }
         return listOf(agentSelectedEvent(defaultName, namespaceId, caseId))
     }
@@ -186,14 +186,13 @@ class CaseServiceImpl(
         agentName: String,
         caseId: UUID,
         events: List<CaseEvent>,
-        shouldContinue: () -> Boolean,
     ) {
         val runtime = activeRuntimes[caseId] ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
         logger.info { "[CaseService] Running agent: $agentName for case $caseId" }
         val context = AgentExecutionContext(namespaceId = runtime.namespaceId, caseId = caseId)
         agentService
             .findAgentByName(agentName, context)
-            .run(events, shouldContinue)
+            .run(events)
             .catch { error ->
                 logger.error(error) { "[CaseService] Error in agent $agentName for case $caseId" }
                 storeEvent(

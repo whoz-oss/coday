@@ -4,7 +4,6 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
 import io.mockk.mockk
@@ -24,9 +23,7 @@ import kotlinx.coroutines.flow.flow
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * A simple recording wrapper for the runAgent callback.
@@ -40,7 +37,7 @@ class RecordingRunAgent(
     private val _calls = mutableListOf<Pair<String, List<CaseEvent>>>()
     val callCount: Int get() = _calls.size
 
-    val asCallback: suspend (String, List<CaseEvent>, () -> Boolean) -> Unit = { name, events, _ ->
+    val asCallback: suspend (String, List<CaseEvent>) -> Unit = { name, events ->
         _calls += name to events
         delegate(name, events)
     }
@@ -68,7 +65,7 @@ class CaseRuntimeSpec : StringSpec() {
         return mockk<Agent>(name = "agent-$name") {
             every { metadata } returns EntityMetadata(id = agentId)
             every { this@mockk.name } returns name
-            every { run(any<List<CaseEvent>>(), any()) } answers {
+            every { run(any<List<CaseEvent>>()) } answers {
                 val caseId = firstArg<List<CaseEvent>>().first().caseId
                 flow {
                     emit(
@@ -251,7 +248,7 @@ class CaseRuntimeSpec : StringSpec() {
                             agentSelectedEvent(runtimeId, agentName),
                         )
                     },
-                    runAgent = { _, events, _ ->
+                    runAgent = { _, events ->
                         agent.run(events).collect { event ->
                             savedEvents.add(event)
                             runtime.pushEvents(listOf(event))
@@ -284,7 +281,7 @@ class CaseRuntimeSpec : StringSpec() {
                 mockk {
                     every { metadata } returns EntityMetadata(id = agentId)
                     every { name } returns agentName
-                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                    every { run(any<List<CaseEvent>>()) } answers {
                         callOrder.add("agent.run")
                         flow {
                             emit(
@@ -310,7 +307,7 @@ class CaseRuntimeSpec : StringSpec() {
                         event
                     },
                     selectAgent = { listOf(agentSelectedEvent(runtimeId, agentName)) },
-                    runAgent = { _, events, _ ->
+                    runAgent = { _, events ->
                         callOrder.add("runAgent")
                         orderedAgent.run(events).collect { event ->
                             runtime.pushEvents(listOf(event))
@@ -327,122 +324,6 @@ class CaseRuntimeSpec : StringSpec() {
 
             (runningIdx >= 0) shouldBe true
             (runIdx > runningIdx) shouldBe true
-        }
-
-        // -------------------------------------------------------------------------
-        // shouldContinue lambda contract
-        // -------------------------------------------------------------------------
-
-        "shouldContinue lambda returns false after requestInterrupt is called" {
-            // The lambda passed to runAgent must reflect the interrupt flag.
-            val runtimeId = UUID.randomUUID()
-            val capturedShouldContinue = AtomicReference<(() -> Boolean)?>(null)
-            val statusHistory = mutableListOf<CaseStatus>()
-            val runAgentStarted = CountDownLatch(1)
-
-            val runtime =
-                CaseRuntime(
-                    id = runtimeId,
-                    namespaceId = namespaceId,
-                    updateStatus = { _, status -> synchronized(statusHistory) { statusHistory.add(status) } },
-                    storeEvent = { it },
-                    selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
-                    runAgent = { _, _, shouldContinue ->
-                        capturedShouldContinue.set(shouldContinue)
-                        runAgentStarted.countDown()
-                        // Do not push AgentFinishedEvent — we want to interrupt mid-turn.
-                    },
-                )
-            runtime.startLoop()
-
-            runtime.addUserMessage(userActor, userMessage)
-            // Wait for runAgent to be entered before interrupting.
-            runAgentStarted.await(5, TimeUnit.SECONDS) shouldBe true
-
-            // shouldContinue must be true before the interrupt
-            capturedShouldContinue.get()!!.invoke() shouldBe true
-
-            runtime.requestInterrupt()
-            // Lambda should now return false
-            capturedShouldContinue.get()!!.invoke() shouldBe false
-            // Runtime should return to IDLE
-            awaitStatus(statusHistory, CaseStatus.IDLE) shouldBe true
-        }
-
-        "shouldContinue lambda returns false after requestKill is called" {
-            val runtimeId = UUID.randomUUID()
-            val capturedShouldContinue = AtomicReference<(() -> Boolean)?>(null)
-            val statusHistory = mutableListOf<CaseStatus>()
-            val runAgentStarted = CountDownLatch(1)
-            val killedStatus = AtomicBoolean(false)
-
-            val runtime =
-                CaseRuntime(
-                    id = runtimeId,
-                    namespaceId = namespaceId,
-                    updateStatus = { _, status ->
-                        synchronized(statusHistory) { statusHistory.add(status) }
-                        if (status == CaseStatus.KILLED) killedStatus.set(true)
-                    },
-                    storeEvent = { it },
-                    selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
-                    onKilled = { _ ->
-                        killedStatus.set(true)
-                    },
-                    runAgent = { _, _, shouldContinue ->
-                        capturedShouldContinue.set(shouldContinue)
-                        runAgentStarted.countDown()
-                    },
-                )
-            runtime.startLoop()
-
-            runtime.addUserMessage(userActor, userMessage)
-            runAgentStarted.await(5, TimeUnit.SECONDS) shouldBe true
-
-            capturedShouldContinue.get()!!.invoke() shouldBe true
-
-            runtime.requestKill()
-            capturedShouldContinue.get()!!.invoke() shouldBe false
-            // onKilled was called
-            killedStatus.get() shouldBe true
-        }
-
-        "shouldContinue lambda returns true during execution when neither interrupt nor kill has been requested" {
-            // Positive-path: lambda must return true while runAgent is executing
-            // and no interrupt or kill has been signalled.
-            val runtimeId = UUID.randomUUID()
-            val lambdaResultDuringRun = AtomicReference<Boolean?>(null)
-            val statusHistory = mutableListOf<CaseStatus>()
-
-            lateinit var runtime: CaseRuntime
-            runtime =
-                CaseRuntime(
-                    id = runtimeId,
-                    namespaceId = namespaceId,
-                    updateStatus = { _, status -> synchronized(statusHistory) { statusHistory.add(status) } },
-                    storeEvent = { it },
-                    selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
-                    runAgent = { _, _, shouldContinue ->
-                        // Sample BEFORE pushing AgentFinishedEvent: no interrupt/kill yet.
-                        lambdaResultDuringRun.set(shouldContinue())
-                        runtime.pushEvents(
-                            listOf(
-                                AgentFinishedEvent(
-                                    namespaceId = namespaceId,
-                                    caseId = runtimeId,
-                                    agentId = UUID.nameUUIDFromBytes("agent".toByteArray()),
-                                    agentName = "agent",
-                                ),
-                            ),
-                        )
-                    },
-                )
-            runtime.startLoop()
-
-            runtime.addUserMessage(userActor, userMessage)
-            awaitStatus(statusHistory, CaseStatus.IDLE) shouldBe true
-
-            lambdaResultDuringRun.get() shouldBe true
         }
 
         // -------------------------------------------------------------------------
@@ -464,7 +345,7 @@ class CaseRuntimeSpec : StringSpec() {
                     updateStatus = { _, status -> synchronized(statusHistory) { statusHistory.add(status) } },
                     storeEvent = { it },
                     selectAgent = { listOf(agentSelectedEvent(runtimeId, "agent")) },
-                    runAgent = { _, _, _ ->
+                    runAgent = { _, _ ->
                         val count = runAgentCallCount.incrementAndGet()
                         if (count == 1) {
                             firstRunStarted.countDown()

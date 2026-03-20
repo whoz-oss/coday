@@ -30,7 +30,6 @@ import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.UUID
 
 /**
@@ -67,7 +66,7 @@ class CaseServiceImplSpec :
             mockk<Agent> {
                 every { metadata } returns EntityMetadata(id = agentId)
                 every { name } returns agentName
-                every { run(any<List<CaseEvent>>(), any()) } answers {
+                every { run(any<List<CaseEvent>>()) } answers {
                     val caseId = firstArg<List<CaseEvent>>().first().caseId
                     flow {
                         emit(
@@ -114,7 +113,7 @@ class CaseServiceImplSpec :
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = agentId)
                     every { name } returns agentName
-                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                    every { run(any<List<CaseEvent>>()) } answers {
                         runCallCount++
                         val caseId = firstArg<List<CaseEvent>>().first().caseId
                         flow {
@@ -342,7 +341,7 @@ class CaseServiceImplSpec :
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = agentId)
                     every { name } returns agentName
-                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                    every { run(any<List<CaseEvent>>()) } answers {
                         runCallCount++
                         val caseId = firstArg<List<CaseEvent>>().first().caseId
                         flow {

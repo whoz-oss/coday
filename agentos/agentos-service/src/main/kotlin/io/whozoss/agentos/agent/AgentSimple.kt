@@ -78,10 +78,7 @@ class AgentSimple(
     /** The effective system instructions passed to the LLM, after namespace context injection. */
     val instructions: String? get() = model.instructions
 
-    override fun run(
-        events: List<CaseEvent>,
-        shouldContinue: () -> Boolean,
-    ): Flow<CaseEvent> =
+    override fun run(events: List<CaseEvent>): Flow<CaseEvent> =
         flow {
             val namespaceId = events.firstOrNull()?.namespaceId ?: throw IllegalArgumentException("No events provided")
             val caseId = events.firstOrNull()?.caseId ?: throw IllegalArgumentException("No events provided")
@@ -142,9 +139,10 @@ class AgentSimple(
                 val content: String
 
                 if (toolCallbacks.isNotEmpty()) {
-                    val response = withContext(Dispatchers.IO) {
-                        promptWithTools.call().content()
-                    } ?: ""
+                    val response =
+                        withContext(Dispatchers.IO) {
+                            promptWithTools.call().content()
+                        } ?: ""
                     logger.info {
                         "[AgentSimple] $name LLM answered in ${llmTurnMark.get().elapsedNow()}"
                     }

@@ -49,10 +49,6 @@ import kotlin.coroutines.cancellation.CancellationException
  * subscription and aborts the in-flight HTTP request, so neither
  * interrupt nor kill leave orphaned API calls consuming quota.
  *
- * Cancellation is the primary stop mechanism. [shouldContinue] is accepted
- * in the signature for SDK compatibility but is not used internally —
- * [ensureActive] at each step gives the same cooperative-stop guarantee
- * through standard coroutine machinery.
  */
 class AgentAdvanced(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -63,12 +59,7 @@ class AgentAdvanced(
 ) : Agent {
     override val name: String get() = model.name
 
-    override fun run(
-        events: List<CaseEvent>,
-        // Accepted for SDK backward compatibility; not used internally.
-        // Cancellation is the primary stop mechanism via ensureActive().
-        shouldContinue: () -> Boolean,
-    ): Flow<CaseEvent> =
+    override fun run(events: List<CaseEvent>): Flow<CaseEvent> =
         flow {
             val namespaceId = events.firstOrNull()?.namespaceId ?: throw IllegalArgumentException("No events provided")
             val caseId = events.firstOrNull()?.caseId ?: throw IllegalArgumentException("No events provided")
@@ -88,10 +79,7 @@ class AgentAdvanced(
             try {
                 while (continueLoop && iteration < maxIterations) {
                     // Honour coroutine cancellation (interrupt or kill) at the top of
-                    // every iteration — before any network call is made. This is the
-                    // idiomatic replacement for the old `if (!shouldContinue()) break`
-                    // guards: ensureActive() throws CancellationException if the
-                    // coroutine has been cancelled, which unwinds the flow cleanly.
+                    // every iteration — before any network call is made.
                     currentCoroutineContext().ensureActive()
                     iteration++
 
