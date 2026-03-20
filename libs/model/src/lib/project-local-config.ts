@@ -39,8 +39,6 @@ export type ProjectLocalConfig = {
 export type PreviewConfig = {
   /** Shell command to start the preview server, e.g. "pnpm web:dev" */
   command: string
-  /** First port to try when looking for a free port. Defaults to 4000. */
-  portStart?: number
   /** Host to bind to AND display in the clickable URL, e.g. "172.16.4.4". Defaults to "0.0.0.0" for binding. */
   host?: string
 }

@@ -16,7 +16,8 @@
     "sync-deps": "tsx scripts/sync-project-dependencies.ts",
     "test": "nx run-many --target=test",
     "web": "npx --yes @whoz-oss/coday-web",
-    "web:dev": "nx run-many --target=serve --projects=client,server --parallel=2"
+    "web:dev": "nx run-many --target=serve --projects=client,server --parallel=2",
+    "web:dev:tmux": "bash scripts/web-dev-tmux.sh"
   },
   "lint-staged": {
     "!(*nx|*project).json": [

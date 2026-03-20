@@ -16,8 +16,8 @@ import { previewManager } from './preview-manager'
 export function registerProjectPreviewRoutes(
   app: express.Application,
   projectService: ProjectService,
-  configRegistry: ConfigServiceRegistry,
-  getUsernameFn: (req: express.Request) => string
+  _configRegistry: ConfigServiceRegistry,
+  _getUsernameFn: (req: express.Request) => string
 ): void {
   /**
    * POST /api/projects/:name/preview/start
@@ -46,20 +46,16 @@ export function registerProjectPreviewRoutes(
 
     try {
       // User-level previewHost overrides project-level host
-      const username = getUsernameFn(req)
-      const userService = configRegistry.getUserService(username)
-      const resolvedProjectName = userService.resolveProjectName(name)
-      const userProjectConfig = userService.config?.projects?.[resolvedProjectName]
-      const host = userProjectConfig?.previewHost ?? previewConfig.host ?? '0.0.0.0'
+      const host = previewConfig.host ?? '0.0.0.0'
 
-      const state = await previewManager.start(
-        name,
-        project.config.path,
-        previewConfig.command,
-        previewConfig.portStart ?? 4000,
-        host
-      )
-      res.status(200).json({ status: state.status, port: state.port, url: state.url })
+      const state = await previewManager.start(name, project.config.path, previewConfig.command, host)
+      res
+        .status(200)
+        .json({
+          status: state.status,
+          ...(state.port !== undefined ? { port: state.port } : {}),
+          ...(state.url !== undefined ? { url: state.url } : {}),
+        })
     } catch (error) {
       console.error('Error starting preview:', error)
       const message = error instanceof Error ? error.message : 'Unknown error'
