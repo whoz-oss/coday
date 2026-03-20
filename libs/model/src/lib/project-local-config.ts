@@ -26,8 +26,6 @@ export type ProjectLocalConfig = {
   preview?: PreviewConfig
   /**
    * Indicates if this project was auto-generated (volatile)
-   * Volatile projects are created automatically when Coday is started in a directory
-   * without an existing project configuration
    */
   volatile?: boolean
   /**
@@ -37,17 +35,13 @@ export type ProjectLocalConfig = {
 }
 
 export type PreviewConfig = {
-  /** Shell command to start the preview server, e.g. "pnpm web:dev:tmux" */
-  command: string
   /**
-   * Host shown in the clickable preview URL, e.g. "172.16.4.4".
-   * When omitted (or set to "0.0.0.0") the server auto-detects the first
-   * non-loopback IPv4 address of the machine, which is useful when accessing
-   * the dev server from a remote browser.
-   * Note: this does NOT control the bind address of the preview command itself;
-   * that is the responsibility of the command (e.g. web-dev-tmux.sh binds to all interfaces).
+   * Shell command to start the preview server, e.g. "pnpm web:dev:tmux".
+   * The command is responsible for port selection and binding.
+   * The preview manager wraps it in a tmux session and reads the URL
+   * from the server's own log output.
    */
-  host?: string
+  command: string
 }
 
 export type StorageConfig =

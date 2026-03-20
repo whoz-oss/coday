@@ -54,7 +54,7 @@ export function registerProjectPreviewRoutes(app: express.Application, projectSe
       return
     }
     try {
-      const state = await previewManager.start(name, project.config.path, previewConfig.command, previewConfig.host)
+      const state = await previewManager.start(name, project.config.path, previewConfig.command)
       res.json({ status: state.status, port: state.port, url: state.url })
     } catch (error) {
       handleError(res, 'start', error)
@@ -85,7 +85,7 @@ export function registerProjectPreviewRoutes(app: express.Application, projectSe
     debugLog('PREVIEW', `GET preview status for project: ${name}`)
     try {
       const project = projectService.getProject(name)
-      const state = await previewManager.getStatus(name, project?.config.path, project?.config.preview?.host)
+      const state = await previewManager.getStatus(name, project?.config.path)
       res.json({ status: state.status, port: state.port, url: state.url })
     } catch (error) {
       handleError(res, 'get status for', error)
