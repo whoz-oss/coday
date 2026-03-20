@@ -7,7 +7,6 @@ export type PreviewStatus = 'running' | 'stopped'
 
 export interface PreviewState {
   status: PreviewStatus
-  port?: number
   url?: string
 }
 
@@ -45,18 +44,18 @@ function getLanAddress(): string {
 }
 
 /**
- * Read the URL the server logged once it bound to a port.
- * The server always logs: `Server is running on http://localhost:<port>`
- * We replace 'localhost' with the machine's LAN address so remote users
- * can open the link directly.
+ * Scan a tmux pane for the line the Coday server logs on startup:
+ *   "Server is running on http://localhost:<port>"
+ * Replaces 'localhost' with the machine's LAN address so the URL is
+ * reachable from a remote browser.
  */
-function extractUrlFromPane(sessionName: string, displayHost: string): string | undefined {
+function extractUrlFromPane(pane: string, displayHost: string): string | undefined {
   try {
-    const output = execFileSync('tmux', ['capture-pane', '-t', sessionName, '-p'], { encoding: 'utf8' })
+    const output = execFileSync('tmux', ['capture-pane', '-t', pane, '-p'], { encoding: 'utf8' })
     const match = output.match(/Server is running on http:\/\/localhost:(\d+)/)
     if (match?.[1]) return `http://${displayHost}:${match[1]}`
   } catch {
-    // session may not have a pane yet
+    // pane may not exist yet
   }
   return undefined
 }
@@ -64,8 +63,8 @@ function extractUrlFromPane(sessionName: string, displayHost: string): string | 
 class PreviewManager {
   /**
    * Start the preview command in a dedicated tmux session.
-   * The command is responsible for port selection (e.g. web-dev-tmux.sh).
-   * We wait up to 15s for the server to log its bound URL before returning.
+   * The command is fully responsible for port selection.
+   * We wait up to 30s for the inner dev server to log its bound URL.
    */
   async start(projectName: string, projectRoot: string, command: string): Promise<PreviewState> {
     await this.stop(projectName)
@@ -76,16 +75,17 @@ class PreviewManager {
     // sh -c so pnpm scripts and shell syntax work correctly
     execFileSync('tmux', ['new-session', '-d', '-s', sessionName, '-c', projectRoot, 'sh', '-c', command])
 
-    // Verify the session is still alive after 500ms (catches instant failures)
+    // Verify the session survived its first 500ms (catches instant failures)
     await new Promise<void>((resolve) => setTimeout(resolve, 500))
     if (!this.sessionExists(sessionName)) {
       throw new Error(`tmux session '${sessionName}' exited immediately — check the preview command`)
     }
 
-    // Wait for the server to log its bound port (up to 15s)
+    // Poll the inner dev session's server window until it logs its bound port.
+    // The inner session is created by web-dev-tmux.sh as coday-dev-<dirname>.
     const displayHost = getLanAddress()
     const innerSession = `coday-dev-${path.basename(projectRoot)}`
-    const url = await this.waitForUrl(innerSession, displayHost, 15000)
+    const url = await this.waitForUrl(innerSession, displayHost, 30000)
     debugLog('PREVIEW', `Session started, url=${url ?? 'not yet available'}`)
     return { status: 'running', url }
   }
@@ -106,7 +106,6 @@ class PreviewManager {
   async getStatus(projectName: string, projectRoot?: string): Promise<PreviewState> {
     const sessionName = toSessionName(projectName)
     if (!this.sessionExists(sessionName)) return { status: 'stopped' }
-    // Try to surface the URL from the inner session's server window
     const displayHost = getLanAddress()
     const innerSession = projectRoot ? `coday-dev-${path.basename(projectRoot)}` : undefined
     const url = innerSession ? extractUrlFromPane(`${innerSession}:server`, displayHost) : undefined
@@ -116,7 +115,7 @@ class PreviewManager {
   async getLogs(projectName: string, projectRoot?: string): Promise<string> {
     const sessionName = toSessionName(projectName)
     if (!this.sessionExists(sessionName)) return '(no logs — session is not running)'
-    // Prefer the inner session's server window (the actual dev server output)
+    // Prefer the inner session's server window for meaningful dev server output
     if (projectRoot) {
       const innerSession = `coday-dev-${path.basename(projectRoot)}`
       if (this.sessionExists(innerSession)) {
@@ -149,11 +148,18 @@ class PreviewManager {
     }
   }
 
-  private async waitForUrl(sessionName: string, displayHost: string, timeoutMs: number): Promise<string | undefined> {
+  /**
+   * Poll the inner session's server window until it logs its bound URL,
+   * or until the timeout is reached. Waits for the session to exist first.
+   */
+  private async waitForUrl(innerSession: string, displayHost: string, timeoutMs: number): Promise<string | undefined> {
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
-      const url = extractUrlFromPane(`${sessionName}:server`, displayHost)
-      if (url) return url
+      // Only attempt pane capture once the inner session actually exists
+      if (this.sessionExists(innerSession)) {
+        const url = extractUrlFromPane(`${innerSession}:server`, displayHost)
+        if (url) return url
+      }
       await new Promise<void>((resolve) => setTimeout(resolve, 500))
     }
     return undefined

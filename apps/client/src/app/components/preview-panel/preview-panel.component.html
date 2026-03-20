@@ -37,7 +37,7 @@
     @if (status === 'running' && previewUrl) {
       <a class="preview-url" [href]="previewUrl" target="_blank" rel="noopener noreferrer" [title]="previewUrl">
         <mat-icon class="link-icon">open_in_new</mat-icon>
-        <span class="url-text">:{{ port }}</span>
+        <span class="url-text">{{ previewUrl }}</span>
       </a>
     }
 

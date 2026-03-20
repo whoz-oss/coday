@@ -27,7 +27,6 @@ export class PreviewPanelComponent implements OnInit, OnDestroy {
 
   status: 'running' | 'stopped' = 'stopped'
   previewUrl: string | null = null
-  port: number | null = null
   logs = ''
   isLoading = false
   showLogs = false
@@ -75,7 +74,6 @@ export class PreviewPanelComponent implements OnInit, OnDestroy {
       next: () => {
         this.status = 'stopped'
         this.previewUrl = null
-        this.port = null
         this.isLoading = false
       },
       error: (err) => {
@@ -108,6 +106,5 @@ export class PreviewPanelComponent implements OnInit, OnDestroy {
   private applyStatus(resp: PreviewStatusResponse): void {
     this.status = resp.status
     this.previewUrl = resp.url ?? null
-    this.port = resp.port ?? null
   }
 }
