@@ -12,14 +12,22 @@ export interface PreviewState {
 const MAX_SESSION_NAME_LENGTH = 50
 
 /**
- * Sanitize a project name into a valid tmux session name.
- * Replaces any non-alphanumeric character with a dash and truncates to 50 chars
- * (keeping the trailing portion which is most distinctive).
+ * Sanitize a project name into a valid tmux session name, max 50 chars.
+ * If the full name fits, use it as-is (dashes replacing non-alphanumeric).
+ * If too long, keep a readable prefix and append a 6-char hash for uniqueness.
  */
 function toSessionName(projectName: string): string {
   const sanitized = projectName.replace(/[^a-zA-Z0-9]/g, '-')
   const full = `preview-${sanitized}`
-  return full.length > MAX_SESSION_NAME_LENGTH ? full.slice(full.length - MAX_SESSION_NAME_LENGTH) : full
+  if (full.length <= MAX_SESSION_NAME_LENGTH) return full
+  // Hash the original name to a 6-char hex suffix for uniqueness
+  let hash = 0
+  for (let i = 0; i < projectName.length; i++) {
+    hash = (Math.imul(31, hash) + projectName.charCodeAt(i)) | 0
+  }
+  const suffix = Math.abs(hash).toString(16).slice(0, 6)
+  const prefix = full.slice(0, MAX_SESSION_NAME_LENGTH - 7) // 7 = 1 dash + 6 hash chars
+  return `${prefix}-${suffix}`
 }
 
 /**
