@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.toList
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.tool.ToolCallback
-import reactor.core.publisher.Flux
 import java.util.UUID
 
 /**
@@ -37,12 +36,15 @@ import java.util.UUID
  * Fix: AgentSimple now implements ToolCallback directly using DefaultToolDefinition,
  * passing the tool's own inputSchema verbatim to the LLM without any reflection override.
  *
- * These tests verify:
- * 1. The ToolCallback exposes the tool's declared inputSchema (not a reflected schema)
- * 2. Tool arguments from the LLM are forwarded correctly to the tool
- * 3. ToolRequestEvent records the exact args string received from the LLM
- * 4. A prior empty-args ToolRequestEvent in history does not crash the next run
- *    (Spring AI's AnthropicChatModel calls jsonToMap on args — empty string crashes it)
+ * ## Call strategy
+ *
+ * When tools are registered AgentSimple uses call() (blocking) rather than stream().
+ * Spring AI's stream() processes parallel tool calls one at a time, causing the LLM
+ * to loop indefinitely. call() batches all callbacks from one turn and sends one
+ * follow-up request.
+ *
+ * These tests therefore stub call() for tool-present scenarios and stream().content()
+ * for tool-absent (history replay) scenarios.
  */
 class AgentSimpleToolCallbackTest :
     StringSpec({
@@ -116,13 +118,14 @@ class AgentSimpleToolCallbackTest :
                     override fun execute(input: Nothing?): String = ""
                 }
 
+            // Tools present — AgentSimple uses call(), not stream()
             val capturedCallbacks = slot<List<ToolCallback>>()
             val mockChatClient = mockk<ChatClient>(relaxed = true)
-            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            val mockCallSpec = mockk<ChatClient.CallResponseSpec>(relaxed = true)
             every {
-                mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(capturedCallbacks)).stream()
-            } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("done")
+                mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(capturedCallbacks)).call()
+            } returns mockCallSpec
+            every { mockCallSpec.content() } returns "done"
 
             val agent = makeAgent(agentId, mockChatClient, listOf(fakeTool))
             agent.run(listOf(userMessage(namespaceId, caseId, "test"))).toList()
@@ -165,19 +168,17 @@ class AgentSimpleToolCallbackTest :
                     }
                 }
 
+            // Tools present — AgentSimple uses call().
+            // Simulate Spring AI executing the callback synchronously inside call().
             val mockChatClient = mockk<ChatClient>(relaxed = true)
-            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            // Simulate Spring AI calling the tool callback then returning text
+            val mockCallSpec = mockk<ChatClient.CallResponseSpec>(relaxed = true)
             val toolCallbackSlot = slot<List<ToolCallback>>()
-            every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).stream() } answers {
-                // Simulate the LLM invoking the tool with a proper timezone arg
+            every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(toolCallbackSlot)).call() } answers {
                 val cb = toolCallbackSlot.captured.first { it.toolDefinition.name() == "GetCurrentDateTime" }
-                cb.call("\"{\\\"timezone\\\":\\\"America/New_York\\\"}\"")
-                // Use the unescaped form that the LLM actually sends
-                cb.call("{\"timezone\":\"America/New_York\"}")
-                mockStreamSpec
+                cb.call("""{"timezone":"America/New_York"}""")
+                mockCallSpec
             }
-            every { mockStreamSpec.content() } returns Flux.just("It is 11:02 AM EST")
+            every { mockCallSpec.content() } returns "It is 11:02 AM EST"
 
             val agent = makeAgent(agentId, mockChatClient, listOf(fakeTool))
             val events = agent.run(listOf(userMessage(namespaceId, caseId, "what time is it in New York?"))).toList()
@@ -205,14 +206,14 @@ class AgentSimpleToolCallbackTest :
             // on tool call arguments when rebuilding conversation history.
             // An empty string ("") is not valid JSON and throws MismatchedInputException.
             // The fix normalises null/blank args to "{}" before creating AssistantMessage.ToolCall.
+            //
+            // No tools registered — AgentSimple uses stream().content() in this path.
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
-            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("follow-up response")
+            stubChatResponseStream(mockChatClient, "follow-up response")
 
             val agent = makeAgent(agentId, mockChatClient, emptyList())
 
@@ -252,14 +253,13 @@ class AgentSimpleToolCallbackTest :
         }
 
         "convertEventsToMessages should not crash when history contains a ToolRequestEvent with null args" {
+            // No tools registered — AgentSimple uses stream().content() in this path.
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
-            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("response")
+            stubChatResponseStream(mockChatClient, "response")
 
             val agent = makeAgent(agentId, mockChatClient, emptyList())
 

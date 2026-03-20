@@ -8,7 +8,6 @@ import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -25,6 +24,19 @@ import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
 import reactor.core.publisher.Flux
 import java.util.UUID
+
+/**
+ * Stub stream().content() for the no-tool path (AgentSimple uses stream() when
+ * no tools are registered, for progressive text display).
+ */
+fun stubChatResponseStream(
+    mockChatClient: ChatClient,
+    vararg chunks: String,
+) {
+    val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+    every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+    every { mockStreamSpec.content() } returns Flux.fromIterable(chunks.toList())
+}
 
 class AgentSimpleTest :
     StringSpec({
@@ -71,9 +83,7 @@ class AgentSimpleTest :
             val agentId = UUID.randomUUID()
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
-            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("Hello! ", "I can help you ", "with that.")
+            stubChatResponseStream(mockChatClient, "Hello! ", "I can help you ", "with that.")
 
             val agent = makeAgent(agentId, mockChatClient, instructions = "You are a helpful assistant.")
 
@@ -105,14 +115,7 @@ class AgentSimpleTest :
             val agentId = UUID.randomUUID()
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
-            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns
-                Flux.just(
-                    "Based on our ",
-                    "previous conversation, ",
-                    "here's my response.",
-                )
+            stubChatResponseStream(mockChatClient, "Based on our ", "previous conversation, ", "here's my response.")
 
             val agent = makeAgent(agentId, mockChatClient)
 
@@ -168,9 +171,7 @@ class AgentSimpleTest :
             val otherAgentId = UUID.randomUUID()
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
-            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("Response considering ", "other agent's input")
+            stubChatResponseStream(mockChatClient, "Response considering ", "other agent's input")
 
             val agent = makeAgent(agentId, mockChatClient)
 
@@ -214,9 +215,7 @@ class AgentSimpleTest :
             val agentId = UUID.randomUUID()
 
             val mockChatClient = mockk<ChatClient>(relaxed = true)
-            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.just("hello")
+            stubChatResponseStream(mockChatClient, "hello")
 
             val agent = makeAgent(agentId, mockChatClient)
 
