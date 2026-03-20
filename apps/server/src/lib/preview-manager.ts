@@ -26,7 +26,8 @@ function toSessionName(projectName: string): string {
 class PreviewManager {
   /**
    * Start a preview server for the given project.
-   * Launches the command inside a detached tmux session.
+   * Launches the command inside a detached tmux session via `sh -c` so that
+   * shell features (env vars, pnpm scripts, pipes) work correctly.
    * PORT and HOST environment variables are injected into the command string when provided.
    */
   async start(projectName: string, projectRoot: string, command: string, host?: string): Promise<PreviewState> {
@@ -42,7 +43,15 @@ class PreviewManager {
 
     debugLog('PREVIEW', `Starting tmux session '${sessionName}' in '${projectRoot}': ${fullCommand}`)
 
-    execFileSync('tmux', ['new-session', '-d', '-s', sessionName, '-c', projectRoot, fullCommand])
+    // Use 'sh -c' so the command is parsed by a shell — required for pnpm scripts,
+    // env var injection, and any shell syntax in the configured command.
+    execFileSync('tmux', ['new-session', '-d', '-s', sessionName, '-c', projectRoot, 'sh', '-c', fullCommand])
+
+    // Brief pause then verify the session is still alive (catches immediate command failures)
+    await new Promise<void>((resolve) => setTimeout(resolve, 500))
+    if (!this.sessionExists(sessionName)) {
+      throw new Error(`tmux session '${sessionName}' exited immediately — check the preview command`)
+    }
 
     return { status: 'running' }
   }
