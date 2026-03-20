@@ -2,12 +2,14 @@ import {
   APP_INITIALIZER,
   ApplicationConfig,
   importProvidersFrom,
+  isDevMode,
   provideBrowserGlobalErrorListeners,
   provideZoneChangeDetection,
 } from '@angular/core'
 import { provideRouter } from '@angular/router'
 import { provideHttpClient } from '@angular/common/http'
 import { provideAnimations } from '@angular/platform-browser/animations'
+import { provideServiceWorker } from '@angular/service-worker'
 import { MatSnackBarModule } from '@angular/material/snack-bar'
 import { MAT_DIALOG_DEFAULT_OPTIONS } from '@angular/material/dialog'
 import { provideApi } from '@whoz-oss/agentos-api-client'
@@ -56,6 +58,10 @@ export const appConfig: ApplicationConfig = {
       multi: true,
     },
     provideApi({ basePath: '/api/agentos' }),
+    provideServiceWorker('/sw.js', {
+      enabled: !isDevMode(),
+      registrationStrategy: 'registerWhenStable:30000',
+    }),
     {
       provide: MAT_DIALOG_DEFAULT_OPTIONS,
       useValue: {

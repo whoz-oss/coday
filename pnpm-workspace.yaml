@@ -16,6 +16,7 @@ catalog:
   '@angular/platform-browser': 20.3.4
   '@angular/platform-browser-dynamic': 20.3.4
   '@angular/router': 20.3.4
+  '@angular/service-worker': 20.3.4
   '@anthropic-ai/sdk': 0.65.0
   '@esbuild-plugins/node-modules-polyfill': 0.2.2
   '@google/generative-ai': 0.24.1
