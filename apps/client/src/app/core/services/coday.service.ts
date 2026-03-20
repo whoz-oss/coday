@@ -120,32 +120,6 @@ export class CodayService implements OnDestroy {
     this.currentProject = projectName
     this.currentThread = threadId
     this.eventStream.connectToThread(projectName, threadId)
-
-    // After a short delay (to let messages replay), process unanswered invites
-    setTimeout(() => this.processUnansweredInvites(), 500)
-  }
-
-  /**
-   * Process unanswered invites after thread replay
-   * Finds InviteEvent and ChoiceEvent that don't have corresponding AnswerEvent
-   * and restores the first one to currentInviteEventSubject for user response
-   */
-  private processUnansweredInvites(): void {
-    const messages = this.messagesSubject.value
-
-    // Find all InviteEvent without corresponding AnswerEvent
-    const unansweredInvites = messages
-      .filter((m) => m.type === 'text' && m.parentKey === undefined && m.invite !== undefined)
-      .filter((invite) => !messages.some((m) => m.type === 'text' && m.role === 'user' && m.parentKey === invite.id))
-
-    // If there are unanswered invites, restore the first one
-    if (unansweredInvites.length > 0) {
-      // We need to reconstruct the InviteEvent from the message
-      // This is a simplified reconstruction - the actual InviteEvent will come from backend
-      console.log('[CODAY] Found', unansweredInvites.length, 'unanswered invite(s)')
-      // Note: The actual InviteEvent will be replayed from the backend,
-      // so we just need to wait for it to arrive via handleInviteEvent
-    }
   }
 
   /**

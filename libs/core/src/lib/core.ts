@@ -14,6 +14,7 @@ import {
   InviteEventDefault,
   MessageContent,
   MessageEvent,
+  QuestionEvent,
   ToolRequestEvent,
   ToolResponseEvent,
 } from '@coday/model'
@@ -35,7 +36,7 @@ export class Coday {
   aiThreadService: ThreadStateService
   private killed: boolean = false
   private isReplaying: boolean = false
-  private pendingInviteEvent: InviteEvent | null = null
+  private pendingQuestionEvent: QuestionEvent | null = null
   private messageQueue: Array<{ username: string; message: string }> = []
   readonly aiClientProvider: AiClientProvider
 
@@ -66,15 +67,15 @@ export class Coday {
       this.services.logger
     )
 
-    // Track pending invite events so addUserMessage can answer them.
+    // Track pending question events (InviteEvent or ChoiceEvent) so addUserMessage can answer them.
     // Skip events during replay to avoid stale historical events polluting state.
     this.interactor.events
       .pipe(
-        filter((e) => e instanceof InviteEvent),
+        filter((e) => e instanceof InviteEvent || e instanceof ChoiceEvent),
         filter(() => !this.isReplaying)
       )
       .subscribe((e) => {
-        this.pendingInviteEvent = e as InviteEvent
+        this.pendingQuestionEvent = e as QuestionEvent
       })
     this.interactor.events
       .pipe(
@@ -83,8 +84,8 @@ export class Coday {
       )
       .subscribe((e) => {
         const answer = e as AnswerEvent
-        if (this.pendingInviteEvent && answer.parentKey === this.pendingInviteEvent.timestamp) {
-          this.pendingInviteEvent = null
+        if (this.pendingQuestionEvent && answer.parentKey === this.pendingQuestionEvent.timestamp) {
+          this.pendingQuestionEvent = null
         }
       })
   }
@@ -96,11 +97,10 @@ export class Coday {
    * for the next loop iteration.
    */
   addUserMessage(username: string, message: string): void {
-    if (this.pendingInviteEvent) {
-      // Answer the pending invite to unblock the promptText await.
-      // agent.run() will add the AnswerEvent to AiThread and emit it via SSE.
-      const answerEvent = this.pendingInviteEvent.buildAnswer(message)
-      this.pendingInviteEvent = null
+    if (this.pendingQuestionEvent) {
+      // Answer the pending question (invite or choice) to unblock the await.
+      // The AnswerEvent subscriber in the constructor will clear pendingQuestionEvent.
+      const answerEvent = this.pendingQuestionEvent.buildAnswer(message)
       this.interactor.sendEvent(answerEvent)
     } else {
       // Agent is running — queue the message for the next initCommand() iteration.
@@ -237,7 +237,7 @@ export class Coday {
       this.handlerLooper = undefined
       this.aiHandler = undefined
       this.messageQueue = []
-      this.pendingInviteEvent = null
+      this.pendingQuestionEvent = null
     } catch (error) {
       console.error('Error during agent cleanup:', error)
       // Don't throw - cleanup should be best-effort
