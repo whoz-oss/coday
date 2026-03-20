@@ -68,24 +68,20 @@ export class Coday {
     )
 
     // Track pending question events (InviteEvent or ChoiceEvent) so addUserMessage can answer them.
+    // Clear on AnswerEvent once the question is resolved.
     // Skip events during replay to avoid stale historical events polluting state.
     this.interactor.events
       .pipe(
-        filter((e) => e instanceof InviteEvent || e instanceof ChoiceEvent),
+        filter((e) => e instanceof InviteEvent || e instanceof ChoiceEvent || e instanceof AnswerEvent),
         filter(() => !this.isReplaying)
       )
       .subscribe((e) => {
-        this.pendingQuestionEvent = e as QuestionEvent
-      })
-    this.interactor.events
-      .pipe(
-        filter((e) => e instanceof AnswerEvent),
-        filter(() => !this.isReplaying)
-      )
-      .subscribe((e) => {
-        const answer = e as AnswerEvent
-        if (this.pendingQuestionEvent && answer.parentKey === this.pendingQuestionEvent.timestamp) {
-          this.pendingQuestionEvent = null
+        if (e instanceof InviteEvent || e instanceof ChoiceEvent) {
+          this.pendingQuestionEvent = e as QuestionEvent
+        } else if (e instanceof AnswerEvent) {
+          if (this.pendingQuestionEvent && e.parentKey === this.pendingQuestionEvent.timestamp) {
+            this.pendingQuestionEvent = null
+          }
         }
       })
   }
