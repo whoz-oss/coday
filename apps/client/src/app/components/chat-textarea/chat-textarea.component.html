@@ -47,7 +47,7 @@
       [placeholder]="getPlaceholder()"
       (keydown)="onKeyDown($event)"
       (input)="onInput()"
-      [disabled]="isDisabled || isLocallyDisabled"
+      [disabled]="isDisabled"
       (focus)="isFocused = true"
       (blur)="isFocused = false"
     ></textarea>
@@ -67,9 +67,9 @@
           icon="send"
           variant="primary"
           [title]="getSendButtonTooltip()"
-          [disabled]="isDisabled || !message.trim() || isLocallyDisabled"
-          [class.hidden]="isDisabled || !message.trim() || isLocallyDisabled"
-          [class.active]="!!message.trim() && !isDisabled && !isLocallyDisabled"
+          [disabled]="isDisabled || !message.trim()"
+          [class.hidden]="isDisabled || !message.trim()"
+          [class.active]="!!message.trim() && !isDisabled"
           (action)="sendMessage()"
         />
       }
@@ -80,7 +80,7 @@
             icon="attach_file"
             variant="default"
             title="Upload files (images or documents)"
-            [disabled]="isDisabled || isLocallyDisabled"
+            [disabled]="isDisabled"
             (action)="triggerFileUpload()"
           />
           <input
