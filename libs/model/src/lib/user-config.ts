@@ -42,6 +42,12 @@ export type UserProjectConfig = {
 export interface UserConfig {
   version: number
 
+  /**
+   * The raw username (email) of this user, stored on first login.
+   * Used by GET /api/users to return real emails for the share autocomplete.
+   */
+  username?: string
+
   groups?: string[]
 
   ai?: AiProviderConfig[]
