@@ -1,3 +1,4 @@
+import { spawn } from 'child_process'
 import { execFileSync } from 'child_process'
 import * as os from 'os'
 import * as path from 'path'
@@ -10,24 +11,13 @@ export interface PreviewState {
   url?: string
 }
 
-/** Max tmux session name length (tmux hard limit is ~50 chars). */
-const MAX_SESSION_NAME = 50
-
 /**
- * Derive a tmux session name from the project name.
- * Non-alphanumeric chars become dashes. If the result exceeds the tmux limit,
- * a short hash suffix is appended to keep it unique.
+ * Derive the tmux session name for a given project root.
+ * Convention: coday-dev-{basename(projectRoot)}
+ * This is the same name the preview command must create.
  */
-function toSessionName(projectName: string): string {
-  const sanitized = projectName.replace(/[^a-zA-Z0-9]/g, '-')
-  const full = `preview-${sanitized}`
-  if (full.length <= MAX_SESSION_NAME) return full
-  let hash = 0
-  for (let i = 0; i < projectName.length; i++) {
-    hash = (Math.imul(31, hash) + projectName.charCodeAt(i)) | 0
-  }
-  const suffix = Math.abs(hash).toString(16).slice(0, 6)
-  return `${full.slice(0, MAX_SESSION_NAME - 7)}-${suffix}`
+function toSessionName(projectRoot: string): string {
+  return `coday-dev-${path.basename(projectRoot)}`
 }
 
 /**
@@ -62,36 +52,35 @@ function extractUrlFromPane(pane: string, displayHost: string): string | undefin
 
 class PreviewManager {
   /**
-   * Start the preview command in a dedicated tmux session.
-   * The command is fully responsible for port selection.
-   * We wait up to 30s for the inner dev server to log its bound URL.
+   * Start the preview command.
+   * The command is responsible for creating a tmux session named
+   * `coday-dev-{basename(projectRoot)}` — that session is the lifecycle handle.
+   * We fire the command detached and poll for the session to appear.
    */
-  async start(projectName: string, projectRoot: string, command: string): Promise<PreviewState> {
-    await this.stop(projectName)
+  async start(projectRoot: string, command: string): Promise<PreviewState> {
+    await this.stop(projectRoot)
 
-    const sessionName = toSessionName(projectName)
-    debugLog('PREVIEW', `Starting tmux session '${sessionName}' in '${projectRoot}': ${command}`)
+    const sessionName = toSessionName(projectRoot)
+    debugLog('PREVIEW', `Launching preview command in '${projectRoot}': ${command}`)
+    debugLog('PREVIEW', `Expecting tmux session: '${sessionName}'`)
 
-    // sh -c so pnpm scripts and shell syntax work correctly
-    execFileSync('tmux', ['new-session', '-d', '-s', sessionName, '-c', projectRoot, 'sh', '-c', command])
+    // Fire the command detached — it is responsible for creating the tmux session
+    const child = spawn('sh', ['-c', command], {
+      cwd: projectRoot,
+      detached: true,
+      stdio: 'ignore',
+    })
+    child.unref()
 
-    // Verify the session survived its first 500ms (catches instant failures)
-    await new Promise<void>((resolve) => setTimeout(resolve, 500))
-    if (!this.sessionExists(sessionName)) {
-      throw new Error(`tmux session '${sessionName}' exited immediately — check the preview command`)
-    }
-
-    // Poll the inner dev session's server window until it logs its bound port.
-    // The inner session is created by web-dev-tmux.sh as coday-dev-<dirname>.
+    // Poll for the session to appear (up to 30s)
     const displayHost = getLanAddress()
-    const innerSession = `coday-dev-${path.basename(projectRoot)}`
-    const url = await this.waitForUrl(innerSession, displayHost, 30000)
+    const url = await this.waitForUrl(sessionName, displayHost, 30000)
     debugLog('PREVIEW', `Session started, url=${url ?? 'not yet available'}`)
     return { status: 'running', url }
   }
 
-  async stop(projectName: string): Promise<PreviewState> {
-    const sessionName = toSessionName(projectName)
+  async stop(projectRoot: string): Promise<PreviewState> {
+    const sessionName = toSessionName(projectRoot)
     if (this.sessionExists(sessionName)) {
       debugLog('PREVIEW', `Killing tmux session '${sessionName}'`)
       try {
@@ -103,34 +92,21 @@ class PreviewManager {
     return { status: 'stopped' }
   }
 
-  async getStatus(projectName: string, projectRoot?: string): Promise<PreviewState> {
-    const sessionName = toSessionName(projectName)
+  async getStatus(projectRoot: string): Promise<PreviewState> {
+    const sessionName = toSessionName(projectRoot)
     if (!this.sessionExists(sessionName)) return { status: 'stopped' }
     const displayHost = getLanAddress()
-    const innerSession = projectRoot ? `coday-dev-${path.basename(projectRoot)}` : undefined
-    const url = innerSession ? extractUrlFromPane(`${innerSession}:server`, displayHost) : undefined
+    const url = extractUrlFromPane(`${sessionName}:server`, displayHost)
     return { status: 'running', url }
   }
 
-  async getLogs(projectName: string, projectRoot?: string): Promise<string> {
-    const sessionName = toSessionName(projectName)
+  async getLogs(projectRoot: string): Promise<string> {
+    const sessionName = toSessionName(projectRoot)
     if (!this.sessionExists(sessionName)) return '(no logs — session is not running)'
-    // Prefer the inner session's server window for meaningful dev server output
-    if (projectRoot) {
-      const innerSession = `coday-dev-${path.basename(projectRoot)}`
-      if (this.sessionExists(innerSession)) {
-        try {
-          const out = execFileSync('tmux', ['capture-pane', '-t', `${innerSession}:server`, '-p'], {
-            encoding: 'utf8',
-          })
-          if (out.trim()) return out.trim()
-        } catch {
-          // fall through to outer session
-        }
-      }
-    }
     try {
-      const out = execFileSync('tmux', ['capture-pane', '-t', sessionName, '-p'], { encoding: 'utf8' })
+      const out = execFileSync('tmux', ['capture-pane', '-t', `${sessionName}:server`, '-p'], {
+        encoding: 'utf8',
+      })
       return out.trim() || '(no output yet)'
     } catch {
       return '(failed to retrieve logs)'
@@ -149,15 +125,14 @@ class PreviewManager {
   }
 
   /**
-   * Poll the inner session's server window until it logs its bound URL,
-   * or until the timeout is reached. Waits for the session to exist first.
+   * Poll for the session to appear and log its bound URL.
+   * Waits up to timeoutMs for both the session and the URL line.
    */
-  private async waitForUrl(innerSession: string, displayHost: string, timeoutMs: number): Promise<string | undefined> {
+  private async waitForUrl(sessionName: string, displayHost: string, timeoutMs: number): Promise<string | undefined> {
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
-      // Only attempt pane capture once the inner session actually exists
-      if (this.sessionExists(innerSession)) {
-        const url = extractUrlFromPane(`${innerSession}:server`, displayHost)
+      if (this.sessionExists(sessionName)) {
+        const url = extractUrlFromPane(`${sessionName}:server`, displayHost)
         if (url) return url
       }
       await new Promise<void>((resolve) => setTimeout(resolve, 500))

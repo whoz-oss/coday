@@ -44,7 +44,7 @@ export function registerProjectPreviewRoutes(app: express.Application, projectSe
       return
     }
     try {
-      const state = await previewManager.start(name, project.config.path, previewConfig.command)
+      const state = await previewManager.start(project.config.path, previewConfig.command)
       res.json({ status: state.status, url: state.url })
     } catch (error) {
       handleError(res, 'start', error)
@@ -61,7 +61,7 @@ export function registerProjectPreviewRoutes(app: express.Application, projectSe
     const project = resolveProject(name, res)
     if (!project) return
     try {
-      const state = await previewManager.stop(name)
+      const state = await previewManager.stop(project.config.path)
       res.json({ status: state.status })
     } catch (error) {
       handleError(res, 'stop', error)
@@ -78,7 +78,7 @@ export function registerProjectPreviewRoutes(app: express.Application, projectSe
     const project = resolveProject(name, res)
     if (!project) return
     try {
-      const state = await previewManager.getStatus(name, project.config.path)
+      const state = await previewManager.getStatus(project.config.path)
       res.json({ status: state.status, url: state.url })
     } catch (error) {
       handleError(res, 'get status for', error)
@@ -95,7 +95,7 @@ export function registerProjectPreviewRoutes(app: express.Application, projectSe
     const project = resolveProject(name, res)
     if (!project) return
     try {
-      const logs = await previewManager.getLogs(name, project.config.path)
+      const logs = await previewManager.getLogs(project.config.path)
       res.json({ logs })
     } catch (error) {
       handleError(res, 'get logs for', error)
