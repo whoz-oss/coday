@@ -20,6 +20,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import mu.KLogging
@@ -289,15 +291,13 @@ class CaseRuntime(
 
         val job =
             caseScope.launch {
-                // Capture the Job reference from inside the coroutine context so the
-                // shouldContinue lambda can read its isActive flag without needing a
-                // separate AtomicBoolean.
-                val turnJobRef = coroutineContext[Job]!!
-                val shouldContinue: () -> Boolean = { turnJobRef.isActive }
-
                 while (isActive && iterationCount < maxIterations) {
+                    // Honour cancellation at the top of every iteration before any
+                    // suspend call is made. ensureActive() throws CancellationException
+                    // immediately if the turn job (or case scope) has been cancelled.
+                    currentCoroutineContext().ensureActive()
                     logger.debug { "[CaseRuntime $id] Turn iteration $iterationCount" }
-                    val finished = processNextStep(shouldContinue)
+                    val finished = processNextStep()
                     if (finished) break
                     iterationCount++
                 }
@@ -314,14 +314,19 @@ class CaseRuntime(
             turnJob = null
         }
 
-        // Propagate cancellation so the case loop can handle the IDLE/kill transition.
+        // Propagate cancellation so the case loop can distinguish interrupt
+        // (caseScope still active) from kill. We throw a fresh CancellationException
+        // rather than using the internal Job.getCancellationException() API.
         if (job.isCancelled) throw CancellationException("turn cancelled")
     }
 
     /**
      * Process one step of the event list and return true when the turn is complete.
+     *
+     * The [shouldContinue] lambda passed to [runAgent] is derived directly from the
+     * coroutine context — no captured Job reference or AtomicBoolean needed.
      */
-    private suspend fun processNextStep(shouldContinue: () -> Boolean): Boolean {
+    private suspend fun processNextStep(): Boolean {
         val events = eventList.getAll()
         logger.debug { "[CaseRuntime $id] processNextStep - total events: ${events.size}" }
 
@@ -348,7 +353,11 @@ class CaseRuntime(
 
                 is AgentRunningEvent -> {
                     logger.info { "[CaseRuntime $id] Running agent: ${event.agentName}" }
-                    runAgent(event.agentName, eventList.getAll(), shouldContinue)
+                    // The lambda is evaluated inside runAgent's suspend body,
+                    // which runs in the turn job's coroutine context, so
+                    // currentCoroutineContext() is valid there.
+                    val ctx = currentCoroutineContext()
+                    runAgent(event.agentName, eventList.getAll()) { ctx.isActive }
                     return false
                 }
 

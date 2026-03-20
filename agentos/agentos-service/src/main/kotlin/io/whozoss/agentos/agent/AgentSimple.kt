@@ -15,6 +15,7 @@ import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -201,6 +202,12 @@ class AgentSimple(
                         agentName = name,
                     ),
                 )
+            } catch (e: CancellationException) {
+                // Normal cooperative cancellation (interrupt or kill) — not an error.
+                // Re-throw so the coroutine machinery can propagate the cancellation
+                // up to the turn job and the case loop.
+                logger.debug { "[AgentSimple] $name cancelled (${e.message})" }
+                throw e
             } catch (e: Exception) {
                 logger.error(e) { "Error during agent execution" }
                 emit(

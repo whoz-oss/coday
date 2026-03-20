@@ -29,6 +29,7 @@ import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import java.util.UUID
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Advanced agent implementation with multi-step orchestration loop.
@@ -141,6 +142,12 @@ class AgentAdvanced(
                         agentName = name,
                     ),
                 )
+            } catch (e: CancellationException) {
+                // Normal cooperative cancellation (interrupt or kill) — not an error.
+                // Re-throw so the coroutine machinery can propagate the cancellation
+                // up to the turn job and the case loop.
+                logger.debug { "[AgentAdvanced] $name cancelled (${e.message})" }
+                throw e
             } catch (e: Exception) {
                 logger.error(e) { "Error during agent execution" }
                 emit(
