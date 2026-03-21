@@ -16,6 +16,7 @@ type Delegation = {
   agentName: string
   task: string
   threadId?: string // Optional: resume an existing thread instead of forking a new one
+  async?: boolean // Optional: fire-and-forget, returns immediately with threadId
 }
 
 type DelegateInput = {
@@ -49,30 +50,159 @@ export function delegateFunction(input: DelegateInput) {
 
     const projectName = context.project.name
 
-    // Decrement stack depth once for the entire parallel batch
-    context.stackDepth--
+    const asyncDelegations = delegations.filter((d) => d.async)
+    const syncDelegations = delegations.filter((d) => !d.async)
 
-    // Run all delegations in parallel
-    const results = await Promise.allSettled(
-      delegations.map((delegation) =>
-        runSingleDelegation(delegation, context, parentThread, interactor, agentFind, threadService, projectName)
+    // Launch async delegations immediately — no stackDepth accounting, fire-and-forget
+    const asyncResults = asyncDelegations.map((delegation) => {
+      const threadId = launchAsyncDelegation(
+        delegation,
+        context,
+        parentThread,
+        interactor,
+        agentFind,
+        threadService,
+        projectName
       )
-    )
+      return { agentName: delegation.agentName, threadId }
+    })
 
-    // Restore stack depth after all delegations complete
-    context.stackDepth++
+    // Run sync delegations in parallel, bracketed by stackDepth
+    let syncResults: PromiseSettledResult<{ result: string; threadId: string }>[] = []
+    if (syncDelegations.length > 0) {
+      context.stackDepth--
+      syncResults = await Promise.allSettled(
+        syncDelegations.map((delegation) =>
+          runSingleDelegation(delegation, context, parentThread, interactor, agentFind, threadService, projectName)
+        )
+      )
+      context.stackDepth++
+    }
 
     // Aggregate results
-    return results
-      .map((result, i) => {
-        const agentName = delegations[i]?.agentName ?? 'unknown'
-        if (result.status === 'fulfilled') {
-          const { result: text, threadId } = result.value
-          return `[${agentName}] (threadId: ${threadId}): ${text}`
-        }
-        return `[${agentName}]: Error \u2014 ${result.reason?.message ?? result.reason}`
-      })
-      .join('\n\n---\n\n')
+    const syncOutput = syncResults.map((result, i) => {
+      const agentName = syncDelegations[i]?.agentName ?? 'unknown'
+      if (result.status === 'fulfilled') {
+        const { result: text, threadId } = result.value
+        return `[${agentName}] (threadId: ${threadId}): ${text}`
+      }
+      return `[${agentName}]: Error \u2014 ${result.reason?.message ?? result.reason}`
+    })
+
+    const asyncOutput = asyncResults.map(
+      ({ agentName, threadId }) =>
+        `[${agentName}] (threadId: ${threadId}): launched asynchronously, use list_sub_threads to check progress`
+    )
+
+    return [...syncOutput, ...asyncOutput].join('\n\n---\n\n')
+  }
+}
+
+/**
+ * Fire-and-forget async delegation: pre-generates the sub-thread ID (so the caller
+ * can return it immediately), then runs the agent in the background.
+ * Returns the sub-thread ID synchronously.
+ */
+function launchAsyncDelegation(
+  delegation: Delegation,
+  context: CommandContext,
+  parentThread: AiThread,
+  interactor: Interactor,
+  agentFind: (agentName: string | undefined, context: CommandContext) => Promise<Agent | undefined>,
+  threadService: ThreadService,
+  projectName: string
+): string {
+  // Pre-generate the sub-thread ID so we can return it before the async work starts
+  const preGeneratedThreadId = delegation.threadId ?? crypto.randomUUID()
+
+  // We intentionally do not await this — errors are logged but not propagated
+  setupAndRunAsync(
+    { ...delegation, threadId: preGeneratedThreadId },
+    context,
+    parentThread,
+    interactor,
+    agentFind,
+    threadService,
+    projectName
+  ).catch((error) => {
+    interactor.error(`Async delegation to '${delegation.agentName}' failed to launch: ${error?.message ?? error}`)
+  })
+
+  return preGeneratedThreadId
+}
+
+async function setupAndRunAsync(
+  delegation: Delegation & { threadId: string },
+  context: CommandContext,
+  parentThread: AiThread,
+  interactor: Interactor,
+  agentFind: (agentName: string | undefined, context: CommandContext) => Promise<Agent | undefined>,
+  threadService: ThreadService,
+  projectName: string
+): Promise<void> {
+  const { agentName, task } = delegation
+  const parentEventId = new Date().toISOString()
+
+  let subThread: AiThread
+
+  // Check if resuming an existing thread or creating a new one with the pre-generated ID
+  const existingThread = await threadService.getThread(projectName, delegation.threadId)
+  if (existingThread) {
+    subThread = existingThread
+    subThread.delegationDepth = parentThread.delegationDepth + 1
+    subThread.runStatus = RunStatus.RUNNING
+  } else {
+    subThread = parentThread.fork(agentName, task, parentEventId)
+    // Override the random ID from fork() with the pre-generated one so the caller's threadId is valid
+    subThread.id = delegation.threadId
+    try {
+      await threadService.saveThread(projectName, subThread)
+    } catch (err) {
+      interactor.debug(`Could not persist async sub-thread ${subThread.id}: ${err}`)
+    }
+  }
+
+  const delegationEvent = new DelegationEvent({
+    subThreadId: subThread.id,
+    agentName,
+    threadId: parentThread.id,
+  })
+  parentThread.addDelegationEvent(delegationEvent)
+  interactor.sendEvent(delegationEvent)
+
+  const agent: Agent | undefined = await agentFind(agentName, context)
+  if (!agent) {
+    interactor.error(`Async delegation: agent '${agentName}' not found.`)
+    return
+  }
+
+  interactor.sendEvent(new AnswerEvent({ answer: task, threadId: subThread.id }))
+
+  // Stop propagation still runs in background
+  const stopPropagationInterval = setInterval(() => {
+    if (parentThread.runStatus === RunStatus.STOPPED && subThread.runStatus !== RunStatus.STOPPED) {
+      interactor.debug(`Propagating stop signal to async sub-thread ${subThread.id}`)
+      subThread.runStatus = RunStatus.STOPPED
+    }
+  }, 1000)
+
+  try {
+    const agentEvents: Observable<MessageEvent> = (await agent.run(task, subThread)).pipe(
+      filter((e: unknown) => e instanceof MessageEvent)
+    )
+    await lastValueFrom(agentEvents, { defaultValue: undefined })
+
+    try {
+      await threadService.saveThread(projectName, subThread)
+    } catch (err) {
+      interactor.debug(`Could not persist async sub-thread ${subThread.id}: ${err}`)
+    }
+
+    parentThread.merge(subThread)
+  } catch (error: any) {
+    interactor.error(`Async delegation to '${agentName}' failed: ${error?.message ?? error}`)
+  } finally {
+    clearInterval(stopPropagationInterval)
   }
 }
 
@@ -163,7 +293,7 @@ async function runSingleDelegation(
     // Run the agent — the AI client will pass subThread to ToolSet.run(),
     // so any nested delegation from this agent will correctly use subThread as parent.
     const agentEvents: Observable<MessageEvent> = (await agent.run(task, subThread)).pipe(
-      filter((e) => e instanceof MessageEvent)
+      filter((e: unknown) => e instanceof MessageEvent)
     )
 
     const lastMessage: MessageEvent | undefined = await lastValueFrom(agentEvents, { defaultValue: undefined })

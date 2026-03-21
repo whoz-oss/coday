@@ -3,6 +3,8 @@ description: Software Agent - bridges user needs and code implementation with te
 aiProvider: anthropic
 modelName: BIG
 integrations:
+  PROJECT_SCRIPTS:
+    - setup
   FILES:
   FETCH:
   AI:
