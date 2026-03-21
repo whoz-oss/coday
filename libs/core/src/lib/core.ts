@@ -395,6 +395,10 @@ export class Coday {
     if (this.context) {
       this.services.mcp.initialize(this.context)
     }
+    this.services.aiConfig = new AiConfigService(newUserService, this.services.project)
+    if (this.context) {
+      this.services.aiConfig.initialize(this.context)
+    }
 
     // Recreate AiClientProvider (kill resets aiProviderConfigs so init() can run fresh)
     this.aiClientProvider.kill()
