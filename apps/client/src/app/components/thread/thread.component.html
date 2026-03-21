@@ -73,34 +73,32 @@
         <!-- Input Section -->
         <div class="input-section" #inputSection>
           <div class="input-center">
-            <div class="input-glass">
-              @if (!currentChoice) {
-                <app-chat-textarea
-                  [isDisabled]="!isConnected"
-                  [isSessionInitializing]="false"
-                  [showWelcome]="false"
-                  [isThinking]="isThinking"
-                  [isStarting]="false"
-                  (messageSubmitted)="onMessageSubmitted($event)"
-                  (voiceRecordingToggled)="onVoiceToggled($event)"
-                  (heightChanged)="onInputHeightChanged($event)"
-                  (stopRequested)="onStopRequested()"
-                  (filesPasted)="onFilesPasted($event)"
-                />
-              }
+            @if (!currentChoice) {
+              <app-chat-textarea
+                [isDisabled]="!isConnected"
+                [isSessionInitializing]="false"
+                [showWelcome]="false"
+                [isThinking]="isThinking"
+                [isStarting]="false"
+                (messageSubmitted)="onMessageSubmitted($event)"
+                (voiceRecordingToggled)="onVoiceToggled($event)"
+                (heightChanged)="onInputHeightChanged($event)"
+                (stopRequested)="onStopRequested()"
+                (filesPasted)="onFilesPasted($event)"
+              />
+            }
 
-              <!-- Choice Select - Overlay on top of input-section -->
-              @if (currentChoice) {
-                <app-choice-select
-                  [options]="currentChoice.options"
-                  [labelHtml]="currentChoice.label"
-                  [isVisible]="!!currentChoice"
-                  [allowFreeText]="currentChoice.allowFreeText"
-                  (choiceSelected)="onChoiceSelected($event)"
-                  class="choice-overlay"
-                ></app-choice-select>
-              }
-            </div>
+            <!-- Choice Select - Overlay on top of input-section -->
+            @if (currentChoice) {
+              <app-choice-select
+                [options]="currentChoice.options"
+                [labelHtml]="currentChoice.label"
+                [isVisible]="!!currentChoice"
+                [allowFreeText]="currentChoice.allowFreeText"
+                (choiceSelected)="onChoiceSelected($event)"
+                class="choice-overlay"
+              ></app-choice-select>
+            }
           </div>
         </div>
       </div>
