@@ -147,24 +147,32 @@ export class CodayService implements OnDestroy {
       return
     }
 
-    // Clear pending invite if any (UI state cleanup only — server is the source of truth)
-    const hadInvite = !!this.currentInviteEventSubject.value
-    if (hadInvite) {
-      this.currentInviteEventSubject.next(null)
+    const pendingInvite = this.currentInviteEventSubject.value
+
+    if (pendingInvite) {
+      // There is a pending InviteEvent: build a proper AnswerEvent with the correct parentKey
+      // so the backend's promptText() can match it via its filter on parentKey.
+      // Using sendFreeMessage here would route through addUserMessage which only works
+      // if pendingQuestionEvent is still set server-side — an unreliable assumption.
       this.isThinkingSubject.next(true)
       this.tabTitleService?.setSystemActive()
-    }
+      this.currentInviteEventSubject.next(null)
 
-    // Always use the free-form endpoint — server decides how to handle it
-    // (answers pending invite, or queues if agent is running)
-    this.messageApi.sendFreeMessage(message).subscribe({
-      error: (error) => {
-        console.error('[CODAY] Send error:', error)
-        if (hadInvite) {
+      const answerEvent = pendingInvite.buildAnswer(message)
+      this.messageApi.sendMessage(answerEvent).subscribe({
+        error: (error) => {
+          console.error('[CODAY] Send invite answer error:', error)
           this.stopThinking()
-        }
-      },
-    })
+        },
+      })
+    } else {
+      // No pending invite: use the free-form endpoint — server queues if agent is running
+      this.messageApi.sendFreeMessage(message).subscribe({
+        error: (error) => {
+          console.error('[CODAY] Send error:', error)
+        },
+      })
+    }
   }
 
   /**
