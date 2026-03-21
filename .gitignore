@@ -54,3 +54,10 @@ dist/electron
 apps/desktop/release
 
 .angular
+
+# BMAD scaffolding (installed via npx bmad-method install)
+_bmad/
+_bmad-output/
+
+# Claude Code config
+.claude/
