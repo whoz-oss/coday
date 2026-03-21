@@ -1,0 +1,12 @@
+<ds-entity-list
+  title="Projects"
+  [items]="projectItems()"
+  searchPlaceholder="Filter projects…"
+  emptyMessage="No projects found."
+  [showCreate]="showCreateButton()"
+  [autoFocusSearch]="true"
+  (itemSelected)="onItemSelected($event)"
+  (createRequested)="onCreateRequested()"
+>
+  <img toolbar-start class="project-list__logo" src="CODAY-Logo.png" alt="Coday" />
+</ds-entity-list>

@@ -1,0 +1,58 @@
+<div class="prompt-list-page">
+  <ds-entity-list
+    title="Prompts"
+    [items]="promptItems()"
+    layout="list"
+    searchPlaceholder="Filter prompts…"
+    emptyMessage="No prompts found."
+    [showCreate]="true"
+    [itemTemplate]="promptCard"
+    (createRequested)="onCreate()"
+  >
+    <button toolbar-start mat-icon-button title="Back" (click)="onBack()">
+      <mat-icon>chevron_left</mat-icon>
+    </button>
+    <mat-slide-toggle
+      toolbar-extras
+      class="prompt-list__mine-toggle"
+      color="primary"
+      [ngModel]="showOnlyMine()"
+      (ngModelChange)="showOnlyMine.set($event)"
+    >
+      Mine
+    </mat-slide-toggle>
+  </ds-entity-list>
+
+  @if (errorMessage()) {
+    <div class="prompt-list__error">{{ errorMessage() }}</div>
+  }
+</div>
+
+<!-- Custom card template with actions -->
+<ng-template #promptCard let-item>
+  <ds-entity-card
+    [id]="item.id"
+    [name]="item.name"
+    [description]="item.description"
+    [badges]="item.badges ?? []"
+    (selected)="onEdit($event)"
+  >
+    <ng-container dsCardActions>
+      <button mat-icon-button title="Edit" (click)="onEdit(item.id)">
+        <mat-icon>edit</mat-icon>
+      </button>
+      @if (isAdmin()) {
+        <button
+          mat-icon-button
+          [title]="isWebhookEnabled(item.id) ? 'Disable webhook' : 'Enable webhook'"
+          (click)="onToggleWebhook(item.id)"
+        >
+          <mat-icon>{{ isWebhookEnabled(item.id) ? 'link_off' : 'link' }}</mat-icon>
+        </button>
+      }
+      <button mat-icon-button title="Delete" class="prompt-list__delete-btn" (click)="onDelete(item.id)">
+        <mat-icon>delete</mat-icon>
+      </button>
+    </ng-container>
+  </ds-entity-card>
+</ng-template>

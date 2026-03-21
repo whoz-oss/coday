@@ -1,0 +1,121 @@
+.entity-list {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+// ── Toolbar (full width) ───────────────────────────────────────────────────
+
+.entity-list__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+  // Fixed height — the mat-form-field must not cause resize on focus
+  height: 56px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.entity-list__title {
+  // Intrinsic width — never shrinks, never truncates
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text, #1d1d1f);
+  white-space: nowrap;
+}
+
+.entity-list__search-field {
+  // Pushed to the right by margin-left: auto, capped at 240px, shrinks before title
+  margin-left: auto;
+  padding-left: 20px;
+  flex: 0 1 240px;
+  min-width: 80px;
+  // Compact height
+  --mat-form-field-container-height: 36px;
+  --mat-form-field-container-vertical-padding: 6px;
+  font-size: 0.875rem;
+  // Erase fill appearance: no background, no bottom border
+  --mat-form-field-filled-with-label-container-padding-top: 0;
+  --mdc-filled-text-field-container-color: transparent;
+  --mdc-filled-text-field-hover-container-color: transparent;
+  --mdc-filled-text-field-focus-container-color: transparent;
+  --mdc-filled-text-field-active-indicator-color: transparent;
+  --mdc-filled-text-field-hover-active-indicator-color: transparent;
+  --mdc-filled-text-field-focus-active-indicator-color: transparent;
+  --mdc-filled-text-field-active-indicator-height: 0;
+}
+
+.entity-list__toolbar-btn {
+  flex-shrink: 0;
+  color: var(--color-text-secondary, #6e6e73);
+
+  &:hover {
+    color: var(--color-text, #1d1d1f);
+  }
+
+  &--primary {
+    color: var(--color-primary, #007aff);
+
+    &:hover {
+      color: var(--color-primary-hover, #0051d5);
+    }
+  }
+}
+
+// ── Content (max-width constrained) ─────────────────────────────────────
+
+.entity-list__content {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0.75rem 1rem;
+  box-sizing: border-box;
+}
+
+.entity-list__empty {
+  margin: 0;
+  padding: 2rem 0;
+  text-align: center;
+  color: var(--color-text-secondary, #6e6e73);
+  font-size: 0.9375rem;
+}
+
+// ── Expansion panels ────────────────────────────────────────────────────
+
+.entity-list__panel {
+  background: transparent;
+  box-shadow: none !important;
+
+  & + .entity-list__panel {
+    border-top: 1px solid var(--color-border-light, rgba(40, 40, 40, 0.08));
+  }
+}
+
+.entity-list__panel-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-secondary, #6e6e73);
+}
+
+// ── Grid ─────────────────────────────────────────────────────────────────────
+
+.entity-list__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+
+.entity-list__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}

@@ -15,7 +15,6 @@ import { OptionsPanelComponent } from '../options-panel'
 import { ThreadSelectorComponent } from '../thread-selector/thread-selector.component'
 import { PreviewPanelComponent } from '../preview-panel/preview-panel.component'
 import { JsonEditorComponent, JsonEditorData } from '../json-editor/json-editor.component'
-import { PromptManagerComponent } from '../prompt-manager/prompt-manager.component'
 import { SchedulerManagerComponent } from '../scheduler-manager/scheduler-manager.component'
 import { AgentManagerComponent } from '../agent-manager/agent-manager.component'
 import { ProjectStateService } from '../../core/services/project-state.service'
@@ -286,13 +285,15 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Open prompt manager dialog
+   * Navigate to the prompt list page
    */
   openPrompts(): void {
     if (!this.requireProjectSelection('open prompts')) {
       return
     }
-    this.openManagerDialog(PromptManagerComponent, 'Opening prompt manager dialog')
+    const projectName = this.selectedProjectName()
+    this.router.navigate(['project', projectName, 'prompts'])
+    this.close()
   }
 
   /**
