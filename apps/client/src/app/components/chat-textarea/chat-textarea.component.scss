@@ -22,7 +22,7 @@
 
 .input-row.grouped-input {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   background: var(--glass-bg);
   border-radius: 16px;
   padding: 0 0.15rem 0 1.25rem;
@@ -141,11 +141,24 @@
   }
 }
 
+// Buttons have no individual margins — spacing handled by actions-col gap.
 .voice-btn,
 .send-btn,
 .action-btn,
 .upload-btn {
-  margin: 0 0.5rem 0 0.08rem;
+  margin: 0;
+}
+
+.actions {
+  // Stretches to the textarea height (align-items: stretch on the parent flex row).
+  // Buttons are placed in a grid that fills rows of 40px from top to bottom;
+  // when the available height fits multiple rows they stack in one column,
+  // and when height is tight they spill into extra columns to the right.
+  // width: fit-content collapses the wrapper to exactly the columns actually used.
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 // Recording state: pulse animation on the inner button
