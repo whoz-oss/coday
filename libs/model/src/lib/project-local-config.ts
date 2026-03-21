@@ -20,15 +20,28 @@ export type ProjectLocalConfig = {
    */
   mcp?: McpConfig
   /**
+   * Preview server configuration — optional.
+   * When set, enables the Start/Stop preview panel in the UI.
+   */
+  preview?: PreviewConfig
+  /**
    * Indicates if this project was auto-generated (volatile)
-   * Volatile projects are created automatically when Coday is started in a directory
-   * without an existing project configuration
    */
   volatile?: boolean
   /**
    * Timestamp of project creation (for volatile projects)
    */
   createdAt?: number
+}
+
+export type PreviewConfig = {
+  /**
+   * Shell command to start the preview server, e.g. "pnpm web:dev:tmux".
+   * The command is responsible for port selection and binding.
+   * The preview manager wraps it in a tmux session and reads the URL
+   * from the server's own log output.
+   */
+  command: string
 }
 
 export type StorageConfig =

@@ -15,6 +15,7 @@ import { filter } from 'rxjs/operators'
 type Delegation = {
   agentName: string
   task: string
+  threadId?: string // Optional: resume an existing thread instead of forking a new one
 }
 
 type DelegateInput = {
@@ -66,7 +67,8 @@ export function delegateFunction(input: DelegateInput) {
       .map((result, i) => {
         const agentName = delegations[i]?.agentName ?? 'unknown'
         if (result.status === 'fulfilled') {
-          return `[${agentName}]: ${result.value}`
+          const { result: text, threadId } = result.value
+          return `[${agentName}] (threadId: ${threadId}): ${text}`
         }
         return `[${agentName}]: Error \u2014 ${result.reason?.message ?? result.reason}`
       })
@@ -82,26 +84,47 @@ async function runSingleDelegation(
   agentFind: (agentName: string | undefined, context: CommandContext) => Promise<Agent | undefined>,
   threadService: ThreadService,
   projectName: string
-): Promise<string> {
+): Promise<{ result: string; threadId: string }> {
   const { agentName, task } = delegation
 
-  // Use a placeholder parentEventId \u2014 in a full implementation this would be the ToolRequestEvent timestamp
+  // Use a placeholder parentEventId — in a full implementation this would be the ToolRequestEvent timestamp
   const parentEventId = new Date().toISOString()
 
-  // Create the sub-thread from the CURRENT parent thread (not always root)
-  const subThread: AiThread = parentThread.fork(agentName, task, parentEventId)
+  let subThread: AiThread
+  let isResumedThread = false
 
-  // Persist the sub-thread immediately so it appears in the thread list
-  try {
-    await threadService.saveThread(projectName, subThread)
-  } catch (err) {
-    interactor.debug(`Could not persist sub-thread ${subThread.id}: ${err}`)
+  if (delegation.threadId) {
+    // Resume an existing thread
+    const existingThread = await threadService.getThread(projectName, delegation.threadId)
+    if (!existingThread) {
+      return {
+        result: `Thread '${delegation.threadId}' not found in project '${projectName}'.`,
+        threadId: delegation.threadId,
+      }
+    }
+    subThread = existingThread
+    isResumedThread = true
+    // Set runtime-only fields for this execution
+    subThread.delegationDepth = parentThread.delegationDepth + 1
+    subThread.runStatus = RunStatus.RUNNING
+  } else {
+    // Create a new sub-thread (existing behavior)
+    subThread = parentThread.fork(agentName, task, parentEventId)
+  }
+
+  if (!isResumedThread) {
+    // Persist the sub-thread immediately so it appears in the thread list
+    try {
+      await threadService.saveThread(projectName, subThread)
+    } catch (err) {
+      interactor.debug(`Could not persist sub-thread ${subThread.id}: ${err}`)
+    }
   }
 
   // Emit a single, immutable DelegationEvent as a branch marker.
   // Tag it with the parent thread's ID so the frontend routes it correctly:
-  // - Root-level delegations: threadId is undefined/root \u2192 displayed in main chat
-  // - Nested delegations: threadId is the parent sub-thread \u2192 routed to the
+  // - Root-level delegations: threadId is undefined/root → displayed in main chat
+  // - Nested delegations: threadId is the parent sub-thread → routed to the
   //   parent's DelegationInlineComponent via subThreadEvents$
   const delegationEvent = new DelegationEvent({
     subThreadId: subThread.id,
@@ -113,7 +136,7 @@ async function runSingleDelegation(
 
   const agent: Agent | undefined = await agentFind(agentName, context)
   if (!agent) {
-    return `Agent ${agentName} not found.`
+    return { result: `Agent ${agentName} not found.`, threadId: subThread.id }
   }
 
   // Propagate stop signal from parent thread to sub-thread
@@ -137,7 +160,7 @@ async function runSingleDelegation(
       })
     )
 
-    // Run the agent \u2014 the AI client will pass subThread to ToolSet.run(),
+    // Run the agent — the AI client will pass subThread to ToolSet.run(),
     // so any nested delegation from this agent will correctly use subThread as parent.
     const agentEvents: Observable<MessageEvent> = (await agent.run(task, subThread)).pipe(
       filter((e) => e instanceof MessageEvent)
@@ -170,5 +193,5 @@ async function runSingleDelegation(
     clearInterval(stopPropagationInterval)
   }
 
-  return result
+  return { result, threadId: subThread.id }
 }

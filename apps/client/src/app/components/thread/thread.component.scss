@@ -38,31 +38,39 @@
   }
 }
 
-// Share panel overlay (click outside to close)
-.share-panel-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 200;
-  background: rgba(0, 0, 0, 0.3);
-}
-
-// Share panel (popover)
-.share-panel {
-  position: absolute;
-  top: 4.5rem;
-  right: 0;
-  width: 320px;
-  max-height: 400px;
-  overflow-y: auto;
+// Share drawer container (inside the shared right-side mat-drawer)
+.share-drawer-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   background: var(--glass-bg);
   backdrop-filter: var(--glass-backdrop-blur);
   -webkit-backdrop-filter: var(--glass-backdrop-blur);
-  border: 1px solid var(--glass-border-color);
-  border-radius: 12px;
-  box-shadow: var(--glass-shadow);
+  color: var(--color-text);
+
+  .drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem;
+    border-bottom: 1px solid var(--color-border);
+    flex-shrink: 0;
+  }
+
+  .drawer-title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .close-btn {
+    color: var(--color-text-secondary);
+    &:hover {
+      color: var(--color-text);
+      background: var(--color-bg-hover);
+    }
+  }
 }
 
 @keyframes pulse-subtle {
@@ -201,7 +209,6 @@
 @media print {
   .file-drawer-toggle-btn,
   .share-toggle-btn,
-  .share-panel-overlay,
   .connection-status {
     display: none;
   }

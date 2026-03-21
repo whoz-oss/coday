@@ -97,11 +97,14 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   // Drag and drop state
   isDragOver: boolean = false
 
-  // File exchange drawer state
-  isFileDrawerOpen: boolean = false
+  // Unified drawer state: which panel is open on the right side
+  drawerMode: 'none' | 'files' | 'share' = 'none'
 
-  // Share panel state
-  isSharePanelOpen: boolean = false
+  get isDrawerOpen(): boolean {
+    return this.drawerMode !== 'none'
+  }
+
+  // Thread details for the share panel
   threadDetails: ThreadDetails | null = null
 
   @ViewChild(ThreadShareComponent) private threadShareRef?: ThreadShareComponent
@@ -336,27 +339,17 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
     }
   }
 
-  // File drawer methods
+  // Drawer toggle/close methods
   toggleFileDrawer(): void {
-    console.log('[THREAD] Toggling file drawer')
-    this.isFileDrawerOpen = !this.isFileDrawerOpen
+    this.drawerMode = this.drawerMode === 'files' ? 'none' : 'files'
   }
 
-  closeFileDrawer(): void {
-    console.log('[THREAD] Closing file drawer')
-    this.isFileDrawerOpen = false
-  }
-
-  // Share panel methods
   toggleSharePanel(): void {
-    this.isSharePanelOpen = !this.isSharePanelOpen
-    if (this.isSharePanelOpen) {
-      // Focus overlay for keyboard (Escape) support
-      setTimeout(() => {
-        const overlay = this.elementRef.nativeElement.querySelector('.share-panel-overlay') as HTMLElement | null
-        overlay?.focus()
-      }, 0)
-    }
+    this.drawerMode = this.drawerMode === 'share' ? 'none' : 'share'
+  }
+
+  closeDrawer(): void {
+    this.drawerMode = 'none'
   }
 
   onUserAdded(userId: string): void {
@@ -380,7 +373,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
         next: () => {
           console.log('[THREAD] User added successfully')
           this.threadShareRef?.setAdding(false)
-          this.threadState.selectThread(this.threadId)
+          this.threadState.refreshSelectedThread()
         },
         error: (error) => {
           console.error('[THREAD] Error adding user:', error)
@@ -402,7 +395,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
       .subscribe({
         next: () => {
           console.log('[THREAD] User removed successfully')
-          this.threadState.selectThread(this.threadId)
+          this.threadState.refreshSelectedThread()
         },
         error: (error) => {
           console.error('[THREAD] Error removing user:', error)

@@ -90,6 +90,13 @@ scripts:
       - ":agentos-service:test --tests ChatClientProviderTest"
       - ":agentos-sdk:build"
       - "test" (all tests)
+  setup:
+    description: |
+      Project setup script. Checks that required binaries (node, pnpm, java) are available on PATH,
+      then installs dependencies using pnpm with a frozen lockfile.
+      Works both in the main clone and in git worktrees.
+      Run this once after cloning or creating a new worktree.
+    command: bash setup.sh
   pnpm:
     description: |
       Run pnpm commands for package management and scripts.

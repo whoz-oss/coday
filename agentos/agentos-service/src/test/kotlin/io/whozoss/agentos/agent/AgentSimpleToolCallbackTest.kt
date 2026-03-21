@@ -8,7 +8,6 @@ import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
-import io.whozoss.agentos.orchestration.AgentSimple
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.aiProvider.AiModel
@@ -120,14 +119,17 @@ class AgentSimpleToolCallbackTest :
             val capturedCallbacks = slot<List<ToolCallback>>()
             val mockChatClient = mockk<ChatClient>(relaxed = true)
             val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(capturedCallbacks)).stream() } returns mockStreamSpec
+            every {
+                mockChatClient.prompt(any<Prompt>()).toolCallbacks(capture(capturedCallbacks)).stream()
+            } returns mockStreamSpec
             every { mockStreamSpec.content() } returns Flux.just("done")
 
             val agent = makeAgent(agentId, mockChatClient, listOf(fakeTool))
             agent.run(listOf(userMessage(namespaceId, caseId, "test"))).toList()
 
             // The callback registered with Spring AI must carry the tool's own schema
-            val registeredCallback = capturedCallbacks.captured.firstOrNull { it.toolDefinition.name() == "GetCurrentDateTime" }
+            val registeredCallback =
+                capturedCallbacks.captured.firstOrNull { it.toolDefinition.name() == "GetCurrentDateTime" }
             registeredCallback shouldNotBe null
             registeredCallback!!.toolDefinition.inputSchema() shouldBe expectedSchema
             registeredCallback.toolDefinition.description() shouldContain "timezone"
@@ -150,7 +152,8 @@ class AgentSimpleToolCallbackTest :
                 object : StandardTool<Nothing> {
                     override val name = "GetCurrentDateTime"
                     override val description = "Get the current date and time"
-                    override val inputSchema = """{"type":"object","properties":{"timezone":{"type":"string"}},"required":["timezone"]}"""
+                    override val inputSchema =
+                        """{"type":"object","properties":{"timezone":{"type":"string"}},"required":["timezone"]}"""
                     override val version = "1.0.0"
                     override val paramType: Class<Nothing>? = null
 

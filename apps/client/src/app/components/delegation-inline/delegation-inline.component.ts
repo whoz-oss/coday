@@ -35,7 +35,6 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
   subMessages: ChatMessage[] = []
   streamingText = ''
 
-  private hasLoadedFromRest = false
   private eventSubscription?: Subscription
   private readonly codayService = inject(CodayService)
   private readonly threadApi = inject(ThreadApiService)
@@ -71,20 +70,21 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
   toggle(): void {
     this.isExpanded = !this.isExpanded
 
-    // On first expand, if no messages from live session, fetch from REST
-    if (this.isExpanded && this.subMessages.length === 0 && !this.hasLoadedFromRest) {
+    // On every expand, reload from REST — source of truth for persisted messages
+    if (this.isExpanded) {
       this.loadSubThreadMessages()
     }
   }
 
   private loadSubThreadMessages(): void {
     this.isLoading = true
-    this.hasLoadedFromRest = true
 
     this.threadApi.getThreadMessages(this.subThreadId).subscribe({
       next: (response) => {
-        // Only populate if still no messages (SSE might have arrived in the meantime)
-        if (this.subMessages.length === 0 && response.messages) {
+        if (response.messages) {
+          // Rebuild from REST — source of truth for persisted messages
+          // SSE live streaming (streamingText) is unaffected
+          this.subMessages = []
           for (const rawMsg of response.messages) {
             const event = buildCodayEvent(rawMsg)
             if (event) {

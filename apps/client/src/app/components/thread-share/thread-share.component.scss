@@ -24,34 +24,7 @@
 .add-user-section {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-}
-
-.username-field {
-  flex: 1;
-
-  // Reduce default Material form field height
-  ::ng-deep .mat-mdc-form-field-infix {
-    padding-top: 0.5rem !important;
-    padding-bottom: 0.5rem !important;
-    min-height: unset;
-  }
-
-  ::ng-deep .mat-mdc-text-field-wrapper {
-    padding: 0 0.75rem;
-  }
-
-  ::ng-deep .mdc-notched-outline__notch {
-    border-right: none;
-  }
-}
-
-.add-button {
-  flex-shrink: 0;
-
-  &:not([disabled]) {
-    color: var(--color-primary);
-  }
+  width: 50%;
 }
 
 .error-message {
@@ -124,6 +97,6 @@
   }
 
   &:hover mat-icon {
-    color: #ef4444;
+    color: var(--color-error, #ef4444);
   }
 }

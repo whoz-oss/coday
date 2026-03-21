@@ -42,8 +42,6 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
   // Internal state for stopping
   isStopping: boolean = false
-  // Local flag to immediately disable textarea when message is sent
-  isLocallyDisabled: boolean = false
   @Output() filesPasted = new EventEmitter<File[]>()
   @Output() messageSubmitted = new EventEmitter<string>()
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
@@ -134,8 +132,6 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
         this.stopThinkingAnimation()
         // Reset stopping state when thinking ends
         this.isStopping = false
-        // Reset local disable flag when thinking ends
-        this.isLocallyDisabled = false
         // Autofocus textarea when thinking mode ends
         // Use requestAnimationFrame + timeout to ensure disabled attribute is removed
         if (changes['isThinking'].previousValue) {
@@ -151,8 +147,6 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     if (changes['isSessionInitializing']) {
       if (!changes['isSessionInitializing'].currentValue && changes['isSessionInitializing'].previousValue) {
         console.log('[CHAT-TEXTAREA] Session initialization completed, scheduling focus')
-        // Reset local disable flag when session initialization ends
-        this.isLocallyDisabled = false
         requestAnimationFrame(() => {
           setTimeout(() => this.focusTextarea(), 100)
         })
@@ -333,12 +327,9 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     // Allow sending empty messages only via keyboard shortcut (allowEmpty=true)
     // Button click always requires non-empty message (allowEmpty=false, default)
     const messageToSend = this.message.trim()
-    const canSend = !this.isDisabled && !this.isLocallyDisabled && (allowEmpty || messageToSend)
+    const canSend = !this.isDisabled && (allowEmpty || messageToSend)
 
     if (canSend) {
-      // Immediately set local disable flag to prevent any further input
-      this.isLocallyDisabled = true
-
       // Send the trimmed message (can be empty string if allowEmpty=true)
       this.messageSubmitted.emit(messageToSend)
       this.message = ''
@@ -688,10 +679,6 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
    */
   private handleInviteEvent(invite: string, defaultValue?: string): void {
     this.currentInvite = invite
-
-    // Reset local disable flag immediately when an invite arrives
-    // This allows the user to respond without waiting for thinking state to clear
-    this.isLocallyDisabled = false
 
     // Set default value if provided
     if (defaultValue) {

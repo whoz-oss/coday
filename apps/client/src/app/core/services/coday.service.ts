@@ -120,32 +120,6 @@ export class CodayService implements OnDestroy {
     this.currentProject = projectName
     this.currentThread = threadId
     this.eventStream.connectToThread(projectName, threadId)
-
-    // After a short delay (to let messages replay), process unanswered invites
-    setTimeout(() => this.processUnansweredInvites(), 500)
-  }
-
-  /**
-   * Process unanswered invites after thread replay
-   * Finds InviteEvent and ChoiceEvent that don't have corresponding AnswerEvent
-   * and restores the first one to currentInviteEventSubject for user response
-   */
-  private processUnansweredInvites(): void {
-    const messages = this.messagesSubject.value
-
-    // Find all InviteEvent without corresponding AnswerEvent
-    const unansweredInvites = messages
-      .filter((m) => m.type === 'text' && m.parentKey === undefined && m.invite !== undefined)
-      .filter((invite) => !messages.some((m) => m.type === 'text' && m.role === 'user' && m.parentKey === invite.id))
-
-    // If there are unanswered invites, restore the first one
-    if (unansweredInvites.length > 0) {
-      // We need to reconstruct the InviteEvent from the message
-      // This is a simplified reconstruction - the actual InviteEvent will come from backend
-      console.log('[CODAY] Found', unansweredInvites.length, 'unanswered invite(s)')
-      // Note: The actual InviteEvent will be replayed from the backend,
-      // so we just need to wait for it to arrive via handleInviteEvent
-    }
   }
 
   /**
@@ -173,39 +147,24 @@ export class CodayService implements OnDestroy {
       return
     }
 
-    // Immediately set thinking state to true to disable textarea
-    // This prevents users from sending multiple messages before server responds
-    this.isThinkingSubject.next(true)
-    this.tabTitleService?.setSystemActive()
-
-    const currentInviteEvent = this.currentInviteEventSubject.value
-
-    if (currentInviteEvent) {
-      // Use the original InviteEvent to build proper answer with parentKey
-      const answerEvent = currentInviteEvent.buildAnswer(message)
-
-      // Clear the current invite event immediately after using it
+    // Clear pending invite if any (UI state cleanup only — server is the source of truth)
+    const hadInvite = !!this.currentInviteEventSubject.value
+    if (hadInvite) {
       this.currentInviteEventSubject.next(null)
-
-      this.messageApi.sendMessage(answerEvent).subscribe({
-        error: (error) => {
-          console.error('[CODAY] Send error:', error)
-          // Reset thinking state on error
-          this.stopThinking()
-        },
-      })
-    } else {
-      // Fallback to basic AnswerEvent if no invite event stored
-      const answerEvent = new AnswerEvent({ answer: message })
-
-      this.messageApi.sendMessage(answerEvent).subscribe({
-        error: (error) => {
-          console.error('[CODAY] Send error:', error)
-          // Reset thinking state on error
-          this.stopThinking()
-        },
-      })
+      this.isThinkingSubject.next(true)
+      this.tabTitleService?.setSystemActive()
     }
+
+    // Always use the free-form endpoint — server decides how to handle it
+    // (answers pending invite, or queues if agent is running)
+    this.messageApi.sendFreeMessage(message).subscribe({
+      error: (error) => {
+        console.error('[CODAY] Send error:', error)
+        if (hadInvite) {
+          this.stopThinking()
+        }
+      },
+    })
   }
 
   /**

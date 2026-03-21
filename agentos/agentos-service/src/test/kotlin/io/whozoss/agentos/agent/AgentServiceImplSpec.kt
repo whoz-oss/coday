@@ -12,7 +12,6 @@ import io.whozoss.agentos.aiModel.AiModelRegistry
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
-import io.whozoss.agentos.orchestration.AgentSimple
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.tool.ToolRegistry
@@ -20,7 +19,6 @@ import org.springframework.ai.chat.client.ChatClient
 import java.util.UUID
 
 class AgentServiceImplSpec : StringSpec() {
-
     private val chatClientProvider: ChatClientProvider = mockk()
     private val toolRegistry: ToolRegistry = mockk()
     private val aiModelRegistry: AiModelRegistry = mockk()
@@ -31,11 +29,12 @@ class AgentServiceImplSpec : StringSpec() {
     private val namespaceId: UUID = UUID.randomUUID()
     private val caseId: UUID = UUID.randomUUID()
     private val context = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId)
-    private val namespace = Namespace(
-        metadata = EntityMetadata(id = namespaceId),
-        name = "engineering",
-        description = "Engineering namespace for backend services",
-    )
+    private val namespace =
+        Namespace(
+            metadata = EntityMetadata(id = namespaceId),
+            name = "engineering",
+            description = "Engineering namespace for backend services",
+        )
 
     init {
         every { toolRegistry.listTools() } returns emptyList()
@@ -100,14 +99,15 @@ class AgentServiceImplSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "findAgentByName appends namespace name and description to existing model instructions" {
-            val model = AiModel(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                name = "my-agent",
-                description = "desc",
-                modelName = "gpt-4o",
-                providerName = "openai",
-                instructions = "You are a helpful assistant.",
-            )
+            val model =
+                AiModel(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    name = "my-agent",
+                    description = "desc",
+                    modelName = "gpt-4o",
+                    providerName = "openai",
+                    instructions = "You are a helpful assistant.",
+                )
             val chatClient = mockk<ChatClient>(relaxed = true)
             every { aiModelRegistry.findByName("my-agent") } returns model
             every { chatClientProvider.getChatClient("my-agent") } returns chatClient
@@ -120,14 +120,15 @@ class AgentServiceImplSpec : StringSpec() {
         }
 
         "findAgentByName uses namespace context as sole instructions when model has none" {
-            val model = AiModel(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                name = "my-agent",
-                description = "desc",
-                modelName = "gpt-4o",
-                providerName = "openai",
-                instructions = null,
-            )
+            val model =
+                AiModel(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    name = "my-agent",
+                    description = "desc",
+                    modelName = "gpt-4o",
+                    providerName = "openai",
+                    instructions = null,
+                )
             val chatClient = mockk<ChatClient>(relaxed = true)
             every { aiModelRegistry.findByName("my-agent") } returns model
             every { chatClientProvider.getChatClient("my-agent") } returns chatClient
@@ -139,20 +140,22 @@ class AgentServiceImplSpec : StringSpec() {
         }
 
         "findAgentByName includes namespace name but not a blank description when namespace has no description" {
-            val namespaceWithoutDescription = Namespace(
-                metadata = EntityMetadata(id = namespaceId),
-                name = "engineering",
-                description = null,
-            )
+            val namespaceWithoutDescription =
+                Namespace(
+                    metadata = EntityMetadata(id = namespaceId),
+                    name = "engineering",
+                    description = null,
+                )
             every { namespaceService.findById(namespaceId) } returns namespaceWithoutDescription
-            val model = AiModel(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                name = "my-agent",
-                description = "desc",
-                modelName = "gpt-4o",
-                providerName = "openai",
-                instructions = "Base instructions.",
-            )
+            val model =
+                AiModel(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    name = "my-agent",
+                    description = "desc",
+                    modelName = "gpt-4o",
+                    providerName = "openai",
+                    instructions = "Base instructions.",
+                )
             val chatClient = mockk<ChatClient>(relaxed = true)
             every { aiModelRegistry.findByName("my-agent") } returns model
             every { chatClientProvider.getChatClient("my-agent") } returns chatClient
@@ -181,20 +184,22 @@ class AgentServiceImplSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "listAgents calls getChatClient with model.name for every registered model" {
-            val model1 = AiModel(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                name = "agent-alpha",
-                description = "First agent",
-                modelName = "claude-3-5-sonnet-20241022",
-                providerName = "anthropic",
-            )
-            val model2 = AiModel(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                name = "agent-beta",
-                description = "Second agent",
-                modelName = "gpt-4o-mini",
-                providerName = "openai",
-            )
+            val model1 =
+                AiModel(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    name = "agent-alpha",
+                    description = "First agent",
+                    modelName = "claude-3-5-sonnet-20241022",
+                    providerName = "anthropic",
+                )
+            val model2 =
+                AiModel(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    name = "agent-beta",
+                    description = "Second agent",
+                    modelName = "gpt-4o-mini",
+                    providerName = "openai",
+                )
             val chatClient = mockk<ChatClient>(relaxed = true)
 
             every { aiModelRegistry.getAll() } returns listOf(model1, model2)
@@ -209,13 +214,14 @@ class AgentServiceImplSpec : StringSpec() {
         }
 
         "listAgents does not call namespaceService — no context available" {
-            val model = AiModel(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                name = "agent-alpha",
-                description = "First agent",
-                modelName = "gpt-4o",
-                providerName = "openai",
-            )
+            val model =
+                AiModel(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    name = "agent-alpha",
+                    description = "First agent",
+                    modelName = "gpt-4o",
+                    providerName = "openai",
+                )
             val chatClient = mockk<ChatClient>(relaxed = true)
             every { aiModelRegistry.getAll() } returns listOf(model)
             every { chatClientProvider.getChatClient(any<String>()) } returns chatClient

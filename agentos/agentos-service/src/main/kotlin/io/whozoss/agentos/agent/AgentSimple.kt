@@ -1,4 +1,4 @@
-package io.whozoss.agentos.orchestration
+package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -18,6 +18,7 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.runBlocking
 import mu.KLogging
@@ -33,8 +34,6 @@ import org.springframework.ai.tool.definition.DefaultToolDefinition
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
-import kotlin.collections.firstOrNull
-import kotlin.collections.map
 import kotlin.time.TimeSource
 import kotlin.time.measureTime
 
@@ -62,7 +61,10 @@ class AgentSimple(
     /** The effective system instructions passed to the LLM, after namespace context injection. */
     val instructions: String? get() = model.instructions
 
-    override fun run(events: List<CaseEvent>): Flow<CaseEvent> =
+    override fun run(
+        events: List<CaseEvent>,
+        shouldContinue: () -> Boolean,
+    ): Flow<CaseEvent> =
         flow {
             val namespaceId = events.firstOrNull()?.namespaceId ?: throw IllegalArgumentException("No events provided")
             val caseId = events.firstOrNull()?.caseId ?: throw IllegalArgumentException("No events provided")
@@ -82,6 +84,21 @@ class AgentSimple(
                         messages
                     }
 
+                // Bail out immediately if an interrupt/kill was requested before
+                // the LLM call even starts (e.g. kill fired while the previous
+                // tool response was being stored).
+                if (!shouldContinue()) {
+                    emit(
+                        AgentFinishedEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            agentId = id,
+                            agentName = name,
+                        ),
+                    )
+                    return@flow
+                }
+
                 emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
 
                 // Shared timer: reset to markNow() each time the LLM hands back control
@@ -93,7 +110,14 @@ class AgentSimple(
                 // Convert StandardTool to ToolCallback with event emission
                 val toolCallbacks =
                     tools.map { tool ->
-                        createToolCallbackWithEvents(tool, namespaceId, caseId, toolEventChannel, llmTurnMark, llmTurnIndex)
+                        createToolCallbackWithEvents(
+                            tool,
+                            namespaceId,
+                            caseId,
+                            toolEventChannel,
+                            llmTurnMark,
+                            llmTurnIndex,
+                        )
                     }
 
                 // Make single LLM call with tools
@@ -114,8 +138,11 @@ class AgentSimple(
                 val contentBuilder = StringBuilder()
                 var currentTurnLogged = false
 
-                // Convert stream to Flow
-                streamSpec.content().asFlow().collect { chunk ->
+                // Convert stream to Flow.
+                // takeWhile cancels the upstream reactive stream as soon as shouldContinue()
+                // returns false, so we stop consuming the LLM HTTP stream immediately
+                // rather than merely skipping chunks with return@collect.
+                streamSpec.content().asFlow().takeWhile { shouldContinue() }.collect { chunk ->
                     // Emit any pending tool events and reset the text-turn log flag so the
                     // next text chunk after a tool call is correctly recognised as a new turn.
                     var toolEvent = toolEventChannel.tryReceive().getOrNull()
@@ -130,7 +157,11 @@ class AgentSimple(
                     // Log LLM thinking time once per turn on the first text chunk of that turn
                     if (!currentTurnLogged) {
                         currentTurnLogged = true
-                        logger.info { "[AgentSimple] $name LLM turn ${llmTurnIndex.get()} answered in ${llmTurnMark.get().elapsedNow()}" }
+                        logger.info {
+                            "[AgentSimple] $name LLM turn ${llmTurnIndex.get()} answered in ${
+                                llmTurnMark.get().elapsedNow()
+                            }"
+                        }
                     }
 
                     contentBuilder.append(chunk)

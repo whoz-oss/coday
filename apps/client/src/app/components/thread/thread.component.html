@@ -10,8 +10,8 @@
   <mat-drawer-container class="file-drawer-container" [hasBackdrop]="false">
     <mat-drawer-content>
       <div class="thread-container">
-        <!-- Floating File Exchange Button (top-right) - hidden when drawer open -->
-        @if (!isFileDrawerOpen) {
+        <!-- Floating File Exchange Button (top-right) - hidden when file drawer open -->
+        @if (drawerMode !== 'files') {
           <button
             matFab
             class="file-drawer-toggle-btn"
@@ -27,8 +27,8 @@
           </button>
         }
 
-        <!-- Share Button -->
-        @if (!isSharePanelOpen) {
+        <!-- Share Button - hidden when share drawer open -->
+        @if (drawerMode !== 'share') {
           <button
             matFab
             class="share-toggle-btn"
@@ -39,34 +39,6 @@
           >
             <mat-icon>group</mat-icon>
           </button>
-        }
-
-        <!-- Share Panel -->
-        @if (isSharePanelOpen && threadDetails) {
-          <div
-            class="share-panel-overlay"
-            (click)="toggleSharePanel()"
-            (keydown.escape)="toggleSharePanel()"
-            tabindex="-1"
-            role="dialog"
-            aria-label="Share thread panel"
-          >
-            <div
-              class="share-panel"
-              (click)="$event.stopPropagation()"
-              (keydown)="$event.stopPropagation()"
-              role="document"
-            >
-              <app-thread-share
-                [threadId]="threadId"
-                [users]="threadDetails.users || []"
-                [ownerUsername]="threadDetails.username"
-                [currentUsername]="currentUsername"
-                (userAdded)="onUserAdded($event)"
-                (userRemoved)="onUserRemoved($event)"
-              />
-            </div>
-          </div>
         }
 
         <!-- Connection Status -->
@@ -134,13 +106,29 @@
       </div>
     </mat-drawer-content>
 
-    <!-- File Exchange Drawer (right side) -->
-    <mat-drawer mode="side" position="end" [opened]="isFileDrawerOpen" (closed)="closeFileDrawer()">
-      <app-file-exchange-drawer
-        [projectName]="projectName"
-        [threadId]="threadId"
-        (closeDrawer)="closeFileDrawer()"
-      ></app-file-exchange-drawer>
+    <!-- Right-side Drawer: switches between file exchange and share panel -->
+    <mat-drawer mode="side" position="end" [opened]="isDrawerOpen" (closed)="closeDrawer()">
+      @if (drawerMode === 'files') {
+        <app-file-exchange-drawer [projectName]="projectName" [threadId]="threadId" (closeDrawer)="closeDrawer()" />
+      }
+      @if (drawerMode === 'share' && threadDetails) {
+        <div class="share-drawer-container">
+          <div class="drawer-header">
+            <h3 class="drawer-title">Share</h3>
+            <button mat-icon-button class="close-btn" (click)="closeDrawer()" title="Close" type="button">
+              <mat-icon>chevron_right</mat-icon>
+            </button>
+          </div>
+          <app-thread-share
+            [threadId]="threadId"
+            [users]="threadDetails.users || []"
+            [ownerUsername]="threadDetails.username"
+            [currentUsername]="currentUsername"
+            (userAdded)="onUserAdded($event)"
+            (userRemoved)="onUserRemoved($event)"
+          />
+        </div>
+      }
     </mat-drawer>
   </mat-drawer-container>
 

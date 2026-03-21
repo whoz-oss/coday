@@ -7,25 +7,11 @@
   <!-- Add user input (owner only) -->
   @if (isOwner) {
     <div class="add-user-section">
-      <mat-form-field appearance="outline" class="username-field">
-        <input
-          matInput
-          placeholder="Enter username"
-          [value]="newUsername()"
-          (input)="newUsername.set($any($event.target).value)"
-          (keydown.enter)="addUser()"
-          [disabled]="isAdding()"
-        />
-      </mat-form-field>
-      <button
-        mat-icon-button
-        class="add-button"
-        (click)="addUser()"
-        [disabled]="!newUsername().trim() || isAdding()"
-        title="Add user"
-      >
-        <mat-icon>person_add</mat-icon>
-      </button>
+      <app-user-autocomplete
+        [excludedUserIds]="excludedUserIds"
+        [disabled]="isAdding()"
+        (userSelected)="onUserSelected($event)"
+      />
     </div>
     @if (errorMessage()) {
       <div class="error-message">{{ errorMessage() }}</div>

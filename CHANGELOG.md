@@ -1,3 +1,76 @@
+## 0.97.1 (2026-03-21)
+
+### 🩹 Fixes
+
+- #604 thread sharing — shared user cannot see or interact with thread ([#605](https://github.com/whoz-oss/coday/pull/605), [#604](https://github.com/whoz-oss/coday/issues/604))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.97.0 (2026-03-20)
+
+### 🚀 Features
+
+- #596 per-project preview server with start/stop UI and idle aut… ([#598](https://github.com/whoz-oss/coday/pull/598), [#596](https://github.com/whoz-oss/coday/issues/596))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.96.1 (2026-03-20)
+
+### 🚀 Features
+
+- #592 add setup.sh script with binary checks and frozen install ([#593](https://github.com/whoz-oss/coday/pull/593), [#592](https://github.com/whoz-oss/coday/issues/592))
+
+### 🩹 Fixes
+
+- prevent duplicate speech transcripts on Chrome mobile ([#597](https://github.com/whoz-oss/coday/pull/597))
+
+### ❤️ Thank You
+
+- m1
+- vincent-audibert-whoz
+
+## 0.96.0 (2026-03-19)
+
+### 🚀 Features
+
+- #590 user autocomplete for thread sharing with generic ds-autocomplete-input ([#590](https://github.com/whoz-oss/coday/issues/590))
+
+### 🩹 Fixes
+
+- #590 live refresh of participant list and share panel as drawer ([#590](https://github.com/whoz-oss/coday/issues/590))
+- #590 remove low-value console.log statements per PR review ([#590](https://github.com/whoz-oss/coday/issues/590))
+
+### ❤️ Thank You
+
+- m1
+
+## 0.95.0 (2026-03-19)
+
+### 🚀 Features
+
+- #571 thread-targeted delegation ([#571](https://github.com/whoz-oss/coday/issues/571))
+- #571 add list_sub_threads tool and fix thread passthrough in allow-list wrapper ([#571](https://github.com/whoz-oss/coday/issues/571))
+- #571 thread-targeted delegation ([#594](https://github.com/whoz-oss/coday/pull/594), [#571](https://github.com/whoz-oss/coday/issues/571))
+
+### 🩹 Fixes
+
+- #571 sharpen tool descriptions to prevent context re-injection on resumption ([#571](https://github.com/whoz-oss/coday/issues/571))
+- #571 add threadId to delegation JSON schema ([#571](https://github.com/whoz-oss/coday/issues/571))
+- #571 delegation header shows latest task on resumed threads ([#571](https://github.com/whoz-oss/coday/issues/571))
+- #571 clarify that any agent can resume an existing sub-thread ([#571](https://github.com/whoz-oss/coday/issues/571))
+- #571 prevent new thread creation when resuming with different agent ([#571](https://github.com/whoz-oss/coday/issues/571))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
 ## 0.94.0 (2026-03-18)
 
 ### 🚀 Features

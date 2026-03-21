@@ -105,22 +105,19 @@ export class ThreadStateService {
   // Public observable that always has the latest thread list
   threadList$ = this.threadListSubject.asObservable()
 
-  selectedThread$ = combineLatest([this.projectName$, this.selectedThreadIdSubject.pipe(distinctUntilChanged())]).pipe(
-    tap(([projectName, threadId]) => {
-      console.log('🐼 combineLatest emitted:', { projectName, threadId })
-    }),
+  private readonly refreshSelectedThreadSubject = new Subject<void>()
+
+  selectedThread$ = combineLatest([
+    this.projectName$,
+    this.selectedThreadIdSubject.pipe(distinctUntilChanged()),
+    this.refreshSelectedThreadSubject.pipe(startWith(undefined)),
+  ]).pipe(
     switchMap(([projectName, threadId]) => {
       if (!projectName || !threadId) {
-        console.log('🐼 null')
         return of(null)
       } else {
-        console.log('🐼 loading thread:', threadId)
-
         this.isLoadingSubject.next(true)
         return this.threadApi.getThread(threadId).pipe(
-          tap((thread) => {
-            console.log('🐼 loaded thread:', thread?.id)
-          }),
           // shareReplay at this level: shares the result for THIS specific threadId
           // When threadId changes, switchMap cancels and creates a new inner observable
           shareReplay({ bufferSize: 1, refCount: true })
@@ -128,7 +125,6 @@ export class ThreadStateService {
       }
     }),
     tap(() => {
-      console.log('🐼 finished loading')
       this.isLoadingSubject.next(false)
     })
   )
@@ -191,6 +187,15 @@ export class ThreadStateService {
   refreshThreadList(): void {
     console.log('[THREAD_STATE] Manually refreshing thread list')
     this.refreshThreadListSubject.next()
+  }
+
+  /**
+   * Force a re-fetch of the currently selected thread details.
+   * Use this after mutations (add/remove user) when the threadId hasn't changed
+   * so that distinctUntilChanged on the ID would otherwise suppress the re-fetch.
+   */
+  refreshSelectedThread(): void {
+    this.refreshSelectedThreadSubject.next()
   }
 
   /**

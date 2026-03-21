@@ -14,9 +14,11 @@ import {
   InviteEventDefault,
   MessageContent,
   MessageEvent,
+  QuestionEvent,
   ToolRequestEvent,
   ToolResponseEvent,
 } from '@coday/model'
+import { filter } from 'rxjs'
 import { AgentService } from '@coday/agent'
 import { AiConfigService, ThreadStateService } from '@coday/service'
 import { AiClientProvider } from '@coday/integrations-ai'
@@ -33,6 +35,9 @@ export class Coday {
   initialPrompts: string[] = []
   aiThreadService: ThreadStateService
   private killed: boolean = false
+  private isReplaying: boolean = false
+  private pendingQuestionEvent: QuestionEvent | null = null
+  private messageQueue: Array<{ username: string; message: string }> = []
   readonly aiClientProvider: AiClientProvider
 
   constructor(
@@ -61,6 +66,49 @@ export class Coday {
       this.services.project,
       this.services.logger
     )
+
+    // Track pending question events (InviteEvent or ChoiceEvent) so addUserMessage can answer them.
+    // Clear on AnswerEvent once the question is resolved.
+    // Skip events during replay to avoid stale historical events polluting state.
+    this.interactor.events
+      .pipe(
+        filter((e) => e instanceof InviteEvent || e instanceof ChoiceEvent || e instanceof AnswerEvent),
+        filter(() => !this.isReplaying)
+      )
+      .subscribe((e) => {
+        if (e instanceof InviteEvent || e instanceof ChoiceEvent) {
+          this.pendingQuestionEvent = e as QuestionEvent
+        } else if (e instanceof AnswerEvent) {
+          if (this.pendingQuestionEvent && e.parentKey === this.pendingQuestionEvent.timestamp) {
+            this.pendingQuestionEvent = null
+          }
+        }
+      })
+  }
+
+  /**
+   * Add a user message to the thread.
+   * If the agent is idle (waiting for input), the message answers the pending invite
+   * and triggers processing immediately. If the agent is running, the message is queued
+   * for the next loop iteration.
+   */
+  addUserMessage(username: string, message: string): void {
+    if (this.pendingQuestionEvent) {
+      // Answer the pending question (invite or choice) to unblock the await.
+      // The AnswerEvent subscriber in the constructor will clear pendingQuestionEvent.
+      const answerEvent = this.pendingQuestionEvent.buildAnswer(message)
+      this.interactor.sendEvent(answerEvent)
+    } else {
+      // Agent is running — queue the message for the next initCommand() iteration.
+      // Emit a MessageEvent immediately so the UI shows the message without delay.
+      const messageEvent = new MessageEvent({
+        role: 'user',
+        content: [{ type: 'text', content: message }],
+        name: username,
+      })
+      this.interactor.sendEvent(messageEvent)
+      this.messageQueue.push({ username, message })
+    }
   }
 
   /**
@@ -184,6 +232,8 @@ export class Coday {
       this.context = null
       this.handlerLooper = undefined
       this.aiHandler = undefined
+      this.messageQueue = []
+      this.pendingQuestionEvent = null
     } catch (error) {
       console.error('Error during agent cleanup:', error)
       // Don't throw - cleanup should be best-effort
@@ -219,29 +269,34 @@ export class Coday {
    * Replay messages from an AiThread through the interactor
    */
   private async replayThread(aiThread: AiThread): Promise<void> {
-    const messages: ThreadMessage[] = (await aiThread.getMessages(undefined, undefined)).messages
-    if (!messages?.length) return
-    // Sort messages by timestamp to maintain chronological order
-    const sortedMessages = [...messages].sort(
-      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-    )
+    this.isReplaying = true
+    try {
+      const messages: ThreadMessage[] = (await aiThread.getMessages(undefined, undefined)).messages
+      if (!messages?.length) return
+      // Sort messages by timestamp to maintain chronological order
+      const sortedMessages = [...messages].sort(
+        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      )
 
-    // Send messages directly - no conversion needed
-    for (const message of sortedMessages) {
-      if (
-        message instanceof MessageEvent ||
-        message instanceof ToolRequestEvent ||
-        message instanceof ToolResponseEvent ||
-        message instanceof InviteEvent ||
-        message instanceof ChoiceEvent ||
-        message instanceof AnswerEvent
-      ) {
-        this.interactor.sendEvent(message)
+      // Send messages directly - no conversion needed
+      for (const message of sortedMessages) {
+        if (
+          message instanceof MessageEvent ||
+          message instanceof ToolRequestEvent ||
+          message instanceof ToolResponseEvent ||
+          message instanceof InviteEvent ||
+          message instanceof ChoiceEvent ||
+          message instanceof AnswerEvent
+        ) {
+          this.interactor.sendEvent(message)
+        }
       }
-    }
 
-    // Always emit the thread selection message last
-    this.interactor.displayText(`Selected thread '${aiThread.name}'`)
+      // Always emit the thread selection message last
+      this.interactor.displayText(`Selected thread '${aiThread.name}'`)
+    } finally {
+      this.isReplaying = false
+    }
   }
 
   private async initContext(): Promise<void> {
@@ -327,6 +382,11 @@ export class Coday {
         this.context?.addCommands(...this.initialPrompts)
         this.initialPrompts = [] // clear the prompts as consumed, will not be re-used even on context reset
       }
+    } else if (this.messageQueue.length > 0) {
+      // Consume a queued message instead of waiting for user input
+      const queued = this.messageQueue.shift()!
+      this.interactor.debug(`[CODAY] Consuming queued message from ${queued.username}`)
+      userCommand = queued.message
     } else if (!this.options.oneshot) {
       // allow user input
       this.interactor.debug(`[CODAY] No initial prompts, waiting for user input`)
