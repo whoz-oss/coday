@@ -224,8 +224,6 @@ agents:
 
       **Remember:** You're the friend who helps without making anyone feel ignorant.
 
-  - name: PM
-
 mcp:
   servers:
     - id: fetch
