@@ -20,7 +20,15 @@ import {
 } from '@coday/model'
 import { filter } from 'rxjs'
 import { AgentService } from '@coday/agent'
-import { AiConfigService, ThreadStateService } from '@coday/service'
+import {
+  AiConfigService,
+  IntegrationConfigService,
+  IntegrationService,
+  McpConfigService,
+  MemoryService,
+  ThreadStateService,
+  UserService,
+} from '@coday/service'
 import { AiClientProvider } from '@coday/integrations-ai'
 
 const MAX_ITERATIONS = 100
@@ -38,7 +46,8 @@ export class Coday {
   private isReplaying: boolean = false
   private pendingQuestionEvent: QuestionEvent | null = null
   private messageQueue: Array<{ username: string; message: string }> = []
-  readonly aiClientProvider: AiClientProvider
+  aiClientProvider: AiClientProvider
+  private activeUsername: string | undefined
 
   constructor(
     public readonly interactor: Interactor,
@@ -368,6 +377,63 @@ export class Coday {
     await this.aiThreadService.select(this.options.thread)
   }
 
+  private async switchUserContext(newUsername: string): Promise<void> {
+    this.interactor.debug(`[CODAY] Switching user context from '${this.activeUsername}' to '${newUsername}'`)
+
+    const newUserService = new UserService(this.options.configDir, newUsername, this.interactor)
+    this.services.user = newUserService
+
+    // Recreate user-dependent services
+    this.services.integration = new IntegrationService(this.services.project, newUserService)
+    this.services.integrationConfig = new IntegrationConfigService(
+      newUserService,
+      this.services.project,
+      this.interactor
+    )
+    this.services.memory = new MemoryService(this.services.project, newUserService)
+    this.services.mcp = new McpConfigService(newUserService, this.services.project, this.interactor)
+    if (this.context) {
+      this.services.mcp.initialize(this.context)
+    }
+
+    // Recreate AiClientProvider (kill resets aiProviderConfigs so init() can run fresh)
+    this.aiClientProvider.kill()
+    this.aiClientProvider = new AiClientProvider(
+      this.interactor,
+      newUserService,
+      this.services.project,
+      this.services.logger
+    )
+    if (this.context) {
+      this.aiClientProvider.init(this.context)
+    }
+
+    // Recreate AgentService (and its Toolbox) with the new provider and services
+    if (this.services.agent) {
+      await this.services.agent.kill()
+    }
+    this.services.agent = new AgentService(
+      this.interactor,
+      this.aiClientProvider,
+      this.services,
+      this.context?.project.root ?? '',
+      this.options.agentFolders
+    )
+    if (this.context) {
+      await this.services.agent.initialize(this.context)
+    }
+
+    // Recreate AiHandler and HandlerLooper with the new AgentService
+    this.aiHandler = new AiHandler(this.interactor, this.services.agent, this.aiThreadService)
+    this.handlerLooper = new HandlerLooper(this.interactor, this.aiHandler, this.configHandler, this.services)
+    if (this.context) {
+      await this.handlerLooper.init(this.context.project)
+    }
+
+    this.activeUsername = newUsername
+    this.interactor.displayText(`[CODAY] User context switched to '${newUsername}'`)
+  }
+
   private async initCommand(): Promise<string | undefined> {
     let userCommand: string | undefined
     this.interactor.debug(
@@ -382,10 +448,19 @@ export class Coday {
         this.context?.addCommands(...this.initialPrompts)
         this.initialPrompts = [] // clear the prompts as consumed, will not be re-used even on context reset
       }
+      // For initial prompts, capture the current user as active if not yet set
+      if (!this.activeUsername) {
+        const currentUsername = this.services.user.username
+        this.activeUsername = currentUsername
+      }
     } else if (this.messageQueue.length > 0) {
       // Consume a queued message instead of waiting for user input
       const queued = this.messageQueue.shift()!
       this.interactor.debug(`[CODAY] Consuming queued message from ${queued.username}`)
+      // Switch user context if the message comes from a different user
+      if (queued.username !== this.activeUsername) {
+        await this.switchUserContext(queued.username)
+      }
       userCommand = queued.message
     } else if (!this.options.oneshot) {
       // allow user input
