@@ -4,6 +4,7 @@ import { WithDocs } from './with-docs'
 import { AiProviderConfig } from './ai-provider-config'
 import { PromptChain } from './prompt-chain'
 import { McpConfig } from './mcp-server-config'
+import { SkillsConfig } from './skills-config'
 
 export interface ProjectDescription extends WithDocs {
   ai?: AiProviderConfig[]
@@ -50,4 +51,10 @@ export interface ProjectDescription extends WithDocs {
   prompts?: {
     [key: string]: PromptChain
   }
+
+  /**
+   * Skills configuration (limits).
+   * Read from `skillsConfig` in coday.yaml, accessible via `context.project.skillsConfig`.
+   */
+  skillsConfig?: SkillsConfig
 }

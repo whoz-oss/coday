@@ -57,11 +57,18 @@ export class AgentFormComponent implements OnInit {
   // Integrations: list of { integration, tools } rows
   integrationRows: Array<{ integration: string; tools: string }> = []
 
+  // Skills
+  skills: string[] = []
+
   // Mandatory docs
   mandatoryDocs: string[] = []
   availableDocuments: string[] = []
   isUploadingDoc = false
   docUploadError = ''
+
+  // Skill upload
+  isUploadingSkill = false
+  skillUploadError = ''
 
   // Location (creation only)
   location: AgentLocation = 'project'
@@ -93,6 +100,7 @@ export class AgentFormComponent implements OnInit {
         }))
       }
       this.mandatoryDocs = [...(def.mandatoryDocs ?? [])]
+      this.skills = [...(def.skills ?? [])]
       this.loadAvailableDocuments()
     }
   }
@@ -110,6 +118,14 @@ export class AgentFormComponent implements OnInit {
 
   removeDocRow(index: number): void {
     this.mandatoryDocs.splice(index, 1)
+  }
+
+  addSkillRow(): void {
+    this.skills.push('')
+  }
+
+  removeSkillRow(index: number): void {
+    this.skills.splice(index, 1)
   }
 
   onDocFileSelected(event: Event): void {
@@ -130,6 +146,27 @@ export class AgentFormComponent implements OnInit {
       error: (error) => {
         this.isUploadingDoc = false
         this.docUploadError = error?.error?.error ?? error?.message ?? 'Upload failed'
+        input.value = ''
+      },
+    })
+  }
+
+  onSkillZipSelected(event: Event): void {
+    const input = event.target as HTMLInputElement
+    const file = input.files?.[0]
+    if (!file) return
+
+    this.isUploadingSkill = true
+    this.skillUploadError = ''
+    this.agentCrudApi.uploadSkillZip(file).subscribe({
+      next: (result) => {
+        this.isUploadingSkill = false
+        this.skills.push(result.skillPath)
+        input.value = ''
+      },
+      error: (error) => {
+        this.isUploadingSkill = false
+        this.skillUploadError = error?.error?.error ?? error?.message ?? 'Upload failed'
         input.value = ''
       },
     })
@@ -171,6 +208,7 @@ export class AgentFormComponent implements OnInit {
 
   private buildDefinition(): AgentDefinition {
     const mandatoryDocs = this.mandatoryDocs.map((d) => d.trim()).filter(Boolean)
+    const skills = [...new Set(this.skills.map((s) => s.trim()).filter(Boolean))]
 
     const integrations: Record<string, string[]> | undefined =
       this.integrationRows.length > 0
@@ -198,6 +236,7 @@ export class AgentFormComponent implements OnInit {
       openaiAssistantId: this.openaiAssistantId.trim() || undefined,
       integrations,
       mandatoryDocs: mandatoryDocs.length > 0 ? mandatoryDocs : undefined,
+      skills: skills.length > 0 ? skills : undefined,
     }
   }
 

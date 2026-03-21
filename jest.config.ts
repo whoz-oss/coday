@@ -1,3 +1,8 @@
+import { readFileSync } from 'node:fs'
+import { pathsToModuleNameMapper } from 'ts-jest'
+
+const tsconfig = JSON.parse(readFileSync('./tsconfig.base.json', 'utf-8'))
+
 /** @type {import('ts-jest').JestConfigWithTsJest} */
 export default {
   preset: 'ts-jest',
@@ -14,8 +19,9 @@ export default {
   coverageReporters: ['text', 'lcov'],
   coveragePathIgnorePatterns: ['/node_modules/', '/__tests__/', '/dist/'],
 
-  // FORCE IGNORE PROBLEMATIC DIRECTORIES
-  modulePathIgnorePatterns: ['<rootDir>/dist/', '<rootDir>/.nx/', '<rootDir>/libs/coday-events/dist/'],
+  // Map @coday/* imports to source paths (from tsconfig) and ignore dist to avoid Haste collisions
+  moduleNameMapper: pathsToModuleNameMapper(tsconfig.compilerOptions.paths, { prefix: '<rootDir>/' }),
+  modulePathIgnorePatterns: ['<rootDir>/dist/', '<rootDir>/.nx/', '/dist/'],
 
   testPathIgnorePatterns: [
     '/node_modules/',

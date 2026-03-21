@@ -10,7 +10,8 @@
     "glob": "catalog:",
     "pdf2json": "catalog:",
     "sharp": "catalog:",
-    "tslib": "catalog:"
+    "tslib": "catalog:",
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "@jest/globals": "catalog:dev",

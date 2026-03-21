@@ -12,6 +12,13 @@ export interface WithDocs {
    * Should a file be relevant on a topic, the LLM is expected to read it when needed.
    */
   optionalDocs?: DocumentationFile[]
+
+  /**
+   * List of project paths to SKILL.md files.
+   * Each file must have a YAML frontmatter with `name` and `description`.
+   * Skills are discovered at L1 (metadata in system prompt) and loaded on-demand at L2 via tools.
+   */
+  skills?: string[]
 }
 
 export type DocumentationFile = {

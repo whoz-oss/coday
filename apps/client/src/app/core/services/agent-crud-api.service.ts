@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
-import { Observable } from 'rxjs'
+import { Observable, Subscription } from 'rxjs'
 import { ProjectStateService } from './project-state.service'
 
 export type AgentLocation = 'project' | 'colocated'
@@ -16,6 +16,7 @@ export interface AgentDefinition {
   openaiAssistantId?: string
   integrations?: Record<string, string[]>
   mandatoryDocs?: string[]
+  skills?: string[]
 }
 
 export interface AgentSummaryWithMeta {
@@ -114,6 +115,41 @@ export class AgentCrudApiService {
       }
       reader.onerror = () => observer.error(reader.error)
       reader.readAsDataURL(file)
+    })
+  }
+
+  /**
+   * Upload a skill ZIP archive.
+   * The ZIP is read as base64 and sent as JSON (same pattern as uploadDocument).
+   * URL is /api/projects/:projectName/skills/upload (NOT under /agents/).
+   */
+  uploadSkillZip(file: File, overwrite?: boolean): Observable<{ skillPath: string; skillName: string }> {
+    return new Observable((observer) => {
+      const reader = new FileReader()
+      let innerSub: Subscription | undefined
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(',')[1]
+        const params: Record<string, string> = {}
+        if (overwrite) {
+          params['overwrite'] = 'true'
+        }
+        innerSub = this.http
+          .post<{ skillPath: string; skillName: string }>(
+            `/api/projects/${this.projectState.getSelectedProjectIdOrThrow()}/skills/upload`,
+            {
+              filename: file.name,
+              content: base64,
+            },
+            { params }
+          )
+          .subscribe(observer)
+      }
+      reader.onerror = () => observer.error(reader.error)
+      reader.readAsDataURL(file)
+      return () => {
+        reader.abort()
+        innerSub?.unsubscribe()
+      }
     })
   }
 

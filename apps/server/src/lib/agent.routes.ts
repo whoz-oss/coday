@@ -347,6 +347,49 @@ export function registerAgentRoutes(
   })
 
   /**
+   * POST /api/projects/:projectName/skills/upload
+   * Upload a skill ZIP archive. Extracts into skills/{name}/.
+   * Body: { filename: string, content: string (base64) }
+   * Query: ?overwrite=true|false
+   * Returns: { skillPath, skillName }
+   *
+   * IMPORTANT: This route is under /skills/, NOT /agents/, to avoid
+   * collision with the parametric GET /agents/:agentName route.
+   */
+  app.post('/api/projects/:projectName/skills/upload', async (req: express.Request, res: express.Response) => {
+    try {
+      const projectName = getParamAsString(req.params.projectName)
+      if (!projectName) {
+        res.status(400).json({ error: 'Project name is required' })
+        return
+      }
+
+      const { filename, content } = req.body as { filename?: string; content?: string }
+      if (!filename || !content) {
+        res.status(400).json({ error: 'filename and content (base64) are required' })
+        return
+      }
+
+      const overwrite = req.query['overwrite'] === 'true'
+      const buffer = Buffer.from(content, 'base64')
+
+      debugLog('AGENT', `POST upload skill ZIP: "${filename}" for project="${projectName}", overwrite=${overwrite}`)
+
+      const result = await agentCrudService.uploadSkillZip(projectName, filename, buffer, overwrite)
+      res.status(201).json(result)
+    } catch (error) {
+      console.error('Error uploading skill ZIP:', error)
+      const statusCode = (error as any)?.statusCode
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      if (statusCode) {
+        res.status(statusCode).json({ error: errorMessage })
+      } else {
+        res.status(500).json({ error: `Failed to upload skill: ${errorMessage}` })
+      }
+    }
+  })
+
+  /**
    * DELETE /api/projects/:projectName/agents/:agentName
    * Delete a file-based agent
    */

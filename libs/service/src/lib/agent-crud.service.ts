@@ -1,6 +1,8 @@
 import * as path from 'node:path'
 import * as os from 'node:os'
-import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'fs'
+import AdmZip from 'adm-zip'
+import * as yaml from 'yaml'
 import { readYamlFile, writeYamlFile } from '@coday/utils'
 import type { AgentDefinition } from '@coday/model'
 import { MAX_FILE_SIZE, isFileExtensionAllowed } from '@coday/model'
@@ -251,6 +253,7 @@ export class AgentCrudService {
       integrations: definition.integrations,
       mandatoryDocs: definition.mandatoryDocs ?? existing.mandatoryDocs,
       optionalDocs: definition.optionalDocs ?? existing.optionalDocs,
+      skills: Array.isArray(definition.skills) ? definition.skills : existing.skills,
     }
     // Remove undefined keys so the YAML stays clean
     Object.keys(updated).forEach((k) => {
@@ -328,5 +331,176 @@ export class AgentCrudService {
     unlinkSync(found.filePath)
     console.log(`[AGENT_CRUD] Deleted agent '${agentName}' from ${found.location} for project ${projectName}`)
     return true
+  }
+
+  /**
+   * Upload a skill ZIP and extract it into the project's skills/ directory.
+   *
+   * Validates:
+   * - ZIP size (max 5 MB)
+   * - SKILL.md must exist at root (or inside a single root folder)
+   * - Frontmatter must contain a valid `name`
+   * - Path traversal protection on every ZIP entry
+   * - Overwrite protection (409 if skill already exists and overwrite is false)
+   */
+  async uploadSkillZip(
+    projectName: string,
+    _filename: string,
+    buffer: Buffer,
+    overwrite: boolean
+  ): Promise<{ skillPath: string; skillName: string }> {
+    const MAX_ZIP_SIZE = 5 * 1024 * 1024
+    if (buffer.length > MAX_ZIP_SIZE) {
+      const error = new Error('ZIP file too large (max 5 MB)')
+      ;(error as any).statusCode = 422
+      throw error
+    }
+
+    const projectPath = this.getProjectPath(projectName)
+    if (!projectPath) {
+      throw new Error('Project path not configured')
+    }
+
+    let zip: AdmZip
+    try {
+      zip = new AdmZip(buffer)
+    } catch {
+      const error = new Error('Invalid ZIP file')
+      ;(error as any).statusCode = 422
+      throw error
+    }
+
+    const entries = zip.getEntries()
+
+    // Detect nested ZIP: if all entries share a single root folder, strip it
+    let prefix = ''
+    const topLevelNames = new Set<string>()
+    for (const entry of entries) {
+      const first = entry.entryName.split('/')[0]
+      if (first) topLevelNames.add(first)
+    }
+    if (topLevelNames.size === 1) {
+      const singleRoot = [...topLevelNames][0]!
+      // Check if that single name is actually a directory prefix
+      const hasSubEntries = entries.some(
+        (e) => e.entryName.startsWith(singleRoot + '/') && e.entryName !== singleRoot + '/'
+      )
+      if (hasSubEntries) {
+        prefix = singleRoot + '/'
+      }
+    }
+
+    // Find SKILL.md
+    const skillMdEntry = entries.find((e) => {
+      const relative = prefix ? e.entryName.slice(prefix.length) : e.entryName
+      return relative === 'SKILL.md'
+    })
+
+    if (!skillMdEntry) {
+      const error = new Error('ZIP must contain a SKILL.md file at root level')
+      ;(error as any).statusCode = 422
+      throw error
+    }
+
+    // Parse SKILL.md frontmatter to extract name
+    const skillMdContent = skillMdEntry.getData().toString('utf-8')
+    const normalized = skillMdContent.replaceAll('\r\n', '\n')
+    if (!normalized.startsWith('---\n')) {
+      const error = new Error('SKILL.md has invalid frontmatter: missing opening ---')
+      ;(error as any).statusCode = 422
+      throw error
+    }
+
+    const closingIdx = normalized.indexOf('\n---', 3)
+    if (closingIdx === -1) {
+      const error = new Error('SKILL.md has invalid frontmatter: missing closing ---')
+      ;(error as any).statusCode = 422
+      throw error
+    }
+
+    const frontmatterRaw = normalized.slice(4, closingIdx)
+    let frontmatter: Record<string, unknown>
+    try {
+      frontmatter = yaml.parse(frontmatterRaw) as Record<string, unknown>
+    } catch {
+      const error = new Error('SKILL.md has invalid YAML frontmatter')
+      ;(error as any).statusCode = 422
+      throw error
+    }
+
+    if (
+      !frontmatter ||
+      typeof frontmatter !== 'object' ||
+      typeof frontmatter['name'] !== 'string' ||
+      !frontmatter['name']
+    ) {
+      const error = new Error("SKILL.md has invalid frontmatter: missing 'name'")
+      ;(error as any).statusCode = 422
+      throw error
+    }
+
+    const skillName = frontmatter['name'] as string
+
+    // Validate skillName to prevent path traversal
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(skillName)) {
+      const error = new Error(
+        "SKILL.md has invalid frontmatter: 'name' must be alphanumeric (hyphens/underscores allowed)"
+      )
+      ;(error as any).statusCode = 422
+      throw error
+    }
+
+    // Resolve skills directory relative to project root (next to coday.yaml)
+    const codayFiles = await findFilesByName({ text: 'coday.yaml', root: projectPath })
+    const codayFolder = codayFiles.length > 0 ? path.dirname(codayFiles[0]!) : ''
+    const skillsBaseDir = path.join(projectPath, codayFolder, 'skills')
+    const targetDir = path.join(skillsBaseDir, skillName)
+
+    // Check overwrite
+    if (existsSync(targetDir) && !overwrite) {
+      const error = new Error(`Skill '${skillName}' already exists. Use ?overwrite=true to replace.`)
+      ;(error as any).statusCode = 409
+      throw error
+    }
+
+    // Path traversal check on ALL entries BEFORE any write
+    const normalizedTarget = path.resolve(targetDir) + path.sep
+    for (const entry of entries) {
+      if (entry.isDirectory) continue
+      const relative = prefix ? entry.entryName.slice(prefix.length) : entry.entryName
+      if (!relative) continue
+      const resolved = path.resolve(targetDir, relative)
+      if (!resolved.startsWith(normalizedTarget)) {
+        const error = new Error('Invalid path in ZIP: path traversal detected')
+        ;(error as any).statusCode = 400
+        throw error
+      }
+    }
+
+    // If overwriting, remove existing directory
+    if (existsSync(targetDir) && overwrite) {
+      rmSync(targetDir, { recursive: true, force: true })
+    }
+
+    // Extract entries
+    mkdirSync(targetDir, { recursive: true })
+    for (const entry of entries) {
+      if (entry.isDirectory) continue
+      const relative = prefix ? entry.entryName.slice(prefix.length) : entry.entryName
+      if (!relative) continue
+      const destPath = path.resolve(targetDir, relative)
+      const destDir = path.dirname(destPath)
+      if (!existsSync(destDir)) {
+        mkdirSync(destDir, { recursive: true })
+      }
+      writeFileSync(destPath, entry.getData())
+    }
+
+    // Build relative skill path (relative to project root / coday folder)
+    const skillPath = path.join('skills', skillName, 'SKILL.md')
+
+    console.log(`[AGENT_CRUD] Extracted skill '${skillName}' to ${targetDir}`)
+
+    return { skillPath, skillName }
   }
 }

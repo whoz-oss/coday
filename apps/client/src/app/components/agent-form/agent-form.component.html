@@ -137,6 +137,38 @@
       <p class="hint">💡 Documents can be added after the agent is created.</p>
     }
 
+    <!-- Skills (visible in both create and edit modes) -->
+    <div class="section-title">
+      <span>Skills</span>
+      <button mat-icon-button type="button" (click)="addSkillRow()" title="Add skill path">
+        <mat-icon>add</mat-icon>
+      </button>
+      <label class="upload-btn" [class.uploading]="isUploadingSkill" title="Upload a skill ZIP archive">
+        <mat-icon>upload_file</mat-icon>
+        <input type="file" accept=".zip" (change)="onSkillZipSelected($event)" [disabled]="isUploadingSkill" hidden />
+      </label>
+    </div>
+
+    @if (skillUploadError) {
+      <p class="skill-upload-error">{{ skillUploadError }}</p>
+    }
+
+    @if (skills.length === 0) {
+      <p class="hint">No skills defined.</p>
+    }
+
+    @for (skill of skills; track $index; let i = $index) {
+      <div class="skill-row">
+        <mat-form-field appearance="outline" class="skill-field">
+          <mat-label>Skill path</mat-label>
+          <input matInput [(ngModel)]="skills[i]" placeholder="skills/my-skill/SKILL.md" />
+        </mat-form-field>
+        <button mat-icon-button type="button" (click)="removeSkillRow(i)" title="Remove">
+          <mat-icon>delete</mat-icon>
+        </button>
+      </div>
+    }
+
     <!-- Location (creation only) -->
     @if (!isEditMode) {
       <div class="section-title">Save to</div>
