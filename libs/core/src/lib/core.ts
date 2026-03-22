@@ -33,6 +33,17 @@ import { AiClientProvider } from '@coday/integrations-ai'
 
 const MAX_ITERATIONS = 100
 
+interface UserContext {
+  userService: UserService
+  integration: IntegrationService
+  integrationConfig: IntegrationConfigService
+  memory: MemoryService
+  mcp: McpConfigService
+  aiConfig: AiConfigService
+  aiClientProvider: AiClientProvider
+  agentService: AgentService
+}
+
 export class Coday {
   context: CommandContext | null = null
   configHandler: ConfigHandler
@@ -48,6 +59,7 @@ export class Coday {
   private messageQueue: Array<{ username: string; message: string }> = []
   aiClientProvider: AiClientProvider
   private activeUsername: string | undefined
+  private readonly userContextCache: Map<string, UserContext> = new Map()
 
   constructor(
     public readonly interactor: Interactor,
@@ -229,13 +241,15 @@ export class Coday {
    */
   async cleanup(): Promise<void> {
     try {
-      if (this.services.agent) {
-        await this.services.agent.kill()
+      // Kill all cached user contexts (agents + AI clients)
+      for (const ctx of this.userContextCache.values()) {
+        await ctx.agentService.kill()
+        ctx.aiClientProvider.cleanup()
       }
-      this.aiThreadService.kill()
+      this.userContextCache.clear()
+      this.activeUsername = undefined
 
-      // Reset AI client provider for fresh connections
-      this.aiClientProvider.cleanup()
+      this.aiThreadService.kill()
 
       // Clear context but keep services available
       this.context = null
@@ -344,26 +358,15 @@ export class Coday {
         // Note: Directory creation is handled lazily by ThreadFileService on first use
       }
 
-      // Create and store services
-      this.services.aiConfig = new AiConfigService(this.services.user, this.services.project)
-      this.services.aiConfig.initialize(this.context)
-      this.services.mcp.initialize(this.context)
+      // Create and store user-dependent services, cache them by username
+      const initialUserContext = await this.createUserContext(this.services.user.username)
+      this.userContextCache.set(this.services.user.username, initialUserContext)
+      this.activeUsername = this.services.user.username
+      this.applyUserContext(initialUserContext)
 
-      this.services.agent = new AgentService(
-        this.interactor,
-        this.aiClientProvider,
-        this.services,
-        this.context.project.root,
-        this.options.agentFolders
-      )
-      this.aiHandler = new AiHandler(this.interactor, this.services.agent, this.aiThreadService)
+      this.aiHandler = new AiHandler(this.interactor, this.services.agent!, this.aiThreadService)
       this.handlerLooper = new HandlerLooper(this.interactor, this.aiHandler, this.configHandler, this.services)
-      this.aiClientProvider.init(this.context)
       await this.handlerLooper.init(this.context.project)
-
-      console.log('[CODAY] Initializing services...')
-      await this.services.agent.initialize(this.context)
-      console.log('[CODAY] Services initialized')
     }
   }
 
@@ -377,62 +380,88 @@ export class Coday {
     await this.aiThreadService.select(this.options.thread)
   }
 
-  private async switchUserContext(newUsername: string): Promise<void> {
-    this.interactor.debug(`[CODAY] Switching user context from '${this.activeUsername}' to '${newUsername}'`)
+  /**
+   * Applies a UserContext to the active services and AiClientProvider.
+   * Does NOT touch aiHandler/handlerLooper — callers are responsible for recreating those.
+   */
+  private applyUserContext(ctx: UserContext): void {
+    this.services.user = ctx.userService
+    this.services.integration = ctx.integration
+    this.services.integrationConfig = ctx.integrationConfig
+    this.services.memory = ctx.memory
+    this.services.mcp = ctx.mcp
+    this.services.aiConfig = ctx.aiConfig
+    this.aiClientProvider = ctx.aiClientProvider
+    this.services.agent = ctx.agentService
+  }
 
-    const newUserService = new UserService(this.options.configDir, newUsername, this.interactor)
-    this.services.user = newUserService
+  /**
+   * Creates all user-dependent services for a given username.
+   * Mutates this.services.* for the new user BEFORE constructing AgentService
+   * so that the Toolbox (built inside AgentService) reads the correct services.
+   */
+  private async createUserContext(username: string): Promise<UserContext> {
+    const userService = new UserService(this.options.configDir, username, this.interactor)
 
-    // Recreate user-dependent services
-    this.services.integration = new IntegrationService(this.services.project, newUserService)
-    this.services.integrationConfig = new IntegrationConfigService(
-      newUserService,
-      this.services.project,
-      this.interactor
-    )
-    this.services.memory = new MemoryService(this.services.project, newUserService)
-    this.services.mcp = new McpConfigService(newUserService, this.services.project, this.interactor)
-    if (this.context) {
-      this.services.mcp.initialize(this.context)
-    }
-    this.services.aiConfig = new AiConfigService(newUserService, this.services.project)
-    if (this.context) {
-      this.services.aiConfig.initialize(this.context)
-    }
+    // Swap user-dependent services on this.services BEFORE building AgentService,
+    // because AgentService's Toolbox constructor reads from services.integration, memory, etc.
+    this.services.user = userService
+    this.services.integration = new IntegrationService(this.services.project, userService)
+    this.services.integrationConfig = new IntegrationConfigService(userService, this.services.project, this.interactor)
+    this.services.memory = new MemoryService(this.services.project, userService)
 
-    // Recreate AiClientProvider (kill resets aiProviderConfigs so init() can run fresh)
-    this.aiClientProvider.kill()
-    this.aiClientProvider = new AiClientProvider(
+    const mcp = new McpConfigService(userService, this.services.project, this.interactor)
+    if (this.context) mcp.initialize(this.context)
+    this.services.mcp = mcp
+
+    const aiConfig = new AiConfigService(userService, this.services.project)
+    if (this.context) aiConfig.initialize(this.context)
+    this.services.aiConfig = aiConfig
+
+    const aiClientProvider = new AiClientProvider(
       this.interactor,
-      newUserService,
+      userService,
       this.services.project,
       this.services.logger
     )
-    if (this.context) {
-      this.aiClientProvider.init(this.context)
-    }
+    if (this.context) aiClientProvider.init(this.context)
 
-    // Recreate AgentService (and its Toolbox) with the new provider and services
-    if (this.services.agent) {
-      await this.services.agent.kill()
-    }
-    this.services.agent = new AgentService(
+    const agentService = new AgentService(
       this.interactor,
-      this.aiClientProvider,
+      aiClientProvider,
       this.services,
       this.context?.project.root ?? '',
       this.options.agentFolders
     )
-    if (this.context) {
-      await this.services.agent.initialize(this.context)
+    if (this.context) await agentService.initialize(this.context)
+
+    return {
+      userService,
+      integration: this.services.integration,
+      integrationConfig: this.services.integrationConfig,
+      memory: this.services.memory,
+      mcp,
+      aiConfig,
+      aiClientProvider,
+      agentService,
+    }
+  }
+
+  private async switchUserContext(newUsername: string): Promise<void> {
+    this.interactor.debug(`[CODAY] Switching user context from '${this.activeUsername}' to '${newUsername}'`)
+
+    let ctx = this.userContextCache.get(newUsername)
+    if (!ctx) {
+      ctx = await this.createUserContext(newUsername)
+      this.userContextCache.set(newUsername, ctx)
     }
 
-    // Recreate AiHandler and HandlerLooper with the new AgentService
-    this.aiHandler = new AiHandler(this.interactor, this.services.agent, this.aiThreadService)
+    this.applyUserContext(ctx)
+
+    // Rebuild the lightweight handler wrappers pointing at the new agent service
+    this.aiHandler = new AiHandler(this.interactor, ctx.agentService, this.aiThreadService)
     this.handlerLooper = new HandlerLooper(this.interactor, this.aiHandler, this.configHandler, this.services)
-    if (this.context) {
-      await this.handlerLooper.init(this.context.project)
-    }
+    if (this.context) await this.handlerLooper.init(this.context.project)
 
     this.activeUsername = newUsername
     this.interactor.displayText(`[CODAY] User context switched to '${newUsername}'`)
