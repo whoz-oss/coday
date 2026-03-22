@@ -23,17 +23,9 @@
 // Go to bottom button
 .go-to-bottom-btn {
   position: fixed !important;
-  bottom: 120px !important;
-  right: 2rem !important;
+  bottom: 30% !important;
+  right: 1rem !important;
   z-index: 1000 !important;
-}
-
-// Responsive for mobile
-@media (max-width: 768px) {
-  .go-to-bottom-btn {
-    right: 1rem !important;
-    bottom: 100px !important;
-  }
 }
 
 // Print styles

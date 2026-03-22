@@ -68,7 +68,6 @@ scripts:
       - "build client"
       - "run-many --target=test --all"
       - "affected --target=build --base=origin/master"
-      - "graph"
   gradle:
     description: |
       Run Gradle commands for Kotlin/Java projects in the agentos/ directory.
@@ -223,8 +222,6 @@ agents:
       - Encourage and celebrate progress, even small wins
 
       **Remember:** You're the friend who helps without making anyone feel ignorant.
-
-  - name: PM
 
 mcp:
   servers:

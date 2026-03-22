@@ -52,56 +52,58 @@
       (blur)="isFocused = false"
     ></textarea>
     @if (!isSessionInitializing) {
-      @if (isThinking) {
-        <ds-icon-button
-          class="action-btn"
-          icon="stop"
-          variant="danger"
-          title="Stop generation"
-          (action)="onStopClick()"
-        />
-      }
-      @if (!isThinking || message.trim()) {
-        <ds-icon-button
-          class="send-btn"
-          icon="send"
-          variant="primary"
-          [title]="getSendButtonTooltip()"
-          [disabled]="isDisabled || !message.trim()"
-          [class.hidden]="isDisabled || !message.trim()"
-          [class.active]="!!message.trim() && !isDisabled"
-          (action)="sendMessage()"
-        />
-      }
-      @if (!isThinking) {
-        @if (!showWelcome) {
+      <div class="actions">
+        @if (isThinking) {
           <ds-icon-button
-            class="upload-btn"
-            icon="attach_file"
-            variant="default"
-            title="Upload files (images or documents)"
-            [disabled]="isDisabled"
-            (action)="triggerFileUpload()"
-          />
-          <input
-            #fileInput
-            type="file"
-            multiple
-            accept="image/*,application/pdf,.pdf,.doc,.docx,.txt,.md,.json,.yaml,.yml,.csv,.xml,.html"
-            style="display: none"
-            (change)="onFileInputChange($event)"
+            class="action-btn"
+            icon="stop"
+            variant="danger"
+            title="Stop generation"
+            (action)="onStopClick()"
           />
         }
-        <ds-icon-button
-          class="voice-btn"
-          [icon]="isRecording ? 'fiber_manual_record' : 'mic'"
-          variant="default"
-          [class.recording]="isRecording"
-          [class.hidden]="message.trim()"
-          [title]="isRecording ? 'Click to stop recording' : 'Click to start recording'"
-          (action)="toggleRecording()"
-        />
-      }
+        @if (!isThinking || message.trim()) {
+          <ds-icon-button
+            class="send-btn"
+            icon="send"
+            variant="primary"
+            [title]="getSendButtonTooltip()"
+            [disabled]="isDisabled || !message.trim()"
+            [class.hidden]="isDisabled || !message.trim()"
+            [class.active]="!!message.trim() && !isDisabled"
+            (action)="sendMessage()"
+          />
+        }
+        @if (!isThinking) {
+          @if (!showWelcome) {
+            <ds-icon-button
+              class="upload-btn"
+              icon="attach_file"
+              variant="default"
+              title="Upload files (images or documents)"
+              [disabled]="isDisabled"
+              (action)="triggerFileUpload()"
+            />
+            <input
+              #fileInput
+              type="file"
+              multiple
+              accept="image/*,application/pdf,.pdf,.doc,.docx,.txt,.md,.json,.yaml,.yml,.csv,.xml,.html"
+              style="display: none"
+              (change)="onFileInputChange($event)"
+            />
+          }
+          <ds-icon-button
+            class="voice-btn"
+            [icon]="isRecording ? 'fiber_manual_record' : 'mic'"
+            variant="default"
+            [class.recording]="isRecording"
+            [class.hidden]="message.trim()"
+            [title]="isRecording ? 'Click to stop recording' : 'Click to start recording'"
+            (action)="toggleRecording()"
+          />
+        }
+      </div>
     }
   </div>
 </div>

@@ -4,6 +4,19 @@ aiProvider: anthropic
 modelName: BIG
 integrations:
   GITHUB:
+    - add_issue_comment
+    - create_issue
+    - get_file_contents
+    - get_issue
+    - get_issue_comments
+    - get_me
+    - get_pull_request
+    - get_pull_request_status
+    - list_issues
+    - list_pull_requests
+    - search_issues
+    - search_users
+    - update_issue
   FETCH:
   FILES:
   AI:

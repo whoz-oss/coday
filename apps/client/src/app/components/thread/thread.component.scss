@@ -164,24 +164,7 @@
   padding: 0 1rem;
 }
 
-.input-glass {
-  position: relative;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-backdrop-blur);
-  -webkit-backdrop-filter: var(--glass-backdrop-blur);
-  border: 1px solid var(--glass-border-color);
-  border-radius: 12px;
-  box-shadow: var(--glass-shadow);
-  padding: 1rem;
-  min-height: 60px;
-
-  @media (max-width: 768px) {
-    border-radius: 8px;
-    padding: 0.75rem;
-  }
-}
-
-// Choice overlay — rendered in normal flow, replacing the textarea
+// Choice overlay
 .choice-overlay {
   display: block;
   width: 100%;
