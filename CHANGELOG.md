@@ -1,3 +1,13 @@
+## 0.98.0 (2026-03-22)
+
+### 🚀 Features
+
+- various UI mobile ([#609](https://github.com/whoz-oss/coday/pull/609))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.97.2 (2026-03-22)
 
 ### 🩹 Fixes
