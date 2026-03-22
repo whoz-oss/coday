@@ -3,6 +3,9 @@
  */
 
 import {
+  AgentFinishedEvent,
+  AgentRunningEvent,
+  AgentSelectedEvent,
   AnswerEvent,
   ChoiceEvent,
   DelegationEvent,
@@ -32,6 +35,9 @@ export type ThreadMessage =
   | ChoiceEvent
   | AnswerEvent
   | DelegationEvent
+  | AgentSelectedEvent
+  | AgentRunningEvent
+  | AgentFinishedEvent
 
 /**
  * Represents a user with access to a thread.

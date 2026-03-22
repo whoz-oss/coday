@@ -43,7 +43,9 @@ export class AiHandler extends CommandHandler implements Killable {
       return context
     }
 
-    this.interactor.sendEvent(new AgentSelectedEvent({ agentName: selectedAgent.name }))
+    const selectedEvent = new AgentSelectedEvent({ agentName: selectedAgent.name })
+    context.aiThread?.addOrchestrationEvent(selectedEvent)
+    this.interactor.sendEvent(selectedEvent)
 
     // If no further command, just confirm selection
     if (!restOfCommand.trim()) {
@@ -120,7 +122,9 @@ export class AiHandler extends CommandHandler implements Killable {
     // Check for auto-save after user message is added to thread
     await this.checkAndAutoSave(context.aiThread!, agent)
 
-    this.interactor.sendEvent(new AgentRunningEvent({ agentName: agent.name }))
+    const runningEvent = new AgentRunningEvent({ agentName: agent.name })
+    context.aiThread?.addOrchestrationEvent(runningEvent)
+    this.interactor.sendEvent(runningEvent)
 
     events.subscribe({
       next: (event: any) => {
@@ -150,7 +154,9 @@ export class AiHandler extends CommandHandler implements Killable {
       } catch (saveError) {
         this.interactor.debug(`Final auto-save failed: ${saveError}`)
       }
-      this.interactor.sendEvent(new AgentFinishedEvent({ agentName: agent.name, error: runError }))
+      const finishedEvent = new AgentFinishedEvent({ agentName: agent.name, error: runError })
+      context.aiThread?.addOrchestrationEvent(finishedEvent)
+      this.interactor.sendEvent(finishedEvent)
     }
     return context
   }

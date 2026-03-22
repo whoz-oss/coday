@@ -5,6 +5,9 @@
  */
 
 import {
+  AgentFinishedEvent,
+  AgentRunningEvent,
+  AgentSelectedEvent,
   AnswerEvent,
   buildCodayEvent,
   ChoiceEvent,
@@ -34,6 +37,9 @@ const THREAD_MESSAGE_TYPES = [
   ChoiceEvent.type,
   AnswerEvent.type,
   DelegationEvent.type,
+  AgentSelectedEvent.type,
+  AgentRunningEvent.type,
+  AgentFinishedEvent.type,
 ]
 
 /**
@@ -417,6 +423,14 @@ export class AiThread {
   addAnswerEvent(answerEvent: AnswerEvent): void {
     this.add(answerEvent)
     this.modifiedDate = new Date().toISOString()
+  }
+
+  /**
+   * Add an orchestration event to the thread history.
+   * Used for agent lifecycle tracking (selected, running, finished).
+   */
+  addOrchestrationEvent(event: AgentSelectedEvent | AgentRunningEvent | AgentFinishedEvent): void {
+    this.add(event)
   }
 
   /**
