@@ -1,5 +1,14 @@
 import { lastValueFrom, Observable } from 'rxjs'
-import { Agent, AgentServiceModel, AiThread, CodayEvent, CommandContext } from '@coday/model'
+import {
+  Agent,
+  AgentFinishedEvent,
+  AgentRunningEvent,
+  AgentSelectedEvent,
+  AgentServiceModel,
+  AiThread,
+  CodayEvent,
+  CommandContext,
+} from '@coday/model'
 import { parseAgentCommand } from './parse-agent-command'
 import { keywords } from '@coday/model'
 import { Killable } from '@coday/model'
@@ -33,6 +42,8 @@ export class AiHandler extends CommandHandler implements Killable {
       this.interactor.error('Failed to find any agent')
       return context
     }
+
+    this.interactor.sendEvent(new AgentSelectedEvent({ agentName: selectedAgent.name }))
 
     // If no further command, just confirm selection
     if (!restOfCommand.trim()) {
@@ -109,6 +120,8 @@ export class AiHandler extends CommandHandler implements Killable {
     // Check for auto-save after user message is added to thread
     await this.checkAndAutoSave(context.aiThread!, agent)
 
+    this.interactor.sendEvent(new AgentRunningEvent({ agentName: agent.name }))
+
     events.subscribe({
       next: (event: any) => {
         this.interactor.sendEvent(event)
@@ -123,9 +136,11 @@ export class AiHandler extends CommandHandler implements Killable {
         }
       },
     })
+    let runError: string | undefined
     try {
       await lastValueFrom(events, { defaultValue: undefined })
     } catch (error: any) {
+      runError = error.message
       this.interactor.error(`Could not run agent ${agent.name} : ${error.message}`)
     } finally {
       // Always perform final autosave, even if there was an error
@@ -135,6 +150,7 @@ export class AiHandler extends CommandHandler implements Killable {
       } catch (saveError) {
         this.interactor.debug(`Final auto-save failed: ${saveError}`)
       }
+      this.interactor.sendEvent(new AgentFinishedEvent({ agentName: agent.name, error: runError }))
     }
     return context
   }

@@ -413,6 +413,38 @@ export class DelegationEvent extends CodayEvent {
   }
 }
 
+export class AgentSelectedEvent extends CodayEvent {
+  agentName: string
+  static override type = 'agent_selected'
+
+  constructor(event: Partial<AgentSelectedEvent>) {
+    super(event, AgentSelectedEvent.type)
+    this.agentName = event.agentName!
+  }
+}
+
+export class AgentRunningEvent extends CodayEvent {
+  agentName: string
+  static override type = 'agent_running'
+
+  constructor(event: Partial<AgentRunningEvent>) {
+    super(event, AgentRunningEvent.type)
+    this.agentName = event.agentName!
+  }
+}
+
+export class AgentFinishedEvent extends CodayEvent {
+  agentName: string
+  error?: string
+  static override type = 'agent_finished'
+
+  constructor(event: Partial<AgentFinishedEvent>) {
+    super(event, AgentFinishedEvent.type)
+    this.agentName = event.agentName!
+    this.error = event.error
+  }
+}
+
 export class OAuthCallbackEvent extends CodayEvent {
   code?: string
   state: string
@@ -451,6 +483,9 @@ const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [FileEvent.type]: FileEvent,
   [OAuthRequestEvent.type]: OAuthRequestEvent,
   [OAuthCallbackEvent.type]: OAuthCallbackEvent,
+  [AgentSelectedEvent.type]: AgentSelectedEvent,
+  [AgentRunningEvent.type]: AgentRunningEvent,
+  [AgentFinishedEvent.type]: AgentFinishedEvent,
 }
 
 export function buildCodayEvent(data: any): CodayEvent | undefined {
