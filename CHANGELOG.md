@@ -1,3 +1,13 @@
+## 0.97.2 (2026-03-22)
+
+### 🩹 Fixes
+
+- send proper AnswerEvent with parentKey when replying to InviteEvent ([#612](https://github.com/whoz-oss/coday/pull/612))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.97.1 (2026-03-21)
 
 ### 🩹 Fixes
