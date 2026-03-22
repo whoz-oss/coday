@@ -41,6 +41,19 @@ chmod +x "$PKG_BUILD_DIR/scripts/postinstall"
 echo "Copying app bundle into pkg scripts directory..."
 cp -R "$APP_BUNDLE" "$PKG_BUILD_DIR/scripts/Coday.app"
 
+# Re-sign the .app after copying (copying breaks the original signature)
+APP_SIGNING_IDENTITY="Developer ID Application: BIZNET.IO (7DPGXLTDQS)"
+if security find-identity -v | grep -q "$APP_SIGNING_IDENTITY"; then
+    echo "Re-signing app bundle after copy..."
+    codesign --force --deep --sign "$APP_SIGNING_IDENTITY" \
+        --options runtime \
+        --entitlements "$APP_DIR/macos/entitlements.mac.plist" \
+        "$PKG_BUILD_DIR/scripts/Coday.app"
+    echo "App bundle re-signed"
+else
+    echo "Warning: App signing identity not found, skipping re-sign"
+fi
+
 # Build component package with NO payload — the postinstall script handles app installation
 echo "Building component package..."
 pkgbuild \
@@ -104,6 +117,21 @@ if security find-identity -v | grep -q "$SIGNING_IDENTITY"; then
         "$PKG_BUILD_DIR/Coday-${VERSION}-unsigned.pkg" \
         "$PKG_OUTPUT"
     echo "Signed package: $PKG_OUTPUT"
+
+    # Notarize the signed package if Apple credentials are available
+    if [ -n "$APPLE_ID" ] && [ -n "$APPLE_APP_SPECIFIC_PASSWORD" ]; then
+        echo "Notarizing package..."
+        xcrun notarytool submit "$PKG_OUTPUT" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "7DPGXLTDQS" \
+            --wait
+        echo "Stapling notarization ticket..."
+        xcrun stapler staple "$PKG_OUTPUT"
+        echo "Package notarized and stapled: $PKG_OUTPUT"
+    else
+        echo "Warning: APPLE_ID or APPLE_APP_SPECIFIC_PASSWORD not set, skipping notarization"
+    fi
 else
     echo "Warning: Signing identity not found, creating unsigned package"
     cp "$PKG_BUILD_DIR/Coday-${VERSION}-unsigned.pkg" "$PKG_OUTPUT"
