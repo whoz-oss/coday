@@ -1,5 +1,16 @@
 import { Observable, Subject } from 'rxjs'
-import { CodayEvent } from '@coday/model'
+import {
+  AgentFinishedEvent,
+  AgentRunningEvent,
+  AgentSelectedEvent,
+  AnswerEvent,
+  CodayEvent,
+  MessageEvent,
+} from '@coday/model'
+
+const MAX_ITERATIONS = 100
+
+export type ThreadRuntimeStatus = 'idle' | 'running' | 'killed' | 'error'
 
 /**
  * Callbacks injected into ThreadRuntime for side-effects.
@@ -53,7 +64,7 @@ export interface ThreadRuntimeCallbacks {
 export class ThreadRuntime {
   private readonly events: CodayEvent[] = []
   private readonly eventSubject = new Subject<CodayEvent>()
-  private readonly messageQueue: Array<{ username: string; message: string }> = []
+  private _status: ThreadRuntimeStatus = 'idle'
   private interruptRequested = false
   private killed = false
 
@@ -62,6 +73,10 @@ export class ThreadRuntime {
    * Consumers (SSE broadcaster, UI) subscribe to this.
    */
   readonly events$: Observable<CodayEvent> = this.eventSubject.asObservable()
+
+  get status(): ThreadRuntimeStatus {
+    return this._status
+  }
 
   constructor(
     readonly threadId: string,
@@ -73,12 +88,22 @@ export class ThreadRuntime {
 
   /**
    * Add a user message. This is the main input API.
-   * If the runtime is idle, it will trigger a new run.
-   * If the runtime is running, the message is queued.
+   * Stores the message as an event in the timeline and triggers a run if idle.
    */
   addUserMessage(username: string, message: string): void {
-    this.messageQueue.push({ username, message })
-    // TODO: trigger run if idle
+    const messageEvent = new MessageEvent({
+      role: 'user',
+      content: [{ type: 'text', content: message }],
+      name: username,
+    })
+    this.emitEvent(messageEvent)
+
+    if (this._status === 'idle') {
+      this.run().catch((e) => {
+        console.error(`[ThreadRuntime ${this.threadId}] Error during run:`, e)
+        this._status = 'error'
+      })
+    }
   }
 
   /**
@@ -102,11 +127,12 @@ export class ThreadRuntime {
   requestKill(): void {
     this.killed = true
     this.interruptRequested = true
+    this._status = 'killed'
   }
 
   /**
    * Emit and store an event.
-   * Called by the (not yet implemented) run/processNextStep state machine.
+   * Delegates persistence to the storeEvent callback, then records and broadcasts the result.
    */
   emitEvent(event: CodayEvent): void {
     const stored = this.callbacks.storeEvent(event)
@@ -116,10 +142,133 @@ export class ThreadRuntime {
 
   /**
    * Check if the runtime should continue processing.
-   * Passed to agent callbacks as the shouldContinue polling function.
-   * Exposed so the future run() implementation can reference it directly.
+   * Passed to runAgent callbacks as a polling function — agents check this before each LLM call.
    */
   readonly shouldContinue = (): boolean => {
     return !this.interruptRequested && !this.killed
+  }
+
+  /**
+   * Main orchestration loop. Drives processNextStep() until the turn is complete,
+   * an interrupt is requested, or the iteration ceiling is hit.
+   */
+  async run(): Promise<void> {
+    if (this._status === 'running') return
+
+    this._status = 'running'
+    this.interruptRequested = false
+    let iterations = 0
+
+    try {
+      while (!this.interruptRequested && iterations < MAX_ITERATIONS) {
+        await this.processNextStep()
+        iterations++
+      }
+
+      if (this.killed) {
+        this._status = 'killed'
+      } else if (iterations >= MAX_ITERATIONS) {
+        this._status = 'error'
+      } else {
+        this._status = 'idle'
+      }
+    } catch (e) {
+      this._status = 'error'
+      throw e
+    }
+  }
+
+  /**
+   * Single step of the state machine. Scans events backward from the end to find
+   * the last orchestration event that belongs to the current turn (i.e. after the
+   * last user message), then acts:
+   *
+   * - AgentFinishedEvent → turn complete, set interruptRequested
+   * - AgentRunningEvent  → execute the agent via callback
+   * - AgentSelectedEvent → transition to running by emitting AgentRunningEvent
+   * - No orchestration event after last user message → select an agent
+   * - No user message at all → nothing to do, set interruptRequested
+   */
+  private async processNextStep(): Promise<void> {
+    const lastUserMessageIndex = this.findLastUserMessageIndex()
+
+    for (let i = this.events.length - 1; i >= 0; i--) {
+      const event = this.events[i]
+
+      // Orchestration events that predate the last user message belong to a previous
+      // turn — skip them so we don't re-act on stale state.
+      if (
+        i < lastUserMessageIndex &&
+        (event instanceof AgentFinishedEvent ||
+          event instanceof AgentRunningEvent ||
+          event instanceof AgentSelectedEvent)
+      ) {
+        continue
+      }
+
+      if (event instanceof AgentFinishedEvent) {
+        // Turn complete — let the run() loop exit cleanly
+        this.interruptRequested = true
+        return
+      }
+
+      if (event instanceof AgentRunningEvent) {
+        // Agent already selected and running — hand off to the callback
+        await this.callbacks.runAgent(event.agentName, [...this.events], this.shouldContinue)
+        return
+      }
+
+      if (event instanceof AgentSelectedEvent) {
+        // Agent selected but not yet running — advance the state
+        this.emitEvent(new AgentRunningEvent({ agentName: event.agentName }))
+        return
+      }
+    }
+
+    // No orchestration event found in the current turn — this is a fresh user message.
+    if (lastUserMessageIndex >= 0) {
+      const lastUserEvent = this.events[lastUserMessageIndex]
+      const messageContent = lastUserEvent ? this.extractMessageContent(lastUserEvent) : undefined
+      if (messageContent) {
+        const agentName = await this.callbacks.selectAgent(messageContent)
+        if (agentName) {
+          this.emitEvent(new AgentSelectedEvent({ agentName }))
+        } else {
+          this.interruptRequested = true
+        }
+      } else {
+        this.interruptRequested = true
+      }
+    } else {
+      // No user message in the timeline — nothing to orchestrate
+      this.interruptRequested = true
+    }
+  }
+
+  /**
+   * Returns the index of the most recent user message (MessageEvent with role='user'
+   * or AnswerEvent) in the event list, or -1 if none exists.
+   */
+  private findLastUserMessageIndex(): number {
+    for (let i = this.events.length - 1; i >= 0; i--) {
+      const event = this.events[i]
+      if ((event instanceof MessageEvent && event.role === 'user') || event instanceof AnswerEvent) {
+        return i
+      }
+    }
+    return -1
+  }
+
+  /**
+   * Extracts plain-text content from a user-facing event for agent selection.
+   */
+  private extractMessageContent(event: CodayEvent): string | undefined {
+    if (event instanceof MessageEvent && event.role === 'user') {
+      return event.getTextContent()
+    }
+    if (event instanceof AnswerEvent) {
+      return event.answer
+    }
+    return undefined
   }
 }
