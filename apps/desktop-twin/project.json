@@ -25,6 +25,11 @@
             "glob": "loader.html",
             "input": "{projectRoot}/src",
             "output": "."
+          },
+          {
+            "glob": "desktop-twin.css",
+            "input": "{projectRoot}/src",
+            "output": "."
           }
         ],
         "deleteOutputPath": false,

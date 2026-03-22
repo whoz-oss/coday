@@ -48,6 +48,19 @@ chmod +x "$PKG_BUILD_DIR/scripts/postinstall"
 echo "Copying app bundle into pkg scripts directory..."
 cp -R "$APP_BUNDLE" "$PKG_BUILD_DIR/scripts/CodayTwin.app"
 
+# Re-sign the .app after copying (copying breaks the original signature)
+APP_SIGNING_IDENTITY="Developer ID Application: BIZNET.IO (7DPGXLTDQS)"
+if security find-identity -v | grep -q "$APP_SIGNING_IDENTITY"; then
+    echo "Re-signing app bundle after copy..."
+    codesign --force --deep --sign "$APP_SIGNING_IDENTITY" \
+        --options runtime \
+        --entitlements "$APP_DIR/macos/entitlements.mac.plist" \
+        "$PKG_BUILD_DIR/scripts/CodayTwin.app"
+    echo "App bundle re-signed"
+else
+    echo "Warning: App signing identity not found, skipping re-sign"
+fi
+
 # Build component package with NO payload — the postinstall script handles app installation
 # We use an empty payload dir so pkgbuild still creates a valid pkg structure
 mkdir -p "$PKG_BUILD_DIR/empty-payload"
@@ -88,7 +101,6 @@ cat > "$PKG_BUILD_DIR/welcome.html" << EOF
 <ul>
 <li>Install CodayTwin to your Applications folder</li>
 <li>Install required dependencies (Homebrew, Node.js, ripgrep) if not already present</li>
-<li>Install Obsidian if not already present</li>
 <li>Create your CodayTwin workspace at ~/CodayTwin/ (if it doesn't exist)</li>
 </ul>
 <p>Click Continue to proceed.</p>
@@ -105,7 +117,7 @@ productbuild \
     "$PKG_BUILD_DIR/CodayTwin-${VERSION}-unsigned.pkg"
 
 # Sign the package if identity is available
-SIGNING_IDENTITY="Developer ID Installer: BIZNET.IO (7DPGXLTDQS)"
+SIGNING_IDENTITY="Developer ID Installer: BIZNET.IO ($APPLE_TEAM_ID)"
 PKG_OUTPUT="$RELEASE_DIR/CodayTwin-${VERSION}.pkg"
 
 if security find-identity -v | grep -q "$SIGNING_IDENTITY"; then
@@ -115,6 +127,21 @@ if security find-identity -v | grep -q "$SIGNING_IDENTITY"; then
         "$PKG_BUILD_DIR/CodayTwin-${VERSION}-unsigned.pkg" \
         "$PKG_OUTPUT"
     echo "Signed package: $PKG_OUTPUT"
+
+    # Notarize the signed package if Apple credentials are available
+    if [ -n "$APPLE_ID" ] && [ -n "$APPLE_APP_SPECIFIC_PASSWORD" ]; then
+        echo "Notarizing package..."
+        xcrun notarytool submit "$PKG_OUTPUT" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+        echo "Stapling notarization ticket..."
+        xcrun stapler staple "$PKG_OUTPUT"
+        echo "Package notarized and stapled: $PKG_OUTPUT"
+    else
+        echo "Warning: APPLE_ID or APPLE_APP_SPECIFIC_PASSWORD not set, skipping notarization"
+    fi
 else
     echo "Warning: Signing identity not found, creating unsigned package"
     cp "$PKG_BUILD_DIR/CodayTwin-${VERSION}-unsigned.pkg" "$PKG_OUTPUT"

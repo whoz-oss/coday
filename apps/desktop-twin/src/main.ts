@@ -1054,8 +1054,11 @@ function createWindow(): void {
   // Flag the renderer as running inside desktop-twin by adding a CSS class
   // on <body>. Angular SCSS can then use `body.desktop-twin` selectors for
   // app-specific overrides without touching the shared client source.
+  // Inject desktop-twin identity class and dedicated CSS overrides on every page load
+  const desktopTwinCss = fs.readFileSync(join(__dirname, 'desktop-twin.css'), 'utf8')
   mainWindow.webContents.on('did-finish-load', () => {
     void mainWindow!.webContents.executeJavaScript(`document.body.classList.add('desktop-twin');`)
+    void mainWindow!.webContents.insertCSS(desktopTwinCss)
   })
 
   // Load the Coday web interface

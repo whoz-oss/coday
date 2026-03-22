@@ -708,17 +708,6 @@ $sidenav-header-height: 122px;
   }
 }
 
-// Desktop-twin app overrides
-:host-context(body.desktop-twin) {
-  .sidenav-header {
-    display: none;
-  }
-
-  .sidenav-sections {
-    max-height: calc(100vh - 72px);
-  }
-}
-
 // Dark mode adjustments
 :host-context(body.dark),
 :root[data-theme='dark'] {

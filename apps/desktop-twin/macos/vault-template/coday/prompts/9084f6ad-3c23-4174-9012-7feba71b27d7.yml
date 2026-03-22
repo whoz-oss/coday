@@ -1,0 +1,10 @@
+name: setup
+description: Help you setup your CodayTwin!
+commands:
+  - Help me setup myself!
+webhookEnabled: false
+source: project
+createdBy: vincent
+id: 9084f6ad-3c23-4174-9012-7feba71b27d7
+createdAt: 2026-03-19T14:59:02.895Z
+parameterFormat: ""

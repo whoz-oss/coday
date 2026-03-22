@@ -142,15 +142,6 @@ else
     echo "ripgrep already installed: $(run_as_user 'rg --version' | head -1)"
 fi
 
-# Step 6: Install Obsidian if not present
-if [ ! -d "/Applications/Obsidian.app" ] && [ ! -d "$ACTUAL_HOME/Applications/Obsidian.app" ]; then
-    echo "Installing Obsidian..."
-    run_as_user "$BREW_PATH install --cask obsidian"
-    echo "Obsidian installed successfully"
-else
-    echo "Obsidian already installed"
-fi
-
 # Vault directory creation is handled by the CodayTwin app on first launch,
 # after the user chooses their preferred location (default or custom path).
 
