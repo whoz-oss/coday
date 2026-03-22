@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core'
 import { OAuthRequestEvent, OAuthCallbackEvent } from '@coday/model'
+import { BehaviorSubject } from 'rxjs'
 import { EventStreamService } from './event-stream.service'
 import { MessageApiService } from './message-api.service'
 import { filter } from 'rxjs/operators'
@@ -14,8 +15,11 @@ export class OAuthService {
   private readonly pendingStates = new Map<string, string>() // state -> integrationName
   private popupCheckInterval: ReturnType<typeof setInterval> | null = null
 
+  /** Emits the current pending OAuth request, or null when none is pending. */
+  readonly pendingRequest$ = new BehaviorSubject<OAuthRequestEvent | null>(null)
+
   constructor() {
-    // Listen to OAuthRequestEvent
+    // Listen to OAuthRequestEvent — store it for the inline panel instead of opening popup directly
     this.eventStream.events$
       .pipe(filter((e): e is OAuthRequestEvent => e.type === 'oauth_request'))
       .subscribe((event) => this.handleOAuthRequest(event))
@@ -67,6 +71,53 @@ export class OAuthService {
     }, 500)
   }
 
+  /**
+   * Open the OAuth popup from a direct user gesture (click on the inline panel button).
+   * Must be called from a click event handler so browsers allow the popup.
+   */
+  openPopup(event: OAuthRequestEvent): void {
+    console.log('[OAuth Service] Opening popup from user gesture:', event.integrationName)
+
+    const width = 600
+    const height = 900
+    const left = window.screenX + (window.outerWidth - width) / 2
+    const top = window.screenY + (window.outerHeight - height) / 2
+
+    const features = `width=${width},height=${height},left=${left},top=${top},popup=yes,resizable=yes,scrollbars=yes`
+    const popup = window.open(event.authUrl, 'oauth_popup', features)
+
+    console.log('[OAuth Service] Popup opened:', !!popup)
+
+    if (popup) {
+      popup.focus()
+      this.startPopupMonitoring(popup, event.state)
+    }
+
+    // Hide the inline panel once the popup is launched
+    this.pendingRequest$.next(null)
+  }
+
+  /**
+   * Cancel the pending OAuth request (user dismissed the inline panel).
+   */
+  cancelRequest(event: OAuthRequestEvent): void {
+    console.log('[OAuth Service] OAuth cancelled by user via inline panel')
+    this.pendingStates.delete(event.state)
+    this.pendingRequest$.next(null)
+
+    const cancelCallbackEvent = new OAuthCallbackEvent({
+      state: event.state,
+      integrationName: event.integrationName,
+      error: 'user_cancelled',
+      errorDescription: 'User dismissed the authorization panel',
+    })
+
+    this.messageApi.sendMessage(cancelCallbackEvent).subscribe({
+      next: () => console.log('[OAuth Service] Cancellation sent to backend'),
+      error: (err) => console.error('[OAuth Service] Failed to send cancellation:', err),
+    })
+  }
+
   private handleOAuthRequest(event: OAuthRequestEvent): void {
     console.log('[OAuth Service] Received OAuthRequestEvent:', event.integrationName, event.state)
 
@@ -74,23 +125,8 @@ export class OAuthService {
     this.pendingStates.set(event.state, event.integrationName)
     console.log('[OAuth Service] Pending states:', Array.from(this.pendingStates.keys()))
 
-    // Open centered popup
-    const width = 600
-    const height = 900
-    const left = window.screenX + (window.outerWidth - width) / 2
-    const top = window.screenY + (window.outerHeight - height) / 2
-
-    // Add 'popup=yes' to force popup behavior and bring to front
-    const features = `width=${width},height=${height},left=${left},top=${top},popup=yes,resizable=yes,scrollbars=yes`
-    const popup = window.open(event.authUrl, 'oauth_popup', features)
-
-    console.log('[OAuth Service] Popup opened:', !!popup)
-
-    // Force focus on popup (helps with fullscreen mode on macOS)
-    if (popup) {
-      popup.focus()
-      this.startPopupMonitoring(popup, event.state)
-    }
+    // Expose the request to the inline panel — popup will be opened from user click
+    this.pendingRequest$.next(event)
   }
 
   private handlePopupMessage(event: MessageEvent): void {
