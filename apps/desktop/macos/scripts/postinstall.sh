@@ -125,18 +125,18 @@ else
     else
         echo "Node.js not found, installing..."
     fi
-    run_as_user "$BREW_PATH install node@22"
-    run_as_user "$BREW_PATH link --overwrite node@22"
+    run_as_user "$BREW_PATH install node@24"
+    run_as_user "$BREW_PATH link --overwrite node@24"
     echo "Node.js installed successfully"
 fi
 
-# Step 5: Install tmux if not present
-if ! run_as_user "command -v tmux" &>/dev/null; then
-    echo "Installing tmux..."
-    run_as_user "$BREW_PATH install tmux"
-    echo "tmux installed successfully"
+# Step 5: Install ripgrep if not present
+if ! run_as_user "command -v rg" &>/dev/null; then
+    echo "Installing ripgrep..."
+    run_as_user "$BREW_PATH install ripgrep"
+    echo "ripgrep installed successfully"
 else
-    echo "tmux already installed: $(run_as_user 'tmux -V')"
+    echo "ripgrep already installed: $(run_as_user 'rg --version' | head -1)"
 fi
 
 echo "=== Coday Desktop Post-Install Complete ==="

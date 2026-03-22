@@ -62,8 +62,6 @@ else
 fi
 
 # Build component package with NO payload — the postinstall script handles app installation
-# We use an empty payload dir so pkgbuild still creates a valid pkg structure
-mkdir -p "$PKG_BUILD_DIR/empty-payload"
 echo "Building component package..."
 pkgbuild \
     --nopayload \

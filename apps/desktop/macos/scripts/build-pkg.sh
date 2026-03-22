@@ -42,7 +42,7 @@ echo "Copying app bundle into pkg scripts directory..."
 cp -R "$APP_BUNDLE" "$PKG_BUILD_DIR/scripts/Coday.app"
 
 # Re-sign the .app after copying (copying breaks the original signature)
-APP_SIGNING_IDENTITY="Developer ID Application: BIZNET.IO (7DPGXLTDQS)"
+APP_SIGNING_IDENTITY="Developer ID Application: BIZNET.IO ($APPLE_TEAM_ID)"
 if security find-identity -v | grep -q "$APP_SIGNING_IDENTITY"; then
     echo "Re-signing app bundle after copy..."
     codesign --force --deep --sign "$APP_SIGNING_IDENTITY" \
@@ -91,7 +91,7 @@ cat > "$PKG_BUILD_DIR/welcome.html" << EOF
 <p>This installer will:</p>
 <ul>
 <li>Install Coday Desktop to your Applications folder</li>
-<li>Install required dependencies (Homebrew, Node.js, tmux) if not already present</li>
+<li>Install required dependencies (Homebrew, Node.js, ripgrep) if not already present</li>
 </ul>
 <p>Click Continue to proceed.</p>
 </body>
@@ -107,7 +107,7 @@ productbuild \
     "$PKG_BUILD_DIR/Coday-${VERSION}-unsigned.pkg"
 
 # Sign the package if identity is available
-SIGNING_IDENTITY="Developer ID Installer: BIZNET.IO (7DPGXLTDQS)"
+SIGNING_IDENTITY="Developer ID Installer: BIZNET.IO ($APPLE_TEAM_ID)"
 PKG_OUTPUT="$RELEASE_DIR/Coday-${VERSION}.pkg"
 
 if security find-identity -v | grep -q "$SIGNING_IDENTITY"; then
@@ -124,7 +124,7 @@ if security find-identity -v | grep -q "$SIGNING_IDENTITY"; then
         xcrun notarytool submit "$PKG_OUTPUT" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --team-id "7DPGXLTDQS" \
+            --team-id "$APPLE_TEAM_ID" \
             --wait
         echo "Stapling notarization ticket..."
         xcrun stapler staple "$PKG_OUTPUT"
