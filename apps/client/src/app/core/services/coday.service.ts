@@ -159,9 +159,16 @@ export class CodayService implements OnDestroy {
       this.currentInviteEventSubject.next(null)
 
       const answerEvent = pendingInvite.buildAnswer(message)
+
+      // Optimistic UI: display the user's reply immediately without waiting for SSE bounce-back,
+      // aligning with the free-form path which gets immediate feedback via addUserMessage on server.
+      this.handleAnswerEvent(answerEvent)
+
       this.messageApi.sendMessage(answerEvent).subscribe({
         error: (error) => {
           console.error('[CODAY] Send invite answer error:', error)
+          // Restore the invite so the user can retry without refreshing
+          this.currentInviteEventSubject.next(pendingInvite)
           this.stopThinking()
         },
       })
@@ -541,13 +548,14 @@ export class CodayService implements OnDestroy {
   }
 
   /**
-   * Add a message to the history
+   * Add a message to the history, skipping duplicates by id
    */
   private addMessage(message: ChatMessage): void {
     const currentMessages = this.messagesSubject.value
-    const newMessages = [...currentMessages, message]
-
-    this.messagesSubject.next(newMessages)
+    if (currentMessages.some((m) => m.id === message.id)) {
+      return
+    }
+    this.messagesSubject.next([...currentMessages, message])
   }
 
   /**
