@@ -147,24 +147,39 @@ export class CodayService implements OnDestroy {
       return
     }
 
-    // Clear pending invite if any (UI state cleanup only — server is the source of truth)
-    const hadInvite = !!this.currentInviteEventSubject.value
-    if (hadInvite) {
-      this.currentInviteEventSubject.next(null)
+    const pendingInvite = this.currentInviteEventSubject.value
+
+    if (pendingInvite) {
+      // There is a pending InviteEvent: build a proper AnswerEvent with the correct parentKey
+      // so the backend's promptText() can match it via its filter on parentKey.
+      // Using sendFreeMessage here would route through addUserMessage which only works
+      // if pendingQuestionEvent is still set server-side — an unreliable assumption.
       this.isThinkingSubject.next(true)
       this.tabTitleService?.setSystemActive()
-    }
+      this.currentInviteEventSubject.next(null)
 
-    // Always use the free-form endpoint — server decides how to handle it
-    // (answers pending invite, or queues if agent is running)
-    this.messageApi.sendFreeMessage(message).subscribe({
-      error: (error) => {
-        console.error('[CODAY] Send error:', error)
-        if (hadInvite) {
+      const answerEvent = pendingInvite.buildAnswer(message)
+
+      // Optimistic UI: display the user's reply immediately without waiting for SSE bounce-back,
+      // aligning with the free-form path which gets immediate feedback via addUserMessage on server.
+      this.handleAnswerEvent(answerEvent)
+
+      this.messageApi.sendMessage(answerEvent).subscribe({
+        error: (error) => {
+          console.error('[CODAY] Send invite answer error:', error)
+          // Restore the invite so the user can retry without refreshing
+          this.currentInviteEventSubject.next(pendingInvite)
           this.stopThinking()
-        }
-      },
-    })
+        },
+      })
+    } else {
+      // No pending invite: use the free-form endpoint — server queues if agent is running
+      this.messageApi.sendFreeMessage(message).subscribe({
+        error: (error) => {
+          console.error('[CODAY] Send error:', error)
+        },
+      })
+    }
   }
 
   /**
@@ -533,13 +548,14 @@ export class CodayService implements OnDestroy {
   }
 
   /**
-   * Add a message to the history
+   * Add a message to the history, skipping duplicates by id
    */
   private addMessage(message: ChatMessage): void {
     const currentMessages = this.messagesSubject.value
-    const newMessages = [...currentMessages, message]
-
-    this.messagesSubject.next(newMessages)
+    if (currentMessages.some((m) => m.id === message.id)) {
+      return
+    }
+    this.messagesSubject.next([...currentMessages, message])
   }
 
   /**

@@ -543,6 +543,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   private adjustTextareaHeight(): void {
     const textarea = this.messageInput?.nativeElement
     if (!textarea) return
+    // TODO: the +32 fallback is a rough guess for the container padding when parentElement is absent.
+    // It is not reliable — offsetHeight may be 0 before first layout paint.
     const containerHeight = textarea.parentElement?.offsetHeight ?? textarea.offsetHeight + 32
     this.heightChanged.emit(containerHeight)
   }
