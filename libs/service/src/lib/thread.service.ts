@@ -152,6 +152,29 @@ export class ThreadService {
   }
 
   /**
+   * Build a ThreadSummary from an AiThread, preserving all fields including delegation metadata.
+   * Use this instead of inline object construction to avoid missing fields.
+   */
+  private toThreadSummary(thread: AiThread): ThreadSummary {
+    return {
+      id: thread.id,
+      username: thread.username,
+      projectId: thread.projectId,
+      name: thread.name,
+      summary: thread.summary,
+      createdDate: thread.createdDate,
+      modifiedDate: thread.modifiedDate,
+      price: thread.price,
+      starring: thread.starring,
+      users: thread.users,
+      parentThreadId: thread.parentThreadId,
+      parentEventId: thread.parentEventId,
+      delegatedAgentName: thread.delegatedAgentName,
+      delegatedTask: thread.delegatedTask,
+    }
+  }
+
+  /**
    * Update a thread entry in the cache
    * @param projectName Project name
    * @param threadSummary Updated thread summary
@@ -214,18 +237,7 @@ export class ThreadService {
     const savedThread = await repository.save(projectName, thread)
 
     // Add to cache
-    this.updateThreadInCache(projectName, {
-      id: savedThread.id,
-      username: savedThread.username,
-      projectId: savedThread.projectId,
-      name: savedThread.name,
-      summary: savedThread.summary,
-      createdDate: savedThread.createdDate,
-      modifiedDate: savedThread.modifiedDate,
-      price: savedThread.price,
-      starring: savedThread.starring,
-      users: savedThread.users,
-    })
+    this.updateThreadInCache(projectName, this.toThreadSummary(savedThread))
 
     return savedThread
   }
@@ -281,18 +293,7 @@ export class ThreadService {
     const updatedThread = await repository.save(projectName, thread)
 
     // Update in cache
-    this.updateThreadInCache(projectName, {
-      id: updatedThread.id,
-      username: updatedThread.username,
-      projectId: updatedThread.projectId,
-      name: updatedThread.name,
-      summary: updatedThread.summary,
-      createdDate: updatedThread.createdDate,
-      modifiedDate: updatedThread.modifiedDate,
-      price: updatedThread.price,
-      starring: updatedThread.starring,
-      users: updatedThread.users,
-    })
+    this.updateThreadInCache(projectName, this.toThreadSummary(updatedThread))
 
     return updatedThread
   }
@@ -321,18 +322,7 @@ export class ThreadService {
     const updatedThread = await repository.save(projectName, thread)
 
     // Update in cache
-    this.updateThreadInCache(projectName, {
-      id: updatedThread.id,
-      username: updatedThread.username,
-      projectId: updatedThread.projectId,
-      name: updatedThread.name,
-      summary: updatedThread.summary,
-      createdDate: updatedThread.createdDate,
-      modifiedDate: updatedThread.modifiedDate,
-      price: updatedThread.price,
-      starring: updatedThread.starring,
-      users: updatedThread.users,
-    })
+    this.updateThreadInCache(projectName, this.toThreadSummary(updatedThread))
 
     return updatedThread
   }
@@ -359,18 +349,7 @@ export class ThreadService {
     const updatedThread = await repository.save(projectName, thread)
 
     // Update in cache
-    this.updateThreadInCache(projectName, {
-      id: updatedThread.id,
-      username: updatedThread.username,
-      projectId: updatedThread.projectId,
-      name: updatedThread.name,
-      summary: updatedThread.summary,
-      createdDate: updatedThread.createdDate,
-      modifiedDate: updatedThread.modifiedDate,
-      price: updatedThread.price,
-      starring: updatedThread.starring,
-      users: updatedThread.users,
-    })
+    this.updateThreadInCache(projectName, this.toThreadSummary(updatedThread))
 
     return updatedThread
   }
@@ -408,22 +387,7 @@ export class ThreadService {
     const saved = await repository.save(projectName, thread)
 
     // Update thread list cache
-    this.updateThreadInCache(projectName, {
-      createdDate: saved.createdDate,
-      delegatedAgentName: saved.delegatedAgentName,
-      delegatedTask: saved.delegatedTask,
-      id: saved.id,
-      modifiedDate: saved.modifiedDate,
-      name: saved.name,
-      parentEventId: saved.parentEventId,
-      parentThreadId: saved.parentThreadId,
-      price: saved.price,
-      projectId: saved.projectId,
-      starring: saved.starring,
-      summary: saved.summary,
-      username: saved.username,
-      users: saved.users,
-    })
+    this.updateThreadInCache(projectName, this.toThreadSummary(saved))
 
     return saved
   }

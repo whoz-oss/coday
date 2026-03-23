@@ -1,4 +1,4 @@
-import { Component, EventEmitter, inject, Input, OnInit, Output } from '@angular/core'
+import { Component, effect, EventEmitter, inject, Input, OnInit, Output } from '@angular/core'
 import { CommonModule, NgTemplateOutlet } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MatIconModule } from '@angular/material/icon'
@@ -31,6 +31,7 @@ export interface SubThreadNode {
 /** Root-level thread node enriched with a recursive sub-thread tree */
 export interface ThreadNode extends SubThreadNode {
   parentThreadId?: string
+  username?: string
   users?: { userId: string }[]
 }
 
@@ -80,6 +81,29 @@ export class ThreadSelectorComponent implements OnInit {
   // Sub-thread collapse/expand state (keyed by parent thread ID)
   expandedParents = new Set<string>()
 
+  constructor() {
+    // Auto-expand ancestors when the selected thread changes or the thread list loads
+    effect(() => {
+      const currentThreadId = this.currentThread()?.id
+      const allThreads = this.threads()
+      if (!currentThreadId || !allThreads?.length) return
+
+      // Build a parentId lookup map
+      const parentMap = new Map<string, string>()
+      for (const t of allThreads as any[]) {
+        if (t.parentThreadId) parentMap.set(t.id, t.parentThreadId)
+      }
+
+      // Walk up the ancestor chain and expand each one
+      let id: string | undefined = currentThreadId
+      while (id) {
+        const parentId = parentMap.get(id)
+        if (parentId) this.expandedParents.add(parentId)
+        id = parentId
+      }
+    })
+  }
+
   ngOnInit(): void {
     // Load current user on component initialization
     this.userService.fetchCurrentUser().subscribe({
@@ -112,12 +136,17 @@ export class ThreadSelectorComponent implements OnInit {
     }
 
     // Separate root threads from sub-threads
+    const allIds = new Set(allThreads.map((t: any) => t.id))
     const rootThreads = allThreads.filter((t: any) => !t.parentThreadId)
     const subThreads = allThreads.filter((t: any) => !!t.parentThreadId)
 
+    // Sub-threads whose parent is not accessible are promoted to root threads
+    const orphanSubThreads = subThreads.filter((t: any) => !allIds.has(t.parentThreadId))
+    const attachedSubThreads = subThreads.filter((t: any) => allIds.has(t.parentThreadId))
+
     // Build a map of parentThreadId -> children (any depth)
     const subThreadMap = new Map<string, any[]>()
-    for (const sub of subThreads) {
+    for (const sub of attachedSubThreads) {
       const parentId = sub.parentThreadId as string
       if (!subThreadMap.has(parentId)) {
         subThreadMap.set(parentId, [])
@@ -136,8 +165,8 @@ export class ThreadSelectorComponent implements OnInit {
         }))
     }
 
-    // Apply search filter to root threads
-    let threadsToGroup = rootThreads
+    // Apply search filter to root threads + promoted orphan sub-threads
+    let threadsToGroup = [...rootThreads, ...orphanSubThreads]
     if (this.searchQuery && this.searchQuery.trim()) {
       const query = this.searchQuery.toLowerCase().trim()
       threadsToGroup = threadsToGroup.filter(
