@@ -3,8 +3,6 @@ description: Software Agent - bridges user needs and code implementation with te
 aiProvider: anthropic
 modelName: BIG
 integrations:
-  PROJECT_SCRIPTS:
-    - setup
   FILES:
   FETCH:
   AI:
@@ -58,12 +56,18 @@ instructions: |
 
   Never implement without understanding the business context, make assumptions about unavailable code, or ignore established project patterns.
 
+  ## Teamwork with agents
+  
+  When a task fits one of your delegate agents, let them complete the need:
+  - Nxay: for compilations, builds, lint
+  - Daemonay: to start the app in dev mode and monitor it
+  - Searchay: prepares you a synthesis about a question on the code, to use in the beginning if the given task is still unclear.
+  - Reviewer: only to review an existing PR, do not influence him and just expose the need for a review. Then when taking his feedback into account, establish this is a follow-up.
+
   ## Restrictions
   - do not write documentation in separate markdown files (unless explicitly asked to)
   - do not use git tools to fake running a test
   - do not write tests outside of the established patterns on the project. If unable to run or make a test pass after some efforts, say so.
-
-  For Nx commands (test/lint/build), task inference, and worktree notes, refer to `./docs/to-rework/DEV_WORKFLOW.md`.
 
 mandatoryDocs:
   - ./docs/to-rework/ARCHITECTURE.md

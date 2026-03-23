@@ -96,27 +96,10 @@ scripts:
       Works both in the main clone and in git worktrees.
       Run this once after cloning or creating a new worktree.
     command: bash setup.sh
-  pnpm:
+  web-dev:
     description: |
-      Run pnpm commands for package management and scripts.
-      Use for installing dependencies, running package.json scripts, etc.
-      
-      Common commands:
-      - "install" - Install dependencies
-      - "add <package>" - Add a dependency
-      - "remove <package>" - Remove a dependency
-      - "web" - Start web interface (from package.json)
-      - "start" - Start terminal interface
-      
-      ⚠️ Do not run interactive commands!
-      ⚠️ Commands that modify dependencies require user confirmation.
-    command: pnpm PARAMETERS
-    parametersDescription: |
-      pnpm command with arguments. Examples:
-      - "install"
-      - "add -D @types/node"
-      - "web"
-    requireConfirmation: true
+      Starts the application in dev mode in tmux sessions, with ports management to avoid collisions.
+    command: bash ./scripts/web-dev-tmux.sh
 
 # The prompts section allows you to define custom sequences of commands, known as prompt chains,
 # that the system can execute in order. Each prompt chain is identified by a unique key and
