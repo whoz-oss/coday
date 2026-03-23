@@ -8,6 +8,39 @@
 >
   <!-- Thread list (always visible in sidenav) -->
   @if (currentProject()?.name) {
+    <!-- Recursive template for sub-thread tree rendering -->
+    <ng-template #subThreadTemplate let-subThreads="subThreads" let-depth="depth">
+      @for (subThread of subThreads; track subThread.id) {
+        <div
+          class="thread-item-wrapper sub-thread"
+          [class.current]="subThread.id === currentThread()?.id"
+          [style.--sub-depth]="depth"
+        >
+          <a
+            class="thread-item sub-thread-item"
+            (click)="selectThread(subThread.id); $event.preventDefault()"
+            (keydown.enter)="selectThread(subThread.id); $event.preventDefault()"
+            (keydown.space)="selectThread(subThread.id); $event.preventDefault()"
+            role="menuitem"
+            tabindex="0"
+          >
+            @if (subThread.subThreads?.length) {
+              <mat-icon class="sub-thread-toggle" (click)="toggleSubThreads($event, subThread.id)">{{
+                isParentExpanded(subThread.id) ? 'expand_more' : 'chevron_right'
+              }}</mat-icon>
+            }
+            <span class="sub-thread-agent">{{ subThread.delegatedAgentName || 'Agent' }}</span>
+            <span class="sub-thread-task">{{ subThread.delegatedTask || subThread.name }}</span>
+          </a>
+        </div>
+        @if (isParentExpanded(subThread.id) && subThread.subThreads?.length) {
+          <ng-container
+            *ngTemplateOutlet="subThreadTemplate; context: { subThreads: subThread.subThreads, depth: depth + 1 }"
+          ></ng-container>
+        }
+      }
+    </ng-template>
+
     <div class="thread-list" role="menu" aria-label="Thread selection">
       <!-- Loading state -->
       @if (isLoadingThreadList()) {
@@ -53,6 +86,11 @@
                     role="menuitem"
                     tabindex="0"
                   >
+                    @if (thread.subThreads?.length) {
+                      <mat-icon class="sub-thread-toggle" (click)="toggleSubThreads($event, thread.id)">{{
+                        isParentExpanded(thread.id) ? 'expand_more' : 'chevron_right'
+                      }}</mat-icon>
+                    }
                     @if (thread.name) {
                       <span class="thread-name">{{ thread.name }}</span>
                     } @else {
@@ -102,6 +140,11 @@
                   </button>
                 </div>
               </div>
+              @if (isParentExpanded(thread.id) && thread.subThreads?.length) {
+                <ng-container
+                  *ngTemplateOutlet="subThreadTemplate; context: { subThreads: thread.subThreads, depth: 1 }"
+                ></ng-container>
+              }
             }
           </div>
         }
