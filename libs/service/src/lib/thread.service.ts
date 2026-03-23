@@ -428,6 +428,40 @@ export class ThreadService {
     return saved
   }
   /**
+   * List all threads for a project without user filtering.
+   * Used internally (e.g. by sub-thread listing in delegation tools) where
+   * access control is applied by the caller via hasAccess().
+   * @param projectName Project name
+   * @returns Array of all thread summaries for the project
+   */
+  async listAllThreads(projectName: string): Promise<ThreadSummary[]> {
+    const cached = this.threadListCache.get(projectName)
+
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL_MS) {
+      return cached.data.sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
+    }
+
+    const existingPromise = this.loadingPromises.get(projectName)
+    if (existingPromise) {
+      await existingPromise
+      return this.listAllThreads(projectName)
+    }
+
+    const loadingPromise = this.loadThreadListFromDisk(projectName)
+    this.loadingPromises.set(projectName, loadingPromise)
+
+    try {
+      const allThreads = await loadingPromise
+      return allThreads.sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
+    } catch (error) {
+      this.threadListCache.delete(projectName)
+      throw error
+    } finally {
+      this.loadingPromises.delete(projectName)
+    }
+  }
+
+  /**
    * Check if a thread exists
    * @param projectName Project name
    * @param threadId Thread identifier

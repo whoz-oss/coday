@@ -11,13 +11,7 @@ import {
 import { ThreadService } from '@coday/service'
 import { lastValueFrom, Observable } from 'rxjs'
 import { filter } from 'rxjs/operators'
-
-type Delegation = {
-  agentName: string
-  task: string
-  threadId?: string // Optional: resume an existing thread instead of forking a new one
-  async?: boolean // Optional: fire-and-forget, returns immediately with threadId
-}
+import { Delegation } from './delegate.types'
 
 type DelegateInput = {
   context: CommandContext
@@ -198,7 +192,24 @@ async function setupAndRunAsync(
       interactor.debug(`Could not persist async sub-thread ${subThread.id}: ${err}`)
     }
 
-    parentThread.merge(subThread)
+    // Merge price from sub-thread back to parent.
+    // We reload the parent thread from disk to avoid writing into a stale in-memory object
+    // (the parent may have been serialized to disk already while the sub-thread was running).
+    // If reload fails, we fall back to the in-memory merge to avoid losing data silently.
+    try {
+      const freshParent = await threadService.getThread(projectName, parentThread.id)
+      if (freshParent) {
+        freshParent.merge(subThread)
+        await threadService.saveThread(projectName, freshParent)
+      } else {
+        // Parent thread not found on disk (e.g. root thread not yet persisted) — merge in-memory only
+        parentThread.merge(subThread)
+      }
+    } catch (mergeErr) {
+      // On error, fall back to in-memory merge so tokens are at least visible for the current session
+      parentThread.merge(subThread)
+      interactor.debug(`Could not persist price merge for parent thread ${parentThread.id}: ${mergeErr}`)
+    }
   } catch (error: any) {
     interactor.error(`Async delegation to '${agentName}' failed: ${error?.message ?? error}`)
   } finally {
@@ -313,8 +324,24 @@ async function runSingleDelegation(
       interactor.debug(`Could not persist final sub-thread ${subThread.id}: ${err}`)
     }
 
-    // Merge price from sub-thread back to parent
-    parentThread.merge(subThread)
+    // Merge price from sub-thread back to parent.
+    // We reload the parent thread from disk to avoid writing into a stale in-memory object
+    // (the parent may have been serialized to disk already while the sub-thread was running).
+    // If reload fails, we fall back to the in-memory merge to avoid losing data silently.
+    try {
+      const freshParent = await threadService.getThread(projectName, parentThread.id)
+      if (freshParent) {
+        freshParent.merge(subThread)
+        await threadService.saveThread(projectName, freshParent)
+      } else {
+        // Parent thread not found on disk (e.g. root thread not yet persisted) — merge in-memory only
+        parentThread.merge(subThread)
+      }
+    } catch (mergeErr) {
+      // On error, fall back to in-memory merge so tokens are at least visible for the current session
+      parentThread.merge(subThread)
+      interactor.debug(`Could not persist price merge for parent thread ${parentThread.id}: ${mergeErr}`)
+    }
   } catch (error: any) {
     result = `Error during delegation: ${error.message}`
     console.error(`Error in delegation for agent ${agentName}:`, error)

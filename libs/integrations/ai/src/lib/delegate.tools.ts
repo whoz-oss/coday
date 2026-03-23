@@ -6,18 +6,13 @@ import {
   CodayTool,
   CommandContext,
   FunctionTool,
+  hasAccess,
   IntegrationConfig,
   Interactor,
 } from '@coday/model'
 import { ThreadService } from '@coday/service'
 import { delegateFunction } from './delegate.function'
-
-type Delegation = {
-  agentName: string
-  task: string
-  threadId?: string
-  async?: boolean
-}
+import { Delegation } from './delegate.types'
 
 export class DelegateTools extends AssistantToolFactory {
   static readonly TYPE = 'DELEGATE' as const
@@ -144,8 +139,13 @@ export class DelegateTools extends AssistantToolFactory {
             return 'No active thread context available.'
           }
           try {
-            const allThreads = await this.threadService.listThreads(projectName, context.username)
-            const subThreads = allThreads.filter((t) => t.parentThreadId === parentThread.id)
+            // List all threads for the project without user filtering,
+            // then apply hasAccess() to be consistent with the shared-thread model.
+            // This ensures sub-threads spawned by other participants are also visible.
+            const allThreads = await this.threadService.listAllThreads(projectName)
+            const subThreads = allThreads.filter(
+              (t) => t.parentThreadId === parentThread.id && hasAccess(t, context.username)
+            )
             if (!subThreads.length) {
               return 'No sub-threads found for the current thread.'
             }
