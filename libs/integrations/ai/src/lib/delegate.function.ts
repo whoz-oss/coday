@@ -18,6 +18,8 @@ type DelegateInput = {
   interactor: Interactor
   agentFind: (agentName: string | undefined, context: CommandContext) => Promise<Agent | undefined>
   threadService: ThreadService
+  /** When true, emits the delegation result as a user message in the parent thread (for manual /delegate command). Defaults to false. */
+  emitResultAsUserMessage?: boolean
 }
 
 export function delegateFunction(input: DelegateInput) {
@@ -27,6 +29,7 @@ export function delegateFunction(input: DelegateInput) {
     // Use the thread passed by ToolSet.run() — this is the thread the calling agent
     // is actually running in, which is always the correct parent for sub-threads.
     // Falls back to context.aiThread for backward compatibility (root-level calls).
+    const emitResultAsUserMessage = input.emitResultAsUserMessage ?? false
     const parentThread = thread ?? context.aiThread
     interactor.debug(`Delegating ${delegations.length} task(s) with stackDepth: ${context.stackDepth}`)
 
@@ -67,7 +70,16 @@ export function delegateFunction(input: DelegateInput) {
       context.stackDepth--
       syncResults = await Promise.allSettled(
         syncDelegations.map((delegation) =>
-          runSingleDelegation(delegation, context, parentThread, interactor, agentFind, threadService, projectName)
+          runSingleDelegation(
+            delegation,
+            context,
+            parentThread,
+            interactor,
+            agentFind,
+            threadService,
+            projectName,
+            emitResultAsUserMessage
+          )
         )
       )
       context.stackDepth++
@@ -224,7 +236,8 @@ async function runSingleDelegation(
   interactor: Interactor,
   agentFind: (agentName: string | undefined, context: CommandContext) => Promise<Agent | undefined>,
   threadService: ThreadService,
-  projectName: string
+  projectName: string,
+  emitResultAsUserMessage: boolean = false
 ): Promise<{ result: string; threadId: string }> {
   const { agentName, task } = delegation
 
@@ -315,6 +328,24 @@ async function runSingleDelegation(
       result = 'Delegation completed but produced no message.'
     } else {
       result = lastMessage.getTextContent()
+      if (emitResultAsUserMessage) {
+        // Wrap result in a delegation tag so parent agents understand the origin
+        const wrappedResult = `<delegation agent="${agentName}" threadId="${subThread.id}">
+${result}
+</delegation>`
+        // Emit the delegation result as a user message in the parent thread so it
+        // appears in the main conversation, attributed to the delegated agent.
+        // Also add it to the parent thread history for persistence and SSE replay.
+        parentThread.addUserMessage(agentName, { type: 'text', content: wrappedResult })
+        interactor.sendEvent(
+          new MessageEvent({
+            role: 'user',
+            name: agentName,
+            content: [{ type: 'text', content: wrappedResult }],
+            threadId: parentThread.id,
+          })
+        )
+      }
     }
 
     // Persist final sub-thread state

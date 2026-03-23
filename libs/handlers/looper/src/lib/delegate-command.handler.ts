@@ -73,11 +73,10 @@ export class DelegateCommandHandler extends CommandHandler {
       interactor: this.interactor,
       agentFind: this.services.agent.findAgentByNameStart,
       threadService: this.services.thread,
+      emitResultAsUserMessage: true,
     })
 
-    const result = await delegate({ delegations: [{ agentName: agent.name, task: task.trim() }] }, context.aiThread)
-
-    this.interactor.displayText(result)
+    await delegate({ delegations: [{ agentName: agent.name, task: task.trim() }] }, context.aiThread)
     return context
   }
 }
