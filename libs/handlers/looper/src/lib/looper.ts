@@ -7,6 +7,7 @@ import {
   RunBashHandler,
   SlashCommandHandler,
 } from '@coday/handler'
+import { DelegateCommandHandler } from './delegate-command.handler'
 import { CommandContext, Interactor, ProjectDescription, PromptChain, RunStatus } from '@coday/model'
 import { AiHandler } from '@coday/handlers-openai'
 import { ConfigHandler } from '@coday/handlers-config'
@@ -51,6 +52,9 @@ export class HandlerLooper {
           this.handlers.push(new PromptChainHandler(promptChain as PromptChain, promptName))
         }
       }
+
+      // Add DelegateCommandHandler for user-initiated delegation
+      this.handlers.push(new DelegateCommandHandler(this.interactor, this.services))
 
       // Add SlashCommandHandler for stored prompts (from PromptService)
       if (this.services.project.selectedProject) {
