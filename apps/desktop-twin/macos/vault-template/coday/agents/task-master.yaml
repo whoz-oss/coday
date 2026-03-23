@@ -94,3 +94,7 @@ optionalDocs:
     description: For collaboration boundaries and delegation patterns
   - path: ./coday/agents/vault-keeper.yaml
     description: For collaboration boundaries and curation responsibilities
+
+integrations:
+  - DELEGATE:
+  - FILES:

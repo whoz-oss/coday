@@ -154,3 +154,8 @@ optionalDocs:
     description: Template usage and available templates
   - path: ./coday/docs/task-management-conventions.md
     description: TODO.md system and Action syntax
+
+integrations:
+  - AI:
+  - FETCH:
+  - FILES:

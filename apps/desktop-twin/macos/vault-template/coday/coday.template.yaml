@@ -25,20 +25,31 @@ ai:
           cacheRead: 0.08
           outputMTokens: 4
 
-  # Optional: OpenAI models
-  # - name: openai
-  #   models:
-  #     - name: gpt-5-mini-2025-08-07
-  #       alias: gpt-mini
-  #       contextWindow: 400000
+mcp:
+  servers:
+    - id: mcp_fetch
+      name: FETCH
+      enabled: true
+      args:
+        - mcp-server-fetch
+        - --ignore-robots-txt
+      command: uvx
 
-# Optional: Add MCP servers for additional capabilities
-# mcp:
-#   servers:
-#     - id: mcp_fetch
-#       name: FETCH
-#       enabled: true
-#       args:
-#         - mcp-server-fetch
-#         - --ignore-robots-txt
-#       command: uvx
+scripts:
+  notify:
+    description: |
+      Sends a notification to the dedicated Slack channel, usually to indicate the end of a task, or ask the human user for new input.
+    parametersDescription: |
+      Parameters are the JSON body for the slack webhook with 3 fields:
+      - message: what you want to tell in the notification
+      - threadId: the ID of the current thread so that Slack can display a button for the user to come back to the current conversation
+      - slackUserId: SLACK_USER_ID
+
+      For example:
+      {
+        "message": "Your daily calendar analysis is done",
+        "threadId": "6bb85e17-a5c6-4cf1-a6b4-0fa0004ff694"
+        "slackUserId": "SLACK_USER_ID"
+      }
+    command: |
+      curl -X POST SLACK_NOTIFY_WEBHOOK_URL -H 'Content-Type: application/json' -d 'PARAMETERS'

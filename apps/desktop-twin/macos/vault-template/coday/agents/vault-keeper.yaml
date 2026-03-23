@@ -173,3 +173,7 @@ optionalDocs:
     description: Three-agent architecture, task system, collaboration patterns
   - path: ./x/README.md
     description: Extras folder organization
+
+integrations:
+  - DELEGATE:
+  - FILES:

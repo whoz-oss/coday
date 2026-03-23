@@ -142,6 +142,15 @@ else
     echo "ripgrep already installed: $(run_as_user 'rg --version' | head -1)"
 fi
 
+# Step 6: Install uv (provides uvx) if not present
+if ! run_as_user "command -v uvx" &>/dev/null; then
+    echo "Installing uv (provides uvx)..."
+    run_as_user "$BREW_PATH install uv"
+    echo "uv/uvx installed successfully"
+else
+    echo "uvx already installed: $(run_as_user 'uvx --version' | head -1)"
+fi
+
 # Vault directory creation is handled by the CodayTwin app on first launch,
 # after the user chooses their preferred location (default or custom path).
 

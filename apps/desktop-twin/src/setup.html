@@ -13,21 +13,16 @@
 
       body {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        background: #1a1a2e;
+        background: linear-gradient(135deg, #1a1030 0%, #0d0d1a 100%);
         color: #e0e0e0;
-        height: 100vh;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
         padding: 40px;
         -webkit-app-region: drag;
         user-select: none;
       }
 
       .container {
-        max-width: 520px;
-        width: 100%;
+        max-width: 480px;
+        margin: 0 auto;
         -webkit-app-region: no-drag;
       }
 
@@ -214,6 +209,100 @@
       .step.active {
         display: block;
       }
+
+      /* Toggle switch */
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+      }
+
+      .toggle-label {
+        font-size: 15px;
+        font-weight: 500;
+        color: #ffffff;
+      }
+
+      .toggle-desc {
+        font-size: 12px;
+        color: #666;
+        margin-top: 2px;
+      }
+
+      .toggle {
+        position: relative;
+        width: 44px;
+        height: 24px;
+        flex-shrink: 0;
+      }
+
+      .toggle input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        inset: 0;
+        background: #333;
+        border-radius: 24px;
+        transition: background 0.2s ease;
+      }
+
+      .toggle-slider::before {
+        content: '';
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        left: 3px;
+        top: 3px;
+        background: #fff;
+        border-radius: 50%;
+        transition: transform 0.2s ease;
+      }
+
+      .toggle input:checked + .toggle-slider {
+        background: #533483;
+      }
+
+      .toggle input:checked + .toggle-slider::before {
+        transform: translateX(20px);
+      }
+
+      .slack-fields {
+        display: none;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid #0f3460;
+      }
+
+      .slack-fields.visible {
+        display: block;
+      }
+
+      .field-label {
+        font-size: 12px;
+        color: #888;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        margin-bottom: 6px;
+        margin-top: 12px;
+      }
+
+      .field-label:first-child {
+        margin-top: 0;
+      }
+
+      .skip-note {
+        font-size: 12px;
+        color: #555;
+        text-align: center;
+        margin-top: 12px;
+      }
     </style>
   </head>
   <body>
@@ -245,6 +334,57 @@
         </div>
       </div>
 
+      <!-- Step 3: Slack Notifications -->
+      <div class="step" id="step-3">
+        <h1>Slack Notifications</h1>
+        <p class="subtitle">Get notified in Slack when CodayTwin completes tasks.</p>
+
+        <div class="section">
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-label">Enable Slack notifications</div>
+              <div class="toggle-desc">Optional — you can configure this later in Preferences.</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="slack-enabled" onchange="onSlackToggle()" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="slack-fields" id="slack-fields">
+            <div class="field-label">Webhook URL</div>
+            <input
+              type="url"
+              class="api-key-input"
+              id="slack-webhook-url"
+              placeholder="https://hooks.slack.com/services/..."
+              oninput="onSlackInput()"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <div class="help-text">Create an incoming webhook in your Slack workspace settings.</div>
+
+            <div class="field-label" style="margin-top: 14px">Your Slack User ID</div>
+            <input
+              type="text"
+              class="api-key-input"
+              id="slack-user-id"
+              placeholder="U0123ABCDEF"
+              oninput="onSlackInput()"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <div class="help-text">Found in your Slack profile → More → Copy member ID.</div>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn-secondary" onclick="goToStep2FromStep3()">Back</button>
+          <button class="btn-primary" id="btn-finish" onclick="finish()">Finish Setup</button>
+        </div>
+        <p class="skip-note">You can skip this step and configure Slack later in Preferences.</p>
+      </div>
+
       <!-- Step 2: API Key Configuration -->
       <div class="step" id="step-2">
         <h1>AI Configuration</h1>
@@ -273,7 +413,7 @@
 
         <div class="btn-row">
           <button class="btn-secondary" onclick="goToStep1()">Back</button>
-          <button class="btn-primary" id="btn-finish" onclick="finish()">Finish Setup</button>
+          <button class="btn-primary" id="btn-to-step3" onclick="goToStep3()">Continue</button>
         </div>
       </div>
     </div>
@@ -282,6 +422,7 @@
       let selectedOption = 'default'
       let customPath = null
       let hasExistingApiKey = false
+      let slackEnabled = false
 
       function selectOption(option) {
         selectedOption = option
@@ -322,6 +463,38 @@
         document.getElementById('step-1').classList.add('active')
       }
 
+      function goToStep3() {
+        document.getElementById('step-2').classList.remove('active')
+        document.getElementById('step-3').classList.add('active')
+      }
+
+      function goToStep2FromStep3() {
+        document.getElementById('step-3').classList.remove('active')
+        document.getElementById('step-2').classList.add('active')
+      }
+
+      function onSlackToggle() {
+        slackEnabled = document.getElementById('slack-enabled').checked
+        const fields = document.getElementById('slack-fields')
+        fields.classList.toggle('visible', slackEnabled)
+        onSlackInput()
+      }
+
+      function onSlackInput() {
+        // Finish button is always enabled on step-3 (Slack is optional)
+        // but warn if enabled with incomplete fields
+        const webhookUrl = document.getElementById('slack-webhook-url').value.trim()
+        const userId = document.getElementById('slack-user-id').value.trim()
+        const finishBtn = document.getElementById('btn-finish')
+        if (slackEnabled && (!webhookUrl || !userId)) {
+          finishBtn.disabled = true
+          finishBtn.title = 'Please fill in both Webhook URL and User ID, or disable Slack notifications.'
+        } else {
+          finishBtn.disabled = false
+          finishBtn.title = ''
+        }
+      }
+
       function updateApiKeyStatus(status) {
         const statusEl = document.getElementById('api-key-status')
         const finishBtn = document.getElementById('btn-finish')
@@ -359,11 +532,32 @@
           }
         }
 
+        const webhookUrl = document.getElementById('slack-webhook-url').value.trim()
+        const userId = document.getElementById('slack-user-id').value.trim()
+        const slackConfig = {
+          enabled: slackEnabled,
+          webhookUrl: slackEnabled ? webhookUrl : '',
+          userId: slackEnabled ? userId : '',
+        }
+
         const path = selectedOption === 'default' ? null : customPath
-        await window.electronAPI.confirmSetup(path)
+        await window.electronAPI.confirmSetup(path, slackConfig)
       }
 
       updateContinueButton()
+
+      // Resize the Electron window to fit content whenever the DOM changes
+      function fitWindow() {
+        const h = document.body.scrollHeight
+        if (window.electronAPI && window.electronAPI.resizeToContent) {
+          window.electronAPI.resizeToContent(h)
+        }
+      }
+
+      // Observe any DOM mutations (expanding sections, step switches)
+      new MutationObserver(fitWindow).observe(document.body, { subtree: true, childList: true, attributes: true })
+      // Also resize on initial load
+      window.addEventListener('load', fitWindow)
     </script>
   </body>
 </html>

@@ -28,6 +28,9 @@ const PREFERENCES_KEY_TWIN_PATH = 'twinProjectPath'
 
 // Storage file path
 const STORAGE_FILE = join(app.getPath('userData'), 'preferences.json')
+const PREFERENCES_KEY_SLACK_ENABLED = 'slackEnabled'
+const PREFERENCES_KEY_SLACK_WEBHOOK_URL = 'slackWebhookUrl'
+const PREFERENCES_KEY_SLACK_USER_ID = 'slackUserId'
 
 // Log file path for packaged app
 const LOG_FILE = join(app.getPath('userData'), 'coday-twin-desktop.log')
@@ -131,6 +134,52 @@ function getStoredTwinPath(): string | null {
   }
 }
 
+interface SlackConfig {
+  enabled: boolean
+  webhookUrl: string
+  userId: string
+}
+
+/**
+ * Read Slack notification config from preferences.
+ */
+function getStoredSlackConfig(): SlackConfig {
+  try {
+    if (!fs.existsSync(STORAGE_FILE)) return { enabled: false, webhookUrl: '', userId: '' }
+    const data = fs.readFileSync(STORAGE_FILE, 'utf8')
+    const storage = JSON.parse(data)
+    return {
+      enabled: storage[PREFERENCES_KEY_SLACK_ENABLED] === 'true',
+      webhookUrl: storage[PREFERENCES_KEY_SLACK_WEBHOOK_URL] ?? '',
+      userId: storage[PREFERENCES_KEY_SLACK_USER_ID] ?? '',
+    }
+  } catch {
+    return { enabled: false, webhookUrl: '', userId: '' }
+  }
+}
+
+/**
+ * Save Slack notification config to preferences.
+ */
+function storeSlackConfig(config: SlackConfig): void {
+  try {
+    let storage: Record<string, string> = {}
+    if (fs.existsSync(STORAGE_FILE)) {
+      const data = fs.readFileSync(STORAGE_FILE, 'utf8')
+      storage = JSON.parse(data)
+    }
+    storage[PREFERENCES_KEY_SLACK_ENABLED] = String(config.enabled)
+    storage[PREFERENCES_KEY_SLACK_WEBHOOK_URL] = config.webhookUrl
+    storage[PREFERENCES_KEY_SLACK_USER_ID] = config.userId
+    const dir = join(STORAGE_FILE, '..')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(STORAGE_FILE, JSON.stringify(storage, null, 2), 'utf8')
+    log('INFO', 'Slack config stored, enabled:', config.enabled)
+  } catch (error) {
+    log('ERROR', 'Failed to store Slack config:', error)
+  }
+}
+
 /**
  * Save the twin project path to preferences.
  */
@@ -198,12 +247,23 @@ function initializeVault(vaultPath: string): void {
     log('INFO', 'Copying vault template from:', templateDir)
     copyDirRecursive(templateDir, vaultPath)
 
-    // Rename coday.template.yaml to coday.yaml in the copied vault
+    // Rename coday.template.yaml to coday.yaml and substitute placeholders
     const templateYaml = join(vaultPath, 'coday', 'coday.template.yaml')
     const targetYaml = join(vaultPath, 'coday', 'coday.yaml')
     if (fs.existsSync(templateYaml) && !fs.existsSync(targetYaml)) {
-      fs.renameSync(templateYaml, targetYaml)
-      log('INFO', 'Renamed coday.template.yaml to coday.yaml')
+      let content = fs.readFileSync(templateYaml, 'utf8')
+      const slackConfig = getStoredSlackConfig()
+      if (slackConfig.enabled && slackConfig.webhookUrl) {
+        content = content.replaceAll('SLACK_NOTIFY_WEBHOOK_URL', slackConfig.webhookUrl)
+        log('INFO', 'Substituted SLACK_NOTIFY_WEBHOOK_URL in coday.yaml')
+      }
+      if (slackConfig.enabled && slackConfig.userId) {
+        content = content.replaceAll('SLACK_USER_ID', slackConfig.userId)
+        log('INFO', 'Substituted SLACK_USER_ID in coday.yaml')
+      }
+      fs.writeFileSync(targetYaml, content, 'utf8')
+      fs.unlinkSync(templateYaml)
+      log('INFO', 'Created coday.yaml from template')
     }
   } else {
     log('INFO', 'No vault template found, creating basic structure')
@@ -241,6 +301,33 @@ function copyDirRecursive(src: string, dest: string): void {
 }
 
 /**
+ * Copy scheduler YAML files from src to dest, rewriting the createdBy field
+ * to match the current OS username so the user can see and manage them.
+ */
+function copySchedulersWithOwner(src: string, dest: string): void {
+  const os = require('os') as typeof import('os')
+  const username = os.userInfo().username
+  const sanitizedUsername = username.replace(/[^a-zA-Z0-9]/g, '_')
+
+  fs.mkdirSync(dest, { recursive: true })
+  const entries = fs.readdirSync(src, { withFileTypes: true })
+  for (const entry of entries) {
+    if (entry.isDirectory()) continue
+    if (!entry.name.endsWith('.yml')) continue
+    const srcPath = join(src, entry.name)
+    const destPath = join(dest, entry.name)
+    try {
+      let content = fs.readFileSync(srcPath, 'utf8')
+      // Replace the createdBy field value with the current OS username
+      content = content.replace(/^(createdBy:\s*).*$/m, `$1${sanitizedUsername}`)
+      fs.writeFileSync(destPath, content, 'utf8')
+    } catch (error) {
+      log('WARN', `Failed to copy scheduler ${entry.name}:`, error)
+    }
+  }
+}
+
+/**
  * Ensure the Coday project config exists for the Twin workspace.
  * Creates ~/.coday/projects/CodayTwin/project.yaml if it doesn't exist,
  * pointing to the resolved twin project path.
@@ -253,26 +340,43 @@ function ensureTwinProjectConfig(twinProjectPath: string): void {
   // Ensure directory exists
   fs.mkdirSync(configDir, { recursive: true })
 
-  if (fs.existsSync(configFile)) {
+  if (!fs.existsSync(configFile)) {
+    log('INFO', 'Creating Twin project config at:', configFile)
+
+    // Write minimal project config
+    const config = ['version: 1', `path: "${twinProjectPath}"`, 'storage:', '  type: file', 'agents: []', ''].join('\n')
+
+    fs.writeFileSync(configFile, config, 'utf8')
+    log('INFO', 'Twin project config created successfully')
+  } else {
     log('INFO', 'Twin project config already exists at:', configFile)
-    return
   }
 
-  log('INFO', 'Creating Twin project config at:', configFile)
-
-  // Write minimal project config
-  const config = [
-    'version: 1',
-    `path: "${twinProjectPath}"`,
-    'integration: {}',
-    'storage:',
-    '  type: file',
-    'agents: []',
-    '',
-  ].join('\n')
-
-  fs.writeFileSync(configFile, config, 'utf8')
-  log('INFO', 'Twin project config created successfully')
+  // Copy schedulers from macos/schedulers into the project config dir
+  const schedulersDest = join(configDir, 'schedulers')
+  if (!fs.existsSync(schedulersDest)) {
+    const schedulersSrcCandidates = [
+      join(process.resourcesPath ?? '', 'schedulers'),
+      join(__dirname, '..', 'macos', 'schedulers'),
+      join(__dirname, '..', '..', 'macos', 'schedulers'),
+    ]
+    let schedulersSrc: string | null = null
+    for (const candidate of schedulersSrcCandidates) {
+      if (fs.existsSync(candidate)) {
+        schedulersSrc = candidate
+        break
+      }
+    }
+    if (schedulersSrc) {
+      log('INFO', 'Copying schedulers from:', schedulersSrc, 'to:', schedulersDest)
+      copySchedulersWithOwner(schedulersSrc, schedulersDest)
+      log('INFO', 'Schedulers copied successfully')
+    } else {
+      log('WARN', 'No schedulers source directory found, skipping schedulers copy')
+    }
+  } else {
+    log('INFO', 'Schedulers directory already exists at:', schedulersDest)
+  }
 }
 
 /**
@@ -283,9 +387,10 @@ function showSetupWindow(): Promise<string> {
   return new Promise<string>((resolve) => {
     const setupWindow = new BrowserWindow({
       width: 560,
-      height: 420,
+      height: 300,
       frame: false,
       resizable: false,
+      useContentSize: true,
       transparent: true,
       icon: join(__dirname, 'icon.png'),
       webPreferences: {
@@ -293,6 +398,15 @@ function showSetupWindow(): Promise<string> {
         nodeIntegration: false,
         contextIsolation: true,
       },
+    })
+
+    // IPC handler: resize window to fit content
+    ipcMain.handle('window:resizeToContent', (_event: IpcMainInvokeEvent, contentHeight: number) => {
+      const win = BrowserWindow.fromWebContents(_event.sender)
+      if (win) {
+        const [w = 560] = win.getContentSize()
+        win.setContentSize(w, Math.ceil(contentHeight), false)
+      }
     })
 
     // IPC handler: open native folder picker
@@ -498,12 +612,18 @@ function showSetupWindow(): Promise<string> {
     })
 
     // IPC handler: user confirmed setup
-    ipcMain.handle('setup:confirm', async (_event, customPath: string | null) => {
+    ipcMain.handle('setup:confirm', async (_event, customPath: string | null, slackConfig: SlackConfig | null) => {
       const chosenPath = customPath ?? DEFAULT_TWIN_PROJECT_PATH
       log('INFO', 'Setup confirmed with path:', chosenPath)
 
       // Store the path
       storeTwinPath(chosenPath)
+
+      // Store Slack config if provided
+      if (slackConfig !== null && slackConfig !== undefined) {
+        storeSlackConfig(slackConfig)
+        // Apply to project.yaml after vault is initialized (done later in initialize())
+      }
 
       // Clean up IPC handlers
       ipcMain.removeHandler('setup:browseFolder')
@@ -519,10 +639,12 @@ function showSetupWindow(): Promise<string> {
 
     // If user closes the window without confirming, use default
     setupWindow.on('closed', () => {
+      ipcMain.removeHandler('window:resizeToContent')
       ipcMain.removeHandler('setup:browseFolder')
       ipcMain.removeHandler('setup:confirm')
       ipcMain.removeHandler('setup:checkAnthropicApiKey')
       ipcMain.removeHandler('setup:saveAnthropicApiKey')
+      ipcMain.removeHandler('setup:getSlackConfig')
       // If not yet resolved (user closed without confirming), use default
       const storedPath = getStoredTwinPath()
       if (!storedPath) {
@@ -583,10 +705,11 @@ function showPreferencesWindow(): void {
   log('INFO', 'Opening preferences window')
 
   const preferencesWindow = new BrowserWindow({
-    width: 520,
-    height: 400,
+    width: 560,
+    height: 300,
     frame: false,
     resizable: false,
+    useContentSize: true,
     transparent: true,
     icon: join(__dirname, 'icon.png'),
     webPreferences: {
@@ -594,6 +717,15 @@ function showPreferencesWindow(): void {
       nodeIntegration: false,
       contextIsolation: true,
     },
+  })
+
+  // IPC handler: resize window to fit content
+  ipcMain.handle('window:resizeToContent', (_event: IpcMainInvokeEvent, contentHeight: number) => {
+    const win = BrowserWindow.fromWebContents(_event.sender)
+    if (win) {
+      const [w = 560] = win.getContentSize()
+      win.setContentSize(w, Math.ceil(contentHeight), false)
+    }
   })
 
   ipcMain.handle('preferences:getCurrentPath', () => {
@@ -628,11 +760,24 @@ function showPreferencesWindow(): void {
     preferencesWindow.close()
   })
 
+  ipcMain.handle('preferences:getSlackConfig', (): SlackConfig => {
+    return getStoredSlackConfig()
+  })
+
+  ipcMain.handle('preferences:saveSlackConfig', async (_event: IpcMainInvokeEvent, config: SlackConfig) => {
+    log('INFO', 'Saving Slack config, enabled:', config.enabled)
+    storeSlackConfig(config)
+    log('INFO', 'Slack config saved')
+  })
+
   preferencesWindow.on('closed', () => {
     ipcMain.removeHandler('preferences:getCurrentPath')
     ipcMain.removeHandler('preferences:browseFolder')
     ipcMain.removeHandler('preferences:save')
     ipcMain.removeHandler('preferences:close')
+    ipcMain.removeHandler('preferences:getSlackConfig')
+    ipcMain.removeHandler('preferences:saveSlackConfig')
+    ipcMain.removeHandler('window:resizeToContent')
     isPreferencesWindowOpen = false
     log('INFO', 'Preferences window closed')
   })

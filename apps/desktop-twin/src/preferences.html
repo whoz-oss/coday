@@ -13,21 +13,16 @@
 
       body {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        background: #1a1a2e;
+        background: linear-gradient(135deg, #1a1030 0%, #0d0d1a 100%);
         color: #e0e0e0;
-        height: 100vh;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
         padding: 40px;
         -webkit-app-region: drag;
         user-select: none;
       }
 
       .container {
-        max-width: 520px;
-        width: 100%;
+        max-width: 480px;
+        margin: 0 auto;
         -webkit-app-region: no-drag;
       }
 
@@ -173,6 +168,109 @@
         color: #ef5350;
         border: 1px solid #b71c1c;
       }
+
+      /* Toggle switch */
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 0;
+      }
+
+      .toggle {
+        position: relative;
+        width: 44px;
+        height: 24px;
+        flex-shrink: 0;
+      }
+
+      .toggle input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        inset: 0;
+        background: #333;
+        border-radius: 24px;
+        transition: background 0.2s ease;
+      }
+
+      .toggle-slider::before {
+        content: '';
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        left: 3px;
+        top: 3px;
+        background: #fff;
+        border-radius: 50%;
+        transition: transform 0.2s ease;
+      }
+
+      .toggle input:checked + .toggle-slider {
+        background: #533483;
+      }
+
+      .toggle input:checked + .toggle-slider::before {
+        transform: translateX(20px);
+      }
+
+      .slack-fields {
+        display: none;
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px solid #0f3460;
+      }
+
+      .slack-fields.visible {
+        display: block;
+      }
+
+      .field-label {
+        font-size: 12px;
+        color: #888;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        margin-bottom: 6px;
+        margin-top: 12px;
+      }
+
+      .field-label:first-child {
+        margin-top: 0;
+      }
+
+      .text-input {
+        width: 100%;
+        padding: 9px 12px;
+        background: #0d1b2a;
+        border: 1px solid #0f3460;
+        border-radius: 8px;
+        color: #e0e0e0;
+        font-family: 'SF Mono', 'Menlo', monospace;
+        font-size: 13px;
+        outline: none;
+        transition: border-color 0.2s ease;
+      }
+
+      .text-input:focus {
+        border-color: #533483;
+      }
+
+      .text-input::placeholder {
+        color: #555;
+      }
+
+      .help-text {
+        font-size: 12px;
+        color: #555;
+        margin-top: 6px;
+        line-height: 1.4;
+      }
     </style>
   </head>
   <body>
@@ -194,6 +292,44 @@
         </div>
       </div>
 
+      <!-- Slack Notifications -->
+      <div class="section">
+        <div class="section-title">Slack Notifications</div>
+        <div class="toggle-row">
+          <div class="setting-label">Enable notifications</div>
+          <label class="toggle">
+            <input type="checkbox" id="slack-enabled" onchange="onSlackToggle()" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="slack-fields" id="slack-fields">
+          <div class="field-label">Webhook URL</div>
+          <input
+            type="url"
+            class="text-input"
+            id="slack-webhook-url"
+            placeholder="https://hooks.slack.com/services/..."
+            oninput="onSlackInput()"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <div class="help-text">Create an incoming webhook in your Slack workspace settings.</div>
+
+          <div class="field-label" style="margin-top: 14px">Your Slack User ID</div>
+          <input
+            type="text"
+            class="text-input"
+            id="slack-user-id"
+            placeholder="U0123ABCDEF"
+            oninput="onSlackInput()"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <div class="help-text">Found in your Slack profile → More → Copy member ID.</div>
+        </div>
+      </div>
+
       <div class="status-message" id="status-message"></div>
 
       <div class="btn-row">
@@ -205,6 +341,7 @@
     <script>
       let currentPath = null
       let newPath = null
+      let slackDirty = false
 
       async function init() {
         try {
@@ -213,6 +350,40 @@
         } catch (error) {
           document.getElementById('current-path').textContent = 'Error loading path'
         }
+
+        try {
+          const slack = await window.electronAPI.preferencesGetSlackConfig()
+          document.getElementById('slack-enabled').checked = slack.enabled
+          document.getElementById('slack-webhook-url').value = slack.webhookUrl || ''
+          document.getElementById('slack-user-id').value = slack.userId || ''
+          if (slack.enabled) {
+            document.getElementById('slack-fields').classList.add('visible')
+          }
+        } catch (error) {
+          console.error('Failed to load Slack config:', error)
+        }
+      }
+
+      function onSlackToggle() {
+        const enabled = document.getElementById('slack-enabled').checked
+        document.getElementById('slack-fields').classList.toggle('visible', enabled)
+        slackDirty = true
+        updateSaveButton()
+      }
+
+      function onSlackInput() {
+        slackDirty = true
+        updateSaveButton()
+      }
+
+      function updateSaveButton() {
+        const enabled = document.getElementById('slack-enabled').checked
+        const webhookUrl = document.getElementById('slack-webhook-url').value.trim()
+        const userId = document.getElementById('slack-user-id').value.trim()
+        const hasNewPath = !!newPath
+        const slackValid = !enabled || (!!webhookUrl && !!userId)
+        const canSave = (hasNewPath || slackDirty) && slackValid
+        document.getElementById('btn-save').disabled = !canSave
       }
 
       async function browsePath() {
@@ -222,8 +393,8 @@
             newPath = result
             document.getElementById('new-path').textContent = result
             document.getElementById('new-path-section').classList.add('visible')
-            document.getElementById('btn-save').disabled = false
             hideStatus()
+            updateSaveButton()
           }
         } catch (error) {
           showStatus('Failed to open folder picker.', 'error')
@@ -231,21 +402,32 @@
       }
 
       async function save() {
-        if (!newPath) return
-
         document.getElementById('btn-save').disabled = true
         hideStatus()
 
         try {
-          await window.electronAPI.preferencesSave(newPath)
-          currentPath = newPath
-          newPath = null
-          document.getElementById('current-path').textContent = currentPath
-          document.getElementById('new-path-section').classList.remove('visible')
-          showStatus('Workspace location updated successfully. The app will reload.', 'success')
+          // Save workspace path if changed
+          if (newPath) {
+            await window.electronAPI.preferencesSave(newPath)
+            currentPath = newPath
+            newPath = null
+            document.getElementById('current-path').textContent = currentPath
+            document.getElementById('new-path-section').classList.remove('visible')
+          }
+
+          // Save Slack config if dirty
+          if (slackDirty) {
+            const enabled = document.getElementById('slack-enabled').checked
+            const webhookUrl = document.getElementById('slack-webhook-url').value.trim()
+            const userId = document.getElementById('slack-user-id').value.trim()
+            await window.electronAPI.preferencesSaveSlackConfig({ enabled, webhookUrl, userId })
+            slackDirty = false
+          }
+
+          showStatus('Settings saved successfully.', 'success')
         } catch (error) {
           document.getElementById('btn-save').disabled = false
-          showStatus('Failed to update workspace location.', 'error')
+          showStatus('Failed to save settings.', 'error')
         }
       }
 
@@ -265,6 +447,18 @@
       }
 
       init()
+
+      // Resize the Electron window to fit content whenever the DOM changes
+      function fitWindow() {
+        const h = document.body.scrollHeight
+        if (window.electronAPI && window.electronAPI.resizeToContent) {
+          window.electronAPI.resizeToContent(h)
+        }
+      }
+
+      // Observe any DOM mutations (expanding sections, step switches)
+      new MutationObserver(fitWindow).observe(document.body, { subtree: true, childList: true, attributes: true })
+      window.addEventListener('load', fitWindow)
     </script>
   </body>
 </html>

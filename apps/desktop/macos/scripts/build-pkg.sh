@@ -63,12 +63,22 @@ pkgbuild \
     --version "$VERSION" \
     "$PKG_BUILD_DIR/CodayComponent.pkg"
 
+# Copy the LICENSE file into the build resources directory
+LICENSE_SRC="$(cd "$APP_DIR/../.." && pwd)/LICENSE"
+if [ -f "$LICENSE_SRC" ]; then
+    cp "$LICENSE_SRC" "$PKG_BUILD_DIR/LICENSE.txt"
+    echo "Copied LICENSE to pkg resources"
+else
+    echo "Warning: LICENSE file not found at $LICENSE_SRC"
+fi
+
 # Create distribution XML
 cat > "$PKG_BUILD_DIR/distribution.xml" << EOF
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
     <title>Coday Desktop</title>
     <welcome file="welcome.html" mime-type="text/html"/>
+    <license file="LICENSE.txt" mime-type="text/plain"/>
     <options customize="never" require-scripts="false" hostArchitectures="x86_64,arm64"/>
     <choices-outline>
         <line choice="default">

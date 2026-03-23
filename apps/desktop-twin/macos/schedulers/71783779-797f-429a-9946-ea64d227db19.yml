@@ -1,0 +1,14 @@
+id: 71783779-797f-429a-9946-ea64d227db19
+name: Strategic review
+enabled: true
+promptId: f5a6b7c8-9d0e-1f2a-3b4c-5d6e7f8a9b0c
+schedule:
+  startTimestamp: 2026-01-01T07:00:00.000Z
+  interval: 1d
+  daysOfWeek:
+    - 1
+    - 4
+createdBy: coday
+createdAt: 2026-01-01T07:00:00.000Z
+nextRun: 2026-02-01T07:00:00.000Z
+occurrenceCount: 0
