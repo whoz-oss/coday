@@ -1,5 +1,5 @@
-import { Component, inject } from '@angular/core'
-import { AsyncPipe } from '@angular/common'
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core'
+import { toSignal } from '@angular/core/rxjs-interop'
 import { MatIconModule } from '@angular/material/icon'
 import { OAuthRequestEvent } from '@coday/model'
 import { OAuthService } from '../../core/services/oauth.service'
@@ -14,14 +14,15 @@ import { OAuthService } from '../../core/services/oauth.service'
 @Component({
   selector: 'app-oauth-request-panel',
   standalone: true,
-  imports: [AsyncPipe, MatIconModule],
+  imports: [MatIconModule],
   templateUrl: './oauth-request-panel.component.html',
   styleUrl: './oauth-request-panel.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class OAuthRequestPanelComponent {
   private readonly oauthService = inject(OAuthService)
 
-  readonly pendingRequest$ = this.oauthService.pendingRequest$
+  readonly pendingRequest = toSignal(this.oauthService.pendingRequest$, { initialValue: null })
 
   onAuthorize(event: OAuthRequestEvent): void {
     this.oauthService.openPopup(event)

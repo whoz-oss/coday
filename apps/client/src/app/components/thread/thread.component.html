@@ -74,7 +74,7 @@
         <div class="input-section" #inputSection>
           <div class="input-center">
             <div class="input-glass">
-              @if (!currentChoice) {
+              @if (!currentChoice && !pendingOAuthRequest()) {
                 <app-chat-textarea
                   [isDisabled]="!isConnected"
                   [isSessionInitializing]="false"
@@ -101,7 +101,7 @@
                 ></app-choice-select>
               }
 
-              @if (oauthService.pendingRequest$ | async) {
+              @if (pendingOAuthRequest()) {
                 <app-oauth-request-panel class="choice-overlay"></app-oauth-request-panel>
               }
             </div>

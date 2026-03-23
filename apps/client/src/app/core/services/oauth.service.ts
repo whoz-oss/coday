@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core'
+import { Injectable, inject, OnDestroy } from '@angular/core'
 import { OAuthRequestEvent, OAuthCallbackEvent } from '@coday/model'
 import { BehaviorSubject } from 'rxjs'
 import { EventStreamService } from './event-stream.service'
@@ -8,7 +8,7 @@ import { filter } from 'rxjs/operators'
 @Injectable({
   providedIn: 'root',
 })
-export class OAuthService {
+export class OAuthService implements OnDestroy {
   private readonly eventStream = inject(EventStreamService)
   private readonly messageApi = inject(MessageApiService)
 
@@ -18,6 +18,9 @@ export class OAuthService {
   /** Emits the current pending OAuth request, or null when none is pending. */
   readonly pendingRequest$ = new BehaviorSubject<OAuthRequestEvent | null>(null)
 
+  // Store the handler reference so we can remove it on destroy
+  private readonly messageHandler = (event: MessageEvent) => this.handlePopupMessage(event)
+
   constructor() {
     // Listen to OAuthRequestEvent — store it for the inline panel instead of opening popup directly
     this.eventStream.events$
@@ -25,7 +28,15 @@ export class OAuthService {
       .subscribe((event) => this.handleOAuthRequest(event))
 
     // Listen to popup messages (postMessage)
-    window.addEventListener('message', (event) => this.handlePopupMessage(event))
+    window.addEventListener('message', this.messageHandler)
+  }
+
+  ngOnDestroy(): void {
+    window.removeEventListener('message', this.messageHandler)
+    this.pendingRequest$.complete()
+    if (this.popupCheckInterval) {
+      clearInterval(this.popupCheckInterval)
+    }
   }
 
   /**
@@ -74,6 +85,8 @@ export class OAuthService {
   /**
    * Open the OAuth popup from a direct user gesture (click on the inline panel button).
    * Must be called from a click event handler so browsers allow the popup.
+   * If the popup is blocked (window.open returns null), the panel remains visible
+   * so the user can try again or cancel.
    */
   openPopup(event: OAuthRequestEvent): void {
     console.log('[OAuth Service] Opening popup from user gesture:', event.integrationName)
@@ -91,10 +104,12 @@ export class OAuthService {
     if (popup) {
       popup.focus()
       this.startPopupMonitoring(popup, event.state)
+      // Hide the inline panel only once the popup is confirmed open
+      this.pendingRequest$.next(null)
+    } else {
+      // Popup was blocked — keep the panel visible so the user can retry or cancel
+      console.warn('[OAuth Service] Popup was blocked by the browser')
     }
-
-    // Hide the inline panel once the popup is launched
-    this.pendingRequest$.next(null)
   }
 
   /**

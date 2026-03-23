@@ -26,6 +26,7 @@ import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 import { MatBadgeModule } from '@angular/material/badge'
 
+import { toSignal } from '@angular/core/rxjs-interop'
 import { CodayService } from '../../core/services/coday.service'
 import { OAuthService } from '../../core/services/oauth.service'
 import { ConnectionStatus } from '../../core/services/event-stream.service'
@@ -127,7 +128,10 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
 
   // Modern Angular dependency injection
   private readonly codayService = inject(CodayService)
-  readonly oauthService = inject(OAuthService)
+  private readonly oauthService = inject(OAuthService)
+
+  /** Signal exposing the current pending OAuth request for the template. */
+  readonly pendingOAuthRequest = toSignal(this.oauthService.pendingRequest$, { initialValue: null })
   private readonly preferencesService = inject(PreferencesService)
   private readonly titleService = inject(TabTitleService)
   private readonly elementRef = inject(ElementRef)

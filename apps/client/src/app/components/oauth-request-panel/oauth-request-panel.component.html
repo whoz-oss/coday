@@ -1,4 +1,4 @@
-@if (pendingRequest$ | async; as request) {
+@if (pendingRequest(); as request) {
   <div class="oauth-panel">
     <div class="oauth-icon">
       <mat-icon>lock_open</mat-icon>
