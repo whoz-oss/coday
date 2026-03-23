@@ -450,18 +450,26 @@ export class Coday {
   private async switchUserContext(newUsername: string): Promise<void> {
     this.interactor.debug(`[CODAY] Switching user context from '${this.activeUsername}' to '${newUsername}'`)
 
-    let ctx = this.userContextCache.get(newUsername)
-    if (!ctx) {
+    const cached = this.userContextCache.get(newUsername)
+    let ctx: UserContext
+    if (cached) {
+      // Context already initialized — reuse services without re-running expensive agent/MCP init
+      ctx = cached
+      this.applyUserContext(ctx)
+      // Rebuild the lightweight handler wrappers to point at the cached agentService
+      this.aiHandler = new AiHandler(this.interactor, ctx.agentService, this.aiThreadService)
+      this.handlerLooper = new HandlerLooper(this.interactor, this.aiHandler, this.configHandler, this.services)
+      // Note: handlerLooper.init() is intentionally skipped — the handler list does not change
+      // between users and init() is expensive (prompt I/O + integration filtering).
+    } else {
       ctx = await this.createUserContext(newUsername)
       this.userContextCache.set(newUsername, ctx)
+      this.applyUserContext(ctx)
+      // Full init required for a brand-new user context (agents, MCP, prompts)
+      this.aiHandler = new AiHandler(this.interactor, ctx.agentService, this.aiThreadService)
+      this.handlerLooper = new HandlerLooper(this.interactor, this.aiHandler, this.configHandler, this.services)
+      if (this.context) await this.handlerLooper.init(this.context.project)
     }
-
-    this.applyUserContext(ctx)
-
-    // Rebuild the lightweight handler wrappers pointing at the new agent service
-    this.aiHandler = new AiHandler(this.interactor, ctx.agentService, this.aiThreadService)
-    this.handlerLooper = new HandlerLooper(this.interactor, this.aiHandler, this.configHandler, this.services)
-    if (this.context) await this.handlerLooper.init(this.context.project)
 
     this.activeUsername = newUsername
     this.interactor.displayText(`[CODAY] User context switched to '${newUsername}'`)
