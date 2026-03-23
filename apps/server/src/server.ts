@@ -186,6 +186,19 @@ if (resolvedProjectName && !codayOptions.forcedProject) {
 const projectService = new ProjectService(projectRepository, resolvedProjectName, codayOptions.forcedProject)
 
 promptService = new PromptService(codayOptions.configDir, projectService)
+
+// Register native command handler stubs so they appear in the autocomplete
+// (the actual execution is handled by DelegateCommandHandler in the looper)
+promptService.registerNativeHandler({
+  id: 'handler-delegate',
+  name: 'delegate',
+  description: 'Delegate a task to a specific agent in an isolated sub-thread',
+  source: 'builtin',
+  webhookEnabled: false,
+  createdBy: 'system',
+  createdAt: new Date('2024-01-01').toISOString(),
+  parameterFormat: '@AgentName <task>',
+})
 debugLog('INIT', 'Prompt service initialized')
 
 // Create prompt execution service

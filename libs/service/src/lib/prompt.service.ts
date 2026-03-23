@@ -25,6 +25,7 @@ import type { ProjectService } from './project.service'
 export class PromptService {
   private readonly codayConfigDir: string
   private readonly projectService?: ProjectService
+  private readonly nativeHandlerStubs: PromptInfo[] = []
 
   constructor(codayConfigPath?: string, projectService?: ProjectService) {
     const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
@@ -415,6 +416,16 @@ export class PromptService {
   }
 
   /**
+   * Register a native handler stub so it appears in the prompt list (and thus in autocomplete).
+   * Should be called once at startup for each built-in command handler exposed as a slash command.
+   */
+  registerNativeHandler(stub: PromptInfo): void {
+    if (!this.nativeHandlerStubs.find((s) => s.id === stub.id)) {
+      this.nativeHandlerStubs.push(stub)
+    }
+  }
+
+  /**
    * Lists all prompts for a project from both sources
    * Returns prompts with their source indicated
    *
@@ -467,6 +478,7 @@ export class PromptService {
       }
 
       prompts.push(...BuiltinPrompts)
+      prompts.push(...this.nativeHandlerStubs)
       prompts.push(...extraPromptInfos)
 
       // Sort by creation date (newest first)

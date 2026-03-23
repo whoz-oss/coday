@@ -59,17 +59,7 @@ export class HandlerLooper {
       //   2. appears in the autocomplete via the extraPromptInfos stub
       if (this.services.project.selectedProject) {
         const delegateHandler = new DelegateCommandHandler(this.interactor, this.services)
-        const delegateStub: import('@coday/model').PromptInfo = {
-          id: 'handler-delegate',
-          name: delegateHandler.commandWord,
-          description: delegateHandler.description,
-          source: 'builtin',
-          webhookEnabled: false,
-          createdBy: 'system',
-          createdAt: new Date('2024-01-01').toISOString(),
-          parameterFormat: '@AgentName <task>',
-        }
-        const prompts = await this.services.prompt.list(this.services.project.selectedProject.name, [delegateStub])
+        const prompts = await this.services.prompt.list(this.services.project.selectedProject.name)
         const slashCommandHandler = new SlashCommandHandler(
           this.interactor,
           this.services.prompt,
