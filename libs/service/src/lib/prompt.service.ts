@@ -419,9 +419,10 @@ export class PromptService {
    * Returns prompts with their source indicated
    *
    * @param projectName - Project name
+   * @param extraPromptInfos - Optional additional stubs (e.g. native command handlers) to include in the list for autocomplete
    * @returns Array of prompts from both local and project sources
    */
-  async list(projectName: string): Promise<PromptInfo[]> {
+  async list(projectName: string, extraPromptInfos: PromptInfo[] = []): Promise<PromptInfo[]> {
     try {
       const prompts: PromptInfo[] = []
       const sources: PromptSource[] = ['local']
@@ -466,6 +467,7 @@ export class PromptService {
       }
 
       prompts.push(...BuiltinPrompts)
+      prompts.push(...extraPromptInfos)
 
       // Sort by creation date (newest first)
       return prompts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())

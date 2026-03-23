@@ -53,17 +53,29 @@ export class HandlerLooper {
         }
       }
 
-      // Add DelegateCommandHandler for user-initiated delegation
-      this.handlers.push(new DelegateCommandHandler(this.interactor, this.services))
-
       // Add SlashCommandHandler for stored prompts (from PromptService)
+      // DelegateCommandHandler is injected as a custom handler so it:
+      //   1. takes priority over any prompt named 'delegate'
+      //   2. appears in the autocomplete via the extraPromptInfos stub
       if (this.services.project.selectedProject) {
-        const prompts = await this.services.prompt.list(this.services.project.selectedProject.name)
+        const delegateHandler = new DelegateCommandHandler(this.interactor, this.services)
+        const delegateStub: import('@coday/model').PromptInfo = {
+          id: 'handler-delegate',
+          name: delegateHandler.commandWord,
+          description: delegateHandler.description,
+          source: 'builtin',
+          webhookEnabled: false,
+          createdBy: 'system',
+          createdAt: new Date('2024-01-01').toISOString(),
+          parameterFormat: '@AgentName <task>',
+        }
+        const prompts = await this.services.prompt.list(this.services.project.selectedProject.name, [delegateStub])
         const slashCommandHandler = new SlashCommandHandler(
           this.interactor,
           this.services.prompt,
           this.services.project.selectedProject.name,
-          prompts
+          prompts,
+          [delegateHandler]
         )
         this.handlers.push(slashCommandHandler)
       }

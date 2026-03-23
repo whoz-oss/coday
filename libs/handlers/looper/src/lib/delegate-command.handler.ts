@@ -6,23 +6,39 @@ import { parseAgentCommand } from '@coday/handlers-openai'
 
 const USAGE_HINT = 'Usage: /delegate @AgentName <task description>'
 
+/**
+ * DelegateCommandHandler - User-initiated delegation to a named agent
+ *
+ * Handles the `/delegate @AgentName <task>` command, which is the human-initiated
+ * equivalent of the agent `delegate` tool. The agent runs the task in a fresh
+ * sub-thread and the result is displayed inline.
+ *
+ * This handler is registered as a custom handler inside SlashCommandHandler so it:
+ * - Appears in the `/` autocomplete (via PromptService.list() stub)
+ * - Takes priority over any prompt with the same name
+ * - Uses the native delegation infrastructure (delegateFunction)
+ *
+ * The commandWord is `delegate` (without leading `/`) because SlashCommandHandler
+ * strips the `/` prefix before dispatching to sub-handlers.
+ */
 export class DelegateCommandHandler extends CommandHandler {
   constructor(
     private readonly interactor: Interactor,
     private readonly services: CodayServices
   ) {
     super({
-      commandWord: '/delegate',
+      commandWord: 'delegate',
       description: 'Delegate a task to a specific agent in an isolated sub-thread: /delegate @AgentName <task>',
     })
   }
 
   override accept(command: string, _context: CommandContext): boolean {
-    return command.trim().toLowerCase().startsWith('/delegate ')
+    const lower = command.trim().toLowerCase()
+    return lower === 'delegate' || lower.startsWith('delegate ')
   }
 
   override async handle(command: string, context: CommandContext): Promise<CommandContext> {
-    const remainder = command.trim().slice('/delegate '.length).trim()
+    const remainder = command.trim().slice('delegate'.length).trim()
 
     if (!remainder.startsWith('@')) {
       this.interactor.displayText(`Missing @AgentName. ${USAGE_HINT}`)

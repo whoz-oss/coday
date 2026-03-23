@@ -2,6 +2,7 @@ import { NestedHandler } from './nested.handler'
 import { Interactor, BuiltinPrompts } from '@coday/model'
 import { PromptService } from '@coday/service'
 import { PromptHandler } from './prompt.handler'
+import { CommandHandler } from './command-handler'
 
 const builtinPromptInfos = BuiltinPrompts.map((p) => ({
   id: p.id,
@@ -20,6 +21,9 @@ const builtinPromptInfos = BuiltinPrompts.map((p) => ({
  * - /deploy app=coday env=staging
  * - /analyze-logs error
  *
+ * Custom handlers can be injected and take priority over prompt handlers.
+ * They appear in the autocomplete via PromptService.list() stubs.
+ *
  * This handler is initialized once per thread and loads all available prompts
  * at initialization time. No dynamic refresh - prompts are loaded when the
  * thread is created.
@@ -29,7 +33,8 @@ export class SlashCommandHandler extends NestedHandler {
     interactor: Interactor,
     promptService: PromptService,
     projectName: string,
-    prompts: Array<{ id: string; name: string; description: string }>
+    prompts: Array<{ id: string; name: string; description: string }>,
+    customHandlers: CommandHandler[] = []
   ) {
     super(
       {
@@ -41,9 +46,16 @@ export class SlashCommandHandler extends NestedHandler {
 
     const allPrompts = [...builtinPromptInfos, ...prompts]
 
-    // Create a PromptHandler for each prompt
-    this.handlers = allPrompts.map(
-      (prompt) => new PromptHandler(promptService, projectName, prompt.id, prompt.name, prompt.description)
-    )
+    // Names covered by custom handlers — no PromptHandler should be created for these
+    const customHandlerNames = new Set(customHandlers.map((h) => h.commandWord.toLowerCase()))
+
+    // Custom handlers take priority: they are checked first.
+    // Prompt handlers follow for everything else (excluding names claimed by custom handlers).
+    this.handlers = [
+      ...customHandlers,
+      ...allPrompts
+        .filter((prompt) => !customHandlerNames.has(prompt.name.toLowerCase()))
+        .map((prompt) => new PromptHandler(promptService, projectName, prompt.id, prompt.name, prompt.description)),
+    ]
   }
 }
