@@ -1,3 +1,17 @@
+## 0.103.1 (2026-03-24)
+
+### 🩹 Fixes
+
+- #561 add inline OAuth authorization panel to avoid popup blocking ([#618](https://github.com/whoz-oss/coday/pull/618), [#561](https://github.com/whoz-oss/coday/issues/561))
+- server build TS2532 on resolve-username parts[1] access ([#639](https://github.com/whoz-oss/coday/pull/639))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- mathieu_dearmey @mathieu-dearmey
+- vincent.audibert
+
 ## 0.103.0 (2026-03-24)
 
 ### 🚀 Features
