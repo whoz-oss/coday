@@ -905,6 +905,11 @@ async function startCodayServer(): Promise<void> {
       env['PATH'] = '/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'
     }
 
+    // Use a fixed port so CodayTwin is always reachable on the same address
+    const CODAY_TWIN_PORT = '3050'
+    env['PORT'] = CODAY_TWIN_PORT
+    log('INFO', `Using fixed port: ${CODAY_TWIN_PORT}`)
+
     // Use a temp directory as cwd to prevent npx from resolving to local workspace packages
     const npxCwd = app.getPath('temp')
     log('INFO', 'Using npx cwd:', npxCwd)
@@ -950,7 +955,19 @@ async function startCodayServer(): Promise<void> {
 
       if (serverProcess!.stderr) {
         serverProcess!.stderr.on('data', (data: Buffer) => {
-          log('ERROR', '[Server Error]:', data.toString())
+          const text = data.toString()
+          log('ERROR', '[Server Error]:', text)
+
+          // Detect port-in-use error signalled by the server process
+          if (text.includes('PORT_IN_USE:')) {
+            const portMatch = text.match(/PORT_IN_USE:.*?(Port \d+ is already in use[^\n]*)/)
+            const detail = portMatch ? portMatch[1] : `Port ${env['PORT']} is already in use.`
+            const portError: any = new Error(
+              `${detail}\n\nPlease close any other application using this port and restart CodayTwin.`
+            )
+            portError.userFacing = true
+            settle(() => reject(portError))
+          }
         })
       }
 
