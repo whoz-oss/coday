@@ -27,8 +27,8 @@
           </button>
         }
 
-        <!-- Share Button - hidden when share drawer open -->
-        @if (drawerMode !== 'share') {
+        <!-- Share Button - hidden when share drawer open or auth is disabled -->
+        @if (authEnabled && drawerMode !== 'share') {
           <button
             matFab
             class="share-toggle-btn"

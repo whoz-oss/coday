@@ -8,6 +8,7 @@ import { tap } from 'rxjs/operators'
  */
 export interface UserInfo {
   username: string
+  authEnabled: boolean
 }
 
 /**
@@ -19,11 +20,17 @@ export interface UserInfo {
 export class UserService {
   private readonly http = inject(HttpClient)
   private readonly usernameSubject = new BehaviorSubject<string | null>(null)
+  private readonly authEnabledSubject = new BehaviorSubject<boolean>(false)
 
   /**
    * Observable of current username
    */
   username$ = this.usernameSubject.asObservable()
+
+  /**
+   * Observable of whether auth/multi-user mode is enabled
+   */
+  authEnabled$ = this.authEnabledSubject.asObservable()
 
   /**
    * Fetch current user information from the server
@@ -32,6 +39,7 @@ export class UserService {
     return this.http.get<UserInfo>('/api/user/me').pipe(
       tap((userInfo) => {
         this.usernameSubject.next(userInfo.username)
+        this.authEnabledSubject.next(userInfo.authEnabled)
       })
     )
   }
