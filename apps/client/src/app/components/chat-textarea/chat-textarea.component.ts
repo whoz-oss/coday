@@ -44,6 +44,8 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
   @Output() heightChanged = new EventEmitter<number>()
   @Output() stopRequested = new EventEmitter<void>()
+  /** Emitted when the textarea is focused — used to close the sidenav on mobile. */
+  @Output() textareaFocused = new EventEmitter<void>()
 
   @ViewChild('messageInput', { static: true }) messageInput!: ElementRef<HTMLTextAreaElement>
   @ViewChild('fileInput') fileInput?: ElementRef<HTMLInputElement>

@@ -1,4 +1,4 @@
-import { Component, ElementRef, inject, OnDestroy, OnInit, ViewChild } from '@angular/core'
+import { Component, ElementRef, EventEmitter, inject, Input, OnDestroy, OnInit, Output, ViewChild } from '@angular/core'
 import { Router } from '@angular/router'
 import { FormsModule } from '@angular/forms'
 import { Subject } from 'rxjs'
@@ -43,6 +43,16 @@ import { ThreadStateService } from '../../core/services/thread-state.service'
 export class SidenavComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>()
   isOpen = true
+
+  /** Emits true when the sidenav opens, false when it closes. */
+  @Output() sidenavStateChange = new EventEmitter<boolean>()
+
+  /** When true, hides the floating FABs on mobile (right drawer is open). */
+  @Input() drawerOpen = false
+
+  get screenWidth(): number {
+    return window.innerWidth
+  }
 
   // Role-based access control
   isAdmin = false
@@ -116,11 +126,15 @@ export class SidenavComponent implements OnInit, OnDestroy {
   toggle(): void {
     this.isOpen = !this.isOpen
     this.saveSidenavState()
+    this.sidenavStateChange.emit(this.isOpen)
   }
 
   close(): void {
-    this.isOpen = false
-    this.saveSidenavState()
+    if (this.isOpen) {
+      this.isOpen = false
+      this.saveSidenavState()
+      this.sidenavStateChange.emit(false)
+    }
   }
 
   /**
@@ -357,6 +371,16 @@ export class SidenavComponent implements OnInit, OnDestroy {
     this.threadStateService.clearSelection()
     // Navigate to project route without threadId to show welcome view
     this.router.navigate(['project', projectName])
+  }
+
+  /**
+   * Close sidenav when a thread is selected on mobile.
+   * On desktop (>= 1024 px) the sidenav stays open.
+   */
+  onThreadSelectedOnMobile(): void {
+    if (window.innerWidth < 1024) {
+      this.close()
+    }
   }
 
   /**

@@ -1,5 +1,5 @@
 <!-- Floating Action Button to toggle sidenav -->
-@if (!isOpen) {
+@if (!isOpen && (!drawerOpen || screenWidth >= 1024)) {
   <button mat-icon-button class="sidenav-toggle-btn" (click)="toggle()" title="Menu" type="button">
     <mat-icon>menu</mat-icon>
   </button>
@@ -18,7 +18,7 @@
 }
 
 <!-- Material Sidenav Container -->
-<mat-sidenav-container class="sidenav-container" [hasBackdrop]="false">
+<mat-sidenav-container class="sidenav-container" [class.sidenav-open]="isOpen" [hasBackdrop]="false">
   <mat-sidenav
     mode="push"
     position="start"
@@ -59,8 +59,8 @@
       </a>
     </div>
 
-    <!-- Expansion Panels Container -->
-    <div class="sidenav-sections" [class.has-footer]="true" [class.is-admin]="isAdmin">
+    <!-- Thread section: scrollable, fills remaining sidenav height -->
+    <div class="sidenav-sections">
       <!-- Threads Section - Expanded by default -->
       <div class="section-container" [class.expanded]="expandedSections['threads']">
         @if (isThreadSearchActive && expandedSections['threads']) {
@@ -120,11 +120,16 @@
               [searchMode]="isThreadSearchActive"
               [searchQuery]="threadSearchQuery"
               (searchModeChange)="onThreadSearchModeChange($event)"
+              (threadSelected)="onThreadSelectedOnMobile()"
             ></app-thread-selector>
           </div>
         }
       </div>
+    </div>
+    <!-- end sidenav-sections -->
 
+    <!-- Footer: fixed-height sections always visible below thread list -->
+    <div class="sidenav-footer" [class.is-admin]="isAdmin">
       <!-- Configuration Section -->
       <div class="section-container" [class.expanded]="expandedSections['config']">
         <a
@@ -305,9 +310,10 @@
         </a>
       </div>
     </div>
+    <!-- end sidenav-footer -->
   </mat-sidenav>
 
-  <mat-sidenav-content>
+  <mat-sidenav-content [class.sidenav-closed-offset]="!isOpen">
     <!-- Content goes here (router-outlet) -->
     <ng-content></ng-content>
   </mat-sidenav-content>

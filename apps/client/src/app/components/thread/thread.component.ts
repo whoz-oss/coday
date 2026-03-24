@@ -1,9 +1,11 @@
 import {
   Component,
+  EventEmitter,
   Input,
   OnInit,
   OnDestroy,
   OnChanges,
+  Output,
   SimpleChanges,
   AfterViewChecked,
   ElementRef,
@@ -74,6 +76,10 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   // Required inputs - thread identification
   @Input({ required: true }) projectName!: string
   @Input({ required: true }) threadId!: string
+
+  /** Forwarded from ChatTextareaComponent — used to close sidenav on mobile. */
+  @Output() chatFocused = new EventEmitter<void>()
+  @Output() drawerStateChange = new EventEmitter<boolean>()
 
   private readonly destroy$ = new Subject<void>()
   private readonly connectionDestroy$ = new Subject<void>()
@@ -355,16 +361,23 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   }
 
   // Drawer toggle/close methods
+  private emitDrawerState(): void {
+    this.drawerStateChange.emit(this.isDrawerOpen)
+  }
+
   toggleFileDrawer(): void {
     this.drawerMode = this.drawerMode === 'files' ? 'none' : 'files'
+    this.emitDrawerState()
   }
 
   toggleSharePanel(): void {
     this.drawerMode = this.drawerMode === 'share' ? 'none' : 'share'
+    this.emitDrawerState()
   }
 
   closeDrawer(): void {
     this.drawerMode = 'none'
+    this.emitDrawerState()
   }
 
   onUserAdded(userId: string): void {
