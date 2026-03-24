@@ -15,7 +15,7 @@
 
 import * as os from 'node:os'
 
-const CF_JWT_HEADER = 'cf_authorization'
+const CF_JWT_HEADER = 'cf-access-jwt-assertion'
 const EMAIL_HEADER = 'x-forwarded-email'
 
 /**
