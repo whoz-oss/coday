@@ -350,10 +350,9 @@ $sidenav-above-threads: 146px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  // Same glass background as the sidenav itself
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-backdrop-blur);
-  -webkit-backdrop-filter: var(--glass-backdrop-blur);
+  // Fully opaque — same hue as sidenav glass but no transparency, covers footer items
+  background: var(--color-bg-solid);
+  backdrop-filter: none;
   max-height: calc(50% - #{$sidenav-above-threads} / 2);
 
   // Min-height only when threads section is expanded
@@ -740,8 +739,5 @@ $sidenav-above-threads: 146px;
     background: rgba(36, 40, 48, 0.7);
   }
 
-  // Match app-sidenav dark background exactly
-  .sidenav-sections {
-    background: rgba(36, 40, 48, 0.95);
-  }
+  // --color-bg-solid resolves to #1c1c1e in dark mode — no override needed
 }
