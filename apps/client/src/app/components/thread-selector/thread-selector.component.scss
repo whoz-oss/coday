@@ -4,7 +4,7 @@
   width: 100%;
   min-height: 0; // Allow shrinking in flex parent
 
-  // When inside sidenav, the thread-list should fill available space
+  // When inside sidenav, let the parent section-content handle scrolling
   :host-context(.sidenav-thread-selector) & {
     flex: 1;
     min-height: 0;
@@ -15,7 +15,7 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  // When inside sidenav, let the parent (.section-content.threads) handle scrolling
+  // When inside sidenav, let the thread-selector handle scrolling
   max-height: none;
   overflow: visible;
 }

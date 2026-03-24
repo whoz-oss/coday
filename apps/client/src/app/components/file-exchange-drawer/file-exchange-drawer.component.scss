@@ -212,7 +212,7 @@
   }
 }
 
-// Mobile: always show actions
+// Mobile: always show actions + safe area padding
 @media (max-width: 768px) {
   .file-actions {
     opacity: 1;
@@ -224,5 +224,7 @@
 
   .drawer-header {
     padding: 0.75rem;
+    // Push header below iOS status bar / notch
+    padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
   }
 }
