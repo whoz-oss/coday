@@ -36,7 +36,7 @@ export function extractEmailFromCfJwt(token: string | undefined): string | null 
 
   try {
     // base64url -> base64 -> JSON
-    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const payload = parts[1]!.replace(/-/g, '+').replace(/_/g, '/')
     const json = Buffer.from(payload, 'base64').toString('utf8')
     const claims = JSON.parse(json)
     const email = claims?.email
