@@ -1,3 +1,13 @@
+## 0.103.2 (2026-03-24)
+
+### 🩹 Fixes
+
+- adjust cloudflare header ([#641](https://github.com/whoz-oss/coday/pull/641))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.103.1 (2026-03-24)
 
 ### 🩹 Fixes
