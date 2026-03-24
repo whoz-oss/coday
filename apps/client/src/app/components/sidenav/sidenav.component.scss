@@ -7,8 +7,6 @@
 }
 
 $section-toggle-height: 50px;
-// Approximate height of header + new-thread-section combined
-$sidenav-above-threads: 146px;
 
 // Sidenav container - full height
 .sidenav-container {
@@ -51,9 +49,9 @@ $sidenav-above-threads: 146px;
   overflow: visible !important;
 }
 
-// Kill Material's inner container scroll — .sidenav-sections is the only scroll
+// Allow the inner container to scroll so the whole sidenav column scrolls naturally
 :host ::ng-deep .mat-drawer-inner-container {
-  overflow: hidden !important;
+  overflow-y: auto !important;
 }
 
 // Shared glass circle treatment for floating FABs on mobile
@@ -159,7 +157,7 @@ $sidenav-above-threads: 146px;
   }
 }
 
-// Sidenav drawer — full height, relative anchor for absolutely-positioned thread list
+// Sidenav drawer — full height, single scrollable flex column
 .app-sidenav {
   width: 310px;
   height: 100%;
@@ -168,7 +166,7 @@ $sidenav-above-threads: 146px;
   backdrop-filter: var(--glass-backdrop-blur);
   -webkit-backdrop-filter: var(--glass-backdrop-blur);
   border-radius: 0;
-  overflow: hidden;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
 }
@@ -338,37 +336,18 @@ $sidenav-above-threads: 146px;
   }
 }
 
-// Thread list: absolutely positioned over footer, fills sidenav from below header.
-// Shrinks to content height when list is short, capped at 50vh when long.
+// Thread list: normal flex child after footer, transparent, expands with content
 .sidenav-sections {
-  position: absolute;
-  top: $sidenav-above-threads;
-  left: 0;
-  right: 0;
-  bottom: auto;
-  z-index: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  // Fully opaque — same hue as sidenav glass but no transparency, covers footer items
-  background: var(--color-bg-solid);
-  backdrop-filter: none;
-  max-height: calc(50% - #{$sidenav-above-threads} / 2);
-
-  // Min-height only when threads section is expanded
-  &:has(.section-container.expanded) {
-    min-height: 30vh;
-  }
+  flex-shrink: 0;
 }
 
-// Footer: normal flow, rendered after header+new-thread in the flex column.
-// Sits underneath the absolutely-positioned thread list when it's long.
+// Footer: flex-shrink: 0, sits between new-thread and the thread list
 .sidenav-footer {
-  margin-top: $sidenav-above-threads;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 
   // Expanded sections inside footer (e.g. Preferences) get a capped scrollable area
   .section-container.expanded {
@@ -396,19 +375,12 @@ $sidenav-above-threads: 146px;
   display: flex;
   flex-direction: column;
 
-  // Expanded thread section: fills available space in .sidenav-sections, single scroll
+  // Expanded thread section: grows with its content (sidenav itself scrolls)
   &.expanded {
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
     display: flex;
     flex-direction: column;
 
     .section-content {
-      flex: 1;
-      min-height: 0;
-      overflow-y: auto;
-      overflow-x: hidden;
       border-bottom: none;
       padding-bottom: 1rem;
     }
