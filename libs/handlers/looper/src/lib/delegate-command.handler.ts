@@ -2,7 +2,7 @@ import { CommandHandler } from '@coday/handler'
 import { CommandContext, Interactor } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
 import { delegateFunction } from '@coday/integrations-ai'
-import { parseAgentCommand } from '@coday/handlers-openai'
+import { parseAgentCommand } from '@coday/handler'
 
 const USAGE_HINT = 'Usage: /delegate @AgentName <task description>'
 

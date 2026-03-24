@@ -1,6 +1,6 @@
 import { lastValueFrom, Observable } from 'rxjs'
 import { Agent, AgentServiceModel, AiThread, CodayEvent, CommandContext } from '@coday/model'
-import { parseAgentCommand } from './parse-agent-command'
+import { parseAgentCommand } from '@coday/handler'
 import { keywords } from '@coday/model'
 import { Killable } from '@coday/model'
 import { Interactor } from '@coday/model'
