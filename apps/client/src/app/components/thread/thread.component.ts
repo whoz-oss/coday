@@ -20,6 +20,7 @@ import { ChatHistoryComponent } from '../chat-history/chat-history.component'
 import { ChatMessage } from '../chat-message/chat-message.component'
 import { ChatTextareaComponent } from '../chat-textarea/chat-textarea.component'
 import { ChoiceOption, ChoiceSelectComponent } from '../choice-select/choice-select.component'
+import { OAuthRequestPanelComponent } from '../oauth-request-panel/oauth-request-panel.component'
 import { FileExchangeDrawerComponent } from '../file-exchange-drawer/file-exchange-drawer.component'
 import { ThreadShareComponent } from '../thread-share/thread-share.component'
 import { MatSidenavModule } from '@angular/material/sidenav'
@@ -27,7 +28,9 @@ import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
 import { MatBadgeModule } from '@angular/material/badge'
 
+import { toSignal } from '@angular/core/rxjs-interop'
 import { CodayService } from '../../core/services/coday.service'
+import { OAuthService } from '../../core/services/oauth.service'
 import { ConnectionStatus } from '../../core/services/event-stream.service'
 import { PreferencesService } from '../../services/preferences.service'
 import { TabTitleService } from '../../services/tab-title.service'
@@ -62,6 +65,7 @@ import { Router } from '@angular/router'
     ChatHistoryComponent,
     ChatTextareaComponent,
     ChoiceSelectComponent,
+    OAuthRequestPanelComponent,
     FileExchangeDrawerComponent,
     ThreadShareComponent,
     MatSidenavModule,
@@ -130,6 +134,10 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
 
   // Modern Angular dependency injection
   private readonly codayService = inject(CodayService)
+  private readonly oauthService = inject(OAuthService)
+
+  /** Signal exposing the current pending OAuth request for the template. */
+  readonly pendingOAuthRequest = toSignal(this.oauthService.pendingRequest$, { initialValue: null })
   private readonly preferencesService = inject(PreferencesService)
   private readonly titleService = inject(TabTitleService)
   private readonly elementRef = inject(ElementRef)
