@@ -31,9 +31,6 @@ import { HighlightPipe } from '../../pipes/highlight.pipe'
   styleUrl: './chat-textarea.component.scss',
 })
 export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, OnChanges {
-  // Constants for textarea sizing
-  private static readonly MIN_TEXTAREA_LINES = 2
-  private static readonly MAX_TEXTAREA_LINES = 15
   @Input() isDisabled: boolean = false
   @Input() showWelcome: boolean = false
   @Input() isThinking: boolean = false
@@ -42,8 +39,6 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
 
   // Internal state for stopping
   isStopping: boolean = false
-  // Local flag to immediately disable textarea when message is sent
-  isLocallyDisabled: boolean = false
   @Output() filesPasted = new EventEmitter<File[]>()
   @Output() messageSubmitted = new EventEmitter<string>()
   @Output() voiceRecordingToggled = new EventEmitter<boolean>()
@@ -134,8 +129,6 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
         this.stopThinkingAnimation()
         // Reset stopping state when thinking ends
         this.isStopping = false
-        // Reset local disable flag when thinking ends
-        this.isLocallyDisabled = false
         // Autofocus textarea when thinking mode ends
         // Use requestAnimationFrame + timeout to ensure disabled attribute is removed
         if (changes['isThinking'].previousValue) {
@@ -151,8 +144,6 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     if (changes['isSessionInitializing']) {
       if (!changes['isSessionInitializing'].currentValue && changes['isSessionInitializing'].previousValue) {
         console.log('[CHAT-TEXTAREA] Session initialization completed, scheduling focus')
-        // Reset local disable flag when session initialization ends
-        this.isLocallyDisabled = false
         requestAnimationFrame(() => {
           setTimeout(() => this.focusTextarea(), 100)
         })
@@ -333,12 +324,9 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     // Allow sending empty messages only via keyboard shortcut (allowEmpty=true)
     // Button click always requires non-empty message (allowEmpty=false, default)
     const messageToSend = this.message.trim()
-    const canSend = !this.isDisabled && !this.isLocallyDisabled && (allowEmpty || messageToSend)
+    const canSend = !this.isDisabled && (allowEmpty || messageToSend)
 
     if (canSend) {
-      // Immediately set local disable flag to prevent any further input
-      this.isLocallyDisabled = true
-
       // Send the trimmed message (can be empty string if allowEmpty=true)
       this.messageSubmitted.emit(messageToSend)
       this.message = ''
@@ -549,46 +537,15 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
   }
 
   /**
-   * Adjusts the textarea height based on content
-   * Sets min-height equivalent to MIN_TEXTAREA_LINES rows and max-height equivalent to MAX_TEXTAREA_LINES rows
+   * Emits the current container height to the parent.
+   * Textarea resizing is handled natively via CSS field-sizing: content.
    */
   private adjustTextareaHeight(): void {
     const textarea = this.messageInput?.nativeElement
     if (!textarea) return
-
-    // Calculate line height (approximately 1.5em based on CSS)
-    const style = window.getComputedStyle(textarea)
-    const fontSize = parseFloat(style.fontSize)
-    const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.5
-
-    // Define min and max heights in pixels using constants
-    const minHeight =
-      lineHeight * ChatTextareaComponent.MIN_TEXTAREA_LINES +
-      parseFloat(style.paddingTop) +
-      parseFloat(style.paddingBottom)
-    const maxHeight =
-      lineHeight * ChatTextareaComponent.MAX_TEXTAREA_LINES +
-      parseFloat(style.paddingTop) +
-      parseFloat(style.paddingBottom)
-
-    // Reset height to auto to get the actual scroll height
-    textarea.style.height = 'auto'
-
-    // Calculate the new height based on scroll height
-    let newHeight = textarea.scrollHeight
-
-    // Apply min/max constraints
-    if (newHeight < minHeight) {
-      newHeight = minHeight
-    } else if (newHeight > maxHeight) {
-      newHeight = maxHeight
-    }
-
-    // Set the new height
-    textarea.style.height = `${newHeight}px`
-
-    // Emit height change to parent
-    const containerHeight = textarea.parentElement?.offsetHeight ?? newHeight + 32
+    // TODO: the +32 fallback is a rough guess for the container padding when parentElement is absent.
+    // It is not reliable — offsetHeight may be 0 before first layout paint.
+    const containerHeight = textarea.parentElement?.offsetHeight ?? textarea.offsetHeight + 32
     this.heightChanged.emit(containerHeight)
   }
 
@@ -687,10 +644,6 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
    */
   private handleInviteEvent(invite: string, defaultValue?: string): void {
     this.currentInvite = invite
-
-    // Reset local disable flag immediately when an invite arrives
-    // This allows the user to respond without waiting for thinking state to clear
-    this.isLocallyDisabled = false
 
     // Set default value if provided
     if (defaultValue) {

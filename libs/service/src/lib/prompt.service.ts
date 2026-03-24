@@ -25,6 +25,7 @@ import type { ProjectService } from './project.service'
 export class PromptService {
   private readonly codayConfigDir: string
   private readonly projectService?: ProjectService
+  private readonly nativeHandlerStubs: PromptInfo[] = []
 
   constructor(codayConfigPath?: string, projectService?: ProjectService) {
     const defaultConfigPath = path.join(os.userInfo().homedir, '.coday')
@@ -415,13 +416,24 @@ export class PromptService {
   }
 
   /**
+   * Register a native handler stub so it appears in the prompt list (and thus in autocomplete).
+   * Should be called once at startup for each built-in command handler exposed as a slash command.
+   */
+  registerNativeHandler(stub: PromptInfo): void {
+    if (!this.nativeHandlerStubs.find((s) => s.id === stub.id)) {
+      this.nativeHandlerStubs.push(stub)
+    }
+  }
+
+  /**
    * Lists all prompts for a project from both sources
    * Returns prompts with their source indicated
    *
    * @param projectName - Project name
+   * @param extraPromptInfos - Optional additional stubs (e.g. native command handlers) to include in the list for autocomplete
    * @returns Array of prompts from both local and project sources
    */
-  async list(projectName: string): Promise<PromptInfo[]> {
+  async list(projectName: string, extraPromptInfos: PromptInfo[] = []): Promise<PromptInfo[]> {
     try {
       const prompts: PromptInfo[] = []
       const sources: PromptSource[] = ['local']
@@ -466,6 +478,8 @@ export class PromptService {
       }
 
       prompts.push(...BuiltinPrompts)
+      prompts.push(...this.nativeHandlerStubs)
+      prompts.push(...extraPromptInfos)
 
       // Sort by creation date (newest first)
       return prompts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())

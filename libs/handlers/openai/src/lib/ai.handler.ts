@@ -1,6 +1,6 @@
 import { lastValueFrom, Observable } from 'rxjs'
 import { Agent, AgentServiceModel, AiThread, CodayEvent, CommandContext } from '@coday/model'
-import { parseAgentCommand } from './parse-agent-command'
+import { parseAgentCommand } from '@coday/handler'
 import { keywords } from '@coday/model'
 import { Killable } from '@coday/model'
 import { Interactor } from '@coday/model'
@@ -104,7 +104,7 @@ export class AiHandler extends CommandHandler implements Killable {
    * Execute agent with given command in context
    */
   private async runAgent(agent: Agent, cmd: string, context: CommandContext): Promise<CommandContext> {
-    const events: Observable<CodayEvent> = await agent.run(cmd, context.aiThread!)
+    const events: Observable<CodayEvent> = await agent.run(cmd, context.aiThread!, context.username)
 
     // Check for auto-save after user message is added to thread
     await this.checkAndAutoSave(context.aiThread!, agent)

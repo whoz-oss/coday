@@ -1,7 +1,7 @@
 import { inject, Injectable } from '@angular/core'
-import { BehaviorSubject, combineLatest, of, shareReplay, switchMap, take } from 'rxjs'
+import { BehaviorSubject, combineLatest, Observable, of, shareReplay, switchMap, take } from 'rxjs'
 import { map, tap } from 'rxjs/operators'
-import { ProjectApiService } from './project-api.service'
+import { ProjectApiService, PreviewStatusResponse } from './project-api.service'
 
 /**
  * Service managing the currently selected project state.
@@ -142,5 +142,27 @@ export class ProjectStateService {
         this.refreshTriggerSubject.next()
       })
     )
+  }
+
+  // ── Preview server ──────────────────────────────────────────────────────────
+
+  startPreview(): Observable<PreviewStatusResponse> {
+    const name = this.getSelectedProjectIdOrThrow()
+    return this.projectApi.startPreview(name)
+  }
+
+  stopPreview(): Observable<{ status: string }> {
+    const name = this.getSelectedProjectIdOrThrow()
+    return this.projectApi.stopPreview(name)
+  }
+
+  getPreviewStatus(): Observable<PreviewStatusResponse> {
+    const name = this.getSelectedProjectIdOrThrow()
+    return this.projectApi.getPreviewStatus(name)
+  }
+
+  getPreviewLogs(): Observable<{ logs: string }> {
+    const name = this.getSelectedProjectIdOrThrow()
+    return this.projectApi.getPreviewLogs(name)
   }
 }

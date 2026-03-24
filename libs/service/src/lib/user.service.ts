@@ -38,8 +38,8 @@ export class UserService {
     const filePath = path.join(this.userConfigPath, USER_FILENAME)
     if (!existsSync(filePath)) {
       console.log(`[USER_SERVICE] Creating default config for user '${this.sanitizedUsername}' at ${filePath}`)
-      // Add version to default config
-      const defaultConfig = { ...DEFAULT_USER_CONFIG, version: 1 }
+      // Store the raw username (email) so GET /api/users can return real emails
+      const defaultConfig = { ...DEFAULT_USER_CONFIG, version: 1, username }
       writeYamlFile(filePath, defaultConfig)
     }
 

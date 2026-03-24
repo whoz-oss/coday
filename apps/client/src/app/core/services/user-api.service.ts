@@ -1,6 +1,5 @@
 import { inject, Injectable } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
-import { Observable } from 'rxjs'
 
 export interface UserListItem {
   username: string
@@ -13,7 +12,7 @@ export class UserApiService {
   /**
    * List all known users.
    */
-  listUsers(): Observable<UserListItem[]> {
+  listUsers() {
     return this.http.get<UserListItem[]>('/api/users')
   }
 }

@@ -15,19 +15,6 @@
   >
     <mat-icon fontSet="material-icons-outlined">play_circle</mat-icon>
   </button>
-
-  <!-- Floating Logo Button at Bottom -->
-  @if (!isOpen) {
-    <a
-      href="https://github.com/whoz-oss/coday"
-      target="_blank"
-      rel="noopener noreferrer"
-      class="sidenav-logo-btn"
-      title="Contribute on GitHub"
-    >
-      <img [attr.src]="'CODAY-Logo.png'" alt="Coday" class="logo" />
-    </a>
-  }
 }
 
 <!-- Material Sidenav Container -->
@@ -276,6 +263,31 @@
             <mat-icon class="section-icon">schedule</mat-icon>
             <span class="section-label">Schedulers (No project)</span>
           </a>
+        </div>
+      }
+
+      <!-- Preview Server - visible when project has preview.command configured -->
+      @if (hasPreviewConfig()) {
+        <div class="section-container" [class.expanded]="expandedSections['preview']">
+          <a
+            class="section-toggle"
+            [class.active]="expandedSections['preview']"
+            (click)="toggleSection('preview'); $event.preventDefault(); $event.stopPropagation()"
+            role="button"
+            tabindex="0"
+          >
+            @if (expandedSections['preview']) {
+              <mat-icon class="arrow-icon expanded">keyboard_arrow_up</mat-icon>
+            } @else {
+              <mat-icon class="section-icon">rocket_launch</mat-icon>
+            }
+            <span class="section-label">Preview Server</span>
+          </a>
+          @if (expandedSections['preview']) {
+            <div class="section-content">
+              <app-preview-panel></app-preview-panel>
+            </div>
+          }
         </div>
       }
 

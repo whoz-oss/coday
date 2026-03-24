@@ -1,3 +1,97 @@
+## 0.102.0 (2026-03-24)
+
+### 🚀 Features
+
+- #620 user-initiated manual delegation command ([#630](https://github.com/whoz-oss/coday/pull/630), [#620](https://github.com/whoz-oss/coday/issues/620), [#619](https://github.com/whoz-oss/coday/issues/619))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.101.0 (2026-03-24)
+
+### 🚀 Features
+
+- #624 sub-threads created by delegations appear in conversation list ([#626](https://github.com/whoz-oss/coday/pull/626), [#624](https://github.com/whoz-oss/coday/issues/624))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.100.0 (2026-03-24)
+
+### 🚀 Features
+
+- expose scripts to agents ([#627](https://github.com/whoz-oss/coday/pull/627))
+- #622 multi-user thread UI ([#622](https://github.com/whoz-oss/coday/issues/622))
+- #622 multi-user thread UI ([#628](https://github.com/whoz-oss/coday/pull/628), [#622](https://github.com/whoz-oss/coday/issues/622))
+- **multi-user:** correct message alignment and authorship in shared threads ([bd8c243c](https://github.com/whoz-oss/coday/commit/bd8c243c))
+
+### 🩹 Fixes
+
+- #622 address PR review comments on multi-user thread UI ([#622](https://github.com/whoz-oss/coday/issues/622))
+- #622 move fetchCurrentUser to thread-state guard ([#622](https://github.com/whoz-oss/coday/issues/622))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+- vincent-audibert-whoz
+
+## 0.99.0 (2026-03-23)
+
+### 🚀 Features
+
+- #585 async delegation support and worktree setup fix ([#611](https://github.com/whoz-oss/coday/pull/611), [#585](https://github.com/whoz-oss/coday/issues/585))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.98.0 (2026-03-22)
+
+### 🚀 Features
+
+- various UI mobile ([#609](https://github.com/whoz-oss/coday/pull/609))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.97.2 (2026-03-22)
+
+### 🩹 Fixes
+
+- send proper AnswerEvent with parentKey when replying to InviteEvent ([#612](https://github.com/whoz-oss/coday/pull/612))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.97.1 (2026-03-21)
+
+### 🩹 Fixes
+
+- #604 thread sharing — shared user cannot see or interact with thread ([#605](https://github.com/whoz-oss/coday/pull/605), [#604](https://github.com/whoz-oss/coday/issues/604))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.97.0 (2026-03-20)
+
+### 🚀 Features
+
+- #596 per-project preview server with start/stop UI and idle aut… ([#598](https://github.com/whoz-oss/coday/pull/598), [#596](https://github.com/whoz-oss/coday/issues/596))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
 ## 0.96.1 (2026-03-20)
 
 ### 🚀 Features

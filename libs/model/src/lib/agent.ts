@@ -52,12 +52,12 @@ export class Agent {
    * @param command text written by the user (may include @agentName)
    * @param thread
    */
-  async run(command: string, thread: AiThread): Promise<Observable<CodayEvent>> {
+  async run(command: string, thread: AiThread, username?: string): Promise<Observable<CodayEvent>> {
     const trimmedCommand = command.trim()
 
     // Add AnswerEvent to thread with the original command (including @agentName if present)
     // This preserves the user's original input in the thread history
-    const answerEvent = new AnswerEvent({ answer: trimmedCommand })
+    const answerEvent = new AnswerEvent({ answer: trimmedCommand, name: username ?? thread.username })
     thread.addAnswerEvent(answerEvent)
 
     // Run with AI client

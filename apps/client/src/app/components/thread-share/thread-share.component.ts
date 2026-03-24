@@ -7,8 +7,7 @@ import { UserAutocompleteComponent } from '../user-autocomplete/user-autocomplet
 /**
  * ThreadShareComponent - Manages thread participant sharing
  *
- * Displays current thread participants and allows the owner to add/remove users.
- * Non-owners see the participant list in read-only mode.
+ * Displays current thread participants. Any participant can add or remove users.
  *
  * The parent is responsible for driving isAdding state by calling setAdding()
  * after emitting userAdded, so the autocomplete input is properly disabled during
@@ -24,7 +23,6 @@ import { UserAutocompleteComponent } from '../user-autocomplete/user-autocomplet
 export class ThreadShareComponent {
   @Input({ required: true }) threadId!: string
   @Input({ required: true }) users: { userId: string }[] = []
-  @Input({ required: true }) ownerUsername!: string
   @Input({ required: true }) currentUsername!: string
 
   @Output() userAdded = new EventEmitter<string>()
@@ -32,10 +30,6 @@ export class ThreadShareComponent {
 
   protected readonly isAdding = signal(false)
   protected readonly errorMessage = signal('')
-
-  get isOwner(): boolean {
-    return this.currentUsername === this.ownerUsername
-  }
 
   get excludedUserIds(): string[] {
     return [this.currentUsername, ...this.users.map((u) => u.userId)]

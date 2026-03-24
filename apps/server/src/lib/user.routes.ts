@@ -2,6 +2,7 @@ import express from 'express'
 import fs from 'fs'
 import path from 'path'
 import { debugLog } from './log'
+import { readYamlFile } from '@coday/utils'
 
 /**
  * User Information REST API Routes
@@ -73,7 +74,18 @@ export function registerUserRoutes(
       }
 
       const entries = fs.readdirSync(usersDir, { withFileTypes: true })
-      const usernames = entries.filter((e) => e.isDirectory()).map((e) => ({ username: e.name }))
+      const usernames = entries
+        .filter((e) => e.isDirectory())
+        .flatMap((e) => {
+          const yamlPath = path.join(usersDir, e.name, 'user.yaml')
+          if (!fs.existsSync(yamlPath)) return []
+          const config = readYamlFile(yamlPath) as { username?: string } | null
+          // Use the stored raw username (email) if available, otherwise fall back to directory name
+          const rawUsername = config?.username ?? e.name
+          return [{ username: rawUsername }]
+        })
+        // Exclude the current user from the list
+        .filter((u) => u.username !== username)
 
       debugLog('USER', `GET all users: found ${usernames.length} user(s)`)
 

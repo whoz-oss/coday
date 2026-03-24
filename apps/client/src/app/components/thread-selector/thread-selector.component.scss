@@ -395,26 +395,23 @@
 }
 
 // Sub-thread styles
+// --sub-depth CSS variable (set via [style.--sub-depth]) drives indentation per level
 .thread-item-wrapper.sub-thread {
-  padding-left: 1rem;
+  // 1.5rem indent per level, starting offset of 0.5rem
+  padding-left: calc(0.2rem + var(--sub-depth, 1) * 1.5rem);
+  // Left border as visual hierarchy cue
+  border-left: 2px solid var(--color-primary, #3b82f6);
+  margin-left: 0.75rem;
 
   .sub-thread-item {
-    padding: 0.4rem 0.75rem;
-    gap: 0.35rem;
+    padding: 0.35rem 0.5rem 0.35rem 0;
+    gap: 0.2rem;
     font-size: 0.8rem;
     color: var(--color-text-secondary);
 
     &:hover {
       color: var(--color-primary);
     }
-  }
-
-  .sub-thread-icon {
-    font-size: 14px;
-    width: 14px;
-    height: 14px;
-    color: var(--color-text-muted);
-    flex-shrink: 0;
   }
 
   .sub-thread-agent {
