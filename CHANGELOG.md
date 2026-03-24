@@ -1,3 +1,21 @@
+## 0.102.1 (2026-03-24)
+
+### 🚀 Features
+
+- adjust again GitHub tools and web dev tmux ([#635](https://github.com/whoz-oss/coday/pull/635))
+
+### 🩹 Fixes
+
+- mobile UX improvements — layout, sidenav, thread list, safe areas ([86561bb8](https://github.com/whoz-oss/coday/commit/86561bb8))
+- thread list fully opaque background in light/dark theme ([119c9b34](https://github.com/whoz-oss/coday/commit/119c9b34))
+- mobile UX improvements — layout, sidenav, thread list, safe areas ([#637](https://github.com/whoz-oss/coday/pull/637))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+- vincent-audibert-whoz
+
 ## 0.102.0 (2026-03-24)
 
 ### 🚀 Features
