@@ -2,13 +2,12 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  min-height: 0; // Allow shrinking in flex parent
-
-  // When inside sidenav, let the parent section-content handle scrolling
-  :host-context(.sidenav-thread-selector) & {
-    flex: 1;
-    min-height: 0;
-  }
+  // flex: 1 + min-height: 0 lets this element shrink to its parent's available
+  // height rather than expanding to its full content size.
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden; // No horizontal scroll
+  overflow-y: auto; // Scroll happens here — all ancestors are overflow: hidden
 }
 
 .thread-list {
@@ -87,7 +86,6 @@
   color: var(--color-text);
   text-align: left;
   justify-content: flex-start;
-
   &.new-thread-item {
     margin-bottom: 0.25rem;
   }

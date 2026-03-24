@@ -49,9 +49,13 @@ $section-toggle-height: 50px;
   overflow: visible !important;
 }
 
-// Allow the inner container to scroll so the whole sidenav column scrolls naturally
+// Force the Material inner container to be bounded to the drawer height
+// so the flex chain inside .app-sidenav is properly constrained.
 :host ::ng-deep .mat-drawer-inner-container {
-  overflow-y: auto !important;
+  overflow: hidden !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
 
 // Shared glass circle treatment for floating FABs on mobile
@@ -157,16 +161,18 @@ $section-toggle-height: 50px;
   }
 }
 
-// Sidenav drawer — full height, single scrollable flex column
+// Sidenav drawer — pinned header/new-thread/settings + scrollable thread list
 .app-sidenav {
   width: 310px;
-  height: 100%;
+  height: 100% !important; // Must be bounded so the flex chain can constrain children
+  min-height: 0 !important;
   position: relative;
   background: var(--glass-bg);
   backdrop-filter: var(--glass-backdrop-blur);
   -webkit-backdrop-filter: var(--glass-backdrop-blur);
   border-radius: 0;
-  overflow-y: auto;
+  overflow: hidden; // Clipped — scroll happens inside .thread-selector
+  overflow-x: hidden !important; // No horizontal scrollbar ever
   display: flex;
   flex-direction: column;
 }
@@ -336,25 +342,78 @@ $section-toggle-height: 50px;
   }
 }
 
-// Thread list: normal flex child after footer, transparent, expands with content
+// Thread list: takes remaining height; scroll is delegated to .thread-selector
 .sidenav-sections {
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
+  flex: 1;
+  min-height: 100px; // Keeps threads visible even when Settings is open
+  overflow: hidden;
+
+  // Every level of the chain must have flex: 1 + min-height: 0 + overflow: hidden
+  // so none of them expand to content size and break the scroll boundary.
+  > .section-container,
+  > .section-container.expanded,
+  > .section-container > .section-content.threads,
+  > .section-container > .section-content.threads > app-thread-selector {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
 }
 
-// Footer: flex-shrink: 0, sits between new-thread and the thread list
-.sidenav-footer {
+// Nav: sits between new-thread and the thread list.
+// max-height caps how tall it can grow so it never consumes the full sidenav.
+// The settings toggle is pinned (flex-shrink: 0), only the content below scrolls.
+.sidenav-nav {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  max-height: 70%;
 
-  // Expanded sections inside footer (e.g. Preferences) get a capped scrollable area
-  .section-container.expanded {
-    .section-content {
-      max-height: 40vh;
+  // The settings-group must be bounded by the nav height
+  .settings-group {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+
+    // The toggle stays pinned — never scrolls away
+    > .section-toggle {
+      flex-shrink: 0;
+    }
+
+    // Only the content area scrolls
+    > .section-content.settings-content {
+      flex: 1;
+      min-height: 0;
       overflow-y: auto;
       overflow-x: hidden;
+    }
+  }
+}
+
+// Settings group: the outer collapsible that wraps all config items.
+// Its content area has no max-height cap — the sidenav column scrolls as a whole.
+.settings-group {
+  > .section-content.settings-content {
+    padding: 0;
+    border-bottom: 1px solid var(--color-border);
+    // No max-height — let content expand naturally
+    overflow: visible;
+
+    // Preferences (config) sub-section keeps a reasonable cap so it doesn't
+    // push everything else off screen on small viewports.
+    .section-container.expanded {
+      .section-content {
+        max-height: 40vh;
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
     }
   }
 }
@@ -375,14 +434,12 @@ $section-toggle-height: 50px;
   display: flex;
   flex-direction: column;
 
-  // Expanded thread section: grows with its content (sidenav itself scrolls)
   &.expanded {
     display: flex;
     flex-direction: column;
 
     .section-content {
       border-bottom: none;
-      padding-bottom: 1rem;
     }
   }
 }
@@ -520,6 +577,20 @@ $section-toggle-height: 50px;
 
   &.threads {
     padding: 0;
+    border-bottom: none;
+    // Propagate height constraint — must NOT use flex-shrink: 0 here
+    flex: 1 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+
+    // app-thread-selector is a custom element — make it a proper flex child
+    app-thread-selector {
+      flex: 1 !important;
+      min-height: 0 !important;
+      overflow: hidden !important;
+      display: flex !important;
+      flex-direction: column !important;
+    }
   }
 }
 

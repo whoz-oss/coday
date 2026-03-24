@@ -65,6 +65,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
     threads: true,
     config: false,
     preview: false,
+    settings: false,
   }
 
   // Thread search state
@@ -324,18 +325,27 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Toggle section expansion (accordion behavior - closes others)
+   * Toggle section expansion.
+   *
+   * - 'settings' and 'threads' are top-level independent toggles — toggling one
+   *   does NOT close the other.
+   * - 'config' and 'preview' are sub-sections inside the settings group and
+   *   follow accordion behaviour (only one open at a time within the group).
    */
   toggleSection(section: string): void {
     const wasExpanded = this.expandedSections[section]
 
-    // Close all sections first (accordion behavior)
-    Object.keys(this.expandedSections).forEach((key) => {
-      this.expandedSections[key] = false
-    })
-
-    // Toggle the clicked section
-    this.expandedSections[section] = !wasExpanded
+    if (section === 'settings' || section === 'threads') {
+      // Top-level: just toggle independently
+      this.expandedSections[section] = !wasExpanded
+    } else {
+      // Sub-section inside settings group: accordion — close all siblings first
+      const settingsSubSections = ['config', 'preview']
+      settingsSubSections.forEach((key) => {
+        this.expandedSections[key] = false
+      })
+      this.expandedSections[section] = !wasExpanded
+    }
   }
 
   /**
