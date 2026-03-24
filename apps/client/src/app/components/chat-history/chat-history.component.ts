@@ -36,6 +36,8 @@ export class ChatHistoryComponent implements AfterViewChecked, OnInit, OnDestroy
   @Input() messages: ChatMessage[] = []
   @Input() streamingText: string = ''
   @Input() isThinking: boolean = false
+  /** Set to the current user's username to enable per-message other-user detection */
+  @Input() currentUsername: string = ''
   @Output() copyRequested = new EventEmitter<ChatMessage>()
   @Output() stopRequested = new EventEmitter<void>()
 

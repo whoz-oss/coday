@@ -232,9 +232,7 @@ export function registerThreadRoutes(
             return
           }
         }
-        // Ensure current user is always in the users list (prevent self-removal)
-        const currentUserInList = users.some((u) => u.userId === username)
-        resolvedUsers = currentUserInList ? users : [{ userId: username }, ...users]
+        resolvedUsers = users
       }
 
       debugLog('THREAD', `PUT update thread: ${threadId} in project: ${projectName}`)

@@ -24,6 +24,7 @@ import {
 
 import { EventStreamService } from './event-stream.service'
 import { MessageApiService } from './message-api.service'
+import { UserService } from './user.service'
 
 import { ChatMessage } from '../../components/chat-message/chat-message.component'
 import { ChoiceOption } from '../../components/choice-select/choice-select.component'
@@ -96,6 +97,7 @@ export class CodayService implements OnDestroy {
   // Modern Angular dependency injection
   private readonly eventStream = inject(EventStreamService)
   private readonly messageApi = inject(MessageApiService)
+  private readonly userService = inject(UserService)
 
   constructor() {
     // Initialize connection status observable after eventStream is available
@@ -396,7 +398,7 @@ export class CodayService implements OnDestroy {
     const message: ChatMessage = {
       id: event.timestamp,
       role: 'user',
-      speaker: 'User',
+      speaker: event.name ?? this.userService.getUsername() ?? 'User',
       content: [{ type: 'text', content: event.answer }],
       timestamp: event.date,
       type: 'text',

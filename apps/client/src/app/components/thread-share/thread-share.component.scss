@@ -50,10 +50,6 @@
   &:hover {
     background: var(--color-bg-hover);
   }
-
-  &.owner {
-    background: rgba(var(--color-primary-rgb, 25, 118, 210), 0.05);
-  }
 }
 
 .user-icon {
@@ -71,16 +67,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.owner-badge {
-  font-size: 0.7rem;
-  background: var(--color-primary-light);
-  color: var(--color-primary);
-  padding: 0.1rem 0.5rem;
-  border-radius: 10px;
-  flex-shrink: 0;
-  font-weight: 500;
 }
 
 .remove-button {

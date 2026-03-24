@@ -6,17 +6,13 @@ import {
   CodayTool,
   CommandContext,
   FunctionTool,
+  hasAccess,
   IntegrationConfig,
   Interactor,
 } from '@coday/model'
 import { ThreadService } from '@coday/service'
 import { delegateFunction } from './delegate.function'
-
-type Delegation = {
-  agentName: string
-  task: string
-  threadId?: string
-}
+import { Delegation } from './delegate.types'
 
 export class DelegateTools extends AssistantToolFactory {
   static readonly TYPE = 'DELEGATE' as const
@@ -112,6 +108,10 @@ export class DelegateTools extends AssistantToolFactory {
                     type: 'string',
                     description: `Optional: ID of an existing thread to resume. When provided, the named agent runs in that thread's full existing context — do NOT repeat prior work or context in the task, only describe the new work needed. The agent does not need to match the one that originally worked on the thread — any agent can be directed into an existing thread's context. When omitted, a fresh isolated sub-thread is created.`,
                   },
+                  async: {
+                    type: 'boolean',
+                    description: `Optional: if true, the delegation is fire-and-forget — the tool returns immediately with the threadId without waiting for the agent to finish. Use this when the delegated work is long-running or when the result is not needed inline. The sub-thread can be monitored later via list_sub_threads.`,
+                  },
                 },
                 required: ['agentName', 'task'],
               },
@@ -139,8 +139,13 @@ export class DelegateTools extends AssistantToolFactory {
             return 'No active thread context available.'
           }
           try {
-            const allThreads = await this.threadService.listThreads(projectName, context.username)
-            const subThreads = allThreads.filter((t) => t.parentThreadId === parentThread.id)
+            // List all threads for the project without user filtering,
+            // then apply hasAccess() to be consistent with the shared-thread model.
+            // This ensures sub-threads spawned by other participants are also visible.
+            const allThreads = await this.threadService.listAllThreads(projectName)
+            const subThreads = allThreads.filter(
+              (t) => t.parentThreadId === parentThread.id && hasAccess(t, context.username)
+            )
             if (!subThreads.length) {
               return 'No sub-threads found for the current thread.'
             }

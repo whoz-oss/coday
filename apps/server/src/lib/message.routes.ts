@@ -158,7 +158,7 @@ export function registerMessageRoutes(
 
         // Handle legacy AnswerEvent flow (has type === 'answer')
         if (payload.type === 'answer') {
-          instance.coday.interactor.sendEvent(new AnswerEvent(payload))
+          instance.coday.interactor.sendEvent(new AnswerEvent({ ...payload, name: username }))
           res.status(200).send('Message received successfully!')
           return
         }

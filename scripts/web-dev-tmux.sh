@@ -20,7 +20,6 @@ START_CLIENT_PORT=5100
 unset TMUX
 
 DIR_NAME="$(basename "$(pwd)")"
-SESSION="coday-dev-${DIR_NAME}"
 
 # Find the first free port starting from a given port
 find_free_port() {
@@ -34,6 +33,7 @@ find_free_port() {
 SERVER_PORT=$(find_free_port "${START_SERVER_PORT}")
 CLIENT_PORT=$(find_free_port "${START_CLIENT_PORT}")
 
+SESSION="coday-dev-${DIR_NAME}-${SERVER_PORT}"
 echo "Working directory : $(pwd)"
 echo "Tmux session      : ${SESSION}"
 echo "Server port       : ${SERVER_PORT}"

@@ -1,5 +1,5 @@
 import { Component, effect, EventEmitter, inject, Input, OnInit, Output } from '@angular/core'
-import { CommonModule, NgTemplateOutlet } from '@angular/common'
+import { NgTemplateOutlet } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
@@ -39,7 +39,6 @@ export interface ThreadNode extends SubThreadNode {
   selector: 'app-thread-selector',
   standalone: true,
   imports: [
-    CommonModule,
     NgTemplateOutlet,
     FormsModule,
     MatIconModule,

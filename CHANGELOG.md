@@ -1,3 +1,33 @@
+## 0.100.0 (2026-03-24)
+
+### 🚀 Features
+
+- expose scripts to agents ([#627](https://github.com/whoz-oss/coday/pull/627))
+- #622 multi-user thread UI ([#622](https://github.com/whoz-oss/coday/issues/622))
+- #622 multi-user thread UI ([#628](https://github.com/whoz-oss/coday/pull/628), [#622](https://github.com/whoz-oss/coday/issues/622))
+- **multi-user:** correct message alignment and authorship in shared threads ([bd8c243c](https://github.com/whoz-oss/coday/commit/bd8c243c))
+
+### 🩹 Fixes
+
+- #622 address PR review comments on multi-user thread UI ([#622](https://github.com/whoz-oss/coday/issues/622))
+- #622 move fetchCurrentUser to thread-state guard ([#622](https://github.com/whoz-oss/coday/issues/622))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+- vincent-audibert-whoz
+
+## 0.99.0 (2026-03-23)
+
+### 🚀 Features
+
+- #585 async delegation support and worktree setup fix ([#611](https://github.com/whoz-oss/coday/pull/611), [#585](https://github.com/whoz-oss/coday/issues/585))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.98.0 (2026-03-22)
 
 ### 🚀 Features

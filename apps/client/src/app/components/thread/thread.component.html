@@ -57,6 +57,7 @@
               [messages]="messages"
               [streamingText]="streamingText"
               [isThinking]="isThinking"
+              [currentUsername]="currentUsername"
               (copyRequested)="onCopyMessage($event)"
               (stopRequested)="onStopRequested()"
             ></app-chat-history>
@@ -120,7 +121,6 @@
           <app-thread-share
             [threadId]="threadId"
             [users]="threadDetails.users || []"
-            [ownerUsername]="threadDetails.username"
             [currentUsername]="currentUsername"
             (userAdded)="onUserAdded($event)"
             (userRemoved)="onUserRemoved($event)"

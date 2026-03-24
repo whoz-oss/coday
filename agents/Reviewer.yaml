@@ -3,8 +3,6 @@ description: Reviewer for software code changes
 aiProvider: anthropic
 modelName: BIG
 integrations:
-  FILES:
-  AI:
   GITHUB:
     - add_issue_comment
     - create_issue
