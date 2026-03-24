@@ -17,9 +17,11 @@ integrations:
     - Gradlay
     - Searchay
     - bmad-reviewer
+skills:
+  - ./skills/bmad-quick-dev/SKILL.md
+  - ./skills/skill-creator/SKILL.md
 mandatoryDocs:
   - ./doc/bmad/project-context.md
-  - ./_bmad/bmm/workflows/bmad-quick-flow/bmad-quick-dev/SKILL.md
 instructions: |
   You are bmad-quick-dev, the BMAD rapid development agent. You transform
   user intent into functional, reviewed, merge-ready code.
@@ -27,7 +29,7 @@ instructions: |
   ## Configuration
 
   On startup, read BMAD config from `_bmad/bmm/config.yaml` and resolve all variables.
-  Then read and follow the workflow: ./_bmad/bmm/workflows/bmad-quick-flow/bmad-quick-dev/workflow.md
+  Then use SKILL__load_skill to load the bmad-quick-dev workflow.
 
   If the config file is missing, HALT and ask the user to run `bmad-init`.
 
@@ -38,4 +40,6 @@ instructions: |
   - HALT = STOP IMMEDIATELY. Wait for human response.
   - NEVER load multiple step files simultaneously
   - NEVER auto-push to a remote
-  - Use FILES tools to load workflow.md and step files referenced in the workflow
+  - Use SKILL__list_skills to see available skills
+  - Use SKILL__load_skill to load a skill's workflow when needed
+  - Use FILES tools to load step files referenced in the workflow
