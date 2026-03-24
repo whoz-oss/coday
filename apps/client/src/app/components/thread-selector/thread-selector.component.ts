@@ -59,6 +59,9 @@ export class ThreadSelectorComponent implements OnInit {
   @Input() searchQuery = ''
   @Output() searchModeChange = new EventEmitter<boolean>()
 
+  /** Emits when a thread is selected — used by parent (sidenav) to close on mobile. */
+  @Output() threadSelected = new EventEmitter<void>()
+
   private readonly projectStateService = inject(ProjectStateService)
   private readonly threadStateService = inject(ThreadStateService)
   private readonly threadApiService = inject(ThreadApiService)
@@ -70,6 +73,9 @@ export class ThreadSelectorComponent implements OnInit {
   threads = toSignal(this.threadStateService.threadList$)
   isLoadingThreadList = toSignal(this.threadStateService.isLoadingThreadList$)
   username = toSignal(this.userService.username$)
+
+  // Disable tooltips on touch devices to prevent double-tap-to-navigate
+  readonly isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
 
   // Editing state
   editingThreadId: string | null = null
@@ -117,6 +123,7 @@ export class ThreadSelectorComponent implements OnInit {
    */
   selectThread(threadId: string): void {
     this.threadStateService.selectThread(threadId)
+    this.threadSelected.emit()
 
     // navigate to `/project/:projectName/thread/:threadId
     this.router.navigate(['project', this.currentProject()?.name, 'thread', threadId])

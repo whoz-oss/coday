@@ -48,7 +48,7 @@
       (keydown)="onKeyDown($event)"
       (input)="onInput()"
       [disabled]="isDisabled"
-      (focus)="isFocused = true"
+      (focus)="isFocused = true; textareaFocused.emit()"
       (blur)="isFocused = false"
     ></textarea>
     @if (!isSessionInitializing) {

@@ -1,3 +1,32 @@
+## 0.103.0 (2026-03-24)
+
+### 🚀 Features
+
+- #636 support Cloudflare Access JWT (CF_Authorization) for user identity in --auth mode ([#638](https://github.com/whoz-oss/coday/pull/638), [#636](https://github.com/whoz-oss/coday/issues/636))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.102.1 (2026-03-24)
+
+### 🚀 Features
+
+- adjust again GitHub tools and web dev tmux ([#635](https://github.com/whoz-oss/coday/pull/635))
+
+### 🩹 Fixes
+
+- mobile UX improvements — layout, sidenav, thread list, safe areas ([86561bb8](https://github.com/whoz-oss/coday/commit/86561bb8))
+- thread list fully opaque background in light/dark theme ([119c9b34](https://github.com/whoz-oss/coday/commit/119c9b34))
+- mobile UX improvements — layout, sidenav, thread list, safe areas ([#637](https://github.com/whoz-oss/coday/pull/637))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+- vincent-audibert-whoz
+
 ## 0.102.0 (2026-03-24)
 
 ### 🚀 Features

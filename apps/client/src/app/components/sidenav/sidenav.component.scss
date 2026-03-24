@@ -7,7 +7,8 @@
 }
 
 $section-toggle-height: 50px;
-$sidenav-header-height: 122px;
+// Approximate height of header + new-thread-section combined
+$sidenav-above-threads: 146px;
 
 // Sidenav container - full height
 .sidenav-container {
@@ -28,6 +29,8 @@ $sidenav-header-height: 122px;
 
     &:not(.mat-drawer-opened) {
       width: 0 !important;
+      overflow: hidden !important;
+      visibility: hidden !important;
     }
   }
 
@@ -48,18 +51,51 @@ $sidenav-header-height: 122px;
   overflow: visible !important;
 }
 
+// Kill Material's inner container scroll — .sidenav-sections is the only scroll
+:host ::ng-deep .mat-drawer-inner-container {
+  overflow: hidden !important;
+}
+
+// Shared glass circle treatment for floating FABs on mobile
+@mixin fab-glass-mobile {
+  @media (max-width: 1023px) {
+    width: 40px !important;
+    height: 40px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+    background: var(--glass-bg) !important;
+    backdrop-filter: var(--glass-backdrop-blur) !important;
+    -webkit-backdrop-filter: var(--glass-backdrop-blur) !important;
+    border: 1px solid var(--glass-border) !important;
+    box-shadow: var(--glass-shadow) !important;
+    border-radius: 50% !important;
+
+    mat-icon {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      line-height: 1 !important;
+    }
+  }
+}
+
 // Floating toggle button (FAB)
 .sidenav-toggle-btn {
   position: fixed !important;
   top: 1rem !important;
   left: 1rem !important;
   z-index: 1500 !important;
+
+  @include fab-glass-mobile;
 }
 
-// Floating new thread button (simple icon below hamburger)
+// Floating new thread button
 .sidenav-new-thread-btn {
   position: fixed !important;
-  top: 4.5rem !important; // Reduced space: 1rem (hamburger top) + 2.5rem (button + gap)
+  top: calc(1rem + 40px + 0.5rem) !important;
   left: 1rem !important;
   z-index: 1500 !important;
 
@@ -74,6 +110,8 @@ $sidenav-header-height: 122px;
       color: var(--color-text-secondary) !important;
     }
   }
+
+  @include fab-glass-mobile;
 }
 
 // Floating logo button at bottom
@@ -121,35 +159,18 @@ $sidenav-header-height: 122px;
   }
 }
 
-// Sidenav drawer - MUST be flex container
+// Sidenav drawer — full height, relative anchor for absolutely-positioned thread list
 .app-sidenav {
   width: 310px;
   height: 100%;
+  position: relative;
   background: var(--glass-bg);
   backdrop-filter: var(--glass-backdrop-blur);
   -webkit-backdrop-filter: var(--glass-backdrop-blur);
   border-radius: 0;
-  overflow: hidden; // NO scroll on sidenav itself
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-
-  // Custom scrollbar
-  &::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: var(--color-text-secondary);
-    border-radius: 4px;
-
-    &:hover {
-      background: var(--color-text);
-    }
-  }
 }
 
 // Sidenav header
@@ -158,7 +179,7 @@ $sidenav-header-height: 122px;
   align-items: center;
   gap: 1rem;
   padding: 1.5rem 1rem 0.5rem;
-  flex-shrink: 0; // Don't shrink header
+  flex-shrink: 0;
 
   .sidenav-logo {
     width: 40px;
@@ -196,7 +217,7 @@ $sidenav-header-height: 122px;
     flex: 1;
     display: flex;
     align-items: center;
-    min-width: 0; // Allow flex child to shrink
+    min-width: 0;
 
     .sidenav-title {
       margin: 0;
@@ -242,7 +263,7 @@ $sidenav-header-height: 122px;
 // New Thread Section - Always Visible
 .new-thread-section {
   padding: 1rem 1rem 0.5rem 1rem;
-  flex-shrink: 0; // Don't shrink this section
+  flex-shrink: 0;
 }
 
 .new-thread-link {
@@ -317,32 +338,44 @@ $sidenav-header-height: 122px;
   }
 }
 
-// Sections container - takes remaining space
+// Thread list: absolutely positioned over footer, fills sidenav from below header.
+// Shrinks to content height when list is short, capped at 50vh when long.
 .sidenav-sections {
-  flex: 1;
-  min-height: 0; // CRITICAL for flexbox
-  overflow: hidden;
+  position: absolute;
+  top: $sidenav-above-threads;
+  left: 0;
+  right: 0;
+  bottom: auto;
+  z-index: 1;
   display: flex;
   flex-direction: column;
-  padding: 0;
-  height: 100%;
-  max-height: calc(100vh - $sidenav-header-height);
+  overflow: hidden;
+  // Fully opaque — same hue as sidenav glass but no transparency, covers footer items
+  background: var(--color-bg-solid);
+  backdrop-filter: none;
+  max-height: calc(50% - #{$sidenav-above-threads} / 2);
 
-  // Custom scrollbar
-  &::-webkit-scrollbar {
-    width: 8px;
+  // Min-height only when threads section is expanded
+  &:has(.section-container.expanded) {
+    min-height: 30vh;
   }
+}
 
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
+// Footer: normal flow, rendered after header+new-thread in the flex column.
+// Sits underneath the absolutely-positioned thread list when it's long.
+.sidenav-footer {
+  margin-top: $sidenav-above-threads;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 
-  &::-webkit-scrollbar-thumb {
-    background: var(--color-text-secondary);
-    border-radius: 4px;
-
-    &:hover {
-      background: var(--color-text);
+  // Expanded sections inside footer (e.g. Preferences) get a capped scrollable area
+  .section-container.expanded {
+    .section-content {
+      max-height: 40vh;
+      overflow-y: auto;
+      overflow-x: hidden;
     }
   }
 }
@@ -359,43 +392,25 @@ $sidenav-header-height: 122px;
 
 // Section container
 .section-container {
-  flex-shrink: 0; // Don't shrink by default
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
 
-  // When expanded, take maximum available space
+  // Expanded thread section: fills available space in .sidenav-sections, single scroll
   &.expanded {
     flex: 1;
     min-height: 0;
-
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 
-    // Ensure section content can grow
     .section-content {
       flex: 1;
+      min-height: 0;
       overflow-y: auto;
       overflow-x: hidden;
-
-      // Remove border-bottom when expanded to fill space
       border-bottom: none;
-
-      position: relative;
-
-      // Gradient shadow at bottom to indicate scrollable content
-      &::after {
-        content: '';
-        position: sticky;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        height: 60px;
-        background: linear-gradient(to bottom, transparent 0%, var(--glass-bg) 100%);
-        pointer-events: none;
-        opacity: 1;
-        transition: opacity 0.3s ease;
-        z-index: 10;
-        flex-shrink: 0;
-      }
+      padding-bottom: 1rem;
     }
   }
 }
@@ -531,7 +546,6 @@ $sidenav-header-height: 122px;
   display: flex;
   flex-direction: column;
 
-  // Threads section - scrollable
   &.threads {
     padding: 0;
   }
@@ -605,7 +619,7 @@ $sidenav-header-height: 122px;
   }
 }
 
-// Preference item (for inline preferences within expansion panel)
+// Preference item
 .preference-item {
   padding-bottom: 1rem;
   margin-bottom: 1rem;
@@ -700,6 +714,11 @@ $sidenav-header-height: 122px;
     top: 0.75rem !important;
   }
 
+  .sidenav-new-thread-btn {
+    left: 0.75rem !important;
+    top: calc(0.75rem + 40px + 0.5rem) !important;
+  }
+
   .error-notification {
     left: 1rem;
     right: 1rem;
@@ -719,4 +738,6 @@ $sidenav-header-height: 122px;
   .sidenav-header {
     background: rgba(36, 40, 48, 0.7);
   }
+
+  // --color-bg-solid resolves to #1c1c1e in dark mode — no override needed
 }

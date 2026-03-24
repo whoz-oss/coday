@@ -60,9 +60,3 @@ echo "Started. Open: http://localhost:${SERVER_PORT}"
 echo "Attach with : tmux attach -t ${SESSION}"
 echo "Stop with   : tmux kill-session -t ${SESSION}"
 
-# Keep this process alive so the preview-manager can track liveness via
-# tmux has-session on the outer preview session. Exits when inner session ends.
-while tmux has-session -t "${SESSION}" 2>/dev/null; do
-  sleep 5
-done
-echo "Session '${SESSION}' ended."
