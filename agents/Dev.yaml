@@ -9,14 +9,10 @@ integrations:
   MEMORY:
   GITHUB:
     - add_issue_comment
-    - create_issue
-    - get_issue
-    - get_issue_comments
+    - issue_read
+    - issue_write
     - create_pull_request
     - get_pull_request
-    - get_pull_request_comments
-    - get_pull_request_reviews
-    - get_pull_request_status
   GIT:
   JIRA:
   DELEGATE:
