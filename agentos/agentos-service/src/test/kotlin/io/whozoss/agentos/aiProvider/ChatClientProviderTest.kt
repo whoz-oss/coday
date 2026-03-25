@@ -33,9 +33,9 @@ class ChatClientProviderTest :
                 chatClientProvider = ChatClientProvider(aiModelRegistry, aiProviderRegistry, chatModelFactory)
             }
 
-            describe("getChatClient(modelName)") {
+            describe("getChatModel(modelName)") {
 
-                it("should resolve model by name and create chat client") {
+                it("should resolve model by name and create chat model") {
                     val model = AiModel(
                         metadata = EntityMetadata(id = UUID.randomUUID()),
                         name = "gpt-4o",
@@ -53,9 +53,9 @@ class ChatClientProviderTest :
                         chatModelFactory.createChatModel(provider, "gpt-4o", null, 0.7, null)
                     } returns chatModel
 
-                    val client = chatClientProvider.getChatClient("gpt-4o")
+                    val result = chatClientProvider.getChatModel("gpt-4o")
 
-                    client.shouldNotBeNull()
+                    result.shouldNotBeNull()
                     verify { chatModelFactory.createChatModel(provider, "gpt-4o", null, 0.7, null) }
                 }
 
@@ -63,7 +63,7 @@ class ChatClientProviderTest :
                     every { aiModelRegistry.findByName("unknown-model") } returns null
 
                     val exception = shouldThrow<IllegalArgumentException> {
-                        chatClientProvider.getChatClient("unknown-model")
+                        chatClientProvider.getChatModel("unknown-model")
                     }
                     exception.message shouldContain "not found"
                 }
@@ -80,13 +80,13 @@ class ChatClientProviderTest :
                     every { aiProviderRegistry.getProviderByName("missing-provider") } returns null
 
                     val exception = shouldThrow<IllegalArgumentException> {
-                        chatClientProvider.getChatClient("my-model")
+                        chatClientProvider.getChatModel("my-model")
                     }
                     exception.message shouldContain "missing-provider"
                 }
             }
 
-            describe("getChatClient(AiModel)") {
+            describe("getChatModel(AiModel)") {
 
                 it("should forward model overrides to ChatModelFactory") {
                     val model = AiModel(
@@ -106,9 +106,9 @@ class ChatClientProviderTest :
                         chatModelFactory.createChatModel(provider, "claude-sonnet-4-5", null, 0.3, 8192)
                     } returns chatModel
 
-                    val client = chatClientProvider.getChatClient(model)
+                    val result = chatClientProvider.getChatModel(model)
 
-                    client.shouldNotBeNull()
+                    result.shouldNotBeNull()
                     verify { chatModelFactory.createChatModel(provider, "claude-sonnet-4-5", null, 0.3, 8192) }
                 }
 
@@ -128,7 +128,7 @@ class ChatClientProviderTest :
                         chatModelFactory.createChatModel(provider, "gpt-3.5-turbo", null, null, null)
                     } returns chatModel
 
-                    chatClientProvider.getChatClient(model).shouldNotBeNull()
+                    chatClientProvider.getChatModel(model).shouldNotBeNull()
                     verify { chatModelFactory.createChatModel(provider, "gpt-3.5-turbo", null, null, null) }
                 }
             }

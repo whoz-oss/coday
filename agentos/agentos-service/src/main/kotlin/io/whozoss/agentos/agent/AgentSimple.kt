@@ -16,176 +16,193 @@ import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.takeWhile
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.reactive.asFlow
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 import mu.KLogging
-import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.ToolResponseMessage
 import org.springframework.ai.chat.messages.UserMessage
+import org.springframework.ai.anthropic.AnthropicChatOptions
+import org.springframework.ai.chat.model.ChatModel
+import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.ai.tool.definition.DefaultToolDefinition
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicReference
 import kotlin.time.TimeSource
 import kotlin.time.measureTime
 
 /**
- * Simple agent implementation that delegates tool orchestration to Spring AI.
+ * Simple agent that owns its own tool-calling loop.
  *
- * ## LLM call strategy
+ * ## Design: ChatModel + ToolCallback stubs + internalToolExecutionEnabled=false
  *
- * When tools are registered we use [ChatClient.CallResponseSpec] (`call()`) rather
- * than `stream()`. Spring AI's streaming path processes parallel tool calls one at a
- * time: it executes the first callback, sends a new LLM request with only that result,
- * and repeats — so the LLM never receives all parallel tool results together and loops
- * indefinitely re-requesting the missing ones.
+ * Spring AI 2.x has a clean separation:
+ * - [ToolCallback] carries both a [org.springframework.ai.tool.definition.ToolDefinition]
+ *   (the schema the LLM sees) and a `call()` implementation (the executor).
+ * - [AnthropicChatOptions.internalToolExecutionEnabled] = `false` disables automatic
+ *   tool execution for a specific request, returning the raw [ChatResponse] with
+ *   `toolCalls` intact.
+ * - [ChatModelFactory] also wires a `noOpEligibilityPredicate` as a belt-and-suspenders
+ *   guard at the model level.
  *
- * `call()` collects ALL tool calls from a single LLM turn, executes ALL callbacks,
- * then sends one follow-up request with all results. This is what Anthropic expects
- * and terminates the loop correctly.
+ * We put [toolCallbackStubs] in [AnthropicChatOptions] so Spring AI serialises the tool
+ * schemas into the Anthropic API request. Setting `internalToolExecutionEnabled = false`
+ * ensures Spring AI never invokes `call()` — AgentSimple owns all tool execution.
  *
- * When no tools are registered we use `stream()` for progressive text display.
+ * ## Loop design
  *
- * ## Tool events
+ * 1. Call [ChatModel.stream], collect chunks, emit [TextChunkEvent]s as they arrive.
+ * 2. Union `toolCalls` across all chunks (deduplicate by id).
+ * 3. If tool calls present: execute all serially, emit [ToolRequestEvent]/[ToolResponseEvent],
+ *    append [AssistantMessage] + [ToolResponseMessage] to the running message list, loop.
+ * 4. If no tool calls: emit [MessageEvent] + [AgentFinishedEvent] and exit.
  *
- * Tool callbacks emit [ToolRequestEvent] and [ToolResponseEvent] into a channel.
- * After `call()` returns (all tool rounds complete), we drain the channel and emit
- * those events so they are stored in the event list for history reconstruction on
- * subsequent [run] invocations.
+ * Cancellability: [kotlinx.coroutines.ensureActive] at every turn boundary;
+ * [kotlinx.coroutines.reactive.asFlow] suspends cooperatively so cancellation propagates
+ * into the Reactor subscription.
  */
 class AgentSimple(
     override val metadata: EntityMetadata = EntityMetadata(),
     private val model: AiModel,
-    private val chatClient: ChatClient,
+    private val chatModel: ChatModel,
     private val tools: Collection<StandardTool<*>>,
 ) : Agent {
     override val name: String get() = model.name
 
-    /** The effective system instructions passed to the LLM, after namespace context injection. */
     val instructions: String? get() = model.instructions
+
+    private val toolsByName: Map<String, StandardTool<*>> = tools.associateBy { it.name }
+
+    /**
+     * ToolCallback stubs that carry tool schemas for the LLM.
+     *
+     * Spring AI reads these to build the `tools` array in the provider API request.
+     * The `call()` implementation is intentionally unreachable — [ChatModelFactory]
+     * wires a [org.springframework.ai.model.tool.ToolExecutionEligibilityPredicate]
+     * that always returns `false`, so Spring AI never invokes it.
+     */
+    private val toolCallbackStubs: Array<ToolCallback> =
+        tools
+            .map { tool ->
+                object : ToolCallback {
+                    private val definition =
+                        DefaultToolDefinition
+                            .builder()
+                            .name(tool.name)
+                            .description(tool.description)
+                            .inputSchema(tool.inputSchema)
+                            .build()
+
+                    override fun getToolDefinition() = definition
+
+                    override fun call(toolInput: String): String =
+                        error("[AgentSimple] ToolCallback.call() must never be invoked — AgentSimple owns tool execution. Check ChatModelFactory.noOpEligibilityPredicate.")
+                }
+            }
+            .toTypedArray()
 
     override fun run(events: List<CaseEvent>): Flow<CaseEvent> =
         flow {
-            val namespaceId = events.firstOrNull()?.namespaceId ?: throw IllegalArgumentException("No events provided")
-            val caseId = events.firstOrNull()?.caseId ?: throw IllegalArgumentException("No events provided")
-
-            // Channel to collect tool events emitted by callbacks during call().
-            val toolEventChannel = Channel<CaseEvent>(Channel.UNLIMITED)
+            val namespaceId =
+                events.firstOrNull()?.namespaceId
+                    ?: throw IllegalArgumentException("No events provided")
+            val caseId =
+                events.firstOrNull()?.caseId
+                    ?: throw IllegalArgumentException("No events provided")
 
             try {
-                val messages = convertEventsToMessages(events)
+                val systemMessages: List<Message> =
+                    if (model.instructions != null) listOf(SystemMessage(model.instructions!!)) else emptyList()
 
-                val allMessages =
-                    if (model.instructions != null) {
-                        listOf(SystemMessage(model.instructions!!)) + messages
-                    } else {
-                        messages
-                    }
+                val messages = convertEventsToMessages(events).toMutableList()
 
-                // Bail out cleanly if cancelled before the LLM call starts.
                 currentCoroutineContext().ensureActive()
-
                 emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
 
-                val llmTurnMark = AtomicReference(TimeSource.Monotonic.markNow())
-                val llmTurnIndex = AtomicInteger(1)
+                var turnIndex = 1
+                var turnMark = TimeSource.Monotonic.markNow()
 
-                val toolCallbacks =
-                    tools.map { tool ->
-                        createToolCallbackWithEvents(
-                            tool,
-                            namespaceId,
-                            caseId,
-                            toolEventChannel,
-                            llmTurnMark,
-                            llmTurnIndex,
-                        )
-                    }
+                while (true) {
+                    currentCoroutineContext().ensureActive()
 
-                val prompt = chatClient.prompt(Prompt(allMessages))
-                val promptWithTools =
-                    if (toolCallbacks.isNotEmpty()) {
-                        prompt.toolCallbacks(toolCallbacks)
-                    } else {
-                        prompt
-                    }
+                    // Advertise tool schemas via AnthropicChatOptions.toolCallbacks.
+                    // internalToolExecutionEnabled=false prevents Spring AI from executing
+                    // them — we get the raw ChatResponse with toolCalls for our own loop.
+                    val options =
+                        AnthropicChatOptions
+                            .builder()
+                            .toolCallbacks(toolCallbackStubs.toList())
+                            .internalToolExecutionEnabled(false)
+                            .build()
+                    val prompt = Prompt(systemMessages + messages, options)
 
-                // ----------------------------------------------------------------
-                // LLM invocation
-                //
-                // Tools present: use blocking call().
-                //   Spring AI's stream() processes parallel tool calls one at a time
-                //   (execute callback → new LLM request → repeat), so the LLM never
-                //   receives all parallel results together and loops indefinitely.
-                //   call() batches all callbacks from one turn and sends one follow-up
-                //   request, matching what Anthropic requires.
-                //
-                // No tools: use stream() for progressive text display.
-                // ----------------------------------------------------------------
-                val content: String
+                    val chunks: List<ChatResponse> =
+                        chatModel
+                            .stream(prompt)
+                            .asFlow()
+                            .toList()
 
-                if (toolCallbacks.isNotEmpty()) {
-                    val response =
-                        withContext(Dispatchers.IO) {
-                            promptWithTools.call().content()
-                        } ?: ""
                     logger.info {
-                        "[AgentSimple] $name LLM answered in ${llmTurnMark.get().elapsedNow()}"
+                        "[AgentSimple] $name turn $turnIndex answered in ${turnMark.elapsedNow()}"
                     }
-                    content = response
-                    if (content.isNotEmpty()) {
-                        emit(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = content))
-                    }
-                } else {
-                    val contentBuilder = StringBuilder()
-                    var firstChunk = true
-                    promptWithTools
-                        .stream()
-                        .content()
-                        .asFlow()
-                        .takeWhile { currentCoroutineContext().isActive }
-                        .collect { chunk ->
-                            if (firstChunk) {
-                                firstChunk = false
-                                logger.info {
-                                    "[AgentSimple] $name LLM answered in ${llmTurnMark.get().elapsedNow()}"
-                                }
-                            }
-                            contentBuilder.append(chunk)
-                            emit(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = chunk))
+
+                    val textBuilder = StringBuilder()
+                    for (chunk in chunks) {
+                        val text = chunk.result?.output?.text
+                        if (!text.isNullOrEmpty()) {
+                            textBuilder.append(text)
+                            emit(TextChunkEvent(namespaceId = namespaceId, caseId = caseId, chunk = text))
                         }
-                    content = contentBuilder.toString()
-                }
+                    }
 
-                // Drain tool events emitted by callbacks during call().
-                toolEventChannel.close()
-                for (toolEvent in toolEventChannel) {
-                    emit(toolEvent)
-                }
+                    val toolCalls: List<AssistantMessage.ToolCall> =
+                        chunks
+                            .flatMap { it.result?.output?.toolCalls.orEmpty() }
+                            .distinctBy { it.id }
 
-                if (content.isNotEmpty()) {
-                    emit(
-                        MessageEvent(
+                    if (toolCalls.isEmpty()) {
+                        val finalText = textBuilder.toString()
+                        if (finalText.isNotEmpty()) {
+                            emit(
+                                MessageEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = caseId,
+                                    actor = Actor(id.toString(), name, ActorRole.AGENT),
+                                    content = listOf(MessageContent.Text(finalText)),
+                                ),
+                            )
+                        }
+                        break
+                    }
+
+                    currentCoroutineContext().ensureActive()
+
+                    val toolResults =
+                        executeToolCalls(
+                            toolCalls = toolCalls,
                             namespaceId = namespaceId,
                             caseId = caseId,
-                            actor = Actor(id.toString(), name, ActorRole.AGENT),
-                            content = listOf(MessageContent.Text(content)),
-                        ),
-                    )
+                            turnIndex = turnIndex,
+                        )
+
+                    messages += AssistantMessage.builder().toolCalls(toolCalls).build()
+
+                    val springResponses =
+                        toolResults.map { (toolCall, result) ->
+                            ToolResponseMessage.ToolResponse(toolCall.id, toolCall.name, result)
+                        }
+                    messages += ToolResponseMessage.builder().responses(springResponses).build()
+
+                    turnIndex++
+                    turnMark = TimeSource.Monotonic.markNow()
                 }
 
                 emit(
@@ -200,7 +217,7 @@ class AgentSimple(
                 logger.debug { "[AgentSimple] $name cancelled (${e.message})" }
                 throw e
             } catch (e: Exception) {
-                logger.error(e) { "Error during agent execution" }
+                logger.error(e) { "[AgentSimple] $name error during execution" }
                 emit(
                     WarnEvent(
                         namespaceId = namespaceId,
@@ -219,230 +236,133 @@ class AgentSimple(
             }
         }
 
-    /**
-     * Convert CaseEvents to Spring AI Messages for LLM context.
-     * Includes tool calls and responses for proper conversation history.
-     * Converts other agents to "user" role for LLM compatibility.
-     */
-    private fun convertEventsToMessages(events: List<CaseEvent>): List<Message> {
-        val messages = mutableListOf<Message>()
-        val toolCallsForCurrentMessage = mutableListOf<AssistantMessage.ToolCall>()
-        val toolResponses = mutableMapOf<String, ToolResponseEvent>()
+    private suspend fun FlowCollector<CaseEvent>.executeToolCalls(
+        toolCalls: List<AssistantMessage.ToolCall>,
+        namespaceId: UUID,
+        caseId: UUID,
+        turnIndex: Int,
+    ): List<Pair<AssistantMessage.ToolCall, String>> {
+        val results = mutableListOf<Pair<AssistantMessage.ToolCall, String>>()
 
-        // First pass: collect tool responses by ID
-        events.filterIsInstance<ToolResponseEvent>().forEach { toolResponse ->
-            toolResponses[toolResponse.toolRequestId] = toolResponse
+        for (toolCall in toolCalls) {
+            currentCoroutineContext().ensureActive()
+
+            val toolName = toolCall.name
+            val toolInput = toolCall.arguments
+            val toolRequestId = toolCall.id
+
+            emit(
+                ToolRequestEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = toolRequestId,
+                    toolName = toolName,
+                    args = toolInput,
+                ),
+            )
+
+            val tool = toolsByName[toolName]
+            val (result, success) =
+                if (tool == null) {
+                    logger.warn { "[AgentSimple] $name unknown tool: $toolName" }
+                    "Tool not found: $toolName" to false
+                } else {
+                    var output = ""
+                    var ok = true
+                    val duration =
+                        measureTime {
+                            output =
+                                try {
+                                    tool.executeWithJson(toolInput)
+                                } catch (e: Exception) {
+                                    ok = false
+                                    "Error: ${e.message}"
+                                }
+                        }
+                    logger.info { "[AgentSimple] tool $toolName executed in $duration (turn $turnIndex)" }
+                    output to ok
+                }
+
+            emit(
+                ToolResponseEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = toolRequestId,
+                    toolName = toolName,
+                    output = MessageContent.Text(result),
+                    success = success,
+                ),
+            )
+
+            results += toolCall to result
         }
 
-        // Second pass: build messages with tool calls
-        var i = 0
-        while (i < events.size) {
-            val event = events[i]
+        return results
+    }
 
+    private fun convertEventsToMessages(events: List<CaseEvent>): List<Message> {
+        val messages = mutableListOf<Message>()
+        val pendingToolCalls = mutableListOf<AssistantMessage.ToolCall>()
+        val toolResponsesById =
+            events
+                .filterIsInstance<ToolResponseEvent>()
+                .associateBy { it.toolRequestId }
+
+        fun flushPendingToolCalls() {
+            if (pendingToolCalls.isEmpty()) return
+            messages += AssistantMessage.builder().toolCalls(pendingToolCalls.toList()).build()
+            val responses =
+                pendingToolCalls.mapNotNull { tc ->
+                    toolResponsesById[tc.id()]?.let { resp ->
+                        val text =
+                            when (val o = resp.output) {
+                                is MessageContent.Text -> o.content
+                                else -> o.toString()
+                            }
+                        ToolResponseMessage.ToolResponse(tc.id(), tc.name(), text)
+                    }
+                }
+            if (responses.isNotEmpty()) {
+                messages += ToolResponseMessage.builder().responses(responses).build()
+            }
+            pendingToolCalls.clear()
+        }
+
+        for (event in events) {
             when (event) {
                 is MessageEvent -> {
-                    // If we have accumulated tool calls, create AssistantMessage with them
-                    if (toolCallsForCurrentMessage.isNotEmpty()) {
-                        messages.add(
-                            AssistantMessage
-                                .builder()
-                                .toolCalls(
-                                    toolCallsForCurrentMessage.toList(),
-                                ).build(),
-                        )
-
-                        // Add corresponding tool responses
-                        val toolResponseMessages =
-                            toolCallsForCurrentMessage.mapNotNull { toolCall ->
-                                val response = toolResponses[toolCall.id()]
-                                response?.let {
-                                    val output =
-                                        when (val content = it.output) {
-                                            is MessageContent.Text -> content.content
-                                            else -> content.toString()
-                                        }
-                                    ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), output)
-                                }
-                            }
-
-                        if (toolResponseMessages.isNotEmpty()) {
-                            messages.add(ToolResponseMessage.builder().responses(toolResponseMessages).build())
-                        }
-
-                        toolCallsForCurrentMessage.clear()
-                    }
-
-                    // Add the message event
-                    val textContent =
+                    flushPendingToolCalls()
+                    val text =
                         event.content
                             .filterIsInstance<MessageContent.Text>()
                             .joinToString("\n") { it.content }
-
                     when (event.actor.role) {
-                        ActorRole.USER -> {
-                            messages.add(UserMessage(textContent))
-                        }
-
-                        ActorRole.AGENT -> {
-                            if (event.actor.id == id.toString()) {
-                                messages.add(AssistantMessage(textContent))
-                            } else {
-                                // Convert other agents to user messages for LLM compatibility
-                                messages.add(UserMessage("[${event.actor.displayName}]: $textContent"))
-                            }
-                        }
+                        ActorRole.USER -> messages += UserMessage(text)
+                        ActorRole.AGENT ->
+                            messages +=
+                                if (event.actor.id == id.toString()) {
+                                    AssistantMessage(text)
+                                } else {
+                                    UserMessage("[${event.actor.displayName}]: $text")
+                                }
                     }
                 }
-
                 is ToolRequestEvent -> {
-                    // Accumulate tool calls to attach to the next AssistantMessage.
-                    // Spring AI's AnthropicChatModel calls ModelOptionsUtils.jsonToMap() on
-                    // the args string when rebuilding history — it crashes on blank/empty input.
-                    // Normalise null or blank args to "{}" (valid JSON, safe empty object).
                     val safeArgs = event.args?.takeIf { it.isNotBlank() } ?: "{}"
-                    toolCallsForCurrentMessage.add(
+                    pendingToolCalls +=
                         AssistantMessage.ToolCall(
                             event.toolRequestId,
                             "function",
                             event.toolName,
                             safeArgs,
-                        ),
-                    )
+                        )
                 }
-
-                else -> {
-                    // Ignore other event types for message conversion
-                }
-            }
-
-            i++
-        }
-
-        // Handle any remaining tool calls at the end of the event list
-        // (tool round with no trailing MessageEvent, e.g. history ends mid-turn).
-        if (toolCallsForCurrentMessage.isNotEmpty()) {
-            messages.add(
-                AssistantMessage
-                    .builder()
-                    .toolCalls(
-                        toolCallsForCurrentMessage.toList(),
-                    ).build(),
-            )
-
-            val toolResponseMessages =
-                toolCallsForCurrentMessage.mapNotNull { toolCall ->
-                    val response = toolResponses[toolCall.id()]
-                    response?.let {
-                        val output =
-                            when (val content = it.output) {
-                                is MessageContent.Text -> content.content
-                                else -> content.toString()
-                            }
-                        ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), output)
-                    }
-                }
-
-            if (toolResponseMessages.isNotEmpty()) {
-                messages.add(ToolResponseMessage.builder().responses(toolResponseMessages).build())
+                else -> Unit
             }
         }
-
+        flushPendingToolCalls()
         return messages
     }
-
-    /**
-     * Create a [ToolCallback] that wraps a [StandardTool] and emits events.
-     *
-     * We implement [ToolCallback] directly rather than using [MethodToolCallback] because
-     * [MethodToolCallback] generates its input schema by introspecting the Java method
-     * signature and ignores the schema we pass via `.inputSchema(...)`. The LLM therefore
-     * received a schema with a single opaque `jsonArgs` property instead of the tool's
-     * real parameters, causing it to send empty arguments every time.
-     *
-     * By implementing [ToolCallback] directly we fully control the [ToolDefinition] sent
-     * to the LLM, while `call(String)` receives the raw JSON and passes it to
-     * [StandardTool.executeWithJson] for plugin-classloader-safe deserialization.
-     */
-    private fun createToolCallbackWithEvents(
-        tool: StandardTool<*>,
-        namespaceId: UUID,
-        caseId: UUID,
-        eventChannel: Channel<CaseEvent>,
-        llmTurnMark: AtomicReference<TimeSource.Monotonic.ValueTimeMark>,
-        llmTurnIndex: AtomicInteger,
-    ): ToolCallback =
-        object : ToolCallback {
-            private val definition =
-                DefaultToolDefinition
-                    .builder()
-                    .name(tool.name)
-                    .description(tool.description)
-                    .inputSchema(tool.inputSchema)
-                    .build()
-
-            override fun getToolDefinition() = definition
-
-            override fun call(toolInput: String): String {
-                val toolRequestId = UUID.randomUUID().toString()
-
-                val turn = llmTurnIndex.get()
-                logger.info { "[AgentSimple] $name LLM turn $turn answered in ${llmTurnMark.get().elapsedNow()}" }
-
-                runBlocking {
-                    eventChannel.send(
-                        ToolRequestEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            toolRequestId = toolRequestId,
-                            toolName = tool.name,
-                            args = toolInput,
-                        ),
-                    )
-                }
-
-                val result: String
-                val toolDuration =
-                    measureTime {
-                        result =
-                            try {
-                                tool.executeWithJson(toolInput)
-                            } catch (e: Exception) {
-                                runBlocking {
-                                    eventChannel.send(
-                                        ToolResponseEvent(
-                                            namespaceId = namespaceId,
-                                            caseId = caseId,
-                                            toolRequestId = toolRequestId,
-                                            toolName = tool.name,
-                                            output = MessageContent.Text("Error: ${e.message}"),
-                                            success = false,
-                                        ),
-                                    )
-                                }
-                                throw e
-                            }
-                    }
-                logger.info { "[AgentSimple] tool ${tool.name} executed in $toolDuration" }
-
-                llmTurnMark.set(TimeSource.Monotonic.markNow())
-                llmTurnIndex.incrementAndGet()
-
-                runBlocking {
-                    eventChannel.send(
-                        ToolResponseEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            toolRequestId = toolRequestId,
-                            toolName = tool.name,
-                            output = MessageContent.Text(result),
-                            success = true,
-                        ),
-                    )
-                }
-
-                return result
-            }
-        }
 
     companion object : KLogging()
 }

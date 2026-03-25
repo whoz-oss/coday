@@ -3,12 +3,15 @@ package io.whozoss.agentos.chat
 import io.whozoss.agentos.aiModel.AiModelRegistry
 import io.whozoss.agentos.aiProvider.AiProviderRegistry
 import io.whozoss.agentos.sdk.aiProvider.AiModel
-import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.chat.model.ChatModel
 import org.springframework.stereotype.Service
 
 /**
- * Creates ChatClient instances on demand by combining an AiModel with its referenced AiProvider.
- * Model-level settings (temperature, maxTokens) override provider defaults.
+ * Creates [ChatModel] instances on demand by combining an [AiModel] with its [AiProvider].
+ *
+ * We expose [ChatModel] rather than [org.springframework.ai.chat.client.ChatClient] because
+ * [io.whozoss.agentos.agent.AgentSimple] calls [ChatModel.stream] directly to own its
+ * tool-calling loop without any Spring AI interception.
  */
 @Service
 class ChatClientProvider(
@@ -16,26 +19,23 @@ class ChatClientProvider(
     private val aiProviderRegistry: AiProviderRegistry,
     private val chatModelFactory: ChatModelFactory,
 ) {
-    fun getChatClient(modelName: String): ChatClient {
+    fun getChatModel(modelName: String): ChatModel {
         val model =
             aiModelRegistry.findByName(modelName)
                 ?: throw IllegalArgumentException("AI model '$modelName' not found.")
-        return getChatClient(model)
+        return getChatModel(model)
     }
 
-    fun getChatClient(model: AiModel): ChatClient {
+    fun getChatModel(model: AiModel): ChatModel {
         val provider =
             aiProviderRegistry.getProviderByName(model.providerName)
                 ?: throw IllegalArgumentException("AI provider '${model.providerName}' not found for model '${model.name}'.")
 
-        val chatModel =
-            chatModelFactory.createChatModel(
-                provider = provider,
-                runtimeModel = model.modelName,
-                runtimeTemperature = model.temperature,
-                runtimeMaxTokens = model.maxTokens,
-            )
-
-        return ChatClient.builder(chatModel).build()
+        return chatModelFactory.createChatModel(
+            provider = provider,
+            runtimeModel = model.modelName,
+            runtimeTemperature = model.temperature,
+            runtimeMaxTokens = model.maxTokens,
+        )
     }
 }

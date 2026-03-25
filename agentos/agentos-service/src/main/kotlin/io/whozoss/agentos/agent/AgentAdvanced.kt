@@ -23,10 +23,10 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.reactive.asFlow
 import mu.KLogging
-import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.UserMessage
+import org.springframework.ai.chat.model.ChatModel
 import org.springframework.ai.chat.prompt.Prompt
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
@@ -53,7 +53,7 @@ import kotlin.coroutines.cancellation.CancellationException
 class AgentAdvanced(
     override val metadata: EntityMetadata = EntityMetadata(),
     private val model: AiModel,
-    private val chatClient: ChatClient,
+    private val chatModel: ChatModel,
     private val tools: List<StandardTool<*>>,
     private val maxIterations: Int = 20,
 ) : Agent {
@@ -164,13 +164,11 @@ class AgentAdvanced(
         fallback: String = "",
     ): String {
         val chunks =
-            chatClient
-                .prompt(prompt)
-                .stream()
-                .content()
+            chatModel
+                .stream(prompt)
                 .asFlow()
                 .toList()
-        val result = chunks.joinToString("")
+        val result = chunks.mapNotNull { it.result?.output?.text }.joinToString("")
         return result.ifEmpty { fallback }
     }
 

@@ -19,22 +19,27 @@ import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.flow.toList
-import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.chat.messages.AssistantMessage
+import org.springframework.ai.chat.model.ChatModel
+import org.springframework.ai.chat.model.ChatResponse
+import org.springframework.ai.chat.model.Generation
 import org.springframework.ai.chat.prompt.Prompt
 import reactor.core.publisher.Flux
 import java.util.UUID
 
 /**
- * Stub stream().content() for the no-tool path (AgentSimple uses stream() when
- * no tools are registered, for progressive text display).
+ * Stub ChatModel.stream() to return a sequence of text chunks.
  */
-fun stubChatResponseStream(
-    mockChatClient: ChatClient,
+fun stubChatModelStream(
+    mockChatModel: ChatModel,
     vararg chunks: String,
 ) {
-    val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-    every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-    every { mockStreamSpec.content() } returns Flux.fromIterable(chunks.toList())
+    every { mockChatModel.stream(any<Prompt>()) } returns
+        Flux.fromIterable(
+            chunks.map { text ->
+                ChatResponse(listOf(Generation(AssistantMessage(text))))
+            },
+        )
 }
 
 class AgentSimpleTest :
@@ -43,7 +48,7 @@ class AgentSimpleTest :
 
         fun makeAgent(
             agentId: UUID,
-            chatClient: ChatClient,
+            chatModel: ChatModel,
             name: String = "SimpleAgent",
             tools: Collection<StandardTool<*>> = emptyList(),
             instructions: String? = null,
@@ -60,7 +65,7 @@ class AgentSimpleTest :
             return AgentSimple(
                 metadata = EntityMetadata(id = agentId),
                 model = model,
-                chatClient = chatClient,
+                chatModel = chatModel,
                 tools = tools,
             )
         }
@@ -81,10 +86,10 @@ class AgentSimpleTest :
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            val mockChatClient = mockk<ChatClient>(relaxed = true)
-            stubChatResponseStream(mockChatClient, "Hello! ", "I can help you ", "with that.")
+            val mockChatModel = mockk<ChatModel>(relaxed = true)
+            stubChatModelStream(mockChatModel, "Hello! ", "I can help you ", "with that.")
 
-            val agent = makeAgent(agentId, mockChatClient, instructions = "You are a helpful assistant.")
+            val agent = makeAgent(agentId, mockChatModel, instructions = "You are a helpful assistant.")
 
             val events = agent.run(listOf(userMessage(namespaceId, caseId, "Hello, can you help me?"))).toList()
 
@@ -113,10 +118,10 @@ class AgentSimpleTest :
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            val mockChatClient = mockk<ChatClient>(relaxed = true)
-            stubChatResponseStream(mockChatClient, "Based on our ", "previous conversation, ", "here's my response.")
+            val mockChatModel = mockk<ChatModel>(relaxed = true)
+            stubChatModelStream(mockChatModel, "Based on our ", "previous conversation, ", "here's my response.")
 
-            val agent = makeAgent(agentId, mockChatClient)
+            val agent = makeAgent(agentId, mockChatModel)
 
             val events =
                 agent
@@ -148,12 +153,10 @@ class AgentSimpleTest :
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            val mockChatClient = mockk<ChatClient>(relaxed = true)
-            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.error(RuntimeException("API Error"))
+            val mockChatModel = mockk<ChatModel>(relaxed = true)
+            every { mockChatModel.stream(any<Prompt>()) } returns Flux.error(RuntimeException("API Error"))
 
-            val agent = makeAgent(agentId, mockChatClient)
+            val agent = makeAgent(agentId, mockChatModel)
 
             val events =
                 agent.run(listOf(userMessage(namespaceId = namespaceId, caseId = caseId, text = "Hello"))).toList()
@@ -169,10 +172,10 @@ class AgentSimpleTest :
             val agentId = UUID.randomUUID()
             val otherAgentId = UUID.randomUUID()
 
-            val mockChatClient = mockk<ChatClient>(relaxed = true)
-            stubChatResponseStream(mockChatClient, "Response considering ", "other agent's input")
+            val mockChatModel = mockk<ChatModel>(relaxed = true)
+            stubChatModelStream(mockChatModel, "Response considering ", "other agent's input")
 
-            val agent = makeAgent(agentId, mockChatClient)
+            val agent = makeAgent(agentId, mockChatModel)
 
             val events =
                 agent

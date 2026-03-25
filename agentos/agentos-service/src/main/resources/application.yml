@@ -5,14 +5,6 @@ spring:
     chat:
       client:
         enabled: false
-    model:
-      chat: none
-      audio:
-        speech: none
-        transcription: none
-      image: none
-      embedding: none
-      moderation: none
     openai:
       api-key: ${OPENAI_API_KEY:}
       chat:

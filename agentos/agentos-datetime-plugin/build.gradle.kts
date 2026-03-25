@@ -10,7 +10,7 @@ description = "AgentOS datetime plugin - provides date/time tools"
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(17)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 

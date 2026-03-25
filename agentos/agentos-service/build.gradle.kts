@@ -13,7 +13,7 @@ description = "AgentOS Service - Backend orchestration service"
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(17)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 

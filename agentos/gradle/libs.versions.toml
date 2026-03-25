@@ -3,9 +3,9 @@
 
 [versions]
 kotlin = "2.2.21"
-springBoot = "3.5.7"
+springBoot = "4.0.4"
 springDependencyManagement = "1.1.7"
-springAi = "1.1.2"
+springAi = "2.0.0-M3"
 pf4j = "3.13.0"
 pf4jSpring = "0.10.0"
 kotlinCoroutines = "1.10.2"

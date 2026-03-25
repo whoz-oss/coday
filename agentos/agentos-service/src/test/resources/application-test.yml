@@ -1,7 +1,11 @@
 spring:
   application:
     name: agentos-service-test
-  
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
   ai:
     openai:
       api-key: test-key

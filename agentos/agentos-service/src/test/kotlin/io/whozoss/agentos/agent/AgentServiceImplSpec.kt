@@ -15,7 +15,7 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.tool.ToolRegistry
-import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.chat.model.ChatModel
 import java.util.UUID
 
 class AgentServiceImplSpec : StringSpec() {
@@ -58,31 +58,31 @@ class AgentServiceImplSpec : StringSpec() {
         // findAgentByName
         // -------------------------------------------------------------------------
 
-        "findAgentByName calls getChatClient with model.name, not model.modelName" {
+        "findAgentByName calls getChatModel with model.name, not model.modelName" {
             val model = modelWithDistinctNameAndModelName()
-            val chatClient = mockk<ChatClient>(relaxed = true)
+            val chatModel = mockk<ChatModel>(relaxed = true)
 
             every { aiModelRegistry.findByName("my-agent") } returns model
-            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
+            every { chatClientProvider.getChatModel("my-agent") } returns chatModel
 
             agentService.findAgentByName("my-agent", context)
 
-            verify(exactly = 1) { chatClientProvider.getChatClient("my-agent") }
-            verify(exactly = 0) { chatClientProvider.getChatClient("gpt-4o-2024-08-06") }
+            verify(exactly = 1) { chatClientProvider.getChatModel("my-agent") }
+            verify(exactly = 0) { chatClientProvider.getChatModel("gpt-4o-2024-08-06") }
         }
 
-        "findAgentByName falls back to contains-match and still uses model.name for getChatClient" {
+        "findAgentByName falls back to contains-match and still uses model.name for getChatModel" {
             val model = modelWithDistinctNameAndModelName()
-            val chatClient = mockk<ChatClient>(relaxed = true)
+            val chatModel = mockk<ChatModel>(relaxed = true)
 
             every { aiModelRegistry.findByName("agent") } returns null
             every { aiModelRegistry.getAll() } returns listOf(model)
-            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
+            every { chatClientProvider.getChatModel("my-agent") } returns chatModel
 
             agentService.findAgentByName("agent", context)
 
-            verify(exactly = 1) { chatClientProvider.getChatClient("my-agent") }
-            verify(exactly = 0) { chatClientProvider.getChatClient("gpt-4o-2024-08-06") }
+            verify(exactly = 1) { chatClientProvider.getChatModel("my-agent") }
+            verify(exactly = 0) { chatClientProvider.getChatModel("gpt-4o-2024-08-06") }
         }
 
         "findAgentByName throws when no model matches the given name" {
@@ -108,9 +108,9 @@ class AgentServiceImplSpec : StringSpec() {
                     providerName = "openai",
                     instructions = "You are a helpful assistant.",
                 )
-            val chatClient = mockk<ChatClient>(relaxed = true)
+            val chatModel = mockk<ChatModel>(relaxed = true)
             every { aiModelRegistry.findByName("my-agent") } returns model
-            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
+            every { chatClientProvider.getChatModel("my-agent") } returns chatModel
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
@@ -129,9 +129,9 @@ class AgentServiceImplSpec : StringSpec() {
                     providerName = "openai",
                     instructions = null,
                 )
-            val chatClient = mockk<ChatClient>(relaxed = true)
+            val chatModel = mockk<ChatModel>(relaxed = true)
             every { aiModelRegistry.findByName("my-agent") } returns model
-            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
+            every { chatClientProvider.getChatModel("my-agent") } returns chatModel
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
@@ -156,9 +156,9 @@ class AgentServiceImplSpec : StringSpec() {
                     providerName = "openai",
                     instructions = "Base instructions.",
                 )
-            val chatClient = mockk<ChatClient>(relaxed = true)
+            val chatModel = mockk<ChatModel>(relaxed = true)
             every { aiModelRegistry.findByName("my-agent") } returns model
-            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
+            every { chatClientProvider.getChatModel("my-agent") } returns chatModel
 
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
 
@@ -170,9 +170,9 @@ class AgentServiceImplSpec : StringSpec() {
 
         "findAgentByName resolves namespace by namespaceId from context" {
             val model = modelWithDistinctNameAndModelName()
-            val chatClient = mockk<ChatClient>(relaxed = true)
+            val chatModel = mockk<ChatModel>(relaxed = true)
             every { aiModelRegistry.findByName("my-agent") } returns model
-            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
+            every { chatClientProvider.getChatModel("my-agent") } returns chatModel
 
             agentService.findAgentByName("my-agent", context)
 
@@ -183,7 +183,7 @@ class AgentServiceImplSpec : StringSpec() {
         // listAgents
         // -------------------------------------------------------------------------
 
-        "listAgents calls getChatClient with model.name for every registered model" {
+        "listAgents calls getChatModel with model.name for every registered model" {
             val model1 =
                 AiModel(
                     metadata = EntityMetadata(id = UUID.randomUUID()),
@@ -200,17 +200,17 @@ class AgentServiceImplSpec : StringSpec() {
                     modelName = "gpt-4o-mini",
                     providerName = "openai",
                 )
-            val chatClient = mockk<ChatClient>(relaxed = true)
+            val chatModel = mockk<ChatModel>(relaxed = true)
 
             every { aiModelRegistry.getAll() } returns listOf(model1, model2)
-            every { chatClientProvider.getChatClient(any<String>()) } returns chatClient
+            every { chatClientProvider.getChatModel(any<String>()) } returns chatModel
 
             agentService.listAgents()
 
-            verify(exactly = 1) { chatClientProvider.getChatClient("agent-alpha") }
-            verify(exactly = 1) { chatClientProvider.getChatClient("agent-beta") }
-            verify(exactly = 0) { chatClientProvider.getChatClient("claude-3-5-sonnet-20241022") }
-            verify(exactly = 0) { chatClientProvider.getChatClient("gpt-4o-mini") }
+            verify(exactly = 1) { chatClientProvider.getChatModel("agent-alpha") }
+            verify(exactly = 1) { chatClientProvider.getChatModel("agent-beta") }
+            verify(exactly = 0) { chatClientProvider.getChatModel("claude-3-5-sonnet-20241022") }
+            verify(exactly = 0) { chatClientProvider.getChatModel("gpt-4o-mini") }
         }
 
         "listAgents does not call namespaceService — no context available" {
@@ -222,9 +222,9 @@ class AgentServiceImplSpec : StringSpec() {
                     modelName = "gpt-4o",
                     providerName = "openai",
                 )
-            val chatClient = mockk<ChatClient>(relaxed = true)
+            val chatModel = mockk<ChatModel>(relaxed = true)
             every { aiModelRegistry.getAll() } returns listOf(model)
-            every { chatClientProvider.getChatClient(any<String>()) } returns chatClient
+            every { chatClientProvider.getChatModel(any<String>()) } returns chatModel
 
             agentService.listAgents()
 
@@ -241,17 +241,17 @@ class AgentServiceImplSpec : StringSpec() {
             agentService.getDefaultAgent(context) shouldBe null
         }
 
-        "getDefaultAgent calls getChatClient with model.name for the default model" {
+        "getDefaultAgent calls getChatModel with model.name for the default model" {
             val model = modelWithDistinctNameAndModelName()
-            val chatClient = mockk<ChatClient>(relaxed = true)
+            val chatModel = mockk<ChatModel>(relaxed = true)
 
             every { aiModelRegistry.getDefault() } returns model
-            every { chatClientProvider.getChatClient("my-agent") } returns chatClient
+            every { chatClientProvider.getChatModel("my-agent") } returns chatModel
 
             agentService.getDefaultAgent(context)
 
-            verify(exactly = 1) { chatClientProvider.getChatClient("my-agent") }
-            verify(exactly = 0) { chatClientProvider.getChatClient("gpt-4o-2024-08-06") }
+            verify(exactly = 1) { chatClientProvider.getChatModel("my-agent") }
+            verify(exactly = 0) { chatClientProvider.getChatModel("gpt-4o-2024-08-06") }
         }
 
         // -------------------------------------------------------------------------
@@ -270,7 +270,7 @@ class AgentServiceImplSpec : StringSpec() {
 
             agentService.getDefaultAgentName() shouldBe "my-agent"
 
-            verify(exactly = 0) { chatClientProvider.getChatClient(any<String>()) }
+            verify(exactly = 0) { chatClientProvider.getChatModel(any<String>()) }
             verify(exactly = 0) { toolRegistry.listTools() }
         }
 
@@ -284,7 +284,7 @@ class AgentServiceImplSpec : StringSpec() {
 
             agentService.resolveAgentName("my-agent") shouldBe "my-agent"
 
-            verify(exactly = 0) { chatClientProvider.getChatClient(any<String>()) }
+            verify(exactly = 0) { chatClientProvider.getChatModel(any<String>()) }
             verify(exactly = 0) { toolRegistry.listTools() }
         }
 
@@ -295,7 +295,7 @@ class AgentServiceImplSpec : StringSpec() {
 
             agentService.resolveAgentName("agent") shouldBe "my-agent"
 
-            verify(exactly = 0) { chatClientProvider.getChatClient(any<String>()) }
+            verify(exactly = 0) { chatClientProvider.getChatModel(any<String>()) }
             verify(exactly = 0) { toolRegistry.listTools() }
         }
 

@@ -13,6 +13,9 @@ dependencyResolutionManagement {
     repositories {
         mavenCentral()
         mavenLocal()
+        // Spring AI 2.x milestones and Spring Boot 4.x snapshots not yet on Maven Central
+        maven { url = uri("https://repo.spring.io/milestone") }
+        maven { url = uri("https://repo.spring.io/snapshot") }
     }
 }
 

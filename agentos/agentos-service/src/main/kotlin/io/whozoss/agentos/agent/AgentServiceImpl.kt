@@ -83,15 +83,15 @@ class AgentServiceImpl(
                 "for agent: ${model.name}"
         }
 
-        val chatClient = chatClientProvider.getChatClient(model.name)
-        logger.debug { "[AgentService] ChatClient created for model: ${model.name} via provider: ${model.providerName}" }
+        val chatModel = chatClientProvider.getChatModel(model.name)
+        logger.debug { "[AgentService] ChatModel created for model: ${model.name} via provider: ${model.providerName}" }
 
         val instructions = buildInstructions(model, context)
 
         return AgentSimple(
             metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(model.name.toByteArray())),
             model = model.copy(instructions = instructions),
-            chatClient = chatClient,
+            chatModel = chatModel,
             tools = tools,
         )
     }

@@ -21,7 +21,10 @@ import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.flow.toList
-import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.chat.messages.AssistantMessage
+import org.springframework.ai.chat.model.ChatModel
+import org.springframework.ai.chat.model.ChatResponse
+import org.springframework.ai.chat.model.Generation
 import org.springframework.ai.chat.prompt.Prompt
 import reactor.core.publisher.Flux
 import java.util.UUID
@@ -31,33 +34,24 @@ class AgentAdvancedTest :
         timeout = 5000
 
         /**
-         * Stub the streaming path that [AgentAdvanced.streamToText] uses.
-         *
-         * All LLM calls in [AgentAdvanced] now go through `stream().content()` (a Reactor
-         * [Flux]) rather than the blocking `.call().content()`. The test must match that
-         * path so the stubs are actually invoked.
-         *
-         * [responses] is a list of strings returned in order: first call returns [0],
-         * second call returns [1], etc. If there are more calls than responses the last
-         * entry is repeated.
+         * Stub ChatModel.stream() to return responses in order.
+         * [responses] are returned sequentially; the last is repeated if exhausted.
          */
         fun stubStreamResponses(
-            mockChatClient: ChatClient,
+            mockChatModel: ChatModel,
             vararg responses: String,
         ) {
             var callIndex = 0
-            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } answers {
+            every { mockChatModel.stream(any<Prompt>()) } answers {
                 val text = responses.getOrElse(callIndex) { responses.last() }
                 callIndex++
-                Flux.just(text)
+                Flux.just(ChatResponse(listOf(Generation(AssistantMessage(text)))))
             }
         }
 
         fun makeAgent(
             agentId: UUID,
-            chatClient: ChatClient,
+            chatModel: ChatModel,
             tools: List<StandardTool<*>> = emptyList(),
             maxIterations: Int = 5,
         ): AgentAdvanced {
@@ -72,7 +66,7 @@ class AgentAdvancedTest :
             return AgentAdvanced(
                 metadata = EntityMetadata(id = agentId),
                 model = model,
-                chatClient = chatClient,
+                chatModel = chatModel,
                 tools = tools,
                 maxIterations = maxIterations,
             )
@@ -94,11 +88,9 @@ class AgentAdvancedTest :
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            val mockChatClient = mockk<ChatClient>(relaxed = true)
-            // Call 1 (generateIntention) -> intention text
-            // Call 2 (selectTool)        -> "Answer"
+            val mockChatModel = mockk<ChatModel>(relaxed = true)
             stubStreamResponses(
-                mockChatClient,
+                mockChatModel,
                 "I should call the Answer tool to respond to the user",
                 "Answer",
             )
@@ -111,7 +103,7 @@ class AgentAdvancedTest :
             every { answerTool.paramType } returns null
             every { answerTool.execute(null) } returns "Hello! How can I help you?"
 
-            val agent = makeAgent(agentId, mockChatClient, tools = listOf(answerTool))
+            val agent = makeAgent(agentId, mockChatModel, tools = listOf(answerTool))
 
             val events = agent.run(listOf(userMessage(namespaceId, caseId, "Hello, can you help me?"))).toList()
 
@@ -145,18 +137,13 @@ class AgentAdvancedTest :
             val caseId = UUID.randomUUID()
             val agentId = UUID.randomUUID()
 
-            val mockChatClient = mockk<ChatClient>(relaxed = true)
-            val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
-            every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
-            every { mockStreamSpec.content() } returns Flux.error(RuntimeException("LLM unavailable"))
+            val mockChatModel = mockk<ChatModel>(relaxed = true)
+            every { mockChatModel.stream(any<Prompt>()) } returns Flux.error(RuntimeException("LLM unavailable"))
 
-            val agent = makeAgent(agentId, mockChatClient)
+            val agent = makeAgent(agentId, mockChatModel)
 
             val events = agent.run(listOf(userMessage(namespaceId, caseId, "hello"))).toList()
 
             events.filterIsInstance<WarnEvent>().first().message shouldContain "Error"
-            // AgentFinishedEvent is NOT emitted by AgentAdvanced when an exception escapes
-            // the catch block — that is intentional (the runtime handles ERROR status).
-            // But the WarnEvent must be present.
         }
     })
