@@ -329,6 +329,13 @@ export class ChatTextareaComponent implements OnInit, OnDestroy, AfterViewInit, 
     const canSend = !this.isDisabled && (allowEmpty || messageToSend)
 
     if (canSend) {
+      // Stop microphone if active — sending ends the voice session.
+      // We stop directly without scheduling line breaks since the message is about to be cleared.
+      if (this.isRecording && this.recognition) {
+        this.clearPendingLineBreaks()
+        this.recognition.stop()
+      }
+
       // Send the trimmed message (can be empty string if allowEmpty=true)
       this.messageSubmitted.emit(messageToSend)
       this.message = ''
