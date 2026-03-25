@@ -130,7 +130,7 @@
 
     <!-- Nav: Control Center collapsible, sticky at the bottom -->
     <div class="sidenav-nav" [class.is-admin]="isAdmin">
-      <!-- Settings collapsible toggle -->
+      <!-- Control Center collapsible toggle -->
       <div class="section-container settings-group" [class.expanded]="expandedSections['settings']">
         <a
           class="section-toggle"
@@ -142,9 +142,9 @@
           @if (expandedSections['settings']) {
             <mat-icon class="arrow-icon expanded">keyboard_arrow_up</mat-icon>
           } @else {
-            <mat-icon class="section-icon">settings</mat-icon>
+            <mat-icon class="section-icon">hub</mat-icon>
           }
-          <span class="section-label">Control center</span>
+          <span class="section-label">Control Center</span>
         </a>
 
         @if (expandedSections['settings']) {

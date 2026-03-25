@@ -347,7 +347,7 @@ $section-toggle-height: 50px;
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 100px; // Keeps threads visible even when Settings is open
+  min-height: 100px; // Keeps threads visible even when Control Center is open
   overflow: hidden;
 
   // Every level of the chain must have flex: 1 + min-height: 0 + overflow: hidden
@@ -367,14 +367,21 @@ $section-toggle-height: 50px;
 // Nav: sticky bottom of the sidenav — Control Center collapsible.
 // flex-shrink: 0 ensures it never shrinks away; the thread list above it
 // absorbs all available space via flex: 1.
-// The settings-group manages its own internal scroll when expanded.
+// The control-center group manages its own internal scroll when expanded.
 .sidenav-nav {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  border-top: 1px solid var(--color-border);
 
-  // The settings-group must be bounded by the nav height
+  // The outer toggle already has a border from .sidenav-nav itself — suppress the
+  // duplicate border that .section-toggle.active would otherwise add.
+  > .settings-group > .section-toggle.active {
+    border-top: none;
+  }
+
+  // The control-center group must be bounded by the nav height
   .settings-group {
     display: flex;
     flex-direction: column;
@@ -397,7 +404,7 @@ $section-toggle-height: 50px;
   }
 }
 
-// Settings group: the outer collapsible that wraps all config items.
+// Control Center group: the outer collapsible that wraps all control items.
 // Its content area has no max-height cap — the sidenav column scrolls as a whole.
 .settings-group {
   > .section-content.settings-content {
