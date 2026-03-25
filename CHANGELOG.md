@@ -1,3 +1,15 @@
+## 0.104.2 (2026-03-25)
+
+### 🩹 Fixes
+
+- #657 UI visual regressions post PR #644 ([#657](https://github.com/whoz-oss/coday/issues/657), [#644](https://github.com/whoz-oss/coday/issues/644))
+- #657 UI visual regressions post PR #644 ([#658](https://github.com/whoz-oss/coday/pull/658), [#657](https://github.com/whoz-oss/coday/issues/657), [#644](https://github.com/whoz-oss/coday/issues/644))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
 ## 0.104.1 (2026-03-25)
 
 ### 🩹 Fixes
