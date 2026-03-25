@@ -364,15 +364,15 @@ $section-toggle-height: 50px;
   }
 }
 
-// Nav: sits between new-thread and the thread list.
-// max-height caps how tall it can grow so it never consumes the full sidenav.
-// The settings toggle is pinned (flex-shrink: 0), only the content below scrolls.
+// Nav: sticky bottom of the sidenav — Control Center collapsible.
+// flex-shrink: 0 ensures it never shrinks away; the thread list above it
+// absorbs all available space via flex: 1.
+// The settings-group manages its own internal scroll when expanded.
 .sidenav-nav {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  max-height: 70%;
 
   // The settings-group must be bounded by the nav height
   .settings-group {
