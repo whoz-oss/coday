@@ -23,11 +23,13 @@ import { readYamlFile } from '@coday/utils'
  * @param app - Express application instance
  * @param getUsernameFn - Function to extract username from request
  * @param configDir - Path to the Coday config directory (e.g. ~/.coday)
+ * @param authEnabled - Whether the server is running in auth/multi-user mode
  */
 export function registerUserRoutes(
   app: express.Application,
   getUsernameFn: (req: express.Request) => string,
-  configDir: string
+  configDir: string,
+  authEnabled: boolean = false
 ): void {
   /**
    * GET /api/user/me
@@ -45,6 +47,7 @@ export function registerUserRoutes(
 
       res.status(200).json({
         username,
+        authEnabled,
       })
     } catch (error) {
       console.error('Error retrieving user info:', error)

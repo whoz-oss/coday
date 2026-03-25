@@ -127,6 +127,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
   }
 
   currentUsername: string = ''
+  authEnabled: boolean = false
 
   // First message from implicit thread creation
   private pendingFirstMessage: string | null = null
@@ -160,6 +161,11 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
 
     // Setup print event listeners
     this.setupPrintHandlers()
+
+    // Track authEnabled reactively
+    this.userService.authEnabled$.pipe(takeUntil(this.destroy$)).subscribe((authEnabled) => {
+      this.authEnabled = authEnabled
+    })
 
     // Track username reactively — when it loads, force a new messages array reference
     // so Angular re-evaluates the isOtherUser binding for all rendered messages.
