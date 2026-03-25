@@ -55,6 +55,10 @@ body {
     color 0.3s ease;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  // Ensure body padding is always 0 - guards against any inline styles or
+  // external CSS that could add padding and create an unwanted document-level scrollbar.
+  padding: 0 !important;
 }
 
 /* Global Markdown Styles */
