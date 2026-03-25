@@ -76,7 +76,7 @@ export class DelegateCommandHandler extends CommandHandler {
       emitResultAsUserMessage: true,
     })
 
-    await delegate({ delegations: [{ agentName: agent.name, task: task.trim() }] }, context.aiThread)
+    await delegate({ delegations: [{ agentName: agent.name, task: task.trim(), async: true }] }, context.aiThread)
     return context
   }
 }
