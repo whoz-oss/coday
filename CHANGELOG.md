@@ -1,3 +1,14 @@
+## 0.103.4 (2026-03-25)
+
+### 🩹 Fixes
+
+- #648 stop microphone when sending a message ([#650](https://github.com/whoz-oss/coday/pull/650), [#648](https://github.com/whoz-oss/coday/issues/648))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.103.3 (2026-03-25)
 
 ### 🩹 Fixes
