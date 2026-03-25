@@ -9,12 +9,14 @@
 $section-toggle-height: 50px;
 
 // Sidenav container - full height
+// Use dvh (dynamic viewport height) so Safari's bottom browser bar
+// is properly accounted for and content is never hidden behind it.
 .sidenav-container {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  bottom: 0;
+  height: 100dvh; // dvh adjusts dynamically for Safari's browser chrome
   z-index: 1400;
   transition: width;
   display: flex;
@@ -23,6 +25,7 @@ $section-toggle-height: 50px;
     position: relative !important;
     transition: width;
     width: 310px;
+    height: 100dvh !important; // dvh for Safari bottom bar
     flex-shrink: 0;
 
     &:not(.mat-drawer-opened) {
@@ -51,9 +54,10 @@ $section-toggle-height: 50px;
 
 // Force the Material inner container to be bounded to the drawer height
 // so the flex chain inside .app-sidenav is properly constrained.
+// Use dvh so Safari's dynamic browser chrome is accounted for.
 :host ::ng-deep .mat-drawer-inner-container {
   overflow: hidden !important;
-  height: 100% !important;
+  height: 100dvh !important;
   display: flex !important;
   flex-direction: column !important;
 }
@@ -164,7 +168,7 @@ $section-toggle-height: 50px;
 // Sidenav drawer — pinned header/new-thread/settings + scrollable thread list
 .app-sidenav {
   width: 310px;
-  height: 100% !important; // Must be bounded so the flex chain can constrain children
+  height: 100dvh !important; // dvh accounts for Safari's dynamic browser chrome
   min-height: 0 !important;
   position: relative;
   background: var(--glass-bg);
@@ -367,12 +371,14 @@ $section-toggle-height: 50px;
 // Nav: sticky bottom of the sidenav — Control Center collapsible.
 // flex-shrink: 0 ensures it never shrinks away; the thread list above it
 // absorbs all available space via flex: 1.
+// max-height: 70% caps expansion so it never swallows the whole sidenav.
 // The control-center group manages its own internal scroll when expanded.
 .sidenav-nav {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  max-height: 70%;
   border-top: 1px solid var(--color-border);
 
   // The outer toggle already has a border from .sidenav-nav itself — suppress the
