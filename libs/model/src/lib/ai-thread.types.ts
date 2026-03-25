@@ -120,6 +120,6 @@ export const EmptyUsage: Usage = {
   cache_write: 0,
   price: 0,
   iterations: 0,
-  priceThreshold: 2.0, // Default $2 threshold
+  priceThreshold: 10.0, // Default $10 threshold
   iterationsThreshold: 100, // Default 100 iterations threshold
 }
