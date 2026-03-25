@@ -1,3 +1,14 @@
+## 0.103.3 (2026-03-25)
+
+### 🩹 Fixes
+
+- #645 increase default cost limit from $2 to $10 ([#646](https://github.com/whoz-oss/coday/pull/646), [#645](https://github.com/whoz-oss/coday/issues/645))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.103.2 (2026-03-24)
 
 ### 🩹 Fixes
