@@ -1,3 +1,26 @@
+## 0.104.0 (2026-03-25)
+
+### 🚀 Features
+
+- #634 move manual delegation to async with result emission ([#647](https://github.com/whoz-oss/coday/pull/647), [#634](https://github.com/whoz-oss/coday/issues/634))
+
+### 🩹 Fixes
+
+- #643 thread list after github button, no height cap, transparent bg ([#643](https://github.com/whoz-oss/coday/issues/643))
+- #643 sidenav thread list layout — collapsible settings, sticky header, proper scroll ([#643](https://github.com/whoz-oss/coday/issues/643))
+- #643 move control center to sticky bottom ([#643](https://github.com/whoz-oss/coday/issues/643))
+- #643 control center polish — border, hub icon, capitalisation ([#643](https://github.com/whoz-oss/coday/issues/643))
+- #643 restore control center max-height, partial dvh fix for safari ([#643](https://github.com/whoz-oss/coday/issues/643))
+- #643 threads always open, simplify sidenav component ([#643](https://github.com/whoz-oss/coday/issues/643))
+- #643 threads always open, remove threads from expandedSections ([#643](https://github.com/whoz-oss/coday/issues/643))
+- #643 sidenav thread list layout — collapsible settings, sticky header, proper scroll ([#644](https://github.com/whoz-oss/coday/pull/644), [#643](https://github.com/whoz-oss/coday/issues/643))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
 ## 0.103.5 (2026-03-25)
 
 ### 🩹 Fixes
