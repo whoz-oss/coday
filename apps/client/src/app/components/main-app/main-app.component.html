@@ -1,5 +1,5 @@
 <app-sidenav [drawerOpen]="isDrawerOpen">
-  <div class="app">
+  <div class="app" (mousedown)="onChatFocusedOnMobile()" (touchstart)="onChatFocusedOnMobile()">
     @if (threadId) {
       <!-- Thread view - Full conversation management -->
       <app-thread

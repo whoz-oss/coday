@@ -7,10 +7,13 @@
  * Token contract:
  *   --color-border          border color for the input
  *   --color-primary         focus ring and active highlight color
- *   --color-bg-surface      dropdown background
+ *   --glass-bg              input and dropdown background (theme-aware glass surface)
  *   --color-bg-hover        option hover / keyboard-selected background
  *   --color-text            primary text color
  *   --color-text-secondary  secondary / description text color
+ *
+ * Note: --color-bg-surface is NOT used — it is not defined in the host theme.
+ * Use --glass-bg instead, which resolves correctly in both light and dark modes.
  */
 
 .autocomplete-container {
@@ -27,7 +30,7 @@
     font-size: 14px;
     line-height: 1.5;
     color: var(--color-text, #1d1d1f);
-    background: var(--color-bg-surface, #ffffff);
+    background: var(--glass-bg);
     outline: none;
     transition:
       border-color 0.15s ease,
@@ -55,7 +58,7 @@
   left: 0;
   right: 0;
   z-index: 1000;
-  background: var(--color-bg-surface, #ffffff);
+  background: var(--glass-bg);
   border: 1px solid var(--color-border, #e0e0e0);
   border-radius: 8px;
   box-shadow:
