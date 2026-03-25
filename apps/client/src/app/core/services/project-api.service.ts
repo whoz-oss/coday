@@ -3,6 +3,15 @@ import { HttpClient } from '@angular/common/http'
 import { Observable } from 'rxjs'
 
 /**
+ * Preview server status returned by the API
+ */
+export interface PreviewStatusResponse {
+  status: 'running' | 'stopped'
+  port?: number
+  url?: string
+}
+
+/**
  * Project information returned by the API
  */
 export interface ProjectInfo {
@@ -76,5 +85,23 @@ export class ProjectApiService {
    */
   createProject(name: string, path: string): Observable<{ success: boolean; message: string }> {
     return this.http.post<{ success: boolean; message: string }>(this.baseUrl, { name, path })
+  }
+
+  // ── Preview server ─────────────────────────────────────────────────────────────────
+
+  startPreview(projectName: string): Observable<PreviewStatusResponse> {
+    return this.http.post<PreviewStatusResponse>(`${this.baseUrl}/${projectName}/preview/start`, {})
+  }
+
+  stopPreview(projectName: string): Observable<{ status: string }> {
+    return this.http.post<{ status: string }>(`${this.baseUrl}/${projectName}/preview/stop`, {})
+  }
+
+  getPreviewStatus(projectName: string): Observable<PreviewStatusResponse> {
+    return this.http.get<PreviewStatusResponse>(`${this.baseUrl}/${projectName}/preview/status`)
+  }
+
+  getPreviewLogs(projectName: string): Observable<{ logs: string }> {
+    return this.http.get<{ logs: string }>(`${this.baseUrl}/${projectName}/preview/logs`)
   }
 }

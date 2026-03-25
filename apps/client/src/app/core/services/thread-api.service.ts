@@ -18,12 +18,13 @@ export interface ThreadDetails {
   id: string
   name: string
   projectId: string
-  username: string
+  username: string // the owner
   summary: string
   createdDate: string
   modifiedDate: string
   price: number
   messageCount: number
+  users: { userId: string }[]
 }
 
 /**
@@ -105,6 +106,15 @@ export class ThreadApiService {
   }
 
   /**
+   * Update the users list for a thread
+   * @param threadId Thread identifier
+   * @param users Updated list of thread users
+   */
+  updateThreadUsers(threadId: string, users: { userId: string }[]): Observable<ThreadUpdateResponse> {
+    return this.http.put<ThreadUpdateResponse>(`${this.getBaseUrl()}/${threadId}`, { users })
+  }
+
+  /**
    * Star a thread (add current user to starring list)
    * @param threadId Thread identifier
    */
@@ -134,5 +144,13 @@ export class ThreadApiService {
    */
   stopThread(threadId: string): Observable<{ success: boolean; message: string }> {
     return this.http.post<{ success: boolean; message: string }>(`${this.getBaseUrl()}/${threadId}/stop`, {})
+  }
+
+  /**
+   * Get all messages for a specific thread (used for lazy-loading sub-thread content)
+   * @param threadId Thread identifier
+   */
+  getThreadMessages(threadId: string): Observable<{ messages: any[] }> {
+    return this.http.get<{ messages: any[] }>(`${this.getBaseUrl()}/${threadId}/messages`)
   }
 }

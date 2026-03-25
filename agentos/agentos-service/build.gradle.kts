@@ -86,11 +86,11 @@ tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
 // ========================================
 // OpenAPI spec generation
 // ========================================
-val agentosPort = 8123
+val agentosPort = 8124
 
 openApi {
     // Output the spec alongside the agentos root so it can be committed
-    outputDir.set(file("${rootDir}/../openapi"))
+    outputDir.set(file("$rootDir/../openapi"))
     outputFileName.set("agentos-openapi.yaml")
     apiDocsUrl.set("http://localhost:$agentosPort/v3/api-docs.yaml")
     // Wait up to 60s for the app to be ready

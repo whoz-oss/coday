@@ -1,6 +1,6 @@
 import { AiClient } from './ai.client'
 import { AiThread } from './ai-thread'
-import { Observable } from 'rxjs'
+import { Observable, ReplaySubject } from 'rxjs'
 import { AnswerEvent, CodayEvent } from './coday-events'
 import { AgentDefinition } from './agent-definition'
 import { ToolSet } from './integration-tool-set'
@@ -52,15 +52,21 @@ export class Agent {
    * @param command text written by the user (may include @agentName)
    * @param thread
    */
-  async run(command: string, thread: AiThread): Promise<Observable<CodayEvent>> {
+  async run(command: string, thread: AiThread, username?: string): Promise<Observable<CodayEvent>> {
     const trimmedCommand = command.trim()
 
     // Add AnswerEvent to thread with the original command (including @agentName if present)
     // This preserves the user's original input in the thread history
-    const answerEvent = new AnswerEvent({ answer: trimmedCommand })
+    const answerEvent = new AnswerEvent({ answer: trimmedCommand, name: username ?? thread.username })
     thread.addAnswerEvent(answerEvent)
 
     // Run with AI client
-    return await this.aiClient.run(this, thread)
+    const events = await this.aiClient.run(this, thread)
+
+    // Bridge through a ReplaySubject to prevent event loss when the AI client
+    // completes before subscribers attach (race condition with fast models - issue #508).
+    const replay = new ReplaySubject<CodayEvent>()
+    events.subscribe(replay)
+    return replay.asObservable()
   }
 }

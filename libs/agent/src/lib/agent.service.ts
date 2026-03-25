@@ -70,7 +70,9 @@ export class AgentService implements Killable, AgentServiceModel {
       }
       const codayYmlTime = performance.now() - codayYmlStart
       this.interactor.debug(
-        `📋 Loaded agent definitions from coday.yml: ${codayYmlTime.toFixed(2)}ms (${context.project.agents?.length ?? 0} agents)`
+        `📋 Loaded agent definitions from coday.yml: ${codayYmlTime.toFixed(2)}ms (${
+          context.project.agents?.length ?? 0
+        } agents)`
       )
 
       // Load from project local configuration
@@ -83,7 +85,9 @@ export class AgentService implements Killable, AgentServiceModel {
       }
       const projectConfigTime = performance.now() - projectConfigStart
       this.interactor.debug(
-        `⚙️ Loaded agent definitions from project local config: ${projectConfigTime.toFixed(2)}ms (${selectedProject?.config.agents?.length ?? 0} agents)`
+        `⚙️ Loaded agent definitions from project local config: ${projectConfigTime.toFixed(2)}ms (${
+          selectedProject?.config.agents?.length ?? 0
+        } agents)`
       )
 
       // Then load from files
@@ -227,7 +231,7 @@ export class AgentService implements Killable, AgentServiceModel {
     if (!projectName) return undefined
 
     const userConfig = this.services.user.config
-    return userConfig.projects?.[projectName]?.defaultAgent
+    return userConfig.projects?.[this.services.user.resolveProjectName(projectName)]?.defaultAgent
   }
 
   async kill(): Promise<void> {
@@ -267,7 +271,9 @@ export class AgentService implements Killable, AgentServiceModel {
     }
 
     this.interactor.debug(
-      `🤖 Generated ${allModels.length} virtual agents from available models: ${allModels.map((m) => m.name).join(', ')}`
+      `🤖 Generated ${allModels.length} virtual agents from available models: ${allModels
+        .map((m) => m.name)
+        .join(', ')}`
     )
   }
 
@@ -414,7 +420,9 @@ ${agentDocs}
         : undefined
 
       this.interactor.debug(
-        `Agent '${def.name}' integrations: ${integrations ? Array.from(integrations.keys()).join(', ') : 'ALL (undefined)'}`
+        `Agent '${def.name}' integrations: ${
+          integrations ? Array.from(integrations.keys()).join(', ') : 'ALL (undefined)'
+        }`
       )
 
       const toolsStart = performance.now()
@@ -431,7 +439,9 @@ ${agentDocs}
 
       const totalTime = performance.now() - agentStart
       this.interactor.debug(
-        `✨ Agent '${def.name}' created: ${totalTime.toFixed(2)}ms (client: ${clientTime.toFixed(2)}ms, docs: ${docsTime.toFixed(2)}ms, tools: ${toolsTime.toFixed(2)}ms)`
+        `✨ Agent '${def.name}' created: ${totalTime.toFixed(2)}ms (client: ${clientTime.toFixed(
+          2
+        )}ms, docs: ${docsTime.toFixed(2)}ms, tools: ${toolsTime.toFixed(2)}ms)`
       )
 
       return agent

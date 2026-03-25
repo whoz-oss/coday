@@ -84,6 +84,7 @@ export function registerAgentRoutes(
       const services: CodayServices = {
         user,
         project: projectState,
+        projectService,
         integration,
         integrationConfig,
         memory,
@@ -97,12 +98,7 @@ export function registerAgentRoutes(
 
       projectState.selectProject(<string>projectName)
 
-      const aiClientProvider = new AiClientProvider(
-        interactor,
-        user,
-        projectState.selectedProject?.config?.ai || [],
-        logger
-      )
+      const aiClientProvider = new AiClientProvider(interactor, user, projectState, logger)
       const agentService = new AgentService(
         interactor,
         aiClientProvider,

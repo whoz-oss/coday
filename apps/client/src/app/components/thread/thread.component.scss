@@ -1,6 +1,7 @@
 // Drag and drop wrapper - contains everything including drawer
 .drag-drop-wrapper {
   height: 100vh;
+  height: 100dvh; // Dynamic viewport — accounts for iOS browser chrome
   width: 100%;
   position: relative;
 }
@@ -24,6 +25,85 @@
   &.has-files {
     animation: pulse-subtle 3s infinite;
   }
+
+  // Shrink to mini-FAB on mobile
+  @media (max-width: 768px) {
+    width: 40px !important;
+    height: 40px !important;
+    top: 0.75rem !important;
+    right: 0.75rem !important;
+
+    mat-icon {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+    }
+  }
+}
+
+// Share toggle button (positioned below file exchange button)
+.share-toggle-btn {
+  position: fixed !important;
+  top: 5rem !important; // 1rem (top) + 56px (FAB height) + 0.5rem (gap)
+  right: 1rem !important;
+  z-index: 100 !important;
+
+  &.has-shared-users {
+    color: var(--color-primary) !important;
+  }
+
+  // Shrink to mini-FAB on mobile — recalculate top: 0.75rem + 40px + 0.5rem
+  @media (max-width: 768px) {
+    width: 40px !important;
+    height: 40px !important;
+    top: calc(0.75rem + 40px + 0.5rem) !important;
+    right: 0.75rem !important;
+
+    mat-icon {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+    }
+  }
+}
+
+// Share drawer container (inside the shared right-side mat-drawer)
+.share-drawer-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  flex: 1; // Fill the flex column created by mat-drawer-inner-container
+  min-height: 0;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-backdrop-blur);
+  -webkit-backdrop-filter: var(--glass-backdrop-blur);
+  color: var(--color-text);
+
+  .drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem;
+    // Push below iOS status bar / notch on mobile
+    padding-top: calc(1rem + env(safe-area-inset-top, 0px));
+    border-bottom: 1px solid var(--color-border);
+    flex-shrink: 0;
+  }
+
+  .drawer-title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .close-btn {
+    color: var(--color-text-secondary);
+    &:hover {
+      color: var(--color-text);
+      background: var(--color-bg-hover);
+    }
+  }
 }
 
 @keyframes pulse-subtle {
@@ -39,6 +119,7 @@
 // File drawer container (Material sidenav) - wraps entire component
 .file-drawer-container {
   height: 100vh;
+  height: 100dvh; // Dynamic viewport — accounts for iOS browser chrome
   width: 100%;
   background: var(--color-bg); // Preserve gradient background
 
@@ -51,13 +132,14 @@
   }
 
   ::ng-deep .mat-drawer {
-    width: 35vw; // Fixed 40% width for now - simple and works
+    width: 35vw;
     max-width: 90vw;
     box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
 
     @media (max-width: 768px) {
       width: 100vw; // Mobile: full screen
       max-width: 100vw;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
     }
   }
 
@@ -96,143 +178,70 @@
   max-width: 800px;
   width: 100%;
   margin: 0 auto;
-  padding: 0 1rem;
+  padding: 0 2rem;
   display: flex;
   flex-direction: column;
   gap: 1rem;
-}
 
-// Upload status
-.upload-status {
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
-  background: var(--color-primary-light);
-  color: var(--color-text);
-  text-align: center;
-  font-size: 0.9rem;
-  margin-top: 1rem;
-
-  &.error {
-    background: var(--color-error);
-    color: white;
+  @media (max-width: 768px) {
+    padding: 0 1rem;
   }
 }
 
-// Input section
+// Input section styles
 .input-section {
-  flex-shrink: 0;
   width: 100%;
   padding: 1rem 0;
-  background: var(--color-background);
+  // Safe area inset at bottom for iOS home indicator
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  background: transparent;
+  position: relative;
 }
 
 .input-center {
   max-width: 800px;
   width: 100%;
   margin: 0 auto;
-  padding: 0 1rem;
+  padding: 0 2rem;
+
+  @media (max-width: 768px) {
+    padding: 0 1rem;
+  }
 }
 
-.input-glass {
-  position: relative;
-  background: transparent; // Let children handle their own background
-  border-radius: 12px;
-  display: flex;
-  flex-direction: column;
-}
-
+// Choice overlay
 .choice-overlay {
+  display: block;
   width: 100%;
-  background: var(--color-bg-solid);
-  border-radius: 12px;
-  padding: 1.5rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-// Drag and drop overlay - absolute to wrapper to cover drawer too
-.drag-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  z-index: 10000; // Above Material drawer (which is typically 1000-2000)
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.drag-overlay-content {
-  text-align: center;
-  color: white;
-  padding: 2rem;
-  border: 3px dashed white;
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.5);
-}
-
-.drag-icon {
-  font-size: 4rem;
-  margin-bottom: 1rem;
-}
-
-.drag-text {
-  font-size: 1.5rem;
-  font-weight: 500;
-}
-
-.drag-hint {
+// Upload status
+.upload-status {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: var(--color-success-light);
+  color: var(--color-text);
   font-size: 0.9rem;
-  margin-top: 0.5rem;
-  opacity: 0.8;
-}
+  text-align: center;
 
-// Responsive adjustments
-@media (max-width: 768px) {
-  .chat-center,
-  .input-center {
-    padding: 0 0.5rem;
-  }
-
-  .drag-text {
-    font-size: 1.2rem;
-  }
-
-  .drag-icon {
-    font-size: 3rem;
-  }
-
-  // Mobile: full width drawer
-  .file-drawer-container ::ng-deep .mat-drawer {
-    width: 100vw;
-    max-width: 100vw;
-  }
-
-  // Mobile: adjust FAB button position
-  .file-drawer-toggle-btn {
-    top: 0.75rem !important;
-    right: 0.75rem !important;
+  &.error {
+    background: var(--color-error-light);
   }
 }
 
 // Print styles
 @media print {
-  .connection-status,
-  .input-section,
-  .drag-overlay,
   .file-drawer-toggle-btn,
-  .file-drawer-container {
-    display: none !important;
-  }
-
-  .chat-wrapper {
-    overflow: visible;
-    height: auto;
+  .share-toggle-btn,
+  .connection-status {
+    display: none;
   }
 
   .thread-container {
-    height: auto;
+    background: white;
+  }
+
+  .input-section {
+    display: none;
   }
 }

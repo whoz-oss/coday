@@ -1,11 +1,10 @@
-package io.whozoss.agentos.orchestration
+package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
-import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
@@ -19,6 +18,7 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.runBlocking
 import mu.KLogging
@@ -34,8 +34,6 @@ import org.springframework.ai.tool.definition.DefaultToolDefinition
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
-import kotlin.collections.firstOrNull
-import kotlin.collections.map
 import kotlin.time.TimeSource
 import kotlin.time.measureTime
 
@@ -60,22 +58,19 @@ class AgentSimple(
 ) : Agent {
     override val name: String get() = model.name
 
-    override fun run(events: List<CaseEvent>): Flow<CaseEvent> =
+    /** The effective system instructions passed to the LLM, after namespace context injection. */
+    val instructions: String? get() = model.instructions
+
+    override fun run(
+        events: List<CaseEvent>,
+        shouldContinue: () -> Boolean,
+    ): Flow<CaseEvent> =
         flow {
-            val projectId = events.firstOrNull()?.projectId ?: throw IllegalArgumentException("No events provided")
+            val namespaceId = events.firstOrNull()?.namespaceId ?: throw IllegalArgumentException("No events provided")
             val caseId = events.firstOrNull()?.caseId ?: throw IllegalArgumentException("No events provided")
 
             // Channel to collect tool events from callbacks
             val toolEventChannel = Channel<CaseEvent>(Channel.UNLIMITED)
-
-            emit(
-                AgentRunningEvent(
-                    projectId = projectId,
-                    caseId = caseId,
-                    agentId = id,
-                    agentName = name,
-                ),
-            )
 
             try {
                 // Convert events to messages
@@ -89,7 +84,22 @@ class AgentSimple(
                         messages
                     }
 
-                emit(ThinkingEvent(projectId = projectId, caseId = caseId))
+                // Bail out immediately if an interrupt/kill was requested before
+                // the LLM call even starts (e.g. kill fired while the previous
+                // tool response was being stored).
+                if (!shouldContinue()) {
+                    emit(
+                        AgentFinishedEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            agentId = id,
+                            agentName = name,
+                        ),
+                    )
+                    return@flow
+                }
+
+                emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
 
                 // Shared timer: reset to markNow() each time the LLM hands back control
                 // (prompt sent, or tool response returned). Measures pure LLM thinking time
@@ -100,7 +110,14 @@ class AgentSimple(
                 // Convert StandardTool to ToolCallback with event emission
                 val toolCallbacks =
                     tools.map { tool ->
-                        createToolCallbackWithEvents(tool, projectId, caseId, toolEventChannel, llmTurnMark, llmTurnIndex)
+                        createToolCallbackWithEvents(
+                            tool,
+                            namespaceId,
+                            caseId,
+                            toolEventChannel,
+                            llmTurnMark,
+                            llmTurnIndex,
+                        )
                     }
 
                 // Make single LLM call with tools
@@ -121,8 +138,11 @@ class AgentSimple(
                 val contentBuilder = StringBuilder()
                 var currentTurnLogged = false
 
-                // Convert stream to Flow
-                streamSpec.content().asFlow().collect { chunk ->
+                // Convert stream to Flow.
+                // takeWhile cancels the upstream reactive stream as soon as shouldContinue()
+                // returns false, so we stop consuming the LLM HTTP stream immediately
+                // rather than merely skipping chunks with return@collect.
+                streamSpec.content().asFlow().takeWhile { shouldContinue() }.collect { chunk ->
                     // Emit any pending tool events and reset the text-turn log flag so the
                     // next text chunk after a tool call is correctly recognised as a new turn.
                     var toolEvent = toolEventChannel.tryReceive().getOrNull()
@@ -137,14 +157,18 @@ class AgentSimple(
                     // Log LLM thinking time once per turn on the first text chunk of that turn
                     if (!currentTurnLogged) {
                         currentTurnLogged = true
-                        logger.info { "[AgentSimple] $name LLM turn ${llmTurnIndex.get()} answered in ${llmTurnMark.get().elapsedNow()}" }
+                        logger.info {
+                            "[AgentSimple] $name LLM turn ${llmTurnIndex.get()} answered in ${
+                                llmTurnMark.get().elapsedNow()
+                            }"
+                        }
                     }
 
                     contentBuilder.append(chunk)
                     // Emit text chunk for progressive display
                     emit(
                         TextChunkEvent(
-                            projectId = projectId,
+                            namespaceId = namespaceId,
                             caseId = caseId,
                             chunk = chunk,
                         ),
@@ -163,7 +187,7 @@ class AgentSimple(
                 if (content.isNotEmpty()) {
                     emit(
                         MessageEvent(
-                            projectId = projectId,
+                            namespaceId = namespaceId,
                             caseId = caseId,
                             actor = Actor(id.toString(), name, ActorRole.AGENT),
                             content = listOf(MessageContent.Text(content)),
@@ -173,7 +197,7 @@ class AgentSimple(
 
                 emit(
                     AgentFinishedEvent(
-                        projectId = projectId,
+                        namespaceId = namespaceId,
                         caseId = caseId,
                         agentId = id,
                         agentName = name,
@@ -183,7 +207,7 @@ class AgentSimple(
                 logger.error(e) { "Error during agent execution" }
                 emit(
                     WarnEvent(
-                        projectId = projectId,
+                        namespaceId = namespaceId,
                         caseId = caseId,
                         message = "Error during agent execution: ${e.message}",
                     ),
@@ -191,7 +215,7 @@ class AgentSimple(
 
                 emit(
                     AgentFinishedEvent(
-                        projectId = projectId,
+                        namespaceId = namespaceId,
                         caseId = caseId,
                         agentId = id,
                         agentName = name,
@@ -352,7 +376,7 @@ class AgentSimple(
      */
     private fun createToolCallbackWithEvents(
         tool: StandardTool<*>,
-        projectId: UUID,
+        namespaceId: UUID,
         caseId: UUID,
         eventChannel: Channel<CaseEvent>,
         llmTurnMark: AtomicReference<TimeSource.Monotonic.ValueTimeMark>,
@@ -361,7 +385,8 @@ class AgentSimple(
         object : ToolCallback {
             // Expose the tool's own schema verbatim — no reflection-based generation.
             private val definition =
-                DefaultToolDefinition.builder()
+                DefaultToolDefinition
+                    .builder()
                     .name(tool.name)
                     .description(tool.description)
                     .inputSchema(tool.inputSchema)
@@ -380,7 +405,7 @@ class AgentSimple(
                 runBlocking {
                     eventChannel.send(
                         ToolRequestEvent(
-                            projectId = projectId,
+                            namespaceId = namespaceId,
                             caseId = caseId,
                             toolRequestId = toolRequestId,
                             toolName = tool.name,
@@ -399,7 +424,7 @@ class AgentSimple(
                                 runBlocking {
                                     eventChannel.send(
                                         ToolResponseEvent(
-                                            projectId = projectId,
+                                            namespaceId = namespaceId,
                                             caseId = caseId,
                                             toolRequestId = toolRequestId,
                                             toolName = tool.name,
@@ -421,7 +446,7 @@ class AgentSimple(
                 runBlocking {
                     eventChannel.send(
                         ToolResponseEvent(
-                            projectId = projectId,
+                            namespaceId = namespaceId,
                             caseId = caseId,
                             toolRequestId = toolRequestId,
                             toolName = tool.name,

@@ -46,4 +46,21 @@ const addStarringField: Migration = {
   },
 }
 
-export const aiThreadMigrations: Migration[] = [messageEventToMessageContent, addStarringField]
+const addUsersField: Migration = {
+  version: 3,
+  description: 'Add users field to threads, initialized from username for retro-compatibility',
+  migrate: (aiThread: any) => {
+    const migrated = { ...aiThread }
+    // Initialize users from username if not present
+    if (!migrated.users) {
+      migrated.users = migrated.username ? [{ userId: migrated.username }] : []
+    }
+    // Normalize: if users contains strings (from earlier dev iteration), convert to objects
+    if (Array.isArray(migrated.users)) {
+      migrated.users = migrated.users.map((u: any) => (typeof u === 'string' ? { userId: u } : u))
+    }
+    return migrated
+  },
+}
+
+export const aiThreadMigrations: Migration[] = [messageEventToMessageContent, addStarringField, addUsersField]

@@ -31,6 +31,33 @@
       }
     </div>
 
+    <!-- Free text input (only when allowFreeText is true) -->
+    @if (allowFreeText) {
+      <div class="free-text-section">
+        <span class="free-text-hint">Or type your own answer:</span>
+        <div class="free-text-input-row">
+          <input
+            #freeTextInput
+            type="text"
+            class="free-text-input"
+            placeholder="Type a custom answer…"
+            [(ngModel)]="freeTextValue"
+            (keydown)="onFreeTextKeyDown($event)"
+            aria-label="Custom answer"
+          />
+          <button
+            type="button"
+            class="free-text-send-btn"
+            [disabled]="!freeTextValue.trim()"
+            (click)="onFreeTextSubmit()"
+            aria-label="Send custom answer"
+          >
+            <mat-icon>send</mat-icon>
+          </button>
+        </div>
+      </div>
+    }
+
     <!-- Type-ahead indicator -->
     @if (searchText) {
       <div class="search-indicator">

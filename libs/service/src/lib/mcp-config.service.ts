@@ -102,7 +102,9 @@ export class McpConfigService {
     this.interactor.debug(`MCP merged configuration: ${validatedServers.length} servers total`)
     validatedServers.forEach((server) => {
       this.interactor.debug(
-        `  - ${server.name} (${server.id}): enabled=${server.enabled}, debug=${server.debug}, command=${server.command || 'N/A'}, args=[${(server.args || []).join(', ')}]`
+        `  - ${server.name} (${server.id}): enabled=${server.enabled}, debug=${server.debug}, command=${
+          server.command || 'N/A'
+        }, args=[${(server.args || []).join(', ')}]`
       )
     })
 
@@ -149,7 +151,7 @@ export class McpConfigService {
       return []
     }
     const projects = this.userService.config.projects || {}
-    return projects[project.name]?.mcp?.servers || []
+    return projects[this.userService.resolveProjectName(project.name)]?.mcp?.servers || []
   }
 
   /**
@@ -182,12 +184,13 @@ export class McpConfigService {
           throw new Error('No project selected')
         }
 
+        const resolvedName = this.userService.resolveProjectName(project.name)
         const projects = this.userService.config.projects || {}
-        let userProjectConfig = projects[project.name]
+        let userProjectConfig = projects[resolvedName]
         if (!userProjectConfig) {
           this.userService.config.projects = this.userService.config.projects || {}
-          this.userService.config.projects[project.name] = { integration: {} }
-          userProjectConfig = this.userService.config.projects[project.name]
+          this.userService.config.projects[resolvedName] = { integration: {} }
+          userProjectConfig = this.userService.config.projects[resolvedName]
         }
 
         // Update the MCP configuration while preserving other MCP settings

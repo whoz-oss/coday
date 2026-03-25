@@ -47,6 +47,7 @@ Thumbs.db
 # Ignore Nx
 .nx/cache
 .nx/workspace-data
+projects.json
 
 # Electron build output
 dist/electron

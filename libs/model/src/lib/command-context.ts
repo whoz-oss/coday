@@ -32,7 +32,7 @@ export class CommandContext {
   /**
    * Depth of the stack of threads for delegation
    */
-  stackDepth: number = 3
+  stackDepth: number = 10
 
   /**
    * Garbage object for each handling implementation to add specific data
@@ -41,13 +41,15 @@ export class CommandContext {
   data: any = {}
 
   /**
-   * Instance of the AiThread currently selected
+   * Instance of the AiThread currently selected by the user (root thread).
+   * For delegation, the correct parent thread is passed directly via ToolSet.run()
+   * to the delegate tool function, avoiding shared mutable state.
    */
   aiThread?: AiThread
 
   constructor(
     readonly project: Project,
-    readonly username: string
+    public username: string
   ) {}
 
   addCommands(...commands: string[]): void {

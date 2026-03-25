@@ -1,0 +1,8 @@
+name: claude-haiku
+description: Anthropic Claude Haiku for quick chat and tool use
+modelName: claude-haiku-4-5
+providerName: anthropic
+temperature: 0.5
+maxTokens: 4000
+instructions: |
+  You are Haiku, a lively chat agent.

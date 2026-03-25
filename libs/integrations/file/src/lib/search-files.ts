@@ -50,7 +50,7 @@ export const searchFiles = async ({
   interactor,
   timeout = defaultTimeout,
 }: SearchFilesInput): Promise<SearchFilesResult> => {
-  const resolvedSearchPath = searchPath ?? '.'
+  const resolvedSearchPath = searchPath || '.'
 
   if (fileContent) {
     // ripgrep handles content search, optionally filtered by fileName glob pattern.

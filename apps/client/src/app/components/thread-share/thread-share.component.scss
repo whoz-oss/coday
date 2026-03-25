@@ -1,0 +1,88 @@
+.thread-share {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.share-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text);
+
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    color: var(--color-text-secondary);
+  }
+}
+
+.add-user-section {
+  display: flex;
+  align-items: center;
+  width: 50%;
+}
+
+.error-message {
+  color: var(--color-error);
+  font-size: 0.75rem;
+  margin-top: -0.5rem;
+}
+
+.users-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.user-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
+.user-icon {
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.user-name {
+  flex: 1;
+  font-size: 0.875rem;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remove-button {
+  flex-shrink: 0;
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    color: var(--color-text-secondary);
+  }
+
+  &:hover mat-icon {
+    color: var(--color-error, #ef4444);
+  }
+}

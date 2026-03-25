@@ -7,6 +7,7 @@ import {
   CodayTool,
   FunctionTool,
   ThreadUpdateEvent,
+  hasAccess,
 } from '@coday/model'
 import { MessageEvent } from '@coday/model'
 
@@ -48,7 +49,9 @@ export class ThreadTools extends AssistantToolFactory {
             return threads
               .map(
                 (t) =>
-                  `- id: ${t.id}\n  name: ${t.name || '(unnamed)'}\n  summary: ${t.summary || '(no summary)'}\n  modified: ${t.modifiedDate}\n  starred: ${t.starring?.includes(username) ? 'yes' : 'no'}`
+                  `- id: ${t.id}\n  name: ${t.name || '(unnamed)'}\n  summary: ${
+                    t.summary || '(no summary)'
+                  }\n  modified: ${t.modifiedDate}\n  starred: ${t.starring?.includes(username) ? 'yes' : 'no'}`
               )
               .join('\n\n')
           } catch (error) {
@@ -88,7 +91,7 @@ export class ThreadTools extends AssistantToolFactory {
             if (!thread) {
               return `Thread '${threadId}' not found.`
             }
-            if (thread.username !== username) {
+            if (!hasAccess(thread, username)) {
               return `Access denied: thread '${threadId}' belongs to another user.`
             }
             const { messages } = await thread.getMessages(undefined, undefined)
@@ -158,7 +161,7 @@ export class ThreadTools extends AssistantToolFactory {
             if (!thread) {
               return `Thread '${targetId}' not found.`
             }
-            if (thread.username !== username) {
+            if (!hasAccess(thread, username)) {
               return `Access denied: thread '${targetId}' belongs to another user.`
             }
 

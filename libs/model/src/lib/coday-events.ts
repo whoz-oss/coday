@@ -1,3 +1,5 @@
+import { ThreadUser } from './ai-thread.types'
+
 export type TextContent = {
   type: 'text'
   content: string
@@ -48,6 +50,13 @@ export abstract class CodayEvent {
   static type: string
   length: number
 
+  /**
+   * Optional thread ID that identifies which thread this event belongs to.
+   * When set, the frontend can route the event to the correct sub-thread display.
+   * Undefined or absent means the event belongs to the root thread.
+   */
+  threadId: string | undefined
+
   constructor(
     event: Partial<CodayEvent>,
     readonly type: string
@@ -60,7 +69,24 @@ export abstract class CodayEvent {
       this.timestamp = event.timestamp
     }
     this.parentKey = event.parentKey
+    this.threadId = event.threadId
     this.length = 0
+  }
+
+  /**
+   * Parse the timestamp string to a Date.
+   * Timestamps may carry a random 5-char alphanumeric suffix to avoid collisions
+   * (e.g. "2026-02-09T16:57:20.839Z-x81ku"). The suffix is stripped before parsing.
+   */
+  get date(): Date {
+    const lastDash = this.timestamp.lastIndexOf('-')
+    if (lastDash > 0) {
+      const suffix = this.timestamp.substring(lastDash + 1)
+      if (suffix.length === 5 && /^[a-z0-9]+$/.test(suffix)) {
+        return new Date(this.timestamp.substring(0, lastDash))
+      }
+    }
+    return new Date(this.timestamp)
   }
 }
 
@@ -100,12 +126,15 @@ export const InviteEventDefault = 'InviteEventDefault'
 export class AnswerEvent extends CodayEvent {
   answer: string
   invite: string | undefined
+  /** Name of the human who sent this answer */
+  name: string | undefined
   static override type = 'answer'
 
   constructor(event: Partial<AnswerEvent>) {
     super(event, AnswerEvent.type)
     this.answer = event.answer ?? 'No answer'
     this.invite = event.invite
+    this.name = event.name
   }
 }
 
@@ -155,12 +184,18 @@ export class ErrorEvent extends CodayEvent {
 export class ChoiceEvent extends QuestionEvent {
   options: string[]
   optionalQuestion: string | undefined
+  /**
+   * When true, the user can also type a free-text answer beyond the provided options.
+   * Defaults to false to preserve backward-compatible closed-choice behaviour.
+   */
+  allowFreeText: boolean
   static override type = 'choice'
 
   constructor(event: Partial<ChoiceEvent>) {
     super(event, ChoiceEvent.type)
     this.options = event.options!!
     this.optionalQuestion = event.optionalQuestion
+    this.allowFreeText = event.allowFreeText ?? false
   }
 }
 
@@ -310,9 +345,10 @@ export class MessageEvent extends CodayEvent {
 }
 
 export class ThreadUpdateEvent extends CodayEvent {
-  threadId: string
+  override threadId: string
   name?: string
   summary?: string
+  users?: ThreadUser[]
   static override type = 'thread_update'
 
   constructor(event: Partial<ThreadUpdateEvent>) {
@@ -320,6 +356,7 @@ export class ThreadUpdateEvent extends CodayEvent {
     this.threadId = event.threadId!
     this.name = event.name
     this.summary = event.summary
+    this.users = event.users
   }
 }
 
@@ -362,6 +399,23 @@ export class OAuthRequestEvent extends CodayEvent {
   }
 }
 
+/**
+ * Marks the point in a thread's conversation where a sub-thread branches off.
+ * This is an immutable marker event — it is emitted once and never updated.
+ * Status and result are available on the sub-thread itself (fetched on demand by the frontend).
+ */
+export class DelegationEvent extends CodayEvent {
+  subThreadId: string
+  agentName: string
+  static override type = 'delegation'
+
+  constructor(event: Partial<DelegationEvent>) {
+    super(event, DelegationEvent.type)
+    this.subThreadId = event.subThreadId!
+    this.agentName = event.agentName!
+  }
+}
+
 export class OAuthCallbackEvent extends CodayEvent {
   code?: string
   state: string
@@ -385,6 +439,7 @@ const eventTypeToClassMap: { [key: string]: typeof CodayEvent } = {
   [MessageEvent.type]: MessageEvent,
   [AnswerEvent.type]: AnswerEvent,
   [ChoiceEvent.type]: ChoiceEvent,
+  [DelegationEvent.type]: DelegationEvent,
   [ErrorEvent.type]: ErrorEvent,
   [HeartBeatEvent.type]: HeartBeatEvent,
   [InviteEvent.type]: InviteEvent,

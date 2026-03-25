@@ -8,7 +8,7 @@ import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
-import io.whozoss.agentos.caseFlow.CaseModel
+import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.FilesystemCaseRepository
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -16,7 +16,7 @@ import java.nio.file.Files
 import java.util.*
 
 /**
- * Unit tests for [io.whozoss.agentos.caseFlow.FilesystemCaseRepository].
+ * Unit tests for [FilesystemCaseRepository].
  *
  * Each test uses an isolated temporary directory so tests do not interfere
  * with each other and no cleanup is needed at the project level.
@@ -35,10 +35,10 @@ class FilesystemCaseRepositoryTest : StringSpec() {
 
     fun tmpDir(): java.nio.file.Path = Files.createTempDirectory("agentos-test-cases")
 
-    fun case(projectId: UUID = UUID.randomUUID()): CaseModel =
-        CaseModel(
+    fun case(namespaceId: UUID = UUID.randomUUID()): Case =
+        Case(
             metadata = EntityMetadata(),
-            projectId = projectId,
+            namespaceId = namespaceId,
             status = CaseStatus.PENDING,
         )
 
@@ -58,7 +58,7 @@ class FilesystemCaseRepositoryTest : StringSpec() {
 
             found shouldHaveSize 1
             found.first().metadata.id shouldBe saved.metadata.id
-            found.first().projectId shouldBe c.projectId
+            found.first().namespaceId shouldBe c.namespaceId
             found.first().status shouldBe CaseStatus.PENDING
         }
 
@@ -69,21 +69,21 @@ class FilesystemCaseRepositoryTest : StringSpec() {
             repo.findByIds(listOf(UUID.randomUUID())).shouldBeEmpty()
         }
 
-        "findByParent returns all cases for a project" {
+        "findByParent returns all cases for a namespace" {
             val dir = tmpDir()
             val repo = newRepo(dir)
-            val projectId = UUID.randomUUID()
+            val namespaceId = UUID.randomUUID()
 
-            repo.save(case(projectId))
-            repo.save(case(projectId))
-            repo.save(case(UUID.randomUUID())) // different project — must not appear
+            repo.save(case(namespaceId))
+            repo.save(case(namespaceId))
+            repo.save(case(UUID.randomUUID())) // different namespace — must not appear
 
-            val found = repo.findByParent(projectId)
+            val found = repo.findByParent(namespaceId)
             found shouldHaveSize 2
-            found.all { it.projectId == projectId }.shouldBeTrue()
+            found.all { it.namespaceId == namespaceId }.shouldBeTrue()
         }
 
-        "findByParent returns empty list when no cases exist for project" {
+        "findByParent returns empty list when no cases exist for namespace" {
             val dir = tmpDir()
             val repo = newRepo(dir)
 
@@ -120,7 +120,7 @@ class FilesystemCaseRepositoryTest : StringSpec() {
 
             // Must not appear in queries
             repo.findByIds(listOf(c.metadata.id)).shouldBeEmpty()
-            repo.findByParent(c.projectId).shouldBeEmpty()
+            repo.findByParent(c.namespaceId).shouldBeEmpty()
         }
 
         "delete returns illegalargumentexception for unknown id" {
@@ -130,19 +130,19 @@ class FilesystemCaseRepositoryTest : StringSpec() {
             shouldThrow<IllegalArgumentException> { repo.delete(UUID.randomUUID()) }
         }
 
-        "deleteByParent soft-deletes all cases for a project" {
+        "deleteByParent soft-deletes all cases for a namespace" {
             val dir = tmpDir()
             val repo = newRepo(dir)
-            val projectId = UUID.randomUUID()
-            repo.save(case(projectId))
-            repo.save(case(projectId))
-            val other = repo.save(case()) // different project
+            val namespaceId = UUID.randomUUID()
+            repo.save(case(namespaceId))
+            repo.save(case(namespaceId))
+            val other = repo.save(case()) // different namespace
 
-            val count = repo.deleteByParent(projectId)
+            val count = repo.deleteByParent(namespaceId)
             count shouldBe 2
-            repo.findByParent(projectId).shouldBeEmpty()
-            // Other project's case is untouched
-            repo.findByParent(other.projectId) shouldHaveSize 1
+            repo.findByParent(namespaceId).shouldBeEmpty()
+            // Other namespace's case is untouched
+            repo.findByParent(other.namespaceId) shouldHaveSize 1
         }
 
         // -------------------------------------------------------------------------
@@ -151,11 +151,11 @@ class FilesystemCaseRepositoryTest : StringSpec() {
 
         "data persists across repository restarts" {
             val dir = tmpDir()
-            val projectId = UUID.randomUUID()
+            val namespaceId = UUID.randomUUID()
 
             // Write with first instance
             val repo1 = newRepo(dir)
-            val saved = repo1.save(case(projectId))
+            val saved = repo1.save(case(namespaceId))
 
             // Read with a fresh instance pointing at the same directory
             val repo2 = newRepo(dir)
@@ -163,7 +163,7 @@ class FilesystemCaseRepositoryTest : StringSpec() {
 
             found shouldHaveSize 1
             found.first().metadata.id shouldBe saved.metadata.id
-            found.first().projectId shouldBe projectId
+            found.first().namespaceId shouldBe namespaceId
         }
 
         "soft-delete persists across repository restarts" {

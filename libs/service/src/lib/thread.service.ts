@@ -1,4 +1,4 @@
-import { AiThread, ThreadSummary } from '@coday/model'
+import { AiThread, hasAccess, ThreadSummary, ThreadUser } from '@coday/model'
 import { ProjectRepository, ThreadFileRepository, ThreadRepository } from '@coday/repository'
 import { ThreadFileService } from './thread-file.service'
 
@@ -100,7 +100,7 @@ export class ThreadService {
     // Return cached data if still valid, filtered by user
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL_MS) {
       return cached.data
-        .filter((t) => t.username === username)
+        .filter((t) => hasAccess(t, username))
         .sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
     }
 
@@ -121,9 +121,7 @@ export class ThreadService {
       // Wait for loading to complete
       const allThreads = await loadingPromise
       // Return filtered and sorted for this user
-      return allThreads
-        .filter((t) => t.username === username)
-        .sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
+      return allThreads.filter((t) => hasAccess(t, username)).sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
     } catch (error) {
       // On error, invalidate cache to allow retry on next request
       this.threadListCache.delete(projectName)
@@ -151,6 +149,29 @@ export class ThreadService {
     })
 
     return allThreads
+  }
+
+  /**
+   * Build a ThreadSummary from an AiThread, preserving all fields including delegation metadata.
+   * Use this instead of inline object construction to avoid missing fields.
+   */
+  private toThreadSummary(thread: AiThread): ThreadSummary {
+    return {
+      id: thread.id,
+      username: thread.username,
+      projectId: thread.projectId,
+      name: thread.name,
+      summary: thread.summary,
+      createdDate: thread.createdDate,
+      modifiedDate: thread.modifiedDate,
+      price: thread.price,
+      starring: thread.starring,
+      users: thread.users,
+      parentThreadId: thread.parentThreadId,
+      parentEventId: thread.parentEventId,
+      delegatedAgentName: thread.delegatedAgentName,
+      delegatedTask: thread.delegatedTask,
+    }
   }
 
   /**
@@ -216,23 +237,13 @@ export class ThreadService {
     const savedThread = await repository.save(projectName, thread)
 
     // Add to cache
-    this.updateThreadInCache(projectName, {
-      id: savedThread.id,
-      username: savedThread.username,
-      projectId: savedThread.projectId,
-      name: savedThread.name,
-      summary: savedThread.summary,
-      createdDate: savedThread.createdDate,
-      modifiedDate: savedThread.modifiedDate,
-      price: savedThread.price,
-      starring: savedThread.starring,
-    })
+    this.updateThreadInCache(projectName, this.toThreadSummary(savedThread))
 
     return savedThread
   }
 
   /**
-   * Update a thread (rename)
+   * Update a thread (rename, summary, users)
    * @param projectName Project name
    * @param threadId Thread identifier
    * @param updates Partial thread updates
@@ -242,7 +253,7 @@ export class ThreadService {
   async updateThread(
     projectName: string,
     threadId: string,
-    updates: { name?: string; summary?: string }
+    updates: { name?: string; summary?: string; users?: ThreadUser[] }
   ): Promise<AiThread> {
     const repository = this.getThreadRepository(projectName)
 
@@ -275,21 +286,14 @@ export class ThreadService {
     if (updates.summary !== undefined) {
       thread.summary = updates.summary
     }
+    if (updates.users !== undefined) {
+      thread.users = updates.users
+    }
 
     const updatedThread = await repository.save(projectName, thread)
 
     // Update in cache
-    this.updateThreadInCache(projectName, {
-      id: updatedThread.id,
-      username: updatedThread.username,
-      projectId: updatedThread.projectId,
-      name: updatedThread.name,
-      summary: updatedThread.summary,
-      createdDate: updatedThread.createdDate,
-      modifiedDate: updatedThread.modifiedDate,
-      price: updatedThread.price,
-      starring: updatedThread.starring,
-    })
+    this.updateThreadInCache(projectName, this.toThreadSummary(updatedThread))
 
     return updatedThread
   }
@@ -318,17 +322,7 @@ export class ThreadService {
     const updatedThread = await repository.save(projectName, thread)
 
     // Update in cache
-    this.updateThreadInCache(projectName, {
-      id: updatedThread.id,
-      username: updatedThread.username,
-      projectId: updatedThread.projectId,
-      name: updatedThread.name,
-      summary: updatedThread.summary,
-      createdDate: updatedThread.createdDate,
-      modifiedDate: updatedThread.modifiedDate,
-      price: updatedThread.price,
-      starring: updatedThread.starring,
-    })
+    this.updateThreadInCache(projectName, this.toThreadSummary(updatedThread))
 
     return updatedThread
   }
@@ -355,17 +349,7 @@ export class ThreadService {
     const updatedThread = await repository.save(projectName, thread)
 
     // Update in cache
-    this.updateThreadInCache(projectName, {
-      id: updatedThread.id,
-      username: updatedThread.username,
-      projectId: updatedThread.projectId,
-      name: updatedThread.name,
-      summary: updatedThread.summary,
-      createdDate: updatedThread.createdDate,
-      modifiedDate: updatedThread.modifiedDate,
-      price: updatedThread.price,
-      starring: updatedThread.starring,
-    })
+    this.updateThreadInCache(projectName, this.toThreadSummary(updatedThread))
 
     return updatedThread
   }
@@ -389,6 +373,56 @@ export class ThreadService {
     }
 
     return deleted
+  }
+
+  /**
+   * Save a thread (create or update) with its full content.
+   * Used for persisting sub-threads created by delegation.
+   * @param projectName Project name
+   * @param thread The AiThread instance to persist
+   * @returns Saved thread
+   */
+  async saveThread(projectName: string, thread: AiThread): Promise<AiThread> {
+    const repository = this.getThreadRepository(projectName)
+    const saved = await repository.save(projectName, thread)
+
+    // Update thread list cache
+    this.updateThreadInCache(projectName, this.toThreadSummary(saved))
+
+    return saved
+  }
+  /**
+   * List all threads for a project without user filtering.
+   * Used internally (e.g. by sub-thread listing in delegation tools) where
+   * access control is applied by the caller via hasAccess().
+   * @param projectName Project name
+   * @returns Array of all thread summaries for the project
+   */
+  async listAllThreads(projectName: string): Promise<ThreadSummary[]> {
+    const cached = this.threadListCache.get(projectName)
+
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL_MS) {
+      return cached.data.sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
+    }
+
+    const existingPromise = this.loadingPromises.get(projectName)
+    if (existingPromise) {
+      await existingPromise
+      return this.listAllThreads(projectName)
+    }
+
+    const loadingPromise = this.loadThreadListFromDisk(projectName)
+    this.loadingPromises.set(projectName, loadingPromise)
+
+    try {
+      const allThreads = await loadingPromise
+      return allThreads.sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
+    } catch (error) {
+      this.threadListCache.delete(projectName)
+      throw error
+    } finally {
+      this.loadingPromises.delete(projectName)
+    }
   }
 
   /**

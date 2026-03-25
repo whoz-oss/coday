@@ -19,7 +19,7 @@ import { ToolExecutionResult } from '../model/tool-execution-result'
 import { ToolOutput } from '../model/tool-output'
 
 // @ts-ignore
-import { BASE_PATH, COLLECTION_FORMATS } from '../variables'
+import { BASE_PATH } from '../variables'
 import { Configuration } from '../configuration'
 import { BaseService } from '../api.base.service'
 

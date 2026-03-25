@@ -11,6 +11,9 @@ import { listBasecampProjects } from './list-projects'
 import { getBasecampMessageBoard } from './get-message-board'
 import { getBasecampMessages } from './get-messages'
 import { getBasecampMessage } from './get-message'
+import { getBasecampComments } from './get-comments'
+import { getBasecampForwards, getBasecampForward } from './get-forwards'
+import { getBasecampCardTable, getBasecampCardTableCards, getBasecampCard } from './get-card-table'
 
 export class BasecampTools extends AssistantToolFactory {
   static readonly TYPE = 'BASECAMP' as const
@@ -169,6 +172,164 @@ export class BasecampTools extends AssistantToolFactory {
     }
 
     result.push(getMessageTool)
+
+    const getCommentsTool: FunctionTool<{ recordingId: number; page?: number }> = {
+      type: 'function',
+      function: {
+        name: `${this.name}__getComments`,
+        description:
+          'Get comments for any Basecamp recording (message, card, etc.). ' +
+          'The recordingId is the ID of the message or card. ' +
+          'Basecamp uses geared pagination: page 1 returns 15 results, page 2 returns 30, page 3 returns 50, and page 4+ return 100 results each.',
+        parameters: {
+          type: 'object',
+          properties: {
+            recordingId: {
+              type: 'number',
+              description: 'The ID of the recording (message ID, card ID, etc.) to get comments for',
+            },
+            page: {
+              type: 'number',
+              description: 'Page number to retrieve (optional). If not provided, returns page 1.',
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: async ({ recordingId, page }) => getBasecampComments(this.oauth!, recordingId, page),
+      },
+    }
+
+    result.push(getCommentsTool)
+
+    const getForwardsTool: FunctionTool<{ projectId: number; inboxId: number; page?: number }> = {
+      type: 'function',
+      function: {
+        name: `${this.name}__getForwards`,
+        description:
+          'List forwarded emails in a Basecamp inbox. ' +
+          'The projectId comes from listProjects. The inboxId is the ID of the inbox tool (name: "inbox") from listProjects — it is listed even when disabled. ' +
+          'Basecamp uses geared pagination: page 1 returns 15 results, page 2 returns 30, page 3 returns 50, and page 4+ return 100 results each.',
+        parameters: {
+          type: 'object',
+          properties: {
+            projectId: {
+              type: 'number',
+              description: 'The project ID (from listProjects)',
+            },
+            inboxId: {
+              type: 'number',
+              description: 'The inbox ID (from the project dock, tool name: inbox)',
+            },
+            page: {
+              type: 'number',
+              description: 'Page number to retrieve (optional). If not provided, returns page 1.',
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: async ({ projectId, inboxId, page }) => getBasecampForwards(this.oauth!, projectId, inboxId, page),
+      },
+    }
+
+    result.push(getForwardsTool)
+
+    const getForwardTool: FunctionTool<{ projectId: number; forwardId: number }> = {
+      type: 'function',
+      function: {
+        name: `${this.name}__getForward`,
+        description: 'Get the full content of a specific forwarded email, including subject, sender, date, and body.',
+        parameters: {
+          type: 'object',
+          properties: {
+            projectId: {
+              type: 'number',
+              description: 'The project ID (from listProjects)',
+            },
+            forwardId: {
+              type: 'number',
+              description: 'The forward ID (from getForwards)',
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: async ({ projectId, forwardId }) => getBasecampForward(this.oauth!, projectId, forwardId),
+      },
+    }
+
+    result.push(getForwardTool)
+
+    const getCardTableTool: FunctionTool<{ cardTableId: number }> = {
+      type: 'function',
+      function: {
+        name: `${this.name}__getCardTable`,
+        description:
+          'Get a Basecamp card table (Kanban board) with its columns. ' +
+          'The cardTableId is available in the project dock (tool name: kanban_board) from listProjects.',
+        parameters: {
+          type: 'object',
+          properties: {
+            cardTableId: {
+              type: 'number',
+              description: 'The card table ID (from the project dock, tool name: kanban_board)',
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: async ({ cardTableId }) => getBasecampCardTable(this.oauth!, cardTableId),
+      },
+    }
+
+    result.push(getCardTableTool)
+
+    const getCardsTool: FunctionTool<{ columnId: number; page?: number }> = {
+      type: 'function',
+      function: {
+        name: `${this.name}__getCards`,
+        description:
+          'List cards in a card table column. ' +
+          'The columnId comes from getCardTable. ' +
+          'Basecamp uses geared pagination: page 1 returns 15 results, page 2 returns 30, page 3 returns 50, and page 4+ return 100 results each.',
+        parameters: {
+          type: 'object',
+          properties: {
+            columnId: {
+              type: 'number',
+              description: 'The column ID (from getCardTable)',
+            },
+            page: {
+              type: 'number',
+              description: 'Page number to retrieve (optional). If not provided, returns page 1.',
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: async ({ columnId, page }) => getBasecampCardTableCards(this.oauth!, columnId, page),
+      },
+    }
+
+    result.push(getCardsTool)
+
+    const getCardTool: FunctionTool<{ cardId: number }> = {
+      type: 'function',
+      function: {
+        name: `${this.name}__getCard`,
+        description:
+          'Get the full details of a specific card, including content, assignees, due date, steps, and comment count.',
+        parameters: {
+          type: 'object',
+          properties: {
+            cardId: {
+              type: 'number',
+              description: 'The card ID (from getCards)',
+            },
+          },
+        },
+        parse: JSON.parse,
+        function: async ({ cardId }) => getBasecampCard(this.oauth!, cardId),
+      },
+    }
+
+    result.push(getCardTool)
 
     return result
   }
