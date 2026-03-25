@@ -1,6 +1,6 @@
 import { AiClient } from './ai.client'
 import { AiThread } from './ai-thread'
-import { Observable } from 'rxjs'
+import { Observable, ReplaySubject } from 'rxjs'
 import { AnswerEvent, CodayEvent } from './coday-events'
 import { AgentDefinition } from './agent-definition'
 import { ToolSet } from './integration-tool-set'
@@ -61,6 +61,12 @@ export class Agent {
     thread.addAnswerEvent(answerEvent)
 
     // Run with AI client
-    return await this.aiClient.run(this, thread)
+    const events = await this.aiClient.run(this, thread)
+
+    // Bridge through a ReplaySubject to prevent event loss when the AI client
+    // completes before subscribers attach (race condition with fast models - issue #508).
+    const replay = new ReplaySubject<CodayEvent>()
+    events.subscribe(replay)
+    return replay.asObservable()
   }
 }
