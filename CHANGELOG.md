@@ -1,3 +1,15 @@
+## 0.104.1 (2026-03-25)
+
+### 🩹 Fixes
+
+- hide share button when auth is disabled ([74f2729c](https://github.com/whoz-oss/coday/commit/74f2729c))
+- hide "Share thread" button when not in auth/multi-user mode ([#642](https://github.com/whoz-oss/coday/pull/642), [#640](https://github.com/whoz-oss/coday/issues/640), [#622](https://github.com/whoz-oss/coday/issues/622), [#628](https://github.com/whoz-oss/coday/issues/628))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
 ## 0.104.0 (2026-03-25)
 
 ### 🚀 Features
