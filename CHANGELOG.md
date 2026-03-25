@@ -1,3 +1,14 @@
+## 0.103.5 (2026-03-25)
+
+### 🩹 Fixes
+
+- #508 prevent event loss with fast AI models via ReplaySubject bridge ([#649](https://github.com/whoz-oss/coday/pull/649), [#508](https://github.com/whoz-oss/coday/issues/508))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.103.4 (2026-03-25)
 
 ### 🩹 Fixes
