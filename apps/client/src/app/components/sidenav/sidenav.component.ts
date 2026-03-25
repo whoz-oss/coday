@@ -60,9 +60,8 @@ export class SidenavComponent implements OnInit, OnDestroy {
   // User feedback messages
   configErrorMessage = ''
 
-  // Section expansion state
+  // Section expansion state — threads is always open, not tracked here
   expandedSections: Record<string, boolean> = {
-    threads: true,
     config: false,
     preview: false,
     settings: false,
@@ -72,10 +71,8 @@ export class SidenavComponent implements OnInit, OnDestroy {
   isThreadSearchActive = false
   threadSearchQuery = ''
 
-  // ViewChild for search input
   @ViewChild('threadSearchInput') threadSearchInput?: ElementRef<HTMLInputElement>
 
-  // Modern Angular dependency injection
   private readonly dialog = inject(MatDialog)
   private readonly configApi = inject(ConfigApiService)
   private readonly projectStateService = inject(ProjectStateService)
@@ -97,18 +94,15 @@ export class SidenavComponent implements OnInit, OnDestroy {
   )
 
   ngOnInit(): void {
-    // Load saved sidenav state from preferences
     const savedState = this.preferences.getPreference<boolean>('sidenavOpen', true)
     this.isOpen = savedState ?? true
     console.log('[SIDENAV] Loaded sidenav state from preferences:', this.isOpen)
 
-    // Load user config to check roles
     this.configApi
       .getUserConfig()
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (config: any) => {
-          // Check if user has CODAY_ADMIN role in groups
           this.isAdmin = config.groups?.includes('CODAY_ADMIN') ?? false
           console.log('[SIDENAV] User admin status:', this.isAdmin)
         },
@@ -138,17 +132,11 @@ export class SidenavComponent implements OnInit, OnDestroy {
     }
   }
 
-  /**
-   * Save sidenav state to preferences
-   */
   private saveSidenavState(): void {
     this.preferences.setPreference('sidenavOpen', this.isOpen)
     console.log('[SIDENAV] Saved sidenav state:', this.isOpen)
   }
 
-  /**
-   * Open user configuration editor
-   */
   openTokenUsage(): void {
     this.configErrorMessage = ''
     void this.router.navigate(['/token-usage'])
@@ -156,26 +144,17 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   openUserConfig(): void {
-    console.log('[SIDENAV] openUserConfig called')
     this.configErrorMessage = ''
-
     this.configApi
       .getUserConfig()
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (config) => {
-          console.log('[SIDENAV] User config loaded, opening dialog')
           const dialogRef = this.dialog.open<JsonEditorComponent, JsonEditorData, any>(JsonEditorComponent, {
-            data: {
-              configType: 'user',
-              initialContent: JSON.stringify(config, null, 2),
-            },
+            data: { configType: 'user', initialContent: JSON.stringify(config, null, 2) },
           })
-
           dialogRef.afterClosed().subscribe((result) => {
-            if (result) {
-              this.saveUserConfig(result)
-            }
+            if (result) this.saveUserConfig(result)
           })
         },
         error: (error) => {
@@ -185,18 +164,12 @@ export class SidenavComponent implements OnInit, OnDestroy {
       })
   }
 
-  /**
-   * Save user configuration
-   */
   private saveUserConfig(parsedConfig: any): void {
     this.configApi
       .updateUserConfig(parsedConfig)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
-        next: (_) => {
-          console.log('[SIDENAV] User config saved successfully')
-          // Could show a success notification here
-        },
+        next: (_) => {},
         error: (error) => {
           console.error('[SIDENAV] Error saving user config:', error)
           this.configErrorMessage = error?.error?.error || 'Failed to save user configuration'
@@ -204,37 +177,23 @@ export class SidenavComponent implements OnInit, OnDestroy {
       })
   }
 
-  /**
-   * Open project configuration editor
-   */
   openProjectConfig(): void {
     const projectName = this.selectedProjectName()
     if (!projectName) {
-      console.error('[SIDENAV] No project selected')
       this.configErrorMessage = 'No project selected. Please select a project first.'
       return
     }
-
     this.configErrorMessage = ''
-
     this.projectApi
       .getProjectConfig(projectName)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (config) => {
-          console.log('[SIDENAV] Project config loaded, opening dialog')
           const dialogRef = this.dialog.open<JsonEditorComponent, JsonEditorData, any>(JsonEditorComponent, {
-            data: {
-              configType: 'project',
-              projectName,
-              initialContent: JSON.stringify(config, null, 2),
-            },
+            data: { configType: 'project', projectName, initialContent: JSON.stringify(config, null, 2) },
           })
-
           dialogRef.afterClosed().subscribe((result) => {
-            if (result) {
-              this.saveProjectConfig(projectName, result)
-            }
+            if (result) this.saveProjectConfig(projectName, result)
           })
         },
         error: (error) => {
@@ -244,18 +203,12 @@ export class SidenavComponent implements OnInit, OnDestroy {
       })
   }
 
-  /**
-   * Save project configuration
-   */
   private saveProjectConfig(projectName: string, parsedConfig: any): void {
     this.projectApi
       .updateProjectConfig(projectName, parsedConfig)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
-        next: (_) => {
-          console.log('[SIDENAV] Project config saved successfully')
-          // Could show a success notification here
-        },
+        next: (_) => {},
         error: (error) => {
           console.error('[SIDENAV] Error saving project config:', error)
           this.configErrorMessage = error?.error?.error || 'Failed to save project configuration'
@@ -263,13 +216,8 @@ export class SidenavComponent implements OnInit, OnDestroy {
       })
   }
 
-  /**
-   * Check if a project is selected and show error if not
-   * @returns true if project is selected, false otherwise
-   */
   private requireProjectSelection(context: string): boolean {
-    const projectName = this.selectedProjectName()
-    if (!projectName) {
+    if (!this.selectedProjectName()) {
       console.error(`[SIDENAV] No project selected, cannot ${context}`)
       this.configErrorMessage = 'Please select a project first'
       return false
@@ -277,11 +225,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
     return true
   }
 
-  /**
-   * Open a manager dialog with standard dimensions
-   */
-  private openManagerDialog(component: any, logMessage: string): void {
-    console.log(`[SIDENAV] ${logMessage}`)
+  private openManagerDialog(component: any): void {
     this.dialog.open(component, {
       width: '90vw',
       maxWidth: '1200px',
@@ -290,147 +234,69 @@ export class SidenavComponent implements OnInit, OnDestroy {
     })
   }
 
-  /**
-   * Open agent manager dialog
-   */
   openAgents(): void {
-    if (!this.requireProjectSelection('open agents')) {
-      return
-    }
-    this.openManagerDialog(AgentManagerComponent, 'Opening agent manager dialog')
+    if (this.requireProjectSelection('open agents')) this.openManagerDialog(AgentManagerComponent)
   }
 
-  /**
-   * Open prompt manager dialog
-   */
   openPrompts(): void {
-    if (!this.requireProjectSelection('open prompts')) {
-      return
-    }
-    this.openManagerDialog(PromptManagerComponent, 'Opening prompt manager dialog')
+    if (this.requireProjectSelection('open prompts')) this.openManagerDialog(PromptManagerComponent)
   }
 
-  /**
-   * Open scheduler manager dialog
-   * Available for all users if a project is selected
-   */
   openSchedulers(): void {
-    if (!this.requireProjectSelection('open schedulers')) {
-      return
-    }
-    this.openManagerDialog(
-      SchedulerManagerComponent,
-      `Opening scheduler manager dialog for project: ${this.selectedProjectName()}`
-    )
+    if (this.requireProjectSelection('open schedulers')) this.openManagerDialog(SchedulerManagerComponent)
   }
 
   /**
    * Toggle section expansion.
-   *
-   * - 'settings' and 'threads' are top-level independent toggles — toggling one
-   *   does NOT close the other.
-   * - 'config' and 'preview' are sub-sections inside the settings group and
-   *   follow accordion behaviour (only one open at a time within the group).
+   * - 'settings' is the top-level Control Center toggle.
+   * - 'config' and 'preview' are sub-sections with accordion behaviour.
    */
   toggleSection(section: string): void {
     const wasExpanded = this.expandedSections[section]
-
-    if (section === 'settings' || section === 'threads') {
-      // Top-level: just toggle independently
+    if (section === 'settings') {
       this.expandedSections[section] = !wasExpanded
     } else {
-      // Sub-section inside settings group: accordion — close all siblings first
-      const settingsSubSections = ['config', 'preview']
-      settingsSubSections.forEach((key) => {
-        this.expandedSections[key] = false
-      })
+      // Accordion: close siblings first
+      ;['config', 'preview'].forEach((key) => (this.expandedSections[key] = false))
       this.expandedSections[section] = !wasExpanded
     }
   }
 
-  /**
-   * Navigate to home (project selection)
-   * Only allowed if no forced project
-   */
   navigateToHome(): void {
-    // Don't allow navigation if there's a forced project
-    if (this.forcedProject()) {
-      console.log('[SIDENAV] Cannot navigate to home - forced project active')
-      return
-    }
-
-    console.log('[SIDENAV] Navigating to home (project selection)')
-    // Clear project selection and navigate to home
+    if (this.forcedProject()) return
     this.projectStateService.clearSelection()
     this.router.navigate(['/'])
   }
 
-  /**
-   * Create a new thread - Navigate to welcome view
-   */
   createNewThread(): void {
     const projectName = this.selectedProjectName()
     if (!projectName) {
-      console.error('[SIDENAV] No project selected, cannot create new thread')
       this.configErrorMessage = 'Please select a project first'
       return
     }
-
-    console.log('[SIDENAV] Navigating to welcome view for new thread')
-    // Clear the selected thread so the sidenav doesn't show any thread as selected
     this.threadStateService.clearSelection()
-    // Navigate to project route without threadId to show welcome view
     this.router.navigate(['project', projectName])
   }
 
-  /**
-   * Close sidenav when a thread is selected on mobile.
-   * On desktop (>= 1024 px) the sidenav stays open.
-   */
   onThreadSelectedOnMobile(): void {
-    if (window.innerWidth < 1024) {
-      this.close()
-    }
+    if (window.innerWidth < 1024) this.close()
   }
 
-  /**
-   * Toggle thread search mode
-   */
   toggleThreadSearch(event: Event): void {
     event.stopPropagation()
     this.isThreadSearchActive = true
     this.threadSearchQuery = ''
-    console.log('[SIDENAV] Thread search active:', this.isThreadSearchActive)
-
-    // Focus the input after the view updates
-    setTimeout(() => {
-      this.threadSearchInput?.nativeElement.focus()
-    }, 0)
+    setTimeout(() => this.threadSearchInput?.nativeElement.focus(), 0)
   }
 
-  /**
-   * Close thread search mode
-   */
   closeThreadSearch(): void {
     this.isThreadSearchActive = false
     this.threadSearchQuery = ''
-    console.log('[SIDENAV] Thread search closed')
   }
 
-  /**
-   * Handle search input changes
-   */
-  onThreadSearchInput(): void {
-    // Trigger change detection
-    console.log('[SIDENAV] Search query:', this.threadSearchQuery)
-  }
+  onThreadSearchInput(): void {}
 
-  /**
-   * Handle search mode change from thread selector
-   */
   onThreadSearchModeChange(isActive: boolean): void {
-    if (!isActive) {
-      this.closeThreadSearch()
-    }
+    if (!isActive) this.closeThreadSearch()
   }
 }

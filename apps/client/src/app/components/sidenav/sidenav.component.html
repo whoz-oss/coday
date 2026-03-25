@@ -59,11 +59,10 @@
       </a>
     </div>
 
-    <!-- Thread section: fills remaining space, scrolls independently -->
+    <!-- Thread section: fills remaining space, scrolls independently. Always open — not collapsible. -->
     <div class="sidenav-sections">
-      <!-- Threads Section - Expanded by default -->
-      <div class="section-container" [class.expanded]="expandedSections['threads']">
-        @if (isThreadSearchActive && expandedSections['threads']) {
+      <div class="section-container expanded">
+        @if (isThreadSearchActive) {
           <!-- Search mode: show search bar instead of title -->
           <div class="search-header">
             <mat-icon class="search-icon">search</mat-icon>
@@ -86,44 +85,30 @@
             </button>
           </div>
         } @else {
-          <!-- Normal mode: show section toggle -->
-          <a
-            class="section-toggle"
-            [class.active]="expandedSections['threads']"
-            (click)="toggleSection('threads'); $event.preventDefault()"
-            role="button"
-            tabindex="0"
-          >
-            @if (expandedSections['threads']) {
-              <mat-icon class="arrow-icon expanded">keyboard_arrow_up</mat-icon>
-            } @else {
-              <mat-icon class="section-icon">forum</mat-icon>
-            }
+          <!-- Threads header — not clickable, just a label + search button -->
+          <div class="section-toggle active threads-header">
+            <mat-icon class="section-icon">forum</mat-icon>
             <span class="section-label">Threads</span>
-            @if (expandedSections['threads']) {
-              <button
-                mat-icon-button
-                class="search-button"
-                (click)="toggleThreadSearch($event)"
-                title="Search threads"
-                type="button"
-              >
-                <mat-icon>search</mat-icon>
-              </button>
-            }
-          </a>
-        }
-        @if (expandedSections['threads']) {
-          <div class="section-content threads">
-            <app-thread-selector
-              class="sidenav-thread-selector"
-              [searchMode]="isThreadSearchActive"
-              [searchQuery]="threadSearchQuery"
-              (searchModeChange)="onThreadSearchModeChange($event)"
-              (threadSelected)="onThreadSelectedOnMobile()"
-            ></app-thread-selector>
+            <button
+              mat-icon-button
+              class="search-button"
+              (click)="toggleThreadSearch($event)"
+              title="Search threads"
+              type="button"
+            >
+              <mat-icon>search</mat-icon>
+            </button>
           </div>
         }
+        <div class="section-content threads">
+          <app-thread-selector
+            class="sidenav-thread-selector"
+            [searchMode]="isThreadSearchActive"
+            [searchQuery]="threadSearchQuery"
+            (searchModeChange)="onThreadSearchModeChange($event)"
+            (threadSelected)="onThreadSelectedOnMobile()"
+          ></app-thread-selector>
+        </div>
       </div>
     </div>
     <!-- end sidenav-sections -->
