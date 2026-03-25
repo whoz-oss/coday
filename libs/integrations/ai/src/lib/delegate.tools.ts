@@ -66,6 +66,7 @@ export class DelegateTools extends AssistantToolFactory {
       interactor: this.interactor,
       agentFind: this.agentFind,
       threadService: this.threadService,
+      emitResultAsUserMessage: true,
     })
 
     const delegateWithAllowList = async ({ delegations }: { delegations: Delegation[] }, thread?: AiThread) => {

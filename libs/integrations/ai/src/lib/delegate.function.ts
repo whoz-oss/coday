@@ -59,7 +59,8 @@ export function delegateFunction(input: DelegateInput) {
         interactor,
         agentFind,
         threadService,
-        projectName
+        projectName,
+        emitResultAsUserMessage
       )
       return { agentName: delegation.agentName, threadId }
     })
@@ -116,7 +117,8 @@ function launchAsyncDelegation(
   interactor: Interactor,
   agentFind: (agentName: string | undefined, context: CommandContext) => Promise<Agent | undefined>,
   threadService: ThreadService,
-  projectName: string
+  projectName: string,
+  emitResultAsUserMessage: boolean = false
 ): string {
   // Pre-generate the sub-thread ID so we can return it before the async work starts
   const preGeneratedThreadId = delegation.threadId ?? crypto.randomUUID()
@@ -129,7 +131,8 @@ function launchAsyncDelegation(
     interactor,
     agentFind,
     threadService,
-    projectName
+    projectName,
+    emitResultAsUserMessage
   ).catch((error) => {
     interactor.error(`Async delegation to '${delegation.agentName}' failed to launch: ${error?.message ?? error}`)
   })
@@ -144,7 +147,8 @@ async function setupAndRunAsync(
   interactor: Interactor,
   agentFind: (agentName: string | undefined, context: CommandContext) => Promise<Agent | undefined>,
   threadService: ThreadService,
-  projectName: string
+  projectName: string,
+  emitResultAsUserMessage: boolean = false
 ): Promise<void> {
   const { agentName, task } = delegation
   const parentEventId = new Date().toISOString()
@@ -196,7 +200,26 @@ async function setupAndRunAsync(
     const agentEvents: Observable<MessageEvent> = (await agent.run(task, subThread)).pipe(
       filter((e: unknown) => e instanceof MessageEvent)
     )
-    await lastValueFrom(agentEvents, { defaultValue: undefined })
+    const lastMessage: MessageEvent | undefined = await lastValueFrom(agentEvents, { defaultValue: undefined })
+
+    const wrappedResult =
+      emitResultAsUserMessage && lastMessage && subThread.runStatus !== RunStatus.STOPPED
+        ? `<delegation agent="${agentName}" threadId="${subThread.id}">
+${lastMessage.getTextContent()}
+</delegation>`
+        : undefined
+
+    if (wrappedResult) {
+      parentThread.addUserMessage(agentName, { type: 'text', content: wrappedResult })
+      interactor.sendEvent(
+        new MessageEvent({
+          role: 'user',
+          name: agentName,
+          content: [{ type: 'text', content: wrappedResult }],
+          threadId: parentThread.id,
+        })
+      )
+    }
 
     try {
       await threadService.saveThread(projectName, subThread)
@@ -204,7 +227,7 @@ async function setupAndRunAsync(
       interactor.debug(`Could not persist async sub-thread ${subThread.id}: ${err}`)
     }
 
-    // Merge price from sub-thread back to parent.
+    // Merge price from sub-thread back to parent, and persist the result message if any.
     // We reload the parent thread from disk to avoid writing into a stale in-memory object
     // (the parent may have been serialized to disk already while the sub-thread was running).
     // If reload fails, we fall back to the in-memory merge to avoid losing data silently.
@@ -212,6 +235,9 @@ async function setupAndRunAsync(
       const freshParent = await threadService.getThread(projectName, parentThread.id)
       if (freshParent) {
         freshParent.merge(subThread)
+        if (wrappedResult) {
+          freshParent.addUserMessage(agentName, { type: 'text', content: wrappedResult })
+        }
         await threadService.saveThread(projectName, freshParent)
       } else {
         // Parent thread not found on disk (e.g. root thread not yet persisted) — merge in-memory only
