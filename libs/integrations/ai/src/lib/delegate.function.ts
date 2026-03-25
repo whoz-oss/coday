@@ -202,11 +202,14 @@ async function setupAndRunAsync(
     )
     const lastMessage: MessageEvent | undefined = await lastValueFrom(agentEvents, { defaultValue: undefined })
 
-    if (emitResultAsUserMessage && lastMessage && subThread.runStatus !== RunStatus.STOPPED) {
-      const result = lastMessage.getTextContent()
-      const wrappedResult = `<delegation agent="${agentName}" threadId="${subThread.id}">
-${result}
+    const wrappedResult =
+      emitResultAsUserMessage && lastMessage && subThread.runStatus !== RunStatus.STOPPED
+        ? `<delegation agent="${agentName}" threadId="${subThread.id}">
+${lastMessage.getTextContent()}
 </delegation>`
+        : undefined
+
+    if (wrappedResult) {
       parentThread.addUserMessage(agentName, { type: 'text', content: wrappedResult })
       interactor.sendEvent(
         new MessageEvent({
@@ -224,8 +227,7 @@ ${result}
       interactor.debug(`Could not persist async sub-thread ${subThread.id}: ${err}`)
     }
 
-    // Merge price from sub-thread back to parent.
-    // Also persist parent thread if emitResultAsUserMessage added a message to it.
+    // Merge price from sub-thread back to parent, and persist the result message if any.
     // We reload the parent thread from disk to avoid writing into a stale in-memory object
     // (the parent may have been serialized to disk already while the sub-thread was running).
     // If reload fails, we fall back to the in-memory merge to avoid losing data silently.
@@ -233,6 +235,9 @@ ${result}
       const freshParent = await threadService.getThread(projectName, parentThread.id)
       if (freshParent) {
         freshParent.merge(subThread)
+        if (wrappedResult) {
+          freshParent.addUserMessage(agentName, { type: 'text', content: wrappedResult })
+        }
         await threadService.saveThread(projectName, freshParent)
       } else {
         // Parent thread not found on disk (e.g. root thread not yet persisted) — merge in-memory only
