@@ -15,12 +15,12 @@ class InMemoryCaseEventListTest :
     StringSpec({
         timeout = 5000
 
-        val projectId = UUID.randomUUID()
+        val namespaceId = UUID.randomUUID()
         val caseId = UUID.randomUUID()
 
         fun createMessageEvent(timestamp: Instant): MessageEvent =
             MessageEvent(
-                projectId = projectId,
+                namespaceId = namespaceId,
                 caseId = caseId,
                 timestamp = timestamp,
                 actor =

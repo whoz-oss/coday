@@ -6,11 +6,24 @@ export interface CodayLogger {
   /**
    * Log an agent interaction with usage information
    * @param username - The username of the user
-   * @param agent - The agent name
-   * @param model - The model used
+   * @param agent - The agent name (modelName in the token-usage API)
+   * @param model - The underlying model id used (modelId in the token-usage API)
    * @param cost - The cost of the interaction
+   * @param providerName - The AI provider name (e.g. anthropic, openai, google)
+   * @param promptTokens - Number of input/prompt tokens consumed
+   * @param completionTokens - Number of output/completion tokens consumed
+   * @param totalTokens - Total tokens consumed (prompt + completion)
    */
-  logAgentUsage(username: string, agent: string, model: string, cost: number): void
+  logAgentUsage(
+    username: string,
+    agent: string,
+    model: string,
+    cost: number,
+    providerName?: string,
+    promptTokens?: number,
+    completionTokens?: number,
+    totalTokens?: number
+  ): void
 
   /**
    * Log a webhook event

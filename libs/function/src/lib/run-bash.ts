@@ -62,11 +62,12 @@ export const runBash = async ({
 
     const limitedOutput = limitOutput(stdout, limits)
     const limitedErr = limitOutput(stderr, limits)
-    return `Output:\n${limitedOutput}${limitedErr ? `\n\nError:\n${limitedErr}` : ''}`
+    // stderr on a successful command is informational (progress, warnings) — not an error
+    return `Output:\n${limitedOutput}${limitedErr ? `\n\nStderr:\n${limitedErr}` : ''}`
   } catch (error: any) {
-    const stdout = error.stdout ? `\nstdout: ${limitOutput(error.stdout, limits)}` : ''
-    const stderr = error.stderr ? `\nstderr: ${limitOutput(error.stderr, limits)}` : ''
-    const message = `An error occurred while executing the command: ${error}${stdout}${stderr}`
+    const stdout = error.stdout ? `\nStdout:\n${limitOutput(error.stdout, limits)}` : ''
+    const stderr = error.stderr ? `\nStderr:\n${limitOutput(error.stderr, limits)}` : ''
+    const message = `Command failed: ${error.message ?? error}${stdout}${stderr}`
     interactor.error(message)
     return message
   }

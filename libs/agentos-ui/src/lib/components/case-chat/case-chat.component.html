@@ -5,7 +5,10 @@
         <p>No messages yet.</p>
       </div>
     } @else {
-      @for (item of timeline(); track item.kind === 'message' ? item.event.id : item.call.requestId) {
+      @for (
+        item of timeline();
+        track item.kind === 'message' ? item.event.id : item.kind === 'tool' ? item.call.requestId : 'streaming'
+      ) {
         @if (item.kind === 'message') {
           <div
             class="case-chat__message"
@@ -14,6 +17,11 @@
           >
             <span class="case-chat__message-author">{{ item.event.actor.displayName }}</span>
             <p class="case-chat__message-text">{{ extractText(item.event) }}</p>
+          </div>
+        } @else if (item.kind === 'streaming') {
+          <div class="case-chat__message case-chat__message--agent case-chat__message--streaming">
+            <span class="case-chat__message-author">{{ agentDisplayName() }}</span>
+            <p class="case-chat__message-text">{{ item.text }}</p>
           </div>
         } @else {
           <div
@@ -79,20 +87,23 @@
 
   <div class="case-chat__composer">
     <textarea
+      #composerInput
       class="case-chat__input"
       placeholder="Reply…"
       rows="3"
       [value]="inputValue()"
-      [disabled]="isRunning()"
+      [disabled]="isRunning() || isTerminal()"
       (input)="onInput($event)"
       (keydown)="onKeydown($event)"
     ></textarea>
     <div class="case-chat__actions">
       @if (isRunning()) {
-        <ds-icon-button icon="stop" variant="danger" title="Stop" (action)="stop()" />
+        <ds-icon-button icon="stop" variant="danger" title="Interrupt" (action)="interrupt()" />
       } @else {
         <ds-icon-button icon="send" variant="primary" title="Send (Enter)" [disabled]="!canSend" (action)="submit()" />
       }
+
+      <ds-icon-button icon="cancel" variant="danger" title="Kill" [disabled]="isTerminal()" (action)="kill()" />
     </div>
   </div>
 </div>

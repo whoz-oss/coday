@@ -1,7 +1,7 @@
 import express from 'express'
 import { debugLog } from './log'
 import { ThreadCodayManager } from './thread-coday-manager'
-import { AnswerEvent, OAuthCallbackEvent, buildCodayEvent } from '@coday/model'
+import { AnswerEvent, OAuthCallbackEvent, buildCodayEvent, hasAccess } from '@coday/model'
 
 /**
  * Message Management REST API Routes
@@ -69,14 +69,14 @@ export function registerMessageRoutes(
           return
         }
 
-        // Verify thread ownership
-        if (instance.username !== username) {
+        // Verify thread access
+        const aiThread = instance.coday.context?.aiThread
+        if (!aiThread || !hasAccess(aiThread, username)) {
           res.status(403).json({ error: 'Access denied: thread belongs to another user' })
           return
         }
 
         // Get messages from AiThread
-        const aiThread = instance.coday.context?.aiThread
         if (!aiThread) {
           res.status(500).json({ error: 'Thread not properly initialized' })
           return
@@ -133,8 +133,9 @@ export function registerMessageRoutes(
           return
         }
 
-        // Verify thread ownership
-        if (instance.username !== username) {
+        // Verify thread access
+        const aiThread = instance.coday.context?.aiThread
+        if (!aiThread || !hasAccess(aiThread, username)) {
           res.status(403).send('Access denied: thread belongs to another user')
           return
         }
@@ -155,10 +156,23 @@ export function registerMessageRoutes(
           }
         }
 
-        // Default behavior: send as AnswerEvent
-        instance.coday.interactor.sendEvent(new AnswerEvent(payload))
+        // Handle legacy AnswerEvent flow (has type === 'answer')
+        if (payload.type === 'answer') {
+          instance.coday.interactor.sendEvent(new AnswerEvent({ ...payload, name: username }))
+          res.status(200).send('Message received successfully!')
+          return
+        }
 
-        res.status(200).send('Message received successfully!')
+        // Handle free-form message posting (no type, has message field)
+        if (payload.message) {
+          debugLog('MESSAGE', `Free-form message from ${username}: ${payload.message.substring(0, 50)}`)
+          instance.coday.addUserMessage(username, payload.message)
+          res.status(200).json({ queued: true })
+          return
+        }
+
+        // Unknown payload type
+        res.status(400).send('Invalid message payload: must include either type or message field')
       } catch (error) {
         console.error('Error processing event:', error)
         res.status(400).send('Invalid event data!')
@@ -198,16 +212,10 @@ export function registerMessageRoutes(
           return
         }
 
-        // Verify thread ownership
-        if (instance.username !== username) {
-          res.status(403).json({ error: 'Access denied: thread belongs to another user' })
-          return
-        }
-
-        // Get AiThread
+        // Verify thread access
         const aiThread = instance.coday.context?.aiThread
-        if (!aiThread) {
-          res.status(500).json({ error: 'Thread not properly initialized' })
+        if (!aiThread || !hasAccess(aiThread, username)) {
+          res.status(403).json({ error: 'Access denied: thread belongs to another user' })
           return
         }
 
@@ -265,16 +273,10 @@ export function registerMessageRoutes(
           return
         }
 
-        // Verify thread ownership
-        if (instance.username !== username) {
-          res.status(403).send('Access denied: thread belongs to another user')
-          return
-        }
-
-        // Get AiThread
+        // Verify thread access
         const aiThread = instance.coday.context?.aiThread
-        if (!aiThread) {
-          res.status(500).send('Thread not properly initialized')
+        if (!aiThread || !hasAccess(aiThread, username)) {
+          res.status(403).send('Access denied: thread belongs to another user')
           return
         }
 
@@ -374,16 +376,10 @@ export function registerMessageRoutes(
           return
         }
 
-        // Verify thread ownership
-        if (instance.username !== username) {
-          res.status(403).json({ error: 'Access denied: thread belongs to another user' })
-          return
-        }
-
-        // Get AiThread
+        // Verify thread access
         const aiThread = instance.coday.context?.aiThread
-        if (!aiThread) {
-          res.status(500).json({ error: 'Thread not properly initialized' })
+        if (!aiThread || !hasAccess(aiThread, username)) {
+          res.status(403).json({ error: 'Access denied: thread belongs to another user' })
           return
         }
 

@@ -1,0 +1,73 @@
+<div class="preview-panel">
+  <div class="preview-controls">
+    <!-- Start button -->
+    @if (status() === 'stopped') {
+      <button
+        mat-icon-button
+        class="preview-action-btn start"
+        [disabled]="!hasPreviewCommand() || isLoading()"
+        (click)="start()"
+        title="Start preview server"
+        type="button"
+      >
+        <mat-icon>play_arrow</mat-icon>
+      </button>
+    }
+
+    <!-- Stop button -->
+    @if (status() === 'running') {
+      <button
+        mat-icon-button
+        class="preview-action-btn stop"
+        [disabled]="isLoading()"
+        (click)="stop()"
+        title="Stop preview server"
+        type="button"
+      >
+        <mat-icon>stop</mat-icon>
+      </button>
+    }
+
+    <!-- Status pill -->
+    <span class="status-pill" [class.running]="status() === 'running'">
+      {{ status() === 'running' ? 'Running' : 'Stopped' }}
+    </span>
+
+    <!-- Clickable URL when running -->
+    @if (status() === 'running' && previewUrl()) {
+      <a class="preview-url" [href]="previewUrl()" target="_blank" rel="noopener noreferrer" [title]="previewUrl()!">
+        <mat-icon class="link-icon">open_in_new</mat-icon>
+        <span class="url-text">{{ previewUrl() }}</span>
+      </a>
+    }
+
+    <!-- Logs toggle -->
+    <button
+      mat-icon-button
+      class="logs-btn"
+      (click)="toggleLogs()"
+      [title]="showLogs() ? 'Hide logs' : 'Show logs'"
+      type="button"
+    >
+      <mat-icon>{{ showLogs() ? 'expand_less' : 'terminal' }}</mat-icon>
+    </button>
+  </div>
+
+  <!-- Error message -->
+  @if (errorMessage()) {
+    <div class="preview-error">{{ errorMessage() }}</div>
+  }
+
+  <!-- Logs viewer -->
+  @if (showLogs()) {
+    <div class="logs-container">
+      <div class="logs-header">
+        <span class="logs-title">Logs</span>
+        <button mat-icon-button class="refresh-btn" (click)="refreshLogs()" title="Refresh logs" type="button">
+          <mat-icon>refresh</mat-icon>
+        </button>
+      </div>
+      <pre class="logs-content">{{ logs() || '(empty)' }}</pre>
+    </div>
+  }
+</div>

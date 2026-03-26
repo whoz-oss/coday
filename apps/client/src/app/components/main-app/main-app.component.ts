@@ -37,6 +37,7 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   private destroy$ = new Subject<void>()
 
   @ViewChild('inputSection') inputSection!: ElementRef<HTMLElement>
+  @ViewChild(SidenavComponent) sidenav!: SidenavComponent
 
   // Route parameters
   projectName: string = ''
@@ -182,6 +183,22 @@ export class MainAppComponent implements OnInit, OnDestroy, AfterViewInit {
   onVoiceToggled(isRecording: boolean): void {
     console.log('[VOICE] Recording in welcome view:', isRecording)
     // TODO: Implement speech-to-text for welcome view
+  }
+
+  /**
+   * Close the sidenav when the chat textarea is focused on mobile.
+   * On desktop (>= 1024 px) the sidenav stays open.
+   */
+  isDrawerOpen = false
+
+  onDrawerStateChange(open: boolean): void {
+    this.isDrawerOpen = open
+  }
+
+  onChatFocusedOnMobile(): void {
+    if (window.innerWidth < 1024) {
+      this.sidenav?.close()
+    }
   }
 
   onInputHeightChanged(height: number): void {

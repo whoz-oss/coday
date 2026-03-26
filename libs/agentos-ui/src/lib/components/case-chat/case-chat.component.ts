@@ -1,5 +1,16 @@
 import { HttpClient } from '@angular/common/http'
-import { Component, computed, inject, NgZone, OnDestroy, OnInit, signal } from '@angular/core'
+import {
+  Component,
+  computed,
+  effect,
+  ElementRef,
+  inject,
+  NgZone,
+  OnDestroy,
+  OnInit,
+  signal,
+  ViewChild,
+} from '@angular/core'
 import { ActivatedRoute } from '@angular/router'
 import {
   CaseEvent,
@@ -18,7 +29,10 @@ export interface ToolCall {
   response?: ToolResponseEvent
 }
 
-export type TimelineItem = { kind: 'message'; event: CaseMessageEvent } | { kind: 'tool'; call: ToolCall }
+export type TimelineItem =
+  | { kind: 'message'; event: CaseMessageEvent }
+  | { kind: 'tool'; call: ToolCall }
+  | { kind: 'streaming'; text: string }
 
 /**
  * CaseChatComponent — real-time chat view for an active case.
@@ -43,14 +57,51 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly caseId = this.route.snapshot.params['caseId'] as string
   private readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
+  /** Display name used for the streaming assistant bubble (before final MessageEvent arrives). */
+  protected readonly agentDisplayName = computed(() => {
+    // Prefer the latest orchestration signal if present.
+    // Fall back to a generic label.
+    const all = this.events()
+    for (let i = all.length - 1; i >= 0; i--) {
+      const e = all[i]
+      if (!e) continue
+
+      if (e.type === 'AgentRunningEvent' || e.type === 'AgentSelectedEvent' || e.type === 'AgentFinishedEvent') {
+        const name = (e as unknown as { agentName?: string }).agentName
+        if (name && name.trim().length > 0) return name
+      }
+
+      if (e.type === 'MessageEvent') {
+        const msg = e as unknown as { actor?: { role?: string; displayName?: string } }
+        if (msg.actor?.role === 'AGENT' && msg.actor.displayName) return msg.actor.displayName
+      }
+    }
+    return 'Assistant'
+  })
+
   private eventSource: EventSource | null = null
+
+  @ViewChild('composerInput') private composerInput?: ElementRef<HTMLTextAreaElement>
 
   protected readonly events = signal<CaseEvent[]>([])
   protected inputValue = signal('')
   protected isRunning = signal(false)
+  protected isTerminal = signal(false)
+
+  /** Streaming assistant text assembled from TextChunkEvent during a RUNNING turn. */
+  protected readonly streamingText = signal('')
 
   /** Collapsed state per toolRequestId */
   protected readonly collapsedTools = signal<Set<string>>(new Set())
+
+  constructor() {
+    // Restore focus to the composer whenever we return to an interactive state.
+    // (Agent turn finished → AgentFinishedEvent, or status becomes IDLE.)
+    effect(() => {
+      if (this.isRunning() || this.isTerminal()) return
+      queueMicrotask(() => this.composerInput?.nativeElement.focus())
+    })
+  }
 
   /**
    * Unified chronological timeline: messages and tool calls interleaved
@@ -66,6 +117,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    */
   protected readonly timeline = computed<TimelineItem[]>(() => {
     const allEvents = this.events()
+    const streamingText = this.streamingText()
 
     // Pass 1: build complete tool call map (request + optional response)
     const toolCallMap = new Map<string, ToolCall>()
@@ -108,11 +160,18 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         }
       }
     }
+
+    // Append the streaming assistant message at the end while running.
+    // We keep it separate from MessageEvent so we don't create dozens of timeline rows.
+    if (streamingText.trim().length > 0) {
+      items.push({ kind: 'streaming', text: streamingText })
+    }
+
     return items
   })
 
   protected get canSend(): boolean {
-    return !!this.inputValue().trim() && !this.isRunning()
+    return !!this.inputValue().trim() && !this.isRunning() && !this.isTerminal()
   }
 
   ngOnInit(): void {
@@ -125,41 +184,145 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   private connectSse(): void {
     const url = `${this.config.basePath}/api/cases/${this.caseId}/events`
+
+    console.log('[AgentOS SSE] connecting', {
+      url,
+      basePath: this.config.basePath,
+      caseId: this.caseId,
+      namespaceId: this.namespaceId,
+      now: new Date().toISOString(),
+    })
+
     this.eventSource = this.zone.runOutsideAngular(() => new EventSource(url))
 
     // NOTE: the backend sends named SSE events ("event: MessageEvent", "event: CaseStatusEvent", ...)
     // In that case, `onmessage` is NOT called. We must subscribe to named events.
     const handler = (msg: globalThis.MessageEvent<string>) => {
+      const receivedAt = performance.now()
+      const sseEventName = (msg as unknown as { type?: string }).type
+
+      // Log first bytes + sizes to detect batching.
+      const raw = msg.data
+      console.log('[AgentOS SSE] frame received', {
+        sseEventName,
+        dataLength: raw?.length ?? 0,
+        dataPreview: raw?.slice(0, 120),
+        receivedAtMs: receivedAt,
+      })
+
       try {
-        const event = JSON.parse(msg.data) as CaseEvent
+        const event = JSON.parse(raw) as CaseEvent
         this.zone.run(() => {
-          this.events.update((prev) => [...prev, event])
-          // minimal running heuristic: running unless we explicitly receive STOPPED
-          if (event.type === 'CaseStatusEvent') {
-            const status = (event as import('@whoz-oss/agentos-api-client').CaseStatusEvent).status
-            this.isRunning.set(status === 'RUNNING')
-          } else {
-            this.isRunning.set(true)
+          const beforeLen = this.events().length
+          this.events.update((prev) => (prev.some((e) => e.id === event.id) ? prev : [...prev, event]))
+          const afterLen = this.events().length
+
+          console.log('[AgentOS SSE] event processed', {
+            sseEventName,
+            eventType: event.type,
+            eventId: event.id,
+            beforeLen,
+            afterLen,
+            running: this.isRunning(),
+            terminal: this.isTerminal(),
+          })
+
+          if (event.type === 'TextChunkEvent') {
+            const chunk = (event as unknown as { chunk?: string }).chunk
+            if (chunk) {
+              this.streamingText.update((prev) => prev + chunk)
+            }
+            return
           }
+
+          if (event.type === 'CaseStatusEvent') {
+            // Source of truth for running/terminal states.
+            // Backend statuses: PENDING | RUNNING | IDLE | KILLED | ERROR
+            const status = (event as import('@whoz-oss/agentos-api-client').CaseStatusEvent).status as string
+
+            const isTerminal = status === 'KILLED' || status === 'ERROR'
+            this.isTerminal.set(isTerminal)
+
+            if (isTerminal) {
+              this.isRunning.set(false)
+              // Terminal: close SSE connection.
+              this.eventSource?.close()
+              this.eventSource = null
+            } else {
+              const running = status === 'RUNNING'
+              this.isRunning.set(running)
+              if (!running) {
+                // End of turn / idle: reset streaming buffer.
+                this.streamingText.set('')
+              }
+            }
+            return
+          }
+
+          // In practice, the SSE stream currently does NOT emit CaseStatusEvent.
+          // So we treat AgentFinishedEvent as the end-of-turn signal.
+          if (event.type === 'AgentFinishedEvent') {
+            this.isRunning.set(false)
+            // End-of-turn: reset streaming buffer.
+            this.streamingText.set('')
+            return
+          }
+
+          // For other events: don't force isRunning=true.
+          // submit() sets isRunning=true, and we flip it back on AgentFinishedEvent.
         })
-      } catch {
-        console.warn('[CaseChat] Failed to parse SSE event', msg.data)
+      } catch (err) {
+        console.warn('[AgentOS SSE] failed to parse event data', {
+          sseEventName,
+          error: err,
+          dataPreview: raw?.slice(0, 500),
+        })
       }
     }
 
-    // handle the different event names we see in the SSE stream
-    this.eventSource.addEventListener('MessageEvent', handler)
-    this.eventSource.addEventListener('CaseStatusEvent', handler)
-    this.eventSource.addEventListener('AgentSelectedEvent', handler)
-    this.eventSource.addEventListener('AgentRunningEvent', handler)
-    this.eventSource.addEventListener('AgentFinishedEvent', handler)
-    this.eventSource.addEventListener('ThinkingEvent', handler)
-    this.eventSource.addEventListener('TextChunkEvent', handler)
-    this.eventSource.addEventListener('ToolRequestEvent', handler)
-    this.eventSource.addEventListener('ToolResponseEvent', handler)
+    const eventNames = [
+      'MessageEvent',
+      'CaseStatusEvent',
+      'AgentSelectedEvent',
+      'AgentRunningEvent',
+      'AgentFinishedEvent',
+      'ThinkingEvent',
+      'TextChunkEvent',
+      'ToolRequestEvent',
+      'ToolResponseEvent',
+    ] as const
 
-    this.eventSource.onerror = () => {
-      this.zone.run(() => this.isRunning.set(false))
+    // handle the different event names we see in the SSE stream
+    for (const name of eventNames) {
+      console.log('[AgentOS SSE] addEventListener', name)
+      this.eventSource.addEventListener(name, handler)
+    }
+
+    this.eventSource.onopen = () => {
+      console.log('[AgentOS SSE] connection open', {
+        readyState: this.eventSource?.readyState,
+        at: new Date().toISOString(),
+      })
+    }
+
+    // Note: onmessage only fires for unnamed events. Keep it for debugging.
+    this.eventSource.onmessage = (msg) => {
+      console.log('[AgentOS SSE] onmessage (unnamed event) received', {
+        dataLength: msg.data?.length ?? 0,
+        dataPreview: msg.data?.slice(0, 120),
+      })
+    }
+
+    this.eventSource.onerror = (err) => {
+      console.warn('[AgentOS SSE] connection error', {
+        err,
+        readyState: this.eventSource?.readyState,
+        at: new Date().toISOString(),
+      })
+      this.zone.run(() => {
+        this.isRunning.set(false)
+        // Do not mark terminal on transport error: EventSource may reconnect.
+      })
     }
   }
 
@@ -179,6 +342,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     const content = this.inputValue().trim()
     this.inputValue.set('')
     this.isRunning.set(true)
+    this.streamingText.set('')
 
     this.http
       .post(`${this.config.basePath}/api/cases/${this.caseId}/messages`, {
@@ -193,10 +357,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       })
   }
 
-  protected stop(): void {
-    this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/stop`, {}).subscribe({
-      next: () => this.isRunning.set(false),
-      error: (err) => console.error('[CaseChat] Failed to stop case', err),
+  protected interrupt(): void {
+    this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/interrupt`, {}).subscribe({
+      // Server transitions to IDLE; SSE stays open. We'll update isRunning on CaseStatusEvent.
+      error: (err) => console.error('[CaseChat] Failed to interrupt case', err),
+    })
+  }
+
+  protected kill(): void {
+    this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/kill`, {}).subscribe({
+      // Server transitions to KILLED; SSE handler will close the EventSource.
+      error: (err) => console.error('[CaseChat] Failed to kill case', err),
     })
   }
 

@@ -1,0 +1,33 @@
+<div class="thread-share">
+  <div class="share-header">
+    <mat-icon>group</mat-icon>
+    <span>Participants</span>
+  </div>
+
+  <!-- Add user input -->
+  <div class="add-user-section">
+    <app-user-autocomplete
+      [excludedUserIds]="excludedUserIds"
+      [disabled]="isAdding()"
+      (userSelected)="onUserSelected($event)"
+    />
+  </div>
+  @if (errorMessage()) {
+    <div class="error-message">{{ errorMessage() }}</div>
+  }
+
+  <!-- Users list -->
+  <div class="users-list">
+    @for (user of users; track user.userId) {
+      <div class="user-item">
+        <mat-icon class="user-icon">person</mat-icon>
+        <span class="user-name">{{ user.userId }}</span>
+        @if (users.length > 1) {
+          <button mat-icon-button class="remove-button" (click)="removeUser(user.userId)" title="Remove user">
+            <mat-icon>close</mat-icon>
+          </button>
+        }
+      </div>
+    }
+  </div>
+</div>

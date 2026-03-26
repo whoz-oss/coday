@@ -1,5 +1,6 @@
 import { ToolRequestEvent, ToolResponseEvent } from './coday-events'
 import { CodayTool } from './coday-tool'
+import { AiThread } from './ai-thread'
 
 export class ToolSet {
   readonly charLength: number = 0
@@ -18,10 +19,12 @@ export class ToolSet {
    * for long-running tasks that need intermediate status updates
    *
    * @param toolRequest The tool request containing name and arguments
+   * @param thread Optional AiThread context — passed to tool functions that need
+   *               thread identity (e.g. delegate tool for correct parent resolution)
    * @returns Promise of the tool execution result
    * @throws Error if tool not found or execution fails
    */
-  async run(toolRequest: ToolRequestEvent): Promise<ToolResponseEvent> {
+  async run(toolRequest: ToolRequestEvent, thread?: AiThread): Promise<ToolResponseEvent> {
     const tool = this.tools.find((tool) => tool.function.name === toolRequest.name)
     if (!tool) {
       throw new Error(`Tool '${toolRequest.name}' not found`)
@@ -34,7 +37,8 @@ export class ToolSet {
     const args = JSON.parse(toolRequest.args)
     // Make sure args is always an array
     const argsArray = Array.isArray(args) ? args : [args]
-    output = await toolFunc(...argsArray)
+    // Pass thread as last argument so tools that need thread identity can use it
+    output = await toolFunc(...argsArray, thread)
 
     if (!output) {
       output = `Tool function ${toolRequest.name} finished without error.`

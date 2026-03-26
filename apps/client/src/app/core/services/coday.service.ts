@@ -5,6 +5,7 @@ import {
   AnswerEvent,
   ChoiceEvent,
   CodayEvent,
+  DelegationEvent,
   ErrorEvent,
   HeartBeatEvent,
   InviteEvent,
@@ -23,6 +24,7 @@ import {
 
 import { EventStreamService } from './event-stream.service'
 import { MessageApiService } from './message-api.service'
+import { UserService } from './user.service'
 
 import { ChatMessage } from '../../components/chat-message/chat-message.component'
 import { ChoiceOption } from '../../components/choice-select/choice-select.component'
@@ -40,7 +42,11 @@ export class CodayService implements OnDestroy {
   // State subjects
   private readonly messagesSubject = new BehaviorSubject<ChatMessage[]>([])
   private readonly isThinkingSubject = new BehaviorSubject<boolean>(false)
-  private readonly currentChoiceSubject = new BehaviorSubject<{ options: ChoiceOption[]; label: string } | null>(null)
+  private readonly currentChoiceSubject = new BehaviorSubject<{
+    options: ChoiceOption[]
+    label: string
+    allowFreeText: boolean
+  } | null>(null)
   private readonly projectTitleSubject = new BehaviorSubject<string>('Coday')
   private readonly currentInviteEventSubject = new BehaviorSubject<InviteEvent | null>(null)
   private readonly messageToRestoreSubject = new BehaviorSubject<string>('')
@@ -55,6 +61,23 @@ export class CodayService implements OnDestroy {
   // Text chunk accumulation for streaming (separate from messages)
   private accumulatedChunks: string = ''
   private readonly streamingTextSubject = new BehaviorSubject<string>('')
+
+  // Sub-thread event routing: events tagged with a threadId are forwarded here
+  // keyed by threadId, so DelegationInlineComponent can subscribe to its own sub-thread
+  private readonly subThreadEventsSubject = new Subject<CodayEvent>()
+  subThreadEvents$ = this.subThreadEventsSubject.asObservable()
+
+  // Buffer of sub-thread events keyed by threadId.
+  // Events may arrive before the DelegationInlineComponent is instantiated by Angular,
+  // so we buffer them here and replay on subscription.
+  private readonly subThreadEventBuffers = new Map<string, CodayEvent[]>()
+
+  /**
+   * Get buffered events for a sub-thread that arrived before the component subscribed.
+   */
+  getBufferedSubThreadEvents(threadId: string): CodayEvent[] {
+    return this.subThreadEventBuffers.get(threadId) ?? []
+  }
 
   // Public observables
   messages$ = this.messagesSubject.asObservable()
@@ -74,6 +97,7 @@ export class CodayService implements OnDestroy {
   // Modern Angular dependency injection
   private readonly eventStream = inject(EventStreamService)
   private readonly messageApi = inject(MessageApiService)
+  private readonly userService = inject(UserService)
 
   constructor() {
     // Initialize connection status observable after eventStream is available
@@ -98,32 +122,6 @@ export class CodayService implements OnDestroy {
     this.currentProject = projectName
     this.currentThread = threadId
     this.eventStream.connectToThread(projectName, threadId)
-
-    // After a short delay (to let messages replay), process unanswered invites
-    setTimeout(() => this.processUnansweredInvites(), 500)
-  }
-
-  /**
-   * Process unanswered invites after thread replay
-   * Finds InviteEvent and ChoiceEvent that don't have corresponding AnswerEvent
-   * and restores the first one to currentInviteEventSubject for user response
-   */
-  private processUnansweredInvites(): void {
-    const messages = this.messagesSubject.value
-
-    // Find all InviteEvent without corresponding AnswerEvent
-    const unansweredInvites = messages
-      .filter((m) => m.type === 'text' && m.parentKey === undefined && m.invite !== undefined)
-      .filter((invite) => !messages.some((m) => m.type === 'text' && m.role === 'user' && m.parentKey === invite.id))
-
-    // If there are unanswered invites, restore the first one
-    if (unansweredInvites.length > 0) {
-      // We need to reconstruct the InviteEvent from the message
-      // This is a simplified reconstruction - the actual InviteEvent will come from backend
-      console.log('[CODAY] Found', unansweredInvites.length, 'unanswered invite(s)')
-      // Note: The actual InviteEvent will be replayed from the backend,
-      // so we just need to wait for it to arrive via handleInviteEvent
-    }
   }
 
   /**
@@ -138,6 +136,7 @@ export class CodayService implements OnDestroy {
     this.currentChoiceEvent = null
     this.accumulatedChunks = ''
     this.streamingTextSubject.next('')
+    this.subThreadEventBuffers.clear()
     this.stopThinking()
   }
 
@@ -150,36 +149,36 @@ export class CodayService implements OnDestroy {
       return
     }
 
-    // Immediately set thinking state to true to disable textarea
-    // This prevents users from sending multiple messages before server responds
-    this.isThinkingSubject.next(true)
-    this.tabTitleService?.setSystemActive()
+    const pendingInvite = this.currentInviteEventSubject.value
 
-    const currentInviteEvent = this.currentInviteEventSubject.value
-
-    if (currentInviteEvent) {
-      // Use the original InviteEvent to build proper answer with parentKey
-      const answerEvent = currentInviteEvent.buildAnswer(message)
-
-      // Clear the current invite event immediately after using it
+    if (pendingInvite) {
+      // There is a pending InviteEvent: build a proper AnswerEvent with the correct parentKey
+      // so the backend's promptText() can match it via its filter on parentKey.
+      // Using sendFreeMessage here would route through addUserMessage which only works
+      // if pendingQuestionEvent is still set server-side — an unreliable assumption.
+      this.isThinkingSubject.next(true)
+      this.tabTitleService?.setSystemActive()
       this.currentInviteEventSubject.next(null)
+
+      const answerEvent = pendingInvite.buildAnswer(message)
+
+      // Optimistic UI: display the user's reply immediately without waiting for SSE bounce-back,
+      // aligning with the free-form path which gets immediate feedback via addUserMessage on server.
+      this.handleAnswerEvent(answerEvent)
 
       this.messageApi.sendMessage(answerEvent).subscribe({
         error: (error) => {
-          console.error('[CODAY] Send error:', error)
-          // Reset thinking state on error
+          console.error('[CODAY] Send invite answer error:', error)
+          // Restore the invite so the user can retry without refreshing
+          this.currentInviteEventSubject.next(pendingInvite)
           this.stopThinking()
         },
       })
     } else {
-      // Fallback to basic AnswerEvent if no invite event stored
-      const answerEvent = new AnswerEvent({ answer: message })
-
-      this.messageApi.sendMessage(answerEvent).subscribe({
+      // No pending invite: use the free-form endpoint — server queues if agent is running
+      this.messageApi.sendFreeMessage(message).subscribe({
         error: (error) => {
           console.error('[CODAY] Send error:', error)
-          // Reset thinking state on error
-          this.stopThinking()
         },
       })
     }
@@ -280,6 +279,21 @@ export class CodayService implements OnDestroy {
    * Handle incoming Coday events
    */
   private handleEvent(event: CodayEvent): void {
+    // Route events tagged with a sub-thread ID to the sub-thread stream
+    // so DelegationInlineComponent can pick them up in real-time.
+    // Root thread events have threadId === currentThread or undefined.
+    if (event.threadId && event.threadId !== this.currentThread) {
+      // Buffer the event so late-subscribing components can replay it
+      const buffer = this.subThreadEventBuffers.get(event.threadId)
+      if (buffer) {
+        buffer.push(event)
+      } else {
+        this.subThreadEventBuffers.set(event.threadId, [event])
+      }
+      this.subThreadEventsSubject.next(event)
+      return
+    }
+
     if (event instanceof MessageEvent) {
       this.handleMessageEvent(event)
     } else if (event instanceof TextChunkEvent) {
@@ -306,10 +320,33 @@ export class CodayService implements OnDestroy {
       this.handleInviteEvent(event)
     } else if (event instanceof ThreadUpdateEvent) {
       this.handleThreadUpdateEvent(event)
+    } else if (event instanceof DelegationEvent) {
+      this.handleDelegationEvent(event)
     } else if (event instanceof OAuthRequestEvent || event instanceof OAuthCallbackEvent) {
       // OAuth events are handled by OAuthService, no action needed here
     } else {
       console.warn('[CODAY] Unhandled event type:', event.type)
+    }
+  }
+
+  private handleDelegationEvent(event: DelegationEvent): void {
+    console.log('[CODAY] DelegationEvent received:', event.subThreadId, event.agentName)
+    const currentMessages = this.messagesSubject.value
+    const existingIndex = currentMessages.findIndex((m) => m.subThreadId === event.subThreadId)
+
+    // DelegationEvent is now an immutable branch marker — only add once
+    if (existingIndex === -1) {
+      const message: ChatMessage = {
+        id: event.timestamp,
+        role: 'system',
+        speaker: event.agentName,
+        content: [{ type: 'text', content: '' }],
+        timestamp: new Date(),
+        type: 'delegation',
+        subThreadId: event.subThreadId,
+        delegationAgentName: event.agentName,
+      }
+      this.addMessage(message)
     }
   }
 
@@ -330,7 +367,7 @@ export class CodayService implements OnDestroy {
       role: event.role,
       speaker: event.name,
       content: event.content,
-      timestamp: new Date(),
+      timestamp: event.date,
       type: 'text',
     }
 
@@ -349,7 +386,7 @@ export class CodayService implements OnDestroy {
       role: event.speaker ? 'assistant' : 'system',
       speaker: event.speaker ?? 'System',
       content: [{ type: 'text', content: event.text }], // Convertir en contenu riche
-      timestamp: new Date(),
+      timestamp: event.date,
       type: event.speaker ? 'text' : 'technical',
     }
 
@@ -361,9 +398,9 @@ export class CodayService implements OnDestroy {
     const message: ChatMessage = {
       id: event.timestamp,
       role: 'user',
-      speaker: 'User',
+      speaker: event.name ?? this.userService.getUsername() ?? 'User',
       content: [{ type: 'text', content: event.answer }],
-      timestamp: new Date(),
+      timestamp: event.date,
       type: 'text',
       parentKey: event.parentKey, // Link to the InviteEvent/ChoiceEvent
       invite: event.invite, // Original question for context
@@ -378,7 +415,7 @@ export class CodayService implements OnDestroy {
       role: 'system',
       speaker: 'System',
       content: [{ type: 'text', content: `Error: ${JSON.stringify(event.error)}` }], // Convertir en contenu riche
-      timestamp: new Date(),
+      timestamp: event.date,
       type: 'error',
     }
 
@@ -391,7 +428,7 @@ export class CodayService implements OnDestroy {
       role: 'system',
       speaker: 'System',
       content: [{ type: 'text', content: `Warning: ${JSON.stringify(event.warning)}` }], // Convertir en contenu riche
-      timestamp: new Date(),
+      timestamp: event.date,
       type: 'warning',
     }
 
@@ -430,7 +467,7 @@ export class CodayService implements OnDestroy {
       role: 'system',
       speaker: 'System',
       content: [{ type: 'text', content: event.toSingleLineString() }], // Convertir en contenu riche
-      timestamp: new Date(),
+      timestamp: event.date,
       type: 'technical',
       eventId: event.timestamp,
     }
@@ -444,7 +481,7 @@ export class CodayService implements OnDestroy {
       role: 'system',
       speaker: 'System',
       content: [{ type: 'text', content: event.toSingleLineString() }], // Convertir en contenu riche
-      timestamp: new Date(),
+      timestamp: event.date,
       type: 'technical',
       eventId: event.timestamp,
     }
@@ -466,7 +503,7 @@ export class CodayService implements OnDestroy {
 
     const label = event.optionalQuestion ? `${event.optionalQuestion} ${event.invite}` : event.invite
 
-    this.currentChoiceSubject.next({ options, label })
+    this.currentChoiceSubject.next({ options, label, allowFreeText: event.allowFreeText })
   }
 
   private handleHeartBeatEvent(_event: HeartBeatEvent): void {
@@ -497,7 +534,7 @@ export class CodayService implements OnDestroy {
         role: 'assistant',
         speaker: 'Assistant',
         content: [{ type: 'text', content: event.invite }],
-        timestamp: new Date(),
+        timestamp: event.date,
         type: 'text',
       }
 
@@ -513,13 +550,14 @@ export class CodayService implements OnDestroy {
   }
 
   /**
-   * Add a message to the history
+   * Add a message to the history, skipping duplicates by id
    */
   private addMessage(message: ChatMessage): void {
     const currentMessages = this.messagesSubject.value
-    const newMessages = [...currentMessages, message]
-
-    this.messagesSubject.next(newMessages)
+    if (currentMessages.some((m) => m.id === message.id)) {
+      return
+    }
+    this.messagesSubject.next([...currentMessages, message])
   }
 
   /**

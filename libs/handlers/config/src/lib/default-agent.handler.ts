@@ -51,7 +51,8 @@ export class DefaultAgentHandler extends CommandHandler {
 
     // Get the current default agent if any
     const userConfig = this.services.user.config
-    const currentDefault = userConfig.projects?.[projectName]?.defaultAgent || ''
+    const resolvedProjectName = this.services.user.resolveProjectName(projectName)
+    const currentDefault = userConfig.projects?.[resolvedProjectName]?.defaultAgent || ''
 
     // Mark the current default in the options list
     const displayOptions = options.map((opt) => ({
@@ -75,18 +76,18 @@ export class DefaultAgentHandler extends CommandHandler {
         userConfig.projects = {}
       }
 
-      if (!userConfig.projects[projectName]) {
-        userConfig.projects[projectName] = {
+      if (!userConfig.projects[resolvedProjectName]) {
+        userConfig.projects[resolvedProjectName] = {
           integration: {},
         }
       }
 
       if (selectedAgentName) {
-        userConfig.projects[projectName].defaultAgent = selectedAgentName
+        userConfig.projects[resolvedProjectName].defaultAgent = selectedAgentName
         this.interactor.displayText(`Default agent for project "${projectName}" set to "${selectedAgentName}".`)
       } else {
         // Remove the default agent setting
-        delete userConfig.projects[projectName].defaultAgent
+        delete userConfig.projects[resolvedProjectName].defaultAgent
         this.interactor.displayText(`Default agent for project "${projectName}" cleared. Using Coday as default.`)
       }
 

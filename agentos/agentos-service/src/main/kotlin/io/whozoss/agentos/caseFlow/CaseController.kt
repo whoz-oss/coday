@@ -4,7 +4,6 @@ import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
-import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.PathVariable
@@ -21,17 +20,17 @@ import java.util.UUID
 )
 class CaseController(
     private val caseService: CaseService,
-) : EntityController<CaseModel, UUID>(caseService) {
+) : EntityController<Case, UUID>(caseService) {
     /** POST /api/cases/{caseId}/messages — add a user message to a running case. */
     @PostMapping("/{caseId}/messages")
     fun addMessage(
         @PathVariable caseId: UUID,
         @RequestBody request: AddMessageRequest,
-    ) = runBlocking {
+    ) {
         logger.info { "Adding message to case: $caseId" }
-        val case = caseService.getCaseInstance(caseId)
         val userActor = Actor(id = request.userId, displayName = request.userId, role = ActorRole.USER)
-        case.addUserMessage(
+        caseService.addMessage(
+            caseId = caseId,
             actor = userActor,
             content = listOf(MessageContent.Text(request.content)),
             answerToEventId = request.answerToEventId,
@@ -39,17 +38,23 @@ class CaseController(
         logger.info { "Message added to case: $caseId" }
     }
 
-    /** POST /api/cases/{caseId}/stop — stop a case gracefully. */
-    @PostMapping("/{caseId}/stop")
-    fun stopCase(
+    /**
+     * POST /api/cases/{caseId}/interrupt
+     *
+     * Interrupt the current agent turn and return the case to IDLE.
+     * The runtime and SSE connection stay open — the user can send a corrective
+     * message immediately. Use this when the agent is going in the wrong direction.
+     */
+    @PostMapping("/{caseId}/interrupt")
+    fun interruptCase(
         @PathVariable caseId: UUID,
     ) {
-        logger.info { "Stopping case: $caseId" }
-        caseService.stopCase(caseId)
-        logger.info { "Case stopped: $caseId" }
+        logger.info { "Interrupting case: $caseId" }
+        caseService.interruptCase(caseId)
+        logger.info { "Case interrupted: $caseId" }
     }
 
-    /** POST /api/cases/{caseId}/kill — kill a case immediately. */
+    /** POST /api/cases/{caseId}/kill — permanently terminate a case and evict its runtime. */
     @PostMapping("/{caseId}/kill")
     fun killCase(
         @PathVariable caseId: UUID,

@@ -10,7 +10,7 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.caseEvent.FilesystemCaseEventRepository
-import io.whozoss.agentos.caseFlow.CaseModel
+import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.FilesystemCaseRepository
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -53,20 +53,20 @@ class CasePersistenceLifecycleTest : StringSpec() {
 
         "full CRUD lifecycle: create, read, update, delete — all survive restart" {
             val dataDir = tmpDir()
-            val projectId = UUID.randomUUID()
+            val namespaceId = UUID.randomUUID()
             val agentId = "agent-lifecycle-test"
 
             // --- Session 1: CREATE ---
             val caseRepo1 = FilesystemCaseRepository(dataDir, mapper)
-            val caseModel =
-                CaseModel(
+            val case =
+                Case(
                     metadata = EntityMetadata(createdBy = agentId),
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     status = CaseStatus.PENDING,
                 )
-            val created = caseRepo1.save(caseModel)
+            val created = caseRepo1.save(case)
             created.metadata.createdBy shouldBe agentId
-            created.projectId shouldBe projectId
+            created.namespaceId shouldBe namespaceId
 
             // --- Session 2: READ (simulated restart) ---
             val caseRepo2 = FilesystemCaseRepository(dataDir, mapper)
@@ -99,14 +99,14 @@ class CasePersistenceLifecycleTest : StringSpec() {
 
         "case events persist across restarts" {
             val dataDir = tmpDir()
-            val projectId = UUID.randomUUID()
+            val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
 
             val eventRepo1 = FilesystemCaseEventRepository(dataDir, mapper)
             val event =
                 MessageEvent(
                     metadata = EntityMetadata(),
-                    projectId = projectId,
+                    namespaceId = namespaceId,
                     caseId = caseId,
                     actor = Actor(id = "u1", displayName = "User", role = ActorRole.USER),
                     content = listOf(MessageContent.Text("hello from session 1")),
@@ -126,22 +126,22 @@ class CasePersistenceLifecycleTest : StringSpec() {
 
         "multiple cases in same namespace are all retrievable after restart" {
             val dataDir = tmpDir()
-            val projectId = UUID.randomUUID()
+            val namespaceId = UUID.randomUUID()
             val repo1 = FilesystemCaseRepository(dataDir, mapper)
 
             val ids =
                 (1..5).map {
                     repo1
                         .save(
-                            CaseModel(
+                            Case(
                                 metadata = EntityMetadata(createdBy = "agent-$it"),
-                                projectId = projectId,
+                                namespaceId = namespaceId,
                             ),
                         ).metadata.id
                 }
 
             val repo2 = FilesystemCaseRepository(dataDir, mapper)
-            val found = repo2.findByParent(projectId)
+            val found = repo2.findByParent(namespaceId)
             found shouldHaveSize 5
             found.map { it.metadata.id }.containsAll(ids).shouldBeTrue()
         }
@@ -156,9 +156,9 @@ class CasePersistenceLifecycleTest : StringSpec() {
             val ns2 = UUID.randomUUID()
             val repo = FilesystemCaseRepository(dataDir, mapper)
 
-            repo.save(CaseModel(metadata = EntityMetadata(), projectId = ns1))
-            repo.save(CaseModel(metadata = EntityMetadata(), projectId = ns1))
-            repo.save(CaseModel(metadata = EntityMetadata(), projectId = ns2))
+            repo.save(Case(metadata = EntityMetadata(), namespaceId = ns1))
+            repo.save(Case(metadata = EntityMetadata(), namespaceId = ns1))
+            repo.save(Case(metadata = EntityMetadata(), namespaceId = ns2))
 
             repo.findByParent(ns1) shouldHaveSize 2
             repo.findByParent(ns2) shouldHaveSize 1
@@ -174,9 +174,9 @@ class CasePersistenceLifecycleTest : StringSpec() {
             val ns2 = UUID.randomUUID()
             val repo = FilesystemCaseRepository(dataDir, mapper)
 
-            repo.save(CaseModel(metadata = EntityMetadata(), projectId = ns1))
-            repo.save(CaseModel(metadata = EntityMetadata(), projectId = ns1))
-            val survivor = repo.save(CaseModel(metadata = EntityMetadata(), projectId = ns2))
+            repo.save(Case(metadata = EntityMetadata(), namespaceId = ns1))
+            repo.save(Case(metadata = EntityMetadata(), namespaceId = ns1))
+            val survivor = repo.save(Case(metadata = EntityMetadata(), namespaceId = ns2))
 
             val deleted = repo.deleteByParent(ns1)
             deleted shouldBe 2
@@ -195,7 +195,7 @@ class CasePersistenceLifecycleTest : StringSpec() {
         "deleting an already-deleted case returns false" {
             val dataDir = tmpDir()
             val repo = FilesystemCaseRepository(dataDir, mapper)
-            val c = repo.save(CaseModel(metadata = EntityMetadata(), projectId = UUID.randomUUID()))
+            val c = repo.save(Case(metadata = EntityMetadata(), namespaceId = UUID.randomUUID()))
 
             repo.delete(c.metadata.id).shouldBeTrue()
             repo.delete(c.metadata.id).shouldBeFalse()

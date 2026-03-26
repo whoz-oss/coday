@@ -3,6 +3,7 @@ import {
   AnswerEvent,
   ChoiceEvent,
   CodayEvent,
+  DelegationEvent,
   ErrorEvent,
   InviteEvent,
   MessageEvent,
@@ -124,7 +125,7 @@ export class OpenaiClient extends AiClient {
         this.showAgentAndUsage(agent, this.aiProviderConfig.name, model.name, thread)
         // Log usage after the complete response cycle
         const cost = thread.usage?.price || 0
-        this.logAgentUsage(agent, model.name, cost)
+        this.logAgentUsage(agent, model.name, cost, thread)
         outputSubject.complete()
       })
     return outputSubject
@@ -175,7 +176,7 @@ export class OpenaiClient extends AiClient {
         this.showAgentAndUsage(agent, this.aiProviderConfig.name, model.name, thread)
         // Log usage after the complete response cycle
         const cost = thread.usage?.price || 0
-        this.logAgentUsage(agent, model.name, cost)
+        this.logAgentUsage(agent, model.name, cost, thread)
         outputSubject.complete()
       })
     return outputSubject
@@ -301,7 +302,7 @@ export class OpenaiClient extends AiClient {
       // Emit text chunks progressively
       if (delta?.content) {
         fullContent += delta.content
-        subscriber.next(new TextChunkEvent({ chunk: delta.content }))
+        subscriber.next(new TextChunkEvent({ chunk: delta.content, threadId: thread.id }))
       }
 
       // Accumulate tool calls
@@ -593,6 +594,11 @@ export class OpenaiClient extends AiClient {
         ]
       }
 
+      // DelegationEvent is a branch marker for the UI — skip it in AI context
+      if (msg instanceof DelegationEvent) {
+        return []
+      }
+
       // This should never happen, but TypeScript requires it
       throw new Error(`Unknown message type: ${(msg as any).type}`)
     })
@@ -693,6 +699,14 @@ export class OpenaiClient extends AiClient {
       }
     }
 
+    // DelegationEvent is a branch marker for the UI — skip it in assistant context
+    if (m instanceof DelegationEvent) {
+      return {
+        role: 'user',
+        content: '[Sub-thread delegation occurred here]',
+      }
+    }
+
     // This should never happen, but TypeScript requires it
     throw new Error(`Unknown message type: ${(m as any).type}`)
   }
@@ -736,7 +750,7 @@ export class OpenaiClient extends AiClient {
                 let responseEvent: ToolResponseEvent
                 try {
                   this.interactor.sendEvent(request)
-                  responseEvent = await agent.tools.run(request)
+                  responseEvent = await agent.tools.run(request, thread)
                 } catch (error: any) {
                   const errorMessage = `Error running tool ${request.name}: ${error}`
                   console.error(errorMessage)

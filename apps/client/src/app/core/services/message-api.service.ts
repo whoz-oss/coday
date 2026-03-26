@@ -43,6 +43,16 @@ export class MessageApiService {
   }
 
   /**
+   * Send a free-form message without a pending invite.
+   * The backend will queue it if the agent is running, or answer the pending invite if idle.
+   * @param message The message text to send
+   * @returns Observable of response
+   */
+  sendFreeMessage(message: string): Observable<any> {
+    return this.http.post(this.getBaseUrl(), { message })
+  }
+
+  /**
    * Get a specific message by event ID
    * @param eventId Event timestamp ID
    * @returns Observable of message

@@ -149,7 +149,7 @@ export class McpConfigService {
       return []
     }
     const projects = this.userService.config.projects || {}
-    return projects[project.name]?.mcp?.servers || []
+    return projects[this.userService.resolveProjectName(project.name)]?.mcp?.servers || []
   }
 
   /**
@@ -182,12 +182,13 @@ export class McpConfigService {
           throw new Error('No project selected')
         }
 
+        const resolvedName = this.userService.resolveProjectName(project.name)
         const projects = this.userService.config.projects || {}
-        let userProjectConfig = projects[project.name]
+        let userProjectConfig = projects[resolvedName]
         if (!userProjectConfig) {
           this.userService.config.projects = this.userService.config.projects || {}
-          this.userService.config.projects[project.name] = { integration: {} }
-          userProjectConfig = this.userService.config.projects[project.name]
+          this.userService.config.projects[resolvedName] = { integration: {} }
+          userProjectConfig = this.userService.config.projects[resolvedName]
         }
 
         // Update the MCP configuration while preserving other MCP settings

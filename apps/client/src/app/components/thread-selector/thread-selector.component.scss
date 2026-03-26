@@ -2,20 +2,19 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  min-height: 0; // Allow shrinking in flex parent
-
-  // When inside sidenav, the thread-list should fill available space
-  :host-context(.sidenav-thread-selector) & {
-    flex: 1;
-    min-height: 0;
-  }
+  // flex: 1 + min-height: 0 lets this element shrink to its parent's available
+  // height rather than expanding to its full content size.
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden; // No horizontal scroll
+  overflow-y: auto; // Scroll happens here — all ancestors are overflow: hidden
 }
 
 .thread-list {
   display: flex;
   flex-direction: column;
   gap: 0;
-  // When inside sidenav, let the parent (.section-content.threads) handle scrolling
+  // When inside sidenav, let the thread-selector handle scrolling
   max-height: none;
   overflow: visible;
 }
@@ -87,7 +86,6 @@
   color: var(--color-text);
   text-align: left;
   justify-content: flex-start;
-
   &.new-thread-item {
     margin-bottom: 0.25rem;
   }
@@ -392,6 +390,66 @@
     font-style: italic;
     text-align: center;
   }
+}
+
+// Sub-thread styles
+// --sub-depth CSS variable (set via [style.--sub-depth]) drives indentation per level
+.thread-item-wrapper.sub-thread {
+  // 1.5rem indent per level, starting offset of 0.5rem
+  padding-left: calc(0.2rem + var(--sub-depth, 1) * 1.5rem);
+  // Left border as visual hierarchy cue
+  border-left: 2px solid var(--color-primary, #3b82f6);
+  margin-left: 0.75rem;
+
+  .sub-thread-item {
+    padding: 0.35rem 0.5rem 0.35rem 0;
+    gap: 0.2rem;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+
+    &:hover {
+      color: var(--color-primary);
+    }
+  }
+
+  .sub-thread-agent {
+    font-weight: 600;
+    color: var(--color-primary);
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-size: 0.8rem;
+  }
+
+  .sub-thread-task {
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.75rem;
+  }
+}
+
+.sub-thread-toggle {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  margin-right: 0.25rem;
+
+  &:hover {
+    color: var(--color-primary);
+  }
+}
+
+.shared-indicator {
+  font-size: 14px;
+  width: 14px;
+  height: 14px;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+  margin-left: 0.25rem;
 }
 
 // Responsive adjustments

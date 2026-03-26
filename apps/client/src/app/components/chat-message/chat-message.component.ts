@@ -2,7 +2,7 @@ import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, inject } fro
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { MessageContent } from '@coday/model'
 import { MessageContextMenuComponent, MenuAction } from '../message-context-menu/message-context-menu.component'
-import { NgClass } from '@angular/common'
+import { DatePipe, NgClass } from '@angular/common'
 import { NotificationService } from '../../services/notification.service'
 import { PreferencesService } from '../../services/preferences.service'
 import { ProjectStateService } from '../../core/services/project-state.service'
@@ -17,16 +17,19 @@ export interface ChatMessage {
   speaker: string
   content: MessageContent[] // Always rich content now
   timestamp: Date
-  type: 'text' | 'error' | 'warning' | 'technical'
+  type: 'text' | 'error' | 'warning' | 'technical' | 'delegation'
   eventId?: string // For event detail links
   parentKey?: string // Link to InviteEvent/ChoiceEvent for question-answer relationship
   invite?: string // Original question (for context)
+  subThreadId?: string
+  delegationAgentName?: string
 }
 
 @Component({
   selector: 'app-chat-message',
   standalone: true,
   imports: [MessageContextMenuComponent, NgClass],
+  providers: [DatePipe],
   templateUrl: './chat-message.component.html',
   styleUrl: './chat-message.component.scss',
 })
@@ -34,6 +37,8 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>()
   @Input() message!: ChatMessage
   @Input() canDelete: boolean = true // Can this message be deleted (not first message, not during thinking)
+  /** True when this message was sent by a different user than the current one */
+  @Input() isOtherUser: boolean = false
   @Output() copyRequested = new EventEmitter<ChatMessage>()
   @Output() deleteRequested = new EventEmitter<ChatMessage>()
 
@@ -55,6 +60,7 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
       [this.message.type]: true,
       'hidden-technical': this.shouldHideTechnical && this.message.type === 'technical',
       'hidden-warning': this.shouldHideWarning && this.message.type === 'warning',
+      'other-user': this.isOtherUser,
     }
   }
 
@@ -84,9 +90,10 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   get shouldShowSpeaker(): boolean {
     // Show speaker for:
     // - User messages with @agentName (speaker starts with @)
+    // - User messages from OTHER users in multi-user threads (always show sender)
     // - Assistant messages (always)
     if (this.message.role === 'user') {
-      return this.message.speaker.startsWith('@')
+      return this.isOtherUser || this.message.speaker.startsWith('@')
     }
     return this.message.role === 'assistant'
   }
@@ -99,6 +106,14 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
   get isSimplified(): boolean {
     // Simplified messages for everything except user/assistant
     return this.message.role !== 'user' && this.message.role !== 'assistant'
+  }
+
+  private readonly datePipe = inject(DatePipe)
+
+  get formattedTimestamp(): string | null {
+    if (this.message.role !== 'user' || !this.message.timestamp) return null
+    const isToday = new Date().toDateString() === this.message.timestamp.toDateString()
+    return this.datePipe.transform(this.message.timestamp, isToday ? 'HH:mm' : 'dd/MM HH:mm')
   }
 
   get isLongMessage(): boolean {

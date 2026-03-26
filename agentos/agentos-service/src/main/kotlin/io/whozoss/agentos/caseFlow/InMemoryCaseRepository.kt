@@ -16,7 +16,7 @@ import java.util.UUID
 @ConditionalOnProperty(name = ["agentos.persistence.mode"], havingValue = "in-memory")
 class InMemoryCaseRepository :
     CaseRepository,
-    EntityRepository<CaseModel, UUID> by InMemoryEntityRepository(
-        parentIdExtractor = { it.projectId },
+    EntityRepository<Case, UUID> by InMemoryEntityRepository(
+        parentIdExtractor = { it.namespaceId },
         comparator = compareBy { it.metadata.id },
     )

@@ -7,6 +7,7 @@ import {
   RunBashHandler,
   SlashCommandHandler,
 } from '@coday/handler'
+import { DelegateCommandHandler } from './delegate-command.handler'
 import { CommandContext, Interactor, ProjectDescription, PromptChain, RunStatus } from '@coday/model'
 import { AiHandler } from '@coday/handlers-openai'
 import { ConfigHandler } from '@coday/handlers-config'
@@ -53,13 +54,18 @@ export class HandlerLooper {
       }
 
       // Add SlashCommandHandler for stored prompts (from PromptService)
+      // DelegateCommandHandler is injected as a custom handler so it:
+      //   1. takes priority over any prompt named 'delegate'
+      //   2. appears in the autocomplete via the extraPromptInfos stub
       if (this.services.project.selectedProject) {
+        const delegateHandler = new DelegateCommandHandler(this.interactor, this.services)
         const prompts = await this.services.prompt.list(this.services.project.selectedProject.name)
         const slashCommandHandler = new SlashCommandHandler(
           this.interactor,
           this.services.prompt,
           this.services.project.selectedProject.name,
-          prompts
+          prompts,
+          [delegateHandler]
         )
         this.handlers.push(slashCommandHandler)
       }

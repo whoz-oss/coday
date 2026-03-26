@@ -1,6 +1,6 @@
 import { debugLog } from './log'
 
-export async function findAvailablePort(startPort: number, maxAttempts = 10, strict = false): Promise<number> {
+export async function findAvailablePort(startPort: number, maxAttempts = 100, strict = false): Promise<number> {
   const net = await import('node:net')
 
   return new Promise((resolve, reject) => {
