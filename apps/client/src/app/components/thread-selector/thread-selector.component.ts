@@ -1,4 +1,4 @@
-import { Component, effect, EventEmitter, inject, Input, OnInit, Output } from '@angular/core'
+import { Component, DestroyRef, effect, EventEmitter, inject, Input, OnInit, Output } from '@angular/core'
 import { NgTemplateOutlet } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MatIconModule } from '@angular/material/icon'
@@ -10,7 +10,7 @@ import { MatTooltipModule } from '@angular/material/tooltip'
 
 import { SessionState } from '@coday/model'
 import { ThreadStateService } from '../../core/services/thread-state.service'
-import { toSignal } from '@angular/core/rxjs-interop'
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { Router } from '@angular/router'
 import { ThreadApiService } from '../../core/services/thread-api.service'
@@ -67,6 +67,7 @@ export class ThreadSelectorComponent implements OnInit {
   private readonly threadApiService = inject(ThreadApiService)
   private readonly userService = inject(UserService)
   private readonly router = inject(Router)
+  private readonly destroyRef = inject(DestroyRef)
 
   currentThread = toSignal(this.threadStateService.selectedThread$)
   currentProject = toSignal(this.projectStateService.selectedProject$)
@@ -298,7 +299,10 @@ export class ThreadSelectorComponent implements OnInit {
   }
 
   /**
-   * Toggle star status for a thread
+   * Toggle star status for a thread.
+   * Applies an optimistic local update immediately so the UI reacts without delay
+   * and is not overwritten by concurrent refreshes (e.g., an agent rename event).
+   * The full list is refreshed only on error to revert to the real server state.
    */
   toggleStar(event: Event, thread: { id: string; starring: string[] }): void {
     event.stopPropagation()
@@ -313,12 +317,17 @@ export class ThreadSelectorComponent implements OnInit {
       ? this.threadApiService.unstarThread(thread.id)
       : this.threadApiService.starThread(thread.id)
 
-    operation.subscribe({
+    // Optimistic update: mutate local state immediately before the HTTP call returns
+    this.threadStateService.updateStarLocal(thread.id, !isStarred, currentUsername)
+
+    operation.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => {
-        this.threadStateService.refreshThreadList()
+        // Server confirmed — local state is already correct, no refresh needed
       },
       error: (error) => {
         console.error('Error toggling star:', error)
+        // Revert optimistic update by reloading from server
+        this.threadStateService.refreshThreadList()
       },
     })
   }
