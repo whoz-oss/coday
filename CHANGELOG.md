@@ -1,3 +1,14 @@
+## 0.104.5 (2026-03-26)
+
+### 🩹 Fixes
+
+- #666 remove_worktree falls back to prune when path is missing ([#667](https://github.com/whoz-oss/coday/pull/667), [#666](https://github.com/whoz-oss/coday/issues/666))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.104.4 (2026-03-26)
 
 ### 🩹 Fixes
