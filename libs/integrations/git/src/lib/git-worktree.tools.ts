@@ -40,26 +40,22 @@ function deriveWorktreeProjectName(parentProjectName: string, sanitizedBranch: s
 }
 
 /**
- * Resolves the worktree directory name from either an explicit project name or a sanitized branch.
+ * Resolves the worktree directory name suffix from an explicit project name.
  *
- * When a legacy worktree was created with a non-standard directory name, the caller can supply
- * the `projectName` (as returned by `list_worktrees`) to bypass the branch-derived path.
+ * The project name must follow the `${parentProjectName}__${suffix}` convention.
+ * Returns `null` when the name does not start with the expected prefix so that
+ * callers can surface a clear error instead of silently falling back.
  *
- * @param parentProjectName - The name of the main Coday project.
- * @param sanitizedBranch   - The sanitized branch name (fallback when no explicit project name).
- * @param explicitProjectName - Optional explicit project name (e.g. from list_worktrees output).
- * @returns The directory name suffix that, when prefixed with `${parentProjectName}__`, gives the worktree directory.
+ * @param parentProjectName   - The name of the main Coday project.
+ * @param explicitProjectName - The project name as returned by `list_worktrees`.
+ * @returns The directory suffix, or `null` if the name does not match the convention.
  */
-export function resolveWorktreeDirName(
-  parentProjectName: string,
-  sanitizedBranch: string,
-  explicitProjectName?: string
-): string {
-  if (!explicitProjectName) {
-    return sanitizedBranch
-  }
+export function resolveWorktreeDirName(parentProjectName: string, explicitProjectName: string): string | null {
   const prefix = `${parentProjectName}__`
-  return explicitProjectName.startsWith(prefix) ? explicitProjectName.slice(prefix.length) : sanitizedBranch
+  if (!explicitProjectName.startsWith(prefix)) {
+    return null
+  }
+  return explicitProjectName.slice(prefix.length)
 }
 
 export class GitWorktreeTools extends AssistantToolFactory {
@@ -126,8 +122,11 @@ export class GitWorktreeTools extends AssistantToolFactory {
           return JSON.stringify(
             entries.map((e) => {
               const isMain = e.path === mainWorktreePath
-              const sanitized = sanitizeBranchName(e.branch)
-              const projectName = isMain ? parentProjectName : deriveWorktreeProjectName(parentProjectName, sanitized)
+              // Use the actual directory name on disk as the source of truth for projectName.
+              // Deriving it from the branch name would produce the wrong value for legacy
+              // worktrees whose directory name does not match the current naming convention.
+              const dirName = path.basename(e.path)
+              const projectName = isMain ? parentProjectName : dirName
               return {
                 branch: e.branch,
                 path: e.path,
@@ -243,8 +242,19 @@ export class GitWorktreeTools extends AssistantToolFactory {
           // When an explicit projectName is provided (e.g. from list_worktrees), derive the
           // actual directory from it. This handles legacy worktrees whose directory name does
           // not match the branch-derived naming convention.
-          const projectName = explicitProjectName ?? deriveWorktreeProjectName(parentProjectName, sanitized)
-          const worktreeDirName = resolveWorktreeDirName(parentProjectName, sanitized, explicitProjectName)
+          let projectName: string
+          let worktreeDirName: string
+          if (explicitProjectName) {
+            const resolved = resolveWorktreeDirName(parentProjectName, explicitProjectName)
+            if (resolved === null) {
+              return `Error: projectName "${explicitProjectName}" does not start with the expected prefix "${parentProjectName}__". Use list_worktrees to get the correct projectName.`
+            }
+            worktreeDirName = resolved
+            projectName = explicitProjectName
+          } else {
+            worktreeDirName = sanitized
+            projectName = deriveWorktreeProjectName(parentProjectName, sanitized)
+          }
           const worktreePath = path.join(worktreesRoot, `${parentProjectName}__${worktreeDirName}`)
 
           if (worktreePath === projectRoot) {
