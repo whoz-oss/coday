@@ -39,4 +39,14 @@ export interface MessagingInboundEvent {
    * For Slack events, this would be 'Slackay'.
    */
   targetAgent?: string
+
+  /** Optional: existing Coday thread ID to reuse (for conversation continuity) */
+  threadId?: string
+
+  /**
+   * Optional: opaque key identifying this conversation within the source platform.
+   * Used by the gateway to persist and reuse the correct Coday thread across mentions.
+   * For Slack: channel ID or "channel:thread_ts" for threaded conversations.
+   */
+  conversationKey?: string
 }

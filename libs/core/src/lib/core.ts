@@ -319,6 +319,9 @@ export class Coday {
     if (this.context) {
       this.context.oneshot = this.options.oneshot
       this.context.fileReadOnly = this.options.fileReadOnly
+      if (this.options.ephemeralContext) {
+        this.context.ephemeralContext = this.options.ephemeralContext
+      }
 
       // Set thread files root if thread is selected
       if (this.options.thread && this.options.project) {

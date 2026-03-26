@@ -23,6 +23,13 @@ export class Agent {
   readonly description: string
   definition: AgentDefinition
 
+  /**
+   * Transient ephemeral context for the current run.
+   * Set before aiClient.run() is called, cleared at the start of each new run.
+   * Injected into AI system instructions but never stored in thread history.
+   */
+  private _ephemeralContext?: string
+
   constructor(
     initialDefinition: AgentDefinition,
     private readonly aiClient: AiClient,
@@ -36,6 +43,10 @@ export class Agent {
 
   get systemInstructions(): string {
     return this.definition.instructions!
+  }
+
+  get activeEphemeralContext(): string | undefined {
+    return this._ephemeralContext
   }
 
   /**
@@ -52,13 +63,21 @@ export class Agent {
    * @param command text written by the user (may include @agentName)
    * @param thread
    */
-  async run(command: string, thread: AiThread, username?: string): Promise<Observable<CodayEvent>> {
+  async run(
+    command: string,
+    thread: AiThread,
+    username?: string,
+    ephemeralContext?: string
+  ): Promise<Observable<CodayEvent>> {
     const trimmedCommand = command.trim()
 
     // Add AnswerEvent to thread with the original command (including @agentName if present)
     // This preserves the user's original input in the thread history
     const answerEvent = new AnswerEvent({ answer: trimmedCommand, name: username ?? thread.username })
     thread.addAnswerEvent(answerEvent)
+
+    // Set ephemeral context for this run (cleared on next run)
+    this._ephemeralContext = ephemeralContext
 
     // Run with AI client
     const events = await this.aiClient.run(this, thread)

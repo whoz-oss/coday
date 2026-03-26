@@ -12,4 +12,5 @@ export interface CodayOptions {
   logFolder?: string
   forcedProject: boolean // true if --local is used
   baseUrl?: string // Base URL for generating absolute links (auto-detected from server port if not provided)
+  ephemeralContext?: string // Injected into AI system instructions but never stored in thread history
 }

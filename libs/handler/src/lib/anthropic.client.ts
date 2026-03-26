@@ -580,17 +580,27 @@ export class AnthropicClient extends AiClient {
     const data = await this.getMessages(thread, charBudget, model.name, agent.name, allowedToolNames)
     const messages = this.toClaudeMessage(data.messages, thread, forceUpdateCache)
 
+    // Build system blocks: static instructions (cached) + optional ephemeral context (not cached)
+    const systemBlocks: any[] = [
+      {
+        text: agent.systemInstructions,
+        type: 'text',
+        cache_control: { type: 'ephemeral' },
+      },
+    ]
+    if (agent.activeEphemeralContext) {
+      systemBlocks.push({
+        text: agent.activeEphemeralContext,
+        type: 'text',
+        // No cache_control — ephemeral context changes every invocation
+      })
+    }
+
     // Use the streaming helper from the SDK
     const stream = client.messages.stream({
       model: model.name,
       messages,
-      system: [
-        {
-          text: agent.systemInstructions,
-          type: 'text',
-          cache_control: { type: 'ephemeral' },
-        },
-      ] as unknown as Array<Anthropic.TextBlockParam>,
+      system: systemBlocks as unknown as Array<Anthropic.TextBlockParam>,
       tools: this.getClaudeTools(agent.tools),
       temperature: agent.definition.temperature ?? model.temperature ?? 0.8,
       max_tokens: agent.definition.maxOutputTokens ?? model.maxOutputTokens ?? 8192,

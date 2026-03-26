@@ -1,5 +1,6 @@
 import { MessagingGatewayService } from '@coday/service'
-import type { MessagingInboundEvent } from '@coday/model'
+import type { MessagingConnector, MessagingInboundEvent } from '@coday/model'
+import type { ConversationEntry } from '@coday/service'
 import { debugLog } from './log'
 
 // ---------------------------------------------------------------------------
@@ -13,8 +14,6 @@ interface SlackApiResponse {
 }
 
 interface ChannelState {
-  /** Timestamp of the last message posted by the bot in this channel */
-  lastResponseTs?: string
   /** When true, the connector ignores new mentions in this channel */
   paused: boolean
   /** Messages queued while the channel is currently processing */
@@ -39,13 +38,21 @@ interface QueuedMessage {
  * SlackConnector — maintains a Socket Mode WebSocket connection to Slack and
  * forwards app_mention events to the MessagingGatewayService.
  *
+ * Implements MessagingConnector so the gateway can route outbound messages
+ * back through this connector without knowing it's Slack.
+ *
+ * Thread map persistence (conversationKey → Coday threadId) is handled by the
+ * MessagingGatewayService, not this connector.
+ *
  * Configuration is read from the project's SLACK integration config (project.yaml):
  *   apiKey         — xoxb-... bot token
  *   appToken       — xapp-... app-level token (Socket Mode)
  *   defaultProject — default Coday project name
  *   channels       — optional channel ID → project name mapping
  */
-export class SlackConnector {
+export class SlackConnector implements MessagingConnector {
+  readonly source = 'SLACK' as const
+
   private channelStates: Map<string, ChannelState> = new Map()
   private userEmailCache: Map<string, string> = new Map() // slackUserId -> email
   private userDisplayCache: Map<string, string> = new Map() // slackUserId -> display name
@@ -63,7 +70,22 @@ export class SlackConnector {
   ) {}
 
   // -------------------------------------------------------------------------
-  // Public API
+  // MessagingConnector implementation
+  // -------------------------------------------------------------------------
+
+  async sendMessage(replyContext: Record<string, string>, text: string): Promise<void> {
+    const body: Record<string, unknown> = {
+      channel: replyContext.channel,
+      text,
+    }
+    if (replyContext.thread_ts) {
+      body.thread_ts = replyContext.thread_ts
+    }
+    await this.slackApi('chat.postMessage', {}, 'POST', body)
+  }
+
+  // -------------------------------------------------------------------------
+  // Public lifecycle API
   // -------------------------------------------------------------------------
 
   async start(): Promise<void> {
@@ -191,18 +213,6 @@ export class SlackConnector {
   private async handleSlackEvent(event: Record<string, unknown>): Promise<void> {
     const eventType = event.type as string
 
-    // Track the bot's own messages to update lastResponseTs
-    if (eventType === 'message') {
-      if (this.botUserId && (event.user === this.botUserId || (event.bot_id && !event.subtype))) {
-        const channel = event.channel as string | undefined
-        if (channel) {
-          const state = this.getChannelState(channel)
-          state.lastResponseTs = event.ts as string
-        }
-      }
-      return
-    }
-
     if (eventType !== 'app_mention') return
 
     const channel = event.channel as string
@@ -263,6 +273,10 @@ export class SlackConnector {
   // Message processing
   // -------------------------------------------------------------------------
 
+  private getConversationKey(channel: string, threadTs?: string): string {
+    return threadTs ? `${channel}:${threadTs}` : channel
+  }
+
   private async processMessage(channel: string, queued: QueuedMessage): Promise<void> {
     const state = this.getChannelState(channel)
     state.processing = true
@@ -273,8 +287,16 @@ export class SlackConnector {
     try {
       const projectName = this.channelProjectMap[channel] ?? this.defaultProject
 
-      // Fetch conversation context since the last bot response
-      const conversationContext = await this.getConversationContext(channel, state.lastResponseTs)
+      // Conversation key uniquely identifies this Slack context (channel or channel:thread).
+      // The gateway uses it to look up or create the associated Coday thread.
+      const conversationKey = this.getConversationKey(channel, queued.replyContext.thread_ts)
+      const entry: ConversationEntry | undefined = this.messagingGateway.getConversationEntry('SLACK', conversationKey)
+
+      // Always fetch the last 100 messages as ephemeral context.
+      // Slack history is injected into system instructions (not stored in thread), so there is no
+      // accumulation concern — we can safely fetch the full recent context on every mention.
+      const context = await this.getConversationContext(channel)
+      const conversationContext = context || undefined
 
       const inboundEvent: MessagingInboundEvent = {
         source: 'SLACK',
@@ -283,11 +305,15 @@ export class SlackConnector {
         projectName,
         replyContext: queued.replyContext,
         eventType: queued.eventType,
-        conversationContext: conversationContext || undefined,
-        targetAgent: 'SlackRelay',
+        conversationContext,
+        targetAgent: 'Messageay',
+        conversationKey,
       }
 
-      debugLog('SLACK', `Dispatching event for ${queued.username} in ${channel}`)
+      debugLog(
+        'SLACK',
+        `Dispatching event for ${queued.username} in ${channel} (key: ${conversationKey}, known: ${!!entry})`
+      )
       await this.messagingGateway.handleEvent(inboundEvent)
     } catch (err) {
       console.error('[SLACK] Error dispatching event:', err)
@@ -332,21 +358,18 @@ export class SlackConnector {
   // Conversation context
   // -------------------------------------------------------------------------
 
-  private async getConversationContext(channel: string, lastResponseTs?: string): Promise<string> {
+  private async getConversationContext(channel: string): Promise<string> {
     try {
-      const params: Record<string, string> = { channel, limit: '50' }
-
-      if (lastResponseTs) {
-        params.oldest = lastResponseTs
-      } else {
-        // Default: last 10 minutes (keep context recent and relevant)
-        const tenMinutesAgo = (Date.now() / 1000 - 10 * 60).toFixed(6)
-        params.oldest = tenMinutesAgo
-      }
+      // Always fetch the last 100 messages — no delta logic needed since history is ephemeral
+      const params: Record<string, string> = { channel, limit: '100' }
 
       const result = await this.slackApi<{ messages?: Array<Record<string, unknown>> }>('conversations.history', params)
 
-      const messages = result.messages ?? []
+      const messages = (result.messages ?? []).filter((msg) => {
+        // Exclude the bot's own thinking indicator messages
+        const text = (msg.text as string) || ''
+        return !text.includes(':hourglass_flowing_sand:')
+      })
       if (messages.length === 0) return ''
 
       // Reverse to chronological order (Slack returns newest-first)
@@ -387,6 +410,12 @@ export class SlackConnector {
     return this.channelStates.get(channel)!
   }
 
+  private handlePauseResume(channel: string, command: 'pause' | 'resume'): void {
+    const state = this.getChannelState(channel)
+    state.paused = command === 'pause'
+    debugLog('SLACK', `Channel ${channel} ${command}d`)
+  }
+
   // -------------------------------------------------------------------------
   // Processing indicators
   // -------------------------------------------------------------------------
@@ -411,11 +440,9 @@ export class SlackConnector {
     }
   }
 
-  private handlePauseResume(channel: string, command: 'pause' | 'resume'): void {
-    const state = this.getChannelState(channel)
-    state.paused = command === 'pause'
-    debugLog('SLACK', `Channel ${channel} ${command}d`)
-  }
+  // -------------------------------------------------------------------------
+  // User resolution
+  // -------------------------------------------------------------------------
 
   private async resolveUserEmail(slackUserId: string): Promise<string> {
     const cached = this.userEmailCache.get(slackUserId)

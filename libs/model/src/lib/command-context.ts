@@ -30,6 +30,12 @@ export class CommandContext {
   threadFilesRoot?: string
 
   /**
+   * Ephemeral context injected into AI system instructions for the current run.
+   * Never stored in thread history — changes on every invocation without causing thread bloat.
+   */
+  ephemeralContext?: string
+
+  /**
    * Depth of the stack of threads for delegation
    */
   stackDepth: number = 10
@@ -64,6 +70,7 @@ export class CommandContext {
     const subContext = new CommandContext(this.project, this.username)
     subContext.oneshot = this.oneshot
     subContext.fileReadOnly = this.fileReadOnly
+    subContext.ephemeralContext = this.ephemeralContext
     subContext.addCommands(...commands)
     subContext.stackDepth = this.stackDepth - 1
     return subContext
@@ -73,6 +80,7 @@ export class CommandContext {
     const clone = new CommandContext(this.project, this.username)
     clone.oneshot = this.oneshot
     clone.fileReadOnly = this.fileReadOnly
+    clone.ephemeralContext = this.ephemeralContext
     clone.stackDepth = this.stackDepth
     clone.data = this.data
     return clone
