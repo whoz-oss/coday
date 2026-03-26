@@ -298,7 +298,10 @@ export class ThreadSelectorComponent implements OnInit {
   }
 
   /**
-   * Toggle star status for a thread
+   * Toggle star status for a thread.
+   * Applies an optimistic local update immediately so the UI reacts without delay
+   * and is not overwritten by concurrent refreshes (e.g., an agent rename event).
+   * The full list is refreshed only on error to revert to the real server state.
    */
   toggleStar(event: Event, thread: { id: string; starring: string[] }): void {
     event.stopPropagation()
@@ -313,12 +316,17 @@ export class ThreadSelectorComponent implements OnInit {
       ? this.threadApiService.unstarThread(thread.id)
       : this.threadApiService.starThread(thread.id)
 
+    // Optimistic update: mutate local state immediately before the HTTP call returns
+    this.threadStateService.updateStarLocal(thread.id, !isStarred)
+
     operation.subscribe({
       next: () => {
-        this.threadStateService.refreshThreadList()
+        // Server confirmed — local state is already correct, no refresh needed
       },
       error: (error) => {
         console.error('Error toggling star:', error)
+        // Revert optimistic update by reloading from server
+        this.threadStateService.refreshThreadList()
       },
     })
   }
