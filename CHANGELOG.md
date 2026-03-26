@@ -1,3 +1,14 @@
+## 0.104.7 (2026-03-26)
+
+### 🩹 Fixes
+
+- #654 optimistic star update to prevent race condition on thread list refresh ([#665](https://github.com/whoz-oss/coday/pull/665), [#654](https://github.com/whoz-oss/coday/issues/654))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.104.6 (2026-03-26)
 
 ### 🩹 Fixes
