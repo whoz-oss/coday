@@ -577,10 +577,13 @@ export class ThreadCodayManager {
   async cleanup(threadId: string): Promise<void> {
     const instance = this.instances.get(threadId)
     if (instance) {
-      // Release MCP instances used by this thread
+      // First cleanup the Coday instance (stops agents, tools, etc.)
+      await instance.cleanup()
+
+      // Then release MCP instances from the pool
+      // (must be after instance cleanup to avoid race conditions with toolbox)
       await this.mcpPool.releaseThread(threadId)
 
-      await instance.cleanup()
       this.instances.delete(threadId)
       debugLog('THREAD_CODAY', `Removed instance for thread ${threadId}`)
     }
@@ -625,13 +628,20 @@ export class ThreadCodayManager {
     const cleanupPromises: Promise<void>[] = []
     for (const [threadId, instance] of this.instances.entries()) {
       debugLog('THREAD_CODAY_MANAGER', `Cleaning up thread ${threadId}`)
-      cleanupPromises.push(instance.cleanup())
+      cleanupPromises.push(
+        instance
+          .cleanup()
+          .then(() => this.mcpPool.releaseThread(threadId))
+          .catch((error) => {
+            debugLog('THREAD_CODAY_MANAGER', `Error cleaning up thread ${threadId}:`, error)
+          })
+      )
     }
 
     await Promise.all(cleanupPromises)
     this.instances.clear()
 
-    // Shutdown MCP instance pool
+    // Final safety net: shutdown any remaining MCP instances
     await this.mcpPool.shutdown()
 
     debugLog('THREAD_CODAY_MANAGER', 'All thread instances cleaned up')
