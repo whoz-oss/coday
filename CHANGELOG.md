@@ -1,3 +1,15 @@
+## 0.105.1 (2026-03-26)
+
+### 🩹 Fixes
+
+- #651 fix node process leaks in MCP and thread lifecycle ([#651](https://github.com/whoz-oss/coday/issues/651))
+- #651 fix node process leaks in MCP and thread lifecycle ([#662](https://github.com/whoz-oss/coday/pull/662), [#651](https://github.com/whoz-oss/coday/issues/651))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
 ## 0.105.0 (2026-03-26)
 
 ### 🚀 Features
