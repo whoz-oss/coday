@@ -35,6 +35,9 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
   subMessages: ChatMessage[] = []
   streamingText = ''
 
+  private restLoaded = false
+  private messageIds = new Set<string>()
+
   private eventSubscription?: Subscription
   private readonly codayService = inject(CodayService)
   private readonly threadApi = inject(ThreadApiService)
@@ -70,8 +73,8 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
   toggle(): void {
     this.isExpanded = !this.isExpanded
 
-    // On every expand, reload from REST — source of truth for persisted messages
-    if (this.isExpanded) {
+    // Only load from REST on first expand — subsequent expands retain accumulated state
+    if (this.isExpanded && !this.restLoaded) {
       this.loadSubThreadMessages()
     }
   }
@@ -82,20 +85,22 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
     this.threadApi.getThreadMessages(this.subThreadId).subscribe({
       next: (response) => {
         if (response.messages) {
-          // Rebuild from REST — source of truth for persisted messages
-          // SSE live streaming (streamingText) is unaffected
-          this.subMessages = []
+          // Merge REST messages into existing state — deduplication via addMessage()
           for (const rawMsg of response.messages) {
             const event = buildCodayEvent(rawMsg)
             if (event) {
               this.handleSubThreadEvent(event)
             }
           }
+          // Sort by timestamp to ensure chronological order after merge
+          this.subMessages = [...this.subMessages].sort((a, b) => a.id.localeCompare(b.id))
         }
+        this.restLoaded = true
         this.isLoading = false
       },
       error: (err) => {
         console.error('[DELEGATION-INLINE] Failed to load sub-thread messages:', err)
+        this.restLoaded = true // Don't retry on error — SSE data is still available
         this.isLoading = false
       },
     })
@@ -169,6 +174,10 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
   }
 
   private addMessage(message: ChatMessage): void {
+    if (this.messageIds.has(message.id)) {
+      return // Already have this message, skip
+    }
+    this.messageIds.add(message.id)
     this.subMessages = [...this.subMessages, message]
   }
 }
