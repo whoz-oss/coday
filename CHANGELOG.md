@@ -1,3 +1,13 @@
+## 0.105.0 (2026-03-26)
+
+### 🚀 Features
+
+- wz-30856: display text chunks streams in agentos-ui ([#663](https://github.com/whoz-oss/coday/pull/663))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
 ## 0.104.7 (2026-03-26)
 
 ### 🩹 Fixes
