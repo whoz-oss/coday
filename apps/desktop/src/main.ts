@@ -55,7 +55,7 @@ function log(level: 'INFO' | 'ERROR' | 'WARN', ...args: any[]): void {
 // Initialize log file
 if (app.isPackaged) {
   try {
-    const logHeader = `\n\n${'='.repeat(80)}\nCoday Desktop Log - Started at ${new Date().toISOString()}\n${'='.repeat(80)}\n`
+    const logHeader = `\n\n${'='.repeat(80)}\nCoday Log - Started at ${new Date().toISOString()}\n${'='.repeat(80)}\n`
     fs.appendFileSync(LOG_FILE, logHeader, 'utf8')
     log('INFO', 'Log file initialized at:', LOG_FILE)
   } catch (error) {
@@ -144,7 +144,7 @@ async function startCodayServer(): Promise<void> {
 
     log('INFO', 'Found npx at:', npxPath)
     const command = npxPath
-    const args = ['--yes', '@whoz-oss/coday-web', '--base-url=coday://']
+    const args = ['--yes', '@whoz-oss/coday-web', '--base-url=coday://', '--multi']
 
     log('INFO', 'Spawning:', command, args.join(' '))
 
@@ -156,6 +156,11 @@ async function startCodayServer(): Promise<void> {
     } catch {
       env['PATH'] = '/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'
     }
+
+    // Use a fixed port so Coday is always reachable on the same address
+    const CODAY_PORT = '3049'
+    env['PORT'] = CODAY_PORT
+    log('INFO', `Using fixed port: ${CODAY_PORT}`)
 
     // Use a temp directory as cwd to prevent npx from resolving to local workspace packages
     const npxCwd = app.getPath('temp')
@@ -202,7 +207,19 @@ async function startCodayServer(): Promise<void> {
 
       if (serverProcess!.stderr) {
         serverProcess!.stderr.on('data', (data: Buffer) => {
-          log('ERROR', '[Server Error]:', data.toString())
+          const text = data.toString()
+          log('ERROR', '[Server Error]:', text)
+
+          // Detect port-in-use error signalled by the server process
+          if (text.includes('PORT_IN_USE:')) {
+            const portMatch = text.match(/PORT_IN_USE:.*?(Port \d+ is already in use[^\n]*)/)
+            const detail = portMatch ? portMatch[1] : `Port ${env['PORT']} is already in use.`
+            const portError: any = new Error(
+              `${detail}\n\nPlease close any other application using this port and restart Coday.`
+            )
+            portError.userFacing = true
+            settle(() => reject(portError))
+          }
         })
       }
 
@@ -328,7 +345,7 @@ function createWindow(): void {
       contextIsolation: true,
       webSecurity: true,
     },
-    title: 'Coday Desktop',
+    title: 'Coday',
     show: false, // Don't show until ready
   })
 
@@ -554,7 +571,7 @@ async function initialize(): Promise<void> {
   let loadingWindow: BrowserWindowType | null = null
 
   try {
-    log('INFO', 'Initializing Coday Desktop...')
+    log('INFO', 'Initializing Coday...')
 
     // Setup storage handlers
     setupStorageHandlers()
@@ -588,10 +605,10 @@ async function initialize(): Promise<void> {
     const isUserFacing = error && typeof error === 'object' && (error as any).userFacing
 
     if (isUserFacing) {
-      showErrorDialog('Coday Desktop - Startup Error', errorMessage)
+      showErrorDialog('Coday - Startup Error', errorMessage)
     } else {
       showErrorDialog(
-        'Coday Desktop - Unexpected Error',
+        'Coday - Unexpected Error',
         `An unexpected error occurred while starting Coday:\n\n${errorMessage}\n\nPlease check the console logs for more details.`
       )
     }
@@ -700,7 +717,7 @@ app.on('before-quit', () => {
 process.on('uncaughtException', (error: Error) => {
   log('ERROR', 'Uncaught exception:', error)
   showErrorDialog(
-    'Coday Desktop - Fatal Error',
+    'Coday - Fatal Error',
     `A fatal error occurred:\n\n${error.message}\n\nThe application will now close.`
   )
   stopCodayServer()
