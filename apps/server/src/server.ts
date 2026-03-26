@@ -445,27 +445,27 @@ PORT_PROMISE.then(async (PORT) => {
     console.error('Failed to initialize scheduler service:', error)
   }
 
-  // Start Slack Connector if configured via environment variables
-  const slackBotToken = process.env.SLACK_BOT_TOKEN
-  const slackAppToken = process.env.SLACK_APP_TOKEN
-  const slackDefaultProject = process.env.SLACK_DEFAULT_PROJECT ?? resolvedProjectName ?? 'coday'
+  // Start Slack Connector if SLACK integration is configured with appToken
+  try {
+    const projectName = resolvedProjectName ?? 'coday'
+    const project = projectService.getProject(projectName)
+    const slackConfig = project?.config?.integration?.SLACK
 
-  if (slackBotToken && slackAppToken) {
-    try {
+    if (slackConfig?.apiKey && slackConfig?.appToken) {
       slackConnector = new SlackConnector(
-        slackBotToken,
-        slackAppToken,
-        slackDefaultProject,
-        {}, // channel -> project overrides (extendable later via config)
+        slackConfig.apiKey, // xoxb-... bot token
+        slackConfig.appToken, // xapp-... app-level token
+        slackConfig.defaultProject ?? projectName,
+        slackConfig.channels ?? {}, // channel -> project mapping
         messagingGatewayService
       )
       await slackConnector.start()
-      debugLog('INIT', 'Slack Connector started')
-    } catch (error) {
-      console.error('Failed to start Slack Connector:', error)
+      debugLog('INIT', `Slack Connector started for project '${projectName}'`)
+    } else {
+      debugLog('INIT', 'Slack Connector not started (SLACK integration missing apiKey or appToken)')
     }
-  } else {
-    debugLog('INIT', 'Slack Connector not started (SLACK_BOT_TOKEN / SLACK_APP_TOKEN not set)')
+  } catch (error) {
+    console.error('Failed to start Slack Connector:', error)
   }
 }).catch((error) => {
   console.error('Failed to start server:', error)

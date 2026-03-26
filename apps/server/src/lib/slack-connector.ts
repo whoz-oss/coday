@@ -39,10 +39,11 @@ interface QueuedMessage {
  * SlackConnector — maintains a Socket Mode WebSocket connection to Slack and
  * forwards app_mention events to the MessagingGatewayService.
  *
- * Configuration via constructor (or environment variables as fallback):
- *   SLACK_BOT_TOKEN  — xoxb-... bot token
- *   SLACK_APP_TOKEN  — xapp-... app-level token (Socket Mode)
- *   SLACK_DEFAULT_PROJECT — default Coday project name
+ * Configuration is read from the project's SLACK integration config (project.yaml):
+ *   apiKey         — xoxb-... bot token
+ *   appToken       — xapp-... app-level token (Socket Mode)
+ *   defaultProject — default Coday project name
+ *   channels       — optional channel ID → project name mapping
  */
 export class SlackConnector {
   private channelStates: Map<string, ChannelState> = new Map()
