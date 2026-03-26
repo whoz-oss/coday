@@ -141,6 +141,8 @@ class ThreadCodayInstance {
    * Reset the inactivity timeout based on session type
    */
   private resetInactivityTimeout(): void {
+    // Note: this timeout is only reset on activity events (connection, prepare, start),
+    // NOT on disconnect. A disconnection does not extend the instance's lifetime.
     if (this.inactivityTimeout) {
       clearTimeout(this.inactivityTimeout)
     }
@@ -527,9 +529,9 @@ export class ThreadCodayManager {
     if (instance) {
       instance.removeConnection(response)
 
-      // Note: We intentionally keep the instance alive even with 0 connections
-      // for potential reconnections. Cleanup will be handled by a future
-      // timeout mechanism or explicit cleanup call.
+      // Note: We intentionally keep the instance alive even with 0 connections.
+      // Clients can reconnect and receive full history replay.
+      // Cleanup is handled by INTERACTIVE_TIMEOUT (8h) or ONESHOT_TIMEOUT (30min).
 
       if (instance.connectionCount === 0) {
         debugLog('THREAD_CODAY', `Thread ${threadId} has no active connections but instance kept alive`)
