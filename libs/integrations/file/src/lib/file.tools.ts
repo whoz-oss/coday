@@ -370,7 +370,7 @@ export class FileTools extends AssistantToolFactory {
     return {
       type: 'function',
       function: {
-        name: 'editFiles',
+        name: `${this.name}__editFiles`,
         description:
           'Edit one or more files in a single tool call. ' +
           'Each edit targets a specific file and specifies an operation: ' +
