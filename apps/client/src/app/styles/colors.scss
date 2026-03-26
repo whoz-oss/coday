@@ -48,6 +48,11 @@
   /* Utility Colors */
   --color-shadow: rgba(0, 0, 0, 0.08);
   --color-overlay: rgba(0, 0, 0, 0.4);
+
+  /* Modal / Dialog */
+  --color-modal-bg: #ffffff;
+  --color-modal-border: rgba(0, 0, 0, 0.12);
+  --color-modal-shadow: 0 8px 40px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 /* Dark Theme - Apple Glass Aesthetic */
@@ -92,4 +97,9 @@
   /* Utility Colors */
   --color-shadow: rgba(0, 0, 0, 0.5);
   --color-overlay: rgba(0, 0, 0, 0.8);
+
+  /* Modal / Dialog */
+  --color-modal-bg: #2c2c2e;
+  --color-modal-border: rgba(255, 255, 255, 0.12);
+  --color-modal-shadow: 0 8px 48px rgba(0, 0, 0, 0.55), 0 2px 12px rgba(0, 0, 0, 0.35);
 }

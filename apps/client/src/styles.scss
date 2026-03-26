@@ -268,8 +268,21 @@ app-main {
 
 /* Material Dialog Styles */
 .mat-mdc-dialog-container {
-  --mdc-dialog-container-color: var(--color-bg);
+  --mdc-dialog-container-color: var(--color-modal-bg);
   --mdc-dialog-supporting-text-color: var(--color-text);
+
+  .mdc-dialog__surface {
+    border-radius: 16px !important;
+    border: 1px solid var(--color-modal-border) !important;
+    box-shadow: var(--color-modal-shadow) !important;
+  }
+}
+
+/* Blurred backdrop overlay behind modals */
+.cdk-overlay-backdrop.cdk-overlay-backdrop-showing {
+  background: var(--color-overlay);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
 }
 
 /* Default dialog size */
