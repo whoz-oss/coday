@@ -48,7 +48,7 @@ export class MessagingGatewayService {
       throw new Error('MessagingGatewayService not initialized. Call initialize() first.')
     }
 
-    const { source, username, message, projectName, replyContext, eventType, conversationContext } = event
+    const { source, username, message, projectName, replyContext, eventType, conversationContext, targetAgent } = event
 
     if (!source || !username || !message || !projectName) {
       throw new Error('Missing required fields: source, username, message, projectName')
@@ -58,8 +58,9 @@ export class MessagingGatewayService {
     const thread = await this.threadService.createThread(projectName, username)
     const threadId = thread.id
 
-    // Build the prompt that will be sent to the agent
-    const prompt = [
+    // Build the prompt that will be sent to the agent.
+    // If targetAgent is specified, prefix with @AgentName so Coday routes to the right agent.
+    const promptLines = [
       `You received a message from ${source}.`,
       `User: ${username}`,
       eventType ? `Event type: ${eventType}` : null,
@@ -70,6 +71,8 @@ export class MessagingGatewayService {
     ]
       .filter(Boolean)
       .join('\n')
+
+    const prompt = targetAgent ? `@${targetAgent} ${promptLines}` : promptLines
 
     const oneShotOptions: CodayOptions = {
       ...this.codayOptions,

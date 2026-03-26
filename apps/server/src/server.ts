@@ -29,6 +29,7 @@ import { registerPromptRoutes } from './lib/prompt.routes'
 import { registerSchedulerRoutes } from './lib/scheduler.routes'
 import { registerPromptExecutionRoutes } from './lib/prompt-execution.routes'
 import { registerMessagingGatewayRoutes } from './lib/messaging-gateway.routes'
+import { SlackConnector } from './lib/slack-connector'
 import { registerTokenUsageRoutes } from './lib/token-usage.routes'
 import { registerProjectPreviewRoutes } from './lib/project-preview.routes'
 import { parseCodayOptions } from './lib/coday-options-utils'
@@ -383,6 +384,7 @@ if (process.env.BUILD_ENV !== 'development') {
 
 // Initialize thread cleanup service (server-only)
 let cleanupService: ThreadCleanupService | null = null
+let slackConnector: SlackConnector | null = null
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, _: express.NextFunction) => {
@@ -442,6 +444,29 @@ PORT_PROMISE.then(async (PORT) => {
   } catch (error) {
     console.error('Failed to initialize scheduler service:', error)
   }
+
+  // Start Slack Connector if configured via environment variables
+  const slackBotToken = process.env.SLACK_BOT_TOKEN
+  const slackAppToken = process.env.SLACK_APP_TOKEN
+  const slackDefaultProject = process.env.SLACK_DEFAULT_PROJECT ?? resolvedProjectName ?? 'coday'
+
+  if (slackBotToken && slackAppToken) {
+    try {
+      slackConnector = new SlackConnector(
+        slackBotToken,
+        slackAppToken,
+        slackDefaultProject,
+        {}, // channel -> project overrides (extendable later via config)
+        messagingGatewayService
+      )
+      await slackConnector.start()
+      debugLog('INIT', 'Slack Connector started')
+    } catch (error) {
+      console.error('Failed to start Slack Connector:', error)
+    }
+  } else {
+    debugLog('INIT', 'Slack Connector not started (SLACK_BOT_TOKEN / SLACK_APP_TOKEN not set)')
+  }
 }).catch((error) => {
   console.error('Failed to start server:', error)
   process.exit(1)
@@ -468,6 +493,12 @@ async function gracefulShutdown(signal: string) {
     if (cleanupService) {
       console.log('Stopping thread cleanup service...')
       await cleanupService.stop()
+    }
+
+    // Stop Slack Connector if running
+    if (slackConnector) {
+      console.log('Stopping Slack Connector...')
+      await slackConnector.stop()
     }
 
     // Cleanup thread-based Coday instances

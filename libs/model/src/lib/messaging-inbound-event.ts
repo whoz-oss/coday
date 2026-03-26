@@ -32,4 +32,11 @@ export interface MessagingInboundEvent {
    * Formatted as a readable transcript by the connector.
    */
   conversationContext?: string
+
+  /**
+   * Optional: name of the agent to target for this event.
+   * When set, the gateway prefixes the prompt with @AgentName to route to the right agent.
+   * For Slack events, this would be 'Slackay'.
+   */
+  targetAgent?: string
 }
