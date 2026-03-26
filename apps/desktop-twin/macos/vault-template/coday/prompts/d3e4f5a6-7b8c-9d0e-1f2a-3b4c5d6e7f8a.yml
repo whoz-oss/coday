@@ -24,7 +24,7 @@ commands:
 
     4. SURFACE Action:: pointers (not promotion — pointers):
        - Run: `git diff --name-only HEAD~1 HEAD` (or equivalent to get today's touched files).
-       - Filter for note files (`.md`) in `Atlas/Dots/Meeting/` and `Efforts/`.
+       - Filter for note files (`.md`) in `Atlas/Dots/Meetings/` and `Efforts/`.
        - For each file found: briefly check if it contains any `Action::` items not yet marked `Promoted::`.
        - Do NOT auto-promote. Do NOT create tasks. Simply list the files and unprocessed action count in your Slack message so [YOUR NAME] can decide if any need promotion.
        - This is a pointer, not a judgment call.

@@ -7,5 +7,4 @@ schedule:
   interval: 1M
 createdBy: coday
 createdAt: 2026-03-23T21:02:25.810Z
-nextRun: 2026-02-01T09:00:00.000Z
 occurrenceCount: 0

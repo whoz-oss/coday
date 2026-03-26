@@ -50,7 +50,7 @@ vault/
 ```
 Quick thought / link / todo?        → +/ inbox
 Time-based reflection?              → Calendar/
-Meeting note?                       → Atlas/Dots/Meeting/
+Meeting note?                       → Atlas/Dots/Meetings/
 Person to remember?                 → Atlas/Dots/People/
 Concept or insight?                 → Atlas/Dots/Concepts/
 Decision to document?               → Atlas/Dots/Decisions/

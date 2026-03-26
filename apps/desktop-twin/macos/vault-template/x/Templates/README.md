@@ -11,7 +11,7 @@
 | **Daily note** | Daily journaling and reflection | `Calendar/Daily/` |
 | **Weekly note** | Weekly reviews and planning | `Calendar/Weekly/` |
 | **Monthly note** | Monthly reflection and themes | `Calendar/Monthly/` |
-| **Meeting** | Meeting discussions and outcomes | `Atlas/Dots/Meeting/` |
+| **Meeting** | Meeting discussions and outcomes | `Atlas/Dots/Meetings/` |
 | **Decision** | Significant decisions with full context | `Atlas/Dots/Decisions/` |
 | **Concept** | Insights, ideas, mental models | `Atlas/Dots/Concepts/` |
 | **People** | Person profiles and context | `Atlas/Dots/People/` |

@@ -29,7 +29,7 @@ commands:
 
     6. SURFACE Action:: pointers for the week:
        - Run: `git log --since="7 days ago" --name-only --pretty=format: | sort -u` (or equivalent).
-       - Filter for `.md` files in `Atlas/Dots/Meeting/` and `Efforts/`.
+       - Filter for `.md` files in `Atlas/Dots/Meetings/` and `Efforts/`.
        - For each file: check for `Action::` items not marked `Promoted::`.
        - List files + unprocessed action counts in Slack — a pointer for [YOUR NAME] to review, not auto-promotion.
 
