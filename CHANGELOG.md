@@ -1,3 +1,13 @@
+## 0.104.3 (2026-03-26)
+
+### 🩹 Fixes
+
+- correct editFiles tool name ([#656](https://github.com/whoz-oss/coday/pull/656))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.104.2 (2026-03-25)
 
 ### 🩹 Fixes
