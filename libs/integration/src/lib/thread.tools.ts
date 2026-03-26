@@ -163,14 +163,13 @@ export class ThreadTools extends AssistantToolFactory {
               return `Access denied: thread '${targetId}' belongs to another user.`
             }
 
-            if (name !== undefined) thread.name = name
-            if (summary !== undefined) thread.summary = summary
-
-            const repo = this.threadService.getThreadRepository(projectName)
-            await repo.save(projectName, thread)
-
-            // Invalidate the list cache so the next list call reloads from disk
-            this.threadService.clearCache(projectName)
+            // Use updateThread() instead of direct repo.save() + clearCache() to
+            // ensure the thread list cache (threadListCache) is updated incrementally,
+            // preserving all fields including starring. Fixes #653.
+            await this.threadService.updateThread(projectName, targetId, {
+              name,
+              summary,
+            })
 
             // Notify the frontend so it refreshes the thread list
             this.interactor.sendEvent(
