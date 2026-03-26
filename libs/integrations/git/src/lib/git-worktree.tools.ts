@@ -255,6 +255,8 @@ export class GitWorktreeTools extends AssistantToolFactory {
             worktreeDirName = sanitized
             projectName = deriveWorktreeProjectName(parentProjectName, sanitized)
           }
+          // Worktree directories always follow the `<parentProjectName>__<suffix>` convention,
+          // mirroring the layout used by create_worktree and list_worktrees.
           const worktreePath = path.join(worktreesRoot, `${parentProjectName}__${worktreeDirName}`)
 
           if (worktreePath === projectRoot) {
