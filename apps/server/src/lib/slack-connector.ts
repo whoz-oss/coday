@@ -267,6 +267,9 @@ export class SlackConnector {
     const state = this.getChannelState(channel)
     state.processing = true
 
+    // Post a thinking message to indicate processing
+    const thinkingTs = await this.postThinkingMessage(channel, queued.replyContext.thread_ts)
+
     try {
       const projectName = this.channelProjectMap[channel] ?? this.defaultProject
 
@@ -281,7 +284,7 @@ export class SlackConnector {
         replyContext: queued.replyContext,
         eventType: queued.eventType,
         conversationContext: conversationContext || undefined,
-        targetAgent: 'Slackay',
+        targetAgent: 'SlackRelay',
       }
 
       debugLog('SLACK', `Dispatching event for ${queued.username} in ${channel}`)
@@ -289,6 +292,8 @@ export class SlackConnector {
     } catch (err) {
       console.error('[SLACK] Error dispatching event:', err)
     } finally {
+      // Remove the thinking message
+      if (thinkingTs) await this.deleteMessage(channel, thinkingTs)
       state.processing = false
       await this.processQueue(channel)
     }
@@ -329,14 +334,14 @@ export class SlackConnector {
 
   private async getConversationContext(channel: string, lastResponseTs?: string): Promise<string> {
     try {
-      const params: Record<string, string> = { channel, limit: '20' }
+      const params: Record<string, string> = { channel, limit: '50' }
 
       if (lastResponseTs) {
         params.oldest = lastResponseTs
       } else {
-        // Default: last 2 hours
-        const twoHoursAgo = (Date.now() / 1000 - 2 * 3600).toFixed(6)
-        params.oldest = twoHoursAgo
+        // Default: last 10 minutes (keep context recent and relevant)
+        const tenMinutesAgo = (Date.now() / 1000 - 10 * 60).toFixed(6)
+        params.oldest = tenMinutesAgo
       }
 
       const result = await this.slackApi<{ messages?: Array<Record<string, unknown>> }>('conversations.history', params)
@@ -359,7 +364,8 @@ export class SlackConnector {
               displayName = await this.resolveDisplayName(userId)
             }
 
-            return `[${this.formatTs(ts)}] ${displayName}: ${text}`
+            const cleanedText = await this.resolveUserMentions(text)
+            return `[${this.formatTs(ts)}] ${displayName ?? 'unknown'}: ${cleanedText}`
           })
       )
 
@@ -379,6 +385,30 @@ export class SlackConnector {
       this.channelStates.set(channel, { paused: false, pendingMessages: [], processing: false })
     }
     return this.channelStates.get(channel)!
+  }
+
+  // -------------------------------------------------------------------------
+  // Processing indicators
+  // -------------------------------------------------------------------------
+
+  private async postThinkingMessage(channel: string, threadTs?: string): Promise<string | undefined> {
+    try {
+      const body: Record<string, unknown> = { channel, text: ':hourglass_flowing_sand: _Thinking..._' }
+      if (threadTs) body.thread_ts = threadTs
+      const result = await this.slackApi<{ ts: string }>('chat.postMessage', {}, 'POST', body)
+      return result.ts
+    } catch (err) {
+      debugLog('SLACK', `Failed to post thinking message: ${err}`)
+      return undefined
+    }
+  }
+
+  private async deleteMessage(channel: string, ts: string): Promise<void> {
+    try {
+      await this.slackApi('chat.delete', {}, 'POST', { channel, ts })
+    } catch (err) {
+      debugLog('SLACK', `Failed to delete thinking message: ${err}`)
+    }
   }
 
   private handlePauseResume(channel: string, command: 'pause' | 'resume'): void {
@@ -415,6 +445,24 @@ export class SlackConnector {
     } catch {
       return slackUserId
     }
+  }
+
+  /**
+   * Resolve <@U12345> mentions in text to human-readable names
+   */
+  private async resolveUserMentions(text: string): Promise<string> {
+    const mentionPattern = /<@([A-Z0-9]+)>/g
+    const matches = [...text.matchAll(mentionPattern)]
+    if (matches.length === 0) return text
+
+    let resolved = text
+    for (const match of matches) {
+      const userId = match[1]
+      if (!userId) continue
+      const displayName = await this.resolveDisplayName(userId)
+      resolved = resolved.replace(match[0], `@${displayName}`)
+    }
+    return resolved
   }
 
   private formatTs(ts: string): string {
