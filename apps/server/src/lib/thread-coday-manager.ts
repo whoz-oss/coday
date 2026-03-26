@@ -32,13 +32,11 @@ import { AgentService } from '@coday/agent'
 class ThreadCodayInstance {
   private readonly connections: Set<Response> = new Set()
   private lastActivity: number = Date.now()
-  private disconnectTimeout?: NodeJS.Timeout
   private inactivityTimeout?: NodeJS.Timeout
   private isOneshot: boolean = false
   coday?: Coday
 
   // Timeouts configuration
-  static readonly DISCONNECT_TIMEOUT = 5 * 60 * 1000 // 5 minutes after last connection closed
   static readonly INTERACTIVE_TIMEOUT = 8 * 60 * 60 * 1000 // 8 hours for interactive sessions
   static readonly ONESHOT_TIMEOUT = 30 * 60 * 1000 // 30 minutes for oneshot (webhook) sessions
 
@@ -72,13 +70,6 @@ class ThreadCodayInstance {
     this.updateActivity()
     this.isOneshot = false // Mark as interactive session
     debugLog('THREAD_CODAY', `Added SSE connection to thread ${this.threadId} (total: ${this.connections.size})`)
-
-    // Clear disconnect timeout if reconnecting
-    if (this.disconnectTimeout) {
-      clearTimeout(this.disconnectTimeout)
-      this.disconnectTimeout = undefined
-      debugLog('THREAD_CODAY', `Cleared disconnect timeout for thread ${this.threadId}`)
-    }
 
     // If Coday is already running, replay the thread history for this new connection
     if (this.coday) {
@@ -129,15 +120,6 @@ class ThreadCodayInstance {
       'THREAD_CODAY',
       `Removed SSE connection from thread ${this.threadId} (remaining: ${this.connections.size})`
     )
-
-    // If no more connections, start disconnect timeout
-    if (this.connections.size === 0 && !this.disconnectTimeout) {
-      debugLog('THREAD_CODAY', `No connections remaining for thread ${this.threadId}, starting disconnect timeout`)
-      this.disconnectTimeout = setTimeout(() => {
-        debugLog('THREAD_CODAY', `Disconnect timeout reached for thread ${this.threadId}`)
-        this.onTimeout(this.threadId)
-      }, ThreadCodayInstance.DISCONNECT_TIMEOUT)
-    }
   }
 
   /**
@@ -361,10 +343,6 @@ class ThreadCodayInstance {
     debugLog('THREAD_CODAY', `Cleaning up thread ${this.threadId}`)
 
     // Clear all timeouts
-    if (this.disconnectTimeout) {
-      clearTimeout(this.disconnectTimeout)
-      this.disconnectTimeout = undefined
-    }
     if (this.inactivityTimeout) {
       clearTimeout(this.inactivityTimeout)
       this.inactivityTimeout = undefined
