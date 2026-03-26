@@ -1,3 +1,15 @@
+## 0.104.6 (2026-03-26)
+
+### 🩹 Fixes
+
+- #652 inconsistent sub-thread content display on expand ([#652](https://github.com/whoz-oss/coday/issues/652))
+- #652 inconsistent sub-thread content display on expand ([#668](https://github.com/whoz-oss/coday/pull/668), [#652](https://github.com/whoz-oss/coday/issues/652))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
 ## 0.104.5 (2026-03-26)
 
 ### 🩹 Fixes
