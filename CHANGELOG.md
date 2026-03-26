@@ -1,3 +1,14 @@
+## 0.105.2 (2026-03-26)
+
+### 🩹 Fixes
+
+- #653 use updateThread() in thread tool to preserve starring on rename ([#664](https://github.com/whoz-oss/coday/pull/664), [#653](https://github.com/whoz-oss/coday/issues/653))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.105.1 (2026-03-26)
 
 ### 🩹 Fixes
