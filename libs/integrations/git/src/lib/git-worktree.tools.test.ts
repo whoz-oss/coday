@@ -1,7 +1,7 @@
 import * as fsp from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { sanitizeBranchName, isInsideWorktree } from './git-worktree.tools'
+import { sanitizeBranchName, isInsideWorktree, resolveWorktreeDirName } from './git-worktree.tools'
 
 describe('sanitizeBranchName', () => {
   it('replaces / with -', () => {
@@ -30,6 +30,33 @@ describe('sanitizeBranchName', () => {
 
   it('strips a trailing dash', () => {
     expect(sanitizeBranchName('trailing-')).toBe('trailing')
+  })
+})
+
+describe('resolveWorktreeDirName', () => {
+  it('returns sanitized branch when no explicit projectName is given', () => {
+    expect(resolveWorktreeDirName('coday', 'feat-my-feature', undefined)).toBe('feat-my-feature')
+  })
+
+  it('strips the parent prefix when explicit projectName matches convention', () => {
+    expect(resolveWorktreeDirName('coday', 'feat-my-feature', 'coday__feat-my-feature')).toBe('feat-my-feature')
+  })
+
+  it('handles legacy projectName whose suffix differs from the sanitized branch', () => {
+    // A worktree created manually with a different directory name than what the
+    // current convention would derive from the branch name.
+    const branch = 'feature/vincent.audibert/issue-634-manual-delegation-async'
+    const sanitized = 'feature-vincent-audibert-issue-634-manual-delegation-async'
+    const legacyProjectName = 'coday__feat-vincent-audibert-issue-0634-move-manual-delegation-to-async'
+    expect(resolveWorktreeDirName('coday', sanitized, legacyProjectName)).toBe(
+      'feat-vincent-audibert-issue-0634-move-manual-delegation-to-async'
+    )
+    // The variable `branch` is used only to document the scenario; sanitized is what matters.
+    void branch
+  })
+
+  it('falls back to sanitized branch when explicit projectName does not start with parent prefix', () => {
+    expect(resolveWorktreeDirName('coday', 'feat-my-feature', 'some-other-project')).toBe('feat-my-feature')
   })
 })
 
