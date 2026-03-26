@@ -1,3 +1,14 @@
+## 0.104.4 (2026-03-26)
+
+### 🩹 Fixes
+
+- #660 remove disconnect timeout to decouple agent execution from SSE lifecycle ([#661](https://github.com/whoz-oss/coday/pull/661), [#660](https://github.com/whoz-oss/coday/issues/660))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.104.3 (2026-03-26)
 
 ### 🩹 Fixes
