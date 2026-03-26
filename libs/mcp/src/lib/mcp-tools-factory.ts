@@ -94,10 +94,35 @@ export class McpToolsFactory extends AssistantToolFactory {
       try {
         await this.transport.close()
         console.log(`Transport closed for ${this.serverConfig.name}`)
+        // Nullify PID synchronously after successful close
+        // (the async onclose handler also does this, but we need it before the fallback check below)
+        this.serverProcessPid = null
       } catch (error) {
         console.log(`Error closing transport for ${this.serverConfig.name}: ${error}`)
       }
       this.transport = undefined
+    }
+
+    // Fallback: manually kill the process if transport.close() failed silently
+    if (this.serverProcessPid) {
+      try {
+        process.kill(this.serverProcessPid, 0)
+        console.log(`Force killing MCP server process ${this.serverProcessPid} for ${this.serverConfig.name}`)
+        process.kill(this.serverProcessPid, 'SIGTERM')
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        try {
+          process.kill(this.serverProcessPid, 0)
+          process.kill(this.serverProcessPid, 'SIGKILL')
+          console.log(`Force killed with SIGKILL: ${this.serverProcessPid}`)
+        } catch {
+          // Process already dead, good
+        }
+      } catch (error: any) {
+        if (error.code !== 'ESRCH') {
+          console.log(`Error killing MCP server process ${this.serverProcessPid}: ${error}`)
+        }
+      }
+      this.serverProcessPid = null
     }
 
     console.log(`Closed mcp client ${this.serverConfig.name}`)
@@ -231,11 +256,19 @@ export class McpToolsFactory extends AssistantToolFactory {
     try {
       // Set a shorter timeout for MCP connections (default is 60s, we use MCP_CONNECT_TIMEOUT)
       const connectPromise = instance.connect(this.transport)
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`Connection timeout after ${MCP_CONNECT_TIMEOUT}ms`)), MCP_CONNECT_TIMEOUT)
-      )
+      let timeoutHandle: NodeJS.Timeout
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(
+          () => reject(new Error(`Connection timeout after ${MCP_CONNECT_TIMEOUT}ms`)),
+          MCP_CONNECT_TIMEOUT
+        )
+      })
 
-      await Promise.race([connectPromise, timeoutPromise])
+      try {
+        await Promise.race([connectPromise, timeoutPromise])
+      } finally {
+        clearTimeout(timeoutHandle!)
+      }
 
       // Store the process PID for manual cleanup if needed
       if (this.transport && 'pid' in this.transport) {
