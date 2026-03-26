@@ -9,6 +9,7 @@ import {
   ThreadCleanupService,
   PromptService,
   SchedulerService,
+  MessagingGatewayService,
   PromptExecutionService,
   ConfigServiceRegistry,
   ProjectService,
@@ -27,6 +28,7 @@ import { AgentCrudService } from '@coday/service'
 import { registerPromptRoutes } from './lib/prompt.routes'
 import { registerSchedulerRoutes } from './lib/scheduler.routes'
 import { registerPromptExecutionRoutes } from './lib/prompt-execution.routes'
+import { registerMessagingGatewayRoutes } from './lib/messaging-gateway.routes'
 import { registerTokenUsageRoutes } from './lib/token-usage.routes'
 import { registerProjectPreviewRoutes } from './lib/project-preview.routes'
 import { parseCodayOptions } from './lib/coday-options-utils'
@@ -203,6 +205,9 @@ debugLog('INIT', 'Prompt service initialized')
 
 // Create prompt execution service
 promptExecutionService = new PromptExecutionService(promptService)
+
+// Create messaging gateway service
+const messagingGatewayService = new MessagingGatewayService()
 debugLog('INIT', 'Prompt execution service initialized (will be initialized with dependencies after thread manager)')
 
 // Initialize thread file service for REST API endpoints
@@ -222,6 +227,10 @@ const threadCodayManager = new ThreadCodayManager(logger, projectService, thread
 // Initialize prompt execution dependencies now that thread manager is ready
 promptExecutionService.initialize(threadCodayManager, threadService, codayOptions, logger)
 debugLog('INIT', 'Prompt execution service initialized')
+
+// Initialize messaging gateway service
+messagingGatewayService.initialize(threadCodayManager, threadService, codayOptions, logger)
+debugLog('INIT', 'Messaging gateway service initialized')
 
 debugLog('INIT', 'Webhook service initialized with prompt execution delegation')
 
@@ -299,6 +308,9 @@ registerPromptRoutes(app, promptService, getUsername)
 
 // Register prompt execution routes (webhook execution)
 registerPromptExecutionRoutes(app, promptExecutionService, getUsername)
+
+// Register messaging gateway routes
+registerMessagingGatewayRoutes(app, messagingGatewayService)
 
 // Register project management routes
 registerProjectRoutes(app, projectService)
