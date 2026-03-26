@@ -317,7 +317,7 @@ export class ThreadSelectorComponent implements OnInit {
       : this.threadApiService.starThread(thread.id)
 
     // Optimistic update: mutate local state immediately before the HTTP call returns
-    this.threadStateService.updateStarLocal(thread.id, !isStarred)
+    this.threadStateService.updateStarLocal(thread.id, !isStarred, currentUsername)
 
     operation.subscribe({
       next: () => {

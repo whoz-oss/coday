@@ -15,7 +15,6 @@ import {
 import { map, tap } from 'rxjs/operators'
 import { ThreadApiService, ThreadUpdateResponse } from './thread-api.service'
 import { ProjectStateService } from './project-state.service'
-import { UserService } from './user.service'
 
 /**
  * Service managing the currently selected thread state.
@@ -41,7 +40,6 @@ export class ThreadStateService {
   // Inject API service
   private readonly threadApi = inject(ThreadApiService)
   private readonly projectStateService = inject(ProjectStateService)
-  private readonly userService = inject(UserService)
 
   private readonly projectName$ = this.projectStateService.selectedProject$.pipe(
     map((project) => project?.name),
@@ -195,16 +193,12 @@ export class ThreadStateService {
    * Optimistically update the starring state of a thread in the local list.
    * This allows the UI to respond immediately without waiting for a full server refresh,
    * preventing race conditions with concurrent refreshes (e.g., agent rename events).
+   * The caller is responsible for providing a valid username — guard before calling.
    * @param threadId Thread identifier
-   * @param starred True if the current user starred the thread, false if unstarred
+   * @param starred True if the user starred the thread, false if unstarred
+   * @param username Current user's username
    */
-  updateStarLocal(threadId: string, starred: boolean): void {
-    const username = this.userService.getUsername()
-    if (!username) {
-      console.warn('[THREAD_STATE] Cannot update star locally: no username available')
-      return
-    }
-
+  updateStarLocal(threadId: string, starred: boolean, username: string): void {
     const current = this.threadListSubject.value
     const updated = current.map((thread) => {
       if (thread.id !== threadId) return thread
