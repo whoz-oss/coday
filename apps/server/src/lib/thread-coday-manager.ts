@@ -32,13 +32,11 @@ import { AgentService } from '@coday/agent'
 class ThreadCodayInstance {
   private readonly connections: Set<Response> = new Set()
   private lastActivity: number = Date.now()
-  private disconnectTimeout?: NodeJS.Timeout
   private inactivityTimeout?: NodeJS.Timeout
   private isOneshot: boolean = false
   coday?: Coday
 
   // Timeouts configuration
-  static readonly DISCONNECT_TIMEOUT = 5 * 60 * 1000 // 5 minutes after last connection closed
   static readonly INTERACTIVE_TIMEOUT = 8 * 60 * 60 * 1000 // 8 hours for interactive sessions
   static readonly ONESHOT_TIMEOUT = 30 * 60 * 1000 // 30 minutes for oneshot (webhook) sessions
 
@@ -72,13 +70,6 @@ class ThreadCodayInstance {
     this.updateActivity()
     this.isOneshot = false // Mark as interactive session
     debugLog('THREAD_CODAY', `Added SSE connection to thread ${this.threadId} (total: ${this.connections.size})`)
-
-    // Clear disconnect timeout if reconnecting
-    if (this.disconnectTimeout) {
-      clearTimeout(this.disconnectTimeout)
-      this.disconnectTimeout = undefined
-      debugLog('THREAD_CODAY', `Cleared disconnect timeout for thread ${this.threadId}`)
-    }
 
     // If Coday is already running, replay the thread history for this new connection
     if (this.coday) {
@@ -129,15 +120,6 @@ class ThreadCodayInstance {
       'THREAD_CODAY',
       `Removed SSE connection from thread ${this.threadId} (remaining: ${this.connections.size})`
     )
-
-    // If no more connections, start disconnect timeout
-    if (this.connections.size === 0 && !this.disconnectTimeout) {
-      debugLog('THREAD_CODAY', `No connections remaining for thread ${this.threadId}, starting disconnect timeout`)
-      this.disconnectTimeout = setTimeout(() => {
-        debugLog('THREAD_CODAY', `Disconnect timeout reached for thread ${this.threadId}`)
-        this.onTimeout(this.threadId)
-      }, ThreadCodayInstance.DISCONNECT_TIMEOUT)
-    }
   }
 
   /**
@@ -159,6 +141,8 @@ class ThreadCodayInstance {
    * Reset the inactivity timeout based on session type
    */
   private resetInactivityTimeout(): void {
+    // Note: this timeout is only reset on activity events (connection, prepare, start),
+    // NOT on disconnect. A disconnection does not extend the instance's lifetime.
     if (this.inactivityTimeout) {
       clearTimeout(this.inactivityTimeout)
     }
@@ -359,10 +343,6 @@ class ThreadCodayInstance {
     debugLog('THREAD_CODAY', `Cleaning up thread ${this.threadId}`)
 
     // Clear all timeouts
-    if (this.disconnectTimeout) {
-      clearTimeout(this.disconnectTimeout)
-      this.disconnectTimeout = undefined
-    }
     if (this.inactivityTimeout) {
       clearTimeout(this.inactivityTimeout)
       this.inactivityTimeout = undefined
@@ -547,9 +527,9 @@ export class ThreadCodayManager {
     if (instance) {
       instance.removeConnection(response)
 
-      // Note: We intentionally keep the instance alive even with 0 connections
-      // for potential reconnections. Cleanup will be handled by a future
-      // timeout mechanism or explicit cleanup call.
+      // Note: We intentionally keep the instance alive even with 0 connections.
+      // Clients can reconnect and receive full history replay.
+      // Cleanup is handled by INTERACTIVE_TIMEOUT (8h) or ONESHOT_TIMEOUT (30min).
 
       if (instance.connectionCount === 0) {
         debugLog('THREAD_CODAY', `Thread ${threadId} has no active connections but instance kept alive`)
@@ -575,10 +555,13 @@ export class ThreadCodayManager {
   async cleanup(threadId: string): Promise<void> {
     const instance = this.instances.get(threadId)
     if (instance) {
-      // Release MCP instances used by this thread
+      // First cleanup the Coday instance (stops agents, tools, etc.)
+      await instance.cleanup()
+
+      // Then release MCP instances from the pool
+      // (must be after instance cleanup to avoid race conditions with toolbox)
       await this.mcpPool.releaseThread(threadId)
 
-      await instance.cleanup()
       this.instances.delete(threadId)
       debugLog('THREAD_CODAY', `Removed instance for thread ${threadId}`)
     }
@@ -623,13 +606,20 @@ export class ThreadCodayManager {
     const cleanupPromises: Promise<void>[] = []
     for (const [threadId, instance] of this.instances.entries()) {
       debugLog('THREAD_CODAY_MANAGER', `Cleaning up thread ${threadId}`)
-      cleanupPromises.push(instance.cleanup())
+      cleanupPromises.push(
+        instance
+          .cleanup()
+          .then(() => this.mcpPool.releaseThread(threadId))
+          .catch((error) => {
+            debugLog('THREAD_CODAY_MANAGER', `Error cleaning up thread ${threadId}:`, error)
+          })
+      )
     }
 
     await Promise.all(cleanupPromises)
     this.instances.clear()
 
-    // Shutdown MCP instance pool
+    // Final safety net: shutdown any remaining MCP instances
     await this.mcpPool.shutdown()
 
     debugLog('THREAD_CODAY_MANAGER', 'All thread instances cleaned up')

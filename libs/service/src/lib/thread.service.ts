@@ -266,13 +266,22 @@ export class ThreadService {
       const cachedThread = cached?.data.find((t) => t.id === threadId)
 
       if (cachedThread) {
-        // Thread exists in cache but not yet on disk - create a minimal AiThread from cache
+        // Thread exists in cache but not yet on disk (race condition: thread just created).
+        // WARNING: reconstruct from the full ThreadSummary to avoid losing fields like
+        // starring, users, parentThreadId, parentEventId, delegatedAgentName, delegatedTask.
         thread = new AiThread({
           id: cachedThread.id,
           username: cachedThread.username,
           projectId: cachedThread.projectId,
           name: cachedThread.name,
+          summary: cachedThread.summary,
           price: cachedThread.price,
+          starring: cachedThread.starring,
+          users: cachedThread.users,
+          parentThreadId: cachedThread.parentThreadId,
+          parentEventId: cachedThread.parentEventId,
+          delegatedAgentName: cachedThread.delegatedAgentName,
+          delegatedTask: cachedThread.delegatedTask,
         })
       } else {
         throw new Error(`Thread '${threadId}' not found in project '${projectName}'`)

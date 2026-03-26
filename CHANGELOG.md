@@ -1,3 +1,91 @@
+## 0.105.2 (2026-03-26)
+
+### 🩹 Fixes
+
+- #653 use updateThread() in thread tool to preserve starring on rename ([#664](https://github.com/whoz-oss/coday/pull/664), [#653](https://github.com/whoz-oss/coday/issues/653))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.105.1 (2026-03-26)
+
+### 🩹 Fixes
+
+- #651 fix node process leaks in MCP and thread lifecycle ([#651](https://github.com/whoz-oss/coday/issues/651))
+- #651 fix node process leaks in MCP and thread lifecycle ([#662](https://github.com/whoz-oss/coday/pull/662), [#651](https://github.com/whoz-oss/coday/issues/651))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.105.0 (2026-03-26)
+
+### 🚀 Features
+
+- wz-30856: display text chunks streams in agentos-ui ([#663](https://github.com/whoz-oss/coday/pull/663))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.104.7 (2026-03-26)
+
+### 🩹 Fixes
+
+- #654 optimistic star update to prevent race condition on thread list refresh ([#665](https://github.com/whoz-oss/coday/pull/665), [#654](https://github.com/whoz-oss/coday/issues/654))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.104.6 (2026-03-26)
+
+### 🩹 Fixes
+
+- #652 inconsistent sub-thread content display on expand ([#652](https://github.com/whoz-oss/coday/issues/652))
+- #652 inconsistent sub-thread content display on expand ([#668](https://github.com/whoz-oss/coday/pull/668), [#652](https://github.com/whoz-oss/coday/issues/652))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.104.5 (2026-03-26)
+
+### 🩹 Fixes
+
+- #666 remove_worktree falls back to prune when path is missing ([#667](https://github.com/whoz-oss/coday/pull/667), [#666](https://github.com/whoz-oss/coday/issues/666))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.104.4 (2026-03-26)
+
+### 🩹 Fixes
+
+- #660 remove disconnect timeout to decouple agent execution from SSE lifecycle ([#661](https://github.com/whoz-oss/coday/pull/661), [#660](https://github.com/whoz-oss/coday/issues/660))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.104.3 (2026-03-26)
+
+### 🩹 Fixes
+
+- correct editFiles tool name ([#656](https://github.com/whoz-oss/coday/pull/656))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.104.2 (2026-03-25)
 
 ### 🩹 Fixes

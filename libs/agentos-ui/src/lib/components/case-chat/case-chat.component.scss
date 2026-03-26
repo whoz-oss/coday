@@ -158,6 +158,11 @@
     align-self: flex-start;
   }
 
+  // Streaming assistant message (TextChunkEvent aggregation)
+  &__message--streaming {
+    opacity: 0.95;
+  }
+
   &__composer {
     display: flex;
     align-items: flex-end;
