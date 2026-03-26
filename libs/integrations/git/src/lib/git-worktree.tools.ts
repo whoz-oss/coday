@@ -211,11 +211,12 @@ export class GitWorktreeTools extends AssistantToolFactory {
             return `Error: cannot remove the main worktree`
           }
 
-          let pathExists = true
+          let pathExists = false
           try {
-            await fsp.access(worktreePath)
+            const stat = await fsp.stat(worktreePath)
+            pathExists = stat.isDirectory()
           } catch {
-            pathExists = false
+            /* path does not exist or is inaccessible */
           }
 
           if (pathExists) {
