@@ -42,8 +42,9 @@ const DEFAULT_PORT = process.env.PORT
     ? 4100
     : 3000
 
-// Dynamically find an available port
-const PORT_PROMISE = findAvailablePort(DEFAULT_PORT)
+// When PORT is explicitly set, use strict mode (no fallback to next port)
+const isPortForced = !!process.env.PORT
+const PORT_PROMISE = findAvailablePort(DEFAULT_PORT, isPortForced ? 0 : 10, isPortForced)
 // Note: header constants are now managed in ./lib/resolve-username.ts
 
 // Parse options once for all clients
@@ -433,6 +434,13 @@ PORT_PROMISE.then(async (PORT) => {
 }).catch((error) => {
   console.error('Failed to start server:', error)
   process.exit(1)
+})
+
+// Handle port-in-use errors from findAvailablePort in strict mode
+PORT_PROMISE.catch((error) => {
+  if (error instanceof Error && error.message.includes('already in use')) {
+    process.stderr.write(`PORT_IN_USE: ${error.message}\n`)
+  }
 })
 
 // Graceful shutdown with proper cleanup

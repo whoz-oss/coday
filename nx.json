@@ -71,7 +71,7 @@
     }
   ],
   "release": {
-    "projects": ["server", "client", "web", "desktop"],
+    "projects": ["server", "client", "web", "desktop", "desktop-twin"],
     "releaseTagPattern": "release/{version}",
     "git": {
       "commitMessage": "chore(release): {version}",

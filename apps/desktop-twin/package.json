@@ -1,0 +1,62 @@
+{
+  "name": "@whoz-oss/coday-desktop-twin",
+  "version": "0.82.0",
+  "description": "CodayTwin Desktop - Digital Twin Electron application",
+  "repository": "https://github.com/whoz-oss/coday",
+  "license": "MIT",
+  "author": "Whoz OSS",
+  "main": "dist/main.js",
+  "scripts": {
+    "start": "electron dist/main.js"
+  },
+  "devDependencies": {
+    "electron": "catalog:dev",
+    "electron-builder": "catalog:dev",
+    "typescript": "catalog:dev"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "build": {
+    "appId": "com.whoz.coday-twin",
+    "directories": {
+      "buildResources": "assets",
+      "output": "release"
+    },
+    "electronVersion": "38.3.0",
+    "files": [
+      "dist/**/*",
+      "assets/**/*"
+    ],
+    "icon": "assets/icon.jpg",
+    "linux": {
+      "category": "Development",
+      "icon": "assets/icon.jpg",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "entitlements": "macos/entitlements.mac.plist",
+      "entitlementsInherit": "macos/entitlements.mac.plist",
+      "gatekeeperAssess": false,
+      "hardenedRuntime": true,
+      "icon": "assets/icon.jpg",
+      "identity": "BIZNET.IO (7DPGXLTDQS)",
+      "target": [
+        "dmg"
+      ]
+    },
+    "npmRebuild": false,
+    "productName": "CodayTwin",
+    "win": {
+      "icon": "assets/icon.jpg",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    }
+  }
+}

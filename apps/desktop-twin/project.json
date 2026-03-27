@@ -1,0 +1,129 @@
+{
+  "name": "desktop-twin",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "{projectRoot}",
+  "tags": ["desktop-bundle"],
+  "targets": {
+    "nx-release-publish": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "echo 'Skipping npm publish for desktop-twin - PKG will be uploaded to GitHub Release'"
+      }
+    },
+    "build": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "assets": [
+          {
+            "glob": "**/*",
+            "input": "{projectRoot}/assets",
+            "output": "."
+          },
+          {
+            "glob": "loader.html",
+            "input": "{projectRoot}/src",
+            "output": "."
+          },
+          {
+            "glob": "desktop-twin.css",
+            "input": "{projectRoot}/src",
+            "output": "."
+          }
+        ],
+        "deleteOutputPath": false,
+        "external": ["electron"],
+        "format": ["cjs"],
+        "main": "{projectRoot}/src/main.ts",
+        "outputFileName": "main.js",
+        "outputPath": "{projectRoot}/dist",
+        "platform": "node",
+        "thirdParty": true,
+        "tsConfig": "{projectRoot}/tsconfig.app.json",
+        "esbuildOptions": {
+          "outExtension": {
+            ".js": ".js"
+          }
+        }
+      }
+    },
+    "build-preload": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "deleteOutputPath": false,
+        "external": ["electron"],
+        "format": ["cjs"],
+        "main": "{projectRoot}/src/preload.ts",
+        "outputFileName": "preload.js",
+        "outputPath": "{projectRoot}/dist",
+        "platform": "node",
+        "thirdParty": true,
+        "tsConfig": "{projectRoot}/tsconfig.app.json",
+        "esbuildOptions": {
+          "outExtension": {
+            ".js": ".js"
+          }
+        }
+      }
+    },
+    "build-all": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "rm -rf apps/desktop-twin/dist apps/desktop-twin/release",
+          "mkdir -p apps/desktop-twin/dist",
+          "nx run desktop-twin:build",
+          "nx run desktop-twin:build-preload",
+          "cp apps/desktop-twin/src/loader.html apps/desktop-twin/dist/loader.html",
+          "cp apps/desktop-twin/src/setup.html apps/desktop-twin/dist/setup.html",
+          "cp apps/desktop-twin/src/preferences.html apps/desktop-twin/dist/preferences.html",
+          "test -f apps/desktop-twin/assets/icon.png && cp apps/desktop-twin/assets/icon.png apps/desktop-twin/dist/icon.png || echo 'No icon.png found, skipping'",
+          "echo Desktop Twin app built successfully"
+        ],
+        "parallel": false
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build-all"],
+      "options": {
+        "commands": ["electron apps/desktop-twin/dist/main.js"],
+        "parallel": false
+      }
+    },
+
+    "package": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build-all"],
+      "options": {
+        "commands": [
+          "electron-builder --dir"
+        ],
+        "cwd": "{projectRoot}"
+      }
+    },
+    "package-dist": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build-all"],
+      "options": {
+        "commands": [
+          "electron-builder"
+        ],
+        "cwd": "{projectRoot}"
+      }
+    },
+    "package-pkg": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["package-dist"],
+      "options": {
+        "commands": [
+          "chmod +x apps/desktop-twin/macos/scripts/build-pkg.sh",
+          "bash apps/desktop-twin/macos/scripts/build-pkg.sh"
+        ],
+        "parallel": false
+      }
+    }
+  }
+}
