@@ -280,6 +280,7 @@ export class Coday {
       )
 
       // Send messages directly - no conversion needed
+      // Mark them as replayed to prevent duplicate Slack notifications
       for (const message of sortedMessages) {
         if (
           message instanceof MessageEvent ||
@@ -289,6 +290,8 @@ export class Coday {
           message instanceof ChoiceEvent ||
           message instanceof AnswerEvent
         ) {
+          // Mark as replayed to prevent Slack forwarding
+          ;(message as any)._isReplayed = true
           this.interactor.sendEvent(message)
         }
       }

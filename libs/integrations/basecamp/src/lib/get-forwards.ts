@@ -52,7 +52,11 @@ export async function getBasecampForwards(
         const createdAt = new Date(f.created_at).toLocaleString()
         const repliesCount = f.replies_count || 0
         const contentPreview = f.content ? f.content.substring(0, 300) : 'No content'
-        return `- **${f.subject || f.title}** (ID: ${f.id})\n  - Received: ${createdAt}\n  - Replies: ${repliesCount}\n  - Preview: ${contentPreview}${f.content && f.content.length > 300 ? '...' : ''}\n  - URL: ${f.app_url}`
+        return `- **${f.subject || f.title}** (ID: ${
+          f.id
+        })\n  - Received: ${createdAt}\n  - Replies: ${repliesCount}\n  - Preview: ${contentPreview}${
+          f.content && f.content.length > 300 ? '...' : ''
+        }\n  - URL: ${f.app_url}`
       })
       .join('\n\n')
 

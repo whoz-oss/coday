@@ -153,7 +153,9 @@ export class ChatMessageComponent implements OnInit, OnDestroy {
 
     if (!projectName || !threadId) return null
 
-    return `/api/projects/${projectName}/threads/${threadId}/messages/${encodeURIComponent(this.message.eventId)}/formatted`
+    return `/api/projects/${projectName}/threads/${threadId}/messages/${encodeURIComponent(
+      this.message.eventId
+    )}/formatted`
   }
 
   private async renderMarkdown() {

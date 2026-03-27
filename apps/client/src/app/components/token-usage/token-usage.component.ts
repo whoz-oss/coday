@@ -131,7 +131,7 @@ export class TokenUsageComponent implements OnInit {
 
   /** Pure helper: format a nullable token count as a localised string or dash. */
   protected formatTokenValue(value: number | null): string {
-    return value === null ? EM_DASH : (new DecimalPipe('en-US').transform(value, '1.0-2') ?? '0')
+    return value === null ? EM_DASH : new DecimalPipe('en-US').transform(value, '1.0-2') ?? '0'
   }
 
   /** Pure helper: format a cost value (with $ prefix) or dash when the whole period is missing. */

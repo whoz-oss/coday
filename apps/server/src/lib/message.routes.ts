@@ -295,7 +295,11 @@ export function registerMessageRoutes(
         let output = ''
 
         if (event.type === 'tool_request') {
-          output = `Tool Request: ${(event as any).name}\n\nArguments:\n${JSON.stringify(JSON.parse((event as any).args), null, 2)}`
+          output = `Tool Request: ${(event as any).name}\n\nArguments:\n${JSON.stringify(
+            JSON.parse((event as any).args),
+            null,
+            2
+          )}`
         } else if (event.type === 'tool_response') {
           const eventOutput = (event as any).output
 
