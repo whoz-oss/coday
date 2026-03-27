@@ -4,6 +4,7 @@ import type {
   IntegrationService,
   McpConfigService,
   MemoryService,
+  MessagingGatewayService,
   ProjectService,
   ProjectStateService,
   PromptService,
@@ -28,4 +29,5 @@ export type CodayServices = {
   options?: CodayOptions
   agent?: AgentServiceModel
   aiConfig?: AiConfigService
+  messagingGateway?: MessagingGatewayService
 }

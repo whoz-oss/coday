@@ -223,7 +223,14 @@ const mcpPool = new McpInstancePool()
 debugLog('INIT', 'MCP instance pool initialized')
 
 // Initialize the thread-based Coday manager for SSE architecture
-const threadCodayManager = new ThreadCodayManager(logger, projectService, threadService, promptService, mcpPool)
+const threadCodayManager = new ThreadCodayManager(
+  logger,
+  projectService,
+  threadService,
+  promptService,
+  mcpPool,
+  messagingGatewayService
+)
 
 // Initialize prompt execution dependencies now that thread manager is ready
 promptExecutionService.initialize(threadCodayManager, threadService, codayOptions, logger)
@@ -460,6 +467,7 @@ PORT_PROMISE.then(async (PORT) => {
         messagingGatewayService
       )
       await slackConnector.start()
+      messagingGatewayService.registerConnector(slackConnector)
       debugLog('INIT', `Slack Connector started for project '${projectName}'`)
     } else {
       debugLog('INIT', 'Slack Connector not started (SLACK integration missing apiKey or appToken)')

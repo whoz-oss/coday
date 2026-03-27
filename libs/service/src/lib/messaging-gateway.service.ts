@@ -38,8 +38,8 @@ export class MessagingGatewayService {
   /**
    * Platform-agnostic thread map: source → { conversationKey → conversation entry }.
    * Persisted to disk so associations survive server restarts.
-   * Structure: { SLACK: { C123: { threadId: 'uuid', lastResponseTs: '...' } }, ... }
-   * The `meta` field is opaque — connectors can store any extra state they need.
+   * Structure: { SLACK: { C123: { threadId: 'uuid' } }, ... }
+   * Additional fields are opaque — connectors can store any extra state they need.
    */
   private threadMap: Record<string, Record<string, ConversationEntry>> = {}
   private threadMapPath?: string
@@ -63,7 +63,7 @@ export class MessagingGatewayService {
 
   /**
    * Get the full conversation entry for a given source and key.
-   * Connectors use this to retrieve persisted metadata (e.g. lastResponseTs).
+   * Connectors use this to retrieve persisted metadata.
    */
   getConversationEntry(source: string, conversationKey: string): ConversationEntry | undefined {
     return this.threadMap[source]?.[conversationKey]
@@ -71,7 +71,7 @@ export class MessagingGatewayService {
 
   /**
    * Update metadata on an existing conversation entry.
-   * Connectors call this to persist platform-specific state (e.g. lastResponseTs).
+   * Connectors call this to persist platform-specific state.
    */
   updateConversationEntry(source: string, conversationKey: string, meta: Partial<ConversationEntry>): void {
     const entry = this.threadMap[source]?.[conversationKey]
@@ -248,6 +248,8 @@ export class MessagingGatewayService {
       ephemeralContext: ephemeralLines,
     }
 
+    console.log(`[MESSAGING_GATEWAY] Running agent for thread ${threadId} (project: ${projectName}, user: ${username})`)
+
     // Create instance without an SSE connection
     const instance = this.threadCodayManager.createWithoutConnection(threadId, projectName, username, oneShotOptions)
 
@@ -258,19 +260,27 @@ export class MessagingGatewayService {
     // Run the agent and wait for completion so the caller knows when processing is done
     try {
       await coday.run()
+      console.log(`[MESSAGING_GATEWAY] Run completed for thread ${threadId}`)
     } catch (error: unknown) {
       console.error('[MESSAGING_GATEWAY] Error during agent run:', error)
     }
 
-    // Explicitly save the thread after run completes.
-    // coday.stop() fires autoSave() without awaiting, then cleanup() destroys the service
-    // before autoSave resolves — leaving the thread empty on disk.
-    // We call autoSave directly here while the service is still alive.
-    try {
-      await coday.aiThreadService.autoSave()
-      console.log(`[MESSAGING_GATEWAY] Thread ${threadId} saved successfully`)
-    } catch (saveError: unknown) {
-      console.error('[MESSAGING_GATEWAY] Failed to save thread after run:', saveError)
+    // Save the thread directly via the server-level threadService.
+    // We cannot use coday.aiThreadService because coday.run() calls cleanup() internally
+    // which kills the aiThreadService before we get control back here.
+    // Instead, we grab the thread object from the (now-killed) service and save it
+    // through the server's ThreadService which persists independently.
+    const aiThread = coday.aiThreadService.getCurrentThread()
+    const threadMessages = aiThread?.messagesLength ?? 0
+    if (aiThread && threadMessages > 0) {
+      try {
+        await this.threadService!.saveThread(projectName, aiThread)
+        console.log(`[MESSAGING_GATEWAY] Thread ${threadId} saved (${threadMessages} messages)`)
+      } catch (saveError: unknown) {
+        console.error('[MESSAGING_GATEWAY] Failed to save thread after run:', saveError)
+      }
+    } else {
+      console.warn(`[MESSAGING_GATEWAY] No thread or empty thread after run, skipping save`)
     }
 
     // Schedule in-memory instance cleanup after 30 seconds.

@@ -1,6 +1,5 @@
 import { MessagingGatewayService } from '@coday/service'
 import type { MessagingConnector, MessagingInboundEvent } from '@coday/model'
-import type { ConversationEntry } from '@coday/service'
 import { debugLog } from './log'
 
 // ---------------------------------------------------------------------------
@@ -290,9 +289,8 @@ export class SlackConnector implements MessagingConnector {
       // Conversation key uniquely identifies this Slack context (channel or channel:thread).
       // The gateway uses it to look up or create the associated Coday thread.
       const conversationKey = this.getConversationKey(channel, queued.replyContext.thread_ts)
-      const entry: ConversationEntry | undefined = this.messagingGateway.getConversationEntry('SLACK', conversationKey)
 
-      // Always fetch the last 100 messages as ephemeral context.
+      // Fetch recent channel messages as ephemeral context.
       // Slack history is injected into system instructions (not stored in thread), so there is no
       // accumulation concern — we can safely fetch the full recent context on every mention.
       const context = await this.getConversationContext(channel)
@@ -310,10 +308,7 @@ export class SlackConnector implements MessagingConnector {
         conversationKey,
       }
 
-      debugLog(
-        'SLACK',
-        `Dispatching event for ${queued.username} in ${channel} (key: ${conversationKey}, known: ${!!entry})`
-      )
+      debugLog('SLACK', `Dispatching event for ${queued.username} in ${channel} (key: ${conversationKey})`)
       await this.messagingGateway.handleEvent(inboundEvent)
     } catch (err) {
       console.error('[SLACK] Error dispatching event:', err)
@@ -360,8 +355,9 @@ export class SlackConnector implements MessagingConnector {
 
   private async getConversationContext(channel: string): Promise<string> {
     try {
-      // Always fetch the last 100 messages — no delta logic needed since history is ephemeral
-      const params: Record<string, string> = { channel, limit: '100' }
+      // Fetch up to 150 recent messages — no delta logic needed since history is ephemeral
+      // (injected into system instructions, never stored in thread).
+      const params: Record<string, string> = { channel, limit: '150' }
 
       const result = await this.slackApi<{ messages?: Array<Record<string, unknown>> }>('conversations.history', params)
 
