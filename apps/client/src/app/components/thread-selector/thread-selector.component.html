@@ -150,10 +150,10 @@
         }
 
         <!-- Empty states -->
-        @if (!threads()?.length && !searchQuery) {
+        @if (!threads()?.length && !searchQuery()) {
           <div class="thread-empty">No existing threads</div>
-        } @else if (searchQuery && getGroupedThreads().length === 0) {
-          <div class="thread-empty">No threads matching "{{ searchQuery }}"</div>
+        } @else if (searchQuery() && getGroupedThreads().length === 0) {
+          <div class="thread-empty">No threads matching "{{ searchQuery() }}"</div>
         }
       }
     </div>

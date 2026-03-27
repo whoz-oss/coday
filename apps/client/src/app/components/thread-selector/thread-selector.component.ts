@@ -1,4 +1,4 @@
-import { Component, DestroyRef, effect, EventEmitter, inject, Input, OnInit, Output } from '@angular/core'
+import { Component, DestroyRef, effect, EventEmitter, inject, Input, OnInit, Output, input } from '@angular/core'
 import { NgTemplateOutlet } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MatIconModule } from '@angular/material/icon'
@@ -56,7 +56,7 @@ export class ThreadSelectorComponent implements OnInit {
   projects: SessionState['projects'] | null = null
   // Search functionality
   @Input() searchMode = false
-  @Input() searchQuery = ''
+  readonly searchQuery = input<string>('')
   @Output() searchModeChange = new EventEmitter<boolean>()
 
   /** Emits when a thread is selected — used by parent (sidenav) to close on mobile. */
@@ -174,8 +174,8 @@ export class ThreadSelectorComponent implements OnInit {
 
     // Apply search filter to root threads + promoted orphan sub-threads
     let threadsToGroup = [...rootThreads, ...orphanSubThreads]
-    if (this.searchQuery && this.searchQuery.trim()) {
-      const query = this.searchQuery.toLowerCase().trim()
+    if (this.searchQuery() && this.searchQuery().trim()) {
+      const query = this.searchQuery().toLowerCase().trim()
       threadsToGroup = threadsToGroup.filter(
         (thread: any) =>
           thread.name.toLowerCase().includes(query) || (thread.summary && thread.summary.toLowerCase().includes(query))

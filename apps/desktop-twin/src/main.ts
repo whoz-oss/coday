@@ -65,7 +65,9 @@ function log(level: 'INFO' | 'ERROR' | 'WARN', ...args: any[]): void {
 // Initialize log file
 if (app.isPackaged) {
   try {
-    const logHeader = `\n\n${'='.repeat(80)}\nCodayTwin Desktop Log - Started at ${new Date().toISOString()}\n${'='.repeat(80)}\n`
+    const logHeader = `\n\n${'='.repeat(
+      80
+    )}\nCodayTwin Desktop Log - Started at ${new Date().toISOString()}\n${'='.repeat(80)}\n`
     fs.appendFileSync(LOG_FILE, logHeader, 'utf8')
     log('INFO', 'Log file initialized at:', LOG_FILE)
   } catch (error) {
