@@ -46,6 +46,7 @@ export interface GroupedItems {
 @Component({
   selector: 'ds-entity-list',
   standalone: true,
+  host: { '[attr.title]': 'null' },
   imports: [
     FormsModule,
     MatIconModule,

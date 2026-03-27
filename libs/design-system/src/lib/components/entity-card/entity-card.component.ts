@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, ContentChild, EventEmitter, Input, Output } from '@angular/core'
 import { MatRippleModule } from '@angular/material/core'
+import { MatTooltipModule } from '@angular/material/tooltip'
 import { CardActionsDirective } from './card-actions.directive'
 
 export type EntityCardBadgeVariant = 'warning' | 'info' | 'success' | 'error'
@@ -38,7 +39,7 @@ export interface EntityCardBadge {
 @Component({
   selector: 'ds-entity-card',
   standalone: true,
-  imports: [MatRippleModule],
+  imports: [MatRippleModule, MatTooltipModule],
   templateUrl: './entity-card.component.html',
   styleUrl: './entity-card.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
