@@ -137,7 +137,7 @@ export class GitWorktreeTools extends AssistantToolFactory {
           },
           parse: JSON.parse,
           function: async ({ branch }: { branch: string }): Promise<string> => {
-            if (!/^[a-zA-Z0-9._\/-]+$/.test(branch)) {
+            if (!/^[a-zA-Z0-9._/-]+$/.test(branch)) {
               return `Error: branch name contains invalid characters: ${branch}`
             }
             const sanitized = sanitizeBranchName(branch)
@@ -200,7 +200,7 @@ export class GitWorktreeTools extends AssistantToolFactory {
         },
         parse: JSON.parse,
         function: async ({ branch, force }: { branch: string; force?: boolean }): Promise<string> => {
-          if (!/^[a-zA-Z0-9._\/-]+$/.test(branch)) {
+          if (!/^[a-zA-Z0-9._/-]+$/.test(branch)) {
             return `Error: branch name contains invalid characters: ${branch}`
           }
           const sanitized = sanitizeBranchName(branch)
@@ -211,19 +211,25 @@ export class GitWorktreeTools extends AssistantToolFactory {
             return `Error: cannot remove the main worktree`
           }
 
+          let pathExists = false
           try {
-            await fsp.access(worktreePath)
+            const stat = await fsp.stat(worktreePath)
+            pathExists = stat.isDirectory()
           } catch {
-            return `Error: worktree path does not exist: ${worktreePath}`
+            /* path does not exist or is inaccessible */
           }
 
-          const removeResult = await runBash({
-            command: `git worktree remove "${worktreePath}"${force ? ' --force' : ''}`,
-            root: projectRoot,
-            interactor: this.interactor,
-          })
-          if (removeResult.startsWith('Command failed:')) {
-            return `Failed to remove worktree:\n${removeResult}`
+          if (pathExists) {
+            const removeResult = await runBash({
+              command: `git worktree remove "${worktreePath}"${force ? ' --force' : ''}`,
+              root: projectRoot,
+              interactor: this.interactor,
+            })
+            if (removeResult.startsWith('Command failed:')) {
+              return `Failed to remove worktree:\n${removeResult}`
+            }
+          } else {
+            this.interactor.debug(`[WORKTREE] Path does not exist, falling back to prune: ${worktreePath}`)
           }
 
           await runBash({ command: 'git worktree prune', root: projectRoot, interactor: this.interactor })

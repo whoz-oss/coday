@@ -2,6 +2,7 @@ import { inject } from '@angular/core'
 import { ActivatedRouteSnapshot, CanActivateFn } from '@angular/router'
 import { combineLatest, filter, lastValueFrom, take } from 'rxjs'
 import { ThreadStateService } from '../services/thread-state.service'
+import { UserService } from '../services/user.service'
 import { map, tap } from 'rxjs/operators'
 
 /**
@@ -22,7 +23,17 @@ import { map, tap } from 'rxjs/operators'
  */
 export const threadStateGuard: CanActivateFn = async (route: ActivatedRouteSnapshot) => {
   const threadState = inject(ThreadStateService)
+  const userService = inject(UserService)
   const threadId = route.params['threadId']
+
+  // Ensure current user is loaded before the thread component renders
+  if (!userService.getUsername()) {
+    try {
+      await lastValueFrom(userService.fetchCurrentUser())
+    } catch (error) {
+      console.error('[THREAD GUARD] Failed to load current user:', error)
+    }
+  }
 
   // If no thread ID in route, allow navigation (will be handled by component)
   if (!threadId) {

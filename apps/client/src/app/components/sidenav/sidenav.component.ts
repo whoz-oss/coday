@@ -1,4 +1,4 @@
-import { Component, ElementRef, inject, OnDestroy, OnInit, ViewChild } from '@angular/core'
+import { Component, ElementRef, EventEmitter, inject, Input, OnDestroy, OnInit, Output, ViewChild } from '@angular/core'
 import { Router } from '@angular/router'
 import { FormsModule } from '@angular/forms'
 import { Subject } from 'rxjs'
@@ -43,17 +43,27 @@ export class SidenavComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>()
   isOpen = true
 
+  /** Emits true when the sidenav opens, false when it closes. */
+  @Output() sidenavStateChange = new EventEmitter<boolean>()
+
+  /** When true, hides the floating FABs on mobile (right drawer is open). */
+  @Input() drawerOpen = false
+
+  get screenWidth(): number {
+    return window.innerWidth
+  }
+
   // Role-based access control
   isAdmin = false
 
   // User feedback messages
   configErrorMessage = ''
 
-  // Section expansion state
+  // Section expansion state — threads is always open, not tracked here
   expandedSections: Record<string, boolean> = {
-    threads: true,
     config: false,
     preview: false,
+    settings: false,
   }
 
   // Thread search state
@@ -115,11 +125,15 @@ export class SidenavComponent implements OnInit, OnDestroy {
   toggle(): void {
     this.isOpen = !this.isOpen
     this.saveSidenavState()
+    this.sidenavStateChange.emit(this.isOpen)
   }
 
   close(): void {
-    this.isOpen = false
-    this.saveSidenavState()
+    if (this.isOpen) {
+      this.isOpen = false
+      this.saveSidenavState()
+      this.sidenavStateChange.emit(false)
+    }
   }
 
   /**
@@ -179,7 +193,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (_) => {
           console.log('[SIDENAV] User config saved successfully')
-          // Could show a success notification here
         },
         error: (error) => {
           console.error('[SIDENAV] Error saving user config:', error)
@@ -238,7 +251,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (_) => {
           console.log('[SIDENAV] Project config saved successfully')
-          // Could show a success notification here
         },
         error: (error) => {
           console.error('[SIDENAV] Error saving project config:', error)
@@ -311,18 +323,26 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Toggle section expansion (accordion behavior - closes others)
+   * Toggle section expansion.
+   *
+   * - 'settings' is the top-level Control Center toggle.
+   * - 'config' and 'preview' are sub-sections inside the settings group and
+   *   follow accordion behaviour (only one open at a time within the group).
    */
   toggleSection(section: string): void {
     const wasExpanded = this.expandedSections[section]
 
-    // Close all sections first (accordion behavior)
-    Object.keys(this.expandedSections).forEach((key) => {
-      this.expandedSections[key] = false
-    })
-
-    // Toggle the clicked section
-    this.expandedSections[section] = !wasExpanded
+    if (section === 'settings') {
+      // Top-level: just toggle independently
+      this.expandedSections[section] = !wasExpanded
+    } else {
+      // Sub-section inside settings group: accordion — close all siblings first
+      const settingsSubSections = ['config', 'preview']
+      settingsSubSections.forEach((key) => {
+        this.expandedSections[key] = false
+      })
+      this.expandedSections[section] = !wasExpanded
+    }
   }
 
   /**
@@ -361,13 +381,22 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Close sidenav when a thread is selected on mobile.
+   * On desktop (>= 1024 px) the sidenav stays open.
+   */
+  onThreadSelectedOnMobile(): void {
+    if (window.innerWidth < 1024) {
+      this.close()
+    }
+  }
+
+  /**
    * Toggle thread search mode
    */
   toggleThreadSearch(event: Event): void {
     event.stopPropagation()
     this.isThreadSearchActive = true
     this.threadSearchQuery = ''
-    console.log('[SIDENAV] Thread search active:', this.isThreadSearchActive)
 
     // Focus the input after the view updates
     setTimeout(() => {
@@ -381,16 +410,12 @@ export class SidenavComponent implements OnInit, OnDestroy {
   closeThreadSearch(): void {
     this.isThreadSearchActive = false
     this.threadSearchQuery = ''
-    console.log('[SIDENAV] Thread search closed')
   }
 
   /**
    * Handle search input changes
    */
-  onThreadSearchInput(): void {
-    // Trigger change detection
-    console.log('[SIDENAV] Search query:', this.threadSearchQuery)
-  }
+  onThreadSearchInput(): void {}
 
   /**
    * Handle search mode change from thread selector

@@ -49,7 +49,7 @@ export class CommandContext {
 
   constructor(
     readonly project: Project,
-    readonly username: string
+    public username: string
   ) {}
 
   addCommands(...commands: string[]): void {

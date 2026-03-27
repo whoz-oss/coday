@@ -16,7 +16,7 @@
 
   @if (isExpanded) {
     <div class="delegation-body">
-      @if (isLoading) {
+      @if (isLoading && subMessages.length === 0) {
         <div class="loading">
           <mat-spinner [diameter]="16"></mat-spinner>
           <span>Loading...</span>

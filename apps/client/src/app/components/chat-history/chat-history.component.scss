@@ -23,16 +23,21 @@
 // Go to bottom button
 .go-to-bottom-btn {
   position: fixed !important;
-  bottom: 120px !important;
-  right: 2rem !important;
+  bottom: 30% !important;
+  right: 1rem !important;
   z-index: 1000 !important;
-}
 
-// Responsive for mobile
-@media (max-width: 768px) {
-  .go-to-bottom-btn {
-    right: 1rem !important;
-    bottom: 100px !important;
+  // Shrink to mini-FAB on mobile — consistent with file-exchange and share buttons
+  @media (max-width: 768px) {
+    width: 40px !important;
+    height: 40px !important;
+    right: 0.75rem !important;
+
+    mat-icon {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+    }
   }
 }
 

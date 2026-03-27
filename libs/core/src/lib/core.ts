@@ -97,6 +97,7 @@ export class Coday {
       // Answer the pending question (invite or choice) to unblock the await.
       // The AnswerEvent subscriber in the constructor will clear pendingQuestionEvent.
       const answerEvent = this.pendingQuestionEvent.buildAnswer(message)
+      answerEvent.name = username
       this.interactor.sendEvent(answerEvent)
     } else {
       // Agent is running — queue the message for the next initCommand() iteration.
@@ -387,10 +388,18 @@ export class Coday {
       const queued = this.messageQueue.shift()!
       this.interactor.debug(`[CODAY] Consuming queued message from ${queued.username}`)
       userCommand = queued.message
+      // Update context username so agent.run() stamps the correct sender on the AnswerEvent
+      if (this.context) {
+        this.context.username = queued.username
+      }
     } else if (!this.options.oneshot) {
       // allow user input
       this.interactor.debug(`[CODAY] No initial prompts, waiting for user input`)
       userCommand = await this.interactor.promptText(InviteEventDefault)
+      // Capture the sender's identity from the AnswerEvent that resolved the invite
+      if (this.context && this.interactor.lastAnswerName) {
+        this.context.username = this.interactor.lastAnswerName
+      }
     } else {
       this.interactor.debug(`[CODAY] No initial prompts and oneshot mode, exiting`)
     }

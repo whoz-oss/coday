@@ -1,8 +1,13 @@
-<app-sidenav>
-  <div class="app">
+<app-sidenav [drawerOpen]="isDrawerOpen">
+  <div class="app" (mousedown)="onChatFocusedOnMobile()" (touchstart)="onChatFocusedOnMobile()">
     @if (threadId) {
       <!-- Thread view - Full conversation management -->
-      <app-thread [projectName]="projectName" [threadId]="threadId"> </app-thread>
+      <app-thread
+        [projectName]="projectName"
+        [threadId]="threadId"
+        (chatFocused)="onChatFocusedOnMobile()"
+        (drawerStateChange)="onDrawerStateChange($event)"
+      ></app-thread>
     } @else {
       <!-- Welcome view - For implicit thread creation -->
 
@@ -24,6 +29,7 @@
               (messageSubmitted)="onMessageSubmitted($event)"
               (voiceRecordingToggled)="onVoiceToggled($event)"
               (heightChanged)="onInputHeightChanged($event)"
+              (textareaFocused)="onChatFocusedOnMobile()"
             ></app-chat-textarea>
           </div>
         </div>

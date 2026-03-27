@@ -3,7 +3,6 @@ import path from 'path'
 import fs from 'fs'
 import { ThreadCodayManager } from './lib/thread-coday-manager'
 
-import * as os from 'node:os'
 import { debugLog } from './lib/log'
 import { CodayLoggerUtils } from '@coday/utils'
 import {
@@ -34,6 +33,7 @@ import { parseCodayOptions } from './lib/coday-options-utils'
 import { ProjectFileRepository } from '@coday/repository'
 import { McpInstancePool } from '@coday/mcp'
 import { createProxyMiddleware } from 'http-proxy-middleware'
+import { resolveUsername } from './lib/resolve-username'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT
@@ -44,7 +44,7 @@ const DEFAULT_PORT = process.env.PORT
 
 // Dynamically find an available port
 const PORT_PROMISE = findAvailablePort(DEFAULT_PORT)
-const EMAIL_HEADER = 'x-forwarded-email'
+// Note: header constants are now managed in ./lib/resolve-username.ts
 
 // Parse options once for all clients
 const codayOptions = parseCodayOptions()
@@ -186,6 +186,19 @@ if (resolvedProjectName && !codayOptions.forcedProject) {
 const projectService = new ProjectService(projectRepository, resolvedProjectName, codayOptions.forcedProject)
 
 promptService = new PromptService(codayOptions.configDir, projectService)
+
+// Register native command handler stubs so they appear in the autocomplete
+// (the actual execution is handled by DelegateCommandHandler in the looper)
+promptService.registerNativeHandler({
+  id: 'handler-delegate',
+  name: 'delegate',
+  description: 'Delegate a task to a specific agent in an isolated sub-thread',
+  source: 'builtin',
+  webhookEnabled: false,
+  createdBy: 'system',
+  createdAt: new Date('2024-01-01').toISOString(),
+  parameterFormat: '@AgentName <task>',
+})
 debugLog('INIT', 'Prompt service initialized')
 
 // Create prompt execution service
@@ -240,18 +253,24 @@ const FORBIDDEN_USERNAMES = [
 ] as const
 
 /**
- * Extract username for authentication and logging purposes
+ * Extract username for authentication and logging purposes.
  *
- * In authenticated mode, extracts username from the x-forwarded-email header
- * (typically set by reverse proxy or authentication middleware).
- * In non-authenticated mode (default), uses the local system username for development/testing.
+ * Resolution order when `--auth` is enabled:
+ *  1. `CF_Authorization` header — Cloudflare Access JWT (email claim decoded
+ *     from the base64url payload; no signature verification needed as
+ *     Cloudflare validates the token at the edge).
+ *  2. `x-forwarded-email` header — standard reverse-proxy header.
+ *  3. Throws if neither source yields a valid email.
+ *
+ * When `--auth` is NOT enabled, uses the local OS username (development mode).
  *
  * @param req - Express request object containing headers
  * @returns Username string for logging and thread ownership
  * @throws Error if username is a system/service account (security protection)
+ * @throws Error if `--auth` is enabled but no valid identity header is found
  */
 function getUsername(req: express.Request): string {
-  const username = codayOptions.auth ? (req.headers[EMAIL_HEADER] as string) : os.userInfo().username
+  const username = resolveUsername(req.headers as Record<string, string | string[] | undefined>, !!codayOptions.auth)
 
   // Security check: prevent running as system/service accounts
   if (FORBIDDEN_USERNAMES.includes(username.toLowerCase() as any)) {
@@ -267,7 +286,7 @@ function getUsername(req: express.Request): string {
 }
 
 // Register user information routes
-registerUserRoutes(app, getUsername, codayOptions.configDir)
+registerUserRoutes(app, getUsername, codayOptions.configDir, !!codayOptions.auth)
 
 // Register configuration management routes
 registerConfigRoutes(app, configRegistry, getUsername)

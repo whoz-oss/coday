@@ -8,6 +8,11 @@
     margin: 0.75rem 0;
     flex-direction: row-reverse;
     align-items: flex-start;
+
+    // Other-user messages: flip back to left-align
+    &:has(.other-user) {
+      flex-direction: row;
+    }
   }
 }
 
@@ -44,6 +49,12 @@
     &:hover {
       transform: translateY(-1px);
       box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.2);
+    }
+
+    // Other-user messages: left-side bubble tail
+    &.other-user {
+      border-bottom-right-radius: 18px;
+      border-bottom-left-radius: 6px;
     }
   }
 
