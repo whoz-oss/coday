@@ -23,6 +23,17 @@ export const appRoutes: Route[] = [
     canActivate: [projectStateGuard],
   },
   {
+    path: 'project/:projectName/schedulers',
+    loadComponent: () =>
+      import('./components/scheduler-list/scheduler-list.component').then((m) => m.SchedulerListComponent),
+    canActivate: [projectStateGuard],
+  },
+  {
+    path: 'project/:projectName/agents',
+    loadComponent: () => import('./components/agent-list/agent-list.component').then((m) => m.AgentListComponent),
+    canActivate: [projectStateGuard],
+  },
+  {
     path: 'project/:projectName/thread/:threadId',
     component: MainAppComponent,
     canActivate: [projectStateGuard, threadStateGuard],

@@ -20,7 +20,9 @@
       }
     </div>
     @if (description) {
-      <span class="entity-card__description">{{ description }}</span>
+      <span class="entity-card__description" [matTooltip]="description" matTooltipShowDelay="600">{{
+        description
+      }}</span>
     }
   </div>
 

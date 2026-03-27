@@ -15,8 +15,6 @@ import { OptionsPanelComponent } from '../options-panel'
 import { ThreadSelectorComponent } from '../thread-selector/thread-selector.component'
 import { PreviewPanelComponent } from '../preview-panel/preview-panel.component'
 import { JsonEditorComponent, JsonEditorData } from '../json-editor/json-editor.component'
-import { SchedulerManagerComponent } from '../scheduler-manager/scheduler-manager.component'
-import { AgentManagerComponent } from '../agent-manager/agent-manager.component'
 import { ProjectStateService } from '../../core/services/project-state.service'
 import { toSignal } from '@angular/core/rxjs-interop'
 import { ProjectApiService } from '../../core/services/project-api.service'
@@ -274,26 +272,15 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Open a manager dialog with standard dimensions
-   */
-  private openManagerDialog(component: any, logMessage: string): void {
-    console.log(`[SIDENAV] ${logMessage}`)
-    this.dialog.open(component, {
-      width: '90vw',
-      maxWidth: '1200px',
-      height: '90vh',
-      maxHeight: '900px',
-    })
-  }
-
-  /**
-   * Open agent manager dialog
+   * Navigate to the agent list page
    */
   openAgents(): void {
     if (!this.requireProjectSelection('open agents')) {
       return
     }
-    this.openManagerDialog(AgentManagerComponent, 'Opening agent manager dialog')
+    const projectName = this.selectedProjectName()
+    this.router.navigate(['project', projectName, 'agents'])
+    this.close()
   }
 
   /**
@@ -309,17 +296,15 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Open scheduler manager dialog
-   * Available for all users if a project is selected
+   * Navigate to the scheduler list page
    */
   openSchedulers(): void {
     if (!this.requireProjectSelection('open schedulers')) {
       return
     }
-    this.openManagerDialog(
-      SchedulerManagerComponent,
-      `Opening scheduler manager dialog for project: ${this.selectedProjectName()}`
-    )
+    const projectName = this.selectedProjectName()
+    this.router.navigate(['project', projectName, 'schedulers'])
+    this.close()
   }
 
   /**
