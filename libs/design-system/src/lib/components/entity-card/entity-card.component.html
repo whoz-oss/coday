@@ -1,0 +1,32 @@
+<div
+  class="entity-card"
+  matRipple
+  [class.entity-card--clickable]="!hasActions"
+  [attr.role]="!hasActions ? 'button' : null"
+  [attr.tabindex]="!hasActions ? '0' : null"
+  (click)="!hasActions && onClick()"
+  (keydown.enter)="!hasActions && onClick()"
+  (keydown.space)="!hasActions && onClick()"
+>
+  <div class="entity-card__body">
+    <div class="entity-card__header">
+      <span class="entity-card__name">{{ name }}</span>
+      @if (badges.length > 0) {
+        <div class="entity-card__badges">
+          @for (badge of badges; track badge.label) {
+            <span class="entity-card__badge badge-{{ badge.variant }}">{{ badge.label }}</span>
+          }
+        </div>
+      }
+    </div>
+    @if (description) {
+      <span class="entity-card__description">{{ description }}</span>
+    }
+  </div>
+
+  @if (hasActions) {
+    <div class="entity-card__actions">
+      <ng-content select="[dsCardActions]" />
+    </div>
+  }
+</div>

@@ -1,0 +1,67 @@
+.project-new-page {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 100vh;
+  width: 100%;
+  background: var(--color-bg);
+  padding: 2rem 1.5rem;
+  box-sizing: border-box;
+}
+
+.project-new-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 560px;
+  padding: 2rem;
+  background: var(--color-bg-secondary, rgba(255, 255, 255, 0.7));
+  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+  border-radius: 16px;
+  box-shadow: var(--glass-shadow, 0 8px 32px rgba(31, 38, 135, 0.15));
+  margin-top: 2rem;
+}
+
+.project-new__back {
+  align-self: flex-start;
+  // Compensate mat-button padding so it aligns with the card edge
+  margin-left: -0.5rem;
+  color: var(--color-text-secondary, #6e6e73);
+}
+
+.project-new__title {
+  margin: 0;
+  font-size: 1.625rem;
+  font-weight: 700;
+  color: var(--color-text, #1d1d1f);
+  letter-spacing: -0.02em;
+}
+
+.project-new__subtitle {
+  margin: -0.75rem 0 0;
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary, #6e6e73);
+}
+
+.project-new__form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.project-new__error {
+  padding: 0.75rem 1rem;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  border-radius: 8px;
+  color: var(--color-error, #ff3b30);
+  font-size: 0.875rem;
+}
+
+.project-new__actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  padding-top: 0.25rem;
+}
