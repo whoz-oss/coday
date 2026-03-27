@@ -50,7 +50,7 @@
                 <mat-panel-title class="entity-list__panel-title">{{ group.groupLabel }}</mat-panel-title>
               </mat-expansion-panel-header>
             }
-            <div class="entity-list__grid">
+            <div class="entity-list__grid" [style.--card-min-width]="cardMinWidth">
               @for (item of group.items; track item.id) {
                 <ng-container *ngTemplateOutlet="itemTemplate ?? defaultCard; context: { $implicit: item }" />
               }
@@ -60,7 +60,7 @@
       </mat-accordion>
     } @else {
       <!-- Flat: no groups, or search active -->
-      <div class="entity-list__grid">
+      <div class="entity-list__grid" [style.--card-min-width]="cardMinWidth">
         @for (item of filteredItems(); track item.id) {
           <ng-container *ngTemplateOutlet="itemTemplate ?? defaultCard; context: { $implicit: item }" />
         }

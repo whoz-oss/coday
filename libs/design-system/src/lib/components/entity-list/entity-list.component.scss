@@ -108,7 +108,7 @@
 
 .entity-list__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--card-min-width, 260px), 1fr));
   gap: 0.75rem;
   padding: 0.5rem 0;
 }
