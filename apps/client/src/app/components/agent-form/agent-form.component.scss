@@ -162,6 +162,16 @@
   }
 }
 
+.skill-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+
+  .skill-field {
+    flex: 1;
+  }
+}
+
 .upload-btn {
   display: inline-flex;
   align-items: center;
@@ -190,7 +200,8 @@
   }
 }
 
-.doc-upload-error {
+.doc-upload-error,
+.skill-upload-error {
   margin: 0;
   font-size: 0.85rem;
   color: var(--color-error);

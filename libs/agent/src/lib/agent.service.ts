@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as yaml from 'yaml'
-import { getFormattedDocs, findFilesByName } from '@coday/function'
+import { getFormattedDocs, findFilesByName, parseSkillFiles } from '@coday/function'
 import {
   Agent,
   AgentDefinition,
@@ -16,6 +16,7 @@ import {
 } from '@coday/model'
 import { CodayServices } from '@coday/coday-services'
 import { AiClientProvider } from '@coday/integrations-ai'
+import { SkillTools } from '@coday/integration'
 import { Toolbox } from './toolbox'
 
 export class AgentService implements Killable, AgentServiceModel {
@@ -384,8 +385,21 @@ export class AgentService implements Killable, AgentServiceModel {
       const clientTime = performance.now() - clientStart
 
       const basePath = entry.basePath
+
+      // Parse skill files (L1 metadata) — must happen BEFORE getFormattedDocs and tool building
+      const skillPaths = def.skills ?? []
+      const skillsConfig = context.project.skillsConfig
+      const parsedSkills =
+        skillPaths.length > 0 ? await parseSkillFiles(skillPaths, basePath, this.interactor, skillsConfig) : []
+
       const docsStart = performance.now()
-      const agentDocs = await getFormattedDocs(def, this.interactor, basePath, def.name)
+      const agentDocs = await getFormattedDocs(
+        def,
+        this.interactor,
+        basePath,
+        def.name,
+        parsedSkills.length > 0 ? parsedSkills : undefined
+      )
       const docsTime = performance.now() - docsStart
 
       // overwrite agent instructions with the added project and user context
@@ -419,14 +433,22 @@ ${agentDocs}
 
       const toolsStart = performance.now()
       const syncTools = await this.toolbox.getTools({ context, integrations, agentName: def.name })
+
+      // Instantiate SkillTools directly (NOT in the factory registry — per-agent by nature)
+      const skillTools =
+        parsedSkills.length > 0
+          ? await new SkillTools(this.interactor, parsedSkills, basePath).getTools(context, [], def.name)
+          : []
+
+      const allTools = [...syncTools, ...skillTools]
       const toolsTime = performance.now() - toolsStart
 
       // Debug: log available tools
       this.interactor.debug(
-        `  📦 Tools available for '${def.name}': ${syncTools.map((t) => t.function.name).join(', ')}`
+        `  📦 Tools available for '${def.name}': ${allTools.map((t) => t.function.name).join(', ')}`
       )
 
-      const toolset = new ToolSet([...syncTools])
+      const toolset = new ToolSet(allTools)
       const agent = new Agent(def, aiClient, toolset)
 
       const totalTime = performance.now() - agentStart

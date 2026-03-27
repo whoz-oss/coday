@@ -150,6 +150,9 @@ ai:
 
 agents:
   - name: Coday
+    modelName: claude-sonnet-4-6
+    skills:
+      - skill-creator
   - name: Slackay
     description: Agent interfaced with Slack
     modelName: SMALL

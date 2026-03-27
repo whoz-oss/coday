@@ -3,7 +3,7 @@ import { AiThread } from './ai-thread'
 export interface FunctionDefinition<T> {
   name: string
   description: string
-  parameters: { type: 'object'; properties: Record<string, unknown> }
+  parameters: { type: 'object'; properties: Record<string, unknown>; required?: string[] }
   parse: (input: string) => T
   function: (args: T, thread?: AiThread) => Promise<unknown> | unknown
 }

@@ -56,6 +56,7 @@
     "@swc/core": "catalog:dev",
     "@swc/helpers": "catalog:dev",
     "@trivago/prettier-plugin-sort-imports": "catalog:dev",
+    "@types/adm-zip": "catalog:dev",
     "@types/jest": "catalog:dev",
     "@types/node": "catalog:dev",
     "@typescript-eslint/eslint-plugin": "catalog:dev",

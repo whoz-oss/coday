@@ -1,4 +1,4 @@
-import { WithDocs } from '@coday/model'
+import { SkillMetadata, WithDocs } from '@coday/model'
 import * as path from 'node:path'
 import { Interactor } from '@coday/model'
 import * as fs from 'node:fs/promises'
@@ -9,7 +9,8 @@ export async function getFormattedDocs(
   withDocs: WithDocs,
   interactor: Interactor,
   projectPath: string,
-  contextName: string
+  contextName: string,
+  skills?: SkillMetadata[]
 ): Promise<string> {
   let formattedDocs = ''
   let mandatoryDocText = ''
@@ -156,6 +157,12 @@ export async function getFormattedDocs(
 
     if (optionalDocsDescription) {
       formattedDocs += `\n\nOptional documents or resources to refer for more details:\n${optionalDocsDescription}`
+    }
+
+    // Add Available Skills section (L1 metadata) if skills are provided
+    if (skills && skills.length > 0) {
+      const skillLines = skills.map((s) => `  - ${s.name}: ${s.description}`)
+      formattedDocs += `\n\nAvailable Skills\n\nThe following skills can be loaded on-demand using the SKILL__load_skill tool:\n${skillLines.join('\n')}`
     }
 
     if (warnings) {

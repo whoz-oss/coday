@@ -1,0 +1,128 @@
+{
+  "completed_steps": [
+    {
+      "status": "completed",
+      "step": "step_0.5",
+      "summary": "Loaded documentation requirements for 12 project types",
+      "timestamp": "2026-03-20T15:00:00.000Z"
+    },
+    {
+      "status": "completed",
+      "step": "step_1",
+      "summary": "Classified as monorepo with 6 apps + 17+ shared libs. Parts: client (Angular), server (Express), desktop (Electron), agentos (Kotlin)",
+      "timestamp": "2026-03-20T15:00:10.000Z"
+    },
+    {
+      "status": "completed",
+      "step": "step_2",
+      "summary": "Found 30+ existing documentation files across docs/ (user guides, configuration, study notes, legacy to-rework docs)",
+      "timestamp": "2026-03-20T15:00:20.000Z"
+    },
+    {
+      "status": "completed",
+      "step": "step_3",
+      "summary": "Tech stack: TypeScript 5.9.3, Angular 20.3.4, Express 5.1.0, Electron 38.3.0, NX 22.2.3, pnpm workspaces, Jest/Playwright, AI SDKs (Anthropic, OpenAI, Google), MCP",
+      "timestamp": "2026-03-20T15:00:30.000Z"
+    },
+    {
+      "status": "completed",
+      "step": "step_4",
+      "summary": "Quick scan conditional analysis: 10 API route files detected in server, 10 integration adapters, 6 handler implementations, migration system found",
+      "timestamp": "2026-03-20T15:01:00.000Z"
+    },
+    {
+      "status": "completed",
+      "step": "step_5",
+      "summary": "Source tree documented with annotated directory structure, critical folders, entry points, and cross-part integration points",
+      "timestamp": "2026-03-20T15:02:00.000Z"
+    },
+    {
+      "status": "completed",
+      "step": "step_6",
+      "summary": "Development guide written: prerequisites, install, run/build/test commands, code conventions, CI/CD (GitHub Actions release.yml + validate.yml)",
+      "timestamp": "2026-03-20T15:02:30.000Z"
+    },
+    {
+      "status": "completed",
+      "step": "step_8",
+      "summary": "Architecture document written covering layered architecture, tech stack, API design, component overview, data architecture, testing, deployment",
+      "timestamp": "2026-03-20T15:03:00.000Z"
+    },
+    {
+      "status": "completed",
+      "step": "step_9",
+      "summary": "Supporting docs: project-overview.md, source-tree-analysis.md, development-guide.md all written",
+      "timestamp": "2026-03-20T15:03:30.000Z"
+    },
+    {
+      "status": "completed",
+      "step": "step_10",
+      "summary": "Master index.md generated with links to all generated and existing documentation",
+      "timestamp": "2026-03-20T15:04:00.000Z"
+    },
+    {
+      "status": "completed",
+      "step": "step_11",
+      "summary": "Validation complete. All generated files present, no incomplete markers found",
+      "timestamp": "2026-03-20T15:04:30.000Z"
+    },
+    {
+      "status": "completed",
+      "step": "step_12",
+      "summary": "Workflow complete",
+      "timestamp": "2026-03-20T15:05:00.000Z"
+    }
+  ],
+  "current_step": "completed",
+  "findings": {
+    "api_endpoints_detected": 10,
+    "existing_docs_count": 30,
+    "handler_implementations": 6,
+    "integration_adapters": 10,
+    "project_classification": "NX-based TypeScript monorepo with Angular frontend, Express backend, Electron desktop, and Kotlin AgentOS service",
+    "repository_type": "monorepo",
+    "shared_libraries": 17,
+    "technology_stack": "TypeScript 5.9.3, Angular 20.3.4, Express 5.1.0, Electron 38.3.0, Kotlin/Gradle"
+  },
+  "mode": "initial_scan",
+  "outputs_generated": [
+    "project-scan-report.json",
+    "project-overview.md",
+    "source-tree-analysis.md",
+    "architecture.md",
+    "development-guide.md",
+    "index.md"
+  ],
+  "project_knowledge": "/Users/selim/Workspace/forge/coday/docs/bmad",
+  "project_root": "/Users/selim/Workspace/forge/coday",
+  "project_types": [
+    {
+      "display_name": "Angular Web Frontend",
+      "part_id": "client",
+      "project_type_id": "web"
+    },
+    {
+      "display_name": "Express.js API Backend",
+      "part_id": "server",
+      "project_type_id": "backend"
+    },
+    {
+      "display_name": "Electron Desktop App",
+      "part_id": "desktop",
+      "project_type_id": "desktop"
+    },
+    {
+      "display_name": "Kotlin/Gradle AgentOS Service",
+      "part_id": "agentos",
+      "project_type_id": "backend"
+    }
+  ],
+  "resume_instructions": "Workflow completed successfully",
+  "scan_level": "quick",
+  "timestamps": {
+    "completed": "2026-03-20T15:05:00.000Z",
+    "last_updated": "2026-03-20T15:05:00.000Z",
+    "started": "2026-03-20T15:00:00.000Z"
+  },
+  "workflow_version": "1.2.0"
+}
