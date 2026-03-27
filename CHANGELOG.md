@@ -1,3 +1,13 @@
+## 0.106.0 (2026-03-27)
+
+### 🚀 Features
+
+- add generic entity-list for project and prompt list ([#614](https://github.com/whoz-oss/coday/pull/614))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
 ## 0.105.3 (2026-03-27)
 
 ### 🩹 Fixes
