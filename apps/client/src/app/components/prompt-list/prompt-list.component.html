@@ -2,7 +2,6 @@
   <ds-entity-list
     title="Prompts"
     [items]="promptItems()"
-    layout="list"
     searchPlaceholder="Filter prompts…"
     emptyMessage="No prompts found."
     [showCreate]="true"
@@ -38,21 +37,34 @@
     (selected)="onEdit($event)"
   >
     <ng-container dsCardActions>
-      <button mat-icon-button title="Edit" (click)="onEdit(item.id)">
-        <mat-icon>edit</mat-icon>
-      </button>
-      @if (isAdmin()) {
-        <button
-          mat-icon-button
-          [title]="isWebhookEnabled(item.id) ? 'Disable webhook' : 'Enable webhook'"
-          (click)="onToggleWebhook(item.id)"
-        >
-          <mat-icon>{{ isWebhookEnabled(item.id) ? 'link_off' : 'link' }}</mat-icon>
-        </button>
-      }
-      <button mat-icon-button title="Delete" class="prompt-list__delete-btn" (click)="onDelete(item.id)">
-        <mat-icon>delete</mat-icon>
+      <button
+        mat-icon-button
+        [matMenuTriggerFor]="cardMenu"
+        [matMenuTriggerData]="{ id: item.id }"
+        (click)="$event.stopPropagation()"
+      >
+        <mat-icon>more_vert</mat-icon>
       </button>
     </ng-container>
   </ds-entity-card>
 </ng-template>
+
+<!-- Shared menu instance — data injected via matMenuTriggerData -->
+<mat-menu #cardMenu="matMenu">
+  <ng-template matMenuContent let-id="id">
+    <button mat-menu-item (click)="onEdit(id)">
+      <mat-icon>edit</mat-icon>
+      Edit
+    </button>
+    @if (isAdmin()) {
+      <button mat-menu-item (click)="onToggleWebhook(id)">
+        <mat-icon>{{ isWebhookEnabled(id) ? 'link_off' : 'link' }}</mat-icon>
+        {{ isWebhookEnabled(id) ? 'Disable webhook' : 'Enable webhook' }}
+      </button>
+    }
+    <button mat-menu-item class="prompt-list__delete-item" (click)="onDelete(id)">
+      <mat-icon>delete</mat-icon>
+      Delete
+    </button>
+  </ng-template>
+</mat-menu>

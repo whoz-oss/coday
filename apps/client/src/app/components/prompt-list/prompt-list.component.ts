@@ -3,6 +3,7 @@ import { Router } from '@angular/router'
 import { MatButtonModule } from '@angular/material/button'
 import { MatIconModule } from '@angular/material/icon'
 import { MatSlideToggleModule } from '@angular/material/slide-toggle'
+import { MatMenuModule } from '@angular/material/menu'
 import { MatDialog } from '@angular/material/dialog'
 import { FormsModule } from '@angular/forms'
 import { CardActionsDirective, EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
@@ -36,6 +37,7 @@ const SYSTEM_OWNER = 'system'
     MatButtonModule,
     MatIconModule,
     MatSlideToggleModule,
+    MatMenuModule,
     FormsModule,
   ],
   templateUrl: './prompt-list.component.html',

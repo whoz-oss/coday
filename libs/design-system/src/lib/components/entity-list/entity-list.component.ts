@@ -65,7 +65,6 @@ export class EntityListComponent implements AfterViewInit, OnChanges {
   @Input() searchPlaceholder: string = 'Filter…'
   @Input() emptyMessage: string = 'No items found.'
   @Input() autoFocusSearch: boolean = false
-  @Input() layout: 'grid' | 'list' = 'grid'
   @Input() showCreate: boolean = false
   @Input() itemTemplate?: TemplateRef<{ $implicit: EntityListItem }>
 
