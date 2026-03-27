@@ -1,7 +1,7 @@
 import * as fsp from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { sanitizeBranchName, isInsideWorktree } from './git-worktree.tools'
+import { sanitizeBranchName, isInsideWorktree, resolveWorktreeDirName } from './git-worktree.tools'
 
 describe('sanitizeBranchName', () => {
   it('replaces / with -', () => {
@@ -30,6 +30,29 @@ describe('sanitizeBranchName', () => {
 
   it('strips a trailing dash', () => {
     expect(sanitizeBranchName('trailing-')).toBe('trailing')
+  })
+})
+
+describe('resolveWorktreeDirName', () => {
+  it('strips the parent prefix when projectName matches convention', () => {
+    expect(resolveWorktreeDirName('coday', 'coday__feat-my-feature')).toBe('feat-my-feature')
+  })
+
+  it('handles legacy projectName whose suffix differs from the sanitized branch', () => {
+    // A worktree created manually with a different directory name than what the
+    // current convention would derive from the branch name.
+    const legacyProjectName = 'coday__feat-vincent-audibert-issue-0634-move-manual-delegation-to-async'
+    expect(resolveWorktreeDirName('coday', legacyProjectName)).toBe(
+      'feat-vincent-audibert-issue-0634-move-manual-delegation-to-async'
+    )
+  })
+
+  it('returns null when projectName does not start with parent prefix', () => {
+    expect(resolveWorktreeDirName('coday', 'some-other-project')).toBeNull()
+  })
+
+  it('returns null when projectName equals the parent project name without suffix', () => {
+    expect(resolveWorktreeDirName('coday', 'coday')).toBeNull()
   })
 })
 
