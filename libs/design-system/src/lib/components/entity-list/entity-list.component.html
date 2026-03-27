@@ -37,7 +37,7 @@
   </div>
 
   <!-- Content (max-width constrained) -->
-  <div class="entity-list__content">
+  <div class="entity-list__content" [style.max-width]="contentMaxWidth">
     @if (filteredItems().length === 0) {
       <p class="entity-list__empty">{{ emptyMessage }}</p>
     } @else if (hasGroups()) {

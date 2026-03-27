@@ -66,6 +66,7 @@ export class EntityListComponent implements AfterViewInit, OnChanges {
   @Input() emptyMessage: string = 'No items found.'
   @Input() autoFocusSearch: boolean = false
   @Input() cardMinWidth: string = '260px'
+  @Input() contentMaxWidth: string = '900px'
   @Input() showCreate: boolean = false
   @Input() itemTemplate?: TemplateRef<{ $implicit: EntityListItem }>
 
