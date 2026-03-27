@@ -1,3 +1,14 @@
+## 0.107.1 (2026-03-27)
+
+### 🩹 Fixes
+
+- add close button to share thread panel ([#683](https://github.com/whoz-oss/coday/pull/683), [#682](https://github.com/whoz-oss/coday/issues/682))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.107.0 (2026-03-27)
 
 ### 🚀 Features
