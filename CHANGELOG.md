@@ -1,3 +1,25 @@
+## 0.106.0 (2026-03-27)
+
+### 🚀 Features
+
+- add generic entity-list for project and prompt list ([#614](https://github.com/whoz-oss/coday/pull/614))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.105.3 (2026-03-27)
+
+### 🩹 Fixes
+
+- #671 remove_worktree accepts optional projectName for legacy worktrees ([#674](https://github.com/whoz-oss/coday/pull/674), [#671](https://github.com/whoz-oss/coday/issues/671))
+- #670 improve modal/background contrast with border, shadow and blurred backdrop ([#673](https://github.com/whoz-oss/coday/pull/673), [#670](https://github.com/whoz-oss/coday/issues/670), [#2](https://github.com/whoz-oss/coday/issues/2), [#1](https://github.com/whoz-oss/coday/issues/1))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.105.2 (2026-03-26)
 
 ### 🩹 Fixes
