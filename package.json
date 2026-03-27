@@ -30,6 +30,7 @@
     "*.ts": "prettier --write"
   },
   "dependencies": {
+    "@angular/core": "catalog:",
     "glob": "catalog:",
     "yargs": "catalog:"
   },
