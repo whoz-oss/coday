@@ -24,7 +24,7 @@ $section-toggle-height: 50px;
   mat-sidenav {
     position: relative !important;
     transition: width;
-    width: 310px;
+    width: 434px;
     height: 100dvh !important; // dvh for Safari bottom bar
     flex-shrink: 0;
 
@@ -167,7 +167,7 @@ $section-toggle-height: 50px;
 
 // Sidenav drawer — pinned header/new-thread/settings + scrollable thread list
 .app-sidenav {
-  width: 310px;
+  width: 434px;
   height: 100dvh !important; // dvh accounts for Safari's dynamic browser chrome
   min-height: 0 !important;
   position: relative;
@@ -762,7 +762,7 @@ $section-toggle-height: 50px;
 // Responsive
 @media (max-width: 480px) {
   .app-sidenav {
-    width: 280px;
+    width: 320px;
   }
 
   .sidenav-toggle-btn {
