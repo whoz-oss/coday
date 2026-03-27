@@ -1,3 +1,14 @@
+## 0.107.0 (2026-03-27)
+
+### 🚀 Features
+
+- replace dialogs with full-page list components ([#681](https://github.com/whoz-oss/coday/pull/681))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- vincent.audibert
+
 ## 0.106.0 (2026-03-27)
 
 ### 🚀 Features
