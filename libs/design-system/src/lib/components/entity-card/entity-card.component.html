@@ -9,16 +9,14 @@
   (keydown.space)="!hasActions && onClick()"
 >
   <div class="entity-card__body">
-    <div class="entity-card__header">
-      <span class="entity-card__name">{{ name }}</span>
-      @if (badges.length > 0) {
-        <div class="entity-card__badges">
-          @for (badge of badges; track badge.label) {
-            <span class="entity-card__badge badge-{{ badge.variant }}">{{ badge.label }}</span>
-          }
-        </div>
-      }
-    </div>
+    <span class="entity-card__name">{{ name }}</span>
+    @if (badges.length > 0) {
+      <div class="entity-card__badges">
+        @for (badge of badges; track badge.label) {
+          <span class="entity-card__badge badge-{{ badge.variant }}">{{ badge.label }}</span>
+        }
+      </div>
+    }
     @if (description) {
       <span class="entity-card__description" [matTooltip]="description" matTooltipShowDelay="600">{{
         description
