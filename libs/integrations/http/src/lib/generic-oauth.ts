@@ -91,7 +91,9 @@ export class GenericOAuth {
     const remainingMs = this.tokenData.expiresAt - Date.now()
     const valid = remainingMs > 5 * 60 * 1000
     this.interactor.debug(
-      `[OAuth:${this.integrationName}] token expiresAt=${new Date(this.tokenData.expiresAt).toISOString()}, remainingMs=${remainingMs}, valid=${valid}`
+      `[OAuth:${this.integrationName}] token expiresAt=${new Date(
+        this.tokenData.expiresAt
+      ).toISOString()}, remainingMs=${remainingMs}, valid=${valid}`
     )
     return valid
   }
@@ -314,7 +316,9 @@ export class GenericOAuth {
     const tokens = integrationConfig?.oauth2?.tokens
 
     this.interactor.debug(
-      `[OAuth:${this.integrationName}] loadTokensFromStorage: projectName=${this.resolvedProjectName}, hasProjects=${!!userProjects}, hasProjectConfig=${!!projectConfig}, hasIntegrationConfig=${!!integrationConfig}, hasTokens=${!!tokens}`
+      `[OAuth:${this.integrationName}] loadTokensFromStorage: projectName=${
+        this.resolvedProjectName
+      }, hasProjects=${!!userProjects}, hasProjectConfig=${!!projectConfig}, hasIntegrationConfig=${!!integrationConfig}, hasTokens=${!!tokens}`
     )
 
     if (tokens) {
@@ -324,7 +328,9 @@ export class GenericOAuth {
         expiresAt: tokens.expires_at,
       }
       this.interactor.debug(
-        `[OAuth:${this.integrationName}] loaded tokens from storage, expiresAt=${new Date(tokens.expires_at).toISOString()}`
+        `[OAuth:${this.integrationName}] loaded tokens from storage, expiresAt=${new Date(
+          tokens.expires_at
+        ).toISOString()}`
       )
     }
   }

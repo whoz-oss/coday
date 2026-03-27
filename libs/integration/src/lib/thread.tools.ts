@@ -49,7 +49,9 @@ export class ThreadTools extends AssistantToolFactory {
             return threads
               .map(
                 (t) =>
-                  `- id: ${t.id}\n  name: ${t.name || '(unnamed)'}\n  summary: ${t.summary || '(no summary)'}\n  modified: ${t.modifiedDate}\n  starred: ${t.starring?.includes(username) ? 'yes' : 'no'}`
+                  `- id: ${t.id}\n  name: ${t.name || '(unnamed)'}\n  summary: ${
+                    t.summary || '(no summary)'
+                  }\n  modified: ${t.modifiedDate}\n  starred: ${t.starring?.includes(username) ? 'yes' : 'no'}`
               )
               .join('\n\n')
           } catch (error) {

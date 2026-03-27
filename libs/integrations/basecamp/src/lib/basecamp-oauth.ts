@@ -403,7 +403,9 @@ export class BasecampOAuth {
     const remainingHours = Math.floor((remainingMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
 
     this.interactor.debug(
-      `Saved OAuth tokens to storage for ${this.integrationName}. Expires at: ${expiresAt.toLocaleString()} (in ${remainingDays}d ${remainingHours}h)`
+      `Saved OAuth tokens to storage for ${
+        this.integrationName
+      }. Expires at: ${expiresAt.toLocaleString()} (in ${remainingDays}d ${remainingHours}h)`
     )
   }
 

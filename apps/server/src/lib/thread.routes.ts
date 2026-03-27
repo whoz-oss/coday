@@ -562,7 +562,9 @@ export function registerThreadRoutes(
         // Check file size
         if (buffer.length > MAX_FILE_SIZE) {
           res.status(400).json({
-            error: `File too large: ${(buffer.length / 1024 / 1024).toFixed(2)} MB exceeds maximum of ${MAX_FILE_SIZE / 1024 / 1024} MB`,
+            error: `File too large: ${(buffer.length / 1024 / 1024).toFixed(2)} MB exceeds maximum of ${
+              MAX_FILE_SIZE / 1024 / 1024
+            } MB`,
           })
           return
         }

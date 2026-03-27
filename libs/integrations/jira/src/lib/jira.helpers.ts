@@ -33,7 +33,7 @@ export function validateJqlOperators(jql: string, fieldMapping: ActiveFieldMappi
     // For each condition, extract field, operator, and value
     // This regex handles various operator formats and value types
     const conditionMatch = condition.match(
-      /([\w\[\]\d]+)\s*([=!<>~]+|\s+in\s+|\s+not\s+in\s+|\s+is\s+|\s+is\s+not\s+)\s*("[^"]*"|-?\d+d?|'[^']*'|\([^)]*\)|\w+)/
+      /([\w[\]\d]+)\s*([=!<>~]+|\s+in\s+|\s+not\s+in\s+|\s+is\s+|\s+is\s+not\s+)\s*("[^"]*"|-?\d+d?|'[^']*'|\([^)]*\)|\w+)/
     )
 
     if (!conditionMatch) {
@@ -162,10 +162,10 @@ export function getLightWeightIssues(
     acc[ticket.key] = {} as Record<keyof JiraFields, unknown>
 
     // Add filtered fields to nested object
-    //@ts-ignore
+    // @ts-ignore: ticket.fields is dynamic; keys are validated at runtime
     Object.entries(ticket.fields).forEach(([fieldKey, fieldValue]) => {
       if (!fieldsToIgnore.includes(fieldKey as keyof JiraFields) && isValidFieldValue(fieldValue)) {
-        //@ts-ignore
+        // @ts-ignore: index signature not defined for dynamic Jira field keys
         acc[ticket.key][fieldKey] = normalizeFieldValue(fieldValue)
       }
     })

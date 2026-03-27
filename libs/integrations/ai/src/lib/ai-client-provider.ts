@@ -191,7 +191,7 @@ export class AiClientProvider {
   private getApiKey(aiProviderConfig: AiProviderConfig): string | undefined {
     const envVar = ENV_VARS[aiProviderConfig.name]
     const envKey = envVar
-      ? (process.env[envVar] ?? process.env[`${aiProviderConfig.name.toUpperCase()}_API_KEY`])
+      ? process.env[envVar] ?? process.env[`${aiProviderConfig.name.toUpperCase()}_API_KEY`]
       : undefined
     return envKey ?? aiProviderConfig.apiKey
   }

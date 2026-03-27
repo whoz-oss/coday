@@ -102,7 +102,9 @@ export class McpConfigService {
     this.interactor.debug(`MCP merged configuration: ${validatedServers.length} servers total`)
     validatedServers.forEach((server) => {
       this.interactor.debug(
-        `  - ${server.name} (${server.id}): enabled=${server.enabled}, debug=${server.debug}, command=${server.command || 'N/A'}, args=[${(server.args || []).join(', ')}]`
+        `  - ${server.name} (${server.id}): enabled=${server.enabled}, debug=${server.debug}, command=${
+          server.command || 'N/A'
+        }, args=[${(server.args || []).join(', ')}]`
       )
     })
 

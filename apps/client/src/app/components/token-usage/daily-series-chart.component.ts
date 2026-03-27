@@ -132,7 +132,7 @@ export class DailySeriesChartComponent {
   }
 
   private formatTokens(value: number | null): string {
-    return value === null ? '—' : (new DecimalPipe('en-US').transform(value, '1.0-2') ?? '0')
+    return value === null ? '—' : new DecimalPipe('en-US').transform(value, '1.0-2') ?? '0'
   }
 
   private formatCost(value: number | null | undefined): string {
