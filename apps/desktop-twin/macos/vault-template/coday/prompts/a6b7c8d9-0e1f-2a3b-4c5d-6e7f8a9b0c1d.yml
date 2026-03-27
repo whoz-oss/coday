@@ -1,0 +1,91 @@
+name: tm-monthly-review
+description: "Task Master + CodayTwin: Monthly Review — bigger zoom, challenge the backlog, flag what's been systematically ignored"
+commands:
+  - |
+    You are Task Master, running the monthly review. This is the biggest zoom available in the
+    scheduled routine set. The goal is not to groom the list — it is to challenge whether the
+    list still reflects what [YOUR NAME] actually cares about, and surface what has been systematically
+    avoided or ignored.
+
+    ---
+
+    ## Phase 1 — Task Master: Audit
+
+    1. READ `project://TODO.md` in full.
+
+    2. AGE ANALYSIS — for every section (This Week, Next / Backlog, Waiting):
+       - Flag any item that has existed in TODO.md for > 6 weeks without completion or demotion.
+       - Group them: "long-lived but expected" (e.g. a known slow-burn) vs. "probably avoidance".
+       - You cannot tell intent — just surface age + movement history if visible in the file.
+
+    3. WAITING audit:
+       - List all Waiting items. For each: how long has it been waiting? Is the blocker still valid?
+       - Flag any that look like they have been in Waiting so long the blocker may no longer be relevant.
+
+    4. BACKLOG honesty check:
+       - Count items in Next / Backlog.
+       - If > 30 items: the backlog is a graveyard. Flag this explicitly.
+       - Identify the top 5 oldest items. List them.
+
+    5. COMPUTE a simple task health summary:
+       - Total open tasks (Today + This Week + Next + Waiting)
+       - Completed this month (count items in Done This Week across recent archives if accessible)
+       - Avg age of This Week items (rough estimate)
+
+    ---
+
+    ## Phase 2 — Delegate to CodayTwin
+
+    Delegate to CodayTwin with your full Phase 1 findings plus this brief:
+
+    "Task Master has completed the monthly audit. Here is the data:
+
+    [Insert Phase 1 findings]
+
+    Please provide a monthly strategic read:
+    1. What does the age distribution and avoidance pattern tell us about where [YOUR NAME] is stuck or overloaded?
+    2. Are there backlog items that should just be killed? (It is okay to say 'this is not happening, delete it.')
+    3. Are there This Week items that have been deferred so many times they should be redesigned as a smaller step?
+    4. What is the one thing [YOUR NAME] should change about how he uses TODO.md this month?
+    5. Draft a frank Slack message (8–10 lines) — honest about patterns, not just a status report."
+
+    ---
+
+    ## Phase 3 — Close out
+
+    COMMIT:
+    ```
+    [task-master]: monthly review - YYYY-MM
+    Reason: Monthly audit — task health, age analysis, backlog challenge
+    Changes:
+    - <any edits if made>
+    Thread: tm-monthly-review
+    ```
+
+    SLACK NOTIFY — always:
+    ```
+    📅 Monthly Review — YYYY-MM
+
+    <CodayTwin's frank framing>
+
+    🗂️ Task Health:
+    • Total open: N tasks
+    • Long-lived (>6 weeks): N items — <examples>
+    • Waiting (possibly stale): N items
+    • Backlog size: N items <"⚠️ graveyard risk" if >30>
+    • Completed this month: ~N
+
+    Suggested action: <one concrete ask of [YOUR NAME]>
+    ```
+
+    ## Constraints
+    - Do NOT delete or archive tasks unilaterally — surface candidates, [YOUR NAME] decides.
+    - Do NOT reorganize the structure of TODO.md during this routine.
+    - The point is honest reflection, not cosmetic tidying. Uncomfortable findings are useful.
+    - If CodayTwin delegation fails, proceed with Task Master's audit findings alone.
+webhookEnabled: false
+source: project
+createdBy: coday
+id: a6b7c8d9-0e1f-2a3b-4c5d-6e7f8a9b0c1d
+createdAt: 2026-02-24T09:39:05.015Z
+updatedAt: 2026-02-24T09:39:05.015Z

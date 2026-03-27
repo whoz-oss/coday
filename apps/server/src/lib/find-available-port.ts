@@ -1,6 +1,6 @@
 import { debugLog } from './log'
 
-export async function findAvailablePort(startPort: number, maxAttempts = 100): Promise<number> {
+export async function findAvailablePort(startPort: number, maxAttempts = 100, strict = false): Promise<number> {
   const net = await import('node:net')
 
   return new Promise((resolve, reject) => {
@@ -16,7 +16,9 @@ export async function findAvailablePort(startPort: number, maxAttempts = 100): P
 
       server.on('error', (err: NodeJS.ErrnoException) => {
         if (err.code === 'EADDRINUSE') {
-          if (attempts > 0) {
+          if (strict) {
+            reject(new Error(`Port ${port} is already in use. Please free the port and restart CodayTwin.`))
+          } else if (attempts > 0) {
             debugLog('PORT', `Port ${port} is in use, trying next`)
             checkPort(port + 1, attempts - 1)
           } else {

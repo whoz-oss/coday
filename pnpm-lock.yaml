@@ -531,6 +531,18 @@ importers:
         specifier: catalog:dev
         version: 5.9.3
 
+  apps/desktop-twin:
+    devDependencies:
+      electron:
+        specifier: catalog:dev
+        version: 38.3.0
+      electron-builder:
+        specifier: catalog:dev
+        version: 26.0.12(electron-builder-squirrel-windows@26.0.12)
+      typescript:
+        specifier: catalog:dev
+        version: 5.9.3
+
   apps/server:
     dependencies:
       '@vscode/ripgrep':

@@ -23,6 +23,7 @@
       "buildResources": "assets",
       "output": "release"
     },
+    "electronVersion": "38.3.0",
     "files": [
       "dist/**/*",
       "assets/**/*"
@@ -48,6 +49,7 @@
         "dmg"
       ]
     },
+    "npmRebuild": false,
     "productName": "Coday",
     "win": {
       "icon": "assets/icon.jpg",
