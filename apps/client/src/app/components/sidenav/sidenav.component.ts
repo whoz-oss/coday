@@ -61,9 +61,9 @@ export class SidenavComponent implements OnInit, OnDestroy {
 
   private readonly breakpointObserver = inject(BreakpointObserver)
 
-  /** True when viewport is >= 1280px — sidenav is locked open. */
+  /** True when viewport is >= 1400px — sidenav is locked open. */
   protected readonly isDesktop = toSignal(
-    this.breakpointObserver.observe('(min-width: 1280px)').pipe(map((state) => state.matches)),
+    this.breakpointObserver.observe('(min-width: 1400px)').pipe(map((state) => state.matches)),
     { initialValue: false }
   )
 
