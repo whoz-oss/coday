@@ -82,7 +82,6 @@
 
 // File drawer container (Material sidenav) - wraps entire component
 .file-drawer-container {
-  height: 100vh;
   height: 100dvh; // Dynamic viewport — accounts for iOS browser chrome
   width: 100%;
   background: var(--color-bg); // Preserve gradient background
