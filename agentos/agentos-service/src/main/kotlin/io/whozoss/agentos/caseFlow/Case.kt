@@ -22,4 +22,6 @@ data class Case(
     val namespaceId: UUID,
     val status: CaseStatus = CaseStatus.PENDING,
     val title: String = "Case ${metadata.id}",
+    /** AgentOS user ID of the user who created this case. Null for cases created before WZ-30778. */
+    val createdByUserId: UUID? = null,
 ) : Entity
