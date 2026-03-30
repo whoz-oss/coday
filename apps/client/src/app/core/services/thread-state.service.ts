@@ -190,6 +190,31 @@ export class ThreadStateService {
   }
 
   /**
+   * Optimistically update the starring state of a thread in the local list.
+   * This allows the UI to respond immediately without waiting for a full server refresh,
+   * preventing race conditions with concurrent refreshes (e.g., agent rename events).
+   * The caller is responsible for providing a valid username — guard before calling.
+   * @param threadId Thread identifier
+   * @param starred True if the user starred the thread, false if unstarred
+   * @param username Current user's username
+   */
+  updateStarLocal(threadId: string, starred: boolean, username: string): void {
+    const current = this.threadListSubject.value
+    const updated = current.map((thread) => {
+      if (thread.id !== threadId) return thread
+      const starring: string[] = thread.starring || []
+      if (starred && !starring.includes(username)) {
+        return { ...thread, starring: [...starring, username] }
+      } else if (!starred && starring.includes(username)) {
+        return { ...thread, starring: starring.filter((u: string) => u !== username) }
+      }
+      return thread
+    })
+
+    this.threadListSubject.next(updated)
+  }
+
+  /**
    * Force a re-fetch of the currently selected thread details.
    * Use this after mutations (add/remove user) when the threadId hasn't changed
    * so that distinctUntilChanged on the ID would otherwise suppress the re-fetch.

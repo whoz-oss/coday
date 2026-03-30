@@ -24,6 +24,7 @@ import {
 
 import { EventStreamService } from './event-stream.service'
 import { MessageApiService } from './message-api.service'
+import { UserService } from './user.service'
 
 import { ChatMessage } from '../../components/chat-message/chat-message.component'
 import { ChoiceOption } from '../../components/choice-select/choice-select.component'
@@ -96,6 +97,7 @@ export class CodayService implements OnDestroy {
   // Modern Angular dependency injection
   private readonly eventStream = inject(EventStreamService)
   private readonly messageApi = inject(MessageApiService)
+  private readonly userService = inject(UserService)
 
   constructor() {
     // Initialize connection status observable after eventStream is available
@@ -120,32 +122,6 @@ export class CodayService implements OnDestroy {
     this.currentProject = projectName
     this.currentThread = threadId
     this.eventStream.connectToThread(projectName, threadId)
-
-    // After a short delay (to let messages replay), process unanswered invites
-    setTimeout(() => this.processUnansweredInvites(), 500)
-  }
-
-  /**
-   * Process unanswered invites after thread replay
-   * Finds InviteEvent and ChoiceEvent that don't have corresponding AnswerEvent
-   * and restores the first one to currentInviteEventSubject for user response
-   */
-  private processUnansweredInvites(): void {
-    const messages = this.messagesSubject.value
-
-    // Find all InviteEvent without corresponding AnswerEvent
-    const unansweredInvites = messages
-      .filter((m) => m.type === 'text' && m.parentKey === undefined && m.invite !== undefined)
-      .filter((invite) => !messages.some((m) => m.type === 'text' && m.role === 'user' && m.parentKey === invite.id))
-
-    // If there are unanswered invites, restore the first one
-    if (unansweredInvites.length > 0) {
-      // We need to reconstruct the InviteEvent from the message
-      // This is a simplified reconstruction - the actual InviteEvent will come from backend
-      console.log('[CODAY] Found', unansweredInvites.length, 'unanswered invite(s)')
-      // Note: The actual InviteEvent will be replayed from the backend,
-      // so we just need to wait for it to arrive via handleInviteEvent
-    }
   }
 
   /**
@@ -173,36 +149,36 @@ export class CodayService implements OnDestroy {
       return
     }
 
-    // Immediately set thinking state to true to disable textarea
-    // This prevents users from sending multiple messages before server responds
-    this.isThinkingSubject.next(true)
-    this.tabTitleService?.setSystemActive()
+    const pendingInvite = this.currentInviteEventSubject.value
 
-    const currentInviteEvent = this.currentInviteEventSubject.value
-
-    if (currentInviteEvent) {
-      // Use the original InviteEvent to build proper answer with parentKey
-      const answerEvent = currentInviteEvent.buildAnswer(message)
-
-      // Clear the current invite event immediately after using it
+    if (pendingInvite) {
+      // There is a pending InviteEvent: build a proper AnswerEvent with the correct parentKey
+      // so the backend's promptText() can match it via its filter on parentKey.
+      // Using sendFreeMessage here would route through addUserMessage which only works
+      // if pendingQuestionEvent is still set server-side — an unreliable assumption.
+      this.isThinkingSubject.next(true)
+      this.tabTitleService?.setSystemActive()
       this.currentInviteEventSubject.next(null)
+
+      const answerEvent = pendingInvite.buildAnswer(message)
+
+      // Optimistic UI: display the user's reply immediately without waiting for SSE bounce-back,
+      // aligning with the free-form path which gets immediate feedback via addUserMessage on server.
+      this.handleAnswerEvent(answerEvent)
 
       this.messageApi.sendMessage(answerEvent).subscribe({
         error: (error) => {
-          console.error('[CODAY] Send error:', error)
-          // Reset thinking state on error
+          console.error('[CODAY] Send invite answer error:', error)
+          // Restore the invite so the user can retry without refreshing
+          this.currentInviteEventSubject.next(pendingInvite)
           this.stopThinking()
         },
       })
     } else {
-      // Fallback to basic AnswerEvent if no invite event stored
-      const answerEvent = new AnswerEvent({ answer: message })
-
-      this.messageApi.sendMessage(answerEvent).subscribe({
+      // No pending invite: use the free-form endpoint — server queues if agent is running
+      this.messageApi.sendFreeMessage(message).subscribe({
         error: (error) => {
           console.error('[CODAY] Send error:', error)
-          // Reset thinking state on error
-          this.stopThinking()
         },
       })
     }
@@ -422,7 +398,7 @@ export class CodayService implements OnDestroy {
     const message: ChatMessage = {
       id: event.timestamp,
       role: 'user',
-      speaker: 'User',
+      speaker: event.name ?? this.userService.getUsername() ?? 'User',
       content: [{ type: 'text', content: event.answer }],
       timestamp: event.date,
       type: 'text',
@@ -574,13 +550,14 @@ export class CodayService implements OnDestroy {
   }
 
   /**
-   * Add a message to the history
+   * Add a message to the history, skipping duplicates by id
    */
   private addMessage(message: ChatMessage): void {
     const currentMessages = this.messagesSubject.value
-    const newMessages = [...currentMessages, message]
-
-    this.messagesSubject.next(newMessages)
+    if (currentMessages.some((m) => m.id === message.id)) {
+      return
+    }
+    this.messagesSubject.next([...currentMessages, message])
   }
 
   /**

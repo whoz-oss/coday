@@ -27,8 +27,8 @@
           </button>
         }
 
-        <!-- Share Button - hidden when share drawer open -->
-        @if (drawerMode !== 'share') {
+        <!-- Share Button - hidden when share drawer open or auth is disabled -->
+        @if (authEnabled && drawerMode !== 'share') {
           <button
             matFab
             class="share-toggle-btn"
@@ -51,12 +51,13 @@
         }
 
         <!-- Chat History - Scrollable area -->
-        <div class="chat-wrapper">
+        <div class="chat-wrapper" (mousedown)="chatFocused.emit()" (touchstart)="chatFocused.emit()">
           <div class="chat-center">
             <app-chat-history
               [messages]="messages"
               [streamingText]="streamingText"
               [isThinking]="isThinking"
+              [currentUsername]="currentUsername"
               (copyRequested)="onCopyMessage($event)"
               (stopRequested)="onStopRequested()"
             ></app-chat-history>
@@ -74,7 +75,7 @@
         <div class="input-section" #inputSection>
           <div class="input-center">
             <div class="input-glass">
-              @if (!currentChoice) {
+              @if (!currentChoice && !pendingOAuthRequest()) {
                 <app-chat-textarea
                   [isDisabled]="!isConnected"
                   [isSessionInitializing]="false"
@@ -100,6 +101,10 @@
                   class="choice-overlay"
                 ></app-choice-select>
               }
+
+              @if (pendingOAuthRequest()) {
+                <app-oauth-request-panel></app-oauth-request-panel>
+              }
             </div>
           </div>
         </div>
@@ -112,22 +117,14 @@
         <app-file-exchange-drawer [projectName]="projectName" [threadId]="threadId" (closeDrawer)="closeDrawer()" />
       }
       @if (drawerMode === 'share' && threadDetails) {
-        <div class="share-drawer-container">
-          <div class="drawer-header">
-            <h3 class="drawer-title">Share</h3>
-            <button mat-icon-button class="close-btn" (click)="closeDrawer()" title="Close" type="button">
-              <mat-icon>chevron_right</mat-icon>
-            </button>
-          </div>
-          <app-thread-share
-            [threadId]="threadId"
-            [users]="threadDetails.users || []"
-            [ownerUsername]="threadDetails.username"
-            [currentUsername]="currentUsername"
-            (userAdded)="onUserAdded($event)"
-            (userRemoved)="onUserRemoved($event)"
-          />
-        </div>
+        <app-thread-share
+          [threadId]="threadId"
+          [users]="threadDetails.users || []"
+          [currentUsername]="currentUsername"
+          (userAdded)="onUserAdded($event)"
+          (userRemoved)="onUserRemoved($event)"
+          (closed)="closeDrawer()"
+        />
       }
     </mat-drawer>
   </mat-drawer-container>

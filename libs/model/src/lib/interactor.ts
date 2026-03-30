@@ -24,18 +24,22 @@ export abstract class Interactor {
     )
   }
 
+  lastAnswerName: string | undefined = undefined
+
   async promptText(invite: string, defaultText?: string): Promise<string> {
     const inviteEvent = new InviteEvent({ invite, defaultValue: defaultText })
     this.lastInviteEvent = inviteEvent
-    const answer: Observable<string> = this.events.pipe(
+    const answer: Observable<AnswerEvent> = this.events.pipe(
       filter((e) => e.parentKey === inviteEvent.timestamp),
       filter((e) => e instanceof AnswerEvent),
       take(1),
-      map((e) => e.answer)
+      map((e) => e as AnswerEvent)
     )
     this.sendEvent(inviteEvent)
     try {
-      return await firstValueFrom(answer)
+      const answerEvent = await firstValueFrom(answer)
+      this.lastAnswerName = answerEvent.name
+      return answerEvent.answer
     } catch (error: any) {
       throw new Error(`No answer received over invite ${inviteEvent.timestamp} : ${error.message}`)
     }

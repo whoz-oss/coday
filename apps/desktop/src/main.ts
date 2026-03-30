@@ -15,6 +15,7 @@ let mainWindow: BrowserWindowType | null = null
 let serverProcess: ChildProcess | null = null
 let serverUrl: string | null | undefined = null
 let pendingDeepLink: string | null = null
+let storageHandlersRegistered = false
 
 const PROTOCOL_NAME = 'coday'
 
@@ -54,7 +55,7 @@ function log(level: 'INFO' | 'ERROR' | 'WARN', ...args: any[]): void {
 // Initialize log file
 if (app.isPackaged) {
   try {
-    const logHeader = `\n\n${'='.repeat(80)}\nCoday Desktop Log - Started at ${new Date().toISOString()}\n${'='.repeat(80)}\n`
+    const logHeader = `\n\n${'='.repeat(80)}\nCoday Log - Started at ${new Date().toISOString()}\n${'='.repeat(80)}\n`
     fs.appendFileSync(LOG_FILE, logHeader, 'utf8')
     log('INFO', 'Log file initialized at:', LOG_FILE)
   } catch (error) {
@@ -63,105 +64,43 @@ if (app.isPackaged) {
 }
 
 /**
- * Find node executable by checking common installation locations
+ * Find node/npx executable using 'which' via a login shell, with fallback to
+ * keg-only Homebrew versioned installs (e.g. node@24, node@22...)
  */
-function findNodeExecutable(): string | null {
+function findExecutable(executable: 'node' | 'npx'): string | null {
   const { execSync } = require('child_process') as typeof import('child_process')
-  const { existsSync } = require('fs') as typeof import('fs')
+  const { existsSync, readdirSync } = require('fs') as typeof import('fs')
 
-  // Common node installation paths on macOS
-  const possiblePaths = [
-    '/usr/local/bin/node',
-    '/opt/homebrew/bin/node', // Apple Silicon Homebrew
-    '/usr/bin/node',
-    '/opt/local/bin/node', // MacPorts
-  ]
-
-  // Check if NVM is installed
-  const homeDir = process.env['HOME']
-  if (homeDir) {
-    const nvmDir = join(homeDir, '.nvm')
-    if (existsSync(nvmDir)) {
-      try {
-        // Try to get the default node from NVM
-        const nvmNodePath = execSync('. ~/.nvm/nvm.sh && nvm which default', {
-          encoding: 'utf8',
-          shell: '/bin/bash',
-        }).trim()
-        if (nvmNodePath && existsSync(nvmNodePath)) {
-          possiblePaths.unshift(nvmNodePath)
-        }
-      } catch (e) {
-        // NVM command failed, continue with other paths
+  // Try login shells (-l) so ~/.zprofile, ~/.bash_profile etc. are sourced
+  for (const cmd of [`/bin/zsh -lc 'which ${executable}'`, `/bin/bash -lc 'which ${executable}'`]) {
+    try {
+      const result = execSync(cmd, { encoding: 'utf8' }).trim()
+      if (result && existsSync(result)) {
+        log('INFO', `${executable} found: ${result}`)
+        return result
       }
+    } catch {
+      // try next
     }
   }
 
-  // Try each possible path
-  for (const nodePath of possiblePaths) {
-    if (existsSync(nodePath)) {
-      console.log('Found node at:', nodePath)
-      return nodePath
-    }
-  }
-
-  // Try using 'which node' as last resort
-  try {
-    const whichNode = execSync('which node', { encoding: 'utf8' }).trim()
-    if (whichNode && existsSync(whichNode)) {
-      console.log('Found node via which:', whichNode)
-      return whichNode
-    }
-  } catch (e) {
-    // which command failed
-  }
-
-  return null
-}
-
-/**
- * Check if npx is available
- */
-function findNpxExecutable(): string | null {
-  const { execSync } = require('child_process') as typeof import('child_process')
-  const { existsSync } = require('fs') as typeof import('fs')
-
-  // First, try to find npx using 'which'
-  try {
-    const whichNpx = execSync('which npx', { encoding: 'utf8' }).trim()
-    if (whichNpx && existsSync(whichNpx)) {
-      console.log('Found npx via which:', whichNpx)
-      return whichNpx
-    }
-  } catch (e) {
-    // which command failed, continue with other methods
-  }
-
-  // Try to find npx alongside node
-  const nodePath = findNodeExecutable()
-  if (nodePath) {
-    const { dirname } = require('path') as typeof import('path')
-    const nodeDir = dirname(nodePath)
-    const npxPath = join(nodeDir, 'npx')
-
-    if (existsSync(npxPath)) {
-      console.log('Found npx alongside node at:', npxPath)
-      return npxPath
-    }
-  }
-
-  // Common npx installation paths
-  const possiblePaths = [
-    '/usr/local/bin/npx',
-    '/opt/homebrew/bin/npx', // Apple Silicon Homebrew
-    '/usr/bin/npx',
-    '/opt/local/bin/npx', // MacPorts
-  ]
-
-  for (const npxPath of possiblePaths) {
-    if (existsSync(npxPath)) {
-      console.log('Found npx at:', npxPath)
-      return npxPath
+  // Fallback: scan Homebrew opt for keg-only versioned node installs (e.g. node@24)
+  for (const brewPrefix of ['/opt/homebrew/opt', '/usr/local/opt']) {
+    if (!existsSync(brewPrefix)) continue
+    try {
+      const entries = readdirSync(brewPrefix)
+        .filter((e) => /^node(@\d+)?$/.test(e))
+        .sort()
+        .reverse() // prefer highest version
+      for (const entry of entries) {
+        const candidate = `${brewPrefix}/${entry}/bin/${executable}`
+        if (existsSync(candidate)) {
+          log('INFO', `${executable} found via Homebrew keg-only: ${candidate}`)
+          return candidate
+        }
+      }
+    } catch {
+      // continue
     }
   }
 
@@ -174,29 +113,11 @@ function findNpxExecutable(): string | null {
 async function startCodayServer(): Promise<void> {
   try {
     log('INFO', 'Starting Coday server...')
-    log('INFO', 'App packaged:', app.isPackaged)
 
-    // Determine if we're in development or production
-    const isDev = process.env['NODE_ENV'] === 'development' || !app.isPackaged
+    // Find node and run the installed package via npx
+    log('INFO', 'Finding node executable...')
 
-    if (isDev) {
-      // Development: connect to local server on port 4100
-      log('INFO', 'Development mode: connecting to local server on port 4100')
-      serverUrl = 'http://localhost:4100'
-
-      // Wait a bit to ensure the server is ready, then resolve
-      return new Promise<void>((resolve) => {
-        setTimeout(() => {
-          log('INFO', 'Using development server at:', serverUrl)
-          resolve()
-        }, 500)
-      })
-    }
-
-    // Production: find node and run the installed package
-    log('INFO', 'Production mode: finding node executable')
-
-    const nodePath = findNodeExecutable()
+    const nodePath = findExecutable('node')
 
     if (!nodePath) {
       const error = new Error(
@@ -209,7 +130,7 @@ async function startCodayServer(): Promise<void> {
     log('INFO', 'Using node at:', nodePath)
 
     // Check for npx
-    const npxPath = findNpxExecutable()
+    const npxPath = findExecutable('npx')
 
     if (!npxPath) {
       const error = new Error(
@@ -223,7 +144,7 @@ async function startCodayServer(): Promise<void> {
 
     log('INFO', 'Found npx at:', npxPath)
     const command = npxPath
-    const args = ['--yes', '@whoz-oss/coday-web', '--base-url=coday://']
+    const args = ['--yes', '@whoz-oss/coday-web', '--base-url=coday://', '--multi']
 
     log('INFO', 'Spawning:', command, args.join(' '))
 
@@ -236,15 +157,33 @@ async function startCodayServer(): Promise<void> {
       env['PATH'] = '/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'
     }
 
+    // Use a fixed port so Coday is always reachable on the same address
+    const CODAY_PORT = '3049'
+    env['PORT'] = CODAY_PORT
+    log('INFO', `Using fixed port: ${CODAY_PORT}`)
+
+    // Use a temp directory as cwd to prevent npx from resolving to local workspace packages
+    const npxCwd = app.getPath('temp')
+    log('INFO', 'Using npx cwd:', npxCwd)
+
     // Start the server
     serverProcess = spawn(command, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env,
+      cwd: npxCwd,
       shell: false,
     })
 
     return new Promise<void>((resolve, reject) => {
       let serverReady = false
+      let settled = false
+
+      const settle = (fn: () => void) => {
+        if (!settled) {
+          settled = true
+          fn()
+        }
+      }
 
       if (serverProcess!.stdout) {
         serverProcess!.stdout.on('data', (data: Buffer) => {
@@ -260,7 +199,7 @@ async function startCodayServer(): Promise<void> {
             if (!serverReady) {
               serverReady = true
               // Give the server a moment to fully initialize
-              setTimeout(() => resolve(), 500)
+              setTimeout(() => settle(() => resolve()), 500)
             }
           }
         })
@@ -268,7 +207,19 @@ async function startCodayServer(): Promise<void> {
 
       if (serverProcess!.stderr) {
         serverProcess!.stderr.on('data', (data: Buffer) => {
-          log('ERROR', '[Server Error]:', data.toString())
+          const text = data.toString()
+          log('ERROR', '[Server Error]:', text)
+
+          // Detect port-in-use error signalled by the server process
+          if (text.includes('PORT_IN_USE:')) {
+            const portMatch = text.match(/PORT_IN_USE:.*?(Port \d+ is already in use[^\n]*)/)
+            const detail = portMatch ? portMatch[1] : `Port ${env['PORT']} is already in use.`
+            const portError: any = new Error(
+              `${detail}\n\nPlease close any other application using this port and restart Coday.`
+            )
+            portError.userFacing = true
+            settle(() => reject(portError))
+          }
         })
       }
 
@@ -276,31 +227,24 @@ async function startCodayServer(): Promise<void> {
         log('ERROR', 'Failed to start server:', error)
         const wrappedError: any = new Error(`Failed to start Coday server: ${error.message}`)
         wrappedError.userFacing = true
-        reject(wrappedError)
+        settle(() => reject(wrappedError))
       })
 
       serverProcess!.on('exit', (code: number | null) => {
         log('INFO', 'Server process exited with code:', code)
         serverProcess = null
-      })
-
-      // Fallback timeout in case we don't detect server ready message
-      setTimeout(() => {
-        if (!serverProcess) {
-          log('ERROR', 'Server process does not exists')
-          const error: any = new Error('Failed to find server process.')
-          error.userFacing = true
-          reject(error)
-        }
+        // Only reject if the server exited before it was ready
         if (!serverReady) {
-          log('ERROR', 'Server start timeout reached - could not detect server URL')
           const error: any = new Error(
-            'Failed to start server: timeout waiting for server URL. The server may be taking too long to start.'
+            `Server process exited unexpectedly with code ${code}.\n\nCheck logs for details.`
           )
           error.userFacing = true
-          reject(error)
+          settle(() => reject(error))
         }
-      }, 10000) // 10 seconds timeout for npx to download and start
+      })
+
+      // No hard timeout — the loading screen stays visible while npx downloads.
+      // The promise only settles when the server URL is detected or the process exits/errors.
     })
   } catch (error) {
     throw error
@@ -401,7 +345,7 @@ function createWindow(): void {
       contextIsolation: true,
       webSecurity: true,
     },
-    title: 'Coday Desktop',
+    title: 'Coday',
     show: false, // Don't show until ready
   })
 
@@ -485,6 +429,12 @@ function showErrorDialog(title: string, message: string): void {
  * Setup IPC handlers for storage
  */
 function setupStorageHandlers(): void {
+  if (storageHandlersRegistered) {
+    log('INFO', 'Storage handlers already registered, skipping')
+    return
+  }
+  storageHandlersRegistered = true
+
   // Get storage data
   ipcMain.handle('storage:get', (_event: IpcMainInvokeEvent, key: string): string | null => {
     try {
@@ -621,7 +571,7 @@ async function initialize(): Promise<void> {
   let loadingWindow: BrowserWindowType | null = null
 
   try {
-    log('INFO', 'Initializing Coday Desktop...')
+    log('INFO', 'Initializing Coday...')
 
     // Setup storage handlers
     setupStorageHandlers()
@@ -655,10 +605,10 @@ async function initialize(): Promise<void> {
     const isUserFacing = error && typeof error === 'object' && (error as any).userFacing
 
     if (isUserFacing) {
-      showErrorDialog('Coday Desktop - Startup Error', errorMessage)
+      showErrorDialog('Coday - Startup Error', errorMessage)
     } else {
       showErrorDialog(
-        'Coday Desktop - Unexpected Error',
+        'Coday - Unexpected Error',
         `An unexpected error occurred while starting Coday:\n\n${errorMessage}\n\nPlease check the console logs for more details.`
       )
     }
@@ -767,7 +717,7 @@ app.on('before-quit', () => {
 process.on('uncaughtException', (error: Error) => {
   log('ERROR', 'Uncaught exception:', error)
   showErrorDialog(
-    'Coday Desktop - Fatal Error',
+    'Coday - Fatal Error',
     `A fatal error occurred:\n\n${error.message}\n\nThe application will now close.`
   )
   stopCodayServer()

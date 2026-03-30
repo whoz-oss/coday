@@ -1,0 +1,17 @@
+id: 93d3a7b5-caf2-4933-a4fa-b95ec242feaf
+name: Daily Kickoff
+enabled: true
+promptId: b1e2f3a4-5c6d-7e8f-9a0b-1c2d3e4f5a6b
+schedule:
+  startTimestamp: 2026-01-01T07:00:00.000Z
+  interval: 1d
+  daysOfWeek:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+createdBy: coday
+createdAt: 2026-03-18T07:00:00.000Z
+occurrenceCount: 0
+lastRun: 2026-03-23T07:00:00.000Z

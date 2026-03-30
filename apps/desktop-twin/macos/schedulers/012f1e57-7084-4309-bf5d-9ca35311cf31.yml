@@ -1,0 +1,12 @@
+id: 012f1e57-7084-4309-bf5d-9ca35311cf31
+name: Weekly sweep
+enabled: true
+promptId: e4f5a6b7-8c9d-0e1f-2a3b-4c5d6e7f8a9b
+schedule:
+  startTimestamp: 2026-01-01T15:30:00.000Z
+  interval: 1d
+  daysOfWeek:
+    - 5
+createdBy: coday
+createdAt: 2026-03-23T15:30:00.000Z
+occurrenceCount: 0

@@ -1,0 +1,81 @@
+<div class="entity-list">
+  <!-- Toolbar (full width) -->
+  <div class="entity-list__toolbar">
+    <ng-content select="[toolbar-start]" />
+    <h1 class="entity-list__title">{{ title }}</h1>
+    <mat-form-field class="entity-list__search-field" appearance="fill" subscriptSizing="dynamic">
+      <mat-icon matPrefix>search</mat-icon>
+      <input
+        #searchInput
+        matInput
+        type="search"
+        [placeholder]="searchPlaceholder"
+        [ngModel]="searchQuery()"
+        (ngModelChange)="onSearchChange($event)"
+        (keydown.escape)="clearSearch()"
+        autocomplete="off"
+      />
+      @if (isSearchActive()) {
+        <button matSuffix mat-icon-button aria-label="Clear" (click)="clearSearch()">
+          <mat-icon>close</mat-icon>
+        </button>
+      }
+    </mat-form-field>
+    <!-- Optional toolbar extras projected by the consumer (filters, toggles…) -->
+    <ng-content select="[toolbar-extras]" />
+    @if (showCreate) {
+      <button
+        mat-icon-button
+        class="entity-list__toolbar-btn entity-list__toolbar-btn--primary"
+        type="button"
+        title="Create"
+        (click)="onCreateRequested()"
+      >
+        <mat-icon>add</mat-icon>
+      </button>
+    }
+  </div>
+
+  <!-- Content (max-width constrained) -->
+  <div class="entity-list__content" [style.max-width]="contentMaxWidth">
+    @if (filteredItems().length === 0) {
+      <p class="entity-list__empty">{{ emptyMessage }}</p>
+    } @else if (hasGroups()) {
+      <!-- Grouped view (no active search) -->
+      <mat-accordion [multi]="true">
+        @for (group of groupedItems(); track group.groupKey) {
+          <mat-expansion-panel [expanded]="true" class="entity-list__panel">
+            @if (group.groupLabel) {
+              <mat-expansion-panel-header>
+                <mat-panel-title class="entity-list__panel-title">{{ group.groupLabel }}</mat-panel-title>
+              </mat-expansion-panel-header>
+            }
+            <div class="entity-list__grid" [style.--card-min-width]="cardMinWidth">
+              @for (item of group.items; track item.id) {
+                <ng-container *ngTemplateOutlet="itemTemplate ?? defaultCard; context: { $implicit: item }" />
+              }
+            </div>
+          </mat-expansion-panel>
+        }
+      </mat-accordion>
+    } @else {
+      <!-- Flat: no groups, or search active -->
+      <div class="entity-list__grid" [style.--card-min-width]="cardMinWidth">
+        @for (item of filteredItems(); track item.id) {
+          <ng-container *ngTemplateOutlet="itemTemplate ?? defaultCard; context: { $implicit: item }" />
+        }
+      </div>
+    }
+  </div>
+</div>
+
+<!-- Default card template — used when no itemTemplate is provided -->
+<ng-template #defaultCard let-item>
+  <ds-entity-card
+    [id]="item.id"
+    [name]="item.name"
+    [description]="item.description"
+    [badges]="item.badges ?? []"
+    (selected)="onItemSelected($event)"
+  />
+</ng-template>

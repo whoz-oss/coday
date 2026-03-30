@@ -232,13 +232,22 @@ export function registerThreadRoutes(
             return
           }
         }
-        // Ensure current user is always in the users list (prevent self-removal)
-        const currentUserInList = users.some((u) => u.userId === username)
-        resolvedUsers = currentUserInList ? users : [{ userId: username }, ...users]
+        resolvedUsers = users
       }
 
       debugLog('THREAD', `PUT update thread: ${threadId} in project: ${projectName}`)
       const updatedThread = await threadService.updateThread(projectName, threadId, { name, users: resolvedUsers })
+
+      // Sync users to the live in-memory AiThread instance if it's running,
+      // to prevent the running instance from overwriting the YAML with stale data on cleanup.
+      if (resolvedUsers !== undefined) {
+        const liveInstance = threadCodayManager.get(threadId)
+        const liveAiThread = liveInstance?.coday?.context?.aiThread
+        if (liveAiThread) {
+          liveAiThread.users = resolvedUsers
+          debugLog('THREAD', `Synced users to live AiThread for thread ${threadId}`)
+        }
+      }
 
       res.status(200).json({
         success: true,

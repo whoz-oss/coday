@@ -7,8 +7,9 @@
   "scripts": {
     "_bump": "1",
     "client": "nx run client:serve",
-    "coday": "npx --yes @whoz-oss/coday-web",
+    "coday": "pnpm dlx @whoz-oss/coday-web",
     "desktop": "nx run desktop:serve",
+    "desktop-twin": "nx run desktop-twin:serve",
     "husky-setup": "husky",
     "lint": "nx run-many --target=lint",
     "postinstall": "pnpm husky-setup",
@@ -16,7 +17,8 @@
     "sync-deps": "tsx scripts/sync-project-dependencies.ts",
     "test": "nx run-many --target=test",
     "web": "npx --yes @whoz-oss/coday-web",
-    "web:dev": "nx run-many --target=serve --projects=client,server --parallel=2"
+    "web:dev": "nx run-many --target=serve --projects=client,server --parallel=2",
+    "web:dev:tmux": "bash scripts/web-dev-tmux.sh"
   },
   "lint-staged": {
     "!(*nx|*project).json": [
@@ -29,6 +31,7 @@
     "*.ts": "prettier --write"
   },
   "dependencies": {
+    "@angular/core": "catalog:",
     "glob": "catalog:",
     "yargs": "catalog:"
   },

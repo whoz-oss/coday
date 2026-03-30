@@ -96,6 +96,29 @@ export class AutocompleteInputComponent implements OnInit {
         this.scrollSelectedIntoView()
         break
 
+      case 'Tab':
+        // Tab / Shift+Tab navigates through dropdown results without leaving the input.
+        // Prevents default so browser focus does not jump to the next focusable element.
+        event.preventDefault()
+        if (event.shiftKey) {
+          // Backward: if already at the top (or no selection), close the dropdown
+          if (this.selectedIndex <= 0) {
+            this.closeDropdown()
+          } else {
+            this.selectedIndex--
+            this.scrollSelectedIntoView()
+          }
+        } else {
+          // Forward: advance selection; if past the last item, close the dropdown
+          if (this.selectedIndex >= this.items.length - 1) {
+            this.closeDropdown()
+          } else {
+            this.selectedIndex++
+            this.scrollSelectedIntoView()
+          }
+        }
+        break
+
       case 'Enter':
         event.preventDefault()
         if (this.selectedIndex >= 0 && this.selectedIndex < this.items.length) {

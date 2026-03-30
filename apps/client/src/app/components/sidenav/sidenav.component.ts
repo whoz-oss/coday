@@ -1,8 +1,22 @@
-import { Component, ElementRef, inject, OnDestroy, OnInit, ViewChild } from '@angular/core'
+import {
+  Component,
+  computed,
+  ElementRef,
+  EventEmitter,
+  inject,
+  Input,
+  OnDestroy,
+  OnInit,
+  Output,
+  signal,
+  ViewChild,
+} from '@angular/core'
 import { Router } from '@angular/router'
 import { FormsModule } from '@angular/forms'
 import { Subject } from 'rxjs'
 import { map, takeUntil } from 'rxjs/operators'
+import { toSignal } from '@angular/core/rxjs-interop'
+import { BreakpointObserver } from '@angular/cdk/layout'
 import { MatSidenavModule } from '@angular/material/sidenav'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
@@ -13,12 +27,9 @@ import { ConfigApiService } from '../../core/services/config-api.service'
 import { PreferencesService } from '../../services/preferences.service'
 import { OptionsPanelComponent } from '../options-panel'
 import { ThreadSelectorComponent } from '../thread-selector/thread-selector.component'
+import { PreviewPanelComponent } from '../preview-panel/preview-panel.component'
 import { JsonEditorComponent, JsonEditorData } from '../json-editor/json-editor.component'
-import { PromptManagerComponent } from '../prompt-manager/prompt-manager.component'
-import { SchedulerManagerComponent } from '../scheduler-manager/scheduler-manager.component'
-import { AgentManagerComponent } from '../agent-manager/agent-manager.component'
 import { ProjectStateService } from '../../core/services/project-state.service'
-import { toSignal } from '@angular/core/rxjs-interop'
 import { ProjectApiService } from '../../core/services/project-api.service'
 import { ThreadStateService } from '../../core/services/thread-state.service'
 
@@ -34,13 +45,33 @@ import { ThreadStateService } from '../../core/services/thread-state.service'
     MatProgressBarModule,
     OptionsPanelComponent,
     ThreadSelectorComponent,
+    PreviewPanelComponent,
   ],
   templateUrl: './sidenav.component.html',
   styleUrl: './sidenav.component.scss',
 })
 export class SidenavComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>()
-  isOpen = true
+
+  /** Emits true when the sidenav opens, false when it closes. */
+  @Output() sidenavStateChange = new EventEmitter<boolean>()
+
+  /** When true, hides the floating FABs on mobile (right drawer is open). */
+  @Input() drawerOpen = false
+
+  private readonly breakpointObserver = inject(BreakpointObserver)
+
+  /** True when viewport is >= 1400px — sidenav is locked open. */
+  protected readonly isDesktop = toSignal(
+    this.breakpointObserver.observe('(min-width: 1400px)').pipe(map((state) => state.matches)),
+    { initialValue: false }
+  )
+
+  /** User's open/close preference, only meaningful on mobile. */
+  private readonly userOpenPreference = signal(true)
+
+  /** Effective open state — always open on desktop, user-controlled on mobile. */
+  protected readonly isOpen = computed(() => this.isDesktop() || this.userOpenPreference())
 
   // Role-based access control
   isAdmin = false
@@ -48,10 +79,11 @@ export class SidenavComponent implements OnInit, OnDestroy {
   // User feedback messages
   configErrorMessage = ''
 
-  // Section expansion state
+  // Section expansion state — threads is always open, not tracked here
   expandedSections: Record<string, boolean> = {
-    threads: true,
     config: false,
+    preview: false,
+    settings: false,
   }
 
   // Thread search state
@@ -77,12 +109,15 @@ export class SidenavComponent implements OnInit, OnDestroy {
     this.projectStateService.selectedProject$.pipe(map((project) => project?.config?.volatile || false))
   )
   forcedProject = toSignal(this.projectStateService.forcedProject$)
+  hasPreviewConfig = toSignal(
+    this.projectStateService.selectedProject$.pipe(map((project) => !!project?.config?.['preview']?.['command'])),
+    { initialValue: false }
+  )
 
   ngOnInit(): void {
-    // Load saved sidenav state from preferences
+    // Load saved sidenav state from preferences (mobile only)
     const savedState = this.preferences.getPreference<boolean>('sidenavOpen', true)
-    this.isOpen = savedState ?? true
-    console.log('[SIDENAV] Loaded sidenav state from preferences:', this.isOpen)
+    this.userOpenPreference.set(savedState ?? true)
 
     // Load user config to check roles
     this.configApi
@@ -107,21 +142,25 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   toggle(): void {
-    this.isOpen = !this.isOpen
-    this.saveSidenavState()
+    if (this.isDesktop()) return
+    const next = !this.userOpenPreference()
+    this.userOpenPreference.set(next)
+    this.saveSidenavState(next)
+    this.sidenavStateChange.emit(next)
   }
 
   close(): void {
-    this.isOpen = false
-    this.saveSidenavState()
+    if (this.isDesktop() || !this.userOpenPreference()) return
+    this.userOpenPreference.set(false)
+    this.saveSidenavState(false)
+    this.sidenavStateChange.emit(false)
   }
 
   /**
-   * Save sidenav state to preferences
+   * Save sidenav state to preferences (mobile only)
    */
-  private saveSidenavState(): void {
-    this.preferences.setPreference('sidenavOpen', this.isOpen)
-    console.log('[SIDENAV] Saved sidenav state:', this.isOpen)
+  private saveSidenavState(value: boolean): void {
+    this.preferences.setPreference('sidenavOpen', value)
   }
 
   /**
@@ -173,7 +212,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (_) => {
           console.log('[SIDENAV] User config saved successfully')
-          // Could show a success notification here
         },
         error: (error) => {
           console.error('[SIDENAV] Error saving user config:', error)
@@ -232,7 +270,6 @@ export class SidenavComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (_) => {
           console.log('[SIDENAV] Project config saved successfully')
-          // Could show a success notification here
         },
         error: (error) => {
           console.error('[SIDENAV] Error saving project config:', error)
@@ -256,65 +293,62 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Open a manager dialog with standard dimensions
-   */
-  private openManagerDialog(component: any, logMessage: string): void {
-    console.log(`[SIDENAV] ${logMessage}`)
-    this.dialog.open(component, {
-      width: '90vw',
-      maxWidth: '1200px',
-      height: '90vh',
-      maxHeight: '900px',
-    })
-  }
-
-  /**
-   * Open agent manager dialog
+   * Navigate to the agent list page
    */
   openAgents(): void {
     if (!this.requireProjectSelection('open agents')) {
       return
     }
-    this.openManagerDialog(AgentManagerComponent, 'Opening agent manager dialog')
+    const projectName = this.selectedProjectName()
+    this.router.navigate(['project', projectName, 'agents'])
+    this.close()
   }
 
   /**
-   * Open prompt manager dialog
+   * Navigate to the prompt list page
    */
   openPrompts(): void {
     if (!this.requireProjectSelection('open prompts')) {
       return
     }
-    this.openManagerDialog(PromptManagerComponent, 'Opening prompt manager dialog')
+    const projectName = this.selectedProjectName()
+    this.router.navigate(['project', projectName, 'prompts'])
+    this.close()
   }
 
   /**
-   * Open scheduler manager dialog
-   * Available for all users if a project is selected
+   * Navigate to the scheduler list page
    */
   openSchedulers(): void {
     if (!this.requireProjectSelection('open schedulers')) {
       return
     }
-    this.openManagerDialog(
-      SchedulerManagerComponent,
-      `Opening scheduler manager dialog for project: ${this.selectedProjectName()}`
-    )
+    const projectName = this.selectedProjectName()
+    this.router.navigate(['project', projectName, 'schedulers'])
+    this.close()
   }
 
   /**
-   * Toggle section expansion (accordion behavior - closes others)
+   * Toggle section expansion.
+   *
+   * - 'settings' is the top-level Control Center toggle.
+   * - 'config' and 'preview' are sub-sections inside the settings group and
+   *   follow accordion behaviour (only one open at a time within the group).
    */
   toggleSection(section: string): void {
     const wasExpanded = this.expandedSections[section]
 
-    // Close all sections first (accordion behavior)
-    Object.keys(this.expandedSections).forEach((key) => {
-      this.expandedSections[key] = false
-    })
-
-    // Toggle the clicked section
-    this.expandedSections[section] = !wasExpanded
+    if (section === 'settings') {
+      // Top-level: just toggle independently
+      this.expandedSections[section] = !wasExpanded
+    } else {
+      // Sub-section inside settings group: accordion — close all siblings first
+      const settingsSubSections = ['config', 'preview']
+      settingsSubSections.forEach((key) => {
+        this.expandedSections[key] = false
+      })
+      this.expandedSections[section] = !wasExpanded
+    }
   }
 
   /**
@@ -353,13 +387,22 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Close sidenav when a thread is selected on mobile.
+   * On desktop (>= 1024 px) the sidenav stays open.
+   */
+  onThreadSelectedOnMobile(): void {
+    if (!this.isDesktop()) {
+      this.close()
+    }
+  }
+
+  /**
    * Toggle thread search mode
    */
   toggleThreadSearch(event: Event): void {
     event.stopPropagation()
     this.isThreadSearchActive = true
     this.threadSearchQuery = ''
-    console.log('[SIDENAV] Thread search active:', this.isThreadSearchActive)
 
     // Focus the input after the view updates
     setTimeout(() => {
@@ -373,16 +416,12 @@ export class SidenavComponent implements OnInit, OnDestroy {
   closeThreadSearch(): void {
     this.isThreadSearchActive = false
     this.threadSearchQuery = ''
-    console.log('[SIDENAV] Thread search closed')
   }
 
   /**
    * Handle search input changes
    */
-  onThreadSearchInput(): void {
-    // Trigger change detection
-    console.log('[SIDENAV] Search query:', this.threadSearchQuery)
-  }
+  onThreadSearchInput(): void {}
 
   /**
    * Handle search mode change from thread selector

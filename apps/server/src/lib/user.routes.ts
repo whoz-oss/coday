@@ -2,6 +2,7 @@ import express from 'express'
 import fs from 'fs'
 import path from 'path'
 import { debugLog } from './log'
+import { readYamlFile } from '@coday/utils'
 
 /**
  * User Information REST API Routes
@@ -22,11 +23,13 @@ import { debugLog } from './log'
  * @param app - Express application instance
  * @param getUsernameFn - Function to extract username from request
  * @param configDir - Path to the Coday config directory (e.g. ~/.coday)
+ * @param authEnabled - Whether the server is running in auth/multi-user mode
  */
 export function registerUserRoutes(
   app: express.Application,
   getUsernameFn: (req: express.Request) => string,
-  configDir: string
+  configDir: string,
+  authEnabled: boolean = false
 ): void {
   /**
    * GET /api/user/me
@@ -44,6 +47,7 @@ export function registerUserRoutes(
 
       res.status(200).json({
         username,
+        authEnabled,
       })
     } catch (error) {
       console.error('Error retrieving user info:', error)
@@ -73,7 +77,18 @@ export function registerUserRoutes(
       }
 
       const entries = fs.readdirSync(usersDir, { withFileTypes: true })
-      const usernames = entries.filter((e) => e.isDirectory()).map((e) => ({ username: e.name }))
+      const usernames = entries
+        .filter((e) => e.isDirectory())
+        .flatMap((e) => {
+          const yamlPath = path.join(usersDir, e.name, 'user.yaml')
+          if (!fs.existsSync(yamlPath)) return []
+          const config = readYamlFile(yamlPath) as { username?: string } | null
+          // Use the stored raw username (email) if available, otherwise fall back to directory name
+          const rawUsername = config?.username ?? e.name
+          return [{ username: rawUsername }]
+        })
+        // Exclude the current user from the list
+        .filter((u) => u.username !== username)
 
       debugLog('USER', `GET all users: found ${usernames.length} user(s)`)
 

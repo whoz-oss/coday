@@ -1,0 +1,16 @@
+/* ============================================================
+   Desktop-Twin specific CSS overrides
+   Injected by Electron into the Angular client on every page load.
+   Use this file for all UI tweaks specific to the desktop-twin app.
+   ============================================================ */
+
+/* Hide the sidenav header (logo + project title + close button)
+   and compensate the max-height calc on .sidenav-sections:
+   original value is 122px (full header), here it is 0px (header hidden). */
+.sidenav-header {
+  display: none !important;
+}
+
+.sidenav-sections {
+  max-height: calc(100vh - 45px) !important;
+}

@@ -1,0 +1,44 @@
+<div class="project-new-page">
+  <div class="project-new-card">
+    <!-- Back navigation -->
+    <button class="project-new__back" mat-button (click)="onCancel()">
+      <mat-icon>arrow_back</mat-icon>
+      Back to projects
+    </button>
+
+    <h1 class="project-new__title">New project</h1>
+    <p class="project-new__subtitle">Point Coday to an existing directory on your machine.</p>
+
+    <div class="project-new__form">
+      <app-text-input
+        label="Project name"
+        placeholder="my-project"
+        [value]="projectName"
+        (valueChange)="projectName = $event"
+        [isDisabled]="isCreating"
+        [autoFocus]="true"
+      />
+
+      <app-text-input
+        label="Project path"
+        placeholder="/path/to/project"
+        hint="Absolute path to the project directory"
+        [value]="projectPath"
+        (valueChange)="projectPath = $event"
+        (enterPressed)="onCreate()"
+        [isDisabled]="isCreating"
+      />
+
+      @if (errorMessage) {
+        <div class="project-new__error">{{ errorMessage }}</div>
+      }
+    </div>
+
+    <div class="project-new__actions">
+      <button mat-button (click)="onCancel()" [disabled]="isCreating">Cancel</button>
+      <button mat-flat-button color="primary" (click)="onCreate()" [disabled]="!isValid() || isCreating">
+        {{ isCreating ? 'Creating…' : 'Create project' }}
+      </button>
+    </div>
+  </div>
+</div>
