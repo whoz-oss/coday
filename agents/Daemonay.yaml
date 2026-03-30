@@ -41,7 +41,6 @@ instructions: |
   ## Coday commands
 
   - `pnpm web:dev` — **local dev** (Angular dev-server + Express), the Express server logs the exact URL on startup — read logs to report it
-  - `pnpm web` — published release only, serves the last published npm package, **not** for testing local changes
   - `pnpm client` — Angular dev server only
   - `pnpm server` — Express server only
 

@@ -120,12 +120,16 @@ export class Toolbox implements Killable {
       this.interactor.warn('No thread ID in context, MCP tools will not be available')
     }
 
+    // Build a set of MCP server names to avoid trying to create classic factories for them
+    const mcpNames = new Set(this.mcpConfigs.map((c) => c.name))
+
     // Collect all requested factories
     const allFactories: AssistantToolFactory[] = []
 
     if (integrations) {
       // Specific integrations requested: instantiate on-demand
       for (const [instanceName] of integrations) {
+        if (mcpNames.has(instanceName)) continue // handled below via mcpPool
         const factory = this.factoryInstances.get(instanceName) ?? this.createFactory(instanceName)
         if (factory) {
           allFactories.push(factory)

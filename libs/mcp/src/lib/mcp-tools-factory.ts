@@ -158,7 +158,7 @@ export class McpToolsFactory extends AssistantToolFactory {
       }
 
       const tools = await this.toolsPromise
-      console.log(`MCP server ${this.serverConfig.name} loaded ${tools.length} tools successfully`)
+      console.log(`[MCP] Server ${this.serverConfig.name} loaded ${tools.length} tools successfully`)
       return tools
     } catch (error) {
       // Log the error but don't crash the entire agent initialization
@@ -190,6 +190,7 @@ export class McpToolsFactory extends AssistantToolFactory {
 
     // Create the appropriate transport based on the server configuration
     if (this.serverConfig.url) {
+      console.log(`[MCP] ${this.serverConfig.name}: building remote transport for ${this.serverConfig.url}`)
       this.transport = this.buildRemoteTransport()
     } else if (this.serverConfig.command) {
       // Stdio transport - launch the command as a child process
@@ -255,12 +256,14 @@ export class McpToolsFactory extends AssistantToolFactory {
     // Connect to the server with timeout and better error handling
     try {
       // Set a shorter timeout for MCP connections (default is 60s, we use MCP_CONNECT_TIMEOUT)
+      console.log(`[MCP] ${this.serverConfig.name}: connecting (timeout=${MCP_CONNECT_TIMEOUT}ms)...`)
       const connectPromise = instance.connect(this.transport)
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error(`Connection timeout after ${MCP_CONNECT_TIMEOUT}ms`)), MCP_CONNECT_TIMEOUT)
       )
 
       await Promise.race([connectPromise, timeoutPromise])
+      console.log(`[MCP] ${this.serverConfig.name}: connect() resolved`)
 
       // Store the process PID for manual cleanup if needed
       if (this.transport && 'pid' in this.transport) {
@@ -331,17 +334,24 @@ export class McpToolsFactory extends AssistantToolFactory {
         )
       }
       const redirectUri = `${this.mcpBaseUrl ?? 'http://localhost:3000'}/oauth/callback`
+      console.log(`[MCP] ${this.serverConfig.name}: using OAuth 2.1 transport (redirectUri=${redirectUri})`)
       this.oauthProvider = new McpOAuthProvider(
         this.mcpInteractor,
         this.mcpUserService,
         this.mcpProjectName,
         this.serverConfig.id,
-        redirectUri
+        redirectUri,
+        this.serverConfig.oauthClientId,
+        this.serverConfig.oauthClientSecret,
+        this.serverConfig.oauthScope
       )
-      this.mcpInteractor.debug(`[MCP:${this.serverConfig.name}] using OAuth 2.1 transport`)
+      console.log(
+        `[MCP] ${this.serverConfig.name}: McpOAuthProvider created for mcpId=${this.serverConfig.id}${this.serverConfig.oauthClientId ? ` (static client_id=${this.serverConfig.oauthClientId})` : ' (dynamic registration)'}`
+      )
       const transport = new StreamableHTTPClientTransport(url, { authProvider: this.oauthProvider })
       // Wire finishAuth so handleCallback() can complete the code exchange
       this.oauthProvider.setFinishAuth((code) => transport.finishAuth(code))
+      console.log(`[MCP] ${this.serverConfig.name}: OAuth transport ready`)
       return transport
     }
 
@@ -420,9 +430,11 @@ export class McpToolsFactory extends AssistantToolFactory {
     const results: CodayTool[] = []
 
     // Get all resource templates from the server
+    console.log(`[MCP] ${this.serverConfig.name}: listing resource templates...`)
     try {
       const result = await client.listResourceTemplates()
       if (result && result.templates && Array.isArray(result.templates)) {
+        console.log(`[MCP] ${this.serverConfig.name}: found ${result.templates.length} resource template(s)`)
         for (const template of result.templates) {
           results.push(this.createResourceTool(this.serverConfig, client, template))
         }
@@ -440,9 +452,13 @@ export class McpToolsFactory extends AssistantToolFactory {
     }
 
     // Get all tools from the server
+    console.log(`[MCP] ${this.serverConfig.name}: listing tools...`)
     try {
       const result = await client.listTools()
       if (result && result.tools && Array.isArray(result.tools)) {
+        console.log(
+          `[MCP] ${this.serverConfig.name}: found ${result.tools.length} tool(s): ${result.tools.map((t: any) => t.name).join(', ')}`
+        )
         for (const tool of result.tools) {
           results.push(this.createFunctionTool(this.serverConfig, client, tool as ToolInfo))
         }
