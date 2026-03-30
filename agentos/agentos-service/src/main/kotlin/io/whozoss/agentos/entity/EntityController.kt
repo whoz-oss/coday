@@ -3,6 +3,9 @@ package io.whozoss.agentos.entity
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Schema
 import io.whozoss.agentos.sdk.entity.Entity
+import io.whozoss.agentos.security.SecurityService
+import io.whozoss.agentos.user.User
+import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -36,7 +39,15 @@ import java.util.UUID
  */
 abstract class EntityController<EntityType : Entity, ParentIdentifier>(
     protected val service: EntityService<EntityType, ParentIdentifier>,
+    protected val securityService: SecurityService,
 ) {
+    /**
+     * Resolves the authenticated user for the current request.
+     * Available to all subclass controllers without additional injection.
+     */
+    protected fun currentUser(request: HttpServletRequest): User =
+        securityService.resolveCurrentUser(request)
+
     /**
      * GET /{id} — get a single entity by its ID.
      */
