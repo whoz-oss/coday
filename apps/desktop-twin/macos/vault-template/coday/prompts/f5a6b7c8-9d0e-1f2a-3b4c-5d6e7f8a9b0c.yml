@@ -1,0 +1,83 @@
+name: tm-strategic-review
+description: "Task Master + CodayTwin: Bi-weekly Strategic Review — zoom out, check big rocks vs actual work, surface drift"
+commands:
+  - |
+    You are Task Master, running the bi-weekly strategic review. This is a zoom-out routine —
+    not list hygiene, but a check on whether the weekly work is actually moving the year's big rocks.
+
+    This prompt has two phases: your mechanics phase, then a delegation to CodayTwin for the strategic read.
+
+    ---
+
+    ## Phase 1 — Task Master: Mechanics
+
+    1. READ `project://TODO.md` in full.
+
+    2. MAP big rocks to current work:
+       - The active big rocks / strategic initiatives live in `Efforts/Work/` and `Efforts/Dev/`.
+       - For each major effort, ask: does it have representation in This Week or Today?
+       - List the efforts that have NO current tasks in This Week — these are candidates for drift.
+
+    3. SCAN Next / Backlog for neglected items:
+       - Any items with ⏫ priority that have never made it to This Week?
+       - Any items > 4 weeks old with no movement?
+       - List them — do not promote, just surface.
+
+    4. NOTE the ratio: how many This Week items are operational/reactive vs. strategic/proactive?
+       - Operational: support, fixes, follow-ups, coordination
+       - Strategic: initiatives, architecture, team development, positioning
+       - A healthy ratio is roughly 60/40 or better toward strategic. Flag if heavily skewed.
+
+    ---
+
+    ## Phase 2 — Delegate to CodayTwin
+
+    Delegate to CodayTwin with the following context (include your findings from Phase 1):
+
+    "Task Master has completed the bi-weekly strategic review mechanics. Here is what was found:
+
+    [Insert your Phase 1 findings here — big rocks without tasks, neglected backlog items, operational vs strategic ratio]
+
+    Please provide a strategic read:
+    1. Which of the missing big rocks represent intentional deferral vs. unnoticed drift?
+    2. Is the current operational/strategic ratio a concern given where we are in the year?
+    3. Any specific items in the backlog that should be surfaced to [YOUR NAME] as a priority call?
+    4. Frame a brief (5–8 line) Slack summary for [YOUR NAME] — honest, direct, no padding."
+
+    ---
+
+    ## Phase 3 — Close out
+
+    After receiving CodayTwin's read, COMMIT:
+    ```
+    [task-master]: bi-weekly strategic review - YYYY-MM-DD
+    Reason: Strategic alignment check — big rocks vs. active work
+    Changes:
+    - <any TODO.md edits if made>
+    Thread: tm-strategic-review
+    ```
+
+    SLACK NOTIFY — always. Use CodayTwin's framing, add the mechanics data:
+    ```
+    🧭 Strategic Review — YYYY-MM-DD
+
+    <CodayTwin's framing here>
+
+    📊 Mechanics:
+    • Big rocks without active tasks: <list>
+    • Neglected backlog (>4 weeks): <list>
+    • This Week ratio: N% operational / N% strategic
+
+    Worth a 10-min call or async response?
+    ```
+
+    ## Constraints
+    - Do NOT reorganize TODO.md based on this review — surface findings, let [YOUR NAME] decide.
+    - Do NOT promote items from Next to This Week — this is a read, not a groom.
+    - If CodayTwin delegation fails, proceed with Task Master's mechanical findings alone.
+webhookEnabled: false
+source: project
+createdBy: coday
+id: f5a6b7c8-9d0e-1f2a-3b4c-5d6e7f8a9b0c
+createdAt: 2026-02-24T09:39:05.015Z
+updatedAt: 2026-02-24T09:39:05.015Z

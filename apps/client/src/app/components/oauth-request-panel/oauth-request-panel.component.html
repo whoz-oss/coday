@@ -1,0 +1,20 @@
+@if (pendingRequest(); as request) {
+  <div class="oauth-panel">
+    <div class="oauth-icon">
+      <mat-icon>lock_open</mat-icon>
+    </div>
+    <div class="oauth-content">
+      <p class="oauth-title">Authorization required</p>
+      <p class="oauth-description">
+        <strong>{{ request.integrationName }}</strong> needs your permission to continue.
+      </p>
+    </div>
+    <div class="oauth-actions">
+      <button type="button" class="oauth-btn oauth-btn--cancel" (click)="onCancel(request)">Cancel</button>
+      <button type="button" class="oauth-btn oauth-btn--authorize" (click)="onAuthorize(request)">
+        <mat-icon>open_in_new</mat-icon>
+        Authorize
+      </button>
+    </div>
+  </div>
+}

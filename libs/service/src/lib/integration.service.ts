@@ -32,7 +32,8 @@ export class IntegrationService {
       // User Integrations
       this.userIntegrations =
         selectedProject.name && this.userService.config.projects
-          ? this.userService.config.projects[selectedProject.name]?.integration || {}
+          ? this.userService.config.projects[this.userService.resolveProjectName(selectedProject.name)]?.integration ||
+            {}
           : {}
 
       // Merge the integrations

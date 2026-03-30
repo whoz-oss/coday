@@ -6,6 +6,7 @@
     "modelPropertyNaming": "original",
     "ngVersion": "20.0.0",
     "providedIn": "root",
+    "sortModelPropertiesByRequiredFlag": false,
     "stringEnums": true,
     "supportsES6": true,
     "taggedUnions": true,

@@ -34,7 +34,9 @@ Open your browser and navigate to the displayed URL (usually `http://localhost:3
 ### Server Options
 
 - `--port <number>` - Specify server port (default: 3000, auto-increments if occupied)
-- `--auth` - Enable authentication (requires auth proxy with x-forwarded-email header)
+- `--auth` - Enable authentication. Supports two identity sources (tried in order):
+  1. **Cloudflare Access** — decodes the `CF_Authorization` JWT and uses its `email` claim.
+  2. **Reverse-proxy header** — falls back to the `x-forwarded-email` header set by an upstream auth proxy.
 - `--debug` - Enable debug logging for troubleshooting
 
 ### Execution Options

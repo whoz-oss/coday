@@ -1,0 +1,72 @@
+<div class="prompt-list-page">
+  <ds-entity-list
+    title="Prompts"
+    [items]="promptItems()"
+    cardMinWidth="320px"
+    contentMaxWidth="1400px"
+    searchPlaceholder="Filter prompts…"
+    emptyMessage="No prompts found."
+    [showCreate]="true"
+    [itemTemplate]="promptCard"
+    (createRequested)="onCreate()"
+  >
+    <button toolbar-start mat-icon-button title="Back" (click)="onBack()">
+      <mat-icon>chevron_left</mat-icon>
+    </button>
+    <mat-slide-toggle
+      toolbar-extras
+      class="prompt-list__mine-toggle"
+      color="primary"
+      [ngModel]="showOnlyMine()"
+      (ngModelChange)="showOnlyMine.set($event)"
+    >
+      Mine
+    </mat-slide-toggle>
+  </ds-entity-list>
+
+  @if (errorMessage()) {
+    <div class="prompt-list__error">{{ errorMessage() }}</div>
+  }
+</div>
+
+<!-- Custom card template with actions -->
+<ng-template #promptCard let-item>
+  <ds-entity-card
+    [id]="item.id"
+    [name]="item.name"
+    [description]="item.description"
+    [badges]="item.badges ?? []"
+    (selected)="onEdit($event)"
+  >
+    <ng-container dsCardActions>
+      <button
+        mat-icon-button
+        [matMenuTriggerFor]="cardMenu"
+        [matMenuTriggerData]="{ id: item.id }"
+        (click)="$event.stopPropagation()"
+      >
+        <mat-icon>more_vert</mat-icon>
+      </button>
+    </ng-container>
+  </ds-entity-card>
+</ng-template>
+
+<!-- Shared menu instance — data injected via matMenuTriggerData -->
+<mat-menu #cardMenu="matMenu">
+  <ng-template matMenuContent let-id="id">
+    <button mat-menu-item (click)="onEdit(id)">
+      <mat-icon>edit</mat-icon>
+      Edit
+    </button>
+    @if (isAdmin()) {
+      <button mat-menu-item (click)="onToggleWebhook(id)">
+        <mat-icon>{{ isWebhookEnabled(id) ? 'link_off' : 'link' }}</mat-icon>
+        {{ isWebhookEnabled(id) ? 'Disable webhook' : 'Enable webhook' }}
+      </button>
+    }
+    <button mat-menu-item class="prompt-list__delete-item" (click)="onDelete(id)">
+      <mat-icon>delete</mat-icon>
+      Delete
+    </button>
+  </ng-template>
+</mat-menu>

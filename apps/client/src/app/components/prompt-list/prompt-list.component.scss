@@ -1,0 +1,31 @@
+:host {
+  display: block;
+  width: 100%;
+  min-height: 100vh;
+  background: var(--color-bg);
+  overflow-y: auto;
+}
+
+.prompt-list__mine-toggle {
+  flex-shrink: 0;
+  font-size: 0.875rem;
+}
+
+.prompt-list__delete-item {
+  color: var(--color-error, #ff3b30);
+
+  mat-icon {
+    color: inherit;
+  }
+}
+
+.prompt-list__error {
+  margin: 1rem auto;
+  max-width: 900px;
+  padding: 0.75rem 1rem;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  border-radius: 8px;
+  color: var(--color-error, #ff3b30);
+  font-size: 0.875rem;
+}

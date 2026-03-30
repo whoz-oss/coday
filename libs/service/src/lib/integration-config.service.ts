@@ -42,7 +42,7 @@ export class IntegrationConfigService {
         return {}
       }
       const userProjects = this.userService.config.projects || {}
-      integrations = userProjects[project.name]?.integration || {}
+      integrations = userProjects[this.userService.resolveProjectName(project.name)]?.integration || {}
     }
 
     // Mask API keys for security
@@ -84,7 +84,7 @@ export class IntegrationConfigService {
         throw new Error('No project selected')
       }
 
-      // Use existing UserService method for user-level integration
+      // Use existing UserService method for user-level integration (resolves worktree names internally)
       this.userService.setProjectIntegration(project.name, { [name]: config })
     }
 
@@ -130,8 +130,9 @@ export class IntegrationConfigService {
       }
 
       // Get current user integrations for this project
+      const resolvedName = this.userService.resolveProjectName(project.name)
       const userProjects = this.userService.config.projects || {}
-      const currentUserIntegrations = userProjects[project.name]?.integration || {}
+      const currentUserIntegrations = userProjects[resolvedName]?.integration || {}
 
       // Check if integration exists
       if (!currentUserIntegrations[name]) {
@@ -146,12 +147,12 @@ export class IntegrationConfigService {
       if (!this.userService.config.projects) {
         this.userService.config.projects = {}
       }
-      if (!this.userService.config.projects[project.name]) {
-        this.userService.config.projects[project.name] = { integration: {} }
+      if (!this.userService.config.projects[resolvedName]) {
+        this.userService.config.projects[resolvedName] = { integration: {} }
       }
 
       // Update user configuration
-      this.userService.config.projects[project.name]!.integration = updatedIntegrations
+      this.userService.config.projects[resolvedName]!.integration = updatedIntegrations
       this.userService.save()
     }
 
@@ -172,7 +173,7 @@ export class IntegrationConfigService {
 
     // Get user-level integrations
     const userProjects = this.userService.config.projects || {}
-    const userIntegrations = userProjects[project.name]?.integration || {}
+    const userIntegrations = userProjects[this.userService.resolveProjectName(project.name)]?.integration || {}
 
     // Merge: start with project, then override with user
     const merged: IntegrationLocalConfig = { ...projectIntegrations }
@@ -242,7 +243,7 @@ export class IntegrationConfigService {
     const project = this.projectService.selectedProject
     if (!project) return {}
     const userProjects = this.userService.config.projects ?? {}
-    return { ...(userProjects[project.name]?.integration ?? {}) }
+    return { ...(userProjects[this.userService.resolveProjectName(project.name)]?.integration ?? {}) }
   }
 
   /**
@@ -269,7 +270,7 @@ export class IntegrationConfigService {
         return undefined
       }
       const userProjects = this.userService.config.projects || {}
-      const integrations = userProjects[project.name]?.integration || {}
+      const integrations = userProjects[this.userService.resolveProjectName(project.name)]?.integration || {}
       return integrations[name]
     }
 

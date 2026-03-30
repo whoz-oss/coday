@@ -1,3 +1,543 @@
+## 0.107.1 (2026-03-27)
+
+### 🩹 Fixes
+
+- add close button to share thread panel ([#683](https://github.com/whoz-oss/coday/pull/683), [#682](https://github.com/whoz-oss/coday/issues/682))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.107.0 (2026-03-27)
+
+### 🚀 Features
+
+- replace dialogs with full-page list components ([#681](https://github.com/whoz-oss/coday/pull/681))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- vincent.audibert
+
+## 0.106.0 (2026-03-27)
+
+### 🚀 Features
+
+- add generic entity-list for project and prompt list ([#614](https://github.com/whoz-oss/coday/pull/614))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.105.3 (2026-03-27)
+
+### 🩹 Fixes
+
+- #671 remove_worktree accepts optional projectName for legacy worktrees ([#674](https://github.com/whoz-oss/coday/pull/674), [#671](https://github.com/whoz-oss/coday/issues/671))
+- #670 improve modal/background contrast with border, shadow and blurred backdrop ([#673](https://github.com/whoz-oss/coday/pull/673), [#670](https://github.com/whoz-oss/coday/issues/670), [#2](https://github.com/whoz-oss/coday/issues/2), [#1](https://github.com/whoz-oss/coday/issues/1))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.105.2 (2026-03-26)
+
+### 🩹 Fixes
+
+- #653 use updateThread() in thread tool to preserve starring on rename ([#664](https://github.com/whoz-oss/coday/pull/664), [#653](https://github.com/whoz-oss/coday/issues/653))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.105.1 (2026-03-26)
+
+### 🩹 Fixes
+
+- #651 fix node process leaks in MCP and thread lifecycle ([#651](https://github.com/whoz-oss/coday/issues/651))
+- #651 fix node process leaks in MCP and thread lifecycle ([#662](https://github.com/whoz-oss/coday/pull/662), [#651](https://github.com/whoz-oss/coday/issues/651))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.105.0 (2026-03-26)
+
+### 🚀 Features
+
+- wz-30856: display text chunks streams in agentos-ui ([#663](https://github.com/whoz-oss/coday/pull/663))
+
+### ❤️ Thank You
+
+- Thomas MARTIN @thomasmartin-whoz
+
+## 0.104.7 (2026-03-26)
+
+### 🩹 Fixes
+
+- #654 optimistic star update to prevent race condition on thread list refresh ([#665](https://github.com/whoz-oss/coday/pull/665), [#654](https://github.com/whoz-oss/coday/issues/654))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.104.6 (2026-03-26)
+
+### 🩹 Fixes
+
+- #652 inconsistent sub-thread content display on expand ([#652](https://github.com/whoz-oss/coday/issues/652))
+- #652 inconsistent sub-thread content display on expand ([#668](https://github.com/whoz-oss/coday/pull/668), [#652](https://github.com/whoz-oss/coday/issues/652))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.104.5 (2026-03-26)
+
+### 🩹 Fixes
+
+- #666 remove_worktree falls back to prune when path is missing ([#667](https://github.com/whoz-oss/coday/pull/667), [#666](https://github.com/whoz-oss/coday/issues/666))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.104.4 (2026-03-26)
+
+### 🩹 Fixes
+
+- #660 remove disconnect timeout to decouple agent execution from SSE lifecycle ([#661](https://github.com/whoz-oss/coday/pull/661), [#660](https://github.com/whoz-oss/coday/issues/660))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.104.3 (2026-03-26)
+
+### 🩹 Fixes
+
+- correct editFiles tool name ([#656](https://github.com/whoz-oss/coday/pull/656))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.104.2 (2026-03-25)
+
+### 🩹 Fixes
+
+- #657 UI visual regressions post PR #644 ([#657](https://github.com/whoz-oss/coday/issues/657), [#644](https://github.com/whoz-oss/coday/issues/644))
+- #657 UI visual regressions post PR #644 ([#658](https://github.com/whoz-oss/coday/pull/658), [#657](https://github.com/whoz-oss/coday/issues/657), [#644](https://github.com/whoz-oss/coday/issues/644))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.104.1 (2026-03-25)
+
+### 🩹 Fixes
+
+- hide share button when auth is disabled ([74f2729c](https://github.com/whoz-oss/coday/commit/74f2729c))
+- hide "Share thread" button when not in auth/multi-user mode ([#642](https://github.com/whoz-oss/coday/pull/642), [#640](https://github.com/whoz-oss/coday/issues/640), [#622](https://github.com/whoz-oss/coday/issues/622), [#628](https://github.com/whoz-oss/coday/issues/628))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.104.0 (2026-03-25)
+
+### 🚀 Features
+
+- #634 move manual delegation to async with result emission ([#647](https://github.com/whoz-oss/coday/pull/647), [#634](https://github.com/whoz-oss/coday/issues/634))
+
+### 🩹 Fixes
+
+- #643 thread list after github button, no height cap, transparent bg ([#643](https://github.com/whoz-oss/coday/issues/643))
+- #643 sidenav thread list layout — collapsible settings, sticky header, proper scroll ([#643](https://github.com/whoz-oss/coday/issues/643))
+- #643 move control center to sticky bottom ([#643](https://github.com/whoz-oss/coday/issues/643))
+- #643 control center polish — border, hub icon, capitalisation ([#643](https://github.com/whoz-oss/coday/issues/643))
+- #643 restore control center max-height, partial dvh fix for safari ([#643](https://github.com/whoz-oss/coday/issues/643))
+- #643 threads always open, simplify sidenav component ([#643](https://github.com/whoz-oss/coday/issues/643))
+- #643 threads always open, remove threads from expandedSections ([#643](https://github.com/whoz-oss/coday/issues/643))
+- #643 sidenav thread list layout — collapsible settings, sticky header, proper scroll ([#644](https://github.com/whoz-oss/coday/pull/644), [#643](https://github.com/whoz-oss/coday/issues/643))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.103.5 (2026-03-25)
+
+### 🩹 Fixes
+
+- #508 prevent event loss with fast AI models via ReplaySubject bridge ([#649](https://github.com/whoz-oss/coday/pull/649), [#508](https://github.com/whoz-oss/coday/issues/508))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.103.4 (2026-03-25)
+
+### 🩹 Fixes
+
+- #648 stop microphone when sending a message ([#650](https://github.com/whoz-oss/coday/pull/650), [#648](https://github.com/whoz-oss/coday/issues/648))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.103.3 (2026-03-25)
+
+### 🩹 Fixes
+
+- #645 increase default cost limit from $2 to $10 ([#646](https://github.com/whoz-oss/coday/pull/646), [#645](https://github.com/whoz-oss/coday/issues/645))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.103.2 (2026-03-24)
+
+### 🩹 Fixes
+
+- adjust cloudflare header ([#641](https://github.com/whoz-oss/coday/pull/641))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.103.1 (2026-03-24)
+
+### 🩹 Fixes
+
+- #561 add inline OAuth authorization panel to avoid popup blocking ([#618](https://github.com/whoz-oss/coday/pull/618), [#561](https://github.com/whoz-oss/coday/issues/561))
+- server build TS2532 on resolve-username parts[1] access ([#639](https://github.com/whoz-oss/coday/pull/639))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+- mathieu_dearmey @mathieu-dearmey
+- vincent.audibert
+
+## 0.103.0 (2026-03-24)
+
+### 🚀 Features
+
+- #636 support Cloudflare Access JWT (CF_Authorization) for user identity in --auth mode ([#638](https://github.com/whoz-oss/coday/pull/638), [#636](https://github.com/whoz-oss/coday/issues/636))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.102.1 (2026-03-24)
+
+### 🚀 Features
+
+- adjust again GitHub tools and web dev tmux ([#635](https://github.com/whoz-oss/coday/pull/635))
+
+### 🩹 Fixes
+
+- mobile UX improvements — layout, sidenav, thread list, safe areas ([86561bb8](https://github.com/whoz-oss/coday/commit/86561bb8))
+- thread list fully opaque background in light/dark theme ([119c9b34](https://github.com/whoz-oss/coday/commit/119c9b34))
+- mobile UX improvements — layout, sidenav, thread list, safe areas ([#637](https://github.com/whoz-oss/coday/pull/637))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+- vincent-audibert-whoz
+
+## 0.102.0 (2026-03-24)
+
+### 🚀 Features
+
+- #620 user-initiated manual delegation command ([#630](https://github.com/whoz-oss/coday/pull/630), [#620](https://github.com/whoz-oss/coday/issues/620), [#619](https://github.com/whoz-oss/coday/issues/619))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.101.0 (2026-03-24)
+
+### 🚀 Features
+
+- #624 sub-threads created by delegations appear in conversation list ([#626](https://github.com/whoz-oss/coday/pull/626), [#624](https://github.com/whoz-oss/coday/issues/624))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.100.0 (2026-03-24)
+
+### 🚀 Features
+
+- expose scripts to agents ([#627](https://github.com/whoz-oss/coday/pull/627))
+- #622 multi-user thread UI ([#622](https://github.com/whoz-oss/coday/issues/622))
+- #622 multi-user thread UI ([#628](https://github.com/whoz-oss/coday/pull/628), [#622](https://github.com/whoz-oss/coday/issues/622))
+- **multi-user:** correct message alignment and authorship in shared threads ([bd8c243c](https://github.com/whoz-oss/coday/commit/bd8c243c))
+
+### 🩹 Fixes
+
+- #622 address PR review comments on multi-user thread UI ([#622](https://github.com/whoz-oss/coday/issues/622))
+- #622 move fetchCurrentUser to thread-state guard ([#622](https://github.com/whoz-oss/coday/issues/622))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+- vincent-audibert-whoz
+
+## 0.99.0 (2026-03-23)
+
+### 🚀 Features
+
+- #585 async delegation support and worktree setup fix ([#611](https://github.com/whoz-oss/coday/pull/611), [#585](https://github.com/whoz-oss/coday/issues/585))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.98.0 (2026-03-22)
+
+### 🚀 Features
+
+- various UI mobile ([#609](https://github.com/whoz-oss/coday/pull/609))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.97.2 (2026-03-22)
+
+### 🩹 Fixes
+
+- send proper AnswerEvent with parentKey when replying to InviteEvent ([#612](https://github.com/whoz-oss/coday/pull/612))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.97.1 (2026-03-21)
+
+### 🩹 Fixes
+
+- #604 thread sharing — shared user cannot see or interact with thread ([#605](https://github.com/whoz-oss/coday/pull/605), [#604](https://github.com/whoz-oss/coday/issues/604))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.97.0 (2026-03-20)
+
+### 🚀 Features
+
+- #596 per-project preview server with start/stop UI and idle aut… ([#598](https://github.com/whoz-oss/coday/pull/598), [#596](https://github.com/whoz-oss/coday/issues/596))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.96.1 (2026-03-20)
+
+### 🚀 Features
+
+- #592 add setup.sh script with binary checks and frozen install ([#593](https://github.com/whoz-oss/coday/pull/593), [#592](https://github.com/whoz-oss/coday/issues/592))
+
+### 🩹 Fixes
+
+- prevent duplicate speech transcripts on Chrome mobile ([#597](https://github.com/whoz-oss/coday/pull/597))
+
+### ❤️ Thank You
+
+- m1
+- vincent-audibert-whoz
+
+## 0.96.0 (2026-03-19)
+
+### 🚀 Features
+
+- #590 user autocomplete for thread sharing with generic ds-autocomplete-input ([#590](https://github.com/whoz-oss/coday/issues/590))
+
+### 🩹 Fixes
+
+- #590 live refresh of participant list and share panel as drawer ([#590](https://github.com/whoz-oss/coday/issues/590))
+- #590 remove low-value console.log statements per PR review ([#590](https://github.com/whoz-oss/coday/issues/590))
+
+### ❤️ Thank You
+
+- m1
+
+## 0.95.0 (2026-03-19)
+
+### 🚀 Features
+
+- #571 thread-targeted delegation ([#571](https://github.com/whoz-oss/coday/issues/571))
+- #571 add list_sub_threads tool and fix thread passthrough in allow-list wrapper ([#571](https://github.com/whoz-oss/coday/issues/571))
+- #571 thread-targeted delegation ([#594](https://github.com/whoz-oss/coday/pull/594), [#571](https://github.com/whoz-oss/coday/issues/571))
+
+### 🩹 Fixes
+
+- #571 sharpen tool descriptions to prevent context re-injection on resumption ([#571](https://github.com/whoz-oss/coday/issues/571))
+- #571 add threadId to delegation JSON schema ([#571](https://github.com/whoz-oss/coday/issues/571))
+- #571 delegation header shows latest task on resumed threads ([#571](https://github.com/whoz-oss/coday/issues/571))
+- #571 clarify that any agent can resume an existing sub-thread ([#571](https://github.com/whoz-oss/coday/issues/571))
+- #571 prevent new thread creation when resuming with different agent ([#571](https://github.com/whoz-oss/coday/issues/571))
+
+### ❤️ Thank You
+
+- m1
+- Mathieu De Armey @mathieu-dearmey
+
+## 0.94.0 (2026-03-18)
+
+### 🚀 Features
+
+- #584 isolate worktree threads and migrate on removal ([#587](https://github.com/whoz-oss/coday/pull/587), [#584](https://github.com/whoz-oss/coday/issues/584))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.93.0 (2026-03-18)
+
+### 🚀 Features
+
+- #585 move PM agent to dedicated file with GIT_WORKTREE integration ([#586](https://github.com/whoz-oss/coday/pull/586), [#585](https://github.com/whoz-oss/coday/issues/585))
+- #583 restrict worktree mutating commands in generic git tool ([#588](https://github.com/whoz-oss/coday/pull/588), [#583](https://github.com/whoz-oss/coday/issues/583))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.92.1 (2026-03-18)
+
+### 🩹 Fixes
+
+- #589 exclude no_username logs from per-user token usage in auth mode ([#589](https://github.com/whoz-oss/coday/issues/589))
+- #589 exclude no_username logs from per-user token usage in auth mode ([#591](https://github.com/whoz-oss/coday/pull/591), [#589](https://github.com/whoz-oss/coday/issues/589))
+
+### ❤️ Thank You
+
+- Mathieu De Armey
+- mathieu_dearmey
+
+## 0.92.0 (2026-03-17)
+
+### 🚀 Features
+
+- #567 thread sharing UI and API ([#578](https://github.com/whoz-oss/coday/pull/578), [#567](https://github.com/whoz-oss/coday/issues/567))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+- m1
+
+## 0.91.1 (2026-03-17)
+
+### 🩹 Fixes
+
+- project-level AI config ignored when no user-level config defined ([#580](https://github.com/whoz-oss/coday/pull/580))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.91.0 (2026-03-17)
+
+### 🚀 Features
+
+- #572 Git Worktree Tool ([#574](https://github.com/whoz-oss/coday/pull/574), [#572](https://github.com/whoz-oss/coday/issues/572))
+
+### ❤️ Thank You
+
+- mathieu_dearmey
+- vincent-audibert-whoz
+
+## 0.90.0 (2026-03-17)
+
+### 🚀 Features
+
+- #556 flexible mandatory docs — directory listing and glob patterns ([#558](https://github.com/whoz-oss/coday/pull/558), [#556](https://github.com/whoz-oss/coday/issues/556))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.89.1 (2026-03-17)
+
+### 🩹 Fixes
+
+- #576 add missing users field when updating thread cache ([#576](https://github.com/whoz-oss/coday/issues/576))
+- #576 add missing users field when updating thread cache ([#577](https://github.com/whoz-oss/coday/pull/577), [#576](https://github.com/whoz-oss/coday/issues/576))
+
+### ❤️ Thank You
+
+- Mathieu De Armey
+- mathieu_dearmey
+
+## 0.89.0 (2026-03-17)
+
+### 🚀 Features
+
+- #563 thread access model — users field & shared ownership ([#563](https://github.com/whoz-oss/coday/issues/563))
+- #563 thread access model — users field & shared ownership ([#569](https://github.com/whoz-oss/coday/pull/569), [#563](https://github.com/whoz-oss/coday/issues/563), [#567](https://github.com/whoz-oss/coday/issues/567), [#564](https://github.com/whoz-oss/coday/issues/564), [#565](https://github.com/whoz-oss/coday/issues/565), [#566](https://github.com/whoz-oss/coday/issues/566), [#568](https://github.com/whoz-oss/coday/issues/568))
+
+### 🩹 Fixes
+
+- #563 include users field in AiThread.serialize() output ([#563](https://github.com/whoz-oss/coday/issues/563))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+- m1
+
+## 0.88.0 (2026-03-16)
+
+### 🚀 Features
+
+- update pnpm workspace to have fixed version ([#570](https://github.com/whoz-oss/coday/pull/570))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+
+## 0.87.0 (2026-03-16)
+
+### 🚀 Features
+
+- parallel delegation with inline sub-threads ([0811f443](https://github.com/whoz-oss/coday/commit/0811f443))
+- load subThread content when uncollapsing ([50ba2dae](https://github.com/whoz-oss/coday/commit/50ba2dae))
+- pass thread explicitly to delegate tool via ToolSet.run(), removing broken threadStack ([4c6e5d3e](https://github.com/whoz-oss/coday/commit/4c6e5d3e))
+- removing broken threadStack; bump stackDepth to 10; remove unused forkedThreads Map ([af83b0c1](https://github.com/whoz-oss/coday/commit/af83b0c1))
+- WZ-30688 namespace registry ([#546](https://github.com/whoz-oss/coday/pull/546))
+- update lock file ([66c27664](https://github.com/whoz-oss/coday/commit/66c27664))
+
+### ❤️ Thank You
+
+- Charles Monot @charles-monot-whoz
+- thomas.martin @thomasmartin-whoz
+- vincent-audibert-whoz
+
 ## 0.86.0 (2026-03-12)
 
 ### 🚀 Features

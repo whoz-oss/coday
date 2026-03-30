@@ -22,7 +22,7 @@
 
 .input-row.grouped-input {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   background: var(--glass-bg);
   border-radius: 16px;
   padding: 0 0.15rem 0 1.25rem;
@@ -84,8 +84,9 @@
   padding: 1rem 0;
   color: var(--color-text);
   resize: none;
+  field-sizing: content;
   min-height: 36px;
-  max-height: 70vh; // 50% de la hauteur de l'écran
+  max-height: 70vh;
   overflow-y: auto;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
   line-height: 1.5;
@@ -141,11 +142,19 @@
   }
 }
 
+// Buttons have no individual margins — spacing handled by actions-col gap.
 .voice-btn,
 .send-btn,
 .action-btn,
 .upload-btn {
-  margin: 0 0.5rem 0 0.08rem;
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 // Recording state: pulse animation on the inner button

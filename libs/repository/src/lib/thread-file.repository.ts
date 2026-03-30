@@ -168,8 +168,8 @@ export class ThreadFileRepository implements ThreadRepository {
         }
       }
 
-      const versionned = { ...thread, version: aiThreadMigrations.length + 1 }
-      const contentToSave = yaml.stringify(versionned)
+      const serialized = { ...thread.serialize(), version: aiThreadMigrations.length + 1 }
+      const contentToSave = yaml.stringify(serialized)
 
       // Write the new file
       await fs.writeFile(newThreadPath, contentToSave, 'utf-8')
@@ -180,7 +180,7 @@ export class ThreadFileRepository implements ThreadRepository {
     }
   }
 
-  async listByProject(projectId: string, username?: string): Promise<ThreadSummary[]> {
+  async listByProject(projectId: string): Promise<ThreadSummary[]> {
     try {
       const threadsDir = this.getThreadsDir(projectId)
 
@@ -214,12 +214,20 @@ export class ThreadFileRepository implements ThreadRepository {
                 modifiedDate: data.modifiedDate ?? '',
                 price: data.price ?? 0,
                 starring: data.starring ?? [],
+                users: Array.isArray(data.users)
+                  ? data.users.map((u: any) => (typeof u === 'string' ? { userId: u } : u))
+                  : data.username
+                    ? [{ userId: data.username }]
+                    : [],
+                parentThreadId: data.parentThreadId,
+                parentEventId: data.parentEventId,
+                delegatedAgentName: data.delegatedAgentName,
+                delegatedTask: data.delegatedTask,
               } as ThreadSummary
             })
         )
       )
         .filter((t): t is ThreadSummary => !!t)
-        .filter((t) => !username || t.username === username) // Filter by username only if provided
         // Sort by decreasing last modified date
         .sort((a, b) => (a.modifiedDate > b.modifiedDate ? -1 : 1))
 

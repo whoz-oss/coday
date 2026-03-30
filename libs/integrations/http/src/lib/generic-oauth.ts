@@ -43,14 +43,17 @@ export class GenericOAuth {
   private pendingReject: ((error: Error) => void) | null = null
   // Shared promise for concurrent authenticate() calls during the same flow
   private pendingAuthPromise: Promise<TokenData> | null = null
+  // Resolved project name: strips worktree suffix (e.g. "proj__feat-x" → "proj")
+  private readonly resolvedProjectName: string
 
   constructor(
     private readonly config: GenericOAuthConfig,
     private readonly interactor: Interactor,
     private readonly userService: UserService,
-    private readonly projectName: string,
+    projectName: string,
     private readonly integrationName: string
   ) {
+    this.resolvedProjectName = userService.resolveProjectName(projectName)
     // Use the full authorization endpoint URL as issuer base — supports path-based issuers
     // (e.g. Keycloak realms: https://auth.example.com/realms/myrealm)
     const authUrl = new URL(config.authorizationEndpoint)
@@ -306,12 +309,12 @@ export class GenericOAuth {
 
   private loadTokensFromStorage(): void {
     const userProjects = this.userService.config.projects
-    const projectConfig = userProjects?.[this.projectName]
+    const projectConfig = userProjects?.[this.resolvedProjectName]
     const integrationConfig = projectConfig?.integration?.[this.integrationName]
     const tokens = integrationConfig?.oauth2?.tokens
 
     this.interactor.debug(
-      `[OAuth:${this.integrationName}] loadTokensFromStorage: projectName=${this.projectName}, hasProjects=${!!userProjects}, hasProjectConfig=${!!projectConfig}, hasIntegrationConfig=${!!integrationConfig}, hasTokens=${!!tokens}`
+      `[OAuth:${this.integrationName}] loadTokensFromStorage: projectName=${this.resolvedProjectName}, hasProjects=${!!userProjects}, hasProjectConfig=${!!projectConfig}, hasIntegrationConfig=${!!integrationConfig}, hasTokens=${!!tokens}`
     )
 
     if (tokens) {
@@ -331,16 +334,18 @@ export class GenericOAuth {
 
     const userConfig = this.userService.config
     if (!userConfig.projects) userConfig.projects = {}
-    if (!userConfig.projects[this.projectName]) userConfig.projects[this.projectName] = { integration: {} }
-    if (!userConfig.projects[this.projectName]!.integration) userConfig.projects[this.projectName]!.integration = {}
-    if (!userConfig.projects[this.projectName]!.integration![this.integrationName]) {
-      userConfig.projects[this.projectName]!.integration![this.integrationName] = {}
+    if (!userConfig.projects[this.resolvedProjectName])
+      userConfig.projects[this.resolvedProjectName] = { integration: {} }
+    if (!userConfig.projects[this.resolvedProjectName]!.integration)
+      userConfig.projects[this.resolvedProjectName]!.integration = {}
+    if (!userConfig.projects[this.resolvedProjectName]!.integration![this.integrationName]) {
+      userConfig.projects[this.resolvedProjectName]!.integration![this.integrationName] = {}
     }
-    if (!userConfig.projects[this.projectName]!.integration![this.integrationName]!.oauth2) {
-      userConfig.projects[this.projectName]!.integration![this.integrationName]!.oauth2 = {} as any
+    if (!userConfig.projects[this.resolvedProjectName]!.integration![this.integrationName]!.oauth2) {
+      userConfig.projects[this.resolvedProjectName]!.integration![this.integrationName]!.oauth2 = {} as any
     }
 
-    const oauth2Config = userConfig.projects[this.projectName]!.integration![this.integrationName]!.oauth2!
+    const oauth2Config = userConfig.projects[this.resolvedProjectName]!.integration![this.integrationName]!.oauth2!
     oauth2Config.tokens = {
       access_token: this.tokenData.accessToken,
       refresh_token: this.tokenData.refreshToken,
@@ -353,7 +358,7 @@ export class GenericOAuth {
 
   private clearTokensFromStorage(): void {
     const oauth2Config =
-      this.userService.config.projects?.[this.projectName]?.integration?.[this.integrationName]?.oauth2
+      this.userService.config.projects?.[this.resolvedProjectName]?.integration?.[this.integrationName]?.oauth2
     if (oauth2Config) {
       delete oauth2Config.tokens
       this.userService.save()

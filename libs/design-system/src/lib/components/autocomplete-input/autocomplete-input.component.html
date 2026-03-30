@@ -1,0 +1,29 @@
+<div class="autocomplete-container">
+  <input
+    type="text"
+    [placeholder]="placeholder"
+    [disabled]="disabled"
+    [value]="query"
+    (input)="onInput($event)"
+    (keydown)="onKeydown($event)"
+    (focus)="onFocus()"
+    (blur)="onBlur()"
+  />
+  @if (showDropdown && items.length > 0) {
+    <div class="autocomplete-dropdown">
+      @for (item of items; track item.id; let i = $index) {
+        <div
+          class="autocomplete-option"
+          [class.selected]="i === selectedIndex"
+          (mousedown)="selectItem(item)"
+          (touchstart)="selectItem(item)"
+        >
+          <span class="option-name">{{ item.name }}</span>
+          @if (item.description) {
+            <span class="option-description">{{ item.description }}</span>
+          }
+        </div>
+      }
+    </div>
+  }
+</div>

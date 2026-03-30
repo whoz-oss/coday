@@ -11,6 +11,7 @@ import io.mockk.verify
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.AiProviderPlugin
+import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.pf4j.PluginManager
 import java.util.UUID
 
@@ -79,9 +80,9 @@ class AiProviderDiscoveryServiceTest :
 private fun createAiProvider(
     id: UUID,
     type: AiApiType,
-): AiProvider {
-    val provider = mockk<AiProvider>()
-    every { provider.metadata.id } returns id
-    every { provider.apiType } returns type
-    return provider
-}
+): AiProvider = AiProvider(
+    metadata = EntityMetadata(id = id),
+    name = "provider-${id}",
+    apiType = type,
+    baseUrl = "https://api.example.com",
+)

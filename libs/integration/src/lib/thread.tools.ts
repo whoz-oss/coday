@@ -7,6 +7,7 @@ import {
   CodayTool,
   FunctionTool,
   ThreadUpdateEvent,
+  hasAccess,
 } from '@coday/model'
 import { MessageEvent } from '@coday/model'
 
@@ -88,7 +89,7 @@ export class ThreadTools extends AssistantToolFactory {
             if (!thread) {
               return `Thread '${threadId}' not found.`
             }
-            if (thread.username !== username) {
+            if (!hasAccess(thread, username)) {
               return `Access denied: thread '${threadId}' belongs to another user.`
             }
             const { messages } = await thread.getMessages(undefined, undefined)
@@ -158,18 +159,17 @@ export class ThreadTools extends AssistantToolFactory {
             if (!thread) {
               return `Thread '${targetId}' not found.`
             }
-            if (thread.username !== username) {
+            if (!hasAccess(thread, username)) {
               return `Access denied: thread '${targetId}' belongs to another user.`
             }
 
-            if (name !== undefined) thread.name = name
-            if (summary !== undefined) thread.summary = summary
-
-            const repo = this.threadService.getThreadRepository(projectName)
-            await repo.save(projectName, thread)
-
-            // Invalidate the list cache so the next list call reloads from disk
-            this.threadService.clearCache(projectName)
+            // Use updateThread() instead of direct repo.save() + clearCache() to
+            // ensure the thread list cache (threadListCache) is updated incrementally,
+            // preserving all fields including starring. Fixes #653.
+            await this.threadService.updateThread(projectName, targetId, {
+              name,
+              summary,
+            })
 
             // Notify the frontend so it refreshes the thread list
             this.interactor.sendEvent(

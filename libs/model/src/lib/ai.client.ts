@@ -6,6 +6,7 @@ import {
   MessageEvent,
   SummaryEvent,
   TextContent,
+  TextEvent,
   ToolRequestEvent,
   ToolResponseEvent,
 } from './coday-events'
@@ -400,6 +401,7 @@ It can be summarized as:
         role: 'assistant',
         content: [content],
         name: agent.name,
+        threadId: thread.id,
       })
       thread.addAgentMessage(agent.name, content)
       subscriber.next(messageEvent)
@@ -459,13 +461,15 @@ It can be summarized as:
       toolRequests.map(async (request) => {
         let responseEvent: ToolResponseEvent
         try {
+          request.threadId = thread.id
           this.interactor.sendEvent(request)
-          responseEvent = await agent.tools.run(request)
+          responseEvent = await agent.tools.run(request, thread)
         } catch (error: any) {
           const errorMessage = `Error running tool ${request.name}: ${error}`
           console.error(errorMessage)
           responseEvent = request.buildResponse(errorMessage)
         }
+        responseEvent.threadId = thread.id
         this.interactor.sendEvent(responseEvent)
         thread.addToolRequests(agent.name, [request])
         thread.addToolResponseEvents([responseEvent])
@@ -525,8 +529,9 @@ It can be summarized as:
     const loop = `Loop${thread.usage.iterations > 1 ? 's' : ''}: ${thread.usage.iterations} | `
     const tokensIO = `Input: ${thread.usage.input}, Output: ${thread.usage.output} | `
     const cacheIO = `Cache write: ${thread.usage.cache_write}, Cache read: ${thread.usage.cache_read}`
-    const price = `🏃$${thread.usage.price.toFixed(3)} / 🧵$${thread.price.toFixed(3)}`
-    this.interactor.displayText(agentPart + price)
+    const price = `🏃${thread.usage.price.toFixed(3)} / 🧵${thread.price.toFixed(3)}`
+    // Tag with thread ID so usage info is routed to the correct sub-thread display
+    this.interactor.sendEvent(new TextEvent({ text: agentPart + price, threadId: thread.id }))
     this.interactor.debug(loop + tokensIO + cacheIO)
   }
 
