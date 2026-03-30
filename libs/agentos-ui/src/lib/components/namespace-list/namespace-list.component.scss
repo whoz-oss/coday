@@ -1,34 +1,22 @@
-.namespace-list {
-  display: flex;
-  flex-direction: column;
-  padding: 2rem;
-  gap: 1.5rem;
-  max-width: 640px;
-  margin: 0 auto;
+// Inline create / edit forms — projected into ds-entity-list via [toolbar-extras].
+// Layout and grid are fully delegated to ds-entity-list.
 
-  &__header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+.ns-inline-form {
+  width: 100%;
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--color-primary, #007aff);
+  background: var(--glass-bg, rgba(255, 255, 255, 0.72));
+  backdrop-filter: var(--glass-backdrop-blur, blur(20px));
 
-    h2 {
-      margin: 0;
-      font-size: 1.5rem;
-      font-weight: 600;
-      color: var(--color-text, #1d1d1f);
-      letter-spacing: -0.02em;
-    }
+  &--edit {
+    border-color: var(--color-text-secondary, #6e6e73);
   }
 
-  &__create-form {
+  &__form {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-    padding: 1rem;
-    border-radius: 12px;
-    border: 1px solid var(--color-primary, #007aff);
-    background: var(--glass-bg, rgba(255, 255, 255, 0.72));
-    backdrop-filter: var(--glass-backdrop-blur, blur(20px));
   }
 
   &__input {
@@ -53,40 +41,19 @@
     }
   }
 
-  &__create-actions {
+  &__actions {
     display: flex;
     gap: 0.25rem;
     justify-content: flex-end;
   }
 
-  &__items {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  &__edit-form {
-    border-color: var(--color-text-secondary, #6e6e73);
-  }
-
-  &__edit-label {
+  &__label {
     margin: 0 0 0.25rem;
     font-size: 0.8rem;
     color: var(--color-text-secondary, #6e6e73);
 
     strong {
       color: var(--color-text, #1d1d1f);
-    }
-  }
-
-  &__empty {
-    p {
-      color: var(--color-text-secondary, #6e6e73);
-      font-size: 0.9rem;
-      margin: 0;
     }
   }
 }

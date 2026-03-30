@@ -3,8 +3,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ReactiveFormsModule, FormControl, Validators } from '@angular/forms'
 import { Router } from '@angular/router'
 import { Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
-import { IconButtonComponent } from '@whoz-oss/design-system'
-import { switchMap, BehaviorSubject } from 'rxjs'
+import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
+import { switchMap, BehaviorSubject, map } from 'rxjs'
 import { AsyncPipe } from '@angular/common'
 import { NamespaceItemComponent } from '../namespace-item/namespace-item.component'
 
@@ -12,7 +12,7 @@ import { NamespaceItemComponent } from '../namespace-item/namespace-item.compone
  * NamespaceListComponent — smart container for namespace management.
  *
  * Responsibilities:
- * - Load and display the list of namespaces (via NamespaceItemComponent)
+ * - Load and display the list of namespaces via ds-entity-list (layout, search, grid)
  * - Inline creation form (name + optional description)
  * - Inline edit form (pre-filled with existing values)
  * - Deletion with immediate list refresh (confirmation handled by NamespaceItemComponent)
@@ -20,7 +20,7 @@ import { NamespaceItemComponent } from '../namespace-item/namespace-item.compone
 @Component({
   selector: 'agentos-namespace-list',
   standalone: true,
-  imports: [AsyncPipe, ReactiveFormsModule, IconButtonComponent, NamespaceItemComponent],
+  imports: [AsyncPipe, ReactiveFormsModule, IconButtonComponent, NamespaceItemComponent, EntityListComponent],
   templateUrl: './namespace-list.component.html',
   styleUrl: './namespace-list.component.scss',
 })
@@ -32,7 +32,30 @@ export class NamespaceListComponent {
   /** Trigger to refresh the list (emitting a new value forces re-subscription). */
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
-  protected readonly namespaces$ = this.refresh$.pipe(switchMap(() => this.namespaceController.listAll()))
+  /** Raw namespaces, kept for edit/delete lookups. */
+  private readonly namespaces$ = this.refresh$.pipe(switchMap(() => this.namespaceController.listAll()))
+
+  /** Mapped to EntityListItem[] for ds-entity-list. */
+  protected readonly namespaceItems$ = this.namespaces$.pipe(
+    map((namespaces) =>
+      namespaces.map(
+        (ns): EntityListItem => ({
+          id: ns.id,
+          name: ns.name,
+          description: ns.description,
+        })
+      )
+    )
+  )
+
+  /** Full namespace objects indexed by id — used to resolve itemSelected events. */
+  private namespacesById = new Map<string, Namespace>()
+
+  constructor() {
+    this.namespaces$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((namespaces) => {
+      this.namespacesById = new Map(namespaces.map((ns) => [ns.id, ns]))
+    })
+  }
 
   // --- Create form ---
 
@@ -58,8 +81,8 @@ export class NamespaceListComponent {
 
   // --- Navigation ---
 
-  protected select(ns: Namespace): void {
-    this.router.navigate(['/agentos', ns.id, 'cases'])
+  protected select(id: string): void {
+    this.router.navigate(['/agentos', id, 'cases'])
   }
 
   // --- Create ---
@@ -143,7 +166,13 @@ export class NamespaceListComponent {
       .subscribe(() => this.refresh$.next())
   }
 
-  protected trackById(_index: number, ns: Namespace): string {
-    return ns.id
+  // --- Item template helpers ---
+
+  /**
+   * Resolve a full Namespace from an id emitted by ds-entity-list.
+   * Used by the itemTemplate to pass the typed object to NamespaceItemComponent.
+   */
+  protected resolveNamespace(id: string): Namespace | null {
+    return this.namespacesById.get(id) ?? null
   }
 }
