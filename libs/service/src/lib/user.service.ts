@@ -60,6 +60,14 @@ export class UserService {
       writeYamlFile(filePath, this.config)
       this.interactor.displayText(`User configuration migrated to version ${this.config?.version}`)
     }
+
+    // Backfill username if missing (existing users created before email-based auth)
+    // The username field holds the raw email and is used by GET /api/users for share autocomplete
+    if (!this.config.username) {
+      console.log(`[USER_SERVICE] Backfilling username for existing user '${this.sanitizedUsername}'`)
+      this.config.username = username
+      writeYamlFile(filePath, this.config)
+    }
   }
 
   /**
