@@ -1,7 +1,6 @@
 package io.whozoss.agentos.namespace
 
 import io.whozoss.agentos.entity.EntityController
-import io.whozoss.agentos.security.SecurityService
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -28,8 +27,7 @@ import org.springframework.web.bind.annotation.RestController
 )
 class NamespaceController(
     private val namespaceService: NamespaceService,
-    securityService: SecurityService,
-) : EntityController<Namespace, String>(namespaceService, securityService) {
+) : EntityController<Namespace, String>(namespaceService) {
 
     /**
      * List all namespaces.

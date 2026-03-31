@@ -31,8 +31,8 @@ import org.springframework.web.bind.annotation.RestController
 )
 class UserController(
     private val userService: UserService,
-    securityService: SecurityService,
-) : EntityController<User, String>(userService, securityService) {
+    private val securityService: SecurityService,
+) : EntityController<User, String>(userService) {
 
     /**
      * GET /api/users — list all users.
@@ -55,7 +55,7 @@ class UserController(
     @Operation(summary = "Get the current user's profile")
     fun getMe(): User {
         logger.info { "resolving current user" }
-        return currentUser()
+        return securityService.resolveCurrentUser()
     }
 
     companion object : KLogging()
