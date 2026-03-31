@@ -1,6 +1,7 @@
 <div class="preview-panel">
   @for (entry of entryStates(); let i = $index; track: entry.name) {
     <!-- Entry row: order = i * 2 -->
+
     <div class="entry-row" [style.order]="i * 2">
       <span class="entry-name">{{ entry.name }}</span>
 
