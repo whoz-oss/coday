@@ -1,3 +1,14 @@
+## 0.107.2 (2026-03-31)
+
+### 🩹 Fixes
+
+- #688 backfill username from email for existing users ([#689](https://github.com/whoz-oss/coday/pull/689), [#688](https://github.com/whoz-oss/coday/issues/688))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.107.1 (2026-03-27)
 
 ### 🩹 Fixes
