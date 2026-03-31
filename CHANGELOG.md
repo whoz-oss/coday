@@ -1,3 +1,15 @@
+## 0.107.3 (2026-03-31)
+
+### 🩹 Fixes
+
+- #691 file exchange drawer close button goes off-screen with wide content ([#691](https://github.com/whoz-oss/coday/issues/691))
+- #691 file exchange drawer close button goes off-screen with wide content ([#692](https://github.com/whoz-oss/coday/pull/692), [#691](https://github.com/whoz-oss/coday/issues/691))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
 ## 0.107.2 (2026-03-31)
 
 ### 🩹 Fixes
