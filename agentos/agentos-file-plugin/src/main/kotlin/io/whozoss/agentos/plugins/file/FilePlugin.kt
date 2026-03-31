@@ -16,7 +16,7 @@ import org.pf4j.PluginWrapper
  * - MoveFile (FILES__moveFile)
  *
  * Security features:
- * - Boundary path resolution inspired by OpenClaw (segment-by-segment traversal)
+ * - Boundary path resolution with segment-by-segment traversal
  * - Symlink validation at each step (TOCTOU-safe)
  * - Deny-list for sensitive files (.env, *.key, credentials.json, etc.)
  * - Atomic writes with cleanup (no orphan .tmp files)

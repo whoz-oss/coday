@@ -62,7 +62,7 @@ object SensitiveFilePatterns {
 /**
  * Boundary-safe path resolver with segment-by-segment traversal.
  *
- * Inspired by OpenClaw's boundary-path.ts pattern, this resolver validates paths
+ * This resolver validates paths
  * by traversing each segment lexically and checking for symlinks at every step.
  * This prevents TOCTOU (Time-of-Check-Time-of-Use) symlink attacks where a symlink
  * could be created between validation and use.

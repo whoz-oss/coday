@@ -20,6 +20,11 @@ import org.pf4j.Extension
  */
 @Extension
 class FileToolProvider : ToolPlugin {
+    /**
+     * Returns the list of file operation tools provided by this plugin.
+     *
+     * @return List of 6 file tools: list, read, search, edit, remove, move
+     */
     override fun provideTools(): List<StandardTool<*>> =
         listOf(
             ListFilesTool(),

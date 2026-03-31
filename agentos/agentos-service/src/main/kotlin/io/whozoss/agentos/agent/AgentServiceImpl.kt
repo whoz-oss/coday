@@ -91,23 +91,16 @@ class AgentServiceImpl(
 
         val instructions = buildInstructions(model, context)
 
-        // Resolve file roots from namespace configuration if context provided
-        val fileRoots =
-            context?.let {
-                val namespace = namespaceService.findById(it.namespaceId)
-                namespace?.fileRoots?.mapValues { (_, pathString) ->
-                    java.nio.file.Path.of(pathString)
-                } ?: emptyMap()
-            } ?: emptyMap()
-
-        logger.debug { "[AgentService] Resolved ${fileRoots.size} file root(s) for agent: ${model.name}" }
-
         return AgentSimple(
             metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(model.name.toByteArray())),
             model = model.copy(instructions = instructions),
             chatClient = chatClient,
             tools = tools,
-            fileRoots = fileRoots,
+            fileRootsProvider = { namespaceId ->
+                namespaceService.findById(namespaceId)?.fileRoots?.mapValues { (_, pathString) ->
+                    java.nio.file.Path.of(pathString)
+                } ?: emptyMap()
+            },
         )
     }
 
