@@ -6,6 +6,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -117,18 +118,21 @@ class AuthSecurityServiceTest : StringSpec({
         ex?.statusCode?.value() shouldBe HttpStatus.UNAUTHORIZED.value()
     }
 
-    "resolveCurrentUser throws 404 when user is not registered" {
+    "resolveCurrentUser auto-creates user when email is resolved but not yet registered" {
         val email = "unknown@example.com"
         val jwt = buildJwt(mapOf("email" to email))
+        val createdUser = makeUser(email)
 
         val userService = mockk<UserService>()
         every { userService.findByExternalId(email) } returns null
+        every { userService.create(any()) } returns createdUser
 
         setRequest { addHeader(AuthSecurityService.CF_AUTHORIZATION_HEADER, jwt) }
 
         val service = AuthSecurityService(userService, objectMapper)
-        val ex = runCatching { service.resolveCurrentUser() }
-            .exceptionOrNull() as? ResponseStatusException
-        ex?.statusCode?.value() shouldBe HttpStatus.NOT_FOUND.value()
+        val result = service.resolveCurrentUser()
+
+        result shouldBe createdUser
+        verify(exactly = 1) { userService.create(match { it.externalId == email && it.email == email }) }
     }
 })

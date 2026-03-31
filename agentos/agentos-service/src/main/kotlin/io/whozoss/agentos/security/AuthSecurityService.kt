@@ -1,6 +1,7 @@
 package io.whozoss.agentos.security
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
@@ -24,9 +25,8 @@ import java.util.Base64
  * The current request is read from [RequestContextHolder] — no [jakarta.servlet.http.HttpServletRequest]
  * parameter needed at the callsite.
  *
- * Throws 401 when no identity can be resolved, and 404 when the resolved email does not
- * match any persisted [User]. Clients must POST /api/users to register before their first
- * authenticated request.
+ * Throws 401 when no identity can be resolved. If the resolved email does not match any
+ * persisted [User], one is auto-created on first access (same behaviour as [LocalSecurityService]).
  */
 class AuthSecurityService(
     private val userService: UserService,
@@ -36,17 +36,21 @@ class AuthSecurityService(
     override fun resolveCurrentUser(): User {
         val request = (RequestContextHolder.currentRequestAttributes() as ServletRequestAttributes).request
 
-        val email = resolveEmail(request.getHeader(CF_AUTHORIZATION_HEADER), request.getHeader(X_FORWARDED_EMAIL_HEADER))
-            ?: throw ResponseStatusException(
-                HttpStatus.UNAUTHORIZED,
-                "No identity header found. Expected '$CF_AUTHORIZATION_HEADER' or '$X_FORWARDED_EMAIL_HEADER'.",
-            )
+        val cfHeader = request.getHeader(CF_AUTHORIZATION_HEADER)
+        val emailHeader = request.getHeader(X_FORWARDED_EMAIL_HEADER)
+        logger.info { "[Security/auth] Resolving user — CF_Authorization present=${!cfHeader.isNullOrBlank()}, x-forwarded-email='$emailHeader'" }
 
-        return userService.findByExternalId(email)
-            ?: throw ResponseStatusException(
-                HttpStatus.NOT_FOUND,
-                "No user registered for identity '$email'. POST /api/users to create one.",
-            )
+        val email = resolveEmail(cfHeader, emailHeader)
+            ?: run {
+                logger.warn { "[Security/auth] No identity header found — returning 401" }
+                throw ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "No identity header found. Expected '$CF_AUTHORIZATION_HEADER' or '$X_FORWARDED_EMAIL_HEADER'.",
+                )
+            }
+
+        logger.info { "[Security/auth] Resolved email='$email', looking up user..." }
+        return userService.findByExternalId(email) ?: autoCreateUser(email)
     }
 
     private fun resolveEmail(cfJwt: String?, forwardedEmail: String?): String? {
@@ -54,7 +58,7 @@ class AuthSecurityService(
             return extractEmailFromJwt(cfJwt)
         }
         if (!forwardedEmail.isNullOrBlank()) {
-            logger.debug { "[Security/auth] Resolved identity from $X_FORWARDED_EMAIL_HEADER: $forwardedEmail" }
+            logger.info { "[Security/auth] Resolved identity from $X_FORWARDED_EMAIL_HEADER: $forwardedEmail" }
             return forwardedEmail
         }
         return null
@@ -84,6 +88,16 @@ class AuthSecurityService(
             logger.warn(e) { "[Security/auth] Failed to decode JWT payload" }
             null
         }
+    }
+
+    private fun autoCreateUser(email: String): User {
+        logger.info { "[Security/auth] Auto-creating user for email '$email'" }
+        val user = User(
+            metadata = EntityMetadata(),
+            externalId = email,
+            email = email,
+        )
+        return userService.create(user)
     }
 
     companion object : KLogging() {
