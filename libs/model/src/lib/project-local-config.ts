@@ -34,15 +34,25 @@ export type ProjectLocalConfig = {
   createdAt?: number
 }
 
-export type PreviewConfig = {
+/**
+ * A single preview entry: a named command that can be started in a tmux session.
+ */
+export type PreviewEntry = {
+  /** Display name for this preview, e.g. "aphrodite", "hermes" */
+  name: string
   /**
-   * Shell command to start the preview server, e.g. "pnpm web:dev:tmux".
-   * The command is responsible for port selection and binding.
-   * The preview manager wraps it in a tmux session and reads the URL
-   * from the server's own log output.
+   * Shell command to run for this preview, e.g. "pnpm nx serve aphrodite".
+   * Must be a foreground command (no trailing &, no nohup).
+   * The preview manager wraps it in a tmux session automatically.
    */
   command: string
 }
+
+/**
+ * Preview configuration: an array of named preview entries.
+ * Only one preview runs at a time per project.
+ */
+export type PreviewConfig = PreviewEntry[]
 
 export type StorageConfig =
   | {
