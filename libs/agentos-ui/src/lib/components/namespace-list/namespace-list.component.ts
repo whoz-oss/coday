@@ -32,7 +32,7 @@ export class NamespaceListComponent {
   /** Trigger to refresh the list (emitting a new value forces re-subscription). */
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
-  protected readonly namespaces$ = this.refresh$.pipe(switchMap(() => this.namespaceController.listAll()))
+  protected readonly namespaces$ = this.refresh$.pipe(switchMap(() => this.namespaceController.listAll1()))
 
   // --- Create form ---
 
@@ -85,7 +85,7 @@ export class NamespaceListComponent {
 
     this.isSubmitting.set(true)
     this.namespaceController
-      .create(payload)
+      .create1(payload)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
@@ -122,7 +122,7 @@ export class NamespaceListComponent {
 
     this.isEditSubmitting.set(true)
     this.namespaceController
-      .update(ns.id, payload)
+      .update1(ns.id, payload)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
@@ -138,7 +138,7 @@ export class NamespaceListComponent {
 
   protected deleteNamespace(ns: Namespace): void {
     this.namespaceController
-      ._delete(ns.id)
+      .delete1(ns.id)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh$.next())
   }
