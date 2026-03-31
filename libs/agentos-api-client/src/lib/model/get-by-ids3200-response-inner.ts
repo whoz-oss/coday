@@ -8,7 +8,4 @@
  * Do not edit the class manually.
  */
 
-export interface AddMessageRequest {
-  content: string
-  answerToEventId?: string
-}
+export interface GetByIds3200ResponseInner {}

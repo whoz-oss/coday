@@ -9,17 +9,12 @@
  */
 import { EntityMetadata } from './entity-metadata'
 
-export interface Case {
+export interface User {
   metadata: EntityMetadata
-  namespaceId: string
-  status: CaseStatusEnum
-  title: string
+  externalId: string
+  email: string
+  firstname?: string
+  lastname?: string
+  bio?: string
   id: string
-}
-export enum CaseStatusEnum {
-  PENDING = 'PENDING',
-  RUNNING = 'RUNNING',
-  IDLE = 'IDLE',
-  KILLED = 'KILLED',
-  ERROR = 'ERROR',
 }

@@ -10,11 +10,68 @@ tags:
 - name: sse
   description: "Server-Sent Events endpoints — use EventSource API, not HTTP client"
 paths:
+  /api/users/{id}:
+    get:
+      tags:
+      - user-controller
+      operationId: getById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    put:
+      tags:
+      - user-controller
+      operationId: update
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/User"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    delete:
+      tags:
+      - user-controller
+      operationId: delete
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
   /api/namespaces/{id}:
     get:
       tags:
       - namespace-controller
-      operationId: getById
+      operationId: getById_1
       parameters:
       - name: id
         in: path
@@ -32,7 +89,7 @@ paths:
     put:
       tags:
       - namespace-controller
-      operationId: update
+      operationId: update_1
       parameters:
       - name: id
         in: path
@@ -56,7 +113,7 @@ paths:
     delete:
       tags:
       - namespace-controller
-      operationId: delete
+      operationId: delete_1
       parameters:
       - name: id
         in: path
@@ -71,7 +128,7 @@ paths:
     get:
       tags:
       - case-controller
-      operationId: getById_1
+      operationId: getById_2
       parameters:
       - name: id
         in: path
@@ -89,7 +146,7 @@ paths:
     put:
       tags:
       - case-controller
-      operationId: update_1
+      operationId: update_2
       parameters:
       - name: id
         in: path
@@ -113,7 +170,7 @@ paths:
     delete:
       tags:
       - case-controller
-      operationId: delete_1
+      operationId: delete_2
       parameters:
       - name: id
         in: path
@@ -124,6 +181,60 @@ paths:
       responses:
         "204":
           description: No Content
+  /api/users:
+    get:
+      tags:
+      - user-controller
+      operationId: listAll
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+    post:
+      tags:
+      - user-controller
+      operationId: create
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/User"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+  /api/users/by-ids:
+    post:
+      tags:
+      - user-controller
+      operationId: getByIds
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+                format: uuid
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
   /api/tools/{toolName}/execute:
     post:
       tags:
@@ -238,7 +349,7 @@ paths:
     get:
       tags:
       - namespace-controller
-      operationId: listAll
+      operationId: listAll_1
       responses:
         "200":
           description: OK
@@ -251,7 +362,7 @@ paths:
     post:
       tags:
       - namespace-controller
-      operationId: create
+      operationId: create_1
       requestBody:
         content:
           application/json:
@@ -269,7 +380,7 @@ paths:
     post:
       tags:
       - namespace-controller
-      operationId: getByIds
+      operationId: getByIds_1
       requestBody:
         content:
           application/json:
@@ -292,7 +403,7 @@ paths:
     post:
       tags:
       - case-controller
-      operationId: create_1
+      operationId: create_2
       requestBody:
         content:
           application/json:
@@ -361,7 +472,7 @@ paths:
     post:
       tags:
       - case-controller
-      operationId: getByIds_1
+      operationId: getByIds_2
       requestBody:
         content:
           application/json:
@@ -384,7 +495,7 @@ paths:
     post:
       tags:
       - case-event-rest-controller
-      operationId: getByIds_2
+      operationId: getByIds_3
       requestBody:
         content:
           application/json:
@@ -417,6 +528,41 @@ paths:
                   - $ref: "#/components/schemas/ToolResponseEvent"
                   - $ref: "#/components/schemas/ToolSelectedEvent"
                   - $ref: "#/components/schemas/WarnEvent"
+  /api/users/me:
+    get:
+      tags:
+      - user-controller
+      summary: Get the current user's profile
+      operationId: getMe
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+  /api/users/by-parentId/{parentId}:
+    get:
+      tags:
+      - user-controller
+      operationId: listByParent
+      parameters:
+      - name: parentId
+        in: path
+        description: Parent entity ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
   /api/tools:
     get:
       tags:
@@ -532,7 +678,7 @@ paths:
     get:
       tags:
       - namespace-controller
-      operationId: listByParent
+      operationId: listByParent_1
       parameters:
       - name: parentId
         in: path
@@ -577,7 +723,7 @@ paths:
     get:
       tags:
       - case-controller
-      operationId: listByParent_1
+      operationId: listByParent_2
       parameters:
       - name: parentId
         in: path
@@ -599,7 +745,7 @@ paths:
     get:
       tags:
       - case-event-rest-controller
-      operationId: getById_2
+      operationId: getById_3
       parameters:
       - name: id
         in: path
@@ -688,6 +834,29 @@ components:
       - id
       - modified
       - removed
+    User:
+      type: object
+      properties:
+        metadata:
+          $ref: "#/components/schemas/EntityMetadata"
+        externalId:
+          type: string
+        email:
+          type: string
+        firstname:
+          type: string
+        lastname:
+          type: string
+        bio:
+          type: string
+        id:
+          type: string
+          format: uuid
+      required:
+      - email
+      - externalId
+      - id
+      - metadata
     Namespace:
       type: object
       properties:
@@ -779,14 +948,11 @@ components:
       properties:
         content:
           type: string
-        userId:
-          type: string
         answerToEventId:
           type: string
           format: uuid
       required:
       - content
-      - userId
     Actor:
       type: object
       properties:
