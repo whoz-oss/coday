@@ -1,0 +1,614 @@
+package io.whozoss.agentos.plugins.file.tools
+
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
+import io.whozoss.agentos.plugins.file.tools.EditFilesTool
+import io.whozoss.agentos.sdk.tool.ToolExecutionContext
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermissions
+import java.util.UUID
+import kotlin.io.path.createFile
+import kotlin.io.path.exists
+import kotlin.io.path.readText
+import kotlin.io.path.setPosixFilePermissions
+import kotlin.io.path.writeText
+
+class EditFilesToolTest : StringSpec() {
+    private lateinit var tempDir: Path
+
+    init {
+        beforeEach {
+            tempDir = Files.createTempDirectory("test")
+        }
+
+        afterEach {
+            tempDir.toFile().deleteRecursively()
+        }
+        "write new file should create with content" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "write",
+                            "path" to "project://newfile.txt",
+                            "content" to "New content"
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain "File write success"
+            tempDir.resolve("newfile.txt").exists() shouldBe true
+            tempDir.resolve("newfile.txt").readText() shouldBe "New content"
+        }
+
+        "write overwrite file under 64KB should succeed" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+            val file = tempDir.resolve("small.txt")
+            file.writeText("Old content")
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "write",
+                            "path" to "project://small.txt",
+                            "content" to "New content"
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain "File write success"
+            file.readText() shouldBe "New content"
+        }
+
+        "write overwrite file exceeding 64KB should reject with message" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+            val file = tempDir.resolve("large.txt")
+            val largeContent = "x".repeat(65 * 1024) // 65 KB
+            file.writeText(largeContent)
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "write",
+                            "path" to "project://large.txt",
+                            "content" to "New content"
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain "not accepted"
+            result shouldContain "64"
+            file.readText() shouldBe largeContent // Should remain unchanged
+        }
+
+        "write new file with 200KB content should succeed" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+            val largeContent = "y".repeat(200 * 1024) // 200 KB
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "write",
+                            "path" to "project://newlarge.txt",
+                            "content" to largeContent
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain "File write success"
+            tempDir.resolve("newlarge.txt").readText() shouldBe largeContent
+        }
+
+        "write should create parent directories" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "write",
+                            "path" to "project://a/b/c/file.txt",
+                            "content" to "nested"
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain "File write success"
+            tempDir.resolve("a/b/c/file.txt").readText() shouldBe "nested"
+        }
+
+        "atomic write cleanup - tmp file should be deleted after success" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+
+            tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "write",
+                            "path" to "project://file.txt",
+                            "content" to "content"
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            // Check that no .tmp files exist
+            val tmpFiles = Files.list(tempDir).filter { it.fileName.toString().contains(".tmp") }.toList()
+            tmpFiles.size shouldBe 0
+        }
+
+        "patch with unique chunk >= 15 chars should apply replacement" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+            val file = tempDir.resolve("file.txt")
+            file.writeText("Hello world, this is a test")
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "patch",
+                            "path" to "project://file.txt",
+                            "replacements" to listOf(
+                                mapOf(
+                                    "oldPart" to "Hello world, this",
+                                    "newPart" to "Goodbye universe, that"
+                                )
+                            )
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain "successfully edited by chunks"
+            file.readText() shouldBe "Goodbye universe, that is a test"
+        }
+
+        "patch with chunk not found should report error but still write file" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+            val file = tempDir.resolve("file.txt")
+            file.writeText("Hello world")
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "patch",
+                            "path" to "project://file.txt",
+                            "replacements" to listOf(
+                                mapOf(
+                                    "oldPart" to "Nonexistent chunk here",
+                                    "newPart" to "replacement"
+                                )
+                            )
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain "Chunks not found"
+            result shouldContain "Nonexistent chunk here"
+            file.readText() shouldBe "Hello world" // File written but unchanged
+        }
+
+        "patch with duplicate chunk should report error" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+            val file = tempDir.resolve("file.txt")
+            file.writeText("Hello world here, Hello world here")
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "patch",
+                            "path" to "project://file.txt",
+                            "replacements" to listOf(
+                                mapOf(
+                                    "oldPart" to "Hello world here",
+                                    "newPart" to "Goodbye"
+                                )
+                            )
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain "Duplicate chunks found"
+            result shouldContain "Hello world here"
+        }
+
+        "patch with chunk too short < 15 chars should report error" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+            val file = tempDir.resolve("file.txt")
+            file.writeText("Hello world")
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "patch",
+                            "path" to "project://file.txt",
+                            "replacements" to listOf(
+                                mapOf(
+                                    "oldPart" to "short",
+                                    "newPart" to "replacement"
+                                )
+                            )
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain "Chunks too short"
+            result shouldContain "short"
+        }
+
+        "batch edits on different files should all execute" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "write",
+                            "path" to "project://file1.txt",
+                            "content" to "Content 1"
+                        ),
+                        mapOf(
+                            "operation" to "write",
+                            "path" to "project://file2.txt",
+                            "content" to "Content 2"
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain "file1.txt: File write success"
+            result shouldContain "file2.txt: File write success"
+            tempDir.resolve("file1.txt").readText() shouldBe "Content 1"
+            tempDir.resolve("file2.txt").readText() shouldBe "Content 2"
+        }
+
+        "batch edits - failure on one should not prevent others" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+            val largeFile = tempDir.resolve("large.txt")
+            largeFile.writeText("x".repeat(65 * 1024))
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "write",
+                            "path" to "project://success.txt",
+                            "content" to "Success"
+                        ),
+                        mapOf(
+                            "operation" to "write",
+                            "path" to "project://large.txt",
+                            "content" to "Should fail"
+                        ),
+                        mapOf(
+                            "operation" to "write",
+                            "path" to "project://success2.txt",
+                            "content" to "Success 2"
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain "success.txt: File write success"
+            result shouldContain "large.txt:"
+            result shouldContain "not accepted"
+            result shouldContain "success2.txt: File write success"
+            tempDir.resolve("success.txt").exists() shouldBe true
+            tempDir.resolve("success2.txt").exists() shouldBe true
+        }
+
+        "readOnly mode should reject edits" {
+            val tool = EditFilesTool()
+            val ctx = createContextReadOnly()
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "write",
+                            "path" to "project://file.txt",
+                            "content" to "content"
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain "Cannot modify files in read-only mode"
+        }
+
+        "missing namespace project root should error" {
+            val tool = EditFilesTool()
+            val ctx = ToolExecutionContext(
+                namespaceId = UUID.randomUUID(),
+                caseId = UUID.randomUUID(),
+                fileRoots = emptyMap()
+            )
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "write",
+                            "path" to "project://file.txt",
+                            "content" to "content"
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain "File tools require a configured namespace with project root"
+        }
+
+        "patch on non-existent file should error" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "patch",
+                            "path" to "project://nonexistent.txt",
+                            "replacements" to listOf(
+                                mapOf(
+                                    "oldPart" to "old text here 123",
+                                    "newPart" to "new"
+                                )
+                            )
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain "nonexistent.txt:"
+            result shouldContain "Path does not exist"
+        }
+
+        "multiple patches in single edit should apply sequentially" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+            val file = tempDir.resolve("file.txt")
+            file.writeText("First line here\nSecond line here\nThird line here")
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "patch",
+                            "path" to "project://file.txt",
+                            "replacements" to listOf(
+                                mapOf(
+                                    "oldPart" to "First line here",
+                                    "newPart" to "1st line modified"
+                                ),
+                                mapOf(
+                                    "oldPart" to "Second line here",
+                                    "newPart" to "2nd line modified"
+                                )
+                            )
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain "successfully edited by chunks"
+            file.readText() shouldBe "1st line modified\n2nd line modified\nThird line here"
+        }
+
+        "empty edits list should return no edits provided" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(edits = emptyList()),
+                ctx
+            )
+
+            result shouldContain "No edits provided"
+        }
+
+        "write should handle unicode content" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "write",
+                            "path" to "project://unicode.txt",
+                            "content" to "Hello 世界 🌍"
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain "File write success"
+            tempDir.resolve("unicode.txt").readText() shouldBe "Hello 世界 🌍"
+        }
+
+        "atomic write cleanup on move failure - tmp file should be cleaned up" {
+            // This test verifies that if the atomic move fails (e.g., due to filesystem issues),
+            // the .tmp file is still cleaned up
+            val tool = EditFilesTool()
+            val ctx = createContext()
+
+            // Create a subdirectory and make it read-only to cause move failure
+            val readOnlyDir = tempDir.resolve("readonly")
+            Files.createDirectories(readOnlyDir)
+
+            // Try to detect if we're on a POSIX system
+            val isPosix = try {
+                readOnlyDir.setPosixFilePermissions(PosixFilePermissions.fromString("r-xr-xr-x"))
+                true
+            } catch (e: UnsupportedOperationException) {
+                false
+            }
+
+            if (isPosix) {
+                val result = tool.executeWithContext(
+                    EditFilesTool.Input(
+                        edits = listOf(
+                            mapOf(
+                                "operation" to "write",
+                                "path" to "project://readonly/file.txt",
+                                "content" to "test content"
+                            )
+                        )
+                    ),
+                    ctx
+                )
+
+                // Verify error occurred
+                result shouldContain "readonly/file.txt:"
+                result shouldContain "Error"
+
+                // Restore permissions to allow cleanup
+                readOnlyDir.setPosixFilePermissions(PosixFilePermissions.fromString("rwxr-xr-x"))
+
+                // Check that no .tmp files exist in the directory
+                val tmpFiles = Files.list(readOnlyDir)
+                    .filter { it.fileName.toString().contains(".tmp") }
+                    .toList()
+                tmpFiles.size shouldBe 0
+            }
+        }
+
+        "deny-list write attempt to .env should be rejected" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "write",
+                            "path" to "project://.env",
+                            "content" to "SECRET=value"
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain ".env:"
+            result shouldContain "Access denied"
+            tempDir.resolve(".env").exists() shouldBe false
+        }
+
+        "deny-list write attempt to .env.local should be rejected" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "write",
+                            "path" to "project://.env.local",
+                            "content" to "SECRET=value"
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain ".env.local:"
+            result shouldContain "Access denied"
+            tempDir.resolve(".env.local").exists() shouldBe false
+        }
+
+        "deny-list patch attempt to .env should be rejected" {
+            val tool = EditFilesTool()
+            val ctx = createContext()
+            tempDir.resolve(".env").writeText("OLD_SECRET=value")
+
+            val result = tool.executeWithContext(
+                EditFilesTool.Input(
+                    edits = listOf(
+                        mapOf(
+                            "operation" to "patch",
+                            "path" to "project://.env",
+                            "replacements" to listOf(
+                                mapOf(
+                                    "oldPart" to "OLD_SECRET=value",
+                                    "newPart" to "NEW_SECRET=changed"
+                                )
+                            )
+                        )
+                    )
+                ),
+                ctx
+            )
+
+            result shouldContain ".env:"
+            result shouldContain "Access denied"
+            tempDir.resolve(".env").readText() shouldBe "OLD_SECRET=value" // Should remain unchanged
+        }
+    }
+
+    private fun createContext(): ToolExecutionContext {
+        return ToolExecutionContext(
+            namespaceId = UUID.randomUUID(),
+            caseId = UUID.randomUUID(),
+            fileRoots = mapOf("project" to tempDir)
+        )
+    }
+
+    private fun createContextReadOnly(): ToolExecutionContext {
+        return ToolExecutionContext(
+            namespaceId = UUID.randomUUID(),
+            caseId = UUID.randomUUID(),
+            fileRoots = mapOf("project" to tempDir),
+            properties = mapOf("readOnly" to "true")
+        )
+    }
+}

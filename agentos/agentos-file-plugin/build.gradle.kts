@@ -1,0 +1,63 @@
+plugins {
+    id("dev.nx.gradle.project-graph") version ("0.1.10")
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.kapt) // Required for PF4J annotation processing
+}
+
+group = "whoz-oss.agentos"
+version = libs.versions.agentosService.get()
+description = "AgentOS file plugin - provides file system tools"
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+dependencies {
+    implementation(libs.klogger)
+
+    // Kotlin coroutines for async file operations
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+
+    // AgentOS SDK - Contains plugin interfaces
+    compileOnly("whoz-oss.agentos:agentos-sdk:${libs.versions.agentosSdk.get()}")
+
+    // PF4J - Required for @Extension annotation processing
+    compileOnly(libs.pf4j)
+    kapt(libs.pf4j)
+
+    // Jackson for JSON handling
+    compileOnly(libs.bundles.jackson)
+
+    // Testing
+    testImplementation("whoz-oss.agentos:agentos-sdk:${libs.versions.agentosSdk.get()}")
+    testImplementation(libs.bundles.jackson)
+    testImplementation(libs.bundles.testing.common)
+    testImplementation(libs.pf4j)
+    testRuntimeOnly(libs.junit.platform.launcher)
+    kaptTest(libs.pf4j)
+}
+
+// Configure kapt for PF4J extension processing
+kapt {
+    arguments {
+        arg("pf4j.storageClassName", "org.pf4j.processor.LegacyExtensionStorage")
+    }
+}
+
+kotlin {
+    compilerOptions {
+        freeCompilerArgs.addAll("-Xjsr305=strict")
+    }
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
+}
+
+allprojects {
+    apply {
+        plugin("dev.nx.gradle.project-graph")
+    }
+}

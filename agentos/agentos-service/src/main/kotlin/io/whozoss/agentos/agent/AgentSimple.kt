@@ -14,7 +14,9 @@ import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.tool.ContextAwareTool
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolExecutionContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -49,12 +51,16 @@ import kotlin.time.measureTime
  *
  * This is simpler but gives less control over the orchestration loop
  * compared to AgentAdvanced.
+ *
+ * @param fileRoots File system roots for context-aware tools (e.g., file operations).
+ *                  Map keys are scope names (e.g., "project"), values are absolute paths.
  */
 class AgentSimple(
     override val metadata: EntityMetadata = EntityMetadata(),
     private val model: AiModel,
     private val chatClient: ChatClient,
     private val tools: Collection<StandardTool<*>>,
+    private val fileRoots: Map<String, java.nio.file.Path> = emptyMap(),
 ) : Agent {
     override val name: String get() = model.name
 
@@ -419,7 +425,19 @@ class AgentSimple(
                     measureTime {
                         result =
                             try {
-                                tool.executeWithJson(toolInput)
+                                // If tool is ContextAwareTool, inject execution context
+                                if (tool is ContextAwareTool<*>) {
+                                    val context =
+                                        ToolExecutionContext(
+                                            namespaceId = namespaceId,
+                                            caseId = caseId,
+                                            fileRoots = fileRoots,
+                                            properties = emptyMap(), // TODO: add readOnly from namespace config
+                                        )
+                                    tool.executeWithJsonAndContext(toolInput, context)
+                                } else {
+                                    tool.executeWithJson(toolInput)
+                                }
                             } catch (e: Exception) {
                                 runBlocking {
                                     eventChannel.send(

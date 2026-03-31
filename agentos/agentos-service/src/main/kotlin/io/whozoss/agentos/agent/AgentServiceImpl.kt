@@ -67,8 +67,11 @@ class AgentServiceImpl(
      * channel (Anthropic `system`, OpenAI `system` role) rather than in the message
      * history where it could be compacted away.
      *
+     * Additionally, when context is provided, file roots are resolved from the namespace
+     * configuration and passed to the agent for use by file tools.
+     *
      * When [context] is null (e.g. [listAgents] for registry inspection) the model's
-     * instructions are used as-is.
+     * instructions are used as-is and no file roots are provided.
      */
     private fun createAgentInstance(
         model: AiModel,
@@ -88,11 +91,23 @@ class AgentServiceImpl(
 
         val instructions = buildInstructions(model, context)
 
+        // Resolve file roots from namespace configuration if context provided
+        val fileRoots =
+            context?.let {
+                val namespace = namespaceService.findById(it.namespaceId)
+                namespace?.fileRoots?.mapValues { (_, pathString) ->
+                    java.nio.file.Path.of(pathString)
+                } ?: emptyMap()
+            } ?: emptyMap()
+
+        logger.debug { "[AgentService] Resolved ${fileRoots.size} file root(s) for agent: ${model.name}" }
+
         return AgentSimple(
             metadata = EntityMetadata(id = UUID.nameUUIDFromBytes(model.name.toByteArray())),
             model = model.copy(instructions = instructions),
             chatClient = chatClient,
             tools = tools,
+            fileRoots = fileRoots,
         )
     }
 
