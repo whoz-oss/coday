@@ -3,9 +3,10 @@ package io.whozoss.agentos.security
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
-import jakarta.servlet.http.HttpServletRequest
 import mu.KLogging
 import org.springframework.http.HttpStatus
+import org.springframework.web.context.request.RequestContextHolder
+import org.springframework.web.context.request.ServletRequestAttributes
 import org.springframework.web.server.ResponseStatusException
 import java.util.Base64
 
@@ -20,6 +21,9 @@ import java.util.Base64
  * Falls back to [X_FORWARDED_EMAIL_HEADER] when the CF header is absent (matches Coday
  * Express behaviour for non-CF deployments).
  *
+ * The current request is read from [RequestContextHolder] — no [jakarta.servlet.http.HttpServletRequest]
+ * parameter needed at the callsite.
+ *
  * Throws 401 when no identity can be resolved, and 404 when the resolved email does not
  * match any persisted [User]. Clients must POST /api/users to register before their first
  * authenticated request.
@@ -29,8 +33,10 @@ class AuthSecurityService(
     private val objectMapper: ObjectMapper,
 ) : SecurityService {
 
-    override fun resolveCurrentUser(request: HttpServletRequest): User {
-        val email = resolveEmail(request)
+    override fun resolveCurrentUser(): User {
+        val request = (RequestContextHolder.currentRequestAttributes() as ServletRequestAttributes).request
+
+        val email = resolveEmail(request.getHeader(CF_AUTHORIZATION_HEADER), request.getHeader(X_FORWARDED_EMAIL_HEADER))
             ?: throw ResponseStatusException(
                 HttpStatus.UNAUTHORIZED,
                 "No identity header found. Expected '$CF_AUTHORIZATION_HEADER' or '$X_FORWARDED_EMAIL_HEADER'.",
@@ -43,15 +49,13 @@ class AuthSecurityService(
             )
     }
 
-    private fun resolveEmail(request: HttpServletRequest): String? {
-        val cfJwt = request.getHeader(CF_AUTHORIZATION_HEADER)
+    private fun resolveEmail(cfJwt: String?, forwardedEmail: String?): String? {
         if (!cfJwt.isNullOrBlank()) {
             return extractEmailFromJwt(cfJwt)
         }
-        val forwarded = request.getHeader(X_FORWARDED_EMAIL_HEADER)
-        if (!forwarded.isNullOrBlank()) {
-            logger.debug { "[Security/auth] Resolved identity from $X_FORWARDED_EMAIL_HEADER: $forwarded" }
-            return forwarded
+        if (!forwardedEmail.isNullOrBlank()) {
+            logger.debug { "[Security/auth] Resolved identity from $X_FORWARDED_EMAIL_HEADER: $forwardedEmail" }
+            return forwardedEmail
         }
         return null
     }

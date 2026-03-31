@@ -11,6 +11,8 @@ import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import org.springframework.http.HttpStatus
 import org.springframework.mock.web.MockHttpServletRequest
+import org.springframework.web.context.request.RequestContextHolder
+import org.springframework.web.context.request.ServletRequestAttributes
 import org.springframework.web.server.ResponseStatusException
 import java.util.Base64
 
@@ -18,6 +20,10 @@ class AuthSecurityServiceTest : StringSpec({
     timeout = 5000
 
     val objectMapper = ObjectMapper().registerKotlinModule()
+
+    afterEach {
+        RequestContextHolder.resetRequestAttributes()
+    }
 
     fun makeUser(email: String) = User(
         metadata = EntityMetadata(),
@@ -33,8 +39,13 @@ class AuthSecurityServiceTest : StringSpec({
         return "$header.$payload.fakesig"
     }
 
+    fun setRequest(block: MockHttpServletRequest.() -> Unit = {}) {
+        val req = MockHttpServletRequest().apply(block)
+        RequestContextHolder.setRequestAttributes(ServletRequestAttributes(req))
+    }
+
     // -------------------------------------------------------------------------
-    // JWT email extraction
+    // JWT email extraction (pure function — no request context needed)
     // -------------------------------------------------------------------------
 
     "extractEmailFromJwt returns email claim from valid CF JWT" {
@@ -70,12 +81,10 @@ class AuthSecurityServiceTest : StringSpec({
         val userService = mockk<UserService>()
         every { userService.findByExternalId(email) } returns user
 
-        val service = AuthSecurityService(userService, objectMapper)
-        val request = MockHttpServletRequest().apply {
-            addHeader(AuthSecurityService.CF_AUTHORIZATION_HEADER, jwt)
-        }
+        setRequest { addHeader(AuthSecurityService.CF_AUTHORIZATION_HEADER, jwt) }
 
-        service.resolveCurrentUser(request) shouldBe user
+        val service = AuthSecurityService(userService, objectMapper)
+        service.resolveCurrentUser() shouldBe user
     }
 
     // -------------------------------------------------------------------------
@@ -89,12 +98,10 @@ class AuthSecurityServiceTest : StringSpec({
         val userService = mockk<UserService>()
         every { userService.findByExternalId(email) } returns user
 
-        val service = AuthSecurityService(userService, objectMapper)
-        val request = MockHttpServletRequest().apply {
-            addHeader(AuthSecurityService.X_FORWARDED_EMAIL_HEADER, email)
-        }
+        setRequest { addHeader(AuthSecurityService.X_FORWARDED_EMAIL_HEADER, email) }
 
-        service.resolveCurrentUser(request) shouldBe user
+        val service = AuthSecurityService(userService, objectMapper)
+        service.resolveCurrentUser() shouldBe user
     }
 
     // -------------------------------------------------------------------------
@@ -102,10 +109,10 @@ class AuthSecurityServiceTest : StringSpec({
     // -------------------------------------------------------------------------
 
     "resolveCurrentUser throws 401 when no identity header is present" {
-        val service = AuthSecurityService(mockk(), objectMapper)
-        val request = MockHttpServletRequest()
+        setRequest()
 
-        val ex = runCatching { service.resolveCurrentUser(request) }
+        val service = AuthSecurityService(mockk(), objectMapper)
+        val ex = runCatching { service.resolveCurrentUser() }
             .exceptionOrNull() as? ResponseStatusException
         ex?.statusCode?.value() shouldBe HttpStatus.UNAUTHORIZED.value()
     }
@@ -117,12 +124,10 @@ class AuthSecurityServiceTest : StringSpec({
         val userService = mockk<UserService>()
         every { userService.findByExternalId(email) } returns null
 
-        val service = AuthSecurityService(userService, objectMapper)
-        val request = MockHttpServletRequest().apply {
-            addHeader(AuthSecurityService.CF_AUTHORIZATION_HEADER, jwt)
-        }
+        setRequest { addHeader(AuthSecurityService.CF_AUTHORIZATION_HEADER, jwt) }
 
-        val ex = runCatching { service.resolveCurrentUser(request) }
+        val service = AuthSecurityService(userService, objectMapper)
+        val ex = runCatching { service.resolveCurrentUser() }
             .exceptionOrNull() as? ResponseStatusException
         ex?.statusCode?.value() shouldBe HttpStatus.NOT_FOUND.value()
     }

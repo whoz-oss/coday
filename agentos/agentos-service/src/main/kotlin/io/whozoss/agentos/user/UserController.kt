@@ -3,7 +3,6 @@ package io.whozoss.agentos.user
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.entity.EntityController
 import io.whozoss.agentos.security.SecurityService
-import jakarta.servlet.http.HttpServletRequest
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -54,9 +53,9 @@ class UserController(
     @GetMapping("/me")
     @ResponseStatus(HttpStatus.OK)
     @Operation(summary = "Get the current user's profile")
-    fun getMe(request: HttpServletRequest): User {
+    fun getMe(): User {
         logger.info { "resolving current user" }
-        return currentUser(request)
+        return currentUser()
     }
 
     companion object : KLogging()

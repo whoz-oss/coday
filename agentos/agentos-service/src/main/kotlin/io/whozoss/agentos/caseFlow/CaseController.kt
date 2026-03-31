@@ -5,7 +5,6 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.security.SecurityService
-import jakarta.servlet.http.HttpServletRequest
 import mu.KLogging
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.PathVariable
@@ -30,10 +29,9 @@ class CaseController(
     fun addMessage(
         @PathVariable caseId: UUID,
         @RequestBody request: AddMessageRequest,
-        httpRequest: HttpServletRequest,
     ) {
         logger.info { "Adding message to case: $caseId" }
-        val user = currentUser(httpRequest)
+        val user = currentUser()
         val userActor = Actor(id = user.metadata.id.toString(), displayName = user.email, role = ActorRole.USER)
         caseService.addMessage(
             caseId = caseId,

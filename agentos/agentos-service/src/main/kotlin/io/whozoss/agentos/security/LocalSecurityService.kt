@@ -3,7 +3,6 @@ package io.whozoss.agentos.security
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
-import jakarta.servlet.http.HttpServletRequest
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
@@ -23,7 +22,7 @@ class LocalSecurityService(
     private val userService: UserService,
 ) : SecurityService {
 
-    override fun resolveCurrentUser(request: HttpServletRequest): User {
+    override fun resolveCurrentUser(): User {
         val username = System.getProperty("user.name") ?: System.getenv("USER")
             ?: throw ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Cannot determine OS username")
 
