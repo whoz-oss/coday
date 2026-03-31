@@ -38,10 +38,10 @@ export type ProjectLocalConfig = {
  * A single preview entry: a named command that can be started in a tmux session.
  */
 export type PreviewEntry = {
-  /** Display name for this preview, e.g. "aphrodite", "hermes" */
+  /** Display name for this preview */
   name: string
   /**
-   * Shell command to run for this preview, e.g. "pnpm nx serve aphrodite".
+   * Shell command to run for this preview.
    * Must be a foreground command (no trailing &, no nohup).
    * The preview manager wraps it in a tmux session automatically.
    */
