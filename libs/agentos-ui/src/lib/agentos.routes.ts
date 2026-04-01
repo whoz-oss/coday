@@ -18,6 +18,18 @@ export const AGENTOS_ROUTES: Route[] = [
               import('./components/namespace-list/namespace-list.component').then((m) => m.NamespaceListComponent),
           },
           {
+            path: 'namespaces/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-form/namespace-form.component').then((m) => m.NamespaceFormComponent),
+          },
+          {
+            path: 'namespaces/:namespaceId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-form/namespace-form.component').then((m) => m.NamespaceFormComponent),
+          },
+          {
             path: ':namespaceId/cases',
             canActivate: [agentosReadyGuard],
             loadComponent: () => import('./components/case-list/case-list.component').then((m) => m.CaseListComponent),
