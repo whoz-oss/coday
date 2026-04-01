@@ -18,6 +18,7 @@
         padding: 40px;
         -webkit-app-region: drag;
         user-select: none;
+        overflow-y: auto;
       }
 
       .container {
@@ -282,7 +283,7 @@
         <div class="section-title">Workspace Location</div>
         <div class="setting-row">
           <div class="setting-label">Current folder</div>
-          <button class="btn-secondary btn-change" onclick="browsePath()">Change…</button>
+          <button class="btn-secondary btn-change" onclick="browsePath()">Change&hellip;</button>
         </div>
         <div class="path-display" id="current-path">Loading...</div>
 
@@ -326,7 +327,73 @@
             autocomplete="off"
             spellcheck="false"
           />
-          <div class="help-text">Found in your Slack profile → More → Copy member ID.</div>
+          <div class="help-text">Found in your Slack profile &rarr; More &rarr; Copy member ID.</div>
+        </div>
+      </div>
+
+      <!-- AI API Keys -->
+      <div class="section">
+        <div class="section-title">AI API Keys</div>
+
+        <div class="field-label">Anthropic API Key</div>
+        <input
+          type="password"
+          class="text-input"
+          id="anthropic-api-key"
+          placeholder="sk-ant-..."
+          oninput="onAiKeyInput()"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <div class="help-text">Leave blank to keep the existing key. Get yours at console.anthropic.com.</div>
+
+        <div class="field-label" style="margin-top: 14px">
+          OpenAI API Key <span style="font-weight: 400; text-transform: none; color: #666">&mdash; optional</span>
+        </div>
+        <input
+          type="password"
+          class="text-input"
+          id="openai-api-key"
+          placeholder="sk-..."
+          oninput="onAiKeyInput()"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <div class="help-text">
+          Leave blank to keep the existing key (or skip if not using OpenAI). Get yours at platform.openai.com.
+        </div>
+      </div>
+
+      <!-- Google Calendar -->
+      <div class="section">
+        <div class="section-title">Google Calendar</div>
+        <div class="help-text" style="margin-bottom: 14px">OAuth2 credentials for Google Calendar access.</div>
+
+        <div class="field-label">Client ID</div>
+        <input
+          type="text"
+          class="text-input"
+          id="google-client-id"
+          placeholder="xxxxxxxx.apps.googleusercontent.com"
+          oninput="onGoogleInput()"
+          autocomplete="off"
+          spellcheck="false"
+        />
+
+        <div class="field-label" style="margin-top: 14px">Client Secret</div>
+        <input
+          type="password"
+          class="text-input"
+          id="google-client-secret"
+          placeholder="GOCSPX-..."
+          oninput="onGoogleInput()"
+          autocomplete="off"
+          spellcheck="false"
+        />
+
+        <div class="help-text" style="margin-top: 10px">
+          Create credentials at console.cloud.google.com &rarr; APIs &amp; Services &rarr; Credentials &rarr; OAuth 2.0
+          Client IDs (Desktop app)
         </div>
       </div>
 
@@ -342,6 +409,8 @@
       let currentPath = null
       let newPath = null
       let slackDirty = false
+      let aiKeysDirty = false
+      let googleDirty = false
 
       async function init() {
         try {
@@ -362,6 +431,14 @@
         } catch (error) {
           console.error('Failed to load Slack config:', error)
         }
+
+        try {
+          const google = await window.electronAPI.preferencesGetGoogleCalendarConfig()
+          document.getElementById('google-client-id').value = google.clientId || ''
+          document.getElementById('google-client-secret').value = google.clientSecret || ''
+        } catch (error) {
+          console.error('Failed to load Google Calendar config:', error)
+        }
       }
 
       function onSlackToggle() {
@@ -376,13 +453,30 @@
         updateSaveButton()
       }
 
+      function onAiKeyInput() {
+        aiKeysDirty = true
+        updateSaveButton()
+      }
+
+      function onGoogleInput() {
+        googleDirty = true
+        updateSaveButton()
+      }
+
       function updateSaveButton() {
         const enabled = document.getElementById('slack-enabled').checked
         const webhookUrl = document.getElementById('slack-webhook-url').value.trim()
         const userId = document.getElementById('slack-user-id').value.trim()
+        const googleClientId = document.getElementById('google-client-id').value.trim()
+        const googleClientSecret = document.getElementById('google-client-secret').value.trim()
+        const anthropicKey = document.getElementById('anthropic-api-key').value.trim()
+        const openAiKey = document.getElementById('openai-api-key').value.trim()
         const hasNewPath = !!newPath
         const slackValid = !enabled || (!!webhookUrl && !!userId)
-        const canSave = (hasNewPath || slackDirty) && slackValid
+        const googleHasContent = !!(googleClientId || googleClientSecret)
+        const aiHasContent = !!(anthropicKey || openAiKey)
+        const canSave =
+          (hasNewPath || slackDirty || (googleDirty && googleHasContent) || (aiKeysDirty && aiHasContent)) && slackValid
         document.getElementById('btn-save').disabled = !canSave
       }
 
@@ -422,6 +516,31 @@
             const userId = document.getElementById('slack-user-id').value.trim()
             await window.electronAPI.preferencesSaveSlackConfig({ enabled, webhookUrl, userId })
             slackDirty = false
+          }
+
+          // Save AI API keys if dirty and has content
+          if (aiKeysDirty) {
+            const anthropicKey = document.getElementById('anthropic-api-key').value.trim()
+            const openAiKey = document.getElementById('openai-api-key').value.trim()
+            if (anthropicKey) {
+              await window.electronAPI.saveAnthropicApiKey(anthropicKey)
+            }
+            if (openAiKey) {
+              await window.electronAPI.saveOpenAiApiKey(openAiKey)
+            }
+            aiKeysDirty = false
+            document.getElementById('anthropic-api-key').value = ''
+            document.getElementById('openai-api-key').value = ''
+          }
+
+          // Save Google Calendar config if dirty and has content
+          if (googleDirty) {
+            const clientId = document.getElementById('google-client-id').value.trim()
+            const clientSecret = document.getElementById('google-client-secret').value.trim()
+            if (clientId || clientSecret) {
+              await window.electronAPI.preferencesSaveGoogleCalendarConfig({ clientId, clientSecret })
+              googleDirty = false
+            }
           }
 
           showStatus('Settings saved successfully.', 'success')

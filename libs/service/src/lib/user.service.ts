@@ -44,7 +44,7 @@ export class UserService {
     }
 
     console.log(`[USER_SERVICE] Loading config for '${this.sanitizedUsername}' from ${filePath}`)
-    const rawUserConfig = readYamlFile(filePath)
+    const rawUserConfig = readYamlFile(filePath) as UserConfig
 
     if (!rawUserConfig) {
       console.log(`[USER_SERVICE] ERROR: Failed to read user config at ${filePath}`)
@@ -54,11 +54,20 @@ export class UserService {
     // Apply migrations
     this.config = migrateData(rawUserConfig, userConfigMigrations)
 
-    // Save the migrated config if reference changed, meaning some migration happened
-    if (this.config !== rawUserConfig) {
-      console.log(`[USER_SERVICE] Config migrated for '${this.sanitizedUsername}' to version ${this.config?.version}`)
+    // Save if either a migration bumped the version or the username needs to be backfilled
+    if (this.config !== rawUserConfig || !this.config.username) {
+      if (this.config !== rawUserConfig) {
+        console.log(`[USER_SERVICE] Config migrated for '${this.sanitizedUsername}' to version ${this.config?.version}`)
+        this.interactor.displayText(`User configuration migrated to version ${this.config?.version}`)
+      }
+      // Backfill username if missing (existing users created before email-based auth).
+      // The username field holds the raw email and is used by GET /api/users for share autocomplete.
+      if (!this.config.username) {
+        console.log(`[USER_SERVICE] Backfilling username for existing user '${this.sanitizedUsername}'`)
+        this.interactor.displayText(`User configuration updated: username backfilled`)
+        this.config.username = username
+      }
       writeYamlFile(filePath, this.config)
-      this.interactor.displayText(`User configuration migrated to version ${this.config?.version}`)
     }
   }
 

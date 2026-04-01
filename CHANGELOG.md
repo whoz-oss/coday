@@ -1,3 +1,54 @@
+## 0.108.1 (2026-04-01)
+
+### 🩹 Fixes
+
+- #701 invalidate OAuth token on 401, surface 403 as permission error ([#702](https://github.com/whoz-oss/coday/pull/702), [#701](https://github.com/whoz-oss/coday/issues/701))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.108.0 (2026-04-01)
+
+### 🚀 Features
+
+- coday-twin enhancements ([#703](https://github.com/whoz-oss/coday/pull/703))
+
+### 🩹 Fixes
+
+- ensure lint staged uses project version of prettier ([c3478929](https://github.com/whoz-oss/coday/commit/c3478929))
+- ensure lint staged uses project version of prettier ([#700](https://github.com/whoz-oss/coday/pull/700))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+- Vincent Palita @vincent-palita-whoz
+
+## 0.107.3 (2026-03-31)
+
+### 🩹 Fixes
+
+- #691 file exchange drawer close button goes off-screen with wide content ([#691](https://github.com/whoz-oss/coday/issues/691))
+- #691 file exchange drawer close button goes off-screen with wide content ([#692](https://github.com/whoz-oss/coday/pull/692), [#691](https://github.com/whoz-oss/coday/issues/691))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.107.2 (2026-03-31)
+
+### 🩹 Fixes
+
+- #688 backfill username from email for existing users ([#689](https://github.com/whoz-oss/coday/pull/689), [#688](https://github.com/whoz-oss/coday/issues/688))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.107.1 (2026-03-27)
 
 ### 🩹 Fixes

@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coday Preferences</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: linear-gradient(135deg, #1a1030 0%, #0d0d1a 100%);
+        color: #e0e0e0;
+        padding: 40px;
+        -webkit-app-region: drag;
+        user-select: none;
+      }
+
+      .container {
+        max-width: 480px;
+        margin: 0 auto;
+        -webkit-app-region: no-drag;
+      }
+
+      h1 {
+        font-size: 24px;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: #ffffff;
+      }
+
+      .subtitle {
+        font-size: 14px;
+        color: #888;
+        margin-bottom: 32px;
+      }
+
+      .section {
+        background: #16213e;
+        border: 2px solid #0f3460;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 16px;
+      }
+
+      .section-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 12px;
+      }
+
+      .btn-row {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 24px;
+        gap: 12px;
+      }
+
+      button {
+        padding: 8px 20px;
+        border-radius: 8px;
+        border: none;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .btn-primary {
+        background: #533483;
+        color: #ffffff;
+      }
+
+      .btn-primary:hover {
+        background: #6b44a0;
+      }
+
+      .btn-primary:disabled {
+        background: #333;
+        color: #666;
+        cursor: not-allowed;
+      }
+
+      .btn-secondary {
+        background: transparent;
+        color: #999;
+        border: 1px solid #333;
+      }
+
+      .btn-secondary:hover {
+        background: #1a2744;
+        color: #ccc;
+      }
+
+      .status-message {
+        display: none;
+        margin-top: 12px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 13px;
+      }
+
+      .status-message.success {
+        display: block;
+        background: #0d2818;
+        color: #4caf50;
+        border: 1px solid #1b5e20;
+      }
+
+      .status-message.error {
+        display: block;
+        background: #2d0a0a;
+        color: #ef5350;
+        border: 1px solid #b71c1c;
+      }
+
+      .field-label {
+        font-size: 12px;
+        color: #888;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        margin-bottom: 6px;
+        margin-top: 12px;
+      }
+
+      .field-label:first-child {
+        margin-top: 0;
+      }
+
+      .text-input {
+        width: 100%;
+        padding: 9px 12px;
+        background: #0d1b2a;
+        border: 1px solid #0f3460;
+        border-radius: 8px;
+        color: #e0e0e0;
+        font-family: 'SF Mono', 'Menlo', monospace;
+        font-size: 13px;
+        outline: none;
+        transition: border-color 0.2s ease;
+      }
+
+      .text-input:focus {
+        border-color: #533483;
+      }
+
+      .text-input::placeholder {
+        color: #555;
+      }
+
+      .help-text {
+        font-size: 12px;
+        color: #555;
+        margin-top: 6px;
+        line-height: 1.4;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Preferences</h1>
+      <p class="subtitle">Manage your Coday settings.</p>
+
+      <!-- AI API Keys -->
+      <div class="section">
+        <div class="section-title">AI API Keys</div>
+
+        <div class="field-label">Anthropic API Key</div>
+        <input
+          type="password"
+          class="text-input"
+          id="anthropic-api-key"
+          placeholder="sk-ant-..."
+          oninput="onAiKeyInput()"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <div class="help-text">Leave blank to keep the existing key. Get yours at console.anthropic.com.</div>
+
+        <div class="field-label" style="margin-top: 14px">
+          OpenAI API Key <span style="font-weight: 400; text-transform: none; color: #666">&mdash; optional</span>
+        </div>
+        <input
+          type="password"
+          class="text-input"
+          id="openai-api-key"
+          placeholder="sk-..."
+          oninput="onAiKeyInput()"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <div class="help-text">
+          Leave blank to keep the existing key (or skip if not using OpenAI). Get yours at platform.openai.com.
+        </div>
+      </div>
+
+      <div class="status-message" id="status-message"></div>
+
+      <div class="btn-row">
+        <button class="btn-secondary" onclick="closeWindow()">Close</button>
+        <button class="btn-primary" id="btn-save" onclick="save()" disabled>Save</button>
+      </div>
+    </div>
+
+    <script>
+      let aiKeysDirty = false
+
+      function onAiKeyInput() {
+        aiKeysDirty = true
+        updateSaveButton()
+      }
+
+      function updateSaveButton() {
+        const anthropicKey = document.getElementById('anthropic-api-key').value.trim()
+        const openAiKey = document.getElementById('openai-api-key').value.trim()
+        const aiHasContent = !!(anthropicKey || openAiKey)
+        document.getElementById('btn-save').disabled = !(aiKeysDirty && aiHasContent)
+      }
+
+      async function save() {
+        document.getElementById('btn-save').disabled = true
+        hideStatus()
+
+        try {
+          const anthropicKey = document.getElementById('anthropic-api-key').value.trim()
+          const openAiKey = document.getElementById('openai-api-key').value.trim()
+
+          if (anthropicKey) {
+            await window.electronAPI.saveAnthropicApiKey(anthropicKey)
+          }
+          if (openAiKey) {
+            await window.electronAPI.saveOpenAiApiKey(openAiKey)
+          }
+
+          aiKeysDirty = false
+          document.getElementById('anthropic-api-key').value = ''
+          document.getElementById('openai-api-key').value = ''
+
+          showStatus('Settings saved successfully.', 'success')
+        } catch (error) {
+          document.getElementById('btn-save').disabled = false
+          showStatus('Failed to save settings.', 'error')
+        }
+      }
+
+      function closeWindow() {
+        window.electronAPI.preferencesClose()
+      }
+
+      function showStatus(message, type) {
+        const el = document.getElementById('status-message')
+        el.textContent = message
+        el.className = 'status-message ' + type
+      }
+
+      function hideStatus() {
+        const el = document.getElementById('status-message')
+        el.className = 'status-message'
+      }
+
+      // Resize the Electron window to fit content whenever the DOM changes
+      function fitWindow() {
+        const h = document.body.scrollHeight
+        if (window.electronAPI && window.electronAPI.resizeToContent) {
+          window.electronAPI.resizeToContent(h)
+        }
+      }
+
+      new MutationObserver(fitWindow).observe(document.body, { subtree: true, childList: true, attributes: true })
+      window.addEventListener('load', fitWindow)
+    </script>
+  </body>
+</html>

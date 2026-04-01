@@ -1,6 +1,6 @@
 id: 272b429b-48b0-43af-a400-739a1d1aaf9a
 name: End of day wrap up
-enabled: true
+enabled: false
 promptId: d3e4f5a6-7b8c-9d0e-1f2a-3b4c5d6e7f8a
 schedule:
   startTimestamp: 2026-01-01T18:00:00.000Z
