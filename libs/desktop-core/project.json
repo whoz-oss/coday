@@ -1,0 +1,8 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "desktop-core",
+  "projectType": "library",
+  "sourceRoot": "libs/desktop-core/src",
+  "tags": ["scope:libs", "type:desktop-core"],
+  "targets": {}
+}
