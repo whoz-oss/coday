@@ -5,6 +5,7 @@ import { McpServerConfig } from '@coday/model'
 import { ConfigLevel, ConfigLevelValidator } from '@coday/model'
 import { CommandContext } from '@coday/model'
 import { mergeMcpConfigs } from './mcp-config-merger'
+import { resolveServerTokens } from './mcp-token-resolver'
 
 /**
  * Represents the combined MCP configuration from all levels
@@ -25,6 +26,7 @@ export interface McpConfiguration {
 export class McpConfigService {
   private mcpCache: Map<ConfigLevel, McpServerConfig[]> = new Map()
   private mergedConfig: McpConfiguration | null = null
+  private projectRoot: string = ''
 
   constructor(
     private userService: UserService,
@@ -38,6 +40,7 @@ export class McpConfigService {
   initialize(context: CommandContext): void {
     this.mcpCache.clear()
     this.mergedConfig = null
+    this.projectRoot = context.project.root
 
     // Cache configurations at each level for faster access
     const codayServers = context.project.mcp?.servers || []
@@ -106,7 +109,10 @@ export class McpConfigService {
       )
     })
 
-    this.mergedConfig = { servers: validatedServers }
+    const resolvedServers = validatedServers.map((server) => resolveServerTokens(server, this.projectRoot))
+
+    this.mergedConfig = { servers: resolvedServers }
+
     return this.mergedConfig
   }
 
