@@ -8,7 +8,6 @@ api/namespace-controller.service.ts
 api/plugin-controller.service.ts
 api/sse.service.ts
 api/tool-controller.service.ts
-api/user-controller.service.ts
 configuration.ts
 encoder.ts
 git_push.sh
@@ -23,7 +22,6 @@ model/plugin-info.ts
 model/plugin-upload-response.ts
 model/tool-execution-result.ts
 model/tool-output.ts
-model/user.ts
 param.ts
 provide-api.ts
 variables.ts
