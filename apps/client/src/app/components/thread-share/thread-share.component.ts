@@ -27,6 +27,7 @@ export class ThreadShareComponent {
 
   @Output() userAdded = new EventEmitter<string>()
   @Output() userRemoved = new EventEmitter<string>()
+  @Output() closed = new EventEmitter<void>()
 
   protected readonly isAdding = signal(false)
   protected readonly errorMessage = signal('')
@@ -54,5 +55,9 @@ export class ThreadShareComponent {
 
   removeUser(userId: string): void {
     this.userRemoved.emit(userId)
+  }
+
+  close(): void {
+    this.closed.emit()
   }
 }

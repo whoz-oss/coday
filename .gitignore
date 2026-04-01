@@ -54,3 +54,6 @@ dist/electron
 apps/desktop/release
 
 .angular
+
+.claude/worktrees
+.claude/settings.local.json

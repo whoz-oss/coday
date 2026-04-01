@@ -1,3 +1,70 @@
+## 0.107.3 (2026-03-31)
+
+### 🩹 Fixes
+
+- #691 file exchange drawer close button goes off-screen with wide content ([#691](https://github.com/whoz-oss/coday/issues/691))
+- #691 file exchange drawer close button goes off-screen with wide content ([#692](https://github.com/whoz-oss/coday/pull/692), [#691](https://github.com/whoz-oss/coday/issues/691))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+
+## 0.107.2 (2026-03-31)
+
+### 🩹 Fixes
+
+- #688 backfill username from email for existing users ([#689](https://github.com/whoz-oss/coday/pull/689), [#688](https://github.com/whoz-oss/coday/issues/688))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.107.1 (2026-03-27)
+
+### 🩹 Fixes
+
+- add close button to share thread panel ([#683](https://github.com/whoz-oss/coday/pull/683), [#682](https://github.com/whoz-oss/coday/issues/682))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
+## 0.107.0 (2026-03-27)
+
+### 🚀 Features
+
+- replace dialogs with full-page list components ([#681](https://github.com/whoz-oss/coday/pull/681))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- vincent.audibert
+
+## 0.106.0 (2026-03-27)
+
+### 🚀 Features
+
+- add generic entity-list for project and prompt list ([#614](https://github.com/whoz-oss/coday/pull/614))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 0.105.3 (2026-03-27)
+
+### 🩹 Fixes
+
+- #671 remove_worktree accepts optional projectName for legacy worktrees ([#674](https://github.com/whoz-oss/coday/pull/674), [#671](https://github.com/whoz-oss/coday/issues/671))
+- #670 improve modal/background contrast with border, shadow and blurred backdrop ([#673](https://github.com/whoz-oss/coday/pull/673), [#670](https://github.com/whoz-oss/coday/issues/670), [#2](https://github.com/whoz-oss/coday/issues/2), [#1](https://github.com/whoz-oss/coday/issues/1))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.105.2 (2026-03-26)
 
 ### 🩹 Fixes

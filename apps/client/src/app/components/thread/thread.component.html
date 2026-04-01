@@ -117,21 +117,14 @@
         <app-file-exchange-drawer [projectName]="projectName" [threadId]="threadId" (closeDrawer)="closeDrawer()" />
       }
       @if (drawerMode === 'share' && threadDetails) {
-        <div class="share-drawer-container">
-          <div class="drawer-header">
-            <h3 class="drawer-title">Share</h3>
-            <button mat-icon-button class="close-btn" (click)="closeDrawer()" title="Close" type="button">
-              <mat-icon>chevron_right</mat-icon>
-            </button>
-          </div>
-          <app-thread-share
-            [threadId]="threadId"
-            [users]="threadDetails.users || []"
-            [currentUsername]="currentUsername"
-            (userAdded)="onUserAdded($event)"
-            (userRemoved)="onUserRemoved($event)"
-          />
-        </div>
+        <app-thread-share
+          [threadId]="threadId"
+          [users]="threadDetails.users || []"
+          [currentUsername]="currentUsername"
+          (userAdded)="onUserAdded($event)"
+          (userRemoved)="onUserRemoved($event)"
+          (closed)="closeDrawer()"
+        />
       }
     </mat-drawer>
   </mat-drawer-container>

@@ -105,5 +105,6 @@
   "namedInputs": {
     "default": ["{projectRoot}/**/*"],
     "production": ["default", "!{projectRoot}/src/test/**/*"]
-  }
+  },
+  "analytics": false
 }

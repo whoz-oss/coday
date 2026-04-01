@@ -45,6 +45,11 @@
   --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
   --glass-backdrop-blur: blur(20px);
 
+  /* Modal / Dialog */
+  --color-modal-bg: #ffffff;
+  --color-modal-border: rgba(0, 0, 0, 0.12);
+  --color-modal-shadow: 0 8px 40px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.1);
+
   /* Utility Colors */
   --color-shadow: rgba(0, 0, 0, 0.08);
   --color-overlay: rgba(0, 0, 0, 0.4);
@@ -88,6 +93,11 @@
   --glass-border: rgba(255, 255, 255, 0.18);
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
   --glass-backdrop-blur: blur(20px);
+
+  /* Modal / Dialog */
+  --color-modal-bg: #2c2c2e;
+  --color-modal-border: rgba(255, 255, 255, 0.12);
+  --color-modal-shadow: 0 8px 48px rgba(0, 0, 0, 0.55), 0 2px 12px rgba(0, 0, 0, 0.35);
 
   /* Utility Colors */
   --color-shadow: rgba(0, 0, 0, 0.5);

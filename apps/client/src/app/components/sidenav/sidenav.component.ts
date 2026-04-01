@@ -1,8 +1,22 @@
-import { Component, ElementRef, EventEmitter, inject, Input, OnDestroy, OnInit, Output, ViewChild } from '@angular/core'
+import {
+  Component,
+  computed,
+  ElementRef,
+  EventEmitter,
+  inject,
+  Input,
+  OnDestroy,
+  OnInit,
+  Output,
+  signal,
+  ViewChild,
+} from '@angular/core'
 import { Router } from '@angular/router'
 import { FormsModule } from '@angular/forms'
 import { Subject } from 'rxjs'
 import { map, takeUntil } from 'rxjs/operators'
+import { toSignal } from '@angular/core/rxjs-interop'
+import { BreakpointObserver } from '@angular/cdk/layout'
 import { MatSidenavModule } from '@angular/material/sidenav'
 import { MatIconModule } from '@angular/material/icon'
 import { MatButtonModule } from '@angular/material/button'
@@ -15,11 +29,7 @@ import { OptionsPanelComponent } from '../options-panel'
 import { ThreadSelectorComponent } from '../thread-selector/thread-selector.component'
 import { PreviewPanelComponent } from '../preview-panel/preview-panel.component'
 import { JsonEditorComponent, JsonEditorData } from '../json-editor/json-editor.component'
-import { PromptManagerComponent } from '../prompt-manager/prompt-manager.component'
-import { SchedulerManagerComponent } from '../scheduler-manager/scheduler-manager.component'
-import { AgentManagerComponent } from '../agent-manager/agent-manager.component'
 import { ProjectStateService } from '../../core/services/project-state.service'
-import { toSignal } from '@angular/core/rxjs-interop'
 import { ProjectApiService } from '../../core/services/project-api.service'
 import { ThreadStateService } from '../../core/services/thread-state.service'
 
@@ -42,7 +52,6 @@ import { ThreadStateService } from '../../core/services/thread-state.service'
 })
 export class SidenavComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>()
-  isOpen = true
 
   /** Emits true when the sidenav opens, false when it closes. */
   @Output() sidenavStateChange = new EventEmitter<boolean>()
@@ -50,9 +59,19 @@ export class SidenavComponent implements OnInit, OnDestroy {
   /** When true, hides the floating FABs on mobile (right drawer is open). */
   @Input() drawerOpen = false
 
-  get screenWidth(): number {
-    return window.innerWidth
-  }
+  private readonly breakpointObserver = inject(BreakpointObserver)
+
+  /** True when viewport is >= 1400px — sidenav is locked open. */
+  protected readonly isDesktop = toSignal(
+    this.breakpointObserver.observe('(min-width: 1400px)').pipe(map((state) => state.matches)),
+    { initialValue: false }
+  )
+
+  /** User's open/close preference, only meaningful on mobile. */
+  private readonly userOpenPreference = signal(true)
+
+  /** Effective open state — always open on desktop, user-controlled on mobile. */
+  protected readonly isOpen = computed(() => this.isDesktop() || this.userOpenPreference())
 
   // Role-based access control
   isAdmin = false
@@ -96,10 +115,9 @@ export class SidenavComponent implements OnInit, OnDestroy {
   )
 
   ngOnInit(): void {
-    // Load saved sidenav state from preferences
+    // Load saved sidenav state from preferences (mobile only)
     const savedState = this.preferences.getPreference<boolean>('sidenavOpen', true)
-    this.isOpen = savedState ?? true
-    console.log('[SIDENAV] Loaded sidenav state from preferences:', this.isOpen)
+    this.userOpenPreference.set(savedState ?? true)
 
     // Load user config to check roles
     this.configApi
@@ -124,25 +142,25 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   toggle(): void {
-    this.isOpen = !this.isOpen
-    this.saveSidenavState()
-    this.sidenavStateChange.emit(this.isOpen)
+    if (this.isDesktop()) return
+    const next = !this.userOpenPreference()
+    this.userOpenPreference.set(next)
+    this.saveSidenavState(next)
+    this.sidenavStateChange.emit(next)
   }
 
   close(): void {
-    if (this.isOpen) {
-      this.isOpen = false
-      this.saveSidenavState()
-      this.sidenavStateChange.emit(false)
-    }
+    if (this.isDesktop() || !this.userOpenPreference()) return
+    this.userOpenPreference.set(false)
+    this.saveSidenavState(false)
+    this.sidenavStateChange.emit(false)
   }
 
   /**
-   * Save sidenav state to preferences
+   * Save sidenav state to preferences (mobile only)
    */
-  private saveSidenavState(): void {
-    this.preferences.setPreference('sidenavOpen', this.isOpen)
-    console.log('[SIDENAV] Saved sidenav state:', this.isOpen)
+  private saveSidenavState(value: boolean): void {
+    this.preferences.setPreference('sidenavOpen', value)
   }
 
   /**
@@ -275,50 +293,39 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Open a manager dialog with standard dimensions
-   */
-  private openManagerDialog(component: any, logMessage: string): void {
-    console.log(`[SIDENAV] ${logMessage}`)
-    this.dialog.open(component, {
-      width: '90vw',
-      maxWidth: '1200px',
-      height: '90vh',
-      maxHeight: '900px',
-    })
-  }
-
-  /**
-   * Open agent manager dialog
+   * Navigate to the agent list page
    */
   openAgents(): void {
     if (!this.requireProjectSelection('open agents')) {
       return
     }
-    this.openManagerDialog(AgentManagerComponent, 'Opening agent manager dialog')
+    const projectName = this.selectedProjectName()
+    this.router.navigate(['project', projectName, 'agents'])
+    this.close()
   }
 
   /**
-   * Open prompt manager dialog
+   * Navigate to the prompt list page
    */
   openPrompts(): void {
     if (!this.requireProjectSelection('open prompts')) {
       return
     }
-    this.openManagerDialog(PromptManagerComponent, 'Opening prompt manager dialog')
+    const projectName = this.selectedProjectName()
+    this.router.navigate(['project', projectName, 'prompts'])
+    this.close()
   }
 
   /**
-   * Open scheduler manager dialog
-   * Available for all users if a project is selected
+   * Navigate to the scheduler list page
    */
   openSchedulers(): void {
     if (!this.requireProjectSelection('open schedulers')) {
       return
     }
-    this.openManagerDialog(
-      SchedulerManagerComponent,
-      `Opening scheduler manager dialog for project: ${this.selectedProjectName()}`
-    )
+    const projectName = this.selectedProjectName()
+    this.router.navigate(['project', projectName, 'schedulers'])
+    this.close()
   }
 
   /**
@@ -384,7 +391,7 @@ export class SidenavComponent implements OnInit, OnDestroy {
    * On desktop (>= 1024 px) the sidenav stays open.
    */
   onThreadSelectedOnMobile(): void {
-    if (window.innerWidth < 1024) {
+    if (!this.isDesktop()) {
       this.close()
     }
   }

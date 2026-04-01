@@ -39,6 +39,25 @@ function deriveWorktreeProjectName(parentProjectName: string, sanitizedBranch: s
   return `${parentProjectName}__${sanitizedBranch}`
 }
 
+/**
+ * Resolves the worktree directory name suffix from an explicit project name.
+ *
+ * The project name must follow the `${parentProjectName}__${suffix}` convention.
+ * Returns `null` when the name does not start with the expected prefix so that
+ * callers can surface a clear error instead of silently falling back.
+ *
+ * @param parentProjectName   - The name of the main Coday project.
+ * @param explicitProjectName - The project name as returned by `list_worktrees`.
+ * @returns The directory suffix, or `null` if the name does not match the convention.
+ */
+export function resolveWorktreeDirName(parentProjectName: string, explicitProjectName: string): string | null {
+  const prefix = `${parentProjectName}__`
+  if (!explicitProjectName.startsWith(prefix)) {
+    return null
+  }
+  return explicitProjectName.slice(prefix.length)
+}
+
 export class GitWorktreeTools extends AssistantToolFactory {
   static readonly TYPE = 'GIT_WORKTREE' as const
 
@@ -103,8 +122,11 @@ export class GitWorktreeTools extends AssistantToolFactory {
           return JSON.stringify(
             entries.map((e) => {
               const isMain = e.path === mainWorktreePath
-              const sanitized = sanitizeBranchName(e.branch)
-              const projectName = isMain ? parentProjectName : deriveWorktreeProjectName(parentProjectName, sanitized)
+              // Use the actual directory name on disk as the source of truth for projectName.
+              // Deriving it from the branch name would produce the wrong value for legacy
+              // worktrees whose directory name does not match the current naming convention.
+              const dirName = path.basename(e.path)
+              const projectName = isMain ? parentProjectName : dirName
               return {
                 branch: e.branch,
                 path: e.path,
@@ -184,28 +206,58 @@ export class GitWorktreeTools extends AssistantToolFactory {
     }
 
     // remove_worktree — always available
-    const removeWorktreeTool: FunctionTool<{ branch: string; force?: boolean }> = {
+    const removeWorktreeTool: FunctionTool<{ branch: string; projectName?: string; force?: boolean }> = {
       type: 'function',
       function: {
         name: `${this.name}__remove_worktree`,
         description:
-          'Removes a git worktree by branch name and cleans up the associated Coday project entry. Use force=true to remove even with uncommitted changes.',
+          'Removes a git worktree by branch name and cleans up the associated Coday project entry. Use force=true to remove even with uncommitted changes. Optionally provide projectName (from list_worktrees) to locate the actual directory when the path does not match the branch-derived name (e.g. legacy worktrees).',
         parameters: {
           type: 'object',
           properties: {
             branch: { type: 'string', description: 'Branch whose worktree to remove' },
+            projectName: {
+              type: 'string',
+              description:
+                'Optional. The Coday project name for the worktree (as shown by list_worktrees). When provided, the actual directory is resolved from this name instead of being derived from the branch name. Useful for legacy worktrees whose directory name does not match the current naming convention.',
+            },
             force: { type: 'boolean', description: 'Force removal even if the worktree has uncommitted changes' },
           },
           ...({ required: ['branch'] } as object),
         },
         parse: JSON.parse,
-        function: async ({ branch, force }: { branch: string; force?: boolean }): Promise<string> => {
+        function: async ({
+          branch,
+          projectName: explicitProjectName,
+          force,
+        }: {
+          branch: string
+          projectName?: string
+          force?: boolean
+        }): Promise<string> => {
           if (!/^[a-zA-Z0-9._/-]+$/.test(branch)) {
             return `Error: branch name contains invalid characters: ${branch}`
           }
           const sanitized = sanitizeBranchName(branch)
-          const worktreePath = path.join(worktreesRoot, `${parentProjectName}__${sanitized}`)
-          const projectName = deriveWorktreeProjectName(parentProjectName, sanitized)
+          // When an explicit projectName is provided (e.g. from list_worktrees), derive the
+          // actual directory from it. This handles legacy worktrees whose directory name does
+          // not match the branch-derived naming convention.
+          let projectName: string
+          let worktreeDirName: string
+          if (explicitProjectName) {
+            const resolved = resolveWorktreeDirName(parentProjectName, explicitProjectName)
+            if (resolved === null) {
+              return `Error: projectName "${explicitProjectName}" does not start with the expected prefix "${parentProjectName}__". Use list_worktrees to get the correct projectName.`
+            }
+            worktreeDirName = resolved
+            projectName = explicitProjectName
+          } else {
+            worktreeDirName = sanitized
+            projectName = deriveWorktreeProjectName(parentProjectName, sanitized)
+          }
+          // Worktree directories always follow the `<parentProjectName>__<suffix>` convention,
+          // mirroring the layout used by create_worktree and list_worktrees.
+          const worktreePath = path.join(worktreesRoot, `${parentProjectName}__${worktreeDirName}`)
 
           if (worktreePath === projectRoot) {
             return `Error: cannot remove the main worktree`

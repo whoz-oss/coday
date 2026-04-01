@@ -37,9 +37,9 @@ Key aspects:
 - Configures integration points
 - Sets up development environment context
 
-### AiThread
+### AiThread / Case
 
-An AiThread represents an ongoing interaction context between User and Agents. It:
+An AiThread (Coday) or Case (AgentOS) represents an ongoing interaction context between User and Agents. It:
 
 - Maintains its own event history
 - Manages token limits for AI context
@@ -47,7 +47,7 @@ An AiThread represents an ongoing interaction context between User and Agents. I
 - Provides optimized views of its history
 - Ensures continuity of conversation
 - Maintains agent-specific state in thread scope
-- Supports multi-agent interaction patterns
+- Supports multi-actor interaction patterns
 
 Key characteristics:
 
@@ -56,6 +56,8 @@ Key characteristics:
 - History optimization
 - Context window management
 - Tool state tracking
+
+In AgentOS, a `Case` is backed by a `CaseRuntime` that owns the execution loop for the duration of the case. The runtime is scoped to the case (not the user): multiple users can send messages to the same case, each identified by their `Actor`. The runtime is alive from first message until the case reaches a terminal status (`KILLED` or `ERROR`); a case in `IDLE` state keeps its runtime alive and ready to resume.
 
 AiThreads are to be forked, cloned, and re-worked for use by technical agents and project agents. Yet, only the main
 AiThread holds only project agents contributions.
@@ -73,10 +75,14 @@ Events are atomic units of interaction that flow through the system. Types inclu
 Key aspects:
 
 - Carry full context
-- AiThread-scoped
+- AiThread/Case-scoped
 - Immutable
 - Sequential
 - Traceable
+
+In AgentOS, every event carries `namespaceId`, `caseId`, `timestamp`, and an `Actor` where relevant. The `Actor` model (`id`, `displayName`, `role: USER|AGENT`) makes the event history inherently multi-actor: multiple human users can participate in the same case, each identified by their actor.
+
+**Target: ActorSelectedEvent.** Current agent selection produces an `AgentSelectedEvent`. The planned generalisation is an `ActorSelectedEvent` that can target a user (triggering a notification on their preferred channel), a group (fan-out), or an agent (triggering an agent run). This unifies human and agent routing under a single concept and is a prerequisite for true multi-user interactive cases.
 
 ### Tools
 
@@ -201,6 +207,24 @@ Key aspects:
 - Coday Project Agent → AgentOS Plugin Agent
 - Coday Technical Agent → AgentOS Orchestrator
 - Coday Tool → AgentOS Capability
+- Coday AiThread → AgentOS Case + CaseRuntime
+
+## Open Design Questions
+
+### Agent-centric vs project-centric scoping
+
+The current model is namespace/project-scoped: agents are discovered within a namespace, and a case belongs to a namespace. This is project-centric.
+
+The target is flexible scoping across multiple levels:
+- **User scope** — an agent that knows a specific user across all their projects (twin concept)
+- **Namespace/project scope** — current model
+- **Case/thread scope** — ephemeral agents for the duration of a single case
+
+Both models (and their coexistence) should remain possible. No architectural decision has been taken yet.
+
+### Namespace hierarchies and cross-project access
+
+Worktrees naturally create a parent/child relationship between a project and its branches. Whether this maps to a namespace hierarchy in AgentOS (sub-namespaces inheriting agents/tools from a parent) and whether agents can have cross-namespace reach are open questions. The data model should not close these doors prematurely.
 
 ## Domain Relationships
 

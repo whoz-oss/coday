@@ -1,5 +1,5 @@
 <!-- Floating Action Button to toggle sidenav -->
-@if (!isOpen && (!drawerOpen || screenWidth >= 1024)) {
+@if (!isOpen() && !isDesktop() && !drawerOpen) {
   <button mat-icon-button class="sidenav-toggle-btn" (click)="toggle()" title="Menu" type="button">
     <mat-icon>menu</mat-icon>
   </button>
@@ -18,20 +18,22 @@
 }
 
 <!-- Material Sidenav Container -->
-<mat-sidenav-container class="sidenav-container" [class.sidenav-open]="isOpen" [hasBackdrop]="false">
+<mat-sidenav-container class="sidenav-container" [class.sidenav-open]="isOpen()" [hasBackdrop]="false">
   <mat-sidenav
     mode="push"
     position="start"
-    [opened]="isOpen"
+    [opened]="isOpen()"
     [disableClose]="true"
     (closed)="close()"
     class="app-sidenav"
   >
     <!-- Sidenav Header with Project Selector -->
     <div class="sidenav-header">
-      <button mat-icon-button (click)="close()" title="Close menu">
-        <mat-icon>chevron_left</mat-icon>
-      </button>
+      @if (!isDesktop()) {
+        <button mat-icon-button (click)="close()" title="Close menu">
+          <mat-icon>chevron_left</mat-icon>
+        </button>
+      }
       <img
         [attr.src]="'CODAY-Logo.png'"
         alt="coday"
@@ -322,7 +324,7 @@
     <!-- end sidenav-nav -->
   </mat-sidenav>
 
-  <mat-sidenav-content [class.sidenav-closed-offset]="!isOpen">
+  <mat-sidenav-content [class.sidenav-closed-offset]="!isOpen()">
     <!-- Content goes here (router-outlet) -->
     <ng-content></ng-content>
   </mat-sidenav-content>

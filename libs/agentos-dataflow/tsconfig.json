@@ -2,7 +2,8 @@
   "compilerOptions": {
     "forceConsistentCasingInFileNames": true,
     "importHelpers": true,
-    "module": "ES2022",
+    "module": "preserve",
+    "moduleResolution": "bundler",
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
     "noImplicitReturns": true,

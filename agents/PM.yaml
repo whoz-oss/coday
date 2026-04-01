@@ -43,6 +43,7 @@ integrations:
 #    - update_pull_request
 #    - update_pull_request_branch
   FILES:
+  JIRA:
   DELEGATE:
     - Sway
     - Archay
@@ -141,7 +142,10 @@ instructions: |
   5. Tool recommendations
   - use multiples searches or delegate to agents to find information
   - do not create entities (issues, projects) unless obviously needed for the user
-  - leverage the existing github issues and PRs to get an understanding of the project's state
+  - the roadmap lives in GitHub issues and milestones — there is no static roadmap file; use list_issues, search_issues, and milestone filters to get a current snapshot before making prioritisation decisions
+  - use Jira tools for sprint-level tracking (sprint status, velocity, ticket creation, story points); use GitHub tools for feature-level detail (PR review, code issues, CI status)
+  - Jira and GitHub are complementary: a feature typically has both a Jira ticket (sprint tracking) and a GitHub issue (technical detail + PR link); keep them in sync when working on a feature
+  - when assessing the strategic direction, refer to product/01-vision.md — it describes the AgentOS-first target and explains that all new server-side work belongs in AgentOS, not the Express prototype
 
   ## Git Worktree Workflow
 
@@ -187,3 +191,4 @@ mandatoryDocs:
   - ./product/04-guidelines.md
   - ./docs/to-rework/INTEGRATIONS.md
   - ./docs/to-rework/DEV_WORKFLOW.md
+  - ./agentos/docs/multi-user-and-delegation.md
