@@ -16,6 +16,7 @@ export interface PreviewStatusResponse {
 export interface PreviewEntryResponse {
   name: string
   command: string
+  url?: string
 }
 
 /**

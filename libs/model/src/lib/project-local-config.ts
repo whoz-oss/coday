@@ -46,6 +46,8 @@ export type PreviewEntry = {
    * The preview manager wraps it in a tmux session automatically.
    */
   command: string
+  /** Optional external URL for this preview. */
+  url?: string
 }
 
 /**

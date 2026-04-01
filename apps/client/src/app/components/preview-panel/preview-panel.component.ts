@@ -20,6 +20,7 @@ import { ProjectApiService } from '../../core/services/project-api.service'
 interface EntryState {
   name: string
   command: string
+  url?: string
   status: 'running' | 'stopped'
   isLoading: boolean
   errorMessage: string
@@ -97,6 +98,7 @@ export class PreviewPanelComponent implements OnDestroy {
           const states: EntryState[] = entries.map((e) => ({
             name: e.name,
             command: e.command,
+            url: e.url,
             status: 'stopped' as const,
             isLoading: false,
             errorMessage: '',

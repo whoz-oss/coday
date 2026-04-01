@@ -1,5 +1,5 @@
 <div class="preview-panel">
-  @for (entry of entryStates(); let i = $index; track entry.name) {
+  @for (entry of entryStates(); let i = $index; track: entry.name) {
     <!-- Entry row: order = i * 2 -->
 
     <div class="entry-row" [style.order]="i * 2">
@@ -35,6 +35,13 @@
         <span class="status-pill" [class.running]="entry.status === 'running'">
           {{ entry.status === 'running' ? 'Running' : 'Stopped' }}
         </span>
+
+        <!-- Optional URL -->
+        @if (entry.url) {
+          <a class="preview-url" [href]="entry.url" target="_blank" rel="noopener noreferrer" [title]="entry.url">
+            <mat-icon class="link-icon">open_in_new</mat-icon>
+          </a>
+        }
 
         <!-- Logs toggle -->
         <button
