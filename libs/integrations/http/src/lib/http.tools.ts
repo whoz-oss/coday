@@ -239,15 +239,11 @@ export class HttpTools extends AssistantToolFactory {
     })
 
     if (!response.ok) {
-      const errorBody = await response.text()
-
       if (response.status === 401 || response.status === 403) {
-        // Token is invalid or rejected — invalidate it and trigger a fresh OAuth flow.
+        // Token is invalid or rejected — trigger a fresh OAuth flow.
         // Both 401 (expired/invalid token) and 403 (token rejected by provider, e.g. Figma) require re-auth.
-        this.interactor.debug(
-          `[HTTP:${this.name}__${endpoint.name}] got ${response.status}, invalidating token and re-authenticating`
-        )
-        this.oauth!.invalidateTokens()
+        // Note: authenticate() already clears tokens internally, so no explicit invalidation needed here.
+        this.interactor.debug(`[HTTP:${this.name}__${endpoint.name}] got ${response.status}, re-authenticating`)
         await this.oauth!.authenticate()
         const newAccessToken = await this.oauth!.getAccessToken()
 
@@ -268,31 +264,17 @@ export class HttpTools extends AssistantToolFactory {
           )
         }
 
-        // Continue with retryResponse as the successful response
-        let retryData: unknown
-        const retryContentType = retryResponse.headers.get('content-type') ?? ''
-        if (retryContentType.includes('application/json')) {
-          retryData = await retryResponse.json()
-        } else {
-          const text = await retryResponse.text()
-          if (!text) return null
-          try {
-            retryData = JSON.parse(text)
-          } catch {
-            retryData = text
-          }
-        }
-
-        const retryFiltered = filterResponse(retryData, endpoint.keepPaths, endpoint.ignorePaths)
-        if (endpoint.responseFormat === 'yaml') {
-          return yaml.stringify(retryFiltered)
-        }
-        return retryFiltered
+        return this.parseResponse(retryResponse, endpoint)
       }
 
+      const errorBody = await response.text()
       throw new Error(`HTTP ${response.status} from ${endpoint.method} ${resolvedPath}: ${errorBody}`)
     }
 
+    return this.parseResponse(response, endpoint)
+  }
+
+  private async parseResponse(response: Response, endpoint: HttpEndpointConfig): Promise<unknown> {
     // Parse response body: prefer JSON, fallback to text for non-JSON content-types
     let data: unknown
     const contentType = response.headers.get('content-type') ?? ''
