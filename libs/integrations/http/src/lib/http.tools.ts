@@ -241,9 +241,12 @@ export class HttpTools extends AssistantToolFactory {
     if (!response.ok) {
       const errorBody = await response.text()
 
-      if (response.status === 401) {
-        // Token is invalid or expired — invalidate it and trigger a fresh OAuth flow
-        this.interactor.debug(`[HTTP:${this.name}__${endpoint.name}] got 401, invalidating token and re-authenticating`)
+      if (response.status === 401 || response.status === 403) {
+        // Token is invalid or rejected — invalidate it and trigger a fresh OAuth flow.
+        // Both 401 (expired/invalid token) and 403 (token rejected by provider, e.g. Figma) require re-auth.
+        this.interactor.debug(
+          `[HTTP:${this.name}__${endpoint.name}] got ${response.status}, invalidating token and re-authenticating`
+        )
         this.oauth!.invalidateTokens()
         await this.oauth!.authenticate()
         const newAccessToken = await this.oauth!.getAccessToken()
@@ -285,12 +288,6 @@ export class HttpTools extends AssistantToolFactory {
           return yaml.stringify(retryFiltered)
         }
         return retryFiltered
-      }
-
-      if (response.status === 403) {
-        throw new Error(
-          `HTTP 403 Forbidden from ${endpoint.method} ${resolvedPath}: the authenticated user lacks permission for this resource. ${errorBody}`
-        )
       }
 
       throw new Error(`HTTP ${response.status} from ${endpoint.method} ${resolvedPath}: ${errorBody}`)
