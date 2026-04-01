@@ -1,3 +1,20 @@
+## 0.108.0 (2026-04-01)
+
+### 🚀 Features
+
+- coday-twin enhancements ([#703](https://github.com/whoz-oss/coday/pull/703))
+
+### 🩹 Fixes
+
+- ensure lint staged uses project version of prettier ([c3478929](https://github.com/whoz-oss/coday/commit/c3478929))
+- ensure lint staged uses project version of prettier ([#700](https://github.com/whoz-oss/coday/pull/700))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+- mathieu_dearmey @mathieu-dearmey
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.107.3 (2026-03-31)
 
 ### 🩹 Fixes
