@@ -1,3 +1,14 @@
+## 0.108.1 (2026-04-01)
+
+### 🩹 Fixes
+
+- #701 invalidate OAuth token on 401, surface 403 as permission error ([#702](https://github.com/whoz-oss/coday/pull/702), [#701](https://github.com/whoz-oss/coday/issues/701))
+
+### ❤️ Thank You
+
+- cetautomatix-coday
+- m1
+
 ## 0.108.0 (2026-04-01)
 
 ### 🚀 Features
