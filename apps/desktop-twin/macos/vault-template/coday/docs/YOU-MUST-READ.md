@@ -113,7 +113,7 @@ If you look back 12 months from now, what would make this a great year?
 
 ## After Writing Your Three Documents
 
-Update `coday/agents/twin.yaml` — replace all `[TODO: ...]` placeholders with your actual information.
+Update `coday/agents/twin.yaml` — replace all placeholders surrounded by brackets (`[TODO: ...]`, `[YOUR NAME]`) with your actual information.
 
 Key fields to customize:
 - Your name, role, company, background
@@ -147,8 +147,8 @@ Your twin gets smarter as it accumulates context. Here's how the flywheel works:
 4. The twin has more to draw on next session
 5. Repeat
 
-**First week**: Feels generic, needs a lot of prompting.  
-**First month**: Starts to feel like it knows you.  
+**First week**: Feels generic, needs a lot of prompting.
+**First month**: Starts to feel like it knows you.
 **First quarter**: You stop re-explaining context. It just knows.
 
 The investment in those three initial documents pays compound returns.

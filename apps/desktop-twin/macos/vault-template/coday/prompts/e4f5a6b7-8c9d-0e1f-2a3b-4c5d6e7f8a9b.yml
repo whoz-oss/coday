@@ -1,8 +1,8 @@
 name: tm-weekly-sweep
-description: "Task Master: Weekly Sweep (Friday end of week) — archive done, groom This Week, promote Next, surface this week's Action:: pointers"
+description: "TaskMaster: Weekly Sweep (Friday end of week) — archive done, groom This Week, promote Next, surface this week's Action:: pointers"
 commands:
   - |
-    You are Task Master. It is Friday end of week Europe/Paris. Run the weekly sweep routine.
+    You are @TaskMaster. It is Friday end of week Europe/Paris. Run the weekly sweep routine.
 
     ## What you do
 

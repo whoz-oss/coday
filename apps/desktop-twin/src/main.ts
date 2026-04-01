@@ -1,5 +1,24 @@
 import type { BrowserWindow as BrowserWindowType, App, IpcMainInvokeEvent } from 'electron'
-import { execSync, type ChildProcess } from 'child_process'
+import type { ChildProcess } from 'child_process'
+import {
+  log,
+  initLogger,
+  findExecutable,
+  setupStorageHandlers,
+  setupEnv,
+  startCodayServer,
+  stopCodayServer,
+  isServerResponsive,
+  createLoadingWindow,
+  createMainWindow,
+  showErrorDialog,
+  registerResizeHandler,
+  removeResizeHandler,
+  registerApiKeyHandlers,
+  removeApiKeyHandlers,
+  parseDeepLink,
+  navigateToDeepLink,
+} from '@coday/desktop-core'
 
 const { app, BrowserWindow, dialog, ipcMain, Menu, session, protocol } = require('electron') as {
   app: App & { isQuitting?: boolean }
@@ -10,114 +29,46 @@ const { app, BrowserWindow, dialog, ipcMain, Menu, session, protocol } = require
   session: typeof import('electron').session
   protocol: typeof import('electron').protocol
 }
-const { spawn } = require('child_process') as typeof import('child_process')
 const { join } = require('path') as typeof import('path')
 const fs = require('fs') as typeof import('fs')
 
+// ---------------------------------------------------------------------------
+// App-specific constants
+// ---------------------------------------------------------------------------
+
+const PROTOCOL_NAME = 'coday-twin'
+const CODAY_TWIN_PORT = '3050'
+const SERVER_ARGS = ['--yes', '@whoz-oss/coday-web', '--base-url=coday-twin://', '--coday_project=CodayTwin']
+const DEFAULT_TWIN_PROJECT_PATH = join(app.getPath('home'), 'CodayTwin')
+const PREFERENCES_KEY_TWIN_PATH = 'twinProjectPath'
+const PREFERENCES_KEY_SLACK_ENABLED = 'slackEnabled'
+const PREFERENCES_KEY_SLACK_WEBHOOK_URL = 'slackWebhookUrl'
+const PREFERENCES_KEY_SLACK_USER_ID = 'slackUserId'
+const PREFERENCES_KEY_GOOGLE_CLIENT_ID = 'googleClientId'
+const PREFERENCES_KEY_GOOGLE_CLIENT_SECRET = 'googleClientSecret'
+
+const STORAGE_FILE = join(app.getPath('userData'), 'preferences.json')
+const LOG_FILE = join(app.getPath('userData'), 'coday-twin-desktop.log')
+
+// ---------------------------------------------------------------------------
+// Module state
+// ---------------------------------------------------------------------------
+
 let mainWindow: BrowserWindowType | null = null
 let serverProcess: ChildProcess | null = null
-let serverUrl: string | null | undefined = null
+let serverUrl: string | null = null
 let pendingDeepLink: string | null = null
 let isSetupWindowOpen = false
 let isPreferencesWindowOpen = false
 let storageHandlersRegistered = false
+let isInitializing = false
+let setupWindowRef: BrowserWindowType | null = null
 
-const PROTOCOL_NAME = 'coday-twin'
-const DEFAULT_TWIN_PROJECT_PATH = join(app.getPath('home'), 'CodayTwin')
-const PREFERENCES_KEY_TWIN_PATH = 'twinProjectPath'
+// ---------------------------------------------------------------------------
+// Logger init
+// ---------------------------------------------------------------------------
 
-// Storage file path
-const STORAGE_FILE = join(app.getPath('userData'), 'preferences.json')
-const PREFERENCES_KEY_SLACK_ENABLED = 'slackEnabled'
-const PREFERENCES_KEY_SLACK_WEBHOOK_URL = 'slackWebhookUrl'
-const PREFERENCES_KEY_SLACK_USER_ID = 'slackUserId'
-
-// Log file path for packaged app
-const LOG_FILE = join(app.getPath('userData'), 'coday-twin-desktop.log')
-
-/**
- * Enhanced logging that writes to both console and log file
- */
-function log(level: 'INFO' | 'ERROR' | 'WARN', ...args: any[]): void {
-  const timestamp = new Date().toISOString()
-  const message = args.map((arg) => (typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg))).join(' ')
-  const logLine = `[${timestamp}] [${level}] ${message}\n`
-
-  // Always write to console
-  if (level === 'ERROR') {
-    console.error(...args)
-  } else if (level === 'WARN') {
-    console.warn(...args)
-  } else {
-    console.log(...args)
-  }
-
-  // Write to log file in packaged app
-  if (app.isPackaged) {
-    try {
-      fs.appendFileSync(LOG_FILE, logLine, 'utf8')
-    } catch (error) {
-      console.error('Failed to write to log file:', error)
-    }
-  }
-}
-
-// Initialize log file
-if (app.isPackaged) {
-  try {
-    const logHeader = `\n\n${'='.repeat(80)}\nCodayTwin Desktop Log - Started at ${new Date().toISOString()}\n${'='.repeat(80)}\n`
-    fs.appendFileSync(LOG_FILE, logHeader, 'utf8')
-    log('INFO', 'Log file initialized at:', LOG_FILE)
-  } catch (error) {
-    console.error('Failed to initialize log file:', error)
-  }
-}
-
-/**
- * Find node/npx executable using 'which' via a login shell, with fallback to
- * keg-only Homebrew versioned installs (e.g. node@24, node@22...)
- */
-function findExecutable(executable: 'node' | 'npx'): string {
-  const { execSync } = require('child_process') as typeof import('child_process')
-  const { existsSync, readdirSync } = require('fs') as typeof import('fs')
-
-  // Try login shells (-l) so ~/.zprofile, ~/.bash_profile etc. are sourced
-  for (const cmd of [`/bin/zsh -lc 'which ${executable}'`, `/bin/bash -lc 'which ${executable}'`]) {
-    try {
-      const result = execSync(cmd, { encoding: 'utf8' }).trim()
-      if (result && existsSync(result)) {
-        log('INFO', `${executable} found: ${result}`)
-        return result
-      }
-    } catch {
-      // try next
-    }
-  }
-
-  // Fallback: scan Homebrew opt for keg-only versioned node installs (e.g. node@24)
-  for (const brewPrefix of ['/opt/homebrew/opt', '/usr/local/opt']) {
-    if (!existsSync(brewPrefix)) continue
-    try {
-      const entries = readdirSync(brewPrefix)
-        .filter((e) => /^node(@\d+)?$/.test(e))
-        .sort()
-        .reverse() // prefer highest version
-      for (const entry of entries) {
-        const candidate = `${brewPrefix}/${entry}/bin/${executable}`
-        if (existsSync(candidate)) {
-          log('INFO', `${executable} found via Homebrew keg-only: ${candidate}`)
-          return candidate
-        }
-      }
-    } catch {
-      // continue
-    }
-  }
-
-  throw new Error(
-    `${executable} not found. Please install Node.js from https://nodejs.org/ or use a package manager like Homebrew.`
-  )
-}
+initLogger(app, 'coday-twin-desktop.log')
 
 /**
  * Read the stored twin project path from preferences.
@@ -140,6 +91,11 @@ interface SlackConfig {
   userId: string
 }
 
+interface GoogleCalendarConfig {
+  clientId: string
+  clientSecret: string
+}
+
 /**
  * Read Slack notification config from preferences.
  */
@@ -155,6 +111,44 @@ function getStoredSlackConfig(): SlackConfig {
     }
   } catch {
     return { enabled: false, webhookUrl: '', userId: '' }
+  }
+}
+
+/**
+ * Read Google Calendar OAuth2 config from preferences.
+ */
+function getStoredGoogleCalendarConfig(): GoogleCalendarConfig {
+  try {
+    if (!fs.existsSync(STORAGE_FILE)) return { clientId: '', clientSecret: '' }
+    const data = fs.readFileSync(STORAGE_FILE, 'utf8')
+    const storage = JSON.parse(data)
+    return {
+      clientId: storage[PREFERENCES_KEY_GOOGLE_CLIENT_ID] ?? '',
+      clientSecret: storage[PREFERENCES_KEY_GOOGLE_CLIENT_SECRET] ?? '',
+    }
+  } catch {
+    return { clientId: '', clientSecret: '' }
+  }
+}
+
+/**
+ * Save Google Calendar OAuth2 config to preferences.
+ */
+function storeGoogleCalendarConfig(config: GoogleCalendarConfig): void {
+  try {
+    let storage: Record<string, string> = {}
+    if (fs.existsSync(STORAGE_FILE)) {
+      const data = fs.readFileSync(STORAGE_FILE, 'utf8')
+      storage = JSON.parse(data)
+    }
+    storage[PREFERENCES_KEY_GOOGLE_CLIENT_ID] = config.clientId
+    storage[PREFERENCES_KEY_GOOGLE_CLIENT_SECRET] = config.clientSecret
+    const dir = join(STORAGE_FILE, '..')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(STORAGE_FILE, JSON.stringify(storage, null, 2), 'utf8')
+    log('INFO', 'Google Calendar config stored')
+  } catch (error) {
+    log('ERROR', 'Failed to store Google Calendar config:', error)
   }
 }
 
@@ -328,9 +322,176 @@ function copySchedulersWithOwner(src: string, dest: string): void {
 }
 
 /**
+ * Apply stored Google Calendar credentials into an existing project.yaml.
+ * Only replaces placeholder values — will not overwrite real credentials.
+ */
+function applyGoogleCalendarConfigToProject(config: GoogleCalendarConfig): void {
+  const os = require('os') as typeof import('os')
+  const configFile = join(os.homedir(), '.coday', 'projects', 'CodayTwin', 'project.yaml')
+
+  if (!fs.existsSync(configFile)) {
+    log('WARN', 'applyGoogleCalendarConfigToProject: project.yaml not found, skipping')
+    return
+  }
+
+  try {
+    let content = fs.readFileSync(configFile, 'utf8')
+    let changed = false
+
+    if (config.clientId && content.includes('GOOGLE_OAUTH2_CLIENT_ID')) {
+      content = content.replaceAll('GOOGLE_OAUTH2_CLIENT_ID', config.clientId)
+      changed = true
+      log('INFO', 'Substituted GOOGLE_OAUTH2_CLIENT_ID in project.yaml')
+    }
+    if (config.clientSecret && content.includes('GOOGLE_OAUTH2_CLIENT_SECRET')) {
+      content = content.replaceAll('GOOGLE_OAUTH2_CLIENT_SECRET', config.clientSecret)
+      changed = true
+      log('INFO', 'Substituted GOOGLE_OAUTH2_CLIENT_SECRET in project.yaml')
+    }
+
+    if (changed) {
+      fs.writeFileSync(configFile, content, 'utf8')
+      log('INFO', 'Google Calendar credentials applied to project.yaml')
+    } else {
+      log('INFO', 'No placeholder substitution needed in project.yaml')
+    }
+  } catch (error) {
+    log('ERROR', 'Failed to apply Google Calendar config to project.yaml:', error)
+  }
+}
+
+/**
+ * Ensure the user.yaml file for the current OS user contains:
+ *   projects:
+ *     CodayTwin:
+ *       defaultAgent: Twin
+ *
+ * The function is idempotent: if the value is already set it is not changed.
+ * It manipulates the YAML file as text to avoid losing comments / formatting.
+ */
+function ensureDefaultAgentInUserConfig(): void {
+  const os = require('os') as typeof import('os')
+  const username = os.userInfo().username
+  const sanitizedUsername = username.replace(/[^a-zA-Z0-9]/g, '_')
+  const userDir = join(os.homedir(), '.coday', 'users', sanitizedUsername)
+  const userConfigPath = join(userDir, 'user.yaml')
+
+  try {
+    fs.mkdirSync(userDir, { recursive: true })
+
+    if (!fs.existsSync(userConfigPath)) {
+      // Create a minimal user.yaml with the defaultAgent already set
+      const content = [
+        'version: 1',
+        'projects:',
+        '  CodayTwin:',
+        '    integration: {}',
+        '    defaultAgent: Twin',
+        '',
+      ].join('\n')
+      fs.writeFileSync(userConfigPath, content, 'utf8')
+      log('INFO', 'Created user.yaml with CodayTwin defaultAgent: Twin')
+      return
+    }
+
+    const raw = fs.readFileSync(userConfigPath, 'utf8')
+    const lines = raw.split('\n')
+
+    // State machine to locate / patch the relevant section
+    let inProjects = false
+    let inCodayTwin = false
+    const agentIndent = '    ' // four-space indent for its children
+    let defaultAgentFound = false
+    let codayTwinLineIdx = -1
+    let insertAfterIdx = -1 // last line index inside the CodayTwin block
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!
+
+      // Detect top-level "projects:" key
+      if (/^projects:\s*$/.test(line)) {
+        inProjects = true
+        inCodayTwin = false
+        continue
+      }
+
+      // Leaving the projects section (another top-level key)
+      if (inProjects && /^\S/.test(line) && !line.startsWith('#')) {
+        inProjects = false
+        inCodayTwin = false
+      }
+
+      if (inProjects) {
+        // Detect "  CodayTwin:" (two-space indented project entry)
+        if (/^  CodayTwin:\s*$/.test(line)) {
+          inCodayTwin = true
+          codayTwinLineIdx = i
+          insertAfterIdx = i
+          continue
+        }
+
+        // Detect another project key at the same indent level → leave CodayTwin block
+        if (inCodayTwin && /^  \S/.test(line) && !/^    /.test(line)) {
+          inCodayTwin = false
+        }
+
+        if (inCodayTwin) {
+          insertAfterIdx = i
+          // Check if defaultAgent is already set
+          if (/^    defaultAgent:\s*Twin\s*$/.test(line)) {
+            defaultAgentFound = true
+          }
+        }
+      }
+    }
+
+    if (defaultAgentFound) {
+      log('INFO', 'user.yaml already has defaultAgent: Twin for CodayTwin — no change needed')
+      return
+    }
+
+    const result = [...lines]
+
+    if (codayTwinLineIdx === -1) {
+      // No CodayTwin entry at all — ensure projects section exists then append
+      const projectsIdx = result.findIndex((l) => /^projects:\s*$/.test(l))
+      if (projectsIdx === -1) {
+        // No projects section either — append both
+        if (result[result.length - 1] !== '') result.push('')
+        result.push('projects:')
+        result.push('  CodayTwin:')
+        result.push('    integration: {}')
+        result.push('    defaultAgent: Twin')
+      } else {
+        // Find the end of the projects section and insert there
+        let endOfProjects = projectsIdx + 1
+        while (endOfProjects < result.length) {
+          const l = result[endOfProjects]!
+          // A non-empty, non-comment line at column 0 ends the projects block
+          if (/^\S/.test(l) && !l.startsWith('#')) break
+          endOfProjects++
+        }
+        result.splice(endOfProjects, 0, '  CodayTwin:', '    integration: {}', '    defaultAgent: Twin')
+      }
+    } else {
+      // CodayTwin block exists but defaultAgent is missing — insert after the last line of the block
+      result.splice(insertAfterIdx + 1, 0, `${agentIndent}defaultAgent: Twin`)
+    }
+
+    let output = result.join('\n')
+    if (!output.endsWith('\n')) output += '\n'
+    fs.writeFileSync(userConfigPath, output, 'utf8')
+    log('INFO', 'Wrote defaultAgent: Twin for CodayTwin into user.yaml')
+  } catch (error) {
+    log('ERROR', 'Failed to set defaultAgent in user.yaml:', error)
+  }
+}
+
+/**
  * Ensure the Coday project config exists for the Twin workspace.
- * Creates ~/.coday/projects/CodayTwin/project.yaml if it doesn't exist,
- * pointing to the resolved twin project path.
+ * Creates ~/.coday/projects/CodayTwin/project.yaml if it doesn't exist.
+ * Prefers the bundled project.template.yaml; falls back to a minimal config.
+ * Never overwrites an existing project.yaml (only applies credential substitutions).
  */
 function ensureTwinProjectConfig(twinProjectPath: string): void {
   const os = require('os') as typeof import('os')
@@ -343,14 +504,75 @@ function ensureTwinProjectConfig(twinProjectPath: string): void {
   if (!fs.existsSync(configFile)) {
     log('INFO', 'Creating Twin project config at:', configFile)
 
-    // Write minimal project config
-    const config = ['version: 1', `path: "${twinProjectPath}"`, 'storage:', '  type: file', 'agents: []', ''].join('\n')
+    // Try to find bundled project.template.yaml
+    const templatePaths = [
+      join(process.resourcesPath ?? '', 'project.template.yaml'),
+      join(__dirname, '..', 'macos', 'project.template.yaml'),
+      join(__dirname, '..', '..', 'macos', 'project.template.yaml'),
+    ]
 
-    fs.writeFileSync(configFile, config, 'utf8')
-    log('INFO', 'Twin project config created successfully')
+    let templateContent: string | null = null
+    for (const tp of templatePaths) {
+      if (fs.existsSync(tp)) {
+        templateContent = fs.readFileSync(tp, 'utf8')
+        log('INFO', 'Using project template from:', tp)
+        break
+      }
+    }
+
+    if (templateContent !== null) {
+      // Substitute path placeholder
+      templateContent = templateContent.replace(/^path:.*$/m, `path: "${twinProjectPath}"`)
+      log('INFO', 'Substituted TWIN_PROJECT_PATH with:', twinProjectPath)
+
+      // Substitute Google credentials if already stored
+      const googleConfig = getStoredGoogleCalendarConfig()
+      if (googleConfig.clientId) {
+        templateContent = templateContent.replaceAll('GOOGLE_OAUTH2_CLIENT_ID', googleConfig.clientId)
+        log('INFO', 'Substituted GOOGLE_OAUTH2_CLIENT_ID in new project.yaml')
+      }
+      if (googleConfig.clientSecret) {
+        templateContent = templateContent.replaceAll('GOOGLE_OAUTH2_CLIENT_SECRET', googleConfig.clientSecret)
+        log('INFO', 'Substituted GOOGLE_OAUTH2_CLIENT_SECRET in new project.yaml')
+      }
+
+      fs.writeFileSync(configFile, templateContent, 'utf8')
+      log('INFO', 'Twin project config created from template')
+    } else {
+      log('INFO', 'No project template found, writing minimal config')
+      // Fallback: write minimal project config
+      const config = ['version: 1', `path: "${twinProjectPath}"`, 'storage:', '  type: file', 'agents: []', ''].join(
+        '\n'
+      )
+      fs.writeFileSync(configFile, config, 'utf8')
+      log('INFO', 'Twin project config created successfully')
+    }
   } else {
     log('INFO', 'Twin project config already exists at:', configFile)
+
+    // Always update the path line to reflect the currently configured twin project path.
+    try {
+      const existingContent = fs.readFileSync(configFile, 'utf8')
+      const updatedContent = existingContent.replace(/^path:.*$/m, `path: "${twinProjectPath}"`)
+      if (updatedContent !== existingContent) {
+        fs.writeFileSync(configFile, updatedContent, 'utf8')
+        log('INFO', 'Updated path in existing project.yaml to:', twinProjectPath)
+      } else {
+        log('INFO', 'Path in project.yaml already correct, no update needed')
+      }
+    } catch (error) {
+      log('ERROR', 'Failed to update path in existing project.yaml:', error)
+    }
+
+    // Apply Google credentials to existing file if they are stored
+    const googleConfig = getStoredGoogleCalendarConfig()
+    if (googleConfig.clientId || googleConfig.clientSecret) {
+      applyGoogleCalendarConfigToProject(googleConfig)
+    }
   }
+
+  // Ensure defaultAgent: Twin is set in user.yaml for the CodayTwin project
+  ensureDefaultAgentInUserConfig()
 
   // Copy schedulers from macos/schedulers into the project config dir
   const schedulersDest = join(configDir, 'schedulers')
@@ -379,6 +601,10 @@ function ensureTwinProjectConfig(twinProjectPath: string): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Setup window
+// ---------------------------------------------------------------------------
+
 /**
  * Show the first-launch setup window and wait for the user to choose a path.
  * Returns the chosen twin project path.
@@ -386,266 +612,83 @@ function ensureTwinProjectConfig(twinProjectPath: string): void {
 function showSetupWindow(): Promise<string> {
   return new Promise<string>((resolve) => {
     const setupWindow = new BrowserWindow({
-      width: 560,
-      height: 300,
+      width: 580,
+      height: 520,
+      minWidth: 580,
+      minHeight: 400,
       frame: false,
-      resizable: false,
+      resizable: true,
       useContentSize: true,
       transparent: true,
+      center: true,
       icon: join(__dirname, 'icon.png'),
       webPreferences: {
         preload: join(__dirname, 'preload.js'),
         nodeIntegration: false,
         contextIsolation: true,
+        sandbox: false,
       },
     })
 
-    // IPC handler: resize window to fit content
-    ipcMain.handle('window:resizeToContent', (_event: IpcMainInvokeEvent, contentHeight: number) => {
-      const win = BrowserWindow.fromWebContents(_event.sender)
-      if (win) {
-        const [w = 560] = win.getContentSize()
-        win.setContentSize(w, Math.ceil(contentHeight), false)
-      }
-    })
+    registerResizeHandler(ipcMain, BrowserWindow)
+    registerApiKeyHandlers(ipcMain)
 
     // IPC handler: open native folder picker
+    // Remove before registering to stay idempotent (safe against double-calls)
+    ipcMain.removeHandler('setup:browseFolder')
     ipcMain.handle('setup:browseFolder', async () => {
+      // Ensure the setup window has focus so the native dialog appears on top (macOS)
+      if (!setupWindow.isDestroyed()) {
+        setupWindow.focus()
+      }
       const result = await dialog.showOpenDialog(setupWindow, {
         title: 'Choose CodayTwin folder location',
         defaultPath: app.getPath('home'),
         properties: ['openDirectory', 'createDirectory'],
       })
       if (result.canceled || result.filePaths.length === 0) return null
-      // Append CodayTwin to the selected directory
-      return join(result.filePaths[0]!!, 'CodayTwin')
-    })
-
-    // IPC handler: check if Anthropic API key is configured
-    ipcMain.handle('setup:checkAnthropicApiKey', (): { configured: boolean; source: string | null } => {
-      // Check environment variable first
-      if (process.env['ANTHROPIC_API_KEY']) {
-        return { configured: true, source: 'env' }
-      }
-
-      // Check user.yaml
-      const os = require('os') as typeof import('os')
-      const username = os.userInfo().username
-      const sanitizedUsername = username.replace(/[^a-zA-Z0-9]/g, '_')
-      const userConfigPath = join(os.homedir(), '.coday', 'users', sanitizedUsername, 'user.yaml')
-
-      try {
-        if (fs.existsSync(userConfigPath)) {
-          const content = fs.readFileSync(userConfigPath, 'utf8')
-          // Parse line by line to handle all YAML structures correctly
-          const lines = content.split('\n')
-          let inAiArray = false
-          let inAnthropicEntry = false
-
-          for (const line of lines) {
-            // ai: [] is an empty inline array — no entries
-            if (/^ai:\s*\[\s*\]/.test(line)) {
-              inAiArray = false
-              continue
-            }
-
-            // Detect start of ai array (block form)
-            if (/^ai:\s*$/.test(line) || /^ai:\s*#/.test(line)) {
-              inAiArray = true
-              continue
-            }
-
-            // If we hit another top-level key, we've left the ai section
-            if (inAiArray && /^\S/.test(line) && !line.startsWith('#')) {
-              inAiArray = false
-              inAnthropicEntry = false
-            }
-
-            if (inAiArray) {
-              // Detect list entry: "  - name: anthropic"
-              if (/^\s+-\s+name:\s*anthropic\s*$/.test(line)) {
-                inAnthropicEntry = true
-                continue
-              }
-              // Detect start of a different list entry
-              if (/^\s+-\s/.test(line) && inAnthropicEntry) {
-                inAnthropicEntry = false
-              }
-              // Look for apiKey within the anthropic entry
-              if (inAnthropicEntry && /^\s+apiKey:\s*\S+/.test(line)) {
-                return { configured: true, source: 'user.yaml' }
-              }
-            }
-          }
-        }
-      } catch (error) {
-        log('ERROR', 'Failed to check user config for API key:', error)
-      }
-
-      return { configured: false, source: null }
-    })
-
-    // IPC handler: save Anthropic API key to user.yaml
-    ipcMain.handle('setup:saveAnthropicApiKey', (_event: IpcMainInvokeEvent, apiKey: string): void => {
-      const os = require('os') as typeof import('os')
-      const username = os.userInfo().username
-      const sanitizedUsername = username.replace(/[^a-zA-Z0-9]/g, '_')
-      const userDir = join(os.homedir(), '.coday', 'users', sanitizedUsername)
-      const userConfigPath = join(userDir, 'user.yaml')
-
-      try {
-        fs.mkdirSync(userDir, { recursive: true })
-
-        if (fs.existsSync(userConfigPath)) {
-          const content = fs.readFileSync(userConfigPath, 'utf8')
-          const lines = content.split('\n')
-          const result: string[] = []
-          let inAiArray = false
-          let inAnthropicEntry = false
-          let anthropicHandled = false
-          let aiSectionFound = false
-          let apiKeyWritten = false
-
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i]!
-
-            // Handle "ai: []" — replace with block form including our entry
-            if (/^ai:\s*\[\s*\]/.test(line)) {
-              result.push('ai:')
-              result.push('  - name: anthropic')
-              result.push(`    apiKey: ${apiKey}`)
-              aiSectionFound = true
-              anthropicHandled = true
-              apiKeyWritten = true
-              continue
-            }
-
-            // Detect start of ai array (block form)
-            if (/^ai:\s*$/.test(line) || /^ai:\s*#/.test(line)) {
-              inAiArray = true
-              aiSectionFound = true
-              result.push(line)
-              continue
-            }
-
-            // If we hit another top-level key while in ai section, check if we need to add anthropic
-            if (inAiArray && /^\S/.test(line) && !line.startsWith('#')) {
-              if (!anthropicHandled) {
-                // Add anthropic entry at end of ai array
-                result.push('  - name: anthropic')
-                result.push(`    apiKey: ${apiKey}`)
-                anthropicHandled = true
-                apiKeyWritten = true
-              }
-              inAiArray = false
-              inAnthropicEntry = false
-            }
-
-            if (inAiArray) {
-              // Detect "  - name: anthropic"
-              if (/^\s+-\s+name:\s*anthropic\s*$/.test(line)) {
-                inAnthropicEntry = true
-                anthropicHandled = true
-                result.push(line)
-                continue
-              }
-              // Detect start of a different list entry — if we were in anthropic and didn't write apiKey, add it
-              if (/^\s+-\s/.test(line) && inAnthropicEntry) {
-                if (!apiKeyWritten) {
-                  result.push(`    apiKey: ${apiKey}`)
-                  apiKeyWritten = true
-                }
-                inAnthropicEntry = false
-              }
-              // Replace existing apiKey in anthropic entry
-              if (inAnthropicEntry && /^\s+apiKey:/.test(line)) {
-                result.push(`    apiKey: ${apiKey}`)
-                apiKeyWritten = true
-                continue
-              }
-            }
-
-            result.push(line)
-          }
-
-          // Handle edge case: anthropic entry was the last in the file without apiKey
-          if (inAnthropicEntry && !apiKeyWritten) {
-            result.push(`    apiKey: ${apiKey}`)
-            apiKeyWritten = true
-            anthropicHandled = true
-          }
-
-          // Handle edge case: ai array was the last section and no anthropic was found
-          if (inAiArray && !anthropicHandled) {
-            result.push('  - name: anthropic')
-            result.push(`    apiKey: ${apiKey}`)
-            anthropicHandled = true
-          }
-
-          // If no ai section existed at all, append one
-          if (!aiSectionFound) {
-            if (result.length > 0 && result[result.length - 1] !== '') {
-              result.push('')
-            }
-            result.push('ai:')
-            result.push('  - name: anthropic')
-            result.push(`    apiKey: ${apiKey}`)
-          }
-
-          // Write back, ensuring file ends with newline
-          let output = result.join('\n')
-          if (!output.endsWith('\n')) {
-            output += '\n'
-          }
-          fs.writeFileSync(userConfigPath, output, 'utf8')
-          log('INFO', 'Saved Anthropic API key to user config')
-        } else {
-          // Create new user.yaml
-          const newConfig = `version: 2\nai:\n  - name: anthropic\n    apiKey: ${apiKey}\n`
-          fs.writeFileSync(userConfigPath, newConfig, 'utf8')
-          log('INFO', 'Created new user config with Anthropic API key')
-        }
-      } catch (error) {
-        log('ERROR', 'Failed to save Anthropic API key:', error)
-        throw error
-      }
+      return result.filePaths[0]!!
     })
 
     // IPC handler: user confirmed setup
-    ipcMain.handle('setup:confirm', async (_event, customPath: string | null, slackConfig: SlackConfig | null) => {
-      const chosenPath = customPath ?? DEFAULT_TWIN_PROJECT_PATH
-      log('INFO', 'Setup confirmed with path:', chosenPath)
+    ipcMain.handle(
+      'setup:confirm',
+      async (
+        _event,
+        customPath: string | null,
+        slackConfig: SlackConfig | null,
+        googleConfig: GoogleCalendarConfig | null
+      ) => {
+        const chosenPath = customPath ?? DEFAULT_TWIN_PROJECT_PATH
+        log('INFO', 'Setup confirmed with path:', chosenPath)
 
-      // Store the path
-      storeTwinPath(chosenPath)
+        storeTwinPath(chosenPath)
+        if (slackConfig !== null && slackConfig !== undefined) storeSlackConfig(slackConfig)
+        if (googleConfig && (googleConfig.clientId || googleConfig.clientSecret)) {
+          storeGoogleCalendarConfig(googleConfig)
+          log('INFO', 'Google Calendar config stored from setup')
+        }
 
-      // Store Slack config if provided
-      if (slackConfig !== null && slackConfig !== undefined) {
-        storeSlackConfig(slackConfig)
-        // Apply to project.yaml after vault is initialized (done later in initialize())
+        removeResizeHandler(ipcMain)
+        removeApiKeyHandlers(ipcMain)
+        ipcMain.removeHandler('setup:browseFolder')
+        ipcMain.removeHandler('setup:confirm')
+
+        setupWindow.close()
+        resolve(chosenPath)
       }
+    )
 
-      // Clean up IPC handlers
-      ipcMain.removeHandler('setup:browseFolder')
-      ipcMain.removeHandler('setup:confirm')
-      ipcMain.removeHandler('setup:checkAnthropicApiKey')
-      ipcMain.removeHandler('setup:saveAnthropicApiKey')
-
-      // Close setup window
-      setupWindow.close()
-
-      resolve(chosenPath)
-    })
+    setupWindowRef = setupWindow
 
     // If user closes the window without confirming, use default
     setupWindow.on('closed', () => {
-      ipcMain.removeHandler('window:resizeToContent')
+      setupWindowRef = null
+      removeResizeHandler(ipcMain)
+      removeApiKeyHandlers(ipcMain)
       ipcMain.removeHandler('setup:browseFolder')
       ipcMain.removeHandler('setup:confirm')
-      ipcMain.removeHandler('setup:checkAnthropicApiKey')
-      ipcMain.removeHandler('setup:saveAnthropicApiKey')
       ipcMain.removeHandler('setup:getSlackConfig')
-      // If not yet resolved (user closed without confirming), use default
       const storedPath = getStoredTwinPath()
       if (!storedPath) {
         storeTwinPath(DEFAULT_TWIN_PROJECT_PATH)
@@ -692,6 +735,10 @@ async function resetAndShowSetup(): Promise<string> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Preferences window
+// ---------------------------------------------------------------------------
+
 /**
  * Show the preferences window for viewing and changing settings.
  */
@@ -705,41 +752,42 @@ function showPreferencesWindow(): void {
   log('INFO', 'Opening preferences window')
 
   const preferencesWindow = new BrowserWindow({
-    width: 560,
-    height: 300,
+    width: 580,
+    height: 600,
+    minWidth: 580,
+    minHeight: 300,
     frame: false,
-    resizable: false,
+    resizable: true,
     useContentSize: true,
     transparent: true,
+    center: true,
     icon: join(__dirname, 'icon.png'),
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: false,
     },
   })
 
-  // IPC handler: resize window to fit content
-  ipcMain.handle('window:resizeToContent', (_event: IpcMainInvokeEvent, contentHeight: number) => {
-    const win = BrowserWindow.fromWebContents(_event.sender)
-    if (win) {
-      const [w = 560] = win.getContentSize()
-      win.setContentSize(w, Math.ceil(contentHeight), false)
-    }
-  })
+  registerResizeHandler(ipcMain, BrowserWindow)
 
   ipcMain.handle('preferences:getCurrentPath', () => {
     return getResolvedTwinPath()
   })
 
   ipcMain.handle('preferences:browseFolder', async () => {
+    // Ensure the preferences window has focus so the native dialog appears on top (macOS)
+    if (!preferencesWindow.isDestroyed()) {
+      preferencesWindow.focus()
+    }
     const result = await dialog.showOpenDialog(preferencesWindow, {
       title: 'Choose new CodayTwin folder location',
       defaultPath: app.getPath('home'),
       properties: ['openDirectory', 'createDirectory'],
     })
     if (result.canceled || result.filePaths.length === 0) return null
-    return join(result.filePaths[0]!!, 'CodayTwin')
+    return result.filePaths[0]!!
   })
 
   ipcMain.handle('preferences:save', async (_event: IpcMainInvokeEvent, newPath: string) => {
@@ -770,6 +818,19 @@ function showPreferencesWindow(): void {
     log('INFO', 'Slack config saved')
   })
 
+  ipcMain.handle('preferences:getGoogleCalendarConfig', (): GoogleCalendarConfig => {
+    return getStoredGoogleCalendarConfig()
+  })
+
+  ipcMain.handle(
+    'preferences:saveGoogleCalendarConfig',
+    async (_event: IpcMainInvokeEvent, config: GoogleCalendarConfig) => {
+      storeGoogleCalendarConfig(config)
+      applyGoogleCalendarConfigToProject(config)
+      log('INFO', 'Google Calendar config saved')
+    }
+  )
+
   preferencesWindow.on('closed', () => {
     ipcMain.removeHandler('preferences:getCurrentPath')
     ipcMain.removeHandler('preferences:browseFolder')
@@ -777,13 +838,19 @@ function showPreferencesWindow(): void {
     ipcMain.removeHandler('preferences:close')
     ipcMain.removeHandler('preferences:getSlackConfig')
     ipcMain.removeHandler('preferences:saveSlackConfig')
-    ipcMain.removeHandler('window:resizeToContent')
+    ipcMain.removeHandler('preferences:getGoogleCalendarConfig')
+    ipcMain.removeHandler('preferences:saveGoogleCalendarConfig')
+    removeResizeHandler(ipcMain)
     isPreferencesWindowOpen = false
     log('INFO', 'Preferences window closed')
   })
 
   void preferencesWindow.loadFile(join(__dirname, 'preferences.html'))
 }
+
+// ---------------------------------------------------------------------------
+// Application menu
+// ---------------------------------------------------------------------------
 
 /**
  * Setup native macOS application menu with Preferences entry
@@ -847,244 +914,44 @@ function setupApplicationMenu(): void {
   log('INFO', 'Application menu setup complete')
 }
 
-/**
- * Start the Coday web server pointing at the Twin project path
- */
-async function startCodayServer(): Promise<void> {
+// ---------------------------------------------------------------------------
+// Deep-link handling
+// ---------------------------------------------------------------------------
+
+function handleDeepLink(url: string): void {
+  log('INFO', 'Handling deeplink:', url)
   try {
-    log('INFO', 'Starting CodayTwin server...')
-    log('INFO', 'Twin project path:', DEFAULT_TWIN_PROJECT_PATH)
+    const parsed = parseDeepLink(url, PROTOCOL_NAME)
+    if (!parsed) {
+      log('WARN', 'Invalid deeplink format:', url)
+      return
+    }
+    const { projectName, threadId } = parsed
+    log('INFO', 'Parsed deeplink - project:', projectName, 'thread:', threadId)
 
-    // Find node and run the installed package via npx
-    log('INFO', 'Finding node executable...')
-
-    const nodePath = findExecutable('node')
-
-    if (!nodePath) {
-      const error = new Error(
-        'Node.js not found. Please install Node.js from https://nodejs.org/ or use a package manager like Homebrew.'
-      )
-      ;(error as any).userFacing = true
-      throw error
+    if (!serverUrl || !mainWindow) {
+      log('WARN', 'Server/window not ready yet, storing deeplink for later')
+      pendingDeepLink = url
+      return
     }
 
-    log('INFO', 'Using node at:', nodePath)
-
-    // Check for npx
-    const npxPath = findExecutable('npx')
-
-    if (!npxPath) {
-      const error = new Error(
-        'npx not found. Please ensure Node.js and npm are properly installed.\n\n' +
-          'You can install Node.js from https://nodejs.org/ or use a package manager like Homebrew.\n\n' +
-          'After installation, verify with: npx --version'
-      )
-      ;(error as any).userFacing = true
-      throw error
-    }
-
-    log('INFO', 'Found npx at:', npxPath)
-
-    const twinProjectPath = getResolvedTwinPath()
-
-    // Ensure vault directory and Coday project config exist
-    initializeVault(twinProjectPath)
-    ensureTwinProjectConfig(twinProjectPath)
-
-    const args = ['--yes', '@whoz-oss/coday-web', '--base-url=coday-twin://', '--coday_project=CodayTwin']
-
-    log('INFO', 'Spawning:', npxPath, args.join(' '))
-    log('INFO', 'Twin project path:', twinProjectPath)
-
-    // Set up environment
-    const env = { ...process.env }
-    try {
-      const userPath = execSync('/usr/bin/env echo $PATH', { shell: '/bin/zsh' }).toString().trim()
-      env['PATH'] = `${userPath}:/usr/local/bin:/opt/homebrew/bin:${process.env['PATH']}`
-    } catch {
-      env['PATH'] = '/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'
-    }
-
-    // Use a fixed port so CodayTwin is always reachable on the same address
-    const CODAY_TWIN_PORT = '3050'
-    env['PORT'] = CODAY_TWIN_PORT
-    log('INFO', `Using fixed port: ${CODAY_TWIN_PORT}`)
-
-    // Use a temp directory as cwd to prevent npx from resolving to local workspace packages
-    const npxCwd = app.getPath('temp')
-    log('INFO', 'Using npx cwd:', npxCwd)
-
-    // Start the server
-    serverProcess = spawn(npxPath, args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env,
-      cwd: npxCwd,
-      shell: false,
-    })
-
-    return new Promise<void>((resolve, reject) => {
-      let serverReady = false
-      let settled = false
-
-      const settle = (fn: () => void) => {
-        if (!settled) {
-          settled = true
-          fn()
-        }
-      }
-
-      if (serverProcess!.stdout) {
-        serverProcess!.stdout.on('data', (data: Buffer) => {
-          const output = data.toString()
-          log('INFO', '[Server]:', output)
-
-          // Look for "Server is running on http://localhost:xxxx"
-          const serverUrlMatch = output.match(/Server is running on (http:\/\/localhost:\d+)/)
-          if (serverUrlMatch) {
-            serverUrl = serverUrlMatch[1]
-            log('INFO', 'Detected server URL:', serverUrl)
-
-            if (!serverReady) {
-              serverReady = true
-              // Give the server a moment to fully initialize
-              setTimeout(() => settle(() => resolve()), 500)
-            }
-          }
-        })
-      }
-
-      if (serverProcess!.stderr) {
-        serverProcess!.stderr.on('data', (data: Buffer) => {
-          const text = data.toString()
-          log('ERROR', '[Server Error]:', text)
-
-          // Detect port-in-use error signalled by the server process
-          if (text.includes('PORT_IN_USE:')) {
-            const portMatch = text.match(/PORT_IN_USE:.*?(Port \d+ is already in use[^\n]*)/)
-            const detail = portMatch ? portMatch[1] : `Port ${env['PORT']} is already in use.`
-            const portError: any = new Error(
-              `${detail}\n\nPlease close any other application using this port and restart CodayTwin.`
-            )
-            portError.userFacing = true
-            settle(() => reject(portError))
-          }
-        })
-      }
-
-      serverProcess!.on('error', (error: Error) => {
-        log('ERROR', 'Failed to start server:', error)
-        const wrappedError: any = new Error(`Failed to start CodayTwin server: ${error.message}`)
-        wrappedError.userFacing = true
-        settle(() => reject(wrappedError))
-      })
-
-      serverProcess!.on('exit', (code: number | null) => {
-        log('INFO', 'Server process exited with code:', code)
-        serverProcess = null
-        // Only reject if the server exited before it was ready
-        if (!serverReady) {
-          const error: any = new Error(
-            `Server process exited unexpectedly with code ${code}.\n\nCheck logs for details.`
-          )
-          error.userFacing = true
-          settle(() => reject(error))
-        }
-      })
-
-      // No hard timeout — the loading screen stays visible while npx downloads.
-      // The promise only settles when the server URL is detected or the process exits/errors.
-    })
+    navigateToDeepLink(mainWindow, serverUrl, projectName, threadId)
+    pendingDeepLink = null
   } catch (error) {
-    throw error
+    log('ERROR', 'Error handling deeplink:', error)
   }
 }
 
-/**
- * Stop the Coday server
- */
-function stopCodayServer(): void {
-  if (serverProcess) {
-    log('INFO', 'Stopping CodayTwin server...')
-    serverProcess.kill()
-    serverProcess = null
-  }
-}
-
-/**
- * Create the loading window
- */
-function createLoadingWindow(): BrowserWindowType {
-  const iconPath = join(__dirname, 'icon.png')
-
-  const loadingWindow = new BrowserWindow({
-    width: 500,
-    height: 300,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    icon: iconPath,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  })
-
-  // Load the loader HTML
-  void loadingWindow.loadFile(join(__dirname, 'loader.html'))
-
-  return loadingWindow
-}
-
-/**
- * Check if server is still responsive
- */
-async function isServerResponsive(): Promise<boolean> {
-  if (!serverUrl) return false
-
-  try {
-    const http = require('http') as typeof import('http')
-    const url = new URL(serverUrl)
-
-    return new Promise<boolean>((resolve) => {
-      const req = http.get(
-        {
-          hostname: url.hostname,
-          port: url.port,
-          path: '/api/health',
-          timeout: 2000,
-        },
-        (res) => {
-          resolve(res.statusCode === 200 || res.statusCode === 404) // 404 is ok, means server is up
-        }
-      )
-
-      req.on('error', () => resolve(false))
-      req.on('timeout', () => {
-        req.destroy()
-        resolve(false)
-      })
-    })
-  } catch (error) {
-    log('ERROR', 'Error checking server responsiveness:', error)
-    return false
-  }
-}
+// ---------------------------------------------------------------------------
+// Favicon scheme / interceptor (twin-specific)
+// ---------------------------------------------------------------------------
 
 /**
  * Register a custom 'coday-asset' protocol and an HTTP interceptor so that
  * favicon / logo requests from the Angular client are served from the local
  * bundled icon.png.
  *
- * Strategy:
- *  1. Register a privilege-bearing custom scheme 'coday-asset' that is
- *     treated as secure and supports fetch/CORS so the renderer can load it.
- *  2. After app.whenReady(), handle 'coday-asset://icon' by reading and
- *     returning icon.png bytes directly — no file:// cross-origin issues.
- *  3. Intercept HTTP requests for known favicon paths and redirect them to
- *     'coday-asset://icon' instead of file://.
- *
- * registerFaviconScheme() must be called BEFORE app.whenReady() (scheme
- * privileges must be set before the app is ready).
+ * registerFaviconScheme() must be called BEFORE app.whenReady().
  * registerFaviconInterceptor() must be called AFTER app.whenReady().
  */
 function registerFaviconScheme(): void {
@@ -1128,8 +995,7 @@ function registerFaviconInterceptor(): void {
     return new Response('Not found', { status: 404 })
   })
 
-  // Intercept HTTP requests for known favicon / logo paths and redirect to
-  // our custom scheme so the renderer receives the local icon.
+  // Intercept HTTP requests for known favicon / logo paths
   session.defaultSession.webRequest.onBeforeRequest({ urls: ['http://*/*'] }, (details, callback) => {
     try {
       const url = new URL(details.url)
@@ -1155,9 +1021,10 @@ function registerFaviconInterceptor(): void {
   log('INFO', 'Favicon interceptor registered, serving:', iconPath)
 }
 
-/**
- * Create the main Electron window
- */
+// ---------------------------------------------------------------------------
+// Window creation
+// ---------------------------------------------------------------------------
+
 function createWindow(): void {
   if (!serverUrl) {
     log('ERROR', 'Cannot create window: server URL not initialized')
@@ -1167,255 +1034,69 @@ function createWindow(): void {
   log('INFO', 'Creating main window with server URL:', serverUrl)
 
   const iconPath = join(__dirname, 'icon.png')
-
-  mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    icon: iconPath,
-    webPreferences: {
-      preload: join(__dirname, 'preload.js'),
-      nodeIntegration: false,
-      contextIsolation: true,
-      webSecurity: true,
-    },
-    title: 'CodayTwin',
-    show: false, // Don't show until ready
-  })
-
-  // Setup native macOS application menu
-  setupApplicationMenu()
-
-  // Prevent navigation away from the Coday server
-  mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (!url.startsWith(serverUrl!)) {
-      log('WARN', 'Blocked navigation to external URL:', url)
-      event.preventDefault()
-    }
-  })
-
-  // Handle failed loads by reloading the correct URL
-  mainWindow.webContents.on('did-fail-load', (_, errorCode, errorDescription, validatedURL) => {
-    log('ERROR', 'Failed to load:', validatedURL, 'Error:', errorCode, errorDescription)
-    if (mainWindow && serverUrl) {
-      log('INFO', 'Reloading server URL:', serverUrl)
-      void mainWindow.loadURL(serverUrl)
-    }
-  })
-
-  // Intercept reload attempts to ensure we reload the root URL
-  mainWindow.webContents.on('before-input-event', (event, input) => {
-    if ((input.meta && input.key.toLowerCase() === 'r') || input.key === 'F5') {
-      if (input.type === 'keyDown' && mainWindow && serverUrl) {
-        event.preventDefault()
-        log('INFO', 'Intercepted reload, reloading root URL:', serverUrl)
-        void mainWindow.loadURL(serverUrl)
-      }
-    }
-  })
-
-  // Flag the renderer as running inside desktop-twin by adding a CSS class
-  // on <body>. Angular SCSS can then use `body.desktop-twin` selectors for
-  // app-specific overrides without touching the shared client source.
-  // Inject desktop-twin identity class and dedicated CSS overrides on every page load
+  const preloadPath = join(__dirname, 'preload.js')
   const desktopTwinCss = fs.readFileSync(join(__dirname, 'desktop-twin.css'), 'utf8')
-  mainWindow.webContents.on('did-finish-load', () => {
-    void mainWindow!.webContents.executeJavaScript(`document.body.classList.add('desktop-twin');`)
-    void mainWindow!.webContents.insertCSS(desktopTwinCss)
-  })
 
-  // Load the Coday web interface
-  void mainWindow.loadURL(serverUrl)
-
-  // Show window when ready
-  mainWindow.once('ready-to-show', () => {
-    if (mainWindow) {
-      mainWindow.show()
-
-      // Handle pending deeplink if any
+  mainWindow = createMainWindow(
+    {
+      BrowserWindow,
+      ipcMain,
+      serverUrl,
+      iconPath,
+      preloadPath,
+      title: 'CodayTwin',
+      onWindowCreated: (win) => {
+        // Flag the renderer as running inside desktop-twin by adding a CSS class
+        // on <body>. Angular SCSS can then use `body.desktop-twin` selectors for
+        // app-specific overrides without touching the shared client source.
+        win.webContents.on('did-finish-load', () => {
+          void win.webContents.executeJavaScript(`document.body.classList.add('desktop-twin');`)
+          void win.webContents.insertCSS(desktopTwinCss)
+        })
+      },
+    },
+    () => {
       if (pendingDeepLink) {
         log('INFO', 'Processing pending deeplink:', pendingDeepLink)
         handleDeepLink(pendingDeepLink)
       }
     }
-  })
+  )
 
-  // Open DevTools in development
-  if (process.env['NODE_ENV'] === 'development' && mainWindow) {
-    mainWindow.webContents.openDevTools()
-  }
+  // Setup menu after window is created
+  setupApplicationMenu()
 
   mainWindow.on('closed', () => {
     log('INFO', 'Main window closed')
     mainWindow = null
   })
+}
 
-  // On macOS, prevent the window from actually closing, just hide it
-  mainWindow.on('close', (event) => {
-    if (process.platform === 'darwin' && !app.isQuitting) {
-      event.preventDefault()
-      mainWindow?.hide()
-      log('INFO', 'Window hidden (not closed) on macOS')
+// ---------------------------------------------------------------------------
+// Initialize
+// ---------------------------------------------------------------------------
+
+async function initialize(): Promise<void> {
+  if (isInitializing) {
+    log('INFO', 'Initialization already in progress, ignoring duplicate call')
+    if (setupWindowRef && !setupWindowRef.isDestroyed()) {
+      if (setupWindowRef.isMinimized()) setupWindowRef.restore()
+      setupWindowRef.show()
+      setupWindowRef.focus()
     }
-  })
-}
-
-/**
- * Show error dialog to user
- */
-function showErrorDialog(title: string, message: string): void {
-  dialog.showErrorBox(title, message)
-}
-
-/**
- * Setup IPC handlers for storage
- */
-function setupStorageHandlers(): void {
-  if (storageHandlersRegistered) {
-    log('INFO', 'Storage handlers already registered, skipping')
     return
   }
-  storageHandlersRegistered = true
-
-  // Get storage data
-  ipcMain.handle('storage:get', (_event: IpcMainInvokeEvent, key: string): string | null => {
-    try {
-      if (!fs.existsSync(STORAGE_FILE)) {
-        return null
-      }
-      const data = fs.readFileSync(STORAGE_FILE, 'utf8')
-      const storage = JSON.parse(data)
-      return storage[key] ?? null
-    } catch (error) {
-      log('ERROR', 'Failed to read storage:', error)
-      return null
-    }
-  })
-
-  // Set storage data
-  ipcMain.handle('storage:set', (_event: IpcMainInvokeEvent, key: string, value: string): boolean => {
-    try {
-      let storage: Record<string, string> = {}
-
-      if (fs.existsSync(STORAGE_FILE)) {
-        const data = fs.readFileSync(STORAGE_FILE, 'utf8')
-        storage = JSON.parse(data)
-      }
-
-      storage[key] = value
-      fs.writeFileSync(STORAGE_FILE, JSON.stringify(storage, null, 2), 'utf8')
-      return true
-    } catch (error) {
-      log('ERROR', 'Failed to write storage:', error)
-      return false
-    }
-  })
-
-  // Remove storage data
-  ipcMain.handle('storage:remove', (_event: IpcMainInvokeEvent, key: string): boolean => {
-    try {
-      if (!fs.existsSync(STORAGE_FILE)) {
-        return true
-      }
-
-      const data = fs.readFileSync(STORAGE_FILE, 'utf8')
-      const storage = JSON.parse(data)
-      delete storage[key]
-      fs.writeFileSync(STORAGE_FILE, JSON.stringify(storage, null, 2), 'utf8')
-      return true
-    } catch (error) {
-      log('ERROR', 'Failed to remove from storage:', error)
-      return false
-    }
-  })
-
-  // Clear all storage
-  ipcMain.handle('storage:clear', (): boolean => {
-    try {
-      if (fs.existsSync(STORAGE_FILE)) {
-        fs.unlinkSync(STORAGE_FILE)
-      }
-      return true
-    } catch (error) {
-      log('ERROR', 'Failed to clear storage:', error)
-      return false
-    }
-  })
-
-  // Add handler to get log file path
-  ipcMain.handle('logs:getPath', (): string => {
-    return LOG_FILE
-  })
-
-  // Add handler to open logs folder
-  ipcMain.handle('logs:openFolder', (): void => {
-    const { shell } = require('electron') as typeof import('electron')
-    shell.showItemInFolder(LOG_FILE)
-  })
-
-  log('INFO', 'Storage handlers initialized')
-}
-
-/**
- * Handle deeplink navigation
- */
-function handleDeepLink(url: string): void {
-  log('INFO', 'Handling deeplink:', url)
-
-  try {
-    // Parse URL: coday-twin://project/my-project/thread/abc-123
-    const match = url.match(/coday-twin:\/\/project\/([^/]+)\/thread\/([^/?#]+)/)
-
-    if (!match) {
-      log('WARN', 'Invalid deeplink format:', url)
-      return
-    }
-
-    const [, projectName, threadId] = match
-    log('INFO', 'Parsed deeplink - project:', projectName, 'thread:', threadId)
-
-    if (!serverUrl) {
-      log('WARN', 'Server not ready yet, storing deeplink for later')
-      pendingDeepLink = url
-      return
-    }
-
-    if (!mainWindow) {
-      log('WARN', 'Main window not available, storing deeplink for later')
-      pendingDeepLink = url
-      return
-    }
-
-    // Build local server URL
-    const targetUrl = `${serverUrl}/project/${projectName}/thread/${threadId}`
-    log('INFO', 'Navigating to:', targetUrl)
-
-    void mainWindow.loadURL(targetUrl)
-
-    // Show and focus window
-    if (mainWindow.isMinimized()) {
-      mainWindow.restore()
-    }
-    mainWindow.show()
-    mainWindow.focus()
-
-    // Clear pending deeplink
-    pendingDeepLink = null
-  } catch (error) {
-    log('ERROR', 'Error handling deeplink:', error)
-  }
-}
-
-/**
- * Initialize the application
- */
-async function initialize(): Promise<void> {
+  isInitializing = true
   let loadingWindow: BrowserWindowType | null = null
 
   try {
     log('INFO', 'Initializing CodayTwin Desktop...')
 
-    // Setup storage handlers
-    setupStorageHandlers()
+    // Setup storage handlers (once)
+    if (!storageHandlersRegistered) {
+      storageHandlersRegistered = true
+      setupStorageHandlers(ipcMain, STORAGE_FILE, LOG_FILE)
+    }
 
     // First-launch setup: let user choose the vault path
     if (needsSetup()) {
@@ -1425,10 +1106,48 @@ async function initialize(): Promise<void> {
     }
 
     // Show loading window
-    loadingWindow = createLoadingWindow()
+    loadingWindow = createLoadingWindow(BrowserWindow, join(__dirname, 'icon.png'), join(__dirname, 'loader.html'))
 
-    // Start the Coday server
-    await startCodayServer()
+    // Find node/npx
+    const nodePath = findExecutable('node')
+    if (!nodePath) {
+      const error: any = new Error(
+        'Node.js not found. Please install Node.js from https://nodejs.org/ or use a package manager like Homebrew.'
+      )
+      error.userFacing = true
+      throw error
+    }
+    log('INFO', 'Using node at:', nodePath)
+
+    const npxPath = findExecutable('npx')
+    if (!npxPath) {
+      const error: any = new Error(
+        'npx not found. Please ensure Node.js and npm are properly installed.\n\n' +
+          'You can install Node.js from https://nodejs.org/ or use a package manager like Homebrew.\n\n' +
+          'After installation, verify with: npx --version'
+      )
+      error.userFacing = true
+      throw error
+    }
+    log('INFO', 'Found npx at:', npxPath)
+
+    const twinProjectPath = getResolvedTwinPath()
+
+    // Ensure vault directory and Coday project config exist
+    initializeVault(twinProjectPath)
+    ensureTwinProjectConfig(twinProjectPath)
+
+    // Start the CodayTwin server
+    const result = await startCodayServer({
+      appName: 'CodayTwin',
+      port: CODAY_TWIN_PORT,
+      npxPath,
+      serverArgs: SERVER_ARGS,
+      npxCwd: app.getPath('temp'),
+      env: setupEnv(),
+    })
+    serverUrl = result.serverUrl
+    serverProcess = result.serverProcess
 
     // Create the main window
     createWindow()
@@ -1444,38 +1163,38 @@ async function initialize(): Promise<void> {
     }
   } catch (error) {
     log('ERROR', 'Failed to initialize application:', error)
-    if (loadingWindow) {
-      loadingWindow.close()
-    }
+    if (loadingWindow) loadingWindow.close()
 
-    // Show user-facing error dialog
     const errorMessage = error instanceof Error ? error.message : String(error)
     const isUserFacing = error && typeof error === 'object' && (error as any).userFacing
 
     if (isUserFacing) {
-      showErrorDialog('CodayTwin - Startup Error', errorMessage)
+      showErrorDialog(dialog, 'CodayTwin - Startup Error', errorMessage)
     } else {
       showErrorDialog(
+        dialog,
         'CodayTwin - Unexpected Error',
         `An unexpected error occurred while starting CodayTwin:\n\n${errorMessage}\n\nPlease check the console logs for more details.`
       )
     }
 
     app.quit()
+  } finally {
+    isInitializing = false
   }
 }
 
-// Register custom protocol handler
+// ---------------------------------------------------------------------------
+// Protocol registration & single instance
+// ---------------------------------------------------------------------------
+
 if (process.defaultApp) {
-  // Development mode
   if (process.argv.length >= 2) {
     app.setAsDefaultProtocolClient(PROTOCOL_NAME, process.execPath, [require('path').resolve(process.argv[1])])
   }
 } else {
-  // Production mode
   app.setAsDefaultProtocolClient(PROTOCOL_NAME)
 }
-
 log('INFO', 'Registered protocol handler for:', PROTOCOL_NAME)
 
 // Register custom asset scheme privileges before app is ready
@@ -1490,44 +1209,38 @@ app.on('open-url', (event, url) => {
 
 // Handle single instance lock for Windows/Linux deeplinks
 const gotTheLock = app.requestSingleInstanceLock()
-
 if (!gotTheLock) {
   log('INFO', 'Another instance is already running, quitting')
   app.quit()
 } else {
   app.on('second-instance', (_event: any, commandLine: any) => {
     log('INFO', 'Second instance detected, command line:', commandLine)
-
-    // Look for deeplink in command line arguments
     const url = commandLine.find((arg: any) => arg.startsWith(`${PROTOCOL_NAME}://`))
     if (url) {
       log('INFO', 'Found deeplink in second instance:', url)
       handleDeepLink(url)
     }
-
-    // Focus existing window
     if (mainWindow) {
-      if (mainWindow.isMinimized()) {
-        mainWindow.restore()
-      }
+      if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.show()
       mainWindow.focus()
     }
   })
 }
 
-// App event handlers
+// ---------------------------------------------------------------------------
+// App lifecycle
+// ---------------------------------------------------------------------------
+
 void app.whenReady().then(() => {
-  // Register favicon interceptor before any window is created so the
-  // Angular client receives our local icon.png for all favicon requests.
+  // Register favicon interceptor before any window is created
   registerFaviconInterceptor()
   void initialize()
 })
 
 app.on('window-all-closed', () => {
-  // On macOS, don't quit when all windows are closed
   if (process.platform !== 'darwin') {
-    stopCodayServer()
+    stopCodayServer(serverProcess)
     app.quit()
   }
 })
@@ -1535,29 +1248,34 @@ app.on('window-all-closed', () => {
 app.on('activate', async () => {
   log('INFO', 'App activated')
 
-  // On macOS, show the window if it exists but is hidden
-  if (mainWindow) {
-    if (mainWindow.isMinimized()) {
-      mainWindow.restore()
+  if (isInitializing) {
+    log('INFO', 'Initialization in progress, focusing setup window if open')
+    if (setupWindowRef && !setupWindowRef.isDestroyed()) {
+      if (setupWindowRef.isMinimized()) setupWindowRef.restore()
+      setupWindowRef.show()
+      setupWindowRef.focus()
     }
+    return
+  }
+
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.show()
     log('INFO', 'Showing existing window')
   } else if (serverUrl && serverProcess) {
-    // Window was destroyed but server is still running, check if server is responsive
     log('INFO', 'Checking if server is still responsive...')
-    const isResponsive = await isServerResponsive()
-
+    const isResponsive = await isServerResponsive(serverUrl)
     if (isResponsive) {
       log('INFO', 'Server is responsive, recreating window')
       createWindow()
     } else {
       log('WARN', 'Server not responsive, reinitializing')
-      stopCodayServer()
+      stopCodayServer(serverProcess)
+      serverProcess = null
       serverUrl = null
       void initialize()
     }
   } else {
-    // No window and no server, need to reinitialize
     log('INFO', 'No window or server, reinitializing')
     void initialize()
   }
@@ -1566,16 +1284,16 @@ app.on('activate', async () => {
 app.on('before-quit', () => {
   log('INFO', 'App quitting, stopping server')
   app.isQuitting = true
-  stopCodayServer()
+  stopCodayServer(serverProcess)
 })
 
-// Handle uncaught exceptions
 process.on('uncaughtException', (error: Error) => {
   log('ERROR', 'Uncaught exception:', error)
   showErrorDialog(
+    dialog,
     'CodayTwin - Fatal Error',
     `A fatal error occurred:\n\n${error.message}\n\nThe application will now close.`
   )
-  stopCodayServer()
+  stopCodayServer(serverProcess)
   app.quit()
 })

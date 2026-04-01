@@ -1,0 +1,217 @@
+version: 2
+path: TWIN_PROJECT_PATH
+ai:
+  - name: anthropic
+    models:
+      - name: claude-opus-4-6
+        alias: opus
+        contextWindow: 200000
+        price:
+          inputMTokens: 5
+          cacheWrite: 6.25
+          cacheRead: 0.5
+          outputMTokens: 25
+      - name: claude-haiku-4-5
+        alias: haiku
+        contextWindow: 200000
+        price:
+          inputMTokens: 0.8
+          cacheWrite: 1
+          cacheRead: 0.08
+          outputMTokens: 4
+mcp:
+  servers:
+    - id: github
+      name: GITHUB
+      enabled: true
+      command: /usr/bin/docker
+      debug: false
+    - id: mcp_fetch
+      name: FETCH
+      enabled: true
+      args:
+        - mcp-server-fetch
+        - --ignore-robots-txt
+      command: uvx
+
+integration:
+  CALENDAR:
+    type: HTTP
+    http:
+      baseUrl: https://www.googleapis.com/calendar/v3
+      endpoints:
+        - name: getEvents
+          method: GET
+          path: /calendars/{calendarId}/events
+          description: List events from a Google Calendar
+          ignorePaths:
+            - etag
+            - nextSyncToken
+            - accessRole
+            - defaultReminders
+            - items.*.kind
+            - items.*.etag
+            - items.*.htmlLink
+            - items.*.created
+            - items.*.updated
+            - items.*.iCalUID
+            - items.*.sequence
+            - items.*.reminders
+            - items.*.visibility
+            - items.*.transparency
+            - items.*.creator.self
+            - items.*.organizer.self
+            - items.*.attendees.*.self
+            - items.*.conferenceData
+          responseFormat: yaml
+          params:
+            - name: calendarId
+              type: string
+              description: Calendar ID, use 'primary' for main calendar
+              required: true
+              location: path
+            - name: timeMin
+              type: string
+              description: Lower bound ISO 8601 (e.g. 2024-01-15T00:00:00Z)
+              location: query
+            - name: timeMax
+              type: string
+              description: Upper bound ISO 8601 (e.g. 2024-01-22T00:00:00Z)
+              location: query
+            - name: maxResults
+              type: number
+              description: Max events to return (default 10, max 250)
+              location: query
+        - name: getEvent
+          method: GET
+          path: /calendars/{calendarId}/events/{eventId}
+          description: Get the full details of a specific Google Calendar event by its ID
+          responseFormat: yaml
+          ignorePaths:
+            - etag
+            - kind
+            - htmlLink
+            - created
+            - updated
+            - iCalUID
+            - sequence
+            - reminders
+            - visibility
+            - transparency
+            - creator.self
+            - organizer.self
+            - conferenceData
+          params:
+            - name: calendarId
+              type: string
+              description: Calendar ID, use 'primary' for main calendar
+              required: true
+              location: path
+            - name: eventId
+              type: string
+              description: The event ID to retrieve
+              required: true
+              location: path
+        - name: getFreeBusy
+          method: POST
+          path: /freeBusy
+          description: Query free/busy information for a set of calendars over a time range. Useful to find available slots.
+          responseFormat: yaml
+          ignorePaths:
+            - kind
+          params:
+            - name: timeMin
+              type: string
+              description: Start of the interval in ISO 8601 format (e.g. 2024-01-15T00:00:00Z)
+              required: true
+              location: body
+            - name: timeMax
+              type: string
+              description: End of the interval in ISO 8601 format (e.g. 2024-01-22T00:00:00Z)
+              required: true
+              location: body
+            - name: items
+              type: string
+              description: 'Array of calendars to query, e.g. [{"id": "primary"}]'
+              required: true
+              location: body
+        - name: listCalendars
+          method: GET
+          path: /users/me/calendarList
+          description: List all calendars in the user's calendar list. Use this to discover available calendarId values before querying events.
+          responseFormat: yaml
+          ignorePaths:
+            - etag
+            - nextSyncToken
+            - kind
+            - items.*.kind
+            - items.*.etag
+            - items.*.colorId
+            - items.*.backgroundColor
+            - items.*.foregroundColor
+            - items.*.defaultReminders
+            - items.*.conferenceProperties
+          params:
+            - name: minAccessRole
+              type: string
+              description: "Minimum access role: 'freeBusyReader', 'reader', 'writer', or 'owner'"
+              required: false
+              location: query
+        - name: searchEvents
+          method: GET
+          path: /calendars/{calendarId}/events
+          description: Search events in a Google Calendar by keyword. Use this when looking for events matching a specific text (title, description, location, attendees).
+          responseFormat: yaml
+          ignorePaths:
+            - etag
+            - nextSyncToken
+            - accessRole
+            - defaultReminders
+            - kind
+            - items.*.kind
+            - items.*.etag
+            - items.*.htmlLink
+            - items.*.created
+            - items.*.updated
+            - items.*.iCalUID
+            - items.*.sequence
+            - items.*.reminders
+            - items.*.visibility
+            - items.*.transparency
+            - items.*.creator.self
+            - items.*.organizer.self
+            - items.*.attendees.*.self
+            - items.*.conferenceData
+          params:
+            - name: calendarId
+              type: string
+              description: Calendar ID, use 'primary' for main calendar
+              required: true
+              location: path
+            - name: q
+              type: string
+              description: Free-text search query (matches title, description, location, attendees)
+              required: true
+              location: query
+            - name: timeMin
+              type: string
+              description: Lower bound ISO 8601 (e.g. 2024-01-15T00:00:00Z)
+              required: false
+              location: query
+            - name: timeMax
+              type: string
+              description: Upper bound ISO 8601 (e.g. 2024-01-22T00:00:00Z)
+              required: false
+              location: query
+            - name: maxResults
+              type: number
+              description: Max events to return (default 10, max 250)
+              required: false
+              location: query
+    oauth2:
+      client_id: GOOGLE_OAUTH2_CLIENT_ID
+      client_secret: GOOGLE_OAUTH2_CLIENT_SECRET
+      redirect_uri: http://localhost:3050/oauth/callback
+      authorization_endpoint: https://accounts.google.com/o/oauth2/v2/auth
+      token_endpoint: https://oauth2.googleapis.com/token
+      scope: https://www.googleapis.com/auth/calendar.readonly
