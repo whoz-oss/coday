@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
-import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms'
+import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
 
@@ -27,11 +27,20 @@ export class NamespaceFormComponent implements OnInit {
   private readonly namespaceController = inject(NamespaceControllerService)
   private readonly destroyRef = inject(DestroyRef)
 
-  protected readonly nameControl = new FormControl<string>('', {
-    nonNullable: true,
-    validators: [Validators.required, Validators.minLength(1)],
+  protected readonly form = new FormGroup({
+    name: new FormControl<string>('', {
+      nonNullable: true,
+      validators: [Validators.required, Validators.minLength(1)],
+    }),
+    description: new FormControl<string>('', { nonNullable: true }),
   })
-  protected readonly descriptionControl = new FormControl<string>('', { nonNullable: true })
+
+  protected get nameControl() {
+    return this.form.controls.name
+  }
+  protected get descriptionControl() {
+    return this.form.controls.description
+  }
 
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
