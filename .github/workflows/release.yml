@@ -180,29 +180,19 @@ jobs:
           # Verify certificates are available
           security find-identity -v "$KEYCHAIN_PATH"
 
-      - name: Build and Sign Coday Desktop
+      - name: Build and Package Coday Desktop
         env:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: |
-          pnpm nx run desktop:package-dist
-
-      - name: Build Coday Desktop PKG
         run: |
           pnpm nx run desktop:package-pkg
 
-      - name: Build and Sign Coday Twin Desktop
+      - name: Build and Package Coday Twin Desktop
         env:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: |
-          pnpm nx run desktop-twin:package-dist
-
-      - name: Build Coday Twin Desktop PKG
         run: |
           pnpm nx run desktop-twin:package-pkg
 
