@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Configuration
  * Registers the correct [SecurityService] bean based on [SecurityConfigProperties.mode].
  *
  * - `local` (default): [LocalSecurityService] — OS username, auto-creates User on first access.
- * - `auth`: [AuthSecurityService] — Cloudflare JWT / x-forwarded-email, requires pre-registered User.
+ * - `auth`: [AuthSecurityService] — Cloudflare JWT / x-forwarded-email, auto-creates User on first access.
  */
 @Configuration
 @EnableConfigurationProperties(SecurityConfigProperties::class)
