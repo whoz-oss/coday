@@ -1,330 +1,347 @@
 import type { BrowserWindow as BrowserWindowType, App, IpcMainInvokeEvent } from 'electron'
-import { execSync, type ChildProcess } from 'child_process'
+import type { ChildProcess } from 'child_process'
+import {
+  log,
+  initLogger,
+  findExecutable,
+  checkApiKey,
+  saveApiKeyToUserYaml,
+  setupStorageHandlers,
+  setupEnv,
+  startCodayServer,
+  stopCodayServer,
+  isServerResponsive,
+  createLoadingWindow,
+  createMainWindow,
+  showErrorDialog,
+  registerResizeHandler,
+  removeResizeHandler,
+  registerApiKeyHandlers,
+  removeApiKeyHandlers,
+  parseDeepLink,
+  navigateToDeepLink,
+} from '@coday/desktop-core'
 
-const { app, BrowserWindow, dialog, ipcMain } = require('electron') as {
+const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron') as {
   app: App & { isQuitting?: boolean }
   BrowserWindow: typeof import('electron').BrowserWindow
   dialog: typeof import('electron').dialog
   ipcMain: typeof import('electron').ipcMain
+  Menu: typeof import('electron').Menu
 }
-const { spawn } = require('child_process') as typeof import('child_process')
 const { join } = require('path') as typeof import('path')
 const fs = require('fs') as typeof import('fs')
 
-let mainWindow: BrowserWindowType | null = null
-let serverProcess: ChildProcess | null = null
-let serverUrl: string | null | undefined = null
-let pendingDeepLink: string | null = null
-let storageHandlersRegistered = false
+// ---------------------------------------------------------------------------
+// App-specific constants
+// ---------------------------------------------------------------------------
 
 const PROTOCOL_NAME = 'coday'
+const CODAY_PORT = '3049'
+const SERVER_ARGS = ['--yes', '@whoz-oss/coday-web', '--base-url=coday://', '--multi']
+const PREFERENCES_KEY_SETUP_DONE = 'setupDone'
 
-// Storage file path
 const STORAGE_FILE = join(app.getPath('userData'), 'preferences.json')
-
-// Log file path for packaged app
 const LOG_FILE = join(app.getPath('userData'), 'coday-desktop.log')
 
+// ---------------------------------------------------------------------------
+// Module state
+// ---------------------------------------------------------------------------
+
+let mainWindow: BrowserWindowType | null = null
+let serverProcess: ChildProcess | null = null
+let serverUrl: string | null = null
+let pendingDeepLink: string | null = null
+let isSetupWindowOpen = false
+let isPreferencesWindowOpen = false
+let storageHandlersRegistered = false
+let isInitializing = false
+let setupWindowRef: BrowserWindowType | null = null
+
+// ---------------------------------------------------------------------------
+// Logger init
+// ---------------------------------------------------------------------------
+
+initLogger(app, 'coday-desktop.log')
+
+// ---------------------------------------------------------------------------
+// Setup state helpers
+// ---------------------------------------------------------------------------
+
 /**
- * Enhanced logging that writes to both console and log file
+ * Returns true if the setup wizard has never been completed.
+ * We detect this by the absence of the 'setupDone' flag in preferences.json.
+ * If an Anthropic API key is already present (env var or user.yaml), we also
+ * consider setup done so existing users are not prompted again.
  */
-function log(level: 'INFO' | 'ERROR' | 'WARN', ...args: any[]): void {
-  const timestamp = new Date().toISOString()
-  const message = args.map((arg) => (typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg))).join(' ')
-  const logLine = `[${timestamp}] [${level}] ${message}\n`
-
-  // Always write to console
-  if (level === 'ERROR') {
-    console.error(...args)
-  } else if (level === 'WARN') {
-    console.warn(...args)
-  } else {
-    console.log(...args)
-  }
-
-  // Write to log file in packaged app
-  if (app.isPackaged) {
-    try {
-      fs.appendFileSync(LOG_FILE, logLine, 'utf8')
-    } catch (error) {
-      console.error('Failed to write to log file:', error)
+function needsSetup(): boolean {
+  // If setup was explicitly completed before, skip
+  try {
+    if (fs.existsSync(STORAGE_FILE)) {
+      const data = fs.readFileSync(STORAGE_FILE, 'utf8')
+      const storage = JSON.parse(data)
+      if (storage[PREFERENCES_KEY_SETUP_DONE] === 'true') return false
     }
+  } catch {
+    // ignore, fall through
   }
+
+  // If an Anthropic API key is already configured (env or user.yaml), skip setup
+  if (checkApiKey('anthropic', 'ANTHROPIC_API_KEY').configured) return false
+
+  return true
 }
 
-// Initialize log file
-if (app.isPackaged) {
+/**
+ * Mark setup as completed in preferences.json.
+ */
+function markSetupDone(): void {
   try {
-    const logHeader = `\n\n${'='.repeat(80)}\nCoday Log - Started at ${new Date().toISOString()}\n${'='.repeat(80)}\n`
-    fs.appendFileSync(LOG_FILE, logHeader, 'utf8')
-    log('INFO', 'Log file initialized at:', LOG_FILE)
+    let storage: Record<string, string> = {}
+    if (fs.existsSync(STORAGE_FILE)) {
+      const data = fs.readFileSync(STORAGE_FILE, 'utf8')
+      storage = JSON.parse(data)
+    }
+    storage[PREFERENCES_KEY_SETUP_DONE] = 'true'
+    const dir = join(STORAGE_FILE, '..')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(STORAGE_FILE, JSON.stringify(storage, null, 2), 'utf8')
+    log('INFO', 'Setup marked as done')
   } catch (error) {
-    console.error('Failed to initialize log file:', error)
+    log('ERROR', 'Failed to mark setup as done:', error)
   }
 }
 
-/**
- * Find node/npx executable using 'which' via a login shell, with fallback to
- * keg-only Homebrew versioned installs (e.g. node@24, node@22...)
- */
-function findExecutable(executable: 'node' | 'npx'): string | null {
-  const { execSync } = require('child_process') as typeof import('child_process')
-  const { existsSync, readdirSync } = require('fs') as typeof import('fs')
-
-  // Try login shells (-l) so ~/.zprofile, ~/.bash_profile etc. are sourced
-  for (const cmd of [`/bin/zsh -lc 'which ${executable}'`, `/bin/bash -lc 'which ${executable}'`]) {
-    try {
-      const result = execSync(cmd, { encoding: 'utf8' }).trim()
-      if (result && existsSync(result)) {
-        log('INFO', `${executable} found: ${result}`)
-        return result
-      }
-    } catch {
-      // try next
-    }
-  }
-
-  // Fallback: scan Homebrew opt for keg-only versioned node installs (e.g. node@24)
-  for (const brewPrefix of ['/opt/homebrew/opt', '/usr/local/opt']) {
-    if (!existsSync(brewPrefix)) continue
-    try {
-      const entries = readdirSync(brewPrefix)
-        .filter((e) => /^node(@\d+)?$/.test(e))
-        .sort()
-        .reverse() // prefer highest version
-      for (const entry of entries) {
-        const candidate = `${brewPrefix}/${entry}/bin/${executable}`
-        if (existsSync(candidate)) {
-          log('INFO', `${executable} found via Homebrew keg-only: ${candidate}`)
-          return candidate
-        }
-      }
-    } catch {
-      // continue
-    }
-  }
-
-  return null
-}
+// ---------------------------------------------------------------------------
+// Setup window
+// ---------------------------------------------------------------------------
 
 /**
- * Start the Coday web server
+ * Show the first-launch setup window.
+ * Only asks for AI API keys — no workspace path (desktop is multi-project).
+ * Resolves when the user completes or dismisses setup.
  */
-async function startCodayServer(): Promise<void> {
-  try {
-    log('INFO', 'Starting Coday server...')
-
-    // Find node and run the installed package via npx
-    log('INFO', 'Finding node executable...')
-
-    const nodePath = findExecutable('node')
-
-    if (!nodePath) {
-      const error = new Error(
-        'Node.js not found. Please install Node.js from https://nodejs.org/ or use a package manager like Homebrew.'
-      )
-      ;(error as any).userFacing = true
-      throw error
-    }
-
-    log('INFO', 'Using node at:', nodePath)
-
-    // Check for npx
-    const npxPath = findExecutable('npx')
-
-    if (!npxPath) {
-      const error = new Error(
-        'npx not found. Please ensure Node.js and npm are properly installed.\n\n' +
-          'You can install Node.js from https://nodejs.org/ or use a package manager like Homebrew.\n\n' +
-          'After installation, verify with: npx --version'
-      )
-      ;(error as any).userFacing = true
-      throw error
-    }
-
-    log('INFO', 'Found npx at:', npxPath)
-    const command = npxPath
-    const args = ['--yes', '@whoz-oss/coday-web', '--base-url=coday://', '--multi']
-
-    log('INFO', 'Spawning:', command, args.join(' '))
-
-    // Set up environment
-    const env = { ...process.env }
-    try {
-      const userPath = execSync('/usr/bin/env echo $PATH', { shell: '/bin/zsh' }).toString().trim()
-      env['PATH'] = `${userPath}:/usr/local/bin:/opt/homebrew/bin:${process.env['PATH']}`
-    } catch {
-      env['PATH'] = '/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'
-    }
-
-    // Use a fixed port so Coday is always reachable on the same address
-    const CODAY_PORT = '3049'
-    env['PORT'] = CODAY_PORT
-    log('INFO', `Using fixed port: ${CODAY_PORT}`)
-
-    // Use a temp directory as cwd to prevent npx from resolving to local workspace packages
-    const npxCwd = app.getPath('temp')
-    log('INFO', 'Using npx cwd:', npxCwd)
-
-    // Start the server
-    serverProcess = spawn(command, args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env,
-      cwd: npxCwd,
-      shell: false,
+function showSetupWindow(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const setupWindow = new BrowserWindow({
+      width: 580,
+      height: 480,
+      minWidth: 580,
+      minHeight: 400,
+      frame: false,
+      resizable: false,
+      useContentSize: true,
+      transparent: true,
+      icon: join(__dirname, 'icon.png'),
+      webPreferences: {
+        preload: join(__dirname, 'preload.js'),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false,
+      },
     })
 
-    return new Promise<void>((resolve, reject) => {
-      let serverReady = false
-      let settled = false
+    registerResizeHandler(ipcMain, BrowserWindow)
+    registerApiKeyHandlers(ipcMain)
 
-      const settle = (fn: () => void) => {
-        if (!settled) {
-          settled = true
-          fn()
-        }
-      }
-
-      if (serverProcess!.stdout) {
-        serverProcess!.stdout.on('data', (data: Buffer) => {
-          const output = data.toString()
-          log('INFO', '[Server]:', output)
-
-          // Look for "Server is running on http://localhost:xxxx"
-          const serverUrlMatch = output.match(/Server is running on (http:\/\/localhost:\d+)/)
-          if (serverUrlMatch) {
-            serverUrl = serverUrlMatch[1]
-            log('INFO', 'Detected server URL:', serverUrl)
-
-            if (!serverReady) {
-              serverReady = true
-              // Give the server a moment to fully initialize
-              setTimeout(() => settle(() => resolve()), 500)
-            }
-          }
-        })
-      }
-
-      if (serverProcess!.stderr) {
-        serverProcess!.stderr.on('data', (data: Buffer) => {
-          const text = data.toString()
-          log('ERROR', '[Server Error]:', text)
-
-          // Detect port-in-use error signalled by the server process
-          if (text.includes('PORT_IN_USE:')) {
-            const portMatch = text.match(/PORT_IN_USE:.*?(Port \d+ is already in use[^\n]*)/)
-            const detail = portMatch ? portMatch[1] : `Port ${env['PORT']} is already in use.`
-            const portError: any = new Error(
-              `${detail}\n\nPlease close any other application using this port and restart Coday.`
-            )
-            portError.userFacing = true
-            settle(() => reject(portError))
-          }
-        })
-      }
-
-      serverProcess!.on('error', (error: Error) => {
-        log('ERROR', 'Failed to start server:', error)
-        const wrappedError: any = new Error(`Failed to start Coday server: ${error.message}`)
-        wrappedError.userFacing = true
-        settle(() => reject(wrappedError))
-      })
-
-      serverProcess!.on('exit', (code: number | null) => {
-        log('INFO', 'Server process exited with code:', code)
-        serverProcess = null
-        // Only reject if the server exited before it was ready
-        if (!serverReady) {
-          const error: any = new Error(
-            `Server process exited unexpectedly with code ${code}.\n\nCheck logs for details.`
-          )
-          error.userFacing = true
-          settle(() => reject(error))
-        }
-      })
-
-      // No hard timeout — the loading screen stays visible while npx downloads.
-      // The promise only settles when the server URL is detected or the process exits/errors.
+    // IPC handler: user confirmed setup
+    ipcMain.handle('setup:confirm', () => {
+      log('INFO', 'Setup confirmed')
+      markSetupDone()
+      removeResizeHandler(ipcMain)
+      removeApiKeyHandlers(ipcMain)
+      ipcMain.removeHandler('setup:confirm')
+      setupWindow.close()
+      resolve()
     })
-  } catch (error) {
-    throw error
-  }
+
+    setupWindowRef = setupWindow
+
+    // If user closes the window without confirming, proceed anyway
+    setupWindow.on('closed', () => {
+      setupWindowRef = null
+      removeResizeHandler(ipcMain)
+      removeApiKeyHandlers(ipcMain)
+      ipcMain.removeHandler('setup:confirm')
+      resolve()
+    })
+
+    void setupWindow.loadFile(join(__dirname, 'setup.html'))
+  })
 }
 
 /**
- * Stop the Coday server
+ * Show the setup window, guarding against multiple concurrent opens.
  */
-function stopCodayServer(): void {
-  if (serverProcess) {
-    log('INFO', 'Stopping Coday server...')
-    serverProcess.kill()
-    serverProcess = null
+async function runSetupIfNeeded(): Promise<void> {
+  if (isSetupWindowOpen) {
+    log('WARN', 'Setup window already open, ignoring request')
+    return
+  }
+  isSetupWindowOpen = true
+  try {
+    await showSetupWindow()
+  } finally {
+    isSetupWindowOpen = false
   }
 }
 
-/**
- * Create the loading window
- */
-function createLoadingWindow(): BrowserWindowType {
-  const iconPath = join(__dirname, 'icon.png')
+// ---------------------------------------------------------------------------
+// Preferences window
+// ---------------------------------------------------------------------------
 
-  const loadingWindow = new BrowserWindow({
-    width: 500,
-    height: 300,
+/**
+ * Show the preferences window for managing AI API keys.
+ */
+function showPreferencesWindow(): void {
+  if (isPreferencesWindowOpen) {
+    log('WARN', 'Preferences window already open, ignoring request')
+    return
+  }
+
+  isPreferencesWindowOpen = true
+  log('INFO', 'Opening preferences window')
+
+  const preferencesWindow = new BrowserWindow({
+    width: 580,
+    height: 480,
+    minWidth: 580,
+    minHeight: 400,
     frame: false,
+    resizable: false,
+    useContentSize: true,
     transparent: true,
-    alwaysOnTop: true,
-    icon: iconPath,
+    icon: join(__dirname, 'icon.png'),
     webPreferences: {
+      preload: join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: false,
     },
   })
 
-  // Load the loader HTML
-  void loadingWindow.loadFile(join(__dirname, 'loader.html'))
+  registerResizeHandler(ipcMain, BrowserWindow)
 
-  return loadingWindow
+  ipcMain.handle('preferences:close', () => {
+    preferencesWindow.close()
+  })
+
+  ipcMain.handle('setup:saveAnthropicApiKey', (_event: IpcMainInvokeEvent, apiKey: string) => {
+    saveApiKeyToUserYaml('anthropic', apiKey)
+  })
+
+  ipcMain.handle('setup:saveOpenAiApiKey', (_event: IpcMainInvokeEvent, apiKey: string) => {
+    saveApiKeyToUserYaml('openai', apiKey)
+  })
+
+  preferencesWindow.on('closed', () => {
+    removeResizeHandler(ipcMain)
+    ipcMain.removeHandler('preferences:close')
+    ipcMain.removeHandler('setup:saveAnthropicApiKey')
+    ipcMain.removeHandler('setup:saveOpenAiApiKey')
+    isPreferencesWindowOpen = false
+    log('INFO', 'Preferences window closed')
+  })
+
+  void preferencesWindow.loadFile(join(__dirname, 'preferences.html'))
 }
 
+// ---------------------------------------------------------------------------
+// Application menu
+// ---------------------------------------------------------------------------
+
 /**
- * Check if server is still responsive
+ * Setup native macOS application menu with Preferences entry.
  */
-async function isServerResponsive(): Promise<boolean> {
-  if (!serverUrl) return false
-
-  try {
-    const http = require('http') as typeof import('http')
-    const url = new URL(serverUrl)
-
-    return new Promise<boolean>((resolve) => {
-      const req = http.get(
+function setupApplicationMenu(): void {
+  const template = [
+    {
+      label: 'Coday',
+      submenu: [
+        { role: 'about', label: 'About Coday' },
+        { type: 'separator' },
         {
-          hostname: url.hostname,
-          port: url.port,
-          path: '/api/health',
-          timeout: 2000,
+          label: 'Preferences...',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => showPreferencesWindow(),
         },
-        (res) => {
-          resolve(res.statusCode === 200 || res.statusCode === 404) // 404 is ok, means server is up
-        }
-      )
+        { type: 'separator' },
+        { role: 'services', label: 'Services' },
+        { type: 'separator' },
+        { role: 'hide', label: 'Hide Coday' },
+        { role: 'hideOthers', label: 'Hide Others' },
+        { role: 'unhide', label: 'Show All' },
+        { type: 'separator' },
+        { role: 'quit', label: 'Quit Coday' },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo', label: 'Undo' },
+        { role: 'redo', label: 'Redo' },
+        { type: 'separator' },
+        { role: 'cut', label: 'Cut' },
+        { role: 'copy', label: 'Copy' },
+        { role: 'paste', label: 'Paste' },
+        { role: 'selectAll', label: 'Select All' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload', label: 'Reload' },
+        { role: 'toggleDevTools', label: 'Toggle Developer Tools' },
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize', label: 'Minimize' },
+        { role: 'zoom', label: 'Zoom' },
+        { type: 'separator' },
+        { role: 'front', label: 'Bring All to Front' },
+      ],
+    },
+  ]
 
-      req.on('error', () => resolve(false))
-      req.on('timeout', () => {
-        req.destroy()
-        resolve(false)
-      })
-    })
+  const menu = Menu.buildFromTemplate(template as any)
+  Menu.setApplicationMenu(menu)
+  log('INFO', 'Application menu setup complete')
+}
+
+// ---------------------------------------------------------------------------
+// Deep-link handling
+// ---------------------------------------------------------------------------
+
+function handleDeepLink(url: string): void {
+  log('INFO', 'Handling deeplink:', url)
+  try {
+    const parsed = parseDeepLink(url, PROTOCOL_NAME)
+    if (!parsed) {
+      log('WARN', 'Invalid deeplink format:', url)
+      return
+    }
+    const { projectName, threadId } = parsed
+    log('INFO', 'Parsed deeplink - project:', projectName, 'thread:', threadId)
+
+    if (!serverUrl || !mainWindow) {
+      log('WARN', 'Server/window not ready yet, storing deeplink for later')
+      pendingDeepLink = url
+      return
+    }
+
+    navigateToDeepLink(mainWindow, serverUrl, projectName, threadId)
+    pendingDeepLink = null
   } catch (error) {
-    log('ERROR', 'Error checking server responsiveness:', error)
-    return false
+    log('ERROR', 'Error handling deeplink:', error)
   }
 }
 
-/**
- * Create the main Electron window
- */
+// ---------------------------------------------------------------------------
+// Window creation
+// ---------------------------------------------------------------------------
+
 function createWindow(): void {
   if (!serverUrl) {
     log('ERROR', 'Cannot create window: server URL not initialized')
@@ -334,253 +351,104 @@ function createWindow(): void {
   log('INFO', 'Creating main window with server URL:', serverUrl)
 
   const iconPath = join(__dirname, 'icon.png')
+  const preloadPath = join(__dirname, 'preload.js')
 
-  mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    icon: iconPath,
-    webPreferences: {
-      preload: join(__dirname, 'preload.js'),
-      nodeIntegration: false,
-      contextIsolation: true,
-      webSecurity: true,
+  mainWindow = createMainWindow(
+    {
+      BrowserWindow,
+      ipcMain,
+      serverUrl,
+      iconPath,
+      preloadPath,
+      title: 'Coday',
     },
-    title: 'Coday',
-    show: false, // Don't show until ready
-  })
-
-  // Prevent navigation away from the Coday server
-  // This fixes the reload issue where Cmd+R would show "Something went wrong"
-  mainWindow.webContents.on('will-navigate', (event, url) => {
-    // Allow navigation within the same origin (server URL)
-    if (!url.startsWith(serverUrl!)) {
-      log('WARN', 'Blocked navigation to external URL:', url)
-      event.preventDefault()
-    }
-  })
-
-  // Handle failed loads by reloading the correct URL
-  mainWindow.webContents.on('did-fail-load', (_, errorCode, errorDescription, validatedURL) => {
-    log('ERROR', 'Failed to load:', validatedURL, 'Error:', errorCode, errorDescription)
-    // Reload the main server URL if load fails
-    if (mainWindow && serverUrl) {
-      log('INFO', 'Reloading server URL:', serverUrl)
-      void mainWindow.loadURL(serverUrl)
-    }
-  })
-
-  // Intercept reload attempts to ensure we reload the root URL
-  mainWindow.webContents.on('before-input-event', (event, input) => {
-    // Cmd+R or F5 reload
-    if ((input.meta && input.key.toLowerCase() === 'r') || input.key === 'F5') {
-      if (input.type === 'keyDown' && mainWindow && serverUrl) {
-        event.preventDefault()
-        log('INFO', 'Intercepted reload, reloading root URL:', serverUrl)
-        void mainWindow.loadURL(serverUrl)
-      }
-    }
-  })
-
-  // Load the Coday web interface
-  void mainWindow.loadURL(serverUrl)
-
-  // Show window when ready
-  mainWindow.once('ready-to-show', () => {
-    if (mainWindow) {
-      mainWindow.show()
-
-      // Handle pending deeplink if any
+    () => {
       if (pendingDeepLink) {
         log('INFO', 'Processing pending deeplink:', pendingDeepLink)
         handleDeepLink(pendingDeepLink)
       }
     }
-  })
+  )
 
-  // Open DevTools in development
-  if (process.env['NODE_ENV'] === 'development' && mainWindow) {
-    mainWindow.webContents.openDevTools()
-  }
+  // Setup menu after window is created
+  setupApplicationMenu()
 
   mainWindow.on('closed', () => {
     log('INFO', 'Main window closed')
     mainWindow = null
   })
+}
 
-  // On macOS, prevent the window from actually closing, just hide it
-  // This prevents the need to recreate the window and avoids the blank page issue
-  mainWindow.on('close', (event) => {
-    if (process.platform === 'darwin' && !app.isQuitting) {
-      event.preventDefault()
-      mainWindow?.hide()
-      log('INFO', 'Window hidden (not closed) on macOS')
+// ---------------------------------------------------------------------------
+// Initialize
+// ---------------------------------------------------------------------------
+
+async function initialize(): Promise<void> {
+  if (isInitializing) {
+    log('INFO', 'Initialization already in progress, ignoring duplicate call')
+    if (setupWindowRef && !setupWindowRef.isDestroyed()) {
+      if (setupWindowRef.isMinimized()) setupWindowRef.restore()
+      setupWindowRef.show()
+      setupWindowRef.focus()
     }
-  })
-}
-
-/**
- * Show error dialog to user
- */
-function showErrorDialog(title: string, message: string): void {
-  dialog.showErrorBox(title, message)
-}
-
-/**
- * Setup IPC handlers for storage
- */
-function setupStorageHandlers(): void {
-  if (storageHandlersRegistered) {
-    log('INFO', 'Storage handlers already registered, skipping')
     return
   }
-  storageHandlersRegistered = true
-
-  // Get storage data
-  ipcMain.handle('storage:get', (_event: IpcMainInvokeEvent, key: string): string | null => {
-    try {
-      if (!fs.existsSync(STORAGE_FILE)) {
-        return null
-      }
-      const data = fs.readFileSync(STORAGE_FILE, 'utf8')
-      const storage = JSON.parse(data)
-      return storage[key] ?? null
-    } catch (error) {
-      log('ERROR', 'Failed to read storage:', error)
-      return null
-    }
-  })
-
-  // Set storage data
-  ipcMain.handle('storage:set', (_event: IpcMainInvokeEvent, key: string, value: string): boolean => {
-    try {
-      let storage: Record<string, string> = {}
-
-      if (fs.existsSync(STORAGE_FILE)) {
-        const data = fs.readFileSync(STORAGE_FILE, 'utf8')
-        storage = JSON.parse(data)
-      }
-
-      storage[key] = value
-      fs.writeFileSync(STORAGE_FILE, JSON.stringify(storage, null, 2), 'utf8')
-      return true
-    } catch (error) {
-      log('ERROR', 'Failed to write storage:', error)
-      return false
-    }
-  })
-
-  // Remove storage data
-  ipcMain.handle('storage:remove', (_event: IpcMainInvokeEvent, key: string): boolean => {
-    try {
-      if (!fs.existsSync(STORAGE_FILE)) {
-        return true
-      }
-
-      const data = fs.readFileSync(STORAGE_FILE, 'utf8')
-      const storage = JSON.parse(data)
-      delete storage[key]
-      fs.writeFileSync(STORAGE_FILE, JSON.stringify(storage, null, 2), 'utf8')
-      return true
-    } catch (error) {
-      log('ERROR', 'Failed to remove from storage:', error)
-      return false
-    }
-  })
-
-  // Clear all storage
-  ipcMain.handle('storage:clear', (): boolean => {
-    try {
-      if (fs.existsSync(STORAGE_FILE)) {
-        fs.unlinkSync(STORAGE_FILE)
-      }
-      return true
-    } catch (error) {
-      log('ERROR', 'Failed to clear storage:', error)
-      return false
-    }
-  })
-
-  // Add handler to get log file path
-  ipcMain.handle('logs:getPath', (): string => {
-    return LOG_FILE
-  })
-
-  // Add handler to open logs folder
-  ipcMain.handle('logs:openFolder', (): void => {
-    const { shell } = require('electron') as typeof import('electron')
-    shell.showItemInFolder(LOG_FILE)
-  })
-
-  log('INFO', 'Storage handlers initialized')
-}
-
-/**
- * Handle deeplink navigation
- */
-function handleDeepLink(url: string): void {
-  log('INFO', 'Handling deeplink:', url)
-
-  try {
-    // Parse URL: coday://project/my-project/thread/abc-123
-    const match = url.match(/coday:\/\/project\/([^/]+)\/thread\/([^/?#]+)/)
-
-    if (!match) {
-      log('WARN', 'Invalid deeplink format:', url)
-      return
-    }
-
-    const [, projectName, threadId] = match
-    log('INFO', 'Parsed deeplink - project:', projectName, 'thread:', threadId)
-
-    if (!serverUrl) {
-      log('WARN', 'Server not ready yet, storing deeplink for later')
-      pendingDeepLink = url
-      return
-    }
-
-    if (!mainWindow) {
-      log('WARN', 'Main window not available, storing deeplink for later')
-      pendingDeepLink = url
-      return
-    }
-
-    // Build local server URL
-    const targetUrl = `${serverUrl}/project/${projectName}/thread/${threadId}`
-    log('INFO', 'Navigating to:', targetUrl)
-
-    void mainWindow.loadURL(targetUrl)
-
-    // Show and focus window
-    if (mainWindow.isMinimized()) {
-      mainWindow.restore()
-    }
-    mainWindow.show()
-    mainWindow.focus()
-
-    // Clear pending deeplink
-    pendingDeepLink = null
-  } catch (error) {
-    log('ERROR', 'Error handling deeplink:', error)
-  }
-}
-
-/**
- * Initialize the application
- */
-async function initialize(): Promise<void> {
+  isInitializing = true
   let loadingWindow: BrowserWindowType | null = null
 
   try {
     log('INFO', 'Initializing Coday...')
 
-    // Setup storage handlers
-    setupStorageHandlers()
+    // Setup storage handlers (once)
+    if (!storageHandlersRegistered) {
+      storageHandlersRegistered = true
+      setupStorageHandlers(ipcMain, STORAGE_FILE, LOG_FILE)
+    }
+
+    // First-launch setup: prompt for AI API keys if not yet configured
+    if (needsSetup()) {
+      log('INFO', 'First launch detected, showing setup window')
+      await runSetupIfNeeded()
+      log('INFO', 'Setup complete')
+    }
 
     // Show loading window
-    loadingWindow = createLoadingWindow()
+    loadingWindow = createLoadingWindow(BrowserWindow, join(__dirname, 'icon.png'), join(__dirname, 'loader.html'))
+
+    // Find node/npx
+    const nodePath = findExecutable('node')
+    if (!nodePath) {
+      const error: any = new Error(
+        'Node.js not found. Please install Node.js from https://nodejs.org/ or use a package manager like Homebrew.'
+      )
+      error.userFacing = true
+      throw error
+    }
+    log('INFO', 'Using node at:', nodePath)
+
+    const npxPath = findExecutable('npx')
+    if (!npxPath) {
+      const error: any = new Error(
+        'npx not found. Please ensure Node.js and npm are properly installed.\n\n' +
+          'You can install Node.js from https://nodejs.org/ or use a package manager like Homebrew.\n\n' +
+          'After installation, verify with: npx --version'
+      )
+      error.userFacing = true
+      throw error
+    }
+    log('INFO', 'Found npx at:', npxPath)
 
     // Start the Coday server
-    await startCodayServer()
+    const result = await startCodayServer({
+      appName: 'Coday',
+      port: CODAY_PORT,
+      npxPath,
+      serverArgs: SERVER_ARGS,
+      npxCwd: app.getPath('temp'),
+      env: setupEnv(),
+    })
+    serverUrl = result.serverUrl
+    serverProcess = result.serverProcess
 
     // Create the main window
     createWindow()
@@ -596,38 +464,38 @@ async function initialize(): Promise<void> {
     }
   } catch (error) {
     log('ERROR', 'Failed to initialize application:', error)
-    if (loadingWindow) {
-      loadingWindow.close()
-    }
+    if (loadingWindow) loadingWindow.close()
 
-    // Show user-facing error dialog
     const errorMessage = error instanceof Error ? error.message : String(error)
     const isUserFacing = error && typeof error === 'object' && (error as any).userFacing
 
     if (isUserFacing) {
-      showErrorDialog('Coday - Startup Error', errorMessage)
+      showErrorDialog(dialog, 'Coday - Startup Error', errorMessage)
     } else {
       showErrorDialog(
+        dialog,
         'Coday - Unexpected Error',
         `An unexpected error occurred while starting Coday:\n\n${errorMessage}\n\nPlease check the console logs for more details.`
       )
     }
 
     app.quit()
+  } finally {
+    isInitializing = false
   }
 }
 
-// Register custom protocol handler
+// ---------------------------------------------------------------------------
+// Protocol registration & single instance
+// ---------------------------------------------------------------------------
+
 if (process.defaultApp) {
-  // Development mode
   if (process.argv.length >= 2) {
     app.setAsDefaultProtocolClient(PROTOCOL_NAME, process.execPath, [require('path').resolve(process.argv[1])])
   }
 } else {
-  // Production mode
   app.setAsDefaultProtocolClient(PROTOCOL_NAME)
 }
-
 log('INFO', 'Registered protocol handler for:', PROTOCOL_NAME)
 
 // Handle deeplinks on macOS
@@ -639,39 +507,34 @@ app.on('open-url', (event, url) => {
 
 // Handle single instance lock for Windows/Linux deeplinks
 const gotTheLock = app.requestSingleInstanceLock()
-
 if (!gotTheLock) {
   log('INFO', 'Another instance is already running, quitting')
   app.quit()
 } else {
   app.on('second-instance', (_event: any, commandLine: any) => {
     log('INFO', 'Second instance detected, command line:', commandLine)
-
-    // Look for deeplink in command line arguments
     const url = commandLine.find((arg: any) => arg.startsWith(`${PROTOCOL_NAME}://`))
     if (url) {
       log('INFO', 'Found deeplink in second instance:', url)
       handleDeepLink(url)
     }
-
-    // Focus existing window
     if (mainWindow) {
-      if (mainWindow.isMinimized()) {
-        mainWindow.restore()
-      }
+      if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.show()
       mainWindow.focus()
     }
   })
 }
 
-// App event handlers
+// ---------------------------------------------------------------------------
+// App lifecycle
+// ---------------------------------------------------------------------------
+
 void app.whenReady().then(() => void initialize())
 
 app.on('window-all-closed', () => {
-  // On macOS, don't quit when all windows are closed
   if (process.platform !== 'darwin') {
-    stopCodayServer()
+    stopCodayServer(serverProcess)
     app.quit()
   }
 })
@@ -679,29 +542,34 @@ app.on('window-all-closed', () => {
 app.on('activate', async () => {
   log('INFO', 'App activated')
 
-  // On macOS, show the window if it exists but is hidden
-  if (mainWindow) {
-    if (mainWindow.isMinimized()) {
-      mainWindow.restore()
+  if (isInitializing) {
+    log('INFO', 'Initialization in progress, focusing setup window if open')
+    if (setupWindowRef && !setupWindowRef.isDestroyed()) {
+      if (setupWindowRef.isMinimized()) setupWindowRef.restore()
+      setupWindowRef.show()
+      setupWindowRef.focus()
     }
+    return
+  }
+
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.show()
     log('INFO', 'Showing existing window')
   } else if (serverUrl && serverProcess) {
-    // Window was destroyed but server is still running, check if server is responsive
     log('INFO', 'Checking if server is still responsive...')
-    const isResponsive = await isServerResponsive()
-
+    const isResponsive = await isServerResponsive(serverUrl)
     if (isResponsive) {
       log('INFO', 'Server is responsive, recreating window')
       createWindow()
     } else {
       log('WARN', 'Server not responsive, reinitializing')
-      stopCodayServer()
+      stopCodayServer(serverProcess)
+      serverProcess = null
       serverUrl = null
       void initialize()
     }
   } else {
-    // No window and no server, need to reinitialize
     log('INFO', 'No window or server, reinitializing')
     void initialize()
   }
@@ -710,16 +578,16 @@ app.on('activate', async () => {
 app.on('before-quit', () => {
   log('INFO', 'App quitting, stopping server')
   app.isQuitting = true
-  stopCodayServer()
+  stopCodayServer(serverProcess)
 })
 
-// Handle uncaught exceptions
 process.on('uncaughtException', (error: Error) => {
   log('ERROR', 'Uncaught exception:', error)
   showErrorDialog(
+    dialog,
     'Coday - Fatal Error',
     `A fatal error occurred:\n\n${error.message}\n\nThe application will now close.`
   )
-  stopCodayServer()
+  stopCodayServer(serverProcess)
   app.quit()
 })

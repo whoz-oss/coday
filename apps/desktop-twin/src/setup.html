@@ -18,6 +18,7 @@
         padding: 40px;
         -webkit-app-region: drag;
         user-select: none;
+        overflow-y: auto;
       }
 
       .container {
@@ -324,7 +325,7 @@
           <div class="custom-path-display">
             <div class="option-path" id="custom-path">Click "Browse" to select a folder...</div>
             <div style="margin-top: 8px; text-align: right">
-              <button class="btn-secondary" onclick="event.stopPropagation(); browsePath()">Browse…</button>
+              <button class="btn-secondary" onclick="event.stopPropagation(); browsePath()">Browse&hellip;</button>
             </div>
           </div>
         </div>
@@ -374,21 +375,64 @@
               autocomplete="off"
               spellcheck="false"
             />
-            <div class="help-text">Found in your Slack profile → More → Copy member ID.</div>
+            <div class="help-text">Found in your Slack profile &rarr; More &rarr; Copy member ID.</div>
           </div>
         </div>
 
         <div class="btn-row">
           <button class="btn-secondary" onclick="goToStep2FromStep3()">Back</button>
-          <button class="btn-primary" id="btn-finish" onclick="finish()">Finish Setup</button>
+          <button class="btn-primary" id="btn-to-step4" onclick="goToStep4()">Continue</button>
         </div>
         <p class="skip-note">You can skip this step and configure Slack later in Preferences.</p>
+      </div>
+
+      <!-- Step 4: Google Calendar -->
+      <div class="step" id="step-4">
+        <h1>Google Calendar</h1>
+        <p class="subtitle">Connect your Google Calendar to let your Twin see your schedule.</p>
+
+        <div class="section">
+          <div class="section-title">OAuth2 Credentials</div>
+          <div class="help-text" style="margin-bottom: 16px">
+            You need a Google Cloud OAuth2 client. Create one at
+            <strong>console.cloud.google.com</strong> &rarr; APIs &amp; Services &rarr; Credentials &rarr; OAuth 2.0
+            Client IDs, choosing <strong>Desktop application</strong> as the type.
+          </div>
+
+          <div class="field-label">Client ID</div>
+          <input
+            type="text"
+            class="api-key-input"
+            id="google-client-id"
+            placeholder="xxxxxxxx.apps.googleusercontent.com"
+            oninput="onGoogleInput()"
+            autocomplete="off"
+            spellcheck="false"
+          />
+
+          <div class="field-label" style="margin-top: 14px">Client Secret</div>
+          <input
+            type="password"
+            class="api-key-input"
+            id="google-client-secret"
+            placeholder="GOCSPX-..."
+            oninput="onGoogleInput()"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+
+        <div class="btn-row">
+          <button class="btn-secondary" onclick="goToStep3FromStep4()">Back</button>
+          <button class="btn-primary" id="btn-finish" onclick="finish()">Finish Setup</button>
+        </div>
+        <p class="skip-note">You can skip this step and configure Google Calendar later in Preferences.</p>
       </div>
 
       <!-- Step 2: API Key Configuration -->
       <div class="step" id="step-2">
         <h1>AI Configuration</h1>
-        <p class="subtitle">CodayTwin needs an Anthropic API key to power your digital twin.</p>
+        <p class="subtitle">CodayTwin needs at least one AI API key to power your digital twin.</p>
 
         <div class="section">
           <div class="section-title">Anthropic API Key</div>
@@ -411,6 +455,24 @@
           </div>
         </div>
 
+        <div class="section">
+          <div class="section-title">
+            OpenAI API Key <span style="font-weight: 400; text-transform: none; color: #666">&mdash; optional</span>
+          </div>
+
+          <div id="openai-key-status"></div>
+
+          <input
+            type="password"
+            class="api-key-input"
+            id="openai-key-input"
+            placeholder="sk-..."
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <div class="help-text">Get your API key from platform.openai.com. Leave blank to use Anthropic only.</div>
+        </div>
+
         <div class="btn-row">
           <button class="btn-secondary" onclick="goToStep1()">Back</button>
           <button class="btn-primary" id="btn-to-step3" onclick="goToStep3()">Continue</button>
@@ -422,6 +484,7 @@
       let selectedOption = 'default'
       let customPath = null
       let hasExistingApiKey = false
+      let hasExistingOpenAiKey = false
       let slackEnabled = false
 
       function selectOption(option) {
@@ -456,6 +519,14 @@
         } catch (error) {
           updateApiKeyStatus({ configured: false, source: null })
         }
+
+        try {
+          const openAiStatus = await window.electronAPI.checkOpenAiApiKey()
+          hasExistingOpenAiKey = openAiStatus.configured
+          updateOpenAiKeyStatus(openAiStatus)
+        } catch (error) {
+          updateOpenAiKeyStatus({ configured: false, source: null })
+        }
       }
 
       function goToStep1() {
@@ -473,6 +544,20 @@
         document.getElementById('step-2').classList.add('active')
       }
 
+      function goToStep4() {
+        document.getElementById('step-3').classList.remove('active')
+        document.getElementById('step-4').classList.add('active')
+      }
+
+      function goToStep3FromStep4() {
+        document.getElementById('step-4').classList.remove('active')
+        document.getElementById('step-3').classList.add('active')
+      }
+
+      function onGoogleInput() {
+        // Finish button stays enabled — Google Calendar is optional
+      }
+
       function onSlackToggle() {
         slackEnabled = document.getElementById('slack-enabled').checked
         const fields = document.getElementById('slack-fields')
@@ -481,44 +566,58 @@
       }
 
       function onSlackInput() {
-        // Finish button is always enabled on step-3 (Slack is optional)
-        // but warn if enabled with incomplete fields
+        // Continue button (step-3 → step-4) is disabled if Slack is enabled but fields are incomplete
         const webhookUrl = document.getElementById('slack-webhook-url').value.trim()
         const userId = document.getElementById('slack-user-id').value.trim()
-        const finishBtn = document.getElementById('btn-finish')
+        const continueBtn = document.getElementById('btn-to-step4')
         if (slackEnabled && (!webhookUrl || !userId)) {
-          finishBtn.disabled = true
-          finishBtn.title = 'Please fill in both Webhook URL and User ID, or disable Slack notifications.'
+          continueBtn.disabled = true
+          continueBtn.title = 'Please fill in both Webhook URL and User ID, or disable Slack notifications.'
         } else {
-          finishBtn.disabled = false
-          finishBtn.title = ''
+          continueBtn.disabled = false
+          continueBtn.title = ''
         }
       }
 
       function updateApiKeyStatus(status) {
         const statusEl = document.getElementById('api-key-status')
-        const finishBtn = document.getElementById('btn-finish')
+        const continueBtn = document.getElementById('btn-to-step3')
 
         if (status.configured) {
           let sourceText = 'user configuration'
           if (status.source === 'env') sourceText = 'environment variable (ANTHROPIC_API_KEY)'
           statusEl.innerHTML =
-            '<div class="status-badge configured">✓ Configured</div>' +
+            '<div class="status-badge configured">&#10003; Configured</div>' +
             '<div class="help-text">API key found in ' +
             sourceText +
             '. You can override it below or continue.</div>'
-          finishBtn.disabled = false
+          continueBtn.disabled = false
         } else {
           statusEl.innerHTML =
-            '<div class="status-badge missing">⚠ Not configured</div>' +
+            '<div class="status-badge missing">&#9888; Not configured</div>' +
             '<div class="help-text" style="margin-bottom: 4px;">Enter your Anthropic API key to get started.</div>'
-          finishBtn.disabled = true
+          continueBtn.disabled = true
         }
       }
 
       function onApiKeyInput() {
         const input = document.getElementById('api-key-input').value.trim()
-        document.getElementById('btn-finish').disabled = input.length === 0 && !hasExistingApiKey
+        document.getElementById('btn-to-step3').disabled = input.length === 0 && !hasExistingApiKey
+      }
+
+      function updateOpenAiKeyStatus(status) {
+        const statusEl = document.getElementById('openai-key-status')
+        if (status.configured) {
+          let sourceText = 'user configuration'
+          if (status.source === 'env') sourceText = 'environment variable (OPENAI_API_KEY)'
+          statusEl.innerHTML =
+            '<div class="status-badge configured">&#10003; Configured</div>' +
+            '<div class="help-text">API key found in ' +
+            sourceText +
+            '. You can override it below.</div>'
+        } else {
+          statusEl.innerHTML = ''
+        }
       }
 
       async function finish() {
@@ -528,7 +627,17 @@
           try {
             await window.electronAPI.saveAnthropicApiKey(apiKeyInput)
           } catch (error) {
-            console.error('Failed to save API key:', error)
+            console.error('Failed to save Anthropic API key:', error)
+          }
+        }
+
+        const openAiKeyInput = document.getElementById('openai-key-input').value.trim()
+
+        if (openAiKeyInput) {
+          try {
+            await window.electronAPI.saveOpenAiApiKey(openAiKeyInput)
+          } catch (error) {
+            console.error('Failed to save OpenAI API key:', error)
           }
         }
 
@@ -540,8 +649,12 @@
           userId: slackEnabled ? userId : '',
         }
 
+        const clientId = document.getElementById('google-client-id').value.trim()
+        const clientSecret = document.getElementById('google-client-secret').value.trim()
+        const googleConfig = clientId || clientSecret ? { clientId, clientSecret } : null
+
         const path = selectedOption === 'default' ? null : customPath
-        await window.electronAPI.confirmSetup(path, slackConfig)
+        await window.electronAPI.confirmSetup(path, slackConfig, googleConfig)
       }
 
       updateContinueButton()

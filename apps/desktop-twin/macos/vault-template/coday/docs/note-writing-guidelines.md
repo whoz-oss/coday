@@ -108,4 +108,42 @@ Dedicate ONE section at the end of meeting/project notes for actual action items
 
 ---
 
+## Writing About People — Privacy Standards
+
+**Full protocol**: `coday/docs/people-data-privacy-protocol.md` (mandatory reading for all agents).
+
+### Observations, not conclusions
+
+The core rule for any note involving a real person:
+
+| ✅ Write this | ❌ Not this |
+|---|---|
+| "Missed the Mar 14 deadline without prior notice" | "Unreliable" |
+| "Raised concerns about architecture in the public Slack thread" | "Difficult / political" |
+| "Delivered the migration two weeks ahead of schedule" | "High performer" |
+| "Said they felt overwhelmed, per our 1:1 on Apr 3" | "Struggling / at risk" |
+
+### Language standards
+- **Neutral and factual** — actions and outcomes, not character
+- **Specific and time-bound** — "on [date]" / "during [event]", never "always" / "never"
+- **First-person observable** — "I observed", "it was reported", not inference stated as fact
+- **No loaded adjectives** — avoid lazy, brilliant, toxic, difficult, political, checked out
+
+### Hard prohibitions — never write in vault notes
+- Health, medical, or disability information (including burnout, mental health, sick patterns)
+- Protected characteristics (age, gender, sexuality, religion, ethnicity, family, pregnancy)
+- Personal financial information
+- Hearsay stated as established fact — label source explicitly: "Per [name], …"
+- Speculation about intent or motive
+
+### Temporal context
+Date-stamp observations when they matter for decisions. "As of [month/year]" on
+anything that might age — especially in person notes and effort notes.
+
+### Confidentiality tagging
+Mark sensitivity when relevant: "*shared in 1:1 context*" for things said privately.
+Do not surface 1:1 content in broader documents.
+
+---
+
 *"Brevity is not about being terse. It's about respecting the reader's time and attention."*

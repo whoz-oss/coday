@@ -169,7 +169,7 @@ export class AgentCrudService {
           const definition = readYamlFile<AgentDefinition>(filePath)
           if (definition) {
             agents.push({
-              name: definition.name ?? agentName,
+              name: agentName,
               description: definition.description ?? '',
               source: location,
               editable: true,
@@ -193,6 +193,10 @@ export class AgentCrudService {
 
     const definition = readYamlFile<AgentDefinition>(found.filePath)
     if (!definition) return null
+
+    // Enforce name === filename stem so they never drift
+    const filenameStem = path.basename(found.filePath).replace(/\.ya?ml$/, '')
+    definition.name = filenameStem
 
     return { definition, source: found.location, filePath: found.filePath, editable: true }
   }
@@ -237,10 +241,12 @@ export class AgentCrudService {
     if (!existing) return null
 
     // Merge: start from definition (which carries explicit undefined for cleared fields),
-    // then restore the original name. We avoid spreading existing first so that
-    // undefined values in definition properly clear optional fields.
+    // then force name to match the filename stem so they never drift.
+    // We avoid spreading existing first so that undefined values in definition
+    // properly clear optional fields.
+    const filenameStem = path.basename(found.filePath).replace(/\.ya?ml$/, '')
     const updated: AgentDefinition = {
-      name: existing.name,
+      name: filenameStem,
       description: definition.description ?? existing.description,
       instructions: definition.instructions,
       aiProvider: definition.aiProvider,
