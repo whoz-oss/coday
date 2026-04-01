@@ -1,0 +1,122 @@
+<div class="user-profile">
+  <header class="user-profile__header">
+    <button class="user-profile__back" type="button" (click)="goBack()" title="Go back">
+      <span class="user-profile__back-icon">&#8592;</span>
+      Back
+    </button>
+    <h1 class="user-profile__title">My profile</h1>
+  </header>
+
+  @if (isLoading()) {
+    <p class="user-profile__loading">Loading…</p>
+  } @else if (currentUser(); as user) {
+    @if (isEditing()) {
+      <!-- Edit mode -->
+      <form class="user-profile__form" [formGroup]="form" (ngSubmit)="save()">
+        <div class="user-profile__section">
+          <h2 class="user-profile__section-title">Identity</h2>
+
+          <div class="user-profile__field">
+            <span class="user-profile__label">Email</span>
+            <span class="user-profile__value user-profile__value--readonly">{{ user.email }}</span>
+          </div>
+
+          <div class="user-profile__field">
+            <span class="user-profile__label">External ID</span>
+            <span class="user-profile__value user-profile__value--readonly">{{ user.externalId }}</span>
+          </div>
+        </div>
+
+        <div class="user-profile__section">
+          <h2 class="user-profile__section-title">Profile</h2>
+
+          <div class="user-profile__field">
+            <label class="user-profile__label" for="up-firstname">First name</label>
+            <input
+              id="up-firstname"
+              class="user-profile__input"
+              type="text"
+              placeholder="Your first name"
+              formControlName="firstname"
+              autocomplete="given-name"
+            />
+          </div>
+
+          <div class="user-profile__field">
+            <label class="user-profile__label" for="up-lastname">Last name</label>
+            <input
+              id="up-lastname"
+              class="user-profile__input"
+              type="text"
+              placeholder="Your last name"
+              formControlName="lastname"
+              autocomplete="family-name"
+            />
+          </div>
+
+          <div class="user-profile__field">
+            <label class="user-profile__label" for="up-bio">Bio</label>
+            <textarea
+              id="up-bio"
+              class="user-profile__input user-profile__input--textarea"
+              placeholder="A short description about yourself"
+              formControlName="bio"
+              rows="4"
+            ></textarea>
+          </div>
+        </div>
+
+        <div class="user-profile__actions">
+          <button class="user-profile__btn user-profile__btn--primary" type="submit" [disabled]="isSaving()">
+            {{ isSaving() ? 'Saving…' : 'Save changes' }}
+          </button>
+          <button class="user-profile__btn" type="button" (click)="cancelEditing()">Cancel</button>
+        </div>
+      </form>
+    } @else {
+      <!-- Read mode -->
+      <div class="user-profile__view">
+        <div class="user-profile__section">
+          <h2 class="user-profile__section-title">Identity</h2>
+
+          <div class="user-profile__field">
+            <span class="user-profile__label">Email</span>
+            <span class="user-profile__value">{{ user.email }}</span>
+          </div>
+
+          <div class="user-profile__field">
+            <span class="user-profile__label">External ID</span>
+            <span class="user-profile__value">{{ user.externalId }}</span>
+          </div>
+        </div>
+
+        <div class="user-profile__section">
+          <h2 class="user-profile__section-title">Profile</h2>
+
+          <div class="user-profile__field">
+            <span class="user-profile__label">First name</span>
+            <span class="user-profile__value">{{ user.firstname || '—' }}</span>
+          </div>
+
+          <div class="user-profile__field">
+            <span class="user-profile__label">Last name</span>
+            <span class="user-profile__value">{{ user.lastname || '—' }}</span>
+          </div>
+
+          <div class="user-profile__field user-profile__field--bio">
+            <span class="user-profile__label">Bio</span>
+            <span class="user-profile__value">{{ user.bio || '—' }}</span>
+          </div>
+        </div>
+
+        <div class="user-profile__actions">
+          <button class="user-profile__btn user-profile__btn--primary" type="button" (click)="startEditing()">
+            Edit profile
+          </button>
+        </div>
+      </div>
+    }
+  } @else {
+    <p class="user-profile__loading">Unable to load profile.</p>
+  }
+</div>

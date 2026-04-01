@@ -4,7 +4,19 @@
     <span class="header__logo-text">Coday</span>
   </div>
   <nav class="header__nav">
-    <!-- TODO: navigation icons (settings, user…) -->
     <agentos-backend-status />
+    <button
+      class="header__user-btn"
+      type="button"
+      [class.header__user-btn--active]="isOnProfilePage"
+      [title]="isOnProfilePage ? 'Back' : 'My profile'"
+      (click)="toggleProfile()"
+    >
+      @if (userInitials) {
+        <span class="header__user-initials">{{ userInitials }}</span>
+      } @else {
+        <span class="header__user-icon">&#9711;</span>
+      }
+    </button>
   </nav>
 </header>
