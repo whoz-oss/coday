@@ -3,6 +3,7 @@ package io.whozoss.agentos.user
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.entity.EntityRepository
 import io.whozoss.agentos.entity.FilesystemEntityRepository
+import mu.KLogging
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.exists
@@ -49,10 +50,13 @@ class FilesystemUserRepository(
             .mapNotNull { file ->
                 try {
                     objectMapper.readValue(file.toFile(), User::class.java)
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    logger.warn(e) { "[UserRepository] Failed to read user file: ${file.fileName} — skipping" }
                     null
                 }
             }
             .firstOrNull { !it.metadata.removed && it.externalId == externalId }
     }
+
+    companion object : KLogging()
 }

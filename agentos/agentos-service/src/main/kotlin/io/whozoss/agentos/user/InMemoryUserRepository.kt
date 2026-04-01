@@ -11,8 +11,8 @@ import org.springframework.stereotype.Repository
  * Active only when `agentos.persistence.mode=in-memory`.
  * The default mode is file-system persistence via [FilesystemUserRepository].
  *
- * [findByExternalId] performs a linear scan — identical semantics to the
- * filesystem variant and acceptable for the in-memory dev/test use case.
+ * [findByExternalId] performs a linear scan and explicitly excludes soft-deleted users —
+ * identical semantics to the filesystem variant and acceptable for the in-memory dev/test use case.
  */
 @Repository
 @ConditionalOnProperty(name = ["agentos.persistence.mode"], havingValue = "in-memory")
@@ -24,5 +24,5 @@ class InMemoryUserRepository :
     ) {
     override fun findByExternalId(externalId: String): User? =
         findByParent(UserRepository.USER_PARENT_KEY)
-            .firstOrNull { it.externalId == externalId }
+            .firstOrNull { !it.metadata.removed && it.externalId == externalId }
 }
