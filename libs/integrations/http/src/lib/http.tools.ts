@@ -240,6 +240,59 @@ export class HttpTools extends AssistantToolFactory {
 
     if (!response.ok) {
       const errorBody = await response.text()
+
+      if (response.status === 401) {
+        // Token is invalid or expired — invalidate it and trigger a fresh OAuth flow
+        this.interactor.debug(`[HTTP:${this.name}__${endpoint.name}] got 401, invalidating token and re-authenticating`)
+        this.oauth!.invalidateTokens()
+        await this.oauth!.authenticate()
+        const newAccessToken = await this.oauth!.getAccessToken()
+
+        // Retry the request once with the fresh token
+        const retryResponse = await fetch(url.toString(), {
+          method: endpoint.method,
+          headers: {
+            Authorization: `Bearer ${newAccessToken}`,
+            ...(body ? { 'Content-Type': 'application/json' } : {}),
+          },
+          ...(body ? { body } : {}),
+        })
+
+        if (!retryResponse.ok) {
+          const retryErrorBody = await retryResponse.text()
+          throw new Error(
+            `HTTP ${retryResponse.status} from ${endpoint.method} ${resolvedPath} (after re-auth): ${retryErrorBody}`
+          )
+        }
+
+        // Continue with retryResponse as the successful response
+        let retryData: unknown
+        const retryContentType = retryResponse.headers.get('content-type') ?? ''
+        if (retryContentType.includes('application/json')) {
+          retryData = await retryResponse.json()
+        } else {
+          const text = await retryResponse.text()
+          if (!text) return null
+          try {
+            retryData = JSON.parse(text)
+          } catch {
+            retryData = text
+          }
+        }
+
+        const retryFiltered = filterResponse(retryData, endpoint.keepPaths, endpoint.ignorePaths)
+        if (endpoint.responseFormat === 'yaml') {
+          return yaml.stringify(retryFiltered)
+        }
+        return retryFiltered
+      }
+
+      if (response.status === 403) {
+        throw new Error(
+          `HTTP 403 Forbidden from ${endpoint.method} ${resolvedPath}: the authenticated user lacks permission for this resource. ${errorBody}`
+        )
+      }
+
       throw new Error(`HTTP ${response.status} from ${endpoint.method} ${resolvedPath}: ${errorBody}`)
     }
 
