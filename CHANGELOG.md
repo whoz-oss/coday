@@ -1,3 +1,13 @@
+## 0.111.0 (2026-04-02)
+
+### 🚀 Features
+
+- multiple preview entries per project ([#699](https://github.com/whoz-oss/coday/pull/699), [#698](https://github.com/whoz-oss/coday/issues/698))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-dearmey
+
 ## 0.110.0 (2026-04-02)
 
 ### 🚀 Features
