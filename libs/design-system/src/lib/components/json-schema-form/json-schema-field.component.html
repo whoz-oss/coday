@@ -45,6 +45,29 @@
         }
       </select>
     }
+    @case ('array') {
+      <div class="ds-field__array">
+        @for (item of itemArray.controls; track $index) {
+          <div class="ds-field__array-row">
+            <input
+              class="ds-field__input ds-field__input--array-item"
+              [type]="itemInputType"
+              [formControl]="getItemControl($index)"
+              [attr.aria-label]="label + ' item ' + ($index + 1)"
+            />
+            <button
+              class="ds-field__array-remove"
+              type="button"
+              (click)="removeItem($index)"
+              [attr.aria-label]="'Remove ' + label + ' item ' + ($index + 1)"
+            >
+              &times;
+            </button>
+          </div>
+        }
+        <button class="ds-field__array-add" type="button" (click)="addItem()">+ Add {{ label }}</button>
+      </div>
+    }
     @case ('nested-object') {
       <div class="ds-field__nested">
         <ds-json-schema-form
@@ -64,9 +87,5 @@
         placeholder="JSON"
       ></textarea>
     }
-  }
-
-  @for (error of errors(); track error) {
-    <p class="ds-field__error" role="alert">{{ error }}</p>
   }
 </div>

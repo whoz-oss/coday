@@ -20,7 +20,8 @@ export interface JsonSchemaObject {
   maximum?: number
   minLength?: number
   maxLength?: number
+  /** Describes the schema of array items — used to render typed item inputs. */
+  items?: JsonSchemaObject
   // Allow any additional JSON Schema keywords (format, pattern, etc.)
-  // They won't drive rendering but are forwarded to Ajv.
   [key: string]: unknown
 }

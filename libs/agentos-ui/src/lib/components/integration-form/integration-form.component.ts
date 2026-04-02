@@ -120,7 +120,6 @@ export class IntegrationFormComponent implements OnInit {
 
   protected submit(): void {
     if (this.nameControl.invalid || this.typeControl.invalid || this.isSubmitting()) return
-    if (this.schema() !== null && this.paramsValue() === null) return
 
     this.isSubmitting.set(true)
 

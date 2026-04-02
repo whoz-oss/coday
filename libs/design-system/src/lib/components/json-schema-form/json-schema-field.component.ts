@@ -1,17 +1,13 @@
 import { ChangeDetectionStrategy, Component, OnInit, forwardRef, input, signal } from '@angular/core'
-import { FormControl, ReactiveFormsModule } from '@angular/forms'
+import { FormArray, FormControl, ReactiveFormsModule } from '@angular/forms'
 import { JsonSchemaFormComponent } from './json-schema-form.component'
 import { JsonSchemaObject } from './json-schema.model'
 
 /**
  * ds-json-schema-field — renders a single form field from a JSON Schema property.
  *
- * Handles: string, number, integer, boolean, enum, object (with nested ds-json-schema-form),
- * array (textarea fallback).
- *
- * Nested objects that have `properties` are rendered recursively by embedding
- * another ds-json-schema-form. Objects without `properties` fall back to a
- * JSON textarea.
+ * Handles: string, number, integer, boolean, enum, object (nested ds-json-schema-form),
+ * array (typed item list with add / remove), raw object (JSON textarea fallback).
  *
  * String fields respect the `format` keyword to pick the right HTML input type:
  *   - password  → <input type="password">
@@ -20,6 +16,10 @@ import { JsonSchemaObject } from './json-schema.model'
  *   - date      → <input type="date">
  *   - date-time → <input type="datetime-local">
  *   - (others)  → <input type="text">
+ *
+ * Array fields render each item as an individual input (typed by `items.type`)
+ * with an × button to remove it and an “+ Add” button to append a new empty item.
+ * The parent FormControl value is kept in sync as a plain array.
  *
  * This is an internal component used only by ds-json-schema-form.
  * It is NOT exported from the design-system public API.
@@ -37,8 +37,13 @@ export class JsonSchemaFieldComponent implements OnInit {
   readonly fieldSchema = input.required<JsonSchemaObject>()
   readonly control = input.required<FormControl>()
   readonly required = input<boolean>(false)
-  /** Validation error messages from Ajv, passed down by ds-json-schema-form. */
-  readonly errors = input<string[]>([])
+
+  /**
+   * Internal FormArray used only when fieldType === 'array'.
+   * The parent FormControl holds the plain array value; this FormArray
+   * drives the rendered list of item inputs and syncs back on every change.
+   */
+  protected readonly itemArray = new FormArray<FormControl<unknown>>([])
 
   /**
    * Initial value seed for the nested ds-json-schema-form.
@@ -50,9 +55,53 @@ export class JsonSchemaFieldComponent implements OnInit {
   protected readonly nestedInitialValue = signal<Record<string, unknown> | null>(null)
 
   ngOnInit(): void {
-    const v = this.control().value
-    this.nestedInitialValue.set(v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null)
+    if (this.fieldType === 'array') {
+      this.initItemArray()
+    } else if (this.fieldType === 'nested-object') {
+      const v = this.control().value
+      this.nestedInitialValue.set(
+        v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
+      )
+    }
   }
+
+  // ---------------------------------------------------------------------------
+  // Array helpers
+  // ---------------------------------------------------------------------------
+
+  private initItemArray(): void {
+    const existing = this.control().value
+    const items: unknown[] = Array.isArray(existing) ? existing : []
+    items.forEach((item) => this.itemArray.push(new FormControl<unknown>(item)))
+
+    this.itemArray.valueChanges.subscribe((values) => {
+      this.control().setValue(values, { emitEvent: true })
+    })
+  }
+
+  protected addItem(): void {
+    this.itemArray.push(new FormControl<unknown>(null))
+  }
+
+  protected removeItem(index: number): void {
+    this.itemArray.removeAt(index)
+  }
+
+  protected getItemControl(index: number): FormControl<unknown> {
+    return this.itemArray.at(index) as FormControl<unknown>
+  }
+
+  /** HTML input type for individual array items, derived from `items.type`. */
+  protected get itemInputType(): string {
+    const itemsSchema = this.fieldSchema().items
+    if (!itemsSchema) return 'text'
+    const type = Array.isArray(itemsSchema.type) ? itemsSchema.type[0] : itemsSchema.type
+    return type === 'number' || type === 'integer' ? 'number' : 'text'
+  }
+
+  // ---------------------------------------------------------------------------
+  // Field metadata
+  // ---------------------------------------------------------------------------
 
   protected get label(): string {
     return this.fieldSchema().title ?? this.fieldKey()
@@ -62,7 +111,7 @@ export class JsonSchemaFieldComponent implements OnInit {
     return this.fieldSchema().description
   }
 
-  protected get fieldType(): 'text' | 'number' | 'boolean' | 'enum' | 'nested-object' | 'textarea' {
+  protected get fieldType(): 'text' | 'number' | 'boolean' | 'enum' | 'nested-object' | 'array' | 'textarea' {
     const schema = this.fieldSchema()
     if (schema.enum?.length) return 'enum'
     const type = Array.isArray(schema.type) ? schema.type[0] : schema.type
@@ -72,10 +121,10 @@ export class JsonSchemaFieldComponent implements OnInit {
         return 'number'
       case 'boolean':
         return 'boolean'
+      case 'array':
+        return 'array'
       case 'object':
         return schema.properties ? 'nested-object' : 'textarea'
-      case 'array':
-        return 'textarea'
       default:
         return 'text'
     }
