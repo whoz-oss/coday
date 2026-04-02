@@ -1,3 +1,18 @@
+## 0.109.0 (2026-04-02)
+
+### 🚀 Features
+
+- force build ([11b8c6f1](https://github.com/whoz-oss/coday/commit/11b8c6f1))
+
+### 🩹 Fixes
+
+- add GITHUB_TOKEN for pnpm install in macos host ([#705](https://github.com/whoz-oss/coday/pull/705))
+- force build ([d540142f](https://github.com/whoz-oss/coday/commit/d540142f))
+
+### ❤️ Thank You
+
+- Vincent Palita @vincent-palita-whoz
+
 ## 0.108.1 (2026-04-01)
 
 ### 🩹 Fixes
