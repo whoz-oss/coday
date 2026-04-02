@@ -62,6 +62,10 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos', ns.id, 'cases'])
   }
 
+  protected openIntegrations(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'integrations'])
+  }
+
   // --- Create ---
 
   protected openCreateForm(): void {

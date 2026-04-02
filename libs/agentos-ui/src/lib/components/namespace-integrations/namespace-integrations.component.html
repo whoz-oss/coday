@@ -1,0 +1,103 @@
+<div class="namespace-integrations">
+  <header class="namespace-integrations__header">
+    <button class="namespace-integrations__back" type="button" (click)="goBack()">← Namespaces</button>
+    <h2>Integrations</h2>
+    <ds-icon-button icon="add" variant="primary" title="Add integration" (action)="openCreateForm()" />
+  </header>
+
+  @if (isCreating()) {
+    <form class="namespace-integrations__form" (ngSubmit)="submitCreate()">
+      <p class="namespace-integrations__form-title">New integration</p>
+
+      @if (integrationTypes$ | async; as types) {
+        <select class="namespace-integrations__select" [formControl]="createTypeControl">
+          <option value="" disabled>Select type *</option>
+          @for (descriptor of types; track trackByType($index, descriptor)) {
+            <option [value]="descriptor.type">{{ descriptor.displayName }}</option>
+          }
+        </select>
+      }
+
+      <input class="namespace-integrations__input" type="text" placeholder="Name *" [formControl]="createNameControl" />
+
+      <textarea
+        class="namespace-integrations__textarea"
+        placeholder="Parameters (JSON, optional)"
+        rows="4"
+        [formControl]="createParamsControl"
+      ></textarea>
+      @if (createParamsError()) {
+        <p class="namespace-integrations__error">{{ createParamsError() }}</p>
+      }
+
+      <div class="namespace-integrations__form-actions">
+        <ds-icon-button
+          icon="check"
+          variant="primary"
+          title="Confirm"
+          [disabled]="createNameControl.invalid || createTypeControl.invalid || isSubmitting()"
+          (action)="submitCreate()"
+        />
+        <ds-icon-button icon="close" title="Cancel" (action)="cancelCreate()" />
+      </div>
+    </form>
+  }
+
+  @if (editingConfig(); as editing) {
+    <form class="namespace-integrations__form namespace-integrations__form--edit" (ngSubmit)="submitEdit()">
+      <p class="namespace-integrations__form-title">
+        Editing: <strong>{{ editing.name }}</strong>
+      </p>
+
+      @if (integrationTypes$ | async; as types) {
+        <select class="namespace-integrations__select" [formControl]="editTypeControl">
+          <option value="" disabled>Select type *</option>
+          @for (descriptor of types; track trackByType($index, descriptor)) {
+            <option [value]="descriptor.type">{{ descriptor.displayName }}</option>
+          }
+        </select>
+      }
+
+      <input class="namespace-integrations__input" type="text" placeholder="Name *" [formControl]="editNameControl" />
+
+      <textarea
+        class="namespace-integrations__textarea"
+        placeholder="Parameters (JSON, optional)"
+        rows="4"
+        [formControl]="editParamsControl"
+      ></textarea>
+      @if (editParamsError()) {
+        <p class="namespace-integrations__error">{{ editParamsError() }}</p>
+      }
+
+      <div class="namespace-integrations__form-actions">
+        <ds-icon-button
+          icon="check"
+          variant="primary"
+          title="Save changes"
+          [disabled]="editNameControl.invalid || editTypeControl.invalid || isEditSubmitting()"
+          (action)="submitEdit()"
+        />
+        <ds-icon-button icon="close" title="Cancel" (action)="cancelEdit()" />
+      </div>
+    </form>
+  }
+
+  @if (configs$ | async; as configs) {
+    @if (configs.length === 0) {
+      <div class="namespace-integrations__empty">
+        <p>No integrations configured yet. Add one above.</p>
+      </div>
+    } @else {
+      <ul class="namespace-integrations__items" role="list">
+        @for (config of configs; track trackById($index, config)) {
+          <agentos-integration-config-item
+            [config]="config"
+            (editRequested)="openEditForm($event)"
+            (deleteRequested)="deleteConfig($event)"
+          />
+        }
+      </ul>
+    }
+  }
+</div>

@@ -13,12 +13,13 @@ export interface Case {
   metadata: EntityMetadata
   namespaceId: string
   status: CaseStatusEnum
+  title: string
   id: string
 }
 export enum CaseStatusEnum {
   PENDING = 'PENDING',
   RUNNING = 'RUNNING',
-  STOPPING = 'STOPPING',
+  IDLE = 'IDLE',
+  KILLED = 'KILLED',
   ERROR = 'ERROR',
-  STOPPED = 'STOPPED',
 }

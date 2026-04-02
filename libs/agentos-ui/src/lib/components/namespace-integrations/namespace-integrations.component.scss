@@ -1,0 +1,146 @@
+.namespace-integrations {
+  display: flex;
+  flex-direction: column;
+  padding: 2rem;
+  gap: 1.5rem;
+  max-width: 720px;
+  margin: 0 auto;
+
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+
+    h2 {
+      flex: 1;
+      margin: 0;
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--color-text, #1d1d1f);
+      letter-spacing: -0.02em;
+    }
+  }
+
+  &__back {
+    background: none;
+    border: none;
+    padding: 0.25rem 0;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--color-primary, #007aff);
+    font-family: inherit;
+    white-space: nowrap;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  &__form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1rem;
+    border-radius: 12px;
+    border: 1px solid var(--color-primary, #007aff);
+    background: var(--glass-bg, rgba(255, 255, 255, 0.72));
+    backdrop-filter: var(--glass-backdrop-blur, blur(20px));
+
+    &--edit {
+      border-color: var(--color-text-secondary, #6e6e73);
+    }
+  }
+
+  &__form-title {
+    margin: 0 0 0.25rem;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary, #6e6e73);
+
+    strong {
+      color: var(--color-text, #1d1d1f);
+    }
+  }
+
+  &__select,
+  &__input {
+    width: 100%;
+    padding: 0.6rem 0.875rem;
+    border-radius: 8px;
+    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+    background: transparent;
+    color: var(--color-text, #1d1d1f);
+    font-size: 0.9rem;
+    font-family: inherit;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.15s ease;
+
+    &:focus {
+      border-color: var(--color-primary, #007aff);
+    }
+
+    &::placeholder {
+      color: var(--color-text-secondary, #6e6e73);
+    }
+  }
+
+  &__select {
+    cursor: pointer;
+
+    option[disabled] {
+      color: var(--color-text-secondary, #6e6e73);
+    }
+  }
+
+  &__textarea {
+    width: 100%;
+    padding: 0.6rem 0.875rem;
+    border-radius: 8px;
+    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+    background: transparent;
+    color: var(--color-text, #1d1d1f);
+    font-size: 0.85rem;
+    font-family: monospace;
+    outline: none;
+    box-sizing: border-box;
+    resize: vertical;
+    transition: border-color 0.15s ease;
+
+    &:focus {
+      border-color: var(--color-primary, #007aff);
+    }
+
+    &::placeholder {
+      color: var(--color-text-secondary, #6e6e73);
+    }
+  }
+
+  &__error {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--color-error, #ff3b30);
+  }
+
+  &__form-actions {
+    display: flex;
+    gap: 0.25rem;
+    justify-content: flex-end;
+  }
+
+  &__items {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  &__empty {
+    p {
+      color: var(--color-text-secondary, #6e6e73);
+      font-size: 0.9rem;
+      margin: 0;
+    }
+  }
+}

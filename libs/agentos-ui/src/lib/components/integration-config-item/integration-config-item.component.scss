@@ -1,8 +1,8 @@
-.namespace-item {
+.integration-config-item {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.875rem 1.25rem;
+  padding: 0.75rem 1rem;
   border-radius: 10px;
   border: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
   background: var(--glass-bg, rgba(255, 255, 255, 0.72));
@@ -20,13 +20,7 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
     gap: 0.2rem;
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    text-align: left;
     min-width: 0;
   }
 
@@ -37,16 +31,15 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 100%;
   }
 
-  &__desc {
-    font-size: 0.8rem;
+  &__type {
+    font-size: 0.78rem;
     color: var(--color-text-secondary, #6e6e73);
+    font-family: monospace;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 100%;
   }
 
   &__actions {
