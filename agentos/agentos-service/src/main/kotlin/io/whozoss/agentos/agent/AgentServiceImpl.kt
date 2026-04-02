@@ -114,8 +114,9 @@ class AgentServiceImpl(
                 buildString {
                     appendLine()
                     appendLine("## Context: ${namespace?.name ?: it.namespaceId}")
-                    if (!namespace?.description.isNullOrBlank()) {
-                        appendLine(namespace!!.description!!)
+                    val description = namespace?.description
+                    if (!description.isNullOrBlank()) {
+                        appendLine(description)
                     }
                 }.trimEnd()
 
