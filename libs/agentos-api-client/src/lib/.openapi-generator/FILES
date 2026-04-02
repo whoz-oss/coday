@@ -4,6 +4,8 @@ api.base.service.ts
 api.module.ts
 api/api.ts
 api/case-controller.service.ts
+api/integration-config-controller.service.ts
+api/integration-type-controller.service.ts
 api/namespace-controller.service.ts
 api/plugin-controller.service.ts
 api/sse.service.ts
@@ -21,7 +23,10 @@ model/answer-event.ts
 model/case-status-event.ts
 model/case.ts
 model/entity-metadata.ts
+model/get-by-ids3200-response-inner.ts
 model/image.ts
+model/integration-config.ts
+model/integration-type-descriptor.ts
 model/intention-generated-event.ts
 model/message-content.ts
 model/message-event.ts

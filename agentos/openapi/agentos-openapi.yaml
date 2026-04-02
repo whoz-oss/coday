@@ -648,6 +648,38 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Namespace"
+  /api/integration-types:
+    get:
+      tags:
+      - integration-type-controller
+      operationId: listTypes
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationTypeDescriptor"
+  /api/integration-types/{type}:
+    get:
+      tags:
+      - integration-type-controller
+      operationId: getType
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationTypeDescriptor"
   /api/integration-configs/by-parentId/{parentId}:
     get:
       tags:
@@ -1369,3 +1401,19 @@ components:
       - provider
       - state
       - version
+    IntegrationTypeDescriptor:
+      type: object
+      properties:
+        type:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: string
+        configSchema:
+          $ref: "#/components/schemas/JsonNode"
+      required:
+      - configSchema
+      - description
+      - displayName
+      - type
