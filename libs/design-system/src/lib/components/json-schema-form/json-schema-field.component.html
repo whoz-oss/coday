@@ -14,7 +14,7 @@
     @case ('text') {
       <input
         class="ds-field__input"
-        type="text"
+        [type]="htmlInputType"
         [id]="inputId"
         [formControl]="control()"
         [attr.required]="required() || null"

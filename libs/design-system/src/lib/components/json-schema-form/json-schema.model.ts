@@ -14,6 +14,7 @@ export interface JsonSchemaObject {
   properties?: Record<string, JsonSchemaObject>
   required?: string[]
   enum?: unknown[]
+  format?: string
   default?: unknown
   minimum?: number
   maximum?: number

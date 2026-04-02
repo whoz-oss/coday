@@ -13,6 +13,14 @@ import { JsonSchemaObject } from './json-schema.model'
  * another ds-json-schema-form. Objects without `properties` fall back to a
  * JSON textarea.
  *
+ * String fields respect the `format` keyword to pick the right HTML input type:
+ *   - password  → <input type="password">
+ *   - email     → <input type="email">
+ *   - uri / url → <input type="url">
+ *   - date      → <input type="date">
+ *   - date-time → <input type="datetime-local">
+ *   - (others)  → <input type="text">
+ *
  * This is an internal component used only by ds-json-schema-form.
  * It is NOT exported from the design-system public API.
  */
@@ -49,10 +57,33 @@ export class JsonSchemaFieldComponent {
       case 'boolean':
         return 'boolean'
       case 'object':
-        // Render as nested form only if the schema has declared properties
         return schema.properties ? 'nested-object' : 'textarea'
       case 'array':
         return 'textarea'
+      default:
+        return 'text'
+    }
+  }
+
+  /**
+   * HTML input `type` attribute for text fields.
+   * Maps JSON Schema `format` keywords to their HTML equivalents.
+   * Falls back to `"text"` for any unknown format.
+   */
+  protected get htmlInputType(): string {
+    const format = this.fieldSchema().format as string | undefined
+    switch (format) {
+      case 'password':
+        return 'password'
+      case 'email':
+        return 'email'
+      case 'uri':
+      case 'url':
+        return 'url'
+      case 'date':
+        return 'date'
+      case 'date-time':
+        return 'datetime-local'
       default:
         return 'text'
     }
