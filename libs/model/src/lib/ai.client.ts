@@ -26,7 +26,7 @@ export interface CompletionOptions {
 }
 
 /**
- * Common abstraction over different AI provider APIs.
+ * Common abstraction over different AI provider APIs!
  */
 export abstract class AiClient {
   abstract name: string
