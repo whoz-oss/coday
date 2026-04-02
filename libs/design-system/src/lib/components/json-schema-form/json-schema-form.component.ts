@@ -42,11 +42,7 @@ export class JsonSchemaFormComponent {
 
   // UntypedFormGroup is Angular's intended solution for fully dynamic
   // control maps where the set of keys is not known at compile time.
-  // The typed FormGroup<T> API requires a fixed key set, creating an
-  // irresolvable variance conflict for dynamic add/removeControl calls.
   protected readonly formGroup = new UntypedFormGroup({})
-
-  protected readonly validationErrors = signal<string[]>([])
 
   protected readonly fieldKeys = computed(() => {
     const s = this.schema()
@@ -55,6 +51,9 @@ export class JsonSchemaFormComponent {
   })
 
   protected readonly hasFields = computed(() => this.fieldKeys().length > 0)
+
+  /** Per-field validation errors from Ajv, keyed by property name. */
+  protected readonly fieldErrors = signal<Map<string, string[]>>(new Map())
 
   constructor() {
     effect(() => {
@@ -68,7 +67,7 @@ export class JsonSchemaFormComponent {
     Object.keys(this.formGroup.controls).forEach((key) => {
       this.formGroup.removeControl(key)
     })
-    this.validationErrors.set([])
+    this.fieldErrors.set(new Map())
 
     if (!schema?.properties) {
       this.valueChange.emit(null)
@@ -103,21 +102,25 @@ export class JsonSchemaFormComponent {
     const coerced = this.coerceValues(raw, schema)
     const errors = validateJsonSchema(schema, coerced)
 
+    // Bucket errors by field key
+    const errorMap = new Map<string, string[]>()
+    for (const msg of errors) {
+      // Format: "fieldKey: message" (see ajv-validator.ts)
+      const colonIdx = msg.indexOf(': ')
+      const field = colonIdx !== -1 ? msg.slice(0, colonIdx) : '(root)'
+      const message = colonIdx !== -1 ? msg.slice(colonIdx + 2) : msg
+      const existing = errorMap.get(field) ?? []
+      errorMap.set(field, [...existing, message])
+    }
+    this.fieldErrors.set(errorMap)
+
     if (errors.length === 0) {
-      this.validationErrors.set([])
       this.valueChange.emit(coerced)
     } else {
-      this.validationErrors.set(errors)
       this.valueChange.emit(null)
     }
   }
 
-  /**
-   * Coerce form string values back to their schema-declared types.
-   * Object/array fields without declared `properties` are stored as JSON
-   * strings in textarea controls and need to be parsed back.
-   * Nested object fields (rendered as nested forms) emit objects directly.
-   */
   private coerceValues(raw: Record<string, unknown>, schema: JsonSchemaObject): Record<string, unknown> {
     const result: Record<string, unknown> = {}
     for (const [key, fieldSchema] of Object.entries(schema.properties ?? {})) {
@@ -139,10 +142,8 @@ export class JsonSchemaFormComponent {
         }
       } else if (type === 'object') {
         if (fieldSchema.properties) {
-          // Nested form emits objects directly — pass through
           result[key] = val
         } else {
-          // No properties declared — textarea holds a JSON string
           try {
             result[key] = typeof val === 'string' ? JSON.parse(val) : val
           } catch {
@@ -173,7 +174,6 @@ export class JsonSchemaFormComponent {
     const raw = value[key]
     if (raw === null || raw === undefined) return fallback
 
-    // For object/array textarea fields, stringify the initial value
     const type = Array.isArray(fieldSchema.type) ? fieldSchema.type[0] : fieldSchema.type
     if (type === 'array' || (type === 'object' && !fieldSchema.properties)) {
       return typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2)
@@ -191,5 +191,9 @@ export class JsonSchemaFormComponent {
 
   protected getControl(key: string): FormControl {
     return this.formGroup.get(key) as FormControl
+  }
+
+  protected getFieldErrors(key: string): string[] {
+    return this.fieldErrors().get(key) ?? []
   }
 }

@@ -21,8 +21,22 @@ const ajv = new Ajv({ allErrors: true, unknownFormats: 'ignore' })
 export function validateJsonSchema(schema: object, data: unknown): string[] {
   const valid = ajv.validate(schema, data)
   if (valid) return []
-  // ajv v8 ErrorObject has `instancePath`; cast via unknown to avoid
-  // TypeScript resolving the v6 types from the wrong node_modules entry.
-  const errors = (ajv.errors ?? []) as unknown as Array<{ instancePath?: string; message?: string }>
-  return errors.map((e) => `${e.instancePath || '(root)'}: ${e.message ?? 'invalid'}`)
+  // Cast via unknown: TypeScript may resolve ajv v6 types from a transitive
+  // node_modules entry. Ajv v8 ErrorObject always has instancePath + params.
+  const errors = (ajv.errors ?? []) as unknown as Array<{
+    instancePath?: string
+    keyword?: string
+    message?: string
+    params?: Record<string, unknown>
+  }>
+  return errors.map((e) => {
+    // `required` errors: instancePath is empty, the missing field name is in params
+    if (e.keyword === 'required' && e.params?.['missingProperty']) {
+      const field = String(e.params['missingProperty'])
+      return `${field}: is required`
+    }
+    // All other errors: strip the leading slash from instancePath for readability
+    const path = e.instancePath ? e.instancePath.replace(/^\//, '') : '(root)'
+    return `${path}: ${e.message ?? 'invalid'}`
+  })
 }

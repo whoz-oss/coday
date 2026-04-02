@@ -37,6 +37,8 @@ export class JsonSchemaFieldComponent {
   readonly fieldSchema = input.required<JsonSchemaObject>()
   readonly control = input.required<FormControl>()
   readonly required = input<boolean>(false)
+  /** Validation error messages from Ajv, passed down by ds-json-schema-form. */
+  readonly errors = input<string[]>([])
 
   protected get label(): string {
     return this.fieldSchema().title ?? this.fieldKey()

@@ -6,15 +6,8 @@
         [fieldSchema]="getFieldSchema(key)"
         [control]="getControl(key)"
         [required]="isRequired(key)"
+        [errors]="getFieldErrors(key)"
       />
-    }
-
-    @if (validationErrors().length > 0) {
-      <ul class="ds-json-schema-form__errors" role="alert">
-        @for (error of validationErrors(); track error) {
-          <li>{{ error }}</li>
-        }
-      </ul>
     }
   </div>
 }
